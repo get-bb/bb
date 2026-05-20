@@ -10,6 +10,9 @@ export const ATTACH_PROBE_TIMEOUT_MS = 1_500;
 export const PROCESS_LOG_LINE_LIMIT = 200;
 
 export type RuntimeOwnership = "attached" | "spawned";
+export type WindowStateKey = string;
+
+export const PRIMARY_WINDOW_STATE_KEY = "main";
 
 export interface WindowBounds {
   height: number;
@@ -22,6 +25,14 @@ export interface PersistedWindowState {
   bounds: WindowBounds;
   isFullScreen: boolean;
   isMaximized: boolean;
+}
+
+export interface PersistedWindowStateEntry extends PersistedWindowState {
+  stateKey: WindowStateKey;
+}
+
+export interface PersistedWindowStateFile {
+  windows: PersistedWindowStateEntry[];
 }
 
 export interface DisplayWorkArea {

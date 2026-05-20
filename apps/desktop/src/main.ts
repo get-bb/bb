@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { app, BrowserWindow, nativeImage, shell, type Event } from "electron";
@@ -29,18 +30,19 @@ import {
   registerDesktopShutdownSignalHandlers,
 } from "./desktop-shutdown.js";
 import {
-  persistBrowserWindowState,
-  restoreBrowserWindowState,
-} from "./window-state.js";
+  createDesktopWindowFactory,
+  type DesktopBrowserWindow,
+  type DesktopBrowserWindowCreator,
+  type DesktopWindowFactory,
+} from "./desktop-window-factory.js";
 import {
   ATTACH_PROBE_TIMEOUT_MS,
   DEFAULT_BB_SERVER_URL,
-  MIN_WINDOW_HEIGHT,
-  MIN_WINDOW_WIDTH,
   PROCESS_LOG_LINE_LIMIT,
   STARTUP_POLL_INTERVAL_MS,
   STARTUP_TIMEOUT_MS,
   type RuntimeOwnership,
+  type WindowStateKey,
 } from "./types.js";
 
 interface DesktopRuntime {
@@ -48,12 +50,6 @@ interface DesktopRuntime {
   ownership: RuntimeOwnership;
   serverUrl: string;
   userDataPath: string | null;
-}
-
-interface CreateMainWindowArgs {
-  iconPath: string;
-  preloadPath: string;
-  userDataPath: string;
 }
 
 interface LoadStartupErrorArgs {
@@ -64,6 +60,10 @@ interface LoadStartupErrorArgs {
 
 interface LoadWindowUrlArgs {
   url: string;
+}
+
+interface CreateApplicationWindowArgs {
+  stateKey: WindowStateKey | null;
 }
 
 interface StartOwnedRuntimeArgs {
@@ -95,8 +95,10 @@ interface ResolveDesktopServerUrlArgs {
   env: NodeJS.ProcessEnv;
 }
 
-let mainWindow: BrowserWindow | null = null;
+let desktopWindowFactory: DesktopWindowFactory | null = null;
 let currentRuntime: DesktopRuntime | null = null;
+let currentWindowUrl: string | null = null;
+let bbAppLoaded = false;
 let stoppingForQuit = false;
 let quitting = false;
 
@@ -156,76 +158,16 @@ function createDesktopPathContext(): DesktopPathContext {
 }
 
 async function loadWindowUrl(args: LoadWindowUrlArgs): Promise<void> {
-  if (mainWindow === null) {
+  currentWindowUrl = args.url;
+  if (desktopWindowFactory === null) {
     return;
   }
 
-  try {
-    await mainWindow.loadURL(args.url);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("ERR_ABORTED")) {
-      return;
-    }
-    throw error;
-  }
-}
-
-async function createMainWindow(
-  args: CreateMainWindowArgs,
-): Promise<BrowserWindow> {
-  const restoredState = await restoreBrowserWindowState({
-    userDataPath: args.userDataPath,
-  });
-  const browserWindow = new BrowserWindow({
-    height: restoredState.bounds.height,
-    icon: nativeImage.createFromPath(args.iconPath),
-    minHeight: MIN_WINDOW_HEIGHT,
-    minWidth: MIN_WINDOW_WIDTH,
-    show: false,
-    title: "bb",
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: args.preloadPath,
-      sandbox: true,
-    },
-    width: restoredState.bounds.width,
-    x: restoredState.bounds.x,
-    y: restoredState.bounds.y,
-  });
-
-  if (restoredState.isMaximized) {
-    browserWindow.maximize();
-  }
-  if (restoredState.isFullScreen) {
-    browserWindow.setFullScreen(true);
-  }
-
-  browserWindow.once("ready-to-show", () => {
-    browserWindow.show();
-  });
-  browserWindow.on("close", () => {
-    void persistBrowserWindowState({
-      browserWindow,
-      userDataPath: args.userDataPath,
-    });
-  });
-  browserWindow.on("closed", () => {
-    mainWindow = null;
-    if (!quitting) {
-      app.quit();
-    }
-  });
-  browserWindow.webContents.setWindowOpenHandler((details) => {
-    void shell.openExternal(details.url);
-    return { action: "deny" };
-  });
-
-  return browserWindow;
+  await desktopWindowFactory.loadUrl({ url: args.url });
 }
 
 async function loadLoadingView(): Promise<void> {
+  bbAppLoaded = false;
   await loadWindowUrl({
     url: createLocalViewUrl({
       viewModel: {
@@ -238,6 +180,7 @@ async function loadLoadingView(): Promise<void> {
 }
 
 async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
+  bbAppLoaded = false;
   await loadWindowUrl({
     url: createLocalViewUrl({
       viewModel: {
@@ -251,14 +194,32 @@ async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
 }
 
 async function loadBbApp(serverUrl: string): Promise<void> {
-  if (mainWindow === null) {
-    return;
+  bbAppLoaded = true;
+  await loadWindowUrl({ url: serverUrl });
+  if (shouldOpenDevTools()) {
+    desktopWindowFactory?.openDevTools();
+  }
+}
+
+function shouldOpenDevTools(): boolean {
+  return !app.isPackaged || process.env.BB_DESKTOP_OPEN_DEVTOOLS === "1";
+}
+
+async function createApplicationWindow(
+  args: CreateApplicationWindowArgs,
+): Promise<DesktopBrowserWindow | null> {
+  if (desktopWindowFactory === null) {
+    return null;
   }
 
-  await loadWindowUrl({ url: serverUrl });
-  if (!app.isPackaged || process.env.BB_DESKTOP_OPEN_DEVTOOLS === "1") {
-    mainWindow.webContents.openDevTools({ mode: "detach" });
+  const browserWindow = await desktopWindowFactory.createWindow({
+    initialUrl: currentWindowUrl,
+    stateKey: args.stateKey,
+  });
+  if (bbAppLoaded && shouldOpenDevTools()) {
+    browserWindow.webContents.openDevTools({ mode: "detach" });
   }
+  return browserWindow;
 }
 
 async function stopOwnedRuntime(): Promise<void> {
@@ -283,15 +244,17 @@ function handleBeforeQuit(event: Event): void {
   if (stoppingForQuit) {
     return;
   }
-  if (currentRuntime === null || currentRuntime.ownership !== "spawned") {
-    return;
-  }
 
   event.preventDefault();
   stoppingForQuit = true;
-  void stopOwnedRuntime().finally(() => {
+  void finishQuit().finally(() => {
     app.quit();
   });
+}
+
+async function finishQuit(): Promise<void> {
+  await desktopWindowFactory?.persistOpenWindows();
+  await stopOwnedRuntime();
 }
 
 async function startOwnedRuntime(
@@ -425,17 +388,21 @@ async function runDesktopApp(): Promise<void> {
   }
 
   app.on("second-instance", () => {
-    if (mainWindow === null) {
+    if (desktopWindowFactory?.focusFirstWindow() === true) {
       return;
     }
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore();
-    }
-    mainWindow.focus();
+    void createApplicationWindow({ stateKey: null });
   });
   app.on("before-quit", handleBeforeQuit);
   app.on("window-all-closed", () => {
-    app.quit();
+    if (process.platform !== "darwin") {
+      app.quit();
+    }
+  });
+  app.on("activate", () => {
+    if (desktopWindowFactory?.hasOpenWindows() === false) {
+      void createApplicationWindow({ stateKey: null });
+    }
   });
   registerDesktopShutdownSignalHandlers({
     exitProcess(code) {
@@ -468,7 +435,6 @@ async function runDesktopApp(): Promise<void> {
   assertPathExists({ label: "preload script", path: preloadPath });
   assertPathExists({ label: "app icon", path: iconPath });
 
-  installApplicationMenu();
   if (process.platform === "darwin" && app.dock !== undefined) {
     app.dock.setIcon(iconPath);
   }
@@ -478,12 +444,37 @@ async function runDesktopApp(): Promise<void> {
     userDataPath,
   });
 
-  mainWindow = await createMainWindow({
-    iconPath,
+  const browserWindowCreator: DesktopBrowserWindowCreator = {
+    create(options) {
+      return new BrowserWindow(options);
+    },
+  };
+  desktopWindowFactory = createDesktopWindowFactory({
+    browserWindowCreator,
+    createWindowStateKey() {
+      return `window-${randomUUID()}`;
+    },
+    displayWorkAreas: null,
+    icon: nativeImage.createFromPath(iconPath),
+    isQuitting() {
+      return quitting;
+    },
+    openExternalUrl(openArgs) {
+      void shell.openExternal(openArgs.url);
+    },
     preloadPath,
     userDataPath,
   });
+
+  installApplicationMenu({
+    createNewWindow() {
+      void createApplicationWindow({ stateKey: null });
+    },
+  });
   await loadLoadingView();
+  await desktopWindowFactory.restoreSavedWindows({
+    initialUrl: currentWindowUrl,
+  });
   await initializeRuntime({ bridgePath, serverUrl, userDataPath });
 }
 

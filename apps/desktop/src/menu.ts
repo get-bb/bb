@@ -1,6 +1,10 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
 
-export function installApplicationMenu(): void {
+export interface InstallApplicationMenuArgs {
+  createNewWindow(): void;
+}
+
+export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
   const template: MenuItemConstructorOptions[] = [
     {
       label: app.name,
@@ -14,6 +18,20 @@ export function installApplicationMenu(): void {
         { role: "unhide" },
         { type: "separator" },
         { role: "quit" },
+      ],
+    },
+    {
+      label: "File",
+      submenu: [
+        {
+          accelerator: "CmdOrCtrl+N",
+          click() {
+            args.createNewWindow();
+          },
+          label: "New Window",
+        },
+        { type: "separator" },
+        { role: "close" },
       ],
     },
     {
@@ -44,7 +62,6 @@ export function installApplicationMenu(): void {
       submenu: [
         { role: "minimize" },
         { role: "zoom" },
-        { role: "close" },
         { type: "separator" },
         { role: "front" },
       ],
