@@ -137,6 +137,34 @@
       ],
       "outputs": ["app/**", "dist/**", "host-daemon/**", "server/**"]
     },
+    "@bb/desktop#build": {
+      "dependsOn": ["bb-app#build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/desktop/**",
+        "$TURBO_ROOT$/packages/bb-app/app/**",
+        "$TURBO_ROOT$/packages/bb-app/dist/**",
+        "$TURBO_ROOT$/packages/bb-app/host-daemon/**",
+        "$TURBO_ROOT$/packages/bb-app/package.json",
+        "$TURBO_ROOT$/packages/bb-app/server/**",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/turbo.json"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "@bb/desktop#desktop:build": {
+      "dependsOn": ["bb-app#build", "@bb/desktop#build"],
+      "cache": false,
+      "outputs": ["release/**"],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/desktop#dev": {
+      "dependsOn": ["bb-app#build"],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["*"]
+    },
     "bundle": {
       "dependsOn": [],
       "cache": false,

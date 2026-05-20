@@ -1,0 +1,37 @@
+{
+  "name": "@bb/desktop",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "macOS Electron shell for bb",
+  "main": "dist/main.js",
+  "os": [
+    "darwin"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "clean": "rimraf dist release",
+    "desktop:build": "pnpm run build && electron-builder --config electron-builder.config.json --mac dmg zip",
+    "dev": "pnpm run package && node scripts/run-packaged-app.mjs",
+    "dist": "pnpm run prepare-runtime && pnpm run desktop:build",
+    "package": "pnpm run prepare-runtime && pnpm run build && electron-builder --config electron-builder.config.json --mac --dir",
+    "prepare-runtime": "pnpm exec turbo run build --filter=bb-app --output-logs=new-only",
+    "start": "electron .",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "bb-app": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "electron": "38.4.0",
+    "electron-builder": "^26.8.1",
+    "esbuild": "^0.28.0",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.1"
+  }
+}

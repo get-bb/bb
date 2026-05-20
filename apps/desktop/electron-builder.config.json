@@ -1,0 +1,23 @@
+{
+  "appId": "dev.bb.desktop",
+  "productName": "bb",
+  "artifactName": "${productName}-${version}-${arch}.${ext}",
+  "asar": true,
+  "asarUnpack": ["dist/bb-app-bridge.js", "node_modules/**"],
+  "directories": {
+    "buildResources": "assets",
+    "output": "release"
+  },
+  "files": ["assets/**", "dist/**", "node_modules/**", "package.json"],
+  "mac": {
+    "category": "public.app-category.developer-tools",
+    "hardenedRuntime": false,
+    "icon": "assets/icon.icns",
+    "identity": null,
+    "target": ["dmg", "zip"]
+  },
+  "dmg": {
+    "sign": false
+  },
+  "npmRebuild": true
+}

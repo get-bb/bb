@@ -1,0 +1,68 @@
+name: Build Desktop
+
+on:
+  workflow_dispatch:
+
+env:
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+  NODE_VERSION: "22.x"
+  PNPM_VERSION: "9.15.0"
+
+concurrency:
+  group: build-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS unsigned artifacts
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Typecheck desktop and launcher
+        run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
+
+      - name: Build desktop
+        run: pnpm exec turbo run build --filter=@bb/desktop --output-logs=new-only
+
+      - name: Test desktop and launcher
+        run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
+
+      - name: Package unsigned desktop artifacts
+        run: pnpm exec turbo run desktop:build --filter=@bb/desktop --force --output-logs=new-only
+
+      - name: Upload unsigned desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bb-desktop-macos-unsigned
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+          if-no-files-found: error
+
+      - name: Summarize
+        run: |
+          {
+            echo "## bb desktop artifacts"
+            echo
+            echo "- unsigned macOS .dmg and .zip artifacts uploaded"
+            echo "- workflow_dispatch is the v1 release-style trigger; tag/release triggers can be added when distribution policy is set"
+          } >> "$GITHUB_STEP_SUMMARY"
