@@ -1,6 +1,10 @@
 import { useState } from "react";
 import type { AvailableModel, Host, ProjectSource } from "@bb/domain";
-import type { ProjectResponse, SystemProviderInfo } from "@bb/server-contract";
+import type {
+  ManagerTemplateSummary,
+  ProjectResponse,
+  SystemProviderInfo,
+} from "@bb/server-contract";
 import {
   DialogDescription,
   DialogHeader,
@@ -24,14 +28,18 @@ export default {
 // reproduce its width and child spacing.
 const stageClassName = "gap-3 md:max-w-md";
 
-function NewManagerDialogStage(props: {
+interface NewManagerStoryProps {
   providers: SystemProviderInfo[];
   providersAreLoaded: boolean;
   models: readonly AvailableModel[];
   hosts: Host[];
   hostsAreLoaded?: boolean;
   projectSources: readonly ProjectSource[];
-}) {
+  managerTemplates?: readonly ManagerTemplateSummary[];
+  managerTemplateActiveName?: string | null;
+}
+
+function NewManagerDialogStage(props: NewManagerStoryProps) {
   return (
     <DialogStage className={stageClassName}>
       <DialogHeader>
@@ -149,18 +157,22 @@ const projectSources: ProjectSource[] = [
 
 const isLocalHost = (id: string | null | undefined) => id === HOST_IDS.local;
 
-function ControlledNewManagerForm(props: {
-  providers: SystemProviderInfo[];
-  providersAreLoaded: boolean;
-  models: readonly AvailableModel[];
-  hosts: Host[];
-  hostsAreLoaded?: boolean;
-  projectSources: readonly ProjectSource[];
-}) {
+const defaultStoryManagerTemplates: readonly ManagerTemplateSummary[] = [
+  { name: "default", isActive: true },
+];
+
+function ControlledNewManagerForm(props: NewManagerStoryProps) {
   const [selectedProviderId, setSelectedProviderId] = useState("");
   const projects: readonly ProjectResponse[] = [
     makeProject({ sources: [...props.projectSources] }),
   ];
+  const managerTemplates =
+    props.managerTemplates ?? defaultStoryManagerTemplates;
+  const managerTemplateActiveName =
+    props.managerTemplateActiveName ??
+    managerTemplates.find((template) => template.isActive)?.name ??
+    managerTemplates[0]?.name ??
+    null;
   return (
     <NewManagerForm
       projectId={PROJECT_IDS.bb}
@@ -172,6 +184,8 @@ function ControlledNewManagerForm(props: {
       hostsAreLoaded={props.hostsAreLoaded ?? true}
       isLocalHost={isLocalHost}
       models={props.models}
+      managerTemplates={managerTemplates}
+      managerTemplateActiveName={managerTemplateActiveName}
       selectedProviderId={selectedProviderId}
       onSelectedProviderIdChange={setSelectedProviderId}
       onProjectChange={noop}
@@ -218,6 +232,23 @@ export function Overview() {
           models={codexModels}
           hosts={[localHost]}
           projectSources={[]}
+        />
+      </StoryRow>
+      <StoryRow
+        label="multiple manager templates"
+        hint="template picker shown with the active template preselected"
+      >
+        <NewManagerDialogStage
+          providers={[codexProvider]}
+          providersAreLoaded
+          models={codexModels}
+          hosts={[localHost]}
+          projectSources={projectSources}
+          managerTemplates={[
+            { name: "default", isActive: false },
+            { name: "sawyer-next", isActive: true },
+          ]}
+          managerTemplateActiveName="sawyer-next"
         />
       </StoryRow>
     </StoryCard>

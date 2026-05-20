@@ -15,6 +15,7 @@ import type {
 import type {
   CreateManagerThreadRequest,
   CreateHostJoinResponse,
+  ManagerTemplatesResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
   CreateQueuedMessageRequest,
@@ -1244,6 +1245,20 @@ export async function getSystemExecutionOptions(args: {
 export async function listSystemProviders(): Promise<SystemProviderInfo[]> {
   return request<SystemProviderInfo[]>(
     apiClient.system.providers.$get({ query: {} }),
+  );
+}
+
+export interface ListManagerTemplatesArgs {
+  hostId?: string;
+}
+
+export async function listManagerTemplates(
+  args: ListManagerTemplatesArgs = {},
+): Promise<ManagerTemplatesResponse> {
+  return request<ManagerTemplatesResponse>(
+    apiClient["manager-templates"].$get({
+      query: args.hostId ? { hostId: args.hostId } : {},
+    }),
   );
 }
 

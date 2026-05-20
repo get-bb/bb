@@ -1329,6 +1329,38 @@ export type SystemConfigReloadResponse = z.infer<
   typeof systemConfigReloadResponseSchema
 >;
 
+export const managerTemplatesQuerySchema = z
+  .object({
+    hostId: z.string().min(1),
+  })
+  .partial();
+export type ManagerTemplatesQuery = z.infer<typeof managerTemplatesQuerySchema>;
+
+export const managerTemplateSummarySchema = z.object({
+  name: managerTemplateNameSchema,
+  isActive: z.boolean(),
+});
+export type ManagerTemplateSummary = z.infer<
+  typeof managerTemplateSummarySchema
+>;
+
+export const managerTemplatesResponseSchema = z.object({
+  /**
+   * Manager templates discovered on the resolved host, sorted alphabetically.
+   * Only includes directories that contain at least one regular file.
+   */
+  templates: z.array(managerTemplateSummarySchema),
+  /**
+   * Resolved active template name. Single source of truth for "what the user
+   * gets when they don't pick anything". Not guaranteed to appear in
+   * `templates` — that case means active points at a missing template.
+   */
+  activeName: managerTemplateNameSchema,
+});
+export type ManagerTemplatesResponse = z.infer<
+  typeof managerTemplatesResponseSchema
+>;
+
 export const environmentStatusResponseSchema = z.object({
   workspace: workspaceStatusSchema.nullable(), // null for non-git environments
 });

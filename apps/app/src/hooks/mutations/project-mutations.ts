@@ -35,6 +35,7 @@ export interface HireProjectManagerRequest {
   providerId?: string;
   model?: string;
   reasoningLevel?: ReasoningLevel;
+  templateName?: string;
   environment: ManagerEnvironmentArgs;
 }
 
@@ -80,6 +81,7 @@ export function useHireProjectManager() {
       providerId,
       model,
       reasoningLevel,
+      templateName,
       environment,
     }: HireProjectManagerRequest) =>
       api.hireProjectManager(projectId, {
@@ -87,6 +89,7 @@ export function useHireProjectManager() {
         ...(providerId ? { providerId } : {}),
         ...(model ? { model } : {}),
         ...(reasoningLevel ? { reasoningLevel } : {}),
+        ...(templateName ? { templateName } : {}),
         environment,
       }),
     onSuccess: (thread) => {

@@ -35,6 +35,7 @@ import {
   completeCodexInference,
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
+import { listManagerTemplatesCommand } from "./command-handlers/manager-templates.js";
 import {
   ensureThreadRuntime,
   handleThreadDeleted,
@@ -264,6 +265,13 @@ const commandHandlers: CommandHandlerMap = {
     command: Extract<HostDaemonCommand, { type: "host.list_branches" }>,
     _options: CommandDispatchOptions,
   ) => listHostBranches(command),
+  "host.list_manager_templates": async (
+    command: Extract<
+      HostDaemonCommand,
+      { type: "host.list_manager_templates" }
+    >,
+    options: CommandDispatchOptions,
+  ) => listManagerTemplatesCommand(command, { dataDir: options.dataDir }),
   "host.file_metadata": async (
     command: Extract<HostDaemonCommand, { type: "host.file_metadata" }>,
     _options: CommandDispatchOptions,

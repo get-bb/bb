@@ -711,6 +711,7 @@ const commandResultOwners: CommandResultOwnerRegistry = {
   "host.file_metadata": null,
   "host.list_branches": null,
   "host.list_files": null,
+  "host.list_manager_templates": null,
   "host.list_paths": null,
   "host.read_file": null,
   "host.read_file_relative": null,

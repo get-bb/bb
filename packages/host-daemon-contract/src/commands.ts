@@ -3,6 +3,7 @@ import {
   discoveredWorkspacePropertiesSchema,
   dynamicToolSchema,
   instructionModeSchema,
+  managerTemplateNameSchema,
   pendingInteractionResolutionSchema,
   promptInputSchema,
   threadGitDiffResponseSchema,
@@ -22,7 +23,7 @@ import {
 } from "@bb/replay-capture/schema";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 21 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 22 as const;
 
 export const FILE_LIST_QUERY_MAX_LENGTH = 256;
 export const FILE_LIST_LIMIT_MAX = 10_000;
@@ -41,6 +42,7 @@ export const HOST_DAEMON_COMMAND_TYPES = [
   "host.list_files",
   "host.list_paths",
   "host.list_branches",
+  "host.list_manager_templates",
   "host.file_metadata",
   "host.status_version",
   "host.read_file",
@@ -414,6 +416,23 @@ export const hostListBranchesCommandSchema = z.object({
   path: z.string().min(1),
 });
 
+export const managerTemplateSummarySchema = z.object({
+  name: managerTemplateNameSchema,
+});
+export type ManagerTemplateSummary = z.infer<typeof managerTemplateSummarySchema>;
+
+/**
+ * List the manager-template directories under the daemon's data directory
+ * and resolve the active pointer. Returns a sorted list of templates that
+ * contain at least one regular file plus the resolved `activeName` (the
+ * trimmed first line of the `active` file, falling back to "default").
+ */
+export const hostListManagerTemplatesCommandSchema = z
+  .object({
+    type: z.literal("host.list_manager_templates"),
+  })
+  .strict();
+
 export const providerListCommandSchema = z.object({
   type: z.literal("provider.list"),
 });
@@ -557,6 +576,7 @@ const hostDaemonNonProvisionCommandSchema = z.discriminatedUnion("type", [
   hostListFilesCommandSchema,
   hostListPathsCommandSchema,
   hostListBranchesCommandSchema,
+  hostListManagerTemplatesCommandSchema,
   hostFileMetadataCommandSchema,
   hostStatusVersionCommandSchema,
   hostReadFileCommandSchema,
@@ -592,6 +612,7 @@ export function shouldFlushEventsBeforeReportingCommandResult(
     case "host.status_version":
     case "host.list_files":
     case "host.list_paths":
+    case "host.list_manager_templates":
     case "host.read_file":
     case "host.read_file_relative":
     case "codex.inference.complete":
@@ -678,6 +699,16 @@ export const hostDaemonCommandResultSchemaByType = {
     current: z.string().nullable(),
     /** Repo's tracked default branch (origin/HEAD or `init.defaultBranch`). Null when unknown. */
     defaultBranch: z.string().nullable(),
+  }),
+  "host.list_manager_templates": z.object({
+    /** Sorted alphabetically. Includes only template names that contain at least one regular file. */
+    templates: z.array(managerTemplateSummarySchema),
+    /**
+     * Resolved active template name. Falls back to "default" when the `active`
+     * file is missing/empty/invalid. Not guaranteed to appear in `templates`
+     * — callers should treat that case as "active points at a missing template".
+     */
+    activeName: managerTemplateNameSchema,
   }),
   "host.read_file": fileReadResultSchema,
   "host.read_file_relative": fileReadResultSchema,

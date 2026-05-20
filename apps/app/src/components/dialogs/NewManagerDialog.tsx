@@ -13,7 +13,10 @@ import type {
   ProviderInfo,
   ReasoningLevel,
 } from "@bb/domain";
-import type { ProjectResponse } from "@bb/server-contract";
+import type {
+  ManagerTemplateSummary,
+  ProjectResponse,
+} from "@bb/server-contract";
 import { findLocalPathProjectSourceForHost } from "@bb/domain";
 import type { HireProjectManagerRequest } from "@/hooks/mutations/project-mutations";
 import { Button } from "@/components/ui/button.js";
@@ -31,7 +34,10 @@ import { Icon } from "@/components/ui/icon.js";
 import { Input } from "@/components/ui/input.js";
 import { useHireProjectManager } from "@/hooks/mutations/project-mutations";
 import { useNewManagerDialog } from "@/hooks/useNewManagerDialog";
-import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
+import {
+  useManagerTemplates,
+  useSystemExecutionOptions,
+} from "@/hooks/queries/system-queries";
 import { useEffectiveHosts } from "@/hooks/queries/effective-hosts";
 import { useProjects } from "@/hooks/queries/project-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -42,6 +48,7 @@ import {
   OptionPicker,
   type PickerOption,
 } from "@/components/pickers/OptionPicker";
+import { ManagerTemplatePicker } from "@/components/pickers/ManagerTemplatePicker";
 import { ProviderModelPicker } from "@/components/pickers/ProviderModelPicker";
 import { HostPicker } from "@/components/pickers/HostPicker";
 
@@ -56,6 +63,7 @@ const EMPTY_PROVIDERS: ProviderInfo[] = [];
 const EMPTY_MODELS: AvailableModel[] = [];
 const EMPTY_PROJECTS: ProjectResponse[] = [];
 const EMPTY_PROJECT_SOURCES: ProjectResponse["sources"] = [];
+const EMPTY_MANAGER_TEMPLATES: ManagerTemplateSummary[] = [];
 type ReasoningSelectionSource = "default" | "user";
 
 type IsLocalHostFn = (id: string | null | undefined) => boolean;
@@ -114,6 +122,12 @@ function NewManagerDialogBody({
   const providersAreLoaded = executionOptionsQuery.data !== undefined;
   const models = executionOptionsQuery.data?.models ?? EMPTY_MODELS;
 
+  const managerTemplatesQuery = useManagerTemplates();
+  const managerTemplates =
+    managerTemplatesQuery.data?.templates ?? EMPTY_MANAGER_TEMPLATES;
+  const managerTemplateActiveName =
+    managerTemplatesQuery.data?.activeName ?? null;
+
   const hireManager = useHireProjectManager();
   const handleHire = useCallback(
     async (params: HireProjectManagerRequest) => {
@@ -135,6 +149,8 @@ function NewManagerDialogBody({
       hostsAreLoaded={hostsAreLoaded}
       isLocalHost={isLocalHost}
       models={models}
+      managerTemplates={managerTemplates}
+      managerTemplateActiveName={managerTemplateActiveName}
       selectedProviderId={selectedProviderId}
       onSelectedProviderIdChange={setSelectedProviderId}
       onProjectChange={setSelectedProjectId}
@@ -154,6 +170,9 @@ export interface NewManagerFormProps {
   hostsAreLoaded: boolean;
   isLocalHost: IsLocalHostFn;
   models: readonly AvailableModel[];
+  managerTemplates: readonly ManagerTemplateSummary[];
+  /** Resolved active template name on the server, or null while loading. */
+  managerTemplateActiveName: string | null;
   selectedProviderId: string;
   onSelectedProviderIdChange: (providerId: string) => void;
   onProjectChange: (projectId: string) => void;
@@ -171,6 +190,8 @@ export function NewManagerForm({
   hostsAreLoaded,
   isLocalHost,
   models,
+  managerTemplates,
+  managerTemplateActiveName,
   selectedProviderId,
   onSelectedProviderIdChange,
   onProjectChange,
@@ -187,6 +208,7 @@ export function NewManagerForm({
   const [reasoningSelectionSource, setReasoningSelectionSource] =
     useState<ReasoningSelectionSource>("default");
   const [selectedHostId, setSelectedHostId] = useState<string>("");
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string>("");
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -349,6 +371,26 @@ export function NewManagerForm({
   const effectiveHostId =
     selectedHostId && selectedHostIsEligible ? selectedHostId : defaultHostId;
 
+  const showTemplatePicker = managerTemplates.length >= 2;
+  const defaultTemplateName = useMemo(() => {
+    if (managerTemplateActiveName !== null) {
+      const activeIsKnown = managerTemplates.some(
+        (template) => template.name === managerTemplateActiveName,
+      );
+      if (activeIsKnown) {
+        return managerTemplateActiveName;
+      }
+    }
+    return managerTemplates[0]?.name ?? "";
+  }, [managerTemplateActiveName, managerTemplates]);
+  const selectedTemplateIsKnown = managerTemplates.some(
+    (template) => template.name === selectedTemplateName,
+  );
+  const effectiveTemplateName =
+    selectedTemplateName && selectedTemplateIsKnown
+      ? selectedTemplateName
+      : defaultTemplateName;
+
   const handleProviderChange = useCallback(
     (value: string) => {
       onSelectedProviderIdChange(value);
@@ -356,6 +398,11 @@ export function NewManagerForm({
     },
     [onSelectedProviderIdChange],
   );
+
+  const handleTemplateChange = useCallback((templateName: string) => {
+    setSelectedTemplateName(templateName);
+    setError(null);
+  }, []);
 
   const handleProjectChange = useCallback(
     (value: string) => {
@@ -400,6 +447,10 @@ export function NewManagerForm({
       setError(null);
       try {
         const trimmedManagerName = managerName.trim();
+        const templateNameForRequest =
+          showTemplatePicker && effectiveTemplateName
+            ? effectiveTemplateName
+            : undefined;
         await onHire({
           projectId: effectiveProjectId,
           ...(trimmedManagerName ? { name: trimmedManagerName } : {}),
@@ -407,6 +458,9 @@ export function NewManagerForm({
           model: selectedModel,
           ...(effectiveReasoningLevel
             ? { reasoningLevel: effectiveReasoningLevel }
+            : {}),
+          ...(templateNameForRequest
+            ? { templateName: templateNameForRequest }
             : {}),
           environment: { type: "host", hostId: effectiveHostId },
         });
@@ -425,12 +479,14 @@ export function NewManagerForm({
       effectiveReasoningLevel,
       effectiveProjectId,
       effectiveHostId,
+      effectiveTemplateName,
       isHirePending,
       isPending,
       managerName,
       onHire,
       selectedModel,
       selectedProvider,
+      showTemplatePicker,
     ],
   );
 
@@ -529,6 +585,15 @@ export function NewManagerForm({
             <LoadingOrEmptyText
               isLoading={!hostsAreLoaded}
               message={hostAvailabilityMessage}
+            />
+          </DetailRow>
+        ) : null}
+        {showTemplatePicker ? (
+          <DetailRow label="Template" valueClassName="min-w-0">
+            <ManagerTemplatePicker
+              templates={managerTemplates}
+              value={effectiveTemplateName}
+              onChange={handleTemplateChange}
             />
           </DetailRow>
         ) : null}

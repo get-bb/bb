@@ -91,6 +91,28 @@ async function writeManagerTemplateSet(
   }
 }
 
+interface RespondToManagerTemplatesListArgs {
+  harness: TestAppHarness;
+  templates: readonly string[];
+  activeName: string;
+}
+
+async function respondToNextManagerTemplatesList(
+  args: RespondToManagerTemplatesListArgs,
+): Promise<void> {
+  const queued = await waitForQueuedCommand(
+    args.harness,
+    ({ command, row }) =>
+      row.state === "pending" &&
+      command.type === "host.list_manager_templates",
+  );
+  const response = await reportQueuedCommandSuccess(args.harness, queued, {
+    templates: args.templates.map((name) => ({ name })),
+    activeName: args.activeName,
+  });
+  expect(response.status).toBe(200);
+}
+
 async function respondToNextManagerPreferencesRead(
   args: RespondToManagerPreferencesReadArgs,
 ): Promise<void> {
@@ -761,6 +783,11 @@ describe("public thread manager and ownership routes", () => {
           }),
         },
       );
+      await respondToNextManagerTemplatesList({
+        harness,
+        templates: ["default", "minimal"],
+        activeName: "minimal",
+      });
       await respondToNextManagerPreferencesRead({
         harness,
         content: "default prefs\n",
@@ -780,6 +807,50 @@ describe("public thread manager and ownership routes", () => {
           "utf8",
         ),
       ).resolves.toBe("default prefs\n");
+    } finally {
+      await harness.cleanup();
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an unknown manager template with 400", async () => {
+    const harness = await createTestAppHarness();
+    const hostId = "host-manager-template-unknown";
+    const dataDir = hostDataDir({ hostId });
+    await rm(dataDir, { recursive: true, force: true });
+    try {
+      const { host } = seedHostSession(harness.deps, { id: hostId });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/projects/${project.id}/managers`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            origin: "cli",
+            providerId: "codex",
+            model: "gpt-5",
+            templateName: "does-not-exist",
+            environment: {
+              type: "host",
+              hostId: host.id,
+            },
+          }),
+        },
+      );
+      await respondToNextManagerTemplatesList({
+        harness,
+        templates: ["default"],
+        activeName: "default",
+      });
+      const response = await responsePromise;
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+      });
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });

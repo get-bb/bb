@@ -47,6 +47,7 @@ export const THREAD_TIMELINE_QUERY_KEY = "threadTimeline";
 export const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
+export const MANAGER_TEMPLATES_QUERY_KEY = "managerTemplates";
 export const LOCAL_PATH_EXISTENCE_QUERY_KEY = "localPathExistence";
 export const REPLAY_CAPTURES_QUERY_KEY = "internalReplayCaptures";
 export const CONVERSATION_MANAGER_TIMELINE_VIEW =
@@ -336,6 +337,10 @@ export type SystemProvidersQueryKey = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
 ];
 export type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
+export type ManagerTemplatesQueryKey = readonly [
+  typeof MANAGER_TEMPLATES_QUERY_KEY,
+  string | null,
+];
 export type SystemExecutionOptionsQueryKey = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
   string | null,
@@ -802,6 +807,12 @@ export function systemProvidersQueryKey(): SystemProvidersQueryKey {
 
 export function systemVersionQueryKey(): SystemVersionQueryKey {
   return [SYSTEM_VERSION_QUERY_KEY];
+}
+
+export function managerTemplatesQueryKey(
+  hostId: string | null,
+): ManagerTemplatesQueryKey {
+  return [MANAGER_TEMPLATES_QUERY_KEY, hostId];
 }
 
 export interface SystemExecutionOptionsQueryKeyArgs {

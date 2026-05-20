@@ -14,6 +14,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import type { AvailableModel, Host, ProviderInfo, Thread } from "@bb/domain";
 import type {
   CreateManagerThreadRequest,
+  ManagerTemplatesResponse,
   ProjectResponse,
 } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,6 +46,7 @@ vi.mock("partysocket/ws", async () => {
 
 interface InstallHireManagerRoutesArgs {
   managerThread?: Thread;
+  managerTemplates?: ManagerTemplatesResponse;
   modelResponsesByProvider?: Record<string, AvailableModel[]>;
   projects?: ProjectResponse[];
   systemProviders?: SystemProvidersFixture;
@@ -299,6 +301,10 @@ function installNewManagerRoutes(args: InstallHireManagerRoutesArgs = {}) {
     args.systemProviders ?? createDefaultSystemProviders();
   const projects = args.projects ?? [makeProjectResponse()];
   const hosts = [makeHost("host-local", "Local Host")];
+  const managerTemplates: ManagerTemplatesResponse = args.managerTemplates ?? {
+    templates: [{ name: "default", isActive: true }],
+    activeName: "default",
+  };
 
   const routes: FetchRoute[] = [
     {
@@ -328,6 +334,10 @@ function installNewManagerRoutes(args: InstallHireManagerRoutesArgs = {}) {
     {
       pathname: "/api/v1/hosts",
       handler: async () => jsonResponse(hosts),
+    },
+    {
+      pathname: "/api/v1/manager-templates",
+      handler: async () => jsonResponse(managerTemplates),
     },
   ];
 
@@ -682,6 +692,131 @@ describe("NewManagerDialog", () => {
     ).toEqual({
       providers: createDefaultSystemProviders(),
       models: codexModels,
+    });
+  });
+
+  it("hides the template picker when only one template is installed", async () => {
+    installNewManagerRoutes({
+      modelResponsesByProvider: {
+        pi: [
+          makeModel("anthropic/claude-opus-4-7", {
+            displayName: "Claude Opus 4.7",
+            isDefault: true,
+          }),
+        ],
+      },
+    });
+    const { wrapper } = createSuspenseWrapper();
+
+    await renderNewManagerDialog({ wrapper });
+
+    await waitForCreateButtonReady();
+    expect(screen.queryByRole("button", { name: "Template" })).toBeNull();
+  });
+
+  it("shows the template picker with the active template preselected when multiple templates exist", async () => {
+    const piModels = [
+      makeModel("anthropic/claude-opus-4-7", {
+        displayName: "Claude Opus 4.7",
+        isDefault: true,
+      }),
+    ];
+    const { managerRequests } = installNewManagerRoutes({
+      managerTemplates: {
+        templates: [
+          { name: "default", isActive: false },
+          { name: "sawyer-next", isActive: true },
+        ],
+        activeName: "sawyer-next",
+      },
+      modelResponsesByProvider: {
+        pi: piModels,
+      },
+    });
+    const { wrapper } = createSuspenseWrapper();
+
+    await renderNewManagerDialog({ wrapper });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Template" }).title,
+      ).toContain("sawyer-next");
+    });
+
+    await waitForCreateButtonReady();
+    fireEvent.click(getCreateButton());
+
+    await waitFor(() => {
+      expect(managerRequests).toEqual([
+        {
+          origin: "app",
+          providerId: "pi",
+          model: "anthropic/claude-opus-4-7",
+          reasoningLevel: "medium",
+          templateName: "sawyer-next",
+          environment: { type: "host", hostId: "host-local" },
+        },
+      ]);
+    });
+  });
+
+  it("submits the user-selected template name when the picker is changed", async () => {
+    const piModels = [
+      makeModel("anthropic/claude-opus-4-7", {
+        displayName: "Claude Opus 4.7",
+        isDefault: true,
+      }),
+    ];
+    const { managerRequests } = installNewManagerRoutes({
+      managerTemplates: {
+        templates: [
+          { name: "default", isActive: true },
+          { name: "sawyer-next", isActive: false },
+        ],
+        activeName: "default",
+      },
+      modelResponsesByProvider: {
+        pi: piModels,
+      },
+    });
+    const { wrapper } = createSuspenseWrapper();
+
+    await renderNewManagerDialog({ wrapper });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Template" }).title,
+      ).toContain("default");
+    });
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Template" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /sawyer-next/u }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Template" }).title,
+      ).toContain("sawyer-next");
+    });
+
+    await waitForCreateButtonReady();
+    fireEvent.click(getCreateButton());
+
+    await waitFor(() => {
+      expect(managerRequests).toEqual([
+        {
+          origin: "app",
+          providerId: "pi",
+          model: "anthropic/claude-opus-4-7",
+          reasoningLevel: "medium",
+          templateName: "sawyer-next",
+          environment: { type: "host", hostId: "host-local" },
+        },
+      ]);
     });
   });
 
