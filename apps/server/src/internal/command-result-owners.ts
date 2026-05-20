@@ -715,6 +715,8 @@ const commandResultOwners: CommandResultOwnerRegistry = {
   "host.list_paths": null,
   "host.read_file": null,
   "host.read_file_relative": null,
+  "host.write_file_relative": null,
+  "host.delete_file_relative": null,
   "host.status_version": null,
   "codex.inference.complete": null,
   "interactive.resolve": defineCommandResultOwner({

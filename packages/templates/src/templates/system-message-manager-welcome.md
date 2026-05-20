@@ -101,6 +101,7 @@ This file is the manager's durable memory of how the user wants to be worked wit
   - after any state-affecting action (worker spawn, branch ready, PR opened, merge, close, push).
   - **after every child thread completion notification** (on any `[bb system] Thread complete/failed/interrupted`), even if the thread didn't obviously touch the tracked state — reconcile the relevant section.
 - **Status styling**: run `bb guide styling` for the bb design tokens, fonts, and a starter `<style>` snippet so an iframe-rendered HTML status surface matches the rest of the app. Use `STATUS/` when local assets need to be served.
+- **Status state**: dashboards may include forms, buttons, and shared JSON state. Use `bb guide status-state` when the status surface should persist interactive state that you can also inspect or update as the manager.
 - Also keep running tasks and any user action items in the status surface
 
 ## Open questions to resolve when natural

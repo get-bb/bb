@@ -47,6 +47,11 @@ import type {
   ThreadHostFileContentQuery,
   ThreadStorageFilesQuery,
   ThreadStatusVersionResponse,
+  ThreadStatusDataDeleteResponse,
+  ThreadStatusDataGetResponse,
+  ThreadStatusDataListResponse,
+  ThreadStatusDataPutRequest,
+  ThreadStatusDataPutResponse,
   ProjectAttachmentContentQuery,
   ProjectBranchesQuery,
   ProjectBranchesResponse,
@@ -109,6 +114,7 @@ import type {
 import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
+type PathThreadStatusDataKey = { param: { id: string; key: string } };
 
 export type PublicApiSchema = {
   // ─── Development Only ────────────────────────────────────────────────
@@ -529,6 +535,21 @@ export type PublicApiSchema = {
   "/threads/:id/status-version": {
     /** Get the resolved STATUS source and stat-based content hash for iframe cache busting. */
     $get: Endpoint<PathId, ThreadStatusVersionResponse>;
+  };
+  "/threads/:id/status-data": {
+    /** List persistent reactive JSON state values for a STATUS dashboard. */
+    $get: Endpoint<PathId, ThreadStatusDataListResponse>;
+  };
+  "/threads/:id/status-data/:key": {
+    /** Read one persistent reactive JSON state value for a STATUS dashboard. */
+    $get: Endpoint<PathThreadStatusDataKey, ThreadStatusDataGetResponse>;
+    /** Persist one reactive JSON state value and broadcast the committed change. */
+    $put: Endpoint<
+      PathThreadStatusDataKey & { json: ThreadStatusDataPutRequest },
+      ThreadStatusDataPutResponse
+    >;
+    /** Delete one reactive JSON state value and broadcast the committed change. */
+    $delete: Endpoint<PathThreadStatusDataKey, ThreadStatusDataDeleteResponse>;
   };
   "/threads/:id/thread-storage/files": {
     /**

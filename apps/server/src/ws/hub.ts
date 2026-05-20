@@ -13,7 +13,9 @@ import type {
   HostDaemonSessionCloseReason,
 } from "@bb/host-daemon-contract";
 import {
+  statusStateBroadcastMessageSchema,
   terminalServerMessageSchema,
+  type StatusStateBroadcastMessage,
   type TerminalServerMessage,
 } from "@bb/server-contract";
 import { COMMAND_RESULT_CACHE_TTL_MS } from "../constants.js";
@@ -406,6 +408,13 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
+  notifyThreadStatusData(message: StatusStateBroadcastMessage): void {
+    this.notifyClientsByKey(
+      subKey("thread", `${message.threadId}:status-data`),
+      JSON.stringify(statusStateBroadcastMessageSchema.parse(message)),
+    );
+  }
+
   notifyProject(projectId: string, changes: ProjectChangeKind[]): void {
     this.notifyClients({
       type: "changed",
@@ -545,6 +554,21 @@ export class NotificationHub implements DbNotifier {
     }
 
     const payload = JSON.stringify(message);
+    this.notifyClientsByKeySet(sockets, payload);
+  }
+
+  private notifyClientsByKey(key: string, payload: string): void {
+    const sockets = this.clientSocketsByKey.get(key);
+    if (!sockets) {
+      return;
+    }
+    this.notifyClientsByKeySet(sockets, payload);
+  }
+
+  private notifyClientsByKeySet(
+    sockets: Iterable<HubSocket>,
+    payload: string,
+  ): void {
     for (const socket of sockets) {
       socket.send(payload);
     }

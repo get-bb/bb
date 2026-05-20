@@ -174,6 +174,39 @@ describe("NotificationHub", () => {
     expect(socket3.messages).toHaveLength(0);
   });
 
+  it("delivers status-data broadcasts on the thread-scoped status-data channel", () => {
+    const hub = new NotificationHub();
+    const socket = createMockSocket();
+
+    hub.subscribe(socket, "thread", "thread-1:status-data");
+    hub.notifyThreadStatusData({
+      type: "status-data.changed",
+      threadId: "thread-1",
+      key: "tasks",
+      value: [{ id: "task-1", title: "Review" }],
+      deleted: false,
+      previousValue: null,
+      previousValuePresent: false,
+      version: "hash-1",
+      writerClientId: "client-1",
+      operationId: "op-1",
+    });
+
+    expect(socket.messages).toHaveLength(1);
+    expect(JSON.parse(socket.messages[0])).toEqual({
+      type: "status-data.changed",
+      threadId: "thread-1",
+      key: "tasks",
+      value: [{ id: "task-1", title: "Review" }],
+      deleted: false,
+      previousValue: null,
+      previousValuePresent: false,
+      version: "hash-1",
+      writerClientId: "client-1",
+      operationId: "op-1",
+    });
+  });
+
   it("cancels the replaced daemon session's pending disconnect timer", async () => {
     vi.useFakeTimers();
     try {

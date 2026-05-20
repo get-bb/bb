@@ -63,6 +63,10 @@ import { getLastExecutionOptions } from "../../services/threads/thread-events.js
 import { resolveSystemExecutionOptions } from "../../services/system/execution-options.js";
 import { listThreadPromptHistory } from "../../services/prompt-history.js";
 import {
+  injectStatusStateClientScript,
+  type StatusStateBootstrap,
+} from "../../services/threads/status-state-client-script.js";
+import {
   parseInteger,
   parseOptionalInteger,
 } from "../../services/lib/validation.js";
@@ -129,7 +133,7 @@ function validateFilePath(filePath: string): void {
   }
 }
 
-interface ThreadStorageTarget {
+export interface ThreadStorageTarget {
   hostId: string;
   storagePath: string;
 }
@@ -246,7 +250,7 @@ function parseThreadTimelinePage(
   };
 }
 
-async function requireThreadStorageTarget(
+export async function requireThreadStorageTarget(
   deps: WorkSessionDeps,
   args: RequireThreadStorageTargetArgs,
 ): Promise<ThreadStorageTarget> {
@@ -435,6 +439,54 @@ function createStatusHtmlResponse(html: string): Response {
   });
 }
 
+function buildStatusStateWebSocketUrl(
+  deps: LoggedWorkSessionDeps,
+  requestUrl: string,
+): string {
+  if (deps.config.isDevelopment) {
+    return `ws://localhost:${deps.config.serverPort}/ws`;
+  }
+  const url = new URL(requestUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/ws";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function buildStatusStateBootstrap(
+  deps: LoggedWorkSessionDeps,
+  args: {
+    requestUrl: string;
+    threadId: string;
+  },
+): StatusStateBootstrap {
+  return {
+    threadId: args.threadId,
+    listUrl: `/api/v1/threads/${encodeURIComponent(args.threadId)}/status-data`,
+    wsUrl: buildStatusStateWebSocketUrl(deps, args.requestUrl),
+  };
+}
+
+function createInjectedStatusHtmlResponse(
+  deps: LoggedWorkSessionDeps,
+  args: {
+    html: string;
+    requestUrl: string;
+    threadId: string;
+  },
+): Response {
+  return createStatusHtmlResponse(
+    injectStatusStateClientScript(
+      args.html,
+      buildStatusStateBootstrap(deps, {
+        requestUrl: args.requestUrl,
+        threadId: args.threadId,
+      }),
+    ),
+  );
+}
+
 function createStatusFileResponse(
   result: DaemonFileReadResult,
   cacheControl: string,
@@ -542,34 +594,50 @@ ${body}
 }
 
 async function createMarkdownStatusResponse(
-  result: DaemonFileReadResult,
+  deps: LoggedWorkSessionDeps,
+  args: {
+    requestUrl: string;
+    result: DaemonFileReadResult;
+    threadId: string;
+  },
 ): Promise<Response> {
-  const renderedMarkdown = await marked.parse(decodeDaemonTextFile(result), {
+  const renderedMarkdown = await marked.parse(decodeDaemonTextFile(args.result), {
     gfm: true,
   });
-  return createStatusHtmlResponse(
-    createStatusDocument(
+  return createInjectedStatusHtmlResponse(deps, {
+    requestUrl: args.requestUrl,
+    threadId: args.threadId,
+    html: createStatusDocument(
       STATUS_MARKDOWN_FILE_PATH,
       `<main class="status-markdown">${renderedMarkdown}</main>`,
     ),
-  );
+  });
 }
 
-function createEmptyStatusResponse(): Response {
-  return createStatusHtmlResponse(
-    createStatusDocument(
+function createEmptyStatusResponse(
+  deps: LoggedWorkSessionDeps,
+  args: {
+    requestUrl: string;
+    threadId: string;
+  },
+): Response {
+  return createInjectedStatusHtmlResponse(deps, {
+    requestUrl: args.requestUrl,
+    threadId: args.threadId,
+    html: createStatusDocument(
       "Manager status",
       `<main class="status-empty" role="status">
   <h1>No manager status yet</h1>
   <p>Create STATUS/index.html, STATUS.html, or STATUS.md in this manager thread's storage.</p>
 </main>`,
     ),
-  );
+  });
 }
 
 async function serveThreadStatusRoot(
   deps: LoggedWorkSessionDeps,
   threadId: string,
+  requestUrl: string,
 ): Promise<Response> {
   const target = await requireThreadStorageTarget(deps, { threadId });
   const statusRootPath = path.join(target.storagePath, STATUS_DIRECTORY_NAME);
@@ -580,7 +648,11 @@ async function serveThreadStatusRoot(
     dotfiles: "deny",
   });
   if (statusIndex) {
-    return createStatusFileResponse(statusIndex, STATUS_NO_STORE_CACHE_CONTROL);
+    return createInjectedStatusHtmlResponse(deps, {
+      requestUrl,
+      threadId,
+      html: decodeDaemonTextFile(statusIndex),
+    });
   }
 
   const statusHtml = await tryReadThreadStorageStatusFile(deps, {
@@ -590,7 +662,11 @@ async function serveThreadStatusRoot(
     dotfiles: "allow",
   });
   if (statusHtml) {
-    return createStatusFileResponse(statusHtml, STATUS_NO_STORE_CACHE_CONTROL);
+    return createInjectedStatusHtmlResponse(deps, {
+      requestUrl,
+      threadId,
+      html: decodeDaemonTextFile(statusHtml),
+    });
   }
 
   const statusMarkdown = await tryReadThreadStorageStatusFile(deps, {
@@ -600,10 +676,14 @@ async function serveThreadStatusRoot(
     dotfiles: "allow",
   });
   if (statusMarkdown) {
-    return createMarkdownStatusResponse(statusMarkdown);
+    return createMarkdownStatusResponse(deps, {
+      requestUrl,
+      threadId,
+      result: statusMarkdown,
+    });
   }
 
-  return createEmptyStatusResponse();
+  return createEmptyStatusResponse(deps, { requestUrl, threadId });
 }
 
 async function serveThreadStatusAsset(
@@ -793,13 +873,17 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   // arbitrary manager-authored HTML/static bytes, including wildcard asset
   // paths, rather than a typed JSON API response.
   app.get("/threads/:id/status/", async (context) =>
-    serveThreadStatusRoot(deps, context.req.param("id")),
+    serveThreadStatusRoot(deps, context.req.param("id"), context.req.url),
   );
 
   app.get("/threads/:id/status/*", async (context) => {
     const rawStatusPath = extractThreadStatusPath(context.req.url);
     if (rawStatusPath.length === 0) {
-      return serveThreadStatusRoot(deps, context.req.param("id"));
+      return serveThreadStatusRoot(
+        deps,
+        context.req.param("id"),
+        context.req.url,
+      );
     }
     return serveThreadStatusAsset(deps, context.req.param("id"), rawStatusPath);
   });

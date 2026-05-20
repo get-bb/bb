@@ -364,6 +364,36 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonCommandSchema.parse({
+        type: "host.write_file_relative",
+        rootPath: "/tmp/bb-data/thread-storage/thread-123/STATUS-data",
+        path: "tasks.json",
+        dotfiles: "deny",
+        content: "[1,2,3]\n",
+        contentEncoding: "utf8",
+        precondition: { type: "none" },
+      }),
+    ).toMatchObject({
+      type: "host.write_file_relative",
+      path: "tasks.json",
+      precondition: { type: "none" },
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "host.delete_file_relative",
+        rootPath: "/tmp/bb-data/thread-storage/thread-123/STATUS-data",
+        path: "tasks.json",
+        dotfiles: "deny",
+        precondition: { type: "hash", hash: "abc123" },
+      }),
+    ).toMatchObject({
+      type: "host.delete_file_relative",
+      path: "tasks.json",
+      precondition: { type: "hash", hash: "abc123" },
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: 100,

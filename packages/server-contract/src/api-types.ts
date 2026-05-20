@@ -30,7 +30,9 @@ import {
   threadQueuedMessageSchema,
   workspaceStatusSchema,
   managerTemplateNameSchema,
+  jsonValueSchema,
 } from "@bb/domain";
+import type { JsonValue } from "@bb/domain";
 import { apiErrorSchema } from "./errors.js";
 import { timelineRowSchema } from "./thread-timeline.js";
 
@@ -909,6 +911,124 @@ export const threadStatusVersionResponseSchema = z.object({
 });
 export type ThreadStatusVersionResponse = z.infer<
   typeof threadStatusVersionResponseSchema
+>;
+
+export const statusDataKeySchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{1,80}$/u);
+export type StatusDataKey = z.infer<typeof statusDataKeySchema>;
+
+export const statusStateChangeEventSourceSchema = z.enum(["local", "remote"]);
+export type StatusStateChangeEventSource = z.infer<
+  typeof statusStateChangeEventSourceSchema
+>;
+
+export const statusStateChangeOperationSchema = z.enum([
+  "set",
+  "delete",
+  "hydrate",
+  "resync",
+  "revert",
+]);
+export type StatusStateChangeOperation = z.infer<
+  typeof statusStateChangeOperationSchema
+>;
+
+export const statusStateChangeEventSchema = z.object({
+  source: statusStateChangeEventSourceSchema,
+  operation: statusStateChangeOperationSchema,
+  optimistic: z.boolean(),
+  version: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type StatusStateChangeEvent = z.infer<
+  typeof statusStateChangeEventSchema
+>;
+
+export type StatusStateSelector = StatusDataKey | "*";
+
+export type StatusStateChangeCallback = (
+  newValue: JsonValue | undefined,
+  prevValue: JsonValue | undefined,
+  key: StatusDataKey,
+  event: StatusStateChangeEvent,
+) => void;
+
+export interface BbStatusState {
+  list(): Promise<Record<StatusDataKey, JsonValue>>;
+  get(key: StatusDataKey): Promise<JsonValue | undefined>;
+  set(key: StatusDataKey, value: JsonValue): Promise<void>;
+  delete(key: StatusDataKey): Promise<void>;
+  on(
+    selector: StatusStateSelector,
+    callback: StatusStateChangeCallback,
+  ): () => void;
+}
+
+export const threadStatusDataValueRecordSchema = z.record(
+  statusDataKeySchema,
+  jsonValueSchema,
+);
+
+export const threadStatusDataVersionRecordSchema = z.record(
+  statusDataKeySchema,
+  z.string().min(1),
+);
+
+export const threadStatusDataListResponseSchema = z.object({
+  values: threadStatusDataValueRecordSchema,
+  versions: threadStatusDataVersionRecordSchema,
+  hash: z.string().min(1),
+});
+export type ThreadStatusDataListResponse = z.infer<
+  typeof threadStatusDataListResponseSchema
+>;
+
+export const threadStatusDataGetResponseSchema = z.object({
+  key: statusDataKeySchema,
+  value: jsonValueSchema,
+  version: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+  modifiedAtMs: z.number().nonnegative(),
+});
+export type ThreadStatusDataGetResponse = z.infer<
+  typeof threadStatusDataGetResponseSchema
+>;
+
+export const threadStatusDataPutRequestSchema = z.object({
+  value: jsonValueSchema,
+});
+export type ThreadStatusDataPutRequest = z.infer<
+  typeof threadStatusDataPutRequestSchema
+>;
+
+export const threadStatusDataPutResponseSchema =
+  threadStatusDataGetResponseSchema;
+export type ThreadStatusDataPutResponse = z.infer<
+  typeof threadStatusDataPutResponseSchema
+>;
+
+export const threadStatusDataDeleteResponseSchema = z.object({
+  ok: z.literal(true),
+});
+export type ThreadStatusDataDeleteResponse = z.infer<
+  typeof threadStatusDataDeleteResponseSchema
+>;
+
+export const statusStateBroadcastMessageSchema = z.object({
+  type: z.literal("status-data.changed"),
+  threadId: z.string().min(1),
+  key: statusDataKeySchema,
+  value: jsonValueSchema.nullable(),
+  deleted: z.boolean(),
+  previousValue: jsonValueSchema.nullable(),
+  previousValuePresent: z.boolean(),
+  version: z.string().nullable(),
+  writerClientId: z.string().nullable(),
+  operationId: z.string().nullable(),
+});
+export type StatusStateBroadcastMessage = z.infer<
+  typeof statusStateBroadcastMessageSchema
 >;
 
 export const systemExecutionOptionsQuerySchema = z

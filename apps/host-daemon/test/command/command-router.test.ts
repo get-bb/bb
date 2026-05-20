@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +7,7 @@ import {
   encodeClientTurnRequestIdNumber,
   type ClientTurnRequestId,
 } from "@bb/domain";
+import type { HostDaemonCommandResultReportWithoutSession } from "@bb/host-daemon-contract";
 import type {
   CommitOptions,
   CommitResult,
@@ -38,6 +40,10 @@ type EnsureProviderArgs = Parameters<AgentRuntime["ensureProvider"]>[0];
 type ListModelsArgs = Parameters<AgentRuntime["listModels"]>[0];
 type ListModelsResult = Awaited<ReturnType<AgentRuntime["listModels"]>>;
 type GetDiffResult = Awaited<ReturnType<HostWorkspace["getDiff"]>>;
+
+function sha256(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
 
 async function makeTempDir(prefix: string): Promise<string> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -416,6 +422,67 @@ describe("CommandRouter", () => {
       }),
       "command execution failed",
     );
+  });
+
+  it("serializes relative host file writes so same-hash CAS allows exactly one concurrent writer", async () => {
+    const rootPath = await makeTempDir("bb-command-router-status-data-");
+    const initialContent = "[\"seed\"]\n";
+    await fs.writeFile(path.join(rootPath, "todos.json"), initialContent);
+    const reports: HostDaemonCommandResultReportWithoutSession[] = [];
+    const router = new CommandRouter({
+      dataDir: "/tmp/bb-test-data",
+      fetchProjectAttachment: unexpectedProjectAttachmentFetch,
+      reportResult: async (result) => {
+        reports.push(result);
+      },
+      runtimeManager: new RuntimeManager({
+        provisionWorkspace: async () => createFakeWorkspace("/tmp/env-1"),
+      }),
+      eventSink: noopEventSink,
+      threadStorageRootPath: "/tmp/bb-test-thread-storage",
+      logger: createLogger(),
+    });
+
+    await router.handleCommands([
+      {
+        id: "write-a",
+        cursor: 1,
+        command: {
+          type: "host.write_file_relative",
+          rootPath,
+          path: "todos.json",
+          dotfiles: "deny",
+          content: "[\"a\"]\n",
+          contentEncoding: "utf8",
+          precondition: { type: "hash", hash: sha256(initialContent) },
+        },
+      },
+      {
+        id: "write-b",
+        cursor: 2,
+        command: {
+          type: "host.write_file_relative",
+          rootPath,
+          path: "todos.json",
+          dotfiles: "deny",
+          content: "[\"b\"]\n",
+          contentEncoding: "utf8",
+          precondition: { type: "hash", hash: sha256(initialContent) },
+        },
+      },
+    ]);
+
+    expect(reports).toHaveLength(2);
+    expect(reports.filter((report) => report.ok)).toHaveLength(1);
+    expect(
+      reports.filter(
+        (report) => !report.ok && report.errorCode === "precondition_failed",
+      ),
+    ).toHaveLength(1);
+    const finalContent = await fs.readFile(path.join(rootPath, "todos.json"), {
+      encoding: "utf8",
+    });
+    expect(["[\"a\"]\n", "[\"b\"]\n"]).toContain(finalContent);
   });
 
   it("flushes buffered provider events before reporting thread command results", async () => {

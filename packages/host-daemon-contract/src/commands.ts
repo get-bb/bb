@@ -47,6 +47,8 @@ export const HOST_DAEMON_COMMAND_TYPES = [
   "host.status_version",
   "host.read_file",
   "host.read_file_relative",
+  "host.write_file_relative",
+  "host.delete_file_relative",
   "provider.list",
   "provider.list_models",
   "environment.provision",
@@ -298,6 +300,38 @@ export const hostReadFileRelativeCommandSchema = z
     rootPath: z.string().min(1),
     path: z.string().min(1),
     dotfiles: hostReadFileRelativeDotfilePolicySchema,
+  })
+  .strict();
+
+export const hostFileRelativePreconditionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("none") }).strict(),
+  z.object({ type: z.literal("hash"), hash: z.string().min(1) }).strict(),
+  z.object({ type: z.literal("exists") }).strict(),
+  z.object({ type: z.literal("absent") }).strict(),
+]);
+export type HostFileRelativePrecondition = z.infer<
+  typeof hostFileRelativePreconditionSchema
+>;
+
+export const hostWriteFileRelativeCommandSchema = z
+  .object({
+    type: z.literal("host.write_file_relative"),
+    rootPath: z.string().min(1),
+    path: z.string().min(1),
+    dotfiles: hostReadFileRelativeDotfilePolicySchema,
+    content: z.string(),
+    contentEncoding: z.enum(["base64", "utf8"]),
+    precondition: hostFileRelativePreconditionSchema,
+  })
+  .strict();
+
+export const hostDeleteFileRelativeCommandSchema = z
+  .object({
+    type: z.literal("host.delete_file_relative"),
+    rootPath: z.string().min(1),
+    path: z.string().min(1),
+    dotfiles: hostReadFileRelativeDotfilePolicySchema,
+    precondition: hostFileRelativePreconditionSchema,
   })
   .strict();
 
@@ -581,6 +615,8 @@ const hostDaemonNonProvisionCommandSchema = z.discriminatedUnion("type", [
   hostStatusVersionCommandSchema,
   hostReadFileCommandSchema,
   hostReadFileRelativeCommandSchema,
+  hostWriteFileRelativeCommandSchema,
+  hostDeleteFileRelativeCommandSchema,
   providerListCommandSchema,
   providerListModelsCommandSchema,
   environmentDestroyCommandSchema,
@@ -615,6 +651,8 @@ export function shouldFlushEventsBeforeReportingCommandResult(
     case "host.list_manager_templates":
     case "host.read_file":
     case "host.read_file_relative":
+    case "host.write_file_relative":
+    case "host.delete_file_relative":
     case "codex.inference.complete":
     case "provider.list":
     case "provider.list_models":
@@ -647,6 +685,19 @@ const fileMetadataResultSchema = z.object({
   path: z.string(),
   modifiedAtMs: z.number().nonnegative(),
   sizeBytes: z.number().int().nonnegative(),
+});
+
+const fileWriteResultSchema = z.object({
+  path: z.string(),
+  hash: z.string().min(1),
+  modifiedAtMs: z.number().nonnegative(),
+  sizeBytes: z.number().int().nonnegative(),
+});
+
+const fileDeleteResultSchema = z.object({
+  path: z.string(),
+  deleted: z.boolean(),
+  previousHash: z.string().nullable(),
 });
 
 const statusVersionResultSchema = z.object({
@@ -712,6 +763,8 @@ export const hostDaemonCommandResultSchemaByType = {
   }),
   "host.read_file": fileReadResultSchema,
   "host.read_file_relative": fileReadResultSchema,
+  "host.write_file_relative": fileWriteResultSchema,
+  "host.delete_file_relative": fileDeleteResultSchema,
   "provider.list": z.object({
     providers: z.array(providerInfoSchema),
   }),

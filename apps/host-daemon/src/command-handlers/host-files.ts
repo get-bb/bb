@@ -15,6 +15,10 @@ import {
   readFileMetadataForTransport,
   readRootRelativeFileForTransport,
 } from "./file-read.js";
+import {
+  deleteRootRelativeFile,
+  writeRootRelativeFile,
+} from "./file-write.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 import { readHostStatusVersion } from "./status-version.js";
 
@@ -161,5 +165,29 @@ export async function readHostRelativeFile(
     rootPath: command.rootPath,
     relativePath: command.path,
     dotfiles: command.dotfiles,
+  });
+}
+
+export async function writeHostRelativeFile(
+  command: CommandOf<"host.write_file_relative">,
+): Promise<HostDaemonCommandResult<"host.write_file_relative">> {
+  return writeRootRelativeFile({
+    rootPath: command.rootPath,
+    relativePath: command.path,
+    dotfiles: command.dotfiles,
+    content: command.content,
+    contentEncoding: command.contentEncoding,
+    precondition: command.precondition,
+  });
+}
+
+export async function deleteHostRelativeFile(
+  command: CommandOf<"host.delete_file_relative">,
+): Promise<HostDaemonCommandResult<"host.delete_file_relative">> {
+  return deleteRootRelativeFile({
+    rootPath: command.rootPath,
+    relativePath: command.path,
+    dotfiles: command.dotfiles,
+    precondition: command.precondition,
   });
 }

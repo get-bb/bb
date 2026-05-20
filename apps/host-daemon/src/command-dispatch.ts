@@ -19,10 +19,12 @@ import { listHostBranches } from "./command-handlers/host-branches.js";
 import {
   listHostFiles,
   listHostPaths,
+  deleteHostRelativeFile,
   readHostFile,
   readHostFileMetadata,
   readHostRelativeFile,
   readHostStatusVersion,
+  writeHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
 import {
@@ -288,6 +290,14 @@ const commandHandlers: CommandHandlerMap = {
     command: Extract<HostDaemonCommand, { type: "host.read_file_relative" }>,
     _options: CommandDispatchOptions,
   ) => readHostRelativeFile(command),
+  "host.write_file_relative": async (
+    command: Extract<HostDaemonCommand, { type: "host.write_file_relative" }>,
+    _options: CommandDispatchOptions,
+  ) => writeHostRelativeFile(command),
+  "host.delete_file_relative": async (
+    command: Extract<HostDaemonCommand, { type: "host.delete_file_relative" }>,
+    _options: CommandDispatchOptions,
+  ) => deleteHostRelativeFile(command),
   "provider.list": async (
     _command: Extract<HostDaemonCommand, { type: "provider.list" }>,
     options: CommandDispatchOptions,

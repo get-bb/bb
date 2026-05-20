@@ -4,6 +4,7 @@ import { registerThreadActionRoutes } from "./actions.js";
 import { registerThreadBaseRoutes } from "./base.js";
 import { registerThreadDataRoutes } from "./data.js";
 import { registerThreadInteractionRoutes } from "./interactions.js";
+import { registerThreadStatusDataRoutes } from "./status-data.js";
 import { registerThreadTerminalRoutes } from "./terminals.js";
 
 export function registerThreadRoutes(app: Hono, deps: AppDeps): void {
@@ -12,6 +13,7 @@ export function registerThreadRoutes(app: Hono, deps: AppDeps): void {
   if (deps.config.featureFlags.terminals) {
     registerThreadTerminalRoutes(app, deps);
   }
+  registerThreadStatusDataRoutes(app, deps);
   registerThreadDataRoutes(app, deps);
   registerThreadInteractionRoutes(app, deps);
 }

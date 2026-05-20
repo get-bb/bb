@@ -7,6 +7,7 @@ import { registerStatusCommand } from "../commands/status.js";
 import { registerProjectCommands } from "../commands/project.js";
 import { registerProviderCommands } from "../commands/provider.js";
 import { registerManagerCommands } from "../commands/manager.js";
+import { registerStatusStateCommand } from "../commands/status-state.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
 // Commands intentionally excluded from --json requirement
 const EXCLUDED_COMMANDS = new Set<string>();
@@ -38,6 +39,7 @@ describe("CLI --json flag enforcement", () => {
     registerHostCommands(program, getUrl);
     registerProviderCommands(program, getUrl);
     registerManagerCommands(program, getUrl);
+    registerStatusStateCommand(program, getUrl);
     registerThreadCommands(program, getUrl);
 
     const commands = collectLeafCommands(program);

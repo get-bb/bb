@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import {
   archiveThread,
   createPromptHistoryEntry,
@@ -20,6 +21,9 @@ import {
 } from "@bb/domain";
 import {
   type ThreadStatusVersionResponse,
+  threadStatusDataGetResponseSchema,
+  threadStatusDataListResponseSchema,
+  threadStatusDataPutResponseSchema,
   type TimelineRow,
   threadComposerBootstrapResponseSchema,
   threadQueuedMessageListResponseSchema,
@@ -73,6 +77,23 @@ interface ManagerThreadStorageFixture {
   storageRootPath: string;
 }
 
+interface MockSocket {
+  messages: string[];
+  close(code?: number, reason?: string): void;
+  send(data: string): void;
+}
+
+function createMockSocket(): MockSocket {
+  const messages: string[] = [];
+  return {
+    messages,
+    close() {},
+    send(data: string) {
+      messages.push(data);
+    },
+  };
+}
+
 function seedManagerThreadStorage(
   harness: TestAppHarness,
 ): ManagerThreadStorageFixture {
@@ -96,6 +117,10 @@ function seedManagerThreadStorage(
     threadId: thread.id,
     storageRootPath: `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`,
   };
+}
+
+function sha256Text(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
 }
 
 describe("public thread data routes", () => {
@@ -1919,12 +1944,16 @@ describe("public thread data routes", () => {
 
       const statusResponse = await statusPromise;
       expect(statusResponse.status).toBe(200);
-      expect(statusResponse.headers.get("content-type")).toBe("text/html");
+      expect(statusResponse.headers.get("content-type")).toBe(
+        "text/html; charset=utf-8",
+      );
       expect(statusResponse.headers.get("cache-control")).toBe("no-store");
       expect(statusResponse.headers.get("x-content-type-options")).toBe(
         "nosniff",
       );
-      await expect(statusResponse.text()).resolves.toBe(statusHtml);
+      const statusBody = await statusResponse.text();
+      expect(statusBody).toContain("window.bbStatusState");
+      expect(statusBody).toContain(statusHtml);
 
       const assetBytes = Uint8Array.from([137, 80, 78, 71]);
       const assetPromise = harness.app.request(
@@ -2040,6 +2069,329 @@ describe("public thread data routes", () => {
     }
   });
 
+  it("lists and reads STATUS-data JSON values with versions", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      const statusDataRootPath = `${fixture.storageRootPath}/STATUS-data`;
+      const tasksJson = "[\"one\"]\n";
+      const prefsJson = "{\"compact\":true}\n";
+
+      const listPromise = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/status-data`,
+      );
+      const listCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.list_files" &&
+          command.path === statusDataRootPath,
+      );
+      await reportQueuedCommandSuccess(harness, listCommand, {
+        files: [
+          { path: "tasks.json", name: "tasks.json" },
+          { path: "prefs.json", name: "prefs.json" },
+          { path: "nested/ignored.json", name: "ignored.json" },
+        ],
+        truncated: false,
+      });
+
+      const tasksReadCommand = await waitForQueuedCommandAfter(
+        harness,
+        listCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === statusDataRootPath &&
+          command.path === "tasks.json",
+      );
+      await reportQueuedCommandSuccess(harness, tasksReadCommand, {
+        path: "tasks.json",
+        content: tasksJson,
+        contentEncoding: "utf8",
+        mimeType: "application/json",
+        sizeBytes: Buffer.byteLength(tasksJson),
+      });
+      const tasksMetadataCommand = await waitForQueuedCommandAfter(
+        harness,
+        tasksReadCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.file_metadata" &&
+          command.rootPath === statusDataRootPath &&
+          command.path === `${statusDataRootPath}/tasks.json`,
+      );
+      await reportQueuedCommandSuccess(harness, tasksMetadataCommand, {
+        path: `${statusDataRootPath}/tasks.json`,
+        sizeBytes: Buffer.byteLength(tasksJson),
+        modifiedAtMs: 10,
+      });
+
+      const prefsReadCommand = await waitForQueuedCommandAfter(
+        harness,
+        tasksMetadataCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === statusDataRootPath &&
+          command.path === "prefs.json",
+      );
+      await reportQueuedCommandSuccess(harness, prefsReadCommand, {
+        path: "prefs.json",
+        content: prefsJson,
+        contentEncoding: "utf8",
+        mimeType: "application/json",
+        sizeBytes: Buffer.byteLength(prefsJson),
+      });
+      const prefsMetadataCommand = await waitForQueuedCommandAfter(
+        harness,
+        prefsReadCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.file_metadata" &&
+          command.rootPath === statusDataRootPath &&
+          command.path === `${statusDataRootPath}/prefs.json`,
+      );
+      await reportQueuedCommandSuccess(harness, prefsMetadataCommand, {
+        path: `${statusDataRootPath}/prefs.json`,
+        sizeBytes: Buffer.byteLength(prefsJson),
+        modifiedAtMs: 11,
+      });
+
+      const response = await listPromise;
+      expect(response.status).toBe(200);
+      const parsed = threadStatusDataListResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(parsed.values).toEqual({
+        tasks: ["one"],
+        prefs: { compact: true },
+      });
+      expect(parsed.versions).toEqual({
+        tasks: sha256Text(tasksJson),
+        prefs: sha256Text(prefsJson),
+      });
+      expect(parsed.hash).toBe(
+        sha256Text(
+          `prefs\0${sha256Text(prefsJson)}\n` +
+            `tasks\0${sha256Text(tasksJson)}\n`,
+        ),
+      );
+
+      const getPromise = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/status-data/tasks`,
+      );
+      const getReadCommand = await waitForQueuedCommandAfter(
+        harness,
+        prefsMetadataCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === statusDataRootPath &&
+          command.path === "tasks.json",
+      );
+      await reportQueuedCommandSuccess(harness, getReadCommand, {
+        path: "tasks.json",
+        content: tasksJson,
+        contentEncoding: "utf8",
+        mimeType: "application/json",
+        sizeBytes: Buffer.byteLength(tasksJson),
+      });
+      const getMetadataCommand = await waitForQueuedCommandAfter(
+        harness,
+        getReadCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.file_metadata" &&
+          command.path === `${statusDataRootPath}/tasks.json`,
+      );
+      await reportQueuedCommandSuccess(harness, getMetadataCommand, {
+        path: `${statusDataRootPath}/tasks.json`,
+        sizeBytes: Buffer.byteLength(tasksJson),
+        modifiedAtMs: 12,
+      });
+
+      const getResponse = await getPromise;
+      expect(getResponse.status).toBe(200);
+      expect(getResponse.headers.get("etag")).toBe(`"${sha256Text(tasksJson)}"`);
+      expect(
+        threadStatusDataGetResponseSchema.parse(await readJson(getResponse)),
+      ).toEqual({
+        key: "tasks",
+        value: ["one"],
+        version: sha256Text(tasksJson),
+        sizeBytes: Buffer.byteLength(tasksJson),
+        modifiedAtMs: 12,
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("writes and deletes STATUS-data through daemon primitives and broadcasts changes", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      const statusDataRootPath = `${fixture.storageRootPath}/STATUS-data`;
+      const socket = createMockSocket();
+      harness.deps.hub.subscribe(socket, "thread", `${fixture.threadId}:status-data`);
+      const nextValue = [{ id: "task-1", title: "Review" }];
+      const nextJson = `${JSON.stringify(nextValue, null, 2)}\n`;
+      const nextHash = sha256Text(nextJson);
+
+      const putPromise = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/status-data/tasks`,
+        {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            "x-bb-status-state-client": "client-1",
+            "x-bb-status-state-operation": "op-1",
+          },
+          body: JSON.stringify({ value: nextValue }),
+        },
+      );
+      const previousReadCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === statusDataRootPath &&
+          command.path === "tasks.json",
+      );
+      await reportQueuedCommandError(harness, previousReadCommand, {
+        errorCode: "ENOENT",
+        errorMessage: "Path does not exist: tasks.json",
+      });
+      const writeCommand = await waitForQueuedCommandAfter(
+        harness,
+        previousReadCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.write_file_relative" &&
+          command.rootPath === statusDataRootPath &&
+          command.path === "tasks.json",
+      );
+      expect(writeCommand.command).toMatchObject({
+        type: "host.write_file_relative",
+        content: nextJson,
+        contentEncoding: "utf8",
+        precondition: { type: "none" },
+      });
+      await reportQueuedCommandSuccess(harness, writeCommand, {
+        path: "tasks.json",
+        hash: nextHash,
+        sizeBytes: Buffer.byteLength(nextJson),
+        modifiedAtMs: 100,
+      });
+
+      const putResponse = await putPromise;
+      expect(putResponse.status).toBe(200);
+      expect(putResponse.headers.get("etag")).toBe(`"${nextHash}"`);
+      expect(
+        threadStatusDataPutResponseSchema.parse(await readJson(putResponse)),
+      ).toEqual({
+        key: "tasks",
+        value: nextValue,
+        version: nextHash,
+        sizeBytes: Buffer.byteLength(nextJson),
+        modifiedAtMs: 100,
+      });
+      expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
+        {
+          type: "status-data.changed",
+          threadId: fixture.threadId,
+          key: "tasks",
+          value: nextValue,
+          deleted: false,
+          previousValue: null,
+          previousValuePresent: false,
+          version: nextHash,
+          writerClientId: "client-1",
+          operationId: "op-1",
+        },
+      ]);
+
+      const deletePromise = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/status-data/tasks`,
+        {
+          method: "DELETE",
+          headers: {
+            "x-bb-status-state-client": "client-2",
+            "x-bb-status-state-operation": "op-2",
+          },
+        },
+      );
+      const deletePreviousReadCommand = await waitForQueuedCommandAfter(
+        harness,
+        writeCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === statusDataRootPath &&
+          command.path === "tasks.json",
+      );
+      await reportQueuedCommandSuccess(harness, deletePreviousReadCommand, {
+        path: "tasks.json",
+        content: nextJson,
+        contentEncoding: "utf8",
+        mimeType: "application/json",
+        sizeBytes: Buffer.byteLength(nextJson),
+      });
+      const deletePreviousMetadataCommand = await waitForQueuedCommandAfter(
+        harness,
+        deletePreviousReadCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.file_metadata" &&
+          command.path === `${statusDataRootPath}/tasks.json`,
+      );
+      await reportQueuedCommandSuccess(harness, deletePreviousMetadataCommand, {
+        path: `${statusDataRootPath}/tasks.json`,
+        sizeBytes: Buffer.byteLength(nextJson),
+        modifiedAtMs: 101,
+      });
+      const deleteCommand = await waitForQueuedCommandAfter(
+        harness,
+        deletePreviousMetadataCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.delete_file_relative" &&
+          command.rootPath === statusDataRootPath &&
+          command.path === "tasks.json",
+      );
+      expect(deleteCommand.command).toMatchObject({
+        type: "host.delete_file_relative",
+        precondition: { type: "none" },
+      });
+      await reportQueuedCommandSuccess(harness, deleteCommand, {
+        path: "tasks.json",
+        deleted: true,
+        previousHash: nextHash,
+      });
+
+      const deleteResponse = await deletePromise;
+      expect(deleteResponse.status).toBe(200);
+      await expect(readJson(deleteResponse)).resolves.toEqual({ ok: true });
+      expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
+        {
+          type: "status-data.changed",
+          threadId: fixture.threadId,
+          key: "tasks",
+          value: nextValue,
+          deleted: false,
+          previousValue: null,
+          previousValuePresent: false,
+          version: nextHash,
+          writerClientId: "client-1",
+          operationId: "op-1",
+        },
+        {
+          type: "status-data.changed",
+          threadId: fixture.threadId,
+          key: "tasks",
+          value: null,
+          deleted: true,
+          previousValue: nextValue,
+          previousValuePresent: true,
+          version: null,
+          writerClientId: "client-2",
+          operationId: "op-2",
+        },
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("falls back from a missing STATUS/index.html to STATUS.html", async () => {
     const harness = await createTestAppHarness();
     try {
@@ -2089,7 +2441,9 @@ describe("public thread data routes", () => {
       expect(statusResponse.headers.get("x-content-type-options")).toBe(
         "nosniff",
       );
-      await expect(statusResponse.text()).resolves.toBe(statusHtml);
+      const statusBody = await statusResponse.text();
+      expect(statusBody).toContain("window.bbStatusState");
+      expect(statusBody).toContain(statusHtml);
     } finally {
       await harness.cleanup();
     }
@@ -2137,7 +2491,9 @@ describe("public thread data routes", () => {
       expect(statusResponse.headers.get("x-content-type-options")).toBe(
         "nosniff",
       );
-      await expect(statusResponse.text()).resolves.toBe(statusHtml);
+      const statusBody = await statusResponse.text();
+      expect(statusBody).toContain("window.bbStatusState");
+      expect(statusBody).toContain(statusHtml);
     } finally {
       await harness.cleanup();
     }

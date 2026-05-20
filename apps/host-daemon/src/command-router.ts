@@ -29,6 +29,11 @@ interface EnvironmentLaneState {
   writeTail: Promise<void>;
 }
 
+type FileWriteLaneCommand = Extract<
+  HostDaemonCommandEnvelope["command"],
+  { type: "host.write_file_relative" | "host.delete_file_relative" }
+>;
+
 export interface CommandRouterOptions {
   dataDir: CommandDispatchOptions["dataDir"];
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
@@ -51,6 +56,7 @@ export class CommandRouter {
   private readonly logger;
   private readonly now;
   private readonly environmentLanes = new Map<string, EnvironmentLaneState>();
+  private readonly fileWriteLaneTails = new Map<string, Promise<void>>();
   // Stale failed reports retry in the background after the current result is
   // reported, so one permanently failing result cannot block newer completions.
   private readonly pendingResults: PendingCommandResultReport[] = [];
@@ -73,8 +79,13 @@ export class CommandRouter {
     envelope: HostDaemonCommandEnvelope,
   ): Promise<void> {
     let task: Promise<CommandResultReport>;
+    const fileWriteLaneKey = this.getFileWriteLaneKey(envelope.command);
     const environmentLaneMode = this.getEnvironmentLaneMode(envelope.command);
-    if (environmentLaneMode && "environmentId" in envelope.command) {
+    if (fileWriteLaneKey) {
+      task = this.runInFileWriteLane(fileWriteLaneKey, () =>
+        this.executeCommand(envelope),
+      );
+    } else if (environmentLaneMode && "environmentId" in envelope.command) {
       const { environmentId } = envelope.command;
       if (!environmentId) {
         throw new Error(
@@ -272,6 +283,29 @@ export class CommandRouter {
     return next;
   }
 
+  private runInFileWriteLane<T>(
+    key: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const previousTail = this.fileWriteLaneTails.get(key) ?? Promise.resolve();
+    const next = previousTail.catch(() => undefined).then(work);
+    const done = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.fileWriteLaneTails.set(key, done);
+    this.deleteFileWriteLaneWhenIdle(key, done);
+    return next;
+  }
+
+  private deleteFileWriteLaneWhenIdle(key: string, tail: Promise<void>): void {
+    void tail.then(() => {
+      if (this.fileWriteLaneTails.get(key) === tail) {
+        this.fileWriteLaneTails.delete(key);
+      }
+    });
+  }
+
   private deleteEnvironmentLaneWhenIdle(
     environmentId: string,
     state: EnvironmentLaneState,
@@ -285,6 +319,24 @@ export class CommandRouter {
         this.environmentLanes.delete(environmentId);
       }
     });
+  }
+
+  private getFileWriteLaneKey(
+    command: HostDaemonCommandEnvelope["command"],
+  ): string | null {
+    if (!this.isFileWriteLaneCommand(command)) {
+      return null;
+    }
+    return `${command.rootPath}\0${command.path}`;
+  }
+
+  private isFileWriteLaneCommand(
+    command: HostDaemonCommandEnvelope["command"],
+  ): command is FileWriteLaneCommand {
+    return (
+      command.type === "host.write_file_relative" ||
+      command.type === "host.delete_file_relative"
+    );
   }
 
   private getEnvironmentLaneMode(
