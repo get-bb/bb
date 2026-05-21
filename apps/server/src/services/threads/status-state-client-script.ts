@@ -1,5 +1,6 @@
 export interface StatusStateBootstrap {
   listUrl: string;
+  sendMessageUrl: string;
   threadId: string;
   wsUrl: string;
 }
@@ -57,9 +58,95 @@ export function injectStatusStateClientScript(
 function buildStatusStateClientJavascript(bootstrapJson: string): string {
   return `
 (function () {
+  var bootstrap = ${bootstrapJson};
+
+  function createBbThreadTellError(message, status, code, retryable) {
+    var error = new Error(message);
+    error.status = status;
+    if (code) error.code = code;
+    if (typeof retryable === "boolean") error.retryable = retryable;
+    return error;
+  }
+
+  function buildBbThreadTellClientError(response, text) {
+    var message = response.statusText || ("HTTP " + response.status);
+    var code = null;
+    var retryable = null;
+    if (text) {
+      try {
+        var body = JSON.parse(text);
+        if (body && typeof body === "object") {
+          if (typeof body.message === "string") message = body.message;
+          if (typeof body.code === "string") code = body.code;
+          if (typeof body.retryable === "boolean") retryable = body.retryable;
+        } else {
+          message = text;
+        }
+      } catch (error) {
+        message = text;
+      }
+    }
+    return createBbThreadTellError(message, response.status, code, retryable);
+  }
+
+  function buildBbThreadTellError(response) {
+    if (response.status >= 500) {
+      return Promise.resolve(
+        createBbThreadTellError(
+          "bbThreadTell failed: server error (" + response.status + ")",
+          response.status,
+          null,
+          null
+        )
+      );
+    }
+    return response.text().then(function (text) {
+      return buildBbThreadTellClientError(response, text);
+    });
+  }
+
+  function createBbThreadTellRequestBody(text) {
+    return {
+      input: [{ type: "text", text: text }],
+      mode: "auto"
+    };
+  }
+
+  function bbThreadTell(text) {
+    if (typeof text !== "string") {
+      throw new TypeError("window.bbThreadTell(text) requires a string");
+    }
+    return fetch(bootstrap.sendMessageUrl, {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      },
+      credentials: "same-origin",
+      body: JSON.stringify(createBbThreadTellRequestBody(text))
+    }).then(function (response) {
+      if (response.ok) return undefined;
+      return buildBbThreadTellError(response).then(function (error) {
+        throw error;
+      });
+    });
+  }
+
+  function installBbThreadTell() {
+    try {
+      Object.defineProperty(window, "bbThreadTell", {
+        value: bbThreadTell,
+        configurable: true,
+        writable: false
+      });
+    } catch (error) {
+      window.bbThreadTell = bbThreadTell;
+    }
+  }
+
+  installBbThreadTell();
   if (window.bbStatusState) return;
 
-  var bootstrap = ${bootstrapJson};
   var keyPattern = /^[A-Za-z0-9_-]{1,80}$/;
   var clientId = "bbss_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
   var cache = Object.create(null);

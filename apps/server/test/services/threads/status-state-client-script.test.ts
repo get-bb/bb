@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { statusIframeThreadTellRequestSchema } from "@bb/server-contract";
 import type {
+  BbThreadTell,
   BbStatusState,
   JsonValue,
   StatusDataKey,
@@ -14,6 +16,7 @@ import {
 
 interface ScriptWindow {
   bbStatusState?: BbStatusState;
+  bbThreadTell?: BbThreadTell;
   crypto: {
     randomUUID(): string;
   };
@@ -29,6 +32,11 @@ interface CallbackCall {
 interface DeferredResponse {
   promise: Promise<Response>;
   resolve(response: Response): void;
+}
+
+interface FetchCall {
+  init: RequestInit | undefined;
+  input: string;
 }
 
 class FakeWebSocket {
@@ -69,6 +77,7 @@ class FakeWebSocket {
 const bootstrap: StatusStateBootstrap = {
   threadId: "thread-1",
   listUrl: "/api/v1/threads/thread-1/status-data",
+  sendMessageUrl: "/api/v1/threads/thread-1/send",
   wsUrl: "ws://localhost:3334/ws",
 };
 
@@ -91,6 +100,22 @@ function listResponse(body: ThreadStatusDataListResponse): Response {
   return jsonResponse(body);
 }
 
+function existingStatusState(): BbStatusState {
+  return {
+    async list() {
+      return {};
+    },
+    async get() {
+      return undefined;
+    },
+    async set() {},
+    async delete() {},
+    on() {
+      return () => {};
+    },
+  };
+}
+
 function makeBroadcast(
   overrides: Partial<StatusStateBroadcastMessage> & {
     key: StatusDataKey;
@@ -111,9 +136,10 @@ function makeBroadcast(
 }
 
 function extractInlineScript(html: string): string {
-  const match = /<script[^>]*data-bb-status-state-client[^>]*>([\s\S]*)<\/script>/u.exec(
-    html,
-  );
+  const match =
+    /<script[^>]*data-bb-status-state-client[^>]*>([\s\S]*)<\/script>/u.exec(
+      html,
+    );
   if (!match) {
     throw new Error("Injected script not found");
   }
@@ -145,6 +171,20 @@ function executeScript(args: {
   );
 }
 
+function requireBbThreadTell(windowObject: ScriptWindow): BbThreadTell {
+  if (!windowObject.bbThreadTell) {
+    throw new Error("bbThreadTell was not installed");
+  }
+  return windowObject.bbThreadTell;
+}
+
+function requireStringRequestBody(init: RequestInit | undefined): string {
+  if (typeof init?.body !== "string") {
+    throw new Error("Expected string request body");
+  }
+  return init.body;
+}
+
 describe("status state client script", () => {
   afterEach(() => {
     FakeWebSocket.instances = [];
@@ -152,48 +192,193 @@ describe("status state client script", () => {
   });
 
   it("injects before user scripts", () => {
-    const html = "<html><head><script>window.userRan = true;</script></head></html>";
+    const html =
+      "<html><head><script>window.userRan = true;</script></head></html>";
     const injected = injectStatusStateClientScript(html, bootstrap);
 
     expect(injected.indexOf("data-bb-status-state-client")).toBeLessThan(
       injected.indexOf("window.userRan"),
     );
     expect(injected).toContain("window.bbStatusState");
+    expect(injected).toContain("window.bbThreadTell");
+  });
+
+  it("installs bbThreadTell and posts text to the owning thread send route", async () => {
+    const calls: FetchCall[] = [];
+    const fetchMock: typeof fetch = async (input, init) => {
+      if (typeof input !== "string") {
+        throw new Error("Expected string URL");
+      }
+      calls.push({ input, init });
+      return jsonResponse({ ok: true });
+    };
+    const windowObject: ScriptWindow = {
+      bbStatusState: existingStatusState(),
+      crypto: { randomUUID: () => "op-from-crypto" },
+    };
+
+    executeScript({
+      html: injectStatusStateClientScript(
+        "<html><head></head></html>",
+        bootstrap,
+      ),
+      window: windowObject,
+      fetch: fetchMock,
+    });
+
+    await requireBbThreadTell(windowObject)("hello from iframe");
+
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    expect(call.input).toBe("/api/v1/threads/thread-1/send");
+    expect(call.init?.method).toBe("POST");
+    expect(call.init?.credentials).toBe("same-origin");
+    const headers = new Headers(call.init?.headers);
+    expect(headers.get("accept")).toBe("application/json");
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(
+      statusIframeThreadTellRequestSchema.parse(
+        JSON.parse(requireStringRequestBody(call.init)),
+      ),
+    ).toEqual({
+      input: [{ type: "text", text: "hello from iframe" }],
+      mode: "auto",
+    });
+  });
+
+  it("throws bbThreadTell non-string input errors synchronously", () => {
+    const calls: FetchCall[] = [];
+    const fetchMock: typeof fetch = async (input, init) => {
+      if (typeof input !== "string") {
+        throw new Error("Expected string URL");
+      }
+      calls.push({ input, init });
+      return jsonResponse({ ok: true });
+    };
+    const windowObject: ScriptWindow = {
+      bbStatusState: existingStatusState(),
+      crypto: { randomUUID: () => "op-from-crypto" },
+    };
+
+    executeScript({
+      html: injectStatusStateClientScript(
+        "<html><head></head></html>",
+        bootstrap,
+      ),
+      window: windowObject,
+      fetch: fetchMock,
+    });
+
+    expect(() => {
+      // @ts-expect-error Runtime validation intentionally rejects bad callers.
+      requireBbThreadTell(windowObject)(123);
+    }).toThrow(TypeError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects bbThreadTell with the server 4xx message and error metadata", async () => {
+    const fetchMock: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          code: "invalid_request",
+          message: "Thread is archived",
+          retryable: false,
+        }),
+        { status: 409, headers: { "content-type": "application/json" } },
+      );
+    const windowObject: ScriptWindow = {
+      bbStatusState: existingStatusState(),
+      crypto: { randomUUID: () => "op-from-crypto" },
+    };
+
+    executeScript({
+      html: injectStatusStateClientScript(
+        "<html><head></head></html>",
+        bootstrap,
+      ),
+      window: windowObject,
+      fetch: fetchMock,
+    });
+
+    await expect(
+      requireBbThreadTell(windowObject)("ping"),
+    ).rejects.toMatchObject({
+      code: "invalid_request",
+      message: "Thread is archived",
+      retryable: false,
+      status: 409,
+    });
+  });
+
+  it("rejects bbThreadTell 5xx responses with a generic server error", async () => {
+    const fetchMock: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          code: "internal_error",
+          message: "database detail that should not leak",
+        }),
+        { status: 503, headers: { "content-type": "application/json" } },
+      );
+    const windowObject: ScriptWindow = {
+      bbStatusState: existingStatusState(),
+      crypto: { randomUUID: () => "op-from-crypto" },
+    };
+
+    executeScript({
+      html: injectStatusStateClientScript(
+        "<html><head></head></html>",
+        bootstrap,
+      ),
+      window: windowObject,
+      fetch: fetchMock,
+    });
+
+    await expect(
+      requireBbThreadTell(windowObject)("ping"),
+    ).rejects.toMatchObject({
+      message: "bbThreadTell failed: server error (503)",
+      status: 503,
+    });
   });
 
   it("hydrates, fires immediate listeners, writes optimistically, and reconciles broadcasts", async () => {
     let operationId = "";
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (!init?.method) {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (!init?.method) {
+          return new Response(
+            JSON.stringify({
+              values: { todos: ["seed"] },
+              versions: { todos: "v1" },
+              hash: "list-hash",
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+
+        operationId =
+          new Headers(init.headers).get("x-bb-status-state-operation") ?? "";
         return new Response(
           JSON.stringify({
-            values: { todos: ["seed"] },
-            versions: { todos: "v1" },
-            hash: "list-hash",
+            key: "todos",
+            value: ["next"],
+            version: "v2",
+            sizeBytes: 9,
+            modifiedAtMs: 10,
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
-      }
-
-      operationId =
-        new Headers(init.headers).get("x-bb-status-state-operation") ?? "";
-      return new Response(
-        JSON.stringify({
-          key: "todos",
-          value: ["next"],
-          version: "v2",
-          sizeBytes: 9,
-          modifiedAtMs: 10,
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    });
+      },
+    );
     const windowObject: ScriptWindow = {
       crypto: { randomUUID: () => "op-from-crypto" },
     };
 
     executeScript({
-      html: injectStatusStateClientScript("<html><head></head></html>", bootstrap),
+      html: injectStatusStateClientScript(
+        "<html><head></head></html>",
+        bootstrap,
+      ),
       window: windowObject,
       fetch: fetchMock,
     });
@@ -289,7 +474,10 @@ describe("status state client script", () => {
     };
 
     executeScript({
-      html: injectStatusStateClientScript("<html><head></head></html>", bootstrap),
+      html: injectStatusStateClientScript(
+        "<html><head></head></html>",
+        bootstrap,
+      ),
       window: windowObject,
       fetch: fetchMock,
     });
@@ -361,7 +549,10 @@ describe("status state client script", () => {
     };
 
     executeScript({
-      html: injectStatusStateClientScript("<html><head></head></html>", bootstrap),
+      html: injectStatusStateClientScript(
+        "<html><head></head></html>",
+        bootstrap,
+      ),
       window: windowObject,
       fetch: fetchMock,
     });
@@ -438,7 +629,10 @@ describe("status state client script", () => {
     };
 
     executeScript({
-      html: injectStatusStateClientScript("<html><head></head></html>", bootstrap),
+      html: injectStatusStateClientScript(
+        "<html><head></head></html>",
+        bootstrap,
+      ),
       window: windowObject,
       fetch: fetchMock,
     });
@@ -482,22 +676,27 @@ describe("status state client script", () => {
   });
 
   it("reverts optimistic set state and emits a revert event when the write fails", async () => {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (!init?.method) {
-        return listResponse({
-          values: { todos: ["seed"] },
-          versions: { todos: "v1" },
-          hash: "list-hash",
-        });
-      }
-      return new Response("write failed", { status: 500 });
-    });
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (!init?.method) {
+          return listResponse({
+            values: { todos: ["seed"] },
+            versions: { todos: "v1" },
+            hash: "list-hash",
+          });
+        }
+        return new Response("write failed", { status: 500 });
+      },
+    );
     const windowObject: ScriptWindow = {
       crypto: { randomUUID: () => "op-from-crypto" },
     };
 
     executeScript({
-      html: injectStatusStateClientScript("<html><head></head></html>", bootstrap),
+      html: injectStatusStateClientScript(
+        "<html><head></head></html>",
+        bootstrap,
+      ),
       window: windowObject,
       fetch: fetchMock,
     });

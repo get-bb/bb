@@ -438,6 +438,8 @@ describe("CLI command output contracts", () => {
     expect(output.trim().length).toBeGreaterThan(0);
     expect(output).toContain("STATUS state");
     expect(output).toContain("window.bbStatusState");
+    expect(output).toContain("Sending a message to the manager");
+    expect(output).toContain("window.bbThreadTell(text)");
     expect(output).toContain("bb status-state set <thread-id> <key>");
   });
 
@@ -1230,7 +1232,15 @@ describe("CLI command output contracts", () => {
     );
 
     await runCommand(
-      ["status-state", "set", "thread-1", "tasks", "[\"two\"]", "--if-match", "hash-1"],
+      [
+        "status-state",
+        "set",
+        "thread-1",
+        "tasks",
+        '["two"]',
+        "--if-match",
+        "hash-1",
+      ],
       (program) => registerStatusStateCommand(program, () => "http://server"),
     );
 

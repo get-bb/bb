@@ -1,9 +1,9 @@
 ---
 kind: instruction
 title: bb Guide - STATUS State
-summary: Persistent reactive JSON state for manager STATUS dashboards.
-intent: Explain window.bbStatusState, STATUS-data storage, and the status-state CLI.
-editingNotes: Keep this aligned with the /api/v1/threads/:id/status-data routes and injected client.
+summary: Persistent reactive JSON state and manager messaging for STATUS dashboards.
+intent: Explain window.bbStatusState, window.bbThreadTell, STATUS-data storage, and the status-state CLI.
+editingNotes: Keep this aligned with the /api/v1/threads/:id/status-data and /api/v1/threads/:id/send routes plus the injected client.
 ---
 STATUS state
 
@@ -96,6 +96,63 @@ document.querySelector("#add").addEventListener("click", async () => {
     ...current,
     { id: crypto.randomUUID(), title: "New task", status: "todo" }
   ]);
+});
+</script>
+```
+
+Sending a message to the manager:
+
+`window.bbThreadTell(text)` is also injected into the same root STATUS document.
+It sends a normal follow-up message to the manager thread that owns the iframe:
+
+```ts
+window.bbThreadTell(text: string): Promise<void>
+```
+
+There is no thread id argument. The iframe runtime uses the thread context from
+`/api/v1/threads/<thread-id>/status/` and posts to:
+
+```http
+POST /api/v1/threads/<thread-id>/send
+```
+
+The request body is:
+
+```json
+{
+  "input": [{ "type": "text", "text": "hello" }],
+  "mode": "auto"
+}
+```
+
+The promise resolves when the server accepts the send route. 4xx responses
+reject with the server error message and attach `status`, `code`, and
+`retryable` fields when present. 5xx responses reject with
+`bbThreadTell failed: server error (<status>)`.
+
+Example component pattern:
+
+```html
+<textarea id="manager-message" rows="3"></textarea>
+<button id="manager-send" type="button">Send to manager</button>
+<output id="manager-send-status"></output>
+<script>
+const textarea = document.querySelector("#manager-message");
+const status = document.querySelector("#manager-send-status");
+
+document.querySelector("#manager-send").addEventListener("click", async () => {
+  status.textContent = "";
+  try {
+    await window.bbThreadTell(textarea.value);
+    textarea.value = "";
+    status.textContent = "sent";
+    setTimeout(() => {
+      if (status.textContent === "sent") status.textContent = "";
+    }, 2000);
+  } catch (error) {
+    status.textContent =
+      error instanceof Error ? error.message : "Message failed";
+  }
 });
 </script>
 ```

@@ -342,6 +342,37 @@ export const sendMessageRequestSchema = z.object({
 });
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
+export const statusIframeThreadTellInputSchema = z.object({
+  type: z.literal("text"),
+  text: z.string(),
+});
+export type StatusIframeThreadTellInput = z.infer<
+  typeof statusIframeThreadTellInputSchema
+>;
+
+export const statusIframeThreadTellRequestSchema = z.object({
+  input: z.tuple([statusIframeThreadTellInputSchema]),
+  mode: z.literal("auto"),
+});
+export type StatusIframeThreadTellRequest = z.infer<
+  typeof statusIframeThreadTellRequestSchema
+>;
+
+export interface BbThreadTell {
+  (text: string): Promise<void>;
+}
+
+export interface BbStatusIframeWindow extends Window {
+  bbStatusState: BbStatusState;
+  bbThreadTell: BbThreadTell;
+}
+
+declare global {
+  interface Window {
+    bbThreadTell?: BbThreadTell;
+  }
+}
+
 export const sendQueuedMessageModeSchema = z.enum(["auto", "steer"]);
 export type SendQueuedMessageMode = z.infer<typeof sendQueuedMessageModeSchema>;
 
@@ -913,9 +944,7 @@ export type ThreadStatusVersionResponse = z.infer<
   typeof threadStatusVersionResponseSchema
 >;
 
-export const statusDataKeySchema = z
-  .string()
-  .regex(/^[A-Za-z0-9_-]{1,80}$/u);
+export const statusDataKeySchema = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/u);
 export type StatusDataKey = z.infer<typeof statusDataKeySchema>;
 
 export const statusStateChangeEventSourceSchema = z.enum(["local", "remote"]);

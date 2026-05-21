@@ -54,7 +54,7 @@ Preferences and starter storage files can be saved as manager templates in `{{ma
 
 Unless otherwise specified, make `STATUS/index.html` or `STATUS.html` styled like bb and use Tailwind. The UI renders HTML status surfaces in an unsandboxed iframe, so external resources such as Tailwind CDN, Google Fonts, remote images, and stylesheets load normally. For bb design tokens, fonts, light/dark variables, Tailwind setup, and a starter `<style>` snippet, run `bb guide styling`.
 
-STATUS dashboards can read and write persistent reactive JSON state that you can also inspect in thread storage under `STATUS-data/`. Write agent-authored changes with `bb status-state` so open dashboards receive realtime updates; run `bb guide status-state` for the browser API, CLI commands, and authoring patterns.
+STATUS dashboards can read and write persistent reactive JSON state that you can also inspect in thread storage under `STATUS-data/`. Write agent-authored changes with `bb status-state` so open dashboards receive realtime updates; run `bb guide status-state` for the browser API, CLI commands, authoring patterns, and how dashboards can ping the manager.
 
 The storage directory is yours to organize. Write down anything your future self or the user might find useful. Use `notes/`, `plans/`, `research/`, and `scratch/` as default folders when they fit. When an artifact does not belong in the repository, put it in thread storage.
 

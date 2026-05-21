@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import {
   archiveThread,
@@ -17,9 +17,14 @@ import {
   threadQueuedMessageSchema,
   threadScope,
   threadSchema,
+  turnRequestEventDataSchema,
+  type TurnRequestEventData,
   turnScope,
 } from "@bb/domain";
 import {
+  type BbStatusState,
+  type BbThreadTell,
+  statusIframeThreadTellRequestSchema,
   type ThreadStatusVersionResponse,
   threadStatusDataGetResponseSchema,
   threadStatusDataListResponseSchema,
@@ -72,15 +77,39 @@ const threadEventWaitResponseSchema = z.object({
 type TimelineTurnRow = Extract<TimelineRow, { kind: "turn" }>;
 
 interface ManagerThreadStorageFixture {
+  environmentId: string;
   hostId: string;
   threadId: string;
   storageRootPath: string;
+}
+
+interface StatusTellScriptWindow {
+  bbStatusState?: BbStatusState;
+  bbThreadTell?: BbThreadTell;
+  crypto: {
+    randomUUID(): string;
+  };
+}
+
+interface ExecuteInjectedStatusClientScriptArgs {
+  fetch: typeof fetch;
+  html: string;
+  window: StatusTellScriptWindow;
+}
+
+interface StatusTellFetchCall {
+  init: RequestInit | undefined;
+  input: string;
 }
 
 interface MockSocket {
   messages: string[];
   close(code?: number, reason?: string): void;
   send(data: string): void;
+}
+
+class StatusTellNoopWebSocket {
+  constructor(readonly url: string) {}
 }
 
 function createMockSocket(): MockSocket {
@@ -113,6 +142,7 @@ function seedManagerThreadStorage(
     type: "manager",
   });
   return {
+    environmentId: environment.id,
     hostId: host.id,
     threadId: thread.id,
     storageRootPath: `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`,
@@ -121,6 +151,106 @@ function seedManagerThreadStorage(
 
 function sha256Text(content: string): string {
   return createHash("sha256").update(content).digest("hex");
+}
+
+function extractInjectedStatusClientScript(html: string): string {
+  const match =
+    /<script[^>]*data-bb-status-state-client[^>]*>([\s\S]*)<\/script>/u.exec(
+      html,
+    );
+  if (!match) {
+    throw new Error("Injected status client script not found");
+  }
+  return match[1];
+}
+
+function existingStatusState(): BbStatusState {
+  return {
+    async list() {
+      return {};
+    },
+    async get() {
+      return undefined;
+    },
+    async set() {},
+    async delete() {},
+    on() {
+      return () => {};
+    },
+  };
+}
+
+function executeInjectedStatusClientScript(
+  args: ExecuteInjectedStatusClientScriptArgs,
+): void {
+  const run = new Function(
+    "window",
+    "WebSocket",
+    "fetch",
+    "console",
+    "setTimeout",
+    "clearTimeout",
+    extractInjectedStatusClientScript(args.html),
+  );
+  run(
+    args.window,
+    StatusTellNoopWebSocket,
+    args.fetch,
+    console,
+    setTimeout,
+    clearTimeout,
+  );
+}
+
+function requireBbThreadTell(
+  windowObject: StatusTellScriptWindow,
+): BbThreadTell {
+  if (!windowObject.bbThreadTell) {
+    throw new Error("bbThreadTell was not installed");
+  }
+  return windowObject.bbThreadTell;
+}
+
+function createAppBackedFetch(
+  harness: TestAppHarness,
+  calls: StatusTellFetchCall[],
+): typeof fetch {
+  return async (input, init) => {
+    if (typeof input !== "string") {
+      throw new Error("Expected string URL");
+    }
+    calls.push({ input, init });
+    return harness.app.request(input, init);
+  };
+}
+
+function requireStringRequestBody(init: RequestInit | undefined): string {
+  if (typeof init?.body !== "string") {
+    throw new Error("Expected string request body");
+  }
+  return init.body;
+}
+
+function latestTurnRequestData(
+  harness: TestAppHarness,
+  threadId: string,
+): TurnRequestEventData {
+  const row = harness.db
+    .select()
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, threadId),
+        eq(events.type, "client/turn/requested"),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (!row) {
+    throw new Error("Expected client/turn/requested event");
+  }
+  return turnRequestEventDataSchema.parse(JSON.parse(row.data));
 }
 
 describe("public thread data routes", () => {
@@ -1996,6 +2126,102 @@ describe("public thread data routes", () => {
     }
   });
 
+  it("routes injected bbThreadTell sends to the owning manager thread", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const fixture = seedManagerThreadStorage(harness);
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: fixture.environmentId,
+        providerThreadId: "provider-manager",
+        sequenceStart: 1,
+        threadId: fixture.threadId,
+      });
+      const statusRootPath = `${fixture.storageRootPath}/STATUS`;
+      const statusHtml =
+        "<!doctype html><html><head></head><body>manager status</body></html>";
+
+      const statusPromise = harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/status/`,
+      );
+      const statusCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file_relative" &&
+          command.rootPath === statusRootPath &&
+          command.path === "index.html",
+      );
+      await reportQueuedCommandSuccess(harness, statusCommand, {
+        path: "index.html",
+        content: statusHtml,
+        contentEncoding: "utf8",
+        mimeType: "text/html",
+        sizeBytes: Buffer.byteLength(statusHtml),
+      });
+      const statusResponse = await statusPromise;
+      expect(statusResponse.status).toBe(200);
+
+      const fetchCalls: StatusTellFetchCall[] = [];
+      const windowObject: StatusTellScriptWindow = {
+        bbStatusState: existingStatusState(),
+        crypto: { randomUUID: () => "op-from-crypto" },
+      };
+      executeInjectedStatusClientScript({
+        html: await statusResponse.text(),
+        window: windowObject,
+        fetch: createAppBackedFetch(harness, fetchCalls),
+      });
+
+      const tellPromise =
+        requireBbThreadTell(windowObject)("hello from iframe");
+      const preferencesReadCommand = await waitForQueuedCommandAfter(
+        harness,
+        statusCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.read_file" &&
+          command.path === `${fixture.storageRootPath}/PREFERENCES.md`,
+      );
+      await reportQueuedCommandError(harness, preferencesReadCommand, {
+        errorCode: "ENOENT",
+        errorMessage: "Path does not exist: PREFERENCES.md",
+      });
+      const submitCommand = await waitForQueuedCommandAfter(
+        harness,
+        preferencesReadCommand.row.cursor,
+        ({ command }) =>
+          command.type === "turn.submit" &&
+          command.threadId === fixture.threadId,
+      );
+      await expect(tellPromise).resolves.toBeUndefined();
+
+      expect(fetchCalls).toHaveLength(1);
+      expect(fetchCalls[0].input).toBe(
+        `/api/v1/threads/${fixture.threadId}/send`,
+      );
+      expect(
+        statusIframeThreadTellRequestSchema.parse(
+          JSON.parse(requireStringRequestBody(fetchCalls[0].init)),
+        ),
+      ).toEqual({
+        input: [{ type: "text", text: "hello from iframe" }],
+        mode: "auto",
+      });
+      expect(submitCommand.command).toMatchObject({
+        type: "turn.submit",
+        threadId: fixture.threadId,
+        target: { mode: "start" },
+      });
+      expect(latestTurnRequestData(harness, fixture.threadId)).toMatchObject({
+        input: [{ type: "text", text: "hello from iframe" }],
+        initiator: "user",
+        senderThreadId: null,
+        source: "tell",
+        target: { kind: "new-turn" },
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("returns the resolved STATUS version across all source modes", async () => {
     const harness = await createTestAppHarness();
     try {
@@ -2074,8 +2300,8 @@ describe("public thread data routes", () => {
     try {
       const fixture = seedManagerThreadStorage(harness);
       const statusDataRootPath = `${fixture.storageRootPath}/STATUS-data`;
-      const tasksJson = "[\"one\"]\n";
-      const prefsJson = "{\"compact\":true}\n";
+      const tasksJson = '["one"]\n';
+      const prefsJson = '{"compact":true}\n';
 
       const listPromise = harness.app.request(
         `/api/v1/threads/${fixture.threadId}/status-data`,
@@ -2206,7 +2432,9 @@ describe("public thread data routes", () => {
 
       const getResponse = await getPromise;
       expect(getResponse.status).toBe(200);
-      expect(getResponse.headers.get("etag")).toBe(`"${sha256Text(tasksJson)}"`);
+      expect(getResponse.headers.get("etag")).toBe(
+        `"${sha256Text(tasksJson)}"`,
+      );
       expect(
         threadStatusDataGetResponseSchema.parse(await readJson(getResponse)),
       ).toEqual({
@@ -2227,7 +2455,11 @@ describe("public thread data routes", () => {
       const fixture = seedManagerThreadStorage(harness);
       const statusDataRootPath = `${fixture.storageRootPath}/STATUS-data`;
       const socket = createMockSocket();
-      harness.deps.hub.subscribe(socket, "thread", `${fixture.threadId}:status-data`);
+      harness.deps.hub.subscribe(
+        socket,
+        "thread",
+        `${fixture.threadId}:status-data`,
+      );
       const nextValue = [{ id: "task-1", title: "Review" }];
       const nextJson = `${JSON.stringify(nextValue, null, 2)}\n`;
       const nextHash = sha256Text(nextJson);

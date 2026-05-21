@@ -464,6 +464,7 @@ function buildStatusStateBootstrap(
   return {
     threadId: args.threadId,
     listUrl: `/api/v1/threads/${encodeURIComponent(args.threadId)}/status-data`,
+    sendMessageUrl: `/api/v1/threads/${encodeURIComponent(args.threadId)}/send`,
     wsUrl: buildStatusStateWebSocketUrl(deps, args.requestUrl),
   };
 }
@@ -601,9 +602,12 @@ async function createMarkdownStatusResponse(
     threadId: string;
   },
 ): Promise<Response> {
-  const renderedMarkdown = await marked.parse(decodeDaemonTextFile(args.result), {
-    gfm: true,
-  });
+  const renderedMarkdown = await marked.parse(
+    decodeDaemonTextFile(args.result),
+    {
+      gfm: true,
+    },
+  );
   return createInjectedStatusHtmlResponse(deps, {
     requestUrl: args.requestUrl,
     threadId: args.threadId,
