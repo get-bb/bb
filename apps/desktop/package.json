@@ -11,7 +11,7 @@
     "build": "node scripts/build.mjs",
     "clean": "rimraf dist release",
     "desktop:build": "pnpm run build && node scripts/run-electron-builder.mjs --mac --universal --publish always",
-    "desktop:version-feed": "tsx scripts/generate-version-feed.ts",
+    "desktop:version-feed": "tsx scripts/generate-version-feed.mts",
     "dev": "pnpm run package && node scripts/run-packaged-app.mjs",
     "dist": "pnpm run prepare-runtime && pnpm run desktop:build",
     "package": "pnpm run prepare-runtime && pnpm run build && node scripts/run-electron-builder.mjs --mac --dir",
