@@ -4,7 +4,7 @@ import { useIsMutating } from "@tanstack/react-query";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Link, useLocation } from "react-router-dom";
-import type { BbDesktopInfo, ProjectResponse } from "@bb/server-contract";
+import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@/components/ui/icon.js";
 import {
   SidebarInset,
@@ -33,7 +33,10 @@ import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
-import { getBbDesktopInfo } from "@/lib/bb-desktop";
+import {
+  getBbDesktopInfo,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 import { useNewManagerDialog } from "@/hooks/useNewManagerDialog";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 
@@ -125,22 +128,21 @@ function FloatingSidebarTrigger() {
   );
 }
 
-function shouldUseDesktopTitleBar(desktopInfo: BbDesktopInfo | null): boolean {
-  return desktopInfo?.platform === "macos";
-}
-
-function DesktopTitleBar() {
+function DesktopWindowChrome() {
   return (
-    <div
-      data-testid="bb-desktop-titlebar"
-      className="fixed inset-x-0 top-0 z-40 flex h-10 items-center border-b border-border/60 bg-background [-webkit-app-region:drag]"
-    >
-      <div className="h-full w-[70px] shrink-0" aria-hidden="true" />
-      <div className="flex h-full shrink-0 items-center [-webkit-app-region:no-drag]">
+    <>
+      <div
+        data-testid="bb-desktop-window-drag-region"
+        className="fixed left-0 top-0 z-40 h-7 w-20 [-webkit-app-region:drag]"
+        aria-hidden="true"
+      />
+      <div
+        data-testid="bb-desktop-sidebar-trigger"
+        className="fixed left-[84px] top-0 z-50 flex h-7 w-7 items-center justify-center [-webkit-app-region:no-drag]"
+      >
         <SidebarTrigger className="h-7 w-7 rounded-md p-0 [-webkit-app-region:no-drag]" />
       </div>
-      <div className="min-w-0 flex-1 self-stretch" aria-hidden="true" />
-    </div>
+    </>
   );
 }
 
@@ -345,8 +347,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const activeProjectId = useActiveProjectId();
   const showHeader = !isRootView && !isThreadView;
   const [desktopInfo] = useState(getBbDesktopInfo);
-  const usesDesktopTitleBar = shouldUseDesktopTitleBar(desktopInfo);
-  const showFloatingSidebarTrigger = isRootView && !usesDesktopTitleBar;
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const showFloatingSidebarTrigger = isRootView && !usesDesktopChrome;
   const sidebarProviderStyle: SidebarProviderStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
   };
@@ -507,20 +509,18 @@ export function AppLayout({ children }: AppLayoutProps) {
           providerRef={providerRef}
           style={sidebarProviderStyle}
         >
-          {usesDesktopTitleBar ? <DesktopTitleBar /> : null}
+          {usesDesktopChrome ? <DesktopWindowChrome /> : null}
           <AppSidebar
             onResizeMouseDown={handleResizeMouseDown}
             isResizing={isSidebarResizing}
             selectedProjectId={activeProjectId}
             isManagerActionPending={isManagerActionPending}
-            showInlineTrigger={!usesDesktopTitleBar}
+            showInlineTrigger={!usesDesktopChrome}
           />
           <SidebarInset>
             <div
-              className={cn(
-                "relative flex h-[100dvh] min-w-0 w-full flex-col",
-                usesDesktopTitleBar && "pt-10",
-              )}
+              data-testid="app-layout-content-shell"
+              className="relative flex h-[100dvh] min-w-0 w-full flex-col"
             >
               {showFloatingSidebarTrigger ? <FloatingSidebarTrigger /> : null}
               {showHeader ? (

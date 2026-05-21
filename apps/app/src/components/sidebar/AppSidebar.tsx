@@ -70,12 +70,13 @@ export function AppSidebar({
         {showInlineTrigger ? (
           /* Matches the page-header height so the sidebar's top region mirrors
              the chrome on the right of the sidebar. */
-          <div className="flex h-12 shrink-0 items-center px-2">
+          <div
+            data-testid="app-sidebar-inline-trigger-row"
+            className="flex h-12 shrink-0 items-center px-2"
+          >
             <SidebarTrigger />
           </div>
-        ) : (
-          <div className="h-10 shrink-0" aria-hidden="true" />
-        )}
+        ) : null}
         <div className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden">
           <ProjectListActionButtons
             onNewChat={newChatAction}

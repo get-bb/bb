@@ -1,9 +1,13 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   SidebarTrigger,
   useIsSidebarShowing,
 } from "@/components/ui/sidebar.js";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import {
+  getBbDesktopInfo,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 import { cn } from "@/lib/utils";
 
 /**
@@ -27,6 +31,9 @@ export function AppPageHeader({
   className,
 }: AppPageHeaderProps) {
   const isSidebarShowing = useIsSidebarShowing();
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const showSidebarTrigger =
+    !shouldUseMacosDesktopChrome(desktopInfo) && !isSidebarShowing;
   return (
     <header
       className={cn(
@@ -36,7 +43,7 @@ export function AppPageHeader({
       )}
     >
       <div className="flex h-full items-center gap-1 md:gap-2">
-        {!isSidebarShowing ? (
+        {showSidebarTrigger ? (
           <SidebarTrigger className="-ml-2 shrink-0 md:ml-0" />
         ) : null}
         {center ? (
