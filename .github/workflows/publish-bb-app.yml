@@ -1,3 +1,5 @@
+# bb-app and @bb/desktop versions are locked together. See
+# apps/desktop/README.md#releasing and use scripts/bump-version.mjs.
 name: Publish bb-app
 
 on:

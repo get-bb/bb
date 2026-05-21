@@ -38,6 +38,29 @@ Artifacts are written under `apps/desktop/release/`. Without signing secrets,
 local and CI builds remain unsigned and macOS shows the normal Gatekeeper warning
 on first launch.
 
+## Releasing
+
+`bb-app` and `@bb/desktop` versions are LOCKED in lockstep. The desktop package
+depends on `bb-app: workspace:*`, and the displayed release version string must
+match `packages/bb-app/package.json`.
+
+To bump for a release:
+
+```bash
+node scripts/bump-version.mjs <new-version>
+```
+
+Then commit and ship through the normal `sawyer-next` → `main` flow. You can also
+use `--patch`, `--minor`, or `--major` instead of an explicit version.
+
+CI enforces this lockstep. Direct edits that leave
+`packages/bb-app/package.json` and `apps/desktop/package.json` with different
+versions fail the build. Never edit either package version directly for a
+release; use `scripts/bump-version.mjs` so both files move together.
+
+The desktop release tag uses the locked version: `desktop-v<version>` for
+immutable releases and `desktop-latest` for the moving pointer.
+
 ## macOS signing + notarization
 
 The desktop package is ready for Developer ID signing and Apple notarization.
