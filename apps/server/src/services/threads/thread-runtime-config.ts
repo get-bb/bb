@@ -21,7 +21,7 @@ import { renderTemplate } from "@bb/templates";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { getLastExecutionOptions } from "./thread-events.js";
-import { requireThreadStoragePath } from "./thread-storage.js";
+import { requireThreadStorageContext } from "./thread-storage.js";
 import {
   DEFAULT_REASONING_LEVEL,
   DEFAULT_SERVICE_TIER,
@@ -255,7 +255,7 @@ export async function resolveThreadRuntimeCommandConfig(
       workspaceProvisionType,
     };
   }
-  const threadStoragePath = await requireThreadStoragePath(deps, {
+  const threadStorageContext = await requireThreadStorageContext(deps, {
     hostId: args.environment.hostId,
     threadId: args.thread.id,
   });
@@ -267,15 +267,16 @@ export async function resolveThreadRuntimeCommandConfig(
     instructions: renderTemplate("managerAgentInstructions", {
       hostId: args.environment.hostId,
       localTimezone: resolveLocalTimezone(),
+      managerDataDir: threadStorageContext.dataDir,
       managerThreadId: args.thread.id,
-      threadStoragePath,
+      threadStoragePath: threadStorageContext.threadStoragePath,
       projectId: args.thread.projectId,
       projectName: project.name,
       projectRootPath,
     }),
     projectId: args.thread.projectId,
     providerId: args.thread.providerId,
-    threadStoragePath,
+    threadStoragePath: threadStorageContext.threadStoragePath,
     workspacePath,
     workspaceProvisionType,
   };

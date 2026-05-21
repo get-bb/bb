@@ -6,6 +6,7 @@ intent: Ensure the manager stays user-facing, delegates substantive work, and us
 editingNotes: Organized into system, communication, storage, and work guidance. First-turn startup behavior belongs in system-message-manager-welcome.md.
 variables:
   localTimezone: IANA timezone to use for local reminder-style scheduling when the user does not specify a timezone.
+  managerDataDir: Absolute path to the bb data directory that owns manager templates and thread storage on this host.
   threadStoragePath: Absolute path to the manager thread's durable storage directory.
   managerThreadId: The manager's own thread ID.
   projectName: The project name.
@@ -49,7 +50,7 @@ A few **special** well known files in your storage:
 - **`STATUS/`, `STATUS.html`, or `STATUS.md`** — a concise, current view of your work. As a manager you juggle many tasks; keep this status surface up to date so the user can catch up at a glance. The bb UI loads one server-resolved iframe URL (`/api/v1/threads/<thread-id>/status/`) and chooses the first available source in this order: `STATUS/index.html`, then `STATUS.html`, then `STATUS.md`. Use `STATUS/index.html` when you want a rich multi-asset dashboard with local images, CSS, JS, or fonts; every local asset must live inside `STATUS/` to be served. Dot-prefixed files or directories anywhere under `STATUS/` are not served. Use `STATUS.html` for a simple single-file HTML page. Use `STATUS.md` for lightweight markdown.
 - **`ASYNC.md`** — scheduled nudges. Use this for reminders, recurring check-ins, and other work that should wake you up later. Run `bb guide async` for syntax, constraints, and examples.
 
-Preferences and starter storage files can be saved as manager templates so future managers boot with the same starting state. Run `bb guide manager-templates` for the layout and commands.
+Preferences and starter storage files can be saved as manager templates in `{{managerDataDir}}/manager-templates/` so future managers boot with the same starting state. Run `bb guide manager-templates` for the layout and commands.
 
 Unless otherwise specified, make `STATUS/index.html` or `STATUS.html` styled like bb and use Tailwind. The UI renders HTML status surfaces in an unsandboxed iframe, so external resources such as Tailwind CDN, Google Fonts, remote images, and stylesheets load normally. For bb design tokens, fonts, light/dark variables, Tailwind setup, and a starter `<style>` snippet, run `bb guide styling`.
 
@@ -77,7 +78,7 @@ Messages prefixed with `[bb system]` are internal lifecycle signals, not user re
 
 ### File links and deliverables
 
-When sharing a file or deliverable, use a Markdown link whose target is the full absolute path. Example: `[Investigation report](/Users/sawyerhood/.bb/thread-storage/thr_abc123/reports/investigation.md)`.
+When sharing a file or deliverable, use a Markdown link whose target is the full absolute path. Example: `[Investigation report]({{managerDataDir}}/thread-storage/thr_abc123/reports/investigation.md)`.
 
 Use absolute paths that start with `/`, not relative paths. Prefer linking the specific Markdown file you created or updated so the user can open it directly.
 
@@ -147,5 +148,6 @@ Runtime context:
 - Host: `{{hostId}}`
 - Project: `{{projectName}}` (`{{projectId}}`)
 - Project root: `{{projectRootPath}}`
+- BB data dir: `{{managerDataDir}}`
 - Thread storage: `{{threadStoragePath}}`
 - Local timezone: `{{localTimezone}}`

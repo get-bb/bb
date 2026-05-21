@@ -375,6 +375,12 @@ describe("thread runtime config", () => {
         "Project root: `/tmp/runtime-project-root`",
       );
       expect(runtimeConfig.instructions).toContain(
+        `BB data dir: \`/tmp/bb-host-data/${hostId}\``,
+      );
+      expect(runtimeConfig.instructions).toContain(
+        `/tmp/bb-host-data/${hostId}/manager-templates/`,
+      );
+      expect(runtimeConfig.instructions).toContain(
         `Thread storage: \`/tmp/bb-host-data/${hostId}/thread-storage/${managerThread.id}\``,
       );
       expect(runtimeConfig.instructions).toContain(

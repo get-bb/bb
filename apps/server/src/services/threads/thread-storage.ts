@@ -7,12 +7,32 @@ export interface RequireThreadStoragePathArgs {
   threadId: string;
 }
 
+export interface ThreadStorageContext {
+  dataDir: string;
+  threadStoragePath: string;
+}
+
+export async function requireThreadStorageContext(
+  deps: WorkSessionDeps,
+  args: RequireThreadStoragePathArgs,
+): Promise<ThreadStorageContext> {
+  const session = await ensureHostSessionReadyForWork(deps, {
+    hostId: args.hostId,
+  });
+  return {
+    dataDir: session.dataDir,
+    threadStoragePath: path.join(
+      session.dataDir,
+      "thread-storage",
+      args.threadId,
+    ),
+  };
+}
+
 export async function requireThreadStoragePath(
   deps: WorkSessionDeps,
   args: RequireThreadStoragePathArgs,
 ): Promise<string> {
-  const session = await ensureHostSessionReadyForWork(deps, {
-    hostId: args.hostId,
-  });
-  return path.join(session.dataDir, "thread-storage", args.threadId);
+  const context = await requireThreadStorageContext(deps, args);
+  return context.threadStoragePath;
 }

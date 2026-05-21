@@ -17,7 +17,7 @@ command. This is how a fresh manager can boot with starter `PREFERENCES.md`,
 Directory layout:
 
 ```text
-~/.bb/manager-templates/
+<bb-data-dir>/manager-templates/
   active
   default/
     STATUS.html
@@ -26,9 +26,9 @@ Directory layout:
     STATUS.html
 ```
 
-In production, the default root is `~/.bb/manager-templates/`. In source
-development, the default root is `~/.bb-dev/manager-templates/`. If
-`BB_DATA_DIR` is set, use `$BB_DATA_DIR/manager-templates/`.
+In this guide, `<bb-data-dir>` is your bb data directory. It defaults to
+`~/.bb` for packaged installs (`npx bb-app@latest`) and `~/.bb-dev` for source
+development. Override it with the `BB_DATA_DIR` env var.
 
 `active` is a plain text file. bb reads the first line, trims it, and uses it
 as the template name. Missing or empty `active` means `default`. An invalid
@@ -40,7 +40,7 @@ Each subdirectory is a template set. The directory name is the template name.
 What gets seeded:
 
 bb copies every top-level regular file from the selected template directory
-into `<dataDir>/thread-storage/<manager-thread-id>/`. There is no filename
+into `<bb-data-dir>/thread-storage/<manager-thread-id>/`. There is no filename
 allowlist: `PREFERENCES.md`, `STATUS.html`, `STATUS.md`, and `ASYNC.md` are
 conventions, not the only files allowed. Subdirectories and symlinks are
 ignored. Dotfiles are copied if they are regular files. Existing destination
@@ -73,18 +73,18 @@ bb manager hire --template sawyer-next
 For future managers by default, edit the active pointer:
 
 ```bash
-mkdir -p ~/.bb/manager-templates
-printf 'sawyer-next\n' > ~/.bb/manager-templates/active
+DATA_DIR="${BB_DATA_DIR:-$HOME/.bb}"
+mkdir -p "$DATA_DIR/manager-templates"
+printf 'sawyer-next\n' > "$DATA_DIR/manager-templates/active"
 ```
 
-Use `~/.bb-dev/manager-templates` in source development, or
-`$BB_DATA_DIR/manager-templates` when `BB_DATA_DIR` is set. There is no
-dedicated CLI command today for changing the global active template.
+There is no dedicated CLI command today for changing the global active
+template.
 
 Creating a template:
 
 ```bash
-DATA_DIR="${BB_DATA_DIR:-$HOME/.bb-dev}"
+DATA_DIR="${BB_DATA_DIR:-$HOME/.bb}"
 mkdir -p "$DATA_DIR/manager-templates/sawyer-next"
 cp "$DATA_DIR/manager-templates/default/STATUS.html" \
   "$DATA_DIR/manager-templates/sawyer-next/STATUS.html"
@@ -92,15 +92,13 @@ $EDITOR "$DATA_DIR/manager-templates/sawyer-next/PREFERENCES.md"
 printf 'sawyer-next\n' > "$DATA_DIR/manager-templates/active"
 ```
 
-For packaged production bb, use `DATA_DIR="${BB_DATA_DIR:-$HOME/.bb}"`.
-
 Promoting current preferences:
 
 Managers see their storage path in runtime context. To save the current
 manager's `PREFERENCES.md` to the default template:
 
 ```bash
-DATA_DIR="${BB_DATA_DIR:-$HOME/.bb-dev}"
+DATA_DIR="${BB_DATA_DIR:-$HOME/.bb}"
 THREAD_STORAGE="/absolute/path/from-manager-runtime-context"
 mkdir -p "$DATA_DIR/manager-templates/default"
 cp "$THREAD_STORAGE/PREFERENCES.md" \
@@ -108,7 +106,6 @@ cp "$THREAD_STORAGE/PREFERENCES.md" \
 printf 'default\n' > "$DATA_DIR/manager-templates/active"
 ```
 
-For packaged production bb, use `DATA_DIR="${BB_DATA_DIR:-$HOME/.bb}"`.
 Copy `STATUS.html`, `STATUS.md`, or `ASYNC.md` into the same template
 directory when those starter files should be shared too.
 

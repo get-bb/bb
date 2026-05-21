@@ -80,6 +80,7 @@ describe("@bb/templates", () => {
     const rendered = renderTemplate("managerAgentInstructions", {
       hostId: "test-host-id",
       localTimezone: "America/Los_Angeles",
+      managerDataDir: "/tmp/bb-data",
       managerThreadId: "test-thread-123",
       threadStoragePath: "/tmp/test-thread-storage",
       projectId: "test-project-id",
@@ -109,15 +110,18 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("bb guide styling");
     expect(rendered).toContain("bb guide async");
     expect(rendered).toContain("bb guide manager-templates");
+    expect(rendered).toContain("/tmp/bb-data/manager-templates/");
     expect(rendered).not.toContain("Structure `ASYNC.md`");
     expect(rendered).not.toContain("--background: oklch(0.9551 0 0);");
     expect(rendered).not.toContain("starter/no-preferences content");
+    expect(rendered).not.toContain("/Users/sawyerhood/.bb/thread-storage");
 
     // Variables rendered
     expect(rendered).toContain("test-thread-123");
     expect(rendered).toContain("test-host-id");
     expect(rendered).toContain("Test Project");
     expect(rendered).toContain("America/Los_Angeles");
+    expect(rendered).toContain("/tmp/bb-data");
     expect(rendered).toContain("/tmp/test-thread-storage");
     expect(rendered).not.toContain("PREFERENCES.md contents");
   });
@@ -235,7 +239,11 @@ describe("@bb/templates", () => {
     const rendered = renderTemplate("bbGuideManagerTemplates", {});
 
     expect(rendered).toContain("Manager templates");
-    expect(rendered).toContain("~/.bb-dev/manager-templates/");
+    expect(rendered).toContain("<bb-data-dir>/manager-templates/");
+    expect(rendered).toContain('DATA_DIR="${BB_DATA_DIR:-$HOME/.bb}"');
+    expect(rendered).not.toContain("~/.bb/manager-templates");
+    expect(rendered).not.toContain("~/.bb-dev/manager-templates");
+    expect(rendered).not.toContain("$HOME/.bb-dev");
     expect(rendered).toContain("bb manager hire --template sawyer-next");
     expect(rendered).toContain("There is no filename\nallowlist");
     expect(rendered).toContain("Only top-level regular files are copied");

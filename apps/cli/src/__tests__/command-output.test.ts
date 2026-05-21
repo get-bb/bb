@@ -423,7 +423,10 @@ describe("CLI command output contracts", () => {
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output.trim().length).toBeGreaterThan(0);
     expect(output).toContain("Manager templates");
-    expect(output).toContain("~/.bb-dev/manager-templates/");
+    expect(output).toContain("<bb-data-dir>/manager-templates/");
+    expect(output).toContain('DATA_DIR="${BB_DATA_DIR:-$HOME/.bb}"');
+    expect(output).not.toContain("~/.bb/manager-templates");
+    expect(output).not.toContain("~/.bb-dev/manager-templates");
     expect(output).toContain("bb manager hire --template sawyer-next");
     expect(output).toContain("Only top-level regular files are copied");
   });
