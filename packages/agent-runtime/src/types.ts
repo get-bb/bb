@@ -43,6 +43,9 @@ export interface AgentRuntimeOptions {
   /** Environment variables injected into agent shell execution via adapters. */
   shellEnv?: AgentRuntimeShellEnvironment;
 
+  /** Root directory containing per-thread storage directories. */
+  threadStorageRootPath?: string;
+
   /** Optional directory containing bundled provider bridges. */
   bridgeBundleDir?: string;
 

@@ -303,16 +303,6 @@ export const hostReadFileRelativeCommandSchema = z
   })
   .strict();
 
-export const hostFileRelativePreconditionSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("none") }).strict(),
-  z.object({ type: z.literal("hash"), hash: z.string().min(1) }).strict(),
-  z.object({ type: z.literal("exists") }).strict(),
-  z.object({ type: z.literal("absent") }).strict(),
-]);
-export type HostFileRelativePrecondition = z.infer<
-  typeof hostFileRelativePreconditionSchema
->;
-
 export const hostWriteFileRelativeCommandSchema = z
   .object({
     type: z.literal("host.write_file_relative"),
@@ -321,7 +311,6 @@ export const hostWriteFileRelativeCommandSchema = z
     dotfiles: hostReadFileRelativeDotfilePolicySchema,
     content: z.string(),
     contentEncoding: z.enum(["base64", "utf8"]),
-    precondition: hostFileRelativePreconditionSchema,
   })
   .strict();
 
@@ -331,7 +320,6 @@ export const hostDeleteFileRelativeCommandSchema = z
     rootPath: z.string().min(1),
     path: z.string().min(1),
     dotfiles: hostReadFileRelativeDotfilePolicySchema,
-    precondition: hostFileRelativePreconditionSchema,
   })
   .strict();
 

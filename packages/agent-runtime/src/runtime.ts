@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
@@ -65,6 +66,11 @@ interface ResolveProviderRequestThreadIdArgs extends ResolveRuntimeProviderReque
   proc: ProviderProcess;
 }
 
+interface ResolveThreadStoragePathArgs {
+  options: AgentRuntimeInternalOptions;
+  threadId: string;
+}
+
 // ---------------------------------------------------------------------------
 // Runtime implementation
 // ---------------------------------------------------------------------------
@@ -127,6 +133,16 @@ interface RequireProviderRequestPlanArgs {
   commandType: AdapterCommand["type"];
   plan: ProviderCommandPlan;
   providerId: string;
+}
+
+function resolveThreadStoragePath(
+  args: ResolveThreadStoragePathArgs,
+): string | undefined {
+  const rootPath = args.options.threadStorageRootPath;
+  if (!rootPath) {
+    return undefined;
+  }
+  return path.join(rootPath, args.threadId);
 }
 
 /**
@@ -333,6 +349,10 @@ function createAgentRuntimeInternal(
       baseShellEnv: options.shellEnv,
       environmentId: currentConfig.environmentId,
       projectId: currentConfig.projectId,
+      threadStoragePath: resolveThreadStoragePath({
+        options,
+        threadId: args.threadId,
+      }),
       threadId: args.threadId,
     });
 
@@ -639,6 +659,10 @@ function createAgentRuntimeInternal(
         baseShellEnv: options.shellEnv,
         environmentId,
         projectId,
+        threadStoragePath: resolveThreadStoragePath({
+          options,
+          threadId,
+        }),
         threadId,
       });
 
@@ -759,6 +783,10 @@ function createAgentRuntimeInternal(
         baseShellEnv: options.shellEnv,
         environmentId,
         projectId,
+        threadStoragePath: resolveThreadStoragePath({
+          options,
+          threadId,
+        }),
         threadId,
       });
 

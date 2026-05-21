@@ -370,12 +370,10 @@ describe("host-daemon command schemas", () => {
         dotfiles: "deny",
         content: "[1,2,3]\n",
         contentEncoding: "utf8",
-        precondition: { type: "none" },
       }),
     ).toMatchObject({
       type: "host.write_file_relative",
       path: "tasks.json",
-      precondition: { type: "none" },
     });
 
     expect(
@@ -384,12 +382,10 @@ describe("host-daemon command schemas", () => {
         rootPath: "/tmp/bb-data/thread-storage/thread-123/STATUS-data",
         path: "tasks.json",
         dotfiles: "deny",
-        precondition: { type: "hash", hash: "abc123" },
       }),
     ).toMatchObject({
       type: "host.delete_file_relative",
       path: "tasks.json",
-      precondition: { type: "hash", hash: "abc123" },
     });
 
     expect(

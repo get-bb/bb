@@ -182,8 +182,10 @@ rl.on("line", (line) => {
 
     it("merges runtime shell env with per-thread context on start", async () => {
       const recordedCommands: AdapterCommand[] = [];
+      const threadStorageRootPath = join(tmpDir, "thread-storage");
       const runtime = createAgentRuntimeWithAdapters({
         workspacePath: tmpDir,
+        threadStorageRootPath,
         shellEnv: {
           PATH: "/tmp/bb-bin:/usr/bin",
           BB_HOST_DAEMON_PORT: "3002",
@@ -220,6 +222,7 @@ rl.on("line", (line) => {
         BB_HOST_DAEMON_PORT: "3002",
         BB_PROJECT_ID: "p1",
         BB_SERVER_URL: "http://127.0.0.1:3334",
+        BB_THREAD_STORAGE: join(threadStorageRootPath, "t1"),
         BB_THREAD_ID: "t1",
         BB_ENVIRONMENT_ID: "env-1",
       });

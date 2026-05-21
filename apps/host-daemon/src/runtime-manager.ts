@@ -175,6 +175,11 @@ export interface RuntimeManagerOptions {
   onProcessExit?: AgentRuntimeOptions["onProcessExit"];
 }
 
+interface RuntimeWorkspaceWriteRootsArgs {
+  threadStorageRootPath: string | null | undefined;
+  workspaceRoots: readonly string[];
+}
+
 export class RuntimeManager {
   private readonly createRuntime;
   private readonly hostWatcher;
@@ -197,6 +202,19 @@ export class RuntimeManager {
     this.hostWatcher = options.hostWatcher;
     this.provisionWorkspace = options.provisionWorkspace ?? provisionWorkspace;
     this.baseShellEnv = { ...(options.shellEnv ?? {}) };
+  }
+
+  private runtimeWorkspaceWriteRoots(
+    args: RuntimeWorkspaceWriteRootsArgs,
+  ): string[] {
+    const roots = [...args.workspaceRoots];
+    if (args.threadStorageRootPath) {
+      // Provider runtimes are environment-scoped and may host multiple threads.
+      // BB_THREAD_STORAGE still points agents at their own thread subdirectory;
+      // this root lets workspace-write sandboxes mutate that path.
+      roots.push(args.threadStorageRootPath);
+    }
+    return [...new Set(roots)];
   }
 
   private async createWorkspaceWatchState(
@@ -642,6 +660,7 @@ export class RuntimeManager {
       workspacePath,
       additionalWorkspaceWriteRoots: [],
       shellEnv: this.getShellEnv(),
+      threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
       onCapture: this.options.onCapture,
       onEvent: (event) => {
@@ -691,11 +710,15 @@ export class RuntimeManager {
     }
 
     const workspace = await this.provisionWorkspace(provision);
-    const [workspaceWatchState, additionalWorkspaceWriteRoots] =
+    const [workspaceWatchState, workspaceWriteRoots] =
       await Promise.all([
         this.createWorkspaceWatchState(workspace),
         workspace.getAdditionalWorkspaceWriteRoots(),
       ]);
+    const additionalWorkspaceWriteRoots = this.runtimeWorkspaceWriteRoots({
+      threadStorageRootPath: this.options.threadStorageRootPath,
+      workspaceRoots: workspaceWriteRoots,
+    });
     const stopWatchingStatus = this.hostWatcher
       ? this.hostWatcher.watchWorkspace({
           environmentId: args.environmentId,
@@ -723,6 +746,7 @@ export class RuntimeManager {
         workspacePath: workspace.path,
         additionalWorkspaceWriteRoots,
         shellEnv: this.getShellEnv(),
+        threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
         bridgeBundleDir: this.options.bridgeBundleDir,
         onCapture: this.options.onCapture,
         onEvent: (event) => {

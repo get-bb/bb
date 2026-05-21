@@ -464,6 +464,7 @@ function buildStatusStateBootstrap(
   return {
     threadId: args.threadId,
     listUrl: `/api/v1/threads/${encodeURIComponent(args.threadId)}/status-data`,
+    mutationUrl: `/api/v1/threads/${encodeURIComponent(args.threadId)}/status-state`,
     sendMessageUrl: `/api/v1/threads/${encodeURIComponent(args.threadId)}/send`,
     wsUrl: buildStatusStateWebSocketUrl(deps, args.requestUrl),
   };

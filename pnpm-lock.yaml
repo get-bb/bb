@@ -495,6 +495,9 @@ importers:
       better-sqlite3:
         specifier: ^12.10.0
         version: 12.10.0
+      chokidar:
+        specifier: 4.0.3
+        version: 4.0.3
       cron-parser:
         specifier: ^5.5.0
         version: 5.5.0
@@ -1205,6 +1208,9 @@ importers:
       drizzle-orm:
         specifier: ^0.38.4
         version: 0.38.4(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@12.10.0)(kysely@0.28.15)(react@19.2.4)
+      ws:
+        specifier: ^8.19.0
+        version: 8.19.0
     devDependencies:
       '@bb/tsconfig':
         specifier: workspace:*
@@ -1212,6 +1218,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

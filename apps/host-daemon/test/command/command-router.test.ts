@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -40,10 +39,6 @@ type EnsureProviderArgs = Parameters<AgentRuntime["ensureProvider"]>[0];
 type ListModelsArgs = Parameters<AgentRuntime["listModels"]>[0];
 type ListModelsResult = Awaited<ReturnType<AgentRuntime["listModels"]>>;
 type GetDiffResult = Awaited<ReturnType<HostWorkspace["getDiff"]>>;
-
-function sha256(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
-}
 
 async function makeTempDir(prefix: string): Promise<string> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -424,7 +419,7 @@ describe("CommandRouter", () => {
     );
   });
 
-  it("serializes relative host file writes so same-hash CAS allows exactly one concurrent writer", async () => {
+  it("serializes relative host file writes with last-write-wins behavior", async () => {
     const rootPath = await makeTempDir("bb-command-router-status-data-");
     const initialContent = "[\"seed\"]\n";
     await fs.writeFile(path.join(rootPath, "todos.json"), initialContent);
@@ -454,7 +449,6 @@ describe("CommandRouter", () => {
           dotfiles: "deny",
           content: "[\"a\"]\n",
           contentEncoding: "utf8",
-          precondition: { type: "hash", hash: sha256(initialContent) },
         },
       },
       {
@@ -467,22 +461,16 @@ describe("CommandRouter", () => {
           dotfiles: "deny",
           content: "[\"b\"]\n",
           contentEncoding: "utf8",
-          precondition: { type: "hash", hash: sha256(initialContent) },
         },
       },
     ]);
 
     expect(reports).toHaveLength(2);
-    expect(reports.filter((report) => report.ok)).toHaveLength(1);
-    expect(
-      reports.filter(
-        (report) => !report.ok && report.errorCode === "precondition_failed",
-      ),
-    ).toHaveLength(1);
+    expect(reports.filter((report) => report.ok)).toHaveLength(2);
     const finalContent = await fs.readFile(path.join(rootPath, "todos.json"), {
       encoding: "utf8",
     });
-    expect(["[\"a\"]\n", "[\"b\"]\n"]).toContain(finalContent);
+    expect(finalContent).toBe("[\"b\"]\n");
   });
 
   it("flushes buffered provider events before reporting thread command results", async () => {

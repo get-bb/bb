@@ -1,5 +1,6 @@
 export interface StatusStateBootstrap {
   listUrl: string;
+  mutationUrl: string;
   sendMessageUrl: string;
   threadId: string;
   wsUrl: string;
@@ -305,7 +306,7 @@ function buildStatusStateClientJavascript(bootstrapJson: string): string {
   }
 
   function keyUrl(key) {
-    return bootstrap.listUrl.replace(/\\/$/, "") + "/" + encodeURIComponent(key);
+    return bootstrap.mutationUrl.replace(/\\/$/, "") + "/" + encodeURIComponent(key);
   }
 
   function rememberPending(operationId, key, value, deleted) {

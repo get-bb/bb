@@ -57,6 +57,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     isDevelopment: false,
     openAiApiKey: "ambient-openai-key",
     serverPort: 38886,
+    threadStorageRootPath: "/tmp/bb-test/thread-storage",
     transcriptionModel: "openai/gpt-4o-transcribe",
   };
 }

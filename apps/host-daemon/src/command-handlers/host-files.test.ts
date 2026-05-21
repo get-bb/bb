@@ -290,7 +290,6 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
       dotfiles: "deny",
       content,
       contentEncoding: "utf8",
-      precondition: { type: "none" },
     });
 
     expect(result).toMatchObject({
@@ -301,65 +300,6 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
     await expect(
       fs.readFile(path.join(rootPath, "STATUS-data/tasks.json"), "utf8"),
     ).resolves.toBe(content);
-  });
-
-  it("enforces hash, exists, and absent preconditions", async () => {
-    const rootPath = await makeTempDir("bb-host-relative-cas-");
-    const initial = await writeHostRelativeFile({
-      type: "host.write_file_relative",
-      rootPath,
-      path: "tasks.json",
-      dotfiles: "deny",
-      content: "1\n",
-      contentEncoding: "utf8",
-      precondition: { type: "absent" },
-    });
-
-    await expect(
-      writeHostRelativeFile({
-        type: "host.write_file_relative",
-        rootPath,
-        path: "tasks.json",
-        dotfiles: "deny",
-        content: "2\n",
-        contentEncoding: "utf8",
-        precondition: { type: "absent" },
-      }),
-    ).rejects.toMatchObject({ code: "precondition_failed" });
-
-    await expect(
-      writeHostRelativeFile({
-        type: "host.write_file_relative",
-        rootPath,
-        path: "tasks.json",
-        dotfiles: "deny",
-        content: "2\n",
-        contentEncoding: "utf8",
-        precondition: { type: "hash", hash: "wrong" },
-      }),
-    ).rejects.toMatchObject({ code: "precondition_failed" });
-
-    await writeHostRelativeFile({
-      type: "host.write_file_relative",
-      rootPath,
-      path: "tasks.json",
-      dotfiles: "deny",
-      content: "2\n",
-      contentEncoding: "utf8",
-      precondition: { type: "hash", hash: initial.hash },
-    });
-
-    await expect(
-      writeHostRelativeFile({
-        type: "host.write_file_relative",
-        rootPath,
-        path: "missing.json",
-        dotfiles: "deny",
-        content: "3\n",
-        contentEncoding: "utf8",
-        precondition: { type: "exists" },
-      }),
-    ).rejects.toMatchObject({ code: "precondition_failed" });
   });
 
   it("rejects traversal, dotfiles, directories, and symlink targets", async () => {
@@ -379,7 +319,6 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
         dotfiles: "deny",
         content: "{}\n",
         contentEncoding: "utf8",
-        precondition: { type: "none" },
       }),
     ).rejects.toMatchObject({ code: "invalid_path" });
 
@@ -391,7 +330,6 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
         dotfiles: "deny",
         content: "{}\n",
         contentEncoding: "utf8",
-        precondition: { type: "none" },
       }),
     ).rejects.toMatchObject({ code: "ENOENT" });
 
@@ -403,7 +341,6 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
         dotfiles: "deny",
         content: "{}\n",
         contentEncoding: "utf8",
-        precondition: { type: "none" },
       }),
     ).rejects.toMatchObject({ code: "invalid_path" });
 
@@ -415,12 +352,11 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
         dotfiles: "deny",
         content: "{}\n",
         contentEncoding: "utf8",
-        precondition: { type: "none" },
       }),
     ).rejects.toMatchObject({ code: "invalid_path" });
   });
 
-  it("deletes files idempotently unless a precondition is required", async () => {
+  it("deletes files idempotently", async () => {
     const rootPath = await makeTempDir("bb-host-relative-delete-");
     const written = await writeHostRelativeFile({
       type: "host.write_file_relative",
@@ -429,7 +365,6 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
       dotfiles: "deny",
       content: "[]\n",
       contentEncoding: "utf8",
-      precondition: { type: "none" },
     });
 
     const deleted = await deleteHostRelativeFile({
@@ -437,7 +372,6 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
       rootPath,
       path: "tasks.json",
       dotfiles: "deny",
-      precondition: { type: "hash", hash: written.hash },
     });
     expect(deleted).toEqual({
       path: "tasks.json",
@@ -454,17 +388,6 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
         rootPath,
         path: "tasks.json",
         dotfiles: "deny",
-        precondition: { type: "hash", hash: written.hash },
-      }),
-    ).rejects.toMatchObject({ code: "precondition_failed" });
-
-    await expect(
-      deleteHostRelativeFile({
-        type: "host.delete_file_relative",
-        rootPath,
-        path: "tasks.json",
-        dotfiles: "deny",
-        precondition: { type: "none" },
       }),
     ).resolves.toEqual({
       path: "tasks.json",

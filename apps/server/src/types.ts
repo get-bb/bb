@@ -7,6 +7,7 @@ import type { MachineAuthService } from "./services/machine-auth.js";
 import type { AppVersionService } from "./services/system/app-version.js";
 import type { BbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import type { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
+import type { StatusDataFileEventState } from "./services/threads/status-data-files.js";
 import type { LifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { NotificationHub } from "./ws/hub.js";
 
@@ -21,6 +22,7 @@ export interface ServerRuntimeConfig {
   isDevelopment: boolean;
   openAiApiKey: string;
   serverPort: number;
+  threadStorageRootPath: string;
   transcriptionModel: string;
   appUrl?: string;
 }
@@ -34,6 +36,7 @@ export interface AppDeps {
   logger: ServerLogger;
   machineAuth: MachineAuthService;
   pendingInteractions: PendingInteractionLifecycle;
+  statusDataFileEvents: StatusDataFileEventState;
   terminalSessions: TerminalSessionLifecycle;
 }
 

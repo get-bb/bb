@@ -357,6 +357,28 @@ describe("RuntimeManager", () => {
     ]);
   });
 
+  it("passes thread storage root to created runtimes as a workspace-write root", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const runtimeOptions: RuntimeOptionsRef = { current: null };
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+      createRuntime: (options) => {
+        runtimeOptions.current = options;
+        return createFakeRuntime();
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-thread-storage-root",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(runtimeOptions.current?.additionalWorkspaceWriteRoots).toEqual([
+      "/tmp/bb-thread-storage",
+    ]);
+  });
+
   it("passes shell env through to created runtimes", async () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const createRuntime = vi.fn(() => createFakeRuntime());

@@ -177,7 +177,6 @@ export async function writeHostRelativeFile(
     dotfiles: command.dotfiles,
     content: command.content,
     contentEncoding: command.contentEncoding,
-    precondition: command.precondition,
   });
 }
 
@@ -188,6 +187,5 @@ export async function deleteHostRelativeFile(
     rootPath: command.rootPath,
     relativePath: command.path,
     dotfiles: command.dotfiles,
-    precondition: command.precondition,
   });
 }

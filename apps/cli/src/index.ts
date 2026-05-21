@@ -8,7 +8,6 @@ import { registerProjectCommands } from "./commands/project.js";
 import { registerProviderCommands } from "./commands/provider.js";
 import { registerReplayCommands } from "./commands/replay.js";
 import { registerStatusCommand } from "./commands/status.js";
-import { registerStatusStateCommand } from "./commands/status-state.js";
 import { registerThreadCommands } from "./commands/thread/index.js";
 import { resolveContextSnapshot, resolveServerUrl } from "./context-env.js";
 import { resolveBbCliVersion } from "./version.js";
@@ -54,7 +53,6 @@ registerManagerCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerReplayCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
-registerStatusStateCommand(program, getUrl);
 registerGuideCommand(program);
 
 program.parseAsync(process.argv).catch((err) => {

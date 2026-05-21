@@ -29,6 +29,8 @@ import { createMachineAuthService } from "../../../apps/server/src/services/mach
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { TerminalSessionLifecycle } from "../../../apps/server/src/services/terminals/terminal-session-lifecycle.js";
+import { StatusDataFileEventState } from "../../../apps/server/src/services/threads/status-data-files.js";
+import { startStatusStateFileWatcher } from "../../../apps/server/src/services/threads/status-state-watcher.js";
 import type {
   ServerLogger,
   ServerRuntimeConfig,
@@ -86,6 +88,7 @@ export interface IntegrationHarness {
   serverUrl: string;
   shutdownDaemon(reason?: string): Promise<void>;
   startDaemon(): Promise<void>;
+  threadStorageRootPath: string;
 }
 
 export interface CreateHarnessOptions {
@@ -207,6 +210,7 @@ export async function loadProjectEnvFile(): Promise<string | null> {
 
 async function startIntegrationServer(
   tmpRoot: string,
+  threadStorageRootPath: string,
   options: CreateHarnessOptions,
 ): Promise<RunningTestServer> {
   const serverDataDir = path.join(tmpRoot, "server-data");
@@ -227,6 +231,7 @@ async function startIntegrationServer(
     logger: testLogger,
     openTimeoutMs: 50,
   });
+  const statusDataFileEvents = new StatusDataFileEventState();
   pendingInteractions.start();
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-dev",
@@ -237,6 +242,7 @@ async function startIntegrationServer(
     openAiApiKey: process.env.OPENAI_API_KEY ?? "test-openai-key",
     appUrl: "https://bb.example.test",
     serverPort: 0,
+    threadStorageRootPath,
     transcriptionModel: "test/mock-transcription",
     isDevelopment: false,
   };
@@ -267,7 +273,14 @@ async function startIntegrationServer(
     logger: testLogger,
     machineAuth,
     pendingInteractions,
+    statusDataFileEvents,
     terminalSessions,
+  });
+  const statusStateFileWatcher = await startStatusStateFileWatcher({
+    events: statusDataFileEvents,
+    hub,
+    logger: testLogger,
+    rootPath: threadStorageRootPath,
   });
 
   let addressInfo: ListeningAddress | null = null;
@@ -302,6 +315,8 @@ async function startIntegrationServer(
     hub,
     machineAuth,
     async close(): Promise<void> {
+      await statusStateFileWatcher.close();
+      statusDataFileEvents.dispose();
       hostLifecycle.dispose();
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
@@ -319,6 +334,7 @@ async function startIntegrationServer(
 async function startHarnessDaemon(
   dataDir: string,
   server: RunningTestServer,
+  threadStorageRootPath: string,
   options: CreateHarnessOptions,
 ): Promise<HarnessDaemonResources> {
   const releaseLock = await acquireDaemonLock(dataDir);
@@ -352,6 +368,7 @@ async function startHarnessDaemon(
       logger: testLogger,
       releaseLock,
       serverUrl: server.baseUrl,
+      threadStorageRootPath,
     });
     for (
       let attempt = 1;
@@ -398,6 +415,8 @@ export async function createIntegrationHarness(
   );
   const reposRoot = path.join(tmpRoot, "repos");
   const daemonDataDir = path.join(tmpRoot, "daemon-data");
+  const threadStorageRootPath = path.join(daemonDataDir, "thread-storage");
+  await fs.mkdir(threadStorageRootPath, { recursive: true });
   const repoDir = await createTestGitRepo({
     repoDir: path.join(reposRoot, "test-project"),
   });
@@ -418,7 +437,12 @@ export async function createIntegrationHarness(
       return;
     }
 
-    daemonResources = await startHarnessDaemon(daemonDataDir, server, options);
+    daemonResources = await startHarnessDaemon(
+      daemonDataDir,
+      server,
+      threadStorageRootPath,
+      options,
+    );
     if (daemonResources.hostId !== harness.hostId) {
       const mismatchedResources = daemonResources;
       daemonResources = null;
@@ -486,9 +510,18 @@ export async function createIntegrationHarness(
   }
 
   try {
-    server = await startIntegrationServer(tmpRoot, options);
+    server = await startIntegrationServer(
+      tmpRoot,
+      threadStorageRootPath,
+      options,
+    );
     const api = createPublicApiClient(server.baseUrl);
-    daemonResources = await startHarnessDaemon(daemonDataDir, server, options);
+    daemonResources = await startHarnessDaemon(
+      daemonDataDir,
+      server,
+      threadStorageRootPath,
+      options,
+    );
     await waitForHostConnected(api);
 
     harness = {
@@ -508,6 +541,7 @@ export async function createIntegrationHarness(
       serverUrl: server.baseUrl,
       shutdownDaemon,
       startDaemon,
+      threadStorageRootPath,
     };
 
     return harness;

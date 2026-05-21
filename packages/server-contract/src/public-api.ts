@@ -47,11 +47,8 @@ import type {
   ThreadHostFileContentQuery,
   ThreadStorageFilesQuery,
   ThreadStatusVersionResponse,
-  ThreadStatusDataDeleteResponse,
   ThreadStatusDataGetResponse,
   ThreadStatusDataListResponse,
-  ThreadStatusDataPutRequest,
-  ThreadStatusDataPutResponse,
   ProjectAttachmentContentQuery,
   ProjectBranchesQuery,
   ProjectBranchesResponse,
@@ -543,13 +540,6 @@ export type PublicApiSchema = {
   "/threads/:id/status-data/:key": {
     /** Read one persistent reactive JSON state value for a STATUS dashboard. */
     $get: Endpoint<PathThreadStatusDataKey, ThreadStatusDataGetResponse>;
-    /** Persist one reactive JSON state value and broadcast the committed change. */
-    $put: Endpoint<
-      PathThreadStatusDataKey & { json: ThreadStatusDataPutRequest },
-      ThreadStatusDataPutResponse
-    >;
-    /** Delete one reactive JSON state value and broadcast the committed change. */
-    $delete: Endpoint<PathThreadStatusDataKey, ThreadStatusDataDeleteResponse>;
   };
   "/threads/:id/thread-storage/files": {
     /**

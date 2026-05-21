@@ -77,6 +77,7 @@ class FakeWebSocket {
 const bootstrap: StatusStateBootstrap = {
   threadId: "thread-1",
   listUrl: "/api/v1/threads/thread-1/status-data",
+  mutationUrl: "/api/v1/threads/thread-1/status-state",
   sendMessageUrl: "/api/v1/threads/thread-1/send",
   wsUrl: "ws://localhost:3334/ws",
 };

@@ -2,8 +2,8 @@
 kind: instruction
 title: bb Guide - STATUS State
 summary: Persistent reactive JSON state and manager messaging for STATUS dashboards.
-intent: Explain window.bbStatusState, window.bbThreadTell, STATUS-data storage, and the status-state CLI.
-editingNotes: Keep this aligned with the /api/v1/threads/:id/status-data and /api/v1/threads/:id/send routes plus the injected client.
+intent: Explain window.bbStatusState, window.bbThreadTell, direct STATUS-data storage, and atomic agent writes.
+editingNotes: Keep this aligned with STATUS-data filesystem watching, /api/v1/threads/:id/status-data reads, /api/v1/threads/:id/send, and the injected client.
 ---
 STATUS state
 
@@ -20,7 +20,7 @@ and manager agent both need to read or update.
 Storage layout:
 
 ```text
-<thread-storage>/
+$BB_THREAD_STORAGE/
   STATUS/
     index.html
   STATUS-data/
@@ -28,9 +28,35 @@ Storage layout:
     dashboard-prefs.json
 ```
 
-Each key is one flat file at `STATUS-data/<key>.json`. Keys must match
-`^[A-Za-z0-9_-]{1,80}$`; bb appends `.json`. The file stores the raw JSON value,
-not an envelope.
+`BB_THREAD_STORAGE` is the canonical path to the current thread's durable
+storage. Each key is one flat file at `STATUS-data/<key>.json`. Keys must match
+`^[A-Za-z0-9_-]{1,80}$`; no colons, slashes, dots, spaces, or nested paths. The
+file stores the raw JSON value, not an envelope.
+
+Agent writes:
+
+Write via a temp file in the same directory, then `mv` it into place. Same-dir
+rename is atomic on macOS and Linux, and the server-wide watcher broadcasts the
+committed change on `thread:<thread-id>:status-data`.
+
+```bash
+key="tasks"
+json='[{"id":"task-1","title":"Review","status":"todo"}]'
+dir="$BB_THREAD_STORAGE/STATUS-data"
+mkdir -p "$dir"
+tmp=$(mktemp "$dir/.${key}.XXXXXX")
+printf '%s\n' "$json" > "$tmp" && mv "$tmp" "$dir/${key}.json"
+```
+
+Delete with `rm`:
+
+```bash
+rm -f "$BB_THREAD_STORAGE/STATUS-data/tasks.json"
+```
+
+Malformed JSON or invalid key filenames are ignored and logged by the server;
+they do not broadcast. STATUS state is last-write-wins. There is no
+compare-and-set path for agent filesystem writes.
 
 Browser API:
 
@@ -68,9 +94,8 @@ Hydration and reactivity:
   registered. `on("*", cb)` fires once for each existing key.
 - Local `set` and `delete` calls update the in-memory state optimistically and
   fire callbacks with `source: "local"` and `optimistic: true`.
-- Committed writes are broadcast over bb's realtime WebSocket on the
-  `thread:<thread-id>:status-data` channel. Other open tabs receive callbacks
-  with `source: "remote"`.
+- Agent filesystem writes, browser writes, and deletes broadcast over bb's
+  realtime WebSocket on the `thread:<thread-id>:status-data` channel.
 - On WebSocket reconnect, the client lists current state again and fires
   `operation: "resync"` callbacks for differences.
 - STATUS-data writes do not affect `status-version`, so they do not reload the
@@ -157,38 +182,11 @@ document.querySelector("#manager-send").addEventListener("click", async () => {
 </script>
 ```
 
-Agent and CLI writes:
-
-```bash
-bb status-state list <thread-id>
-bb status-state get <thread-id> <key>
-bb status-state set <thread-id> <key> '<json>'
-bb status-state set <thread-id> <key> @/tmp/value.json
-bb status-state delete <thread-id> <key>
-```
-
-`list` prints all values. `get` prints one raw JSON value and exits non-zero if
-the key is missing. `set` parses inline JSON or `@file` JSON. CLI writes go
-through the server API, so open dashboards receive broadcasts.
-
-CAS is available through the CLI and HTTP layer:
-
-```bash
-bb status-state set <thread-id> tasks @/tmp/tasks.json --if-match <version>
-bb status-state set <thread-id> tasks '[]' --create-only
-bb status-state delete <thread-id> tasks --must-exist
-```
-
-The browser global is intentionally last-write-wins. Use CLI or direct HTTP
-preconditions when an agent needs compare-and-set behavior.
-
 Limits:
 
-There is no new bb-specific size cap for v1. Existing server request limits,
-daemon file transport limits, browser memory, and JSON parse costs still apply.
-Direct filesystem edits to `STATUS-data/` are visible after reload, reconnect,
-or explicit reads, but they do not broadcast in v1; use `bb status-state set`
-or `delete` for reactive agent writes.
+There is no new bb-specific size cap for v1. Existing browser memory, file
+transport, and JSON parse costs still apply. Keep STATUS-data values focused on
+dashboard state, not large artifacts.
 
 Related guides:
 

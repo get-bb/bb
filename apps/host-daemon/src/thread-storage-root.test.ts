@@ -27,10 +27,21 @@ describe("thread storage root", () => {
   it("creates the shared thread-storage directory under the host data dir", async () => {
     const dataDir = await makeTempDir("bb-thread-storage-root-");
 
-    const rootPath = await ensureThreadStorageRoot(dataDir);
+    const rootPath = await ensureThreadStorageRoot(dataDir, { env: {} });
     const stats = await fs.stat(rootPath);
 
-    expect(rootPath).toBe(threadStorageRootPath(dataDir));
+    expect(rootPath).toBe(threadStorageRootPath(dataDir, { env: {} }));
     expect(stats.isDirectory()).toBe(true);
+  });
+
+  it("uses BB_THREAD_STORAGE when provided", async () => {
+    const dataDir = await makeTempDir("bb-thread-storage-root-data-");
+    const configuredRoot = await makeTempDir("bb-thread-storage-root-env-");
+
+    const rootPath = await ensureThreadStorageRoot(dataDir, {
+      env: { BB_THREAD_STORAGE: configuredRoot },
+    });
+
+    expect(rootPath).toBe(configuredRoot);
   });
 });

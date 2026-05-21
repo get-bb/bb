@@ -281,6 +281,7 @@ export interface CreateHostDaemonAppOptions {
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
   runtimeShellEnv?: AgentRuntimeOptions["shellEnv"];
+  threadStorageRootPath?: string;
   hostWatcher?: HostWatcher;
   onToolCall?: (request: ToolCallRequest) => Promise<ToolCallResponse>;
   pickFolder?: () => Promise<string | null>;
@@ -307,7 +308,12 @@ interface PendingInteractiveInterruptRequest {
 export async function createHostDaemonApp(
   options: CreateHostDaemonAppOptions,
 ): Promise<HostDaemonApp> {
-  const threadStorageRootPath = await ensureThreadStorageRoot(options.dataDir);
+  const threadStorageRootPath = await ensureThreadStorageRoot(
+    options.dataDir,
+    options.threadStorageRootPath
+      ? { env: { BB_THREAD_STORAGE: options.threadStorageRootPath } }
+      : {},
+  );
   const sessionState: SessionState = {
     value: null,
   };

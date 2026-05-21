@@ -1,10 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type {
-  HostFileRelativePrecondition,
-  HostReadFileRelativeDotfilePolicy,
-} from "@bb/host-daemon-contract";
+import type { HostReadFileRelativeDotfilePolicy } from "@bb/host-daemon-contract";
 import {
   CommandDispatchError,
   ExpectedCommandDispatchError,
@@ -40,11 +37,6 @@ interface ResolvedWritableTarget {
   rootPath: string;
 }
 
-interface AssertPreconditionArgs {
-  existing: ExistingFileSnapshot | null;
-  precondition: HostFileRelativePrecondition;
-}
-
 interface ReadExistingSnapshotArgs {
   targetPath: string;
 }
@@ -53,7 +45,6 @@ interface WriteRootRelativeFileArgs {
   content: string;
   contentEncoding: "base64" | "utf8";
   dotfiles: HostReadFileRelativeDotfilePolicy;
-  precondition: HostFileRelativePrecondition;
   relativePath: string;
   rootPath: string;
 }
@@ -67,7 +58,6 @@ interface WriteRootRelativeFileResult {
 
 interface DeleteRootRelativeFileArgs {
   dotfiles: HostReadFileRelativeDotfilePolicy;
-  precondition: HostFileRelativePrecondition;
   relativePath: string;
   rootPath: string;
 }
@@ -204,37 +194,6 @@ async function readExistingSnapshot(
   };
 }
 
-function assertPrecondition(args: AssertPreconditionArgs): void {
-  switch (args.precondition.type) {
-    case "none":
-      return;
-    case "hash":
-      if (args.existing?.hash === args.precondition.hash) {
-        return;
-      }
-      throw new CommandDispatchError(
-        "precondition_failed",
-        "File hash precondition failed",
-      );
-    case "exists":
-      if (args.existing) {
-        return;
-      }
-      throw new CommandDispatchError(
-        "precondition_failed",
-        "File must already exist",
-      );
-    case "absent":
-      if (!args.existing) {
-        return;
-      }
-      throw new CommandDispatchError(
-        "precondition_failed",
-        "File must not already exist",
-      );
-  }
-}
-
 export async function writeRootRelativeFile(
   args: WriteRootRelativeFileArgs,
 ): Promise<WriteRootRelativeFileResult> {
@@ -246,10 +205,9 @@ export async function writeRootRelativeFile(
     rootPath: args.rootPath,
     relativePath,
   });
-  const existing = await readExistingSnapshot({
+  await readExistingSnapshot({
     targetPath: target.absolutePath,
   });
-  assertPrecondition({ existing, precondition: args.precondition });
 
   const bytes = decodeWriteContent(args.content, args.contentEncoding);
   const tempPath = path.join(
@@ -287,7 +245,6 @@ export async function deleteRootRelativeFile(
   const existing = await readExistingSnapshot({
     targetPath: target.absolutePath,
   });
-  assertPrecondition({ existing, precondition: args.precondition });
   if (!existing) {
     return {
       path: target.resultPath,

@@ -19,11 +19,13 @@
     "@bb/server-contract": "workspace:*",
     "@bb/test-helpers": "workspace:*",
     "@hono/node-server": "^1.19.11",
-    "drizzle-orm": "^0.38.4"
+    "drizzle-orm": "^0.38.4",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.7.0",
     "vitest": "^4.1.1"
   }

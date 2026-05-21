@@ -1030,26 +1030,6 @@ export type ThreadStatusDataGetResponse = z.infer<
   typeof threadStatusDataGetResponseSchema
 >;
 
-export const threadStatusDataPutRequestSchema = z.object({
-  value: jsonValueSchema,
-});
-export type ThreadStatusDataPutRequest = z.infer<
-  typeof threadStatusDataPutRequestSchema
->;
-
-export const threadStatusDataPutResponseSchema =
-  threadStatusDataGetResponseSchema;
-export type ThreadStatusDataPutResponse = z.infer<
-  typeof threadStatusDataPutResponseSchema
->;
-
-export const threadStatusDataDeleteResponseSchema = z.object({
-  ok: z.literal(true),
-});
-export type ThreadStatusDataDeleteResponse = z.infer<
-  typeof threadStatusDataDeleteResponseSchema
->;
-
 export const statusStateBroadcastMessageSchema = z.object({
   type: z.literal("status-data.changed"),
   threadId: z.string().min(1),
