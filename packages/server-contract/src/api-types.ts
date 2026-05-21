@@ -68,6 +68,12 @@ export type ThreadContextWindowUsage = z.infer<
   typeof threadContextWindowUsageSchema
 >;
 
+export const bbDesktopInfoSchema = z.object({
+  platform: z.literal("macos"),
+  version: z.string().min(1),
+});
+export type BbDesktopInfo = z.infer<typeof bbDesktopInfoSchema>;
+
 // --- Thread creation: environment + workspace discriminated unions ---
 
 const gitBranchForbiddenCharacterPattern = /[\u0000-\u001f\u007f\\:~^?*\[]/u;

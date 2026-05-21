@@ -57,6 +57,7 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
 
 class FakeDesktopWindow implements DesktopBrowserWindow {
   public readonly loadedUrls: string[] = [];
+  public readonly options: BrowserWindowConstructorOptions;
   public readonly webContents = new FakeDesktopWindowWebContents();
   public focused = false;
   public fullScreen = false;
@@ -69,6 +70,7 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   private readyToShowListener: (() => void) | null = null;
 
   constructor(args: FakeDesktopWindowArgs) {
+    this.options = args.options;
     this.bounds = {
       height: args.options.height ?? 0,
       width: args.options.width ?? 0,
@@ -192,6 +194,7 @@ describe("desktop window factory", () => {
 
     expect(firstWindow).not.toBe(secondWindow);
     expect(createdWindows).toHaveLength(2);
+    expect(createdWindows[0]?.options.titleBarStyle).toBe("hiddenInset");
     expect(createdWindows[0]?.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
     expect(createdWindows[1]?.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
     expect(runtimeSupervisorInvocations).toBe(1);

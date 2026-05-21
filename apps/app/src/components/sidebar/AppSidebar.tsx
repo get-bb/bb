@@ -23,6 +23,7 @@ interface AppSidebarProps {
   isResizing: boolean;
   selectedProjectId?: string;
   isManagerActionPending?: boolean;
+  showInlineTrigger: boolean;
 }
 
 export function AppSidebar({
@@ -30,6 +31,7 @@ export function AppSidebar({
   isResizing,
   selectedProjectId,
   isManagerActionPending = false,
+  showInlineTrigger,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const newManagerDialog = useNewManagerDialog();
@@ -65,11 +67,15 @@ export function AppSidebar({
   return (
     <>
       <Sidebar>
-        {/* Matches the page-header height so the sidebar's top region mirrors
-            the chrome on the right of the sidebar. */}
-        <div className="flex h-12 shrink-0 items-center px-2">
-          <SidebarTrigger />
-        </div>
+        {showInlineTrigger ? (
+          /* Matches the page-header height so the sidebar's top region mirrors
+             the chrome on the right of the sidebar. */
+          <div className="flex h-12 shrink-0 items-center px-2">
+            <SidebarTrigger />
+          </div>
+        ) : (
+          <div className="h-10 shrink-0" aria-hidden="true" />
+        )}
         <div className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden">
           <ProjectListActionButtons
             onNewChat={newChatAction}

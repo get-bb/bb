@@ -147,6 +147,7 @@ function createWindowOptions(
     minWidth: MIN_WINDOW_WIDTH,
     show: false,
     title: "bb",
+    titleBarStyle: "hiddenInset",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
