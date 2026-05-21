@@ -7,7 +7,7 @@ export default defineConfig({
   test: {
     silent: "passed-only",
     name: "@bb/scripts",
-    include: ["test/**/*.test.ts"],
+    include: ["test/**/*.test.ts", "test/**/*.test.mjs"],
     exclude: ["dist/**", "node_modules/**"],
   },
 });

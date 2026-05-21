@@ -3,24 +3,66 @@ import { execSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(fileURLToPath(import.meta.url), "../..");
+const defaultRepoRoot = resolve(fileURLToPath(import.meta.url), "../..");
 
-const nativeModules = [
+export const nativeModules = [
   { name: "better-sqlite3", resolveFrom: "packages/db/package.json" },
 ];
 
-for (const { name, resolveFrom } of nativeModules) {
-  const require = createRequire(resolve(repoRoot, resolveFrom));
-  try {
-    require(name);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (!/NODE_MODULE_VERSION/.test(message)) throw err;
+function formatThrownValue(err) {
+  return err instanceof Error ? err.message : String(err);
+}
 
-    const pkgDir = dirname(require.resolve(`${name}/package.json`));
-    console.log(
-      `[ensure-native-modules] Rebuilding ${name} for Node ${process.versions.node} (ABI ${process.versions.modules})`,
-    );
-    execSync("npx --yes node-gyp rebuild", { cwd: pkgDir, stdio: "inherit" });
+export function verifyNativeModule(name, requireModule) {
+  const module = requireModule(name);
+  if (name !== "better-sqlite3") {
+    return;
   }
+
+  const db = new module(":memory:");
+  db.close();
+}
+
+export function ensureNativeModules({
+  repoRoot = defaultRepoRoot,
+  modules = nativeModules,
+  createRequire: createRequireImpl = createRequire,
+  execSync: execSyncImpl = execSync,
+  log = console.log,
+} = {}) {
+  for (const { name, resolveFrom } of modules) {
+    const requireModule = createRequireImpl(resolve(repoRoot, resolveFrom));
+    try {
+      verifyNativeModule(name, requireModule);
+    } catch (err) {
+      const message = formatThrownValue(err);
+      if (!/NODE_MODULE_VERSION/.test(message)) throw err;
+
+      const pkgDir = dirname(requireModule.resolve(`${name}/package.json`));
+      log(
+        `[ensure-native-modules] Rebuilding ${name} for Node ${process.versions.node} (ABI ${process.versions.modules})`,
+      );
+      execSyncImpl("npx --yes node-gyp rebuild", {
+        cwd: pkgDir,
+        stdio: "inherit",
+      });
+
+      try {
+        verifyNativeModule(name, requireModule);
+      } catch (verifyErr) {
+        throw new Error(
+          `[ensure-native-modules] ${name} still failed to load after rebuild: ${formatThrownValue(verifyErr)}`,
+          { cause: verifyErr },
+        );
+      }
+    }
+  }
+}
+
+const isMainModule =
+  process.argv[1] !== undefined &&
+  fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+
+if (isMainModule) {
+  ensureNativeModules();
 }

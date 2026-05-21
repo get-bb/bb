@@ -14,9 +14,10 @@ opens an unpacked Electron Builder app against `http://127.0.0.1:38886`.
 Using the unpacked app keeps native dependencies rebuilt for Electron's bundled
 Node runtime.
 
-Electron is pinned to `38.4.0` for now because Electron 42's Node/V8 ABI does
-not rebuild `better-sqlite3@12.10.0`. Revisit the pin when `better-sqlite3`
-ships support or prebuilds for the newer Electron ABI.
+Electron is pinned to `41.7.0`, the highest stable line verified to rebuild the
+packaged native modules with the current dependency set. Electron 42.2.0 was
+tested, but `better-sqlite3@12.10.0` does not compile against Electron ABI 146.
+Revisit the pin when `better-sqlite3` ships support or prebuilds for that ABI.
 
 ## Validation
 

@@ -28,7 +28,7 @@
   "dependencies": {
     "@bb/config": "workspace:*",
     "@bb/domain": "workspace:*",
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "12.10.0",
     "drizzle-orm": "^0.38.0",
     "nanoid": "^5.0.9"
   },

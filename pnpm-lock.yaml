@@ -312,11 +312,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/tsconfig
       '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.10
+        specifier: ^24.9.0
+        version: 24.12.4
       electron:
-        specifier: 38.4.0
-        version: 38.4.0
+        specifier: 41.7.0
+        version: 41.7.0
       electron-builder:
         specifier: ^26.8.1
         version: 26.8.1(electron-builder-squirrel-windows@26.8.1)
@@ -331,7 +331,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.1
-        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(typescript@5.9.3))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.0)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@24.12.4)(typescript@5.9.3))(vite@8.0.12(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))
 
   apps/host-daemon:
     dependencies:
@@ -378,13 +378,13 @@ importers:
         specifier: 2.5.6
         version: 2.5.6
       better-sqlite3:
-        specifier: ^12.10.0
+        specifier: 12.10.0
         version: 12.10.0
       mime-types:
         specifier: ^3.0.2
         version: 3.0.2
       node-pty:
-        specifier: ^1.1.0
+        specifier: 1.1.0
         version: 1.1.0
       open:
         specifier: ^10.2.0
@@ -505,7 +505,7 @@ importers:
         specifier: ^1.5.6
         version: 1.5.6(@opentelemetry/api@1.9.1)(better-sqlite3@12.10.0)(drizzle-orm@0.38.4(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@12.10.0)(kysely@0.28.15)(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(vitest@4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(typescript@5.9.3))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.0)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2)))
       better-sqlite3:
-        specifier: ^12.10.0
+        specifier: 12.10.0
         version: 12.10.0
       chokidar:
         specifier: 4.0.3
@@ -692,10 +692,10 @@ importers:
         specifier: 2.5.6
         version: 2.5.6
       better-sqlite3:
-        specifier: ^12.10.0
+        specifier: 12.10.0
         version: 12.10.0
       node-pty:
-        specifier: ^1.1.0
+        specifier: 1.1.0
         version: 1.1.0
       pino:
         specifier: ^9.6.0
@@ -776,7 +776,7 @@ importers:
         specifier: workspace:*
         version: link:../domain
       better-sqlite3:
-        specifier: ^12.10.0
+        specifier: 12.10.0
         version: 12.10.0
       drizzle-orm:
         specifier: ^0.38.0
@@ -5640,8 +5640,8 @@ packages:
     resolution: {integrity: sha512-bO3y10YikuUwUuDUQRM4KfwNkKhnpVO7IPdbsrejwN9/AABJzzTQ4GeHwyzNSrVO+tEH3/Np255a3sVZpZDjvg==}
     engines: {node: '>=8.0.0'}
 
-  electron@38.4.0:
-    resolution: {integrity: sha512-9CsXKbGf2qpofVe2pQYSgom2E//zLDJO2rGLLbxgy9tkdTOs7000Gte+d/PUtzLjI/DS95jDK0ojYAeqjLvpYg==}
+  electron@41.7.0:
+    resolution: {integrity: sha512-U6KAKivjk6YQ0Z5+eloJBjwhbHRE206gvy1UBMw2bSluWtMh5waeXMvX6AT/Ujm5ymYXVJOp7g9N7vOFw16wBQ==}
     engines: {node: '>= 12.20.55'}
     hasBin: true
 
@@ -12199,13 +12199,13 @@ snapshots:
 
   '@types/better-sqlite3@7.6.13':
     dependencies:
-      '@types/node': 22.19.10
+      '@types/node': 24.12.4
 
   '@types/cacheable-request@6.0.3':
     dependencies:
       '@types/http-cache-semantics': 4.2.0
       '@types/keyv': 3.1.4
-      '@types/node': 22.19.10
+      '@types/node': 24.12.4
       '@types/responselike': 1.0.3
 
   '@types/chai@5.2.3':
@@ -12215,7 +12215,7 @@ snapshots:
 
   '@types/cross-spawn@6.0.6':
     dependencies:
-      '@types/node': 22.19.10
+      '@types/node': 24.12.4
 
   '@types/debug@4.1.12':
     dependencies:
@@ -12231,7 +12231,7 @@ snapshots:
 
   '@types/fs-extra@9.0.13':
     dependencies:
-      '@types/node': 22.19.10
+      '@types/node': 24.12.4
 
   '@types/hast@3.0.4':
     dependencies:
@@ -12243,7 +12243,7 @@ snapshots:
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 22.19.10
+      '@types/node': 24.12.4
 
   '@types/mdast@4.0.4':
     dependencies:
@@ -12264,11 +12264,10 @@ snapshots:
   '@types/node@24.12.4':
     dependencies:
       undici-types: 7.16.0
-    optional: true
 
   '@types/plist@3.0.5':
     dependencies:
-      '@types/node': 22.19.10
+      '@types/node': 24.12.4
       xmlbuilder: 15.1.1
     optional: true
 
@@ -12284,7 +12283,7 @@ snapshots:
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 22.19.10
+      '@types/node': 24.12.4
 
   '@types/retry@0.12.0': {}
 
@@ -12305,11 +12304,11 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 22.19.10
+      '@types/node': 24.12.4
 
   '@types/yauzl@2.10.3':
     dependencies:
-      '@types/node': 22.19.10
+      '@types/node': 24.12.4
     optional: true
 
   '@typescript-eslint/parser@8.56.1(eslint@9.39.3(jiti@2.6.1))(typescript@5.9.3)':
@@ -13268,10 +13267,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@38.4.0:
+  electron@41.7.0:
     dependencies:
       '@electron/get': 2.0.3
-      '@types/node': 22.19.10
+      '@types/node': 24.12.4
       extract-zip: 2.0.1
     transitivePeerDependencies:
       - supports-color
@@ -15764,7 +15763,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
-      '@types/node': 22.19.10
+      '@types/node': 24.12.4
       long: 5.3.2
 
   proxy-addr@2.0.7:
@@ -16782,8 +16781,7 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  undici-types@7.16.0:
-    optional: true
+  undici-types@7.16.0: {}
 
   undici@6.25.0: {}
 
