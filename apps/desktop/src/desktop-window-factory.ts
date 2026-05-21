@@ -18,6 +18,11 @@ import {
 
 export type DesktopWindowIcon = BrowserWindowConstructorOptions["icon"];
 
+const MACOS_TRAFFIC_LIGHT_POSITION = {
+  x: 12,
+  y: 18,
+};
+
 export interface DesktopWindowOpenDetails {
   url: string;
 }
@@ -141,6 +146,7 @@ function createWindowOptions(
   args: CreateWindowOptionsArgs,
 ): BrowserWindowConstructorOptions {
   return {
+    frame: false,
     height: args.bounds.height,
     icon: args.icon,
     minHeight: MIN_WINDOW_HEIGHT,
@@ -148,6 +154,7 @@ function createWindowOptions(
     show: false,
     title: "bb",
     titleBarStyle: "hiddenInset",
+    trafficLightPosition: MACOS_TRAFFIC_LIGHT_POSITION,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

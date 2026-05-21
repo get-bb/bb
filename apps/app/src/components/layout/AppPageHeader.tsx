@@ -6,6 +6,10 @@ import {
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import {
   getBbDesktopInfo,
+  MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
+  MACOS_WINDOW_DRAG_CLASS,
+  MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
+  MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { cn } from "@/lib/utils";
@@ -32,27 +36,56 @@ export function AppPageHeader({
 }: AppPageHeaderProps) {
   const isSidebarShowing = useIsSidebarShowing();
   const [desktopInfo] = useState(getBbDesktopInfo);
-  const showSidebarTrigger =
-    !shouldUseMacosDesktopChrome(desktopInfo) && !isSidebarShowing;
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const showSidebarTrigger = !isSidebarShowing;
   return (
     <header
       className={cn(
         "relative h-12 shrink-0 bg-surface-scrim px-4 backdrop-blur-sm",
+        usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
         bordered && "border-b border-border",
         className,
       )}
     >
-      <div className="flex h-full items-center gap-1 md:gap-2">
+      <div
+        data-testid="app-page-header-content-row"
+        className={cn(
+          "flex h-full items-center gap-1 md:gap-2",
+          usesDesktopChrome &&
+            !isSidebarShowing &&
+            MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
+        )}
+      >
         {showSidebarTrigger ? (
-          <SidebarTrigger className="-ml-2 shrink-0 md:ml-0" />
+          <SidebarTrigger
+            className={cn(
+              "shrink-0 md:ml-0",
+              usesDesktopChrome ? "ml-0" : "-ml-2",
+              usesDesktopChrome &&
+                `${MACOS_WINDOW_NO_DRAG_CLASS} ${MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS}`,
+            )}
+          />
         ) : null}
         {center ? (
-          <div className="flex min-w-0 flex-1 items-center gap-2">{center}</div>
+          <div className="flex min-w-0 flex-1 items-center">
+            <div
+              className="flex min-w-0 max-w-full items-center gap-2"
+            >
+              {center}
+            </div>
+          </div>
         ) : (
           <div className="min-w-0 flex-1" />
         )}
         {actions ? (
-          <div className="flex shrink-0 items-center gap-1">{actions}</div>
+          <div
+            className={cn(
+              "flex shrink-0 items-center gap-1",
+              usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+            )}
+          >
+            {actions}
+          </div>
         ) : null}
       </div>
     </header>

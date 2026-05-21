@@ -17,6 +17,13 @@ import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
 import { AppLayout } from "./AppLayout";
+import {
+  MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
+  MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
+  MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
+  MACOS_WINDOW_DRAG_CLASS,
+  MACOS_WINDOW_NO_DRAG_CLASS,
+} from "@/lib/bb-desktop";
 
 interface RenderAppLayoutArgs {
   desktopInfo: BbDesktopInfo | null;
@@ -102,19 +109,33 @@ afterEach(() => {
 
 describe("AppLayout desktop chrome", () => {
   it("keeps the browser layout when the desktop preload global is absent", async () => {
-    await renderAppLayout({ desktopInfo: null, initialEntry: "/" });
+    await renderAppLayout({ desktopInfo: null, initialEntry: "/settings" });
 
     const sidebarTriggers = await screen.findAllByRole("button", {
       name: "Toggle Sidebar",
     });
+    const headerRow = screen.getByTestId("app-page-header-content-row");
+
     expect(sidebarTriggers).toHaveLength(1);
     expect(screen.queryByTestId("bb-desktop-titlebar")).toBeNull();
     expect(screen.queryByTestId("bb-desktop-window-drag-region")).toBeNull();
     expect(screen.queryByTestId("bb-desktop-sidebar-trigger")).toBeNull();
-    expect(screen.getByTestId("app-sidebar-inline-trigger-row")).toBeTruthy();
+    expect(screen.getByTestId("app-sidebar-inline-trigger-row").className).not
+      .toContain(MACOS_TRAFFIC_LIGHT_RESERVE_CLASS);
+    expect(screen.getByTestId("app-sidebar-primary-actions").className).not
+      .toContain(MACOS_TRAFFIC_LIGHT_RESERVE_CLASS);
+    expect(headerRow.className).not.toContain(
+      MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
+    );
+    expect(headerRow.className).not.toContain(
+      MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
+    );
+    expect(headerRow.parentElement?.className).not.toContain(
+      MACOS_WINDOW_DRAG_CLASS,
+    );
   });
 
-  it("floats the desktop sidebar trigger without reserving a title-bar strip", async () => {
+  it("keeps the normal sidebar trigger and reserves the traffic-light area in desktop sidebar chrome", async () => {
     await renderAppLayout({
       desktopInfo: {
         platform: "macos",
@@ -123,36 +144,39 @@ describe("AppLayout desktop chrome", () => {
       initialEntry: "/",
     });
 
-    const dragRegion = await screen.findByTestId(
-      "bb-desktop-window-drag-region",
-    );
-    const floatingTrigger = screen.getByTestId("bb-desktop-sidebar-trigger");
+    await screen.findByRole("button", { name: "Toggle Sidebar" });
     const contentShell = screen.getByTestId("app-layout-content-shell");
-    const sidebarTrigger = within(floatingTrigger).getByRole("button", {
+    const inlineTriggerRow = screen.getByTestId(
+      "app-sidebar-inline-trigger-row",
+    );
+    const primaryActions = screen.getByTestId("app-sidebar-primary-actions");
+    const sidebarPanel = document.querySelector("[data-sidebar='panel']");
+    const sidebarTrigger = within(inlineTriggerRow).getByRole("button", {
       name: "Toggle Sidebar",
     });
 
     expect(screen.queryByTestId("bb-desktop-titlebar")).toBeNull();
+    expect(screen.queryByTestId("bb-desktop-sidebar-trigger")).toBeNull();
+    expect(screen.queryByTestId("bb-desktop-window-drag-region")).toBeNull();
     expect(
       screen.getAllByRole("button", { name: "Toggle Sidebar" }),
     ).toHaveLength(1);
-    expect(screen.queryByTestId("app-sidebar-inline-trigger-row")).toBeNull();
     expect(contentShell.className).not.toContain("pt-10");
-    expect(dragRegion.className).toContain("fixed");
-    expect(dragRegion.className).toContain("top-0");
-    expect(dragRegion.className).toContain("h-7");
-    expect(dragRegion.className).toContain("w-20");
-    expect(dragRegion.className).toContain("[-webkit-app-region:drag]");
-    expect(floatingTrigger.className).toContain("left-[84px]");
-    expect(floatingTrigger.className).toContain("top-0");
-    expect(floatingTrigger.className).toContain(
-      "[-webkit-app-region:no-drag]",
+    expect(sidebarPanel?.className).toContain("md:z-10");
+    expect(inlineTriggerRow.className).toContain(MACOS_WINDOW_DRAG_CLASS);
+    expect(inlineTriggerRow.className).toContain(
+      MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
     );
-    expect(sidebarTrigger.className).toContain("h-7");
-    expect(sidebarTrigger.className).toContain("[-webkit-app-region:no-drag]");
+    expect(primaryActions.className).not.toContain(
+      MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
+    );
+    expect(sidebarTrigger.className).toContain(MACOS_WINDOW_NO_DRAG_CLASS);
+    expect(sidebarTrigger.className).toContain(
+      MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
+    );
   });
 
-  it("keeps one fixed desktop sidebar trigger after the sidebar is collapsed", async () => {
+  it("uses the normal collapsed header trigger with a traffic-light reserve on desktop", async () => {
     await renderAppLayout({
       desktopInfo: {
         platform: "macos",
@@ -167,15 +191,35 @@ describe("AppLayout desktop chrome", () => {
 
     fireEvent.click(initialSidebarTrigger);
 
+    const headerRow = screen.getByTestId("app-page-header-content-row");
+    const headerSidebarTrigger = within(headerRow).getByRole("button", {
+      name: "Toggle Sidebar",
+    });
     const sidebarTriggers = screen.getAllByRole("button", {
       name: "Toggle Sidebar",
     });
-    const floatingTrigger = screen.getByTestId("bb-desktop-sidebar-trigger");
 
-    expect(sidebarTriggers).toHaveLength(1);
-    expect(within(floatingTrigger).getByRole("button")).toBe(
-      sidebarTriggers[0],
-    );
+    expect(screen.queryByTestId("bb-desktop-sidebar-trigger")).toBeNull();
     expect(screen.queryByTestId("app-sidebar-inline-trigger-row")).toBeNull();
+    expect(sidebarTriggers).toHaveLength(1);
+    expect(sidebarTriggers[0]).toBe(headerSidebarTrigger);
+    expect(document.querySelectorAll("[data-sidebar='trigger']")).toHaveLength(
+      1,
+    );
+    expect(headerRow.className).toContain(
+      MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
+    );
+    expect(headerRow.parentElement?.className).toContain(
+      MACOS_WINDOW_DRAG_CLASS,
+    );
+    expect(headerRow.className).not.toContain(
+      MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
+    );
+    expect(headerSidebarTrigger.className).toContain(
+      MACOS_WINDOW_NO_DRAG_CLASS,
+    );
+    expect(headerSidebarTrigger.className).toContain(
+      MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
+    );
   });
 });

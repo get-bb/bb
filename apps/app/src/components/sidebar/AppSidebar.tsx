@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@/components/ui/icon.js";
@@ -11,12 +11,21 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarTrigger,
+  useIsSidebarShowing,
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { useNewManagerDialog } from "@/hooks/useNewManagerDialog";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
+import {
+  getBbDesktopInfo,
+  MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
+  MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
+  MACOS_WINDOW_DRAG_CLASS,
+  MACOS_WINDOW_NO_DRAG_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -37,6 +46,11 @@ export function AppSidebar({
   const newManagerDialog = useNewManagerDialog();
   const navigate = useNavigate();
   const { isCompactViewport, setOpenMobile } = useSidebar();
+  const isSidebarShowing = useIsSidebarShowing();
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const shouldShowInlineTrigger =
+    showInlineTrigger && (!usesDesktopChrome || isSidebarShowing);
   const isCompactViewportRef = useRef(isCompactViewport);
   // Keep the ProjectList callback stable while reading the latest breakpoint.
   isCompactViewportRef.current = isCompactViewport;
@@ -67,17 +81,31 @@ export function AppSidebar({
   return (
     <>
       <Sidebar>
-        {showInlineTrigger ? (
+        {shouldShowInlineTrigger ? (
           /* Matches the page-header height so the sidebar's top region mirrors
              the chrome on the right of the sidebar. */
           <div
             data-testid="app-sidebar-inline-trigger-row"
-            className="flex h-12 shrink-0 items-center px-2"
+            className={cn(
+              "flex h-12 shrink-0 items-center",
+              usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
+              usesDesktopChrome
+                ? `${MACOS_TRAFFIC_LIGHT_RESERVE_CLASS} pr-2`
+                : "px-2",
+            )}
           >
-            <SidebarTrigger />
+            <SidebarTrigger
+              className={cn(
+                usesDesktopChrome &&
+                  `${MACOS_WINDOW_NO_DRAG_CLASS} ${MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS}`,
+              )}
+            />
           </div>
         ) : null}
-        <div className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden">
+        <div
+          data-testid="app-sidebar-primary-actions"
+          className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
+        >
           <ProjectListActionButtons
             onNewChat={newChatAction}
             onNewManager={newManagerAction}

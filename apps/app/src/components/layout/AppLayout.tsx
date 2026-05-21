@@ -35,6 +35,7 @@ import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider
 import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
 import {
   getBbDesktopInfo,
+  MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { useNewManagerDialog } from "@/hooks/useNewManagerDialog";
@@ -128,24 +129,6 @@ function FloatingSidebarTrigger() {
   );
 }
 
-function DesktopWindowChrome() {
-  return (
-    <>
-      <div
-        data-testid="bb-desktop-window-drag-region"
-        className="fixed left-0 top-0 z-40 h-7 w-20 [-webkit-app-region:drag]"
-        aria-hidden="true"
-      />
-      <div
-        data-testid="bb-desktop-sidebar-trigger"
-        className="fixed left-[84px] top-0 z-50 flex h-7 w-7 items-center justify-center [-webkit-app-region:no-drag]"
-      >
-        <SidebarTrigger className="h-7 w-7 rounded-md p-0 [-webkit-app-region:no-drag]" />
-      </div>
-    </>
-  );
-}
-
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "Projects", subtitle: "Select or create a project" },
   "/settings": { title: "Settings" },
@@ -160,6 +143,7 @@ interface AppHeaderProps {
    * page-level project picker, not the chrome).
    */
   usesProjectChromeStyle: boolean;
+  usesDesktopChrome: boolean;
   isArchivedView: boolean;
   isSettingsView: boolean;
   projectId?: string;
@@ -174,6 +158,7 @@ interface AppHeaderProps {
 
 function AppHeader({
   usesProjectChromeStyle,
+  usesDesktopChrome,
   isArchivedView,
   isSettingsView,
   projectId,
@@ -207,7 +192,10 @@ function AppHeader({
                 {!isLast && segment.to ? (
                   <Link
                     to={segment.to}
-                    className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                    className={cn(
+                      "shrink-0 text-muted-foreground transition-colors hover:text-foreground",
+                      usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+                    )}
                   >
                     {segment.label}
                   </Link>
@@ -509,13 +497,12 @@ export function AppLayout({ children }: AppLayoutProps) {
           providerRef={providerRef}
           style={sidebarProviderStyle}
         >
-          {usesDesktopChrome ? <DesktopWindowChrome /> : null}
           <AppSidebar
             onResizeMouseDown={handleResizeMouseDown}
             isResizing={isSidebarResizing}
             selectedProjectId={activeProjectId}
             isManagerActionPending={isManagerActionPending}
-            showInlineTrigger={!usesDesktopChrome}
+            showInlineTrigger={true}
           />
           <SidebarInset>
             <div
@@ -525,6 +512,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               {showFloatingSidebarTrigger ? <FloatingSidebarTrigger /> : null}
               {showHeader ? (
                 <AppHeader
+                  usesDesktopChrome={usesDesktopChrome}
                   usesProjectChromeStyle={
                     isProjectMainView || isArchivedView || isSettingsView
                   }

@@ -194,7 +194,12 @@ describe("desktop window factory", () => {
 
     expect(firstWindow).not.toBe(secondWindow);
     expect(createdWindows).toHaveLength(2);
+    expect(createdWindows[0]?.options.frame).toBe(false);
     expect(createdWindows[0]?.options.titleBarStyle).toBe("hiddenInset");
+    expect(createdWindows[0]?.options.trafficLightPosition).toEqual({
+      x: 12,
+      y: 18,
+    });
     expect(createdWindows[0]?.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
     expect(createdWindows[1]?.loadedUrls).toEqual(["http://127.0.0.1:38886"]);
     expect(runtimeSupervisorInvocations).toBe(1);
