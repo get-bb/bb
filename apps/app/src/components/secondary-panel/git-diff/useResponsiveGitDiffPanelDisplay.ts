@@ -9,6 +9,8 @@ import {
 
 const GIT_DIFF_SPLIT_VIEW_MIN_WIDTH_PX = 760;
 
+type SecondaryPanelDraggingHandler = (isDragging: boolean) => void;
+
 export function useResponsiveGitDiffPanelDisplay({
   isSecondaryPanelOpen,
 }: {
@@ -17,6 +19,8 @@ export function useResponsiveGitDiffPanelDisplay({
   const [gitDiffDisplayMode, setGitDiffDisplayMode] = useState<
     "unified" | "split"
   >("unified");
+  const [isSecondaryPanelDragging, setIsSecondaryPanelDragging] =
+    useState(false);
   const setIsResizing = useSetAtom(threadSecondaryPanelResizingAtom);
   const persistedWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
   const setPersistedWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
@@ -98,20 +102,58 @@ export function useResponsiveGitDiffPanelDisplay({
     [setGitDiffDisplayMode],
   );
 
-  const handleSecondaryPanelDragging = useCallback(
-    (isDragging: boolean) => {
-      setIsResizing(isDragging);
-      if (isDragging) {
-        hasExplicitDisplayModeRef.current = false;
-        return;
-      }
-      // Drag finished — persist the user's chosen width.
-      if (lastSecondaryPanelSizeRef.current > 0) {
-        setPersistedWidthPercent(lastSecondaryPanelSizeRef.current);
-      }
-    },
-    [setIsResizing, setPersistedWidthPercent],
-  );
+  const finishSecondaryPanelDragging = useCallback(() => {
+    setIsSecondaryPanelDragging(false);
+    setIsResizing(false);
+
+    // Drag finished — persist the user's chosen width.
+    if (lastSecondaryPanelSizeRef.current > 0) {
+      setPersistedWidthPercent(lastSecondaryPanelSizeRef.current);
+    }
+  }, [setIsResizing, setPersistedWidthPercent]);
+
+  const handleSecondaryPanelDragging =
+    useCallback<SecondaryPanelDraggingHandler>(
+      (isDragging) => {
+        if (isDragging) {
+          setIsSecondaryPanelDragging(true);
+          setIsResizing(true);
+          hasExplicitDisplayModeRef.current = false;
+          return;
+        }
+
+        finishSecondaryPanelDragging();
+      },
+      [finishSecondaryPanelDragging, setIsResizing],
+    );
+
+  useEffect(() => {
+    if (!isSecondaryPanelDragging) {
+      return;
+    }
+
+    window.addEventListener("pointerup", finishSecondaryPanelDragging, true);
+    window.addEventListener(
+      "pointercancel",
+      finishSecondaryPanelDragging,
+      true,
+    );
+    window.addEventListener("blur", finishSecondaryPanelDragging);
+
+    return () => {
+      window.removeEventListener(
+        "pointerup",
+        finishSecondaryPanelDragging,
+        true,
+      );
+      window.removeEventListener(
+        "pointercancel",
+        finishSecondaryPanelDragging,
+        true,
+      );
+      window.removeEventListener("blur", finishSecondaryPanelDragging);
+    };
+  }, [finishSecondaryPanelDragging, isSecondaryPanelDragging]);
 
   const handleSecondaryPanelResize = useCallback((size: number) => {
     if (size <= 0) {

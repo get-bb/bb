@@ -1,4 +1,9 @@
-import { type FocusEvent, type ReactNode, useMemo } from "react";
+import {
+  type CSSProperties,
+  type FocusEvent,
+  type ReactNode,
+  useMemo,
+} from "react";
 import { useAtomValue } from "jotai";
 import { Icon } from "@/components/ui/icon.js";
 import { TabPill } from "@/components/ui/tab-pill";
@@ -38,6 +43,9 @@ const THREAD_SECONDARY_PANEL_TRANSITION_CLASS =
   "duration-[220ms] ease-[cubic-bezier(0.32,0.72,0,1)]";
 const PANEL_SCROLL_SLOT_CLASS =
   "min-h-0 flex-1 overflow-x-hidden overflow-y-auto";
+const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
+  pointerEvents: "auto",
+};
 
 export interface SecondaryPanelFileTab {
   id: string;
@@ -141,6 +149,9 @@ export function ThreadSecondaryPanel({
   });
   const collapsedGitDiffFileKeys = useAtomValue(gitDiffCollapsedFileKeysAtom);
   const loadingGitDiffFileKeys = useAtomValue(gitDiffLoadingFileKeysAtom);
+  const isSecondaryPanelResizing = useAtomValue(
+    threadSecondaryPanelResizingAtom,
+  );
   const areAllGitDiffFilesCollapsed = useMemo(
     () =>
       hasParsedGitDiffFiles &&
@@ -176,6 +187,7 @@ export function ThreadSecondaryPanel({
       onFocusCapture={handlePanelFocusCapture}
       className={cn(
         "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background",
+        isSecondaryPanelResizing && "[&_iframe]:pointer-events-none",
         !renderAsDrawer && [
           "transition-[transform,opacity,background-color]",
           THREAD_SECONDARY_PANEL_TRANSITION_CLASS,
@@ -319,6 +331,7 @@ export function ThreadSecondaryPanel({
         onCollapse={onCollapse}
         onResize={handleSecondaryPanelResize}
         order={2}
+        style={SECONDARY_RESIZABLE_PANEL_STYLE}
         className={cn(
           "min-w-0 overflow-hidden transition-[flex-grow,flex-basis,opacity]",
           THREAD_SECONDARY_PANEL_TRANSITION_CLASS,
