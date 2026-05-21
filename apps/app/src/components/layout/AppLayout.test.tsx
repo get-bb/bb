@@ -10,7 +10,12 @@ import {
 } from "@testing-library/react";
 import { Suspense, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import type { BbDesktopInfo, SystemConfigResponse } from "@bb/server-contract";
+import type {
+  BbDesktopApi,
+  BbDesktopInfo,
+  BbDesktopInfoChangeHandler,
+  SystemConfigResponse,
+} from "@bb/server-contract";
 import { afterEach, describe, expect, it } from "vitest";
 import { NewManagerDialogProvider } from "@/hooks/useNewManagerDialog";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
@@ -26,7 +31,7 @@ import {
 } from "@/lib/bb-desktop";
 
 interface RenderAppLayoutArgs {
-  desktopInfo: BbDesktopInfo | null;
+  desktopInfo: BbDesktopApi | null;
   initialEntry: string;
 }
 
@@ -43,7 +48,22 @@ const testSystemConfig: SystemConfigResponse = {
   voiceTranscriptionEnabled: false,
 };
 
-function setBbDesktopInfo(desktopInfo: BbDesktopInfo | null): void {
+function createBbDesktopApi(info: BbDesktopInfo): BbDesktopApi {
+  return {
+    ...info,
+    async checkForUpdates() {
+      return info;
+    },
+    async getInfo() {
+      return info;
+    },
+    onChange(_listener: BbDesktopInfoChangeHandler) {
+      return () => undefined;
+    },
+  };
+}
+
+function setBbDesktopInfo(desktopInfo: BbDesktopApi | null): void {
   if (desktopInfo === null) {
     delete window.bbDesktop;
     return;
@@ -137,10 +157,13 @@ describe("AppLayout desktop chrome", () => {
 
   it("keeps the normal sidebar trigger and reserves the traffic-light area in desktop sidebar chrome", async () => {
     await renderAppLayout({
-      desktopInfo: {
+      desktopInfo: createBbDesktopApi({
+        lastCheckedAt: null,
+        latestVersion: null,
         platform: "macos",
+        updateAvailable: false,
         version: "0.0.1",
-      },
+      }),
       initialEntry: "/",
     });
 
@@ -178,10 +201,13 @@ describe("AppLayout desktop chrome", () => {
 
   it("uses the normal collapsed header trigger with a traffic-light reserve on desktop", async () => {
     await renderAppLayout({
-      desktopInfo: {
+      desktopInfo: createBbDesktopApi({
+        lastCheckedAt: null,
+        latestVersion: null,
         platform: "macos",
+        updateAvailable: false,
         version: "0.0.1",
-      },
+      }),
       initialEntry: "/projects/proj_desktop",
     });
 

@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { app, BrowserWindow, nativeImage, shell, type Event } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  nativeImage,
+  shell,
+  type Event,
+} from "electron";
 import {
   assertPathExists,
   resolveDesktopAssetPath,
@@ -35,6 +42,16 @@ import {
   type DesktopBrowserWindowCreator,
   type DesktopWindowFactory,
 } from "./desktop-window-factory.js";
+import {
+  createDesktopUpdateService,
+  DESKTOP_UPDATE_FEED_URL,
+  type DesktopUpdateService,
+} from "./desktop-update-check.js";
+import {
+  BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
+  BB_DESKTOP_GET_INFO_CHANNEL,
+  BB_DESKTOP_INFO_CHANGED_CHANNEL,
+} from "./desktop-update-ipc.js";
 import {
   ATTACH_PROBE_TIMEOUT_MS,
   DEFAULT_BB_SERVER_URL,
@@ -95,7 +112,12 @@ interface ResolveDesktopServerUrlArgs {
   env: NodeJS.ProcessEnv;
 }
 
+interface ResolveDesktopUpdateFeedUrlArgs {
+  env: NodeJS.ProcessEnv;
+}
+
 let desktopWindowFactory: DesktopWindowFactory | null = null;
+let desktopUpdateService: DesktopUpdateService | null = null;
 let currentRuntime: DesktopRuntime | null = null;
 let currentWindowUrl: string | null = null;
 let bbAppLoaded = false;
@@ -114,6 +136,23 @@ function resolveDesktopServerUrl(args: ResolveDesktopServerUrlArgs): string {
   }
 
   throw new Error("BB_SERVER_PORT must be a valid TCP port");
+}
+
+function resolveDesktopUpdateFeedUrl(
+  args: ResolveDesktopUpdateFeedUrlArgs,
+): string {
+  const rawFeedUrl = args.env.BB_DESKTOP_VERSION_FEED_URL?.trim();
+  if (rawFeedUrl === undefined || rawFeedUrl.length === 0) {
+    return DESKTOP_UPDATE_FEED_URL;
+  }
+  return rawFeedUrl;
+}
+
+function getDesktopVersion(version: string | undefined): string {
+  if (version === undefined || version.length === 0) {
+    throw new Error("Desktop version must be injected at build time");
+  }
+  return version;
 }
 
 function resolveDataDirFromEnv(args: ResolveDataDirFromEnvArgs): string {
@@ -253,8 +292,21 @@ function handleBeforeQuit(event: Event): void {
 }
 
 async function finishQuit(): Promise<void> {
+  desktopUpdateService?.stop();
   await desktopWindowFactory?.persistOpenWindows();
   await stopOwnedRuntime();
+}
+
+function registerDesktopUpdateIpc(): void {
+  ipcMain.handle(BB_DESKTOP_GET_INFO_CHANNEL, () => {
+    return desktopUpdateService?.getInfo() ?? null;
+  });
+  ipcMain.handle(BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL, async () => {
+    if (desktopUpdateService === null) {
+      return null;
+    }
+    return desktopUpdateService.checkForUpdates();
+  });
 }
 
 async function startOwnedRuntime(
@@ -404,6 +456,9 @@ async function runDesktopApp(): Promise<void> {
       void createApplicationWindow({ stateKey: null });
     }
   });
+  app.on("did-become-active", () => {
+    void desktopUpdateService?.checkAfterActive();
+  });
   registerDesktopShutdownSignalHandlers({
     exitProcess(code) {
       process.exitCode = code;
@@ -429,6 +484,10 @@ async function runDesktopApp(): Promise<void> {
   const bridgePath = resolveDesktopBridgePath({ paths });
   const preloadPath = join(paths.appPath, "dist", "preload.cjs");
   const serverUrl = resolveDesktopServerUrl({ env: process.env });
+  const desktopVersion = getDesktopVersion(process.env.BB_DESKTOP_VERSION);
+  const desktopUpdateFeedUrl = resolveDesktopUpdateFeedUrl({
+    env: process.env,
+  });
   const userDataPath = app.getPath("userData");
 
   assertPathExists({ label: "bb-app bridge", path: bridgePath });
@@ -443,6 +502,24 @@ async function runDesktopApp(): Promise<void> {
     timeoutMs: 5_000,
     userDataPath,
   });
+
+  desktopUpdateService = createDesktopUpdateService({
+    currentVersion: desktopVersion,
+    enabled: app.isPackaged || process.env.BB_DESKTOP_VERSION_CHECK === "1",
+    feedUrl: desktopUpdateFeedUrl,
+    logger: {
+      warn(message) {
+        process.stderr.write(`${message}\n`);
+      },
+    },
+  });
+  desktopUpdateService.subscribe((info) => {
+    for (const browserWindow of BrowserWindow.getAllWindows()) {
+      browserWindow.webContents.send(BB_DESKTOP_INFO_CHANGED_CHANNEL, info);
+    }
+  });
+  registerDesktopUpdateIpc();
+  desktopUpdateService.start();
 
   const browserWindowCreator: DesktopBrowserWindowCreator = {
     create(options) {

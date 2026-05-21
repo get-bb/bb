@@ -11,7 +11,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "clean": "rimraf dist release",
-    "desktop:build": "pnpm run build && electron-builder --config electron-builder.config.json --mac dmg zip",
+    "desktop:build": "pnpm run build && electron-builder --config electron-builder.config.json --mac --universal --publish always",
+    "desktop:version-feed": "tsx scripts/generate-version-feed.ts",
     "dev": "pnpm run package && node scripts/run-packaged-app.mjs",
     "dist": "pnpm run prepare-runtime && pnpm run desktop:build",
     "package": "pnpm run prepare-runtime && pnpm run build && electron-builder --config electron-builder.config.json --mac --dir",
@@ -22,17 +23,21 @@
   },
   "dependencies": {
     "bb-app": "workspace:*",
+    "semver": "^7.7.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/server-contract": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^24.9.0",
+    "@types/semver": "^7.7.0",
     "electron": "41.7.0",
     "electron-builder": "^26.8.1",
     "esbuild": "^0.28.0",
     "rimraf": "^6.1.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.0",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "yaml": "^2.8.2"
   }
 }

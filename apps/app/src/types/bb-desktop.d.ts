@@ -1,8 +1,8 @@
-import type { BbDesktopInfo } from "@bb/server-contract";
+import type { BbDesktopApi } from "@bb/server-contract";
 
 declare global {
   interface Window {
-    bbDesktop?: BbDesktopInfo;
+    bbDesktop?: BbDesktopApi;
   }
 }
 

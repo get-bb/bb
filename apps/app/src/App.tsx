@@ -6,7 +6,10 @@ import { MainView } from "./views/MainView";
 import { ProjectMainView } from "./views/ProjectMainView";
 import { NewManagerDialogProvider } from "./hooks/useNewManagerDialog";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
-import { useUpdateAvailableToast } from "./hooks/useUpdateAvailableToast";
+import {
+  useDesktopUpdateAvailableToast,
+  useUpdateAvailableToast,
+} from "./hooks/useUpdateAvailableToast";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
   APP_ROOT_ROUTE_PATH,
@@ -84,6 +87,8 @@ export function App() {
   useWebSocket();
   // Show a toast when the server reports a newer bb-app published on npm.
   useUpdateAvailableToast();
+  // Show a separate toast when the Electron shell reports a desktop update.
+  useDesktopUpdateAvailableToast();
 
   return (
     <QuickCreateProjectProvider>

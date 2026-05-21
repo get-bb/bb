@@ -69,11 +69,50 @@ export type ThreadContextWindowUsage = z.infer<
   typeof threadContextWindowUsageSchema
 >;
 
-export const bbDesktopInfoSchema = z.object({
+const isoUtcDateTimeSchema = z.iso.datetime();
+
+export const bbDesktopVersionFeedFileSchema = z.object({
+  url: z.string().min(1),
+  sha512: z.string().min(1),
+  size: z.number().int().nonnegative(),
+});
+export type BbDesktopVersionFeedFile = z.infer<
+  typeof bbDesktopVersionFeedFileSchema
+>;
+
+export const bbDesktopVersionFeedSchema = z.object({
+  schemaVersion: z.literal(1),
+  channel: z.literal("latest"),
   platform: z.literal("macos"),
+  version: z.string().min(1),
+  releaseDate: isoUtcDateTimeSchema,
+  releaseName: z.string().min(1),
+  releaseNotes: z.string().nullable(),
+  minimumSystemVersion: z.string().min(1).nullable(),
+  files: z.array(bbDesktopVersionFeedFileSchema).min(1),
+  path: z.string().min(1),
+  sha512: z.string().min(1),
+  stagingPercentage: z.number().min(0).max(100).nullable(),
+});
+export type BbDesktopVersionFeed = z.infer<typeof bbDesktopVersionFeedSchema>;
+
+export const bbDesktopInfoSchema = z.object({
+  lastCheckedAt: isoUtcDateTimeSchema.nullable(),
+  latestVersion: z.string().min(1).nullable(),
+  platform: z.literal("macos"),
+  updateAvailable: z.boolean(),
   version: z.string().min(1),
 });
 export type BbDesktopInfo = z.infer<typeof bbDesktopInfoSchema>;
+
+export type BbDesktopInfoChangeHandler = (info: BbDesktopInfo) => void;
+export type BbDesktopInfoUnsubscribe = () => void;
+
+export interface BbDesktopApi extends BbDesktopInfo {
+  checkForUpdates(): Promise<BbDesktopInfo>;
+  getInfo(): Promise<BbDesktopInfo>;
+  onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
+}
 
 // --- Thread creation: environment + workspace discriminated unions ---
 

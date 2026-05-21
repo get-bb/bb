@@ -9,11 +9,19 @@
     "output": "release"
   },
   "files": ["assets/**", "dist/**", "node_modules/**", "package.json"],
+  "publish": [
+    {
+      "provider": "generic",
+      "url": "https://github.com/ymichael/bb/releases/download/desktop-latest/"
+    }
+  ],
   "mac": {
     "category": "public.app-category.developer-tools",
     "hardenedRuntime": false,
     "icon": "assets/icon.icns",
     "identity": null,
+    "mergeASARs": false,
+    "x64ArchFiles": "**/*darwin-*/**/*",
     "target": ["dmg", "zip"]
   },
   "dmg": {

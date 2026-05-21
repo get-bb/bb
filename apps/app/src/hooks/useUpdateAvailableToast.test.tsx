@@ -2,7 +2,12 @@
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SystemVersionResponse } from "@bb/server-contract";
+import type {
+  BbDesktopApi,
+  BbDesktopInfo,
+  BbDesktopInfoChangeHandler,
+  SystemVersionResponse,
+} from "@bb/server-contract";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 
 const { toastFn, toastDismissFn } = vi.hoisted(() => ({
@@ -23,6 +28,11 @@ interface CapturedToastInvocation {
     action: { label: string; onClick: () => void };
     onDismiss?: () => void;
   };
+}
+
+interface DesktopApiStub {
+  api: BbDesktopApi;
+  emit(info: BbDesktopInfo): void;
 }
 
 function readToastInvocation(callIndex: number): CapturedToastInvocation {
@@ -47,8 +57,50 @@ function stubFetchOnce(response: SystemVersionResponse): void {
 }
 
 async function loadHook() {
-  const { useUpdateAvailableToast } = await import("./useUpdateAvailableToast");
-  return { useUpdateAvailableToast };
+  const { useDesktopUpdateAvailableToast, useUpdateAvailableToast } =
+    await import("./useUpdateAvailableToast");
+  return { useDesktopUpdateAvailableToast, useUpdateAvailableToast };
+}
+
+function createDesktopApiStub(initialInfo: BbDesktopInfo): DesktopApiStub {
+  let currentInfo = initialInfo;
+  const listeners = new Set<BbDesktopInfoChangeHandler>();
+  const api: BbDesktopApi = {
+    get lastCheckedAt() {
+      return currentInfo.lastCheckedAt;
+    },
+    get latestVersion() {
+      return currentInfo.latestVersion;
+    },
+    platform: "macos",
+    get updateAvailable() {
+      return currentInfo.updateAvailable;
+    },
+    get version() {
+      return currentInfo.version;
+    },
+    async checkForUpdates() {
+      return currentInfo;
+    },
+    async getInfo() {
+      return currentInfo;
+    },
+    onChange(listener: BbDesktopInfoChangeHandler) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+  return {
+    api,
+    emit(info: BbDesktopInfo) {
+      currentInfo = info;
+      for (const listener of listeners) {
+        listener(currentInfo);
+      }
+    },
+  };
 }
 
 afterEach(() => {
@@ -56,6 +108,7 @@ afterEach(() => {
   toastFn.mockReset();
   toastDismissFn.mockReset();
   vi.unstubAllGlobals();
+  delete window.bbDesktop;
   window.localStorage.clear();
   vi.resetModules();
 });
@@ -228,5 +281,144 @@ describe("useUpdateAvailableToast", () => {
       window.localStorage.getItem = originalGetItem;
       window.localStorage.setItem = originalSetItem;
     }
+  });
+});
+
+describe("useDesktopUpdateAvailableToast", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    toastFn.mockReset();
+    toastDismissFn.mockReset();
+    delete window.bbDesktop;
+  });
+
+  it("shows the desktop toast when an update is available and not yet dismissed", async () => {
+    const desktopInfo: BbDesktopInfo = {
+      lastCheckedAt: "2026-05-21T00:00:00.000Z",
+      latestVersion: "0.0.2",
+      platform: "macos",
+      updateAvailable: true,
+      version: "0.0.1",
+    };
+    const desktopStub = createDesktopApiStub(desktopInfo);
+    window.bbDesktop = desktopStub.api;
+
+    const { useDesktopUpdateAvailableToast } = await loadHook();
+    renderHook(() => useDesktopUpdateAvailableToast());
+
+    await waitFor(() => expect(toastFn).toHaveBeenCalledTimes(1));
+    const invocation = readToastInvocation(0);
+    expect(invocation.message).toBe("Desktop update available");
+    expect(invocation.options.description).toBe(
+      "bb desktop 0.0.2 is available",
+    );
+    expect(invocation.options.id).toBe("bb-desktop-update-available:0.0.2");
+    expect(invocation.options.action.label).toBe("Dismiss");
+  });
+
+  it("respects an existing desktop dismissal for the same latest version", async () => {
+    window.localStorage.setItem(
+      "bb:desktop-update-toast:dismissed:0.0.2",
+      "true",
+    );
+    const desktopStub = createDesktopApiStub({
+      lastCheckedAt: "2026-05-21T00:00:00.000Z",
+      latestVersion: "0.0.2",
+      platform: "macos",
+      updateAvailable: true,
+      version: "0.0.1",
+    });
+    window.bbDesktop = desktopStub.api;
+
+    const { useDesktopUpdateAvailableToast } = await loadHook();
+    renderHook(() => useDesktopUpdateAvailableToast());
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(toastFn).not.toHaveBeenCalled();
+  });
+
+  it("shows the desktop toast for a newer version after a prior dismissal", async () => {
+    window.localStorage.setItem(
+      "bb:desktop-update-toast:dismissed:0.0.2",
+      "true",
+    );
+    const desktopStub = createDesktopApiStub({
+      lastCheckedAt: "2026-05-21T00:00:00.000Z",
+      latestVersion: "0.0.3",
+      platform: "macos",
+      updateAvailable: true,
+      version: "0.0.1",
+    });
+    window.bbDesktop = desktopStub.api;
+
+    const { useDesktopUpdateAvailableToast } = await loadHook();
+    renderHook(() => useDesktopUpdateAvailableToast());
+
+    await waitFor(() => expect(toastFn).toHaveBeenCalledTimes(1));
+    const invocation = readToastInvocation(0);
+    expect(invocation.options.id).toBe("bb-desktop-update-available:0.0.3");
+    expect(invocation.message).toBe("Desktop update available");
+  });
+
+  it("persists the desktop dismissal when the user clicks Dismiss", async () => {
+    const desktopStub = createDesktopApiStub({
+      lastCheckedAt: "2026-05-21T00:00:00.000Z",
+      latestVersion: "0.0.2",
+      platform: "macos",
+      updateAvailable: true,
+      version: "0.0.1",
+    });
+    window.bbDesktop = desktopStub.api;
+
+    const { useDesktopUpdateAvailableToast } = await loadHook();
+    renderHook(() => useDesktopUpdateAvailableToast());
+
+    await waitFor(() => expect(toastFn).toHaveBeenCalledTimes(1));
+    const invocation = readToastInvocation(0);
+    invocation.options.action.onClick();
+    expect(
+      window.localStorage.getItem(
+        "bb:desktop-update-toast:dismissed:0.0.2",
+      ),
+    ).toBe("true");
+    expect(toastDismissFn).toHaveBeenCalledWith(
+      "bb-desktop-update-available:0.0.2",
+    );
+  });
+
+  it("shows the desktop toast when an update arrives through the preload subscription", async () => {
+    const desktopStub = createDesktopApiStub({
+      lastCheckedAt: null,
+      latestVersion: null,
+      platform: "macos",
+      updateAvailable: false,
+      version: "0.0.1",
+    });
+    window.bbDesktop = desktopStub.api;
+
+    const { useDesktopUpdateAvailableToast } = await loadHook();
+    renderHook(() => useDesktopUpdateAvailableToast());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    desktopStub.emit({
+      lastCheckedAt: "2026-05-21T00:00:00.000Z",
+      latestVersion: "0.0.3",
+      platform: "macos",
+      updateAvailable: true,
+      version: "0.0.1",
+    });
+
+    await waitFor(() => expect(toastFn).toHaveBeenCalledTimes(1));
+    const invocation = readToastInvocation(0);
+    expect(invocation.message).toBe("Desktop update available");
+    expect(invocation.options.id).toBe("bb-desktop-update-available:0.0.3");
+  });
+
+  it("does not show the desktop toast when the preload global is absent", async () => {
+    const { useDesktopUpdateAvailableToast } = await loadHook();
+    renderHook(() => useDesktopUpdateAvailableToast());
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(toastFn).not.toHaveBeenCalled();
   });
 });
