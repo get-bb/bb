@@ -11,6 +11,7 @@
   "files": ["assets/**", "dist/**", "node_modules/**", "package.json"],
   "publish": [
     {
+      "channel": "latest",
       "provider": "generic",
       "url": "https://github.com/ymichael/bb/releases/download/desktop-latest/"
     }

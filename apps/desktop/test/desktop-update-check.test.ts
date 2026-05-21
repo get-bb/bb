@@ -53,8 +53,10 @@ describe("desktop update feed parsing", () => {
     expect(result.info).toEqual({
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
+      pendingVersion: null,
       platform: "macos",
       updateAvailable: true,
+      updateDownloaded: false,
       version: "0.0.1",
     });
   });
@@ -113,8 +115,10 @@ describe("desktop update feed parsing", () => {
     expect(result.info).toEqual({
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.1",
+      pendingVersion: null,
       platform: "macos",
       updateAvailable: false,
+      updateDownloaded: false,
       version: "0.0.2",
     });
   });
@@ -145,8 +149,10 @@ describe("desktop update service", () => {
     expect(successfulInfo).toEqual({
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
+      pendingVersion: null,
       platform: "macos",
       updateAvailable: true,
+      updateDownloaded: false,
       version: "0.0.1",
     });
 
@@ -157,8 +163,10 @@ describe("desktop update service", () => {
     expect(failedInfo).toEqual({
       lastCheckedAt: failedCheckedAt,
       latestVersion: "0.0.2",
+      pendingVersion: null,
       platform: "macos",
       updateAvailable: true,
+      updateDownloaded: false,
       version: "0.0.1",
     });
   });
@@ -205,8 +213,10 @@ describe("desktop update service", () => {
       expect(timeoutInfo).toEqual({
         lastCheckedAt: timeoutCheckedAt,
         latestVersion: "0.0.2",
+        pendingVersion: null,
         platform: "macos",
         updateAvailable: true,
+        updateDownloaded: false,
         version: "0.0.1",
       });
     } finally {

@@ -99,8 +99,10 @@ export type BbDesktopVersionFeed = z.infer<typeof bbDesktopVersionFeedSchema>;
 export const bbDesktopInfoSchema = z.object({
   lastCheckedAt: isoUtcDateTimeSchema.nullable(),
   latestVersion: z.string().min(1).nullable(),
+  pendingVersion: z.string().min(1).nullable(),
   platform: z.literal("macos"),
   updateAvailable: z.boolean(),
+  updateDownloaded: z.boolean(),
   version: z.string().min(1),
 });
 export type BbDesktopInfo = z.infer<typeof bbDesktopInfoSchema>;
@@ -111,6 +113,7 @@ export type BbDesktopInfoUnsubscribe = () => void;
 export interface BbDesktopApi extends BbDesktopInfo {
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
+  installUpdate(): Promise<void>;
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
 }
 

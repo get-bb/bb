@@ -7,8 +7,7 @@ import {
   type BbDesktopVersionFeed,
 } from "@bb/server-contract";
 
-export const DESKTOP_UPDATE_FEED_URL =
-  "https://github.com/ymichael/bb/releases/download/desktop-latest/desktop-version.json";
+export { DESKTOP_UPDATE_FEED_URL } from "./desktop-update-provider.js";
 export const DESKTOP_UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 export const DESKTOP_UPDATE_CHECK_TIMEOUT_MS = 5_000;
 export const DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS = 15 * 60 * 1000;
@@ -55,9 +54,7 @@ export interface DesktopUpdateService {
   getInfo(): BbDesktopInfo;
   start(): void;
   stop(): void;
-  subscribe(
-    listener: BbDesktopInfoChangeHandler,
-  ): BbDesktopInfoUnsubscribe;
+  subscribe(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
 }
 
 interface FetchDesktopVersionFeedArgs {
@@ -74,8 +71,10 @@ function createBaseInfo(currentVersion: string): BbDesktopInfo {
   return {
     lastCheckedAt: null,
     latestVersion: null,
+    pendingVersion: null,
     platform: "macos",
     updateAvailable: false,
+    updateDownloaded: false,
     version: currentVersion,
   };
 }
@@ -91,8 +90,10 @@ function areDesktopInfoValuesEqual(
   return (
     left.lastCheckedAt === right.lastCheckedAt &&
     left.latestVersion === right.latestVersion &&
+    left.pendingVersion === right.pendingVersion &&
     left.platform === right.platform &&
     left.updateAvailable === right.updateAvailable &&
+    left.updateDownloaded === right.updateDownloaded &&
     left.version === right.version
   );
 }
@@ -138,8 +139,10 @@ export function parseDesktopVersionFeed(
     info: {
       lastCheckedAt: args.checkedAt,
       latestVersion: parsedFeed.data.version,
+      pendingVersion: null,
       platform: "macos",
       updateAvailable: semver.gt(parsedFeedVersion, parsedCurrentVersion),
+      updateDownloaded: false,
       version: args.currentVersion,
     },
     kind: "valid",
@@ -293,9 +296,7 @@ export function createDesktopUpdateService(
       clearInterval(intervalHandle);
       intervalHandle = null;
     },
-    subscribe(
-      listener: BbDesktopInfoChangeHandler,
-    ): BbDesktopInfoUnsubscribe {
+    subscribe(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);

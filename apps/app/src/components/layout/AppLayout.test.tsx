@@ -57,6 +57,9 @@ function createBbDesktopApi(info: BbDesktopInfo): BbDesktopApi {
     async getInfo() {
       return info;
     },
+    async installUpdate() {
+      return undefined;
+    },
     onChange(_listener: BbDesktopInfoChangeHandler) {
       return () => undefined;
     },
@@ -140,10 +143,12 @@ describe("AppLayout desktop chrome", () => {
     expect(screen.queryByTestId("bb-desktop-titlebar")).toBeNull();
     expect(screen.queryByTestId("bb-desktop-window-drag-region")).toBeNull();
     expect(screen.queryByTestId("bb-desktop-sidebar-trigger")).toBeNull();
-    expect(screen.getByTestId("app-sidebar-inline-trigger-row").className).not
-      .toContain(MACOS_TRAFFIC_LIGHT_RESERVE_CLASS);
-    expect(screen.getByTestId("app-sidebar-primary-actions").className).not
-      .toContain(MACOS_TRAFFIC_LIGHT_RESERVE_CLASS);
+    expect(
+      screen.getByTestId("app-sidebar-inline-trigger-row").className,
+    ).not.toContain(MACOS_TRAFFIC_LIGHT_RESERVE_CLASS);
+    expect(
+      screen.getByTestId("app-sidebar-primary-actions").className,
+    ).not.toContain(MACOS_TRAFFIC_LIGHT_RESERVE_CLASS);
     expect(headerRow.className).not.toContain(
       MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
     );
@@ -160,8 +165,10 @@ describe("AppLayout desktop chrome", () => {
       desktopInfo: createBbDesktopApi({
         lastCheckedAt: null,
         latestVersion: null,
+        pendingVersion: null,
         platform: "macos",
         updateAvailable: false,
+        updateDownloaded: false,
         version: "0.0.1",
       }),
       initialEntry: "/",
@@ -204,8 +211,10 @@ describe("AppLayout desktop chrome", () => {
       desktopInfo: createBbDesktopApi({
         lastCheckedAt: null,
         latestVersion: null,
+        pendingVersion: null,
         platform: "macos",
         updateAvailable: false,
+        updateDownloaded: false,
         version: "0.0.1",
       }),
       initialEntry: "/projects/proj_desktop",
@@ -232,9 +241,7 @@ describe("AppLayout desktop chrome", () => {
     expect(document.querySelectorAll("[data-sidebar='trigger']")).toHaveLength(
       1,
     );
-    expect(headerRow.className).toContain(
-      MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
-    );
+    expect(headerRow.className).toContain(MACOS_COLLAPSED_HEADER_RESERVE_CLASS);
     expect(headerRow.parentElement?.className).toContain(
       MACOS_WINDOW_DRAG_CLASS,
     );

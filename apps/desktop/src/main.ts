@@ -9,6 +9,8 @@ import {
   shell,
   type Event,
 } from "electron";
+import { autoUpdater } from "electron-updater";
+import type { BbDesktopInfo } from "@bb/server-contract";
 import {
   assertPathExists,
   resolveDesktopAssetPath,
@@ -48,9 +50,17 @@ import {
   type DesktopUpdateService,
 } from "./desktop-update-check.js";
 import {
+  createDesktopAutoUpdateService,
+  createElectronAutoUpdaterAdapter,
+  shouldEnableDesktopAutoUpdate,
+  type DesktopAutoUpdateLogger,
+  type DesktopAutoUpdateService,
+} from "./desktop-auto-update.js";
+import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
+  BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
 } from "./desktop-update-ipc.js";
 import {
   ATTACH_PROBE_TIMEOUT_MS,
@@ -116,8 +126,14 @@ interface ResolveDesktopUpdateFeedUrlArgs {
   env: NodeJS.ProcessEnv;
 }
 
+interface MergeDesktopUpdateInfoArgs {
+  autoInfo: BbDesktopInfo | null;
+  feedInfo: BbDesktopInfo | null;
+}
+
 let desktopWindowFactory: DesktopWindowFactory | null = null;
 let desktopUpdateService: DesktopUpdateService | null = null;
+let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
 let currentRuntime: DesktopRuntime | null = null;
 let currentWindowUrl: string | null = null;
 let bbAppLoaded = false;
@@ -153,6 +169,82 @@ function getDesktopVersion(version: string | undefined): string {
     throw new Error("Desktop version must be injected at build time");
   }
   return version;
+}
+
+function latestCheckedAt(
+  left: string | null,
+  right: string | null,
+): string | null {
+  if (left === null) {
+    return right;
+  }
+  if (right === null) {
+    return left;
+  }
+  return left > right ? left : right;
+}
+
+function mergeDesktopUpdateInfo(
+  args: MergeDesktopUpdateInfoArgs,
+): BbDesktopInfo | null {
+  const baseInfo = args.feedInfo ?? args.autoInfo;
+  if (baseInfo === null) {
+    return null;
+  }
+
+  const feedUpdateAvailable = args.feedInfo?.updateAvailable ?? false;
+  const autoUpdateAvailable = args.autoInfo?.updateAvailable ?? false;
+  const updateDownloaded = args.autoInfo?.updateDownloaded ?? false;
+  const pendingVersion = args.autoInfo?.pendingVersion ?? null;
+  const latestVersion =
+    pendingVersion ??
+    args.feedInfo?.latestVersion ??
+    args.autoInfo?.latestVersion ??
+    null;
+
+  return {
+    ...baseInfo,
+    lastCheckedAt: latestCheckedAt(
+      args.feedInfo?.lastCheckedAt ?? null,
+      args.autoInfo?.lastCheckedAt ?? null,
+    ),
+    latestVersion,
+    pendingVersion,
+    updateAvailable:
+      feedUpdateAvailable || autoUpdateAvailable || updateDownloaded,
+    updateDownloaded,
+  };
+}
+
+function getCurrentDesktopInfo(): BbDesktopInfo | null {
+  return mergeDesktopUpdateInfo({
+    autoInfo: desktopAutoUpdateService?.getInfo() ?? null,
+    feedInfo: desktopUpdateService?.getInfo() ?? null,
+  });
+}
+
+function sendDesktopInfoChanged(): void {
+  const info = getCurrentDesktopInfo();
+  if (info === null) {
+    return;
+  }
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    browserWindow.webContents.send(BB_DESKTOP_INFO_CHANGED_CHANNEL, info);
+  }
+}
+
+function createDesktopLogger(): DesktopAutoUpdateLogger {
+  return {
+    error(message) {
+      process.stderr.write(`${message}\n`);
+    },
+    info(message) {
+      process.stderr.write(`${message}\n`);
+    },
+    warn(message) {
+      process.stderr.write(`${message}\n`);
+    },
+  };
 }
 
 function resolveDataDirFromEnv(args: ResolveDataDirFromEnvArgs): string {
@@ -293,19 +385,34 @@ function handleBeforeQuit(event: Event): void {
 
 async function finishQuit(): Promise<void> {
   desktopUpdateService?.stop();
+  desktopAutoUpdateService?.stop();
   await desktopWindowFactory?.persistOpenWindows();
   await stopOwnedRuntime();
 }
 
 function registerDesktopUpdateIpc(): void {
   ipcMain.handle(BB_DESKTOP_GET_INFO_CHANNEL, () => {
-    return desktopUpdateService?.getInfo() ?? null;
+    return getCurrentDesktopInfo();
   });
   ipcMain.handle(BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL, async () => {
-    if (desktopUpdateService === null) {
-      return null;
+    await Promise.all([
+      desktopUpdateService?.checkForUpdates() ?? Promise.resolve(null),
+      desktopAutoUpdateService?.checkForUpdates() ?? Promise.resolve(null),
+    ]);
+    return getCurrentDesktopInfo();
+  });
+  ipcMain.handle(BB_DESKTOP_INSTALL_UPDATE_CHANNEL, async () => {
+    if (desktopAutoUpdateService === null) {
+      return;
     }
-    return desktopUpdateService.checkForUpdates();
+    if (!desktopAutoUpdateService.getInfo().updateDownloaded) {
+      desktopAutoUpdateService.installUpdate();
+      return;
+    }
+    quitting = true;
+    stoppingForQuit = true;
+    await finishQuit();
+    desktopAutoUpdateService.installUpdate();
   });
 }
 
@@ -458,6 +565,7 @@ async function runDesktopApp(): Promise<void> {
   });
   app.on("did-become-active", () => {
     void desktopUpdateService?.checkAfterActive();
+    void desktopAutoUpdateService?.checkAfterActive();
   });
   registerDesktopShutdownSignalHandlers({
     exitProcess(code) {
@@ -507,19 +615,28 @@ async function runDesktopApp(): Promise<void> {
     currentVersion: desktopVersion,
     enabled: app.isPackaged || process.env.BB_DESKTOP_VERSION_CHECK === "1",
     feedUrl: desktopUpdateFeedUrl,
-    logger: {
-      warn(message) {
-        process.stderr.write(`${message}\n`);
-      },
-    },
+    logger: createDesktopLogger(),
   });
-  desktopUpdateService.subscribe((info) => {
-    for (const browserWindow of BrowserWindow.getAllWindows()) {
-      browserWindow.webContents.send(BB_DESKTOP_INFO_CHANGED_CHANNEL, info);
-    }
+  desktopAutoUpdateService = createDesktopAutoUpdateService({
+    currentVersion: desktopVersion,
+    enabled: shouldEnableDesktopAutoUpdate({
+      env: process.env,
+      isPackaged: app.isPackaged,
+    }),
+    forceDevUpdateConfig:
+      !app.isPackaged && process.env.BB_DESKTOP_AUTO_UPDATE === "1",
+    logger: createDesktopLogger(),
+    updater: createElectronAutoUpdaterAdapter(autoUpdater),
+  });
+  desktopUpdateService.subscribe(() => {
+    sendDesktopInfoChanged();
+  });
+  desktopAutoUpdateService.subscribe(() => {
+    sendDesktopInfoChanged();
   });
   registerDesktopUpdateIpc();
   desktopUpdateService.start();
+  desktopAutoUpdateService.start();
 
   const browserWindowCreator: DesktopBrowserWindowCreator = {
     create(options) {

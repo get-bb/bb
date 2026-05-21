@@ -10,6 +10,7 @@ import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
+  BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
 } from "./desktop-update-ipc.js";
 
 function getDesktopVersion(version: string | undefined): string {
@@ -23,8 +24,10 @@ function createInitialDesktopInfo(): BbDesktopInfo {
   return {
     lastCheckedAt: null,
     latestVersion: null,
+    pendingVersion: null,
     platform: "macos",
     updateAvailable: false,
+    updateDownloaded: false,
     version: getDesktopVersion(process.env.BB_DESKTOP_VERSION),
   };
 }
@@ -57,6 +60,14 @@ async function invokeDesktopInfo(channel: string): Promise<BbDesktopInfo> {
   }
 }
 
+async function invokeInstallUpdate(): Promise<void> {
+  try {
+    await ipcRenderer.invoke(BB_DESKTOP_INSTALL_UPDATE_CHANNEL);
+  } catch {
+    return;
+  }
+}
+
 const bbDesktopApi: BbDesktopApi = {
   get lastCheckedAt() {
     return currentInfo.lastCheckedAt;
@@ -64,9 +75,15 @@ const bbDesktopApi: BbDesktopApi = {
   get latestVersion() {
     return currentInfo.latestVersion;
   },
+  get pendingVersion() {
+    return currentInfo.pendingVersion;
+  },
   platform: "macos",
   get updateAvailable() {
     return currentInfo.updateAvailable;
+  },
+  get updateDownloaded() {
+    return currentInfo.updateDownloaded;
   },
   version: currentInfo.version,
   checkForUpdates() {
@@ -75,9 +92,10 @@ const bbDesktopApi: BbDesktopApi = {
   getInfo() {
     return invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
   },
-  onChange(
-    listener: BbDesktopInfoChangeHandler,
-  ): BbDesktopInfoUnsubscribe {
+  installUpdate() {
+    return invokeInstallUpdate();
+  },
+  onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe {
     listeners.add(listener);
     return () => {
       listeners.delete(listener);

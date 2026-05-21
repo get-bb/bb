@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "bb-app": "workspace:*",
+    "electron-updater": "^6.8.3",
     "semver": "^7.7.0",
     "zod": "^4.3.6"
   },

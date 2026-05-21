@@ -62,6 +62,17 @@ binaries from `desktop-latest`. If only some required signing secrets are set,
 the workflow fails before packaging so a misconfigured release cannot silently
 produce unsigned or signed-but-not-notarized artifacts.
 
+## Auto-update
+
+The renderer update toast keeps using `desktop-version.json` as the lightweight
+feature surface. The installer path uses `electron-updater` against the same
+`desktop-latest` release asset directory and reads `latest-mac.yml`. These
+checks run in parallel on launch, hourly, and when the app becomes active: the
+JSON feed can show "update available" even when CI has published metadata only,
+while the Electron updater only flips the toast to "ready to install" after a
+signed update has actually downloaded. Local dev builds skip Electron auto-update
+unless `BB_DESKTOP_AUTO_UPDATE=1` is set.
+
 To verify a downloaded or unpacked build:
 
 ```bash

@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import { DESKTOP_AUTO_UPDATE_FEED_CONFIG } from "../src/desktop-update-provider.js";
 
 const testDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopPackageRoot = resolve(testDirectory, "..");
@@ -27,6 +28,15 @@ const electronBuilderConfigSchema = z
       })
       .passthrough(),
     mac: macConfigSchema,
+    publish: z.tuple([
+      z
+        .object({
+          channel: z.literal("latest"),
+          provider: z.literal("generic"),
+          url: z.string().min(1),
+        })
+        .passthrough(),
+    ]),
   })
   .passthrough();
 
@@ -136,6 +146,16 @@ describe("electron-builder signing config", () => {
     await expect(
       access(resolve(desktopPackageRoot, config.mac.entitlementsInherit)),
     ).resolves.toBeUndefined();
+  });
+
+  it("keeps the updater provider pointed at desktop-latest release assets", async () => {
+    const configText = await readFile(
+      resolve(desktopPackageRoot, "electron-builder.config.json"),
+      "utf8",
+    );
+    const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
+
+    expect(config.publish[0]).toMatchObject(DESKTOP_AUTO_UPDATE_FEED_CONFIG);
   });
 
   it("keeps local builds unsigned when signing secrets are absent", async () => {
