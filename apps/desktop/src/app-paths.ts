@@ -25,15 +25,18 @@ export function resolveDesktopBridgePath(
   args: ResolveDesktopBridgePathArgs,
 ): string {
   if (args.paths.isPackaged) {
-    return join(
-      args.paths.resourcesPath,
-      "app.asar.unpacked",
-      "dist",
-      "bb-app-bridge.js",
-    );
+    if (args.paths.appPath.endsWith(".asar")) {
+      return join(
+        `${args.paths.appPath}.unpacked`,
+        "dist",
+        "bb-app-bridge.mjs",
+      );
+    }
+
+    return join(args.paths.resourcesPath, "app", "dist", "bb-app-bridge.mjs");
   }
 
-  return join(args.paths.appPath, "dist", "bb-app-bridge.js");
+  return join(args.paths.appPath, "dist", "bb-app-bridge.mjs");
 }
 
 export function resolveDesktopAssetPath(

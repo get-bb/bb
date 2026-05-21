@@ -2,7 +2,6 @@
   "name": "@bb/desktop",
   "version": "0.0.6",
   "private": true,
-  "type": "module",
   "description": "macOS Electron shell for bb",
   "main": "dist/main.js",
   "os": [

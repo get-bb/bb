@@ -41,7 +41,7 @@ await Promise.all([
     ...commonOptions,
     entryPoints: [resolve(packageRoot, "src", "main.ts")],
     external: ["electron"],
-    format: "esm",
+    format: "cjs",
     outfile: resolve(distDir, "main.js"),
   }),
   build({
@@ -56,7 +56,7 @@ await Promise.all([
     entryPoints: [resolve(packageRoot, "src", "bb-app-bridge.ts")],
     external: ["bb-app", "bb-app/*"],
     format: "esm",
-    outfile: resolve(distDir, "bb-app-bridge.js"),
+    outfile: resolve(distDir, "bb-app-bridge.mjs"),
   }),
 ]);
 

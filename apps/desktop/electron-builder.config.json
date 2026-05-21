@@ -3,7 +3,7 @@
   "productName": "bb",
   "artifactName": "${productName}-${version}-${arch}.${ext}",
   "asar": true,
-  "asarUnpack": ["dist/bb-app-bridge.js", "node_modules/**"],
+  "asarUnpack": ["dist/bb-app-bridge.mjs", "node_modules/**"],
   "directories": {
     "buildResources": "assets",
     "output": "release"

@@ -1,13 +1,11 @@
 import { spawn } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { DESKTOP_AUTO_UPDATE_FEED_CONFIG } from "../src/desktop-update-provider.js";
 
-const testDirectory = dirname(fileURLToPath(import.meta.url));
-const desktopPackageRoot = resolve(testDirectory, "..");
+const desktopPackageRoot = process.cwd();
 
 const macConfigSchema = z
   .object({
@@ -22,6 +20,7 @@ const macConfigSchema = z
 
 const electronBuilderConfigSchema = z
   .object({
+    asarUnpack: z.array(z.string().min(1)),
     dmg: z
       .object({
         sign: z.boolean(),
@@ -37,6 +36,13 @@ const electronBuilderConfigSchema = z
         })
         .passthrough(),
     ]),
+  })
+  .passthrough();
+
+const desktopPackageJsonSchema = z
+  .object({
+    main: z.literal("dist/main.js"),
+    type: z.never().optional(),
   })
   .passthrough();
 
@@ -128,6 +134,30 @@ const readResolvedConfig: ReadResolvedConfig = async (overrides) => {
 };
 
 describe("electron-builder signing config", () => {
+  it("keeps package metadata compatible with electron universal's CJS entry asar", async () => {
+    const packageJsonText = await readFile(
+      resolve(desktopPackageRoot, "package.json"),
+      "utf8",
+    );
+    const packageJson = desktopPackageJsonSchema.parse(
+      JSON.parse(packageJsonText),
+    );
+
+    expect(packageJson.main).toBe("dist/main.js");
+    expect(packageJson).not.toHaveProperty("type");
+  });
+
+  it("unpacks the ESM bb-app bridge with an explicit module extension", async () => {
+    const configText = await readFile(
+      resolve(desktopPackageRoot, "electron-builder.config.json"),
+      "utf8",
+    );
+    const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
+
+    expect(config.asarUnpack).toContain("dist/bb-app-bridge.mjs");
+    expect(config.asarUnpack).not.toContain("dist/bb-app-bridge.js");
+  });
+
   it("points mac signing entitlements at checked-in plist files", async () => {
     const configText = await readFile(
       resolve(desktopPackageRoot, "electron-builder.config.json"),

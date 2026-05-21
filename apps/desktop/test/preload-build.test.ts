@@ -1,14 +1,12 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const testDirectory = dirname(fileURLToPath(import.meta.url));
-const desktopPackageRoot = resolve(testDirectory, "..");
+const desktopPackageRoot = process.cwd();
 
 const desktopPackageJsonSchema = z.object({
   version: z.string().min(1),
@@ -27,21 +25,32 @@ async function readDesktopPackageVersion(): Promise<string> {
   return packageJson.version;
 }
 
-describe("preload build", () => {
-  it("inlines the desktop version for the preload global", async () => {
+describe("desktop build", () => {
+  it("emits package-compatible Electron entries", async () => {
     const desktopVersion = await readDesktopPackageVersion();
 
     await execFileAsync(process.execPath, ["scripts/build.mjs"], {
       cwd: desktopPackageRoot,
     });
 
+    const mainSource = await readFile(
+      resolve(desktopPackageRoot, "dist", "main.js"),
+      "utf8",
+    );
     const preloadSource = await readFile(
       resolve(desktopPackageRoot, "dist", "preload.cjs"),
       "utf8",
     );
+    const bridgeSource = await readFile(
+      resolve(desktopPackageRoot, "dist", "bb-app-bridge.mjs"),
+      "utf8",
+    );
 
+    expect(mainSource).toContain('"use strict";');
+    expect(mainSource).not.toMatch(/^import\s/mu);
     expect(preloadSource).toContain(desktopVersion);
     expect(preloadSource).not.toContain("BB_DESKTOP_VERSION");
     expect(preloadSource).not.toContain("getDesktopVersion(process.env");
+    expect(bridgeSource).toContain('import "bb-app/dist/bb-app.js"');
   });
 });
