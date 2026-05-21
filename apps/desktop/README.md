@@ -34,8 +34,40 @@ pnpm exec turbo run dev --filter=@bb/desktop
 pnpm exec turbo run desktop:build --filter=@bb/desktop
 ```
 
-Artifacts are written under `apps/desktop/release/`. v1 builds are unsigned and
-macOS-only.
+Artifacts are written under `apps/desktop/release/`. Without signing secrets,
+local and CI builds remain unsigned and macOS shows the normal Gatekeeper warning
+on first launch.
+
+## macOS signing + notarization
+
+The desktop package is ready for Developer ID signing and Apple notarization.
+Unsigned local builds continue to work with no secrets. To activate signed and
+notarized release artifacts, add these GitHub Actions secrets:
+
+| Secret                       | Value                                                                                                                                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MACOS_CERTIFICATE_P12`      | Base64-encoded `.p12` exported from Keychain Access for a `Developer ID Application` certificate and its private key. On macOS: `base64 -i DeveloperID.p12 -o certificate.base64.txt`. |
+| `MACOS_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12`.                                                                                                                                               |
+| `MACOS_CERTIFICATE_NAME`     | Optional certificate common name, without the `Developer ID Application:` prefix. Leave unset when the `.p12` contains a single usable identity and electron-builder can derive it.    |
+| `APPLE_ID`                   | Apple ID email for the Developer Program account.                                                                                                                                      |
+| `APPLE_APP_PASSWORD`         | App-specific password from `appleid.apple.com` under Sign-In and Security.                                                                                                             |
+| `APPLE_TEAM_ID`              | Developer Team ID from `developer.apple.com/account` membership details.                                                                                                               |
+
+Once those secrets are present, the next `Build Desktop` workflow run with
+`publish=true` and `release_channel=stable` signs the `.app`, notarizes it, and
+publishes the signed `.dmg` / `.zip` assets to `desktop-latest`. If no required
+signing secrets are configured, the workflow still builds unsigned artifacts, but
+the release job publishes only `desktop-version.json` and withholds unsigned
+binaries from `desktop-latest`. If only some required signing secrets are set,
+the workflow fails before packaging so a misconfigured release cannot silently
+produce unsigned or signed-but-not-notarized artifacts.
+
+To verify a downloaded or unpacked build:
+
+```bash
+spctl --assess --verbose /path/to/bb.app
+codesign --verify --deep --strict --verbose=2 /path/to/bb.app
+```
 
 ## Debugging
 

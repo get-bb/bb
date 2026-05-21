@@ -11,11 +11,11 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "clean": "rimraf dist release",
-    "desktop:build": "pnpm run build && electron-builder --config electron-builder.config.json --mac --universal --publish always",
+    "desktop:build": "pnpm run build && node scripts/run-electron-builder.mjs --mac --universal --publish always",
     "desktop:version-feed": "tsx scripts/generate-version-feed.ts",
     "dev": "pnpm run package && node scripts/run-packaged-app.mjs",
     "dist": "pnpm run prepare-runtime && pnpm run desktop:build",
-    "package": "pnpm run prepare-runtime && pnpm run build && electron-builder --config electron-builder.config.json --mac --dir",
+    "package": "pnpm run prepare-runtime && pnpm run build && node scripts/run-electron-builder.mjs --mac --dir",
     "prepare-runtime": "pnpm exec turbo run build --filter=bb-app --output-logs=new-only",
     "start": "electron .",
     "test": "vitest run --config vitest.config.ts",

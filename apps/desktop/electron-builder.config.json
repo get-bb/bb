@@ -17,10 +17,14 @@
   ],
   "mac": {
     "category": "public.app-category.developer-tools",
-    "hardenedRuntime": false,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+    "gatekeeperAssess": false,
+    "hardenedRuntime": true,
     "icon": "assets/icon.icns",
     "identity": null,
     "mergeASARs": false,
+    "notarize": false,
     "x64ArchFiles": "**/*darwin-*/**/*",
     "target": ["dmg", "zip"]
   },

@@ -22,6 +22,7 @@ out
 # production
 /build
 /apps/desktop/release/
+/apps/desktop/.electron-builder.generated.json
 
 # misc
 .DS_Store

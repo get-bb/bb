@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   macos:
-    name: macOS unsigned artifacts
+    name: macOS desktop artifacts
     runs-on: macos-latest
     timeout-minutes: 45
 
@@ -63,7 +63,51 @@ jobs:
       - name: Test desktop and launcher
         run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
 
+      - name: Validate macOS signing secrets
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+
+          REQUIRED_SECRET_NAMES=(
+            "MACOS_CERTIFICATE_P12"
+            "MACOS_CERTIFICATE_PASSWORD"
+            "APPLE_ID"
+            "APPLE_APP_PASSWORD"
+            "APPLE_TEAM_ID"
+          )
+          PRESENT_SECRET_NAMES=()
+          MISSING_SECRET_NAMES=()
+
+          for secret_name in "${REQUIRED_SECRET_NAMES[@]}"; do
+            if [[ -n "${!secret_name:-}" ]]; then
+              PRESENT_SECRET_NAMES+=("$secret_name")
+            else
+              MISSING_SECRET_NAMES+=("$secret_name")
+            fi
+          done
+
+          if [[ "${#PRESENT_SECRET_NAMES[@]}" -eq 0 ]]; then
+            echo "::warning::macOS signing/notarization secrets are not configured; building unsigned workflow artifacts and publishing desktop-version.json only."
+          elif [[ "${#MISSING_SECRET_NAMES[@]}" -eq 0 ]]; then
+            echo "macOS signing/notarization secrets are complete; signed and notarized artifacts will be produced."
+          else
+            echo "::error::Incomplete macOS signing/notarization secret set. Present: ${PRESENT_SECRET_NAMES[*]}. Missing: ${MISSING_SECRET_NAMES[*]}."
+            exit 1
+          fi
+
       - name: Package universal desktop artifacts
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          CSC_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm exec turbo run desktop:build --filter=@bb/desktop --force --output-logs=new-only
 
       - name: Generate desktop version feed
@@ -74,16 +118,11 @@ jobs:
         env:
           INPUT_PUBLISH: ${{ inputs.publish }}
           RELEASE_CHANNEL: ${{ inputs.release_channel }}
-          # Binary publication stays disabled until the signing/notarization
-          # task removes the unsigned electron-builder config. If signing
-          # secrets are absent, stable releases intentionally publish only
-          # desktop-version.json and never unsigned .dmg/.zip artifacts.
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          ENABLE_DESKTOP_SIGNED_BINARY_RELEASES: ${{ vars.ENABLE_DESKTOP_SIGNED_BINARY_RELEASES }}
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
 
@@ -99,13 +138,15 @@ jobs:
           fi
 
           HAS_SIGNING_SECRETS="false"
-          if [[ -n "${CSC_LINK:-}" && -n "${CSC_KEY_PASSWORD:-}" && -n "${APPLE_API_KEY:-}" && -n "${APPLE_API_KEY_ID:-}" && -n "${APPLE_API_ISSUER:-}" ]]; then
+          if [[ -n "${CSC_LINK:-}" && -n "${CSC_KEY_PASSWORD:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
             HAS_SIGNING_SECRETS="true"
           fi
 
           PUBLISH_BINARIES="false"
-          if [[ "$HAS_SIGNING_SECRETS" == "true" && "$ENABLE_DESKTOP_SIGNED_BINARY_RELEASES" == "true" ]]; then
+          if [[ "$HAS_SIGNING_SECRETS" == "true" ]]; then
             PUBLISH_BINARIES="true"
+          elif [[ "$SHOULD_PUBLISH" == "true" ]]; then
+            echo "::warning::macOS signing/notarization secrets are missing; publishing desktop-version.json only and withholding unsigned .dmg/.zip artifacts."
           fi
 
           {
