@@ -87,6 +87,31 @@ function renderLocalView(viewModel: LocalViewModel): string {
       margin: 0;
     }
 
+    .titlebar-drag-region {
+      app-region: drag;
+      -webkit-app-region: drag;
+      background: transparent;
+      border: 0;
+      height: 28px;
+      left: 0;
+      position: fixed;
+      right: 0;
+      top: 0;
+      user-select: none;
+      z-index: 10;
+    }
+
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    summary,
+    pre {
+      app-region: no-drag;
+      -webkit-app-region: no-drag;
+    }
+
     .shell {
       max-width: 680px;
       padding: 32px;
@@ -143,6 +168,7 @@ function renderLocalView(viewModel: LocalViewModel): string {
   </style>
 </head>
 <body>
+<div class="titlebar-drag-region" data-testid="bb-local-view-window-drag-region" aria-hidden="true"></div>
 ${body}
 </body>
 </html>`;
