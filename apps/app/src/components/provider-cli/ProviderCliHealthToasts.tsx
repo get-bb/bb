@@ -60,7 +60,8 @@ interface ProviderCliInstallDialogProps {
   onClose: () => void;
 }
 
-const DISMISSED_STORAGE_KEY_PREFIX = "bb:provider-cli-health:dismissed:";
+const PROVIDER_CLI_TOAST_DISMISSED_STORAGE_KEY_PREFIX =
+  "bb:provider-cli-toast:dismissed-v2:";
 
 function getLocalStorage(): Storage | null {
   if (typeof window === "undefined") {
@@ -74,7 +75,7 @@ function getLocalStorage(): Storage | null {
 }
 
 function dismissedStorageKey(fingerprint: string): string {
-  return `${DISMISSED_STORAGE_KEY_PREFIX}${fingerprint}`;
+  return `${PROVIDER_CLI_TOAST_DISMISSED_STORAGE_KEY_PREFIX}${fingerprint}`;
 }
 
 function isDismissedForFingerprint(fingerprint: string): boolean {
@@ -98,6 +99,18 @@ function markDismissedForFingerprint(fingerprint: string): void {
     storage.setItem(dismissedStorageKey(fingerprint), "true");
   } catch {
     // The in-memory dismissal set still keeps the toast hidden this session.
+  }
+}
+
+function clearDismissedForFingerprint(fingerprint: string): void {
+  const storage = getLocalStorage();
+  if (storage === null) {
+    return;
+  }
+  try {
+    storage.removeItem(dismissedStorageKey(fingerprint));
+  } catch {
+    // Clearing localStorage is best-effort; refs still reset this session.
   }
 }
 
@@ -152,6 +165,12 @@ function buildProviderCliIssue(
   }
 
   return null;
+}
+
+function isProviderCliToastIssue(
+  issue: ProviderCliToastIssue | null,
+): issue is ProviderCliToastIssue {
+  return issue !== null;
 }
 
 function appendInstallLog(log: string, text: string): string {
@@ -315,6 +334,9 @@ export function ProviderCliHealthToasts() {
   });
   const dismissedFingerprintsRef = useRef<Set<string>>(new Set());
   const shownFingerprintsRef = useRef<Set<string>>(new Set());
+  const activeIssuesRef = useRef<Map<string, ProviderCliToastIssue>>(
+    new Map(),
+  );
   const runningProviderRef = useRef<ProviderCliKey | null>(null);
   const [installState, setInstallState] =
     useState<ProviderCliInstallState | null>(null);
@@ -322,6 +344,11 @@ export function ProviderCliHealthToasts() {
   const markIssueDismissed = useCallback((issue: ProviderCliToastIssue) => {
     dismissedFingerprintsRef.current.add(issue.fingerprint);
     markDismissedForFingerprint(issue.fingerprint);
+  }, []);
+
+  const clearIssueDismissal = useCallback((issue: ProviderCliToastIssue) => {
+    dismissedFingerprintsRef.current.delete(issue.fingerprint);
+    clearDismissedForFingerprint(issue.fingerprint);
   }, []);
 
   const dismissIssue = useCallback(
@@ -414,11 +441,29 @@ export function ProviderCliHealthToasts() {
       return;
     }
 
-    for (const entry of providerCliEntries(data)) {
-      const issue = buildProviderCliIssue(entry);
-      if (!issue) {
-        continue;
+    const currentIssues = providerCliEntries(data)
+      .map(buildProviderCliIssue)
+      .filter(isProviderCliToastIssue);
+    const currentIssuesByFingerprint = new Map<
+      string,
+      ProviderCliToastIssue
+    >();
+
+    for (const issue of currentIssues) {
+      currentIssuesByFingerprint.set(issue.fingerprint, issue);
+    }
+
+    for (const previousIssue of activeIssuesRef.current.values()) {
+      if (!currentIssuesByFingerprint.has(previousIssue.fingerprint)) {
+        toast.dismiss(previousIssue.toastId);
+        shownFingerprintsRef.current.delete(previousIssue.fingerprint);
+        clearIssueDismissal(previousIssue);
       }
+    }
+
+    activeIssuesRef.current = currentIssuesByFingerprint;
+
+    for (const issue of currentIssues) {
       if (
         dismissedFingerprintsRef.current.has(issue.fingerprint) ||
         isDismissedForFingerprint(issue.fingerprint)
@@ -445,9 +490,6 @@ export function ProviderCliHealthToasts() {
             label: "Dismiss",
             onClick: () => dismissIssue(issue),
           },
-          onDismiss: () => {
-            markIssueDismissed(issue);
-          },
         });
       } else {
         toast.warning(issue.title, {
@@ -459,13 +501,10 @@ export function ProviderCliHealthToasts() {
             label: "Dismiss",
             onClick: () => dismissIssue(issue),
           },
-          onDismiss: () => {
-            markIssueDismissed(issue);
-          },
         });
       }
     }
-  }, [dismissIssue, markIssueDismissed, providerCliStatus.data, startInstall]);
+  }, [clearIssueDismissal, dismissIssue, providerCliStatus.data, startInstall]);
 
   return (
     <ProviderCliInstallDialog
