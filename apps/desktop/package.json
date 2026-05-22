@@ -1,6 +1,6 @@
 {
   "name": "@bb/desktop",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "private": true,
   "description": "macOS Electron shell for bb",
   "main": "dist/main.js",
