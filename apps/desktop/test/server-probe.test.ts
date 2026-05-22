@@ -84,17 +84,6 @@ describe("probeBbServer", () => {
           );
           return;
         }
-        if (request.url === "/api/v1/system/version") {
-          writeJson(
-            response,
-            200,
-            JSON.stringify({
-              currentVersion: "0.0.6",
-              isDevelopment: false,
-            }),
-          );
-          return;
-        }
         writeJson(response, 404, JSON.stringify({ message: "not found" }));
       },
     });
@@ -126,7 +115,7 @@ describe("probeBbServer", () => {
     expect(result.kind).toBe("incompatible");
   });
 
-  it("rejects a service without a semver bb version as incompatible", async () => {
+  it("does not depend on the production version endpoint for startup compatibility", async () => {
     const testServer = await startTestServer({
       handler(request, response) {
         if (request.url === "/health") {
@@ -146,25 +135,18 @@ describe("probeBbServer", () => {
           return;
         }
         if (request.url === "/api/v1/system/version") {
-          writeJson(
-            response,
-            200,
-            JSON.stringify({
-              currentVersion: "not-bb-semver",
-            }),
-          );
           return;
         }
         writeJson(response, 404, JSON.stringify({ message: "not found" }));
       },
     });
 
-    const result = await probeBbServer({
+    await expect(
+      probeBbServer({ serverUrl: testServer.url, timeoutMs: 50 }),
+    ).resolves.toEqual({
+      kind: "compatible",
       serverUrl: testServer.url,
-      timeoutMs: 500,
     });
-
-    expect(result.kind).toBe("incompatible");
   });
 
   it("reports unavailable when nothing is listening", async () => {

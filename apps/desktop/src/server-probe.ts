@@ -14,15 +14,6 @@ const systemConfigResponseSchema = z
   })
   .passthrough();
 
-const semverPattern =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
-
-const systemVersionResponseSchema = z
-  .object({
-    currentVersion: z.string().regex(semverPattern),
-  })
-  .passthrough();
-
 export type ServerProbeResult =
   | CompatibleServerProbeResult
   | IncompatibleServerProbeResult
@@ -199,20 +190,6 @@ export async function probeBbServer(
     return {
       kind: "incompatible",
       reason: `/api/v1/system/config returned ${formatFetchFailure(configResult)}`,
-      serverUrl: args.serverUrl,
-    };
-  }
-
-  const versionResult = await fetchJson({
-    schema: systemVersionResponseSchema,
-    timeoutMs: args.timeoutMs,
-    url: endpointUrl(args.serverUrl, "/api/v1/system/version"),
-  });
-
-  if (versionResult.kind !== "success") {
-    return {
-      kind: "incompatible",
-      reason: `/api/v1/system/version returned ${formatFetchFailure(versionResult)}`,
       serverUrl: args.serverUrl,
     };
   }
