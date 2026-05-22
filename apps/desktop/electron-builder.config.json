@@ -2,6 +2,7 @@
   "appId": "dev.bb.desktop",
   "productName": "bb",
   "artifactName": "${productName}-${version}-${arch}.${ext}",
+  "afterPack": "scripts/prepare-native-modules.cjs",
   "asar": true,
   "asarUnpack": ["dist/bb-app-bridge.mjs", "node_modules/**"],
   "directories": {

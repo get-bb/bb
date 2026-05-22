@@ -1,6 +1,16 @@
 import { spawn } from "node:child_process";
-import { access, readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import {
+  access,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { DESKTOP_AUTO_UPDATE_FEED_CONFIG } from "../src/desktop-update-provider.js";
@@ -20,6 +30,7 @@ const macConfigSchema = z
 
 const electronBuilderConfigSchema = z
   .object({
+    afterPack: z.string().min(1),
     asarUnpack: z.array(z.string().min(1)),
     dmg: z
       .object({
@@ -75,6 +86,7 @@ type RunConfigScript = (
 type ReadResolvedConfig = (
   overrides: EnvironmentOverrides,
 ) => Promise<ReadResolvedConfigResult>;
+type RunNativePrepScript = (appOutDir: string) => Promise<ScriptRunResult>;
 
 const createScriptEnvironment: CreateScriptEnvironment = (overrides) => {
   const env = { ...process.env };
@@ -101,6 +113,35 @@ const runConfigScript: RunConfigScript = async (overrides) => {
     {
       cwd: desktopPackageRoot,
       env: createScriptEnvironment(overrides),
+    },
+  );
+  const stdoutChunks: string[] = [];
+  const stderrChunks: string[] = [];
+
+  child.stdout.on("data", (chunk) => {
+    stdoutChunks.push(String(chunk));
+  });
+  child.stderr.on("data", (chunk) => {
+    stderrChunks.push(String(chunk));
+  });
+
+  const exitCode = await new Promise<number | null>((resolveExitCode) => {
+    child.on("close", resolveExitCode);
+  });
+
+  return {
+    exitCode,
+    stderr: stderrChunks.join(""),
+    stdout: stdoutChunks.join(""),
+  };
+};
+
+const runNativePrepScript: RunNativePrepScript = async (appOutDir) => {
+  const child = spawn(
+    process.execPath,
+    ["scripts/prepare-native-modules.cjs", appOutDir],
+    {
+      cwd: desktopPackageRoot,
     },
   );
   const stdoutChunks: string[] = [];
@@ -156,6 +197,77 @@ describe("electron-builder signing config", () => {
 
     expect(config.asarUnpack).toContain("dist/bb-app-bridge.mjs");
     expect(config.asarUnpack).not.toContain("dist/bb-app-bridge.js");
+  });
+
+  it("runs a native module preparation hook after packaging", async () => {
+    const configText = await readFile(
+      resolve(desktopPackageRoot, "electron-builder.config.json"),
+      "utf8",
+    );
+    const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
+    const hookPath = "scripts/prepare-native-modules.cjs";
+
+    expect(config.afterPack).toBe(hookPath);
+    await expect(
+      access(resolve(desktopPackageRoot, hookPath)),
+    ).resolves.toBeUndefined();
+  });
+
+  it("patches packaged node-pty helper path handling", async () => {
+    const appOutDir = await mkdtemp(
+      resolve(tmpdir(), "bb-desktop-native-modules-"),
+    );
+    const nodePtyPackageDir = resolve(
+      appOutDir,
+      "bb.app",
+      "Contents",
+      "Resources",
+      "app.asar.unpacked",
+      "node_modules",
+      "node-pty",
+    );
+    const rebuiltNativeDir = resolve(nodePtyPackageDir, "build", "Release");
+    const unixTerminalPath = resolve(
+      nodePtyPackageDir,
+      "lib",
+      "unixTerminal.js",
+    );
+    const helperPath = resolve(
+      nodePtyPackageDir,
+      "prebuilds",
+      "darwin-arm64",
+      "spawn-helper",
+    );
+    const rebuiltHelperPath = resolve(rebuiltNativeDir, "spawn-helper");
+
+    try {
+      await mkdir(rebuiltNativeDir, { recursive: true });
+      await writeFile(resolve(rebuiltNativeDir, "pty.node"), "rebuilt");
+      await writeFile(rebuiltHelperPath, "rebuilt-helper");
+      await chmod(rebuiltHelperPath, 0o644);
+      await mkdir(dirname(unixTerminalPath), { recursive: true });
+      await writeFile(
+        unixTerminalPath,
+        "helperPath = helperPath.replace('app.asar', 'app.asar.unpacked');",
+      );
+      await mkdir(dirname(helperPath), { recursive: true });
+      await writeFile(helperPath, "helper");
+      await chmod(helperPath, 0o644);
+
+      const result = await runNativePrepScript(appOutDir);
+
+      expect(result.exitCode).toBe(0);
+      await expect(
+        access(resolve(rebuiltNativeDir, "pty.node")),
+      ).resolves.toBeUndefined();
+      await expect(readFile(unixTerminalPath, "utf8")).resolves.toContain(
+        "helperPath.replace(/app\\.asar(?!\\.unpacked)/g, 'app.asar.unpacked')",
+      );
+      expect((await stat(helperPath)).mode & 0o777).toBe(0o755);
+      expect((await stat(rebuiltHelperPath)).mode & 0o777).toBe(0o755);
+    } finally {
+      await rm(appOutDir, { force: true, recursive: true });
+    }
   });
 
   it("points mac signing entitlements at checked-in plist files", async () => {
