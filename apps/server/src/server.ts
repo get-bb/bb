@@ -88,6 +88,13 @@ interface CreateAppOptions {
   staticDir?: string;
 }
 
+interface StaticResponseHeadersArgs {
+  contentType: string;
+  urlPath: string;
+}
+
+const STATIC_INDEX_CACHE_CONTROL = "no-store";
+const STATIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const WEB_SOCKET_SHUTDOWN_CODE = 1001;
 const WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS = 1_000;
 const WEB_SOCKET_SHUTDOWN_REASON = "server-shutdown";
@@ -106,6 +113,20 @@ function shouldLogSlowApiRequest(args: ShouldLogSlowApiRequestArgs): boolean {
     return false;
   }
   return !THREAD_EVENT_WAIT_PATH_PATTERN.test(args.path);
+}
+
+function createStaticResponseHeaders(
+  args: StaticResponseHeadersArgs,
+): Headers {
+  const headers = new Headers();
+  headers.set("content-type", args.contentType);
+  headers.set(
+    "cache-control",
+    args.urlPath.startsWith("/assets/")
+      ? STATIC_ASSET_CACHE_CONTROL
+      : STATIC_INDEX_CACHE_CONTROL,
+  );
+  return headers;
 }
 
 function buildAllowedCorsOrigins(deps: AppDeps): Set<string> {
@@ -347,7 +368,7 @@ export function createApp(
           const contentType =
             MIME[extname(filePath)] ?? "application/octet-stream";
           return new Response(content, {
-            headers: { "content-type": contentType },
+            headers: createStaticResponseHeaders({ contentType, urlPath }),
           });
         }
       } catch {
@@ -355,7 +376,10 @@ export function createApp(
       }
       const indexHtml = await readFile(join(root, "index.html"));
       return new Response(indexHtml, {
-        headers: { "content-type": "text/html" },
+        headers: createStaticResponseHeaders({
+          contentType: "text/html",
+          urlPath: "/index.html",
+        }),
       });
     });
   }

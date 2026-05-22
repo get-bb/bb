@@ -7,6 +7,7 @@ import {
   clipboard,
   ipcMain,
   nativeImage,
+  session,
   shell,
   type Event,
 } from "electron";
@@ -65,6 +66,7 @@ import {
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
 } from "./desktop-update-ipc.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
+import { clearPackagedSessionHttpCache } from "./desktop-session-cache.js";
 import {
   createLogTailer,
   createLogLineBuffer,
@@ -832,6 +834,10 @@ async function runDesktopApp(): Promise<void> {
   });
 
   await app.whenReady();
+  await clearPackagedSessionHttpCache({
+    isPackaged: app.isPackaged,
+    session: session.defaultSession,
+  });
 
   const paths = createDesktopPathContext();
   const iconPath = resolveDesktopAssetPath({
