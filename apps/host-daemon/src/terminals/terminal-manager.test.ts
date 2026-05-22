@@ -6,8 +6,11 @@ import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
 import {
+  ensureNodePtySpawnHelpersExecutableInPackage,
+  resolveNodePtySpawnHelperPaths,
   TerminalManager,
   type SpawnTerminalPtyArgs,
   type TerminalPtyAdapter,
@@ -48,6 +51,20 @@ async function makeTempDir(prefix: string): Promise<string> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   tempDirs.push(tempDir);
   return tempDir;
+}
+
+async function writeEmptyFile(filePath: string): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, "");
+}
+
+function createFakeLogger(): HostDaemonLogger {
+  return {
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  };
 }
 
 async function cleanupTempDirs(): Promise<void> {
@@ -212,12 +229,7 @@ function createHarness(): TerminalManagerHarness {
     },
   });
   const manager = new TerminalManager({
-    logger: {
-      debug: vi.fn(),
-      error: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-    },
+    logger: createFakeLogger(),
     ptyAdapter: adapter,
     resolveShell: async () => "/bin/zsh",
     runtimeManager,
@@ -342,6 +354,132 @@ describe("TerminalManager", () => {
     expect(env?.BB_DATA_DIR).toBeUndefined();
     expect(env?.BB_HOST_DAEMON_PORT).toBeUndefined();
     expect(env?.NODE_ENV).toBeUndefined();
+  });
+
+  it("makes every available node-pty spawn-helper executable", async () => {
+    const logger = createFakeLogger();
+    const packageDirectory = await makeTempDir("bb-node-pty-package-");
+    const buildNativePath = path.join(
+      packageDirectory,
+      "build",
+      "Release",
+      "pty.node",
+    );
+    const buildHelperPath = path.join(
+      packageDirectory,
+      "build",
+      "Release",
+      "spawn-helper",
+    );
+    const prebuildHelperPath = path.join(
+      packageDirectory,
+      "prebuilds",
+      `${process.platform}-${process.arch}`,
+      "spawn-helper",
+    );
+    await writeEmptyFile(buildNativePath);
+    await writeEmptyFile(buildHelperPath);
+    await fs.chmod(buildHelperPath, 0o644);
+    await writeEmptyFile(
+      path.join(
+        packageDirectory,
+        "prebuilds",
+        `${process.platform}-${process.arch}`,
+        "pty.node",
+      ),
+    );
+    await writeEmptyFile(prebuildHelperPath);
+    await fs.chmod(prebuildHelperPath, 0o644);
+
+    expect(resolveNodePtySpawnHelperPaths({ packageDirectory })).toEqual([
+      buildHelperPath,
+      prebuildHelperPath,
+    ]);
+
+    ensureNodePtySpawnHelpersExecutableInPackage({
+      logger,
+      packageDirectory,
+    });
+
+    const buildHelperMode = (await fs.stat(buildHelperPath)).mode;
+    const prebuildHelperMode = (await fs.stat(prebuildHelperPath)).mode;
+    expect(buildHelperMode & 0o111).not.toBe(0);
+    expect(prebuildHelperMode & 0o111).not.toBe(0);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("makes an available prebuild-only node-pty spawn-helper executable", async () => {
+    const logger = createFakeLogger();
+    const packageDirectory = await makeTempDir("bb-node-pty-package-");
+    const prebuildHelperPath = path.join(
+      packageDirectory,
+      "prebuilds",
+      `${process.platform}-${process.arch}`,
+      "spawn-helper",
+    );
+    await writeEmptyFile(
+      path.join(
+        packageDirectory,
+        "prebuilds",
+        `${process.platform}-${process.arch}`,
+        "pty.node",
+      ),
+    );
+    await writeEmptyFile(prebuildHelperPath);
+    await fs.chmod(prebuildHelperPath, 0o644);
+
+    expect(resolveNodePtySpawnHelperPaths({ packageDirectory })).toEqual([
+      prebuildHelperPath,
+    ]);
+
+    ensureNodePtySpawnHelpersExecutableInPackage({
+      logger,
+      packageDirectory,
+    });
+
+    const prebuildHelperMode = (await fs.stat(prebuildHelperPath)).mode;
+    expect(prebuildHelperMode & 0o111).not.toBe(0);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("logs and skips when no node-pty spawn-helper is present", async () => {
+    const logger = createFakeLogger();
+    const packageDirectory = await makeTempDir("bb-node-pty-package-");
+    const buildHelperPath = path.join(
+      packageDirectory,
+      "build",
+      "Release",
+      "spawn-helper",
+    );
+    const prebuildHelperPath = path.join(
+      packageDirectory,
+      "prebuilds",
+      `${process.platform}-${process.arch}`,
+      "spawn-helper",
+    );
+    await writeEmptyFile(
+      path.join(packageDirectory, "build", "Release", "pty.node"),
+    );
+    await writeEmptyFile(
+      path.join(
+        packageDirectory,
+        "prebuilds",
+        `${process.platform}-${process.arch}`,
+        "pty.node",
+      ),
+    );
+
+    expect(() =>
+      ensureNodePtySpawnHelpersExecutableInPackage({
+        logger,
+        packageDirectory,
+      }),
+    ).not.toThrow();
+    expect(logger.warn).toHaveBeenCalledWith({
+      component: "terminal-manager",
+      msg: "no node-pty spawn-helper found at known paths",
+      searched: expect.arrayContaining([buildHelperPath, prebuildHelperPath]),
+    });
   });
 
   it("forwards output and replays scrollback on attach", async () => {

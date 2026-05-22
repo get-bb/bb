@@ -1,4 +1,4 @@
-import { chmodSync, constants, existsSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -14,6 +14,14 @@ import { runtimeErrorLogFields } from "../error-utils.js";
 const DEFAULT_SCROLLBACK_MAX_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SCROLLBACK_MAX_CHUNKS = 10_000;
 const MAX_OUTPUT_CHUNK_BYTES = 64 * 1024;
+const NODE_PTY_NATIVE_DIRS: readonly string[] = [
+  path.join("build", "Release"),
+  path.join("build", "Debug"),
+  path.join("prebuilds", `${process.platform}-${process.arch}`),
+];
+const NODE_PTY_NATIVE_RELATIVE_ROOTS: readonly string[] = ["..", "."];
+const NODE_PTY_SPAWN_HELPER_MISSING_MESSAGE =
+  "no node-pty spawn-helper found at known paths";
 const requireForNodePty = createRequire(import.meta.url);
 let nodePtySpawnHelperChecked = false;
 
@@ -38,6 +46,7 @@ export interface SpawnTerminalPtyArgs {
   cwd: string;
   env: NodeJS.ProcessEnv;
   file: string;
+  logger: HostDaemonLogger;
   rows: number;
 }
 
@@ -118,7 +127,7 @@ interface FinishTerminalSessionArgs {
 
 export const nodePtyAdapter: TerminalPtyAdapter = {
   spawn(args) {
-    ensureNodePtySpawnHelperExecutable();
+    ensureNodePtySpawnHelperExecutable(args.logger);
     const pty = spawnPty(args.file, [], {
       cols: args.cols,
       cwd: args.cwd,
@@ -141,22 +150,91 @@ export const nodePtyAdapter: TerminalPtyAdapter = {
   },
 };
 
-function ensureNodePtySpawnHelperExecutable(): void {
+interface ResolveNodePtySpawnHelperPathArgs {
+  packageDirectory: string;
+}
+
+interface EnsureNodePtySpawnHelperExecutableInPackageArgs {
+  logger: HostDaemonLogger;
+  packageDirectory: string;
+}
+
+type NodePtySpawnHelperPathList = string[];
+
+export function resolveNodePtySpawnHelperCandidatePaths(
+  args: ResolveNodePtySpawnHelperPathArgs,
+): NodePtySpawnHelperPathList {
+  const helperPaths: string[] = [];
+  for (const nativeDir of NODE_PTY_NATIVE_DIRS) {
+    for (const relativeRoot of NODE_PTY_NATIVE_RELATIVE_ROOTS) {
+      const nativeModuleDir = path.resolve(
+        args.packageDirectory,
+        "lib",
+        relativeRoot,
+        nativeDir,
+      );
+      helperPaths.push(path.join(nativeModuleDir, "spawn-helper"));
+    }
+  }
+
+  return helperPaths;
+}
+
+export function resolveNodePtySpawnHelperPaths(
+  args: ResolveNodePtySpawnHelperPathArgs,
+): NodePtySpawnHelperPathList {
+  return resolveNodePtySpawnHelperCandidatePaths(args).filter((helperPath) =>
+    existsSync(helperPath),
+  );
+}
+
+function pathIsExecutableSync(filePath: string): boolean {
+  try {
+    accessSync(filePath, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function ensureNodePtySpawnHelpersExecutableInPackage(
+  args: EnsureNodePtySpawnHelperExecutableInPackageArgs,
+): void {
+  const helperPaths = resolveNodePtySpawnHelperPaths({
+    packageDirectory: args.packageDirectory,
+  });
+  if (helperPaths.length === 0) {
+    args.logger.warn({
+      component: "terminal-manager",
+      msg: NODE_PTY_SPAWN_HELPER_MISSING_MESSAGE,
+      searched: resolveNodePtySpawnHelperCandidatePaths({
+        packageDirectory: args.packageDirectory,
+      }),
+    });
+    return;
+  }
+
+  for (const helperPath of helperPaths) {
+    if (!pathIsExecutableSync(helperPath)) {
+      chmodSync(helperPath, 0o755);
+    }
+    if (!pathIsExecutableSync(helperPath)) {
+      throw new Error(`node-pty spawn-helper is not executable: ${helperPath}`);
+    }
+  }
+}
+
+function ensureNodePtySpawnHelperExecutable(logger: HostDaemonLogger): void {
   if (nodePtySpawnHelperChecked || process.platform !== "darwin") {
     return;
   }
   nodePtySpawnHelperChecked = true;
 
   const packageJsonPath = requireForNodePty.resolve("node-pty/package.json");
-  const helperPath = path.join(
-    path.dirname(packageJsonPath),
-    "prebuilds",
-    `${process.platform}-${process.arch}`,
-    "spawn-helper",
-  );
-  if (existsSync(helperPath)) {
-    chmodSync(helperPath, 0o755);
-  }
+  ensureNodePtySpawnHelpersExecutableInPackage({
+    logger,
+    packageDirectory: path.dirname(packageJsonPath),
+  });
 }
 
 async function pathIsExecutable(filePath: string): Promise<boolean> {
@@ -326,6 +404,7 @@ export class TerminalManager {
           terminalId: message.terminalId,
         }),
         file: shell,
+        logger: this.options.logger,
         rows: message.rows,
       });
       const session: TerminalSession = {
