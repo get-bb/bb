@@ -24,6 +24,12 @@ export interface FilePreviewFile {
 
 export type IframePreviewSandbox = "allow-scripts";
 
+export interface IframeFilePreviewTarget {
+  sandbox: IframePreviewSandbox | null;
+  title: string;
+  url: string;
+}
+
 export type FilePreviewState =
   | { kind: "loading" }
   | { kind: "empty" }
@@ -31,11 +37,12 @@ export type FilePreviewState =
   | { kind: "manager-status-pending" }
   | { kind: "error"; message?: string }
   | { kind: "image"; url: string }
+  | ({ kind: "iframe" } & IframeFilePreviewTarget)
   | {
-      kind: "iframe";
-      sandbox: IframePreviewSandbox | null;
-      title: string;
-      url: string;
+      kind: "html";
+      file: FilePreviewFile;
+      iframe: IframeFilePreviewTarget;
+      lineNumber: number | null;
     }
   | { kind: "ready"; file: FilePreviewFile; lineNumber: number | null };
 
@@ -50,7 +57,7 @@ export interface FilePreviewProps {
 interface FilePreviewBodyProps {
   state: FilePreviewState;
   path: string;
-  markdownMode: MarkdownViewMode;
+  viewMode: FilePreviewViewMode;
 }
 
 interface FilePreviewHeaderProps {
@@ -58,17 +65,13 @@ interface FilePreviewHeaderProps {
   copyPath: string | null;
   onOpenInEditor?: (path: string) => void;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
-  markdownMode: MarkdownViewMode | null;
-  onMarkdownModeChange: (mode: MarkdownViewMode) => void;
+  toggleKind: FilePreviewToggleKind | null;
+  viewMode: FilePreviewViewMode;
+  onViewModeChange: (mode: FilePreviewViewMode) => void;
 }
 
-interface IframeFilePreviewProps {
-  sandbox: IframePreviewSandbox | null;
-  title: string;
-  url: string;
-}
-
-type MarkdownViewMode = "preview" | "source";
+type FilePreviewViewMode = "preview" | "source";
+type FilePreviewToggleKind = "html" | "markdown";
 type IframeLoadState = "loading" | "loaded" | "error";
 
 const MARKDOWN_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -105,6 +108,26 @@ function isMarkdownFile(name: string): boolean {
   return extension !== undefined && MARKDOWN_EXTENSIONS.has(extension);
 }
 
+function getFilePreviewToggleKind(
+  state: FilePreviewState,
+): FilePreviewToggleKind | null {
+  if (state.kind === "html") {
+    return "html";
+  }
+  if (state.kind === "ready" && isMarkdownFile(state.file.name)) {
+    return "markdown";
+  }
+  return null;
+}
+
+function getToggleAriaLabel(kind: FilePreviewToggleKind): string {
+  return kind === "html" ? "HTML view mode" : "Markdown view mode";
+}
+
+function getRawToggleTitle(kind: FilePreviewToggleKind): string {
+  return kind === "html" ? "HTML source" : "Markdown source";
+}
+
 export function FilePreview({
   state,
   path,
@@ -112,21 +135,24 @@ export function FilePreview({
   onOpenInEditor,
   statusLabel = null,
 }: FilePreviewProps) {
-  const isReadyMarkdown =
-    state.kind === "ready" && isMarkdownFile(state.file.name);
-  const [markdownMode, setMarkdownMode] = useState<MarkdownViewMode>("preview");
+  const toggleKind = getFilePreviewToggleKind(state);
+  const [viewMode, setViewMode] = useState<FilePreviewViewMode>("preview");
   // Each new file opens in rendered preview by default; the user re-toggles per
   // file rather than carrying their last choice across unrelated files.
   useEffect(() => {
-    setMarkdownMode("preview");
+    setViewMode("preview");
   }, [path]);
+
+  const usesIframeLayout =
+    state.kind === "iframe" ||
+    (state.kind === "html" && viewMode === "preview");
 
   // Establish a `@container/page` scope so MarkdownPreview's `100cqw`-based
   // table breakout sizes against this panel, not the viewport.
   return (
     <div
       className={
-        state.kind === "iframe"
+        usesIframeLayout
           ? "@container/page flex h-full min-h-0 flex-col"
           : "@container/page"
       }
@@ -137,19 +163,20 @@ export function FilePreview({
         copyPath={copyPath}
         onOpenInEditor={onOpenInEditor}
         statusLabel={statusLabel}
-        markdownMode={isReadyMarkdown ? markdownMode : null}
-        onMarkdownModeChange={setMarkdownMode}
+        toggleKind={toggleKind}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
       <FilePreviewBody
         state={state}
         path={path}
-        markdownMode={isReadyMarkdown ? markdownMode : "preview"}
+        viewMode={toggleKind === null ? "preview" : viewMode}
       />
     </div>
   );
 }
 
-function FilePreviewBody({ state, path, markdownMode }: FilePreviewBodyProps) {
+function FilePreviewBody({ state, path, viewMode }: FilePreviewBodyProps) {
   if (state.kind === "loading") {
     return <FilePreviewLoading />;
   }
@@ -184,7 +211,19 @@ function FilePreviewBody({ state, path, markdownMode }: FilePreviewBodyProps) {
       />
     );
   }
-  if (isMarkdownFile(state.file.name) && markdownMode === "preview") {
+  if (state.kind === "html") {
+    if (viewMode === "preview") {
+      return (
+        <IframeFilePreview
+          sandbox={state.iframe.sandbox}
+          title={state.iframe.title}
+          url={state.iframe.url}
+        />
+      );
+    }
+    return <FilePreviewCode file={state.file} lineNumber={state.lineNumber} />;
+  }
+  if (isMarkdownFile(state.file.name) && viewMode === "preview") {
     return <MarkdownFilePreview file={state.file} />;
   }
   return (
@@ -197,8 +236,9 @@ function FilePreviewHeader({
   copyPath,
   onOpenInEditor,
   statusLabel,
-  markdownMode,
-  onMarkdownModeChange,
+  toggleKind,
+  viewMode,
+  onViewModeChange,
 }: FilePreviewHeaderProps) {
   // The fade is `absolute top-full` so the bar's bottom border is the actual
   // overflow edge — content scrolls under right at the border. The fade lives
@@ -238,19 +278,19 @@ function FilePreviewHeader({
             </button>
           ) : null}
         </div>
-        {markdownMode !== null ? (
+        {toggleKind !== null ? (
           <div
             className="ml-auto inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border p-0.5"
             role="tablist"
-            aria-label="Markdown view mode"
+            aria-label={getToggleAriaLabel(toggleKind)}
           >
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="h-5 rounded-sm px-2 text-xs text-muted-foreground"
-              onClick={() => onMarkdownModeChange("preview")}
-              aria-pressed={markdownMode === "preview"}
+              onClick={() => onViewModeChange("preview")}
+              aria-pressed={viewMode === "preview"}
               title="Rendered preview"
             >
               Preview
@@ -260,9 +300,9 @@ function FilePreviewHeader({
               variant="ghost"
               size="sm"
               className="h-5 rounded-sm px-2 text-xs text-muted-foreground"
-              onClick={() => onMarkdownModeChange("source")}
-              aria-pressed={markdownMode === "source"}
-              title="Markdown source"
+              onClick={() => onViewModeChange("source")}
+              aria-pressed={viewMode === "source"}
+              title={getRawToggleTitle(toggleKind)}
             >
               Raw
             </Button>
@@ -297,7 +337,7 @@ function FilePreviewImage({ url, alt }: { url: string; alt: string }) {
   );
 }
 
-function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewProps) {
+function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewTarget) {
   const [loadState, setLoadState] = useState<IframeLoadState>("loading");
 
   useEffect(() => {

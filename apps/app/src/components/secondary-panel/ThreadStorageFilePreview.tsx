@@ -1,4 +1,7 @@
-import { FilePreview as FilePreviewSurface } from "./FilePreview";
+import {
+  FilePreview as FilePreviewSurface,
+  type FilePreviewFile,
+} from "./FilePreview";
 import { isManagerStatusStorageFilePath } from "./managerStorage";
 import { useThreadStatusVersion } from "@/hooks/queries/thread-queries";
 import { HttpError } from "@/lib/api";
@@ -7,7 +10,8 @@ import {
   buildThreadStorageRawContentUrl,
 } from "@/lib/file-content-urls";
 import type {
-  FilePreview,
+  FilePreview as ApiFilePreview,
+  TextFilePreview,
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
 import { isHtmlFilePreviewPath } from "@/lib/file-preview";
@@ -21,7 +25,7 @@ interface FilePreviewBaseProps {
   activePath: string;
   copyPath?: string | null;
   error?: Error | null;
-  filePreview: FilePreview | undefined;
+  filePreview: ApiFilePreview | undefined;
   isLoading: boolean;
   lineNumber?: number | null;
   onOpenInEditor?: (path: string) => void;
@@ -36,6 +40,21 @@ interface SecondaryPanelFilePreviewProps extends FilePreviewBaseProps {
   htmlPreviewUrl?: string | null;
   pendingNotFoundPath?: string;
   statusLabel?: WorkspaceFilePreviewStatusLabel | null;
+}
+
+interface BuildTextPreviewFileArgs {
+  activePath: string;
+  filePreview: TextFilePreview;
+}
+
+function buildTextPreviewFile({
+  activePath,
+  filePreview,
+}: BuildTextPreviewFileArgs): FilePreviewFile {
+  return {
+    name: filePreview.name ?? activePath,
+    contents: filePreview.content,
+  };
 }
 
 export function SecondaryPanelFilePreview({
@@ -87,6 +106,23 @@ export function SecondaryPanelFilePreview({
   }
 
   if (htmlPreviewUrl !== null && isHtmlFilePreviewPath(activePath)) {
+    if (filePreview.kind !== "text") {
+      return (
+        <FilePreviewSurface
+          path={activePath}
+          copyPath={copyPath}
+          onOpenInEditor={onOpenInEditor}
+          statusLabel={statusLabel}
+          state={{
+            kind: "iframe",
+            sandbox: GENERIC_HTML_IFRAME_SANDBOX,
+            title: activePath,
+            url: htmlPreviewUrl,
+          }}
+        />
+      );
+    }
+
     return (
       <FilePreviewSurface
         path={activePath}
@@ -94,10 +130,14 @@ export function SecondaryPanelFilePreview({
         onOpenInEditor={onOpenInEditor}
         statusLabel={statusLabel}
         state={{
-          kind: "iframe",
-          sandbox: GENERIC_HTML_IFRAME_SANDBOX,
-          title: activePath,
-          url: htmlPreviewUrl,
+          kind: "html",
+          file: buildTextPreviewFile({ activePath, filePreview }),
+          iframe: {
+            sandbox: GENERIC_HTML_IFRAME_SANDBOX,
+            title: activePath,
+            url: htmlPreviewUrl,
+          },
+          lineNumber,
         }}
       />
     );
@@ -124,10 +164,7 @@ export function SecondaryPanelFilePreview({
         state={{
           kind: "ready",
           lineNumber,
-          file: {
-            name: filePreview.name ?? activePath,
-            contents: filePreview.content,
-          },
+          file: buildTextPreviewFile({ activePath, filePreview }),
         }}
       />
     );
