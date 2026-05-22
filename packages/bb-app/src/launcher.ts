@@ -48,6 +48,8 @@ const HOST_AUTH_FILE_NAME = "auth.json";
 const HOST_ID_FILE_NAME = "host-id";
 const HEALTH_CHECK_TIMEOUT_MS = 15_000;
 const HEALTH_CHECK_INTERVAL_MS = 100;
+const MANAGED_PROCESS_TERMINATION_TIMEOUT_MS = 5_000;
+const MANAGED_PROCESS_KILL_TIMEOUT_MS = 1_000;
 const START_COMMAND = "start";
 const HOST_DAEMON_COMMAND = "host-daemon";
 const HOST_DAEMON_JOIN_COMMAND = "join";
@@ -230,6 +232,10 @@ export interface ProcessExitResult {
 
 type ManagedProcessName = "daemon" | "server";
 type OutputChunk = Buffer | string;
+type WaitForProcessExitWithTimeoutResult = "exited" | "timed-out";
+type ResolveWaitForProcessExitWithTimeout = (
+  result: WaitForProcessExitWithTimeoutResult,
+) => void;
 type BbAppCommand =
   | ConfigCommand
   | EnvCommand
@@ -241,6 +247,17 @@ type BbAppCommand =
 interface WaitForNamedProcessExitArgs {
   childProcess: ChildProcess;
   processName: ManagedProcessName;
+}
+
+interface WaitForProcessExitWithTimeoutArgs {
+  childProcess: ChildProcess;
+  timeoutMs: number;
+}
+
+interface TerminateProcessIfRunningArgs {
+  childProcess: ChildProcess;
+  processName: ManagedProcessName;
+  signal: NodeJS.Signals;
 }
 
 interface NamedProcessExitResult {
@@ -1512,6 +1529,40 @@ export function waitForProcessExit(
   });
 }
 
+function waitForProcessExitWithTimeout(
+  args: WaitForProcessExitWithTimeoutArgs,
+): Promise<WaitForProcessExitWithTimeoutResult> {
+  if (hasProcessExited(args.childProcess)) {
+    return Promise.resolve("exited");
+  }
+
+  return new Promise<WaitForProcessExitWithTimeoutResult>((resolvePromise) => {
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout>;
+    const finish: ResolveWaitForProcessExitWithTimeout = (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      args.childProcess.off("exit", exitHandler);
+      resolvePromise(result);
+    };
+    const exitHandler = (): void => {
+      finish("exited");
+    };
+    timeout = setTimeout(() => {
+      finish("timed-out");
+    }, args.timeoutMs);
+    timeout.unref();
+
+    args.childProcess.once("exit", exitHandler);
+    if (hasProcessExited(args.childProcess)) {
+      finish("exited");
+    }
+  });
+}
+
 async function waitForNamedProcessExit(
   args: WaitForNamedProcessExitArgs,
 ): Promise<NamedProcessExitResult> {
@@ -1529,14 +1580,31 @@ function toExitCode(result: ProcessExitResult): number {
 }
 
 async function terminateProcessIfRunning(
-  childProcess: ChildProcess,
-  signal: NodeJS.Signals,
+  args: TerminateProcessIfRunningArgs,
 ): Promise<void> {
-  if (hasProcessExited(childProcess)) {
+  if (hasProcessExited(args.childProcess)) {
     return;
   }
-  childProcess.kill(signal);
-  await waitForProcessExit(childProcess);
+  args.childProcess.kill(args.signal);
+  const gracefulResult = await waitForProcessExitWithTimeout({
+    childProcess: args.childProcess,
+    timeoutMs: MANAGED_PROCESS_TERMINATION_TIMEOUT_MS,
+  });
+  if (gracefulResult === "exited") {
+    return;
+  }
+
+  log(
+    yellow("!"),
+    `${args.processName} did not stop after ${MANAGED_PROCESS_TERMINATION_TIMEOUT_MS}ms - sending SIGKILL`,
+  );
+  if (!hasProcessExited(args.childProcess)) {
+    args.childProcess.kill("SIGKILL");
+  }
+  await waitForProcessExitWithTimeout({
+    childProcess: args.childProcess,
+    timeoutMs: MANAGED_PROCESS_KILL_TIMEOUT_MS,
+  });
 }
 
 function createSharedEnv(args: CreateSharedEnvArgs): NodeJS.ProcessEnv {
@@ -1816,7 +1884,11 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
     shuttingDown = true;
     process.stdout.write("\n");
     log(dim("●"), "Shutting down");
-    await terminateProcessIfRunning(daemonProcess, signal);
+    await terminateProcessIfRunning({
+      childProcess: daemonProcess,
+      processName: "daemon",
+      signal,
+    });
   };
 
   const removeSignalForwarding = installTerminationSignalForwarding(
@@ -2052,11 +2124,19 @@ export async function runBbApp(
     process.stdout.write("\n");
     log(dim("●"), "Shutting down");
     const terminationPromises = [
-      terminateProcessIfRunning(serverProcess, signal),
+      terminateProcessIfRunning({
+        childProcess: serverProcess,
+        processName: "server",
+        signal,
+      }),
     ];
     if (daemonProcess !== null) {
       terminationPromises.push(
-        terminateProcessIfRunning(daemonProcess, signal),
+        terminateProcessIfRunning({
+          childProcess: daemonProcess,
+          processName: "daemon",
+          signal,
+        }),
       );
     }
     await Promise.all(terminationPromises);
@@ -2136,15 +2216,17 @@ export async function runBbApp(
     const firstExit = await Promise.race([serverExit, daemonExit]);
 
     if (firstExit.processName === "server") {
-      await terminateProcessIfRunning(
-        daemonProcess,
-        firstExit.result.signal ?? "SIGTERM",
-      );
+      await terminateProcessIfRunning({
+        childProcess: daemonProcess,
+        processName: "daemon",
+        signal: firstExit.result.signal ?? "SIGTERM",
+      });
     } else {
-      await terminateProcessIfRunning(
-        serverProcess,
-        firstExit.result.signal ?? "SIGTERM",
-      );
+      await terminateProcessIfRunning({
+        childProcess: serverProcess,
+        processName: "server",
+        signal: firstExit.result.signal ?? "SIGTERM",
+      });
     }
 
     process.exitCode = toExitCode(firstExit.result);

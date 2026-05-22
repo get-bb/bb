@@ -21,7 +21,7 @@ export interface BbAppProcess {
   exit: Promise<BbAppProcessExit>;
   logs: RuntimeLogBuffer;
   pid: number;
-  stop(signal: NodeJS.Signals): Promise<void>;
+  stop(args: StopBbAppProcessArgs): Promise<void>;
 }
 
 export interface BbAppProcessExit {
@@ -29,9 +29,26 @@ export interface BbAppProcessExit {
   signal: NodeJS.Signals | null;
 }
 
+export interface StopBbAppProcessArgs {
+  killSignal: NodeJS.Signals;
+  killTimeoutMs: number;
+  signal: NodeJS.Signals;
+  timeoutMs: number;
+}
+
 export interface CreateElectronNodeEnvArgs {
   env: NodeJS.ProcessEnv;
 }
+
+interface WaitForProcessExitWithTimeoutArgs {
+  childProcess: ChildProcess;
+  timeoutMs: number;
+}
+
+type WaitForProcessExitWithTimeoutResult = "exited" | "timed-out";
+type ResolveWaitForProcessExitWithTimeout = (
+  result: WaitForProcessExitWithTimeoutResult,
+) => void;
 
 export function createRuntimeLogBuffer(
   args: CreateRuntimeLogBufferArgs,
@@ -87,6 +104,40 @@ function waitForProcessExit(
   });
 }
 
+function waitForProcessExitWithTimeout(
+  args: WaitForProcessExitWithTimeoutArgs,
+): Promise<WaitForProcessExitWithTimeoutResult> {
+  if (hasProcessExited(args.childProcess)) {
+    return Promise.resolve("exited");
+  }
+
+  return new Promise<WaitForProcessExitWithTimeoutResult>((resolvePromise) => {
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout>;
+    const finish: ResolveWaitForProcessExitWithTimeout = (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      args.childProcess.off("exit", exitHandler);
+      resolvePromise(result);
+    };
+    const exitHandler = (): void => {
+      finish("exited");
+    };
+    timeout = setTimeout(() => {
+      finish("timed-out");
+    }, args.timeoutMs);
+    timeout.unref();
+
+    args.childProcess.once("exit", exitHandler);
+    if (hasProcessExited(args.childProcess)) {
+      finish("exited");
+    }
+  });
+}
+
 export function startBbAppProcess(args: StartBbAppProcessArgs): BbAppProcess {
   const logs = createRuntimeLogBuffer({ maxLines: args.logLineLimit });
   const childProcess = spawn(process.execPath, [args.bridgePath], {
@@ -118,12 +169,26 @@ export function startBbAppProcess(args: StartBbAppProcessArgs): BbAppProcess {
     exit,
     logs,
     pid,
-    async stop(signal) {
+    async stop(stopArgs) {
       if (hasProcessExited(childProcess)) {
         return;
       }
-      childProcess.kill(signal);
-      await exit;
+      childProcess.kill(stopArgs.signal);
+      const gracefulResult = await waitForProcessExitWithTimeout({
+        childProcess,
+        timeoutMs: stopArgs.timeoutMs,
+      });
+      if (gracefulResult === "exited") {
+        return;
+      }
+
+      if (!hasProcessExited(childProcess)) {
+        childProcess.kill(stopArgs.killSignal);
+      }
+      await waitForProcessExitWithTimeout({
+        childProcess,
+        timeoutMs: stopArgs.killTimeoutMs,
+      });
     },
   };
 }

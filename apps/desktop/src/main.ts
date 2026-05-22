@@ -73,6 +73,9 @@ import {
   type WindowStateKey,
 } from "./types.js";
 
+const OWNED_RUNTIME_STOP_TIMEOUT_MS = 6_000;
+const OWNED_RUNTIME_KILL_TIMEOUT_MS = 1_000;
+
 interface DesktopRuntime {
   bbProcess: BbAppProcess | null;
   ownership: RuntimeOwnership;
@@ -363,7 +366,12 @@ async function stopOwnedRuntime(): Promise<void> {
 
   currentRuntime = null;
   try {
-    await runtime.bbProcess?.stop("SIGTERM");
+    await runtime.bbProcess?.stop({
+      killSignal: "SIGKILL",
+      killTimeoutMs: OWNED_RUNTIME_KILL_TIMEOUT_MS,
+      signal: "SIGTERM",
+      timeoutMs: OWNED_RUNTIME_STOP_TIMEOUT_MS,
+    });
   } finally {
     if (runtime.userDataPath !== null) {
       await clearOwnedRuntimePidFile({ userDataPath: runtime.userDataPath });
