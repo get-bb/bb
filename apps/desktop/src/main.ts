@@ -62,6 +62,7 @@ import {
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
 } from "./desktop-update-ipc.js";
+import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
 import {
   ATTACH_PROBE_TIMEOUT_MS,
   DEFAULT_BB_SERVER_URL,
@@ -539,6 +540,13 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
 }
 
 async function runDesktopApp(): Promise<void> {
+  ensurePackagedMacOsUserShellPath({
+    env: process.env,
+    isPackaged: app.isPackaged,
+    logger: createDesktopLogger(),
+    platform: process.platform,
+  });
+
   app.setName("bb");
 
   if (!app.requestSingleInstanceLock()) {
