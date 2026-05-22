@@ -9,7 +9,13 @@
     "buildResources": "assets",
     "output": "release"
   },
-  "files": ["assets/**", "dist/**", "node_modules/**", "package.json"],
+  "files": [
+    "assets/**",
+    "dist/**",
+    "node_modules/**",
+    "package.json",
+    "!**/*.map"
+  ],
   "publish": [
     {
       "channel": "latest",

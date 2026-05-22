@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -52,5 +52,17 @@ describe("desktop build", () => {
     expect(preloadSource).not.toContain("BB_DESKTOP_VERSION");
     expect(preloadSource).not.toContain("getDesktopVersion(process.env");
     expect(bridgeSource).toContain('import "bb-app/dist/bb-app.js"');
+    await expect(
+      access(resolve(desktopPackageRoot, "dist", "main.js.map")),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(resolve(desktopPackageRoot, "dist", "preload.cjs.map")),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(resolve(desktopPackageRoot, "dist", "log-viewer-preload.cjs.map")),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(resolve(desktopPackageRoot, "dist", "bb-app-bridge.mjs.map")),
+    ).resolves.toBeUndefined();
   });
 });

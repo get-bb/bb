@@ -37,6 +37,7 @@ const electronBuilderConfigSchema = z
         sign: z.boolean(),
       })
       .passthrough(),
+    files: z.array(z.string().min(1)),
     mac: macConfigSchema,
     publish: z.tuple([
       z
@@ -211,6 +212,16 @@ describe("electron-builder signing config", () => {
     await expect(
       access(resolve(desktopPackageRoot, hookPath)),
     ).resolves.toBeUndefined();
+  });
+
+  it("excludes source maps from packaged app files", async () => {
+    const configText = await readFile(
+      resolve(desktopPackageRoot, "electron-builder.config.json"),
+      "utf8",
+    );
+    const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
+
+    expect(config.files).toContain("!**/*.map");
   });
 
   it("patches packaged node-pty helper path handling", async () => {
