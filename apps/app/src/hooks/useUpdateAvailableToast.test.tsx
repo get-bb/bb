@@ -130,6 +130,7 @@ afterEach(() => {
 describe("useUpdateAvailableToast", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    delete window.bbDesktop;
     toastFn.mockReset();
     toastDismissFn.mockReset();
   });
@@ -153,6 +154,33 @@ describe("useUpdateAvailableToast", () => {
     expect(invocation.options.description).toContain("npx bb-app@latest");
     expect(invocation.options.id).toBe("bb-update-available:0.0.6");
     expect(invocation.options.action.label).toBe("Dismiss");
+  });
+
+  it("does not show the toast inside the bb desktop app", async () => {
+    const desktopStub = createDesktopApiStub({
+      lastCheckedAt: "2026-05-21T00:00:00.000Z",
+      latestVersion: "0.0.2",
+      pendingVersion: null,
+      platform: "macos",
+      updateAvailable: true,
+      updateDownloaded: false,
+      version: "0.0.1",
+    });
+    window.bbDesktop = desktopStub.api;
+    stubFetchOnce({
+      currentVersion: "0.0.5",
+      latestVersion: "0.0.6",
+      source: "npm",
+      updateAvailable: true,
+      isDevelopment: false,
+      upgradeCommand: "npx bb-app@latest",
+    });
+    const { useUpdateAvailableToast } = await loadHook();
+    const { wrapper } = createQueryClientTestHarness();
+    renderHook(() => useUpdateAvailableToast(), { wrapper });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(toastFn).not.toHaveBeenCalled();
   });
 
   it("never shows the toast in development mode", async () => {

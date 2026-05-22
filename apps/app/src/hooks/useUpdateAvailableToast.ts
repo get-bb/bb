@@ -90,6 +90,9 @@ export function useUpdateAvailableToast(): void {
     if (!data) {
       return;
     }
+    if (getBbDesktopInfo() !== null) {
+      return;
+    }
     if (data.isDevelopment) {
       return;
     }
