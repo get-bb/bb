@@ -31,10 +31,17 @@
     "hardenedRuntime": true,
     "icon": "assets/icon.icns",
     "identity": null,
-    "mergeASARs": false,
     "notarize": false,
-    "x64ArchFiles": "**/*darwin-*/**/*",
-    "target": ["dmg", "zip"]
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["arm64"]
+      }
+    ]
   },
   "dmg": {
     "sign": false

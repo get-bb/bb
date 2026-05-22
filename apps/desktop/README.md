@@ -34,9 +34,10 @@ pnpm exec turbo run dev --filter=@bb/desktop
 pnpm exec turbo run desktop:build --filter=@bb/desktop
 ```
 
-Artifacts are written under `apps/desktop/release/`. Without signing secrets,
-local and CI builds remain unsigned and macOS shows the normal Gatekeeper warning
-on first launch.
+Artifacts are written under `apps/desktop/release/`. The desktop build is
+macOS-only and Apple Silicon arm64-only. Without signing secrets, local and CI
+builds remain unsigned and macOS shows the normal Gatekeeper warning on first
+launch.
 
 ## Releasing
 
@@ -102,7 +103,6 @@ To verify a downloaded or unpacked build:
 spctl --assess --verbose /path/to/bb.app
 codesign --verify --deep --strict --verbose=2 /path/to/bb.app
 ```
-
 ## Debugging
 
 The Turbo dev task opens DevTools automatically. For a packaged app, run the

@@ -31,8 +31,8 @@ concurrency:
 
 jobs:
   macos:
-    name: macOS desktop artifacts
-    runs-on: macos-latest
+    name: macOS arm64 desktop artifacts
+    runs-on: macos-15
     timeout-minutes: 45
 
     steps:
@@ -50,6 +50,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
+
+      - name: Verify arm64 runner
+        run: test "$(uname -m)" = "arm64"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
@@ -100,7 +103,7 @@ jobs:
             exit 1
           fi
 
-      - name: Package universal desktop artifacts
+      - name: Package arm64 desktop artifacts
         env:
           CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -160,7 +163,7 @@ jobs:
       - name: Upload desktop workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bb-desktop-macos-universal
+          name: bb-desktop-macos-arm64
           path: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
@@ -244,7 +247,7 @@ jobs:
           {
             echo "## bb desktop artifacts"
             echo
-            echo "- universal macOS .dmg, .zip, latest-mac.yml, and desktop-version.json uploaded as workflow artifacts"
+            echo "- arm64 macOS .dmg, .zip, latest-mac.yml, and desktop-version.json uploaded as workflow artifacts"
             echo "- version: ${VERSION}"
             echo "- prerelease version: ${IS_PRERELEASE}"
             echo "- stable release publication requested and allowed: ${SHOULD_PUBLISH}"
