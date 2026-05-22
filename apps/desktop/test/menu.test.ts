@@ -2,6 +2,8 @@ import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import {
   SERVER_DAEMON_LOGS_MENU_LABEL,
+  TOGGLE_DEVELOPER_TOOLS_ACCELERATOR,
+  TOGGLE_DEVELOPER_TOOLS_MENU_LABEL,
   buildApplicationMenuTemplate,
 } from "../src/menu.js";
 
@@ -41,6 +43,24 @@ function findSubmenuItem(
 }
 
 describe("application menu", () => {
+  it("shows a developer tools toggle in the view menu", () => {
+    const template = buildApplicationMenuTemplate({
+      createNewWindow() {},
+      openServerDaemonLogs() {},
+      serverDaemonLogsMenuEnabled: true,
+    });
+
+    const menuItem = findSubmenuItem({
+      itemLabel: TOGGLE_DEVELOPER_TOOLS_MENU_LABEL,
+      parentLabel: "View",
+      template,
+    });
+
+    expect(menuItem).not.toBeNull();
+    expect(menuItem?.accelerator).toBe(TOGGLE_DEVELOPER_TOOLS_ACCELERATOR);
+    expect(menuItem?.role).toBe("toggleDevTools");
+  });
+
   it("shows an enabled server and daemon logs item for owned runtimes", () => {
     const template = buildApplicationMenuTemplate({
       createNewWindow() {},
