@@ -3,6 +3,7 @@ import {
   type FocusEvent,
   type ReactNode,
   useMemo,
+  useState,
 } from "react";
 import { useAtomValue } from "jotai";
 import { Icon } from "@/components/ui/icon.js";
@@ -26,6 +27,12 @@ import {
   GitDiffTabContent,
   ThreadInfoTabContent,
 } from "./ThreadSecondaryPanelTabContent";
+import {
+  getBbDesktopInfo,
+  MACOS_WINDOW_DRAG_CLASS,
+  MACOS_WINDOW_NO_DRAG_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
 export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
@@ -75,10 +82,6 @@ export interface ThreadSecondaryPanelProps {
    * Caller is responsible for wrapping the content in a Drawer in that case.
    */
   renderAsDrawer: boolean;
-}
-
-interface NewTabButtonProps {
-  onOpenNewTab: () => void;
 }
 
 export function ThreadSecondaryPanel({
@@ -146,6 +149,8 @@ export function ThreadSecondaryPanel({
   const isSecondaryPanelResizing = useAtomValue(
     threadSecondaryPanelResizingAtom,
   );
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const areAllGitDiffFilesCollapsed = useMemo(
     () =>
       hasParsedGitDiffFiles &&
@@ -192,7 +197,13 @@ export function ThreadSecondaryPanel({
       )}
     >
       <div className="bg-background">
-        <div className="flex h-12 min-w-0 items-center justify-between gap-2 px-4">
+        <div
+          data-testid="thread-secondary-panel-top-chrome"
+          className={cn(
+            "flex h-12 min-w-0 items-center justify-between gap-2 px-4",
+            usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
+          )}
+        >
           <div
             className="flex min-w-0 flex-1 items-center gap-1"
             role="tablist"
@@ -202,7 +213,10 @@ export function ThreadSecondaryPanel({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 w-7 shrink-0 rounded-md p-0"
+              className={cn(
+                "h-7 w-7 shrink-0 rounded-md p-0",
+                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+              )}
               onClick={() => onPanelChange("thread-info")}
               aria-label="Show thread info panel"
               aria-pressed={activePanel === "thread-info" && !hasActiveFileTab}
@@ -215,7 +229,10 @@ export function ThreadSecondaryPanel({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 w-7 shrink-0 rounded-md p-0"
+                className={cn(
+                  "h-7 w-7 shrink-0 rounded-md p-0",
+                  usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+                )}
                 onClick={() => onPanelChange("git-diff")}
                 aria-label="Show diff panel"
                 aria-pressed={isDiffPanelActive && !hasActiveFileTab}
@@ -227,17 +244,31 @@ export function ThreadSecondaryPanel({
             {fileTabs && fileTabs.length > 0 ? (
               <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
                 {fileTabs.map((tab) => (
-                  <FileTab key={tab.id} tab={tab} />
+                  <div
+                    key={tab.id}
+                    className={cn(
+                      "shrink-0",
+                      usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+                    )}
+                  >
+                    <FileTab tab={tab} />
+                  </div>
                 ))}
               </div>
             ) : null}
-            <NewTabButton onOpenNewTab={onOpenNewTab} />
+            <NewTabButton
+              onOpenNewTab={onOpenNewTab}
+              usesDesktopChrome={usesDesktopChrome}
+            />
           </div>
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7 shrink-0 rounded-md p-0"
+            className={cn(
+              "h-7 w-7 shrink-0 rounded-md p-0",
+              usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+            )}
             onClick={onClose}
             aria-label={
               renderAsDrawer ? "Close secondary panel" : "Hide secondary panel"
@@ -340,13 +371,21 @@ export function ThreadSecondaryPanel({
   );
 }
 
-function NewTabButton({ onOpenNewTab }: NewTabButtonProps) {
+interface NewTabButtonProps {
+  onOpenNewTab: () => void;
+  usesDesktopChrome: boolean;
+}
+
+function NewTabButton({ onOpenNewTab, usesDesktopChrome }: NewTabButtonProps) {
   return (
     <Button
       type="button"
       variant="ghost"
       size="sm"
-      className="h-7 w-7 shrink-0 rounded-md p-0"
+      className={cn(
+        "h-7 w-7 shrink-0 rounded-md p-0",
+        usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+      )}
       onClick={onOpenNewTab}
       aria-label="Open a new tab"
       title="New tab"
