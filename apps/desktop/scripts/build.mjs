@@ -53,6 +53,13 @@ await Promise.all([
   }),
   build({
     ...commonOptions,
+    entryPoints: [resolve(packageRoot, "src", "log-viewer-preload.ts")],
+    external: ["electron"],
+    format: "cjs",
+    outfile: resolve(distDir, "log-viewer-preload.cjs"),
+  }),
+  build({
+    ...commonOptions,
     entryPoints: [resolve(packageRoot, "src", "bb-app-bridge.ts")],
     external: ["bb-app", "bb-app/*"],
     format: "esm",

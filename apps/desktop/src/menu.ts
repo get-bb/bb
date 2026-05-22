@@ -1,11 +1,32 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
 
+export const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
+
 export interface InstallApplicationMenuArgs {
   createNewWindow(): void;
+  openServerDaemonLogs(): void;
+  serverDaemonLogsMenuEnabled: boolean;
 }
 
-export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
-  const template: MenuItemConstructorOptions[] = [
+function createServerDaemonLogsMenuItems(
+  args: InstallApplicationMenuArgs,
+): MenuItemConstructorOptions[] {
+  return [
+    { type: "separator" },
+    {
+      enabled: args.serverDaemonLogsMenuEnabled,
+      label: SERVER_DAEMON_LOGS_MENU_LABEL,
+      click() {
+        args.openServerDaemonLogs();
+      },
+    },
+  ];
+}
+
+export function buildApplicationMenuTemplate(
+  args: InstallApplicationMenuArgs,
+): MenuItemConstructorOptions[] {
+  return [
     {
       label: app.name,
       submenu: [
@@ -55,6 +76,7 @@ export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
         { role: "resetZoom" },
         { role: "zoomIn" },
         { role: "zoomOut" },
+        ...createServerDaemonLogsMenuItems(args),
       ],
     },
     {
@@ -67,6 +89,10 @@ export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
       ],
     },
   ];
+}
 
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(buildApplicationMenuTemplate(args)),
+  );
 }

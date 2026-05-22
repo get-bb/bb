@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import {
   app,
   BrowserWindow,
+  clipboard,
   ipcMain,
   nativeImage,
   shell,
@@ -11,6 +12,7 @@ import {
 } from "electron";
 import { autoUpdater } from "electron-updater";
 import type { BbDesktopInfo } from "@bb/server-contract";
+import { z } from "zod";
 import {
   assertPathExists,
   resolveDesktopAssetPath,
@@ -64,6 +66,25 @@ import {
 } from "./desktop-update-ipc.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
 import {
+  createLogTailer,
+  createLogLineBuffer,
+  createLogViewerViewUrl,
+  LOG_VIEWER_IPC_BATCH_INTERVAL_MS,
+  LOG_VIEWER_IPC_BATCH_LINE_LIMIT,
+  type LogLineBuffer,
+  type LogTailer,
+} from "./log-viewer.js";
+import {
+  LOG_VIEWER_APPEND_CHANNEL,
+  LOG_VIEWER_COPY_CHANNEL,
+  LOG_VIEWER_OPEN_LOGS_FOLDER_CHANNEL,
+  LOG_VIEWER_SNAPSHOT_CHANNEL,
+  LOG_VIEWER_VISIBLE_LINE_LIMIT,
+  type LogViewerLine,
+  type LogViewerCopyRequest,
+  type LogViewerOpenLogsFolderResult,
+} from "./log-viewer-contract.js";
+import {
   ATTACH_PROBE_TIMEOUT_MS,
   DEFAULT_BB_SERVER_URL,
   PROCESS_LOG_LINE_LIMIT,
@@ -103,6 +124,25 @@ interface StartOwnedRuntimeArgs {
   userDataPath: string;
 }
 
+interface AppendLogViewerLinesArgs {
+  lines: LogViewerLine[];
+}
+
+interface SendLogViewerSnapshotArgs {
+  browserWindow: BrowserWindow;
+  lines: LogViewerLine[];
+  logDir: string;
+}
+
+interface HandleCopyLogsArgs {
+  request: LogViewerCopyRequest;
+}
+
+interface LoadLogViewerWindowArgs {
+  logDir: string;
+  preloadPath: string;
+}
+
 type StartupRaceResult =
   | ProcessExitedStartupRaceResult
   | ServerProbeStartupRaceResult;
@@ -135,11 +175,22 @@ interface MergeDesktopUpdateInfoArgs {
   feedInfo: BbDesktopInfo | null;
 }
 
+const logViewerCopyRequestSchema = z
+  .object({
+    text: z.string(),
+  })
+  .strict();
+
 let desktopWindowFactory: DesktopWindowFactory | null = null;
 let desktopUpdateService: DesktopUpdateService | null = null;
 let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
 let currentRuntime: DesktopRuntime | null = null;
 let currentWindowUrl: string | null = null;
+let logViewerIpcHandlersInstalled = false;
+let logViewerLineBuffer: LogLineBuffer | null = null;
+let logViewerPreloadPath: string | null = null;
+let logViewerTailer: LogTailer | null = null;
+let logViewerWindow: BrowserWindow | null = null;
 let bbAppLoaded = false;
 let stoppingForQuit = false;
 let quitting = false;
@@ -292,6 +343,189 @@ function createDesktopPathContext(): DesktopPathContext {
   };
 }
 
+function shouldEnableServerDaemonLogsMenu(): boolean {
+  // Attached runtimes are owned by an external bb-app, so the desktop has no
+  // reliable server/daemon log lifecycle to tail.
+  return (
+    process.platform === "darwin" && currentRuntime?.ownership === "spawned"
+  );
+}
+
+function refreshApplicationMenu(): void {
+  installApplicationMenu({
+    createNewWindow() {
+      void createApplicationWindow({ stateKey: null });
+    },
+    openServerDaemonLogs() {
+      void openServerDaemonLogs();
+    },
+    serverDaemonLogsMenuEnabled: shouldEnableServerDaemonLogsMenu(),
+  });
+}
+
+function setCurrentRuntime(runtime: DesktopRuntime | null): void {
+  currentRuntime = runtime;
+  refreshApplicationMenu();
+  if (runtime?.ownership !== "spawned") {
+    closeServerDaemonLogsWindow();
+  }
+}
+
+function sendLogViewerSnapshot(args: SendLogViewerSnapshotArgs): void {
+  if (args.browserWindow.isDestroyed()) {
+    return;
+  }
+  args.browserWindow.webContents.send(LOG_VIEWER_SNAPSHOT_CHANNEL, {
+    lines: args.lines,
+    logDir: args.logDir,
+  });
+}
+
+function appendLogViewerLines(args: AppendLogViewerLinesArgs): void {
+  if (args.lines.length === 0) {
+    return;
+  }
+
+  logViewerLineBuffer?.append(args.lines);
+}
+
+function closeServerDaemonLogsWindow(): void {
+  logViewerTailer?.stop();
+  logViewerTailer = null;
+  logViewerLineBuffer?.stop();
+  logViewerLineBuffer = null;
+
+  const browserWindow = logViewerWindow;
+  logViewerWindow = null;
+  if (browserWindow !== null && !browserWindow.isDestroyed()) {
+    browserWindow.close();
+  }
+}
+
+function handleCopyLogs(args: HandleCopyLogsArgs): void {
+  const request = logViewerCopyRequestSchema.parse(args.request);
+  clipboard.writeText(request.text);
+}
+
+async function handleOpenLogsFolder(): Promise<LogViewerOpenLogsFolderResult> {
+  if (!shouldEnableServerDaemonLogsMenu()) {
+    throw new Error(
+      "Server and daemon logs are only available for owned runtimes",
+    );
+  }
+
+  const logDir = formatLogDirectory();
+  const errorMessage = await shell.openPath(logDir);
+  if (errorMessage.length > 0) {
+    throw new Error(errorMessage);
+  }
+  return { path: logDir };
+}
+
+function installLogViewerIpcHandlers(): void {
+  if (logViewerIpcHandlersInstalled) {
+    return;
+  }
+  logViewerIpcHandlersInstalled = true;
+  ipcMain.handle(
+    LOG_VIEWER_COPY_CHANNEL,
+    (_event, request: LogViewerCopyRequest) => {
+      handleCopyLogs({ request });
+    },
+  );
+  ipcMain.handle(LOG_VIEWER_OPEN_LOGS_FOLDER_CHANNEL, () =>
+    handleOpenLogsFolder(),
+  );
+}
+
+async function loadLogViewerWindow(
+  args: LoadLogViewerWindowArgs,
+): Promise<void> {
+  const browserWindow = new BrowserWindow({
+    height: 720,
+    minHeight: 520,
+    minWidth: 840,
+    show: false,
+    title: "Server & Daemon Logs",
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: {
+      x: 12,
+      y: 18,
+    },
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: args.preloadPath,
+      sandbox: true,
+    },
+    width: 1180,
+  });
+  const tailer = createLogTailer({
+    logDir: args.logDir,
+    onLines(lines) {
+      appendLogViewerLines({ lines });
+    },
+  });
+  const lineBuffer = createLogLineBuffer({
+    flushIntervalMs: LOG_VIEWER_IPC_BATCH_INTERVAL_MS,
+    flushLineCount: LOG_VIEWER_IPC_BATCH_LINE_LIMIT,
+    maxLines: LOG_VIEWER_VISIBLE_LINE_LIMIT,
+    onFlush(lines) {
+      if (logViewerWindow === null || logViewerWindow.isDestroyed()) {
+        return;
+      }
+      logViewerWindow.webContents.send(LOG_VIEWER_APPEND_CHANNEL, {
+        lines,
+      });
+    },
+  });
+
+  logViewerLineBuffer = lineBuffer;
+  logViewerTailer = tailer;
+  logViewerWindow = browserWindow;
+
+  browserWindow.once("ready-to-show", () => {
+    browserWindow.show();
+  });
+  browserWindow.on("closed", () => {
+    if (logViewerTailer === tailer) {
+      logViewerTailer = null;
+      tailer.stop();
+    }
+    if (logViewerWindow === browserWindow) {
+      logViewerWindow = null;
+    }
+    if (logViewerLineBuffer === lineBuffer) {
+      logViewerLineBuffer = null;
+    }
+    lineBuffer.stop();
+  });
+
+  await browserWindow.loadURL(createLogViewerViewUrl({ logDir: args.logDir }));
+  sendLogViewerSnapshot({
+    browserWindow,
+    lines: lineBuffer.lines(),
+    logDir: args.logDir,
+  });
+  await tailer.start();
+}
+
+async function openServerDaemonLogs(): Promise<void> {
+  if (!shouldEnableServerDaemonLogsMenu() || logViewerPreloadPath === null) {
+    return;
+  }
+
+  if (logViewerWindow !== null && !logViewerWindow.isDestroyed()) {
+    logViewerWindow.focus();
+    return;
+  }
+
+  await loadLogViewerWindow({
+    logDir: formatLogDirectory(),
+    preloadPath: logViewerPreloadPath,
+  });
+}
+
 async function loadWindowUrl(args: LoadWindowUrlArgs): Promise<void> {
   currentWindowUrl = args.url;
   if (desktopWindowFactory === null) {
@@ -360,11 +594,11 @@ async function createApplicationWindow(
 async function stopOwnedRuntime(): Promise<void> {
   const runtime = currentRuntime;
   if (runtime === null || runtime.ownership !== "spawned") {
-    currentRuntime = null;
+    setCurrentRuntime(null);
     return;
   }
 
-  currentRuntime = null;
+  setCurrentRuntime(null);
   try {
     await runtime.bbProcess?.stop({
       killSignal: "SIGKILL",
@@ -446,13 +680,14 @@ async function startOwnedRuntime(
     serverUrl: args.serverUrl,
     userDataPath: args.userDataPath,
   });
-  currentRuntime = runtime;
+  setCurrentRuntime(runtime);
 
   void bbProcess.exit.then((exit) => {
     void clearOwnedRuntimePidFile({ userDataPath: args.userDataPath });
     if (quitting || currentRuntime !== runtime) {
       return;
     }
+    setCurrentRuntime(null);
     void loadStartupError({
       details: `The Electron-owned bb-app process stopped with ${formatExitResult(
         exit,
@@ -485,7 +720,7 @@ async function startOwnedRuntime(
       logs: bbProcess.logs.text(),
       title: "Could not start bb",
     });
-    currentRuntime = null;
+    setCurrentRuntime(null);
     return null;
   }
 
@@ -518,13 +753,14 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
   });
 
   if (existingProbe.kind === "compatible") {
-    currentRuntime = {
+    setCurrentRuntime({
       bbProcess: null,
       ownership: "attached",
       serverUrl: existingProbe.serverUrl,
       userDataPath: null,
-    };
+    });
     await loadBbApp(existingProbe.serverUrl);
+    refreshApplicationMenu();
     return;
   }
 
@@ -544,6 +780,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
   });
   if (runtime !== null) {
     await loadBbApp(runtime.serverUrl);
+    refreshApplicationMenu();
   }
 }
 
@@ -606,6 +843,11 @@ async function runDesktopApp(): Promise<void> {
     paths,
   });
   const bridgePath = resolveDesktopBridgePath({ paths });
+  const resolvedLogViewerPreloadPath = join(
+    paths.appPath,
+    "dist",
+    "log-viewer-preload.cjs",
+  );
   const preloadPath = join(paths.appPath, "dist", "preload.cjs");
   const serverUrl = resolveDesktopServerUrl({ env: process.env });
   const desktopVersion = getDesktopVersion(process.env.BB_DESKTOP_VERSION);
@@ -615,6 +857,10 @@ async function runDesktopApp(): Promise<void> {
   const userDataPath = app.getPath("userData");
 
   assertPathExists({ label: "bb-app bridge", path: bridgePath });
+  assertPathExists({
+    label: "log viewer preload script",
+    path: resolvedLogViewerPreloadPath,
+  });
   assertPathExists({ label: "preload script", path: preloadPath });
   assertPathExists({ label: "app icon", path: iconPath });
 
@@ -675,12 +921,10 @@ async function runDesktopApp(): Promise<void> {
     preloadPath,
     userDataPath,
   });
+  logViewerPreloadPath = resolvedLogViewerPreloadPath;
+  installLogViewerIpcHandlers();
 
-  installApplicationMenu({
-    createNewWindow() {
-      void createApplicationWindow({ stateKey: null });
-    },
-  });
+  refreshApplicationMenu();
   await loadLoadingView();
   await desktopWindowFactory.restoreSavedWindows({
     initialUrl: currentWindowUrl,
