@@ -446,12 +446,8 @@ async function loadLogViewerWindow(
     minHeight: 520,
     minWidth: 840,
     show: false,
-    title: "Server & Daemon Logs",
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: {
-      x: 12,
-      y: 18,
-    },
+    title: "bb - Server & Daemon Logs",
+    titleBarStyle: "default",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
