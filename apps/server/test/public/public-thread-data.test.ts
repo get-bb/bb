@@ -2356,6 +2356,7 @@ describe("public thread data routes", () => {
       );
       const statusBody = await statusResponse.text();
       expect(statusBody).toContain("window.bbStatusState");
+      expect(statusBody).toContain("window.bbThreadTell");
       expect(statusBody).toContain(statusHtml);
 
       const assetBytes = Uint8Array.from([137, 80, 78, 71]);
@@ -2394,6 +2395,169 @@ describe("public thread data routes", () => {
       expect(new Uint8Array(await assetResponse.arrayBuffer())).toEqual(
         assetBytes,
       );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("serves worktree HTML preview content as raw text/html without STATUS injection", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/project-source",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/project-source",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const html = "<!doctype html><script>window.localOnly = true</script>";
+
+      const filePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/worktree/files/public/report.html`,
+      );
+      const fileCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file" &&
+          command.path === "/tmp/project-source/public/report.html",
+      );
+      expect(fileCommand.command).toMatchObject({
+        type: "host.read_file",
+        path: "/tmp/project-source/public/report.html",
+        rootPath: "/tmp/project-source",
+      });
+      await reportQueuedCommandSuccess(harness, fileCommand, {
+        path: "/tmp/project-source/public/report.html",
+        content: html,
+        contentEncoding: "utf8",
+        mimeType: "text/html",
+        sizeBytes: Buffer.byteLength(html),
+      });
+
+      const fileResponse = await filePromise;
+      expect(fileResponse.status).toBe(200);
+      expect(fileResponse.headers.get("content-type")).toBe(
+        "text/html; charset=utf-8",
+      );
+      expect(fileResponse.headers.get("content-security-policy")).toBe(
+        "sandbox allow-scripts",
+      );
+      expect(fileResponse.headers.get("cache-control")).toBe("no-store");
+      const body = await fileResponse.text();
+      expect(body).toBe(html);
+      expect(body).not.toContain("window.bbStatusState");
+      expect(body).not.toContain("window.bbThreadTell");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("serves thread storage HTML preview content as raw text/html without STATUS injection", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/project-source",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/project-source",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        type: "manager",
+      });
+      const threadStorageRoot = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`;
+      const html = "<!doctype html><h1>Preview</h1>";
+
+      const filePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/thread-storage/files/reports/preview.html`,
+      );
+      const fileCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file" &&
+          command.path === `${threadStorageRoot}/reports/preview.html`,
+      );
+      expect(fileCommand.command).toMatchObject({
+        type: "host.read_file",
+        path: `${threadStorageRoot}/reports/preview.html`,
+        rootPath: threadStorageRoot,
+      });
+      await reportQueuedCommandSuccess(harness, fileCommand, {
+        path: `${threadStorageRoot}/reports/preview.html`,
+        content: html,
+        contentEncoding: "utf8",
+        mimeType: "text/html",
+        sizeBytes: Buffer.byteLength(html),
+      });
+
+      const fileResponse = await filePromise;
+      expect(fileResponse.status).toBe(200);
+      expect(fileResponse.headers.get("content-type")).toBe(
+        "text/html; charset=utf-8",
+      );
+      expect(fileResponse.headers.get("content-security-policy")).toBe(
+        "sandbox allow-scripts",
+      );
+      expect(await fileResponse.text()).toBe(html);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("caps generic HTML preview responses at 5 MB", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/project-source",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/project-source",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      const filePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/worktree/files/large.html`,
+      );
+      const fileCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.read_file" &&
+          command.path === "/tmp/project-source/large.html",
+      );
+      await reportQueuedCommandSuccess(harness, fileCommand, {
+        path: "/tmp/project-source/large.html",
+        content: "",
+        contentEncoding: "utf8",
+        mimeType: "text/html",
+        sizeBytes: 5 * 1024 * 1024 + 1,
+      });
+
+      const fileResponse = await filePromise;
+      expect(fileResponse.status).toBe(413);
+      await expect(readJson(fileResponse)).resolves.toEqual({
+        code: "file_too_large",
+        message: "HTML preview exceeds the 5 MB limit",
+        retryable: false,
+      });
     } finally {
       await harness.cleanup();
     }
@@ -2580,8 +2744,14 @@ describe("public thread data routes", () => {
       const tasksJson = '["one"]\n';
       const prefsJson = '{"compact":true}\n';
       await fs.mkdir(statusDataRootPath, { recursive: true });
-      await fs.writeFile(path.join(statusDataRootPath, "tasks.json"), tasksJson);
-      await fs.writeFile(path.join(statusDataRootPath, "prefs.json"), prefsJson);
+      await fs.writeFile(
+        path.join(statusDataRootPath, "tasks.json"),
+        tasksJson,
+      );
+      await fs.writeFile(
+        path.join(statusDataRootPath, "prefs.json"),
+        prefsJson,
+      );
       await fs.mkdir(path.join(statusDataRootPath, "nested"));
       await fs.writeFile(
         path.join(statusDataRootPath, "nested", "ignored.json"),

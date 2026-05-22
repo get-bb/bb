@@ -20,6 +20,7 @@ const UTF8_TEXT_MIME_TYPES = new Set([
 
 const MARKDOWN_FILE_EXTENSIONS = [".md", ".markdown"];
 const MARKDOWN_MIME_TYPES = new Set(["text/markdown", "text/x-markdown"]);
+const HTML_FILE_EXTENSION = ".html";
 const NULL_CHARACTER = "\u0000";
 
 export interface FilePreviewTarget {
@@ -124,6 +125,10 @@ function hasMarkdownExtension(path: string): boolean {
   return MARKDOWN_FILE_EXTENSIONS.some((extension) =>
     normalizedPath.endsWith(extension),
   );
+}
+
+export function isHtmlFilePreviewPath(path: string): boolean {
+  return path.toLowerCase().endsWith(HTML_FILE_EXTENSION);
 }
 
 export function normalizeFilePreviewMimeType(value: string | null): string {

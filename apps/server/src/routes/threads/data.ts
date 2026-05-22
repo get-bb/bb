@@ -35,6 +35,7 @@ import { ApiError } from "../../errors.js";
 import {
   requireEnvironment,
   requirePublicThread,
+  requireReadyEnvironment,
 } from "../../services/lib/entity-lookup.js";
 import { queueCommandAndWait } from "../../services/hosts/command-wait.js";
 import {
@@ -159,14 +160,22 @@ interface StatusAssetPath {
   relativePath: string;
 }
 
+interface RawFileRoutePath {
+  relativePath: string;
+}
+
 const STATUS_DIRECTORY_NAME = "STATUS";
 const STATUS_INDEX_FILE_PATH = "index.html";
 const STATUS_HTML_FILE_PATH = "STATUS.html";
 const STATUS_MARKDOWN_FILE_PATH = "STATUS.md";
 const STATUS_ROUTE_SEGMENT = "/status/";
+const THREAD_STORAGE_FILE_ROUTE_SEGMENT = "/thread-storage/files/";
+const THREAD_WORKTREE_FILE_ROUTE_SEGMENT = "/worktree/files/";
 const STATUS_NO_STORE_CACHE_CONTROL = "no-store";
 const STATUS_HTML_CONTENT_TYPE = "text/html; charset=utf-8";
 const STATUS_CONTENT_TYPE_OPTIONS = "nosniff";
+const HTML_PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
+const GENERIC_HTML_PREVIEW_CSP = "sandbox allow-scripts";
 const UNUSABLE_STATUS_SOURCE_ERROR_CODES = new Set([
   "EACCES",
   "ELOOP",
@@ -319,6 +328,43 @@ function parseStatusAssetPath(rawPath: string): StatusAssetPath {
   };
 }
 
+function createRawFileInvalidPathError(): ApiError {
+  return new ApiError(400, "invalid_path", "Invalid file path");
+}
+
+function decodeRawFileRoutePath(rawPath: string): string {
+  try {
+    return decodeURIComponent(rawPath);
+  } catch {
+    throw createRawFileInvalidPathError();
+  }
+}
+
+function parseRawFileRoutePath(rawPath: string): RawFileRoutePath {
+  const relativePath = decodeRawFileRoutePath(rawPath);
+  if (
+    relativePath.length === 0 ||
+    relativePath.includes("\0") ||
+    relativePath.includes("\\") ||
+    path.posix.isAbsolute(relativePath)
+  ) {
+    throw createRawFileInvalidPathError();
+  }
+
+  const segments = relativePath.split("/");
+  if (
+    segments.some(
+      (segment) => segment.length === 0 || segment === "." || segment === "..",
+    )
+  ) {
+    throw createRawFileInvalidPathError();
+  }
+
+  return {
+    relativePath: segments.join("/"),
+  };
+}
+
 function extractThreadStatusPath(requestUrl: string): string {
   const requestPath = new URL(requestUrl).pathname;
   const statusSegmentIndex = requestPath.indexOf(STATUS_ROUTE_SEGMENT);
@@ -326,6 +372,18 @@ function extractThreadStatusPath(requestUrl: string): string {
     return "";
   }
   return requestPath.slice(statusSegmentIndex + STATUS_ROUTE_SEGMENT.length);
+}
+
+function extractRawFileRoutePath(
+  requestUrl: string,
+  routeSegment: string,
+): string {
+  const requestPath = new URL(requestUrl).pathname;
+  const routeSegmentIndex = requestPath.indexOf(routeSegment);
+  if (routeSegmentIndex === -1) {
+    return "";
+  }
+  return requestPath.slice(routeSegmentIndex + routeSegment.length);
 }
 
 function shouldFallbackStatusRead(error: unknown): boolean {
@@ -500,6 +558,37 @@ function createStatusFileResponse(
       "x-content-type-options": STATUS_CONTENT_TYPE_OPTIONS,
     },
   });
+}
+
+function isHtmlPreviewPath(relativePath: string): boolean {
+  return relativePath.toLowerCase().endsWith(".html");
+}
+
+function assertHtmlPreviewSize(relativePath: string, sizeBytes: number): void {
+  if (isHtmlPreviewPath(relativePath) && sizeBytes > HTML_PREVIEW_MAX_BYTES) {
+    throw new ApiError(
+      413,
+      "file_too_large",
+      "HTML preview exceeds the 5 MB limit",
+      false,
+    );
+  }
+}
+
+function createRawFilePreviewResponse(
+  result: DaemonFileReadResult,
+  relativePath: string,
+): Response {
+  assertHtmlPreviewSize(relativePath, result.sizeBytes);
+  const headers = new Headers({
+    "cache-control": STATUS_NO_STORE_CACHE_CONTROL,
+    "x-content-type-options": STATUS_CONTENT_TYPE_OPTIONS,
+  });
+  if (isHtmlPreviewPath(relativePath)) {
+    headers.set("content-security-policy", GENERIC_HTML_PREVIEW_CSP);
+    headers.set("content-type", STATUS_HTML_CONTENT_TYPE);
+  }
+  return createDaemonFileContentResponse(result, { headers });
 }
 
 function decodeDaemonTextFile(result: DaemonFileReadResult): string {
@@ -846,6 +935,58 @@ async function serveThreadStatusAsset(
   }
 }
 
+async function serveThreadStorageRawFile(
+  deps: LoggedWorkSessionDeps,
+  threadId: string,
+  rawPath: string,
+): Promise<Response> {
+  const filePath = parseRawFileRoutePath(rawPath);
+  const target = await requireThreadStorageTarget(deps, { threadId });
+
+  try {
+    const result = await queueCommandAndWait(deps, {
+      hostId: target.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.read_file",
+        path: path.join(target.storagePath, filePath.relativePath),
+        rootPath: target.storagePath,
+      },
+    });
+    return createRawFilePreviewResponse(result, filePath.relativePath);
+  } catch (error) {
+    return remapDaemonFileRouteError(error);
+  }
+}
+
+async function serveThreadWorktreeRawFile(
+  deps: LoggedWorkSessionDeps,
+  threadId: string,
+  rawPath: string,
+): Promise<Response> {
+  const filePath = parseRawFileRoutePath(rawPath);
+  const thread = requirePublicThread(deps.db, threadId);
+  if (!thread.environmentId) {
+    throw new ApiError(409, "invalid_request", "Thread has no environment");
+  }
+  const environment = requireReadyEnvironment(deps.db, thread.environmentId);
+
+  try {
+    const result = await queueCommandAndWait(deps, {
+      hostId: environment.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.read_file",
+        path: path.join(environment.path, filePath.relativePath),
+        rootPath: environment.path,
+      },
+    });
+    return createRawFilePreviewResponse(result, filePath.relativePath);
+  } catch (error) {
+    return remapDaemonFileRouteError(error);
+  }
+}
+
 export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const { get } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -1027,6 +1168,19 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     return serveThreadStatusAsset(deps, context.req.param("id"), rawStatusPath);
   });
 
+  // Generic iframe previews use path-shaped raw URLs so relative links resolve
+  // beside the HTML file. Unlike STATUS, these routes never inject bb globals.
+  app.get("/threads/:id/worktree/files/*", async (context) =>
+    serveThreadWorktreeRawFile(
+      deps,
+      context.req.param("id"),
+      extractRawFileRoutePath(
+        context.req.url,
+        THREAD_WORKTREE_FILE_ROUTE_SEGMENT,
+      ),
+    ),
+  );
+
   get(
     "/threads/:id/thread-storage/files",
     threadStorageFilesQuerySchema,
@@ -1063,6 +1217,17 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         throw error;
       }
     },
+  );
+
+  app.get("/threads/:id/thread-storage/files/*", async (context) =>
+    serveThreadStorageRawFile(
+      deps,
+      context.req.param("id"),
+      extractRawFileRoutePath(
+        context.req.url,
+        THREAD_STORAGE_FILE_ROUTE_SEGMENT,
+      ),
+    ),
   );
 
   get(

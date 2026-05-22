@@ -2,11 +2,20 @@ import { FilePreview as FilePreviewSurface } from "./FilePreview";
 import { isManagerStatusStorageFilePath } from "./managerStorage";
 import { useThreadStatusVersion } from "@/hooks/queries/thread-queries";
 import { HttpError } from "@/lib/api";
-import { buildThreadStatusContentUrl } from "@/lib/file-content-urls";
+import {
+  buildThreadStatusContentUrl,
+  buildThreadStorageRawContentUrl,
+} from "@/lib/file-content-urls";
 import type {
   FilePreview,
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
+import { isHtmlFilePreviewPath } from "@/lib/file-preview";
+
+// Generic HTML comes from arbitrary worktree/storage files. Allow scripts for
+// realistic previews, but omit allow-same-origin so the frame gets an opaque
+// origin and cannot read bb app cookies, storage, or same-origin APIs.
+const GENERIC_HTML_IFRAME_SANDBOX = "allow-scripts";
 
 interface FilePreviewBaseProps {
   activePath: string;
@@ -24,6 +33,7 @@ interface ThreadStorageFilePreviewProps extends FilePreviewBaseProps {
 }
 
 interface SecondaryPanelFilePreviewProps extends FilePreviewBaseProps {
+  htmlPreviewUrl?: string | null;
   pendingNotFoundPath?: string;
   statusLabel?: WorkspaceFilePreviewStatusLabel | null;
 }
@@ -33,6 +43,7 @@ export function SecondaryPanelFilePreview({
   copyPath = null,
   error,
   filePreview,
+  htmlPreviewUrl = null,
   isLoading,
   lineNumber = null,
   onOpenInEditor,
@@ -71,6 +82,23 @@ export function SecondaryPanelFilePreview({
         onOpenInEditor={onOpenInEditor}
         statusLabel={statusLabel}
         state={{ kind: "loading" }}
+      />
+    );
+  }
+
+  if (htmlPreviewUrl !== null && isHtmlFilePreviewPath(activePath)) {
+    return (
+      <FilePreviewSurface
+        path={activePath}
+        copyPath={copyPath}
+        onOpenInEditor={onOpenInEditor}
+        statusLabel={statusLabel}
+        state={{
+          kind: "iframe",
+          sandbox: GENERIC_HTML_IFRAME_SANDBOX,
+          title: activePath,
+          url: htmlPreviewUrl,
+        }}
       />
     );
   }
@@ -154,6 +182,7 @@ export function ThreadStorageFilePreview({
         copyPath={copyPath}
         state={{
           kind: "iframe",
+          sandbox: null,
           title: "Manager status",
           url: buildThreadStatusContentUrl(threadId, statusVersion.data?.hash),
         }}
@@ -167,6 +196,7 @@ export function ThreadStorageFilePreview({
       copyPath={copyPath}
       error={error}
       filePreview={filePreview}
+      htmlPreviewUrl={buildThreadStorageRawContentUrl(threadId, activePath)}
       isLoading={isLoading}
       lineNumber={lineNumber}
       onOpenInEditor={onOpenInEditor}

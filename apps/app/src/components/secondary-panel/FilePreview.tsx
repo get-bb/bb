@@ -22,6 +22,8 @@ export interface FilePreviewFile {
   lang?: SupportedLanguages;
 }
 
+export type IframePreviewSandbox = "allow-scripts";
+
 export type FilePreviewState =
   | { kind: "loading" }
   | { kind: "empty" }
@@ -29,8 +31,12 @@ export type FilePreviewState =
   | { kind: "manager-status-pending" }
   | { kind: "error"; message?: string }
   | { kind: "image"; url: string }
-  | { kind: "html"; file: FilePreviewFile }
-  | { kind: "iframe"; title: string; url: string }
+  | {
+      kind: "iframe";
+      sandbox: IframePreviewSandbox | null;
+      title: string;
+      url: string;
+    }
   | { kind: "ready"; file: FilePreviewFile; lineNumber: number | null };
 
 export interface FilePreviewProps {
@@ -56,16 +62,14 @@ interface FilePreviewHeaderProps {
   onMarkdownModeChange: (mode: MarkdownViewMode) => void;
 }
 
-interface HtmlFilePreviewProps {
-  file: FilePreviewFile;
-}
-
 interface IframeFilePreviewProps {
+  sandbox: IframePreviewSandbox | null;
   title: string;
   url: string;
 }
 
 type MarkdownViewMode = "preview" | "source";
+type IframeLoadState = "loading" | "loaded" | "error";
 
 const MARKDOWN_EXTENSIONS: ReadonlySet<string> = new Set([
   "md",
@@ -122,7 +126,7 @@ export function FilePreview({
   return (
     <div
       className={
-        state.kind === "html" || state.kind === "iframe"
+        state.kind === "iframe"
           ? "@container/page flex h-full min-h-0 flex-col"
           : "@container/page"
       }
@@ -171,11 +175,14 @@ function FilePreviewBody({ state, path, markdownMode }: FilePreviewBodyProps) {
   if (state.kind === "image") {
     return <FilePreviewImage url={state.url} alt={path} />;
   }
-  if (state.kind === "html") {
-    return <HtmlFilePreview file={state.file} />;
-  }
   if (state.kind === "iframe") {
-    return <IframeFilePreview title={state.title} url={state.url} />;
+    return (
+      <IframeFilePreview
+        sandbox={state.sandbox}
+        title={state.title}
+        url={state.url}
+      />
+    );
   }
   if (isMarkdownFile(state.file.name) && markdownMode === "preview") {
     return <MarkdownFilePreview file={state.file} />;
@@ -290,22 +297,39 @@ function FilePreviewImage({ url, alt }: { url: string; alt: string }) {
   );
 }
 
-function HtmlFilePreview({ file }: HtmlFilePreviewProps) {
-  return (
-    <div className="min-h-0 flex-1">
-      <iframe
-        title={file.name}
-        srcDoc={file.contents}
-        style={HTML_FILE_PREVIEW_IFRAME_STYLE}
-      />
-    </div>
-  );
-}
+function IframeFilePreview({ sandbox, title, url }: IframeFilePreviewProps) {
+  const [loadState, setLoadState] = useState<IframeLoadState>("loading");
 
-function IframeFilePreview({ title, url }: IframeFilePreviewProps) {
+  useEffect(() => {
+    setLoadState("loading");
+  }, [url]);
+
+  if (loadState === "error") {
+    return (
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <FilePreviewMessage
+          message="Failed to load HTML preview."
+          role="alert"
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-0 flex-1">
-      <iframe title={title} src={url} style={HTML_FILE_PREVIEW_IFRAME_STYLE} />
+    <div className="relative min-h-0 flex-1 overflow-hidden">
+      {loadState === "loading" ? (
+        <div className="absolute inset-x-0 top-0 z-10">
+          <FilePreviewLoading />
+        </div>
+      ) : null}
+      <iframe
+        title={title}
+        src={url}
+        sandbox={sandbox === null ? undefined : sandbox}
+        style={HTML_FILE_PREVIEW_IFRAME_STYLE}
+        onLoad={() => setLoadState("loaded")}
+        onError={() => setLoadState("error")}
+      />
     </div>
   );
 }

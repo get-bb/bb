@@ -1014,6 +1014,7 @@ export function ThreadDetailView() {
       onOpenInEditor={handleOpenFileInEditor}
       source={activeWorkspaceFileSource}
       statusLabel={activeWorkspaceFileStatusLabel}
+      threadId={thread.id}
     />
   ) : activeHostFilePath ? (
     <HostFilePreviewTabContent

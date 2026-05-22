@@ -6,6 +6,7 @@ import {
   useThreadHostFilePreview,
   useThreadStorageFilePreview,
 } from "@/hooks/queries/thread-queries";
+import { buildThreadWorktreeRawContentUrl } from "@/lib/file-content-urls";
 import type {
   EnvironmentFilePreviewSource,
   WorkspaceFilePreviewStatusLabel,
@@ -80,6 +81,7 @@ export interface WorkspaceFilePreviewTabContentProps {
   onOpenInEditor?: (path: string) => void;
   source: EnvironmentFilePreviewSource | null;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
+  threadId: string;
 }
 
 export interface HostFilePreviewTabContentProps {
@@ -272,6 +274,7 @@ export function WorkspaceFilePreviewTabContent({
   onOpenInEditor,
   source,
   statusLabel,
+  threadId,
 }: WorkspaceFilePreviewTabContentProps) {
   const {
     data: workspaceFilePreview,
@@ -285,6 +288,11 @@ export function WorkspaceFilePreviewTabContent({
       copyPath={copyPath}
       error={workspaceFilePreviewError}
       filePreview={workspaceFilePreview}
+      htmlPreviewUrl={
+        source?.kind === "working-tree"
+          ? buildThreadWorktreeRawContentUrl(threadId, activePath)
+          : null
+      }
       isLoading={isWorkspaceFilePreviewLoading}
       lineNumber={lineNumber}
       onOpenInEditor={onOpenInEditor}
