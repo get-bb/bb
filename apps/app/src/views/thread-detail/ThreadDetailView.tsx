@@ -94,7 +94,10 @@ import {
   resolveThreadLocalWorkspaceRootPath,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
-import { resolveThreadLocalFileLink } from "@/lib/thread-local-file-links";
+import {
+  resolveThreadLocalFileLink,
+  type ThreadLocalFileLinkResolution,
+} from "@/lib/thread-local-file-links";
 import {
   useFixedPanelTabsSecondaryPanelUrlSync,
   useFixedPanelTabsState,
@@ -245,11 +248,10 @@ export function ThreadDetailView() {
   const [hasRequestedMergeBaseOptions, setHasRequestedMergeBaseOptions] =
     useState(false);
   const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
-  const isSecondaryPanelActive = activeSecondaryPanel !== null;
-  const shouldLoadManagerStorageFiles =
-    isSecondaryPanelActive && isManagerThread;
+  const shouldLoadManagerStorageFiles = isManagerThread;
   const {
     isThreadStorageFilesLoading,
+    refetchThreadStorageFiles,
     threadStorageFiles,
     threadStorageFilesError,
     threadStorageRootPath,
@@ -713,14 +715,8 @@ export function ThreadDetailView() {
     },
     [thread, updateThread],
   );
-  const handleOpenTimelineLocalFileLink = useCallback(
-    (link: ThreadTimelineLocalFileLink) => {
-      const resolution = resolveThreadLocalFileLink({
-        hostFileLinksAvailable:
-          thread?.environmentId !== null && thread?.environmentId !== undefined,
-        link,
-        workspaceRootPath: localWorkspaceRootPath,
-      });
+  const handleTimelineLocalFileLinkResolution = useCallback(
+    (resolution: ThreadLocalFileLinkResolution) => {
       if (resolution.kind === "app-route") {
         return false;
       }
@@ -741,17 +737,71 @@ export function ThreadDetailView() {
         return true;
       }
 
+      if (resolution.kind === "open-thread-storage-path") {
+        openStorageFile(resolution.request.relativePath);
+        return true;
+      }
+
       openHostFile({
         lineNumber: resolution.request.lineNumber,
         path: resolution.request.path,
       });
       return true;
     },
+    [openHostFile, openStorageFile, openWorkspaceFile],
+  );
+  const handleOpenTimelineLocalFileLink = useCallback(
+    (link: ThreadTimelineLocalFileLink) => {
+      const resolution = resolveThreadLocalFileLink({
+        hostFileLinksAvailable:
+          thread?.environmentId !== null && thread?.environmentId !== undefined,
+        link,
+        threadStorageRootPath,
+        workspaceRootPath: localWorkspaceRootPath,
+      });
+
+      if (
+        resolution.kind !== "open-host-path" ||
+        !isManagerThread ||
+        threadStorageRootPath !== null
+      ) {
+        return handleTimelineLocalFileLinkResolution(resolution);
+      }
+
+      void refetchThreadStorageFiles()
+        .then((result) => {
+          const resolvedThreadStorageRootPath =
+            result.data?.storageRootPath ?? null;
+          if (resolvedThreadStorageRootPath === null) {
+            toast.error("Failed to open file locally", {
+              description: "Thread storage path is not available yet.",
+            });
+            return;
+          }
+
+          const resolvedResolution = resolveThreadLocalFileLink({
+            hostFileLinksAvailable: true,
+            link,
+            threadStorageRootPath: resolvedThreadStorageRootPath,
+            workspaceRootPath: localWorkspaceRootPath,
+          });
+          handleTimelineLocalFileLinkResolution(resolvedResolution);
+        })
+        .catch((error: Error) => {
+          toast.error("Failed to open file locally", {
+            description: error.message,
+          });
+        });
+
+      return true;
+    },
     [
+      handleTimelineLocalFileLinkResolution,
+      isManagerThread,
       localWorkspaceRootPath,
-      openHostFile,
-      openWorkspaceFile,
+      refetchThreadStorageFiles,
       thread?.environmentId,
+      threadStorageRootPath,
     ],
   );
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(

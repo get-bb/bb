@@ -57,6 +57,13 @@ export function buildThreadHostFileContentUrl(
   );
 }
 
+export function buildRawFilesystemHtmlContentUrl(
+  threadId: string,
+  path: string,
+): string {
+  return `/api/v1/threads/${encodeURIComponent(threadId)}/files/raw?path=${encodeURIComponent(path)}`;
+}
+
 export function buildThreadWorktreeRawContentUrl(
   threadId: string,
   path: string,

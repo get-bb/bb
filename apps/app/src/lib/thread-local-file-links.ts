@@ -10,6 +10,7 @@ const THREAD_LOCAL_FILE_LINK_INVALID_PATH_DESCRIPTION =
 export interface ResolveThreadLocalFileLinkArgs {
   hostFileLinksAvailable: boolean;
   link: ThreadTimelineLocalFileLink;
+  threadStorageRootPath: string | null;
   workspaceRootPath: string | null;
 }
 
@@ -23,6 +24,13 @@ export interface ThreadWorkspaceFileLinkOpenRequest {
 export interface ThreadHostFileLinkOpenRequest {
   lineNumber: number | null;
   path: string;
+}
+
+export interface ThreadStorageFileLinkOpenRequest {
+  lineNumber: number | null;
+  path: string;
+  relativePath: string;
+  threadStorageRootPath: string;
 }
 
 interface ThreadLocalFileLinkAppRouteResolution {
@@ -44,27 +52,33 @@ interface ThreadHostFileLinkOpenResolution {
   request: ThreadHostFileLinkOpenRequest;
 }
 
-interface WorkspacePathWithinRootArgs {
+interface ThreadStorageFileLinkOpenResolution {
+  kind: "open-thread-storage-path";
+  request: ThreadStorageFileLinkOpenRequest;
+}
+
+interface PathWithinRootArgs {
   candidatePath: string;
-  workspaceRootPath: string;
+  rootPath: string;
 }
 
-interface NormalizeThreadLocalFileLinkPathArgs {
+interface NormalizeLocalFilePathWithinRootArgs {
   linkPath: string;
-  workspaceRootPath: string;
+  rootPath: string;
 }
 
-interface NormalizedThreadLocalFileLinkPath {
+interface NormalizedLocalFilePathWithinRoot {
   path: string;
   relativePath: string;
-  workspaceRootPath: string;
+  rootPath: string;
 }
 
 export type ThreadLocalFileLinkResolution =
   | ThreadLocalFileLinkAppRouteResolution
   | ThreadLocalFileLinkErrorResolution
   | ThreadWorkspaceFileLinkOpenResolution
-  | ThreadHostFileLinkOpenResolution;
+  | ThreadHostFileLinkOpenResolution
+  | ThreadStorageFileLinkOpenResolution;
 
 function isAppRoutePath(path: string): boolean {
   return APP_ROUTE_PATTERNS.some(
@@ -96,13 +110,11 @@ function normalizeAbsolutePath(candidatePath: string): string | null {
     : `/${normalizedSegments.join("/")}`;
 }
 
-function normalizeThreadLocalFileLinkPath(
-  args: NormalizeThreadLocalFileLinkPathArgs,
-): NormalizedThreadLocalFileLinkPath | null {
-  const normalizedWorkspaceRootPath = normalizeAbsolutePath(
-    args.workspaceRootPath,
-  );
-  if (!normalizedWorkspaceRootPath) {
+function normalizeLocalFilePathWithinRoot(
+  args: NormalizeLocalFilePathWithinRootArgs,
+): NormalizedLocalFilePathWithinRoot | null {
+  const normalizedRootPath = normalizeAbsolutePath(args.rootPath);
+  if (!normalizedRootPath) {
     return null;
   }
 
@@ -112,35 +124,35 @@ function normalizeThreadLocalFileLinkPath(
   }
 
   if (
-    !isPathWithinWorkspaceRoot({
+    !isPathWithinRoot({
       candidatePath: normalizedPath,
-      workspaceRootPath: normalizedWorkspaceRootPath,
+      rootPath: normalizedRootPath,
     }) ||
-    normalizedPath === normalizedWorkspaceRootPath
+    normalizedPath === normalizedRootPath
   ) {
     return null;
   }
 
   const relativePath =
-    normalizedWorkspaceRootPath === "/"
+    normalizedRootPath === "/"
       ? normalizedPath.slice(1)
-      : normalizedPath.slice(normalizedWorkspaceRootPath.length + 1);
+      : normalizedPath.slice(normalizedRootPath.length + 1);
 
   return {
     path: normalizedPath,
     relativePath,
-    workspaceRootPath: normalizedWorkspaceRootPath,
+    rootPath: normalizedRootPath,
   };
 }
 
-function isPathWithinWorkspaceRoot(args: WorkspacePathWithinRootArgs): boolean {
-  if (args.workspaceRootPath === "/") {
+function isPathWithinRoot(args: PathWithinRootArgs): boolean {
+  if (args.rootPath === "/") {
     return args.candidatePath.startsWith("/");
   }
 
   return (
-    args.candidatePath === args.workspaceRootPath ||
-    args.candidatePath.startsWith(`${args.workspaceRootPath}/`)
+    args.candidatePath === args.rootPath ||
+    args.candidatePath.startsWith(`${args.rootPath}/`)
   );
 }
 
@@ -164,9 +176,9 @@ export function resolveThreadLocalFileLink(
   const openRequest =
     args.workspaceRootPath === null
       ? null
-      : normalizeThreadLocalFileLinkPath({
+      : normalizeLocalFilePathWithinRoot({
           linkPath: normalizedPath,
-          workspaceRootPath: args.workspaceRootPath,
+          rootPath: args.workspaceRootPath,
         });
 
   if (openRequest) {
@@ -176,7 +188,27 @@ export function resolveThreadLocalFileLink(
         lineNumber: args.link.lineNumber,
         path: openRequest.path,
         relativePath: openRequest.relativePath,
-        workspaceRootPath: openRequest.workspaceRootPath,
+        workspaceRootPath: openRequest.rootPath,
+      },
+    };
+  }
+
+  const storageOpenRequest =
+    args.threadStorageRootPath === null
+      ? null
+      : normalizeLocalFilePathWithinRoot({
+          linkPath: normalizedPath,
+          rootPath: args.threadStorageRootPath,
+        });
+
+  if (storageOpenRequest) {
+    return {
+      kind: "open-thread-storage-path",
+      request: {
+        lineNumber: args.link.lineNumber,
+        path: storageOpenRequest.path,
+        relativePath: storageOpenRequest.relativePath,
+        threadStorageRootPath: storageOpenRequest.rootPath,
       },
     };
   }

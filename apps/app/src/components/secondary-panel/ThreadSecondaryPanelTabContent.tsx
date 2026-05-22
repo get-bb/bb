@@ -6,7 +6,10 @@ import {
   useThreadHostFilePreview,
   useThreadStorageFilePreview,
 } from "@/hooks/queries/thread-queries";
-import { buildThreadWorktreeRawContentUrl } from "@/lib/file-content-urls";
+import {
+  buildRawFilesystemHtmlContentUrl,
+  buildThreadWorktreeRawContentUrl,
+} from "@/lib/file-content-urls";
 import type {
   EnvironmentFilePreviewSource,
   WorkspaceFilePreviewStatusLabel,
@@ -319,6 +322,7 @@ export function HostFilePreviewTabContent({
       activePath={activePath}
       error={hostFilePreviewError}
       filePreview={hostFilePreview}
+      htmlPreviewUrl={buildRawFilesystemHtmlContentUrl(threadId, activePath)}
       isLoading={isHostFilePreviewLoading}
       lineNumber={lineNumber}
       onOpenInEditor={onOpenInEditor}

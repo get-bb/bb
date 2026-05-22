@@ -10,6 +10,7 @@ describe("resolveThreadLocalFileLink", () => {
           lineNumber: null,
           path: "/projects/proj_gyz9przugq/threads/thr_rq7r4uv8zg",
         },
+        threadStorageRootPath: null,
         workspaceRootPath: "/Users/me/project",
       }),
     ).toEqual({
@@ -25,6 +26,7 @@ describe("resolveThreadLocalFileLink", () => {
           lineNumber: null,
           path: "/Users/me/project/src/file.ts",
         },
+        threadStorageRootPath: null,
         workspaceRootPath: null,
       }),
     ).toEqual({
@@ -44,6 +46,7 @@ describe("resolveThreadLocalFileLink", () => {
           lineNumber: 12,
           path: "/Users/me/.ssh/id_rsa",
         },
+        threadStorageRootPath: null,
         workspaceRootPath: "/Users/me/project",
       }),
     ).toEqual({
@@ -61,6 +64,7 @@ describe("resolveThreadLocalFileLink", () => {
           lineNumber: 12,
           path: "/Users/me/.ssh/id_rsa",
         },
+        threadStorageRootPath: null,
         workspaceRootPath: "/Users/me/project",
       }),
     ).toEqual({
@@ -80,6 +84,7 @@ describe("resolveThreadLocalFileLink", () => {
           lineNumber: 12,
           path: "/Users/me/project/src/../src/file.ts",
         },
+        threadStorageRootPath: null,
         workspaceRootPath: "/Users/me/project/",
       }),
     ).toEqual({
@@ -101,6 +106,7 @@ describe("resolveThreadLocalFileLink", () => {
           lineNumber: 7,
           path: "apps/app/src/main.tsx",
         },
+        threadStorageRootPath: null,
         workspaceRootPath: "/Users/me/project",
       }),
     ).toEqual({
@@ -117,6 +123,7 @@ describe("resolveThreadLocalFileLink", () => {
           lineNumber: null,
           path: "/projects/my-repo/src/file.ts",
         },
+        threadStorageRootPath: null,
         workspaceRootPath: "/projects/my-repo",
       }),
     ).toEqual({
@@ -126,6 +133,28 @@ describe("resolveThreadLocalFileLink", () => {
         path: "/projects/my-repo/src/file.ts",
         relativePath: "src/file.ts",
         workspaceRootPath: "/projects/my-repo",
+      },
+    });
+  });
+
+  it("opens paths inside the known thread storage root as storage files", () => {
+    expect(
+      resolveThreadLocalFileLink({
+        hostFileLinksAvailable: true,
+        link: {
+          lineNumber: 4,
+          path: "/Users/me/.bb/thread-storage/thr_one/reports/preview.html",
+        },
+        threadStorageRootPath: "/Users/me/.bb/thread-storage/thr_one",
+        workspaceRootPath: "/Users/me/project",
+      }),
+    ).toEqual({
+      kind: "open-thread-storage-path",
+      request: {
+        lineNumber: 4,
+        path: "/Users/me/.bb/thread-storage/thr_one/reports/preview.html",
+        relativePath: "reports/preview.html",
+        threadStorageRootPath: "/Users/me/.bb/thread-storage/thr_one",
       },
     });
   });
