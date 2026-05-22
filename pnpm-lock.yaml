@@ -425,9 +425,15 @@ importers:
       proper-lockfile:
         specifier: ^4.1.2
         version: 4.1.2
+      semver:
+        specifier: ^7.7.4
+        version: 7.7.4
       ws:
         specifier: ^8.19.0
         version: 8.19.0
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@bb/scripts':
         specifier: workspace:*
@@ -447,6 +453,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      '@types/semver':
+        specifier: ^7.7.1
+        version: 7.7.1
       esbuild:
         specifier: ^0.28.0
         version: 0.28.0

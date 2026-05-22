@@ -2,16 +2,21 @@ import { useQuery } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import type {
   ManagerTemplatesResponse,
+  SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
   SystemVersionResponse,
 } from "@bb/server-contract";
+import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import * as api from "@/lib/api";
+import { fetchProviderCliStatus } from "@/lib/api-host-daemon";
 import {
   type HostQueryId,
   hostQueryKey,
   hostsQueryKey,
+  localProviderCliStatusQueryKey,
   managerTemplatesQueryKey,
+  systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
   systemVersionQueryKey,
@@ -33,6 +38,18 @@ function requireQueryId(id: HostQueryId, hookName: string): string {
   }
 
   return id;
+}
+
+function requireDaemonPort(
+  daemonPort: number | null,
+  hookName: string,
+): number {
+  if (daemonPort === null) {
+    throw new Error(
+      `${hookName}: daemonPort is required when query is enabled`,
+    );
+  }
+  return daemonPort;
 }
 
 export function useHosts(options?: QueryOptions) {
@@ -80,6 +97,15 @@ export function useSystemProviders(options?: QueryOptions) {
   });
 }
 
+export function useSystemConfig(options?: QueryOptions) {
+  return useQuery<SystemConfigResponse>({
+    queryKey: systemConfigQueryKey(),
+    queryFn: () => api.getSystemConfig(),
+    enabled: options?.enabled ?? true,
+    staleTime: 60_000,
+  });
+}
+
 export interface UseManagerTemplatesArgs {
   hostId?: string | null;
   enabled?: boolean;
@@ -89,8 +115,7 @@ export function useManagerTemplates(args: UseManagerTemplatesArgs = {}) {
   const hostId = args.hostId ?? null;
   return useQuery<ManagerTemplatesResponse>({
     queryKey: managerTemplatesQueryKey(hostId),
-    queryFn: () =>
-      api.listManagerTemplates(hostId ? { hostId } : {}),
+    queryFn: () => api.listManagerTemplates(hostId ? { hostId } : {}),
     enabled: args.enabled ?? true,
     staleTime: 30_000,
   });
@@ -106,5 +131,28 @@ export function useSystemVersion(options?: QueryOptions) {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     staleTime: SYSTEM_VERSION_STALE_TIME_MS,
+  });
+}
+
+export interface UseLocalProviderCliStatusArgs {
+  daemonPort: number | null;
+  enabled?: boolean;
+}
+
+export function useLocalProviderCliStatus({
+  daemonPort,
+  enabled,
+}: UseLocalProviderCliStatusArgs) {
+  return useQuery<ProviderCliStatusResponse>({
+    queryKey: localProviderCliStatusQueryKey(daemonPort),
+    queryFn: () =>
+      fetchProviderCliStatus(
+        requireDaemonPort(daemonPort, "useLocalProviderCliStatus"),
+      ),
+    enabled: (enabled ?? true) && daemonPort !== null,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
   });
 }

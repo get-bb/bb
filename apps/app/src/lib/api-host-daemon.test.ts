@@ -4,6 +4,8 @@ import {
   DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST,
   HOST_DAEMON_PROTOCOL_VERSION,
   openInTargetRequestSchema,
+  providerCliInstallRequestSchema,
+  type ProviderCliInstallEvent,
   type WorkspaceOpenTarget,
 } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +16,23 @@ async function importFreshApiHostDaemon(): Promise<
 > {
   vi.resetModules();
   return import("./api-host-daemon");
+}
+
+function ndjsonResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(encoder.encode(chunk));
+        }
+        controller.close();
+      },
+    }),
+    {
+      headers: { "content-type": "application/x-ndjson" },
+    },
+  );
 }
 
 afterEach(() => {
@@ -235,6 +254,60 @@ describe("api-host-daemon", () => {
     const { fetchWorkspaceOpenTargets } = await importFreshApiHostDaemon();
 
     await expect(fetchWorkspaceOpenTargets(3002)).rejects.toThrow();
+  });
+
+  it("streams provider CLI install events from split NDJSON chunks", async () => {
+    const requests: Array<
+      ReturnType<typeof providerCliInstallRequestSchema.parse>
+    > = [];
+    const events: ProviderCliInstallEvent[] = [];
+    installFetchRoutes([
+      {
+        method: "POST",
+        pathname: "/provider-clis/install",
+        port: 3002,
+        handler: async (request) => {
+          requests.push(
+            providerCliInstallRequestSchema.parse(await request.json()),
+          );
+          return ndjsonResponse([
+            '{"type":"started","provider":"codex","command":"npm install -g @openai/codex@latest"}\n{"type":"out',
+            'put","provider":"codex","stream":"stderr","text":"permission denied\\n"}\n',
+            '{"type":"completed","provider":"codex","exitCode":1,"signal":null,"success":false}\n',
+          ]);
+        },
+      },
+    ]);
+
+    const { installProviderCli } = await importFreshApiHostDaemon();
+
+    await installProviderCli({
+      port: 3002,
+      request: { provider: "codex", actionKind: "update" },
+      onEvent: (event) => events.push(event),
+    });
+
+    expect(requests).toEqual([{ provider: "codex", actionKind: "update" }]);
+    expect(events).toEqual([
+      {
+        type: "started",
+        provider: "codex",
+        command: "npm install -g @openai/codex@latest",
+      },
+      {
+        type: "output",
+        provider: "codex",
+        stream: "stderr",
+        text: "permission denied\n",
+      },
+      {
+        type: "completed",
+        provider: "codex",
+        exitCode: 1,
+        signal: null,
+        success: false,
+      },
+    ]);
   });
 
   it("opens a path with a selected target", async () => {

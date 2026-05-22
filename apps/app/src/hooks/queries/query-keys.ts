@@ -45,8 +45,10 @@ export const ENVIRONMENT_DIFF_FILE_QUERY_KEY = "environmentDiffFile";
 export const ENVIRONMENT_FILE_PREVIEW_QUERY_KEY = "environmentFilePreview";
 export const THREAD_TIMELINE_QUERY_KEY = "threadTimeline";
 export const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
+export const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
+export const LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY = "localProviderCliStatus";
 export const MANAGER_TEMPLATES_QUERY_KEY = "managerTemplates";
 export const LOCAL_PATH_EXISTENCE_QUERY_KEY = "localPathExistence";
 export const REPLAY_CAPTURES_QUERY_KEY = "internalReplayCaptures";
@@ -336,7 +338,12 @@ export type EnvironmentFilePreviewQueryKeyPrefix = readonly [
 export type SystemProvidersQueryKey = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
 ];
+export type SystemConfigQueryKey = readonly [typeof SYSTEM_CONFIG_QUERY_KEY];
 export type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
+export type LocalProviderCliStatusQueryKey = readonly [
+  typeof LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY,
+  number | null,
+];
 export type ManagerTemplatesQueryKey = readonly [
   typeof MANAGER_TEMPLATES_QUERY_KEY,
   string | null,
@@ -805,8 +812,18 @@ export function systemProvidersQueryKey(): SystemProvidersQueryKey {
   return [SYSTEM_PROVIDERS_QUERY_KEY];
 }
 
+export function systemConfigQueryKey(): SystemConfigQueryKey {
+  return [SYSTEM_CONFIG_QUERY_KEY];
+}
+
 export function systemVersionQueryKey(): SystemVersionQueryKey {
   return [SYSTEM_VERSION_QUERY_KEY];
+}
+
+export function localProviderCliStatusQueryKey(
+  daemonPort: number | null,
+): LocalProviderCliStatusQueryKey {
+  return [LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY, daemonPort];
 }
 
 export function managerTemplatesQueryKey(

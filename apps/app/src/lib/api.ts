@@ -36,6 +36,7 @@ import type {
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
   SendMessageRequest,
+  SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
   SystemVersionResponse,
@@ -1291,6 +1292,10 @@ export async function listManagerTemplates(
 
 export async function getSystemVersion(): Promise<SystemVersionResponse> {
   return request<SystemVersionResponse>(apiClient.system.version.$get());
+}
+
+export async function getSystemConfig(): Promise<SystemConfigResponse> {
+  return request<SystemConfigResponse>(apiClient.system.config.$get());
 }
 
 export async function listHosts(): Promise<Host[]> {

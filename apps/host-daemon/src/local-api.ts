@@ -12,6 +12,8 @@ import {
   HOST_DAEMON_PROTOCOL_VERSION,
   openInTargetRequestSchema,
   pathsExistRequestSchema,
+  providerCliInstallRequestSchema,
+  providerCliStatusResponseSchema,
   typedRoutes,
   type HostDaemonLocalSchema,
   type HostPlatform,
@@ -28,6 +30,11 @@ import {
   openPathInTarget,
   WorkspaceOpenTargetError,
 } from "./workspace-open-targets.js";
+import {
+  getProviderCliStatus,
+  ProviderCliInstallInProgressError,
+  streamProviderCliInstall,
+} from "./provider-cli-health.js";
 
 const execFileAsync = promisify(execFile);
 export type WorkspaceOpenTargetListHandler = () => Promise<
@@ -151,6 +158,44 @@ export async function startLocalApiServer(
     }),
   );
 
+  get("/provider-clis/status", async (c) =>
+    c.json(providerCliStatusResponseSchema.parse(await getProviderCliStatus())),
+  );
+
+  app.post("/provider-clis/install", async (c) => {
+    const parsed = providerCliInstallRequestSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      throw new HTTPException(400, {
+        message: issue?.message ?? "Invalid provider CLI install request",
+      });
+    }
+
+    try {
+      return new Response(
+        streamProviderCliInstall({
+          provider: parsed.data.provider,
+          actionKind: parsed.data.actionKind,
+        }),
+        {
+          headers: {
+            "content-type": "application/x-ndjson; charset=utf-8",
+            "cache-control": "no-store",
+          },
+        },
+      );
+    } catch (error) {
+      if (error instanceof ProviderCliInstallInProgressError) {
+        throw new HTTPException(409, {
+          message: error.message,
+        });
+      }
+      throw error;
+    }
+  });
+
   post("/paths/exist", pathsExistRequestSchema, async (c, payload) => {
     const entries = await Promise.all(
       payload.paths.map(
@@ -228,8 +273,11 @@ async function pathExists(path: string): Promise<boolean> {
     await fs.stat(path);
     return true;
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || code === "ENOTDIR") {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    ) {
       return false;
     }
     // Permission denied / loops / etc. — we can't tell, but the entry exists

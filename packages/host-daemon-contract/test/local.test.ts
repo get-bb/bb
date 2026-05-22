@@ -5,6 +5,9 @@ import {
   hostPlatformSchema,
   pathsExistRequestSchema,
   pathsExistResponseSchema,
+  providerCliInstallEventSchema,
+  providerCliInstallRequestSchema,
+  providerCliStatusResponseSchema,
   statusResponseSchema,
 } from "../src/index.js";
 
@@ -86,5 +89,103 @@ describe("pathsExistResponseSchema", () => {
     expect(() =>
       pathsExistResponseSchema.parse({ existence: { "/a": "yes" } }),
     ).toThrow();
+  });
+});
+
+describe("provider CLI schemas", () => {
+  it("accepts status for Codex and Claude Code", () => {
+    expect(
+      providerCliStatusResponseSchema.parse({
+        codex: {
+          displayName: "Codex",
+          executableName: "codex",
+          executablePath: null,
+          installed: false,
+          installSource: "notInstalled",
+          currentVersion: null,
+          latestVersion: "0.133.0",
+          npmPackageName: "@openai/codex",
+          npmGlobalPackageVersion: null,
+          installAction: {
+            kind: "install",
+            label: "Install",
+            commandKind: "exec",
+            command: "npm install -g @openai/codex@latest",
+          },
+          needsUpdate: false,
+        },
+        claudeCode: {
+          displayName: "Claude Code",
+          executableName: "claude",
+          executablePath: "/opt/homebrew/bin/claude",
+          installed: true,
+          installSource: "npmGlobal",
+          currentVersion: "2.1.147",
+          latestVersion: "2.1.148",
+          npmPackageName: "@anthropic-ai/claude-code",
+          npmGlobalPackageVersion: "2.1.147",
+          installAction: {
+            kind: "update",
+            label: "Update",
+            commandKind: "exec",
+            command: "claude update",
+          },
+          needsUpdate: true,
+        },
+      }).claudeCode.needsUpdate,
+    ).toBe(true);
+
+    expect(
+      providerCliStatusResponseSchema.parse({
+        codex: {
+          displayName: "Codex",
+          executableName: "codex",
+          executablePath: "/usr/local/bin/codex",
+          installed: true,
+          installSource: "npmGlobal",
+          currentVersion: "0.133.0",
+          latestVersion: "0.133.0",
+          npmPackageName: "@openai/codex",
+          npmGlobalPackageVersion: "0.133.0",
+          installAction: null,
+          needsUpdate: false,
+        },
+        claudeCode: {
+          displayName: "Claude Code",
+          executableName: "claude",
+          executablePath: null,
+          installed: false,
+          installSource: "notInstalled",
+          currentVersion: null,
+          latestVersion: "2.1.148",
+          npmPackageName: "@anthropic-ai/claude-code",
+          npmGlobalPackageVersion: null,
+          installAction: {
+            kind: "install",
+            label: "Install",
+            commandKind: "shell",
+            command: "curl -fsSL https://claude.ai/install.sh | bash",
+          },
+          needsUpdate: false,
+        },
+      }).claudeCode.installAction,
+    ).toMatchObject({ commandKind: "shell" });
+  });
+
+  it("accepts install requests and streamed install events", () => {
+    expect(
+      providerCliInstallRequestSchema.parse({
+        provider: "codex",
+        actionKind: "update",
+      }),
+    ).toEqual({ provider: "codex", actionKind: "update" });
+    expect(
+      providerCliInstallEventSchema.parse({
+        type: "output",
+        provider: "claudeCode",
+        stream: "stderr",
+        text: "installing\n",
+      }),
+    ).toMatchObject({ type: "output", stream: "stderr" });
   });
 });

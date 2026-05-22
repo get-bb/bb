@@ -1,8 +1,13 @@
 import {
   createHostDaemonLocalClient,
   DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST,
+  providerCliInstallEventSchema,
+  providerCliStatusResponseSchema,
   workspaceOpenTargetsResponseSchema,
   type OpenInTargetRequest,
+  type ProviderCliInstallEvent,
+  type ProviderCliInstallRequest,
+  type ProviderCliStatusResponse,
   type StatusResponse,
   type WorkspaceOpenTarget,
 } from "@bb/host-daemon-contract";
@@ -17,6 +22,17 @@ const hostDaemonErrorResponseSchema = z.object({
   message: z.string().min(1),
 });
 
+export type ProviderCliInstallEventHandler = (
+  event: ProviderCliInstallEvent,
+) => void;
+
+export interface InstallProviderCliArgs {
+  port: number;
+  request: ProviderCliInstallRequest;
+  onEvent: ProviderCliInstallEventHandler;
+  signal?: AbortSignal;
+}
+
 /**
  * Get or create the host daemon client.
  * Recreates the client if the port changes.
@@ -29,6 +45,10 @@ export function getHostDaemonClient(port: number) {
     clientPort = port;
   }
   return client;
+}
+
+function getHostDaemonBaseUrl(port: number): string {
+  return `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${port}`;
 }
 
 /**
@@ -72,6 +92,18 @@ export async function fetchWorkspaceOpenTargets(
   return body.targets;
 }
 
+export async function fetchProviderCliStatus(
+  port: number,
+): Promise<ProviderCliStatusResponse> {
+  const daemon = getHostDaemonClient(port);
+  const res = await daemon["provider-clis"].status.$get();
+  if (!res.ok) {
+    const status = Number(res.status);
+    throw new Error(`Provider CLI status check failed: HTTP ${status}`);
+  }
+  return providerCliStatusResponseSchema.parse(await res.json());
+}
+
 export async function openInTarget(
   port: number,
   request: OpenInTargetRequest,
@@ -89,6 +121,78 @@ export async function openInTarget(
       ),
     );
   }
+}
+
+function handleProviderCliInstallEventLine(
+  line: string,
+  onEvent: ProviderCliInstallEventHandler,
+): void {
+  const trimmedLine = line.trim();
+  if (trimmedLine.length === 0) {
+    return;
+  }
+  onEvent(providerCliInstallEventSchema.parse(JSON.parse(trimmedLine)));
+}
+
+function emitProviderCliInstallEventLines(
+  buffer: string,
+  onEvent: ProviderCliInstallEventHandler,
+): string {
+  const lines = buffer.split(/\r?\n/u);
+  const lastLine = lines.pop();
+  for (const line of lines) {
+    handleProviderCliInstallEventLine(line, onEvent);
+  }
+  return lastLine ?? "";
+}
+
+export async function installProviderCli({
+  port,
+  request,
+  onEvent,
+  signal,
+}: InstallProviderCliArgs): Promise<void> {
+  const res = await fetch(
+    `${getHostDaemonBaseUrl(port)}/provider-clis/install`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(request),
+      signal,
+    },
+  );
+
+  if (!res.ok) {
+    const status = Number(res.status);
+    throw new Error(
+      await readHostDaemonErrorMessage(
+        res,
+        `Provider CLI install failed: HTTP ${status}`,
+      ),
+    );
+  }
+
+  if (!res.body) {
+    throw new Error("Provider CLI install did not return a log stream");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const result = await reader.read();
+    if (result.done) {
+      break;
+    }
+    buffer += decoder.decode(result.value, { stream: true });
+    buffer = emitProviderCliInstallEventLines(buffer, onEvent);
+  }
+
+  buffer += decoder.decode();
+  handleProviderCliInstallEventLine(buffer, onEvent);
 }
 
 async function readHostDaemonErrorMessage(
