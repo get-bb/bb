@@ -63,29 +63,16 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     },
   },
   {
-    id: "desktop-update-available",
-    group: "Updates",
-    label: "desktop update available",
-    source: "useDesktopUpdateAvailableToast",
-    usage: ["Desktop shell only", "Update available, not downloaded"],
-    current: {
-      tone: "message",
-      title: "Desktop update available",
-      description: "bb desktop 0.0.2 is available.",
-      secondaryActionLabel: "Dismiss",
-    },
-  },
-  {
     id: "desktop-update-ready",
     group: "Updates",
     label: "desktop update ready",
     source: "useDesktopUpdateAvailableToast",
-    usage: ["Desktop shell only", "Update downloaded", "Restart installs"],
+    usage: ["Desktop shell only", "Update downloaded", "Relaunch installs"],
     current: {
       tone: "message",
       title: "Desktop update ready",
       description: "bb desktop 0.0.2 is ready to install.",
-      primaryActionLabel: "Restart",
+      primaryActionLabel: "Relaunch",
     },
   },
   {

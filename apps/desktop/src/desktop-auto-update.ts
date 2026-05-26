@@ -329,6 +329,7 @@ export function createDesktopAutoUpdateService(
   if (args.enabled) {
     args.updater.setLogger(logger);
     args.updater.setFeedURL(DESKTOP_AUTO_UPDATE_FEED_CONFIG);
+    // The service owns the background download so downloadInFlight can guard it.
     args.updater.setAutoDownload(false);
     args.updater.setAutoInstallOnAppQuit(true);
     args.updater.setForceDevUpdateConfig(args.forceDevUpdateConfig);

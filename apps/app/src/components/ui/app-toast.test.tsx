@@ -101,13 +101,13 @@ describe("AppToastContent", () => {
         tone="message"
         title="Desktop update ready"
         action={{
-          label: "Restart",
+          label: "Relaunch",
           onClick: () => undefined,
         }}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+    fireEvent.click(screen.getByRole("button", { name: "Relaunch" }));
 
     expect(sonnerToastState.dismiss).toHaveBeenCalledWith("toast-1");
   });

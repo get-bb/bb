@@ -28,10 +28,18 @@ interface LoggerMessages {
   warnings: string[];
 }
 
+interface DeferredDownload {
+  promise: Promise<Array<string>>;
+  resolve(paths: Array<string>): void;
+}
+
 class DesktopAutoUpdaterAdapterStub implements DesktopAutoUpdaterAdapter {
   autoDownload: boolean | null = null;
   autoInstallOnAppQuit: boolean | null = null;
   checkForUpdatesCalls = 0;
+  downloadUpdateResult: Promise<Array<string>> = Promise.resolve([
+    "/tmp/bb.zip",
+  ]);
   downloadUpdateCalls = 0;
   feedConfigs: DesktopAutoUpdateFeedConfig[] = [];
   forceDevUpdateConfig: boolean | null = null;
@@ -58,7 +66,7 @@ class DesktopAutoUpdaterAdapterStub implements DesktopAutoUpdaterAdapter {
 
   downloadUpdate(): Promise<Array<string>> {
     this.downloadUpdateCalls += 1;
-    return Promise.resolve(["/tmp/bb.zip"]);
+    return this.downloadUpdateResult;
   }
 
   emitError(args: DesktopAutoUpdateErrorArgs): void {
@@ -180,6 +188,25 @@ function createLogger(messages: LoggerMessages): DesktopAutoUpdateLogger {
   };
 }
 
+function createDeferredDownload(): DeferredDownload {
+  let resolveDownload: ((paths: Array<string>) => void) | null = null;
+  const promise = new Promise<Array<string>>((resolve) => {
+    resolveDownload = resolve;
+  });
+
+  return {
+    promise,
+    resolve(paths) {
+      if (resolveDownload === null) {
+        throw new Error(
+          "Deferred download resolve handler was not initialized.",
+        );
+      }
+      resolveDownload(paths);
+    },
+  };
+}
+
 describe("desktop auto-update service", () => {
   it("configures electron-updater for the desktop-latest GitHub release assets", () => {
     const updater = new DesktopAutoUpdaterAdapterStub();
@@ -243,6 +270,34 @@ describe("desktop auto-update service", () => {
     expect(messages.infos).toContain(
       "Desktop auto-update downloaded: 0.0.2; it will install on restart or quit.",
     );
+  });
+
+  it("does not start duplicate background downloads while one is in flight", async () => {
+    const updater = new DesktopAutoUpdaterAdapterStub();
+    const download = createDeferredDownload();
+    updater.downloadUpdateResult = download.promise;
+    createDesktopAutoUpdateService({
+      currentVersion: "0.0.1",
+      enabled: true,
+      forceDevUpdateConfig: false,
+      logger: createLogger(createLoggerMessages()),
+      now: () => Date.parse(checkedAt),
+      updater,
+    });
+
+    updater.emitUpdateAvailable(createUpdateInfo("0.0.2"));
+    updater.emitUpdateAvailable(createUpdateInfo("0.0.2"));
+
+    expect(updater.autoDownload).toBe(false);
+    expect(updater.downloadUpdateCalls).toBe(1);
+
+    download.resolve(["/tmp/bb.zip"]);
+    await download.promise;
+    await Promise.resolve();
+
+    updater.emitUpdateAvailable(createUpdateInfo("0.0.2"));
+
+    expect(updater.downloadUpdateCalls).toBe(2);
   });
 
   it("logs updater errors without throwing or clearing current state", () => {
