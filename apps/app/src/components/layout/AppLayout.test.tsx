@@ -23,9 +23,11 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
 import { AppLayout } from "./AppLayout";
 import {
+  MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
   MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
+  MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
 } from "@/lib/bb-desktop";
@@ -143,6 +145,8 @@ describe("AppLayout desktop chrome", () => {
     expect(screen.queryByTestId("bb-desktop-titlebar")).toBeNull();
     expect(screen.queryByTestId("bb-desktop-window-drag-region")).toBeNull();
     expect(screen.queryByTestId("bb-desktop-sidebar-trigger")).toBeNull();
+    expect(screen.queryByTestId("app-desktop-sidebar-trigger")).toBeNull();
+    expect(screen.queryByTestId("app-page-header-trigger-spacer")).toBeNull();
     expect(
       screen.getByTestId("app-sidebar-inline-trigger-row").className,
     ).not.toContain(MACOS_TRAFFIC_LIGHT_RESERVE_CLASS);
@@ -160,7 +164,7 @@ describe("AppLayout desktop chrome", () => {
     );
   });
 
-  it("keeps the normal sidebar trigger and reserves the traffic-light area in desktop sidebar chrome", async () => {
+  it("pins the sidebar trigger at the window root while the expanded sidebar row stays a drag spacer in desktop chrome", async () => {
     await renderAppLayout({
       desktopInfo: createBbDesktopApi({
         lastCheckedAt: null,
@@ -181,32 +185,49 @@ describe("AppLayout desktop chrome", () => {
     );
     const primaryActions = screen.getByTestId("app-sidebar-primary-actions");
     const sidebarPanel = document.querySelector("[data-sidebar='panel']");
-    const sidebarTrigger = within(inlineTriggerRow).getByRole("button", {
+    const overlay = screen.getByTestId("app-desktop-sidebar-trigger");
+    const sidebarTrigger = within(overlay).getByRole("button", {
       name: "Toggle Sidebar",
     });
 
     expect(screen.queryByTestId("bb-desktop-titlebar")).toBeNull();
     expect(screen.queryByTestId("bb-desktop-sidebar-trigger")).toBeNull();
     expect(screen.queryByTestId("bb-desktop-window-drag-region")).toBeNull();
+    // The pinned overlay is the only toggle; the sidebar's top row no longer
+    // hosts one (it just clears the traffic lights and stays draggable).
     expect(
       screen.getAllByRole("button", { name: "Toggle Sidebar" }),
     ).toHaveLength(1);
+    expect(
+      within(inlineTriggerRow).queryByRole("button", {
+        name: "Toggle Sidebar",
+      }),
+    ).toBeNull();
     expect(contentShell.className).not.toContain("pt-10");
     expect(sidebarPanel?.className).toContain("md:z-10");
     expect(inlineTriggerRow.className).toContain(MACOS_WINDOW_DRAG_CLASS);
-    expect(inlineTriggerRow.className).toContain(
+    expect(inlineTriggerRow.className).not.toContain(
       MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
     );
     expect(primaryActions.className).not.toContain(
       MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
     );
+    // Overlay wrapper is offset clear of the traffic lights and stays a
+    // window-drag region; only the button itself is no-drag, so the title
+    // strip above/below the shorter button stays draggable instead of
+    // becoming an oversized dead zone.
+    expect(overlay.className).toContain(
+      MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
+    );
+    expect(overlay.className).toContain(MACOS_WINDOW_DRAG_CLASS);
+    expect(overlay.className).not.toContain(MACOS_APP_REGION_NO_DRAG_CLASS);
     expect(sidebarTrigger.className).toContain(MACOS_WINDOW_NO_DRAG_CLASS);
     expect(sidebarTrigger.className).toContain(
       MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
     );
   });
 
-  it("uses the normal collapsed header trigger with a traffic-light reserve on desktop", async () => {
+  it("keeps the pinned trigger and reserves its footprint in the collapsed header on desktop", async () => {
     await renderAppLayout({
       desktopInfo: createBbDesktopApi({
         lastCheckedAt: null,
@@ -227,17 +248,27 @@ describe("AppLayout desktop chrome", () => {
     fireEvent.click(initialSidebarTrigger);
 
     const headerRow = screen.getByTestId("app-page-header-content-row");
-    const headerSidebarTrigger = within(headerRow).getByRole("button", {
+    const overlay = screen.getByTestId("app-desktop-sidebar-trigger");
+    const sidebarTrigger = within(overlay).getByRole("button", {
       name: "Toggle Sidebar",
     });
+    const triggerSpacer = screen.getByTestId("app-page-header-trigger-spacer");
     const sidebarTriggers = screen.getAllByRole("button", {
       name: "Toggle Sidebar",
     });
 
     expect(screen.queryByTestId("bb-desktop-sidebar-trigger")).toBeNull();
     expect(screen.queryByTestId("app-sidebar-inline-trigger-row")).toBeNull();
+    // Collapsing keeps the single pinned overlay toggle. The header reserves
+    // the toggle's footprint with a non-interactive spacer instead of a second
+    // trigger, so its content lines up the same as when the sidebar is open.
     expect(sidebarTriggers).toHaveLength(1);
-    expect(sidebarTriggers[0]).toBe(headerSidebarTrigger);
+    expect(sidebarTriggers[0]).toBe(sidebarTrigger);
+    expect(
+      within(headerRow).queryByRole("button", { name: "Toggle Sidebar" }),
+    ).toBeNull();
+    expect(triggerSpacer.getAttribute("aria-hidden")).toBe("true");
+    expect(headerRow.contains(triggerSpacer)).toBe(true);
     expect(document.querySelectorAll("[data-sidebar='trigger']")).toHaveLength(
       1,
     );
@@ -248,10 +279,14 @@ describe("AppLayout desktop chrome", () => {
     expect(headerRow.className).not.toContain(
       MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
     );
-    expect(headerSidebarTrigger.className).toContain(
-      MACOS_WINDOW_NO_DRAG_CLASS,
+    // No-drag is scoped to the button; the offset wrapper stays draggable.
+    expect(overlay.className).toContain(
+      MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
     );
-    expect(headerSidebarTrigger.className).toContain(
+    expect(overlay.className).toContain(MACOS_WINDOW_DRAG_CLASS);
+    expect(overlay.className).not.toContain(MACOS_APP_REGION_NO_DRAG_CLASS);
+    expect(sidebarTrigger.className).toContain(MACOS_WINDOW_NO_DRAG_CLASS);
+    expect(sidebarTrigger.className).toContain(
       MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
     );
   });

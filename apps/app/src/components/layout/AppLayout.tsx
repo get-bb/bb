@@ -36,6 +36,9 @@ import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider
 import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
 import {
   getBbDesktopInfo,
+  MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
+  MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
+  MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
@@ -127,6 +130,38 @@ function FloatingSidebarTrigger() {
   return (
     <div className="absolute left-3 top-3.5 z-20">
       <SidebarTrigger className="h-5 w-5 rounded-md p-0" />
+    </div>
+  );
+}
+
+/**
+ * Desktop-only sidebar toggle, pinned to the window's top-left just right of
+ * the macOS traffic lights. Rendered once at the layout root — outside the
+ * sliding sidebar panel and the content inset — so it holds a constant
+ * window position while the sidebar animates in/out behind it, instead of
+ * riding whichever container would otherwise host it.
+ *
+ * The wrapper is offset clear of the traffic lights and stays a window-drag
+ * region; only the button itself is no-drag, so the title strip above and
+ * below the (shorter) button stays draggable rather than becoming an
+ * oversized dead zone.
+ */
+function DesktopSidebarTriggerOverlay() {
+  return (
+    <div
+      data-testid="app-desktop-sidebar-trigger"
+      className={cn(
+        "fixed top-0 z-50 flex h-12 items-center",
+        MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
+        MACOS_WINDOW_DRAG_CLASS,
+      )}
+    >
+      <SidebarTrigger
+        className={cn(
+          MACOS_WINDOW_NO_DRAG_CLASS,
+          MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
+        )}
+      />
     </div>
   );
 }
@@ -323,8 +358,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const projects = projectsQuery.data ?? sidebarBootstrapProjects;
   const [storedUseStandardManagerTimeline] =
     useStandardManagerTimelinePreference();
-  const prefetchedManagerTimelineView =
-    storedUseStandardManagerTimeline ? "standard" : undefined;
+  const prefetchedManagerTimelineView = storedUseStandardManagerTimeline
+    ? "standard"
+    : undefined;
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "", {
     composerBootstrapPrefetch: isThreadView && Boolean(threadId),
     enabled: isThreadView && Boolean(threadId),
@@ -538,6 +574,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               </main>
             </div>
           </SidebarInset>
+          {usesDesktopChrome ? <DesktopSidebarTriggerOverlay /> : null}
         </SidebarStateBridge>
         <ProjectPathDialog
           target={quickCreateProject.projectPathDialog.target}

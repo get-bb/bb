@@ -20,10 +20,7 @@ import { useNewManagerDialog } from "@/hooks/useNewManagerDialog";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
   getBbDesktopInfo,
-  MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
-  MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
-  MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 
@@ -83,23 +80,18 @@ export function AppSidebar({
       <Sidebar>
         {shouldShowInlineTrigger ? (
           /* Matches the page-header height so the sidebar's top region mirrors
-             the chrome on the right of the sidebar. */
+             the chrome on the right of the sidebar. In desktop chrome the
+             visible toggle is pinned at the window root (see AppLayout's
+             DesktopSidebarTriggerOverlay), so here the row is just the
+             traffic-light clearance and window-drag strip. */
           <div
             data-testid="app-sidebar-inline-trigger-row"
             className={cn(
               "flex h-12 shrink-0 items-center",
-              usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
-              usesDesktopChrome
-                ? `${MACOS_TRAFFIC_LIGHT_RESERVE_CLASS} pr-2`
-                : "px-2",
+              usesDesktopChrome ? MACOS_WINDOW_DRAG_CLASS : "px-2",
             )}
           >
-            <SidebarTrigger
-              className={cn(
-                usesDesktopChrome &&
-                  `${MACOS_WINDOW_NO_DRAG_CLASS} ${MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS}`,
-              )}
-            />
+            {usesDesktopChrome ? null : <SidebarTrigger />}
           </div>
         ) : null}
         <div

@@ -8,7 +8,6 @@ import {
   getBbDesktopInfo,
   MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
-  MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
@@ -57,20 +56,23 @@ export function AppPageHeader({
         )}
       >
         {showSidebarTrigger ? (
-          <SidebarTrigger
-            className={cn(
-              "shrink-0 md:ml-0",
-              usesDesktopChrome ? "ml-0" : "-ml-2",
-              usesDesktopChrome &&
-                `${MACOS_WINDOW_NO_DRAG_CLASS} ${MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS}`,
-            )}
-          />
+          usesDesktopChrome ? (
+            // The visible toggle is pinned at the window root (see AppLayout's
+            // DesktopSidebarTriggerOverlay). Reserve its footprint here so the
+            // header content lines up identically whether the sidebar is open
+            // or collapsed.
+            <div
+              aria-hidden
+              data-testid="app-page-header-trigger-spacer"
+              className={cn("shrink-0", HEADER_ICON_BUTTON_CLASS)}
+            />
+          ) : (
+            <SidebarTrigger className="-ml-2 shrink-0 md:ml-0" />
+          )
         ) : null}
         {center ? (
           <div className="flex min-w-0 flex-1 items-center">
-            <div
-              className="flex min-w-0 max-w-full items-center gap-2"
-            >
+            <div className="flex min-w-0 max-w-full items-center gap-2">
               {center}
             </div>
           </div>
