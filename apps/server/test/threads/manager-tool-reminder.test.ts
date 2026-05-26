@@ -6,6 +6,7 @@ import type { ThreadType } from "@bb/domain";
 import type { TurnSubmitTarget } from "@bb/host-daemon-contract";
 import type { PreparedTurnSubmitCommandPayload } from "../../src/services/threads/thread-commands.js";
 import {
+  appendManagerToolReminder,
   buildManagerToolReminderText,
   resolveManagerUserMessageToolName,
   type ManagerUserMessageToolName,
@@ -47,6 +48,11 @@ interface PrepareTurnSubmitPayloadForThreadResult {
   payload: PreparedTurnSubmitCommandPayload;
 }
 
+interface SlashCommandReminderCase {
+  input: PromptInput[];
+  name: string;
+}
+
 const providerReminderCases: ProviderReminderCase[] = [
   {
     providerId: "claude-code",
@@ -59,6 +65,39 @@ const providerReminderCases: ProviderReminderCase[] = [
   {
     providerId: "pi",
     toolName: "message_user",
+  },
+];
+
+const slashCommandReminderCases: SlashCommandReminderCase[] = [
+  {
+    input: [{ type: "text", text: "/compact" }],
+    name: "slash command",
+  },
+  {
+    input: [{ type: "text", text: "   /foo" }],
+    name: "slash command with leading whitespace",
+  },
+  {
+    input: [{ type: "text", text: "/" }],
+    name: "slash-only command",
+  },
+  {
+    input: [
+      { type: "image", url: "https://example.com/input.png" },
+      { type: "text", text: "/review" },
+    ],
+    name: "slash command after an attachment",
+  },
+  {
+    input: [
+      {
+        type: "text",
+        text: "[bb system] Updated manager preferences.",
+        visibility: "agent-only",
+      },
+      { type: "text", text: "/loop" },
+    ],
+    name: "slash command after an agent-only system block",
   },
 ];
 
@@ -174,6 +213,25 @@ describe("manager tool reminders", () => {
       ]);
     },
   );
+
+  it.each(slashCommandReminderCases)(
+    "does not append a manager turn reminder for a $name",
+    ({ input }) => {
+      expect(appendManagerToolReminder(input, "codex")).toEqual(input);
+    },
+  );
+
+  it("appends the reminder when the first block is not text and the user text is not a slash command", () => {
+    const input: PromptInput[] = [
+      { type: "image", url: "https://example.com/context.png" },
+      { type: "text", text: "use this image" },
+    ];
+
+    expect(appendManagerToolReminder(input, "codex")).toEqual([
+      ...input,
+      expectedReminderInput("codex"),
+    ]);
+  });
 
   it("leaves standard thread input unchanged", async () => {
     const input: PromptInput[] = [{ type: "text", text: "standard turn" }];

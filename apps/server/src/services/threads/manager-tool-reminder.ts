@@ -25,6 +25,19 @@ export function buildManagerToolReminderText(
   return `[bb system] Reminder: call ${resolveManagerUserMessageToolName(providerId)} to send any user-visible message. Plain assistant text is internal and not shown to the user.`;
 }
 
+function findUserSubmittedText(input: PromptInput[]): string | null {
+  for (const item of input) {
+    if (item.type === "text" && item.visibility !== "agent-only") {
+      return item.text;
+    }
+  }
+  return null;
+}
+
+function isSlashCommandInput(input: PromptInput[]): boolean {
+  return findUserSubmittedText(input)?.trimStart().startsWith("/") ?? false;
+}
+
 export function appendManagerToolReminder(
   input: PromptInput[],
   providerId: AgentProviderId,
@@ -32,6 +45,9 @@ export function appendManagerToolReminder(
   const reminderText = buildManagerToolReminderText(providerId);
   const lastInput = input[input.length - 1];
   if (lastInput?.type === "text" && lastInput.text === reminderText) {
+    return input;
+  }
+  if (isSlashCommandInput(input)) {
     return input;
   }
 
