@@ -11,7 +11,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarTrigger,
-  useIsSidebarShowing,
   useSidebar,
 } from "@/components/ui/sidebar.js";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
@@ -43,11 +42,8 @@ export function AppSidebar({
   const newManagerDialog = useNewManagerDialog();
   const navigate = useNavigate();
   const { isCompactViewport, setOpenMobile } = useSidebar();
-  const isSidebarShowing = useIsSidebarShowing();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const shouldShowInlineTrigger =
-    showInlineTrigger && (!usesDesktopChrome || isSidebarShowing);
   const isCompactViewportRef = useRef(isCompactViewport);
   // Keep the ProjectList callback stable while reading the latest breakpoint.
   isCompactViewportRef.current = isCompactViewport;
@@ -78,12 +74,18 @@ export function AppSidebar({
   return (
     <>
       <Sidebar>
-        {shouldShowInlineTrigger ? (
-          /* Matches the page-header height so the sidebar's top region mirrors
-             the chrome on the right of the sidebar. In desktop chrome the
-             visible toggle is pinned at the window root (see AppLayout's
-             DesktopSidebarTriggerOverlay), so here the row is just the
-             traffic-light clearance and window-drag strip. */
+        {showInlineTrigger ? (
+          /* Top reserve that keeps the sidebar's content (New Thread / New
+             Manager / Projects) anchored below the title-bar chrome. Matches
+             the page-header height so the sidebar's top region mirrors the
+             chrome on the content side. In desktop chrome the visible toggle is
+             pinned at the window root (see AppLayout's
+             DesktopSidebarTriggerOverlay), so this row is just the window-drag
+             strip — and it stays mounted in every sidebar state, including
+             while the panel collapses off-canvas, so the content holds its
+             vertical position instead of riding up under the pinned trigger
+             during the animation. In browser chrome it hosts the inline
+             trigger. */
           <div
             data-testid="app-sidebar-inline-trigger-row"
             className={cn(

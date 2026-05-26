@@ -253,12 +253,25 @@ describe("AppLayout desktop chrome", () => {
       name: "Toggle Sidebar",
     });
     const triggerSpacer = screen.getByTestId("app-page-header-trigger-spacer");
+    const inlineTriggerRow = screen.getByTestId(
+      "app-sidebar-inline-trigger-row",
+    );
     const sidebarTriggers = screen.getAllByRole("button", {
       name: "Toggle Sidebar",
     });
 
     expect(screen.queryByTestId("bb-desktop-sidebar-trigger")).toBeNull();
-    expect(screen.queryByTestId("app-sidebar-inline-trigger-row")).toBeNull();
+    // The sidebar's top reserve stays mounted while collapsed so its content
+    // (New Thread / New Manager / Projects) holds the same vertical position
+    // below the title-bar chrome as when expanded, instead of riding up under
+    // the pinned trigger during the collapse animation. It remains a pure
+    // window-drag spacer with no second toggle.
+    expect(inlineTriggerRow.className).toContain(MACOS_WINDOW_DRAG_CLASS);
+    expect(
+      within(inlineTriggerRow).queryByRole("button", {
+        name: "Toggle Sidebar",
+      }),
+    ).toBeNull();
     // Collapsing keeps the single pinned overlay toggle. The header reserves
     // the toggle's footprint with a non-interactive spacer instead of a second
     // trigger, so its content lines up the same as when the sidebar is open.
