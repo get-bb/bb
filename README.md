@@ -22,7 +22,22 @@ or hand off to another agent.
 > bb is in active development. Core architecture is stable, but workflows
 > and surfaces are still evolving.
 
+<p align="center">
+  <img alt="bb desktop app showing a thread sidebar, manager conversation, and live STATUS dashboard" src="assets/app-screenshot.png" width="800">
+</p>
+
 ## Use bb
+
+### Download the desktop app
+
+The recommended way to start using bb is the desktop app:
+
+**[Download the latest desktop app](https://github.com/ymichael/bb/releases/tag/desktop-latest)**
+
+The desktop build is currently macOS Apple Silicon (arm64) only. Intel Mac,
+Linux, and Windows users should run bb with `npx` instead.
+
+### Or run it anywhere with npx
 
 ```bash
 npx bb-app@latest
