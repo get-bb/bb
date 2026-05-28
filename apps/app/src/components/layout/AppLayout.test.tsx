@@ -64,6 +64,9 @@ function createBbDesktopApi(info: BbDesktopInfo): BbDesktopApi {
     onChange(_listener: BbDesktopInfoChangeHandler) {
       return () => undefined;
     },
+    setTheme() {
+      // no-op
+    },
   };
 }
 

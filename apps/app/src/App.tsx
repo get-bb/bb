@@ -5,6 +5,7 @@ import { AuthCallbackView } from "./views/AuthCallbackView";
 import { RootComposeRoute } from "./views/RootComposeView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { ProviderCliHealthToasts } from "./components/provider-cli/ProviderCliHealthToasts";
+import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import {
   useDesktopUpdateAvailableToast,
   useUpdateAvailableToast,
@@ -96,6 +97,9 @@ export function App() {
   useUpdateAvailableToast();
   // Show a separate toast when the Electron shell reports a desktop update.
   useDesktopUpdateAvailableToast();
+  // Keep the Electron window chrome (traffic lights, inactive title bar)
+  // in sync with bb's resolved theme.
+  useDesktopThemeSync();
 
   return (
     <QuickCreateProjectProvider>

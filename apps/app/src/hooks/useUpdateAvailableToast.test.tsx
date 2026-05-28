@@ -204,6 +204,9 @@ function createDesktopApiStub(initialInfo: BbDesktopInfo): DesktopApiStub {
         listeners.delete(listener);
       };
     },
+    setTheme() {
+      // no-op
+    },
   };
   return {
     api,

@@ -5,12 +5,14 @@ import {
   type BbDesktopInfo,
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,
+  type BbDesktopTheme,
 } from "@bb/server-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
+  BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
 
 function getDesktopVersion(version: string | undefined): string {
@@ -100,6 +102,9 @@ const bbDesktopApi: BbDesktopApi = {
     return () => {
       listeners.delete(listener);
     };
+  },
+  setTheme(theme: BbDesktopTheme): void {
+    ipcRenderer.send(BB_DESKTOP_SET_THEME_CHANNEL, theme);
   },
 };
 

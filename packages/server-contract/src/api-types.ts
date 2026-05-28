@@ -117,6 +117,9 @@ export const bbDesktopInfoSchema = z.object({
 });
 export type BbDesktopInfo = z.infer<typeof bbDesktopInfoSchema>;
 
+export const bbDesktopThemeSchema = z.enum(["light", "dark"]);
+export type BbDesktopTheme = z.infer<typeof bbDesktopThemeSchema>;
+
 export type BbDesktopInfoChangeHandler = (info: BbDesktopInfo) => void;
 export type BbDesktopInfoUnsubscribe = () => void;
 
@@ -125,6 +128,13 @@ export interface BbDesktopApi extends BbDesktopInfo {
   getInfo(): Promise<BbDesktopInfo>;
   installUpdate(): Promise<void>;
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
+  /**
+   * Push the renderer-resolved theme to the Electron main process so the
+   * NSWindow appearance — traffic lights and inactive title-bar chrome —
+   * follows bb's theme rather than the OS appearance. No-op on the web build
+   * where `window.bbDesktop` is undefined.
+   */
+  setTheme(theme: BbDesktopTheme): void;
 }
 
 // --- Thread creation: environment + workspace discriminated unions ---

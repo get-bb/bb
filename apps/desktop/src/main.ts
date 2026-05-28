@@ -7,12 +7,13 @@ import {
   clipboard,
   ipcMain,
   nativeImage,
+  nativeTheme,
   session,
   shell,
   type Event,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import type { BbDesktopInfo } from "@bb/server-contract";
+import { bbDesktopThemeSchema, type BbDesktopInfo } from "@bb/server-contract";
 import { z } from "zod";
 import {
   assertPathExists,
@@ -65,6 +66,7 @@ import {
   BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
+  BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
 import { clearPackagedSessionHttpCache } from "./desktop-session-cache.js";
@@ -655,6 +657,17 @@ function registerDesktopUpdateIpc(): void {
     stoppingForQuit = true;
     await finishQuit();
     desktopAutoUpdateService.installUpdate();
+  });
+  // Renderer pushes the resolved bb theme so the NSWindow appearance —
+  // traffic lights and inactive title-bar chrome — follows bb's theme
+  // rather than the OS appearance. `themeSource` is app-global so a single
+  // assignment covers every BrowserWindow, including the log viewer.
+  ipcMain.on(BB_DESKTOP_SET_THEME_CHANNEL, (_event, payload: unknown) => {
+    const parsed = bbDesktopThemeSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    nativeTheme.themeSource = parsed.data;
   });
 }
 
