@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import type { ThreadType } from "@bb/domain";
 import { Icon } from "@/components/ui/icon.js";
@@ -75,8 +76,17 @@ interface FileSearchMessageProps {
   message: string;
 }
 
+/**
+ * A navigable entry in a section. Search results carry a {@link FileSearchSuggestion};
+ * the synthetic Create App action carries no data and routes to the prefill flow.
+ * Keeping both in one union lets the keyboard handler walk a single index space.
+ */
+type FileSearchSectionEntry =
+  | { kind: "suggestion"; suggestion: FileSearchSuggestion }
+  | { kind: "create-app" };
+
 interface FileSearchSectionItem {
-  suggestion: FileSearchSuggestion;
+  entry: FileSearchSectionEntry;
   index: number;
 }
 
@@ -107,10 +117,23 @@ interface GetAvailableFileSearchSourcesArgs {
 interface GroupFileSearchSectionsArgs {
   suggestions: readonly FileSearchSuggestion[];
   availableSources: readonly FileSearchSource[];
+  includeCreateAppEntry: boolean;
+}
+
+interface LauncherTileProps {
+  id: string;
+  isActive: boolean;
+  onActivate: () => void;
+  onSelect: () => void;
+  title?: string;
+  children: ReactNode;
 }
 
 interface CreateAppTileProps {
-  onClick: () => void;
+  id: string;
+  isActive: boolean;
+  onActivate: () => void;
+  onSelect: () => void;
 }
 
 const FILE_SEARCH_LIMIT = 20;
@@ -129,6 +152,8 @@ const FILE_SEARCH_SOURCE_LABELS = {
   workspace: "Workspace",
   "thread-storage": "Manager Storage",
 } satisfies Record<FileSearchSource, string>;
+
+const CREATE_APP_ENTRY_ID = "file-search-result-create-app";
 
 const SECTION_HEADER_CLASS =
   "sticky top-0 z-10 bg-background px-1 pb-2 text-xs font-medium uppercase tracking-wider text-subtle-foreground";
@@ -173,6 +198,13 @@ function getFileSearchResultId(suggestion: FileSearchSuggestion): string {
   )}`;
 }
 
+function getFileSearchEntryId(entry: FileSearchSectionEntry): string {
+  if (entry.kind === "create-app") {
+    return CREATE_APP_ENTRY_ID;
+  }
+  return getFileSearchResultId(entry.suggestion);
+}
+
 function splitPath(path: string): SplitPathResult {
   const lastSlash = path.lastIndexOf("/");
   if (lastSlash === -1) {
@@ -199,30 +231,45 @@ function getFileSearchSectionKind(
 
 function groupFileSearchSections({
   availableSources,
+  includeCreateAppEntry,
   suggestions,
 }: GroupFileSearchSectionsArgs): FileSearchSection[] {
   const allowedSources = new Set<FileSearchSource>(availableSources);
   const sectionsByKind = new Map<FileSearchSectionKind, FileSearchSection>();
 
-  for (const suggestion of suggestions) {
-    const source = suggestion.source;
-    if (!allowedSources.has(source)) {
-      continue;
-    }
-    const sectionKind = getFileSearchSectionKind(suggestion);
+  const ensureSection = (
+    sectionKind: FileSearchSectionKind,
+  ): FileSearchSection => {
     const existing = sectionsByKind.get(sectionKind);
     if (existing) {
-      existing.items.push({
-        suggestion,
-        index: existing.items.length,
-      });
-      continue;
+      return existing;
     }
-
-    sectionsByKind.set(sectionKind, {
+    const created: FileSearchSection = {
       kind: sectionKind,
       label: FILE_SEARCH_SECTION_LABELS[sectionKind],
-      items: [{ suggestion, index: 0 }],
+      items: [],
+    };
+    sectionsByKind.set(sectionKind, created);
+    return created;
+  };
+
+  for (const suggestion of suggestions) {
+    if (!allowedSources.has(suggestion.source)) {
+      continue;
+    }
+    ensureSection(getFileSearchSectionKind(suggestion)).items.push({
+      entry: { kind: "suggestion", suggestion },
+      index: 0,
+    });
+  }
+
+  if (includeCreateAppEntry) {
+    // The Create App action sits at the end of the Apps section so arrowing
+    // down through the real app rows lands on it last. The section is created
+    // even when there are no app rows so it stays reachable in the empty state.
+    ensureSection("apps").items.push({
+      entry: { kind: "create-app" },
+      index: 0,
     });
   }
 
@@ -235,10 +282,10 @@ function groupFileSearchSections({
     return [
       {
         ...section,
-        items: section.items.map(({ suggestion }) => {
+        items: section.items.map(({ entry }) => {
           const index = nextIndex;
           nextIndex += 1;
-          return { suggestion, index };
+          return { entry, index };
         }),
       },
     ];
@@ -260,6 +307,40 @@ function FileSearchMessage({
   );
 }
 
+/**
+ * Shared button shell for the Apps-section launcher tiles (app rows and the
+ * Create App action). Centralizing it keeps the listbox option/keyboard
+ * contract — `role="option"`, `aria-selected`, `id`, hover-to-activate —
+ * identical across every navigable tile.
+ */
+function LauncherTile({
+  id,
+  isActive,
+  onActivate,
+  onSelect,
+  title,
+  children,
+}: LauncherTileProps) {
+  return (
+    <button
+      type="button"
+      id={id}
+      role="option"
+      aria-selected={isActive}
+      onClick={onSelect}
+      onMouseEnter={onActivate}
+      title={title}
+      className={cn(
+        LAUNCHER_TILE_BASE_CLASS,
+        "scroll-mt-7",
+        isActive ? "bg-state-active" : "hover:bg-state-hover",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 function AppResultRow({
   id,
   suggestion,
@@ -273,19 +354,12 @@ function AppResultRow({
   const showAppId = suggestion.appId !== slugifyAppName(suggestion.name);
 
   return (
-    <button
-      type="button"
+    <LauncherTile
       id={id}
-      role="option"
-      aria-selected={isActive}
-      onClick={handleSelect}
-      onMouseEnter={onActivate}
+      isActive={isActive}
+      onActivate={onActivate}
+      onSelect={handleSelect}
       title={getFileSearchResultTitle(suggestion)}
-      className={cn(
-        LAUNCHER_TILE_BASE_CLASS,
-        "scroll-mt-7",
-        isActive ? "bg-state-active" : "hover:bg-state-hover",
-      )}
     >
       <span className={LAUNCHER_TILE_ICON_CLASS}>
         <ResolvedAppIcon
@@ -303,16 +377,22 @@ function AppResultRow({
           </span>
         ) : null}
       </span>
-    </button>
+    </LauncherTile>
   );
 }
 
-function CreateAppTile({ onClick }: CreateAppTileProps) {
+function CreateAppTile({
+  id,
+  isActive,
+  onActivate,
+  onSelect,
+}: CreateAppTileProps) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(LAUNCHER_TILE_BASE_CLASS, "hover:bg-state-hover")}
+    <LauncherTile
+      id={id}
+      isActive={isActive}
+      onActivate={onActivate}
+      onSelect={onSelect}
     >
       <span className={LAUNCHER_TILE_ICON_CLASS_DASHED}>
         <Icon name="Plus" className="size-5" aria-hidden />
@@ -325,7 +405,7 @@ function CreateAppTile({ onClick }: CreateAppTileProps) {
           Describe an idea, the manager builds it
         </span>
       </span>
-    </button>
+    </LauncherTile>
   );
 }
 
@@ -412,28 +492,38 @@ export function NewTabFileSearch({
       }),
     [currentThreadId, currentThreadType, projectId],
   );
-  const sections = useMemo(
-    () => groupFileSearchSections({ availableSources, suggestions }),
-    [availableSources, suggestions],
+  const hasAppSuggestions = useMemo(
+    () => suggestions.some((suggestion) => suggestion.entryKind === "app"),
+    [suggestions],
   );
-  const hasAppsSection = sections.some((section) => section.kind === "apps");
-  const showAppsSectionShell =
+  // Mirror the visible Apps section: offer Create App when nothing is typed, or
+  // when the query actually matches apps — never alongside a files-only result.
+  const showCreateAppEntry =
     !isUnavailable &&
     canPrefillCreateAppPrompt &&
-    (!hasQuery || hasAppsSection);
-  const visualSuggestions = useMemo(
+    (!hasQuery || hasAppSuggestions);
+  const sections = useMemo(
+    () =>
+      groupFileSearchSections({
+        availableSources,
+        includeCreateAppEntry: showCreateAppEntry,
+        suggestions,
+      }),
+    [availableSources, showCreateAppEntry, suggestions],
+  );
+  const navigableEntries = useMemo(
     () =>
       sections.flatMap((section) =>
-        section.items.map(({ suggestion }) => suggestion),
+        section.items.map(({ entry }) => entry),
       ),
     [sections],
   );
-  const activeSuggestion = useMemo(
+  const activeEntry = useMemo(
     () =>
-      activeIndex >= 0 && activeIndex < visualSuggestions.length
-        ? (visualSuggestions[activeIndex] ?? null)
+      activeIndex >= 0 && activeIndex < navigableEntries.length
+        ? (navigableEntries[activeIndex] ?? null)
         : null,
-    [activeIndex, visualSuggestions],
+    [activeIndex, navigableEntries],
   );
 
   useEffect(() => {
@@ -448,8 +538,8 @@ export function NewTabFileSearch({
   }, [focusRequest]);
 
   useEffect(() => {
-    setActiveIndex(visualSuggestions.length > 0 ? 0 : -1);
-  }, [visualSuggestions]);
+    setActiveIndex(navigableEntries.length > 0 ? 0 : -1);
+  }, [navigableEntries]);
 
   const handleAppSelect = useCallback(
     (suggestion: AppSearchSuggestion) => {
@@ -497,30 +587,39 @@ export function NewTabFileSearch({
 
   const handleInputKeyDown = useCallback<SearchInputKeyDownHandler>(
     (event) => {
-      if (visualSuggestions.length === 0) {
+      if (navigableEntries.length === 0) {
         return;
       }
 
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        setActiveIndex((current) => (current + 1) % visualSuggestions.length);
+        setActiveIndex((current) => (current + 1) % navigableEntries.length);
         return;
       }
 
       if (event.key === "ArrowUp") {
         event.preventDefault();
         setActiveIndex((current) =>
-          current <= 0 ? visualSuggestions.length - 1 : current - 1,
+          current <= 0 ? navigableEntries.length - 1 : current - 1,
         );
         return;
       }
 
-      if (event.key === "Enter" && activeSuggestion) {
+      if (event.key === "Enter" && activeEntry) {
         event.preventDefault();
-        handleSuggestionSelect(activeSuggestion);
+        if (activeEntry.kind === "create-app") {
+          handleCreateAppPromptPrefill();
+          return;
+        }
+        handleSuggestionSelect(activeEntry.suggestion);
       }
     },
-    [activeSuggestion, handleSuggestionSelect, visualSuggestions.length],
+    [
+      activeEntry,
+      handleCreateAppPromptPrefill,
+      handleSuggestionSelect,
+      navigableEntries.length,
+    ],
   );
 
   return (
@@ -538,9 +637,7 @@ export function NewTabFileSearch({
           disabled={isUnavailable}
           aria-label="Search apps and files"
           aria-activedescendant={
-            activeSuggestion
-              ? getFileSearchResultId(activeSuggestion)
-              : undefined
+            activeEntry ? getFileSearchEntryId(activeEntry) : undefined
           }
           placeholder={
             isUnavailable ? "No searchable source" : "Search apps and files"
@@ -563,7 +660,6 @@ export function NewTabFileSearch({
       ) : (
         <NewTabResults
           activeIndex={activeIndex}
-          canCreateApp={canPrefillCreateAppPrompt}
           hasQuery={hasQuery}
           isError={isError}
           isLoading={isLoading}
@@ -572,7 +668,6 @@ export function NewTabFileSearch({
           onCreateApp={handleCreateAppPromptPrefill}
           onFileSelect={handleFileSelect}
           sections={sections}
-          showAppsSectionShell={showAppsSectionShell}
         />
       )}
     </div>
@@ -581,7 +676,6 @@ export function NewTabFileSearch({
 
 interface NewTabResultsProps {
   activeIndex: number;
-  canCreateApp: boolean;
   hasQuery: boolean;
   isError: boolean;
   isLoading: boolean;
@@ -590,12 +684,10 @@ interface NewTabResultsProps {
   onCreateApp: () => void;
   onFileSelect: (suggestion: FilePathSearchSuggestion) => void;
   sections: readonly FileSearchSection[];
-  showAppsSectionShell: boolean;
 }
 
 function NewTabResults({
   activeIndex,
-  canCreateApp,
   hasQuery,
   isError,
   isLoading,
@@ -604,11 +696,12 @@ function NewTabResults({
   onCreateApp,
   onFileSelect,
   sections,
-  showAppsSectionShell,
 }: NewTabResultsProps) {
   const appsSection = sections.find((section) => section.kind === "apps");
   const filesSection = sections.find((section) => section.kind === "files");
-  const showAppsSection = showAppsSectionShell || appsSection !== undefined;
+  // The Apps section now owns the Create App entry, so its mere presence (real
+  // app rows and/or the Create App action) is enough to render the shell.
+  const showAppsSection = appsSection !== undefined;
   const showFilesSection = filesSection !== undefined;
   const showLoading = isLoading && !showFilesSection;
   const showError = isError && !showFilesSection && !showLoading;
@@ -630,40 +723,46 @@ function NewTabResults({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto pb-1">
-      {showAppsSection ? (
+      {appsSection ? (
         <section>
           <div className={cn(SECTION_HEADER_CLASS, "pt-0")}>
             {FILE_SEARCH_SECTION_LABELS.apps}
           </div>
-          {appsSection && appsSection.items.length > 0 ? (
-            <div
-              role="listbox"
-              aria-label={FILE_SEARCH_SECTION_LABELS.apps}
-              className="flex flex-col gap-px"
-            >
-              {appsSection.items.map(({ suggestion, index }) =>
-                suggestion.entryKind === "app" ? (
-                  <AppResultRow
-                    key={`app:${suggestion.appId}`}
-                    id={getFileSearchResultId(suggestion)}
-                    suggestion={suggestion}
-                    isActive={index === activeIndex}
+          <div
+            role="listbox"
+            aria-label={FILE_SEARCH_SECTION_LABELS.apps}
+            className="flex flex-col gap-px"
+          >
+            {appsSection.items.map(({ entry, index }) => {
+              const isActive = index === activeIndex;
+              const id = getFileSearchEntryId(entry);
+              if (entry.kind === "create-app") {
+                return (
+                  <CreateAppTile
+                    key="create-app"
+                    id={id}
+                    isActive={isActive}
                     onActivate={() => onActivateIndex(index)}
-                    onSelect={onAppSelect}
+                    onSelect={onCreateApp}
                   />
-                ) : null,
-              )}
-            </div>
-          ) : null}
-          {canCreateApp ? (
-            <div
-              className={cn(
-                appsSection && appsSection.items.length > 0 && "mt-px",
-              )}
-            >
-              <CreateAppTile onClick={onCreateApp} />
-            </div>
-          ) : null}
+                );
+              }
+              if (entry.suggestion.entryKind !== "app") {
+                return null;
+              }
+              const suggestion = entry.suggestion;
+              return (
+                <AppResultRow
+                  key={`app:${suggestion.appId}`}
+                  id={id}
+                  suggestion={suggestion}
+                  isActive={isActive}
+                  onActivate={() => onActivateIndex(index)}
+                  onSelect={onAppSelect}
+                />
+              );
+            })}
+          </div>
         </section>
       ) : null}
 
@@ -677,18 +776,25 @@ function NewTabResults({
             aria-label={FILE_SEARCH_SECTION_LABELS.files}
             className="flex flex-col gap-px"
           >
-            {filesSection.items.map(({ suggestion, index }) =>
-              suggestion.entryKind === "file" ? (
+            {filesSection.items.map(({ entry, index }) => {
+              if (
+                entry.kind !== "suggestion" ||
+                entry.suggestion.entryKind !== "file"
+              ) {
+                return null;
+              }
+              const suggestion = entry.suggestion;
+              return (
                 <FileResultRow
                   key={`${suggestion.source}:${suggestion.path}`}
-                  id={getFileSearchResultId(suggestion)}
+                  id={getFileSearchEntryId(entry)}
                   suggestion={suggestion}
                   isActive={index === activeIndex}
                   onActivate={() => onActivateIndex(index)}
                   onSelect={onFileSelect}
                 />
-              ) : null,
-            )}
+              );
+            })}
           </div>
         </section>
       ) : showLoading || showError ? (

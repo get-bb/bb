@@ -188,7 +188,7 @@ describe("NewTabPage", () => {
     vi.mocked(api.listThreadApps).mockResolvedValue([]);
     renderNewTabPage({ projectId: "proj-1" });
 
-    fireEvent.click(screen.getByRole("button", { name: /Create App/u }));
+    fireEvent.click(screen.getByRole("option", { name: /Create App/u }));
 
     expect(getStoredThreadDraft()).toEqual({
       text: CREATE_APP_PROMPT_TEMPLATE,
@@ -212,7 +212,7 @@ describe("NewTabPage", () => {
     setStoredThreadDraft(DRAFT_WITH_ATTACHMENT);
     renderNewTabPage({ projectId: "proj-1" });
 
-    fireEvent.click(screen.getByRole("button", { name: /Create App/u }));
+    fireEvent.click(screen.getByRole("option", { name: /Create App/u }));
 
     expect(getStoredThreadDraft()).toEqual(DRAFT_WITH_ATTACHMENT);
   });
@@ -223,7 +223,53 @@ describe("NewTabPage", () => {
     setStoredThreadDraft(DRAFT_WITH_ATTACHMENT);
     renderNewTabPage({ projectId: "proj-1" });
 
-    fireEvent.click(screen.getByRole("button", { name: /Create App/u }));
+    fireEvent.click(screen.getByRole("option", { name: /Create App/u }));
+
+    expect(getStoredThreadDraft()).toEqual({
+      text: CREATE_APP_PROMPT_TEMPLATE,
+      attachments: [],
+    });
+  });
+
+  it("arrows past the app rows onto the create-app entry as the last option", async () => {
+    vi.mocked(api.listThreadApps).mockResolvedValue([STATUS_APP]);
+    renderNewTabPage({ projectId: "proj-1" });
+
+    const input = screen.getByRole("textbox", {
+      name: "Search apps and files",
+    });
+    const appOption = await screen.findByRole("option", { name: /Status/u });
+    const createAppOption = screen.getByRole("option", {
+      name: /Create App/u,
+    });
+
+    // The first navigable entry is the real app row; Create App sits after it.
+    expect(input.getAttribute("aria-activedescendant")).toBe(appOption.id);
+    expect(appOption.getAttribute("aria-selected")).toBe("true");
+    expect(createAppOption.getAttribute("aria-selected")).toBe("false");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+
+    // Arrowing down lands the active descendant on the Create App tile.
+    expect(createAppOption.id).toBe("file-search-result-create-app");
+    expect(input.getAttribute("aria-activedescendant")).toBe(
+      createAppOption.id,
+    );
+    expect(createAppOption.getAttribute("aria-selected")).toBe("true");
+    expect(appOption.getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("prefills the composer draft when the create-app entry is activated by Enter", async () => {
+    vi.mocked(api.listThreadApps).mockResolvedValue([STATUS_APP]);
+    renderNewTabPage({ projectId: "proj-1" });
+
+    const input = screen.getByRole("textbox", {
+      name: "Search apps and files",
+    });
+    await screen.findByRole("option", { name: /Status/u });
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
 
     expect(getStoredThreadDraft()).toEqual({
       text: CREATE_APP_PROMPT_TEMPLATE,
