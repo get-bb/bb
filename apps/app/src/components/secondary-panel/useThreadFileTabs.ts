@@ -367,6 +367,41 @@ function buildOrderedSecondaryFileTabs({
   ];
 }
 
+/**
+ * Opens (or re-activates) an app tab in a thread's secondary panel and reveals
+ * the panel. Keyed by `threadId`, so callers outside the active thread detail
+ * view — e.g. the sidebar app-icon cluster — can drive the same panel state the
+ * detail view reads. This is the canonical open-app-tab path; `useThreadFileTabs`
+ * exposes it as `openApp`.
+ */
+export function useOpenThreadAppTab(
+  threadId: string | null | undefined,
+): (appId: string) => void {
+  const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
+  return useCallback(
+    (appId: string) => {
+      const nextTab = createAppTab(appId);
+      updateFixedPanelTabsState((state) => {
+        const tabs = upsertSecondaryTab(state.secondary.tabs, nextTab);
+        if (
+          tabs === state.secondary.tabs &&
+          state.secondary.activeTabId === nextTab.id &&
+          state.secondary.isOpen
+        ) {
+          return state;
+        }
+        return setSecondaryTabs({
+          activeTabId: nextTab.id,
+          isOpen: true,
+          state,
+          tabs,
+        });
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+}
+
 export function useThreadFileTabs({
   apps,
   threadId,
@@ -673,28 +708,7 @@ export function useThreadFileTabs({
     [updateFixedPanelTabsState],
   );
 
-  const openApp = useCallback(
-    (appId: string) => {
-      const nextTab = createAppTab(appId);
-      updateFixedPanelTabsState((state) => {
-        const tabs = upsertSecondaryTab(state.secondary.tabs, nextTab);
-        if (
-          tabs === state.secondary.tabs &&
-          state.secondary.activeTabId === nextTab.id &&
-          state.secondary.isOpen
-        ) {
-          return state;
-        }
-        return setSecondaryTabs({
-          activeTabId: nextTab.id,
-          isOpen: true,
-          state,
-          tabs,
-        });
-      });
-    },
-    [updateFixedPanelTabsState],
-  );
+  const openApp = useOpenThreadAppTab(threadId);
 
   const closeAppTab = useCallback(
     (appId: string) => {

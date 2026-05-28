@@ -44,6 +44,7 @@ import {
   getSidebarThreadRowPaddingClass,
   type SidebarThreadRowIndent,
 } from "./sidebarRowClasses";
+import { ThreadRowAppCluster } from "./ThreadRowAppCluster";
 import type { ConsumeDragClickSuppression } from "./useDragClickSuppression";
 
 export type ThreadRowOptions =
@@ -397,6 +398,9 @@ function ThreadRowComponent({
           COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
         )}
       >
+        {isManager ? (
+          <ThreadRowAppCluster projectId={projectId} threadId={thread.id} />
+        ) : null}
         <span
           className={cn(
             "relative shrink-0",

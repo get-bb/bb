@@ -639,6 +639,14 @@ export function useThreadStorageFilePreview(
   });
 }
 
+/**
+ * Thread apps rarely change within a session and are read from both the sidebar
+ * (a query per manager row) and the thread detail view. A shared default stale
+ * window lets navigation reuse a recent sidebar fetch instead of refetching on
+ * detail mount; callers can still override `staleTime` explicitly.
+ */
+const THREAD_APPS_STALE_TIME_MS = 30_000;
+
 export function useThreadApps(id: string, options?: QueryOptions) {
   return useQuery<AppSummary[]>({
     queryKey: threadAppsQueryKey(id),
@@ -647,7 +655,7 @@ export function useThreadApps(id: string, options?: QueryOptions) {
     enabled: (options?.enabled ?? true) && Boolean(id),
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,
-    staleTime: options?.staleTime,
+    staleTime: options?.staleTime ?? THREAD_APPS_STALE_TIME_MS,
   });
 }
 

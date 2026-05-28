@@ -1,8 +1,12 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
 import type { ThreadListEntry } from "@bb/domain";
+import type { AppSummary } from "@bb/server-contract";
 import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
+import { createAppQueryClient } from "@/lib/query-client";
+import { threadAppsQueryKey } from "@/hooks/queries/query-keys";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
@@ -353,5 +357,150 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
     </StoryCard>
+  );
+}
+
+// --- App-icon cluster -------------------------------------------------------
+// Only managers have apps today, so these rows are managers whose installed
+// apps are seeded into the thread-apps query cache (the same query the row
+// reads in production). The cluster renders left of the trailing branch icon.
+
+interface MakeAppArgs {
+  id: string;
+  name: string;
+  icon: AppSummary["icon"];
+}
+
+function makeApp({ id, name, icon }: MakeAppArgs): AppSummary {
+  return {
+    id,
+    name,
+    entry: { path: "index.html", kind: "html" },
+    capabilities: [],
+    icon,
+  };
+}
+
+const APP_FIXTURES = {
+  status: makeApp({
+    id: "status",
+    name: "Status",
+    icon: { kind: "builtin", name: "ListTodo" },
+  }),
+  terminal: makeApp({
+    id: "terminal",
+    name: "Terminal",
+    icon: { kind: "builtin", name: "Terminal" },
+  }),
+  notes: makeApp({
+    id: "notes",
+    name: "Notes",
+    icon: { kind: "builtin", name: "File" },
+  }),
+  preview: makeApp({
+    id: "preview",
+    name: "Preview",
+    icon: { kind: "builtin", name: "GridView" },
+  }),
+  deploy: makeApp({
+    id: "deploy",
+    name: "Deploy",
+    icon: { kind: "builtin", name: "Zap" },
+  }),
+} as const;
+
+interface AppRowSeed {
+  id: string;
+  title: string;
+  apps: AppSummary[];
+  hint: string;
+}
+
+const APP_ROW_SEEDS: readonly AppRowSeed[] = [
+  {
+    id: "thr_apps_none",
+    title: "Update API docs",
+    apps: [],
+    hint: "no apps — trailing edge stays clean, nothing reserved",
+  },
+  {
+    id: "thr_apps_one",
+    title: "Write integration tests",
+    apps: [APP_FIXTURES.status],
+    hint: "single app icon, left of the branch icon",
+  },
+  {
+    id: "thr_apps_two",
+    title: "Refactor auth middleware",
+    apps: [APP_FIXTURES.status, APP_FIXTURES.terminal],
+    hint: "two app icons",
+  },
+  {
+    id: "thr_apps_three",
+    title: "Onboarding revamp",
+    apps: [APP_FIXTURES.status, APP_FIXTURES.terminal, APP_FIXTURES.notes],
+    hint: "three app icons — the visible cap",
+  },
+  {
+    id: "thr_apps_overflow",
+    title: "Migrate billing schema",
+    apps: [
+      APP_FIXTURES.status,
+      APP_FIXTURES.terminal,
+      APP_FIXTURES.notes,
+      APP_FIXTURES.preview,
+      APP_FIXTURES.deploy,
+    ],
+    hint: "caps at 3 icons; the +2 chip tooltip lists Preview · Deploy",
+  },
+];
+
+function useAppRowsQueryClient() {
+  return useMemo(() => {
+    const queryClient = createAppQueryClient({
+      showMutationErrorToasts: false,
+      defaultOptions: {
+        mutations: { retry: false },
+        queries: { gcTime: Infinity, retry: false },
+      },
+    });
+    for (const seed of APP_ROW_SEEDS) {
+      queryClient.setQueryData(threadAppsQueryKey(seed.id), seed.apps);
+    }
+    return queryClient;
+  }, []);
+}
+
+export function AppIcons() {
+  const queryClient = useAppRowsQueryClient();
+  return (
+    <QueryClientProvider client={queryClient}>
+      <StoryCard>
+        {APP_ROW_SEEDS.map((seed) => (
+          <StoryRow
+            key={seed.id}
+            label={`manager · ${seed.apps.length} app${
+              seed.apps.length === 1 ? "" : "s"
+            }`}
+            hint={seed.hint}
+          >
+            <SidebarStage>
+              <ThreadRow
+                projectId="proj_demo"
+                thread={makeThread({
+                  id: seed.id,
+                  type: "manager",
+                  title: seed.title,
+                  titleFallback: seed.title,
+                  environmentWorkspaceDisplayKind: "managed-worktree",
+                })}
+                isActive={false}
+                options={managerOption({ managedChildCount: 0 })}
+              />
+            </SidebarStage>
+          </StoryRow>
+        ))}
+      </StoryCard>
+    </QueryClientProvider>
   );
 }
