@@ -76,6 +76,7 @@ function ShellRow({
             onClose={noop}
             onOpenNewTab={noop}
             isConversationCollapsed={false}
+            onToggleConversationCollapse={noop}
             reserveLeftForDesktopTrafficLights={false}
             renderAsDrawer
           />
@@ -153,6 +154,7 @@ function FileTabsShellInner({
         onClose={noop}
         onOpenNewTab={noop}
         isConversationCollapsed={false}
+        onToggleConversationCollapse={noop}
         reserveLeftForDesktopTrafficLights={false}
         renderAsDrawer
       />

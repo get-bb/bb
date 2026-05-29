@@ -11,6 +11,7 @@ import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/lib/utils";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
+import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
@@ -74,11 +75,17 @@ export interface ThreadSecondaryPanelProps {
   /**
    * When true the conversation pane is collapsed: this panel expands to fill
    * the content area (its max size is lifted). Always false in the
-   * drawer/compact layout. The button that toggles this state lives in the
-   * conversation header (and on the collapsed conversation rail), not on the
-   * panel itself.
+   * drawer/compact layout.
    */
   isConversationCollapsed: boolean;
+  /**
+   * Toggles {@link isConversationCollapsed}. On a wide viewport the panel header
+   * renders the expand/restore-conversation control (immediately left of the
+   * hide-panel button); the collapsed conversation rail surfaces the same
+   * action. Unused in the drawer/compact layout, which cannot collapse the
+   * conversation.
+   */
+  onToggleConversationCollapse: () => void;
   /**
    * When true, the panel is the top-left-most surface under the macOS
    * traffic-light strip (desktop macOS + main sidebar collapsed + conversation
@@ -113,12 +120,21 @@ export function ThreadSecondaryPanel({
   onOpenFileInEditor,
   onOpenFilePreview,
   isConversationCollapsed,
+  onToggleConversationCollapse,
   reserveLeftForDesktopTrafficLights,
   renderAsDrawer,
 }: ThreadSecondaryPanelProps) {
   const activeFileTab = fileTabs?.find((tab) => tab.isActive);
   const hasActiveFileTab = activeFileTab !== undefined;
   const togglePanelIconName = renderAsDrawer ? "X" : "PanelRight";
+  // The conversation-collapse toggle only exists on a wide viewport; the drawer
+  // layout fills the screen and cannot collapse the conversation.
+  const conversationCollapseControl = renderAsDrawer
+    ? null
+    : resolveConversationCollapseControl({
+        isConversationCollapsed,
+        onToggleConversationCollapse,
+      });
   const {
     gitDiffDisplayMode,
     handleGitDiffDisplayModeChange,
@@ -266,24 +282,47 @@ export function ThreadSecondaryPanel({
               usesDesktopChrome={usesDesktopChrome}
             />
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "h-7 w-7 shrink-0 rounded-md p-0",
-              usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-            )}
-            onClick={onClose}
-            aria-label={
-              renderAsDrawer ? "Close secondary panel" : "Hide secondary panel"
-            }
-            title={
-              renderAsDrawer ? "Close secondary panel" : "Hide secondary panel"
-            }
-          >
-            <Icon name={togglePanelIconName} />
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            {conversationCollapseControl ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-7 w-7 shrink-0 rounded-md p-0",
+                  usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+                )}
+                onClick={conversationCollapseControl.onClick}
+                aria-label={conversationCollapseControl.label}
+                aria-expanded={conversationCollapseControl.isExpanded}
+                title={conversationCollapseControl.label}
+              >
+                <Icon name={conversationCollapseControl.iconName} />
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-7 w-7 shrink-0 rounded-md p-0",
+                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+              )}
+              onClick={onClose}
+              aria-label={
+                renderAsDrawer
+                  ? "Close secondary panel"
+                  : "Hide secondary panel"
+              }
+              title={
+                renderAsDrawer
+                  ? "Close secondary panel"
+                  : "Hide secondary panel"
+              }
+            >
+              <Icon name={togglePanelIconName} />
+            </Button>
+          </div>
         </div>
         {isDiffPanelActive && !hasActiveFileTab ? (
           <GitDiffToolbar

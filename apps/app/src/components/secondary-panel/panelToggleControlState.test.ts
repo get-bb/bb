@@ -1,64 +1,58 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolvePanelToggleControl } from "./panelToggleControlState";
+import {
+  resolveConversationCollapseControl,
+  resolveShowPanelControl,
+} from "./panelToggleControlState";
 
-describe("resolvePanelToggleControl", () => {
-  it("opens the panel when the panel is closed", () => {
+describe("resolveShowPanelControl", () => {
+  it("opens the panel and reads as a closed disclosure", () => {
     const onToggleSecondaryPanel = vi.fn();
-    const onToggleConversationCollapse = vi.fn();
-    const state = resolvePanelToggleControl({
-      isSecondaryPanelOpen: false,
-      isConversationCollapsed: false,
-      onToggleSecondaryPanel,
-      onToggleConversationCollapse,
-    });
+    const state = resolveShowPanelControl({ onToggleSecondaryPanel });
 
     expect(state.action).toBe("show-panel");
     expect(state.label).toBe("Show panel");
     expect(state.isExpanded).toBe(false);
+    // The recognizable panel icon reads as "open the right side panel".
     expect(state.iconName).toBe("PanelRight");
 
     state.onClick();
     expect(onToggleSecondaryPanel).toHaveBeenCalledTimes(1);
-    expect(onToggleConversationCollapse).not.toHaveBeenCalled();
   });
+});
 
-  it("collapses the conversation when the panel is open and the conversation is shown", () => {
-    const onToggleSecondaryPanel = vi.fn();
+describe("resolveConversationCollapseControl", () => {
+  it("collapses the conversation when it is shown", () => {
     const onToggleConversationCollapse = vi.fn();
-    const state = resolvePanelToggleControl({
-      isSecondaryPanelOpen: true,
+    const state = resolveConversationCollapseControl({
       isConversationCollapsed: false,
-      onToggleSecondaryPanel,
       onToggleConversationCollapse,
     });
 
     expect(state.action).toBe("expand-panel");
     expect(state.label).toBe("Expand panel");
+    // The conversation is currently expanded; clicking collapses it.
     expect(state.isExpanded).toBe(true);
-    expect(state.iconName).toBe("ChevronLeft");
+    // An expand-to-fill glyph, not a directional chevron.
+    expect(state.iconName).toBe("Maximize2");
 
     state.onClick();
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
-    expect(onToggleSecondaryPanel).not.toHaveBeenCalled();
   });
 
   it("restores the conversation when it is collapsed", () => {
-    const onToggleSecondaryPanel = vi.fn();
     const onToggleConversationCollapse = vi.fn();
-    const state = resolvePanelToggleControl({
-      isSecondaryPanelOpen: true,
+    const state = resolveConversationCollapseControl({
       isConversationCollapsed: true,
-      onToggleSecondaryPanel,
       onToggleConversationCollapse,
     });
 
-    expect(state.action).toBe("expand-conversation");
-    expect(state.label).toBe("Expand conversation");
+    expect(state.action).toBe("restore-conversation");
+    expect(state.label).toBe("Restore conversation");
     expect(state.isExpanded).toBe(false);
-    expect(state.iconName).toBe("ChevronRight");
+    // The inverse minimize glyph restores the conversation.
+    expect(state.iconName).toBe("Minimize2");
 
     state.onClick();
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
-    expect(onToggleSecondaryPanel).not.toHaveBeenCalled();
   });
 });

@@ -9,7 +9,7 @@ import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
-import { resolvePanelToggleControl } from "@/components/secondary-panel/panelToggleControlState";
+import { resolveShowPanelControl } from "@/components/secondary-panel/panelToggleControlState";
 import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
@@ -23,14 +23,12 @@ interface ThreadHeaderGitAction {
 interface ThreadDetailHeaderProps {
   actionsMenu: ReactNode;
   activeTerminalCount: number;
-  isConversationCollapsed: boolean;
   isManagedThread: boolean;
   isManagerThread: boolean;
   isSecondaryPanelOpen: boolean;
   isTerminalPanelOpen: boolean;
   isThreadGitActionPending: boolean;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
-  onToggleConversationCollapse: () => void;
   onToggleSecondaryPanel: () => void;
   onToggleTerminalPanel: () => void;
   showTerminalPanelToggle: boolean;
@@ -42,14 +40,12 @@ interface ThreadDetailHeaderProps {
 export function ThreadDetailHeader({
   actionsMenu,
   activeTerminalCount,
-  isConversationCollapsed,
   isManagedThread,
   isManagerThread,
   isSecondaryPanelOpen,
   isTerminalPanelOpen,
   isThreadGitActionPending,
   onOpenThreadGitAction,
-  onToggleConversationCollapse,
   onToggleSecondaryPanel,
   onToggleTerminalPanel,
   showTerminalPanelToggle,
@@ -60,18 +56,13 @@ export function ThreadDetailHeader({
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
   const renderAsDrawer = useIsCompactViewport();
 
-  // One header button unifies what used to be a separate "Show panel" header
-  // button and a centered seam arrow; its icon, copy, and handler flip with
-  // state — see resolvePanelToggleControl. Closed shows the PanelRight icon
-  // (read as "open the side panel"); open/collapsed show a directional chevron.
-  // Only rendered on a wide viewport; the drawer layout uses a simple
-  // open/close toggle below.
-  const panelToggle = resolvePanelToggleControl({
-    isSecondaryPanelOpen,
-    isConversationCollapsed,
-    onToggleSecondaryPanel,
-    onToggleConversationCollapse,
-  });
+  // On a wide viewport the conversation header only owns the panel-CLOSED
+  // affordance: a button that opens the secondary panel (read as "open the
+  // right side panel" via the PanelRight icon). Once the panel is open, its own
+  // header carries the expand/collapse-conversation toggle, and the collapsed
+  // rail restores the conversation. The drawer layout keeps a simple open/close
+  // toggle below.
+  const showPanelControl = resolveShowPanelControl({ onToggleSecondaryPanel });
 
   const center = (
     <>
@@ -136,25 +127,26 @@ export function ThreadDetailHeader({
           ) : null}
         </Button>
       ) : null}
-      {!renderAsDrawer ? (
+      {!renderAsDrawer && !isSecondaryPanelOpen ? (
         <Button
           type="button"
           variant="ghost"
           size="icon"
           className={HEADER_ICON_BUTTON_CLASS}
-          aria-label={panelToggle.label}
-          aria-expanded={panelToggle.isExpanded}
-          title={panelToggle.label}
-          onClick={panelToggle.onClick}
+          aria-label={showPanelControl.label}
+          aria-expanded={showPanelControl.isExpanded}
+          title={showPanelControl.label}
+          onClick={showPanelControl.onClick}
         >
-          <Icon name={panelToggle.iconName} />
+          <Icon name={showPanelControl.iconName} />
         </Button>
       ) : null}
       {actionsMenu}
       {/*
         On a compact/drawer viewport the secondary panel opens as a drawer with
         no seam, so the header keeps a simple open/close toggle here. On a wide
-        viewport the chevron above handles open/expand and the rail handles
+        viewport the open-panel button above handles the closed state, while the
+        panel header's toggle handles collapse/expand and the rail handles
         restore-when-collapsed.
       */}
       {renderAsDrawer ? (

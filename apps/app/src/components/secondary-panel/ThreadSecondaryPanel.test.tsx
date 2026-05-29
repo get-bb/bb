@@ -15,7 +15,7 @@ import type {
   BbDesktopInfoChangeHandler,
 } from "@bb/server-contract";
 import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   type SecondaryPanelFileTab,
@@ -33,6 +33,7 @@ interface RenderPanelArgs {
   renderAsDrawer?: boolean;
   isOpen?: boolean;
   isConversationCollapsed?: boolean;
+  onToggleConversationCollapse?: () => void;
   reserveLeftForDesktopTrafficLights?: boolean;
 }
 
@@ -129,6 +130,7 @@ function renderPanel({
   renderAsDrawer = true,
   isOpen = true,
   isConversationCollapsed = false,
+  onToggleConversationCollapse = noop,
   reserveLeftForDesktopTrafficLights = false,
 }: RenderPanelArgs) {
   const { wrapper } = createQueryClientTestHarness();
@@ -147,6 +149,7 @@ function renderPanel({
       onPanelChange={noop}
       onPanelFocus={noop}
       isConversationCollapsed={isConversationCollapsed}
+      onToggleConversationCollapse={onToggleConversationCollapse}
       reserveLeftForDesktopTrafficLights={reserveLeftForDesktopTrafficLights}
       renderAsDrawer={renderAsDrawer}
       showGitDiffTab={false}
@@ -354,5 +357,57 @@ describe("ThreadSecondaryPanel", () => {
     expect(resizeHandle.className).toContain("opacity-0");
     expect(resizeHandle.className).toContain("pointer-events-none");
     expect(resizeHandle.className).not.toContain("w-px");
+  });
+
+  it("renders an expand-to-fill toggle left of the hide button while the conversation is shown", () => {
+    const onToggleConversationCollapse = vi.fn();
+    renderPanel({
+      renderAsDrawer: false,
+      isConversationCollapsed: false,
+      onToggleConversationCollapse,
+    });
+
+    const toggle = screen.getByRole("button", { name: "Expand panel" });
+    const hideButton = screen.getByRole("button", {
+      name: "Hide secondary panel",
+    });
+    // Expand-to-fill glyph, an explicit aria-expanded disclosure, and the hide
+    // button sits immediately after it in the trailing controls.
+    expect(toggle.querySelector("[data-icon='Maximize2']")).not.toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      Boolean(
+        toggle.compareDocumentPosition(hideButton) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+
+    fireEvent.click(toggle);
+    expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the inverse restore toggle while the conversation is collapsed", () => {
+    const onToggleConversationCollapse = vi.fn();
+    renderPanel({
+      renderAsDrawer: false,
+      isConversationCollapsed: true,
+      onToggleConversationCollapse,
+    });
+
+    const toggle = screen.getByRole("button", { name: "Restore conversation" });
+    expect(toggle.querySelector("[data-icon='Minimize2']")).not.toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(toggle);
+    expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits the conversation-collapse toggle in the drawer layout", () => {
+    renderPanel({ renderAsDrawer: true });
+
+    expect(screen.queryByRole("button", { name: "Expand panel" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Restore conversation" }),
+    ).toBeNull();
   });
 });

@@ -4,7 +4,7 @@ import { useSetAtom } from "jotai";
 import type { AppSummary } from "@bb/server-contract";
 import { ResolvedAppIcon } from "@/components/secondary-panel/AppIcon";
 import { useOpenThreadAppTab } from "@/components/secondary-panel/useThreadFileTabs";
-import { threadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_GLYPH_BOX_CLASS,
@@ -37,7 +37,9 @@ function ThreadAppRowComponent({
 }: ThreadAppRowProps) {
   const navigate = useNavigate();
   const openThreadAppTab = useOpenThreadAppTab(threadId);
-  const setConversationCollapsed = useSetAtom(threadConversationCollapsedAtom);
+  const setConversationCollapsed = useSetAtom(
+    getThreadConversationCollapsedAtom(threadId),
+  );
   const openApp = useCallback(() => {
     // Opening an app makes it the active surface: reveal its tab in the
     // secondary panel (openThreadAppTab also opens the panel) and tuck the

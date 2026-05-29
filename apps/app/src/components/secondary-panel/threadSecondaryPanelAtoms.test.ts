@@ -2,37 +2,95 @@
 
 import { createStore } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { threadConversationCollapsedAtom } from "./threadSecondaryPanelAtoms";
+import {
+  getThreadConversationCollapsedAtom,
+  getThreadConversationCollapsedStorageKey,
+} from "./threadSecondaryPanelAtoms";
 
-const STORAGE_KEY = "bb.thread.conversation.collapsed";
+const THREAD_A = "thr_a";
+const THREAD_B = "thr_b";
 
 afterEach(() => {
   window.localStorage.clear();
   vi.resetModules();
 });
 
-describe("threadConversationCollapsedAtom", () => {
-  it("defaults to collapsed=false and persists toggles to localStorage", () => {
+describe("getThreadConversationCollapsedAtom", () => {
+  it("defaults to collapsed=false and persists toggles to a per-thread key", () => {
     const store = createStore();
-    expect(store.get(threadConversationCollapsedAtom)).toBe(false);
+    const atomA = getThreadConversationCollapsedAtom(THREAD_A);
+    expect(store.get(atomA)).toBe(false);
 
-    store.set(threadConversationCollapsedAtom, true);
-    expect(store.get(threadConversationCollapsedAtom)).toBe(true);
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe("true");
+    store.set(atomA, true);
+    expect(store.get(atomA)).toBe(true);
+    expect(
+      window.localStorage.getItem(
+        getThreadConversationCollapsedStorageKey({ threadId: THREAD_A }),
+      ),
+    ).toBe("true");
 
-    store.set(threadConversationCollapsedAtom, false);
-    expect(store.get(threadConversationCollapsedAtom)).toBe(false);
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe("false");
+    store.set(atomA, false);
+    expect(store.get(atomA)).toBe(false);
+    expect(
+      window.localStorage.getItem(
+        getThreadConversationCollapsedStorageKey({ threadId: THREAD_A }),
+      ),
+    ).toBe("false");
   });
 
-  it("hydrates the persisted preference when the atom initializes", async () => {
+  it("keeps each thread's collapse state isolated", () => {
+    const store = createStore();
+    const atomA = getThreadConversationCollapsedAtom(THREAD_A);
+    const atomB = getThreadConversationCollapsedAtom(THREAD_B);
+
+    store.set(atomA, true);
+
+    // Collapsing thread A must not collapse thread B, and B's storage key
+    // stays untouched.
+    expect(store.get(atomA)).toBe(true);
+    expect(store.get(atomB)).toBe(false);
+    expect(
+      window.localStorage.getItem(
+        getThreadConversationCollapsedStorageKey({ threadId: THREAD_B }),
+      ),
+    ).toBeNull();
+
+    // Clearing B is likewise a no-op for A.
+    store.set(atomB, false);
+    expect(store.get(atomA)).toBe(true);
+  });
+
+  it("returns a stable atom reference per thread id", () => {
+    expect(getThreadConversationCollapsedAtom(THREAD_A)).toBe(
+      getThreadConversationCollapsedAtom(THREAD_A),
+    );
+    expect(getThreadConversationCollapsedAtom(THREAD_A)).not.toBe(
+      getThreadConversationCollapsedAtom(THREAD_B),
+    );
+  });
+
+  it("falls back to a non-persisted disabled atom without a thread id", () => {
+    const store = createStore();
+    const disabled = getThreadConversationCollapsedAtom(undefined);
+    expect(getThreadConversationCollapsedAtom(null)).toBe(disabled);
+    expect(store.get(disabled)).toBe(false);
+
+    store.set(disabled, true);
+    expect(window.localStorage.length).toBe(0);
+  });
+
+  it("hydrates a thread's persisted preference when its atom initializes", async () => {
     // The atom reads storage when it is created (page load), so re-import the
     // module after seeding localStorage to exercise the parse path.
-    window.localStorage.setItem(STORAGE_KEY, "true");
+    const { getThreadConversationCollapsedStorageKey: seedKey } = await import(
+      "./threadSecondaryPanelAtoms"
+    );
+    window.localStorage.setItem(seedKey({ threadId: THREAD_A }), "true");
     vi.resetModules();
-    const { threadConversationCollapsedAtom: hydratedAtom } =
-      await import("./threadSecondaryPanelAtoms");
+    const { getThreadConversationCollapsedAtom: hydratedGetter } = await import(
+      "./threadSecondaryPanelAtoms"
+    );
 
-    expect(createStore().get(hydratedAtom)).toBe(true);
+    expect(createStore().get(hydratedGetter(THREAD_A))).toBe(true);
   });
 });

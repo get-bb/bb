@@ -53,6 +53,7 @@ type ThreadSecondaryPanelProps = Omit<
   | "metadataContent"
   | "renderAsDrawer"
   | "isConversationCollapsed"
+  | "onToggleConversationCollapse"
   | "reserveLeftForDesktopTrafficLights"
 >;
 type TerminalPanelDraggingHandler = (isDragging: boolean) => void;
@@ -216,6 +217,7 @@ export function ThreadDetailSecondaryContent({
       {...secondaryPanel}
       renderAsDrawer={false}
       isConversationCollapsed={isConversationCollapsedActive}
+      onToggleConversationCollapse={onToggleConversationCollapse}
       // Panel is leftmost only when the rail (36px) is the only thing between
       // it and the window edge — i.e. the conversation is also collapsed.
       reserveLeftForDesktopTrafficLights={
@@ -229,6 +231,7 @@ export function ThreadDetailSecondaryContent({
       {...secondaryPanel}
       renderAsDrawer={true}
       isConversationCollapsed={false}
+      onToggleConversationCollapse={onToggleConversationCollapse}
       reserveLeftForDesktopTrafficLights={false}
       metadataContent={metadataContent}
     />

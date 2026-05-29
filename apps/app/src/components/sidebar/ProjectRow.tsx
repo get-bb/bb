@@ -77,7 +77,7 @@ import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspac
 import { getProjectSettingsRoutePath } from "@/lib/app-route-paths";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import type { FixedPanelTabsState } from "@/lib/fixed-panel-tabs-state";
-import { threadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
@@ -897,7 +897,9 @@ export const ManagerThreadGroupRow = memo(function ManagerThreadGroupRow({
   const managerAppsQuery = useThreadApps(managerThread.id);
   const managerApps = managerAppsQuery.data ?? EMPTY_THREAD_APPS;
   const fixedPanelTabsState = useFixedPanelTabsState(managerThread.id);
-  const isConversationCollapsed = useAtomValue(threadConversationCollapsedAtom);
+  const isConversationCollapsed = useAtomValue(
+    getThreadConversationCollapsedAtom(managerThread.id),
+  );
   const activeAppId = getActiveThreadAppId({
     fixedPanelTabsState,
     isConversationCollapsed,

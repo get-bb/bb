@@ -1,9 +1,11 @@
 import { memo, useCallback, useState, type MouseEventHandler } from "react";
+import { useSetAtom } from "jotai";
 import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
 import type { ThreadListEntry } from "@bb/domain";
+import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
@@ -295,6 +297,9 @@ function ThreadRowComponent({
 }: ThreadRowProps) {
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
+  const setConversationCollapsed = useSetAtom(
+    getThreadConversationCollapsedAtom(thread.id),
+  );
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   const showUnreadBadge = !hasPendingInteraction && isUnreadDoneThread(thread);
@@ -370,6 +375,12 @@ function ThreadRowComponent({
       <NavLink
         to={getThreadRoutePath({ projectId, threadId: thread.id })}
         onClick={() => {
+          // Selecting a thread/agent row restores its conversation: the inverse
+          // of opening an app row, which tucks the conversation into the
+          // collapsed rail so the app fills the view (see ThreadAppRow). Both
+          // write this thread's own collapse flag, so selecting one thread
+          // never disturbs another's full-screen-app state.
+          setConversationCollapsed(false);
           onProjectSelect?.();
         }}
         aria-label={`Open ${threadTitle}`}

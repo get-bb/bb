@@ -78,7 +78,7 @@ import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import { useThreadSecondaryPanelVisibility } from "./useThreadSecondaryPanelVisibility";
 import type { HostConnectionNotice } from "./ThreadTimelinePane";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
-import { threadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   HostFilePreviewTabContent,
   ThreadStorageFilePreviewTabContent,
@@ -498,7 +498,7 @@ export function ThreadDetailView() {
     togglePersistedPanel: togglePersistedSecondaryPanel,
   });
   const [storedConversationCollapsed, setStoredConversationCollapsed] = useAtom(
-    threadConversationCollapsedAtom,
+    getThreadConversationCollapsedAtom(threadId),
   );
   // The collapse preference only applies while the panel is open on a wide
   // viewport; ThreadDetailSecondaryContent gates it (there is nothing to expand
@@ -1074,7 +1074,6 @@ export function ThreadDetailView() {
   const timelineHeader = (
     <ThreadDetailHeader
       actionsMenu={threadActionsMenu}
-      isConversationCollapsed={storedConversationCollapsed}
       isManagedThread={Boolean(parentThreadId)}
       isManagerThread={isManagerThread}
       isSecondaryPanelOpen={isSecondaryPanelOpen}
@@ -1082,7 +1081,6 @@ export function ThreadDetailView() {
       isTerminalPanelOpen={terminalsEnabled && terminalPanelState.isOpen}
       isThreadGitActionPending={gitActions.isThreadGitActionPending}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
-      onToggleConversationCollapse={toggleConversationCollapse}
       onToggleSecondaryPanel={toggleSecondaryPanel}
       onToggleTerminalPanel={toggleTerminalPanel}
       showTerminalPanelToggle={terminalsEnabled}
