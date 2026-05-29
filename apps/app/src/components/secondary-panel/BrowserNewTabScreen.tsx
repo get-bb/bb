@@ -1,7 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Icon } from "@/components/ui/icon.js";
+import { Input } from "@/components/ui/input.js";
 import { cn } from "@/lib/utils";
 import { getBrowserUrlHost } from "@/lib/browser-url";
+import { formatRelativeTime } from "@/lib/relative-time";
 import type { BrowserHistoryEntry } from "@/lib/browser-history";
 
 interface BrowserQuickLink {
@@ -17,7 +19,23 @@ interface BrowserNewTabScreenProps {
 
 interface BrowserLetterTileProps {
   label: string;
-  className?: string;
+}
+
+interface BrowserRowButtonProps {
+  url: string;
+  onSelect: () => void;
+  children: ReactNode;
+}
+
+interface BrowserQuickLinkRowProps {
+  link: BrowserQuickLink;
+  onNavigate: (url: string) => void;
+}
+
+interface BrowserRecentRowProps {
+  entry: BrowserHistoryEntry;
+  now: number;
+  onNavigate: (url: string) => void;
 }
 
 // A small fixed set of starting points for v1. A user-editable quick-links
@@ -31,38 +49,89 @@ const BROWSER_QUICK_LINKS: readonly BrowserQuickLink[] = [
   { label: "npm", url: "https://www.npmjs.com" },
 ];
 
+// Match the secondary-panel launcher (NewTabFileSearch): uppercase section
+// labels, hairline-bordered chips, and dense rows that share the app's tokens.
 const SECTION_LABEL_CLASS =
-  "mb-2 px-1 text-xs font-medium uppercase tracking-wider text-subtle-foreground";
-
-function formatVisitedAgo(visitedAt: number, now: number): string {
-  const minutes = Math.floor(Math.max(0, now - visitedAt) / 60_000);
-  if (minutes < 1) {
-    return "just now";
-  }
-  if (minutes < 60) {
-    return `${minutes}m`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h`;
-  }
-  return `${Math.floor(hours / 24)}d`;
-}
+  "px-1 text-xs font-medium uppercase tracking-wider text-subtle-foreground";
+const ROW_BASE_CLASS =
+  "group flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+const ROW_CHIP_CLASS =
+  "flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border-hairline bg-surface-raised text-muted-foreground";
 
 // A neutral first-letter tile for quick links. Remote favicons are intentionally
 // not fetched/rendered here (untrusted source); recently-visited rows use a
 // generic globe icon instead.
-function BrowserLetterTile({ label, className }: BrowserLetterTileProps) {
+function BrowserLetterTile({ label }: BrowserLetterTileProps) {
   return (
-    <span
-      className={cn(
-        "flex items-center justify-center text-xs font-semibold text-muted-foreground",
-        className,
-      )}
-      aria-hidden
-    >
+    <span className="text-xs font-semibold" aria-hidden>
       {label.slice(0, 1).toUpperCase()}
     </span>
+  );
+}
+
+// Shared row shell for quick-link and recently-visited rows, mirroring the
+// launcher's LauncherTile so hover, focus, and density stay identical.
+function BrowserRowButton({ url, onSelect, children }: BrowserRowButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      title={url}
+      className={ROW_BASE_CLASS}
+    >
+      {children}
+    </button>
+  );
+}
+
+function BrowserQuickLinkRow({ link, onNavigate }: BrowserQuickLinkRowProps) {
+  return (
+    <BrowserRowButton url={link.url} onSelect={() => onNavigate(link.url)}>
+      <span className={ROW_CHIP_CLASS}>
+        <BrowserLetterTile label={link.label} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+        {link.label}
+      </span>
+      <span className="shrink-0 truncate font-mono text-xs text-muted-foreground">
+        {getBrowserUrlHost(link.url)}
+      </span>
+    </BrowserRowButton>
+  );
+}
+
+function BrowserRecentRow({ entry, now, onNavigate }: BrowserRecentRowProps) {
+  const host = getBrowserUrlHost(entry.url);
+  const title = entry.title?.trim();
+  const primary = title && title.length > 0 ? title : host;
+  const relativeTime = formatRelativeTime({ timestamp: entry.visitedAt, now });
+
+  return (
+    <BrowserRowButton url={entry.url} onSelect={() => onNavigate(entry.url)}>
+      <span className={ROW_CHIP_CLASS}>
+        <Icon name="Globe" className="size-3.5" aria-hidden />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm text-foreground">{primary}</span>
+        {primary !== host ? (
+          <span className="truncate font-mono text-xs text-muted-foreground">
+            {host}
+          </span>
+        ) : null}
+      </span>
+      <span className="ml-auto flex shrink-0 items-center justify-end">
+        <span className="whitespace-nowrap text-xs text-muted-foreground group-hover:hidden">
+          {relativeTime}
+        </span>
+        <span
+          className="hidden items-center gap-1 text-xs text-subtle-foreground group-hover:flex"
+          aria-hidden
+        >
+          <Icon name="ArrowUpRight" className="size-3" aria-hidden />
+          open
+        </span>
+      </span>
+    </BrowserRowButton>
   );
 }
 
@@ -85,112 +154,71 @@ export function BrowserNewTabScreen({
   };
 
   return (
-    <div className="flex h-full flex-col items-center overflow-y-auto px-6 py-10">
-      <div className="w-full max-w-xl">
-        <div className="mb-6 flex flex-col items-center gap-3">
-          <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-card text-ring">
-            <Icon name="Globe" className="size-6" aria-hidden />
-          </span>
-          <div className="text-center">
-            <div className="text-base font-semibold">New tab</div>
-            <div className="text-xs text-muted-foreground">
-              Search the web, or jump back in
-            </div>
-          </div>
+    <div className="flex h-full flex-col overflow-y-auto px-4 pb-6 pt-8">
+      <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+        <div>
+          <form onSubmit={handleSubmit} className="relative">
+            <Icon
+              name="Search"
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              type="text"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search the web or type a URL"
+              aria-label="Search the web or type a URL"
+              autoComplete="off"
+              spellCheck={false}
+              className="pl-9"
+            />
+          </form>
+          <p className="mt-2 px-1 text-xs text-muted-foreground">
+            Searches go to your default engine.
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="relative">
-          <Icon
-            name="Search"
-            className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
-          <input
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search the web or type a URL"
-            aria-label="Search the web or type a URL"
-            autoComplete="off"
-            spellCheck={false}
-            className="h-12 w-full rounded-xl border border-border bg-card pl-11 pr-4 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
-          />
-        </form>
-        <div className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1">
-            <span className="size-1.5 rounded-full bg-success" />
-            Isolated session
-          </span>
-          <span aria-hidden>·</span>
-          <span>Searches go to your default engine</span>
-        </div>
-
-        <section className="mt-8">
-          <div className={SECTION_LABEL_CLASS}>Quick links</div>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+        <section>
+          <div className={cn(SECTION_LABEL_CLASS, "mb-1.5")}>Quick links</div>
+          <ul aria-label="Quick links" className="flex flex-col gap-px">
             {BROWSER_QUICK_LINKS.map((link) => (
-              <button
-                key={link.url}
-                type="button"
-                onClick={() => onNavigateInput(link.url)}
-                title={link.label}
-                className="group flex flex-col items-center gap-2 rounded-lg border border-transparent px-1.5 py-3 transition-colors hover:border-border hover:bg-card focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <span className="flex size-11 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-raised shadow-sm">
-                  <BrowserLetterTile label={link.label} className="size-11" />
-                </span>
-                <span className="max-w-full truncate text-xs text-muted-foreground group-hover:text-foreground">
-                  {link.label}
-                </span>
-              </button>
+              <li key={link.url}>
+                <BrowserQuickLinkRow link={link} onNavigate={onNavigateInput} />
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
 
         {recent.length > 0 ? (
-          <section className="mt-8">
-            <div className="mb-2 flex items-center px-1">
-              <span className="text-xs font-medium uppercase tracking-wider text-subtle-foreground">
-                Recently visited
+          <section>
+            <div
+              className={cn(SECTION_LABEL_CLASS, "mb-1.5 flex items-baseline gap-2")}
+            >
+              <span>Recently visited</span>
+              <span className="font-mono text-xs font-normal normal-case tracking-normal text-muted-foreground opacity-80">
+                {recent.length}
               </span>
               <button
                 type="button"
                 onClick={onClearRecent}
-                className="ml-auto text-xs text-link transition-colors hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                aria-label="Clear recently visited"
+                className="ml-auto rounded text-xs font-normal normal-case tracking-normal text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 Clear
               </button>
             </div>
-            <div className="flex flex-col gap-px">
+            <ul aria-label="Recently visited" className="flex flex-col gap-px">
               {recent.map((entry) => (
-                <button
-                  key={entry.url}
-                  type="button"
-                  onClick={() => onNavigateInput(entry.url)}
-                  title={entry.url}
-                  className="flex items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <span className="flex size-6 shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-surface-raised">
-                    <Icon
-                      name="Globe"
-                      className="size-3.5 text-muted-foreground"
-                      aria-hidden
-                    />
-                  </span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-xs text-foreground">
-                      {entry.title ?? getBrowserUrlHost(entry.url)}
-                    </span>
-                    <span className="truncate font-mono text-xs text-muted-foreground">
-                      {getBrowserUrlHost(entry.url)}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {formatVisitedAgo(entry.visitedAt, now)}
-                  </span>
-                </button>
+                <li key={entry.url}>
+                  <BrowserRecentRow
+                    entry={entry}
+                    now={now}
+                    onNavigate={onNavigateInput}
+                  />
+                </li>
               ))}
-            </div>
+            </ul>
           </section>
         ) : null}
       </div>
