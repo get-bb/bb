@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reconcileReasoningLevel } from "./reasoning-level-reconcile";
+import { reconcileReasoningLevel } from "../src/reasoning-level.js";
 
 describe("reconcileReasoningLevel", () => {
   it("keeps the previous level when the new model supports it", () => {

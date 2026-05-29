@@ -51,7 +51,7 @@ interface ModelReasoningPickerProps {
   formatModelLabel?: (displayName: string) => string;
   // Reasoning state — supported efforts are per-model, so callers derive
   // these options from the SELECTED model and reconcile the level on model
-  // change via `reconcileReasoningLevel` in src/lib.
+  // change via `reconcileReasoningLevel` in @bb/domain.
   reasoningValue: ReasoningLevel;
   reasoningOptions: readonly PickerOption<ReasoningLevel>[];
   onReasoningChange: (value: ReasoningLevel) => void;

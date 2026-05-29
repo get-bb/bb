@@ -267,6 +267,12 @@ describe("migrate", () => {
       db.$client.prepare("ALTER TABLE threads DROP COLUMN sort_key").run();
       db.$client.prepare("ALTER TABLE threads DROP COLUMN pinned_at").run();
       db.$client.prepare("ALTER TABLE threads DROP COLUMN pin_sort_key").run();
+      db.$client
+        .prepare("ALTER TABLE threads DROP COLUMN model_override")
+        .run();
+      db.$client
+        .prepare("ALTER TABLE threads DROP COLUMN reasoning_level_override")
+        .run();
       db.$client.prepare("DELETE FROM __drizzle_migrations").run();
       db.$client
         .prepare<InsertMigrationParameters>(

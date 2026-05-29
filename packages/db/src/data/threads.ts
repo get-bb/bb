@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm";
 import type {
   EnvironmentWorkspaceDisplayKind,
+  ReasoningLevel,
   ThreadChangeKind,
   ThreadStatus,
   ThreadType,
@@ -1321,6 +1322,60 @@ export function updateThread(
       projectId: existing.projectId,
     });
   }
+  return updated ?? null;
+}
+
+export interface ThreadExecutionOverride {
+  modelOverride: string | null;
+  reasoningLevelOverride: ReasoningLevel | null;
+}
+
+export function getThreadExecutionOverride(
+  db: ThreadWriteConnection,
+  id: string,
+): ThreadExecutionOverride | null {
+  const row = db
+    .select({
+      modelOverride: threads.modelOverride,
+      reasoningLevelOverride: threads.reasoningLevelOverride,
+    })
+    .from(threads)
+    .where(eq(threads.id, id))
+    .get();
+  return row ?? null;
+}
+
+export interface SetThreadExecutionOverrideInput {
+  threadId: string;
+  modelOverride?: string | null;
+  reasoningLevelOverride?: ReasoningLevel | null;
+}
+
+/**
+ * Persists the sticky, thread-level execution override. Presence-sensitive:
+ * an omitted field is left unchanged, an explicit `null` clears it. Kept off
+ * the generic `updateThread` helper because execution config must not flow
+ * through generic metadata updates. No realtime notification is emitted: the
+ * override is consumed by the next turn's `resolveExecutionOptions`, and no
+ * client surface renders it yet (UI surfacing is a follow-up).
+ */
+export function setThreadExecutionOverride(
+  db: ThreadWriteConnection,
+  input: SetThreadExecutionOverrideInput,
+) {
+  const set: Partial<typeof threads.$inferInsert> = { updatedAt: Date.now() };
+  if ("modelOverride" in input) {
+    set.modelOverride = input.modelOverride;
+  }
+  if ("reasoningLevelOverride" in input) {
+    set.reasoningLevelOverride = input.reasoningLevelOverride;
+  }
+  const updated = db
+    .update(threads)
+    .set(set)
+    .where(eq(threads.id, input.threadId))
+    .returning()
+    .get();
   return updated ?? null;
 }
 

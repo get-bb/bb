@@ -22,6 +22,8 @@ interface ThreadUpdateCommandOptions {
   title?: string;
   parentThread?: string;
   clearParentThread?: boolean;
+  model?: string;
+  reasoningLevel?: string;
 }
 
 interface ThreadArchiveCommandOptions {
@@ -72,6 +74,8 @@ interface PostThreadMessageArgs {
 interface ThreadUpdateBody {
   title?: string;
   parentThreadId?: string | null;
+  model?: string;
+  reasoningLevel?: ReasoningLevel;
 }
 
 export function registerActionsCommands(
@@ -86,6 +90,14 @@ export function registerActionsCommands(
     .option("--title <title>", "Set the thread title")
     .option("--parent-thread <id>", "Set the managing parent thread id")
     .option("--clear-parent-thread", "Clear the managing parent thread id")
+    .option(
+      "--model <model>",
+      "Set the sticky model applied on the thread's next turn",
+    )
+    .option(
+      "--reasoning-level <level>",
+      "Set the sticky reasoning level applied on the thread's next turn: low, medium, high, xhigh, max (provider-dependent)",
+    )
     .action(
       action(
         async (id: string | undefined, opts: ThreadUpdateCommandOptions) => {
@@ -95,9 +107,16 @@ export function registerActionsCommands(
               "Cannot combine --parent-thread with --clear-parent-thread.",
             );
           }
-          if (!opts.parentThread && !opts.clearParentThread && !opts.title) {
+          const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
+          if (
+            !opts.parentThread &&
+            !opts.clearParentThread &&
+            !opts.title &&
+            !opts.model &&
+            !reasoningLevel
+          ) {
             throw new Error(
-              "No changes requested. Provide --title, --parent-thread, or --clear-parent-thread.",
+              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --model, or --reasoning-level.",
             );
           }
 
@@ -110,6 +129,12 @@ export function registerActionsCommands(
             body.parentThreadId = opts.parentThread;
           } else if (opts.clearParentThread) {
             body.parentThreadId = null;
+          }
+          if (opts.model) {
+            body.model = opts.model;
+          }
+          if (reasoningLevel) {
+            body.reasoningLevel = reasoningLevel;
           }
 
           const thread = await unwrap<Thread>(
@@ -129,6 +154,12 @@ export function registerActionsCommands(
                 ? `Managed by ${thread.parentThreadId}`
                 : "No managing parent thread",
             );
+          }
+          if (opts.model) {
+            console.log(`Model: ${opts.model}`);
+          }
+          if (reasoningLevel) {
+            console.log(`Reasoning level: ${reasoningLevel}`);
           }
         },
       ),

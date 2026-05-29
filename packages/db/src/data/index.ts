@@ -93,6 +93,8 @@ export {
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
   getThread,
+  getThreadExecutionOverride,
+  setThreadExecutionOverride,
   hasNonTerminalThreadInEnvironment,
   hasPendingThreadShutdownInEnvironment,
   listHostThreadIds,
@@ -145,6 +147,8 @@ export type {
   ReorderPinnedThreadResult,
   ThreadEnvironmentAssignmentRow,
   ThreadWithPendingInteractionState,
+  ThreadExecutionOverride,
+  SetThreadExecutionOverrideInput,
   UnpinThreadArgs,
   UpdateThreadInput,
 } from "./threads.js";

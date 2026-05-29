@@ -39,6 +39,21 @@ const SUPPORTED_REASONING_LEVELS_BY_PROVIDER: Record<
   codex: ["low", "medium", "high", "xhigh"],
   pi: ["low", "medium", "high", "xhigh"],
 };
+
+/**
+ * The coarse, per-provider reasoning levels. Used as a fallback when a precise
+ * per-model `supportedReasoningEfforts` set is unavailable (e.g. validating a
+ * reasoning override against a legacy/selected-only model not in the active
+ * catalog). Returns an empty list for unknown providers.
+ */
+export function getSupportedReasoningLevelsForProvider(
+  providerId: string,
+): readonly ReasoningLevel[] {
+  if (!isAgentProviderId(providerId)) {
+    return [];
+  }
+  return SUPPORTED_REASONING_LEVELS_BY_PROVIDER[providerId];
+}
 const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
   "standardAgentInstructions",
   {},
@@ -189,8 +204,14 @@ export async function resolveExecutionOptions(
   if (!thread) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
   }
+  // The sticky thread-level override sits between the explicit per-turn request
+  // (a one-off `tell --model` still wins for that turn) and `lastExecution` (so
+  // it persists across turns that don't specify a model/reasoning level). The
+  // next turn's `reconfigureThreadIfNeeded` applies the change to the live
+  // session.
   const model =
     args.requestedExecution.model ??
+    thread.modelOverride ??
     lastExecution?.model ??
     projectExecution?.model;
   if (!model) {
@@ -215,6 +236,7 @@ export async function resolveExecutionOptions(
   validateProviderPermissionMode(thread.providerId, permissionMode);
   const reasoningLevel =
     args.requestedExecution.reasoningLevel ??
+    thread.reasoningLevelOverride ??
     lastExecution?.reasoningLevel ??
     projectExecution?.reasoningLevel ??
     DEFAULT_REASONING_LEVEL;

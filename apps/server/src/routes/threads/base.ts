@@ -4,6 +4,7 @@ import {
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
   updateThread,
+  type UpdateThreadInput,
 } from "@bb/db";
 import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
 import {
@@ -47,6 +48,7 @@ import {
 } from "../../services/threads/thread-runtime-display.js";
 import { assertValidManagerParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
+import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   const includes = new Set<ThreadIncludeOption>();
@@ -183,7 +185,33 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         projectId: thread.projectId,
       });
     }
-    const updated = updateThread(deps.db, deps.hub, thread.id, payload);
+
+    // Sticky execution override (model / reasoning level). Validated and
+    // persisted by a dedicated service — kept off the generic metadata update
+    // because execution config must not flow through `updateThread`.
+    if ("model" in payload || "reasoningLevel" in payload) {
+      await applyThreadExecutionOverride(deps, {
+        thread,
+        patch: {
+          ...("model" in payload ? { model: payload.model } : {}),
+          ...("reasoningLevel" in payload
+            ? { reasoningLevel: payload.reasoningLevel }
+            : {}),
+        },
+      });
+    }
+
+    const metadataUpdate: UpdateThreadInput = {};
+    if ("title" in payload) {
+      metadataUpdate.title = payload.title;
+    }
+    if ("parentThreadId" in payload) {
+      metadataUpdate.parentThreadId = payload.parentThreadId;
+    }
+    const updated =
+      Object.keys(metadataUpdate).length > 0
+        ? updateThread(deps.db, deps.hub, thread.id, metadataUpdate)
+        : requirePublicThread(deps.db, thread.id);
     if (!updated) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }

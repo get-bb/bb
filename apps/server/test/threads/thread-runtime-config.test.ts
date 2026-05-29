@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { markThreadDeleted } from "@bb/db";
+import { markThreadDeleted, setThreadExecutionOverride } from "@bb/db";
 import {
   resolvePermissionEscalation,
   resolveExecutionOptions,
@@ -276,6 +276,55 @@ describe("thread runtime config", () => {
       ).rejects.toThrow(
         "Provider codex does not support max reasoning level. Supported reasoning levels: low, medium, high, xhigh.",
       );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("consumes the sticky thread execution override across turns without a request value", async () => {
+    const harness = await createTestAppHarness();
+    try {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-execution-override",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "claude-code",
+      });
+
+      setThreadExecutionOverride(harness.db, {
+        threadId: thread.id,
+        modelOverride: "claude-opus-4-8",
+        reasoningLevelOverride: "high",
+      });
+
+      // No model/reasoning in the request: the override sticks for this turn.
+      const execution = await resolveExecutionOptions(harness.deps, {
+        threadId: thread.id,
+        requestedExecution: { source: "client/turn/requested" },
+      });
+      expect(execution.model).toBe("claude-opus-4-8");
+      expect(execution.reasoningLevel).toBe("high");
+
+      // An explicit per-turn request still wins over the sticky override.
+      const oneOff = await resolveExecutionOptions(harness.deps, {
+        threadId: thread.id,
+        requestedExecution: {
+          model: "claude-sonnet-4-6",
+          reasoningLevel: "low",
+          source: "client/turn/requested",
+        },
+      });
+      expect(oneOff.model).toBe("claude-sonnet-4-6");
+      expect(oneOff.reasoningLevel).toBe("low");
     } finally {
       await harness.cleanup();
     }

@@ -8,6 +8,8 @@ import {
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
   getThread,
+  getThreadExecutionOverride,
+  setThreadExecutionOverride,
   hasPendingThreadShutdownInEnvironment,
   listHostThreadIds,
   listActiveVisiblePinnedThreadRoots,
@@ -66,6 +68,51 @@ describe("threads", () => {
 
     const fetched = getThread(db, thread.id);
     expect(fetched).toMatchObject({ id: thread.id });
+  });
+
+  it("persists, reads, and clears the thread execution override", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "claude-code",
+    });
+
+    // No override on a fresh thread.
+    expect(getThreadExecutionOverride(db, thread.id)).toEqual({
+      modelOverride: null,
+      reasoningLevelOverride: null,
+    });
+
+    setThreadExecutionOverride(db, {
+      threadId: thread.id,
+      modelOverride: "claude-opus-4-8",
+      reasoningLevelOverride: "high",
+    });
+    expect(getThreadExecutionOverride(db, thread.id)).toEqual({
+      modelOverride: "claude-opus-4-8",
+      reasoningLevelOverride: "high",
+    });
+
+    // Presence-sensitive: an omitted field is left unchanged.
+    setThreadExecutionOverride(db, {
+      threadId: thread.id,
+      reasoningLevelOverride: "max",
+    });
+    expect(getThreadExecutionOverride(db, thread.id)).toEqual({
+      modelOverride: "claude-opus-4-8",
+      reasoningLevelOverride: "max",
+    });
+
+    // Explicit null clears.
+    setThreadExecutionOverride(db, {
+      threadId: thread.id,
+      modelOverride: null,
+      reasoningLevelOverride: null,
+    });
+    expect(getThreadExecutionOverride(db, thread.id)).toEqual({
+      modelOverride: null,
+      reasoningLevelOverride: null,
+    });
   });
 
   it("orders and reorders active manager threads by sort key", () => {

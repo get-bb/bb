@@ -648,10 +648,19 @@ export const updateThreadRequestSchema = z
   .object({
     title: z.string().min(1).nullable(),
     parentThreadId: z.string().min(1).nullable(),
+    // Sticky thread-level execution overrides applied on the next turn. `null`
+    // clears the override; an omitted field is left unchanged. Settable
+    // together or independently.
+    model: z.string().min(1).nullable(),
+    reasoningLevel: reasoningLevelSchema.nullable(),
   })
   .partial()
   .refine(
-    (value) => value.title !== undefined || value.parentThreadId !== undefined,
+    (value) =>
+      value.title !== undefined ||
+      value.parentThreadId !== undefined ||
+      value.model !== undefined ||
+      value.reasoningLevel !== undefined,
     "At least one field must be provided",
   );
 export type UpdateThreadRequest = z.infer<typeof updateThreadRequestSchema>;

@@ -265,6 +265,14 @@ export const threads = sqliteTable(
       onDelete: "set null",
     }),
     providerId: text("provider_id").notNull(),
+    // Sticky, thread-level execution overrides. NULL = no override (fall back to
+    // the per-turn request, then the last turn, then project defaults). Consulted
+    // by resolveExecutionOptions so a change applies on the next turn without
+    // sending a message. Execution config, not lifecycle state.
+    modelOverride: text("model_override"),
+    reasoningLevelOverride: text(
+      "reasoning_level_override",
+    ).$type<ReasoningLevel>(),
     type: text("type").$type<ThreadType>().notNull().default("standard"),
     sortKey: text("sort_key"),
     title: text("title"),

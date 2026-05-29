@@ -64,6 +64,13 @@
       "when": 1779990051923,
       "tag": "0008_thread_pinning",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1780022553737,
+      "tag": "0009_famous_the_hunter",
+      "breakpoints": true
     }
   ]
 }

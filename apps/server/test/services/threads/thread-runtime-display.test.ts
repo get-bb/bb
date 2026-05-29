@@ -133,6 +133,8 @@ function createThreadListEntry(
 ): ThreadWithPendingInteractionState {
   return {
     ...args.thread,
+    modelOverride: null,
+    reasoningLevelOverride: null,
     environmentBranchName: null,
     environmentHostId: args.environmentHostId,
     environmentWorkspaceDisplayKind: "other",

@@ -210,8 +210,12 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Project source PATCH requests omit isDefault when not changing the default source.",
   "updateProjectSourceRequestSchema.path":
     "Project source PATCH requests omit path when leaving it unchanged.",
+  "updateThreadRequestSchema.model":
+    "Thread PATCH requests omit model when leaving the sticky model override unchanged or use null to clear it.",
   "updateThreadRequestSchema.parentThreadId":
     "Thread PATCH requests omit parentThreadId when leaving it unchanged or use null to clear it.",
+  "updateThreadRequestSchema.reasoningLevel":
+    "Thread PATCH requests omit reasoningLevel when leaving the sticky reasoning override unchanged or use null to clear it.",
   "updateThreadRequestSchema.title":
     "Thread PATCH requests omit title when leaving it unchanged or use null to clear it.",
   "uploadedPromptAttachmentSchema.mimeType":

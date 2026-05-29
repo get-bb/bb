@@ -34,6 +34,8 @@ export type {
   ThreadExecutionSource,
 } from "./shared-types.js";
 
+export { reconcileReasoningLevel } from "./reasoning-level.js";
+
 export { defaultFeatureFlags, featureFlagsSchema } from "./feature-flags.js";
 export type { FeatureFlags } from "./feature-flags.js";
 

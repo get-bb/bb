@@ -1,11 +1,8 @@
-import {
-  reasoningLevelValues,
-  type ReasoningLevel,
-} from "@bb/domain";
+import { reasoningLevelValues, type ReasoningLevel } from "./shared-types.js";
 
 /**
- * When the user switches model, we want their reasoning preference to follow
- * as closely as possible:
+ * When the model changes, we want the reasoning preference to follow as
+ * closely as possible:
  *
  * 1. If the new model supports the previously selected level → keep it.
  * 2. Otherwise, pick the supported level with the smallest distance from
@@ -57,6 +54,6 @@ export function reconcileReasoningLevel(
 }
 
 function reasoningRank(level: ReasoningLevel): number {
-  // Canonical low→max ordering pinned by `reasoningLevelValues` in @bb/domain.
+  // Canonical low→max ordering pinned by `reasoningLevelValues`.
   return reasoningLevelValues.indexOf(level);
 }

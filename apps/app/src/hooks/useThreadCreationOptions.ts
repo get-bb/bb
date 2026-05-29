@@ -22,7 +22,7 @@ import {
 } from "@/lib/browser-storage";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getProviderIconInfo } from "@/lib/provider-icon";
-import { reconcileReasoningLevel } from "@/lib/reasoning-level-reconcile";
+import { reconcileReasoningLevel } from "@bb/domain";
 import { useSystemExecutionOptions } from "./queries/system-queries";
 
 const MODEL_STORAGE_KEY = "bb.promptbox.model";
@@ -577,7 +577,7 @@ export function useThreadCreationOptions(
     }
     // Carry the user's previous reasoning level across model switches when
     // the new model supports it; otherwise pick the closest supported level
-    // (tie-break upward). See reasoning-level-reconcile for the full policy.
+    // (tie-break upward). See reconcileReasoningLevel in @bb/domain for the policy.
     return reconcileReasoningLevel(
       rawReasoningLevel,
       reasoningOptions.map((option) => option.value),
