@@ -18,7 +18,8 @@ interface ConversationCollapsedRailProps {
  * The 48px vertical bar that stands in for the conversation when it is collapsed
  * so the secondary panel can fill the content area. The whole bar is the expand
  * affordance; it sits where the conversation was, between the sidebar and the
- * panel, and mirrors the mockup's slim labeled rail.
+ * panel: an expand chevron on top and a chat glyph standing in for the
+ * conversation below it.
  */
 export function ConversationCollapsedRail({
   collapsed,
@@ -57,10 +58,10 @@ export function ConversationCollapsedRail({
         aria-hidden="true"
       />
       <span
-        className="flex flex-1 items-center justify-center font-mono text-xs uppercase tracking-[0.2em] [writing-mode:vertical-rl] rotate-180"
+        className="flex flex-1 items-center justify-center"
         aria-hidden="true"
       >
-        Conversation
+        <Icon name="MessageSquare" className="size-4 shrink-0" />
       </span>
       <span className="flex h-4 w-4 items-center justify-center" aria-hidden="true">
         {isWorking ? (
