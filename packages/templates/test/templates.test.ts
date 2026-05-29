@@ -190,6 +190,9 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("window.bb.data");
     expect(rendered).toContain("bb app list --self");
     expect(rendered).toContain(
+      "Do not start a web server, localhost dev server, npm",
+    );
+    expect(rendered).toContain(
       '<script src="https://cdn.tailwindcss.com"></script>',
     );
     expect(rendered).toContain(

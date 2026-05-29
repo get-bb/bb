@@ -69,7 +69,9 @@ mechanical migration.
 Browser files under `assets/` are served from the flat app URL. For example,
 `apps/status/assets/index-Cd7sCqsN.js` is requested as
 `/api/v1/threads/<thread-id>/apps/status/index-Cd7sCqsN.js`; do not include an
-`assets/` segment in HTML references.
+`assets/` segment in HTML references. Apps are served directly from these
+static files, so there is no app-specific web server, npm install, or build
+step requirement.
 
 ---
 
@@ -90,8 +92,9 @@ mkdir -p "$APP/assets" "$APP/data"
 
 Use flat relative HTML references, such as `<script type="module"
 src="./index-abc.js"></script>` or `<link rel="stylesheet"
-href="./style.css">`. If you build with Vite, set `build.assetsDir = ""` so
-emitted CSS/JS/assets sit alongside `index.html` inside `assets/`.
+href="./style.css">`. If you are moving existing Vite build output, set
+`build.assetsDir = ""` so emitted CSS/JS/assets sit alongside `index.html`
+inside `assets/`; otherwise keep the app as plain static files.
 
 ### 3. Migrate the state
 

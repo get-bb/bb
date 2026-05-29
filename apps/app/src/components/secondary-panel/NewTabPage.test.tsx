@@ -203,6 +203,9 @@ describe("NewTabPage", () => {
     );
     expect(CREATE_APP_PROMPT_TEMPLATE).toContain("bb guide app");
     expect(CREATE_APP_PROMPT_TEMPLATE).toContain("window.bb.data");
+    expect(CREATE_APP_PROMPT_TEMPLATE).toContain(
+      "no web server, npm, or build step",
+    );
     expect(CREATE_APP_PROMPT_TEMPLATE.endsWith("What I want:\n\n")).toBe(true);
   });
 

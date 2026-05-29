@@ -12,6 +12,12 @@ interactive surfaces inside thread storage. A manager's primary status surface
 is the built-in `status` app. Keep that app current instead of creating legacy
 top-level status files.
 
+Important: a bb app is self-contained static HTML/CSS/JS/SVG. Put files under
+`apps/<id>/assets/`; bb serves the `entry` file directly from the flat app URL
+through the host daemon. Do not start a web server, localhost dev server, npm
+install, build step, bundler, or framework for a normal app. Inline CSS/JS,
+relative asset refs, and CDN resources such as Tailwind or fonts are fine.
+
 Storage layout:
 
 ```text
@@ -53,8 +59,9 @@ helpers are injected for HTML entries: `data` enables `window.bb.data`, and
 
 The served app URL is flat: `/api/v1/threads/<thread-id>/apps/<id>/<file>`
 maps to `apps/<id>/assets/<file>` on disk. HTML should use flat relative refs
-like `./index-abc.js`, not `./assets/index-abc.js`. For Vite builds, set
-`build.assetsDir = ""` so emitted files sit alongside `index.html`.
+like `./index-abc.js`, not `./assets/index-abc.js`. If you are migrating an
+existing Vite build output, set `build.assetsDir = ""` so emitted files sit
+alongside `index.html`; new bb apps should stay plain static files.
 
 The icon is optional and uses a built-in icon name. Icon resolution order is:
 

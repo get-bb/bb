@@ -183,7 +183,7 @@ const BLANK_APP_INDEX_HTML_TEMPLATE = `<!doctype html>
 
     <main class="panel">
       <p class="placeholder">
-        Ask your agent to customize the status app how you please.
+        Customize this static app in assets/index.html. No web server or build step needed.
       </p>
 
       <section class="section">

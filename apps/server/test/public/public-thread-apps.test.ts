@@ -1209,9 +1209,9 @@ describe("public thread app routes", () => {
       expect(html).toContain('--font-sans: "Inter"');
       expect(html).toContain("oklch(0.9551 0 0)");
       expect(html).toContain("@media (prefers-color-scheme: dark)");
-      // Placeholder copy invites the user to extend the scaffold via their agent.
+      // Placeholder copy keeps the blank scaffold aligned with app guidance.
       expect(html).toContain(
-        "Ask your agent to customize the status app how you please.",
+        "No web server or build step needed.",
       );
       // Task-list row vocabulary is present so the scaffold looks bb-native.
       expect(html).toContain('class="row"');
