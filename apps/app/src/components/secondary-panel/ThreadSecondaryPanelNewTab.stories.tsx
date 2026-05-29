@@ -226,8 +226,6 @@ function NewTabPanelStory() {
         onPanelChange={noop}
         onPanelFocus={noop}
         isConversationCollapsed={false}
-        onToggleConversationCollapse={noop}
-        onToggleSecondaryPanel={noop}
         renderAsDrawer
         showGitDiffTab
       />

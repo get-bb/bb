@@ -35,7 +35,7 @@ export function ConversationCollapsedRail({
       // the rail only exists as a placeholder once collapsed.
       aria-hidden={collapsed ? undefined : true}
       inert={collapsed ? undefined : true}
-      title="Show conversation"
+      title="Expand conversation"
       className={cn(
         "group flex h-full shrink-0 flex-col items-center justify-between overflow-hidden bg-surface-recessed py-3 text-muted-foreground outline-none transition-[width,opacity] hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         PANEL_COLLAPSE_TRANSITION_CLASS,
@@ -44,7 +44,18 @@ export function ConversationCollapsedRail({
           : "pointer-events-none w-0 opacity-0",
       )}
     >
-      <Icon name="PanelLeft" className="size-4 shrink-0" aria-hidden="true" />
+      {/*
+        Explicit chevron affordance at the top of the rail. Because the rail is
+        itself the button, the icon is decorative — the button's aria-label
+        ("Expand conversation") still carries the semantics for AT users — but
+        the visible chevron makes the open action obvious instead of relying on
+        the whole-bar hit area alone.
+      */}
+      <Icon
+        name="ChevronRight"
+        className="size-4 shrink-0"
+        aria-hidden="true"
+      />
       <span
         className="flex flex-1 items-center justify-center font-mono text-xs uppercase tracking-[0.2em] [writing-mode:vertical-rl] rotate-180"
         aria-hidden="true"

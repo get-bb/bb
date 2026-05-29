@@ -2,7 +2,6 @@
 
 import {
   cleanup,
-  createEvent,
   fireEvent,
   render,
   screen,
@@ -110,52 +109,6 @@ function buildActiveFileTab({
   };
 }
 
-interface StubRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-// jsdom reports zero-sized rects, which would make every element "overlap" at
-// the origin. Give an element a concrete box so react-resizable-panels' hit
-// detection / stacking-exclusion runs against real geometry.
-function stubBoundingRect(element: Element, rect: StubRect): void {
-  element.getBoundingClientRect = () =>
-    ({
-      x: rect.x,
-      y: rect.y,
-      width: rect.width,
-      height: rect.height,
-      top: rect.y,
-      left: rect.x,
-      right: rect.x + rect.width,
-      bottom: rect.y + rect.height,
-      toJSON: () => ({}),
-    }) as DOMRect;
-}
-
-function pressPointer(element: Element): Event {
-  const event = createEvent.pointerDown(element, {
-    buttons: 1,
-    clientX: 400,
-    clientY: 200,
-    isPrimary: true,
-  });
-  fireEvent(element, event);
-  return event;
-}
-
-function releasePointer(): void {
-  // Released on body (not window): react-resizable-panels' pointerup handler
-  // walks parentElement from the target, which window does not support.
-  fireEvent.pointerUp(document.body, {
-    buttons: 0,
-    clientX: 400,
-    clientY: 200,
-  });
-}
-
 function expectNoDragRegionOnElementOrAncestor(element: HTMLElement): void {
   let current: HTMLElement | null = element;
   while (current !== null) {
@@ -189,8 +142,6 @@ function renderPanel({
       onPanelChange={noop}
       onPanelFocus={noop}
       isConversationCollapsed={false}
-      onToggleConversationCollapse={noop}
-      onToggleSecondaryPanel={noop}
       renderAsDrawer={renderAsDrawer}
       showGitDiffTab={false}
     />
@@ -217,46 +168,6 @@ afterEach(() => {
 });
 
 describe("ThreadSecondaryPanel", () => {
-  it("surfaces the seam arrow as a show-panel control while the panel is closed", () => {
-    renderPanel({ renderAsDrawer: false, isOpen: false });
-
-    expect(
-      screen.getByRole("button", { name: "Show panel" }),
-    ).not.toBeNull();
-  });
-
-  it("does not start a resize when the seam arrow is pressed", () => {
-    renderPanel({ renderAsDrawer: false });
-
-    const resizeHandle = screen.getByLabelText(
-      "Resize thread and secondary panels",
-    );
-    const toggle = screen.getByRole("button", {
-      name: "Expand panel",
-    });
-
-    // Precondition for the library's exclusion: the toggle must NOT be a DOM
-    // descendant of the handle, otherwise it is treated as part of the drag.
-    expect(resizeHandle.contains(toggle)).toBe(false);
-
-    // Overlapping boxes centered on the same seam x (≈400).
-    stubBoundingRect(resizeHandle, { x: 400, y: 0, width: 1, height: 400 });
-    stubBoundingRect(toggle, { x: 388, y: 188, width: 24, height: 24 });
-
-    // react-resizable-panels claims a press as a resize start by calling
-    // preventDefault on the (capture-phase, body-level) pointerdown. Pressing
-    // the toggle must leave the event un-defaulted (no resize), while pressing
-    // the bare handle must default it (resize starts) — proving the gesture
-    // really reaches the library and is intercepted only for the toggle.
-    const toggleEvent = pressPointer(toggle);
-    expect(toggleEvent.defaultPrevented).toBe(false);
-    releasePointer();
-
-    const handleEvent = pressPointer(resizeHandle);
-    expect(handleEvent.defaultPrevented).toBe(true);
-    releasePointer();
-  });
-
   it.each<SecondaryPanelChromeDragScenario>([
     {
       name: "status app iframe",

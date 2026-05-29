@@ -52,7 +52,6 @@ interface MockThreadTimelinePaneProps {
 interface MockThreadSecondaryPanelProps {
   isOpen: boolean;
   isConversationCollapsed: boolean;
-  onToggleConversationCollapse: () => void;
 }
 
 vi.mock("react-resizable-panels", () => ({
@@ -106,29 +105,21 @@ vi.mock("@/components/ui/hooks/use-compact-viewport.js", () => ({
 }));
 
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
-  // Stand in for the real seam arrow: only rendered while the panel is open,
-  // delegating to the collapse handler. A stable label keeps these host tests
-  // (which assert inert/sizing/rail behavior, not arrow copy) unambiguous next
-  // to the rail's "Expand conversation" button. The arrow's own dynamic copy is
-  // covered by SeamPanelArrow.test.tsx and ThreadSecondaryPanel.test.tsx.
+  // Stand in for the real secondary panel: a label-only aside is enough for
+  // these host tests, which assert the conversation pane's inert/sizing
+  // behavior and the rail's expand-from-collapsed path. The panel no longer
+  // owns the open/collapse buttons (those live in the conversation header and
+  // on the rail), so the mock surfaces no buttons of its own.
   ThreadSecondaryPanel({
     isOpen,
     isConversationCollapsed,
-    onToggleConversationCollapse,
   }: MockThreadSecondaryPanelProps) {
     return (
-      <aside>
+      <aside
+        data-secondary-panel-open={isOpen}
+        data-secondary-panel-conversation-collapsed={isConversationCollapsed}
+      >
         Secondary panel
-        {isOpen ? (
-          <button
-            type="button"
-            aria-label="Toggle conversation collapse"
-            aria-expanded={!isConversationCollapsed}
-            onClick={onToggleConversationCollapse}
-          >
-            Toggle conversation
-          </button>
-        ) : null}
       </aside>
     );
   },
@@ -196,7 +187,6 @@ interface SecondaryContentOverrides {
   isSecondaryPanelOpen?: boolean;
   isConversationCollapsed?: boolean;
   onToggleConversationCollapse?: () => void;
-  onToggleSecondaryPanel?: () => void;
 }
 
 function buildSecondaryContentProps({
@@ -204,7 +194,6 @@ function buildSecondaryContentProps({
   isSecondaryPanelOpen = false,
   isConversationCollapsed = false,
   onToggleConversationCollapse = noop,
-  onToggleSecondaryPanel = noop,
 }: SecondaryContentOverrides = {}): ComponentProps<
   typeof ThreadDetailSecondaryContent
 > {
@@ -215,7 +204,6 @@ function buildSecondaryContentProps({
     isSecondaryPanelOpen,
     isConversationCollapsed,
     onToggleConversationCollapse,
-    onToggleSecondaryPanel,
     metadata: {
       thread: makeThread(),
       projectId: "proj_test",
@@ -386,42 +374,6 @@ describe("ThreadDetailSecondaryContent conversation collapse", () => {
     expect(pane.getAttribute("data-conversation-collapsed")).toBe("true");
     // `inert` keeps the hidden conversation out of the tab order + a11y tree.
     expect(pane.hasAttribute("inert")).toBe(true);
-  });
-
-  it("toggling collapse hides the conversation and toggling back restores it", () => {
-    const { container } = render(
-      <ConversationCollapseHarness
-        initialCollapsed={false}
-        isSecondaryPanelOpen
-      />,
-    );
-
-    const pane = getConversationPane(container);
-    expect(pane.getAttribute("data-conversation-collapsed")).toBe("false");
-    expect(pane.hasAttribute("inert")).toBe(false);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Toggle conversation collapse" }),
-    );
-
-    expect(
-      getConversationPane(container).getAttribute(
-        "data-conversation-collapsed",
-      ),
-    ).toBe("true");
-    expect(getConversationPane(container).hasAttribute("inert")).toBe(true);
-    expect(getTimelinePanel().getAttribute("data-default-size")).toBe("0");
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Toggle conversation collapse" }),
-    );
-
-    expect(
-      getConversationPane(container).getAttribute(
-        "data-conversation-collapsed",
-      ),
-    ).toBe("false");
-    expect(getConversationPane(container).hasAttribute("inert")).toBe(false);
   });
 
   it("renders the slim conversation rail with its vertical label when collapsed", () => {

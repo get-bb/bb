@@ -9,6 +9,7 @@ import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
+import { resolvePanelToggleControl } from "@/components/secondary-panel/panelToggleControlState";
 import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
@@ -22,12 +23,14 @@ interface ThreadHeaderGitAction {
 interface ThreadDetailHeaderProps {
   actionsMenu: ReactNode;
   activeTerminalCount: number;
+  isConversationCollapsed: boolean;
   isManagedThread: boolean;
   isManagerThread: boolean;
   isSecondaryPanelOpen: boolean;
   isTerminalPanelOpen: boolean;
   isThreadGitActionPending: boolean;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
+  onToggleConversationCollapse: () => void;
   onToggleSecondaryPanel: () => void;
   onToggleTerminalPanel: () => void;
   showTerminalPanelToggle: boolean;
@@ -39,12 +42,14 @@ interface ThreadDetailHeaderProps {
 export function ThreadDetailHeader({
   actionsMenu,
   activeTerminalCount,
+  isConversationCollapsed,
   isManagedThread,
   isManagerThread,
   isSecondaryPanelOpen,
   isTerminalPanelOpen,
   isThreadGitActionPending,
   onOpenThreadGitAction,
+  onToggleConversationCollapse,
   onToggleSecondaryPanel,
   onToggleTerminalPanel,
   showTerminalPanelToggle,
@@ -54,6 +59,18 @@ export function ThreadDetailHeader({
 }: ThreadDetailHeaderProps) {
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
   const renderAsDrawer = useIsCompactViewport();
+
+  // The header chevron unifies what used to be a separate "Show panel" header
+  // button and a centered seam arrow into one directional affordance whose
+  // copy/handler flips with state — see resolvePanelToggleControl. Only
+  // rendered on a wide viewport; the drawer layout uses a simple open/close
+  // toggle below.
+  const panelToggle = resolvePanelToggleControl({
+    isSecondaryPanelOpen,
+    isConversationCollapsed,
+    onToggleSecondaryPanel,
+    onToggleConversationCollapse,
+  });
 
   const center = (
     <>
@@ -118,13 +135,28 @@ export function ThreadDetailHeader({
           ) : null}
         </Button>
       ) : null}
+      {!renderAsDrawer ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={HEADER_ICON_BUTTON_CLASS}
+          aria-label={panelToggle.label}
+          aria-expanded={panelToggle.isExpanded}
+          title={panelToggle.label}
+          onClick={panelToggle.onClick}
+        >
+          <Icon
+            name={panelToggle.pointsRight ? "ChevronRight" : "ChevronLeft"}
+          />
+        </Button>
+      ) : null}
       {actionsMenu}
       {/*
-        On a wide viewport the secondary panel is opened, collapsed, and
-        expanded from a single directional arrow on the panel seam (see
-        SeamPanelArrow), so the header carries no panel button there. In the
-        compact/drawer layout there is no seam, so the header keeps a simple
-        open/close toggle for the drawer.
+        On a compact/drawer viewport the secondary panel opens as a drawer with
+        no seam, so the header keeps a simple open/close toggle here. On a wide
+        viewport the chevron above handles open/expand and the rail handles
+        restore-when-collapsed.
       */}
       {renderAsDrawer ? (
         <Button

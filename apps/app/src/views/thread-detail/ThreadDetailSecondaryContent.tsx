@@ -44,11 +44,7 @@ type ThreadTimelinePaneProps = Omit<
 >;
 type ThreadSecondaryPanelProps = Omit<
   ComponentProps<typeof ThreadSecondaryPanel>,
-  | "metadataContent"
-  | "renderAsDrawer"
-  | "isConversationCollapsed"
-  | "onToggleConversationCollapse"
-  | "onToggleSecondaryPanel"
+  "metadataContent" | "renderAsDrawer" | "isConversationCollapsed"
 >;
 type TerminalPanelDraggingHandler = (isDragging: boolean) => void;
 
@@ -59,7 +55,6 @@ interface ThreadDetailSecondaryContentProps {
   isSecondaryPanelOpen: boolean;
   isConversationCollapsed: boolean;
   onToggleConversationCollapse: () => void;
-  onToggleSecondaryPanel: () => void;
   metadata: ThreadMetadataContentProps;
   secondaryPanel: ThreadSecondaryPanelProps;
   terminalPanel?: ReactNode;
@@ -76,7 +71,6 @@ export function ThreadDetailSecondaryContent({
   isSecondaryPanelOpen,
   isConversationCollapsed,
   onToggleConversationCollapse,
-  onToggleSecondaryPanel,
   metadata,
   onTerminalPanelResize,
   secondaryPanel,
@@ -204,8 +198,6 @@ export function ThreadDetailSecondaryContent({
       {...secondaryPanel}
       renderAsDrawer={false}
       isConversationCollapsed={isConversationCollapsedActive}
-      onToggleConversationCollapse={onToggleConversationCollapse}
-      onToggleSecondaryPanel={onToggleSecondaryPanel}
       metadataContent={metadataContent}
     />
   ) : null;
@@ -214,8 +206,6 @@ export function ThreadDetailSecondaryContent({
       {...secondaryPanel}
       renderAsDrawer={true}
       isConversationCollapsed={false}
-      onToggleConversationCollapse={onToggleConversationCollapse}
-      onToggleSecondaryPanel={onToggleSecondaryPanel}
       metadataContent={metadataContent}
     />
   ) : null;

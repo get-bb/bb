@@ -1074,6 +1074,7 @@ export function ThreadDetailView() {
   const timelineHeader = (
     <ThreadDetailHeader
       actionsMenu={threadActionsMenu}
+      isConversationCollapsed={storedConversationCollapsed}
       isManagedThread={Boolean(parentThreadId)}
       isManagerThread={isManagerThread}
       isSecondaryPanelOpen={isSecondaryPanelOpen}
@@ -1081,6 +1082,7 @@ export function ThreadDetailView() {
       isTerminalPanelOpen={terminalsEnabled && terminalPanelState.isOpen}
       isThreadGitActionPending={gitActions.isThreadGitActionPending}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
+      onToggleConversationCollapse={toggleConversationCollapse}
       onToggleSecondaryPanel={toggleSecondaryPanel}
       onToggleTerminalPanel={toggleTerminalPanel}
       showTerminalPanelToggle={terminalsEnabled}
@@ -1242,7 +1244,6 @@ export function ThreadDetailView() {
         isSecondaryPanelOpen={isSecondaryPanelOpen}
         isConversationCollapsed={storedConversationCollapsed}
         onToggleConversationCollapse={toggleConversationCollapse}
-        onToggleSecondaryPanel={toggleSecondaryPanel}
         metadata={{
           thread,
           projectId,
