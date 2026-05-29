@@ -4,6 +4,17 @@ import type { BbDesktopApi, BbDesktopBrowserApi } from "@bb/server-contract";
 // frameless window. In-flow chrome clears it with left padding; the pinned
 // sidebar trigger clears it with a matching left offset. Keep the `pl-*` and
 // `left-*` steps in sync so the trigger lands just right of the lights.
+//
+// Two reserve steps, one target — the leading content lands just right of the
+// pinned sidebar trigger (`left-20`), not merely past the lights:
+//  - RESERVE (`pl-20`): the full reserve, applied directly by a surface whose
+//    left padding replaces its base inset. The secondary-panel header uses it —
+//    it sits right of the 36px conversation rail, so the trigger overhangs the
+//    header's left edge and the leading tab has to clear the trigger, not just
+//    the lights.
+//  - COLLAPSED_HEADER_RESERVE (`pl-16`): the page header's remainder, added on
+//    top of its own `px-4` (16px) so the two sum to the full reserve and the
+//    trigger spacer lands under the pinned trigger.
 export const MACOS_TRAFFIC_LIGHT_RESERVE_CLASS = "pl-20";
 export const MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS = "left-20";
 export const MACOS_COLLAPSED_HEADER_RESERVE_CLASS = "pl-16";

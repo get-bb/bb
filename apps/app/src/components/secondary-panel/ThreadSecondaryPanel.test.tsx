@@ -23,6 +23,7 @@ import {
 } from "./ThreadSecondaryPanel";
 import {
   MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
+  MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
 } from "@/lib/bb-desktop";
@@ -317,20 +318,24 @@ describe("ThreadSecondaryPanel", () => {
     },
   );
 
-  it("reserves space on the top chrome for the macOS traffic-light cluster when the panel is the top-left-most surface", () => {
+  it("reserves the full traffic-light step on the top chrome when the panel is the top-left-most surface", () => {
     renderPanel({ reserveLeftForDesktopTrafficLights: true });
 
     const topChrome = screen.getByTestId("thread-secondary-panel-top-chrome");
-    expect(topChrome.className).toContain(MACOS_COLLAPSED_HEADER_RESERVE_CLASS);
+    // The panel sits right of the 36px rail, so its leading tab must clear the
+    // pinned sidebar-collapse trigger that floats over the header — the full
+    // reserve, not the smaller page-header inset (which would re-collide).
+    expect(topChrome.className).toContain(MACOS_TRAFFIC_LIGHT_RESERVE_CLASS);
+    expect(topChrome.className).not.toContain(
+      MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
+    );
   });
 
   it("leaves the top chrome flush when the sidebar or conversation already absorbs the traffic-light cluster", () => {
     renderPanel({ reserveLeftForDesktopTrafficLights: false });
 
     const topChrome = screen.getByTestId("thread-secondary-panel-top-chrome");
-    expect(topChrome.className).not.toContain(
-      MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
-    );
+    expect(topChrome.className).not.toContain(MACOS_TRAFFIC_LIGHT_RESERVE_CLASS);
   });
 
   it("shows the resize seam hairline while the conversation is expanded", () => {

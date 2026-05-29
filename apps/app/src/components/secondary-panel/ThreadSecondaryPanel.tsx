@@ -31,7 +31,7 @@ import {
 } from "./ThreadSecondaryPanelTabContent";
 import {
   getBbDesktopInfo,
-  MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
+  MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
@@ -89,8 +89,10 @@ export interface ThreadSecondaryPanelProps {
   /**
    * When true, the panel is the top-left-most surface under the macOS
    * traffic-light strip (desktop macOS + main sidebar collapsed + conversation
-   * collapsed, so only the 36px rail sits to the panel's left). Adds a left
-   * reserve on the top chrome so the leading tabs clear the green light.
+   * collapsed, so only the 36px rail sits to the panel's left). Adds the full
+   * traffic-light reserve on the top chrome so the leading tabs clear the pinned
+   * sidebar-collapse trigger — which floats over the header and overhangs the
+   * rail — landing them one gap to its right rather than jammed under it.
    */
   reserveLeftForDesktopTrafficLights: boolean;
   /**
@@ -231,7 +233,7 @@ export function ThreadSecondaryPanel({
             "flex h-12 min-w-0 items-center justify-between gap-2 px-4",
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             reserveLeftForDesktopTrafficLights &&
-              MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
+              MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
           )}
         >
           <div
