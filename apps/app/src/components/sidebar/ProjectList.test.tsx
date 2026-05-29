@@ -18,6 +18,7 @@ import { BrowserRouter } from "react-router-dom";
 import type { QueryClient } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
+  AppSummary,
   ProjectResponse,
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
@@ -29,6 +30,7 @@ import {
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
 import { wsManager } from "@/lib/ws";
+import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
 import {
@@ -65,6 +67,12 @@ type ProjectListRenderProps = ComponentProps<typeof ProjectList>;
 type ProjectThreadListEntry = ProjectWithThreadsResponse["threads"][number];
 type ProjectThreadListEntryOverrides = Partial<ProjectThreadListEntry>;
 type ProjectWithThreadsOverrides = Partial<ProjectWithThreadsResponse>;
+
+interface MakeAppArgs {
+  id: string;
+  name: string;
+  icon: AppSummary["icon"];
+}
 
 function makeProjectResponse(
   overrides: Partial<ProjectResponse> = {},
@@ -126,6 +134,22 @@ function makeThreadListEntry(
   };
 }
 
+function makeApp({ id, name, icon }: MakeAppArgs): AppSummary {
+  return {
+    id,
+    name,
+    entry: { path: "index.html", kind: "html" },
+    capabilities: [],
+    icon,
+  };
+}
+
+const STATUS_APP = makeApp({
+  id: "status",
+  name: "Status",
+  icon: { kind: "builtin", name: "ListTodo" },
+});
+
 interface ProjectListHandlerArgs {
   projects: ProjectResponse[];
   threadsByProjectId?: Map<string, ProjectWithThreadsResponse["threads"]>;
@@ -134,6 +158,10 @@ interface ProjectListHandlerArgs {
 interface RootComposeReuseProbeProps {
   initialValue: string;
   onValue: (value: string | null) => void;
+}
+
+interface PanelStateProbeProps {
+  threadId: string;
 }
 
 function buildProjectListHandler(args: ProjectListHandlerArgs) {
@@ -203,6 +231,18 @@ function RootComposeReuseProbe({
   }, [onValue, value]);
 
   return null;
+}
+
+function PanelStateProbe({ threadId }: PanelStateProbeProps) {
+  const state = useFixedPanelTabsState(threadId);
+  return (
+    <div data-testid="panel-state">
+      {JSON.stringify({
+        activeTabId: state.secondary.activeTabId,
+        isOpen: state.secondary.isOpen,
+      })}
+    </div>
+  );
 }
 
 async function renderProjectList(
@@ -424,7 +464,9 @@ describe("ProjectList", () => {
     const projectRow = projectLabel.closest(
       "[data-sidebar-sticky-tier='project']",
     );
-    expect(projectRow?.querySelector("a[href='/projects/project-1']")).toBeNull();
+    expect(
+      projectRow?.querySelector("a[href='/projects/project-1']"),
+    ).toBeNull();
     expect(screen.getByText("Project Thread")).toBeTruthy();
 
     fireEvent.click(
@@ -433,11 +475,252 @@ describe("ProjectList", () => {
 
     expect(screen.queryByText("Project Thread")).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand Project One" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Expand Project One" }));
 
     expect(screen.getByText("Project Thread")).toBeTruthy();
+  });
+
+  it("renders manager app rows directly under their owning manager", async () => {
+    const project = makeProjectResponse({
+      id: "project-1",
+      name: "Project One",
+    });
+    const managerThread = makeThreadListEntry(project.id, 10, {
+      id: "thread-manager-apps",
+      title: "Sidebar Manager",
+      titleFallback: "Sidebar Manager",
+      type: "manager",
+    });
+    const workerThread = makeThreadListEntry(project.id, 9, {
+      id: "thread-manager-worker",
+      parentThreadId: managerThread.id,
+      title: "Worker Thread",
+      titleFallback: "Worker Thread",
+    });
+    const personalProject = makeProjectWithThreadsResponse({
+      id: PERSONAL_PROJECT_ID,
+      kind: "personal",
+      name: "Personal",
+      threads: [],
+    });
+    installFetchRoutes([
+      {
+        pathname: "/api/v1/sidebar-bootstrap",
+        handler: () =>
+          jsonResponse(
+            buildSidebarBootstrapResponse({
+              personalProject,
+              projects: [project],
+              threadsByProjectId: new Map([
+                [project.id, [managerThread, workerThread]],
+              ]),
+            }),
+          ),
+      },
+      {
+        pathname: `/api/v1/threads/${managerThread.id}/apps`,
+        handler: () => jsonResponse([STATUS_APP]),
+      },
+      {
+        pathname: "/api/v1/projects",
+        handler: () => jsonResponse([project]),
+      },
+      {
+        pathname: "/api/v1/threads",
+        handler: () => jsonResponse([]),
+      },
+      {
+        pathname: "/api/v1/system/config",
+        handler: () =>
+          jsonResponse({
+            hostDaemonPort: null,
+            voiceTranscriptionEnabled: false,
+          }),
+      },
+      {
+        pathname: "/api/v1/hosts",
+        handler: () => jsonResponse([]),
+      },
+    ]);
+
+    await renderProjectList();
+
+    const appRow = await screen.findByRole("button", {
+      name: "Open Status app",
+    });
+    const managerLabel = screen.getByText("Sidebar Manager");
+    const workerLabel = screen.getByText("Worker Thread");
+
+    expect(appRow.classList.contains("pl-14")).toBe(true);
+    expect(appRow.parentElement?.className).toContain("before:left-10");
+    expect(
+      Boolean(
+        managerLabel.compareDocumentPosition(appRow) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+    expect(
+      Boolean(
+        appRow.compareDocumentPosition(workerLabel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+  });
+
+  it("opens a manager app row in the owning thread secondary panel", async () => {
+    const project = makeProjectResponse({
+      id: "project-1",
+      name: "Project One",
+    });
+    const managerThread = makeThreadListEntry(project.id, 10, {
+      id: "thread-manager-open-app",
+      title: "Sidebar Manager",
+      titleFallback: "Sidebar Manager",
+      type: "manager",
+    });
+    const personalProject = makeProjectWithThreadsResponse({
+      id: PERSONAL_PROJECT_ID,
+      kind: "personal",
+      name: "Personal",
+      threads: [],
+    });
+    installFetchRoutes([
+      {
+        pathname: "/api/v1/sidebar-bootstrap",
+        handler: () =>
+          jsonResponse(
+            buildSidebarBootstrapResponse({
+              personalProject,
+              projects: [project],
+              threadsByProjectId: new Map([[project.id, [managerThread]]]),
+            }),
+          ),
+      },
+      {
+        pathname: `/api/v1/threads/${managerThread.id}/apps`,
+        handler: () => jsonResponse([STATUS_APP]),
+      },
+      {
+        pathname: "/api/v1/projects",
+        handler: () => jsonResponse([project]),
+      },
+      {
+        pathname: "/api/v1/threads",
+        handler: () => jsonResponse([]),
+      },
+      {
+        pathname: "/api/v1/system/config",
+        handler: () =>
+          jsonResponse({
+            hostDaemonPort: null,
+            voiceTranscriptionEnabled: false,
+          }),
+      },
+      {
+        pathname: "/api/v1/hosts",
+        handler: () => jsonResponse([]),
+      },
+    ]);
+
+    await renderProjectList(
+      {},
+      { extraUi: <PanelStateProbe threadId={managerThread.id} /> },
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open Status app" }),
+    );
+
+    await waitFor(() => {
+      const probe = screen.getByTestId("panel-state");
+      expect(probe.textContent).toContain('"activeTabId":"app:status"');
+      expect(probe.textContent).toContain('"isOpen":true');
+    });
+    expect(window.location.pathname).toBe(
+      `/projects/${project.id}/threads/${managerThread.id}`,
+    );
+  });
+
+  it("hides manager app rows when the owning manager is collapsed", async () => {
+    const project = makeProjectResponse({
+      id: "project-1",
+      name: "Project One",
+    });
+    const managerThread = makeThreadListEntry(project.id, 10, {
+      id: "thread-manager-collapse-apps",
+      title: "Sidebar Manager",
+      titleFallback: "Sidebar Manager",
+      type: "manager",
+    });
+    const workerThread = makeThreadListEntry(project.id, 9, {
+      id: "thread-manager-collapse-worker",
+      parentThreadId: managerThread.id,
+      title: "Worker Thread",
+      titleFallback: "Worker Thread",
+    });
+    const personalProject = makeProjectWithThreadsResponse({
+      id: PERSONAL_PROJECT_ID,
+      kind: "personal",
+      name: "Personal",
+      threads: [],
+    });
+    installFetchRoutes([
+      {
+        pathname: "/api/v1/sidebar-bootstrap",
+        handler: () =>
+          jsonResponse(
+            buildSidebarBootstrapResponse({
+              personalProject,
+              projects: [project],
+              threadsByProjectId: new Map([
+                [project.id, [managerThread, workerThread]],
+              ]),
+            }),
+          ),
+      },
+      {
+        pathname: `/api/v1/threads/${managerThread.id}/apps`,
+        handler: () => jsonResponse([STATUS_APP]),
+      },
+      {
+        pathname: "/api/v1/projects",
+        handler: () => jsonResponse([project]),
+      },
+      {
+        pathname: "/api/v1/threads",
+        handler: () => jsonResponse([]),
+      },
+      {
+        pathname: "/api/v1/system/config",
+        handler: () =>
+          jsonResponse({
+            hostDaemonPort: null,
+            voiceTranscriptionEnabled: false,
+          }),
+      },
+      {
+        pathname: "/api/v1/hosts",
+        handler: () => jsonResponse([]),
+      },
+    ]);
+
+    await renderProjectList();
+
+    expect(
+      await screen.findByRole("button", { name: "Open Status app" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Worker Thread")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Collapse Sidebar Manager threads",
+      }),
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Open Status app" }),
+    ).toBeNull();
+    expect(screen.queryByText("Worker Thread")).toBeNull();
   });
 
   it("orders project hover actions as menu, new manager, then new thread", async () => {
@@ -514,13 +797,13 @@ describe("ProjectList", () => {
     expect(
       Boolean(
         menuButton.compareDocumentPosition(managerButton) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
     expect(
       Boolean(
         managerButton.compareDocumentPosition(threadButton) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
 
@@ -785,9 +1068,8 @@ describe("ProjectList", () => {
 
     await renderProjectList();
 
-    const projectlessThreadLabel = await screen.findByText(
-      "Projectless Thread",
-    );
+    const projectlessThreadLabel =
+      await screen.findByText("Projectless Thread");
     const projectlessThreadRow = projectlessThreadLabel.closest("div");
     const projectsLabel = screen.getByText("Projects");
     const threadsLabel = screen.getByText("Threads");
@@ -797,7 +1079,7 @@ describe("ProjectList", () => {
     expect(
       Boolean(
         projectsLabel.compareDocumentPosition(threadsLabel) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
     expect(sectionStack?.classList.contains("space-y-4")).toBe(true);
@@ -1021,6 +1303,10 @@ describe("ProjectList", () => {
               projects: [],
             }),
           ),
+      },
+      {
+        pathname: `/api/v1/threads/${projectlessManager.id}/apps`,
+        handler: () => jsonResponse([]),
       },
       {
         pathname: "/api/v1/projects",
@@ -1248,7 +1534,7 @@ describe("ProjectList", () => {
     expect(
       Boolean(
         threadsLabel.compareDocumentPosition(projectsLabel) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
   });

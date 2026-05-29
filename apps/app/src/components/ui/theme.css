@@ -62,6 +62,18 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-scope-global: var(--scope-global);
+  --color-scope-global-tile-bg: var(--scope-global-tile-bg);
+  --color-scope-global-tile-border: var(--scope-global-tile-border);
+  --color-scope-project: var(--scope-project);
+  --color-scope-project-tile-bg: var(--scope-project-tile-bg);
+  --color-scope-project-tile-border: var(--scope-project-tile-border);
+  --color-scope-manager: var(--scope-manager);
+  --color-scope-manager-tile-bg: var(--scope-manager-tile-bg);
+  --color-scope-manager-tile-border: var(--scope-manager-tile-border);
+  --color-scope-agent: var(--scope-agent);
+  --color-scope-agent-tile-bg: var(--scope-agent-tile-bg);
+  --color-scope-agent-tile-border: var(--scope-agent-tile-border);
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
@@ -348,6 +360,50 @@
   --sidebar-accent-foreground: oklch(0.3211 0 0);
   --sidebar-border: oklch(0.8576 0 0);
   --sidebar-ring: oklch(0.4891 0 0);
+  --scope-global: oklch(0.55 0.085 195);
+  --scope-project: oklch(0.52 0.105 266);
+  --scope-manager: oklch(0.61 0.105 72);
+  --scope-agent: oklch(0.56 0.1 158);
+  --scope-global-tile-bg: color-mix(
+    in oklab,
+    var(--scope-global) 20%,
+    var(--sidebar)
+  );
+  --scope-global-tile-border: color-mix(
+    in oklab,
+    var(--scope-global) 46%,
+    var(--sidebar-border)
+  );
+  --scope-project-tile-bg: color-mix(
+    in oklab,
+    var(--scope-project) 20%,
+    var(--sidebar)
+  );
+  --scope-project-tile-border: color-mix(
+    in oklab,
+    var(--scope-project) 46%,
+    var(--sidebar-border)
+  );
+  --scope-manager-tile-bg: color-mix(
+    in oklab,
+    var(--scope-manager) 20%,
+    var(--sidebar)
+  );
+  --scope-manager-tile-border: color-mix(
+    in oklab,
+    var(--scope-manager) 46%,
+    var(--sidebar-border)
+  );
+  --scope-agent-tile-bg: color-mix(
+    in oklab,
+    var(--scope-agent) 20%,
+    var(--sidebar)
+  );
+  --scope-agent-tile-border: color-mix(
+    in oklab,
+    var(--scope-agent) 46%,
+    var(--sidebar-border)
+  );
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Fira Code", monospace;
@@ -473,6 +529,10 @@
   --sidebar-accent-foreground: oklch(0.8853 0 0);
   --sidebar-border: oklch(0.32 0 0);
   --sidebar-ring: oklch(0.7058 0 0);
+  --scope-global: oklch(0.76 0.1 195);
+  --scope-project: oklch(0.74 0.12 266);
+  --scope-manager: oklch(0.8 0.11 72);
+  --scope-agent: oklch(0.77 0.11 158);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Fira Code", monospace;

@@ -30,10 +30,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ThreadListEntry } from "@bb/domain";
-import type { ProjectResponse } from "@bb/server-contract";
+import type { AppSummary, ProjectResponse } from "@bb/server-contract";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import { useArchiveEnvironmentThreads } from "@/hooks/mutations/environment-mutations";
+import { useThreadApps } from "@/hooks/queries/thread-queries";
 import { Button } from "@/components/ui/button.js";
 import {
   DropdownMenu,
@@ -73,6 +74,8 @@ import {
 import { cn } from "@/lib/utils";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { getProjectSettingsRoutePath } from "@/lib/app-route-paths";
+import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
+import type { FixedPanelTabsState } from "@/lib/fixed-panel-tabs-state";
 import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
@@ -85,6 +88,7 @@ import {
   type ThreadRowDragBindings,
   type ThreadRowOptions,
 } from "./ThreadRow";
+import { ThreadAppRow } from "./ThreadAppRow";
 import {
   buildProjectThreadGroups,
   type EnvironmentThreadGroup,
@@ -103,6 +107,7 @@ import {
   SIDEBAR_SECTION_GROUP_LINE_CLASS,
   SIDEBAR_SECTION_LINE_CONTINUATION_CLASS,
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
+  type SidebarThreadRowIndent,
 } from "./sidebarRowClasses";
 import { SIDEBAR_SORTABLE_TRANSITION } from "./sortableMotion";
 import {
@@ -223,6 +228,7 @@ type ProjectItemClickCaptureHandler = MouseEventHandler<HTMLLIElement>;
 type ProjectThreadListClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 const EMPTY_PROJECT_THREADS: ThreadListEntry[] = [];
+const EMPTY_THREAD_APPS: readonly AppSummary[] = [];
 const PROJECT_ROW_LEADING_SLOT_CLASS =
   "h-7 w-8 max-md:pointer-coarse:h-10 max-md:pointer-coarse:w-10";
 
@@ -234,6 +240,12 @@ interface ProjectThreadTreeGroupProps {
 
 interface ManagerThreadOrderEntry {
   id: string;
+}
+
+interface ActiveThreadAppIdArgs {
+  fixedPanelTabsState: FixedPanelTabsState;
+  selectedThreadId?: string;
+  threadId: string;
 }
 
 function getManagerThreadGroupId(
@@ -319,6 +331,12 @@ function getProjectThreadTreeManagedChildOptions(
     : THREAD_ROW_PROJECT_MANAGED_CHILD_OPTIONS;
 }
 
+function getProjectThreadTreeManagedAppIndent(
+  variant: ProjectThreadTreeVariant,
+): SidebarThreadRowIndent {
+  return variant === "section" ? "project-child" : "nested-child";
+}
+
 function getProjectThreadTreeEnvGroupedChildOptions(
   variant: ProjectThreadTreeVariant,
 ): ThreadRowOptions {
@@ -365,6 +383,26 @@ function getProjectThreadTreeManagerLineContinuationClassName(
   return variant === "section"
     ? SIDEBAR_SECTION_LINE_CONTINUATION_CLASS
     : SIDEBAR_MANAGER_LINE_CONTINUATION_CLASS;
+}
+
+function getActiveThreadAppId({
+  fixedPanelTabsState,
+  selectedThreadId,
+  threadId,
+}: ActiveThreadAppIdArgs): string | null {
+  if (selectedThreadId !== threadId) {
+    return null;
+  }
+
+  const activeTabId = fixedPanelTabsState.secondary.activeTabId;
+  if (activeTabId === null) {
+    return null;
+  }
+
+  const activeTab = fixedPanelTabsState.secondary.tabs.find(
+    (tab) => tab.id === activeTabId,
+  );
+  return activeTab?.kind === "app" ? activeTab.appId : null;
 }
 
 function ProjectThreadTreeGroup({
@@ -652,9 +690,7 @@ function EnvironmentThreadGroupHeader({
       >
         {showRollupGlyph ? (
           <span
-            data-sidebar-hover-actions-open={
-              isActionsOpen ? "true" : undefined
-            }
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
               "pointer-events-none absolute inset-0 flex items-center justify-center text-subtle-foreground",
@@ -852,12 +888,22 @@ export const ManagerThreadGroupRow = memo(function ManagerThreadGroupRow({
   sortableStyle,
 }: ManagerThreadGroupRowProps) {
   const { managerThread, managedItems, stats } = managerThreadGroup;
+  const managerAppsQuery = useThreadApps(managerThread.id);
+  const managerApps = managerAppsQuery.data ?? EMPTY_THREAD_APPS;
+  const fixedPanelTabsState = useFixedPanelTabsState(managerThread.id);
+  const activeAppId = getActiveThreadAppId({
+    fixedPanelTabsState,
+    selectedThreadId,
+    threadId: managerThread.id,
+  });
+  const nestedChildCount = stats.managedChildCount + managerApps.length;
+  const appIndent = getProjectThreadTreeManagedAppIndent(variant);
   const managerOptions = useMemo<ThreadRowOptions>(
     () => ({
       kind: "manager",
       indent: variant === "section" ? "root" : "project-child",
       isCollapsed: isManagerCollapsed,
-      managedChildCount: stats.managedChildCount,
+      nestedChildCount,
       managedChildActivity: stats.managedChildActivity,
       onToggleCollapsed: onToggleManagerCollapsed,
       ...(consumeClickSuppression ? { consumeClickSuppression } : {}),
@@ -867,13 +913,13 @@ export const ManagerThreadGroupRow = memo(function ManagerThreadGroupRow({
       consumeClickSuppression,
       dragBindings,
       isManagerCollapsed,
+      nestedChildCount,
       onToggleManagerCollapsed,
-      stats.managedChildCount,
       stats.managedChildActivity,
       variant,
     ],
   );
-  const showManagedChildren = !isManagerCollapsed && managedItems.length > 0;
+  const showManagedChildren = !isManagerCollapsed && nestedChildCount > 0;
   return (
     <div
       ref={sortableRef}
@@ -894,6 +940,16 @@ export const ManagerThreadGroupRow = memo(function ManagerThreadGroupRow({
             getProjectThreadTreeChildGroupLineClassName(variant),
           )}
         >
+          {managerApps.map((app) => (
+            <ThreadAppRow
+              key={`app:${app.id}`}
+              app={app}
+              indent={appIndent}
+              isActive={activeAppId === app.id}
+              projectId={projectId}
+              threadId={managerThread.id}
+            />
+          ))}
           {managedItems.map((item) =>
             item.kind === "thread" ? (
               <ThreadRow
@@ -1038,9 +1094,12 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const handleManagerDragStart = useCallback((_event: DragStartEvent) => {
-    beginManagerDragClickSuppression();
-  }, [beginManagerDragClickSuppression]);
+  const handleManagerDragStart = useCallback(
+    (_event: DragStartEvent) => {
+      beginManagerDragClickSuppression();
+    },
+    [beginManagerDragClickSuppression],
+  );
   const handleManagerDragCancel = useCallback(() => {
     clearManagerDragClickSuppressionSoon();
   }, [clearManagerDragClickSuppressionSoon]);
@@ -1261,16 +1320,17 @@ function ProjectRowComponent({
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
-  const handleProjectRowClickCapture = useCallback<ProjectItemClickCaptureHandler>(
-    (event) => {
-      if (!consumeProjectClickSuppression?.()) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [consumeProjectClickSuppression],
-  );
+  const handleProjectRowClickCapture =
+    useCallback<ProjectItemClickCaptureHandler>(
+      (event) => {
+        if (!consumeProjectClickSuppression?.()) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      [consumeProjectClickSuppression],
+    );
   const handleProjectRowToggle = useCallback(() => {
     onToggleProjectCollapsed(project.id);
   }, [onToggleProjectCollapsed, project.id]);
@@ -1389,9 +1449,7 @@ function ProjectRowComponent({
             </NavLink>
           ) : null}
           <span
-            data-sidebar-hover-actions-open={
-              isActionsOpen ? "true" : undefined
-            }
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_CLASS,
               "relative z-10 inline-flex shrink-0 items-center",

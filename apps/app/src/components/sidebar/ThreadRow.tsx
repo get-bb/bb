@@ -44,7 +44,6 @@ import {
   getSidebarThreadRowPaddingClass,
   type SidebarThreadRowIndent,
 } from "./sidebarRowClasses";
-import { ThreadRowAppCluster } from "./ThreadRowAppCluster";
 import type { ConsumeDragClickSuppression } from "./useDragClickSuppression";
 
 export type ThreadRowOptions =
@@ -68,7 +67,7 @@ export type ThreadRowOptions =
       kind: "manager";
       indent: SidebarThreadRowIndent;
       isCollapsed: boolean;
-      managedChildCount: number;
+      nestedChildCount: number;
       managedChildActivity: CollapsedChildActivity;
       onToggleCollapsed: (threadId: string) => void;
       consumeClickSuppression?: ConsumeDragClickSuppression;
@@ -310,16 +309,16 @@ function ThreadRowComponent({
     isManagedChild || isEnvGroupedChild || isEnvGroupedManagedChild;
   const isUnderEnvHeader = isEnvGroupedChild || isEnvGroupedManagedChild;
   const isManagerCollapsed = managerOptions?.isCollapsed ?? false;
-  const managedChildCount = managerOptions?.managedChildCount ?? 0;
+  const nestedChildCount = managerOptions?.nestedChildCount ?? 0;
   const managedChildActivity =
     managerOptions?.managedChildActivity ?? NO_COLLAPSED_CHILD_ACTIVITY;
-  const hasManagedChildren = managedChildCount > 0;
+  const hasNestedChildren = nestedChildCount > 0;
   // A collapsed manager hides both itself and its children behind one glyph, so
   // it must surface its own status combined with the rolled-up child activity;
   // an expanded manager (and any leaf row) shows its own status, since the
   // children are then visible with their own glyphs.
   const hasHiddenChildren =
-    isManager && isManagerCollapsed && hasManagedChildren;
+    isManager && isManagerCollapsed && hasNestedChildren;
   const trailingHasPendingInteraction = hasHiddenChildren
     ? hasPendingInteraction || managedChildActivity.pending
     : hasPendingInteraction;
@@ -378,7 +377,7 @@ function ThreadRowComponent({
         title={`Open ${threadTitle}`}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
-      {managerOptions && hasManagedChildren ? (
+      {managerOptions && hasNestedChildren ? (
         <ManagerChevron
           isCollapsed={isManagerCollapsed}
           onToggle={() => {
@@ -398,9 +397,6 @@ function ThreadRowComponent({
           COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
         )}
       >
-        {isManager ? (
-          <ThreadRowAppCluster projectId={projectId} threadId={thread.id} />
-        ) : null}
         <span
           className={cn(
             "relative shrink-0",
@@ -408,9 +404,7 @@ function ThreadRowComponent({
           )}
         >
           <span
-            data-sidebar-hover-actions-open={
-              isActionsOpen ? "true" : undefined
-            }
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
               "absolute inset-0 flex items-center justify-center",
@@ -425,9 +419,7 @@ function ThreadRowComponent({
             />
           </span>
           <div
-            data-sidebar-hover-actions-open={
-              isActionsOpen ? "true" : undefined
-            }
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_CLASS,
               "absolute inset-0 z-10 flex items-center justify-end",
@@ -435,7 +427,7 @@ function ThreadRowComponent({
           >
             <ThreadActionsMenu
               thread={thread}
-              showManagerArchiveAll={isManager && managedChildCount > 0}
+              showManagerArchiveAll={isManager && nestedChildCount > 0}
               triggerClassName={cn(
                 "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",
                 COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
@@ -471,7 +463,7 @@ function ThreadRowComponent({
   return (
     <ThreadActionsContextMenu
       thread={thread}
-      showManagerArchiveAll={isManager && managedChildCount > 0}
+      showManagerArchiveAll={isManager && nestedChildCount > 0}
       onOpenChange={setIsContextActionsOpen}
     >
       {row}
