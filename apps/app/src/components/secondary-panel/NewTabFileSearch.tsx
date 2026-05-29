@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { ThreadType } from "@bb/domain";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 import { Input } from "@/components/ui/input.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { ResolvedAppIcon } from "./AppIcon";
@@ -20,8 +20,17 @@ import {
 } from "@/hooks/useFileSearchSuggestions";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import type { FileSearchSelection } from "./useThreadFileTabs";
+import {
+  getRecentItemName,
+  resolveRecentFileKind,
+  useThreadRecentItems,
+  THREAD_RECENT_ITEMS_VISIBLE_LIMIT,
+  type RecentFileChip,
+  type ThreadRecentItem,
+} from "./threadRecentItems";
 import { cn } from "@/lib/utils";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import { formatRelativeTime } from "@/lib/relative-time";
 import { isPromptDraftEmpty, type PromptDraftState } from "@/lib/prompt-draft";
 
 export const CREATE_APP_PROMPT_TEMPLATE = `You are creating a new bb app for this thread.
@@ -73,6 +82,15 @@ interface FileResultRowProps {
   onSelect: (suggestion: FilePathSearchSuggestion) => void;
 }
 
+interface RecentResultRowProps {
+  id: string;
+  item: ThreadRecentItem;
+  isActive: boolean;
+  nowMs: number;
+  onActivate: () => void;
+  onSelect: (item: ThreadRecentItem) => void;
+}
+
 interface FileSearchMessageProps {
   iconName: "AlertCircle" | "File" | "FileQuestion" | "Spinner";
   iconClassName?: string;
@@ -81,13 +99,16 @@ interface FileSearchMessageProps {
 
 /**
  * A navigable entry in a section. Search results carry a {@link FileSearchSuggestion};
- * the synthetic Create App action carries no data and routes to the prefill flow.
- * Keeping both in one union lets the keyboard handler walk a single index space.
+ * the synthetic Open browser / Create App actions carry no data and route to
+ * their handlers; a recent entry carries the previously-opened
+ * {@link ThreadRecentItem}. Keeping them in one union lets the keyboard handler
+ * walk a single index space across the Apps, Open, Files, and Recent sections.
  */
 type FileSearchSectionEntry =
   | { kind: "suggestion"; suggestion: FileSearchSuggestion }
   | { kind: "open-browser" }
-  | { kind: "create-app" };
+  | { kind: "create-app" }
+  | { kind: "recent"; item: ThreadRecentItem };
 
 interface FileSearchSectionItem {
   entry: FileSearchSectionEntry;
@@ -110,7 +131,7 @@ type SearchInputKeyDownHandler = (
 ) => void;
 type CreateAppPromptPrefillHandler = () => void;
 type FileSearchSource = FileSearchSuggestion["source"];
-type FileSearchSectionKind = "apps" | "open" | "files";
+type FileSearchSectionKind = "apps" | "open" | "files" | "recent";
 
 interface GetAvailableFileSearchSourcesArgs {
   projectId: string | undefined;
@@ -123,6 +144,7 @@ interface GroupFileSearchSectionsArgs {
   availableSources: readonly FileSearchSource[];
   includeOpenBrowserEntry: boolean;
   includeCreateAppEntry: boolean;
+  recentEntries: readonly FileSearchSectionEntry[];
 }
 
 interface LauncherTileProps {
@@ -153,12 +175,14 @@ const FILE_SEARCH_SECTION_ORDER: readonly FileSearchSectionKind[] = [
   "apps",
   "open",
   "files",
+  "recent",
 ];
 
 const FILE_SEARCH_SECTION_LABELS = {
   apps: "Apps",
   open: "Open",
   files: "Files",
+  recent: "Recent",
 } satisfies Record<FileSearchSectionKind, string>;
 
 // Substring-matched keywords that surface the "Open browser" action while the
@@ -182,6 +206,33 @@ const LAUNCHER_TILE_ICON_CLASS =
   "flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border-hairline bg-surface-raised";
 const LAUNCHER_TILE_ICON_CLASS_DASHED =
   "flex size-9 shrink-0 items-center justify-center rounded-md border border-dashed border-border bg-surface-raised text-muted-foreground group-hover:text-foreground";
+
+const RECENT_ROW_CLASS =
+  "group flex w-full min-w-0 scroll-mt-7 items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+const RECENT_CHIP_CLASS =
+  "flex size-7 shrink-0 items-center justify-center rounded-md";
+// Static class literals (no string concatenation) so Tailwind's content scanner
+// keeps the file-type tints. The chip washes the accent to ~15% behind a glyph
+// drawn at full accent strength; the kind label reuses the same accent ink.
+const RECENT_CHIP_TINT_CLASS = {
+  md: "bg-ft-md/15 text-ft-md",
+  html: "bg-ft-html/15 text-ft-html",
+  report: "bg-ft-report/15 text-ft-report",
+  code: "bg-ft-code/15 text-ft-code",
+} satisfies Record<RecentFileChip, string>;
+const RECENT_KIND_LABEL_CLASS = {
+  md: "text-ft-md",
+  html: "text-ft-html",
+  report: "text-ft-report",
+  code: "text-ft-code",
+} satisfies Record<RecentFileChip, string>;
+const RECENT_CHIP_ICON_NAME = {
+  md: "FileText",
+  html: "AppWindow",
+  report: "ChartColumn",
+  code: "Code",
+} satisfies Record<RecentFileChip, IconName>;
+const RECENT_ENTRY_ID_PREFIX = "file-search-result-recent";
 
 function slugifyAppName(name: string): string {
   return name
@@ -224,7 +275,25 @@ function getFileSearchEntryId(entry: FileSearchSectionEntry): string {
   if (entry.kind === "open-browser") {
     return OPEN_BROWSER_ENTRY_ID;
   }
+  if (entry.kind === "recent") {
+    return `${RECENT_ENTRY_ID_PREFIX}-${entry.item.source}-${encodeURIComponent(
+      entry.item.path,
+    )}`;
+  }
   return getFileSearchResultId(entry.suggestion);
+}
+
+function recentItemMatchesQuery(
+  item: ThreadRecentItem,
+  normalizedQuery: string,
+): boolean {
+  if (normalizedQuery.length === 0) {
+    return true;
+  }
+  const { label } = resolveRecentFileKind(item.path);
+  return `${getRecentItemName(item.path)} ${label} ${item.path}`
+    .toLowerCase()
+    .includes(normalizedQuery);
 }
 
 function splitPath(path: string): SplitPathResult {
@@ -255,6 +324,7 @@ function groupFileSearchSections({
   availableSources,
   includeOpenBrowserEntry,
   includeCreateAppEntry,
+  recentEntries,
   suggestions,
 }: GroupFileSearchSectionsArgs): FileSearchSection[] {
   const allowedSources = new Set<FileSearchSource>(availableSources);
@@ -299,6 +369,13 @@ function groupFileSearchSections({
       entry: { kind: "create-app" },
       index: 0,
     });
+  }
+
+  // Recent rows trail the Apps and Files sections so the unified index space
+  // reads top-down: launch an app, open a new surface, then jump back to a
+  // recently-opened file.
+  for (const entry of recentEntries) {
+    ensureSection("recent").items.push({ entry, index: 0 });
   }
 
   let nextIndex = 0;
@@ -509,6 +586,89 @@ function FileResultRow({
   );
 }
 
+/**
+ * A recently-opened file row. Lighter than an app tile: a borderless tinted
+ * file-type chip, the filename, a quiet kind + path line, and a right-aligned
+ * relative timestamp that flips to an "open" affordance on hover/selection.
+ * Reopening routes through the same `onSelect` path as a file-search result.
+ */
+function RecentResultRow({
+  id,
+  item,
+  isActive,
+  nowMs,
+  onActivate,
+  onSelect,
+}: RecentResultRowProps) {
+  const handleSelect = useCallback(() => {
+    onSelect(item);
+  }, [item, onSelect]);
+  const { chip, label } = resolveRecentFileKind(item.path);
+  const name = getRecentItemName(item.path);
+  const { directory } = splitPath(item.path);
+  const relativeTime = formatRelativeTime({ timestamp: item.openedAt, now: nowMs });
+
+  return (
+    <button
+      type="button"
+      id={id}
+      role="option"
+      aria-selected={isActive}
+      onClick={handleSelect}
+      onMouseEnter={onActivate}
+      title={`${label}: ${item.path}`}
+      className={cn(
+        RECENT_ROW_CLASS,
+        isActive ? "bg-state-active" : "hover:bg-state-hover",
+      )}
+    >
+      <span className={cn(RECENT_CHIP_CLASS, RECENT_CHIP_TINT_CLASS[chip])}>
+        <Icon name={RECENT_CHIP_ICON_NAME[chip]} className="size-4" aria-hidden />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm font-medium text-foreground">
+          {name}
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <span className={cn("shrink-0 font-medium", RECENT_KIND_LABEL_CLASS[chip])}>
+            {label}
+          </span>
+          {directory ? (
+            <>
+              <span className="shrink-0 opacity-50" aria-hidden>
+                ·
+              </span>
+              <TruncateStart className="text-muted-foreground [flex-shrink:9999]">
+                {directory}
+              </TruncateStart>
+            </>
+          ) : null}
+        </span>
+      </span>
+      <span className="ml-auto flex shrink-0 items-center justify-end">
+        <span
+          className={cn(
+            "whitespace-nowrap text-xs text-muted-foreground",
+            isActive ? "hidden" : "group-hover:hidden",
+          )}
+        >
+          {relativeTime}
+        </span>
+        <span
+          className={cn(
+            "items-center gap-1 text-xs text-subtle-foreground",
+            isActive ? "flex" : "hidden group-hover:flex",
+          )}
+          aria-hidden
+        >
+          <Icon name="ArrowUpRight" className="size-3" aria-hidden />
+          open
+        </span>
+      </span>
+    </button>
+  );
+}
+
 export function NewTabFileSearch({
   projectId,
   environmentId,
@@ -523,10 +683,17 @@ export function NewTabFileSearch({
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState(initialQuery);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [isRecentExpanded, setIsRecentExpanded] = useState(false);
+  // Captured once on mount: the launcher is transient, so a static "now" keeps
+  // every relative timestamp consistent within a single open without ticking.
+  const [nowMs] = useState(() => Date.now());
   const promptDraft = usePromptDraftStorage({
     projectId,
     threadId: currentThreadId.length > 0 ? currentThreadId : null,
   });
+  const recentItems = useThreadRecentItems(
+    currentThreadId.length > 0 ? currentThreadId : null,
+  );
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
   const canPrefillCreateAppPrompt =
@@ -567,15 +734,43 @@ export function NewTabFileSearch({
     onOpenBrowser !== undefined &&
     isDesktopBrowserAvailable() &&
     (!hasQuery || OPEN_BROWSER_ENTRY_KEYWORDS.includes(trimmedQuery.toLowerCase()));
+  const normalizedRecentQuery = hasQuery ? trimmedQuery.toLowerCase() : "";
+  const matchingRecentItems = useMemo(
+    () =>
+      recentItems.filter((item) =>
+        recentItemMatchesQuery(item, normalizedRecentQuery),
+      ),
+    [normalizedRecentQuery, recentItems],
+  );
+  // Collapsed to the visible cap by default; a query or "Show more" reveals the
+  // rest. Recents are local, so they stay in view while apps/files load.
+  const visibleRecentItems = useMemo(
+    () =>
+      hasQuery || isRecentExpanded
+        ? matchingRecentItems
+        : matchingRecentItems.slice(0, THREAD_RECENT_ITEMS_VISIBLE_LIMIT),
+    [hasQuery, isRecentExpanded, matchingRecentItems],
+  );
+  const recentEntries = useMemo<FileSearchSectionEntry[]>(
+    () => visibleRecentItems.map((item) => ({ kind: "recent", item })),
+    [visibleRecentItems],
+  );
   const sections = useMemo(
     () =>
       groupFileSearchSections({
         availableSources,
         includeOpenBrowserEntry: showOpenBrowserEntry,
         includeCreateAppEntry: showCreateAppEntry,
+        recentEntries,
         suggestions,
       }),
-    [availableSources, showCreateAppEntry, showOpenBrowserEntry, suggestions],
+    [
+      availableSources,
+      recentEntries,
+      showCreateAppEntry,
+      showOpenBrowserEntry,
+      suggestions,
+    ],
   );
   const navigableEntries = useMemo(
     () =>
@@ -620,6 +815,17 @@ export function NewTabFileSearch({
     },
     [onSelect],
   );
+
+  const handleRecentSelect = useCallback(
+    (item: ThreadRecentItem) => {
+      onSelect({ source: item.source, path: item.path });
+    },
+    [onSelect],
+  );
+
+  const handleToggleRecentExpanded = useCallback(() => {
+    setIsRecentExpanded((current) => !current);
+  }, []);
 
   const handleSuggestionSelect = useCallback(
     (suggestion: FileSearchSuggestion) => {
@@ -685,6 +891,10 @@ export function NewTabFileSearch({
           handleOpenBrowser();
           return;
         }
+        if (activeEntry.kind === "recent") {
+          handleRecentSelect(activeEntry.item);
+          return;
+        }
         handleSuggestionSelect(activeEntry.suggestion);
       }
     },
@@ -692,6 +902,7 @@ export function NewTabFileSearch({
       activeEntry,
       handleCreateAppPromptPrefill,
       handleOpenBrowser,
+      handleRecentSelect,
       handleSuggestionSelect,
       navigableEntries.length,
     ],
@@ -738,11 +949,26 @@ export function NewTabFileSearch({
           hasQuery={hasQuery}
           isError={isError}
           isLoading={isLoading}
+          nowMs={nowMs}
           onActivateIndex={setActiveIndex}
           onAppSelect={handleAppSelect}
           onCreateApp={handleCreateAppPromptPrefill}
           onOpenBrowser={handleOpenBrowser}
           onFileSelect={handleFileSelect}
+          onRecentSelect={handleRecentSelect}
+          recent={{
+            count: matchingRecentItems.length,
+            showMoreCount: Math.max(
+              0,
+              matchingRecentItems.length - THREAD_RECENT_ITEMS_VISIBLE_LIMIT,
+            ),
+            isExpanded: isRecentExpanded,
+            toggleVisible:
+              !hasQuery &&
+              matchingRecentItems.length > THREAD_RECENT_ITEMS_VISIBLE_LIMIT,
+            emptyHintVisible: !hasQuery && recentItems.length === 0,
+            onToggleExpanded: handleToggleRecentExpanded,
+          }}
           sections={sections}
         />
       )}
@@ -750,16 +976,28 @@ export function NewTabFileSearch({
   );
 }
 
+interface NewTabRecentState {
+  count: number;
+  showMoreCount: number;
+  isExpanded: boolean;
+  toggleVisible: boolean;
+  emptyHintVisible: boolean;
+  onToggleExpanded: () => void;
+}
+
 interface NewTabResultsProps {
   activeIndex: number;
   hasQuery: boolean;
   isError: boolean;
   isLoading: boolean;
+  nowMs: number;
   onActivateIndex: (index: number) => void;
   onAppSelect: (suggestion: AppSearchSuggestion) => void;
   onCreateApp: () => void;
   onOpenBrowser: () => void;
   onFileSelect: (suggestion: FilePathSearchSuggestion) => void;
+  onRecentSelect: (item: ThreadRecentItem) => void;
+  recent: NewTabRecentState;
   sections: readonly FileSearchSection[];
 }
 
@@ -768,25 +1006,33 @@ function NewTabResults({
   hasQuery,
   isError,
   isLoading,
+  nowMs,
   onActivateIndex,
   onAppSelect,
   onCreateApp,
   onOpenBrowser,
   onFileSelect,
+  onRecentSelect,
+  recent,
   sections,
 }: NewTabResultsProps) {
   const appsSection = sections.find((section) => section.kind === "apps");
   const openSection = sections.find((section) => section.kind === "open");
   const filesSection = sections.find((section) => section.kind === "files");
+  const recentSection = sections.find((section) => section.kind === "recent");
   const showAppsSection = appsSection !== undefined;
   const showOpenSection = openSection !== undefined;
   const showFilesSection = filesSection !== undefined;
+  const showRecentSection = recentSection !== undefined || recent.emptyHintVisible;
+  const hasSectionsAbove =
+    showAppsSection || showOpenSection || showFilesSection;
   const showLoading = isLoading && !showFilesSection;
   const showError = isError && !showFilesSection && !showLoading;
   const showEmptyMessage =
     !showAppsSection &&
     !showOpenSection &&
     !showFilesSection &&
+    !showRecentSection &&
     !showLoading &&
     !showError;
 
@@ -927,6 +1173,76 @@ function NewTabResults({
             }
           />
         </div>
+      ) : null}
+
+      {showRecentSection ? (
+        <section className={cn(hasSectionsAbove && "mt-3")}>
+          <div
+            className={cn(
+              SECTION_HEADER_CLASS,
+              "flex items-baseline gap-2",
+              hasSectionsAbove && "pt-2",
+            )}
+          >
+            <span>{FILE_SEARCH_SECTION_LABELS.recent}</span>
+            {recent.count > 0 ? (
+              <span className="font-mono text-xs font-normal tracking-normal normal-case text-muted-foreground opacity-80">
+                {recent.count}
+              </span>
+            ) : null}
+          </div>
+          {recentSection ? (
+            <div
+              role="listbox"
+              aria-label={FILE_SEARCH_SECTION_LABELS.recent}
+              className="flex flex-col gap-px"
+            >
+              {recentSection.items.map(({ entry, index }) => {
+                if (entry.kind !== "recent") {
+                  return null;
+                }
+                return (
+                  <RecentResultRow
+                    key={`recent:${entry.item.source}:${entry.item.path}`}
+                    id={getFileSearchEntryId(entry)}
+                    item={entry.item}
+                    isActive={index === activeIndex}
+                    nowMs={nowMs}
+                    onActivate={() => onActivateIndex(index)}
+                    onSelect={onRecentSelect}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <p className="rounded-md border border-dashed border-border bg-surface-raised px-3 py-4 text-center text-xs text-muted-foreground">
+              Nothing referenced yet — plans, mockups, and files you open will
+              show up here.
+            </p>
+          )}
+          {recent.toggleVisible ? (
+            <button
+              type="button"
+              aria-expanded={recent.isExpanded}
+              onClick={recent.onToggleExpanded}
+              className="ml-1.5 mt-0.5 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            >
+              <Icon
+                name="ChevronDown"
+                className={cn(
+                  "size-3.5 transition-transform",
+                  recent.isExpanded && "rotate-180",
+                )}
+                aria-hidden
+              />
+              <span>
+                {recent.isExpanded
+                  ? "Show less"
+                  : `Show ${recent.showMoreCount} more`}
+              </span>
+            </button>
+          ) : null}
+        </section>
       ) : null}
     </div>
   );

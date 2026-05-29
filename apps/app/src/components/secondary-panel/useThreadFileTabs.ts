@@ -27,6 +27,7 @@ import {
   type HostFileTabState,
   type WorkspaceFileTabState,
 } from "@/lib/file-preview";
+import { useRecordThreadRecentItem } from "./threadRecentItems";
 
 export const STATUS_APP_ID = "status";
 
@@ -436,6 +437,7 @@ export function useThreadFileTabs({
 }: UseThreadFileTabsParams) {
   const fixedPanelTabsState = useFixedPanelTabsState(threadId);
   const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
+  const recordRecentItem = useRecordThreadRecentItem(threadId);
   const isThreadResolved = threadType !== undefined;
   const isManagerThread = threadType === "manager";
   const resolvedEnvironmentId = isThreadResolved
@@ -560,6 +562,12 @@ export function useThreadFileTabs({
   const openWorkspaceFile = useCallback(
     ({ lineNumber, path, source, statusLabel }: WorkspaceFileTabState) => {
       if (resolvedEnvironmentId === undefined) return;
+      // Only working-tree opens are recorded as recent: a recent row reopens the
+      // live file, so diff-only previews (head/merge-base) would reopen to the
+      // wrong content.
+      if (source.kind === "working-tree") {
+        recordRecentItem({ source: "workspace", path });
+      }
       const nextTab = createWorkspaceFilePreviewFixedPanelTab({
         environmentId: resolvedEnvironmentId,
         tab: {
@@ -591,7 +599,7 @@ export function useThreadFileTabs({
         });
       });
     },
-    [resolvedEnvironmentId, updateFixedPanelTabsState],
+    [recordRecentItem, resolvedEnvironmentId, updateFixedPanelTabsState],
   );
 
   const closeWorkspaceFileTab = useCallback(
@@ -640,6 +648,7 @@ export function useThreadFileTabs({
   const openStorageFile = useCallback(
     (path: string) => {
       if (!isManagerThread) return;
+      recordRecentItem({ source: "thread-storage", path });
       const nextTab = createStorageTab(path);
       updateFixedPanelTabsState((state) => {
         const tabs = upsertSecondaryTab(state.secondary.tabs, nextTab);
@@ -658,7 +667,7 @@ export function useThreadFileTabs({
         });
       });
     },
-    [isManagerThread, updateFixedPanelTabsState],
+    [isManagerThread, recordRecentItem, updateFixedPanelTabsState],
   );
 
   const openHostFile = useCallback(
@@ -977,6 +986,7 @@ export function useThreadFileTabs({
 
       if (selection.source === "workspace") {
         if (resolvedEnvironmentId === undefined) return;
+        recordRecentItem({ source: "workspace", path: selection.path });
         const nextTab = createWorkspaceFilePreviewFixedPanelTab({
           environmentId: resolvedEnvironmentId,
           tab: {
@@ -991,10 +1001,16 @@ export function useThreadFileTabs({
       }
 
       if (!isManagerThread) return;
+      recordRecentItem({ source: "thread-storage", path: selection.path });
       const nextTab = createStorageTab(selection.path);
       updateFixedPanelTabsState((state) => replaceNewTab({ nextTab, state }));
     },
-    [isManagerThread, resolvedEnvironmentId, updateFixedPanelTabsState],
+    [
+      isManagerThread,
+      recordRecentItem,
+      resolvedEnvironmentId,
+      updateFixedPanelTabsState,
+    ],
   );
 
   const clearActiveFileTabs = useCallback(() => {

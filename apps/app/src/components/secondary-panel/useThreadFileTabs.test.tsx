@@ -27,6 +27,7 @@ import {
 } from "@/lib/fixed-panel-tabs-state";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import { STATUS_APP_ID, useThreadFileTabs } from "./useThreadFileTabs";
+import { useThreadRecentItems } from "./threadRecentItems";
 
 const NOW = 1_700_000_000_000;
 const WORKING_TREE_SOURCE: EnvironmentFilePreviewSource = {
@@ -84,9 +85,11 @@ function renderThreadFileTabsHook(initialProps: HookProps) {
     (props: HookProps) => {
       const fileTabs = useThreadFileTabs(props);
       const fixedPanelTabsState = useFixedPanelTabsState(props.threadId);
+      const recentItems = useThreadRecentItems(props.threadId);
       return {
         ...fileTabs,
         fixedPanelTabsState,
+        recentItems,
       };
     },
     {
@@ -243,6 +246,53 @@ afterEach(() => {
 });
 
 describe("useThreadFileTabs", () => {
+  it("records opened working-tree and storage files as thread recents", () => {
+    const { result } = renderThreadFileTabsHook({
+      environmentId: "env-recent",
+      threadType: "manager",
+      storageFiles: [],
+      threadId: "thr-recent-record",
+    });
+
+    act(() => {
+      result.current.openWorkspaceFile(
+        buildWorkspaceFileTab({ lineNumber: null, path: "src/app.ts" }),
+      );
+    });
+    act(() => {
+      result.current.openStorageFile("plans/swap-model.md");
+    });
+
+    // Newest-first, deduped, tagged by panel source.
+    expect(
+      result.current.recentItems.map(({ source, path }) => ({ source, path })),
+    ).toEqual([
+      { source: "thread-storage", path: "plans/swap-model.md" },
+      { source: "workspace", path: "src/app.ts" },
+    ]);
+  });
+
+  it("does not record diff-only (non-working-tree) workspace previews as recents", () => {
+    const { result } = renderThreadFileTabsHook({
+      environmentId: "env-recent",
+      threadType: "standard",
+      storageFiles: undefined,
+      threadId: "thr-recent-diff",
+    });
+
+    act(() => {
+      result.current.openWorkspaceFile(
+        buildWorkspaceFileTab({
+          lineNumber: null,
+          path: "src/diff.ts",
+          source: MERGE_BASE_SOURCE,
+        }),
+      );
+    });
+
+    expect(result.current.recentItems).toEqual([]);
+  });
+
   it("persists workspace tabs for the current thread", () => {
     const { result } = renderThreadFileTabsHook({
       environmentId: "env-one",

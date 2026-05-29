@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { AppSummary, WorkspacePathEntry } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import {
@@ -12,6 +12,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { NewTabPage } from "./NewTabPage";
 import { CREATE_APP_PROMPT_TEMPLATE } from "./NewTabFileSearch";
+import {
+  getThreadRecentItemsStorageKey,
+  type ThreadRecentItem,
+} from "./threadRecentItems";
 import type { FileSearchSelection } from "./useThreadFileTabs";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -107,6 +111,25 @@ function setStoredThreadDraft(draft: PromptDraftState): void {
   }
 
   window.localStorage.setItem(THREAD_DRAFT_STORAGE_KEY, serialized);
+}
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+
+function seedRecentItems(threadId: string, items: ThreadRecentItem[]): void {
+  window.localStorage.setItem(
+    getThreadRecentItemsStorageKey({ threadId }),
+    JSON.stringify(items),
+  );
+}
+
+function mockEmptySearchSources(): void {
+  vi.mocked(api.listThreadApps).mockResolvedValue([]);
+  vi.mocked(api.searchProjectPaths).mockResolvedValue(makePathResponse([]));
+  vi.mocked(api.listThreadStoragePaths).mockResolvedValue({
+    ...makePathResponse([]),
+    storageRootPath: "/tmp/thread-storage",
+  });
 }
 
 function renderNewTabPage(args: RenderNewTabPageArgs = {}) {
@@ -330,5 +353,160 @@ describe("NewTabPage", () => {
     expect(api.searchProjectPaths).not.toHaveBeenCalled();
     expect(api.listThreadApps).not.toHaveBeenCalled();
     expect(api.listThreadStoragePaths).not.toHaveBeenCalled();
+  });
+});
+
+describe("NewTabPage recent section", () => {
+  it("lists recent items newest-first with type chips and relative timestamps", async () => {
+    mockEmptySearchSources();
+    const threadId = "thr-recent-render";
+    const now = Date.now();
+    seedRecentItems(threadId, [
+      {
+        source: "thread-storage",
+        path: "plans/swap-model.md",
+        openedAt: now - 2 * MINUTE_MS,
+      },
+      {
+        source: "thread-storage",
+        path: "plans/sidebar-mockup.html",
+        openedAt: now - HOUR_MS,
+      },
+      {
+        source: "workspace",
+        path: "apps/app/src/components/secondary-panel/NewTabFileSearch.tsx",
+        openedAt: now - 25 * HOUR_MS,
+      },
+    ]);
+
+    renderNewTabPage({
+      projectId: "proj-1",
+      currentThreadId: threadId,
+      currentThreadType: "manager",
+    });
+
+    const recentList = await screen.findByRole("listbox", { name: "Recent" });
+    const recentOptions = within(recentList).getAllByRole("option");
+    expect(recentOptions.map((option) => option.textContent ?? "")).toEqual([
+      expect.stringContaining("swap-model.md"),
+      expect.stringContaining("sidebar-mockup.html"),
+      expect.stringContaining("NewTabFileSearch.tsx"),
+    ]);
+
+    // Chip labels follow the artifact kind, not just the extension.
+    expect(within(recentList).getByText("Plan")).toBeTruthy();
+    expect(within(recentList).getByText("Mockup")).toBeTruthy();
+    expect(within(recentList).getByText("Source")).toBeTruthy();
+
+    // Right-aligned relative timestamps.
+    expect(within(recentList).getByText("2m ago")).toBeTruthy();
+    expect(within(recentList).getByText("1h ago")).toBeTruthy();
+    expect(within(recentList).getByText("Yesterday")).toBeTruthy();
+  });
+
+  it("opens a recent item in the panel when its row is clicked", async () => {
+    mockEmptySearchSources();
+    const threadId = "thr-recent-click";
+    seedRecentItems(threadId, [
+      {
+        source: "thread-storage",
+        path: "plans/swap-model.md",
+        openedAt: Date.now() - 2 * MINUTE_MS,
+      },
+    ]);
+    const { onSelect } = renderNewTabPage({
+      projectId: "proj-1",
+      currentThreadId: threadId,
+      currentThreadType: "manager",
+    });
+
+    fireEvent.click(
+      await screen.findByRole("option", { name: /swap-model\.md/u }),
+    );
+
+    expect(onSelect).toHaveBeenCalledWith({
+      source: "thread-storage",
+      path: "plans/swap-model.md",
+    });
+  });
+
+  it("filters recent items by query and hides the section on no match", async () => {
+    mockEmptySearchSources();
+    const threadId = "thr-recent-filter";
+    seedRecentItems(threadId, [
+      {
+        source: "thread-storage",
+        path: "plans/swap-model.md",
+        openedAt: Date.now() - 2 * MINUTE_MS,
+      },
+      {
+        source: "thread-storage",
+        path: "plans/sidebar-mockup.html",
+        openedAt: Date.now() - 3 * MINUTE_MS,
+      },
+    ]);
+    renderNewTabPage({
+      projectId: "proj-1",
+      currentThreadId: threadId,
+      currentThreadType: "manager",
+    });
+
+    const input = screen.getByRole("textbox", {
+      name: "Search apps and files",
+    });
+    await screen.findByText("swap-model.md");
+
+    fireEvent.change(input, { target: { value: "sidebar" } });
+    expect(screen.queryByText("swap-model.md")).toBeNull();
+    expect(screen.getByText("sidebar-mockup.html")).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "zzz-no-match" } });
+    expect(screen.queryByText("sidebar-mockup.html")).toBeNull();
+    expect(screen.queryByText("Recent")).toBeNull();
+  });
+
+  it("reaches a recent row via keyboard navigation", async () => {
+    mockEmptySearchSources();
+    vi.mocked(api.listThreadApps).mockResolvedValue([STATUS_APP]);
+    const threadId = "thr-recent-keys";
+    seedRecentItems(threadId, [
+      {
+        source: "thread-storage",
+        path: "plans/swap-model.md",
+        openedAt: Date.now() - 2 * MINUTE_MS,
+      },
+    ]);
+    renderNewTabPage({
+      projectId: "proj-1",
+      currentThreadId: threadId,
+      currentThreadType: "manager",
+    });
+
+    const input = screen.getByRole("textbox", {
+      name: "Search apps and files",
+    });
+    // Await the app row so the async sources have settled and the active-index
+    // reset no longer fires; the recent row trails Apps + Create App in one
+    // shared index space, so ArrowUp wraps onto it from the first entry.
+    const appOption = await screen.findByRole("option", { name: /Status/u });
+    const recentOption = screen.getByRole("option", {
+      name: /swap-model\.md/u,
+    });
+    expect(input.getAttribute("aria-activedescendant")).toBe(appOption.id);
+
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(input.getAttribute("aria-activedescendant")).toBe(recentOption.id);
+    expect(recentOption.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("degrades to a dashed hint when the thread has no recent items", async () => {
+    mockEmptySearchSources();
+    renderNewTabPage({
+      projectId: "proj-1",
+      currentThreadId: "thr-recent-empty",
+      currentThreadType: "manager",
+    });
+
+    expect(await screen.findByText(/Nothing referenced yet/u)).toBeTruthy();
   });
 });

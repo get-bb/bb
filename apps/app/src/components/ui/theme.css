@@ -50,6 +50,10 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-ft-md: var(--ft-md);
+  --color-ft-html: var(--ft-html);
+  --color-ft-report: var(--ft-report);
+  --color-ft-code: var(--ft-code);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -330,6 +334,12 @@
   --chart-3: oklch(0.6534 0 0);
   --chart-4: oklch(0.7316 0 0);
   --chart-5: oklch(0.8078 0 0);
+  /* File-type accents for the New Tab launcher's Recent rows. Quiet ink shown
+   * at full strength on the glyph/label and washed to ~15% on the chip fill. */
+  --ft-md: oklch(0.52 0.13 252);
+  --ft-html: oklch(0.55 0.11 178);
+  --ft-report: oklch(0.58 0.13 62);
+  --ft-code: oklch(0.53 0.15 305);
   --sidebar: oklch(0.937 0 0);
   --sidebar-foreground: oklch(0.3211 0 0);
   --sidebar-primary: oklch(0.4891 0 0);
@@ -450,6 +460,11 @@
   --chart-3: oklch(0.5452 0 0);
   --chart-4: oklch(0.4604 0 0);
   --chart-5: oklch(0.3715 0 0);
+  /* Lifted for legibility on the dark recessed panel surface. */
+  --ft-md: oklch(0.74 0.11 252);
+  --ft-html: oklch(0.76 0.1 178);
+  --ft-report: oklch(0.8 0.12 70);
+  --ft-code: oklch(0.76 0.12 305);
   --sidebar: oklch(0.24 0 0);
   --sidebar-foreground: oklch(0.8853 0 0);
   --sidebar-primary: oklch(0.7058 0 0);
