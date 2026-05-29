@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, render } from "@testing-library/react";
+import { getDefaultStore } from "jotai";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
@@ -10,6 +11,7 @@ import type {
 } from "@bb/server-contract";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { BrowserTabDeck } from "./BrowserTabDeck";
+import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 
 interface RecordedBrowserCall {
   method: "attach" | "detach" | "setVisible" | "setBounds" | "navigate";
@@ -142,6 +144,9 @@ afterEach(() => {
   cleanup();
   delete window.bbDesktop;
   window.localStorage.clear();
+  // The resizing flag lives in the default jotai store, which persists across
+  // tests in this module; reset it so a resize test never leaks into the next.
+  getDefaultStore().set(threadSecondaryPanelResizingAtom, false);
 });
 
 describe("BrowserTabDeck", () => {
@@ -395,5 +400,78 @@ describe("BrowserTabDeck", () => {
 
     expect(calls.some((call) => call.method === "detach")).toBe(false);
     expect(visibilityFor(calls, TAB_A.id)).toBe(false);
+  });
+
+  it("keeps the active view visible and tracks its bounds while the panel is resized (no flash)", () => {
+    const { api, calls } = createRecordingBrowserApi();
+    installDesktopBrowserApi(api);
+    const store = getDefaultStore();
+
+    // Capture the callback the component subscribes its ResizeObserver with —
+    // the drag-resize path runs through THIS (the panel handle shrinks/grows the
+    // content element), not through `window.resize`. The shared jsdom polyfill
+    // never fires, so we drive the real path by invoking the captured callback.
+    const resizeCallbacks: Array<() => void> = [];
+    class CapturingResizeObserver {
+      constructor(callback: () => void) {
+        resizeCallbacks.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", CapturingResizeObserver);
+    // Run the rAF-coalesced bounds sync synchronously so the resize tick lands a
+    // setBounds within this test's `act` scope.
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0);
+        return 0;
+      });
+
+    render(
+      <BrowserTabDeck
+        browserTabs={[TAB_A]}
+        activeBrowserTabId={TAB_A.id}
+        isPanelOpen
+        threadId="thr_test"
+        onUpdate={() => {}}
+      />,
+    );
+    expect(resizeCallbacks.length).toBeGreaterThan(0);
+
+    const resizeStart = calls.length;
+    act(() => {
+      // Begin a drag-resize, then fire a ResizeObserver tick exactly as dragging
+      // the panel handle resizes the content element.
+      store.set(threadSecondaryPanelResizingAtom, true);
+      for (const fireResizeTick of resizeCallbacks) {
+        fireResizeTick();
+      }
+    });
+    const duringResize = calls.slice(resizeStart);
+
+    // The overlay must NOT be blanked mid-resize — hiding it for the whole drag
+    // was the flash this fixes.
+    expect(
+      duringResize.some(
+        (call) =>
+          call.method === "setVisible" &&
+          call.tabId === TAB_A.id &&
+          call.visible === false,
+      ),
+    ).toBe(false);
+    // Instead, the ResizeObserver tick syncs its bounds to the live panel size.
+    expect(
+      duringResize.some(
+        (call) => call.method === "setBounds" && call.tabId === TAB_A.id,
+      ),
+    ).toBe(true);
+    // Net effect: the active view stays visible throughout the resize.
+    expect(visibilityFor(calls, TAB_A.id)).toBe(true);
+
+    requestFrame.mockRestore();
+    vi.unstubAllGlobals();
   });
 });

@@ -7,7 +7,6 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { useAtomValue } from "jotai";
 import type {
   BbDesktopBrowserApi,
   BbDesktopBrowserState,
@@ -20,7 +19,6 @@ import {
   resolveBrowserAddressInput,
 } from "@/lib/browser-url";
 import { useBrowserHistory } from "@/lib/browser-history";
-import { threadSecondaryPanelResizingAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
 import type { BrowserViewVisibilityCoordinator } from "./browserViewVisibilityCoordinator";
 import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
@@ -199,7 +197,6 @@ export function BrowserTabContent({
     [],
   );
   const contentRef = useRef<HTMLDivElement>(null);
-  const isResizing = useAtomValue(threadSecondaryPanelResizingAtom);
   const { entries: recent, recordVisit, clear: clearRecent } =
     useBrowserHistory(threadId);
 
@@ -225,6 +222,13 @@ export function BrowserTabContent({
 
   const hasPage = currentUrl.length > 0;
 
+  // Pending rAF handle for the coalesced bounds sync, so a burst of resize ticks
+  // collapses to a single native setBounds per frame.
+  const boundsSyncFrameRef = useRef<number | null>(null);
+
+  // Push the current content-rect to the native overlay immediately. The
+  // coordinator's show() calls this synchronously so bounds always land before
+  // the view is made visible (never a stale/zero-bounds flash on activation).
   const syncBounds = useCallback(() => {
     const element = contentRef.current;
     if (element === null || desktopBrowser === null) {
@@ -235,6 +239,20 @@ export function BrowserTabContent({
       bounds: roundedBoundsFromRect(element.getBoundingClientRect()),
     });
   }, [desktopBrowser, tabId]);
+
+  // rAF-coalesced bounds sync for live resize tracking. A drag-resize fires the
+  // ResizeObserver (and `window` resize) repeatedly; batching to one setBounds
+  // per frame lets the visible overlay follow the panel smoothly — far better
+  // than blanking the view for the whole drag, which flashed.
+  const scheduleBoundsSync = useCallback(() => {
+    if (boundsSyncFrameRef.current !== null) {
+      return;
+    }
+    boundsSyncFrameRef.current = window.requestAnimationFrame(() => {
+      boundsSyncFrameRef.current = null;
+      syncBounds();
+    });
+  }, [syncBounds]);
 
   // Create the native view on mount, stream navigation state back, and tear it
   // down on unmount. Because the deck keeps every open browser tab mounted, this
@@ -288,27 +306,37 @@ export function BrowserTabContent({
     };
   }, [desktopBrowser, visibilityCoordinator, tabId]);
 
-  // Track the panel content rect so the native overlay stays aligned.
+  // Track the panel content rect so the native overlay stays aligned — including
+  // throughout a drag-resize, where the rect changes every frame. Coalesced via
+  // rAF so the overlay follows the live size instead of being hidden.
   useEffect(() => {
     const element = contentRef.current;
     if (element === null || desktopBrowser === null) {
       return;
     }
     const observer = new ResizeObserver(() => {
-      syncBounds();
+      scheduleBoundsSync();
     });
     observer.observe(element);
-    window.addEventListener("resize", syncBounds);
+    window.addEventListener("resize", scheduleBoundsSync);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", syncBounds);
+      window.removeEventListener("resize", scheduleBoundsSync);
+      if (boundsSyncFrameRef.current !== null) {
+        window.cancelAnimationFrame(boundsSyncFrameRef.current);
+        boundsSyncFrameRef.current = null;
+      }
     };
-  }, [desktopBrowser, syncBounds]);
+  }, [desktopBrowser, scheduleBoundsSync]);
 
-  // The native view is shown only when this tab is the active panel tab, has a
-  // page, and the panel is not mid-resize (it cannot clip to the animating
-  // container). It stays attached when hidden, so deactivation never reloads it.
-  const isViewVisible = isActive && hasPage && !isResizing;
+  // The native view is shown whenever this tab is the active panel tab and has a
+  // page. It is NOT hidden during a drag-resize — the overlay tracks the live
+  // bounds (see the ResizeObserver effect) so it follows the panel smoothly
+  // instead of blanking and flashing. It stays attached when hidden, so
+  // deactivation never reloads it. (Collapse/expand of the panel toggles
+  // `isActive`, which hides the view outright rather than chasing a CSS
+  // transition the overlay cannot clip to.)
+  const isViewVisible = isActive && hasPage;
   // A layout effect (pre-paint) declares visibility so showing/hiding lands in
   // the same frame as the DOM tab swap — no flash. Ordering across tabs (hide
   // the previously-visible view BEFORE showing this one) and bounds-before-show
