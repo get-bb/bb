@@ -35,6 +35,7 @@ import {
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
+import { IFRAME_POINTER_EVENTS_NONE_CLASS } from "@/lib/iframe-drag-guard";
 export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
@@ -199,7 +200,7 @@ export function ThreadSecondaryPanel({
       onFocusCapture={handlePanelFocusCapture}
       className={cn(
         "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background",
-        isSecondaryPanelResizing && "[&_iframe]:pointer-events-none",
+        isSecondaryPanelResizing && IFRAME_POINTER_EVENTS_NONE_CLASS,
         !renderAsDrawer && [
           "transition-[transform,opacity,background-color]",
           PANEL_COLLAPSE_TRANSITION_CLASS,

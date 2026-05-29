@@ -1,4 +1,10 @@
-import { Fragment, type CSSProperties, type Ref, type ReactNode } from "react";
+import {
+  Fragment,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type Ref,
+  type ReactNode,
+} from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
@@ -46,6 +52,7 @@ import {
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useStandardManagerTimelinePreference } from "@/lib/manager-timeline-view-preference";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
+import { IFRAME_POINTER_EVENTS_NONE_CLASS } from "@/lib/iframe-drag-guard";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -98,16 +105,20 @@ const sidebarOpenAtom = atomWithStorage<boolean>(
 );
 
 interface SidebarStateBridgeProps {
+  className?: string;
   providerRef: Ref<HTMLDivElement>;
   style: CSSProperties;
   children: ReactNode;
 }
+
+type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
 
 type SidebarProviderStyle = CSSProperties & {
   "--sidebar-width": string;
 };
 
 function SidebarStateBridge({
+  className,
   providerRef,
   style,
   children,
@@ -117,6 +128,8 @@ function SidebarStateBridge({
     <SidebarProvider
       ref={providerRef}
       style={style}
+      className={className}
+      data-testid="app-layout-root"
       open={open}
       onOpenChange={setOpen}
     >
@@ -133,6 +146,12 @@ function FloatingSidebarTrigger() {
       <SidebarTrigger className="h-5 w-5 rounded-md p-0" />
     </div>
   );
+}
+
+function resetSidebarResizeDocumentState(): void {
+  document.body.classList.remove("sidebar-resizing");
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
 }
 
 /**
@@ -443,7 +462,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   })();
 
   const handleResizeMouseDown = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
+    (event: SidebarResizeMouseEvent) => {
       event.preventDefault();
       setIsSidebarResizing(true);
       startXRef.current = event.clientX;
@@ -454,6 +473,20 @@ export function AppLayout({ children }: AppLayoutProps) {
     },
     [],
   );
+
+  const finishSidebarResize = useCallback(() => {
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    providerRef.current?.style.setProperty(
+      "--sidebar-width",
+      `${liveWidthRef.current}px`,
+    );
+    setSidebarWidth(liveWidthRef.current);
+    setIsSidebarResizing(false);
+    resetSidebarResizeDocumentState();
+  }, [setSidebarWidth]);
 
   useEffect(() => {
     if (!isSidebarResizing) return;
@@ -475,36 +508,28 @@ export function AppLayout({ children }: AppLayoutProps) {
       }
     };
 
-    const handleMouseUp = () => {
-      if (animationFrameRef.current !== null) {
-        window.cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        finishSidebarResize();
       }
-      providerRef.current?.style.setProperty(
-        "--sidebar-width",
-        `${liveWidthRef.current}px`,
-      );
-      setSidebarWidth(liveWidthRef.current);
-      setIsSidebarResizing(false);
-      document.body.classList.remove("sidebar-resizing");
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
     };
 
     window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("mouseup", finishSidebarResize);
+    window.addEventListener("blur", finishSidebarResize);
+    window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("mouseup", finishSidebarResize);
+      window.removeEventListener("blur", finishSidebarResize);
+      window.removeEventListener("keydown", handleKeyDown);
       if (animationFrameRef.current !== null) {
         window.cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
-      document.body.classList.remove("sidebar-resizing");
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+      resetSidebarResizeDocumentState();
     };
-  }, [isSidebarResizing, setSidebarWidth]);
+  }, [finishSidebarResize, isSidebarResizing]);
 
   useEffect(() => {
     liveWidthRef.current = sidebarWidth;
@@ -519,6 +544,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     <ProjectActionsProvider>
       <ThreadActionsProvider>
         <SidebarStateBridge
+          className={
+            isSidebarResizing ? IFRAME_POINTER_EVENTS_NONE_CLASS : undefined
+          }
           providerRef={providerRef}
           style={sidebarProviderStyle}
         >

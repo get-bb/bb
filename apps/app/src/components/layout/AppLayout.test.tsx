@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { Suspense, type ReactNode } from "react";
@@ -32,12 +33,18 @@ import {
 } from "@/lib/bb-desktop";
 
 interface RenderAppLayoutArgs {
+  children?: ReactNode;
   desktopInfo: BbDesktopApi | null;
   initialEntry: string;
 }
 
 interface TestProvidersProps {
   children: ReactNode;
+}
+
+interface SidebarResizeEndScenario {
+  name: string;
+  finishDrag: () => void;
 }
 
 const testSystemConfig: SystemConfigResponse = {
@@ -116,7 +123,7 @@ async function renderAppLayout(args: RenderAppLayoutArgs): Promise<void> {
           path="*"
           element={
             <AppLayout>
-              <div>Layout content</div>
+              {args.children ?? <div>Layout content</div>}
             </AppLayout>
           }
         />
@@ -316,4 +323,68 @@ describe("AppLayout desktop chrome", () => {
       MACOS_SIDEBAR_TRIGGER_OFFSET_CLASS,
     );
   });
+
+  it.each<SidebarResizeEndScenario>([
+    {
+      name: "mouseup",
+      finishDrag: () => {
+        fireEvent.mouseUp(window, { clientX: 360 });
+      },
+    },
+    {
+      name: "window blur",
+      finishDrag: () => {
+        fireEvent.blur(window);
+      },
+    },
+    {
+      name: "Escape",
+      finishDrag: () => {
+        fireEvent.keyDown(window, { key: "Escape" });
+      },
+    },
+  ])(
+    "disables iframe pointer events while sidebar resize is active and restores them after $name",
+    async ({ finishDrag }) => {
+      const iframePointerEventsNoneClass = "[&_iframe]:pointer-events-none";
+
+      await renderAppLayout({
+        desktopInfo: null,
+        initialEntry: "/projects/proj_sidebar_resize",
+        children: <iframe title="Status app" />,
+      });
+
+      const appLayoutRoot = await screen.findByTestId("app-layout-root");
+      const resizeHandle = screen.getByTestId("app-sidebar-resize-handle");
+      const iframe = screen.getByTitle("Status app");
+
+      expect(appLayoutRoot.contains(iframe)).toBe(true);
+      expect(appLayoutRoot.className).not.toContain(
+        iframePointerEventsNoneClass,
+      );
+
+      fireEvent.mouseDown(resizeHandle, {
+        buttons: 1,
+        clientX: 320,
+        clientY: 0,
+      });
+
+      await waitFor(() => {
+        expect(appLayoutRoot.className).toContain(
+          iframePointerEventsNoneClass,
+        );
+      });
+      expect(document.body.style.cursor).toBe("col-resize");
+
+      finishDrag();
+
+      await waitFor(() => {
+        expect(appLayoutRoot.className).not.toContain(
+          iframePointerEventsNoneClass,
+        );
+      });
+      expect(document.body.style.cursor).toBe("");
+      expect(document.body.style.userSelect).toBe("");
+    },
+  );
 });

@@ -130,6 +130,7 @@ export function AppSidebar({
           </SidebarMenu>
         </SidebarFooter>
         <div
+          data-testid="app-sidebar-resize-handle"
           className={cn(
             "absolute -right-1.5 top-0 z-30 hidden h-full w-3 cursor-col-resize md:block",
             "before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-transparent before:transition-colors hover:before:bg-sidebar-border",
