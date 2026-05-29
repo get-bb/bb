@@ -31,6 +31,8 @@ import {
 interface RenderPanelArgs {
   fileTabContent?: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
+  browserDeck?: ReactNode;
+  isBrowserTabActive?: boolean;
   renderAsDrawer?: boolean;
   isOpen?: boolean;
   isConversationCollapsed?: boolean;
@@ -128,6 +130,8 @@ function expectNoDragRegionOnElementOrAncestor(element: HTMLElement): void {
 function renderPanel({
   fileTabContent,
   fileTabs,
+  browserDeck,
+  isBrowserTabActive = false,
   renderAsDrawer = true,
   isOpen = true,
   isConversationCollapsed = false,
@@ -142,6 +146,8 @@ function renderPanel({
       environmentId={undefined}
       fileTabContent={fileTabContent}
       fileTabs={fileTabs}
+      browserDeck={browserDeck}
+      isBrowserTabActive={isBrowserTabActive}
       isOpen={isOpen}
       metadataContent={<div>Thread details</div>}
       onCollapse={noop}
@@ -347,6 +353,37 @@ describe("ThreadSecondaryPanel", () => {
     expect(resizeHandle.className).toContain("w-px");
     expect(resizeHandle.className).toContain("opacity-100");
     expect(resizeHandle.className).not.toContain("w-0");
+  });
+
+  it("renders the browser deck and suppresses the normal content slot when a browser tab is active", () => {
+    renderPanel({
+      isBrowserTabActive: true,
+      browserDeck: <div>browser deck</div>,
+      fileTabs: [
+        buildActiveFileTab({ id: "browser:a", filename: "Example", isPinned: false }),
+      ],
+      fileTabContent: <div>file tab content</div>,
+    });
+
+    expect(screen.getByText("browser deck")).not.toBeNull();
+    // The single-slot file content must not render under the deck.
+    expect(screen.queryByText("file tab content")).toBeNull();
+  });
+
+  it("keeps the browser deck mounted while a non-browser tab is active", () => {
+    renderPanel({
+      isBrowserTabActive: false,
+      browserDeck: <div>browser deck</div>,
+      fileTabs: [
+        buildActiveFileTab({ id: "app:status", filename: "Status", isPinned: true }),
+      ],
+      fileTabContent: <div>file tab content</div>,
+    });
+
+    // The deck stays in the tree (its native views survive) even though a
+    // non-browser tab owns the visible content slot.
+    expect(screen.getByText("browser deck")).not.toBeNull();
+    expect(screen.getByText("file tab content")).not.toBeNull();
   });
 
   it("folds the resize seam to zero width while the conversation is collapsed so it does not double the rail's edge", () => {

@@ -1041,6 +1041,14 @@ export function useThreadFileTabs({
     resolvedEnvironmentId,
     isManagerThread,
   });
+  // Every open browser tab in insertion order. The secondary panel keeps a live
+  // native view mounted for each one (only the active tab is shown), so the deck
+  // must see them all — not just the active tab — to avoid destroying/recreating
+  // a view on each tab switch.
+  const browserTabs = useMemo(
+    () => fixedPanelTabsState.secondary.tabs.filter(isBrowserTab),
+    [fixedPanelTabsState.secondary.tabs],
+  );
   const activeWorkspaceFileTab =
     activeTab?.kind === "workspace-file-preview" &&
     activeTab.environmentId === resolvedEnvironmentId
@@ -1073,6 +1081,7 @@ export function useThreadFileTabs({
     activeWorkspaceFilePath: activeWorkspaceFileTab?.path ?? null,
     activeWorkspaceFileSource: activeWorkspaceFileTab?.source ?? null,
     activeWorkspaceFileStatusLabel: activeWorkspaceFileTab?.statusLabel ?? null,
+    browserTabs,
     clearActiveFileTabs,
     closeAppTab,
     closeBrowserTab,

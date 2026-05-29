@@ -85,7 +85,7 @@ import {
   WorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { AppTabContent } from "@/components/secondary-panel/AppTabContent";
-import { BrowserTabContent } from "@/components/secondary-panel/BrowserTabContent";
+import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { Icon } from "@/components/ui/icon.js";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
@@ -314,6 +314,7 @@ export function ThreadDetailView() {
     activeWorkspaceFilePath,
     activeWorkspaceFileSource,
     activeWorkspaceFileStatusLabel,
+    browserTabs,
     clearActiveFileTabs,
     closeAppTab,
     closeBrowserTab,
@@ -1197,14 +1198,6 @@ export function ThreadDetailView() {
     />
   ) : activeAppId ? (
     <AppTabContent appId={activeAppId} threadId={thread.id} />
-  ) : activeBrowserTab ? (
-    <BrowserTabContent
-      key={activeBrowserTab.id}
-      tabId={activeBrowserTab.id}
-      initialUrl={activeBrowserTab.url}
-      threadId={thread.id}
-      onUpdate={updateBrowserTab}
-    />
   ) : activeWorkspaceFilePath ? (
     <WorkspaceFilePreviewTabContent
       activePath={activeWorkspaceFilePath}
@@ -1232,6 +1225,19 @@ export function ThreadDetailView() {
       threadId={thread.id}
     />
   ) : undefined;
+  // Browser tabs are not rendered through the single `fileTabContent` slot:
+  // each one keeps a live native view that must persist across tab switches, so
+  // the deck stays mounted independently of which tab is active.
+  const isBrowserTabActive = activeBrowserTab !== null;
+  const browserDeck = (
+    <BrowserTabDeck
+      browserTabs={browserTabs}
+      activeBrowserTabId={activeBrowserTab?.id ?? null}
+      isPanelOpen={isSecondaryPanelOpen}
+      threadId={thread.id}
+      onUpdate={updateBrowserTab}
+    />
+  );
 
   return (
     <>
@@ -1277,6 +1283,8 @@ export function ThreadDetailView() {
           workspaceRootPath: environment?.path,
           fileTabs,
           fileTabContent,
+          browserDeck,
+          isBrowserTabActive,
           isOpen: isSecondaryPanelOpen,
           onClose: closeSecondaryPanel,
           onCollapse: closeSecondaryPanel,

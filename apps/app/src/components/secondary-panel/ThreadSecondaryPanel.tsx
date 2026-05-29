@@ -62,6 +62,19 @@ export interface ThreadSecondaryPanelProps {
   metadataContent: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
   fileTabContent?: ReactNode;
+  /**
+   * The persistent browser-tab deck. Rendered in the content region and kept
+   * mounted across tab switches so each browser tab's native view (and page)
+   * survives deactivation; it self-manages visibility, collapsing to
+   * `display:none` when no browser tab is active. Absent on the web build / in
+   * tests with no browser tabs.
+   */
+  browserDeck?: ReactNode;
+  /**
+   * Whether the active panel tab is a browser tab. When true the deck fills the
+   * content region and the normal content slot is suppressed.
+   */
+  isBrowserTabActive?: boolean;
   isOpen: boolean;
   showGitDiffTab?: boolean;
   onPanelFocus: () => void;
@@ -111,6 +124,8 @@ export function ThreadSecondaryPanel({
   metadataContent,
   fileTabs,
   fileTabContent,
+  browserDeck,
+  isBrowserTabActive = false,
   isOpen,
   showGitDiffTab = true,
   onPanelFocus,
@@ -343,7 +358,14 @@ export function ThreadSecondaryPanel({
         ) : null}
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-        {hasActiveFileTab ? (
+        {/*
+          The browser deck stays mounted regardless of the active tab so its
+          native views survive switching away; it shows itself only when a
+          browser tab is active. The normal content slot is suppressed in that
+          case (the deck fills the region).
+        */}
+        {browserDeck}
+        {isBrowserTabActive ? null : hasActiveFileTab ? (
           <div className={cn(PANEL_SCROLL_SLOT_CLASS, "pb-3")}>
             {fileTabContent ?? (
               <p className="mx-4 rounded-lg border border-dashed border-border bg-surface-raised px-3 py-6 text-center text-sm text-muted-foreground">

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -21,11 +22,24 @@ import {
 import { useBrowserHistory } from "@/lib/browser-history";
 import { threadSecondaryPanelResizingAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
+import type { BrowserViewVisibilityCoordinator } from "./browserViewVisibilityCoordinator";
 import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 
 export interface BrowserTabContentProps {
   tabId: string;
   initialUrl: string;
+  /**
+   * Whether this browser tab is the visible, active panel tab. The native view
+   * stays attached (and its page intact) across deactivation; only its
+   * visibility follows this flag, so switching tabs never destroys/reloads it.
+   */
+  isActive: boolean;
+  /**
+   * Deck-owned coordinator that serializes view visibility so the previously
+   * shown view is always hidden before this one is shown (no two native overlays
+   * visible at once). Null on the web build, where there is no native view.
+   */
+  visibilityCoordinator: BrowserViewVisibilityCoordinator | null;
   threadId: string;
   onUpdate: (args: UpdateBrowserTabArgs) => void;
 }
@@ -175,6 +189,8 @@ function BrowserUnavailable() {
 export function BrowserTabContent({
   tabId,
   initialUrl,
+  isActive,
+  visibilityCoordinator,
   threadId,
   onUpdate,
 }: BrowserTabContentProps) {
@@ -200,8 +216,12 @@ export function BrowserTabContent({
   recordVisitRef.current = recordVisit;
   // The URL to load when the view is first created. Captured once so navigation
   // (which updates the persisted `initialUrl` prop) never re-runs the attach
-  // effect — switching to a different tab remounts via `key`, which is correct.
+  // effect — and the live view keeps its page across tab switches.
   const initialUrlRef = useRef(initialUrl);
+  // Mount-time active state, read by the create-once attach effect without
+  // re-running it when activeness later changes (the visibility effect owns that).
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
 
   const hasPage = currentUrl.length > 0;
 
@@ -217,8 +237,10 @@ export function BrowserTabContent({
   }, [desktopBrowser, tabId]);
 
   // Create the native view on mount, stream navigation state back, and tear it
-  // down on unmount. The view is destroyed (not just hidden) on unmount, so the
-  // lifecycle stays leak-free; the persisted URL re-loads the page on return.
+  // down on unmount. Because the deck keeps every open browser tab mounted, this
+  // unmounts only when the tab is CLOSED (or the panel/thread unmounts) — never
+  // on mere deactivation — so the view (and its page + scroll) survives tab
+  // switches. Destroying on unmount keeps the lifecycle leak-free.
   useEffect(() => {
     if (desktopBrowser === null) {
       return;
@@ -233,7 +255,9 @@ export function BrowserTabContent({
       tabId,
       url: mountUrl,
       bounds: initialBounds,
-      visible: mountUrl.length > 0,
+      // Only the active tab's view starts visible; background tabs attach hidden
+      // (their page still loads) until activated.
+      visible: isActiveRef.current && mountUrl.length > 0,
     });
 
     const unsubscribe = desktopBrowser.onState((nextState) => {
@@ -257,9 +281,12 @@ export function BrowserTabContent({
 
     return () => {
       unsubscribe();
+      // Forget this tab before destroying its view so a subsequent show on
+      // another tab does not try to hide a view that no longer exists.
+      visibilityCoordinator?.release(tabId);
       desktopBrowser.detach(tabId);
     };
-  }, [desktopBrowser, tabId]);
+  }, [desktopBrowser, visibilityCoordinator, tabId]);
 
   // Track the panel content rect so the native overlay stays aligned.
   useEffect(() => {
@@ -278,17 +305,25 @@ export function BrowserTabContent({
     };
   }, [desktopBrowser, syncBounds]);
 
-  // Hide the native view while the panel is being resized (it cannot clip to the
-  // animating container) and whenever the new-tab screen is showing.
-  useEffect(() => {
-    if (desktopBrowser === null) {
+  // The native view is shown only when this tab is the active panel tab, has a
+  // page, and the panel is not mid-resize (it cannot clip to the animating
+  // container). It stays attached when hidden, so deactivation never reloads it.
+  const isViewVisible = isActive && hasPage && !isResizing;
+  // A layout effect (pre-paint) declares visibility so showing/hiding lands in
+  // the same frame as the DOM tab swap — no flash. Ordering across tabs (hide
+  // the previously-visible view BEFORE showing this one) and bounds-before-show
+  // are owned by the deck's coordinator, so two native overlays never overlap
+  // regardless of the order children's effects run in.
+  useLayoutEffect(() => {
+    if (visibilityCoordinator === null) {
       return;
     }
-    desktopBrowser.setVisible({ tabId, visible: hasPage && !isResizing });
-    if (hasPage && !isResizing) {
-      syncBounds();
+    if (isViewVisible) {
+      visibilityCoordinator.show(tabId, syncBounds);
+      return;
     }
-  }, [desktopBrowser, tabId, hasPage, isResizing, syncBounds]);
+    visibilityCoordinator.hide(tabId);
+  }, [visibilityCoordinator, tabId, isViewVisible, syncBounds]);
 
   const navigateToInput = useCallback(
     (rawInput: string) => {
