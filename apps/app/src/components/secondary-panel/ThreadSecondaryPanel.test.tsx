@@ -15,6 +15,7 @@ import type {
   BbDesktopInfo,
   BbDesktopInfoChangeHandler,
 } from "@bb/server-contract";
+import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -66,6 +67,7 @@ const MACOS_DESKTOP_INFO: BbDesktopInfo = {
 function createBbDesktopApi(info: BbDesktopInfo): BbDesktopApi {
   return {
     ...info,
+    browser: createNoopDesktopBrowserApi(),
     async checkForUpdates() {
       return info;
     },

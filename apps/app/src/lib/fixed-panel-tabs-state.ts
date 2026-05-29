@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
+  BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
+} from "@bb/server-contract";
+import {
   areEnvironmentFilePreviewSourcesEqual,
   type EnvironmentFilePreviewSource,
   type HostFileTabState,
@@ -83,6 +87,14 @@ const appFixedPanelTabSchema = z
     kind: z.literal("app"),
   })
   .strict();
+const browserFixedPanelTabSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.literal("browser"),
+    title: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH).nullable(),
+    url: z.string().max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
+  })
+  .strict();
 const newTabFixedPanelTabSchema = z
   .object({
     id: z.literal(NEW_TAB_TAB_ID),
@@ -103,6 +115,7 @@ const secondaryFixedPanelTabSchema = z.discriminatedUnion("kind", [
   hostFilePreviewFixedPanelTabSchema,
   threadStorageFilePreviewFixedPanelTabSchema,
   appFixedPanelTabSchema,
+  browserFixedPanelTabSchema,
   newTabFixedPanelTabSchema,
 ]);
 const bottomFixedPanelTabSchema = z.discriminatedUnion("kind", [
@@ -186,6 +199,21 @@ export interface AppFixedPanelTab {
   kind: "app";
 }
 
+/**
+ * A web browser tab hosted by a native Electron `WebContentsView` (desktop
+ * only). `url` is the last-loaded page (empty string = the new-tab screen) and
+ * `title` is the last title pushed from the view, so the tab pill keeps its
+ * label while inactive and across reloads. Favicons are intentionally not
+ * persisted/rendered (untrusted remote URL); the pill shows a generic globe.
+ * Live loading state is not persisted — it is held by the active tab's chrome.
+ */
+export interface BrowserFixedPanelTab {
+  id: string;
+  kind: "browser";
+  title: string | null;
+  url: string;
+}
+
 export interface NewTabFixedPanelTab {
   id: typeof NEW_TAB_TAB_ID;
   kind: "new-tab";
@@ -204,6 +232,7 @@ export type SecondaryFixedPanelTab =
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
   | AppFixedPanelTab
+  | BrowserFixedPanelTab
   | NewTabFixedPanelTab;
 
 /**
@@ -216,6 +245,7 @@ export type SecondaryFileFixedPanelTab =
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
   | AppFixedPanelTab
+  | BrowserFixedPanelTab
   | NewTabFixedPanelTab;
 
 export type BottomFixedPanelTab = TerminalFixedPanelTab;
@@ -288,6 +318,10 @@ interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
 
 interface CreateAppFixedPanelTabArgs {
   appId: string;
+}
+
+interface CreateBrowserFixedPanelTabArgs {
+  url: string;
 }
 
 interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
@@ -373,6 +407,22 @@ export function createAppFixedPanelTab({
     appId,
     id: `app:${encodeURIComponent(appId)}`,
     kind: "app",
+  };
+}
+
+/**
+ * Browser tabs get a fresh unique id per instance — the URL is mutable (it
+ * changes on every navigation), so it cannot serve as a stable identity the way
+ * an app id or file path does.
+ */
+export function createBrowserFixedPanelTab({
+  url,
+}: CreateBrowserFixedPanelTabArgs): BrowserFixedPanelTab {
+  return {
+    id: `browser:${crypto.randomUUID()}`,
+    kind: "browser",
+    title: null,
+    url,
   };
 }
 
@@ -648,6 +698,8 @@ export function areFixedPanelTabsEquivalent(
       );
     case "app":
       return b.kind === "app" && a.appId === b.appId;
+    case "browser":
+      return b.kind === "browser" && a.url === b.url && a.title === b.title;
     case "thread-storage-file-preview":
       return (
         b.kind === "thread-storage-file-preview" &&

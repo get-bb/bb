@@ -1,4 +1,4 @@
-import type { BbDesktopApi } from "@bb/server-contract";
+import type { BbDesktopApi, BbDesktopBrowserApi } from "@bb/server-contract";
 
 // The macOS traffic-light cluster sits in a fixed strip on the left of the
 // frameless window. In-flow chrome clears it with left padding; the pinned
@@ -27,4 +27,18 @@ export function shouldUseMacosDesktopChrome(
   desktopInfo: BbDesktopInfoResult,
 ): boolean {
   return desktopInfo?.platform === "macos";
+}
+
+/**
+ * The desktop browser control surface, or `null` on the web build (where
+ * `window.bbDesktop` is undefined). Also tolerates a desktop build whose
+ * preload predates the browser surface. This is the single gate for the
+ * desktop-only browser tab entry and the `WebContentsView` host.
+ */
+export function getDesktopBrowserApi(): BbDesktopBrowserApi | null {
+  return getBbDesktopInfo()?.browser ?? null;
+}
+
+export function isDesktopBrowserAvailable(): boolean {
+  return getDesktopBrowserApi() !== null;
 }

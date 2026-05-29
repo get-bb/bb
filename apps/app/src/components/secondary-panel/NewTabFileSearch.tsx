@@ -21,6 +21,7 @@ import {
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import type { FileSearchSelection } from "./useThreadFileTabs";
 import { cn } from "@/lib/utils";
+import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { isPromptDraftEmpty, type PromptDraftState } from "@/lib/prompt-draft";
 
 export const CREATE_APP_PROMPT_TEMPLATE = `You are creating a new bb app for this thread.
@@ -52,6 +53,8 @@ export interface NewTabFileSearchProps {
   initialQuery?: string;
   onSelect: (selection: FileSearchSelection) => void;
   onCreateAppPromptPrefill?: CreateAppPromptPrefillHandler;
+  /** Desktop-only: open a new in-panel browser tab. Absent ⇒ no Browser entry. */
+  onOpenBrowser?: () => void;
 }
 
 interface AppResultRowProps {
@@ -83,6 +86,7 @@ interface FileSearchMessageProps {
  */
 type FileSearchSectionEntry =
   | { kind: "suggestion"; suggestion: FileSearchSuggestion }
+  | { kind: "open-browser" }
   | { kind: "create-app" };
 
 interface FileSearchSectionItem {
@@ -106,7 +110,7 @@ type SearchInputKeyDownHandler = (
 ) => void;
 type CreateAppPromptPrefillHandler = () => void;
 type FileSearchSource = FileSearchSuggestion["source"];
-type FileSearchSectionKind = "apps" | "files";
+type FileSearchSectionKind = "apps" | "open" | "files";
 
 interface GetAvailableFileSearchSourcesArgs {
   projectId: string | undefined;
@@ -117,6 +121,7 @@ interface GetAvailableFileSearchSourcesArgs {
 interface GroupFileSearchSectionsArgs {
   suggestions: readonly FileSearchSuggestion[];
   availableSources: readonly FileSearchSource[];
+  includeOpenBrowserEntry: boolean;
   includeCreateAppEntry: boolean;
 }
 
@@ -136,16 +141,29 @@ interface CreateAppTileProps {
   onSelect: () => void;
 }
 
+interface OpenBrowserTileProps {
+  id: string;
+  isActive: boolean;
+  onActivate: () => void;
+  onSelect: () => void;
+}
+
 const FILE_SEARCH_LIMIT = 20;
 const FILE_SEARCH_SECTION_ORDER: readonly FileSearchSectionKind[] = [
   "apps",
+  "open",
   "files",
 ];
 
 const FILE_SEARCH_SECTION_LABELS = {
   apps: "Apps",
+  open: "Open",
   files: "Files",
 } satisfies Record<FileSearchSectionKind, string>;
+
+// Substring-matched keywords that surface the "Open browser" action while the
+// user is searching (it is always shown when the query is empty).
+const OPEN_BROWSER_ENTRY_KEYWORDS = "open browser web url tab";
 
 const FILE_SEARCH_SOURCE_LABELS = {
   app: "App",
@@ -154,6 +172,7 @@ const FILE_SEARCH_SOURCE_LABELS = {
 } satisfies Record<FileSearchSource, string>;
 
 const CREATE_APP_ENTRY_ID = "file-search-result-create-app";
+const OPEN_BROWSER_ENTRY_ID = "file-search-result-open-browser";
 
 const SECTION_HEADER_CLASS =
   "sticky top-0 z-10 bg-background px-1 pb-2 text-xs font-medium uppercase tracking-wider text-subtle-foreground";
@@ -202,6 +221,9 @@ function getFileSearchEntryId(entry: FileSearchSectionEntry): string {
   if (entry.kind === "create-app") {
     return CREATE_APP_ENTRY_ID;
   }
+  if (entry.kind === "open-browser") {
+    return OPEN_BROWSER_ENTRY_ID;
+  }
   return getFileSearchResultId(entry.suggestion);
 }
 
@@ -231,6 +253,7 @@ function getFileSearchSectionKind(
 
 function groupFileSearchSections({
   availableSources,
+  includeOpenBrowserEntry,
   includeCreateAppEntry,
   suggestions,
 }: GroupFileSearchSectionsArgs): FileSearchSection[] {
@@ -263,11 +286,16 @@ function groupFileSearchSections({
     });
   }
 
+  // The OPEN section holds the standing actions — "Open browser" first, then
+  // "Create App…" — kept separate from the Apps results below the apps list.
+  if (includeOpenBrowserEntry) {
+    ensureSection("open").items.push({
+      entry: { kind: "open-browser" },
+      index: 0,
+    });
+  }
   if (includeCreateAppEntry) {
-    // The Create App action sits at the end of the Apps section so arrowing
-    // down through the real app rows lands on it last. The section is created
-    // even when there are no app rows so it stays reachable in the empty state.
-    ensureSection("apps").items.push({
+    ensureSection("open").items.push({
       entry: { kind: "create-app" },
       index: 0,
     });
@@ -409,6 +437,34 @@ function CreateAppTile({
   );
 }
 
+function OpenBrowserTile({
+  id,
+  isActive,
+  onActivate,
+  onSelect,
+}: OpenBrowserTileProps) {
+  return (
+    <LauncherTile
+      id={id}
+      isActive={isActive}
+      onActivate={onActivate}
+      onSelect={onSelect}
+    >
+      <span className={LAUNCHER_TILE_ICON_CLASS}>
+        <Icon name="Globe" className="size-5 text-foreground" aria-hidden />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm font-medium text-foreground">
+          Open browser
+        </span>
+        <span className="truncate text-xs text-muted-foreground">
+          Open a new web browser tab
+        </span>
+      </span>
+    </LauncherTile>
+  );
+}
+
 function FileResultRow({
   id,
   suggestion,
@@ -462,6 +518,7 @@ export function NewTabFileSearch({
   initialQuery = "",
   onSelect,
   onCreateAppPromptPrefill,
+  onOpenBrowser,
 }: NewTabFileSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState(initialQuery);
@@ -502,14 +559,23 @@ export function NewTabFileSearch({
     !isUnavailable &&
     canPrefillCreateAppPrompt &&
     (!hasQuery || hasAppSuggestions);
+  // Desktop-only: the Browser entry shows when nothing is typed or the query
+  // matches its keywords. `onOpenBrowser` is only wired on desktop, but gate on
+  // the bridge too so it never appears on the web build.
+  const showOpenBrowserEntry =
+    !isUnavailable &&
+    onOpenBrowser !== undefined &&
+    isDesktopBrowserAvailable() &&
+    (!hasQuery || OPEN_BROWSER_ENTRY_KEYWORDS.includes(trimmedQuery.toLowerCase()));
   const sections = useMemo(
     () =>
       groupFileSearchSections({
         availableSources,
+        includeOpenBrowserEntry: showOpenBrowserEntry,
         includeCreateAppEntry: showCreateAppEntry,
         suggestions,
       }),
-    [availableSources, showCreateAppEntry, suggestions],
+    [availableSources, showCreateAppEntry, showOpenBrowserEntry, suggestions],
   );
   const navigableEntries = useMemo(
     () =>
@@ -585,6 +651,10 @@ export function NewTabFileSearch({
     onCreateAppPromptPrefill?.();
   }, [canPrefillCreateAppPrompt, onCreateAppPromptPrefill, promptDraft]);
 
+  const handleOpenBrowser = useCallback(() => {
+    onOpenBrowser?.();
+  }, [onOpenBrowser]);
+
   const handleInputKeyDown = useCallback<SearchInputKeyDownHandler>(
     (event) => {
       if (navigableEntries.length === 0) {
@@ -611,12 +681,17 @@ export function NewTabFileSearch({
           handleCreateAppPromptPrefill();
           return;
         }
+        if (activeEntry.kind === "open-browser") {
+          handleOpenBrowser();
+          return;
+        }
         handleSuggestionSelect(activeEntry.suggestion);
       }
     },
     [
       activeEntry,
       handleCreateAppPromptPrefill,
+      handleOpenBrowser,
       handleSuggestionSelect,
       navigableEntries.length,
     ],
@@ -666,6 +741,7 @@ export function NewTabFileSearch({
           onActivateIndex={setActiveIndex}
           onAppSelect={handleAppSelect}
           onCreateApp={handleCreateAppPromptPrefill}
+          onOpenBrowser={handleOpenBrowser}
           onFileSelect={handleFileSelect}
           sections={sections}
         />
@@ -682,6 +758,7 @@ interface NewTabResultsProps {
   onActivateIndex: (index: number) => void;
   onAppSelect: (suggestion: AppSearchSuggestion) => void;
   onCreateApp: () => void;
+  onOpenBrowser: () => void;
   onFileSelect: (suggestion: FilePathSearchSuggestion) => void;
   sections: readonly FileSearchSection[];
 }
@@ -694,19 +771,24 @@ function NewTabResults({
   onActivateIndex,
   onAppSelect,
   onCreateApp,
+  onOpenBrowser,
   onFileSelect,
   sections,
 }: NewTabResultsProps) {
   const appsSection = sections.find((section) => section.kind === "apps");
+  const openSection = sections.find((section) => section.kind === "open");
   const filesSection = sections.find((section) => section.kind === "files");
-  // The Apps section now owns the Create App entry, so its mere presence (real
-  // app rows and/or the Create App action) is enough to render the shell.
   const showAppsSection = appsSection !== undefined;
+  const showOpenSection = openSection !== undefined;
   const showFilesSection = filesSection !== undefined;
   const showLoading = isLoading && !showFilesSection;
   const showError = isError && !showFilesSection && !showLoading;
   const showEmptyMessage =
-    !showAppsSection && !showFilesSection && !showLoading && !showError;
+    !showAppsSection &&
+    !showOpenSection &&
+    !showFilesSection &&
+    !showLoading &&
+    !showError;
 
   if (showEmptyMessage) {
     return (
@@ -734,8 +816,52 @@ function NewTabResults({
             className="flex flex-col gap-px"
           >
             {appsSection.items.map(({ entry, index }) => {
+              if (
+                entry.kind !== "suggestion" ||
+                entry.suggestion.entryKind !== "app"
+              ) {
+                return null;
+              }
+              const suggestion = entry.suggestion;
+              return (
+                <AppResultRow
+                  key={`app:${suggestion.appId}`}
+                  id={getFileSearchEntryId(entry)}
+                  suggestion={suggestion}
+                  isActive={index === activeIndex}
+                  onActivate={() => onActivateIndex(index)}
+                  onSelect={onAppSelect}
+                />
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {openSection ? (
+        <section className={cn(showAppsSection && "mt-3")}>
+          <div className={cn(SECTION_HEADER_CLASS, showAppsSection && "pt-2")}>
+            {FILE_SEARCH_SECTION_LABELS.open}
+          </div>
+          <div
+            role="listbox"
+            aria-label={FILE_SEARCH_SECTION_LABELS.open}
+            className="flex flex-col gap-px"
+          >
+            {openSection.items.map(({ entry, index }) => {
               const isActive = index === activeIndex;
               const id = getFileSearchEntryId(entry);
+              if (entry.kind === "open-browser") {
+                return (
+                  <OpenBrowserTile
+                    key="open-browser"
+                    id={id}
+                    isActive={isActive}
+                    onActivate={() => onActivateIndex(index)}
+                    onSelect={onOpenBrowser}
+                  />
+                );
+              }
               if (entry.kind === "create-app") {
                 return (
                   <CreateAppTile
@@ -747,28 +873,20 @@ function NewTabResults({
                   />
                 );
               }
-              if (entry.suggestion.entryKind !== "app") {
-                return null;
-              }
-              const suggestion = entry.suggestion;
-              return (
-                <AppResultRow
-                  key={`app:${suggestion.appId}`}
-                  id={id}
-                  suggestion={suggestion}
-                  isActive={isActive}
-                  onActivate={() => onActivateIndex(index)}
-                  onSelect={onAppSelect}
-                />
-              );
+              return null;
             })}
           </div>
         </section>
       ) : null}
 
       {showFilesSection && filesSection ? (
-        <section className={cn(showAppsSection && "mt-3")}>
-          <div className={cn(SECTION_HEADER_CLASS, showAppsSection && "pt-2")}>
+        <section className={cn((showAppsSection || showOpenSection) && "mt-3")}>
+          <div
+            className={cn(
+              SECTION_HEADER_CLASS,
+              (showAppsSection || showOpenSection) && "pt-2",
+            )}
+          >
             {FILE_SEARCH_SECTION_LABELS.files}
           </div>
           <div
@@ -798,7 +916,7 @@ function NewTabResults({
           </div>
         </section>
       ) : showLoading || showError ? (
-        <div className={cn(showAppsSection && "mt-3")}>
+        <div className={cn((showAppsSection || showOpenSection) && "mt-3")}>
           <FileSearchMessage
             iconName={showError ? "AlertCircle" : "Spinner"}
             iconClassName={showLoading ? "animate-spin" : undefined}

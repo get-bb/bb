@@ -17,6 +17,7 @@ import type {
   BbDesktopInfoChangeHandler,
   SystemConfigResponse,
 } from "@bb/server-contract";
+import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -59,6 +60,7 @@ const testSystemConfig: SystemConfigResponse = {
 function createBbDesktopApi(info: BbDesktopInfo): BbDesktopApi {
   return {
     ...info,
+    browser: createNoopDesktopBrowserApi(),
     async checkForUpdates() {
       return info;
     },

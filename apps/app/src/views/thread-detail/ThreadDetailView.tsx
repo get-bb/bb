@@ -85,7 +85,11 @@ import {
   WorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { AppTabContent } from "@/components/secondary-panel/AppTabContent";
+import { BrowserTabContent } from "@/components/secondary-panel/BrowserTabContent";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
+import { Icon } from "@/components/ui/icon.js";
+import { getDesktopBrowserApi } from "@/lib/bb-desktop";
+import { getBrowserUrlHost } from "@/lib/browser-url";
 import { ResolvedAppIcon } from "@/components/secondary-panel/AppIcon";
 import { useManagerStorageBrowser } from "@/components/secondary-panel/useManagerStorageBrowser";
 import {
@@ -296,11 +300,13 @@ export function ThreadDetailView() {
   });
   const {
     activateAppTab,
+    activateBrowserTab,
     activateNewTab,
     activateHostFileTab,
     activateStorageFileTab,
     activateWorkspaceFileTab,
     activeAppId,
+    activeBrowserTab,
     activeHostFileLineNumber,
     activeHostFilePath,
     activeStorageFilePath,
@@ -310,11 +316,13 @@ export function ThreadDetailView() {
     activeWorkspaceFileStatusLabel,
     clearActiveFileTabs,
     closeAppTab,
+    closeBrowserTab,
     closeHostFileTab,
     closeNewTab,
     closeStorageFileTab,
     closeWorkspaceFileTab,
     isNewTabActive,
+    openBrowserTab,
     openNewTab,
     openApp,
     openHostFile,
@@ -322,6 +330,7 @@ export function ThreadDetailView() {
     openWorkspaceFile,
     orderedSecondaryFileTabs,
     selectFileSearchResult,
+    updateBrowserTab,
   } = useThreadFileTabs({
     apps: threadAppsQuery.data,
     threadId,
@@ -329,6 +338,17 @@ export function ThreadDetailView() {
     threadType: thread?.type,
     storageFiles: threadStorageFiles?.files,
   });
+  // Popups (`window.open`/`target=_blank`) from a browser view open as a new
+  // in-panel browser tab; the native OS popup is denied in the main process.
+  useEffect(() => {
+    const browserApi = getDesktopBrowserApi();
+    if (browserApi === null) {
+      return;
+    }
+    return browserApi.onOpenTab(({ url }) => {
+      openBrowserTab(url);
+    });
+  }, [openBrowserTab]);
   const storageBrowserController = useManagerStorageBrowser({
     files: threadStorageFiles?.files,
     onSelectPath: openStorageFile,
@@ -571,6 +591,20 @@ export function ThreadDetailView() {
             onClose: () => closeAppTab(tab.appId),
           };
         }
+        case "browser": {
+          const browserLabel =
+            tab.title ??
+            (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "New tab");
+          return {
+            id: tab.id,
+            filename: browserLabel.length > 0 ? browserLabel : "New tab",
+            isActive: activeBrowserTab?.id === tab.id,
+            leadingVisual: <Icon name="Globe" className="size-3.5" aria-hidden />,
+            statusLabel: null,
+            onSelect: () => activateBrowserTab(tab.id),
+            onClose: () => closeBrowserTab(tab.id),
+          };
+        }
         case "workspace-file-preview":
           return {
             id: tab.id,
@@ -613,15 +647,18 @@ export function ThreadDetailView() {
     return tabs.length > 0 ? tabs : undefined;
   }, [
     activateAppTab,
+    activateBrowserTab,
     activateNewTab,
     activateHostFileTab,
     activateStorageFileTab,
     activateWorkspaceFileTab,
     activeAppId,
+    activeBrowserTab,
     activeHostFilePath,
     activeStorageFilePath,
     activeWorkspaceFilePath,
     closeAppTab,
+    closeBrowserTab,
     closeHostFileTab,
     closeNewTab,
     closeStorageFileTab,
@@ -1155,10 +1192,19 @@ export function ThreadDetailView() {
       currentThreadType={thread.type}
       focusRequest={newTabFocusRequest}
       onCreateAppPromptPrefill={handleCreateAppPromptPrefill}
+      onOpenBrowser={() => openBrowserTab()}
       onSelect={selectFileSearchResult}
     />
   ) : activeAppId ? (
     <AppTabContent appId={activeAppId} threadId={thread.id} />
+  ) : activeBrowserTab ? (
+    <BrowserTabContent
+      key={activeBrowserTab.id}
+      tabId={activeBrowserTab.id}
+      initialUrl={activeBrowserTab.url}
+      threadId={thread.id}
+      onUpdate={updateBrowserTab}
+    />
   ) : activeWorkspaceFilePath ? (
     <WorkspaceFilePreviewTabContent
       activePath={activeWorkspaceFilePath}

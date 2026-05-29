@@ -8,6 +8,7 @@ import type {
   BbDesktopInfoChangeHandler,
   BbDesktopTheme,
 } from "@bb/server-contract";
+import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
 
 interface DesktopApiStub {
   api: BbDesktopApi;
@@ -26,6 +27,7 @@ function createDesktopApiStub(): DesktopApiStub {
     version: "0.0.1",
   };
   const api: BbDesktopApi = {
+    browser: createNoopDesktopBrowserApi(),
     get lastCheckedAt() {
       return initialInfo.lastCheckedAt;
     },

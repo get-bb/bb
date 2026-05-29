@@ -7,11 +7,13 @@ import {
 import {
   areFixedPanelTabsEquivalent,
   createAppFixedPanelTab,
+  createBrowserFixedPanelTab,
   createHostFilePreviewFixedPanelTab,
   createNewTabFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
   type AppFixedPanelTab,
+  type BrowserFixedPanelTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
   type HostFilePreviewFixedPanelTab,
@@ -72,6 +74,12 @@ export type FileSearchSelection =
   | FileSearchThreadStorageSelection
   | FileSearchAppSelection;
 
+export interface UpdateBrowserTabArgs {
+  tabId: string;
+  url: string;
+  title: string | null;
+}
+
 function isWorkspaceFilePreviewTab(
   tab: FixedPanelTab,
 ): tab is WorkspaceFilePreviewFixedPanelTab {
@@ -92,6 +100,10 @@ function isStorageFilePreviewTab(
 
 function isAppTab(tab: FixedPanelTab): tab is AppFixedPanelTab {
   return tab.kind === "app";
+}
+
+function isBrowserTab(tab: FixedPanelTab): tab is BrowserFixedPanelTab {
+  return tab.kind === "browser";
 }
 
 function isNewTab(tab: FixedPanelTab): tab is NewTabFixedPanelTab {
@@ -261,6 +273,18 @@ function findAppTab(
   return null;
 }
 
+function findBrowserTab(
+  tabs: readonly FixedPanelTab[],
+  tabId: string,
+): BrowserFixedPanelTab | null {
+  for (const tab of tabs) {
+    if (isBrowserTab(tab) && tab.id === tabId) {
+      return tab;
+    }
+  }
+  return null;
+}
+
 function findNewTab(
   tabs: readonly FixedPanelTab[],
 ): NewTabFixedPanelTab | null {
@@ -347,6 +371,7 @@ function buildOrderedSecondaryFileTabs({
         break;
       case "host-file-preview":
       case "app":
+      case "browser":
       case "new-tab":
         displayable.push(tab);
         break;
@@ -754,6 +779,91 @@ export function useThreadFileTabs({
     [updateFixedPanelTabsState],
   );
 
+  // Opening a browser tab swaps the transient new-tab in place (like selecting
+  // an app); if there is no new-tab — e.g. a popup opened from another browser
+  // tab — `replaceNewTab` appends it instead. `url` is empty for the new-tab
+  // screen and set for popups.
+  const openBrowserTab = useCallback(
+    (url?: string) => {
+      const nextTab = createBrowserFixedPanelTab({ url: url ?? "" });
+      updateFixedPanelTabsState((state) => replaceNewTab({ nextTab, state }));
+    },
+    [updateFixedPanelTabsState],
+  );
+
+  const activateBrowserTab = useCallback(
+    (tabId: string) => {
+      updateFixedPanelTabsState((state) => {
+        const tab = findBrowserTab(state.secondary.tabs, tabId);
+        if (!tab) {
+          return state;
+        }
+        if (state.secondary.activeTabId === tab.id && state.secondary.isOpen) {
+          return state;
+        }
+        return setSecondaryTabs({
+          activeTabId: tab.id,
+          isOpen: true,
+          state,
+          tabs: state.secondary.tabs,
+        });
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
+  const closeBrowserTab = useCallback(
+    (tabId: string) => {
+      updateFixedPanelTabsState((state) => {
+        const tab = findBrowserTab(state.secondary.tabs, tabId);
+        if (!tab) {
+          return state;
+        }
+        const tabs = removeSecondaryTab(state.secondary.tabs, tab.id);
+        return setSecondaryTabs({
+          activeTabId:
+            state.secondary.activeTabId === tab.id
+              ? null
+              : state.secondary.activeTabId,
+          isOpen: state.secondary.isOpen,
+          state,
+          tabs,
+        });
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
+  // Persist the URL/title/favicon pushed from the live view so the tab pill and
+  // restore-on-reload stay current. `upsertSecondaryTab`'s equivalence check
+  // makes an unchanged update a no-op (no re-render / re-write).
+  const updateBrowserTab = useCallback(
+    ({ tabId, url, title }: UpdateBrowserTabArgs) => {
+      updateFixedPanelTabsState((state) => {
+        const tab = findBrowserTab(state.secondary.tabs, tabId);
+        if (!tab) {
+          return state;
+        }
+        const nextTab: BrowserFixedPanelTab = {
+          ...tab,
+          title,
+          url,
+        };
+        const tabs = upsertSecondaryTab(state.secondary.tabs, nextTab);
+        if (tabs === state.secondary.tabs) {
+          return state;
+        }
+        return setSecondaryTabs({
+          activeTabId: state.secondary.activeTabId,
+          isOpen: state.secondary.isOpen,
+          state,
+          tabs,
+        });
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
   const closeStorageFileTab = useCallback(
     (path: string) => {
       if (!isManagerThread) return;
@@ -895,7 +1005,8 @@ export function useThreadFileTabs({
         (activeTab.kind !== "workspace-file-preview" &&
           activeTab.kind !== "host-file-preview" &&
           activeTab.kind !== "thread-storage-file-preview" &&
-          activeTab.kind !== "app")
+          activeTab.kind !== "app" &&
+          activeTab.kind !== "browser")
       ) {
         return state;
       }
@@ -926,16 +1037,19 @@ export function useThreadFileTabs({
   const activeHostFileTab =
     activeTab?.kind === "host-file-preview" ? activeTab : null;
   const activeAppTab = activeTab?.kind === "app" ? activeTab : null;
+  const activeBrowserTab = activeTab?.kind === "browser" ? activeTab : null;
   const activeNewTab = activeTab?.kind === "new-tab" ? activeTab : null;
 
   return {
     orderedSecondaryFileTabs,
     activateAppTab,
+    activateBrowserTab,
     activateNewTab,
     activateHostFileTab,
     activateStorageFileTab,
     activateWorkspaceFileTab,
     activeAppId: activeAppTab?.appId ?? null,
+    activeBrowserTab,
     activeHostFileLineNumber: activeHostFileTab?.lineNumber ?? null,
     activeHostFilePath: activeHostFileTab?.path ?? null,
     activeStorageFilePath: activeStorageFileTab?.path ?? null,
@@ -945,17 +1059,20 @@ export function useThreadFileTabs({
     activeWorkspaceFileStatusLabel: activeWorkspaceFileTab?.statusLabel ?? null,
     clearActiveFileTabs,
     closeAppTab,
+    closeBrowserTab,
     closeHostFileTab,
     closeNewTab,
     closeStorageFileTab,
     closeWorkspaceFileTab,
     hasNewTab: findNewTab(fixedPanelTabsState.secondary.tabs) !== null,
     isNewTabActive: activeNewTab !== null,
+    openBrowserTab,
     openNewTab,
     openApp,
     openHostFile,
     openStorageFile,
     openWorkspaceFile,
     selectFileSearchResult,
+    updateBrowserTab,
   };
 }

@@ -897,3 +897,111 @@ describe("useThreadFileTabs", () => {
     expect(getStoredStoragePaths(readStoredState(threadId))).toEqual([]);
   });
 });
+
+describe("useThreadFileTabs — browser tabs", () => {
+  it("opens a browser tab via openBrowserTab and persists it (not transient)", () => {
+    const { result } = renderThreadFileTabsHook({
+      environmentId: "env-one",
+      threadType: "standard",
+      storageFiles: undefined,
+      threadId: "thr-browser-open",
+    });
+
+    act(() => {
+      result.current.openBrowserTab();
+    });
+
+    const tab = result.current.activeBrowserTab;
+    expect(tab).not.toBeNull();
+    expect(tab?.kind).toBe("browser");
+    expect(tab?.url).toBe("");
+
+    const browserTabs = readStoredState(
+      "thr-browser-open",
+    ).secondary.tabs.filter((entry) => entry.kind === "browser");
+    expect(browserTabs).toHaveLength(1);
+  });
+
+  it("opens a browser tab at a given URL (popup path)", () => {
+    const { result } = renderThreadFileTabsHook({
+      environmentId: "env-one",
+      threadType: "standard",
+      storageFiles: undefined,
+      threadId: "thr-browser-url",
+    });
+
+    act(() => {
+      result.current.openBrowserTab("https://example.com");
+    });
+
+    expect(result.current.activeBrowserTab?.url).toBe("https://example.com");
+  });
+
+  it("persists url/title/favicon pushed from the view via updateBrowserTab", () => {
+    const { result } = renderThreadFileTabsHook({
+      environmentId: "env-one",
+      threadType: "standard",
+      storageFiles: undefined,
+      threadId: "thr-browser-update",
+    });
+
+    act(() => {
+      result.current.openBrowserTab();
+    });
+    const opened = result.current.activeBrowserTab;
+    if (opened === null) {
+      throw new Error("expected an active browser tab");
+    }
+
+    act(() => {
+      result.current.updateBrowserTab({
+        tabId: opened.id,
+        url: "https://example.com",
+        title: "Example",
+      });
+    });
+
+    expect(result.current.activeBrowserTab?.title).toBe("Example");
+    const persisted = readStoredState(
+      "thr-browser-update",
+    ).secondary.tabs.find((entry) => entry.kind === "browser");
+    expect(persisted?.kind === "browser" ? persisted.url : null).toBe(
+      "https://example.com",
+    );
+    expect(persisted?.kind === "browser" ? persisted.title : null).toBe(
+      "Example",
+    );
+  });
+
+  it("supports multiple independent browser tabs and closes by id", () => {
+    const { result } = renderThreadFileTabsHook({
+      environmentId: "env-one",
+      threadType: "standard",
+      storageFiles: undefined,
+      threadId: "thr-browser-multi",
+    });
+
+    act(() => {
+      result.current.openBrowserTab("https://a.example");
+    });
+    const first = result.current.activeBrowserTab;
+    act(() => {
+      result.current.openBrowserTab("https://b.example");
+    });
+    const second = result.current.activeBrowserTab;
+    if (first === null || second === null) {
+      throw new Error("expected two browser tabs");
+    }
+    expect(first.id).not.toBe(second.id);
+
+    act(() => {
+      result.current.closeBrowserTab(second.id);
+    });
+
+    const ids = readStoredState("thr-browser-multi")
+      .secondary.tabs.filter((entry) => entry.kind === "browser")
+      .map((entry) => entry.id);
+    expect(ids).toContain(first.id);
+    expect(ids).not.toContain(second.id);
+  });
+});

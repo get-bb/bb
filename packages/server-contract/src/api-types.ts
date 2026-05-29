@@ -124,6 +124,13 @@ export type BbDesktopInfoChangeHandler = (info: BbDesktopInfo) => void;
 export type BbDesktopInfoUnsubscribe = () => void;
 
 export interface BbDesktopApi extends BbDesktopInfo {
+  /**
+   * Control surface for the desktop-only web browser tab. The renderer drives
+   * a hardened, isolated Electron `WebContentsView` through these methods; the
+   * web build has no `window.bbDesktop`, so this surface is desktop-only by
+   * construction.
+   */
+  browser: BbDesktopBrowserApi;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   installUpdate(): Promise<void>;
@@ -135,6 +142,149 @@ export interface BbDesktopApi extends BbDesktopInfo {
    * where `window.bbDesktop` is undefined.
    */
   setTheme(theme: BbDesktopTheme): void;
+}
+
+// --- Desktop browser surface (isolated WebContentsView host) ---
+
+/**
+ * Hard caps on attacker-influenced strings crossing the browser IPC boundary so
+ * a hostile page cannot force oversized values into IPC payloads or persisted
+ * (localStorage) tab state. The main process truncates to these before sending;
+ * the schemas reject anything longer.
+ */
+export const BB_DESKTOP_BROWSER_MAX_URL_LENGTH = 4096;
+export const BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH = 1024;
+
+/**
+ * Pixel rect (CSS px, which equal device-independent points on macOS) of the
+ * panel region the native browser view must overlay. The renderer measures the
+ * placeholder div and streams this on resize; the main process applies it
+ * verbatim via `WebContentsView.setBounds`.
+ */
+export const bbDesktopBrowserViewBoundsSchema = z
+  .object({
+    x: z.number().int(),
+    y: z.number().int(),
+    width: z.number().int().nonnegative(),
+    height: z.number().int().nonnegative(),
+  })
+  .strict();
+export type BbDesktopBrowserViewBounds = z.infer<
+  typeof bbDesktopBrowserViewBoundsSchema
+>;
+
+/**
+ * Create-or-update the view for a browser tab. `url` may be empty to mean "no
+ * page yet" (the renderer shows its new-tab screen and keeps the view hidden).
+ */
+export const bbDesktopBrowserAttachRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    url: z.string().max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
+    bounds: bbDesktopBrowserViewBoundsSchema,
+    visible: z.boolean(),
+  })
+  .strict();
+export type BbDesktopBrowserAttachRequest = z.infer<
+  typeof bbDesktopBrowserAttachRequestSchema
+>;
+
+export const bbDesktopBrowserNavigateRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    url: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
+  })
+  .strict();
+export type BbDesktopBrowserNavigateRequest = z.infer<
+  typeof bbDesktopBrowserNavigateRequestSchema
+>;
+
+export const bbDesktopBrowserSetBoundsRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    bounds: bbDesktopBrowserViewBoundsSchema,
+  })
+  .strict();
+export type BbDesktopBrowserSetBoundsRequest = z.infer<
+  typeof bbDesktopBrowserSetBoundsRequestSchema
+>;
+
+export const bbDesktopBrowserSetVisibleRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    visible: z.boolean(),
+  })
+  .strict();
+export type BbDesktopBrowserSetVisibleRequest = z.infer<
+  typeof bbDesktopBrowserSetVisibleRequestSchema
+>;
+
+/** Ref for tab-scoped commands with no other payload (detach/back/forward/reload/stop). */
+export const bbDesktopBrowserTabRefSchema = z
+  .object({
+    tabId: z.string().min(1),
+  })
+  .strict();
+export type BbDesktopBrowserTabRef = z.infer<
+  typeof bbDesktopBrowserTabRefSchema
+>;
+
+/**
+ * Current navigation state of a browser view, pushed main → renderer on every
+ * relevant `webContents` event. A snapshot of live state — never a queue ladder.
+ */
+export const bbDesktopBrowserStateSchema = z
+  .object({
+    tabId: z.string().min(1),
+    url: z.string().max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
+    title: z.string().max(BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH).nullable(),
+    isLoading: z.boolean(),
+    canGoBack: z.boolean(),
+    canGoForward: z.boolean(),
+    errorText: z.string().max(BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH).nullable(),
+  })
+  .strict();
+export type BbDesktopBrowserState = z.infer<typeof bbDesktopBrowserStateSchema>;
+
+/**
+ * Request from main → renderer to open a popup (`window.open`/`target=_blank`)
+ * as a new in-panel browser tab. The native OS popup window is always denied.
+ */
+export const bbDesktopBrowserOpenTabRequestSchema = z
+  .object({
+    url: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
+  })
+  .strict();
+export type BbDesktopBrowserOpenTabRequest = z.infer<
+  typeof bbDesktopBrowserOpenTabRequestSchema
+>;
+
+export type BbDesktopBrowserStateHandler = (
+  state: BbDesktopBrowserState,
+) => void;
+export type BbDesktopBrowserOpenTabHandler = (
+  request: BbDesktopBrowserOpenTabRequest,
+) => void;
+export type BbDesktopBrowserUnsubscribe = () => void;
+
+export interface BbDesktopBrowserApi {
+  /** Create (or reuse) and show the view for `tabId`, loading `url` if non-empty. */
+  attach(request: BbDesktopBrowserAttachRequest): void;
+  /** Destroy the view for `tabId` (tears down its `webContents`). */
+  detach(tabId: string): void;
+  navigate(request: BbDesktopBrowserNavigateRequest): void;
+  goBack(tabId: string): void;
+  goForward(tabId: string): void;
+  reload(tabId: string): void;
+  stop(tabId: string): void;
+  setBounds(request: BbDesktopBrowserSetBoundsRequest): void;
+  setVisible(request: BbDesktopBrowserSetVisibleRequest): void;
+  /** Subscribe to navigation-state pushes for every view in this window. */
+  onState(listener: BbDesktopBrowserStateHandler): BbDesktopBrowserUnsubscribe;
+  /** Subscribe to popup requests that should open as a new in-panel browser tab. */
+  onOpenTab(
+    listener: BbDesktopBrowserOpenTabHandler,
+  ): BbDesktopBrowserUnsubscribe;
 }
 
 // --- Thread creation: environment + workspace discriminated unions ---

@@ -9,6 +9,7 @@ import type {
   BbDesktopInfoChangeHandler,
   SystemVersionResponse,
 } from "@bb/server-contract";
+import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 
 interface CapturedToastButton {
@@ -170,6 +171,7 @@ function createDesktopApiStub(initialInfo: BbDesktopInfo): DesktopApiStub {
   let installUpdateCalls = 0;
   const listeners = new Set<BbDesktopInfoChangeHandler>();
   const api: BbDesktopApi = {
+    browser: createNoopDesktopBrowserApi(),
     get lastCheckedAt() {
       return currentInfo.lastCheckedAt;
     },

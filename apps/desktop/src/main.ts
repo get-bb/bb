@@ -13,7 +13,15 @@ import {
   type Event,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import { bbDesktopThemeSchema, type BbDesktopInfo } from "@bb/server-contract";
+import {
+  bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserNavigateRequestSchema,
+  bbDesktopBrowserSetBoundsRequestSchema,
+  bbDesktopBrowserSetVisibleRequestSchema,
+  bbDesktopBrowserTabRefSchema,
+  bbDesktopThemeSchema,
+  type BbDesktopInfo,
+} from "@bb/server-contract";
 import { z } from "zod";
 import {
   assertPathExists,
@@ -68,6 +76,21 @@ import {
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
+import {
+  BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+  BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
+  BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
+  BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
+  BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
+  BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
+  BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
+  BB_DESKTOP_BROWSER_STOP_CHANNEL,
+} from "./desktop-browser-ipc.js";
+import {
+  createDesktopBrowserViewManager,
+  type DesktopBrowserViewManager,
+} from "./desktop-browser-view.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
 import { clearPackagedSessionHttpCache } from "./desktop-session-cache.js";
 import {
@@ -187,6 +210,7 @@ const logViewerCopyRequestSchema = z
   .strict();
 
 let desktopWindowFactory: DesktopWindowFactory | null = null;
+let desktopBrowserViewManager: DesktopBrowserViewManager | null = null;
 let desktopUpdateService: DesktopUpdateService | null = null;
 let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
 let currentRuntime: DesktopRuntime | null = null;
@@ -630,6 +654,7 @@ function handleBeforeQuit(event: Event): void {
 async function finishQuit(): Promise<void> {
   desktopUpdateService?.stop();
   desktopAutoUpdateService?.stop();
+  desktopBrowserViewManager?.destroyAll();
   await desktopWindowFactory?.persistOpenWindows();
   await stopOwnedRuntime();
 }
@@ -669,6 +694,104 @@ function registerDesktopUpdateIpc(): void {
     }
     nativeTheme.themeSource = parsed.data;
   });
+}
+
+interface DesktopBrowserTabCommandArgs {
+  hostWindow: BrowserWindow;
+  tabId: string;
+}
+
+function registerDesktopBrowserIpc(manager: DesktopBrowserViewManager): void {
+  // Every browser command is renderer → main fire-and-forget; navigation state
+  // flows back over `BB_DESKTOP_BROWSER_STATE_CHANNEL`. Each handler resolves
+  // its own host window from the sender, so multi-window is safe, and zod-parses
+  // the (untrusted-content-adjacent) payload before touching the view.
+  const registerTabCommand = (
+    channel: string,
+    run: (args: DesktopBrowserTabCommandArgs) => void,
+  ): void => {
+    ipcMain.on(channel, (event, payload: unknown) => {
+      const hostWindow = BrowserWindow.fromWebContents(event.sender);
+      if (hostWindow === null) {
+        return;
+      }
+      const parsed = bbDesktopBrowserTabRefSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      run({ hostWindow, tabId: parsed.data.tabId });
+    });
+  };
+
+  ipcMain.on(BB_DESKTOP_BROWSER_ATTACH_CHANNEL, (event, payload: unknown) => {
+    const hostWindow = BrowserWindow.fromWebContents(event.sender);
+    if (hostWindow === null) {
+      return;
+    }
+    const parsed = bbDesktopBrowserAttachRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    manager.attach({ hostWindow, request: parsed.data });
+  });
+
+  ipcMain.on(BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL, (event, payload: unknown) => {
+    const hostWindow = BrowserWindow.fromWebContents(event.sender);
+    if (hostWindow === null) {
+      return;
+    }
+    const parsed = bbDesktopBrowserNavigateRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    manager.navigate({ hostWindow, request: parsed.data });
+  });
+
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = BrowserWindow.fromWebContents(event.sender);
+      if (hostWindow === null) {
+        return;
+      }
+      const parsed = bbDesktopBrowserSetBoundsRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      manager.setBounds({ hostWindow, request: parsed.data });
+    },
+  );
+
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = BrowserWindow.fromWebContents(event.sender);
+      if (hostWindow === null) {
+        return;
+      }
+      const parsed = bbDesktopBrowserSetVisibleRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      manager.setVisible({ hostWindow, request: parsed.data });
+    },
+  );
+
+  registerTabCommand(BB_DESKTOP_BROWSER_DETACH_CHANNEL, (args) =>
+    manager.detach(args),
+  );
+  registerTabCommand(BB_DESKTOP_BROWSER_GO_BACK_CHANNEL, (args) =>
+    manager.goBack(args),
+  );
+  registerTabCommand(BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL, (args) =>
+    manager.goForward(args),
+  );
+  registerTabCommand(BB_DESKTOP_BROWSER_RELOAD_CHANNEL, (args) =>
+    manager.reload(args),
+  );
+  registerTabCommand(BB_DESKTOP_BROWSER_STOP_CHANNEL, (args) =>
+    manager.stop(args),
+  );
 }
 
 async function startOwnedRuntime(
@@ -837,6 +960,12 @@ async function runDesktopApp(): Promise<void> {
     void desktopUpdateService?.checkAfterActive();
     void desktopAutoUpdateService?.checkAfterActive();
   });
+  app.on("browser-window-created", (_event, browserWindow) => {
+    const hostWebContentsId = browserWindow.webContents.id;
+    browserWindow.once("closed", () => {
+      desktopBrowserViewManager?.releaseWindow(hostWebContentsId);
+    });
+  });
   registerDesktopShutdownSignalHandlers({
     exitProcess(code) {
       process.exitCode = code;
@@ -918,6 +1047,8 @@ async function runDesktopApp(): Promise<void> {
     sendDesktopInfoChanged();
   });
   registerDesktopUpdateIpc();
+  desktopBrowserViewManager = createDesktopBrowserViewManager();
+  registerDesktopBrowserIpc(desktopBrowserViewManager);
   desktopUpdateService.start();
   desktopAutoUpdateService.start();
 

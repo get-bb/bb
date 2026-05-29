@@ -1,7 +1,13 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
+  bbDesktopBrowserOpenTabRequestSchema,
+  bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
   type BbDesktopApi,
+  type BbDesktopBrowserApi,
+  type BbDesktopBrowserOpenTabHandler,
+  type BbDesktopBrowserStateHandler,
+  type BbDesktopBrowserUnsubscribe,
   type BbDesktopInfo,
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,
@@ -14,6 +20,19 @@ import {
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
+import {
+  BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+  BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
+  BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
+  BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
+  BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
+  BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
+  BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
+  BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
+  BB_DESKTOP_BROWSER_STATE_CHANNEL,
+  BB_DESKTOP_BROWSER_STOP_CHANNEL,
+} from "./desktop-browser-ipc.js";
 
 function getDesktopVersion(version: string | undefined): string {
   if (version === undefined || version.length === 0) {
@@ -70,7 +89,53 @@ async function invokeInstallUpdate(): Promise<void> {
   }
 }
 
+const browserStateListeners = new Set<BbDesktopBrowserStateHandler>();
+const browserOpenTabListeners = new Set<BbDesktopBrowserOpenTabHandler>();
+
+const bbBrowserApi: BbDesktopBrowserApi = {
+  attach(request): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_ATTACH_CHANNEL, request);
+  },
+  detach(tabId): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_DETACH_CHANNEL, { tabId });
+  },
+  navigate(request): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL, request);
+  },
+  goBack(tabId): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_GO_BACK_CHANNEL, { tabId });
+  },
+  goForward(tabId): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL, { tabId });
+  },
+  reload(tabId): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_RELOAD_CHANNEL, { tabId });
+  },
+  stop(tabId): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_STOP_CHANNEL, { tabId });
+  },
+  setBounds(request): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL, request);
+  },
+  setVisible(request): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL, request);
+  },
+  onState(listener): BbDesktopBrowserUnsubscribe {
+    browserStateListeners.add(listener);
+    return () => {
+      browserStateListeners.delete(listener);
+    };
+  },
+  onOpenTab(listener): BbDesktopBrowserUnsubscribe {
+    browserOpenTabListeners.add(listener);
+    return () => {
+      browserOpenTabListeners.delete(listener);
+    };
+  },
+};
+
 const bbDesktopApi: BbDesktopApi = {
+  browser: bbBrowserApi,
   get lastCheckedAt() {
     return currentInfo.lastCheckedAt;
   },
@@ -111,6 +176,29 @@ const bbDesktopApi: BbDesktopApi = {
 ipcRenderer.on(BB_DESKTOP_INFO_CHANGED_CHANNEL, (_event, payload: unknown) => {
   applyDesktopInfoPayload(payload);
 });
+
+ipcRenderer.on(BB_DESKTOP_BROWSER_STATE_CHANNEL, (_event, payload: unknown) => {
+  const parsed = bbDesktopBrowserStateSchema.safeParse(payload);
+  if (!parsed.success) {
+    return;
+  }
+  for (const listener of browserStateListeners) {
+    listener(parsed.data);
+  }
+});
+
+ipcRenderer.on(
+  BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
+  (_event, payload: unknown) => {
+    const parsed = bbDesktopBrowserOpenTabRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    for (const listener of browserOpenTabListeners) {
+      listener(parsed.data);
+    }
+  },
+);
 
 void invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
 

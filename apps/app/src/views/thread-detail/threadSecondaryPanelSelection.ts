@@ -57,6 +57,7 @@ function getSecondaryPanelForFixedTab(
     case "host-file-preview":
     case "thread-storage-file-preview":
     case "app":
+    case "browser":
     case "new-tab":
       return "thread-info";
     case "terminal":
