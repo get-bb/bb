@@ -60,6 +60,9 @@ describe("ThreadDetailHeader panel toggle chevron", () => {
 
     const button = screen.getByRole("button", { name: "Show panel" });
     expect(button.getAttribute("aria-expanded")).toBe("false");
+    // Closed state renders the recognizable panel icon, not a chevron, so it
+    // reads as "open the right side panel".
+    expect(button.querySelector("[data-icon='PanelRight']")).not.toBeNull();
 
     fireEvent.click(button);
     expect(onToggleSecondaryPanel).toHaveBeenCalledTimes(1);
@@ -78,6 +81,9 @@ describe("ThreadDetailHeader panel toggle chevron", () => {
 
     const button = screen.getByRole("button", { name: "Expand panel" });
     expect(button.getAttribute("aria-expanded")).toBe("true");
+    // Open + conversation shown keeps the directional chevron (this collapses
+    // the conversation — a different action from opening the panel).
+    expect(button.querySelector("[data-icon='ChevronLeft']")).not.toBeNull();
 
     fireEvent.click(button);
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);

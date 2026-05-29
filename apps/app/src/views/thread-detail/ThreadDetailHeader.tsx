@@ -60,11 +60,12 @@ export function ThreadDetailHeader({
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
   const renderAsDrawer = useIsCompactViewport();
 
-  // The header chevron unifies what used to be a separate "Show panel" header
-  // button and a centered seam arrow into one directional affordance whose
-  // copy/handler flips with state — see resolvePanelToggleControl. Only
-  // rendered on a wide viewport; the drawer layout uses a simple open/close
-  // toggle below.
+  // One header button unifies what used to be a separate "Show panel" header
+  // button and a centered seam arrow; its icon, copy, and handler flip with
+  // state — see resolvePanelToggleControl. Closed shows the PanelRight icon
+  // (read as "open the side panel"); open/collapsed show a directional chevron.
+  // Only rendered on a wide viewport; the drawer layout uses a simple
+  // open/close toggle below.
   const panelToggle = resolvePanelToggleControl({
     isSecondaryPanelOpen,
     isConversationCollapsed,
@@ -146,9 +147,7 @@ export function ThreadDetailHeader({
           title={panelToggle.label}
           onClick={panelToggle.onClick}
         >
-          <Icon
-            name={panelToggle.pointsRight ? "ChevronRight" : "ChevronLeft"}
-          />
+          <Icon name={panelToggle.iconName} />
         </Button>
       ) : null}
       {actionsMenu}

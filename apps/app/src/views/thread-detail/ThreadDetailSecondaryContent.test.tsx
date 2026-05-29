@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
   forwardRef,
   useState,
@@ -376,7 +370,7 @@ describe("ThreadDetailSecondaryContent conversation collapse", () => {
     expect(pane.hasAttribute("inert")).toBe(true);
   });
 
-  it("renders the slim conversation rail with its vertical label when collapsed", () => {
+  it("renders the slim conversation rail with its chat glyph when collapsed", () => {
     render(
       <ThreadDetailSecondaryContent
         {...buildSecondaryContentProps({
@@ -388,8 +382,8 @@ describe("ThreadDetailSecondaryContent conversation collapse", () => {
 
     const rail = screen.getByRole("button", { name: "Expand conversation" });
     expect(rail.getAttribute("aria-expanded")).toBe("false");
-    // The vertical "Conversation" label is the rail's signature element.
-    expect(within(rail).getByText("Conversation")).not.toBeNull();
+    // The chat glyph stands in for the conversation as the rail's signature element.
+    expect(rail.querySelector("[data-icon='MessageSquare']")).not.toBeNull();
   });
 
   it("expands the conversation when the rail is clicked", () => {

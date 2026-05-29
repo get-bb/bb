@@ -15,7 +15,7 @@ describe("resolvePanelToggleControl", () => {
     expect(state.action).toBe("show-panel");
     expect(state.label).toBe("Show panel");
     expect(state.isExpanded).toBe(false);
-    expect(state.pointsRight).toBe(false);
+    expect(state.iconName).toBe("PanelRight");
 
     state.onClick();
     expect(onToggleSecondaryPanel).toHaveBeenCalledTimes(1);
@@ -35,7 +35,7 @@ describe("resolvePanelToggleControl", () => {
     expect(state.action).toBe("expand-panel");
     expect(state.label).toBe("Expand panel");
     expect(state.isExpanded).toBe(true);
-    expect(state.pointsRight).toBe(false);
+    expect(state.iconName).toBe("ChevronLeft");
 
     state.onClick();
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
@@ -55,7 +55,7 @@ describe("resolvePanelToggleControl", () => {
     expect(state.action).toBe("expand-conversation");
     expect(state.label).toBe("Expand conversation");
     expect(state.isExpanded).toBe(false);
-    expect(state.pointsRight).toBe(true);
+    expect(state.iconName).toBe("ChevronRight");
 
     state.onClick();
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
