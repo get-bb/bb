@@ -31,6 +31,7 @@ import {
   type ThreadMetadataContentProps,
 } from "@/components/secondary-panel/ThreadMetadataContent";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
+import { ConversationCollapsedRail } from "@/components/secondary-panel/ConversationCollapsedRail";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 
 const CLOSED_TIMELINE_PANEL_SIZE_PERCENT = 100;
@@ -90,6 +91,8 @@ export function ThreadDetailSecondaryContent({
   const canCollapseConversation = isSecondaryPanelOpen && !renderAsDrawer;
   const isConversationCollapsedActive =
     canCollapseConversation && isConversationCollapsed;
+  // Real, in-scope activity signal for the collapsed rail: the agent is running.
+  const isConversationWorking = timeline.threadRuntimeDisplayStatus === "active";
 
   const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
     null,
@@ -230,50 +233,66 @@ export function ThreadDetailSecondaryContent({
           order={1}
           className="min-w-0 overflow-hidden"
         >
-          <PanelGroup
-            ref={horizontalPanelGroupRef}
-            direction="horizontal"
-            className="h-full w-full min-w-0"
-          >
-            <Panel
-              id="thread-detail-timeline-panel"
-              collapsible
-              collapsedSize={COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT}
-              defaultSize={
-                isConversationCollapsedActive
-                  ? COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT
-                  : isSecondaryPanelOpen && !renderAsDrawer
-                    ? 100 - persistedSecondaryWidthPercent
-                    : CLOSED_TIMELINE_PANEL_SIZE_PERCENT
-              }
-              minSize={TIMELINE_PANEL_MIN_SIZE_PERCENT}
-              order={1}
-              className={cn(
-                "min-w-0 overflow-hidden transition-[flex-grow,flex-basis]",
-                PANEL_COLLAPSE_TRANSITION_CLASS,
-              )}
+          {/*
+            When collapsed we keep the resizable PanelGroup mounted (the timeline
+            lifts to 0% and the panel to 100% via the layout effect) and slot the
+            48px rail in beside it as a plain flex sibling. This sidesteps the
+            "fixed px in a percentage engine" problem the same way a layout swap
+            would, but without unmounting the PanelGroup — so the secondary
+            panel's content (live app iframes, parsed diffs, scroll position) is
+            never torn down and re-created when toggling collapse.
+          */}
+          <div className="flex h-full w-full min-w-0">
+            <ConversationCollapsedRail
+              collapsed={isConversationCollapsedActive}
+              isWorking={isConversationWorking}
+              onExpand={onToggleConversationCollapse}
+            />
+            <PanelGroup
+              ref={horizontalPanelGroupRef}
+              direction="horizontal"
+              className="h-full min-w-0 flex-1"
             >
-              <div
-                data-conversation-collapsed={isConversationCollapsedActive}
-                // `inert` removes the hidden conversation (header, timeline,
-                // composer) from the tab order and a11y tree and blocks pointer
-                // events, so keyboard focus can't land in the invisible pane.
-                inert={isConversationCollapsedActive}
+              <Panel
+                id="thread-detail-timeline-panel"
+                collapsible
+                collapsedSize={COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT}
+                defaultSize={
+                  isConversationCollapsedActive
+                    ? COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT
+                    : isSecondaryPanelOpen && !renderAsDrawer
+                      ? 100 - persistedSecondaryWidthPercent
+                      : CLOSED_TIMELINE_PANEL_SIZE_PERCENT
+                }
+                minSize={TIMELINE_PANEL_MIN_SIZE_PERCENT}
+                order={1}
                 className={cn(
-                  "flex h-full min-h-0 min-w-0 flex-col transition-opacity",
+                  "min-w-0 overflow-hidden transition-[flex-grow,flex-basis]",
                   PANEL_COLLAPSE_TRANSITION_CLASS,
-                  isConversationCollapsedActive && "opacity-0",
                 )}
               >
-                <ThreadTimelinePane
-                  {...timeline}
-                  footer={footer}
-                  header={header}
-                />
-              </div>
-            </Panel>
-            {inlineSecondaryPanelContent}
-          </PanelGroup>
+                <div
+                  data-conversation-collapsed={isConversationCollapsedActive}
+                  // `inert` removes the hidden conversation (header, timeline,
+                  // composer) from the tab order and a11y tree and blocks pointer
+                  // events, so keyboard focus can't land in the invisible pane.
+                  inert={isConversationCollapsedActive}
+                  className={cn(
+                    "flex h-full min-h-0 min-w-0 flex-col transition-opacity",
+                    PANEL_COLLAPSE_TRANSITION_CLASS,
+                    isConversationCollapsedActive && "opacity-0",
+                  )}
+                >
+                  <ThreadTimelinePane
+                    {...timeline}
+                    footer={footer}
+                    header={header}
+                  />
+                </div>
+              </Panel>
+              {inlineSecondaryPanelContent}
+            </PanelGroup>
+          </div>
         </Panel>
         {terminalPanel ? (
           <>

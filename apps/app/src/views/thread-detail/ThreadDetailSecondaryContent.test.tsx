@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import {
   forwardRef,
   useState,
@@ -412,6 +418,42 @@ describe("ThreadDetailSecondaryContent conversation collapse", () => {
       ),
     ).toBe("false");
     expect(getConversationPane(container).hasAttribute("inert")).toBe(false);
+  });
+
+  it("renders the slim conversation rail with its vertical label when collapsed", () => {
+    render(
+      <ThreadDetailSecondaryContent
+        {...buildSecondaryContentProps({
+          isSecondaryPanelOpen: true,
+          isConversationCollapsed: true,
+        })}
+      />,
+    );
+
+    const rail = screen.getByRole("button", { name: "Expand conversation" });
+    expect(rail.getAttribute("aria-expanded")).toBe("false");
+    // The vertical "Conversation" label is the rail's signature element.
+    expect(within(rail).getByText("Conversation")).not.toBeNull();
+  });
+
+  it("expands the conversation when the rail is clicked", () => {
+    const { container } = render(
+      <ConversationCollapseHarness initialCollapsed isSecondaryPanelOpen />,
+    );
+
+    expect(getConversationPane(container).hasAttribute("inert")).toBe(true);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand conversation" }),
+    );
+
+    const pane = getConversationPane(container);
+    expect(pane.getAttribute("data-conversation-collapsed")).toBe("false");
+    expect(pane.hasAttribute("inert")).toBe(false);
+    // Once the conversation is shown again, the rail drops out of the a11y tree.
+    expect(
+      screen.queryByRole("button", { name: "Expand conversation" }),
+    ).toBeNull();
   });
 
   it("does not collapse and offers no toggle while the secondary panel is closed", () => {
