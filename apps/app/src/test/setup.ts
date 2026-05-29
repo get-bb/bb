@@ -3,11 +3,13 @@
 /**
  * Shared vitest setup.
  *
- * jsdom doesn't implement `window.matchMedia`, `ResizeObserver`, or
- * `IntersectionObserver`. Several of our hooks and detail blocks
- * (`useMediaQuery`, `useHoverPopover`, `ToolCallDetailBlock` overflow probe,
- * `GitDiffCard` sticky-header sentinel) reach for them during mount; without
- * polyfills they throw in every test that indirectly renders such a component.
+ * jsdom doesn't implement `window.matchMedia`, `ResizeObserver`,
+ * `IntersectionObserver`, or `Element.scrollIntoView`. Several of our hooks and
+ * detail blocks (`useMediaQuery`, `useHoverPopover`, `ToolCallDetailBlock`
+ * overflow probe, `GitDiffCard` sticky-header sentinel,
+ * `SecondaryPanelTabStrip` active-tab auto-scroll) reach for them during mount;
+ * without polyfills they throw in every test that indirectly renders such a
+ * component.
  */
 if (typeof window !== "undefined" && typeof jsdom !== "undefined") {
   /**
@@ -44,6 +46,13 @@ if (typeof window !== "undefined" && !window.ResizeObserver) {
     unobserve() {}
     disconnect() {}
   };
+}
+
+if (
+  typeof Element !== "undefined" &&
+  typeof Element.prototype.scrollIntoView !== "function"
+) {
+  Element.prototype.scrollIntoView = function scrollIntoViewPolyfill() {};
 }
 
 if (typeof window !== "undefined" && !window.IntersectionObserver) {

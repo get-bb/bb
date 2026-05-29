@@ -7,12 +7,12 @@ import {
 } from "react";
 import { useAtomValue } from "jotai";
 import { Icon } from "@/components/ui/icon.js";
-import { TabPill } from "@/components/ui/tab-pill";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/lib/utils";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
-import type { WorkspaceFilePreviewStatusLabel } from "@/lib/file-preview";
+import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
+import type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
 import { usePreferredTheme } from "@/hooks/useTheme";
@@ -40,6 +40,7 @@ export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
 } from "./GitDiffToolbar";
+export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 
 const THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT = 24;
 const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
@@ -51,17 +52,6 @@ const PANEL_SCROLL_SLOT_CLASS =
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
   pointerEvents: "auto",
 };
-
-export interface SecondaryPanelFileTab {
-  id: string;
-  filename: string;
-  isActive: boolean;
-  isPinned?: boolean;
-  leadingVisual?: ReactNode;
-  statusLabel: WorkspaceFilePreviewStatusLabel | null;
-  onSelect: () => void;
-  onClose: () => void;
-}
 
 export interface ThreadSecondaryPanelProps {
   activePanel: ThreadSecondaryPanelTab | null;
@@ -266,19 +256,10 @@ export function ThreadSecondaryPanel({
               </Button>
             ) : null}
             {fileTabs && fileTabs.length > 0 ? (
-              <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
-                {fileTabs.map((tab) => (
-                  <div
-                    key={tab.id}
-                    className={cn(
-                      "shrink-0",
-                      usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-                    )}
-                  >
-                    <FileTab tab={tab} />
-                  </div>
-                ))}
-              </div>
+              <SecondaryPanelTabStrip
+                fileTabs={fileTabs}
+                usesDesktopChrome={usesDesktopChrome}
+              />
             ) : null}
             <NewTabButton
               onOpenNewTab={onOpenNewTab}
@@ -427,33 +408,6 @@ function NewTabButton({ onOpenNewTab, usesDesktopChrome }: NewTabButtonProps) {
     >
       <Icon name="Plus" />
     </Button>
-  );
-}
-
-function FileTab({ tab }: { tab: SecondaryPanelFileTab }) {
-  const title =
-    tab.statusLabel === null
-      ? tab.filename
-      : `${tab.filename} (${tab.statusLabel})`;
-  return (
-    <TabPill
-      label={tab.filename}
-      leadingVisual={tab.leadingVisual}
-      secondaryLabel={tab.statusLabel === null ? null : `(${tab.statusLabel})`}
-      title={title}
-      isActive={tab.isActive}
-      onSelect={tab.onSelect}
-      labelMaxWidthClass="max-w-[160px]"
-      closeAction={
-        tab.isPinned
-          ? null
-          : {
-              onClose: tab.onClose,
-              closeLabel: `Close ${tab.filename}`,
-              closeTooltip: "Close tab",
-            }
-      }
-    />
   );
 }
 

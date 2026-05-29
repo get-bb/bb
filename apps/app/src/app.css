@@ -117,9 +117,23 @@
    * toast in the stack.
    */
   :where(
-      [data-sonner-toast].bb-app-toast[data-expanded="false"][data-front="false"]
-    ) {
+    [data-sonner-toast].bb-app-toast[data-expanded="false"][data-front="false"]
+  ) {
     overflow: hidden;
     border-radius: var(--radius-md);
+  }
+
+  /*
+   * Opt out of the global thin scrollbar for horizontally-scrolling strips
+   * (e.g. the secondary-panel tab strip) where the scrollbar would clutter a
+   * short row. The element still scrolls; only the scrollbar chrome is hidden.
+   */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
