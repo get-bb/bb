@@ -216,7 +216,7 @@ export function ThreadDetailSecondaryContent({
       {...secondaryPanel}
       renderAsDrawer={false}
       isConversationCollapsed={isConversationCollapsedActive}
-      // Panel is leftmost only when the rail (48px) is the only thing between
+      // Panel is leftmost only when the rail (36px) is the only thing between
       // it and the window edge — i.e. the conversation is also collapsed.
       reserveLeftForDesktopTrafficLights={
         isLeftmostSurfaceUnderTrafficLights && isConversationCollapsedActive
@@ -255,7 +255,7 @@ export function ThreadDetailSecondaryContent({
           {/*
             When collapsed we keep the resizable PanelGroup mounted (the timeline
             lifts to 0% and the panel to 100% via the layout effect) and slot the
-            48px rail in beside it as a plain flex sibling. This sidesteps the
+            36px rail in beside it as a plain flex sibling. This sidesteps the
             "fixed px in a percentage engine" problem the same way a layout swap
             would, but without unmounting the PanelGroup — so the secondary
             panel's content (live app iframes, parsed diffs, scroll position) is

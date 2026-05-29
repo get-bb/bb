@@ -32,6 +32,7 @@ interface RenderPanelArgs {
   fileTabs?: SecondaryPanelFileTab[];
   renderAsDrawer?: boolean;
   isOpen?: boolean;
+  isConversationCollapsed?: boolean;
   reserveLeftForDesktopTrafficLights?: boolean;
 }
 
@@ -127,6 +128,7 @@ function renderPanel({
   fileTabs,
   renderAsDrawer = true,
   isOpen = true,
+  isConversationCollapsed = false,
   reserveLeftForDesktopTrafficLights = false,
 }: RenderPanelArgs) {
   const { wrapper } = createQueryClientTestHarness();
@@ -144,7 +146,7 @@ function renderPanel({
       onOpenNewTab={noop}
       onPanelChange={noop}
       onPanelFocus={noop}
-      isConversationCollapsed={false}
+      isConversationCollapsed={isConversationCollapsed}
       reserveLeftForDesktopTrafficLights={reserveLeftForDesktopTrafficLights}
       renderAsDrawer={renderAsDrawer}
       showGitDiffTab={false}
@@ -326,5 +328,31 @@ describe("ThreadSecondaryPanel", () => {
     expect(topChrome.className).not.toContain(
       MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
     );
+  });
+
+  it("shows the resize seam hairline while the conversation is expanded", () => {
+    renderPanel({ renderAsDrawer: false, isConversationCollapsed: false });
+
+    const resizeHandle = screen.getByLabelText(
+      "Resize thread and secondary panels",
+    );
+    expect(resizeHandle.className).toContain("w-px");
+    expect(resizeHandle.className).toContain("opacity-100");
+    expect(resizeHandle.className).not.toContain("w-0");
+  });
+
+  it("folds the resize seam to zero width while the conversation is collapsed so it does not double the rail's edge", () => {
+    renderPanel({ renderAsDrawer: false, isConversationCollapsed: true });
+
+    const resizeHandle = screen.getByLabelText(
+      "Resize thread and secondary panels",
+    );
+    // Collapsed: the rail's recessed edge is the single seam, so the handle
+    // hairline must be hidden (and non-interactive) rather than sitting flush
+    // against it.
+    expect(resizeHandle.className).toContain("w-0");
+    expect(resizeHandle.className).toContain("opacity-0");
+    expect(resizeHandle.className).toContain("pointer-events-none");
+    expect(resizeHandle.className).not.toContain("w-px");
   });
 });

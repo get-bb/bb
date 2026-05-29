@@ -92,7 +92,7 @@ export interface ThreadSecondaryPanelProps {
   /**
    * When true, the panel is the top-left-most surface under the macOS
    * traffic-light strip (desktop macOS + main sidebar collapsed + conversation
-   * collapsed, so only the 48px rail sits to the panel's left). Adds a left
+   * collapsed, so only the 36px rail sits to the panel's left). Adds a left
    * reserve on the top chrome so the leading tabs clear the green light.
    */
   reserveLeftForDesktopTrafficLights: boolean;
@@ -481,7 +481,13 @@ function SecondaryPanelResizeHandle({
         "group relative shrink-0 overflow-visible bg-transparent transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-['']",
         PANEL_COLLAPSE_TRANSITION_CLASS,
         isConversationCollapsed ? "cursor-default" : "cursor-col-resize",
-        isOpen ? "w-px opacity-100" : "pointer-events-none w-0 opacity-0",
+        // While collapsed the handle's hairline would sit flush against the
+        // collapsed rail's recessed edge, doubling the seam. Drag is disabled
+        // in that state anyway, so fold the handle to zero width and hide it;
+        // the rail's recessed background is then the single clean edge.
+        isOpen && !isConversationCollapsed
+          ? "w-px opacity-100"
+          : "pointer-events-none w-0 opacity-0",
         isResizing && "bg-accent/20",
       )}
       aria-label="Resize thread and secondary panels"

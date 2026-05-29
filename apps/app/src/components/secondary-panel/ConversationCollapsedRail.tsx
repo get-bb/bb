@@ -22,7 +22,7 @@ interface ConversationCollapsedRailProps {
 }
 
 /**
- * The 48px vertical bar that stands in for the conversation when it is collapsed
+ * The 36px vertical bar that stands in for the conversation when it is collapsed
  * so the secondary panel can fill the content area. The whole bar is the expand
  * affordance; it sits where the conversation was, between the sidebar and the
  * panel: an expand chevron on top and a chat glyph standing in for the
@@ -49,7 +49,7 @@ export function ConversationCollapsedRail({
         "group flex h-full shrink-0 flex-col items-center justify-between overflow-hidden bg-surface-recessed py-3 text-muted-foreground outline-none transition-[width,opacity] hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         PANEL_COLLAPSE_TRANSITION_CLASS,
         collapsed
-          ? "w-12 opacity-100 delay-[40ms]"
+          ? "w-9 opacity-100 delay-[40ms]"
           : "pointer-events-none w-0 opacity-0",
       )}
     >
