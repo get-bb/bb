@@ -15,6 +15,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
+import { useAtom } from "jotai";
 import type { QueryClient } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -31,6 +32,7 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
 import { wsManager } from "@/lib/ws";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
+import { threadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
 import {
@@ -241,6 +243,21 @@ function PanelStateProbe({ threadId }: PanelStateProbeProps) {
         activeTabId: state.secondary.activeTabId,
         isOpen: state.secondary.isOpen,
       })}
+    </div>
+  );
+}
+
+// Mirrors the shared conversation-collapse preference the thread detail view
+// reads/writes, and exposes a button that stands in for the collapsed rail's
+// expand control so a sidebar-only test can drive the same state.
+function ConversationCollapseProbe() {
+  const [collapsed, setCollapsed] = useAtom(threadConversationCollapsedAtom);
+  return (
+    <div>
+      <div data-testid="conversation-collapsed">{String(collapsed)}</div>
+      <button type="button" onClick={() => setCollapsed(false)}>
+        expand-conversation
+      </button>
     </div>
   );
 }
@@ -1537,5 +1554,112 @@ describe("ProjectList", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
+  });
+
+  it("collapses the conversation and moves the single selection to the opened app row", async () => {
+    const project = makeProjectResponse({
+      id: "project-1",
+      name: "Project One",
+    });
+    const managerThread = makeThreadListEntry(project.id, 10, {
+      id: "thread-manager-app-select",
+      title: "Sidebar Manager",
+      titleFallback: "Sidebar Manager",
+      type: "manager",
+    });
+    const personalProject = makeProjectWithThreadsResponse({
+      id: PERSONAL_PROJECT_ID,
+      kind: "personal",
+      name: "Personal",
+      threads: [],
+    });
+    installFetchRoutes([
+      {
+        pathname: "/api/v1/sidebar-bootstrap",
+        handler: () =>
+          jsonResponse(
+            buildSidebarBootstrapResponse({
+              personalProject,
+              projects: [project],
+              threadsByProjectId: new Map([[project.id, [managerThread]]]),
+            }),
+          ),
+      },
+      {
+        pathname: `/api/v1/threads/${managerThread.id}/apps`,
+        handler: () => jsonResponse([STATUS_APP]),
+      },
+      {
+        pathname: "/api/v1/projects",
+        handler: () => jsonResponse([project]),
+      },
+      {
+        pathname: "/api/v1/threads",
+        handler: () => jsonResponse([]),
+      },
+      {
+        pathname: "/api/v1/system/config",
+        handler: () =>
+          jsonResponse({
+            hostDaemonPort: null,
+            voiceTranscriptionEnabled: false,
+          }),
+      },
+      {
+        pathname: "/api/v1/hosts",
+        handler: () => jsonResponse([]),
+      },
+    ]);
+
+    // Start on the manager thread route so its row is the selected surface.
+    window.history.pushState(
+      null,
+      "",
+      `/projects/${project.id}/threads/${managerThread.id}`,
+    );
+
+    await renderProjectList({}, { extraUi: <ConversationCollapseProbe /> });
+
+    const appRow = await screen.findByRole("button", {
+      name: "Open Status app",
+    });
+    const findManagerRow = () =>
+      screen
+        .getByText("Sidebar Manager")
+        .closest("[data-sidebar-sticky-tier='manager']");
+
+    // Conversation active: the manager row owns the single selected highlight
+    // and no app row is highlighted.
+    expect(findManagerRow()?.className).toContain("bg-sidebar-border");
+    expect(appRow.className).not.toContain("bg-sidebar-border");
+    expect(screen.getByTestId("conversation-collapsed").textContent).toBe(
+      "false",
+    );
+
+    fireEvent.click(appRow);
+
+    // App opened: the conversation collapses and the app row becomes the single
+    // selected row; the manager row drops its selected background.
+    await waitFor(() => {
+      expect(screen.getByTestId("conversation-collapsed").textContent).toBe(
+        "true",
+      );
+    });
+    expect(
+      screen.getByRole("button", { name: "Open Status app" }).className,
+    ).toContain("bg-sidebar-border");
+    expect(findManagerRow()?.className).not.toContain("bg-sidebar-border");
+
+    // Expanding the conversation flips the selection back to the manager row.
+    fireEvent.click(
+      screen.getByRole("button", { name: "expand-conversation" }),
+    );
+
+    await waitFor(() => {
+      expect(findManagerRow()?.className).toContain("bg-sidebar-border");
+    });
+    expect(
+      screen.getByRole("button", { name: "Open Status app" }).className,
+    ).not.toContain("bg-sidebar-border");
   });
 });

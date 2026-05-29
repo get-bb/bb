@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
+import { useAtomValue } from "jotai";
 import {
   closestCenter,
   DndContext,
@@ -76,6 +77,7 @@ import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspac
 import { getProjectSettingsRoutePath } from "@/lib/app-route-paths";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import type { FixedPanelTabsState } from "@/lib/fixed-panel-tabs-state";
+import { threadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
@@ -244,6 +246,7 @@ interface ManagerThreadOrderEntry {
 
 interface ActiveThreadAppIdArgs {
   fixedPanelTabsState: FixedPanelTabsState;
+  isConversationCollapsed: boolean;
   selectedThreadId?: string;
   threadId: string;
 }
@@ -387,21 +390,24 @@ function getProjectThreadTreeManagerLineContinuationClassName(
 
 function getActiveThreadAppId({
   fixedPanelTabsState,
+  isConversationCollapsed,
   selectedThreadId,
   threadId,
 }: ActiveThreadAppIdArgs): string | null {
-  if (selectedThreadId !== threadId) {
+  // An app is the active surface only for the open thread, and only while the
+  // conversation is tucked into the collapsed rail with the panel showing the
+  // app full. With the conversation visible it stays the selected surface, so
+  // no app row is highlighted and the manager row reads as selected instead.
+  if (selectedThreadId !== threadId || !isConversationCollapsed) {
     return null;
   }
 
-  const activeTabId = fixedPanelTabsState.secondary.activeTabId;
-  if (activeTabId === null) {
+  const { activeTabId, isOpen, tabs } = fixedPanelTabsState.secondary;
+  if (!isOpen || activeTabId === null) {
     return null;
   }
 
-  const activeTab = fixedPanelTabsState.secondary.tabs.find(
-    (tab) => tab.id === activeTabId,
-  );
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
   return activeTab?.kind === "app" ? activeTab.appId : null;
 }
 
@@ -891,8 +897,10 @@ export const ManagerThreadGroupRow = memo(function ManagerThreadGroupRow({
   const managerAppsQuery = useThreadApps(managerThread.id);
   const managerApps = managerAppsQuery.data ?? EMPTY_THREAD_APPS;
   const fixedPanelTabsState = useFixedPanelTabsState(managerThread.id);
+  const isConversationCollapsed = useAtomValue(threadConversationCollapsedAtom);
   const activeAppId = getActiveThreadAppId({
     fixedPanelTabsState,
+    isConversationCollapsed,
     selectedThreadId,
     threadId: managerThread.id,
   });
@@ -929,7 +937,10 @@ export const ManagerThreadGroupRow = memo(function ManagerThreadGroupRow({
       <ThreadRow
         projectId={projectId}
         thread={managerThread}
-        isActive={selectedThreadId === managerThread.id}
+        // When one of this manager's apps is the active surface, that app row
+        // owns the single selected highlight; the manager row drops its full
+        // selected background (its nesting still shows context).
+        isActive={selectedThreadId === managerThread.id && activeAppId === null}
         onProjectSelect={onProjectSelect}
         options={managerOptions}
       />

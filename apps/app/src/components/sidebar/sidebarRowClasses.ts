@@ -4,6 +4,15 @@ export const SIDEBAR_ROW_BASE_CLASS =
   "flex w-full items-center gap-2 rounded-md pr-0 text-sm transition-colors";
 
 /**
+ * Leading-glyph slot shared by sidebar rows (manager icon/chevron, worktree
+ * header icon, app-row icon): centers the glyph and paints it in the subtle
+ * foreground used for non-status row affordances. Call sites add the glyph box
+ * sizing and any positioning they need.
+ */
+export const SIDEBAR_ROW_GLYPH_SLOT_CLASS =
+  "inline-flex shrink-0 items-center justify-center text-subtle-foreground";
+
+/**
  * The unread "attention" dot shared by a leaf thread row and a collapsed
  * worktree header. Inner styling only — call sites own wrapper, positioning,
  * fade, and the aria-label.

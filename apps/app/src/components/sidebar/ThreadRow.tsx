@@ -39,6 +39,7 @@ import { getThreadRoutePath } from "@/lib/app-route-paths";
 import { cn } from "@/lib/utils";
 import {
   SIDEBAR_ROW_BASE_CLASS,
+  SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_UNREAD_DOT_CLASS,
   getSidebarThreadRowPaddingClass,
@@ -95,8 +96,6 @@ interface ManagerChevronProps {
   threadTitle: string;
 }
 
-const ROW_GLYPH_SLOT_CLASS =
-  "inline-flex shrink-0 items-center justify-center text-subtle-foreground";
 type ThreadRowClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 function ManagerChevron({
@@ -123,7 +122,7 @@ function ManagerChevron({
       }}
       className={cn(
         "relative z-10 rounded-md outline-none ring-sidebar-ring transition-colors hover:text-sidebar-foreground focus-visible:ring-2",
-        ROW_GLYPH_SLOT_CLASS,
+        SIDEBAR_ROW_GLYPH_SLOT_CLASS,
         COARSE_POINTER_GLYPH_BOX_CLASS,
       )}
     >
@@ -171,7 +170,7 @@ function ManagerLeadingIcon() {
   return (
     <span
       data-manager-leading-icon=""
-      className={cn(ROW_GLYPH_SLOT_CLASS, COARSE_POINTER_GLYPH_BOX_CLASS)}
+      className={cn(SIDEBAR_ROW_GLYPH_SLOT_CLASS, COARSE_POINTER_GLYPH_BOX_CLASS)}
       aria-hidden="true"
     >
       <Icon
@@ -250,7 +249,7 @@ function ThreadTrailingIndicator({
   if (showStatusGlyph) {
     return (
       <span
-        className={cn(ROW_GLYPH_SLOT_CLASS, COARSE_POINTER_GLYPH_BOX_CLASS)}
+        className={cn(SIDEBAR_ROW_GLYPH_SLOT_CLASS, COARSE_POINTER_GLYPH_BOX_CLASS)}
       >
         <ThreadStatusGlyph
           hasPendingInteraction={hasPendingInteraction}
