@@ -22,15 +22,12 @@ interface ThreadHeaderGitAction {
 interface ThreadDetailHeaderProps {
   actionsMenu: ReactNode;
   activeTerminalCount: number;
-  canCollapseConversation: boolean;
-  isConversationCollapsed: boolean;
   isManagedThread: boolean;
   isManagerThread: boolean;
   isSecondaryPanelOpen: boolean;
   isTerminalPanelOpen: boolean;
   isThreadGitActionPending: boolean;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
-  onToggleConversationCollapse: () => void;
   onToggleSecondaryPanel: () => void;
   onToggleTerminalPanel: () => void;
   showTerminalPanelToggle: boolean;
@@ -42,15 +39,12 @@ interface ThreadDetailHeaderProps {
 export function ThreadDetailHeader({
   actionsMenu,
   activeTerminalCount,
-  canCollapseConversation,
-  isConversationCollapsed,
   isManagedThread,
   isManagerThread,
   isSecondaryPanelOpen,
   isTerminalPanelOpen,
   isThreadGitActionPending,
   onOpenThreadGitAction,
-  onToggleConversationCollapse,
   onToggleSecondaryPanel,
   onToggleTerminalPanel,
   showTerminalPanelToggle,
@@ -60,7 +54,6 @@ export function ThreadDetailHeader({
 }: ThreadDetailHeaderProps) {
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
   const renderAsDrawer = useIsCompactViewport();
-  const secondaryPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
 
   const center = (
     <>
@@ -126,29 +119,14 @@ export function ThreadDetailHeader({
         </Button>
       ) : null}
       {actionsMenu}
-      {canCollapseConversation ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={HEADER_ICON_BUTTON_CLASS}
-          aria-label={
-            isConversationCollapsed
-              ? "Show conversation"
-              : "Collapse conversation"
-          }
-          aria-expanded={!isConversationCollapsed}
-          title={
-            isConversationCollapsed
-              ? "Show conversation"
-              : "Collapse conversation"
-          }
-          onClick={onToggleConversationCollapse}
-        >
-          <Icon name="PanelLeft" />
-        </Button>
-      ) : null}
-      {!renderAsDrawer && isSecondaryPanelOpen ? null : (
+      {/*
+        On a wide viewport the secondary panel is opened, collapsed, and
+        expanded from a single directional arrow on the panel seam (see
+        SeamPanelArrow), so the header carries no panel button there. In the
+        compact/drawer layout there is no seam, so the header keeps a simple
+        open/close toggle for the drawer.
+      */}
+      {renderAsDrawer ? (
         <Button
           type="button"
           variant="ghost"
@@ -167,9 +145,9 @@ export function ThreadDetailHeader({
           }
           onClick={onToggleSecondaryPanel}
         >
-          <Icon name={secondaryPanelIconName} />
+          <Icon name="PanelBottom" />
         </Button>
-      )}
+      ) : null}
     </>
   );
 

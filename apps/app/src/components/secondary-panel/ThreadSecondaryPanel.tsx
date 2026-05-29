@@ -11,7 +11,7 @@ import { TabPill } from "@/components/ui/tab-pill";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/lib/utils";
-import { ConversationCollapseToggle } from "./ConversationCollapseToggle";
+import { SeamPanelArrow } from "./SeamPanelArrow";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
 import type { WorkspaceFilePreviewStatusLabel } from "@/lib/file-preview";
 import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
@@ -83,11 +83,17 @@ export interface ThreadSecondaryPanelProps {
   onOpenFilePreview?: (path: string) => void;
   /**
    * When true the conversation pane is collapsed: this panel expands to fill
-   * the content area (its max size is lifted) and the seam toggle flips to an
+   * the content area (its max size is lifted) and the seam arrow flips to an
    * "expand" affordance. Always false in the drawer/compact layout.
    */
   isConversationCollapsed: boolean;
   onToggleConversationCollapse: () => void;
+  /**
+   * Opens the secondary panel from its closed state. The seam arrow doubles as
+   * the "show panel" control when the panel is closed (replacing the old header
+   * button); in that state the seam sits at the content's right edge.
+   */
+  onToggleSecondaryPanel: () => void;
   /**
    * When true, render only the aside content — skip the PanelResizeHandle +
    * Panel wrappers that are only meaningful inside a desktop PanelGroup.
@@ -116,6 +122,7 @@ export function ThreadSecondaryPanel({
   onOpenFilePreview,
   isConversationCollapsed,
   onToggleConversationCollapse,
+  onToggleSecondaryPanel,
   renderAsDrawer,
 }: ThreadSecondaryPanelProps) {
   const activeFileTab = fileTabs?.find((tab) => tab.isActive);
@@ -362,25 +369,35 @@ export function ThreadSecondaryPanel({
         isConversationCollapsed={isConversationCollapsed}
         onDragging={handleSecondaryPanelDragging}
       />
-      {isOpen ? (
-        // Anchored on the seam but rendered OUTSIDE the resize handle: a child
-        // of the handle would be treated as part of its drag hit-area, so a
-        // press on the toggle would start a resize. As a higher-stacked sibling
-        // that merely overlaps the handle, react-resizable-panels excludes it
-        // from drag initiation (see its intersecting-handle stacking check).
-        <div className="relative z-10 w-0 shrink-0 overflow-visible">
-          <ConversationCollapseToggle
-            collapsed={isConversationCollapsed}
-            onToggle={onToggleConversationCollapse}
-            className={cn(
-              "absolute left-0 top-1/2 -translate-y-1/2",
-              // Centered on the seam normally; nudged clear of the content edge
-              // once collapsed so the round button is never clipped at x≈0.
-              isConversationCollapsed ? "translate-x-1" : "-translate-x-1/2",
-            )}
-          />
-        </div>
-      ) : null}
+      {/*
+        Anchored on the seam but rendered OUTSIDE the resize handle: a child of
+        the handle would be treated as part of its drag hit-area, so a press on
+        the arrow would start a resize. As a higher-stacked sibling that merely
+        overlaps the handle, react-resizable-panels excludes it from drag
+        initiation (see its intersecting-handle stacking check). Rendered in
+        every state so the one arrow opens the panel from the closed state
+        (where the seam sits at the content's right edge) and then
+        collapses/expands the conversation once the panel is open.
+      */}
+      <div className="relative z-10 w-0 shrink-0 overflow-visible">
+        <SeamPanelArrow
+          isSecondaryPanelOpen={isOpen}
+          isConversationCollapsed={isConversationCollapsed}
+          onToggleSecondaryPanel={onToggleSecondaryPanel}
+          onToggleConversationCollapse={onToggleConversationCollapse}
+          className={cn(
+            "absolute top-1/2 -translate-y-1/2",
+            // Closed: tuck just inside the content's right edge. Open + shown:
+            // centered on the seam. Collapsed: nudged clear of the left content
+            // edge so the round button is never clipped at x≈0.
+            !isOpen
+              ? "right-2"
+              : isConversationCollapsed
+                ? "left-0 translate-x-1"
+                : "left-0 -translate-x-1/2",
+          )}
+        />
+      </div>
       <Panel
         ref={resizablePanelRef}
         id="thread-detail-secondary-panel"

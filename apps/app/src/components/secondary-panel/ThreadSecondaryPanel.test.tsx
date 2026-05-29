@@ -30,6 +30,7 @@ interface RenderPanelArgs {
   fileTabContent?: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
   renderAsDrawer?: boolean;
+  isOpen?: boolean;
 }
 
 interface ResizeDragEndScenario {
@@ -168,6 +169,7 @@ function renderPanel({
   fileTabContent,
   fileTabs,
   renderAsDrawer = true,
+  isOpen = true,
 }: RenderPanelArgs) {
   const { wrapper } = createQueryClientTestHarness();
   const panel = (
@@ -177,7 +179,7 @@ function renderPanel({
       environmentId={undefined}
       fileTabContent={fileTabContent}
       fileTabs={fileTabs}
-      isOpen
+      isOpen={isOpen}
       metadataContent={<div>Thread details</div>}
       onCollapse={noop}
       onClose={noop}
@@ -186,6 +188,7 @@ function renderPanel({
       onPanelFocus={noop}
       isConversationCollapsed={false}
       onToggleConversationCollapse={noop}
+      onToggleSecondaryPanel={noop}
       renderAsDrawer={renderAsDrawer}
       showGitDiffTab={false}
     />
@@ -212,14 +215,22 @@ afterEach(() => {
 });
 
 describe("ThreadSecondaryPanel", () => {
-  it("does not start a resize when the seam collapse toggle is pressed", () => {
+  it("surfaces the seam arrow as a show-panel control while the panel is closed", () => {
+    renderPanel({ renderAsDrawer: false, isOpen: false });
+
+    expect(
+      screen.getByRole("button", { name: "Show panel" }),
+    ).not.toBeNull();
+  });
+
+  it("does not start a resize when the seam arrow is pressed", () => {
     renderPanel({ renderAsDrawer: false });
 
     const resizeHandle = screen.getByLabelText(
       "Resize thread and secondary panels",
     );
     const toggle = screen.getByRole("button", {
-      name: "Collapse conversation",
+      name: "Expand panel",
     });
 
     // Precondition for the library's exclusion: the toggle must NOT be a DOM

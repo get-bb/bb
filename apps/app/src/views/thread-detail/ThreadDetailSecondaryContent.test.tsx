@@ -106,8 +106,11 @@ vi.mock("@/components/ui/hooks/use-compact-viewport.js", () => ({
 }));
 
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
-  // Stand in for the real seam toggle: only rendered while the panel is open,
-  // reflecting collapse state and delegating to the collapse handler.
+  // Stand in for the real seam arrow: only rendered while the panel is open,
+  // delegating to the collapse handler. A stable label keeps these host tests
+  // (which assert inert/sizing/rail behavior, not arrow copy) unambiguous next
+  // to the rail's "Expand conversation" button. The arrow's own dynamic copy is
+  // covered by SeamPanelArrow.test.tsx and ThreadSecondaryPanel.test.tsx.
   ThreadSecondaryPanel({
     isOpen,
     isConversationCollapsed,
@@ -119,11 +122,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
         {isOpen ? (
           <button
             type="button"
-            aria-label={
-              isConversationCollapsed
-                ? "Show conversation"
-                : "Collapse conversation"
-            }
+            aria-label="Toggle conversation collapse"
             aria-expanded={!isConversationCollapsed}
             onClick={onToggleConversationCollapse}
           >
@@ -197,6 +196,7 @@ interface SecondaryContentOverrides {
   isSecondaryPanelOpen?: boolean;
   isConversationCollapsed?: boolean;
   onToggleConversationCollapse?: () => void;
+  onToggleSecondaryPanel?: () => void;
 }
 
 function buildSecondaryContentProps({
@@ -204,6 +204,7 @@ function buildSecondaryContentProps({
   isSecondaryPanelOpen = false,
   isConversationCollapsed = false,
   onToggleConversationCollapse = noop,
+  onToggleSecondaryPanel = noop,
 }: SecondaryContentOverrides = {}): ComponentProps<
   typeof ThreadDetailSecondaryContent
 > {
@@ -214,6 +215,7 @@ function buildSecondaryContentProps({
     isSecondaryPanelOpen,
     isConversationCollapsed,
     onToggleConversationCollapse,
+    onToggleSecondaryPanel,
     metadata: {
       thread: makeThread(),
       projectId: "proj_test",
@@ -399,7 +401,7 @@ describe("ThreadDetailSecondaryContent conversation collapse", () => {
     expect(pane.hasAttribute("inert")).toBe(false);
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Collapse conversation" }),
+      screen.getByRole("button", { name: "Toggle conversation collapse" }),
     );
 
     expect(
@@ -410,7 +412,9 @@ describe("ThreadDetailSecondaryContent conversation collapse", () => {
     expect(getConversationPane(container).hasAttribute("inert")).toBe(true);
     expect(getTimelinePanel().getAttribute("data-default-size")).toBe("0");
 
-    fireEvent.click(screen.getByRole("button", { name: "Show conversation" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Toggle conversation collapse" }),
+    );
 
     expect(
       getConversationPane(container).getAttribute(

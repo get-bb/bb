@@ -480,12 +480,9 @@ export function ThreadDetailView() {
   const [storedConversationCollapsed, setStoredConversationCollapsed] = useAtom(
     threadConversationCollapsedAtom,
   );
-  // The preference only applies while the panel is open on a wide viewport;
-  // there is nothing to expand into otherwise.
-  const canCollapseConversation =
-    isSecondaryPanelOpen && !renderSecondaryPanelAsDrawer;
-  const isConversationCollapsed =
-    canCollapseConversation && storedConversationCollapsed;
+  // The collapse preference only applies while the panel is open on a wide
+  // viewport; ThreadDetailSecondaryContent gates it (there is nothing to expand
+  // into otherwise) and surfaces the toggle on the seam arrow.
   const toggleConversationCollapse = useCallback(() => {
     setStoredConversationCollapsed((collapsed) => !collapsed);
   }, [setStoredConversationCollapsed]);
@@ -1040,8 +1037,6 @@ export function ThreadDetailView() {
   const timelineHeader = (
     <ThreadDetailHeader
       actionsMenu={threadActionsMenu}
-      canCollapseConversation={canCollapseConversation}
-      isConversationCollapsed={isConversationCollapsed}
       isManagedThread={Boolean(parentThreadId)}
       isManagerThread={isManagerThread}
       isSecondaryPanelOpen={isSecondaryPanelOpen}
@@ -1049,7 +1044,6 @@ export function ThreadDetailView() {
       isTerminalPanelOpen={terminalsEnabled && terminalPanelState.isOpen}
       isThreadGitActionPending={gitActions.isThreadGitActionPending}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
-      onToggleConversationCollapse={toggleConversationCollapse}
       onToggleSecondaryPanel={toggleSecondaryPanel}
       onToggleTerminalPanel={toggleTerminalPanel}
       showTerminalPanelToggle={terminalsEnabled}
@@ -1202,6 +1196,7 @@ export function ThreadDetailView() {
         isSecondaryPanelOpen={isSecondaryPanelOpen}
         isConversationCollapsed={storedConversationCollapsed}
         onToggleConversationCollapse={toggleConversationCollapse}
+        onToggleSecondaryPanel={toggleSecondaryPanel}
         metadata={{
           thread,
           projectId,
