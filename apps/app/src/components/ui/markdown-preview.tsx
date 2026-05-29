@@ -28,6 +28,7 @@ import {
   parseLocalFileHref,
   type MarkdownPreviewLocalFileLinkHandler,
 } from "./markdown-local-file-link.js";
+import type { MarkdownPreviewLinkHandler } from "./markdown-link.js";
 import { usePreferredTheme, type Theme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 
@@ -42,18 +43,21 @@ export interface MarkdownPreviewProps {
    * Use with local-file-capable message surfaces, not general markdown content.
    */
   normalizeLocalFileLinks?: boolean;
+  onOpenLink?: MarkdownPreviewLinkHandler;
   onOpenLocalFileLink?: MarkdownPreviewLocalFileLinkHandler;
   urlTransform?: UrlTransform;
 }
 
 interface MarkdownAnchorProps
   extends ComponentPropsWithoutRef<"a">, ExtraProps {
+  onOpenLink?: MarkdownPreviewLinkHandler;
   onOpenLocalFileLink?: MarkdownPreviewLocalFileLinkHandler;
 }
 
 interface BuildMarkdownComponentsArgs {
   preferredTheme: Theme;
   setExpandedImageUrl: ExpandedImageUrlSetter;
+  onOpenLink?: MarkdownPreviewLinkHandler;
   onOpenLocalFileLink?: MarkdownPreviewLocalFileLinkHandler;
 }
 
@@ -121,21 +125,25 @@ const localFileAwareUrlTransform: UrlTransform = (value, key) => {
 function MarkdownAnchor({
   children,
   href,
+  onOpenLink,
   onOpenLocalFileLink,
   ...anchorProps
 }: MarkdownAnchorProps) {
   const localFileLink = onOpenLocalFileLink ? parseLocalFileHref(href) : null;
   const anchorHref = buildLocalFileAnchorHref(localFileLink, href);
-  const handleLocalFileLinkClick = (event: MarkdownAnchorEvent) => {
-    if (!localFileLink || !onOpenLocalFileLink) {
+  const handleAnchorClick = (event: MarkdownAnchorEvent) => {
+    if (localFileLink && onOpenLocalFileLink) {
+      if (onOpenLocalFileLink(localFileLink)) {
+        event.preventDefault();
+      }
       return;
     }
 
-    if (!onOpenLocalFileLink(localFileLink)) {
-      return;
+    // Defer ordinary web-link routing (e.g. opening in the in-app browser) to
+    // the handler, which prevents default only when it takes over the open.
+    if (onOpenLink && href && onOpenLink({ href })) {
+      event.preventDefault();
     }
-
-    event.preventDefault();
   };
 
   return (
@@ -148,7 +156,7 @@ function MarkdownAnchor({
       )}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={handleLocalFileLinkClick}
+      onClick={handleAnchorClick}
     >
       {children}
       {localFileLink ? (
@@ -380,13 +388,18 @@ function resolveMarkdownSourceMedia({
 }
 
 function buildMarkdownComponents({
+  onOpenLink,
   onOpenLocalFileLink,
   preferredTheme,
   setExpandedImageUrl,
 }: BuildMarkdownComponentsArgs): Components {
   function MarkdownLink(props: MarkdownAnchorProps) {
     return (
-      <MarkdownAnchor {...props} onOpenLocalFileLink={onOpenLocalFileLink} />
+      <MarkdownAnchor
+        {...props}
+        onOpenLink={onOpenLink}
+        onOpenLocalFileLink={onOpenLocalFileLink}
+      />
     );
   }
 
@@ -495,6 +508,7 @@ function MarkdownPreviewComponent({
   expandedImageAlt = "Expanded image",
   imageLightboxTitle = "Expanded image preview",
   normalizeLocalFileLinks = false,
+  onOpenLink,
   onOpenLocalFileLink,
   urlTransform,
 }: MarkdownPreviewProps) {
@@ -511,11 +525,12 @@ function MarkdownPreviewComponent({
   const markdownComponents = useMemo(
     () =>
       buildMarkdownComponents({
+        onOpenLink,
         onOpenLocalFileLink,
         preferredTheme,
         setExpandedImageUrl,
       }),
-    [onOpenLocalFileLink, preferredTheme],
+    [onOpenLink, onOpenLocalFileLink, preferredTheme],
   );
 
   return (

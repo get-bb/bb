@@ -20,6 +20,7 @@ import { MarkdownPreview } from "../../ui/markdown-preview.js";
 import { Icon } from "@/components/ui/icon.js";
 import { computeMutedPrefixLength } from "./compute-muted-prefix-length.js";
 import type {
+  ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
   UserAttachmentImageSrcResolver,
 } from "./types.js";
@@ -42,6 +43,11 @@ export interface ConversationMessageContentUserProps
 export interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps {
   role: "assistant";
+  // Assistant content renders through MarkdownPreview, which is the only
+  // surface with clickable links. User messages render as plain text
+  // (CollapsibleMessageText), so this handler lives on the assistant variant
+  // only — never accepted-but-ignored.
+  onOpenLink?: ThreadTimelineLinkHandler;
   turnRequest: null;
 }
 
@@ -497,6 +503,7 @@ function UserConversationMessage({
 
 function AssistantConversationMessage({
   attachmentItems,
+  onOpenLink,
   onOpenLocalFileLink,
   projectId,
   text,
@@ -506,6 +513,7 @@ function AssistantConversationMessage({
       <MarkdownPreview
         content={text}
         normalizeLocalFileLinks={onOpenLocalFileLink !== undefined}
+        onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
       />
       <ConversationAttachments
@@ -521,8 +529,13 @@ function AssistantConversationMessage({
 export function ConversationMessageContent(
   props: ConversationMessageContentProps,
 ) {
-  const { attachments, onOpenLocalFileLink, projectId, resolveUserAttachmentImageSrc, text } =
-    props;
+  const {
+    attachments,
+    onOpenLocalFileLink,
+    projectId,
+    resolveUserAttachmentImageSrc,
+    text,
+  } = props;
   const attachmentItems = useMemo(
     () =>
       buildAttachmentItems({
@@ -552,6 +565,7 @@ export function ConversationMessageContent(
     <AssistantConversationMessage
       attachmentItems={attachmentItems}
       attachments={attachments}
+      onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
       resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}

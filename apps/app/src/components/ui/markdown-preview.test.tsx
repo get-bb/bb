@@ -237,6 +237,62 @@ describe("MarkdownPreview", () => {
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
+  it("routes web link clicks through onOpenLink and prevents default when handled", () => {
+    const onOpenLink = vi.fn(() => true);
+    render(
+      <MarkdownPreview
+        content="[Docs](https://example.com/docs)"
+        onOpenLink={onOpenLink}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "Docs" });
+    const notDefaultPrevented = fireEvent.click(link);
+
+    expect(onOpenLink).toHaveBeenCalledTimes(1);
+    expect(onOpenLink).toHaveBeenCalledWith({
+      href: "https://example.com/docs",
+    });
+    expect(notDefaultPrevented).toBe(false);
+  });
+
+  it("leaves the web link as a normal anchor when onOpenLink declines", () => {
+    const onOpenLink = vi.fn(() => false);
+    render(
+      <MarkdownPreview
+        content="[Docs](https://example.com/docs)"
+        onOpenLink={onOpenLink}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "Docs" });
+    const notDefaultPrevented = fireEvent.click(link);
+
+    expect(onOpenLink).toHaveBeenCalledWith({
+      href: "https://example.com/docs",
+    });
+    expect(notDefaultPrevented).toBe(true);
+    expect(link.getAttribute("href")).toBe("https://example.com/docs");
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("prefers the local-file handler over onOpenLink for local file links", () => {
+    const onOpenLink = vi.fn(() => true);
+    const onOpenLocalFileLink = vi.fn(() => true);
+    render(
+      <MarkdownPreview
+        content="[Open absolute](/workspace/src/app.ts:12)"
+        onOpenLink={onOpenLink}
+        onOpenLocalFileLink={onOpenLocalFileLink}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Open absolute" }));
+
+    expect(onOpenLocalFileLink).toHaveBeenCalledTimes(1);
+    expect(onOpenLink).not.toHaveBeenCalled();
+  });
+
   it("normalizes local file links only when explicitly requested", () => {
     const content = "[Notes](/Users/me/My Notes/app.md)";
     const withoutNormalization = render(<MarkdownPreview content={content} />);

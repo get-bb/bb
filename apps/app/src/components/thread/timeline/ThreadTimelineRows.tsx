@@ -33,6 +33,7 @@ import {
 } from "./timeline-auto-expand.js";
 import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
 import type {
+  ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineTheme,
   ThreadTimelineUnreadDividerPlacement,
@@ -73,6 +74,7 @@ export interface ThreadTimelineRowsProps {
   initialExpanded?: ReadonlySet<string>;
   loadingTurnSummaryIds: ReadonlySet<string>;
   onLoadTurnSummaryRows: (entry: TimelineTurnRow) => void;
+  onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
@@ -103,6 +105,7 @@ export interface ThreadTimelineRowsProps {
 interface TimelineRendererStaticContextValue {
   getViewRows: GetTimelineViewRows;
   onLoadTurnSummaryRows: (entry: TimelineTurnRow) => void;
+  onOpenLink: ThreadTimelineLinkHandler | undefined;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler | undefined;
   onTitleAction: TimelineTitleActionResolver | undefined;
   projectId: string | undefined;
@@ -520,7 +523,7 @@ function timelineRowsListGapClassName(
 }
 
 function ConversationRow({ row }: ConversationRowProps) {
-  const { onOpenLocalFileLink, projectId, resolveUserAttachmentImageSrc } =
+  const { onOpenLink, onOpenLocalFileLink, projectId, resolveUserAttachmentImageSrc } =
     useTimelineRendererStaticContext();
   if (row.role === "user") {
     return (
@@ -539,6 +542,7 @@ function ConversationRow({ row }: ConversationRowProps) {
   return (
     <ConversationMessageContent
       attachments={row.attachments}
+      onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
       resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
@@ -617,6 +621,7 @@ function TimelineExpandableBody({
   row,
 }: TimelineExpandableBodyProps) {
   const {
+    onOpenLink,
     onOpenLocalFileLink,
     projectId,
     resolveUserAttachmentImageSrc,
@@ -696,6 +701,7 @@ function TimelineExpandableBody({
               {row.output.trim().length > 0 ? (
                 <ConversationMessageContent
                   attachments={null}
+                  onOpenLink={onOpenLink}
                   onOpenLocalFileLink={onOpenLocalFileLink}
                   projectId={projectId}
                   resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
@@ -1127,6 +1133,7 @@ function ThreadTimelineRowsForIdentity(props: ThreadTimelineRowsProps) {
     () => ({
       getViewRows,
       onLoadTurnSummaryRows: handleLoadTurnSummaryRows,
+      onOpenLink: props.onOpenLink,
       onOpenLocalFileLink: props.onOpenLocalFileLink,
       onTitleAction: props.onTitleAction,
       projectId,
@@ -1138,6 +1145,7 @@ function ThreadTimelineRowsForIdentity(props: ThreadTimelineRowsProps) {
     [
       getViewRows,
       handleLoadTurnSummaryRows,
+      props.onOpenLink,
       props.onOpenLocalFileLink,
       props.onTitleAction,
       projectId,

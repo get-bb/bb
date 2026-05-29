@@ -7,6 +7,7 @@ import type {
 } from "@bb/host-daemon-contract";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
+import { Switch } from "@/components/ui/switch.js";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import {
   DropdownMenu,
@@ -41,6 +42,8 @@ import {
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useEffectiveHosts } from "@/hooks/queries/effective-hosts";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
+import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
 import {
   invalidateHostDeleteDependentQueries,
   invalidateHostAvailabilityQueries,
@@ -99,6 +102,11 @@ export interface LocalOpenTargetSettingsSectionProps {
   onDirectoryTargetChange: (targetId: WorkspaceOpenTargetId) => void;
   onFileTargetChange: (targetId: WorkspaceOpenTargetId) => void;
   targets: WorkspaceOpenTarget[];
+}
+
+export interface InAppBrowserLinkSettingsSectionProps {
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -257,6 +265,28 @@ export function LocalOpenTargetSettingsSection({
   );
 }
 
+const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
+
+export function InAppBrowserLinkSettingsSection({
+  enabled,
+  onEnabledChange,
+}: InAppBrowserLinkSettingsSectionProps) {
+  return (
+    <SettingsSection title="Browser">
+      <SettingsWithControl
+        label={IN_APP_BROWSER_LINK_SETTING_LABEL}
+        description="Open http and https links from chat in the in-app browser panel instead of your default browser."
+      >
+        <Switch
+          checked={enabled}
+          onCheckedChange={onEnabledChange}
+          aria-label={IN_APP_BROWSER_LINK_SETTING_LABEL}
+        />
+      </SettingsWithControl>
+    </SettingsSection>
+  );
+}
+
 export function AppSettingsView() {
   const themePreference = useThemePreference();
   const { hasDaemon } = useHostDaemon();
@@ -266,6 +296,11 @@ export function AppSettingsView() {
   const [directoryTargetId, setDirectoryTargetId] =
     useWorkspaceOpenTargetPreference();
   const [fileTargetId, setFileTargetId] = useFileOpenTargetPreference();
+  const [openLinksInAppBrowser, setOpenLinksInAppBrowser] =
+    useOpenLinksInAppBrowserPreference();
+  // The in-app browser only exists on desktop; hide the toggle entirely on web,
+  // where it would have no effect.
+  const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
   const { data: hosts = [], isLoading: hostsLoading } = useEffectiveHosts();
   const queryClient = useQueryClient();
 
@@ -441,6 +476,13 @@ export function AppSettingsView() {
           onFileTargetChange={setFileTargetId}
           targets={workspaceOpenTargets}
         />
+
+        {desktopBrowserAvailable ? (
+          <InAppBrowserLinkSettingsSection
+            enabled={openLinksInAppBrowser}
+            onEnabledChange={setOpenLinksInAppBrowser}
+          />
+        ) : null}
 
         <div className="space-y-2">
           <SettingsSection title="Hosts">

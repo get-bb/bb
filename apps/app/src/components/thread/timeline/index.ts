@@ -22,6 +22,7 @@ export { TimelineFileDiffBlock } from "./TimelineFileDiffBlock.js";
 export { TerminalOutputBlock } from "./TerminalOutputBlock.js";
 export { ToolCallDetailBlock } from "./ToolCallDetailBlock.js";
 export type {
+  ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLink,
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineUnreadDividerPlacement,

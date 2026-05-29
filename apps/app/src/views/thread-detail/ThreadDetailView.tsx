@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAtom, useAtomValue } from "jotai";
 import type {
+  ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLink,
   TimelineTitleActionResolver,
 } from "@/components/thread/timeline";
@@ -88,7 +89,11 @@ import { AppTabContent } from "@/components/secondary-panel/AppTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { Icon } from "@/components/ui/icon.js";
-import { getDesktopBrowserApi } from "@/lib/bb-desktop";
+import { getDesktopBrowserApi, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import {
+  resolveChatLinkOpenTarget,
+  useOpenLinksInAppBrowserPreference,
+} from "@/lib/in-app-browser-link-preference";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import { ResolvedAppIcon } from "@/components/secondary-panel/AppIcon";
 import { useManagerStorageBrowser } from "@/components/secondary-panel/useManagerStorageBrowser";
@@ -339,6 +344,10 @@ export function ThreadDetailView() {
     threadType: thread?.type,
     storageFiles: threadStorageFiles?.files,
   });
+  const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
+  // The in-app browser surface only exists on desktop; on web this stays false
+  // and chat links keep their external-open behavior.
+  const desktopBrowserAvailable = isDesktopBrowserAvailable();
   // Popups (`window.open`/`target=_blank`) from a browser view open as a new
   // in-panel browser tab; the native OS popup is denied in the main process.
   useEffect(() => {
@@ -939,6 +948,22 @@ export function ThreadDetailView() {
       threadStorageRootPath,
     ],
   );
+  const handleOpenTimelineLink = useCallback<ThreadTimelineLinkHandler>(
+    ({ href }) => {
+      if (
+        resolveChatLinkOpenTarget({
+          desktopBrowserAvailable,
+          openInAppBrowser: openLinksInAppBrowser,
+          url: href,
+        }) !== "in-app-browser"
+      ) {
+        return false;
+      }
+      openBrowserTab(href);
+      return true;
+    },
+    [desktopBrowserAvailable, openBrowserTab, openLinksInAppBrowser],
+  );
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(
     (action) => {
       switch (action.kind) {
@@ -1324,6 +1349,7 @@ export function ThreadDetailView() {
           erroredTurnSummaryIds,
           onLoadOlderRows: loadOlderTimelineRows,
           onLoadTurnSummaryRows: handleLoadTurnSummaryRows,
+          onOpenLink: handleOpenTimelineLink,
           onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
           onTitleAction: handleTimelineTitleAction,
           projectId,

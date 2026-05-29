@@ -15,6 +15,7 @@ import { PageShell } from "@/components/ui/page-shell.js";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import {
   ThreadTimelineRows,
+  type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLinkHandler,
   type ThreadTimelineUnreadDividerPlacement,
   type TimelineTitleActionResolver,
@@ -37,6 +38,7 @@ interface ThreadTimelinePaneProps {
   erroredTurnSummaryIds: ReadonlySet<string>;
   onLoadOlderRows: () => void;
   onLoadTurnSummaryRows: (entry: TimelineTurnRow) => void;
+  onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
@@ -137,6 +139,7 @@ export function ThreadTimelinePane({
   erroredTurnSummaryIds,
   onLoadOlderRows,
   onLoadTurnSummaryRows,
+  onOpenLink,
   onOpenLocalFileLink,
   onTitleAction,
   projectId,
@@ -202,6 +205,7 @@ export function ThreadTimelinePane({
               loadingTurnSummaryIds={loadingTurnSummaryIds}
               erroredTurnSummaryIds={erroredTurnSummaryIds}
               onLoadTurnSummaryRows={onLoadTurnSummaryRows}
+              onOpenLink={onOpenLink}
               onOpenLocalFileLink={onOpenLocalFileLink}
               onTitleAction={onTitleAction}
               projectId={projectId}

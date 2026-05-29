@@ -2,7 +2,10 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LocalOpenTargetSettingsSection } from "./AppSettingsView";
+import {
+  InAppBrowserLinkSettingsSection,
+  LocalOpenTargetSettingsSection,
+} from "./AppSettingsView";
 
 describe("LocalOpenTargetSettingsSection", () => {
   afterEach(() => {
@@ -43,5 +46,44 @@ describe("LocalOpenTargetSettingsSection", () => {
     expect(message.getAttribute("role")).toBe("note");
     expect(message.className).toContain("text-foreground");
     expect(message.getAttribute("data-disabled")).toBeNull();
+  });
+});
+
+describe("InAppBrowserLinkSettingsSection", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("reflects the enabled preference and toggles it off", () => {
+    const onEnabledChange = vi.fn();
+    render(
+      <InAppBrowserLinkSettingsSection enabled onEnabledChange={onEnabledChange} />,
+    );
+
+    const toggle = screen.getByRole("switch", {
+      name: "Open links in the in-app browser",
+    });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(toggle);
+    expect(onEnabledChange).toHaveBeenCalledWith(false);
+  });
+
+  it("reflects the disabled preference and toggles it on", () => {
+    const onEnabledChange = vi.fn();
+    render(
+      <InAppBrowserLinkSettingsSection
+        enabled={false}
+        onEnabledChange={onEnabledChange}
+      />,
+    );
+
+    const toggle = screen.getByRole("switch", {
+      name: "Open links in the in-app browser",
+    });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(toggle);
+    expect(onEnabledChange).toHaveBeenCalledWith(true);
   });
 });
