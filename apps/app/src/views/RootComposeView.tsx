@@ -47,6 +47,7 @@ import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { promptDraftToInput } from "@/lib/prompt-draft";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
+  getThreadRoutePath,
   getRootComposeRoutePath,
   isProjectlessProjectId,
 } from "@/lib/app-route-paths";
@@ -670,7 +671,7 @@ export function RootComposeView() {
         return;
       }
       try {
-        await hireProjectManager.mutateAsync({
+        const thread = await hireProjectManager.mutateAsync({
           projectId,
           providerId: selectedProviderId,
           model: selectedThreadModel,
@@ -683,6 +684,12 @@ export function RootComposeView() {
           ...(submittedInput.length > 0 ? { input: submittedInput } : {}),
         });
         promptDraft.clearIfCurrentMatches(submittedDraft);
+        navigate(
+          getThreadRoutePath({
+            projectId: thread.projectId,
+            threadId: thread.id,
+          }),
+        );
       } catch {
         // Global mutation error handling already surfaced the failure.
       }
@@ -698,7 +705,7 @@ export function RootComposeView() {
     }
 
     try {
-      await createThread.mutateAsync({
+      const thread = await createThread.mutateAsync({
         input: submittedInput,
         projectId,
         providerId: selectedProviderId,
@@ -709,6 +716,12 @@ export function RootComposeView() {
         environment: selectedEnvironment,
       });
       promptDraft.clearIfCurrentMatches(submittedDraft);
+      navigate(
+        getThreadRoutePath({
+          projectId: thread.projectId,
+          threadId: thread.id,
+        }),
+      );
     } catch {
       // Global mutation error handling already surfaced the failure.
     }
@@ -719,6 +732,7 @@ export function RootComposeView() {
     hireProjectManager,
     managerDefaultExecutionOptionsQuery.isLoading,
     mode,
+    navigate,
     permissionMode,
     projectId,
     promptDraft,
