@@ -118,9 +118,8 @@ vi.mock("@/components/ui/sidebar.js", () => ({
 }));
 
 vi.mock("@/lib/bb-desktop", async () => {
-  // Preserve the real token exports (the unmocked ConversationCollapsedRail
-  // reads MACOS_TRAFFIC_LIGHT_RESERVE_TOP_CLASS from this module); only swap
-  // the desktop-chrome gate so cases can pick web vs macOS desktop.
+  // Preserve the real bb-desktop exports and only override the desktop-chrome
+  // gate so cases can pick web vs macOS desktop.
   const actual =
     await vi.importActual<typeof import("@/lib/bb-desktop")>(
       "@/lib/bb-desktop",

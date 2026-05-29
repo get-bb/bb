@@ -7,14 +7,6 @@ import type { BbDesktopApi, BbDesktopBrowserApi } from "@bb/server-contract";
 export const MACOS_TRAFFIC_LIGHT_RESERVE_CLASS = "pl-20";
 export const MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS = "left-20";
 export const MACOS_COLLAPSED_HEADER_RESERVE_CLASS = "pl-16";
-// Vertical sibling of the horizontal reserves above: drops content one
-// header-row (48px) below the window top so the traffic-light cluster sits in
-// the cleared space. Used when a surface — like the collapsed-conversation
-// rail's chevron — is the top-left-most element with no header to absorb the
-// lights above it. Implemented as a top margin (not padding) so it can be
-// applied directly to a flex child without depending on box-model behavior of
-// the underlying element (e.g. an SVG icon).
-export const MACOS_TRAFFIC_LIGHT_RESERVE_TOP_CLASS = "mt-12";
 export const MACOS_WINDOW_DRAG_CLASS =
   "select-none [app-region:drag] [-webkit-app-region:drag]";
 export const MACOS_APP_REGION_NO_DRAG_CLASS =
