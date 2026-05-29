@@ -25,10 +25,11 @@ interface ConversationCollapsedRailProps {
 
 /**
  * The 36px vertical bar that stands in for the conversation when it is collapsed
- * so the secondary panel can fill the content area. The recessed body is the
- * expand affordance; it sits where the conversation was, between the sidebar and
- * the panel: an expand chevron on top and a chat glyph standing in for the
- * conversation below it.
+ * so the secondary panel can fill the content area. The whole recessed body is
+ * the expand affordance; it sits where the conversation was, between the sidebar
+ * and the panel, showing a chat glyph that stands in for the conversation with a
+ * working indicator beneath it. (The canonical expand/collapse control is the
+ * panel-header toggle, so the rail carries no chevron of its own.)
  *
  * When the rail is the top-left-most surface on macOS desktop, a transparent
  * window-drag strip is reserved above the recessed body (mirroring AppSidebar's
@@ -64,8 +65,8 @@ export function ConversationCollapsedRail({
           window chrome instead of on top of the rail. Mirrors AppSidebar's top
           window-drag strip and matches the 48px (`h-12`) title-bar height the
           sidebar and secondary-panel chrome already use. This strip is the
-          single mechanism that offsets the body below the lights — the chevron
-          no longer carries its own top margin. Only rendered when the rail owns
+          single mechanism that offsets the body below the lights — the recessed
+          body carries no top margin of its own. Only rendered when the rail owns
           the top-left; on web / under an expanded sidebar the body fills the
           full height.
         */
@@ -80,22 +81,17 @@ export function ConversationCollapsedRail({
         aria-label="Expand conversation"
         aria-expanded={false}
         title="Expand conversation"
-        className="flex min-h-0 w-full flex-1 flex-col items-center justify-between bg-surface-recessed py-3 text-muted-foreground outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2 bg-surface-recessed py-3 text-muted-foreground outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         {/*
-          Explicit chevron affordance at the top of the recessed body. Because
-          the body is itself the button, the icon is decorative — the button's
-          aria-label ("Expand conversation") still carries the semantics for AT
-          users — but the visible chevron makes the open action obvious instead
-          of relying on the whole-bar hit area alone.
+          Chat glyph standing in for the collapsed conversation, with the working
+          indicator directly beneath it. Both are decorative — the whole recessed
+          body is the button, and its aria-label ("Expand conversation") carries
+          the semantics for AT users. The canonical expand/collapse control is
+          the panel-header toggle; the rail just reopens the conversation on
+          click, so it no longer needs its own chevron affordance.
         */}
-        <Icon name="ChevronRight" className="size-4 shrink-0" aria-hidden="true" />
-        <span
-          className="flex flex-1 items-center justify-center"
-          aria-hidden="true"
-        >
-          <Icon name="MessageSquare" className="size-4 shrink-0" />
-        </span>
+        <Icon name="MessageSquare" className="size-4 shrink-0" aria-hidden="true" />
         <span
           className="flex h-4 w-4 items-center justify-center"
           aria-hidden="true"
