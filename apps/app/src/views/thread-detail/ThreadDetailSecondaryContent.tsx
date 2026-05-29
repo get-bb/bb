@@ -3,9 +3,15 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   type ComponentProps,
   type ReactNode,
 } from "react";
+import {
+  getBbDesktopInfo,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
+import { useIsSidebarShowing } from "@/components/ui/sidebar.js";
 import {
   Panel,
   PanelGroup,
@@ -44,7 +50,10 @@ type ThreadTimelinePaneProps = Omit<
 >;
 type ThreadSecondaryPanelProps = Omit<
   ComponentProps<typeof ThreadSecondaryPanel>,
-  "metadataContent" | "renderAsDrawer" | "isConversationCollapsed"
+  | "metadataContent"
+  | "renderAsDrawer"
+  | "isConversationCollapsed"
+  | "reserveLeftForDesktopTrafficLights"
 >;
 type TerminalPanelDraggingHandler = (isDragging: boolean) => void;
 
@@ -83,6 +92,15 @@ export function ThreadDetailSecondaryContent({
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
+  // When the main sidebar is collapsed on macOS desktop, the traffic-light
+  // cluster sits over the leftmost content (no expanded sidebar to absorb it).
+  // The rail's chevron and the secondary panel's tab strip need to clear that
+  // zone; nothing-to-do otherwise (web, or sidebar covers the cluster).
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const isMainSidebarShowing = useIsSidebarShowing();
+  const isLeftmostSurfaceUnderTrafficLights =
+    usesDesktopChrome && !isMainSidebarShowing && !renderAsDrawer;
   // Collapsing the conversation only makes sense on a wide viewport with the
   // secondary panel open — there is otherwise nothing to expand into.
   const canCollapseConversation = isSecondaryPanelOpen && !renderAsDrawer;
@@ -198,6 +216,11 @@ export function ThreadDetailSecondaryContent({
       {...secondaryPanel}
       renderAsDrawer={false}
       isConversationCollapsed={isConversationCollapsedActive}
+      // Panel is leftmost only when the rail (48px) is the only thing between
+      // it and the window edge — i.e. the conversation is also collapsed.
+      reserveLeftForDesktopTrafficLights={
+        isLeftmostSurfaceUnderTrafficLights && isConversationCollapsedActive
+      }
       metadataContent={metadataContent}
     />
   ) : null;
@@ -206,6 +229,7 @@ export function ThreadDetailSecondaryContent({
       {...secondaryPanel}
       renderAsDrawer={true}
       isConversationCollapsed={false}
+      reserveLeftForDesktopTrafficLights={false}
       metadataContent={metadataContent}
     />
   ) : null;
@@ -241,6 +265,9 @@ export function ThreadDetailSecondaryContent({
             <ConversationCollapsedRail
               collapsed={isConversationCollapsedActive}
               isWorking={isConversationWorking}
+              reserveTopForDesktopTrafficLights={
+                isLeftmostSurfaceUnderTrafficLights
+              }
               onExpand={onToggleConversationCollapse}
             />
             <PanelGroup

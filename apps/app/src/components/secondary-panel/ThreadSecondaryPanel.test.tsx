@@ -22,6 +22,7 @@ import {
   ThreadSecondaryPanel,
 } from "./ThreadSecondaryPanel";
 import {
+  MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
 } from "@/lib/bb-desktop";
@@ -31,6 +32,7 @@ interface RenderPanelArgs {
   fileTabs?: SecondaryPanelFileTab[];
   renderAsDrawer?: boolean;
   isOpen?: boolean;
+  reserveLeftForDesktopTrafficLights?: boolean;
 }
 
 interface ResizeDragEndScenario {
@@ -125,6 +127,7 @@ function renderPanel({
   fileTabs,
   renderAsDrawer = true,
   isOpen = true,
+  reserveLeftForDesktopTrafficLights = false,
 }: RenderPanelArgs) {
   const { wrapper } = createQueryClientTestHarness();
   const panel = (
@@ -142,6 +145,7 @@ function renderPanel({
       onPanelChange={noop}
       onPanelFocus={noop}
       isConversationCollapsed={false}
+      reserveLeftForDesktopTrafficLights={reserveLeftForDesktopTrafficLights}
       renderAsDrawer={renderAsDrawer}
       showGitDiffTab={false}
     />
@@ -307,4 +311,20 @@ describe("ThreadSecondaryPanel", () => {
       expect(window.getComputedStyle(iframe).pointerEvents).toBe("auto");
     },
   );
+
+  it("reserves space on the top chrome for the macOS traffic-light cluster when the panel is the top-left-most surface", () => {
+    renderPanel({ reserveLeftForDesktopTrafficLights: true });
+
+    const topChrome = screen.getByTestId("thread-secondary-panel-top-chrome");
+    expect(topChrome.className).toContain(MACOS_COLLAPSED_HEADER_RESERVE_CLASS);
+  });
+
+  it("leaves the top chrome flush when the sidebar or conversation already absorbs the traffic-light cluster", () => {
+    renderPanel({ reserveLeftForDesktopTrafficLights: false });
+
+    const topChrome = screen.getByTestId("thread-secondary-panel-top-chrome");
+    expect(topChrome.className).not.toContain(
+      MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
+    );
+  });
 });

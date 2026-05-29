@@ -1,4 +1,5 @@
 import { Icon } from "@/components/ui/icon.js";
+import { MACOS_TRAFFIC_LIGHT_RESERVE_TOP_CLASS } from "@/lib/bb-desktop";
 import { cn } from "@/lib/utils";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
 
@@ -11,6 +12,12 @@ interface ConversationCollapsedRailProps {
   collapsed: boolean;
   /** Surfaces a live "working" signal so the tucked-away conversation still shows state. */
   isWorking: boolean;
+  /**
+   * When true, drop the chevron below the macOS traffic-light strip so the
+   * lights don't render on top of it. Set by the parent only when the rail is
+   * actually the top-left-most surface (desktop macOS + main sidebar collapsed).
+   */
+  reserveTopForDesktopTrafficLights: boolean;
   onExpand: () => void;
 }
 
@@ -24,6 +31,7 @@ interface ConversationCollapsedRailProps {
 export function ConversationCollapsedRail({
   collapsed,
   isWorking,
+  reserveTopForDesktopTrafficLights,
   onExpand,
 }: ConversationCollapsedRailProps) {
   return (
@@ -54,7 +62,11 @@ export function ConversationCollapsedRail({
       */}
       <Icon
         name="ChevronRight"
-        className="size-4 shrink-0"
+        className={cn(
+          "size-4 shrink-0",
+          reserveTopForDesktopTrafficLights &&
+            MACOS_TRAFFIC_LIGHT_RESERVE_TOP_CLASS,
+        )}
         aria-hidden="true"
       />
       <span

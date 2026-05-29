@@ -226,6 +226,7 @@ function NewTabPanelStory() {
         onPanelChange={noop}
         onPanelFocus={noop}
         isConversationCollapsed={false}
+        reserveLeftForDesktopTrafficLights={false}
         renderAsDrawer
         showGitDiffTab
       />

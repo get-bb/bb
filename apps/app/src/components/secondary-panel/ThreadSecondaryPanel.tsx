@@ -30,6 +30,7 @@ import {
 } from "./ThreadSecondaryPanelTabContent";
 import {
   getBbDesktopInfo,
+  MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
@@ -89,6 +90,13 @@ export interface ThreadSecondaryPanelProps {
    */
   isConversationCollapsed: boolean;
   /**
+   * When true, the panel is the top-left-most surface under the macOS
+   * traffic-light strip (desktop macOS + main sidebar collapsed + conversation
+   * collapsed, so only the 48px rail sits to the panel's left). Adds a left
+   * reserve on the top chrome so the leading tabs clear the green light.
+   */
+  reserveLeftForDesktopTrafficLights: boolean;
+  /**
    * When true, render only the aside content — skip the PanelResizeHandle +
    * Panel wrappers that are only meaningful inside a desktop PanelGroup.
    * Caller is responsible for wrapping the content in a Drawer in that case.
@@ -115,6 +123,7 @@ export function ThreadSecondaryPanel({
   onOpenFileInEditor,
   onOpenFilePreview,
   isConversationCollapsed,
+  reserveLeftForDesktopTrafficLights,
   renderAsDrawer,
 }: ThreadSecondaryPanelProps) {
   const activeFileTab = fileTabs?.find((tab) => tab.isActive);
@@ -215,6 +224,8 @@ export function ThreadSecondaryPanel({
           className={cn(
             "flex h-12 min-w-0 items-center justify-between gap-2 px-4",
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
+            reserveLeftForDesktopTrafficLights &&
+              MACOS_COLLAPSED_HEADER_RESERVE_CLASS,
           )}
         >
           <div

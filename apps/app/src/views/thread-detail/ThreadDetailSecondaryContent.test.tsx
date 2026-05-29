@@ -46,7 +46,19 @@ interface MockThreadTimelinePaneProps {
 interface MockThreadSecondaryPanelProps {
   isOpen: boolean;
   isConversationCollapsed: boolean;
+  reserveLeftForDesktopTrafficLights: boolean;
 }
+
+interface MockConversationCollapsedRailProps {
+  collapsed: boolean;
+  reserveTopForDesktopTrafficLights: boolean;
+  onExpand: () => void;
+}
+
+const { sidebarShowingRef, desktopChromeRef } = vi.hoisted(() => ({
+  sidebarShowingRef: { current: true },
+  desktopChromeRef: { current: false },
+}));
 
 vi.mock("react-resizable-panels", () => ({
   // forwardRef so the real horizontal-group ref attaches without a warning;
@@ -98,23 +110,77 @@ vi.mock("@/components/ui/hooks/use-compact-viewport.js", () => ({
   useIsCompactViewport: () => false,
 }));
 
+vi.mock("@/components/ui/sidebar.js", () => ({
+  // The host tests don't mount a SidebarProvider. Backed by a hoisted ref so
+  // individual cases can flip the sidebar-collapsed signal that gates the
+  // traffic-light reserve.
+  useIsSidebarShowing: () => sidebarShowingRef.current,
+}));
+
+vi.mock("@/lib/bb-desktop", async () => {
+  // Preserve the real token exports (the unmocked ConversationCollapsedRail
+  // reads MACOS_TRAFFIC_LIGHT_RESERVE_TOP_CLASS from this module); only swap
+  // the desktop-chrome gate so cases can pick web vs macOS desktop.
+  const actual =
+    await vi.importActual<typeof import("@/lib/bb-desktop")>(
+      "@/lib/bb-desktop",
+    );
+  return {
+    ...actual,
+    getBbDesktopInfo: () => null,
+    shouldUseMacosDesktopChrome: () => desktopChromeRef.current,
+  };
+});
+
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
-  // Stand in for the real secondary panel: a label-only aside is enough for
-  // these host tests, which assert the conversation pane's inert/sizing
-  // behavior and the rail's expand-from-collapsed path. The panel no longer
-  // owns the open/collapse buttons (those live in the conversation header and
-  // on the rail), so the mock surfaces no buttons of its own.
+  // Surfacing the traffic-light reserve prop as a data attribute is what
+  // makes the parent gate (desktop + sidebar collapsed + conversation
+  // collapsed) actually testable from this seam.
   ThreadSecondaryPanel({
     isOpen,
     isConversationCollapsed,
+    reserveLeftForDesktopTrafficLights,
   }: MockThreadSecondaryPanelProps) {
     return (
       <aside
+        data-testid="mock-secondary-panel"
         data-secondary-panel-open={isOpen}
         data-secondary-panel-conversation-collapsed={isConversationCollapsed}
+        data-secondary-panel-reserve-left={String(
+          reserveLeftForDesktopTrafficLights,
+        )}
       >
         Secondary panel
       </aside>
+    );
+  },
+}));
+
+vi.mock("@/components/secondary-panel/ConversationCollapsedRail", () => ({
+  // Same shape as the secondary-panel mock: the rail's reserveTop prop is
+  // the other half of the parent gate, so it has to be observable here.
+  ConversationCollapsedRail({
+    collapsed,
+    reserveTopForDesktopTrafficLights,
+    onExpand,
+  }: MockConversationCollapsedRailProps) {
+    return (
+      <button
+        type="button"
+        data-testid="mock-conversation-collapsed-rail"
+        data-rail-collapsed={String(collapsed)}
+        data-rail-reserve-top={String(reserveTopForDesktopTrafficLights)}
+        aria-label="Expand conversation"
+        aria-expanded={collapsed ? "false" : "true"}
+        // Mirror the real rail: when the conversation is shown, the rail
+        // disappears from the a11y tree + tab order. Existing tests rely on
+        // this to assert that the expand affordance is gone post-click.
+        aria-hidden={collapsed ? undefined : true}
+        inert={collapsed ? undefined : true}
+        onClick={onExpand}
+      >
+        <span data-icon="MessageSquare" aria-hidden="true" />
+      </button>
     );
   },
 }));
@@ -311,6 +377,8 @@ function ConversationCollapseHarness({
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  sidebarShowingRef.current = true;
+  desktopChromeRef.current = false;
 });
 
 describe("ThreadDetailSecondaryContent", () => {
@@ -382,7 +450,7 @@ describe("ThreadDetailSecondaryContent conversation collapse", () => {
 
     const rail = screen.getByRole("button", { name: "Expand conversation" });
     expect(rail.getAttribute("aria-expanded")).toBe("false");
-    // The chat glyph stands in for the conversation as the rail's signature element.
+    // The MessageSquare glyph stands in for the tucked-away conversation.
     expect(rail.querySelector("[data-icon='MessageSquare']")).not.toBeNull();
   });
 
@@ -422,5 +490,94 @@ describe("ThreadDetailSecondaryContent conversation collapse", () => {
     expect(pane.hasAttribute("inert")).toBe(false);
     expect(getTimelinePanel().getAttribute("data-default-size")).toBe("100");
     expect(screen.queryByRole("button", { name: /conversation/i })).toBeNull();
+  });
+});
+
+interface DesktopTrafficLightScenarioState {
+  desktopChrome: boolean;
+  sidebarShowing: boolean;
+  conversationCollapsed: boolean;
+}
+
+interface DesktopTrafficLightExpectation {
+  railReserveTop: boolean;
+  panelReserveLeft: boolean;
+}
+
+interface DesktopTrafficLightScenario {
+  name: string;
+  state: DesktopTrafficLightScenarioState;
+  expected: DesktopTrafficLightExpectation;
+}
+
+function renderForTrafficLightCase(
+  state: DesktopTrafficLightScenarioState,
+): { rail: HTMLElement; panel: HTMLElement } {
+  desktopChromeRef.current = state.desktopChrome;
+  sidebarShowingRef.current = state.sidebarShowing;
+  render(
+    <ThreadDetailSecondaryContent
+      {...buildSecondaryContentProps({
+        isSecondaryPanelOpen: true,
+        isConversationCollapsed: state.conversationCollapsed,
+      })}
+    />,
+  );
+  return {
+    rail: screen.getByTestId("mock-conversation-collapsed-rail"),
+    panel: screen.getByTestId("mock-secondary-panel"),
+  };
+}
+
+describe("ThreadDetailSecondaryContent desktop traffic-light reserve", () => {
+  // Drives the actual gate that decides whether each leaf gets its reserve.
+  // Each case exercises one corner of (desktop chrome × sidebar shown ×
+  // conversation collapsed) so the test would fail if the gate were widened
+  // (e.g. firing on web, or with the sidebar still covering the lights).
+  it.each<DesktopTrafficLightScenario>([
+    {
+      name: "macOS desktop + sidebar collapsed + conversation collapsed → both reserves on",
+      state: {
+        desktopChrome: true,
+        sidebarShowing: false,
+        conversationCollapsed: true,
+      },
+      expected: { railReserveTop: true, panelReserveLeft: true },
+    },
+    {
+      name: "macOS desktop + sidebar collapsed + conversation shown → only the rail reserve (panel is no longer leftmost)",
+      state: {
+        desktopChrome: true,
+        sidebarShowing: false,
+        conversationCollapsed: false,
+      },
+      expected: { railReserveTop: true, panelReserveLeft: false },
+    },
+    {
+      name: "macOS desktop + sidebar expanded → neither reserve (sidebar already covers the lights)",
+      state: {
+        desktopChrome: true,
+        sidebarShowing: true,
+        conversationCollapsed: true,
+      },
+      expected: { railReserveTop: false, panelReserveLeft: false },
+    },
+    {
+      name: "web (non-macOS) + sidebar collapsed + conversation collapsed → neither reserve (no traffic lights to clear)",
+      state: {
+        desktopChrome: false,
+        sidebarShowing: false,
+        conversationCollapsed: true,
+      },
+      expected: { railReserveTop: false, panelReserveLeft: false },
+    },
+  ])("$name", ({ state, expected }) => {
+    const { rail, panel } = renderForTrafficLightCase(state);
+    expect(rail.getAttribute("data-rail-reserve-top")).toBe(
+      String(expected.railReserveTop),
+    );
+    expect(panel.getAttribute("data-secondary-panel-reserve-left")).toBe(
+      String(expected.panelReserveLeft),
+    );
   });
 });
