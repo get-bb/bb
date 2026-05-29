@@ -11,6 +11,8 @@ import { TabPill } from "@/components/ui/tab-pill";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@/components/ui/button.js";
 import { cn } from "@/lib/utils";
+import { ConversationCollapseToggle } from "./ConversationCollapseToggle";
+import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
 import type { WorkspaceFilePreviewStatusLabel } from "@/lib/file-preview";
 import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
@@ -40,8 +42,9 @@ export type {
 
 const THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT = 24;
 const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
-const THREAD_SECONDARY_PANEL_TRANSITION_CLASS =
-  "duration-[220ms] ease-[cubic-bezier(0.32,0.72,0,1)]";
+// While the conversation is collapsed the panel fills the content area, so its
+// size/max are lifted to the full width of the horizontal group.
+const CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT = 100;
 const PANEL_SCROLL_SLOT_CLASS =
   "min-h-0 flex-1 overflow-x-hidden overflow-y-auto";
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
@@ -78,6 +81,13 @@ export interface ThreadSecondaryPanelProps {
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
   /**
+   * When true the conversation pane is collapsed: this panel expands to fill
+   * the content area (its max size is lifted) and the seam toggle flips to an
+   * "expand" affordance. Always false in the drawer/compact layout.
+   */
+  isConversationCollapsed: boolean;
+  onToggleConversationCollapse: () => void;
+  /**
    * When true, render only the aside content — skip the PanelResizeHandle +
    * Panel wrappers that are only meaningful inside a desktop PanelGroup.
    * Caller is responsible for wrapping the content in a Drawer in that case.
@@ -103,6 +113,8 @@ export function ThreadSecondaryPanel({
   workspaceRootPath,
   onOpenFileInEditor,
   onOpenFilePreview,
+  isConversationCollapsed,
+  onToggleConversationCollapse,
   renderAsDrawer,
 }: ThreadSecondaryPanelProps) {
   const activeFileTab = fileTabs?.find((tab) => tab.isActive);
@@ -190,7 +202,7 @@ export function ThreadSecondaryPanel({
         isSecondaryPanelResizing && "[&_iframe]:pointer-events-none",
         !renderAsDrawer && [
           "transition-[transform,opacity,background-color]",
-          THREAD_SECONDARY_PANEL_TRANSITION_CLASS,
+          PANEL_COLLAPSE_TRANSITION_CLASS,
           isOpen
             ? "opacity-100"
             : "pointer-events-none translate-x-[8%] opacity-0",
@@ -346,23 +358,53 @@ export function ThreadSecondaryPanel({
     <>
       <SecondaryPanelResizeHandle
         isOpen={isOpen}
+        isConversationCollapsed={isConversationCollapsed}
         onDragging={handleSecondaryPanelDragging}
       />
+      {isOpen ? (
+        // Anchored on the seam but rendered OUTSIDE the resize handle: a child
+        // of the handle would be treated as part of its drag hit-area, so a
+        // press on the toggle would start a resize. As a higher-stacked sibling
+        // that merely overlaps the handle, react-resizable-panels excludes it
+        // from drag initiation (see its intersecting-handle stacking check).
+        <div className="relative z-10 w-0 shrink-0 overflow-visible">
+          <ConversationCollapseToggle
+            collapsed={isConversationCollapsed}
+            onToggle={onToggleConversationCollapse}
+            className={cn(
+              "absolute left-0 top-1/2 -translate-y-1/2",
+              // Centered on the seam normally; nudged clear of the content edge
+              // once collapsed so the round button is never clipped at x≈0.
+              isConversationCollapsed ? "translate-x-1" : "-translate-x-1/2",
+            )}
+          />
+        </div>
+      ) : null}
       <Panel
         ref={resizablePanelRef}
         id="thread-detail-secondary-panel"
         collapsible
         collapsedSize={0}
-        defaultSize={isOpen ? persistedWidthPercent : 0}
+        defaultSize={
+          isOpen
+            ? isConversationCollapsed
+              ? CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT
+              : persistedWidthPercent
+            : 0
+        }
         minSize={THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT}
-        maxSize={THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT}
+        maxSize={
+          isConversationCollapsed
+            ? CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT
+            : THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT
+        }
         onCollapse={onCollapse}
         onResize={handleSecondaryPanelResize}
         order={2}
         style={SECONDARY_RESIZABLE_PANEL_STYLE}
         className={cn(
           "min-w-0 overflow-hidden transition-[flex-grow,flex-basis,opacity]",
-          THREAD_SECONDARY_PANEL_TRANSITION_CLASS,
+          PANEL_COLLAPSE_TRANSITION_CLASS,
           isOpen ? "opacity-100" : "opacity-0",
         )}
       >
@@ -423,22 +465,29 @@ function FileTab({ tab }: { tab: SecondaryPanelFileTab }) {
   );
 }
 
+interface SecondaryPanelResizeHandleProps {
+  isOpen: boolean;
+  isConversationCollapsed: boolean;
+  onDragging: (isDragging: boolean) => void;
+}
+
 function SecondaryPanelResizeHandle({
   isOpen,
+  isConversationCollapsed,
   onDragging,
-}: {
-  isOpen: boolean;
-  onDragging: (isDragging: boolean) => void;
-}) {
+}: SecondaryPanelResizeHandleProps) {
   const isResizing = useAtomValue(threadSecondaryPanelResizingAtom);
   return (
     <PanelResizeHandle
       id="thread-detail-secondary-panel-handle"
-      disabled={!isOpen}
+      // Dragging is meaningless while collapsed (the conversation is at zero
+      // width); the seam toggle is the only affordance in that state.
+      disabled={!isOpen || isConversationCollapsed}
       onDragging={onDragging}
       className={cn(
-        "group relative shrink-0 cursor-col-resize overflow-visible bg-transparent transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-['']",
-        THREAD_SECONDARY_PANEL_TRANSITION_CLASS,
+        "group relative shrink-0 overflow-visible bg-transparent transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-['']",
+        PANEL_COLLAPSE_TRANSITION_CLASS,
+        isConversationCollapsed ? "cursor-default" : "cursor-col-resize",
         isOpen ? "w-px opacity-100" : "pointer-events-none w-0 opacity-0",
         isResizing && "bg-accent/20",
       )}

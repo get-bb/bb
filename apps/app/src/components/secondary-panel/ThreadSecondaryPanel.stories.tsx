@@ -75,6 +75,8 @@ function ShellRow({
             onCollapse={noop}
             onClose={noop}
             onOpenNewTab={noop}
+            isConversationCollapsed={false}
+            onToggleConversationCollapse={noop}
             renderAsDrawer
           />
         </PanelStage>
@@ -150,6 +152,8 @@ function FileTabsShellInner({
         onCollapse={noop}
         onClose={noop}
         onOpenNewTab={noop}
+        isConversationCollapsed={false}
+        onToggleConversationCollapse={noop}
         renderAsDrawer
       />
     </PanelStage>

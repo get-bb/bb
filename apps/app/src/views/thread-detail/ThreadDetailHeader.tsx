@@ -22,12 +22,15 @@ interface ThreadHeaderGitAction {
 interface ThreadDetailHeaderProps {
   actionsMenu: ReactNode;
   activeTerminalCount: number;
+  canCollapseConversation: boolean;
+  isConversationCollapsed: boolean;
   isManagedThread: boolean;
   isManagerThread: boolean;
   isSecondaryPanelOpen: boolean;
   isTerminalPanelOpen: boolean;
   isThreadGitActionPending: boolean;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
+  onToggleConversationCollapse: () => void;
   onToggleSecondaryPanel: () => void;
   onToggleTerminalPanel: () => void;
   showTerminalPanelToggle: boolean;
@@ -39,12 +42,15 @@ interface ThreadDetailHeaderProps {
 export function ThreadDetailHeader({
   actionsMenu,
   activeTerminalCount,
+  canCollapseConversation,
+  isConversationCollapsed,
   isManagedThread,
   isManagerThread,
   isSecondaryPanelOpen,
   isTerminalPanelOpen,
   isThreadGitActionPending,
   onOpenThreadGitAction,
+  onToggleConversationCollapse,
   onToggleSecondaryPanel,
   onToggleTerminalPanel,
   showTerminalPanelToggle,
@@ -59,9 +65,7 @@ export function ThreadDetailHeader({
   const center = (
     <>
       <p className="truncate text-sm font-semibold">{threadTitle}</p>
-      {isManagerThread ? (
-        <Pill variant="outline">manager</Pill>
-      ) : null}
+      {isManagerThread ? <Pill variant="outline">manager</Pill> : null}
       {!isManagerThread && isManagedThread ? (
         <Pill variant="outline">managed</Pill>
       ) : null}
@@ -122,6 +126,28 @@ export function ThreadDetailHeader({
         </Button>
       ) : null}
       {actionsMenu}
+      {canCollapseConversation ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={HEADER_ICON_BUTTON_CLASS}
+          aria-label={
+            isConversationCollapsed
+              ? "Show conversation"
+              : "Collapse conversation"
+          }
+          aria-expanded={!isConversationCollapsed}
+          title={
+            isConversationCollapsed
+              ? "Show conversation"
+              : "Collapse conversation"
+          }
+          onClick={onToggleConversationCollapse}
+        >
+          <Icon name="PanelLeft" />
+        </Button>
+      ) : null}
       {!renderAsDrawer && isSecondaryPanelOpen ? null : (
         <Button
           type="button"

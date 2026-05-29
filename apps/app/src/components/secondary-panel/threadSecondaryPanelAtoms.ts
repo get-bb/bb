@@ -27,6 +27,28 @@ export const secondaryPanelWidthPercentAtom = atomWithStorage<number>(
   { getOnInit: true },
 );
 
+/**
+ * Whether the conversation/timeline pane is collapsed so the secondary panel
+ * fills the whole content area. Persisted globally (like the panel width) so
+ * it is one consistent layout preference rather than per-thread state. Only
+ * takes effect while the secondary panel is open on a wide viewport — see
+ * ThreadDetailSecondaryContent for the gating.
+ */
+const conversationCollapsedStorage = createLocalStorageSyncStorage<boolean>({
+  parse: (storedValue, initialValue) => {
+    if (storedValue === "true") return true;
+    if (storedValue === "false") return false;
+    return initialValue;
+  },
+  serialize: (value) => String(value),
+});
+export const threadConversationCollapsedAtom = atomWithStorage<boolean>(
+  "bb.thread.conversation.collapsed",
+  false,
+  conversationCollapsedStorage,
+  { getOnInit: true },
+);
+
 /** Collapsed file keys in the diff panel. Set by useGitDiffFileRenderQueue, read by ThreadSecondaryPanel. */
 export const gitDiffCollapsedFileKeysAtom = atom<ReadonlySet<string>>(
   new Set<string>(),

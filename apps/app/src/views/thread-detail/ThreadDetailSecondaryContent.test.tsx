@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import {
+  forwardRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import type { Thread } from "@bb/domain";
 import type { TimelineTurnRow } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +24,7 @@ type TerminalPanelResizeHandler = (sizePercent: number) => void;
 interface MockPanelProps {
   children: ReactNode;
   id?: string;
+  defaultSize?: number;
   onResize?: MockPanelResizeHandler;
 }
 
@@ -37,13 +43,24 @@ interface MockThreadTimelinePaneProps {
   header: ReactNode;
 }
 
+interface MockThreadSecondaryPanelProps {
+  isOpen: boolean;
+  isConversationCollapsed: boolean;
+  onToggleConversationCollapse: () => void;
+}
+
 vi.mock("react-resizable-panels", () => ({
-  PanelGroup({ children }: MockPanelGroupProps) {
-    return <div>{children}</div>;
-  },
-  Panel({ children, id, onResize }: MockPanelProps) {
+  // forwardRef so the real horizontal-group ref attaches without a warning;
+  // the ref intentionally stays null so the collapse layout effect no-ops in
+  // tests and the visible state comes purely from rendered props.
+  PanelGroup: forwardRef<HTMLDivElement, MockPanelGroupProps>(
+    function PanelGroup({ children }, _ref) {
+      return <div>{children}</div>;
+    },
+  ),
+  Panel({ children, id, defaultSize, onResize }: MockPanelProps) {
     return (
-      <section aria-label={id}>
+      <section aria-label={id} data-default-size={defaultSize}>
         {onResize ? (
           <button
             type="button"
@@ -83,8 +100,32 @@ vi.mock("@/components/ui/hooks/use-compact-viewport.js", () => ({
 }));
 
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
-  ThreadSecondaryPanel() {
-    return <aside>Secondary panel</aside>;
+  // Stand in for the real seam toggle: only rendered while the panel is open,
+  // reflecting collapse state and delegating to the collapse handler.
+  ThreadSecondaryPanel({
+    isOpen,
+    isConversationCollapsed,
+    onToggleConversationCollapse,
+  }: MockThreadSecondaryPanelProps) {
+    return (
+      <aside>
+        Secondary panel
+        {isOpen ? (
+          <button
+            type="button"
+            aria-label={
+              isConversationCollapsed
+                ? "Show conversation"
+                : "Collapse conversation"
+            }
+            aria-expanded={!isConversationCollapsed}
+            onClick={onToggleConversationCollapse}
+          >
+            Toggle conversation
+          </button>
+        ) : null}
+      </aside>
+    );
   },
 }));
 
@@ -145,78 +186,135 @@ function makeThread(): Thread {
   };
 }
 
+interface SecondaryContentOverrides {
+  onTerminalPanelResize?: TerminalPanelResizeHandler;
+  isSecondaryPanelOpen?: boolean;
+  isConversationCollapsed?: boolean;
+  onToggleConversationCollapse?: () => void;
+}
+
+function buildSecondaryContentProps({
+  onTerminalPanelResize = noop,
+  isSecondaryPanelOpen = false,
+  isConversationCollapsed = false,
+  onToggleConversationCollapse = noop,
+}: SecondaryContentOverrides = {}): ComponentProps<
+  typeof ThreadDetailSecondaryContent
+> {
+  return {
+    footer: <div>Footer</div>,
+    header: <div>Header</div>,
+    isMetadataLoading: false,
+    isSecondaryPanelOpen,
+    isConversationCollapsed,
+    onToggleConversationCollapse,
+    metadata: {
+      thread: makeThread(),
+      projectId: "proj_test",
+      parentThreadDisplayName: null,
+      managerThreads: [],
+      canAssignToManager: false,
+      canTakeOverThread: false,
+      environmentHost: null,
+      environmentIsLocal: true,
+      environment: null,
+      workspaceStatus: undefined,
+      workspaceStatusError: null,
+      selectedMergeBaseBranch: undefined,
+      mergeBaseBranchOptions: undefined,
+      isLoadingMergeBaseBranchOptions: false,
+      updateThreadPending: false,
+      onAssignManager: noopAssignManager,
+      onMergeBaseBranchChange: noopBranchChange,
+    },
+    secondaryPanel: {
+      activePanel: null,
+      canUseGitUi: false,
+      defaultMergeBaseBranch: undefined,
+      environmentId: undefined,
+      fileTabs: undefined,
+      fileTabContent: undefined,
+      isOpen: isSecondaryPanelOpen,
+      showGitDiffTab: false,
+      workspaceRootPath: undefined,
+      onClose: noop,
+      onCollapse: noop,
+      onOpenFileInEditor: noopOpenFile,
+      onOpenFilePreview: noopOpenFile,
+      onOpenNewTab: noop,
+      onPanelChange: noopSecondaryPanelChange,
+      onPanelFocus: noop,
+    },
+    terminalPanel: <div>Terminal</div>,
+    terminalPanelHeightPercent: 32,
+    terminalPanelOpen: true,
+    onTerminalPanelResize,
+    timeline: {
+      activeThinking: null,
+      hasOlderTimelineRows: false,
+      hostConnectionNotice: null,
+      isLoadingOlderTimelineRows: false,
+      isThreadTimelinePending: false,
+      timelineError: false,
+      loadingTurnSummaryIds: new Set<string>(),
+      erroredTurnSummaryIds: new Set<string>(),
+      onLoadOlderRows: noop,
+      onLoadTurnSummaryRows: noopLoadTurnSummaryRows,
+      projectId: "proj_test",
+      showOngoingIndicator: false,
+      stopRequestedAt: null,
+      timelineRows: [],
+      threadId: "thr_test",
+      threadRuntimeDisplayStatus: "idle",
+      turnSummaryRowsIdentity: "empty",
+      turnSummaryRowsById: {},
+      unreadDividerAutoScroll: false,
+      unreadDividerPlacement: null,
+      workspaceRootPath: undefined,
+    },
+  };
+}
+
 function renderContent(onTerminalPanelResize: TerminalPanelResizeHandler) {
   return render(
     <ThreadDetailSecondaryContent
-      footer={<div>Footer</div>}
-      header={<div>Header</div>}
-      isMetadataLoading={false}
-      isSecondaryPanelOpen={false}
-      metadata={{
-        thread: makeThread(),
-        projectId: "proj_test",
-        parentThreadDisplayName: null,
-        managerThreads: [],
-        canAssignToManager: false,
-        canTakeOverThread: false,
-        environmentHost: null,
-        environmentIsLocal: true,
-        environment: null,
-        workspaceStatus: undefined,
-        workspaceStatusError: null,
-        selectedMergeBaseBranch: undefined,
-        mergeBaseBranchOptions: undefined,
-        isLoadingMergeBaseBranchOptions: false,
-        updateThreadPending: false,
-        onAssignManager: noopAssignManager,
-        onMergeBaseBranchChange: noopBranchChange,
-      }}
-      secondaryPanel={{
-        activePanel: null,
-        canUseGitUi: false,
-        defaultMergeBaseBranch: undefined,
-        environmentId: undefined,
-        fileTabs: undefined,
-        fileTabContent: undefined,
-        isOpen: false,
-        showGitDiffTab: false,
-        workspaceRootPath: undefined,
-        onClose: noop,
-        onCollapse: noop,
-        onOpenFileInEditor: noopOpenFile,
-        onOpenFilePreview: noopOpenFile,
-        onOpenNewTab: noop,
-        onPanelChange: noopSecondaryPanelChange,
-        onPanelFocus: noop,
-      }}
-      terminalPanel={<div>Terminal</div>}
-      terminalPanelHeightPercent={32}
-      terminalPanelOpen
-      onTerminalPanelResize={onTerminalPanelResize}
-      timeline={{
-        activeThinking: null,
-        hasOlderTimelineRows: false,
-        hostConnectionNotice: null,
-        isLoadingOlderTimelineRows: false,
-        isThreadTimelinePending: false,
-        timelineError: false,
-        loadingTurnSummaryIds: new Set<string>(),
-        erroredTurnSummaryIds: new Set<string>(),
-        onLoadOlderRows: noop,
-        onLoadTurnSummaryRows: noopLoadTurnSummaryRows,
-        projectId: "proj_test",
-        showOngoingIndicator: false,
-        stopRequestedAt: null,
-        timelineRows: [],
-        threadId: "thr_test",
-        threadRuntimeDisplayStatus: "idle",
-        turnSummaryRowsIdentity: "empty",
-        turnSummaryRowsById: {},
-        unreadDividerAutoScroll: false,
-        unreadDividerPlacement: null,
-        workspaceRootPath: undefined,
-      }}
+      {...buildSecondaryContentProps({ onTerminalPanelResize })}
     />,
+  );
+}
+
+const TIMELINE_PANEL_LABEL = "thread-detail-timeline-panel";
+
+function getTimelinePanel(): HTMLElement {
+  return screen.getByRole("region", { name: TIMELINE_PANEL_LABEL });
+}
+
+function getConversationPane(container: HTMLElement): HTMLElement {
+  const pane = container.querySelector<HTMLElement>(
+    "[data-conversation-collapsed]",
+  );
+  if (pane === null) {
+    throw new Error("Conversation pane wrapper not found");
+  }
+  return pane;
+}
+
+function ConversationCollapseHarness({
+  initialCollapsed,
+  isSecondaryPanelOpen,
+}: {
+  initialCollapsed: boolean;
+  isSecondaryPanelOpen: boolean;
+}) {
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
+  return (
+    <ThreadDetailSecondaryContent
+      {...buildSecondaryContentProps({
+        isSecondaryPanelOpen,
+        isConversationCollapsed: collapsed,
+        onToggleConversationCollapse: () => setCollapsed((current) => !current),
+      })}
+    />
   );
 }
 
@@ -261,5 +359,76 @@ describe("ThreadDetailSecondaryContent", () => {
 
     expect(onTerminalPanelResize).toHaveBeenCalledTimes(1);
     expect(onTerminalPanelResize).toHaveBeenCalledWith(45);
+  });
+});
+
+describe("ThreadDetailSecondaryContent conversation collapse", () => {
+  it("mounts the timeline at zero width and hides it when collapsed with the panel open", () => {
+    const { container } = render(
+      <ThreadDetailSecondaryContent
+        {...buildSecondaryContentProps({
+          isSecondaryPanelOpen: true,
+          isConversationCollapsed: true,
+        })}
+      />,
+    );
+
+    expect(getTimelinePanel().getAttribute("data-default-size")).toBe("0");
+    const pane = getConversationPane(container);
+    expect(pane.getAttribute("data-conversation-collapsed")).toBe("true");
+    // `inert` keeps the hidden conversation out of the tab order + a11y tree.
+    expect(pane.hasAttribute("inert")).toBe(true);
+  });
+
+  it("toggling collapse hides the conversation and toggling back restores it", () => {
+    const { container } = render(
+      <ConversationCollapseHarness
+        initialCollapsed={false}
+        isSecondaryPanelOpen
+      />,
+    );
+
+    const pane = getConversationPane(container);
+    expect(pane.getAttribute("data-conversation-collapsed")).toBe("false");
+    expect(pane.hasAttribute("inert")).toBe(false);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse conversation" }),
+    );
+
+    expect(
+      getConversationPane(container).getAttribute(
+        "data-conversation-collapsed",
+      ),
+    ).toBe("true");
+    expect(getConversationPane(container).hasAttribute("inert")).toBe(true);
+    expect(getTimelinePanel().getAttribute("data-default-size")).toBe("0");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show conversation" }));
+
+    expect(
+      getConversationPane(container).getAttribute(
+        "data-conversation-collapsed",
+      ),
+    ).toBe("false");
+    expect(getConversationPane(container).hasAttribute("inert")).toBe(false);
+  });
+
+  it("does not collapse and offers no toggle while the secondary panel is closed", () => {
+    const { container } = render(
+      <ThreadDetailSecondaryContent
+        {...buildSecondaryContentProps({
+          isSecondaryPanelOpen: false,
+          isConversationCollapsed: true,
+        })}
+      />,
+    );
+
+    // Preference is ignored: the conversation stays visible and full width.
+    const pane = getConversationPane(container);
+    expect(pane.getAttribute("data-conversation-collapsed")).toBe("false");
+    expect(pane.hasAttribute("inert")).toBe(false);
+    expect(getTimelinePanel().getAttribute("data-default-size")).toBe("100");
+    expect(screen.queryByRole("button", { name: /conversation/i })).toBeNull();
   });
 });

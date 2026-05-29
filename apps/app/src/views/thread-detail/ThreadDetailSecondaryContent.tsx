@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   type ComponentProps,
   type ReactNode,
@@ -9,6 +10,7 @@ import {
   Panel,
   PanelGroup,
   PanelResizeHandle,
+  type ImperativePanelGroupHandle,
   type ImperativePanelHandle,
 } from "react-resizable-panels";
 import { ResponsiveDrawerShell } from "@/components/ui/responsive-overlay.js";
@@ -29,10 +31,11 @@ import {
   type ThreadMetadataContentProps,
 } from "@/components/secondary-panel/ThreadMetadataContent";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
+import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 
 const CLOSED_TIMELINE_PANEL_SIZE_PERCENT = 100;
-const TERMINAL_PANEL_TRANSITION_CLASS =
-  "duration-[220ms] ease-[cubic-bezier(0.32,0.72,0,1)]";
+const COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT = 0;
+const TIMELINE_PANEL_MIN_SIZE_PERCENT = 30;
 
 type ThreadTimelinePaneProps = Omit<
   ComponentProps<typeof ThreadTimelinePane>,
@@ -40,7 +43,10 @@ type ThreadTimelinePaneProps = Omit<
 >;
 type ThreadSecondaryPanelProps = Omit<
   ComponentProps<typeof ThreadSecondaryPanel>,
-  "metadataContent" | "renderAsDrawer"
+  | "metadataContent"
+  | "renderAsDrawer"
+  | "isConversationCollapsed"
+  | "onToggleConversationCollapse"
 >;
 type TerminalPanelDraggingHandler = (isDragging: boolean) => void;
 
@@ -49,6 +55,8 @@ interface ThreadDetailSecondaryContentProps {
   header: ReactNode;
   isMetadataLoading: boolean;
   isSecondaryPanelOpen: boolean;
+  isConversationCollapsed: boolean;
+  onToggleConversationCollapse: () => void;
   metadata: ThreadMetadataContentProps;
   secondaryPanel: ThreadSecondaryPanelProps;
   terminalPanel?: ReactNode;
@@ -63,6 +71,8 @@ export function ThreadDetailSecondaryContent({
   header,
   isMetadataLoading,
   isSecondaryPanelOpen,
+  isConversationCollapsed,
+  onToggleConversationCollapse,
   metadata,
   onTerminalPanelResize,
   secondaryPanel,
@@ -75,6 +85,42 @@ export function ThreadDetailSecondaryContent({
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
+  // Collapsing the conversation only makes sense on a wide viewport with the
+  // secondary panel open — there is otherwise nothing to expand into.
+  const canCollapseConversation = isSecondaryPanelOpen && !renderAsDrawer;
+  const isConversationCollapsedActive =
+    canCollapseConversation && isConversationCollapsed;
+
+  const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
+    null,
+  );
+  // Read inside the collapse layout effect without making width changes
+  // re-trigger it (which would fight an in-progress resize drag).
+  const persistedSecondaryWidthRef = useRef(persistedSecondaryWidthPercent);
+  useEffect(() => {
+    persistedSecondaryWidthRef.current = persistedSecondaryWidthPercent;
+  }, [persistedSecondaryWidthPercent]);
+  const didMountConversationCollapseRef = useRef(false);
+  useLayoutEffect(() => {
+    // Initial mount is handled by each panel's defaultSize; only animate when
+    // the collapse state changes afterwards. A layout effect keeps the
+    // secondary panel's lifted max size and the new layout in the same commit,
+    // avoiding a flicker through the clamped 70% intermediate.
+    if (!didMountConversationCollapseRef.current) {
+      didMountConversationCollapseRef.current = true;
+      return;
+    }
+    const group = horizontalPanelGroupRef.current;
+    if (group === null || renderAsDrawer || !isSecondaryPanelOpen) {
+      return;
+    }
+    if (isConversationCollapsedActive) {
+      group.setLayout([COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT, 100]);
+    } else {
+      const secondaryWidth = persistedSecondaryWidthRef.current;
+      group.setLayout([100 - secondaryWidth, secondaryWidth]);
+    }
+  }, [isConversationCollapsedActive, isSecondaryPanelOpen, renderAsDrawer]);
 
   const terminalPanelRef = useRef<ImperativePanelHandle | null>(null);
   const lastTerminalSizeRef = useRef(terminalPanelHeightPercent);
@@ -126,16 +172,15 @@ export function ThreadDetailSecondaryContent({
     [onTerminalPanelResize],
   );
 
-  const handleTerminalPanelDragging =
-    useCallback<TerminalPanelDraggingHandler>(
-      (isDragging) => {
-        isTerminalPanelDraggingRef.current = isDragging;
-        if (!isDragging) {
-          persistTerminalPanelSize();
-        }
-      },
-      [persistTerminalPanelSize],
-    );
+  const handleTerminalPanelDragging = useCallback<TerminalPanelDraggingHandler>(
+    (isDragging) => {
+      isTerminalPanelDraggingRef.current = isDragging;
+      if (!isDragging) {
+        persistTerminalPanelSize();
+      }
+    },
+    [persistTerminalPanelSize],
+  );
 
   const metadataContent = hasAnyThreadMetadata(metadata) ? (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -152,6 +197,8 @@ export function ThreadDetailSecondaryContent({
     <ThreadSecondaryPanel
       {...secondaryPanel}
       renderAsDrawer={false}
+      isConversationCollapsed={isConversationCollapsedActive}
+      onToggleConversationCollapse={onToggleConversationCollapse}
       metadataContent={metadataContent}
     />
   ) : null;
@@ -159,6 +206,8 @@ export function ThreadDetailSecondaryContent({
     <ThreadSecondaryPanel
       {...secondaryPanel}
       renderAsDrawer={true}
+      isConversationCollapsed={false}
+      onToggleConversationCollapse={onToggleConversationCollapse}
       metadataContent={metadataContent}
     />
   ) : null;
@@ -182,21 +231,46 @@ export function ThreadDetailSecondaryContent({
           className="min-w-0 overflow-hidden"
         >
           <PanelGroup
+            ref={horizontalPanelGroupRef}
             direction="horizontal"
             className="h-full w-full min-w-0"
           >
             <Panel
               id="thread-detail-timeline-panel"
+              collapsible
+              collapsedSize={COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT}
               defaultSize={
-                isSecondaryPanelOpen && !renderAsDrawer
-                  ? 100 - persistedSecondaryWidthPercent
-                  : CLOSED_TIMELINE_PANEL_SIZE_PERCENT
+                isConversationCollapsedActive
+                  ? COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT
+                  : isSecondaryPanelOpen && !renderAsDrawer
+                    ? 100 - persistedSecondaryWidthPercent
+                    : CLOSED_TIMELINE_PANEL_SIZE_PERCENT
               }
-              minSize={30}
+              minSize={TIMELINE_PANEL_MIN_SIZE_PERCENT}
               order={1}
-              className="min-w-0 overflow-hidden"
+              className={cn(
+                "min-w-0 overflow-hidden transition-[flex-grow,flex-basis]",
+                PANEL_COLLAPSE_TRANSITION_CLASS,
+              )}
             >
-              <ThreadTimelinePane {...timeline} footer={footer} header={header} />
+              <div
+                data-conversation-collapsed={isConversationCollapsedActive}
+                // `inert` removes the hidden conversation (header, timeline,
+                // composer) from the tab order and a11y tree and blocks pointer
+                // events, so keyboard focus can't land in the invisible pane.
+                inert={isConversationCollapsedActive}
+                className={cn(
+                  "flex h-full min-h-0 min-w-0 flex-col transition-opacity",
+                  PANEL_COLLAPSE_TRANSITION_CLASS,
+                  isConversationCollapsedActive && "opacity-0",
+                )}
+              >
+                <ThreadTimelinePane
+                  {...timeline}
+                  footer={footer}
+                  header={header}
+                />
+              </div>
             </Panel>
             {inlineSecondaryPanelContent}
           </PanelGroup>
@@ -212,16 +286,14 @@ export function ThreadDetailSecondaryContent({
               id="thread-detail-terminal-panel"
               collapsible
               collapsedSize={0}
-              defaultSize={
-                terminalPanelOpen ? terminalPanelHeightPercent : 0
-              }
+              defaultSize={terminalPanelOpen ? terminalPanelHeightPercent : 0}
               minSize={MIN_TERMINAL_PANEL_HEIGHT_PERCENT}
               maxSize={MAX_TERMINAL_PANEL_HEIGHT_PERCENT}
               order={2}
               onResize={handleTerminalPanelResize}
               className={cn(
                 "min-h-0 min-w-0 overflow-hidden transition-[flex-grow,flex-basis,opacity]",
-                TERMINAL_PANEL_TRANSITION_CLASS,
+                PANEL_COLLAPSE_TRANSITION_CLASS,
                 terminalPanelOpen ? "opacity-100" : "opacity-0",
               )}
             >
@@ -270,7 +342,7 @@ function TerminalPanelResizeHandle({
       onDragging={onDragging}
       className={cn(
         "group relative shrink-0 cursor-row-resize overflow-visible bg-transparent transition-[height,opacity,background-color]",
-        TERMINAL_PANEL_TRANSITION_CLASS,
+        PANEL_COLLAPSE_TRANSITION_CLASS,
         "before:absolute before:-inset-y-1.5 before:inset-x-0 before:content-['']",
         isOpen ? "h-px opacity-100" : "pointer-events-none h-0 opacity-0",
       )}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAtomValue } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import type {
   ThreadTimelineLocalFileLink,
   TimelineTitleActionResolver,
@@ -78,6 +78,7 @@ import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import { useThreadSecondaryPanelVisibility } from "./useThreadSecondaryPanelVisibility";
 import type { HostConnectionNotice } from "./ThreadTimelinePane";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
+import { threadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   HostFilePreviewTabContent,
   ThreadStorageFilePreviewTabContent,
@@ -476,6 +477,18 @@ export function ThreadDetailView() {
     threadId,
     togglePersistedPanel: togglePersistedSecondaryPanel,
   });
+  const [storedConversationCollapsed, setStoredConversationCollapsed] = useAtom(
+    threadConversationCollapsedAtom,
+  );
+  // The preference only applies while the panel is open on a wide viewport;
+  // there is nothing to expand into otherwise.
+  const canCollapseConversation =
+    isSecondaryPanelOpen && !renderSecondaryPanelAsDrawer;
+  const isConversationCollapsed =
+    canCollapseConversation && storedConversationCollapsed;
+  const toggleConversationCollapse = useCallback(() => {
+    setStoredConversationCollapsed((collapsed) => !collapsed);
+  }, [setStoredConversationCollapsed]);
   useEffect(() => {
     setHasRequestedMergeBaseOptions(false);
   }, [thread?.environmentId]);
@@ -1027,6 +1040,8 @@ export function ThreadDetailView() {
   const timelineHeader = (
     <ThreadDetailHeader
       actionsMenu={threadActionsMenu}
+      canCollapseConversation={canCollapseConversation}
+      isConversationCollapsed={isConversationCollapsed}
       isManagedThread={Boolean(parentThreadId)}
       isManagerThread={isManagerThread}
       isSecondaryPanelOpen={isSecondaryPanelOpen}
@@ -1034,6 +1049,7 @@ export function ThreadDetailView() {
       isTerminalPanelOpen={terminalsEnabled && terminalPanelState.isOpen}
       isThreadGitActionPending={gitActions.isThreadGitActionPending}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
+      onToggleConversationCollapse={toggleConversationCollapse}
       onToggleSecondaryPanel={toggleSecondaryPanel}
       onToggleTerminalPanel={toggleTerminalPanel}
       showTerminalPanelToggle={terminalsEnabled}
@@ -1184,6 +1200,8 @@ export function ThreadDetailView() {
         header={timelineHeader}
         isMetadataLoading={environmentQuery.isLoading}
         isSecondaryPanelOpen={isSecondaryPanelOpen}
+        isConversationCollapsed={storedConversationCollapsed}
+        onToggleConversationCollapse={toggleConversationCollapse}
         metadata={{
           thread,
           projectId,
