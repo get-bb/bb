@@ -224,7 +224,13 @@ function TabStripScrollChevron({
         direction === "left" ? "Scroll tabs left" : "Scroll tabs right"
       }
       className={cn(
-        "absolute z-50 h-7 w-7 shrink-0 rounded-md p-0",
+        // Solid panel-surface fill matching the tab strip / top-chrome
+        // (`bg-background`) and the edge fade's terminal color, so the chevron
+        // fully occludes the tab labels beneath it instead of letting them bleed
+        // through. The `ghost` variant still supplies the same `bg-state-hover`
+        // hover used by the sibling header icon buttons (Info/Diff/New tab), and
+        // because both tokens are opaque the chevron stays solid in every state.
+        "absolute z-50 h-7 w-7 shrink-0 rounded-md bg-background p-0",
         // Revealed only while the strip is hovered (or the chevron itself is
         // focused) so the chevrons don't permanently cover the edge tabs;
         // `pointer-events` follow visibility so a hidden chevron never

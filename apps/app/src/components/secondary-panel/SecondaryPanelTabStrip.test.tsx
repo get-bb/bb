@@ -226,6 +226,35 @@ describe("SecondaryPanelTabStrip", () => {
     expect(rightChevron.getAttribute("tabindex")).toBe("-1");
   });
 
+  it("gives both chevrons a solid surface fill so tabs don't bleed through", () => {
+    render(
+      <SecondaryPanelTabStrip
+        fileTabs={[
+          buildTab({ id: "a", filename: "a.ts", isActive: true }),
+          buildTab({ id: "b", filename: "b.ts", isActive: false }),
+          buildTab({ id: "c", filename: "c.ts", isActive: false }),
+        ]}
+        usesDesktopChrome={false}
+      />,
+    );
+
+    simulateOverflow({ scrollLeft: 250, scrollWidth: 800, clientWidth: 300 });
+
+    // The chevrons overlap the edge tabs, so they must paint an opaque panel
+    // surface (`bg-background`) rather than the ghost variant's transparent
+    // default — otherwise the tab label beneath shows through.
+    expect(
+      screen
+        .getByRole("button", { name: "Scroll tabs left" })
+        .classList.contains("bg-background"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Scroll tabs right" })
+        .classList.contains("bg-background"),
+    ).toBe(true);
+  });
+
   it("shows only the left chevron at the end of an overflowing strip", () => {
     render(
       <SecondaryPanelTabStrip
