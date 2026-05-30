@@ -6,19 +6,10 @@ import { getBrowserUrlHost } from "@/lib/browser-url";
 import { formatRelativeTime } from "@/lib/relative-time";
 import type { BrowserHistoryEntry } from "@/lib/browser-history";
 
-interface BrowserQuickLink {
-  label: string;
-  url: string;
-}
-
 interface BrowserNewTabScreenProps {
   onNavigateInput: (rawInput: string) => void;
   recent: readonly BrowserHistoryEntry[];
   onClearRecent: () => void;
-}
-
-interface BrowserLetterTileProps {
-  label: string;
 }
 
 interface BrowserRowButtonProps {
@@ -27,27 +18,11 @@ interface BrowserRowButtonProps {
   children: ReactNode;
 }
 
-interface BrowserQuickLinkRowProps {
-  link: BrowserQuickLink;
-  onNavigate: (url: string) => void;
-}
-
 interface BrowserRecentRowProps {
   entry: BrowserHistoryEntry;
   now: number;
   onNavigate: (url: string) => void;
 }
-
-// A small fixed set of starting points for v1. A user-editable quick-links
-// manager is a later phase (per the plan); these stay a static stub.
-const BROWSER_QUICK_LINKS: readonly BrowserQuickLink[] = [
-  { label: "Google", url: "https://www.google.com" },
-  { label: "GitHub", url: "https://github.com" },
-  { label: "Claude", url: "https://claude.ai" },
-  { label: "Hacker News", url: "https://news.ycombinator.com" },
-  { label: "MDN", url: "https://developer.mozilla.org" },
-  { label: "npm", url: "https://www.npmjs.com" },
-];
 
 // Match the secondary-panel launcher (NewTabFileSearch): uppercase section
 // labels, hairline-bordered chips, and dense rows that share the app's tokens.
@@ -58,19 +33,8 @@ const ROW_BASE_CLASS =
 const ROW_CHIP_CLASS =
   "flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border-hairline bg-surface-raised text-muted-foreground";
 
-// A neutral first-letter tile for quick links. Remote favicons are intentionally
-// not fetched/rendered here (untrusted source); recently-visited rows use a
-// generic globe icon instead.
-function BrowserLetterTile({ label }: BrowserLetterTileProps) {
-  return (
-    <span className="text-xs font-semibold" aria-hidden>
-      {label.slice(0, 1).toUpperCase()}
-    </span>
-  );
-}
-
-// Shared row shell for quick-link and recently-visited rows, mirroring the
-// launcher's LauncherTile so hover, focus, and density stay identical.
+// Shared row shell for recently-visited rows, mirroring the launcher's
+// LauncherTile so hover, focus, and density stay identical.
 function BrowserRowButton({ url, onSelect, children }: BrowserRowButtonProps) {
   return (
     <button
@@ -81,22 +45,6 @@ function BrowserRowButton({ url, onSelect, children }: BrowserRowButtonProps) {
     >
       {children}
     </button>
-  );
-}
-
-function BrowserQuickLinkRow({ link, onNavigate }: BrowserQuickLinkRowProps) {
-  return (
-    <BrowserRowButton url={link.url} onSelect={() => onNavigate(link.url)}>
-      <span className={ROW_CHIP_CLASS}>
-        <BrowserLetterTile label={link.label} />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-        {link.label}
-      </span>
-      <span className="shrink-0 truncate font-mono text-xs text-muted-foreground">
-        {getBrowserUrlHost(link.url)}
-      </span>
-    </BrowserRowButton>
   );
 }
 
@@ -178,17 +126,6 @@ export function BrowserNewTabScreen({
             Searches go to your default engine.
           </p>
         </div>
-
-        <section>
-          <div className={cn(SECTION_LABEL_CLASS, "mb-1.5")}>Quick links</div>
-          <ul aria-label="Quick links" className="flex flex-col gap-px">
-            {BROWSER_QUICK_LINKS.map((link) => (
-              <li key={link.url}>
-                <BrowserQuickLinkRow link={link} onNavigate={onNavigateInput} />
-              </li>
-            ))}
-          </ul>
-        </section>
 
         {recent.length > 0 ? (
           <section>

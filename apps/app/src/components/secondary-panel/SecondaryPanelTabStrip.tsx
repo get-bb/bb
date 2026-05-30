@@ -230,7 +230,13 @@ function TabStripScrollChevron({
         // through. The `ghost` variant still supplies the same `bg-state-hover`
         // hover used by the sibling header icon buttons (Info/Diff/New tab), and
         // because both tokens are opaque the chevron stays solid in every state.
-        "absolute z-50 h-7 w-7 shrink-0 rounded-md bg-background p-0",
+        // Square (`rounded-none`) on purpose: the chevron overlays the
+        // partially-scrolled edge tab, so an opaque block with a straight inner
+        // edge truncates that tab along a clean vertical line and it reads as
+        // sliding *under* the strip edge. A corner radius would instead make the
+        // chevron a discrete pill beside the rounded tab pill — a button on a
+        // button. `rounded-none` also beats the Button base `rounded-md`.
+        "absolute z-50 h-7 w-7 shrink-0 rounded-none bg-background p-0",
         // Revealed only while the strip is hovered (or the chevron itself is
         // focused) so the chevrons don't permanently cover the edge tabs;
         // `pointer-events` follow visibility so a hidden chevron never

@@ -207,25 +207,9 @@ const LAUNCHER_TILE_ICON_CLASS =
 const LAUNCHER_TILE_ICON_CLASS_DASHED =
   "flex size-9 shrink-0 items-center justify-center rounded-md border border-dashed border-border bg-surface-raised text-muted-foreground group-hover:text-foreground";
 
-const RECENT_ROW_CLASS =
-  "group flex w-full min-w-0 scroll-mt-7 items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-const RECENT_CHIP_CLASS =
-  "flex size-7 shrink-0 items-center justify-center rounded-md";
-// Static class literals (no string concatenation) so Tailwind's content scanner
-// keeps the file-type tints. The chip washes the accent to ~15% behind a glyph
-// drawn at full accent strength; the kind label reuses the same accent ink.
-const RECENT_CHIP_TINT_CLASS = {
-  md: "bg-ft-md/15 text-ft-md",
-  html: "bg-ft-html/15 text-ft-html",
-  report: "bg-ft-report/15 text-ft-report",
-  code: "bg-ft-code/15 text-ft-code",
-} satisfies Record<RecentFileChip, string>;
-const RECENT_KIND_LABEL_CLASS = {
-  md: "text-ft-md",
-  html: "text-ft-html",
-  report: "text-ft-report",
-  code: "text-ft-code",
-} satisfies Record<RecentFileChip, string>;
+// File-type identity comes from the glyph alone — the chip stays neutral
+// (shared `LAUNCHER_TILE_ICON_CLASS`) so recent rows match the app/Open-browser
+// tiles without per-type coloring.
 const RECENT_CHIP_ICON_NAME = {
   md: "FileText",
   html: "AppWindow",
@@ -356,17 +340,20 @@ function groupFileSearchSections({
     });
   }
 
-  // The OPEN section holds the standing actions — "Open browser" first, then
-  // "Create App…" — kept separate from the Apps results below the apps list.
-  if (includeOpenBrowserEntry) {
-    ensureSection("open").items.push({
-      entry: { kind: "open-browser" },
+  // "Create App…" trails the Apps results — it's an app-creation action, so it
+  // belongs with the apps rather than in the Open section.
+  if (includeCreateAppEntry) {
+    ensureSection("apps").items.push({
+      entry: { kind: "create-app" },
       index: 0,
     });
   }
-  if (includeCreateAppEntry) {
+
+  // The OPEN section holds the standing "Open browser" action, kept separate
+  // from the Apps results above.
+  if (includeOpenBrowserEntry) {
     ensureSection("open").items.push({
-      entry: { kind: "create-app" },
+      entry: { kind: "open-browser" },
       index: 0,
     });
   }
@@ -587,9 +574,10 @@ function FileResultRow({
 }
 
 /**
- * A recently-opened file row. Lighter than an app tile: a borderless tinted
- * file-type chip, the filename, a quiet kind + path line, and a right-aligned
- * relative timestamp that flips to an "open" affordance on hover/selection.
+ * A recently-opened file row. Shares the {@link LauncherTile} shell with the app
+ * and Open-browser tiles so row height, chip size, and hover/active states line
+ * up; the file-type tint colors the chip and kind label, and a right-aligned
+ * relative timestamp flips to an "open" affordance on hover/selection.
  * Reopening routes through the same `onSelect` path as a file-search result.
  */
 function RecentResultRow({
@@ -609,30 +597,26 @@ function RecentResultRow({
   const relativeTime = formatRelativeTime({ timestamp: item.openedAt, now: nowMs });
 
   return (
-    <button
-      type="button"
+    <LauncherTile
       id={id}
-      role="option"
-      aria-selected={isActive}
-      onClick={handleSelect}
-      onMouseEnter={onActivate}
+      isActive={isActive}
+      onActivate={onActivate}
+      onSelect={handleSelect}
       title={`${label}: ${item.path}`}
-      className={cn(
-        RECENT_ROW_CLASS,
-        isActive ? "bg-state-active" : "hover:bg-state-hover",
-      )}
     >
-      <span className={cn(RECENT_CHIP_CLASS, RECENT_CHIP_TINT_CLASS[chip])}>
-        <Icon name={RECENT_CHIP_ICON_NAME[chip]} className="size-4" aria-hidden />
+      <span className={LAUNCHER_TILE_ICON_CLASS}>
+        <Icon
+          name={RECENT_CHIP_ICON_NAME[chip]}
+          className="size-5 text-muted-foreground"
+          aria-hidden
+        />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium text-foreground">
           {name}
         </span>
         <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-          <span className={cn("shrink-0 font-medium", RECENT_KIND_LABEL_CLASS[chip])}>
-            {label}
-          </span>
+          <span className="shrink-0 font-medium">{label}</span>
           {directory ? (
             <>
               <span className="shrink-0 opacity-50" aria-hidden>
@@ -665,7 +649,7 @@ function RecentResultRow({
           open
         </span>
       </span>
-    </button>
+    </LauncherTile>
   );
 }
 
@@ -1062,6 +1046,17 @@ function NewTabResults({
             className="flex flex-col gap-px"
           >
             {appsSection.items.map(({ entry, index }) => {
+              if (entry.kind === "create-app") {
+                return (
+                  <CreateAppTile
+                    key="create-app"
+                    id={getFileSearchEntryId(entry)}
+                    isActive={index === activeIndex}
+                    onActivate={() => onActivateIndex(index)}
+                    onSelect={onCreateApp}
+                  />
+                );
+              }
               if (
                 entry.kind !== "suggestion" ||
                 entry.suggestion.entryKind !== "app"
@@ -1095,31 +1090,18 @@ function NewTabResults({
             className="flex flex-col gap-px"
           >
             {openSection.items.map(({ entry, index }) => {
-              const isActive = index === activeIndex;
-              const id = getFileSearchEntryId(entry);
-              if (entry.kind === "open-browser") {
-                return (
-                  <OpenBrowserTile
-                    key="open-browser"
-                    id={id}
-                    isActive={isActive}
-                    onActivate={() => onActivateIndex(index)}
-                    onSelect={onOpenBrowser}
-                  />
-                );
+              if (entry.kind !== "open-browser") {
+                return null;
               }
-              if (entry.kind === "create-app") {
-                return (
-                  <CreateAppTile
-                    key="create-app"
-                    id={id}
-                    isActive={isActive}
-                    onActivate={() => onActivateIndex(index)}
-                    onSelect={onCreateApp}
-                  />
-                );
-              }
-              return null;
+              return (
+                <OpenBrowserTile
+                  key="open-browser"
+                  id={getFileSearchEntryId(entry)}
+                  isActive={index === activeIndex}
+                  onActivate={() => onActivateIndex(index)}
+                  onSelect={onOpenBrowser}
+                />
+              );
             })}
           </div>
         </section>

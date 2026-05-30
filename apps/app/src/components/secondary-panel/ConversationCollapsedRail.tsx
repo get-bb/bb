@@ -81,19 +81,22 @@ export function ConversationCollapsedRail({
         aria-label="Expand conversation"
         aria-expanded={false}
         title="Expand conversation"
-        className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2 bg-surface-recessed py-3 text-muted-foreground outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex min-h-0 w-full flex-1 flex-col items-center bg-surface-recessed py-3 text-muted-foreground outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         {/*
-          Chat glyph standing in for the collapsed conversation, with the working
-          indicator directly beneath it. Both are decorative — the whole recessed
-          body is the button, and its aria-label ("Expand conversation") carries
-          the semantics for AT users. The canonical expand/collapse control is
-          the panel-header toggle; the rail just reopens the conversation on
-          click, so it no longer needs its own chevron affordance.
+          Chat glyph standing in for the collapsed conversation, centered in the
+          rail, with the working indicator pinned to the bottom. Both are
+          decorative — the whole recessed body is the button, and its aria-label
+          ("Expand conversation") carries the semantics for AT users. The
+          canonical expand/collapse control is the panel-header toggle; the rail
+          just reopens the conversation on click, so it no longer needs its own
+          chevron affordance.
         */}
-        <Icon name="MessageSquare" className="size-4 shrink-0" aria-hidden="true" />
+        <span className="flex flex-1 items-center justify-center">
+          <Icon name="MessageSquare" className="size-4 shrink-0" aria-hidden="true" />
+        </span>
         <span
-          className="flex h-4 w-4 items-center justify-center"
+          className="flex h-4 w-4 shrink-0 items-center justify-center"
           aria-hidden="true"
         >
           {isWorking ? (
