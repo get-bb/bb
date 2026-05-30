@@ -10,7 +10,10 @@ import { Icon } from "@/components/ui/icon.js";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import { TabPill } from "@/components/ui/tab-pill";
 import { cn } from "@/lib/utils";
-import { MACOS_WINDOW_NO_DRAG_CLASS } from "@/lib/bb-desktop";
+import {
+  MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_WINDOW_NO_DRAG_CLASS,
+} from "@/lib/bb-desktop";
 import type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 
@@ -153,6 +156,9 @@ export function SecondaryPanelTabStrip({
   };
 
   const noDragClass = usesDesktopChrome ? MACOS_WINDOW_NO_DRAG_CLASS : null;
+  const chevronNoDragClass = usesDesktopChrome
+    ? MACOS_APP_REGION_NO_DRAG_CLASS
+    : null;
 
   return (
     <div className="group relative flex min-w-0 flex-1 items-center">
@@ -161,20 +167,6 @@ export function SecondaryPanelTabStrip({
       ) : null}
       {overflow.canScrollRight ? (
         <OverflowFade placement="right" className="z-10" />
-      ) : null}
-      {overflow.canScrollLeft ? (
-        <TabStripScrollChevron
-          direction="left"
-          className={noDragClass}
-          onClick={() => scrollByStep(-1)}
-        />
-      ) : null}
-      {overflow.canScrollRight ? (
-        <TabStripScrollChevron
-          direction="right"
-          className={noDragClass}
-          onClick={() => scrollByStep(1)}
-        />
       ) : null}
       <div
         ref={viewportRef}
@@ -190,6 +182,20 @@ export function SecondaryPanelTabStrip({
           </div>
         ))}
       </div>
+      {overflow.canScrollLeft ? (
+        <TabStripScrollChevron
+          direction="left"
+          className={chevronNoDragClass}
+          onClick={() => scrollByStep(-1)}
+        />
+      ) : null}
+      {overflow.canScrollRight ? (
+        <TabStripScrollChevron
+          direction="right"
+          className={chevronNoDragClass}
+          onClick={() => scrollByStep(1)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -218,7 +224,7 @@ function TabStripScrollChevron({
         direction === "left" ? "Scroll tabs left" : "Scroll tabs right"
       }
       className={cn(
-        "absolute z-20 h-7 w-7 shrink-0 rounded-md p-0",
+        "absolute z-50 h-7 w-7 shrink-0 rounded-md p-0",
         // Revealed only while the strip is hovered (or the chevron itself is
         // focused) so the chevrons don't permanently cover the edge tabs;
         // `pointer-events` follow visibility so a hidden chevron never

@@ -192,6 +192,40 @@ describe("SecondaryPanelTabStrip", () => {
     ).not.toBeNull();
   });
 
+  it("keeps desktop scroll chevrons split across the strip edges", () => {
+    render(
+      <SecondaryPanelTabStrip
+        fileTabs={[
+          buildTab({ id: "a", filename: "a.ts", isActive: true }),
+          buildTab({ id: "b", filename: "b.ts", isActive: false }),
+          buildTab({ id: "c", filename: "c.ts", isActive: false }),
+        ]}
+        usesDesktopChrome={true}
+      />,
+    );
+
+    simulateOverflow({ scrollLeft: 250, scrollWidth: 800, clientWidth: 300 });
+
+    const leftChevron = screen.getByRole("button", {
+      name: "Scroll tabs left",
+    });
+    const rightChevron = screen.getByRole("button", {
+      name: "Scroll tabs right",
+    });
+
+    expect(leftChevron.classList.contains("absolute")).toBe(true);
+    expect(leftChevron.classList.contains("left-0")).toBe(true);
+    expect(leftChevron.classList.contains("relative")).toBe(false);
+    expect(leftChevron.classList.contains("right-0")).toBe(false);
+    expect(leftChevron.getAttribute("tabindex")).toBe("-1");
+
+    expect(rightChevron.classList.contains("absolute")).toBe(true);
+    expect(rightChevron.classList.contains("right-0")).toBe(true);
+    expect(rightChevron.classList.contains("relative")).toBe(false);
+    expect(rightChevron.classList.contains("left-0")).toBe(false);
+    expect(rightChevron.getAttribute("tabindex")).toBe("-1");
+  });
+
   it("shows only the left chevron at the end of an overflowing strip", () => {
     render(
       <SecondaryPanelTabStrip
