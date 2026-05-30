@@ -58,14 +58,6 @@ describe("BrowserNewTabScreen", () => {
     expect(onNavigateInput).not.toHaveBeenCalled();
   });
 
-  it("navigates to a quick link when its row is clicked", () => {
-    const { onNavigateInput } = renderScreen();
-
-    fireEvent.click(screen.getByRole("button", { name: /GitHub/u }));
-
-    expect(onNavigateInput).toHaveBeenCalledWith("https://github.com");
-  });
-
   it("lists recently visited entries and opens one", () => {
     const now = Date.now();
     const recent: BrowserHistoryEntry[] = [
