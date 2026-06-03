@@ -10,13 +10,19 @@ import {
   type FetchImplementation,
 } from "./response.js";
 import { createHttpTransport } from "./transport-http.js";
-import type { BbSdkContext, BbSdkTransport } from "./transport.js";
+import type {
+  BbRealtimeSocketFactory,
+  BbSdkContext,
+  BbSdkTransport,
+} from "./transport.js";
 
 export interface CreateNodeTransportArgs {
   baseUrl?: string;
   cliConfig?: CliConfig;
   fetch?: FetchImplementation;
+  realtimeUrl?: string;
   timeoutMs?: number;
+  websocket?: BbRealtimeSocketFactory;
 }
 
 export interface CreateNodeBbSdkArgs extends CreateNodeTransportArgs {
@@ -48,7 +54,9 @@ export function createNodeTransport(
       createRequestTimeoutFetch({
         timeoutMs: args.timeoutMs ?? DEFAULT_BB_REQUEST_TIMEOUT_MS,
       }),
+    realtimeUrl: args.realtimeUrl,
     runtime: "node",
+    websocket: args.websocket,
   });
 }
 
@@ -86,6 +94,7 @@ export {
   DEFAULT_BB_REQUEST_TIMEOUT_MS,
 };
 export type { BbSdk, BbSdkContext, BbSdkTransport, FetchImplementation };
+export type * from "./realtime.js";
 export type * from "./areas/apps.js";
 export type * from "./areas/environments.js";
 export type * from "./areas/hosts.js";

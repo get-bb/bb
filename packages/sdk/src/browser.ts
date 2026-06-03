@@ -9,6 +9,7 @@ import type {
 export interface CreateBrowserTransportArgs {
   baseUrl?: string;
   fetch?: typeof fetch;
+  realtimeUrl?: string;
   websocket?: BbRealtimeSocketFactory;
 }
 
@@ -22,6 +23,7 @@ export function createBrowserTransport(
   return createHttpTransport({
     baseUrl: args.baseUrl,
     fetch: args.fetch,
+    realtimeUrl: args.realtimeUrl,
     runtime: "browser",
     websocket: args.websocket,
   });
@@ -38,6 +40,7 @@ export const bb = createBrowserBbSdk();
 
 export { createBbSdk, createHttpTransport };
 export type { BbSdk, BbSdkContext, BbSdkTransport };
+export type * from "./realtime.js";
 export type * from "./areas/apps.js";
 export type * from "./areas/environments.js";
 export type * from "./areas/hosts.js";

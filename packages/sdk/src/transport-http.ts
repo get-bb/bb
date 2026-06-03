@@ -24,6 +24,7 @@ export function createHttpTransport(
     api: client.api,
     baseUrl,
     fetch: fetchImpl,
+    ...(args.realtimeUrl ? { realtimeUrl: args.realtimeUrl } : {}),
     runtime: args.runtime,
     websocket: args.websocket,
     readJson: (response) => readJsonResponse({ response }),

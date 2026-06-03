@@ -46,6 +46,52 @@ const serverContractDeclarationNames = [
   "BbDataOnChangeArgs",
   "BbMessageSendArgs",
 ];
+const domainChangeKindAliasNames = [
+  "ThreadChangeKind",
+  "ProjectChangeKind",
+  "EnvironmentChangeKind",
+  "HostChangeKind",
+  "SystemChangeKind",
+  "AppChangeKind",
+];
+const domainChangedMessageInterfaceNames = [
+  "ThreadChangeMetadata",
+  "ThreadChangedMessage",
+  "ProjectChangedMessage",
+  "EnvironmentChangedMessage",
+  "HostChangedMessage",
+  "SystemChangedMessage",
+  "AppChangedMessage",
+];
+const realtimeDeclarationNames = [
+  "BbRealtimeUnsubscribe",
+  "BbRealtimeEventName",
+  "ThreadRealtimeEvent",
+  "ProjectRealtimeEvent",
+  "EnvironmentRealtimeEvent",
+  "HostRealtimeEvent",
+  "SystemRealtimeEvent",
+  "AppRealtimeEvent",
+  "AppDataChangedRealtimeEvent",
+  "AppDataResyncRealtimeEvent",
+  "BbRealtimeConnectionState",
+  "BbRealtimeConnectionEvent",
+  "BbRealtimeEventMap",
+  "BbRealtimeCallback",
+  "ThreadRealtimeOnInput",
+  "ProjectRealtimeOnInput",
+  "EnvironmentRealtimeOnInput",
+  "HostRealtimeOnInput",
+  "SystemRealtimeOnInput",
+  "SystemConfigRealtimeOnInput",
+  "SystemAppsRealtimeOnInput",
+  "AppRealtimeOnInput",
+  "AppDataChangedRealtimeOnInput",
+  "AppDataResyncRealtimeOnInput",
+  "RealtimeConnectionOnInput",
+  "BbRealtimeOnInputUnion",
+  "BbRealtimeOnInput",
+];
 
 function readCompilerConfig() {
   const configPath = ts.findConfigFile(
@@ -109,6 +155,16 @@ function findInterfaceDeclaration(sourceFile, name) {
 
 function findTypeAliasDeclaration(sourceFile, name) {
   return findNamedDeclaration(sourceFile, name, ts.isTypeAliasDeclaration);
+}
+
+function findTypeAliasOrInterfaceDeclaration(sourceFile, name) {
+  return findNamedDeclaration(
+    sourceFile,
+    name,
+    (statement) =>
+      ts.isTypeAliasDeclaration(statement) ||
+      ts.isInterfaceDeclaration(statement),
+  );
 }
 
 function declarationText(sourceFile, declaration) {
@@ -182,11 +238,18 @@ function joinGlobalDeclarations(declarations) {
 
 function buildDeclarationFile() {
   const domainAppsSource = getSourceFile("packages/domain/src/apps.ts");
+  const domainChangeKindsSource = getSourceFile(
+    "packages/domain/src/change-kinds.ts",
+  );
   const jsonValueSource = getSourceFile("packages/domain/src/json-value.ts");
+  const providerEventSource = getSourceFile(
+    "packages/domain/src/provider-event.ts",
+  );
   const serverContractSource = getSourceFile(
     "packages/server-contract/src/api-types.ts",
   );
   const sdkAppsSource = getSourceFile("packages/sdk/src/areas/apps.ts");
+  const sdkRealtimeSource = getSourceFile("packages/sdk/src/realtime-types.ts");
   const sdkWindowSource = getSourceFile("packages/sdk/src/app-window.ts");
 
   const declarations = [
@@ -200,6 +263,21 @@ function buildDeclarationFile() {
       jsonValueSource,
       findTypeAliasDeclaration(jsonValueSource, "JsonValue"),
     ),
+    renderStringAlias(providerEventSource, "ThreadEventType"),
+    ...domainChangeKindAliasNames.map((name) =>
+      renderStringAlias(domainChangeKindsSource, name),
+    ),
+    ...domainChangedMessageInterfaceNames.map((name) =>
+      declarationText(
+        domainChangeKindsSource,
+        findInterfaceDeclaration(domainChangeKindsSource, name),
+      ),
+    ),
+    declarationText(
+      domainChangeKindsSource,
+      findTypeAliasDeclaration(domainChangeKindsSource, "ChangedMessage"),
+    ),
+    renderStringAlias(serverContractSource, "AppDataBroadcastMessage"),
     renderInterfaceFromType(
       serverContractSource,
       "AppDataEntry",
@@ -217,6 +295,12 @@ function buildDeclarationFile() {
           : findInterfaceDeclaration(serverContractSource, name),
       );
     }),
+    ...realtimeDeclarationNames.map((name) =>
+      declarationText(
+        sdkRealtimeSource,
+        findTypeAliasOrInterfaceDeclaration(sdkRealtimeSource, name),
+      ),
+    ),
     ...sdkCurrentAppAliasNames.map((name) =>
       declarationText(
         sdkAppsSource,

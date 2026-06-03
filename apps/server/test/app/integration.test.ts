@@ -7,8 +7,9 @@ import {
   createHostDaemonClient,
   type HostDaemonCommandEnvelope,
 } from "@bb/host-daemon-contract";
+import { createBrowserBbSdk, type AppRealtimeEvent } from "@bb/sdk/browser";
 import { createPublicApiClient } from "@bb/server-contract";
-import { turnScope } from "@bb/domain";
+import { turnScope, type AppChangeKind } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { createTestDaemonEventEnvelope } from "../helpers/commands.js";
 import {
@@ -21,6 +22,58 @@ function waitForOpen(socket: WebSocket): Promise<void> {
     socket.once("open", () => resolve());
     socket.once("error", reject);
   });
+}
+
+class SdkWebSocketAdapter {
+  onclose: ((event: CloseEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onopen: ((event: Event) => void) | null = null;
+  private readonly socket: WebSocket;
+
+  constructor(url: string) {
+    this.socket = new WebSocket(url);
+    this.socket.on("open", () => {
+      this.onopen?.(new Event("open"));
+    });
+    this.socket.on("message", (data) => {
+      this.onmessage?.(
+        new MessageEvent("message", { data: data.toString("utf8") }),
+      );
+    });
+    this.socket.on("close", (code, reason) => {
+      this.onclose?.(
+        new CloseEvent("close", {
+          code,
+          reason: reason.toString("utf8"),
+        }),
+      );
+    });
+    this.socket.on("error", () => {
+      this.onerror?.(new Event("error"));
+    });
+  }
+
+  get readyState(): number {
+    return this.socket.readyState;
+  }
+
+  close(): void {
+    this.socket.close();
+  }
+
+  send(data: string): void {
+    this.socket.send(data);
+  }
+}
+
+interface AppBroadcastHub {
+  notifyApp(changes: AppChangeKind[]): void;
+}
+
+interface WaitForSdkAppSubscriptionArgs {
+  hub: AppBroadcastHub;
+  waitForNextAppMessage: () => Promise<AppRealtimeEvent>;
 }
 
 function waitForClose(socket: WebSocket): Promise<void> {
@@ -100,6 +153,22 @@ async function waitForThreadSubscription(
 
   try {
     hub.notifyThread(threadId, ["status-changed"]);
+    await readyMessage;
+  } finally {
+    clearInterval(interval);
+  }
+}
+
+async function waitForSdkAppSubscription(
+  args: WaitForSdkAppSubscriptionArgs,
+): Promise<void> {
+  const readyMessage = args.waitForNextAppMessage();
+  const interval = setInterval(() => {
+    args.hub.notifyApp(["apps-changed"]);
+  }, 25);
+
+  try {
+    args.hub.notifyApp(["apps-changed"]);
     await readyMessage;
   } finally {
     clearInterval(interval);
@@ -408,6 +477,61 @@ describe("server integration", () => {
       expect(message.changes).toContain("events-appended");
       ws.close();
     } finally {
+      await server.close();
+    }
+  });
+
+  it("delivers server app broadcasts to SDK bb.on consumers", async () => {
+    const server = await startTestServer();
+    let unsubscribeConnection: () => void = () => {};
+    let unsubscribeApp: () => void = () => {};
+    try {
+      const sdk = createBrowserBbSdk({
+        baseUrl: server.baseUrl,
+        websocket: (url) => new SdkWebSocketAdapter(url),
+      });
+      const connected = new Promise<void>((resolve) => {
+        unsubscribeConnection = sdk.on({
+          event: "realtime:connection",
+          callback(event) {
+            if (event.state === "connected") {
+              resolve();
+            }
+          },
+        });
+      });
+      const appMessageResolvers: Array<(event: AppRealtimeEvent) => void> = [];
+      const waitForNextAppMessage = () =>
+        new Promise<AppRealtimeEvent>((resolve) => {
+          appMessageResolvers.push(resolve);
+        });
+      unsubscribeApp = sdk.on({
+        event: "app:changed",
+        callback(event) {
+          const resolve = appMessageResolvers.shift();
+          if (!resolve) {
+            return;
+          }
+          resolve(event);
+        },
+      });
+
+      await connected;
+      await waitForSdkAppSubscription({
+        hub: server.hub,
+        waitForNextAppMessage,
+      });
+      const received = waitForNextAppMessage();
+      server.hub.notifyApp(["apps-changed"]);
+
+      await expect(received).resolves.toEqual({
+        type: "changed",
+        entity: "app",
+        changes: ["apps-changed"],
+      });
+    } finally {
+      unsubscribeApp();
+      unsubscribeConnection();
       await server.close();
     }
   });

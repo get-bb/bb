@@ -19,6 +19,7 @@ export type {
   BbSdkTransport,
 } from "./transport.js";
 export type { FetchImplementation } from "./response.js";
+export type * from "./realtime.js";
 export type * from "./areas/apps.js";
 export type * from "./areas/environments.js";
 export type * from "./areas/hosts.js";

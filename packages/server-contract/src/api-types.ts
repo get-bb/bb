@@ -36,6 +36,7 @@ import {
   jsonValueSchema,
   appDataPathSchema,
   applicationIdSchema,
+  changedMessageSchema,
   callerExecutionInputSourceSchema,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_QUERY_MAX_LENGTH,
@@ -1655,6 +1656,12 @@ export const appDataBroadcastMessageSchema = z.discriminatedUnion("type", [
 export type AppDataBroadcastMessage = z.infer<
   typeof appDataBroadcastMessageSchema
 >;
+
+export const serverMessageSchema = z.union([
+  changedMessageSchema,
+  appDataBroadcastMessageSchema,
+]);
+export type ServerMessage = z.infer<typeof serverMessageSchema>;
 
 export interface BbDataEntry {
   path: AppDataPath;

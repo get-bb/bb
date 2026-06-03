@@ -10,6 +10,7 @@ export interface BbSdkTransport {
   api: ApiClient["api"];
   baseUrl: string;
   fetch: FetchImplementation;
+  realtimeUrl?: string;
   runtime: BbSdkRuntime;
   readJson<TResponse extends Response>(
     response: Promise<TResponse>,
@@ -23,7 +24,17 @@ export interface BbSdkTransport {
   websocket?: BbRealtimeSocketFactory;
 }
 
-export type BbRealtimeSocketFactory = (url: string) => WebSocket;
+export interface BbRealtimeSocket {
+  close(): void;
+  onclose: ((event: CloseEvent) => void) | null;
+  onerror: ((event: Event) => void) | null;
+  onmessage: ((event: MessageEvent) => void) | null;
+  onopen: ((event: Event) => void) | null;
+  readyState: number;
+  send(data: string): void;
+}
+
+export type BbRealtimeSocketFactory = (url: string) => BbRealtimeSocket;
 
 export interface BbSdkContext {
   applicationId?: string;
@@ -37,6 +48,7 @@ export interface BbSdkContext {
 export interface CreateHttpTransportArgs {
   baseUrl?: string;
   fetch?: FetchImplementation;
+  realtimeUrl?: string;
   runtime: BbSdkRuntime;
   websocket?: BbRealtimeSocketFactory;
 }

@@ -16,6 +16,7 @@ import { createBufferedEnvironmentInvalidator } from "./buffered-environment-inv
 import {
   collectCachedThreadIdsForEnvironment,
   executeRealtimeDirtyHandlers,
+  REALTIME_APP_CHANGE_REGISTRY,
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
   REALTIME_HOST_CHANGE_REGISTRY,
   REALTIME_PROJECT_CHANGE_REGISTRY,
@@ -282,6 +283,14 @@ export function createRealtimeCacheEffects({
             executeRealtimeDirtyHandlers({
               context: { queryClient },
               handlers: REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind].dirty,
+            });
+          }
+          break;
+        case "app":
+          for (const changeKind of message.changes) {
+            executeRealtimeDirtyHandlers({
+              context: { queryClient },
+              handlers: REALTIME_APP_CHANGE_REGISTRY[changeKind].dirty,
             });
           }
           break;

@@ -1,5 +1,8 @@
 import { z } from "zod";
-import type { ThreadEventType } from "./provider-event.js";
+import {
+  threadEventTypeSchema,
+  type ThreadEventType,
+} from "./provider-event.js";
 
 export const REALTIME_ENTITIES = [
   "thread",
@@ -62,6 +65,16 @@ export type HostChangeKind = (typeof HOST_CHANGE_KINDS)[number];
 export const SYSTEM_CHANGE_KINDS = ["config-changed", "apps-changed"] as const;
 export type SystemChangeKind = (typeof SYSTEM_CHANGE_KINDS)[number];
 
+export const APP_CHANGE_KINDS = ["apps-changed"] as const;
+export type AppChangeKind = (typeof APP_CHANGE_KINDS)[number];
+
+export const threadChangeKindSchema = z.enum(THREAD_CHANGE_KINDS);
+export const projectChangeKindSchema = z.enum(PROJECT_CHANGE_KINDS);
+export const environmentChangeKindSchema = z.enum(ENVIRONMENT_CHANGE_KINDS);
+export const hostChangeKindSchema = z.enum(HOST_CHANGE_KINDS);
+export const systemChangeKindSchema = z.enum(SYSTEM_CHANGE_KINDS);
+export const appChangeKindSchema = z.enum(APP_CHANGE_KINDS);
+
 export const subscribeMessageSchema = z.object({
   type: z.literal("subscribe"),
   entity: realtimeEntitySchema,
@@ -96,6 +109,14 @@ export interface ThreadChangeMetadata {
   projectId?: string;
 }
 
+export const threadChangeMetadataSchema = z
+  .object({
+    eventTypes: z.array(threadEventTypeSchema).optional(),
+    hasPendingInteraction: z.boolean().optional(),
+    projectId: z.string().optional(),
+  })
+  .strict();
+
 export interface ProjectChangedMessage {
   type: "changed";
   entity: "project";
@@ -123,10 +144,80 @@ export interface SystemChangedMessage {
   changes: SystemChangeKind[];
 }
 
+export interface AppChangedMessage {
+  type: "changed";
+  entity: "app";
+  id?: string;
+  changes: AppChangeKind[];
+}
+
+export const threadChangedMessageSchema = z
+  .object({
+    type: z.literal("changed"),
+    entity: z.literal("thread"),
+    id: z.string().optional(),
+    metadata: threadChangeMetadataSchema.optional(),
+    changes: z.array(threadChangeKindSchema),
+  })
+  .strict();
+
+export const projectChangedMessageSchema = z
+  .object({
+    type: z.literal("changed"),
+    entity: z.literal("project"),
+    id: z.string().optional(),
+    changes: z.array(projectChangeKindSchema),
+  })
+  .strict();
+
+export const environmentChangedMessageSchema = z
+  .object({
+    type: z.literal("changed"),
+    entity: z.literal("environment"),
+    id: z.string().optional(),
+    changes: z.array(environmentChangeKindSchema),
+  })
+  .strict();
+
+export const hostChangedMessageSchema = z
+  .object({
+    type: z.literal("changed"),
+    entity: z.literal("host"),
+    id: z.string().optional(),
+    changes: z.array(hostChangeKindSchema),
+  })
+  .strict();
+
+export const systemChangedMessageSchema = z
+  .object({
+    type: z.literal("changed"),
+    entity: z.literal("system"),
+    changes: z.array(systemChangeKindSchema),
+  })
+  .strict();
+
+export const appChangedMessageSchema = z
+  .object({
+    type: z.literal("changed"),
+    entity: z.literal("app"),
+    id: z.string().optional(),
+    changes: z.array(appChangeKindSchema),
+  })
+  .strict();
+
+export const changedMessageSchema = z.discriminatedUnion("entity", [
+  threadChangedMessageSchema,
+  projectChangedMessageSchema,
+  environmentChangedMessageSchema,
+  hostChangedMessageSchema,
+  systemChangedMessageSchema,
+  appChangedMessageSchema,
+]);
+
 export type ChangedMessage =
   | ThreadChangedMessage
   | ProjectChangedMessage
   | EnvironmentChangedMessage
   | HostChangedMessage
-  | SystemChangedMessage;
-export type ServerMessage = ChangedMessage;
+  | SystemChangedMessage
+  | AppChangedMessage;

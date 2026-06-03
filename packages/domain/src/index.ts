@@ -596,9 +596,24 @@ export {
   ENVIRONMENT_CHANGE_KINDS,
   HOST_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
+  APP_CHANGE_KINDS,
+  appChangedMessageSchema,
+  appChangeKindSchema,
+  changedMessageSchema,
   clientMessageSchema,
+  environmentChangedMessageSchema,
+  environmentChangeKindSchema,
+  hostChangedMessageSchema,
+  hostChangeKindSchema,
+  projectChangedMessageSchema,
+  projectChangeKindSchema,
   realtimeEntitySchema,
   subscribeMessageSchema,
+  systemChangedMessageSchema,
+  systemChangeKindSchema,
+  threadChangedMessageSchema,
+  threadChangeKindSchema,
+  threadChangeMetadataSchema,
   unsubscribeMessageSchema,
 } from "./change-kinds.js";
 export type {
@@ -608,6 +623,7 @@ export type {
   EnvironmentChangeKind,
   HostChangeKind,
   SystemChangeKind,
+  AppChangeKind,
   SubscribeMessage,
   UnsubscribeMessage,
   ClientMessage,
@@ -617,8 +633,8 @@ export type {
   EnvironmentChangedMessage,
   HostChangedMessage,
   SystemChangedMessage,
+  AppChangedMessage,
   ChangedMessage,
-  ServerMessage,
 } from "./change-kinds.js";
 
 export { calculateExponentialBackoffDelay } from "./retry.js";

@@ -748,6 +748,20 @@ describe("server-contract canonical schemas", () => {
     expect(contract.appDataBroadcastMessageSchema.parse(message)).toEqual(
       message,
     );
+    expect(contract.REALTIME_ENTITIES).toContain("app");
+    expect(contract.APP_CHANGE_KINDS).toEqual(["apps-changed"]);
+    expect(
+      contract.serverMessageSchema.parse({
+        type: "changed",
+        entity: "app",
+        changes: ["apps-changed"],
+      }),
+    ).toEqual({
+      type: "changed",
+      entity: "app",
+      changes: ["apps-changed"],
+    });
+    expect(contract.serverMessageSchema.parse(message)).toEqual(message);
     expect(
       contract.appDataBroadcastMessageSchema.parse({
         ...message,
@@ -761,6 +775,15 @@ describe("server-contract canonical schemas", () => {
     });
     expect(
       contract.appDataBroadcastMessageSchema.parse({
+        type: "app-data.resync",
+        applicationId: "status",
+      }),
+    ).toEqual({
+      type: "app-data.resync",
+      applicationId: "status",
+    });
+    expect(
+      contract.serverMessageSchema.parse({
         type: "app-data.resync",
         applicationId: "status",
       }),

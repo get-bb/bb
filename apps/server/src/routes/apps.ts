@@ -779,6 +779,7 @@ export async function notifyGlobalAppsChanged(
   deps: GlobalAppListDeps,
 ): Promise<void> {
   deps.hub.notifySystem(["apps-changed"]);
+  deps.hub.notifyApp(["apps-changed"]);
 }
 
 function createHtmlResponse(html: string): Response {

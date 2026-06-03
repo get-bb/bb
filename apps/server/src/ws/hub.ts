@@ -1,5 +1,6 @@
 import type {
   ChangedMessage,
+  AppChangeKind,
   EnvironmentChangeKind,
   HostChangeKind,
   ProjectChangeKind,
@@ -15,7 +16,7 @@ import type {
   HostDaemonSessionCloseReason,
 } from "@bb/host-daemon-contract";
 import {
-  appDataBroadcastMessageSchema,
+  serverMessageSchema,
   terminalServerMessageSchema,
   type AppDataBroadcastMessage,
   type TerminalServerMessage,
@@ -508,8 +509,16 @@ export class NotificationHub implements DbNotifier {
   notifyAppData(message: AppDataBroadcastMessage): void {
     this.notifyClientsByKey(
       subKey("app", `${message.applicationId}:data`),
-      JSON.stringify(appDataBroadcastMessageSchema.parse(message)),
+      JSON.stringify(serverMessageSchema.parse(message)),
     );
+  }
+
+  notifyApp(changes: AppChangeKind[]): void {
+    this.notifyClients({
+      type: "changed",
+      entity: "app",
+      changes,
+    });
   }
 
   notifyProject(projectId: string, changes: ProjectChangeKind[]): void {
@@ -670,7 +679,12 @@ export class NotificationHub implements DbNotifier {
       }
     }
 
-    const payload = JSON.stringify(message);
+    const parseResult = serverMessageSchema.safeParse(message);
+    if (!parseResult.success) {
+      console.error("Skipping invalid realtime broadcast", parseResult.error);
+      return;
+    }
+    const payload = JSON.stringify(parseResult.data);
     this.notifyClientsByKeySet(sockets, payload);
   }
 

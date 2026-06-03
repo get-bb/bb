@@ -18,6 +18,7 @@ import {
 } from "@bb/server-contract";
 import type { AppDataPath, JsonValue } from "@bb/domain";
 import { fetchApi } from "../transport-http.js";
+import type { BbRealtime } from "../realtime.js";
 import type { CreateSdkAreaArgs, OkResponse } from "./common.js";
 import { requireCurrentApplicationId } from "./common.js";
 
@@ -107,8 +108,22 @@ export interface CurrentAppMessageArea {
   send(args: CurrentAppMessageSendArgs): Promise<void>;
 }
 
+export interface CreateCurrentAppDataAreaArgs extends CreateSdkAreaArgs {
+  apps?: AppsArea;
+  realtime?: BbRealtime;
+}
+
 function encodePathSegments(value: string): string {
   return value.split("/").map(encodeURIComponent).join("/");
+}
+
+function cloneValue<TValue extends JsonValue | undefined>(
+  value: TValue,
+): TValue {
+  if (value === undefined) {
+    return value;
+  }
+  return JSON.parse(JSON.stringify(value));
 }
 
 function appDataPath(args: AppDataReadArgs): string {
@@ -244,9 +259,9 @@ export function createAppsArea(args: CreateSdkAreaArgs): AppsArea {
 }
 
 export function createCurrentAppDataArea(
-  args: CreateSdkAreaArgs,
+  args: CreateCurrentAppDataAreaArgs,
 ): CurrentAppDataArea {
-  const apps = createAppsArea(args);
+  const apps = args.apps ?? createAppsArea(args);
   const applicationId = () => requireCurrentApplicationId(args.context);
   const entries = async (input: CurrentAppDataListArgs = {}) => {
     const response = await apps.data.list({
@@ -271,10 +286,22 @@ export function createCurrentAppDataArea(
         value: entry.value,
       }));
     },
-    onChange() {
-      throw new Error(
-        "bb.data.onChange is available in the injected app runtime.",
-      );
+    onChange(input) {
+      if (!args.realtime) {
+        throw new Error("bb.data.onChange requires SDK realtime support.");
+      }
+      return args.realtime.on({
+        event: "app-data:changed",
+        applicationId: applicationId(),
+        ...(input.prefix === undefined ? {} : { prefix: input.prefix }),
+        callback(event) {
+          input.callback({
+            path: event.path,
+            value: event.deleted ? undefined : cloneValue(event.value),
+            deleted: event.deleted,
+          });
+        },
+      });
     },
     async read(input) {
       const entry = await apps.data.read({

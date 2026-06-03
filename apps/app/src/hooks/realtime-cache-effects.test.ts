@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryObserver } from "@tanstack/react-query";
 import {
+  APP_CHANGE_KINDS,
   ENVIRONMENT_CHANGE_KINDS,
   HOST_CHANGE_KINDS,
   PROJECT_CHANGE_KINDS,
@@ -29,6 +30,7 @@ import {
 } from "./queries/query-keys";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
+  REALTIME_APP_CHANGE_REGISTRY,
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
   REALTIME_HOST_CHANGE_REGISTRY,
   REALTIME_PROJECT_CHANGE_REGISTRY,
@@ -131,6 +133,14 @@ describe("createRealtimeCacheEffects", () => {
     for (const changeKind of SYSTEM_CHANGE_KINDS) {
       expect(
         REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind].dirty.length,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("maps every realtime app change to at least one dirty handler", () => {
+    for (const changeKind of APP_CHANGE_KINDS) {
+      expect(
+        REALTIME_APP_CHANGE_REGISTRY[changeKind].dirty.length,
       ).toBeGreaterThan(0);
     }
   });
@@ -1010,6 +1020,31 @@ describe("createRealtimeCacheEffects", () => {
     effects.handleChanged({
       type: "changed",
       entity: "system",
+      changes: ["apps-changed"],
+    });
+
+    await vi.waitFor(() => expect(appsQueryFn).toHaveBeenCalledTimes(1));
+
+    unsubscribeApps();
+    effects.dispose();
+  });
+
+  it("refetches active app list queries for app entity changes", async () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const appsKey = appsQueryKey();
+    queryClient.setQueryData(appsKey, []);
+    const appsQueryFn = vi.fn(async () => []);
+    const appsObserver = new QueryObserver(queryClient, {
+      queryKey: appsKey,
+      queryFn: appsQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeApps = appsObserver.subscribe(() => {});
+    appsQueryFn.mockClear();
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "app",
       changes: ["apps-changed"],
     });
 

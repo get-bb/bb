@@ -249,6 +249,7 @@ export {
   sendQueuedMessageResponseSchema,
   sendMessageModeSchema,
   sendMessageRequestSchema,
+  serverMessageSchema,
   resolvePendingInteractionRequestSchema,
   scheduledThreadAutomationActionSchema,
   squashMergeActionResponseSchema,
@@ -441,6 +442,7 @@ export type {
   SendQueuedMessageMode,
   SendQueuedMessageResponse,
   SendMessageRequest,
+  ServerMessage,
   ResolvePendingInteractionRequest,
   SquashMergeActionResponse,
   SquashMergeOptions,
@@ -512,11 +514,26 @@ export type {
 } from "./public-api.js";
 
 export {
+  APP_CHANGE_KINDS,
+  appChangedMessageSchema,
+  appChangeKindSchema,
+  changedMessageSchema,
   ENVIRONMENT_CHANGE_KINDS,
+  environmentChangedMessageSchema,
+  environmentChangeKindSchema,
   HOST_CHANGE_KINDS,
+  hostChangedMessageSchema,
+  hostChangeKindSchema,
   PROJECT_CHANGE_KINDS,
+  projectChangedMessageSchema,
+  projectChangeKindSchema,
   REALTIME_ENTITIES,
+  systemChangedMessageSchema,
+  systemChangeKindSchema,
   SYSTEM_CHANGE_KINDS,
+  threadChangedMessageSchema,
+  threadChangeKindSchema,
+  threadChangeMetadataSchema,
   THREAD_CHANGE_KINDS,
 } from "@bb/domain";
 
@@ -526,6 +543,8 @@ export {
 } from "./host-join-request.js";
 export type { CreatePersistentHostJoinRequestArgs } from "./host-join-request.js";
 export type {
+  AppChangedMessage,
+  AppChangeKind,
   ChangedMessage,
   ClientMessage,
   EnvironmentChangeKind,
@@ -533,12 +552,14 @@ export type {
   HostChangeKind,
   HostChangedMessage,
   ProjectChangeKind,
+  ProjectChangedMessage,
   RealtimeEntity,
-  ServerMessage,
   SubscribeMessage,
   SystemChangeKind,
+  SystemChangedMessage,
   ThreadChangeMetadata,
   ThreadChangeKind,
+  ThreadChangedMessage,
   UnsubscribeMessage,
   JsonValue,
 } from "@bb/domain";

@@ -5,10 +5,7 @@ export type {
   CreateInjectedBbSdkArgs,
 } from "./app-runtime-core.js";
 export type { InjectedAppWindowBb } from "./app-window.js";
-export {
-  createInjectedBbSdk,
-  createInjectedCurrentAppDataArea,
-} from "./app-runtime-core.js";
+export { createInjectedBbSdk } from "./app-runtime-core.js";
 
 export interface CreateAppRuntimeScriptArgs {
   bootstrapJson: string;

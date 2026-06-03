@@ -112,6 +112,41 @@ describe("NotificationHub", () => {
     });
   });
 
+  it("delivers app list changes to entity-wide app subscribers", () => {
+    const hub = new NotificationHub();
+    const socket = createMockSocket();
+
+    hub.subscribe(socket, "app");
+    hub.notifyApp(["apps-changed"]);
+
+    expect(socket.messages).toHaveLength(1);
+    expect(JSON.parse(socket.messages[0])).toEqual({
+      type: "changed",
+      entity: "app",
+      changes: ["apps-changed"],
+    });
+  });
+
+  it("does not deliver app data broadcasts to entity-wide app subscribers", () => {
+    const hub = new NotificationHub();
+    const entityWideSocket = createMockSocket();
+    const appDataSocket = createMockSocket();
+
+    hub.subscribe(entityWideSocket, "app");
+    hub.subscribe(appDataSocket, "app", "status:data");
+    hub.notifyAppData({
+      type: "app-data.changed",
+      applicationId: "status",
+      path: "state.json",
+      value: { workers: [] },
+      deleted: false,
+      version: "version-1",
+    });
+
+    expect(entityWideSocket.messages).toHaveLength(0);
+    expect(appDataSocket.messages).toHaveLength(1);
+  });
+
   it("delivers app data resync broadcasts", () => {
     const hub = new NotificationHub();
     const socket = createMockSocket();

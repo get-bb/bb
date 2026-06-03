@@ -1,5 +1,5 @@
 import ReconnectingWebSocket from "partysocket/ws";
-import { REALTIME_ENTITIES } from "@bb/server-contract";
+import { changedMessageSchema, REALTIME_ENTITIES } from "@bb/server-contract";
 import type {
   ClientMessage,
   ChangedMessage,
@@ -64,10 +64,10 @@ export class WebSocketManager {
     this.socket.onmessage = (event: MessageEvent) => {
       if (typeof event.data !== "string") return;
       try {
-        const msg: unknown = JSON.parse(event.data);
-        if (isChangedMessage(msg)) {
+        const msg = changedMessageSchema.safeParse(JSON.parse(event.data));
+        if (msg.success) {
           for (const cb of this.callbacks) {
-            cb(msg);
+            cb(msg.data);
           }
         }
       } catch {
@@ -146,14 +146,6 @@ export class WebSocketManager {
       callback();
     }
   }
-}
-
-function isChangedMessage(value: unknown): value is ChangedMessage {
-  if (typeof value !== "object" || value === null) return false;
-  if (!("type" in value) || !("entity" in value) || !("changes" in value))
-    return false;
-  const record = value as Record<string, unknown>;
-  return record.type === "changed";
 }
 
 function subKey(entity: RealtimeEntity, id?: string): string {
