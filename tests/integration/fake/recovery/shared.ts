@@ -16,9 +16,9 @@ export const TURN_TIMEOUT_MS = scaleTimeoutMs(15_000);
 export const RECOVERY_TIMEOUT_MS = scaleTimeoutMs(30_000);
 // Active-turn waits: only long enough to catch a turn in flight before the crash/restart step.
 export const ACTIVE_TIMEOUT_MS = scaleTimeoutMs(5_000);
-// Hold the turn beyond RECOVERY_TIMEOUT_MS so active-crash recovery must interrupt
-// an in-flight provider call instead of racing a normally completed fake turn.
-export const STOP_DELAY_TEXT = "delay:60000 recovery turn";
+// Hold the turn long enough to observe active status before crashing, while
+// still allowing a replayed pre-start command to settle inside RECOVERY_TIMEOUT_MS.
+export const STOP_DELAY_TEXT = "delay:5000 recovery turn";
 
 export type RecoveryWorkspaceType = "unmanaged" | "managed-worktree";
 

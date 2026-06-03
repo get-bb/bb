@@ -7,6 +7,7 @@ import {
 import {
   waitForHostConnected,
   waitForHostDisconnected,
+  waitForEventType,
   waitForThreadOutputContaining,
   waitForThreadStatus,
 } from "../../helpers/assertions.js";
@@ -54,6 +55,12 @@ describe.sequential("fake provider active crash recovery integration", () => {
 
       await harness.startDaemon();
       await waitForHostConnected(harness.api, RECOVERY_TIMEOUT_MS);
+      await waitForEventType(
+        harness.api,
+        thread.id,
+        "system/thread/interrupted",
+        RECOVERY_TIMEOUT_MS,
+      );
       await waitForThreadStatus(
         harness.api,
         thread.id,

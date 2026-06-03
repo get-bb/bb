@@ -57,7 +57,11 @@ describe.sequential("fake provider offline queue recovery integration", () => {
         harness.db,
         thread.id,
       );
-      if (!providerThreadId || !environment.path) {
+      if (
+        !providerThreadId ||
+        !environment.path ||
+        !environment.workspaceProvisionType
+      ) {
         throw new Error(
           "Expected queued recovery turn to have provider context",
         );
@@ -112,6 +116,7 @@ describe.sequential("fake provider offline queue recovery integration", () => {
           instructions: `Recovered queued work for ${projectName} in ${projectRootPath}`,
           instructionMode: "append",
           dynamicTools: [],
+          injectedSkillSources: [],
         },
         target: { mode: "start" },
       });
