@@ -33,7 +33,6 @@ import {
   stripProjectThreads,
 } from "@/hooks/queries/project-queries";
 import { useEffectiveHosts } from "@/hooks/queries/effective-hosts";
-import { useManagerTemplates } from "@/hooks/queries/system-queries";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
@@ -214,13 +213,6 @@ export function RootComposeView() {
   const { isLocalHost, localHostId } = useHostDaemon();
   const hostsQuery = useEffectiveHosts();
   const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
-  const managerTemplatesQuery = useManagerTemplates();
-  const managerTemplates = useMemo(
-    () => managerTemplatesQuery.data?.templates ?? [],
-    [managerTemplatesQuery.data?.templates],
-  );
-  const managerTemplateActiveName =
-    managerTemplatesQuery.data?.activeName ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ projectId, threadId: null });
   const { data: projectPromptHistory = [] } =
@@ -234,13 +226,10 @@ export function RootComposeView() {
     },
   );
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
-  // Manager-mode selections. Held as raw user choices; the effective values
-  // resolved against the loaded hosts / templates are computed below so a
-  // stale selection (host disconnects, template removed) falls back to a
-  // safe default without an effect.
+  // Manager-mode host selection. Held as a raw user choice; the effective
+  // value resolved against the loaded hosts is computed below so a stale
+  // selection (host disconnects) falls back to a safe default without an effect.
   const [managerHostSelection, setManagerHostSelection] = useState<string>("");
-  const [managerTemplateSelection, setManagerTemplateSelection] =
-    useState<string>("");
   const prompt = promptDraft.text;
   const promptInput = useMemo(
     () =>
@@ -405,26 +394,6 @@ export function RootComposeView() {
       local?.id ?? eligibleProjectlessThreadHosts[0]?.id ?? localHostId ?? ""
     );
   }, [eligibleProjectlessThreadHosts, isLocalHost, localHostId]);
-
-  const defaultManagerTemplateName = useMemo(() => {
-    if (
-      managerTemplateActiveName !== null &&
-      managerTemplates.some(
-        (template) => template.name === managerTemplateActiveName,
-      )
-    ) {
-      return managerTemplateActiveName;
-    }
-    return managerTemplates[0]?.name ?? "";
-  }, [managerTemplateActiveName, managerTemplates]);
-  const effectiveManagerTemplateName = useMemo(() => {
-    const isKnown = managerTemplates.some(
-      (template) => template.name === managerTemplateSelection,
-    );
-    return managerTemplateSelection && isKnown
-      ? managerTemplateSelection
-      : defaultManagerTemplateName;
-  }, [defaultManagerTemplateName, managerTemplateSelection, managerTemplates]);
 
   // Projectless threads choose a host directly, not an environment mode. Keep
   // the underlying persisted value host-shaped for the create-thread contract,
@@ -663,9 +632,7 @@ export function RootComposeView() {
     if (mode === "manager") {
       // Managers don't require a prompt — submitting with empty text just
       // falls back to the server's welcome-message template. Host comes
-      // from the manager-mode host picker; template comes from the
-      // template picker (only sent when non-empty so the server keeps its
-      // own default).
+      // from the manager-mode host picker.
       if (
         hireProjectManager.isPending ||
         managerDefaultExecutionOptionsQuery.isLoading ||
@@ -682,9 +649,6 @@ export function RootComposeView() {
           reasoningLevel,
           executionInputSources: managerExecutionInputSources,
           environment: { type: "host", hostId: effectiveManagerHostId },
-          ...(effectiveManagerTemplateName
-            ? { templateName: effectiveManagerTemplateName }
-            : {}),
           ...(submittedInput.length > 0 ? { input: submittedInput } : {}),
         });
         promptDraft.clearIfCurrentMatches(submittedDraft);
@@ -733,7 +697,6 @@ export function RootComposeView() {
   }, [
     createThread,
     effectiveManagerHostId,
-    effectiveManagerTemplateName,
     hireProjectManager,
     managerExecutionInputSources,
     managerDefaultExecutionOptionsQuery.isLoading,
@@ -1065,15 +1028,6 @@ export function RootComposeView() {
                   onChange: setManagerHostSelection,
                   isLocalHost,
                 },
-                ...(managerTemplates.length > 0
-                  ? {
-                      template: {
-                        templates: managerTemplates,
-                        value: effectiveManagerTemplateName,
-                        onChange: setManagerTemplateSelection,
-                      },
-                    }
-                  : {}),
               }
             : {
                 mode: "thread",

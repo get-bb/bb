@@ -213,10 +213,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       kind: "local",
     },
   },
-  "host.list_manager_templates": {
-    templates: [{ name: "default" }],
-    activeName: "default",
-  },
   "host.file_metadata": {
     path: "/tmp/report.html",
     modifiedAtMs: 1234,
@@ -954,7 +950,6 @@ describe("host-daemon command schemas", () => {
         path: "/tmp/workspace",
         limit: 50,
       },
-      { type: "host.list_manager_templates" },
       {
         type: "host.file_metadata",
         path: "/tmp/workspace/README.md",

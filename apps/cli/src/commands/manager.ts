@@ -21,7 +21,6 @@ interface ManagerHireCommandOptions {
   provider?: string;
   model?: string;
   serviceTier?: string;
-  template?: string;
   reasoningLevel?: string;
 }
 
@@ -65,10 +64,6 @@ export function registerManagerCommands(
     .option(
       "--model <model>",
       "Model ID for the manager. Omit to use the remembered or server default for the resolved provider",
-    )
-    .option(
-      "--template <name>",
-      "Manager template set name from manager-templates/<name>",
     )
     .option("--service-tier <tier>", "Service tier: fast or default")
     .option(
@@ -114,7 +109,6 @@ export function registerManagerCommands(
             ...(opts.provider ? { providerId: opts.provider } : {}),
             ...(opts.model ? { model: opts.model } : {}),
             ...(serviceTier ? { serviceTier } : {}),
-            ...(opts.template ? { templateName: opts.template } : {}),
             environment: { type: "host", hostId },
             ...(reasoningLevel ? { reasoningLevel } : {}),
           });

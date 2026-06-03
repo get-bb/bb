@@ -124,8 +124,6 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Manager creation may omit a custom name and use the server-generated default.",
   "createManagerThreadRequestSchema.providerId":
     "Manager creation may omit providerId and use remembered manager defaults or the server manager default.",
-  "createManagerThreadRequestSchema.templateName":
-    "Manager creation omits templateName to use the active manager template pointer or default fallback.",
   "createManagerThreadRequestSchema.reasoningLevel":
     "Manager creation may omit reasoning level and use the server default.",
   "createManagerThreadRequestSchema.serviceTier":

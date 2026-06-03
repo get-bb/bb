@@ -42,7 +42,6 @@ import {
   completeCodexInference,
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
-import { listManagerTemplatesCommand } from "./command-handlers/manager-templates.js";
 import {
   ensureThreadRuntime,
   handleThreadDeleted,
@@ -353,8 +352,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
   "host.list_branches": listHostBranches,
-  "host.list_manager_templates": async (command, options) =>
-    listManagerTemplatesCommand(command, { dataDir: options.dataDir }),
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,

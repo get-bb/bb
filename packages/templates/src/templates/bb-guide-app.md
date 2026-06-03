@@ -271,5 +271,4 @@ Related guides:
 
   bb guide overview
   bb guide managers
-  bb guide manager-templates
   bb guide async

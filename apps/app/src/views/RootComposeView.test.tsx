@@ -16,7 +16,6 @@ import {
   type ThreadWithRuntime,
 } from "@bb/domain";
 import type {
-  ManagerTemplatesResponse,
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
   SystemConfigResponse,
@@ -100,11 +99,6 @@ const systemExecutionOptions = {
   selectedOnlyModels: [],
   modelLoadError: null,
 } satisfies SystemExecutionOptionsResponse;
-
-const managerTemplates = {
-  templates: [],
-  activeName: "default",
-} satisfies ManagerTemplatesResponse;
 
 const systemConfig = {
   featureFlags: { placeholder: false },
@@ -231,10 +225,6 @@ function installRootComposeFetchRoutes(
     {
       pathname: "/api/v1/hosts",
       handler: () => jsonResponse([localHost]),
-    },
-    {
-      pathname: "/api/v1/manager-templates",
-      handler: () => jsonResponse(managerTemplates),
     },
     {
       pathname: "/api/v1/system/execution-options",

@@ -348,7 +348,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     rpcResponseSuccessSchemaFor("host.list_paths"),
     rpcResponseSuccessSchemaFor("host.file_metadata"),
     rpcResponseSuccessSchemaFor("host.list_branches"),
-    rpcResponseSuccessSchemaFor("host.list_manager_templates"),
     rpcResponseSuccessSchemaFor("host.read_file"),
     rpcResponseSuccessSchemaFor("host.read_file_relative"),
     rpcResponseSuccessSchemaFor("provider.list"),

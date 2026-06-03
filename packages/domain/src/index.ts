@@ -63,9 +63,6 @@ export type {
   WorkspaceGitOperation,
 } from "./git-checkout.js";
 
-export { managerTemplateNameSchema } from "./manager-templates.js";
-export type { ManagerTemplateName } from "./manager-templates.js";
-
 export {
   APPLICATION_ID_MAX_LENGTH,
   appDataPathSchema,

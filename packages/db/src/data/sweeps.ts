@@ -78,7 +78,6 @@ const LEGACY_READ_ONLY_HOST_DAEMON_COMMAND_TYPES = [
   "host.file_metadata",
   "host.list_branches",
   "host.list_files",
-  "host.list_manager_templates",
   "host.list_paths",
   "host.read_file",
   "host.read_file_relative",

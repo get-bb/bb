@@ -24,7 +24,6 @@ import type {
   Thread,
   ClientTurnRequestId,
   EnvironmentStatus,
-  ManagerTemplateName,
   WorkspaceProvisionType,
 } from "@bb/domain";
 import type {
@@ -82,7 +81,6 @@ export interface QueueThreadStartCommandArgs {
   execution: ResolvedThreadExecutionOptions;
   permissionEscalation: PermissionEscalation;
   input: PromptInput[];
-  managerTemplateName: ManagerTemplateName | null;
   projectId: string;
   providerId: string;
   requestId: ClientTurnRequestId;

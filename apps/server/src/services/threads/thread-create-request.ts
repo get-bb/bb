@@ -1,4 +1,4 @@
-import type { ManagerTemplateName, PromptInput, ThreadType } from "@bb/domain";
+import type { PromptInput, ThreadType } from "@bb/domain";
 import type {
   CreateThreadRequest,
   EnvironmentArgs,
@@ -10,7 +10,6 @@ export interface ThreadCreateServiceRequestInput {
   environment: EnvironmentArgs;
   executionInputSources?: CreateThreadRequest["executionInputSources"];
   input: PromptInput[];
-  managerTemplateName: ManagerTemplateName | null;
   model?: CreateThreadRequest["model"];
   origin: ThreadCreateOrigin | null;
   parentThreadId?: string;

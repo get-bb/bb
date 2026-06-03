@@ -1,6 +1,5 @@
 import { memo, useMemo, useRef, type ReactNode } from "react";
 import type { Host, ProjectSource } from "@bb/domain";
-import type { ManagerTemplateSummary } from "@bb/server-contract";
 import {
   ExecutionControls,
   type ExecutionControlsProps,
@@ -27,7 +26,6 @@ import {
   parseEnvironmentValue,
 } from "@/components/pickers/environment-picker-value";
 import { HostPicker } from "@/components/pickers/HostPicker";
-import { ManagerTemplatePicker } from "@/components/pickers/ManagerTemplatePicker";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_CONTENT_CLASS_NAME,
@@ -121,12 +119,6 @@ export interface NewThreadProjectConfig {
   createProject?: ProjectSelectorCreateProjectConfig;
 }
 
-export interface NewThreadTemplateConfig {
-  templates: readonly ManagerTemplateSummary[];
-  value: string;
-  onChange: (templateName: string) => void;
-}
-
 export interface NewThreadHostConfig {
   /** All known hosts — used by `HostPicker` to render the selected host's
    * label even when it falls outside the eligible set. */
@@ -144,9 +136,9 @@ export interface NewThreadHostConfig {
 /**
  * Mode-dependent block. Discriminated union — when mode is "thread" the
  * environment / branch / worktree / permission config is required and the
- * reuse-pill header slot is available; when mode is "manager" only the
- * manager-template picker is meaningful. Invalid combinations (e.g.
- * "manager" + reuse env) are unrepresentable at the prop boundary.
+ * reuse-pill header slot is available; when mode is "manager" only the host
+ * picker is meaningful. Invalid combinations (e.g. "manager" + reuse env)
+ * are unrepresentable at the prop boundary.
  */
 export type NewThreadModeConfig =
   | {
@@ -168,9 +160,6 @@ export type NewThreadModeConfig =
        * host because the manager thread runs on it; thread mode picks one
        * via the env picker, which manager mode lacks. */
       host: NewThreadHostConfig;
-      /** Manager-template picker shown beside the host picker. Omit (or
-       * pass `templates: []`) to hide. */
-      template?: NewThreadTemplateConfig;
     };
 
 export interface NewThreadPromptBoxUIProps {
@@ -319,10 +308,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
             />
           ) : null}
           {modeConfig.mode === "manager" ? (
-            <ManagerSlot
-              host={modeConfig.host}
-              template={modeConfig.template}
-            />
+            <ManagerSlot host={modeConfig.host} />
           ) : (
             <ThreadEnvSlot
               environment={modeConfig.environment}
@@ -349,25 +335,12 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
 
 interface ManagerSlotProps {
   host: NewThreadHostConfig;
-  template: NewThreadTemplateConfig | undefined;
 }
 
-function ManagerSlot({ host, template }: ManagerSlotProps) {
-  // Hide both pickers when they offer no real choice — a single eligible
-  // host or template is the de-facto default, surfacing the picker just
-  // adds visual noise. Submit logic in RootComposeView still uses the
-  // resolved value, so behavior is unchanged.
-  const showTemplatePicker = (template?.templates.length ?? 0) >= 2;
+function ManagerSlot({ host }: ManagerSlotProps) {
   return (
     <>
       <HostSlot host={host} />
-      {showTemplatePicker && template ? (
-        <ManagerTemplatePicker
-          templates={template.templates}
-          value={template.value}
-          onChange={template.onChange}
-        />
-      ) : null}
     </>
   );
 }
@@ -593,7 +566,6 @@ export type NewThreadConnectedModeConfig =
   | {
       mode: "manager";
       host: NewThreadHostConfig;
-      template?: NewThreadTemplateConfig;
     };
 
 export interface NewThreadPromptBoxProps extends Omit<
@@ -627,7 +599,6 @@ export function NewThreadPromptBox({
         modeConfig={{
           mode: "manager",
           host: modeConfig.host,
-          template: modeConfig.template,
         }}
       />
     );

@@ -724,24 +724,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         };
       }
 
-      if (payload.templateName !== undefined) {
-        const templatesResult = await callHostRetryableOnlineRpc(deps, {
-          hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: { type: "host.list_manager_templates" },
-        });
-        const knownTemplateNames = new Set(
-          templatesResult.templates.map((template) => template.name),
-        );
-        if (!knownTemplateNames.has(payload.templateName)) {
-          throw new ApiError(
-            400,
-            "invalid_request",
-            `Unknown manager template "${payload.templateName}"`,
-          );
-        }
-      }
-
       let title: string;
       if (payload.name) {
         title = payload.name;
@@ -788,7 +770,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
       const thread = await createThreadFromRequest(deps, {
         automationId: null,
-        managerTemplateName: payload.templateName ?? null,
         origin: payload.origin,
         projectId,
         providerId: payload.providerId,

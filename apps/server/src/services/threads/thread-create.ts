@@ -12,7 +12,6 @@ import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { buildExecutionOptions } from "./thread-commands.js";
-import { seedManagerThreadStorage } from "./manager-storage-templates.js";
 import {
   prependManagerPreferencesSystemMessageIfChanged,
   recordManagerDynamicFileDelivery,
@@ -39,7 +38,6 @@ import {
   requestThreadProvision,
 } from "./thread-provisioning.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-provisioning-context.js";
-import { requireThreadStoragePath } from "./thread-storage.js";
 
 type ThreadCreateDeps = Pick<
   AppDeps,
@@ -168,16 +166,6 @@ async function prepareManagerThreadInitialInput(
   }
 
   const hostId = resolveProvisionHostId(deps, args.environmentIntent);
-  const threadStoragePath = await requireThreadStoragePath(deps, {
-    hostId,
-    threadId: args.thread.id,
-  });
-  await seedManagerThreadStorage(deps, {
-    explicitTemplateName: args.request.managerTemplateName,
-    hostId,
-    threadId: args.thread.id,
-    threadStoragePath,
-  });
   return prependManagerPreferencesSystemMessageIfChanged(deps, {
     hostId,
     input: args.input,
@@ -289,7 +277,6 @@ async function createProvisioningThread(
         environmentIntent: args.environmentIntent,
         execution,
         input: preparedInput.input,
-        managerTemplateName: args.request.managerTemplateName,
         titleProvided: Boolean(args.request.title),
       });
       recordManagerDynamicFileDelivery(deps, preparedInput.stateUpdate);

@@ -4,9 +4,7 @@ import {
   promptInputSchema,
   resolvedThreadExecutionOptionsSchema,
   clientTurnRequestIdSchema,
-  managerTemplateNameSchema,
   type ClientTurnRequestId,
-  type ManagerTemplateName,
   type ThreadProvisioningStage,
   type ThreadProvisioningState,
   type PromptInput,
@@ -69,7 +67,6 @@ export const threadProvisionCommonPayloadSchema = z.object({
   environmentIntent: threadProvisionEnvironmentIntentSchema,
   execution: resolvedThreadExecutionOptionsSchema,
   input: z.array(promptInputSchema),
-  managerTemplateName: managerTemplateNameSchema.nullable().default(null),
   titleProvided: z.boolean(),
 });
 
@@ -148,7 +145,6 @@ export interface CreateMetadataPendingContextArgs {
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
   input: PromptInput[];
-  managerTemplateName: ManagerTemplateName | null;
   titleProvided: boolean;
 }
 
@@ -265,7 +261,6 @@ export function createMetadataPendingContext(
       environmentIntent: args.environmentIntent,
       execution: args.execution,
       input: args.input,
-      managerTemplateName: args.managerTemplateName,
       titleProvided: args.titleProvided,
     },
     state: {
@@ -342,7 +337,6 @@ export function createReprovisioningContext(
       clientRequestId: args.clientRequestId,
       execution: args.execution,
       input: args.input,
-      managerTemplateName: null,
       titleProvided: true,
     },
     state: {

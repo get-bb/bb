@@ -3,7 +3,6 @@ import {
   discoveredWorkspacePropertiesSchema,
   dynamicToolSchema,
   instructionModeSchema,
-  managerTemplateNameSchema,
   pendingInteractionResolutionSchema,
   promptInputSchema,
   projectSourceCheckoutSchema,
@@ -412,25 +411,6 @@ const hostListBranchesCommandSchema = z.object({
   limit: z.number().int().positive().max(BRANCH_LIST_LIMIT_MAX),
 });
 
-const managerTemplateSummarySchema = z.object({
-  name: managerTemplateNameSchema,
-});
-export type ManagerTemplateSummary = z.infer<
-  typeof managerTemplateSummarySchema
->;
-
-/**
- * List the manager-template directories under the daemon's data directory
- * and resolve the active pointer. Returns a sorted list of templates that
- * contain at least one regular file plus the resolved `activeName` (the
- * trimmed first line of the `active` file, falling back to "default").
- */
-const hostListManagerTemplatesCommandSchema = z
-  .object({
-    type: z.literal("host.list_manager_templates"),
-  })
-  .strict();
-
 const providerListCommandSchema = z.object({
   type: z.literal("provider.list"),
 });
@@ -571,7 +551,6 @@ export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES = [
   "host.list_files",
   "host.list_paths",
   "host.list_branches",
-  "host.list_manager_templates",
   "host.file_metadata",
   "host.read_file",
   "host.read_file_relative",
@@ -631,7 +610,6 @@ export const hostDaemonOnlineRpcCommandSchema = z.union([
   hostListFilesCommandSchema,
   hostListPathsCommandSchema,
   hostListBranchesCommandSchema,
-  hostListManagerTemplatesCommandSchema,
   hostFileMetadataCommandSchema,
   hostReadFileCommandSchema,
   hostReadFileRelativeCommandSchema,
@@ -652,7 +630,6 @@ export const hostDaemonRetryableOnlineRpcCommandSchema = z.union([
   hostListFilesCommandSchema,
   hostListPathsCommandSchema,
   hostListBranchesCommandSchema,
-  hostListManagerTemplatesCommandSchema,
   hostFileMetadataCommandSchema,
   hostReadFileCommandSchema,
   hostReadFileRelativeCommandSchema,
@@ -834,17 +811,6 @@ const pathListResultSchema = z.object({
   truncated: z.boolean(),
 });
 
-const managerTemplatesResultSchema = z.object({
-  /** Sorted alphabetically. Includes only template names that contain at least one regular file. */
-  templates: z.array(managerTemplateSummarySchema),
-  /**
-   * Resolved active template name. Falls back to "default" when the `active`
-   * file is missing/empty/invalid. Not guaranteed to appear in `templates`
-   * — callers should treat that case as "active points at a missing template".
-   */
-  activeName: managerTemplateNameSchema,
-});
-
 const providerListResultSchema = z.object({
   providers: z.array(providerInfoSchema),
 });
@@ -942,7 +908,6 @@ export const hostDaemonOnlineRpcResultSchemaByType = {
   "host.list_paths": pathListResultSchema,
   "host.file_metadata": fileMetadataResultSchema,
   "host.list_branches": projectSourceCheckoutSchema,
-  "host.list_manager_templates": managerTemplatesResultSchema,
   "host.read_file": fileReadResultSchema,
   "host.read_file_relative": fileReadResultSchema,
   "provider.list": providerListResultSchema,

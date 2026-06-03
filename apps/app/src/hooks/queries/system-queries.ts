@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import type {
-  ManagerTemplatesResponse,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemVersionResponse,
@@ -14,7 +13,6 @@ import {
   hostQueryKey,
   hostsQueryKey,
   localProviderCliStatusQueryKey,
-  managerTemplatesQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemVersionQueryKey,
@@ -92,21 +90,6 @@ export function useSystemConfig(options?: QueryOptions) {
     queryFn: () => api.getSystemConfig(),
     enabled: options?.enabled ?? true,
     staleTime: 60_000,
-  });
-}
-
-export interface UseManagerTemplatesArgs {
-  hostId?: string | null;
-  enabled?: boolean;
-}
-
-export function useManagerTemplates(args: UseManagerTemplatesArgs = {}) {
-  const hostId = args.hostId ?? null;
-  return useQuery<ManagerTemplatesResponse>({
-    queryKey: managerTemplatesQueryKey(hostId),
-    queryFn: () => api.listManagerTemplates(hostId ? { hostId } : {}),
-    enabled: args.enabled ?? true,
-    staleTime: 30_000,
   });
 }
 

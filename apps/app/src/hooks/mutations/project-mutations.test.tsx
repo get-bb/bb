@@ -66,7 +66,6 @@ describe("project mutations", () => {
           serviceTier: "explicit",
           reasoningLevel: "explicit",
         },
-        templateName: "default",
         environment: { type: "host", hostId: "host-1" },
         input: [{ type: "text", text: "Start here" }],
       });
@@ -84,7 +83,6 @@ describe("project mutations", () => {
         serviceTier: "explicit",
         reasoningLevel: "explicit",
       },
-      templateName: "default",
       environment: { type: "host", hostId: "host-1" },
       input: [{ type: "text", text: "Start here" }],
     });

@@ -490,21 +490,6 @@ describe("CLI command output contracts", () => {
     expect(output).toContain("No more than 20 schedules.");
   });
 
-  it("bb guide manager-templates prints the manager template chapter", async () => {
-    await runCommand(["guide", "manager-templates"], registerGuideCommand);
-
-    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
-    expect(output.trim().length).toBeGreaterThan(0);
-    expect(output).toContain("Manager templates");
-    expect(output).toContain("<bb-data-dir>/manager-templates/");
-    expect(output).toContain("$BB_DATA_DIR/manager-templates/");
-    expect(output).toContain('DATA_DIR="${BB_DATA_DIR:-$HOME/.bb}"');
-    expect(output).not.toContain("~/.bb/manager-templates");
-    expect(output).not.toContain("~/.bb-dev/manager-templates");
-    expect(output).toContain("bb manager hire --template sawyer-next");
-    expect(output).toContain("recursively copies every regular file");
-  });
-
   it("bb guide app prints the app chapter", async () => {
     await runCommand(["guide", "app"], registerGuideCommand);
 
@@ -526,7 +511,7 @@ describe("CLI command output contracts", () => {
     const errorOutput = collectLogLines(vi.mocked(console.error)).join("\n");
     expect(errorOutput).toContain("Unknown guide chapter 'missing'");
     expect(errorOutput).toContain(
-      "Available: threads, environments, managers, manager-templates, app, providers, projects, hosts, styling, async.",
+      "Available: threads, environments, managers, app, providers, projects, hosts, styling, async.",
     );
   });
 
@@ -792,8 +777,6 @@ describe("CLI command output contracts", () => {
         "claude-code",
         "--model",
         "claude-opus-4-7",
-        "--template",
-        "minimal",
         "--service-tier",
         "fast",
         "--reasoning-level",
@@ -812,7 +795,6 @@ describe("CLI command output contracts", () => {
         providerId: "claude-code",
         reasoningLevel: "high",
         serviceTier: "fast",
-        templateName: "minimal",
       },
     });
     expect(collectLogLines(vi.mocked(console.log))).toContain(
@@ -1065,7 +1047,6 @@ describe("CLI command output contracts", () => {
 
     expect(helpOutput).not.toContain("--permission-mode <mode>");
     expect(helpOutput).toContain("--service-tier <tier>");
-    expect(helpOutput).toContain("--template <name>");
     expect(helpOutput).toMatch(
       /remembered manager defaults or the server\s+manager policy/,
     );

@@ -325,7 +325,6 @@ describe("thread runtime config", () => {
         execution,
         permissionEscalation: "ask",
         input: [{ type: "text", text: "hello" }],
-        managerTemplateName: null,
         projectId: project.id,
         providerId: "codex",
         requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
@@ -484,9 +483,6 @@ describe("thread runtime config", () => {
       );
       expect(runtimeConfig.instructions).toContain(
         `BB data dir: \`/tmp/bb-host-data/${hostId}\``,
-      );
-      expect(runtimeConfig.instructions).toContain(
-        `/tmp/bb-host-data/${hostId}/manager-templates/`,
       );
       expect(runtimeConfig.instructions).toContain(
         `Thread storage: \`/tmp/bb-host-data/${hostId}/thread-storage/${managerThread.id}\``,

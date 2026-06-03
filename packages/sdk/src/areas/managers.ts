@@ -51,9 +51,6 @@ function managerHireJson(
       ? { reasoningLevel: args.reasoningLevel }
       : {}),
     ...(args.serviceTier !== undefined ? { serviceTier: args.serviceTier } : {}),
-    ...(args.templateName !== undefined
-      ? { templateName: args.templateName }
-      : {}),
   };
 }
 

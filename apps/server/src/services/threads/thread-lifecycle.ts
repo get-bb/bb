@@ -951,7 +951,6 @@ export async function queueReadyThreadTurnCommand(
     thread: args.thread,
     environment: args.environment,
     input: args.input,
-    managerTemplateName: null,
     requestId: args.requestId,
     execution: args.execution,
     permissionEscalation: args.permissionEscalation,

@@ -103,8 +103,6 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("Apps are global within the local host data dir");
     expect(rendered).toContain("bb guide app");
     expect(rendered).toContain("bb guide async");
-    expect(rendered).toContain("bb guide manager-templates");
-    expect(rendered).toContain("/tmp/bb-data/manager-templates/");
     expect(rendered).not.toContain("Structure `ASYNC.md`");
     expect(rendered).not.toContain("--background: oklch(0.9551 0 0);");
     expect(rendered).not.toContain("starter/no-preferences content");
@@ -158,8 +156,6 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("mcp__bb-bridge__message_user");
     expect(rendered).toContain("name, vibe, or other identity details");
     expect(rendered).toContain("Preserve any seeded structure");
-    expect(rendered).toContain("manager template defaults");
-    expect(rendered).toContain("bb guide manager-templates");
 
     // Anchors the two opening asks: scope + landing mode.
     expect(rendered).toContain(
@@ -215,26 +211,6 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("timezone: America/Los_Angeles");
     expect(rendered).toContain("No more than 20 schedules.");
     expect(rendered).toContain("The cron month field must stay `*`.");
-  });
-
-  it("renders bbGuideManagerTemplates", () => {
-    const templates = listTemplates();
-    expect(
-      templates.some((template) => template.id === "bbGuideManagerTemplates"),
-    ).toBe(true);
-
-    const rendered = renderTemplate("bbGuideManagerTemplates", {});
-
-    expect(rendered).toContain("Manager templates");
-    expect(rendered).toContain("<bb-data-dir>/manager-templates/");
-    expect(rendered).toContain("$BB_DATA_DIR/manager-templates/");
-    expect(rendered).toContain('DATA_DIR="${BB_DATA_DIR:-$HOME/.bb}"');
-    expect(rendered).not.toContain("~/.bb/manager-templates");
-    expect(rendered).not.toContain("~/.bb-dev/manager-templates");
-    expect(rendered).not.toContain("$HOME/.bb-dev");
-    expect(rendered).toContain("bb manager hire --template sawyer-next");
-    expect(rendered).toContain("There is no filename\nallowlist");
-    expect(rendered).toContain("recursively copies every regular file");
   });
 
   it("renders standardAgentInstructions without user-question guidance", () => {

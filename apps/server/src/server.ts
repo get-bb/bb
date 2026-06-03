@@ -15,7 +15,6 @@ import { registerGlobalAppRoutes } from "./routes/apps.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
-import { registerManagerTemplateRoutes } from "./routes/manager-templates.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerDevelopmentOnlyReplayRoutes } from "./routes/internal-replay.js";
@@ -253,7 +252,6 @@ export function createApp(
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps);
-  registerManagerTemplateRoutes(publicApi, deps);
   registerDevelopmentOnlyReplayRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {

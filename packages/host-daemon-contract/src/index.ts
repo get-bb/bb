@@ -128,7 +128,6 @@ export type {
   HostPathEntry,
   HostPathEntryKind,
   HostReadFileRelativeDotfilePolicy,
-  ManagerTemplateSummary,
   TurnSubmitTarget,
   WorkspaceContext,
   WorkspaceResolutionFailure,

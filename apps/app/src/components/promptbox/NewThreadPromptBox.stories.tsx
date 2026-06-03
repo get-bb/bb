@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import type { PermissionMode } from "@bb/domain";
-import type { ManagerTemplateSummary } from "@bb/server-contract";
 import {
   NewThreadPromptBoxUI,
   type NewThreadBranchConfig,
@@ -8,7 +7,6 @@ import {
   type NewThreadHostConfig,
   type NewThreadModeConfig,
   type NewThreadProjectConfig,
-  type NewThreadTemplateConfig,
   type NewThreadWorktreeConfig,
   type ThreadCreationMode,
 } from "@/components/promptbox/NewThreadPromptBox";
@@ -75,18 +73,6 @@ const baseProject: NewThreadProjectConfig = {
   onChange: noop,
 };
 
-const baseManagerTemplates: readonly ManagerTemplateSummary[] = [
-  { name: "default", isActive: true },
-  { name: "code-reviewer", isActive: false },
-  { name: "release-captain", isActive: false },
-];
-
-const baseTemplate: NewThreadTemplateConfig = {
-  templates: baseManagerTemplates,
-  value: "default",
-  onChange: noop,
-};
-
 const baseHost: NewThreadHostConfig = {
   hosts: STORY_HOSTS,
   eligibleHosts: connectedStoryHosts,
@@ -137,7 +123,6 @@ function useControlledMode(
         ? {
             mode: "manager",
             host: baseHost,
-            template: baseTemplate,
           }
         : {
             mode: "thread",
@@ -261,7 +246,6 @@ function FullAccessRow() {
       ? {
           mode: "manager",
           host: baseHost,
-          template: baseTemplate,
         }
       : {
           mode: "thread",

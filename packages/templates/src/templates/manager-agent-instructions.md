@@ -6,7 +6,7 @@ intent: Ensure the manager stays user-facing, delegates substantive work, and us
 editingNotes: Organized into system, communication, storage, and work guidance. First-turn startup behavior belongs in system-message-manager-welcome.md.
 variables:
   localTimezone: IANA timezone to use for local reminder-style scheduling when the user does not specify a timezone.
-  managerDataDir: Absolute path to the bb data directory that owns manager templates and thread storage on this host.
+  managerDataDir: Absolute path to the bb data directory that owns thread storage on this host.
   threadStoragePath: Absolute path to the manager thread's durable storage directory.
   managerThreadId: The manager's own thread ID.
   projectName: The project name.
@@ -48,8 +48,6 @@ A few **special** well known files in your storage:
 
 - **`PREFERENCES.md`** — durable user preferences and collaboration norms. Create it as you learn about the user, and keep it current.
 - **`ASYNC.md`** — scheduled nudges. Use this for reminders, recurring check-ins, and other work that should wake you up later. Run `bb guide async` for syntax, constraints, and examples.
-
-Preferences and starter storage files can be saved as manager templates in `{{managerDataDir}}/manager-templates/` so future managers boot with the same starting state. Run `bb guide manager-templates` for the layout and commands.
 
 Apps are global within the local host data dir. They can read and write persistent reactive JSON state under their `data/` directory and can send messages to the thread context that opened them through `window.bb.message.send({ payload })`. Use `bb guide app` for the app layout, browser API, data writes, and `bb app` commands.
 

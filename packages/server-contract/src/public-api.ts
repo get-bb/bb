@@ -37,8 +37,6 @@ import type {
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateThreadTerminalRequest,
-  ManagerTemplatesQuery,
-  ManagerTemplatesResponse,
   CreateThreadRequest,
   CloseThreadTerminalRequest,
   DeleteThreadRequest,
@@ -329,17 +327,6 @@ export type PublicApiSchema = {
       PathProjectManagerThreadId & { json: ReorderManagerThreadRequest },
       ThreadListResponse
     >;
-  };
-
-  // ─── Manager Templates ──────────────────────────────────────────────
-
-  "/manager-templates": {
-    /**
-     * List manager-template directories on the resolved host. Picker uses
-     * this to decide whether to surface a template choice in the
-     * new-manager dialog (hidden when fewer than two templates exist).
-     */
-    $get: Endpoint<{ query?: ManagerTemplatesQuery }, ManagerTemplatesResponse>;
   };
 
   // ─── Hosts ───────────────────────────────────────────────────────────

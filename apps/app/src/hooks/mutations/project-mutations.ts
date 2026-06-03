@@ -54,7 +54,6 @@ export interface HireProjectManagerRequest {
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
   executionInputSources?: CreateManagerExecutionInputSources;
-  templateName?: string;
   environment: ManagerEnvironmentArgs;
   /** Optional user-provided first message; when empty the server uses
    * its welcome-message template instead. */
@@ -112,7 +111,6 @@ export function useHireProjectManager() {
       serviceTier,
       reasoningLevel,
       executionInputSources,
-      templateName,
       environment,
       input,
     }: HireProjectManagerRequest) =>
@@ -123,7 +121,6 @@ export function useHireProjectManager() {
         ...(serviceTier ? { serviceTier } : {}),
         ...(reasoningLevel ? { reasoningLevel } : {}),
         ...(executionInputSources ? { executionInputSources } : {}),
-        ...(templateName ? { templateName } : {}),
         environment,
         ...(input && input.length > 0 ? { input } : {}),
       }),

@@ -101,9 +101,7 @@ This file is the manager's durable memory of how the user wants to be worked wit
 
 - Preferred name / how to address the user
 - Worker defaults (provider / reasoning level / permission mode / preferred model) — ask the user when it comes up; do not assume a default.
-- Anything else the user wants surfaced regularly — ask once when natural and update the template accordingly.
+- Anything else the user wants surfaced regularly — ask once when natural and update `PREFERENCES.md` accordingly.
 - Update verbosity preference (terse vs detailed)
 - Any specific area of the codebase that's currently the focus
 ```
-
-When finished you can ask whether the user wants to save these preferences as manager template defaults for future managers. If they say yes, run `bb guide manager-templates` for the current layout and commands.

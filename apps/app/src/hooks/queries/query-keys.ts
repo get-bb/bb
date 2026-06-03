@@ -55,7 +55,6 @@ export const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
 export const LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY = "localProviderCliStatus";
-export const MANAGER_TEMPLATES_QUERY_KEY = "managerTemplates";
 export const LOCAL_PATH_EXISTENCE_QUERY_KEY = "localPathExistence";
 export const REPLAY_CAPTURES_QUERY_KEY = "internalReplayCaptures";
 export const CONVERSATION_MANAGER_TIMELINE_VIEW =
@@ -367,10 +366,6 @@ export type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
 export type LocalProviderCliStatusQueryKey = readonly [
   typeof LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY,
   number | null,
-];
-export type ManagerTemplatesQueryKey = readonly [
-  typeof MANAGER_TEMPLATES_QUERY_KEY,
-  string | null,
 ];
 export type SystemExecutionOptionsQueryKey = readonly [
   typeof SYSTEM_EXECUTION_OPTIONS_QUERY_KEY,
@@ -893,12 +888,6 @@ export function localProviderCliStatusQueryKey(
   daemonPort: number | null,
 ): LocalProviderCliStatusQueryKey {
   return [LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY, daemonPort];
-}
-
-export function managerTemplatesQueryKey(
-  hostId: string | null,
-): ManagerTemplatesQueryKey {
-  return [MANAGER_TEMPLATES_QUERY_KEY, hostId];
 }
 
 export interface SystemExecutionOptionsQueryKeyArgs {

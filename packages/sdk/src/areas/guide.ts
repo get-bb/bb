@@ -20,7 +20,6 @@ const guideChapters: Record<string, TemplateId> = {
   threads: "bbGuideThreads",
   environments: "bbGuideEnvironments",
   managers: "bbGuideManagers",
-  "manager-templates": "bbGuideManagerTemplates",
   app: "bbGuideApp",
   providers: "bbGuideProviders",
   projects: "bbGuideProjects",

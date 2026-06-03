@@ -58,7 +58,6 @@ const MIGRATABLE_LEGACY_ENTRY_NAMES = new Set([
   "event-spool.sqlite",
   "host-id",
   "logs",
-  "manager-templates",
   "replays",
   "thread-storage",
 ]);
