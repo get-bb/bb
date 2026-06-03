@@ -11,6 +11,7 @@ export {
   DEFAULT_BB_REQUEST_TIMEOUT_MS,
 } from "./response.js";
 export type { BbSdk, CreateBbSdkArgs } from "./core.js";
+export type { InjectedAppWindowBb } from "./app-window.js";
 export type {
   BbRealtimeSocketFactory,
   BbSdkContext,

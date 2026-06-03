@@ -39,7 +39,9 @@
   "types": "./src/node.ts",
   "scripts": {
     "build": "node ./scripts/generate-app-runtime-browser-bundle.mjs && node ../../scripts/build-package.mjs",
+    "check:app-globals-dts": "node ./scripts/generate-app-globals-dts.mjs --check",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "generate:app-globals-dts": "node ./scripts/generate-app-globals-dts.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },

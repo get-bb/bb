@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
 import {
+  cp,
   mkdir,
   readdir,
   readFile,
@@ -9,8 +10,10 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { constants as fsConstants, existsSync } from "node:fs";
 import type { Dirent, Stats } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import mimeTypes from "mime-types";
 import type { Hono } from "hono";
 import type { ZodIssue } from "zod";
@@ -51,7 +54,6 @@ import { requirePublicThread } from "../services/lib/entity-lookup.js";
 import { requireThreadCommandEnvironment } from "../services/threads/thread-command-environment.js";
 import { sendThreadMessage } from "../services/threads/thread-send.js";
 import { injectAppClientScript } from "../services/threads/app-client-script.js";
-import { buildBlankAppIndexHtml } from "../services/threads/blank-app-scaffold.js";
 import {
   extractRoutePath,
   parseSafeRelativeRoutePath,
@@ -144,10 +146,49 @@ interface CreateApplicationTempRootArgs {
   applicationId: ApplicationId;
 }
 
+interface WriteInitialApplicationFilesArgs {
+  applicationId: ApplicationId;
+  name: string;
+  tempRootPath: string;
+}
+
+interface CopyApplicationScaffoldTemplateArgs {
+  templatePath: string;
+  tempRootPath: string;
+}
+
+interface CopyApplicationScaffoldSourceDirectoryArgs {
+  sourcePath: string;
+  targetPath: string;
+  templatePath: string;
+}
+
+interface ShouldCopyApplicationScaffoldTemplatePathArgs {
+  sourcePath: string;
+  templatePath: string;
+}
+
+interface RelativeFilesystemPathArgs {
+  basePath: string;
+  targetPath: string;
+}
+
+interface ResolveApplicationScaffoldTemplatePathArgs {
+  moduleDir: string;
+}
+
+interface PatchApplicationScaffoldReadmeArgs {
+  name: string;
+  tempRootPath: string;
+}
+
 interface PublishApplicationTempRootArgs {
   applicationPath: string;
   tempRootPath: string;
 }
+
+type PublishApplicationTempRootResult = "published" | "collision";
+type DeleteGlobalApplicationResult = "deleted" | "partial";
 
 interface AppSession {
   applicationId: ApplicationId;
@@ -185,6 +226,9 @@ type LogoExtension = "svg" | "png" | "jpg" | "jpeg";
 const DATA_DIRECTORY_NAME = "data";
 const MANIFEST_FILE_NAME = "manifest.json";
 const PUBLIC_DIRECTORY_NAME = "public";
+const APP_SCAFFOLD_TEMPLATE_DIRECTORY_NAME = "app-scaffold-template";
+const APP_SCAFFOLD_SOURCE_DIRECTORY_NAME = "source";
+const APP_SCAFFOLD_README_PLACEHOLDER = "BB_APP_NAME_PLACEHOLDER";
 const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
 const NO_STORE_CACHE_CONTROL = "no-store";
 const CONTENT_TYPE_OPTIONS = "nosniff";
@@ -194,6 +238,15 @@ const LOGO_EXTENSIONS: readonly LogoExtension[] = ["svg", "png", "jpg", "jpeg"];
 const APP_SESSION_TOKEN_PREFIX = "appsess_";
 const INVALID_APP_MANIFEST_MESSAGE =
   "App manifest failed validation. Inspect manifest.json or rebuild the app.";
+const APP_SCAFFOLD_SOURCE_DEV_OUTPUT_DIRECTORY_NAMES = new Set([
+  "node_modules",
+  "playwright-report",
+  "screenshots",
+  "test-results",
+]);
+const APP_SCAFFOLD_COPY_MODE = fsConstants.COPYFILE_FICLONE;
+const routesModuleDir = path.dirname(fileURLToPath(import.meta.url));
+
 class InvalidAppManifestError extends ApiError {
   readonly applicationId: ApplicationId;
   readonly manifestPath: string;
@@ -214,6 +267,86 @@ function sha256(bytes: Buffer): string {
 
 function canonicalizeJson(value: JsonValue | AppManifest): string {
   return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function relativeFilesystemPath(args: RelativeFilesystemPathArgs): string {
+  return path
+    .relative(args.basePath, args.targetPath)
+    .split(path.sep)
+    .join("/");
+}
+
+export function shouldCopyApplicationScaffoldTemplatePath(
+  args: ShouldCopyApplicationScaffoldTemplatePathArgs,
+): boolean {
+  const relativePath = relativeFilesystemPath({
+    basePath: args.templatePath,
+    targetPath: args.sourcePath,
+  });
+  if (
+    relativePath === "" ||
+    relativePath === "." ||
+    relativePath === ".." ||
+    relativePath.startsWith("../") ||
+    path.isAbsolute(relativePath)
+  ) {
+    return relativePath === "" || relativePath === ".";
+  }
+
+  const pathSegments = relativePath.split("/");
+  if (pathSegments[0] !== APP_SCAFFOLD_SOURCE_DIRECTORY_NAME) {
+    return true;
+  }
+  return !pathSegments.some((segment) =>
+    APP_SCAFFOLD_SOURCE_DEV_OUTPUT_DIRECTORY_NAMES.has(segment),
+  );
+}
+
+function hasApplicationScaffoldTemplate(templatePath: string): boolean {
+  return (
+    existsSync(path.join(templatePath, MANIFEST_FILE_NAME)) &&
+    existsSync(path.join(templatePath, "README.md")) &&
+    existsSync(path.join(templatePath, PUBLIC_DIRECTORY_NAME, "index.html")) &&
+    existsSync(path.join(templatePath, DATA_DIRECTORY_NAME, "state.json")) &&
+    existsSync(path.join(templatePath, "source", "package.json")) &&
+    existsSync(path.join(templatePath, "skills", "add-todos", "SKILL.md"))
+  );
+}
+
+export function resolveApplicationScaffoldTemplatePathForModuleDir(
+  args: ResolveApplicationScaffoldTemplatePathArgs,
+): string {
+  const sourceTemplateCandidate = path.resolve(
+    args.moduleDir,
+    "../services/threads",
+    APP_SCAFFOLD_TEMPLATE_DIRECTORY_NAME,
+  );
+  const bundledTemplateCandidate = path.resolve(
+    args.moduleDir,
+    APP_SCAFFOLD_TEMPLATE_DIRECTORY_NAME,
+  );
+  const candidates = [sourceTemplateCandidate, bundledTemplateCandidate];
+
+  for (const candidate of candidates) {
+    if (hasApplicationScaffoldTemplate(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    `Missing app scaffold template. Expected ${APP_SCAFFOLD_TEMPLATE_DIRECTORY_NAME} under one of: ${candidates.join(", ")}`,
+  );
+}
+
+function resolveApplicationScaffoldTemplatePath(): string {
+  return resolveApplicationScaffoldTemplatePathForModuleDir({
+    moduleDir: routesModuleDir,
+  });
+}
+
+function formatReadmeTitle(name: string): string {
+  const title = name.replace(/\s+/gu, " ").trim();
+  return title.length > 0 ? title : "bb Todo App";
 }
 
 function isFsErrorWithCode(error: Error, code: string): boolean {
@@ -1089,49 +1222,104 @@ async function createApplicationTempRoot(
   return tempRootPath;
 }
 
+async function patchApplicationScaffoldReadme(
+  args: PatchApplicationScaffoldReadmeArgs,
+): Promise<void> {
+  const readmePath = path.join(args.tempRootPath, "README.md");
+  const readme = await readFile(readmePath, "utf8");
+  await writeFile(
+    readmePath,
+    readme.replaceAll(
+      APP_SCAFFOLD_README_PLACEHOLDER,
+      formatReadmeTitle(args.name),
+    ),
+    "utf8",
+  );
+}
+
+async function copyApplicationScaffoldSourceDirectory(
+  args: CopyApplicationScaffoldSourceDirectoryArgs,
+): Promise<void> {
+  await mkdir(args.targetPath, { recursive: true });
+  const entries = await readdir(args.sourcePath, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(args.sourcePath, entry.name);
+    if (
+      !shouldCopyApplicationScaffoldTemplatePath({
+        sourcePath,
+        templatePath: args.templatePath,
+      })
+    ) {
+      continue;
+    }
+    await cp(sourcePath, path.join(args.targetPath, entry.name), {
+      recursive: true,
+      force: false,
+      mode: APP_SCAFFOLD_COPY_MODE,
+    });
+  }
+}
+
+async function copyApplicationScaffoldTemplate(
+  args: CopyApplicationScaffoldTemplateArgs,
+): Promise<void> {
+  const entries = await readdir(args.templatePath, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(args.templatePath, entry.name);
+    const targetPath = path.join(args.tempRootPath, entry.name);
+    if (
+      entry.isDirectory() &&
+      entry.name === APP_SCAFFOLD_SOURCE_DIRECTORY_NAME
+    ) {
+      await copyApplicationScaffoldSourceDirectory({
+        sourcePath,
+        targetPath,
+        templatePath: args.templatePath,
+      });
+      continue;
+    }
+    await cp(sourcePath, targetPath, {
+      recursive: true,
+      force: false,
+      mode: APP_SCAFFOLD_COPY_MODE,
+    });
+  }
+}
+
 async function writeInitialApplicationFiles(
-  tempRootPath: string,
-  applicationId: ApplicationId,
-  name: string,
+  args: WriteInitialApplicationFilesArgs,
 ): Promise<void> {
   const manifest: AppManifest = {
     manifestVersion: 1,
-    id: applicationId,
-    name,
+    id: args.applicationId,
+    name: args.name,
     entry: "index.html",
     capabilities: ["data", "message"],
   };
-  await mkdir(path.join(tempRootPath, PUBLIC_DIRECTORY_NAME), {
-    recursive: true,
-  });
-  await mkdir(path.join(tempRootPath, DATA_DIRECTORY_NAME), {
-    recursive: true,
+  const templatePath = resolveApplicationScaffoldTemplatePath();
+  await copyApplicationScaffoldTemplate({
+    templatePath,
+    tempRootPath: args.tempRootPath,
   });
   await writeFile(
-    path.join(tempRootPath, MANIFEST_FILE_NAME),
+    path.join(args.tempRootPath, MANIFEST_FILE_NAME),
     canonicalizeJson(manifest),
     "utf8",
   );
-  await writeFile(
-    path.join(tempRootPath, PUBLIC_DIRECTORY_NAME, "index.html"),
-    buildBlankAppIndexHtml({ name }),
-    "utf8",
-  );
-  await writeFile(
-    path.join(tempRootPath, DATA_DIRECTORY_NAME, "state.json"),
-    canonicalizeJson({}),
-    "utf8",
-  );
+  await patchApplicationScaffoldReadme({
+    tempRootPath: args.tempRootPath,
+    name: args.name,
+  });
   appManifestSchema.parse(
     JSON.parse(
-      await readFile(path.join(tempRootPath, MANIFEST_FILE_NAME), "utf8"),
+      await readFile(path.join(args.tempRootPath, MANIFEST_FILE_NAME), "utf8"),
     ),
   );
 }
 
 async function publishApplicationTempRoot(
   args: PublishApplicationTempRootArgs,
-): Promise<"published" | "collision"> {
+): Promise<PublishApplicationTempRootResult> {
   try {
     await stat(args.applicationPath);
     return "collision";
@@ -1171,11 +1359,11 @@ async function createGlobalApplication(
       appsRootPath,
       applicationId: args.applicationId,
     });
-    await writeInitialApplicationFiles(
+    await writeInitialApplicationFiles({
       tempRootPath,
-      args.applicationId,
-      args.name,
-    );
+      applicationId: args.applicationId,
+      name: args.name,
+    });
     const result = await publishApplicationTempRoot({
       applicationPath,
       tempRootPath,
@@ -1210,7 +1398,7 @@ async function createGlobalApplication(
 async function deleteGlobalApplication(
   dataDir: string,
   applicationId: ApplicationId,
-): Promise<"deleted" | "partial"> {
+): Promise<DeleteGlobalApplicationResult> {
   const applicationPath = resolveApplicationPath(dataDir, applicationId);
   try {
     await stat(applicationPath);

@@ -1,4 +1,12 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   resolveApplicationDataPath,
@@ -13,6 +21,10 @@ import {
   type AppManifest,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
+import {
+  resolveApplicationScaffoldTemplatePathForModuleDir,
+  shouldCopyApplicationScaffoldTemplatePath,
+} from "../../src/routes/apps.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -32,6 +44,10 @@ const VALID_MANIFEST: AppManifest = {
   entry: "index.html",
   capabilities: ["data", "message"],
 };
+
+interface WriteMinimalScaffoldTemplateArgs {
+  templatePath: string;
+}
 
 async function writeApplication(
   dataDir: string,
@@ -92,11 +108,149 @@ async function writeApplicationPublicFile(
   await writeFile(filePath, content, "utf8");
 }
 
+async function writeMinimalScaffoldTemplate(
+  args: WriteMinimalScaffoldTemplateArgs,
+): Promise<void> {
+  const { templatePath } = args;
+  await mkdir(path.join(templatePath, "public"), { recursive: true });
+  await mkdir(path.join(templatePath, "data"), { recursive: true });
+  await mkdir(path.join(templatePath, "source"), { recursive: true });
+  await mkdir(path.join(templatePath, "skills", "add-todos"), {
+    recursive: true,
+  });
+  await writeFile(
+    path.join(templatePath, "manifest.json"),
+    JSON.stringify(VALID_MANIFEST),
+    "utf8",
+  );
+  await writeFile(
+    path.join(templatePath, "README.md"),
+    "# BB_APP_NAME_PLACEHOLDER\n",
+    "utf8",
+  );
+  await writeFile(
+    path.join(templatePath, "public", "index.html"),
+    "<!doctype html>",
+    "utf8",
+  );
+  await writeFile(
+    path.join(templatePath, "data", "state.json"),
+    "{}\n",
+    "utf8",
+  );
+  await writeFile(
+    path.join(templatePath, "source", "package.json"),
+    "{}\n",
+    "utf8",
+  );
+  await writeFile(
+    path.join(templatePath, "skills", "add-todos", "SKILL.md"),
+    "# Add Todos\n",
+    "utf8",
+  );
+}
+
 function appRequestPath(resolvedUrl: URL): string {
   return `${resolvedUrl.pathname}${resolvedUrl.search}${resolvedUrl.hash}`;
 }
 
 describe("public global app routes", () => {
+  it("resolves the app scaffold template from source and bundled layouts", async () => {
+    const sourceModuleDir = path.resolve(process.cwd(), "src/routes");
+    const sourceTemplatePath = path.resolve(
+      process.cwd(),
+      "src/services/threads/app-scaffold-template",
+    );
+    expect(
+      resolveApplicationScaffoldTemplatePathForModuleDir({
+        moduleDir: sourceModuleDir,
+      }),
+    ).toBe(sourceTemplatePath);
+
+    const tempDistDir = await mkdtemp(
+      path.join(tmpdir(), "bb-app-scaffold-dist-"),
+    );
+    try {
+      await writeMinimalScaffoldTemplate({
+        templatePath: path.join(tempDistDir, "app-scaffold-template"),
+      });
+      expect(
+        resolveApplicationScaffoldTemplatePathForModuleDir({
+          moduleDir: tempDistDir,
+        }),
+      ).toBe(path.join(tempDistDir, "app-scaffold-template"));
+    } finally {
+      await rm(tempDistDir, { recursive: true, force: true });
+    }
+  });
+
+  it("copies the app scaffold template into the server dist build", async () => {
+    const packageJsonText = await readFile(
+      path.resolve(process.cwd(), "package.json"),
+      "utf8",
+    );
+
+    expect(packageJsonText).toContain(
+      "--copy-dir src/services/threads/app-scaffold-template dist/app-scaffold-template",
+    );
+  });
+
+  it("excludes source-side scaffold screenshot output from runtime copies", () => {
+    const templatePath = path.resolve("/tmp/app-scaffold-template");
+
+    expect(
+      shouldCopyApplicationScaffoldTemplatePath({
+        templatePath,
+        sourcePath: path.join(templatePath, "source", "screenshots"),
+      }),
+    ).toBe(false);
+    expect(
+      shouldCopyApplicationScaffoldTemplatePath({
+        templatePath,
+        sourcePath: path.join(templatePath, "source", "node_modules"),
+      }),
+    ).toBe(false);
+    expect(
+      shouldCopyApplicationScaffoldTemplatePath({
+        templatePath,
+        sourcePath: path.join(
+          templatePath,
+          "source",
+          "screenshots",
+          "after-full-light.png",
+        ),
+      }),
+    ).toBe(false);
+    expect(
+      shouldCopyApplicationScaffoldTemplatePath({
+        templatePath,
+        sourcePath: path.join(
+          templatePath,
+          "source",
+          "playwright-report",
+          "index.html",
+        ),
+      }),
+    ).toBe(false);
+    expect(
+      shouldCopyApplicationScaffoldTemplatePath({
+        templatePath,
+        sourcePath: path.join(templatePath, "source", "src", "App.tsx"),
+      }),
+    ).toBe(true);
+    expect(
+      shouldCopyApplicationScaffoldTemplatePath({
+        templatePath,
+        sourcePath: path.join(
+          templatePath,
+          "public",
+          "screenshots",
+          "hero.png",
+        ),
+      }),
+    ).toBe(true);
+  });
+
   it("lists and gets valid global apps by application id", async () => {
     await withTestHarness(async (harness) => {
       await writeApplication(harness.config.dataDir, VALID_MANIFEST);
@@ -432,18 +586,81 @@ describe("public global app routes", () => {
         id: "created-app",
         name: "Created App",
       });
-      await expect(
-        readFile(
-          path.join(
-            resolveApplicationPublicPath(
-              harness.config.dataDir,
-              created.applicationId,
-            ),
-            "index.html",
+      const appRootPath = resolveApplicationPath(
+        harness.config.dataDir,
+        created.applicationId,
+      );
+      const publicPath = resolveApplicationPublicPath(
+        harness.config.dataDir,
+        created.applicationId,
+      );
+      const publicEntries = await readdir(publicPath);
+      const publicIndexHtml = await readFile(
+        path.join(publicPath, "index.html"),
+        "utf8",
+      );
+      const readmeText = await readFile(
+        path.join(appRootPath, "README.md"),
+        "utf8",
+      );
+      const skillText = await readFile(
+        path.join(appRootPath, "skills", "add-todos", "SKILL.md"),
+        "utf8",
+      );
+      const dataStateText = await readFile(
+        path.join(
+          resolveApplicationDataPath(
+            harness.config.dataDir,
+            created.applicationId,
           ),
-          "utf8",
+          "state.json",
         ),
-      ).resolves.toContain("Created App");
+        "utf8",
+      );
+      const sourcePackageText = await readFile(
+        path.join(appRootPath, "source", "package.json"),
+        "utf8",
+      );
+      const sdkDeclarationText = await readFile(
+        path.join(appRootPath, "source", "src", "bb-sdk.d.ts"),
+        "utf8",
+      );
+
+      expect(publicEntries).toContain("index.html");
+      expect(
+        publicEntries.some((entry) =>
+          /^index-[A-Za-z0-9_-]+\.js$/u.test(entry),
+        ),
+      ).toBe(true);
+      expect(
+        publicEntries.some((entry) =>
+          /^index-[A-Za-z0-9_-]+\.css$/u.test(entry),
+        ),
+      ).toBe(true);
+      expect(publicIndexHtml).toContain('src="./index-');
+      expect(publicIndexHtml).toContain('href="./index-');
+      expect(publicIndexHtml).not.toContain("Created App");
+      expect(publicIndexHtml).not.toContain("/assets/");
+      expect(readmeText).toMatch(/^# Created App\n/u);
+      expect(skillText).toContain("todos/<id>");
+      expect(skillText).toContain("bb app data write");
+      expect(JSON.parse(dataStateText)).toEqual({});
+      expect(sdkDeclarationText).toContain("GENERATED - do not edit");
+      await expect(
+        readdir(path.join(appRootPath, "source", "screenshots")),
+      ).rejects.toThrow();
+      expect(JSON.parse(sourcePackageText)).toMatchObject({
+        scripts: { build: "vite build" },
+        dependencies: {
+          react: expect.any(String),
+          "react-dom": expect.any(String),
+        },
+        devDependencies: {
+          "@vitejs/plugin-react": expect.any(String),
+          vite: expect.any(String),
+          typescript: expect.any(String),
+        },
+      });
       const appRootEntries = await readdir(
         resolveAppsRootPath(harness.config.dataDir),
       );

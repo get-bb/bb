@@ -43,12 +43,15 @@ export const CREATE_APP_PROMPT_TEMPLATE = `You are creating a new global bb app.
 
 Apps system reference — run \`bb guide app\` for full detail. Layout:
 - <dataDir>/apps/<applicationId>/manifest.json — { manifestVersion: 1, id: applicationId, name?, icon | logo.svg, entry, capabilities: ["data"?, "message"?] }
-- <dataDir>/apps/<applicationId>/public/index.html — self-contained static HTML/CSS/JS/SVG served by bb; use inline/relative files, no web server, npm, or build step
-- <dataDir>/apps/<applicationId>/data/state.json — state if the app uses window.bb.data
+- <dataDir>/apps/<applicationId>/README.md — scaffold notes and build instructions
+- <dataDir>/apps/<applicationId>/public/index.html — prebuilt static web root served by bb; use flat relative asset refs
+- <dataDir>/apps/<applicationId>/data/state.json — empty seed state; app data can also use nested records such as todos/<id>
+- <dataDir>/apps/<applicationId>/skills/add-todos/SKILL.md — scaffold skill showing the Todo record shape
+- <dataDir>/apps/<applicationId>/source/ — editable Vite + React + TypeScript project; run \`pnpm install\` and \`pnpm build\` here after edits
 
 In the page, use the injected window.bb SDK: window.bb.data.read({ path }), window.bb.data.write({ path, value }), window.bb.data.delete({ path }), window.bb.data.list({ prefix }), window.bb.data.onChange({ prefix, callback }) for live state, and window.bb.message.send({ payload }) to send the thread a prompt.
 
-Scaffold with \`bb app new --name "Name"\` or \`bb app new --slug my-app\`; inside an app-capable runtime, inspect \`bb app current --json\` and write directly to \`BB_APP_ROOT\` / \`BB_APP_DATA_PATH\`. The application id is the lowercase slug folder name; display names are optional labels, not identifiers.
+Scaffold with \`bb app new --name "Name"\` or \`bb app new --slug my-app\`; new apps open immediately from committed \`public/\`. Edit \`source/\`, rebuild to \`public/\`, and do not rely on a localhost dev server for the installed app. Inside an app-capable runtime, inspect \`bb app current --json\` and write directly to \`BB_APP_ROOT\` / \`BB_APP_DATA_PATH\`. The application id is the lowercase slug folder name; display names are optional labels, not identifiers.
 
 What I want:
 
@@ -608,10 +611,15 @@ function RecentResultRow({
       </span>
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="truncate text-foreground">{name}</span>
-        <span className="shrink-0 font-medium text-muted-foreground">{label}</span>
+        <span className="shrink-0 font-medium text-muted-foreground">
+          {label}
+        </span>
         {directory ? (
           <>
-            <span className="shrink-0 text-muted-foreground opacity-50" aria-hidden>
+            <span
+              className="shrink-0 text-muted-foreground opacity-50"
+              aria-hidden
+            >
               ·
             </span>
             <TruncateStart className="text-muted-foreground [flex-shrink:9999]">

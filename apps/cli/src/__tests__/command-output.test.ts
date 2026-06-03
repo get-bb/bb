@@ -26,9 +26,8 @@ const readlineState = vi.hoisted(() => ({
 }));
 
 vi.mock("../client.js", async () => {
-  const sdkCore = await vi.importActual<typeof import("@bb/sdk/core")>(
-    "@bb/sdk/core",
-  );
+  const sdkCore =
+    await vi.importActual<typeof import("@bb/sdk/core")>("@bb/sdk/core");
   const createClient = vi.fn();
   const unwrap = vi.fn(async (responsePromise: MockTransportPromise) => {
     return responsePromise;
@@ -444,9 +443,11 @@ describe("CLI command output contracts", () => {
 
     createClientMock.mockReset();
     unwrapMock.mockReset();
-    unwrapMock.mockImplementation(async (responsePromise: MockTransportPromise) => {
-      return responsePromise;
-    });
+    unwrapMock.mockImplementation(
+      async (responsePromise: MockTransportPromise) => {
+        return responsePromise;
+      },
+    );
     fetchLocalHostIdMock.mockClear();
     fetchLocalHostIdMock.mockResolvedValue("host-test-001");
     Object.defineProperty(process.stdin, "isTTY", {
@@ -500,7 +501,9 @@ describe("CLI command output contracts", () => {
     expect(output).toContain("window.bb.data");
     expect(output).toContain("window.bb.message.send");
     expect(output).toContain("bb app current --json");
-    expect(output).toContain("Do not start a web server");
+    expect(output).toContain("Vite + React + TypeScript Todo app");
+    expect(output).toContain("pnpm build");
+    expect(output).toContain("skills/add-todos/SKILL.md");
   });
 
   it("bb guide unknown chapter lists styling in available chapters", async () => {
@@ -3335,9 +3338,11 @@ describe("CLI JSON output contracts", () => {
 
     createClientMock.mockReset();
     unwrapMock.mockReset();
-    unwrapMock.mockImplementation(async (responsePromise: MockTransportPromise) => {
-      return responsePromise;
-    });
+    unwrapMock.mockImplementation(
+      async (responsePromise: MockTransportPromise) => {
+        return responsePromise;
+      },
+    );
 
     vi.stubEnv("BB_PROJECT_ID", undefined);
     vi.stubEnv("BB_THREAD_ID", undefined);

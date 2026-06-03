@@ -100,7 +100,9 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("mcp__bb-bridge__message_user");
     expect(rendered).toContain("bb thread spawn");
     expect(rendered).toContain("Simple delegation");
-    expect(rendered).toContain("Apps are global within the local host data dir");
+    expect(rendered).toContain(
+      "Apps are global within the local host data dir",
+    );
     expect(rendered).toContain("bb guide app");
     expect(rendered).toContain("bb guide async");
     expect(rendered).not.toContain("Structure `ASYNC.md`");
@@ -184,7 +186,9 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("<dataDir>/apps/<applicationId>/");
     expect(rendered).toContain("window.bb.data");
     expect(rendered).toContain("bb app current --json");
-    expect(rendered).toContain("Do not start a web server");
+    expect(rendered).toContain("Vite + React + TypeScript Todo app");
+    expect(rendered).toContain("pnpm build");
+    expect(rendered).toContain("skills/add-todos/SKILL.md");
     expect(rendered).toContain(
       '<script src="https://cdn.tailwindcss.com"></script>',
     );

@@ -1,0 +1,7 @@
+{
+  "manifestVersion": 1,
+  "id": "todo-starter",
+  "name": "Todo Starter",
+  "entry": "index.html",
+  "capabilities": ["data", "message"]
+}

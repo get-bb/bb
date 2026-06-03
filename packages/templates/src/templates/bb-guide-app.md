@@ -11,13 +11,14 @@ Apps are global within the local host data directory. They are the supported
 way to build dashboards, control panels, and other interactive surfaces that
 can open inside a thread panel.
 
-Important: a bb app is self-contained static HTML/CSS/JS/SVG. Put browser
-files under `<dataDir>/apps/<applicationId>/public/`; bb serves that directory
-as the app's web root at `/api/v1/apps/<applicationId>/`.
+Important: bb serves each app's committed `public/` directory as a static web
+root at `/api/v1/apps/<applicationId>/`. New apps created with `bb app new`
+start as a Vite + React + TypeScript Todo app with an editable `source/`
+project and a prebuilt `public/` output, so they render immediately.
 
-Do not start a web server, localhost dev server, npm install, build step,
-bundler, or framework for a normal app. Inline CSS/JS, relative asset refs, and
-CDN resources such as Tailwind or fonts are fine.
+Edit scaffolded apps in `source/`, then rebuild to `public/`. A Vite dev server
+is useful while editing, but bb serves only `public/`; do not rely on a running
+localhost server for the installed app.
 
 Storage layout:
 
@@ -26,18 +27,27 @@ Storage layout:
   apps/
     review-board/
       manifest.json
+      README.md
       public/
         index.html
         index-abc.js
-        assets/
-          index-def.css
+        index-def.css
       data/
         state.json
+      skills/
+        add-todos/
+          SKILL.md
+      source/
+        package.json
+        vite.config.ts
+        src/
 ```
 
 Each app is rooted at `<dataDir>/apps/<applicationId>/`. The manifest lives at
 `manifest.json`, browser files live under `public/`, and durable JSON state
-lives under `data/`. Only `public/` is served as static web content.
+lives under `data/`. Only `public/` is served as static web content. `source/`
+and `skills/` are local app files for editing and agent workflows; they are not
+served as browser content.
 
 The app exists only when the local filesystem contains a valid manifest at
 `<dataDir>/apps/<applicationId>/manifest.json`. `manifest.id` is the canonical
@@ -73,20 +83,39 @@ serve-time URL rewriting:
 `public/assets/index-def.css` maps to
 `/api/v1/apps/<applicationId>/assets/index-def.css`.
 
-For Vite builds, set a relative base and copy the built `dist/` contents into
-`public/`:
+For Vite builds, set a relative base and build directly into `public/`:
 
 ```ts
 import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  plugins: [react(), tailwindcss()],
   base: "./",
+  build: {
+    outDir: "../public",
+    assetsDir: "",
+    emptyOutDir: true,
+  },
 });
 ```
 
 Do not use Vite's default root-absolute base (`"/"`). Refs such as
 `/assets/index-abc.js` resolve against the bb server root, not the app route, so
 they will not load inside a mounted app.
+
+To edit a scaffolded app:
+
+```bash
+cd "$BB_APP_ROOT/source"
+pnpm install
+pnpm build
+```
+
+`pnpm build` writes `../public/index.html` and flat relative assets beside it.
+Commit or keep those `public/` files in the app directory so the app opens
+without a build step at runtime.
 
 The icon is optional and uses a built-in icon name. Icon resolution order is:
 
@@ -131,10 +160,10 @@ echo "$BB_APP_DATA_PATH"      # <dataDir>/apps/<applicationId>/data, when availa
 
 Agent writes:
 
-When a runtime has `BB_APP_ROOT`, create or edit the app directly in that
-canonical folder. Write app data with a temp file in the same directory and
-then `mv` into place. Same-directory rename is atomic on macOS and Linux, and
-bb broadcasts the committed app-data change.
+When a runtime has `BB_APP_ROOT`, edit the app directly in that canonical
+folder. Write app data through the app data API or with a temp file in the same
+directory and then `mv` into place. Same-directory rename is atomic on macOS and
+Linux, and bb broadcasts the committed app-data change.
 
 ```bash
 dir="$BB_APP_DATA_PATH"
@@ -142,6 +171,26 @@ mkdir -p "$dir"
 tmp=$(mktemp "$dir/.state.XXXXXX")
 printf '%s\n' '{"tasks":[],"updatedAt":"2026-06-02T00:00:00Z"}' > "$tmp" &&
   mv "$tmp" "$dir/state.json"
+```
+
+The default Todo scaffold also installs `skills/add-todos/SKILL.md`. Its todo
+records live at `todos/<id>` and have this shape:
+
+```json
+{
+  "id": "todo_20260603_review_notes",
+  "title": "Review notes from the manager",
+  "done": false,
+  "createdAt": "2026-06-03T20:00:00.000Z",
+  "updatedAt": "2026-06-03T20:00:00.000Z"
+}
+```
+
+Write one from an agent or script with:
+
+```bash
+printf '%s\n' '{"id":"todo_20260603_review_notes","title":"Review notes from the manager","done":false,"createdAt":"2026-06-03T20:00:00.000Z","updatedAt":"2026-06-03T20:00:00.000Z"}' |
+  bb app data write review-board todos/todo_20260603_review_notes --stdin
 ```
 
 Data paths are relative to the app's `data/` directory. They must not start or
@@ -162,7 +211,6 @@ const unsubscribe = window.bb.data.onChange({ prefix: "", callback(event) {
   console.log(event.path, event.value, event.deleted)
 }})
 await window.bb.message.send({ payload: "Please review the current blockers." })
-await window.bb.threads.list({})
 ```
 
 `window.bb.data` reads and writes JSON values. `onChange({ prefix, callback })`
@@ -178,33 +226,28 @@ thread through the message API or CLI; without a target, bb returns
 `message_target_required`. App data remains global. Only message delivery is
 contextual.
 
-Minimal app pattern:
+Minimal app-data pattern:
 
-```html
-<main>
-  <h1>Current work</h1>
-  <ul id="tasks"></ul>
-</main>
-<script>
-const list = document.querySelector("#tasks");
+```ts
+const entries = await window.bb.data.list({ prefix: "todos" });
 
-function render(state) {
-  const tasks = state?.tasks ?? [];
-  list.replaceChildren(
-    ...tasks.map((task) => {
-      const item = document.createElement("li");
-      item.textContent = `${task.title} - ${task.state}`;
-      return item;
-    }),
-  );
-}
-
-window.bb.data.read({ path: "state.json" }).then(render);
-window.bb.data.onChange({
-  prefix: "state.json",
-  callback: (event) => render(event.value),
+const unsubscribe = window.bb.data.onChange({
+  prefix: "todos",
+  callback(event) {
+    console.log(event.path, event.value, event.deleted);
+  },
 });
-</script>
+
+await window.bb.data.write({
+  path: "todos/todo_20260603_review_notes",
+  value: {
+    id: "todo_20260603_review_notes",
+    title: "Review notes from the manager",
+    done: false,
+    createdAt: "2026-06-03T20:00:00.000Z",
+    updatedAt: "2026-06-03T20:00:00.000Z",
+  },
+});
 ```
 
 Styling:
