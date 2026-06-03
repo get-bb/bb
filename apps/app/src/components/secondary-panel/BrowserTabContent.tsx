@@ -20,7 +20,10 @@ import {
 } from "@/lib/browser-url";
 import { useBrowserHistory } from "@/lib/browser-history";
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
-import type { BrowserViewVisibilityCoordinator } from "./browserViewVisibilityCoordinator";
+import {
+  registerBrowserView,
+  type BrowserViewVisibilityCoordinator,
+} from "./browserViewVisibilityCoordinator";
 import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 
 export interface BrowserTabContentProps {
@@ -38,6 +41,7 @@ export interface BrowserTabContentProps {
    * visible at once). Null on the web build, where there is no native view.
    */
   visibilityCoordinator: BrowserViewVisibilityCoordinator | null;
+  environmentId: string | null;
   threadId: string;
   onUpdate: (args: UpdateBrowserTabArgs) => void;
 }
@@ -189,6 +193,7 @@ export function BrowserTabContent({
   initialUrl,
   isActive,
   visibilityCoordinator,
+  environmentId,
   threadId,
   onUpdate,
 }: BrowserTabContentProps) {
@@ -254,11 +259,10 @@ export function BrowserTabContent({
     });
   }, [syncBounds]);
 
-  // Create the native view on mount, stream navigation state back, and tear it
-  // down on unmount. Because the deck keeps every open browser tab mounted, this
-  // unmounts only when the tab is CLOSED (or the panel/thread unmounts) — never
-  // on mere deactivation — so the view (and its page + scroll) survives tab
-  // switches. Destroying on unmount keeps the lifecycle leak-free.
+  // Create (or re-attach to) the native view on mount and stream navigation
+  // state back. Unmount is not ownership teardown: switching threads unmounts
+  // the deck, but the native view is intentionally retained so returning to the
+  // thread can show the existing page without recreating/reloading it.
   useEffect(() => {
     if (desktopBrowser === null) {
       return;
@@ -269,6 +273,7 @@ export function BrowserTabContent({
         ? roundedBoundsFromRect(element.getBoundingClientRect())
         : { x: 0, y: 0, width: 0, height: 0 };
     const mountUrl = initialUrlRef.current;
+    registerBrowserView({ environmentId, tabId, threadId });
     desktopBrowser.attach({
       tabId,
       url: mountUrl,
@@ -299,12 +304,12 @@ export function BrowserTabContent({
 
     return () => {
       unsubscribe();
-      // Forget this tab before destroying its view so a subsequent show on
-      // another tab does not try to hide a view that no longer exists.
+      // The native view survives this unmount. Only explicit tab close/thread
+      // deletion owns detach; unmount just disconnects this component's state
+      // listener and forgets any stale visibility ownership.
       visibilityCoordinator?.release(tabId);
-      desktopBrowser.detach(tabId);
     };
-  }, [desktopBrowser, visibilityCoordinator, tabId]);
+  }, [desktopBrowser, environmentId, visibilityCoordinator, tabId, threadId]);
 
   // Track the panel content rect so the native overlay stays aligned — including
   // throughout a drag-resize, where the rect changes every frame. Coalesced via
@@ -348,7 +353,9 @@ export function BrowserTabContent({
     }
     if (isViewVisible) {
       visibilityCoordinator.show(tabId, syncBounds);
-      return;
+      return () => {
+        visibilityCoordinator.hide(tabId);
+      };
     }
     visibilityCoordinator.hide(tabId);
   }, [visibilityCoordinator, tabId, isViewVisible, syncBounds]);

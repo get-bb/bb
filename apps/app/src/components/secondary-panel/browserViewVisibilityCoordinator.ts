@@ -30,6 +30,37 @@ export interface BrowserViewVisibilityCoordinator {
   release(tabId: string): void;
 }
 
+interface BrowserViewRecord {
+  environmentId: string | null;
+  tabId: string;
+  threadId: string;
+}
+
+interface RegisterBrowserViewArgs {
+  environmentId: string | null;
+  tabId: string;
+  threadId: string;
+}
+
+interface DestroyPersistedBrowserViewArgs {
+  desktopBrowser: BbDesktopBrowserApi;
+  tabId: string;
+}
+
+interface DestroyPersistedBrowserViewsForThreadArgs {
+  desktopBrowser: BbDesktopBrowserApi | null;
+  threadId: string;
+}
+
+interface DestroyPersistedBrowserViewsForEnvironmentArgs {
+  desktopBrowser: BbDesktopBrowserApi | null;
+  environmentId: string;
+}
+
+const browserViewRecords = new Map<string, BrowserViewRecord>();
+let sharedDesktopBrowser: BbDesktopBrowserApi | null = null;
+let sharedCoordinator: BrowserViewVisibilityCoordinator | null = null;
+
 export function createBrowserViewVisibilityCoordinator(
   desktopBrowser: BbDesktopBrowserApi,
 ): BrowserViewVisibilityCoordinator {
@@ -56,4 +87,69 @@ export function createBrowserViewVisibilityCoordinator(
       }
     },
   };
+}
+
+export function getBrowserViewVisibilityCoordinator(
+  desktopBrowser: BbDesktopBrowserApi,
+): BrowserViewVisibilityCoordinator {
+  if (sharedDesktopBrowser !== desktopBrowser || sharedCoordinator === null) {
+    sharedDesktopBrowser = desktopBrowser;
+    sharedCoordinator = createBrowserViewVisibilityCoordinator(desktopBrowser);
+  }
+  return sharedCoordinator;
+}
+
+export function registerBrowserView({
+  environmentId,
+  tabId,
+  threadId,
+}: RegisterBrowserViewArgs): void {
+  browserViewRecords.set(tabId, { environmentId, tabId, threadId });
+}
+
+export function destroyPersistedBrowserView({
+  desktopBrowser,
+  tabId,
+}: DestroyPersistedBrowserViewArgs): void {
+  const coordinator = getBrowserViewVisibilityCoordinator(desktopBrowser);
+  coordinator.hide(tabId);
+  coordinator.release(tabId);
+  desktopBrowser.detach(tabId);
+  browserViewRecords.delete(tabId);
+}
+
+export function destroyPersistedBrowserViewsForThread({
+  desktopBrowser,
+  threadId,
+}: DestroyPersistedBrowserViewsForThreadArgs): void {
+  if (desktopBrowser === null) {
+    return;
+  }
+  const records = [...browserViewRecords.values()];
+  for (const record of records) {
+    if (record.threadId === threadId) {
+      destroyPersistedBrowserView({ desktopBrowser, tabId: record.tabId });
+    }
+  }
+}
+
+export function destroyPersistedBrowserViewsForEnvironment({
+  desktopBrowser,
+  environmentId,
+}: DestroyPersistedBrowserViewsForEnvironmentArgs): void {
+  if (desktopBrowser === null) {
+    return;
+  }
+  const records = [...browserViewRecords.values()];
+  for (const record of records) {
+    if (record.environmentId === environmentId) {
+      destroyPersistedBrowserView({ desktopBrowser, tabId: record.tabId });
+    }
+  }
+}
+
+export function resetBrowserViewPersistence(): void {
+  browserViewRecords.clear();
+  sharedDesktopBrowser = null;
+  sharedCoordinator = null;
 }

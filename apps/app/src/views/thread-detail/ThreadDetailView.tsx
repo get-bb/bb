@@ -1241,6 +1241,7 @@ export function ThreadDetailView() {
     <BrowserTabDeck
       browserTabs={browserTabs}
       activeBrowserTabId={activeBrowserTab?.id ?? null}
+      environmentId={thread.environmentId}
       isPanelOpen={isSecondaryPanelOpen}
       threadId={thread.id}
       onUpdate={updateBrowserTab}

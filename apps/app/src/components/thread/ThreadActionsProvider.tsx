@@ -37,8 +37,10 @@ import {
   ThreadDeleteDialog,
   type ThreadDeleteDialogTarget,
 } from "@/components/dialogs/ThreadDeleteDialog";
+import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
 import { getRootComposeRoutePath } from "@/lib/app-route-paths";
+import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 
 export interface ThreadActionsContextValue {
@@ -232,6 +234,10 @@ export function ThreadActionsProvider({
         { id: thread.id, managerChildThreadsConfirmed },
         {
           onSuccess: () => {
+            destroyPersistedBrowserViewsForThread({
+              desktopBrowser: getDesktopBrowserApi(),
+              threadId: thread.id,
+            });
             closeDialog();
             navigateAwayIfViewing(thread);
           },

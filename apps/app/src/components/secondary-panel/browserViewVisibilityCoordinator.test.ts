@@ -1,26 +1,44 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { BbDesktopBrowserApi } from "@bb/server-contract";
 import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
-import { createBrowserViewVisibilityCoordinator } from "./browserViewVisibilityCoordinator";
+import {
+  createBrowserViewVisibilityCoordinator,
+  destroyPersistedBrowserViewsForEnvironment,
+  destroyPersistedBrowserViewsForThread,
+  getBrowserViewVisibilityCoordinator,
+  registerBrowserView,
+  resetBrowserViewPersistence,
+} from "./browserViewVisibilityCoordinator";
 
 interface VisibilityCall {
   tabId: string;
   visible: boolean;
 }
 
-function createRecordingApi(): {
+interface RecordingApi {
   api: BbDesktopBrowserApi;
+  detachments: string[];
   visibility: VisibilityCall[];
-} {
+}
+
+function createRecordingApi(): RecordingApi {
+  const detachments: string[] = [];
   const visibility: VisibilityCall[] = [];
   const api: BbDesktopBrowserApi = {
     ...createNoopDesktopBrowserApi(),
+    detach(tabId) {
+      detachments.push(tabId);
+    },
     setVisible(request) {
       visibility.push({ tabId: request.tabId, visible: request.visible });
     },
   };
-  return { api, visibility };
+  return { api, detachments, visibility };
 }
+
+afterEach(() => {
+  resetBrowserViewPersistence();
+});
 
 describe("browserViewVisibilityCoordinator", () => {
   it("hides the previously-visible view before showing the next one", () => {
@@ -81,5 +99,69 @@ describe("browserViewVisibilityCoordinator", () => {
       { tabId: "a", visible: true },
       { tabId: "b", visible: true },
     ]);
+  });
+
+  it("shares visibility ownership across browser decks in one renderer window", () => {
+    const { api, visibility } = createRecordingApi();
+    const firstDeckCoordinator = getBrowserViewVisibilityCoordinator(api);
+    const secondDeckCoordinator = getBrowserViewVisibilityCoordinator(api);
+
+    firstDeckCoordinator.show("thread-a-tab", () => {});
+    secondDeckCoordinator.show("thread-b-tab", () => {});
+
+    expect(secondDeckCoordinator).toBe(firstDeckCoordinator);
+    expect(visibility).toEqual([
+      { tabId: "thread-a-tab", visible: true },
+      { tabId: "thread-a-tab", visible: false },
+      { tabId: "thread-b-tab", visible: true },
+    ]);
+  });
+
+  it("destroys registered views for a deleted thread only", () => {
+    const { api, detachments, visibility } = createRecordingApi();
+    registerBrowserView({
+      environmentId: "environment-a",
+      tabId: "thread-a-tab",
+      threadId: "thread-a",
+    });
+    registerBrowserView({
+      environmentId: "environment-b",
+      tabId: "thread-b-tab",
+      threadId: "thread-b",
+    });
+
+    destroyPersistedBrowserViewsForThread({
+      desktopBrowser: api,
+      threadId: "thread-a",
+    });
+
+    expect(visibility).toEqual([
+      { tabId: "thread-a-tab", visible: false },
+    ]);
+    expect(detachments).toEqual(["thread-a-tab"]);
+  });
+
+  it("destroys registered views for a deleted environment only", () => {
+    const { api, detachments, visibility } = createRecordingApi();
+    registerBrowserView({
+      environmentId: "environment-a",
+      tabId: "thread-a-tab",
+      threadId: "thread-a",
+    });
+    registerBrowserView({
+      environmentId: "environment-b",
+      tabId: "thread-b-tab",
+      threadId: "thread-b",
+    });
+
+    destroyPersistedBrowserViewsForEnvironment({
+      desktopBrowser: api,
+      environmentId: "environment-b",
+    });
+
+    expect(visibility).toEqual([
+      { tabId: "thread-b-tab", visible: false },
+    ]);
+    expect(detachments).toEqual(["thread-b-tab"]);
   });
 });

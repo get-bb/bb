@@ -6,6 +6,16 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import type { ChangedMessage, ThreadWithRuntime } from "@bb/domain";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
+import type {
+  BbDesktopApi,
+  BbDesktopBrowserApi,
+  BbDesktopInfo,
+  BbDesktopInfoChangeHandler,
+} from "@bb/server-contract";
+import {
+  registerBrowserView,
+  resetBrowserViewPersistence,
+} from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { collapsedProjectIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
@@ -13,6 +23,7 @@ import {
   getThreadRoutePath,
 } from "@/lib/app-route-paths";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
+import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
 import { threadQueryKey } from "../queries/query-keys";
 import {
   useDeletedResourceRouteOwner,
@@ -28,6 +39,22 @@ interface RenderRouteOwnerResult {
   handleChanged: () => DeletedResourceRouteChangeHandler;
   queryClient: ReturnType<typeof createAppQueryClient>;
 }
+
+interface RecordedBrowserCall {
+  method: "detach" | "setVisible";
+  tabId: string;
+  visible: boolean | null;
+}
+
+const DESKTOP_INFO: BbDesktopInfo = {
+  lastCheckedAt: null,
+  latestVersion: null,
+  pendingVersion: null,
+  platform: "macos",
+  updateAvailable: false,
+  updateDownloaded: false,
+  version: "0.0.1",
+};
 
 function makeThread(
   overrides: Partial<ThreadWithRuntime> = {},
@@ -57,6 +84,42 @@ function makeThread(
     },
     ...overrides,
   };
+}
+
+function installRecordingDesktopBrowser(): RecordedBrowserCall[] {
+  const calls: RecordedBrowserCall[] = [];
+  const browser: BbDesktopBrowserApi = {
+    ...createNoopDesktopBrowserApi(),
+    detach(tabId) {
+      calls.push({ method: "detach", tabId, visible: null });
+    },
+    setVisible(request) {
+      calls.push({
+        method: "setVisible",
+        tabId: request.tabId,
+        visible: request.visible,
+      });
+    },
+  };
+  const desktop: BbDesktopApi = {
+    ...DESKTOP_INFO,
+    browser,
+    async checkForUpdates() {
+      return DESKTOP_INFO;
+    },
+    async getInfo() {
+      return DESKTOP_INFO;
+    },
+    async installUpdate() {
+      return undefined;
+    },
+    onChange(_listener: BbDesktopInfoChangeHandler) {
+      return () => undefined;
+    },
+    setTheme() {},
+  };
+  window.bbDesktop = desktop;
+  return calls;
 }
 
 function RouteProbe() {
@@ -117,6 +180,8 @@ function renderRouteOwner({
 
 afterEach(() => {
   cleanup();
+  delete window.bbDesktop;
+  resetBrowserViewPersistence();
 });
 
 describe("useDeletedResourceRouteOwner", () => {
@@ -230,5 +295,49 @@ describe("useDeletedResourceRouteOwner", () => {
       getLegacyProjectComposeRoutePath(activeProjectId),
     );
     expect(jotaiStore.get(collapsedProjectIdsAtom)).toEqual([activeProjectId]);
+  });
+
+  it("releases retained browser views when an environment is deleted remotely", () => {
+    const calls = installRecordingDesktopBrowser();
+    registerBrowserView({
+      environmentId: "env_deleted",
+      tabId: "browser:deleted-environment",
+      threadId: "thr_deleted_environment",
+    });
+    registerBrowserView({
+      environmentId: "env_other",
+      tabId: "browser:other-environment",
+      threadId: "thr_other_environment",
+    });
+    const activeProjectRoute = getLegacyProjectComposeRoutePath("proj_1");
+    const { handleChanged } = renderRouteOwner({
+      initialEntry: activeProjectRoute,
+    });
+    const message: ChangedMessage = {
+      type: "changed",
+      entity: "environment",
+      id: "env_deleted",
+      changes: ["environment-deleted"],
+    };
+
+    act(() => {
+      handleChanged()(message);
+    });
+
+    expect(calls).toEqual([
+      {
+        method: "setVisible",
+        tabId: "browser:deleted-environment",
+        visible: false,
+      },
+      {
+        method: "detach",
+        tabId: "browser:deleted-environment",
+        visible: null,
+      },
+    ]);
+    expect(screen.getByTestId("location").textContent).toBe(
+      activeProjectRoute,
+    );
   });
 });

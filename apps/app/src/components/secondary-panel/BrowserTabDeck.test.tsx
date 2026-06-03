@@ -11,6 +11,7 @@ import type {
 } from "@bb/server-contract";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { BrowserTabDeck } from "./BrowserTabDeck";
+import { resetBrowserViewPersistence } from "./browserViewVisibilityCoordinator";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 
 interface RecordedBrowserCall {
@@ -101,6 +102,31 @@ function browserTab(id: string, url: string): BrowserFixedPanelTab {
 
 const TAB_A = browserTab("browser:a", "https://a.example/");
 const TAB_B = browserTab("browser:b", "https://b.example/");
+const TAB_C = browserTab("browser:c", "https://c.example/");
+
+interface ThreadDeckHostProps {
+  activeBrowserTabId: string | null;
+  browserTabs: readonly BrowserFixedPanelTab[];
+  threadId: string;
+}
+
+function ThreadDeckHost({
+  activeBrowserTabId,
+  browserTabs,
+  threadId,
+}: ThreadDeckHostProps) {
+  return (
+    <BrowserTabDeck
+      key={threadId}
+      browserTabs={browserTabs}
+      activeBrowserTabId={activeBrowserTabId}
+      environmentId="env_test"
+      isPanelOpen
+      threadId={threadId}
+      onUpdate={() => {}}
+    />
+  );
+}
 
 function visibilityFor(
   calls: readonly RecordedBrowserCall[],
@@ -143,6 +169,7 @@ function maxConcurrentVisible(calls: readonly RecordedBrowserCall[]): number {
 afterEach(() => {
   cleanup();
   delete window.bbDesktop;
+  resetBrowserViewPersistence();
   window.localStorage.clear();
   // The resizing flag lives in the default jotai store, which persists across
   // tests in this module; reset it so a resize test never leaks into the next.
@@ -158,6 +185,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A, TAB_B]}
         activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -182,6 +210,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A, TAB_B]}
         activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -195,6 +224,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A, TAB_B]}
         activeBrowserTabId={TAB_B.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -204,6 +234,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A, TAB_B]}
         activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -218,6 +249,76 @@ describe("BrowserTabDeck", () => {
     expect(visibilityFor(calls, TAB_B.id)).toBe(false);
   });
 
+  it("hides but does not destroy the active view when a thread deck unmounts", () => {
+    const { api, calls } = createRecordingBrowserApi();
+    installDesktopBrowserApi(api);
+
+    const { unmount } = render(
+      <BrowserTabDeck
+        browserTabs={[TAB_A]}
+        activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
+        isPanelOpen
+        threadId="thr_one"
+        onUpdate={() => {}}
+      />,
+    );
+
+    calls.length = 0;
+
+    unmount();
+
+    expect(calls.some((call) => call.method === "detach")).toBe(false);
+    expect(visibilityFor(calls, TAB_A.id)).toBe(false);
+  });
+
+  it("switches thread decks by hiding the old thread before showing the new one", () => {
+    const { api, calls } = createRecordingBrowserApi();
+    installDesktopBrowserApi(api);
+
+    const { rerender } = render(
+      <ThreadDeckHost
+        browserTabs={[TAB_A]}
+        activeBrowserTabId={TAB_A.id}
+        threadId="thr_one"
+      />,
+    );
+
+    calls.length = 0;
+
+    rerender(
+      <ThreadDeckHost
+        browserTabs={[TAB_C]}
+        activeBrowserTabId={TAB_C.id}
+        threadId="thr_two"
+      />,
+    );
+
+    const hideOldThread = calls.findIndex(
+      (call) =>
+        call.method === "setVisible" &&
+        call.tabId === TAB_A.id &&
+        call.visible === false,
+    );
+    const newThreadBounds = calls.findIndex(
+      (call) => call.method === "setBounds" && call.tabId === TAB_C.id,
+    );
+    const showNewThread = calls.findIndex(
+      (call) =>
+        call.method === "setVisible" &&
+        call.tabId === TAB_C.id &&
+        call.visible === true,
+    );
+
+    expect(hideOldThread).toBeGreaterThanOrEqual(0);
+    expect(newThreadBounds).toBeGreaterThanOrEqual(0);
+    expect(showNewThread).toBeGreaterThanOrEqual(0);
+    expect(hideOldThread).toBeLessThan(showNewThread);
+    expect(newThreadBounds).toBeLessThan(showNewThread);
+    expect(calls.some((call) => call.method === "detach")).toBe(false);
+    expect(maxConcurrentVisible(calls)).toBe(1);
+  });
+
   it("syncs bounds before showing a newly-activated view (no stale-bounds flash)", () => {
     const { api, calls } = createRecordingBrowserApi();
     installDesktopBrowserApi(api);
@@ -226,6 +327,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A, TAB_B]}
         activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -238,6 +340,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A, TAB_B]}
         activeBrowserTabId={TAB_B.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -264,6 +367,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A, TAB_B]}
         activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -276,6 +380,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A, TAB_B]}
         activeBrowserTabId={TAB_B.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -288,6 +393,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A, TAB_B]}
         activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -320,6 +426,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A, TAB_B]}
         activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -331,6 +438,7 @@ describe("BrowserTabDeck", () => {
         <BrowserTabDeck
           browserTabs={[TAB_A, TAB_B]}
           activeBrowserTabId={activeId}
+          environmentId="env_test"
           isPanelOpen
           threadId="thr_test"
           onUpdate={() => {}}
@@ -349,6 +457,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A, TAB_B]}
         activeBrowserTabId={TAB_B.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -362,6 +471,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_B]}
         activeBrowserTabId={TAB_B.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -380,6 +490,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A]}
         activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
@@ -392,6 +503,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A]}
         activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
         isPanelOpen={false}
         threadId="thr_test"
         onUpdate={() => {}}
@@ -434,6 +546,7 @@ describe("BrowserTabDeck", () => {
       <BrowserTabDeck
         browserTabs={[TAB_A]}
         activeBrowserTabId={TAB_A.id}
+        environmentId="env_test"
         isPanelOpen
         threadId="thr_test"
         onUpdate={() => {}}
