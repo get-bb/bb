@@ -1,11 +1,10 @@
 import { Command } from "commander";
-import type { Environment } from "@bb/domain";
 import type {
   CommitActionResponse,
   SquashMergeActionResponse,
 } from "@bb/server-contract";
 import { action } from "../action.js";
-import { createClient, unwrap } from "../client.js";
+import { createCliBbSdk } from "../client.js";
 import {
   outputJson,
   prependErrorContext,
@@ -13,6 +12,10 @@ import {
 } from "./helpers.js";
 
 interface EnvironmentCommitCommandOptions {
+  json?: boolean;
+}
+
+interface EnvironmentShowCommandOptions {
   json?: boolean;
 }
 
@@ -40,13 +43,9 @@ export function registerEnvironmentCommands(
     .description("Show environment details")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (id: string, opts: { json?: boolean }) => {
-        const client = createClient(getUrl());
-        const env = await unwrap<Environment>(
-          client.api.v1.environments[":id"].$get({
-            param: { id },
-          }),
-        );
+      action(async (id: string, opts: EnvironmentShowCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const env = await sdk.environments.get({ environmentId: id });
         if (outputJson(opts, env)) return;
         console.log(`Environment: ${env.id}`);
         console.log(`  Project: ${env.projectId}`);
@@ -84,7 +83,6 @@ export function registerEnvironmentCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: EnvironmentUpdateCommandOptions) => {
-        const client = createClient(getUrl());
         if (opts.mergeBaseBranch && opts.clearMergeBaseBranch) {
           throw new Error(
             "Cannot combine --merge-base-branch with --clear-merge-base-branch.",
@@ -96,16 +94,13 @@ export function registerEnvironmentCommands(
           );
         }
 
-        const environment = await unwrap<Environment>(
-          client.api.v1.environments[":id"].$patch({
-            param: { id },
-            json: {
-              mergeBaseBranch: opts.clearMergeBaseBranch
-                ? null
-                : (opts.mergeBaseBranch ?? null),
-            },
-          }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const environment = await sdk.environments.update({
+          environmentId: id,
+          mergeBaseBranch: opts.clearMergeBaseBranch
+            ? null
+            : (opts.mergeBaseBranch ?? null),
+        });
 
         if (outputJson(opts, environment)) return;
         console.log(`Environment ${environment.id} updated`);
@@ -123,17 +118,10 @@ export function registerEnvironmentCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: EnvironmentCommitCommandOptions) => {
-        const client = createClient(getUrl());
+        const sdk = createCliBbSdk(getUrl());
         let result: CommitActionResponse;
         try {
-          result = await unwrap<CommitActionResponse>(
-            client.api.v1.environments[":id"].actions.$post({
-              param: { id },
-              json: {
-                action: "commit",
-              },
-            }),
-          );
+          result = await sdk.environments.commit({ environmentId: id });
         } catch (err: unknown) {
           throw prependErrorContext(
             `Failed to commit in environment ${id}`,
@@ -152,18 +140,12 @@ export function registerEnvironmentCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: EnvironmentSquashMergeCommandOptions) => {
-        const client = createClient(getUrl());
-        const result = await unwrap<SquashMergeActionResponse>(
-          client.api.v1.environments[":id"].actions.$post({
-            param: { id },
-            json: {
-              action: "squash_merge",
-              options: {
-                mergeBaseBranch: opts.mergeBaseBranch,
-              },
-            },
-          }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const result: SquashMergeActionResponse =
+          await sdk.environments.squashMerge({
+            environmentId: id,
+            mergeBaseBranch: opts.mergeBaseBranch,
+          });
         if (outputJson(opts, result)) return;
         printEnvironmentGitOperationResult(result);
       }),

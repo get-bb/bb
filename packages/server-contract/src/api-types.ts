@@ -1567,6 +1567,20 @@ export interface BbDataEntry {
   value: JsonValue;
 }
 
+export interface BbDataReadArgs {
+  path: AppDataPath;
+}
+
+export interface BbDataWriteArgs extends BbDataReadArgs {
+  value: JsonValue;
+}
+
+export interface BbDataDeleteArgs extends BbDataReadArgs {}
+
+export interface BbDataListArgs {
+  prefix?: AppDataPath | "";
+}
+
 export interface BbDataChangeEvent {
   path: AppDataPath;
   value: JsonValue | undefined;
@@ -1575,22 +1589,34 @@ export interface BbDataChangeEvent {
 
 export type BbDataChangeCallback = (event: BbDataChangeEvent) => void;
 
+export interface BbDataOnChangeArgs {
+  callback: BbDataChangeCallback;
+  prefix?: AppDataPath | "";
+}
+
 export interface BbData {
-  read(path: AppDataPath): Promise<JsonValue | undefined>;
-  write(path: AppDataPath, value: JsonValue): Promise<void>;
-  delete(path: AppDataPath): Promise<void>;
-  list(prefix?: AppDataPath | ""): Promise<BbDataEntry[]>;
-  onChange(
-    prefix: AppDataPath | "",
-    callback: BbDataChangeCallback,
-  ): () => void;
+  entries(args?: BbDataListArgs): Promise<AppDataEntry[]>;
+  read(args: BbDataReadArgs): Promise<JsonValue | undefined>;
+  write(args: BbDataWriteArgs): Promise<void>;
+  delete(args: BbDataDeleteArgs): Promise<void>;
+  list(args?: BbDataListArgs): Promise<BbDataEntry[]>;
+  onChange(args: BbDataOnChangeArgs): () => void;
+}
+
+export interface BbMessageSendArgs {
+  payload: JsonValue;
+  targetThreadId?: string;
+}
+
+export interface BbMessage {
+  send(args: BbMessageSendArgs): Promise<void>;
 }
 
 export interface Bb {
-  appId: ApplicationId;
-  applicationId: ApplicationId;
-  data?: BbData;
-  message?(payload: JsonValue): Promise<void>;
+  appId?: ApplicationId;
+  applicationId?: ApplicationId;
+  data: BbData;
+  message: BbMessage;
 }
 
 declare global {

@@ -1,22 +1,18 @@
 import { Command } from "commander";
-import type { Thread, ThreadTimelinePendingTodos } from "@bb/domain";
-import type { ProjectResponse } from "@bb/server-contract";
+import type { ThreadTimelinePendingTodos } from "@bb/domain";
 import { action } from "../action.js";
 import {
   resolveContextSnapshot,
   type ContextSnapshot,
 } from "../context-env.js";
-import { type Client, createClient, unwrap } from "../client.js";
+import { createCliBbSdk } from "../client.js";
 import { outputJson } from "./helpers.js";
 import {
   type ThreadEnvironmentInfo,
   fetchEnvironmentInfo,
   printEnvironmentInfo,
 } from "./environment-helpers.js";
-import {
-  fetchThreadPendingTodos,
-  printPendingTodos,
-} from "./thread/pending-todos.js";
+import { printPendingTodos } from "./thread/pending-todos.js";
 
 interface StatusPayload {
   project: { id: string; name: string } | null;
@@ -44,57 +40,6 @@ interface StatusCommandOptions {
 type ResolveServerUrl = () => string;
 type ResolveStatusContext = () => ContextSnapshot;
 
-async function fetchSilent<T>(fn: () => Promise<T>): Promise<T | null> {
-  try {
-    return await fn();
-  } catch {
-    return null;
-  }
-}
-
-function fetchProject(args: {
-  client: Client;
-  projectId: string;
-}): Promise<ProjectResponse | null> {
-  return fetchSilent(() =>
-    unwrap<ProjectResponse>(
-      args.client.api.v1.projects[":id"].$get({
-        param: { id: args.projectId },
-      }),
-    ),
-  );
-}
-
-function fetchThread(args: {
-  client: Client;
-  threadId: string;
-}): Promise<Thread | null> {
-  return fetchSilent(() =>
-    unwrap<Thread>(
-      args.client.api.v1.threads[":id"].$get({
-        param: { id: args.threadId },
-      }),
-    ),
-  );
-}
-
-function fetchManagedThreads(args: {
-  client: Client;
-  projectId: string;
-  parentThreadId: string;
-}): Promise<Thread[] | null> {
-  return fetchSilent(() =>
-    unwrap<Thread[]>(
-      args.client.api.v1.threads.$get({
-        query: {
-          projectId: args.projectId,
-          parentThreadId: args.parentThreadId,
-        },
-      }),
-    ),
-  );
-}
-
 export function registerStatusCommand(
   program: Command,
   getUrl: ResolveServerUrl,
@@ -119,64 +64,47 @@ export function registerStatusCommand(
 
         // Try to fetch enriched data from the server
         if (context.projectId || context.threadId) {
-          const client = createClient(getUrl());
+          const sdk = createCliBbSdk(getUrl());
+          const status = await sdk.status.get({
+            projectId: context.projectId,
+            threadId: context.threadId,
+          });
 
-          const [projectResult, threadResult] = await Promise.all([
-            context.projectId
-              ? fetchProject({ client, projectId: context.projectId })
-              : Promise.resolve(null),
-            context.threadId
-              ? fetchThread({ client, threadId: context.threadId })
-              : Promise.resolve(null),
-          ]);
-
-          if (projectResult) {
+          if (status.project) {
             payload.project = {
-              id: projectResult.id,
-              name: projectResult.name,
+              id: status.project.id,
+              name: status.project.name,
             };
             serverAvailable = true;
           }
 
-          if (threadResult) {
+          if (status.thread) {
             let environmentInfo: ThreadEnvironmentInfo | null = null;
-            if (threadResult.environmentId) {
+            if (status.thread.environmentId) {
               environmentInfo = await fetchEnvironmentInfo({
-                client,
-                environmentId: threadResult.environmentId,
+                environmentId: status.thread.environmentId,
+                sdk,
               });
             }
 
-            payload.pendingTodos = await fetchThreadPendingTodos({
-              client,
-              threadId: threadResult.id,
-            });
-
+            payload.pendingTodos = status.pendingTodos;
             payload.thread = {
-              id: threadResult.id,
-              type: threadResult.type,
-              status: threadResult.status,
-              title: threadResult.title ?? null,
-              pinnedAt: threadResult.pinnedAt,
-              parentThreadId: threadResult.parentThreadId ?? null,
+              id: status.thread.id,
+              type: status.thread.type,
+              status: status.thread.status,
+              title: status.thread.title ?? null,
+              pinnedAt: status.thread.pinnedAt,
+              parentThreadId: status.thread.parentThreadId ?? null,
               environment: environmentInfo,
             };
             serverAvailable = true;
 
-            // If the thread is a manager, fetch managed (child) threads
-            if (threadResult.type === "manager") {
-              const managed = await fetchManagedThreads({
-                client,
-                projectId: threadResult.projectId,
-                parentThreadId: threadResult.id,
-              });
-              if (managed) {
-                payload.managedThreads = managed.map((t) => ({
-                  id: t.id,
-                  status: t.status,
-                  title: t.title ?? null,
-                }));
-              }
+            if (status.managedThreads) {
+              payload.managedThreads = status.managedThreads.map((thread) => ({
+                id: thread.id,
+                status: thread.status,
+                title: thread.title ?? null,
+              }));
             }
           }
         }

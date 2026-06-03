@@ -3,10 +3,9 @@ import {
   type PermissionMode,
   type ReasoningLevel,
   type ServiceTier,
-  type Thread,
 } from "@bb/domain";
 import { action } from "../../action.js";
-import { createClient, unwrap } from "../../client.js";
+import { createCliBbSdk } from "../../client.js";
 import {
   confirmDestructiveAction,
   outputJson,
@@ -108,7 +107,6 @@ export function registerActionsCommands(
     .action(
       action(
         async (id: string | undefined, opts: ThreadUpdateCommandOptions) => {
-          const client = createClient(getUrl());
           if (opts.parentThread && opts.clearParentThread) {
             throw new Error(
               "Cannot combine --parent-thread with --clear-parent-thread.",
@@ -144,12 +142,8 @@ export function registerActionsCommands(
             body.reasoningLevel = reasoningLevel;
           }
 
-          const thread = await unwrap<Thread>(
-            client.api.v1.threads[":id"].$patch({
-              param: { id: threadId },
-              json: body,
-            }),
-          );
+          const sdk = createCliBbSdk(getUrl());
+          const thread = await sdk.threads.update({ threadId, ...body });
           if (outputJson(opts, thread)) return;
           console.log(`Thread ${thread.id} updated`);
           if (opts.title) {
@@ -181,13 +175,9 @@ export function registerActionsCommands(
       action(
         async (id: string | undefined, opts: ThreadArchiveCommandOptions) => {
           const threadId = requireThreadIdOrSelf(id, opts);
-          const client = createClient(getUrl());
+          const sdk = createCliBbSdk(getUrl());
           try {
-            await unwrap<{ ok: boolean }>(
-              client.api.v1.threads[":id"].archive.$post({
-                param: { id: threadId },
-              }),
-            );
+            await sdk.threads.archive({ threadId });
           } catch (err: unknown) {
             throw prependErrorContext(
               `Failed to archive thread ${threadId}`,
@@ -208,13 +198,9 @@ export function registerActionsCommands(
     .action(
       action(
         async (id: string | undefined, opts: ThreadUnarchiveCommandOptions) => {
-          const client = createClient(getUrl());
           const threadId = requireThreadIdOrSelf(id, opts);
-          await unwrap<{ ok: boolean }>(
-            client.api.v1.threads[":id"].unarchive.$post({
-              param: { id: threadId },
-            }),
-          );
+          const sdk = createCliBbSdk(getUrl());
+          await sdk.threads.unarchive({ threadId });
           if (outputJson(opts, { ok: true, threadId })) return;
           console.log(`Thread ${threadId} unarchived`);
         },
@@ -228,13 +214,9 @@ export function registerActionsCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string | undefined, opts: ThreadPinCommandOptions) => {
-        const client = createClient(getUrl());
         const threadId = requireThreadIdOrSelf(id, opts);
-        const thread = await unwrap<Thread>(
-          client.api.v1.threads[":id"].pin.$post({
-            param: { id: threadId },
-          }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const thread = await sdk.threads.pin({ threadId });
         if (outputJson(opts, thread)) return;
         console.log(`Thread ${thread.id} pinned`);
       }),
@@ -247,13 +229,9 @@ export function registerActionsCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string | undefined, opts: ThreadPinCommandOptions) => {
-        const client = createClient(getUrl());
         const threadId = requireThreadIdOrSelf(id, opts);
-        const thread = await unwrap<Thread>(
-          client.api.v1.threads[":id"].unpin.$post({
-            param: { id: threadId },
-          }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const thread = await sdk.threads.unpin({ threadId });
         if (outputJson(opts, thread)) return;
         console.log(`Thread ${thread.id} unpinned`);
       }),
@@ -270,11 +248,9 @@ export function registerActionsCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ThreadDeleteCommandOptions) => {
-        const client = createClient(getUrl());
+        const sdk = createCliBbSdk(getUrl());
         try {
-          const thread = await unwrap<Thread>(
-            client.api.v1.threads[":id"].$get({ param: { id } }),
-          );
+          const thread = await sdk.threads.get({ threadId: id });
 
           if (!opts.yes) {
             const confirmed = await confirmDestructiveAction(
@@ -286,15 +262,11 @@ export function registerActionsCommands(
             }
           }
 
-          await unwrap<{ ok: boolean }>(
-            client.api.v1.threads[":id"].$delete({
-              param: { id },
-              json: {
-                managerChildThreadsConfirmed:
-                  opts.confirmAssignedChildThreads === true,
-              },
-            }),
-          );
+          await sdk.threads.delete({
+            threadId: id,
+            managerChildThreadsConfirmed:
+              opts.confirmAssignedChildThreads === true,
+          });
         } catch (err: unknown) {
           throw prependErrorContext(`Failed to delete thread ${id}`, err);
         }
@@ -346,11 +318,9 @@ export function registerActionsCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string | undefined, opts: ThreadStopCommandOptions) => {
-        const client = createClient(getUrl());
         const threadId = requireThreadIdOrSelf(id, opts);
-        await unwrap<{ ok: boolean }>(
-          client.api.v1.threads[":id"].stop.$post({ param: { id: threadId } }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        await sdk.threads.stop({ threadId });
         if (outputJson(opts, { ok: true, threadId })) return;
         console.log(`Thread ${threadId} stopped`);
       }),
@@ -360,24 +330,22 @@ export function registerActionsCommands(
 async function postThreadMessage(
   args: PostThreadMessageArgs,
 ): Promise<{ ok: boolean; mode?: "steer" }> {
-  const client = createClient(args.getUrl());
-  const response = await unwrap<{ ok: boolean }>(
-    client.api.v1.threads[":id"].send.$post({
-      param: { id: args.threadId },
-      json: {
-        input: [{ type: "text", text: args.message }],
-        mode: args.mode,
-        ...(args.model ? { model: args.model } : {}),
-        ...(args.permissionMode ? { permissionMode: args.permissionMode } : {}),
-        ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
-        ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
-        ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
-      },
-    }),
-  );
+  const sdk = createCliBbSdk(args.getUrl());
+  const response = await sdk.threads.send({
+    threadId: args.threadId,
+    input: [{ type: "text", text: args.message }],
+    mode: args.mode,
+    ...(args.model ? { model: args.model } : {}),
+    ...(args.permissionMode ? { permissionMode: args.permissionMode } : {}),
+    ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
+    ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
+    ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
+  });
+  if (args.mode === "steer") {
+    return { ...response, mode: "steer" };
+  }
   return {
     ...response,
-    ...(args.mode === "steer" ? { mode: "steer" as const } : {}),
   };
 }
 

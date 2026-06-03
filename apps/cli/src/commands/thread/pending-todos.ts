@@ -4,7 +4,17 @@ import type {
   ThreadTimelinePendingTodoItemStatus,
 } from "@bb/domain";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
-import { unwrap, type Client } from "../../client.js";
+
+export interface PendingTodosSdk {
+  threads: {
+    timeline(args: PendingTodosTimelineArgs): Promise<ThreadTimelineResponse>;
+  };
+}
+
+interface PendingTodosTimelineArgs {
+  summaryOnly: "true";
+  threadId: string;
+}
 
 /**
  * Best-effort fetch — returns null if the timeline endpoint is unreachable or
@@ -15,16 +25,14 @@ import { unwrap, type Client } from "../../client.js";
  * the CLI only consumes `pendingTodos`, not the full timeline.
  */
 export async function fetchThreadPendingTodos(args: {
-  client: Client;
+  sdk: PendingTodosSdk;
   threadId: string;
 }): Promise<ThreadTimelinePendingTodos | null> {
   try {
-    const response = await unwrap<ThreadTimelineResponse>(
-      args.client.api.v1.threads[":id"].timeline.$get({
-        param: { id: args.threadId },
-        query: { summaryOnly: "true" },
-      }),
-    );
+    const response = await args.sdk.threads.timeline({
+      threadId: args.threadId,
+      summaryOnly: "true",
+    });
     return response.pendingTodos;
   } catch {
     return null;

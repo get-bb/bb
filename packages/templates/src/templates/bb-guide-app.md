@@ -61,10 +61,9 @@ Manifest:
 ```
 
 `entry` is relative to `public/`. HTML entries load in an app iframe and receive
-the `window.bb` bridge according to `capabilities`; Markdown entries render as
-static documents and do not receive `window.bb`. `capabilities` controls which
-`window.bb` helpers are injected for HTML entries: `data` enables
-`window.bb.data`, and `message` enables `window.bb.message`.
+the prototype `window.bb` SDK; Markdown entries render as static documents and
+do not receive `window.bb`. `capabilities` is retained as manifest metadata, but
+the Phase 1 SDK prototype does not gate browser helpers by capability.
 
 The served app entry URL is `/api/v1/apps/<applicationId>/`; bb serves
 `public/` transparently from that same URL root. Browser files in `public/`
@@ -155,26 +154,27 @@ Browser API:
 ```ts
 window.bb.applicationId
 window.bb.appId
-await window.bb.data?.read("state.json")
-await window.bb.data?.write("state.json", { tasks: [] })
-await window.bb.data?.delete("state.json")
-const entries = await window.bb.data?.list("")
-const unsubscribe = window.bb.data?.onChange("", (event) => {
+await window.bb.data.read({ path: "state.json" })
+await window.bb.data.write({ path: "state.json", value: { tasks: [] } })
+await window.bb.data.delete({ path: "state.json" })
+const entries = await window.bb.data.list({ prefix: "" })
+const unsubscribe = window.bb.data.onChange({ prefix: "", callback(event) {
   console.log(event.path, event.value, event.deleted)
-})
-await window.bb.message?.("Please review the current blockers.")
+}})
+await window.bb.message.send({ payload: "Please review the current blockers." })
+await window.bb.threads.list({})
 ```
 
-`window.bb.data` reads and writes JSON values. `onChange(prefix, callback)`
+`window.bb.data` reads and writes JSON values. `onChange({ prefix, callback })`
 matches a single data file when `prefix` equals that path and matches a subtree
 when the changed path is below `prefix + "/"`; `""` matches all app data.
 Registering a listener immediately replays existing matching data, and bb
 replays again after reconnects or app-data resync hints. Later filesystem
 writes, browser writes, and deletes are delivered after that replay.
 
-`window.bb.message(payload)` sends a normal follow-up message to the thread
-context that opened the app. Non-iframe callers must provide a target thread
-through the message API or CLI; without a target, bb returns
+`window.bb.message.send({ payload })` sends a normal follow-up message to the
+thread context that opened the app. Non-iframe callers must provide a target
+thread through the message API or CLI; without a target, bb returns
 `message_target_required`. App data remains global. Only message delivery is
 contextual.
 
@@ -199,8 +199,11 @@ function render(state) {
   );
 }
 
-window.bb.data?.read("state.json").then(render);
-window.bb.data?.onChange("state.json", (event) => render(event.value));
+window.bb.data.read({ path: "state.json" }).then(render);
+window.bb.data.onChange({
+  prefix: "state.json",
+  callback: (event) => render(event.value),
+});
 </script>
 ```
 

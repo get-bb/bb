@@ -572,19 +572,6 @@ async function buildApplicationDetail(
   };
 }
 
-function assertAppCapability(
-  manifest: AppManifest,
-  capability: AppCapability,
-): void {
-  if (!manifest.capabilities.includes(capability)) {
-    throw new ApiError(
-      403,
-      "invalid_request",
-      `App does not have the ${capability} capability`,
-    );
-  }
-}
-
 function isIgnoredApplicationStorageEntry(entryName: string): boolean {
   return entryName.startsWith(".tmp-") || entryName.startsWith(".delete-");
 }
@@ -1362,11 +1349,10 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
       const applicationId = parseApplicationId(
         context.req.param("applicationId"),
       );
-      const manifest = await readApplicationManifestForRequest(deps, {
+      await readApplicationManifestForRequest(deps, {
         dataDir: deps.config.dataDir,
         applicationId,
       });
-      assertAppCapability(manifest, "data");
       const dataPath = parseOptionalAppDataPrefix(query.prefix);
       return context.json({
         entries: await listApplicationDataEntries({
@@ -1385,11 +1371,10 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
       const applicationId = parseApplicationId(
         context.req.param("applicationId"),
       );
-      const manifest = await readApplicationManifestForRequest(deps, {
+      await readApplicationManifestForRequest(deps, {
         dataDir: deps.config.dataDir,
         applicationId,
       });
-      assertAppCapability(manifest, "message");
       const target = resolveAppMessageTarget(deps, {
         applicationId,
         payload,
@@ -1435,11 +1420,10 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
     const applicationId = parseApplicationId(
       context.req.param("applicationId"),
     );
-    const manifest = await readApplicationManifestForRequest(deps, {
+    await readApplicationManifestForRequest(deps, {
       dataDir: deps.config.dataDir,
       applicationId,
     });
-    assertAppCapability(manifest, "data");
     const dataPath = parseAppDataRoutePath(
       extractRoutePath({
         requestUrl: context.req.url,
@@ -1464,11 +1448,10 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
       const applicationId = parseApplicationId(
         context.req.param("applicationId"),
       );
-      const manifest = await readApplicationManifestForRequest(deps, {
+      await readApplicationManifestForRequest(deps, {
         dataDir: deps.config.dataDir,
         applicationId,
       });
-      assertAppCapability(manifest, "data");
       const dataPath = parseAppDataRoutePath(
         extractRoutePath({
           requestUrl: context.req.url,
@@ -1492,11 +1475,10 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
     const applicationId = parseApplicationId(
       context.req.param("applicationId"),
     );
-    const manifest = await readApplicationManifestForRequest(deps, {
+    await readApplicationManifestForRequest(deps, {
       dataDir: deps.config.dataDir,
       applicationId,
     });
-    assertAppCapability(manifest, "data");
     const dataPath = parseAppDataRoutePath(
       extractRoutePath({
         requestUrl: context.req.url,

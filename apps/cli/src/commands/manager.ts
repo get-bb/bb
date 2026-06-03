@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
 import { action } from "../action.js";
-import { createClient, unwrap } from "../client.js";
+import { createCliBbSdk } from "../client.js";
 import { fetchLocalHostId } from "../daemon.js";
 import { renderBorderlessTable } from "../table.js";
 import { resolveProjectIdWithLabel } from "../context-env.js";
@@ -38,15 +38,6 @@ interface ManagerDeleteCommandOptions {
   confirmAssignedChildThreads?: boolean;
   yes?: boolean;
   json?: boolean;
-}
-
-interface ManagerListQueryArgs {
-  projectId?: string;
-}
-
-interface ManagerListQuery {
-  projectId?: string;
-  type: "manager";
 }
 
 interface PrintThreadsTableArgs {
@@ -92,7 +83,7 @@ export function registerManagerCommands(
           projectIdArg: string | undefined,
           opts: ManagerHireCommandOptions,
         ) => {
-          const client = createClient(getUrl());
+          const sdk = createCliBbSdk(getUrl());
           const resolvedProject = resolveProjectIdWithLabel(
             projectIdArg ?? opts.project,
           );
@@ -116,21 +107,17 @@ export function registerManagerCommands(
               );
             }
           }
-          const thread = await unwrap<Thread>(
-            client.api.v1.projects[":id"].managers.$post({
-              param: { id: projectId },
-              json: {
-                origin: "cli",
-                ...(opts.name ? { name: opts.name } : {}),
-                ...(opts.provider ? { providerId: opts.provider } : {}),
-                ...(opts.model ? { model: opts.model } : {}),
-                ...(serviceTier ? { serviceTier } : {}),
-                ...(opts.template ? { templateName: opts.template } : {}),
-                environment: { type: "host", hostId },
-                ...(reasoningLevel ? { reasoningLevel } : {}),
-              },
-            }),
-          );
+          const thread = await sdk.managers.hire({
+            projectId,
+            origin: "cli",
+            ...(opts.name ? { name: opts.name } : {}),
+            ...(opts.provider ? { providerId: opts.provider } : {}),
+            ...(opts.model ? { model: opts.model } : {}),
+            ...(serviceTier ? { serviceTier } : {}),
+            ...(opts.template ? { templateName: opts.template } : {}),
+            environment: { type: "host", hostId },
+            ...(reasoningLevel ? { reasoningLevel } : {}),
+          });
           if (outputJson(opts, thread)) return;
           console.log(`Manager hired: ${thread.id}`);
           printManagerThread(thread);
@@ -154,7 +141,7 @@ export function registerManagerCommands(
           projectIdArg: string | undefined,
           opts: ManagerListCommandOptions,
         ) => {
-          const client = createClient(getUrl());
+          const sdk = createCliBbSdk(getUrl());
           const resolvedProject = resolveProjectIdWithLabel(
             projectIdArg ?? opts.project,
           );
@@ -166,13 +153,8 @@ export function registerManagerCommands(
               opts,
             );
           }
-          const query = buildManagerListQuery({
-            projectId: resolvedProject?.id,
-          });
-          const managers = await unwrap<Thread[]>(
-            client.api.v1.threads.$get({
-              query,
-            }),
+          const managers = await sdk.managers.list(
+            resolvedProject ? { projectId: resolvedProject.id } : {},
           );
           if (outputJson(opts, managers)) return;
           if (managers.length === 0) {
@@ -193,21 +175,11 @@ export function registerManagerCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ManagerStatusCommandOptions) => {
-        const client = createClient(getUrl());
-        const managerThreadId = id;
-        const managerThread = await getManagerThreadById(
-          client,
-          managerThreadId,
-        );
-        const managedThreads = await listManagedThreads(
-          client,
-          managerThread.projectId,
-          managerThreadId,
-        );
-        if (outputJson(opts, { manager: managerThread, managedThreads }))
-          return;
-        printManagerThread(managerThread);
-        printManagedThreadTable(managedThreads);
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.managers.status({ managerId: id });
+        if (outputJson(opts, result)) return;
+        printManagerThread(result.manager);
+        printManagedThreadTable(result.managedThreads);
       }),
     );
 
@@ -222,12 +194,12 @@ export function registerManagerCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ManagerDeleteCommandOptions) => {
-        const client = createClient(getUrl());
+        const sdk = createCliBbSdk(getUrl());
         const managerThreadId = id;
-        const managerThread = await getManagerThreadById(
-          client,
-          managerThreadId,
-        );
+        const managerThread = await sdk.threads.get({ threadId: managerThreadId });
+        if (managerThread.type !== "manager") {
+          throw new Error(`Thread ${managerThreadId} is not a manager`);
+        }
         if (!opts.yes) {
           const confirmed = await confirmDestructiveAction(
             `Delete manager "${managerThread.title ?? managerThread.id}" permanently? This cannot be undone.`,
@@ -237,53 +209,15 @@ export function registerManagerCommands(
             return;
           }
         }
-        await unwrap<{ ok: boolean }>(
-          client.api.v1.threads[":id"].$delete({
-            param: { id: managerThreadId },
-            json: {
-              managerChildThreadsConfirmed:
-                opts.confirmAssignedChildThreads === true,
-            },
-          }),
-        );
+        await sdk.managers.delete({
+          managerId: managerThreadId,
+          managerChildThreadsConfirmed:
+            opts.confirmAssignedChildThreads === true,
+        });
         if (outputJson(opts, { ok: true, managerId: managerThreadId })) return;
         console.log(`Manager ${managerThreadId} deleted`);
       }),
     );
-}
-
-async function getThreadById(
-  client: ReturnType<typeof createClient>,
-  threadId: string,
-): Promise<Thread> {
-  return unwrap<Thread>(
-    client.api.v1.threads[":id"].$get({
-      param: { id: threadId },
-    }),
-  );
-}
-
-async function getManagerThreadById(
-  client: ReturnType<typeof createClient>,
-  threadId: string,
-): Promise<Thread> {
-  const thread = await getThreadById(client, threadId);
-  if (thread.type !== "manager") {
-    throw new Error(`Thread ${threadId} is not a manager`);
-  }
-  return thread;
-}
-
-async function listManagedThreads(
-  client: ReturnType<typeof createClient>,
-  projectId: string,
-  managerThreadId: string,
-): Promise<Thread[]> {
-  return unwrap<Thread[]>(
-    client.api.v1.threads.$get({
-      query: { projectId, parentThreadId: managerThreadId },
-    }),
-  );
 }
 
 function printManagerThread(thread: Thread): void {
@@ -296,13 +230,6 @@ function printManagerThread(thread: Thread): void {
   console.log(`  Created:  ${new Date(thread.createdAt).toLocaleString()}`);
   console.log(`  Updated:  ${new Date(thread.updatedAt).toLocaleString()}`);
   console.log("");
-}
-
-function buildManagerListQuery(args: ManagerListQueryArgs): ManagerListQuery {
-  return {
-    ...(args.projectId ? { projectId: args.projectId } : {}),
-    type: "manager",
-  };
 }
 
 function formatProjectLabel(projectId: string): string {

@@ -25,7 +25,7 @@ import {
   type UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
 import { action } from "../../action.js";
-import { createClient, unwrap } from "../../client.js";
+import { createCliBbSdk } from "../../client.js";
 import { renderBorderlessTable } from "../../table.js";
 import {
   outputJson,
@@ -306,15 +306,11 @@ function printInteraction(interaction: PendingInteraction): void {
 async function fetchInteraction(
   args: FetchInteractionArgs,
 ): Promise<PendingInteraction> {
-  const client = createClient(args.getUrl());
-  return unwrap<PendingInteraction>(
-    client.api.v1.threads[":id"].interactions[":interactionId"].$get({
-      param: {
-        id: args.threadId,
-        interactionId: args.interactionId,
-      },
-    }),
-  );
+  const sdk = createCliBbSdk(args.getUrl());
+  return sdk.threads.interactions.get({
+    interactionId: args.interactionId,
+    threadId: args.threadId,
+  });
 }
 
 function appendRepeatableOption(
@@ -540,16 +536,12 @@ async function resolveInteraction(args: ResolveInteractionArgs): Promise<void> {
     threadId: args.threadId,
   });
   const resolution = args.buildResolution(interaction);
-  const client = createClient(args.getUrl());
-  const updated = await unwrap<PendingInteraction>(
-    client.api.v1.threads[":id"].interactions[":interactionId"].resolve.$post({
-      param: {
-        id: args.threadId,
-        interactionId: args.interactionId,
-      },
-      json: resolution,
-    }),
-  ).catch((error: unknown) => {
+  const sdk = createCliBbSdk(args.getUrl());
+  const updated = await sdk.threads.interactions.resolve({
+    interactionId: args.interactionId,
+    resolution,
+    threadId: args.threadId,
+  }).catch((error: unknown) => {
     throw prependErrorContext(
       `Failed to ${args.failureAction} interaction ${args.interactionId}`,
       error,
@@ -682,14 +674,12 @@ export function registerInteractionCommands(
           opts: ThreadInteractionTargetOptions,
         ) => {
           const resolved = requireThreadIdWithLabelOrSelf(id, opts);
-          const client = createClient(getUrl());
+          const sdk = createCliBbSdk(getUrl());
           printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
 
-          const items = await unwrap<PendingInteraction[]>(
-            client.api.v1.threads[":id"].interactions.$get({
-              param: { id: resolved.id },
-            }),
-          );
+          const items = await sdk.threads.interactions.list({
+            threadId: resolved.id,
+          });
 
           if (outputJson(opts, items)) {
             return;

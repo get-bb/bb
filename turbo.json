@@ -93,6 +93,30 @@
       ],
       "outputs": ["dist/**"]
     },
+    "@bb/sdk#build": {
+      "dependsOn": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/*/package.json",
+        "$TURBO_ROOT$/apps/*/scripts/**",
+        "$TURBO_ROOT$/apps/*/src/**",
+        "$TURBO_ROOT$/apps/*/tsconfig.json",
+        "$TURBO_ROOT$/apps/*/vite.config.ts",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/*/package.json",
+        "$TURBO_ROOT$/packages/*/scripts/**",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/*/tsconfig.json",
+        "$TURBO_ROOT$/packages/db/drizzle/**",
+        "$TURBO_ROOT$/packages/templates/scripts/**",
+        "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/scripts/*.mjs",
+        "$TURBO_ROOT$/turbo.json"
+      ],
+      "outputs": ["dist/**"]
+    },
     "@bb/server#build": {
       "dependsOn": [],
       "inputs": [

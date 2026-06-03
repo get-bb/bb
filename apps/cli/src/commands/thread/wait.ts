@@ -1,15 +1,12 @@
 import { Command } from "commander";
 import {
-  parseThreadEventRow,
-  type Thread,
   type ThreadStatus,
   threadStatusSchema,
   threadStatusValues,
 } from "@bb/domain";
 import { assertNever } from "@bb/core-ui";
-import type { ThreadEventWaitQuery } from "@bb/server-contract";
 import { action, CliExitError } from "../../action.js";
-import { createClient, unwrap } from "../../client.js";
+import { createCliBbSdk } from "../../client.js";
 import {
   outputJson,
   printContextLabel,
@@ -57,7 +54,7 @@ export function registerWaitCommand(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string | undefined, opts: ThreadWaitCommandOptions) => {
-        const client = createClient(getUrl());
+        const sdk = createCliBbSdk(getUrl());
         const resolved = requireThreadIdWithLabel(id);
         const threadId = resolved.id;
         printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
@@ -68,9 +65,7 @@ export function registerWaitCommand(
 
         while (true) {
           if (target.kind === "status") {
-            const thread = await unwrap<Thread>(
-              client.api.v1.threads[":id"].$get({ param: { id: threadId } }),
-            );
+            const thread = await sdk.threads.get({ threadId });
             if (thread.status === target.status) {
               if (outputJson(opts, { threadId, matched: true, target })) return;
               console.log(
@@ -102,22 +97,13 @@ export function registerWaitCommand(
             const remainingMs = Math.max(0, deadline - Date.now());
             const waitMs = Math.floor(Math.min(remainingMs, 30_000));
 
-            const waitQuery: ThreadEventWaitQuery = {
+            const matched = await sdk.threads.events.wait({
+              threadId,
               type: target.eventType,
               waitMs: String(waitMs),
-            };
-
-            const response = await client.api.v1.threads[
-              ":id"
-            ].events.wait.$get({
-              param: { id: threadId },
-              query: waitQuery,
             });
 
-            // Server returns 204 (no content) on timeout — the typed contract
-            // only declares the 200 shape, so widen the status to number.
-            const statusCode: number = response.status;
-            if (statusCode === 204) {
+            if (matched === null) {
               if (Date.now() >= deadline) {
                 throw new CliExitError(
                   `Timed out waiting for thread ${threadId} event ${target.eventType}.`,
@@ -126,14 +112,8 @@ export function registerWaitCommand(
               }
               await sleep(pollIntervalMs);
               continue;
-            } else if (!response.ok) {
-              const body = await response.text();
-              throw new Error(
-                `Wait request failed with ${statusCode}: ${body}`,
-              );
             }
 
-            const matched = parseThreadEventRow(await response.json());
             if (outputJson(opts, { threadId, matched: true, target })) return;
             console.log(
               `Thread ${threadId} observed event ${target.eventType} at seq ${matched.seq}.`,

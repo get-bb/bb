@@ -255,6 +255,9 @@ importers:
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../../packages/host-daemon-contract
+      '@bb/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../../packages/server-contract
@@ -486,6 +489,9 @@ importers:
       '@bb/replay-capture':
         specifier: workspace:*
         version: link:../../packages/replay-capture
+      '@bb/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@bb/secret-storage':
         specifier: workspace:*
         version: link:../../packages/secret-storage
@@ -1072,6 +1078,49 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(typescript@5.9.3))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.0)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))
+
+  packages/sdk:
+    dependencies:
+      '@bb/config':
+        specifier: workspace:*
+        version: link:../config
+      '@bb/core-ui':
+        specifier: workspace:*
+        version: link:../core-ui
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@bb/host-daemon-contract':
+        specifier: workspace:*
+        version: link:../host-daemon-contract
+      '@bb/server-contract':
+        specifier: workspace:*
+        version: link:../server-contract
+      '@bb/templates':
+        specifier: workspace:*
+        version: link:../templates
+      hono:
+        specifier: ^4.7.0
+        version: 4.11.9
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@bb/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.10
+      esbuild:
+        specifier: ^0.28.0
+        version: 0.28.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

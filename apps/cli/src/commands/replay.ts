@@ -2,12 +2,11 @@ import { Command } from "commander";
 import {
   replaySpeedSchema,
   type ReplayCaptureHostSummary,
-  type ReplayCaptureListResponse,
   type ReplayRunResponse,
   type ReplayRunSpeed,
 } from "@bb/server-contract";
 import { action } from "../action.js";
-import { createClient, unwrap } from "../client.js";
+import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 
@@ -101,10 +100,8 @@ export function registerReplayCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ReplayListOptions) => {
-        const client = createClient(getUrl());
-        const result = await unwrap<ReplayCaptureListResponse>(
-          client.api.v1["development-only"].replay.captures.$get(),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.replay.list();
         if (outputJson(opts, result)) return;
         printCaptureTable(result.captures);
       }),
@@ -121,14 +118,9 @@ export function registerReplayCommands(
     )
     .action(
       action(async (captureId: string, opts: ReplayRunOptions) => {
-        const client = createClient(getUrl());
+        const sdk = createCliBbSdk(getUrl());
         const speed = parseSpeed(opts.speed);
-        const result = await unwrap<ReplayRunResponse>(
-          client.api.v1["development-only"].replay.captures[":id"].runs.$post({
-            param: { id: captureId },
-            json: { speed },
-          }),
-        );
+        const result = await sdk.replay.run({ captureId, speed });
         if (outputJson(opts, result)) return;
         printReplayRun(result);
       }),
@@ -140,12 +132,8 @@ export function registerReplayCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (captureId: string, opts: ReplayListOptions) => {
-        const client = createClient(getUrl());
-        const result = await unwrap<{ ok: true }>(
-          client.api.v1["development-only"].replay.captures[":id"].$delete({
-            param: { id: captureId },
-          }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.replay.delete({ captureId });
         if (outputJson(opts, result)) return;
         console.log(`Deleted replay capture ${captureId}`);
       }),

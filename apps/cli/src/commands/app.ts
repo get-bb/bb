@@ -2,21 +2,22 @@ import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import {
+  appDataPathSchema,
   applicationIdSchema,
   deriveApplicationIdFromName,
   jsonValueSchema,
 } from "@bb/domain";
-import type { ApplicationId, JsonValue } from "@bb/domain";
+import type { AppDataPath, ApplicationId, JsonValue } from "@bb/domain";
 import type {
   AppDataEntry,
-  AppDataListResponse,
   AppDetail,
   AppIcon,
   AppSummary,
   CreateAppRequest,
 } from "@bb/server-contract";
+import type { CurrentAppRuntimeContext } from "@bb/sdk";
 import { action } from "../action.js";
-import { createClient, unwrap } from "../client.js";
+import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { confirmDestructiveAction, outputJson } from "./helpers.js";
 
@@ -48,13 +49,6 @@ interface AppMessageCommandOptions {
   targetThread: string;
 }
 
-interface CurrentAppRuntimeContext {
-  applicationId: ApplicationId;
-  appRootPath: string;
-  appDataPath: string;
-  appsRootPath: string;
-}
-
 function parseApplicationId(value: string): ApplicationId {
   const parsed = applicationIdSchema.safeParse(value);
   if (parsed.success) {
@@ -63,6 +57,14 @@ function parseApplicationId(value: string): ApplicationId {
   throw new Error(
     "Invalid applicationId. Expected a lowercase slug like status or review-board.",
   );
+}
+
+function parseAppDataPath(value: string): AppDataPath {
+  const parsed = appDataPathSchema.safeParse(value);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  throw new Error("Invalid app data path.");
 }
 
 function deriveApplicationIdFromNameForCli(name: string): ApplicationId {
@@ -98,20 +100,6 @@ function buildCreateAppRequest(opts: AppNewCommandOptions): CreateAppRequest {
     request.name = opts.name;
   }
   return request;
-}
-
-function encodePathSegments(value: string): string {
-  return value.split("/").map(encodeURIComponent).join("/");
-}
-
-function appDataUrl(
-  baseUrl: string,
-  applicationId: ApplicationId,
-  dataPath: string,
-): string {
-  return `${baseUrl.replace(/\/$/u, "")}/api/v1/apps/${encodeURIComponent(
-    applicationId,
-  )}/data/${encodePathSegments(dataPath)}`;
 }
 
 function formatIcon(icon: AppIcon): string {
@@ -228,8 +216,8 @@ export function registerAppCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: AppJsonOptions) => {
-        const client = createClient(getUrl());
-        const apps = await unwrap<AppSummary[]>(client.api.v1.apps.$get());
+        const sdk = createCliBbSdk(getUrl());
+        const apps = await sdk.apps.list();
         if (outputJson(opts, apps)) return;
         printAppsTable(apps);
       }),
@@ -247,12 +235,8 @@ export function registerAppCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: AppNewCommandOptions) => {
-        const client = createClient(getUrl());
-        const created = await unwrap<AppDetail>(
-          client.api.v1.apps.$post({
-            json: buildCreateAppRequest(opts),
-          }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const created = await sdk.apps.create(buildCreateAppRequest(opts));
         if (outputJson(opts, created)) return;
         printAppDetail(created);
       }),
@@ -264,7 +248,9 @@ export function registerAppCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: AppJsonOptions) => {
-        const current = readCurrentAppRuntimeContext();
+        const runtimeContext = readCurrentAppRuntimeContext();
+        const sdk = createCliBbSdk(getUrl(), { context: runtimeContext });
+        const current = await sdk.apps.current();
         if (outputJson(opts, current)) return;
         console.log(`Application ID: ${current.applicationId}`);
         console.log(`  App root:      ${current.appRootPath}`);
@@ -280,12 +266,8 @@ export function registerAppCommands(
     .action(
       action(async (rawApplicationId: string, opts: AppJsonOptions) => {
         const applicationId = parseApplicationId(rawApplicationId);
-        const client = createClient(getUrl());
-        const detail = await unwrap<AppDetail>(
-          client.api.v1.apps[":applicationId"].$get({
-            param: { applicationId },
-          }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const detail = await sdk.apps.get({ applicationId });
         if (outputJson(opts, detail)) return;
         printAppDetail(detail);
       }),
@@ -300,12 +282,8 @@ export function registerAppCommands(
       action(
         async (rawApplicationId: string, opts: AppDeleteCommandOptions) => {
           const applicationId = parseApplicationId(rawApplicationId);
-          const client = createClient(getUrl());
-          const appDetail = await unwrap<AppDetail>(
-            client.api.v1.apps[":applicationId"].$get({
-              param: { applicationId },
-            }),
-          );
+          const sdk = createCliBbSdk(getUrl());
+          const appDetail = await sdk.apps.get({ applicationId });
           if (!opts.yes) {
             const confirmed = await confirmDestructiveAction(
               `Delete app "${appDetail.name}" (${applicationId})? This cannot be undone.`,
@@ -315,11 +293,7 @@ export function registerAppCommands(
               return;
             }
           }
-          await unwrap<{ ok: true }>(
-            client.api.v1.apps[":applicationId"].$delete({
-              param: { applicationId },
-            }),
-          );
+          await sdk.apps.delete({ applicationId });
           const payload = { ok: true, applicationId };
           if (outputJson(opts, payload)) return;
           console.log(`App ${applicationId} deleted`);
@@ -341,13 +315,12 @@ export function registerAppCommands(
           opts: AppDataListCommandOptions,
         ) => {
           const applicationId = parseApplicationId(rawApplicationId);
-          const client = createClient(getUrl());
-          const response = await unwrap<AppDataListResponse>(
-            client.api.v1.apps[":applicationId"].data.$get({
-              param: { applicationId },
-              query: prefix ? { prefix } : {},
-            }),
-          );
+          const dataPrefix = prefix === undefined ? "" : parseAppDataPath(prefix);
+          const sdk = createCliBbSdk(getUrl());
+          const response = await sdk.apps.data.list({
+            applicationId,
+            prefix: dataPrefix,
+          });
           if (outputJson(opts, response.entries)) return;
           printDataEntries(response.entries);
         },
@@ -360,12 +333,15 @@ export function registerAppCommands(
     .action(
       action(async (rawApplicationId: string, dataPath: string) => {
         const applicationId = parseApplicationId(rawApplicationId);
-        const response = await unwrap<AppDataEntry>(
-          fetch(appDataUrl(getUrl(), applicationId, dataPath), {
-            method: "GET",
-            headers: { Accept: "application/json" },
-          }),
-        );
+        const path = parseAppDataPath(dataPath);
+        const sdk = createCliBbSdk(getUrl());
+        const response = await sdk.apps.data.read({
+          applicationId,
+          path,
+        });
+        if (!response) {
+          throw new Error(`App data path not found: ${path}`);
+        }
         console.log(JSON.stringify(response.value, null, 2));
       }),
     );
@@ -383,17 +359,14 @@ export function registerAppCommands(
           opts: AppDataWriteCommandOptions,
         ) => {
           const applicationId = parseApplicationId(rawApplicationId);
+          const path = parseAppDataPath(dataPath);
           const value = await readWriteValue(opts);
-          await unwrap<AppDataEntry>(
-            fetch(appDataUrl(getUrl(), applicationId, dataPath), {
-              method: "PUT",
-              headers: {
-                Accept: "application/json",
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ value }),
-            }),
-          );
+          const sdk = createCliBbSdk(getUrl());
+          await sdk.apps.data.write({
+            applicationId,
+            path,
+            value,
+          });
           console.log(`Wrote ${dataPath}`);
         },
       ),
@@ -405,12 +378,9 @@ export function registerAppCommands(
     .action(
       action(async (rawApplicationId: string, dataPath: string) => {
         const applicationId = parseApplicationId(rawApplicationId);
-        await unwrap<{ ok: true }>(
-          fetch(appDataUrl(getUrl(), applicationId, dataPath), {
-            method: "DELETE",
-            headers: { Accept: "application/json" },
-          }),
-        );
+        const path = parseAppDataPath(dataPath);
+        const sdk = createCliBbSdk(getUrl());
+        await sdk.apps.data.delete({ applicationId, path });
         console.log(`Deleted ${dataPath}`);
       }),
     );
@@ -425,16 +395,12 @@ export function registerAppCommands(
         async (rawApplicationId: string, opts: AppMessageCommandOptions) => {
           const applicationId = parseApplicationId(rawApplicationId);
           const payload = parseJsonValueInput(opts.json);
-          const client = createClient(getUrl());
-          await unwrap(
-            client.api.v1.apps[":applicationId"].message.$post({
-              param: { applicationId },
-              json: {
-                payload,
-                targetThreadId: opts.targetThread,
-              },
-            }),
-          );
+          const sdk = createCliBbSdk(getUrl());
+          await sdk.apps.message({
+            applicationId,
+            payload,
+            targetThreadId: opts.targetThread,
+          });
           console.log(`Message sent to ${opts.targetThread}`);
         },
       ),

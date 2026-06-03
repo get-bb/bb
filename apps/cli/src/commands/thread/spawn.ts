@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
 import type { BaseBranchSpec, EnvironmentArgs } from "@bb/server-contract";
 import { action } from "../../action.js";
-import { createClient, unwrap } from "../../client.js";
+import { createCliBbSdk } from "../../client.js";
 import {
   resolveProjectId,
   resolveEnvironmentId,
@@ -159,7 +159,6 @@ export function registerSpawnCommand(
     )
     .action(
       action(async (opts: ThreadSpawnCommandOptions) => {
-        const client = createClient(getUrl());
         if (opts.parentThread && opts.contextParentThread === false) {
           throw new Error(
             "Cannot combine --parent-thread with --no-context-parent-thread.",
@@ -196,23 +195,20 @@ export function registerSpawnCommand(
 
         let thread: Thread;
         try {
-          thread = await unwrap<Thread>(
-            client.api.v1.threads.$post({
-              json: {
-                origin: "cli",
-                projectId,
-                ...(opts.provider ? { providerId: opts.provider } : {}),
-                ...(opts.model ? { model: opts.model } : {}),
-                input: [{ type: "text", text: opts.prompt }],
-                ...(reasoningLevel ? { reasoningLevel } : {}),
-                ...(opts.title ? { title: opts.title } : {}),
-                ...(serviceTier ? { serviceTier } : {}),
-                ...(permissionMode ? { permissionMode } : {}),
-                environment,
-                ...(parentThreadId ? { parentThreadId } : {}),
-              },
-            }),
-          );
+          const sdk = createCliBbSdk(getUrl());
+          thread = await sdk.threads.spawn({
+            origin: "cli",
+            projectId,
+            ...(opts.provider ? { providerId: opts.provider } : {}),
+            ...(opts.model ? { model: opts.model } : {}),
+            input: [{ type: "text", text: opts.prompt }],
+            ...(reasoningLevel ? { reasoningLevel } : {}),
+            ...(opts.title ? { title: opts.title } : {}),
+            ...(serviceTier ? { serviceTier } : {}),
+            ...(permissionMode ? { permissionMode } : {}),
+            environment,
+            ...(parentThreadId ? { parentThreadId } : {}),
+          });
         } catch (err: unknown) {
           throw prependErrorContext("Failed to create thread", err);
         }

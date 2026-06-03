@@ -46,7 +46,7 @@ Apps system reference — run \`bb guide app\` for full detail. Layout:
 - <dataDir>/apps/<applicationId>/public/index.html — self-contained static HTML/CSS/JS/SVG served by bb; use inline/relative files, no web server, npm, or build step
 - <dataDir>/apps/<applicationId>/data/state.json — state if the app uses window.bb.data
 
-In the page, use window.bb.data for live state (read / write / delete / list / onChange; onChange replays + streams) and window.bb.message(text) to send the thread a prompt. Guard with \`window.bb?.data?.…\` since capabilities are advisory.
+In the page, use the injected window.bb SDK: window.bb.data.read({ path }), window.bb.data.write({ path, value }), window.bb.data.delete({ path }), window.bb.data.list({ prefix }), window.bb.data.onChange({ prefix, callback }) for live state, and window.bb.message.send({ payload }) to send the thread a prompt.
 
 Scaffold with \`bb app new --name "Name"\` or \`bb app new --slug my-app\`; inside an app-capable runtime, inspect \`bb app current --json\` and write directly to \`BB_APP_ROOT\` / \`BB_APP_DATA_PATH\`. The application id is the lowercase slug folder name; display names are optional labels, not identifiers.
 

@@ -1,5 +1,10 @@
 import { createApiClient, type ApiClient } from "@bb/server-contract";
 import { extractErrorMessage } from "@bb/core-ui";
+import {
+  createNodeBbSdk,
+  type BbSdk,
+  type BbSdkContext,
+} from "@bb/sdk/node";
 
 // Total timeout from request start through response body consumption. Keep this
 // above the server's 60s long-poll cap so server timeouts win that race.
@@ -71,6 +76,17 @@ export function createClient(baseUrl: string): ApiClient {
 }
 
 export type Client = ReturnType<typeof createClient>;
+
+export interface CreateCliBbSdkOptions {
+  context?: BbSdkContext;
+}
+
+export function createCliBbSdk(
+  baseUrl: string,
+  options: CreateCliBbSdkOptions = {},
+): BbSdk {
+  return createNodeBbSdk({ baseUrl, context: options.context });
+}
 
 export function createCliRequestTimeoutFetch(
   options: CliRequestTimeoutFetchOptions,

@@ -46,6 +46,10 @@ export const workspaceTestAliases = {
     "packages/domain/src/thread-status.ts",
   ),
   "@bb/domain": path.resolve(repoRoot, "packages/domain/src/index.ts"),
+  "@bb/templates/generated": path.resolve(
+    repoRoot,
+    "packages/templates/src/generated/templates.generated.ts",
+  ),
   "@bb/templates": path.resolve(repoRoot, "packages/templates/src/index.ts"),
   "@bb/test-helpers": path.resolve(
     repoRoot,
@@ -92,4 +96,12 @@ export const workspaceTestAliases = {
     repoRoot,
     "packages/server-contract/src/index.ts",
   ),
+  "@bb/sdk/core": path.resolve(repoRoot, "packages/sdk/src/core.ts"),
+  "@bb/sdk/node": path.resolve(repoRoot, "packages/sdk/src/node.ts"),
+  "@bb/sdk/browser": path.resolve(repoRoot, "packages/sdk/src/browser.ts"),
+  "@bb/sdk/app-runtime": path.resolve(
+    repoRoot,
+    "packages/sdk/src/app-runtime.ts",
+  ),
+  "@bb/sdk": path.resolve(repoRoot, "packages/sdk/src/index.ts"),
 } as const;

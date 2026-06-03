@@ -1,15 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ThreadTimelinePendingTodos } from "@bb/domain";
-
-vi.mock("../../client.js", () => ({
-  unwrap: vi.fn(async (responsePromise: Promise<unknown>) => responsePromise),
-}));
+import type { ThreadTimelineResponse } from "@bb/server-contract";
 
 import {
   fetchThreadPendingTodos,
+  type PendingTodosSdk,
   printPendingTodos,
 } from "./pending-todos.js";
-import type { Client } from "../../client.js";
 
 function captureLogLines(fn: () => void): { lines: string[] } {
   const spy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -103,22 +100,31 @@ describe("printPendingTodos", () => {
 });
 
 describe("fetchThreadPendingTodos", () => {
-  function makeClientWithTimeline(
-    handler: () => Promise<unknown>,
-  ): Client {
+  function makeTimelineResponse(
+    pendingTodos: ThreadTimelinePendingTodos | null,
+  ): ThreadTimelineResponse {
     return {
-      api: {
-        v1: {
-          threads: {
-            ":id": {
-              timeline: {
-                $get: vi.fn(handler),
-              },
-            },
-          },
-        },
+      activeThinking: null,
+      pendingTodos,
+      rows: [],
+      timelinePage: {
+        kind: "latest",
+        segmentLimit: 20,
+        returnedSegmentCount: 0,
+        hasOlderRows: false,
+        olderCursor: null,
       },
-    } as unknown as Client;
+    };
+  }
+
+  function makeSdkWithTimeline(
+    handler: () => Promise<ThreadTimelineResponse>,
+  ): PendingTodosSdk {
+    return {
+      threads: {
+        timeline: vi.fn(handler),
+      },
+    };
   }
 
   it("returns the pendingTodos field from a successful timeline response", async () => {
@@ -127,22 +133,20 @@ describe("fetchThreadPendingTodos", () => {
       updatedAt: 7,
       items: [{ id: "a", text: "Work", status: "in_progress" }],
     };
-    const client = makeClientWithTimeline(async () => ({
-      pendingTodos: snapshot,
-    }));
+    const sdk = makeSdkWithTimeline(async () => makeTimelineResponse(snapshot));
     const result = await fetchThreadPendingTodos({
-      client,
+      sdk,
       threadId: "thread-1",
     });
     expect(result).toEqual(snapshot);
   });
 
   it("returns null when the timeline call rejects (best-effort contract)", async () => {
-    const client = makeClientWithTimeline(async () => {
+    const sdk = makeSdkWithTimeline(async () => {
       throw new Error("network down");
     });
     const result = await fetchThreadPendingTodos({
-      client,
+      sdk,
       threadId: "thread-1",
     });
     expect(result).toBeNull();

@@ -1,0 +1,63 @@
+{
+  "name": "@bb/sdk",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "browser": "./dist/browser.js",
+      "node": "./dist/node.js",
+      "source": "./src/node.ts",
+      "types": "./src/node.ts",
+      "import": "./dist/node.js",
+      "default": "./dist/node.js"
+    },
+    "./core": {
+      "source": "./src/core.ts",
+      "types": "./src/core.ts",
+      "import": "./dist/core.js",
+      "default": "./dist/core.js"
+    },
+    "./browser": {
+      "source": "./src/browser.ts",
+      "types": "./src/browser.ts",
+      "import": "./dist/browser.js",
+      "default": "./dist/browser.js"
+    },
+    "./node": {
+      "source": "./src/node.ts",
+      "types": "./src/node.ts",
+      "import": "./dist/node.js",
+      "default": "./dist/node.js"
+    },
+    "./app-runtime": {
+      "source": "./src/app-runtime.ts",
+      "types": "./src/app-runtime.ts",
+      "import": "./dist/app-runtime.js",
+      "default": "./dist/app-runtime.js"
+    }
+  },
+  "types": "./src/node.ts",
+  "scripts": {
+    "build": "node ./scripts/generate-app-runtime-browser-bundle.mjs && node ../../scripts/build-package.mjs",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@bb/config": "workspace:*",
+    "@bb/core-ui": "workspace:*",
+    "@bb/domain": "workspace:*",
+    "@bb/host-daemon-contract": "workspace:*",
+    "@bb/server-contract": "workspace:*",
+    "@bb/templates": "workspace:*",
+    "hono": "^4.7.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.1"
+  }
+}

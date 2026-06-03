@@ -1,46 +1,32 @@
 import { Command } from "commander";
-import { renderTemplate } from "@bb/templates";
-import type { TemplateId } from "@bb/templates";
 import { action } from "../action.js";
+import { createCliBbSdk } from "../client.js";
 import { outputJson } from "./helpers.js";
 
-const guideChapters: Record<string, TemplateId> = {
-  threads: "bbGuideThreads",
-  environments: "bbGuideEnvironments",
-  managers: "bbGuideManagers",
-  "manager-templates": "bbGuideManagerTemplates",
-  app: "bbGuideApp",
-  providers: "bbGuideProviders",
-  projects: "bbGuideProjects",
-  hosts: "bbGuideHosts",
-  styling: "bbGuideApp",
-  async: "bbGuideAsync",
-};
+interface GuideCommandOptions {
+  json?: boolean;
+}
 
-export function registerGuideCommand(program: Command): void {
+export function registerGuideCommand(
+  program: Command,
+  getUrl: () => string = () => "",
+): void {
   program
     .command("guide [chapter]")
     .description("Show the BB system overview and CLI guide")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (chapter: string | undefined, opts: { json?: boolean }) => {
+      action(async (chapter: string | undefined, opts: GuideCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const rendered = sdk.guide.render({ chapter });
         if (chapter) {
-          const templateId = guideChapters[chapter];
-          if (!templateId) {
-            const available = Object.keys(guideChapters).join(", ");
-            throw new Error(
-              `Unknown guide chapter '${chapter}'. Available: ${available}.`,
-            );
-          }
-          const content = renderTemplate(templateId, {});
-          if (outputJson(opts, { chapter, content })) return;
-          console.log(content);
+          if (outputJson(opts, rendered)) return;
+          console.log(rendered.content);
           return;
         }
 
-        const overview = renderTemplate("bbGuideOverview", {});
-        if (outputJson(opts, { overview })) return;
-        console.log(overview);
+        if (outputJson(opts, { overview: rendered.content })) return;
+        console.log(rendered.content);
       }),
     );
 }

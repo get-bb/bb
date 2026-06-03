@@ -10,25 +10,73 @@ import {
   type Thread,
   type ThreadGitDiffResponse,
 } from "@bb/domain";
-import type {
-  EnvironmentDiffResponse,
-  ThreadTimelineResponse,
-  TimelineRow,
-  TimelineRowBase,
-  TimelineUserConversationRow,
+import {
+  createApiClient,
+  type EnvironmentDiffResponse,
+  type ThreadTimelineResponse,
+  type TimelineRow,
+  type TimelineRowBase,
+  type TimelineUserConversationRow,
 } from "@bb/server-contract";
+import type { BbSdkContext } from "@bb/sdk";
 
 const readlineState = vi.hoisted(() => ({
   question: vi.fn(),
   close: vi.fn(),
 }));
 
-vi.mock("../client.js", () => {
+vi.mock("../client.js", async () => {
+  const sdkCore = await vi.importActual<typeof import("@bb/sdk/core")>(
+    "@bb/sdk/core",
+  );
+  const createClient = vi.fn();
+  const unwrap = vi.fn(async (responsePromise: MockTransportPromise) => {
+    return responsePromise;
+  });
+  const readJson = async (responsePromise: MockTransportPromise) => {
+    const response = await responsePromise;
+    if (!(response instanceof Response)) {
+      return response;
+    }
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    }
+    return response.json();
+  };
+  const readVoid = async (responsePromise: MockTransportPromise) => {
+    const response = await responsePromise;
+    if (response instanceof Response && !response.ok) {
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    }
+  };
+  const resolve = async <TResponse extends Response>(
+    responsePromise: Promise<TResponse>,
+  ): Promise<TResponse> => {
+    const response = await responsePromise;
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    }
+    return response;
+  };
+  const createCliBbSdk = vi.fn(
+    (baseUrl: string, options: MockCliBbSdkOptions = {}) =>
+      sdkCore.createBbSdk({
+        context: options.context,
+        transport: {
+          api: createClient(baseUrl)?.api ?? {},
+          baseUrl,
+          fetch,
+          readJson,
+          readVoid,
+          resolve,
+          runtime: "node",
+        },
+      }),
+  );
   return {
-    createClient: vi.fn(),
-    unwrap: vi.fn(async (responsePromise: Promise<unknown>) => {
-      return responsePromise;
-    }),
+    createCliBbSdk,
+    createClient,
+    unwrap,
   };
 });
 
@@ -56,6 +104,24 @@ import { registerStatusCommand } from "../commands/status.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
 
 type ServerClient = ReturnType<typeof createClient>;
+type MockTransportResolved =
+  | Response
+  | object
+  | string
+  | number
+  | boolean
+  | null
+  | undefined;
+type MockTransportPromise = Promise<MockTransportResolved>;
+type ConsoleLogArgs = Parameters<typeof console.log>;
+
+interface ServerClientOverride {
+  api: object;
+}
+
+interface MockCliBbSdkOptions {
+  context?: BbSdkContext;
+}
 
 interface TimelineBaseArgs {
   id: string;
@@ -310,16 +376,16 @@ function makePermissionGrantApprovalPayload(
   };
 }
 
-function asServerClient(value: unknown): ServerClient {
-  return value as ServerClient;
+function asServerClient(value: ServerClientOverride): ServerClient {
+  return Object.assign(createApiClient("http://server"), value);
 }
 
 function collectLogLines(logSpy: ReturnType<typeof vi.spyOn>): string[] {
-  return logSpy.mock.calls.map((args: unknown[]) => args.join(" "));
+  return logSpy.mock.calls.map((args: ConsoleLogArgs) => args.join(" "));
 }
 
 function collectLogPayloads(logSpy: ReturnType<typeof vi.spyOn>): string[] {
-  return logSpy.mock.calls.map((args: unknown[]) => String(args[0] ?? ""));
+  return logSpy.mock.calls.map((args: ConsoleLogArgs) => String(args[0] ?? ""));
 }
 
 async function runCommand(
@@ -378,7 +444,7 @@ describe("CLI command output contracts", () => {
 
     createClientMock.mockReset();
     unwrapMock.mockReset();
-    unwrapMock.mockImplementation(async (responsePromise: Promise<unknown>) => {
+    unwrapMock.mockImplementation(async (responsePromise: MockTransportPromise) => {
       return responsePromise;
     });
     fetchLocalHostIdMock.mockClear();
@@ -447,6 +513,7 @@ describe("CLI command output contracts", () => {
     expect(output).toContain("Apps");
     expect(output).toContain("<dataDir>/apps/<applicationId>/");
     expect(output).toContain("window.bb.data");
+    expect(output).toContain("window.bb.message.send");
     expect(output).toContain("bb app current --json");
     expect(output).toContain("Do not start a web server");
   });
@@ -3287,7 +3354,7 @@ describe("CLI JSON output contracts", () => {
 
     createClientMock.mockReset();
     unwrapMock.mockReset();
-    unwrapMock.mockImplementation(async (responsePromise: Promise<unknown>) => {
+    unwrapMock.mockImplementation(async (responsePromise: MockTransportPromise) => {
       return responsePromise;
     });
 

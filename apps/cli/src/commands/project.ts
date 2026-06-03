@@ -6,7 +6,7 @@ import type {
   UpdateProjectSourceRequest,
 } from "@bb/server-contract";
 import { action } from "../action.js";
-import { createClient, unwrap } from "../client.js";
+import { createCliBbSdk } from "../client.js";
 import { fetchLocalHostId } from "../daemon.js";
 import { renderBorderlessTable } from "../table.js";
 import { confirmDestructiveAction, outputJson } from "./helpers.js";
@@ -57,10 +57,6 @@ interface ProjectSourceDeleteCommandOptions {
 interface ProjectSourceInputOptions {
   host?: string;
   path?: string;
-}
-
-interface ProjectUpdateBody {
-  name?: string;
 }
 
 type ProjectSource = ProjectResponse["sources"][number];
@@ -153,10 +149,8 @@ export function registerProjectCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ProjectListCommandOptions) => {
-        const client = createClient(getUrl());
-        const projects = await unwrap<ProjectResponse[]>(
-          client.api.v1.projects.$get(),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const projects = await sdk.projects.list();
         if (outputJson(opts, projects)) return;
         if (projects.length === 0) {
           console.log("No projects found");
@@ -179,19 +173,15 @@ export function registerProjectCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ProjectCreateCommandOptions) => {
-        const client = createClient(getUrl());
+        const sdk = createCliBbSdk(getUrl());
         const source = await buildProjectSourceFromOptions({
           host: opts.host,
           path: opts.root,
         });
-        const created = await unwrap<ProjectResponse>(
-          client.api.v1.projects.$post({
-            json: {
-              name: opts.name,
-              source,
-            },
-          }),
-        );
+        const created = await sdk.projects.create({
+          name: opts.name,
+          source,
+        });
         if (outputJson(opts, created)) return;
         console.log(`Project created: ${created.id}`);
         const localHostId = await fetchLocalHostId();
@@ -205,12 +195,8 @@ export function registerProjectCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectShowCommandOptions) => {
-        const client = createClient(getUrl());
-        const found = await unwrap<ProjectResponse>(
-          client.api.v1.projects[":id"].$get({
-            param: { id },
-          }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const found = await sdk.projects.get({ projectId: id });
         if (outputJson(opts, found)) return;
         const localHostId = await fetchLocalHostId();
         printProject(found, localHostId);
@@ -224,17 +210,14 @@ export function registerProjectCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectUpdateCommandOptions) => {
-        const client = createClient(getUrl());
         if (!opts.name) {
           throw new Error("No changes requested. Provide --name.");
         }
-        const body: ProjectUpdateBody = { name: opts.name };
-        const updated = await unwrap<ProjectResponse>(
-          client.api.v1.projects[":id"].$patch({
-            param: { id },
-            json: body,
-          }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const updated = await sdk.projects.update({
+          projectId: id,
+          name: opts.name,
+        });
         if (outputJson(opts, updated)) return;
         console.log(`Project ${updated.id} updated`);
         const localHostId = await fetchLocalHostId();
@@ -249,7 +232,6 @@ export function registerProjectCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectDeleteCommandOptions) => {
-        const client = createClient(getUrl());
         if (!opts.yes) {
           const confirmed = await confirmDestructiveAction(
             `Delete project ${id} and all its threads?`,
@@ -259,11 +241,8 @@ export function registerProjectCommands(
             return;
           }
         }
-        await unwrap<{ ok: boolean }>(
-          client.api.v1.projects[":id"].$delete({
-            param: { id },
-          }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        await sdk.projects.delete({ projectId: id });
         if (outputJson(opts, { ok: true, id })) return;
         console.log(`Project ${id} deleted`);
       }),
@@ -282,25 +261,22 @@ export function registerProjectCommands(
     .action(
       action(
         async (projectId: string, opts: ProjectSourceAddCommandOptions) => {
-          const client = createClient(getUrl());
+          const sdk = createCliBbSdk(getUrl());
           const createPayload = await buildProjectSourceFromOptions({
             host: opts.host,
             path: opts.path,
           });
-          const created = await unwrap<ProjectSource>(
-            client.api.v1.projects[":id"].sources.$post({
-              param: { id: projectId },
-              json: createPayload,
-            }),
-          );
+          const created = await sdk.projects.sources.add({
+            projectId,
+            ...createPayload,
+          });
 
           const sourceResponse = opts.default
-            ? await unwrap<ProjectSource>(
-                client.api.v1.projects[":id"].sources[":sourceId"].$patch({
-                  param: { id: projectId, sourceId: created.id },
-                  json: buildDefaultProjectSourceUpdateRequest(created),
-                }),
-              )
+            ? await sdk.projects.sources.update({
+                projectId,
+                sourceId: created.id,
+                ...buildDefaultProjectSourceUpdateRequest(created),
+              })
             : created;
 
           if (outputJson(opts, sourceResponse)) return;
@@ -324,23 +300,18 @@ export function registerProjectCommands(
           sourceId: string,
           opts: ProjectSourceUpdateCommandOptions,
         ) => {
-          const client = createClient(getUrl());
-          const project = await unwrap<ProjectResponse>(
-            client.api.v1.projects[":id"].$get({
-              param: { id: projectId },
-            }),
-          );
+          const sdk = createCliBbSdk(getUrl());
+          const project = await sdk.projects.get({ projectId });
           const existingSource = requireProjectSource(project, sourceId);
           const updatePayload = buildProjectSourceUpdateRequest(
             existingSource,
             opts,
           );
-          const updated = await unwrap<ProjectSource>(
-            client.api.v1.projects[":id"].sources[":sourceId"].$patch({
-              param: { id: projectId, sourceId },
-              json: updatePayload,
-            }),
-          );
+          const updated = await sdk.projects.sources.update({
+            projectId,
+            sourceId,
+            ...updatePayload,
+          });
 
           if (outputJson(opts, updated)) return;
           console.log(`Project source updated: ${updated.id}`);
@@ -362,7 +333,6 @@ export function registerProjectCommands(
           sourceId: string,
           opts: ProjectSourceDeleteCommandOptions,
         ) => {
-          const client = createClient(getUrl());
           if (!opts.yes) {
             const confirmed = await confirmDestructiveAction(
               `Delete project source ${sourceId} from project ${projectId}?`,
@@ -373,11 +343,8 @@ export function registerProjectCommands(
             }
           }
 
-          await unwrap<{ ok: boolean }>(
-            client.api.v1.projects[":id"].sources[":sourceId"].$delete({
-              param: { id: projectId, sourceId },
-            }),
-          );
+          const sdk = createCliBbSdk(getUrl());
+          await sdk.projects.sources.delete({ projectId, sourceId });
           const result = { ok: true, projectId, sourceId };
           if (outputJson(opts, result)) return;
           console.log(`Project source ${sourceId} deleted`);

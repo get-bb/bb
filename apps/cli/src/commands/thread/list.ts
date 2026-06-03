@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
 import { action } from "../../action.js";
-import { createClient, unwrap } from "../../client.js";
+import { createCliBbSdk } from "../../client.js";
 import {
   resolveProjectIdWithLabel,
   resolveThreadId,
@@ -33,17 +33,14 @@ export function registerListCommand(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ThreadListCommandOptions) => {
-        const client = createClient(getUrl());
+        const sdk = createCliBbSdk(getUrl());
         const resolvedProject = resolveProjectIdWithLabel(opts.project);
         const parentThreadId = resolveThreadId(opts.parentThread);
-        const query = {
+        const threads = await sdk.threads.list({
           ...(resolvedProject ? { projectId: resolvedProject.id } : {}),
           ...(parentThreadId ? { parentThreadId } : {}),
-          ...(opts.archived ? { archived: "true" as const } : {}),
-        };
-        const threads = await unwrap<Thread[]>(
-          client.api.v1.threads.$get({ query }),
-        );
+          ...(opts.archived ? { archived: true } : {}),
+        });
         if (outputJson(opts, threads)) return;
         if (threads.length === 0) {
           console.log("No threads found");

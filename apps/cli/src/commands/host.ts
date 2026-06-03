@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import type { Host } from "@bb/domain";
 import { action } from "../action.js";
-import { createClient, unwrap } from "../client.js";
+import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 
@@ -21,8 +21,8 @@ export function registerHostCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: HostListCommandOptions) => {
-        const client = createClient(getUrl());
-        const hosts = await unwrap<Host[]>(client.api.v1.hosts.$get());
+        const sdk = createCliBbSdk(getUrl());
+        const hosts = await sdk.hosts.list();
         if (outputJson(opts, hosts)) return;
         if (hosts.length === 0) {
           console.log("No hosts found");

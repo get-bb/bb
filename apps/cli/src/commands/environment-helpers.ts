@@ -1,9 +1,9 @@
-import type { Environment, Host } from "@bb/domain";
+import type { Host } from "@bb/domain";
 import {
   type EnvironmentDisplayInfo,
   formatEnvironmentDisplay,
 } from "@bb/core-ui";
-import { type Client, unwrap } from "../client.js";
+import type { BbSdk } from "@bb/sdk";
 import { fetchLocalHostId } from "../daemon.js";
 
 export interface ThreadEnvironmentInfo {
@@ -14,36 +14,28 @@ export interface ThreadEnvironmentInfo {
 }
 
 async function fetchHost(args: {
-  client: Client;
   hostId: string;
+  sdk: BbSdk;
 }): Promise<Host | null> {
   try {
-    return await unwrap<Host>(
-      args.client.api.v1.hosts[":id"].$get({
-        param: { id: args.hostId },
-      }),
-    );
+    return await args.sdk.hosts.get({ hostId: args.hostId });
   } catch {
     return null;
   }
 }
 
 export async function fetchEnvironmentInfo(args: {
-  client: Client;
   environmentId: string;
+  sdk: BbSdk;
 }): Promise<ThreadEnvironmentInfo | null> {
   try {
     const [env, localHostId] = await Promise.all([
-      unwrap<Environment>(
-        args.client.api.v1.environments[":id"].$get({
-          param: { id: args.environmentId },
-        }),
-      ),
+      args.sdk.environments.get({ environmentId: args.environmentId }),
       fetchLocalHostId(),
     ]);
     const host = await fetchHost({
-      client: args.client,
       hostId: env.hostId,
+      sdk: args.sdk,
     });
     const isLocal = env.hostId === localHostId;
     return {

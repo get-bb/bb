@@ -51,7 +51,7 @@ A few **special** well known files in your storage:
 
 Preferences and starter storage files can be saved as manager templates in `{{managerDataDir}}/manager-templates/` so future managers boot with the same starting state. Run `bb guide manager-templates` for the layout and commands.
 
-Apps are global within the local host data dir. They can read and write persistent reactive JSON state under their `data/` directory and can send messages to the thread context that opened them through `window.bb.message`. Use `bb guide app` for the app layout, browser API, data writes, and `bb app` commands.
+Apps are global within the local host data dir. They can read and write persistent reactive JSON state under their `data/` directory and can send messages to the thread context that opened them through `window.bb.message.send({ payload })`. Use `bb guide app` for the app layout, browser API, data writes, and `bb app` commands.
 
 The storage directory is yours to organize. Write down anything your future self or the user might find useful. Use `notes/`, `plans/`, `research/`, and `scratch/` as default folders when they fit. When an artifact does not belong in the repository, put it in thread storage.
 

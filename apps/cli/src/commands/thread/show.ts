@@ -7,19 +7,17 @@ import {
   resolveEnvironmentMergeBaseBranch,
   type Environment,
   type Thread,
-  type ThreadEventRow,
   type ThreadGitDiffResponse,
   type ThreadTimelinePendingTodos,
   type WorkspaceStatus,
 } from "@bb/domain";
+import type { BbSdk } from "@bb/sdk";
 import type {
   EnvironmentDiffQuery,
-  EnvironmentDiffResponse,
-  EnvironmentStatusResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import { action } from "../../action.js";
-import { createClient, type Client, unwrap } from "../../client.js";
+import { createCliBbSdk } from "../../client.js";
 import {
   outputJson,
   printContextLabel,
@@ -76,17 +74,21 @@ type FetchedGitDiff =
   | { available: true; diff: ThreadGitDiffResponse }
   | { available: false; message: string };
 
+type CliEnvironmentDiffQuery =
+  | { target: "uncommitted" }
+  | { mergeBaseBranch?: string; target: "branch_committed" }
+  | { mergeBaseBranch?: string; target: "all" }
+  | { sha: string; target: "commit" };
+
 async function fetchWorkStatus(args: {
-  client: Client;
   environmentId: string;
   mergeBaseBranch: string;
+  sdk: BbSdk;
 }): Promise<FetchedWorkStatus> {
-  const environmentStatus = await unwrap<EnvironmentStatusResponse>(
-    args.client.api.v1.environments[":id"].status.$get({
-      param: { id: args.environmentId },
-      query: { mergeBaseBranch: args.mergeBaseBranch },
-    }),
-  );
+  const environmentStatus = await args.sdk.environments.status({
+    environmentId: args.environmentId,
+    mergeBaseBranch: args.mergeBaseBranch,
+  });
   if (environmentStatus.outcome === "available") {
     return { available: true, status: environmentStatus.workspace };
   }
@@ -97,16 +99,14 @@ async function fetchWorkStatus(args: {
 }
 
 async function fetchGitDiff(args: {
-  client: Client;
   environmentId: string;
   query: EnvironmentDiffQuery;
+  sdk: BbSdk;
 }): Promise<FetchedGitDiff> {
-  const environmentDiff = await unwrap<EnvironmentDiffResponse>(
-    args.client.api.v1.environments[":id"].diff.$get({
-      param: { id: args.environmentId },
-      query: args.query,
-    }),
-  );
+  const environmentDiff = await args.sdk.environments.diff({
+    environmentId: args.environmentId,
+    ...args.query,
+  });
   if (environmentDiff.outcome === "available") {
     return { available: true, diff: environmentDiff.diff };
   }
@@ -144,12 +144,10 @@ export function registerShowCommand(
     .action(
       action(async (id: string | undefined, opts: ThreadShowCommandOptions) => {
         const resolved = requireThreadIdWithLabelOrSelf(id, opts);
-        const client = createClient(getUrl());
+        const sdk = createCliBbSdk(getUrl());
         const threadId = resolved.id;
         printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
-        const thread = await unwrap<Thread>(
-          client.api.v1.threads[":id"].$get({ param: { id: threadId } }),
-        );
+        const thread = await sdk.threads.get({ threadId });
 
         const statusPayload: ThreadStatusPayload = { thread };
         let environment: Environment | null | undefined;
@@ -160,11 +158,9 @@ export function registerShowCommand(
           if (environment !== undefined) {
             return environment;
           }
-          environment = await unwrap<Environment>(
-            client.api.v1.environments[":id"].$get({
-              param: { id: thread.environmentId },
-            }),
-          );
+          environment = await sdk.environments.get({
+            environmentId: thread.environmentId,
+          });
           return environment;
         };
         const requireMergeBaseBranch = async (override?: string) => {
@@ -183,27 +179,27 @@ export function registerShowCommand(
         if (opts.workStatus && thread.environmentId) {
           const mergeBaseBranch = await requireMergeBaseBranch();
           fetchedWorkStatus = await fetchWorkStatus({
-            client,
             environmentId: thread.environmentId,
             mergeBaseBranch,
+            sdk,
           });
         }
 
         let fetchedGitDiff: FetchedGitDiff | undefined;
         if (opts.gitDiff && thread.environmentId) {
           const diffTarget = (opts.diffTarget ?? "all").trim();
-          const query = (() => {
+          const query: CliEnvironmentDiffQuery = (() => {
             switch (diffTarget) {
               case "uncommitted":
-                return { target: "uncommitted" as const };
+                return { target: "uncommitted" };
               case "branch_committed":
                 return {
-                  target: "branch_committed" as const,
+                  target: "branch_committed",
                   mergeBaseBranch: opts.diffMergeBase,
                 };
               case "all":
                 return {
-                  target: "all" as const,
+                  target: "all",
                   mergeBaseBranch: opts.diffMergeBase,
                 };
               case "commit":
@@ -213,7 +209,7 @@ export function registerShowCommand(
                   );
                 }
                 return {
-                  target: "commit" as const,
+                  target: "commit",
                   sha: opts.diffSha,
                 };
               default:
@@ -222,41 +218,39 @@ export function registerShowCommand(
                 );
             }
           })();
-          const resolvedQuery =
+          const resolvedQuery: EnvironmentDiffQuery =
             query.target === "branch_committed" || query.target === "all"
               ? {
-                  ...query,
+                  target: query.target,
                   mergeBaseBranch: await requireMergeBaseBranch(
                     query.mergeBaseBranch,
                   ),
                 }
               : query;
           fetchedGitDiff = await fetchGitDiff({
-            client,
             environmentId: thread.environmentId,
             query: resolvedQuery,
+            sdk,
           });
         }
 
         let mergeBaseBranches: string[] | undefined;
         if (opts.mergeBaseBranches && thread.environmentId) {
-          mergeBaseBranches = await unwrap<string[]>(
-            client.api.v1.environments[":id"].diff.branches.$get({
-              param: { id: thread.environmentId },
-              query: {},
-            }),
-          );
+          const branchResponse = await sdk.environments.diffBranches({
+            environmentId: thread.environmentId,
+          });
+          mergeBaseBranches = branchResponse.branches;
         }
 
         const environmentInfo = thread.environmentId
           ? await fetchEnvironmentInfo({
-              client,
               environmentId: thread.environmentId,
+              sdk,
             })
           : null;
 
         const pendingTodos = await fetchThreadPendingTodos({
-          client,
+          sdk,
           threadId,
         });
 
@@ -372,7 +366,7 @@ export function registerShowCommand(
     .action(
       action(async (id: string | undefined, opts: ThreadLogCommandOptions) => {
         const resolved = requireThreadIdWithLabelOrSelf(id, opts);
-        const client = createClient(getUrl());
+        const sdk = createCliBbSdk(getUrl());
         const threadId = resolved.id;
         printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
         const format = resolveThreadTimelineTextFormat(opts);
@@ -384,25 +378,19 @@ export function registerShowCommand(
         }
 
         if (format === "json") {
-          const events = await unwrap<ThreadEventRow[]>(
-            client.api.v1.threads[":id"].events.$get({
-              param: { id: threadId },
-              query: {
-                limit: String(opts.limit ?? 100),
-                ...(opts.afterSeq ? { afterSeq: opts.afterSeq } : {}),
-              },
-            }),
-          );
+          const events = await sdk.threads.events.list({
+            threadId,
+            limit: String(opts.limit ?? 100),
+            ...(opts.afterSeq ? { afterSeq: opts.afterSeq } : {}),
+          });
           console.log(JSON.stringify(events, null, 2));
           return;
         }
 
-        const timeline = await unwrap<ThreadTimelineResponse>(
-          client.api.v1.threads[":id"].timeline.$get({
-            param: { id: threadId },
-            query: format === "verbose" ? { includeNestedRows: "true" } : {},
-          }),
-        );
+        const timeline: ThreadTimelineResponse = await sdk.threads.timeline({
+          threadId,
+          ...(format === "verbose" ? { includeNestedRows: "true" } : {}),
+        });
         const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
         const text = formatThreadTimelineText(timeline.rows, {
           verbose: format === "verbose",
@@ -418,12 +406,8 @@ export function registerShowCommand(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ThreadOutputCommandOptions) => {
-        const client = createClient(getUrl());
-        const result = await unwrap<{ output: string | null }>(
-          client.api.v1.threads[":id"].output.$get({
-            param: { id },
-          }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.threads.output({ threadId: id });
         if (outputJson(opts, result)) return;
         if (result.output) {
           console.log(result.output);

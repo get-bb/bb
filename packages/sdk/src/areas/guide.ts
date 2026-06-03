@@ -1,0 +1,63 @@
+import {
+  templateDefinitions,
+  type TemplateId,
+} from "@bb/templates/generated";
+
+export interface GuideRenderArgs {
+  chapter?: string;
+}
+
+export interface GuideRenderResponse {
+  chapter?: string;
+  content: string;
+}
+
+export interface GuideArea {
+  render(args?: GuideRenderArgs): GuideRenderResponse;
+}
+
+const guideChapters: Record<string, TemplateId> = {
+  threads: "bbGuideThreads",
+  environments: "bbGuideEnvironments",
+  managers: "bbGuideManagers",
+  "manager-templates": "bbGuideManagerTemplates",
+  app: "bbGuideApp",
+  providers: "bbGuideProviders",
+  projects: "bbGuideProjects",
+  hosts: "bbGuideHosts",
+  styling: "bbGuideApp",
+  async: "bbGuideAsync",
+};
+
+const templateBodyById = new Map(
+  templateDefinitions.map((template) => [template.id, template.body]),
+);
+
+function renderStaticTemplate(templateId: TemplateId): string {
+  const body = templateBodyById.get(templateId);
+  if (body === undefined) {
+    throw new Error(`Template '${templateId}' is unavailable.`);
+  }
+  return body;
+}
+
+export function createGuideArea(): GuideArea {
+  return {
+    render(input = {}) {
+      if (!input.chapter) {
+        return { content: renderStaticTemplate("bbGuideOverview") };
+      }
+      const templateId = guideChapters[input.chapter];
+      if (!templateId) {
+        const available = Object.keys(guideChapters).join(", ");
+        throw new Error(
+          `Unknown guide chapter '${input.chapter}'. Available: ${available}.`,
+        );
+      }
+      return {
+        chapter: input.chapter,
+        content: renderStaticTemplate(templateId),
+      };
+    },
+  };
+}

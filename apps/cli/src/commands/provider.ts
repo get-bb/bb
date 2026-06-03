@@ -1,11 +1,8 @@
 import { Command } from "commander";
 import type { AvailableModel } from "@bb/domain";
-import type {
-  SystemExecutionOptionsResponse,
-  SystemProviderInfo,
-} from "@bb/server-contract";
+import type { SystemProviderInfo } from "@bb/server-contract";
 import { action } from "../action.js";
-import { createClient, unwrap } from "../client.js";
+import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 
@@ -38,10 +35,8 @@ export function registerProviderCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ProviderListCommandOptions) => {
-        const client = createClient(getUrl());
-        const providers = await unwrap<SystemProviderInfo[]>(
-          client.api.v1.system.providers.$get({ query: {} }),
-        );
+        const sdk = createCliBbSdk(getUrl());
+        const providers = await sdk.providers.list();
         if (outputJson(opts, providers)) return;
         if (providers.length === 0) {
           console.log("No providers available");
@@ -65,14 +60,10 @@ export function registerProviderCommands(
           providerId: string | undefined,
           opts: ProviderModelsCommandOptions,
         ) => {
-          const client = createClient(getUrl());
-          const executionOptions = await unwrap<SystemExecutionOptionsResponse>(
-            client.api.v1.system["execution-options"].$get({
-              query: {
-                ...(providerId ? { providerId } : {}),
-              },
-            }),
-          );
+          const sdk = createCliBbSdk(getUrl());
+          const executionOptions = await sdk.providers.models({
+            ...(providerId ? { providerId } : {}),
+          });
           const models = includeSelectedOnlyModel({
             models: executionOptions.models,
             selectedOnlyModels: executionOptions.selectedOnlyModels,

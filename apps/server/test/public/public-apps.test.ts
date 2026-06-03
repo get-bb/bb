@@ -399,12 +399,13 @@ describe("public global app routes", () => {
       );
       expect(manifestResponse.status).toBe(404);
 
-      const dataResponse = await harness.app.request(
+      const dataApiResponse = await harness.app.request(
         `/api/v1/apps/${applicationId}/data/state.json`,
       );
-      expect(dataResponse.status).toBe(403);
-      await expect(readJson(dataResponse)).resolves.toMatchObject({
-        code: "invalid_request",
+      expect(dataApiResponse.status).toBe(200);
+      await expect(readJson(dataApiResponse)).resolves.toMatchObject({
+        path: "state.json",
+        value: { secret: true },
       });
     });
   });

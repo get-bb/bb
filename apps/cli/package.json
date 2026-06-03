@@ -18,6 +18,7 @@
     "@bb/core-ui": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
+    "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/templates": "workspace:*",
     "@bb/thread-view": "workspace:*",
