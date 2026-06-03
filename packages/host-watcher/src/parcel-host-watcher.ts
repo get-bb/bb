@@ -11,9 +11,11 @@ import type {
   HostWatcher,
   ApplicationStorageObservedChange,
   ApplicationDataWatchTarget,
+  InjectedSkillsObservedChange,
   ThreadStorageObservedChange,
   ThreadStorageWatchTarget,
   WatchApplicationStorageRootArgs,
+  WatchDataDirSkillsRootArgs,
   WatchThreadStorageRootArgs,
   WatchWorkspaceArgs,
 } from "./host-watcher-types.js";
@@ -47,6 +49,11 @@ interface ApplicationDataRootPath {
   applicationId: ApplicationId;
 }
 
+interface DataDirSkillsPathArgs {
+  changedPath: string;
+  dataDirSkillsRootPath: string;
+}
+
 interface CollectThreadStorageObservedChangesArgs {
   changedPaths: string[];
   threadStorageRootPath: string;
@@ -59,6 +66,11 @@ interface CollectApplicationStorageObservedChangesArgs {
   resolveApplicationTarget: (
     applicationId: ApplicationId,
   ) => ApplicationDataWatchTarget | null;
+}
+
+interface CollectDataDirSkillsObservedChangesArgs {
+  changedPaths: string[];
+  dataDirSkillsRootPath: string;
 }
 
 function toThreadStoragePath(
@@ -116,6 +128,10 @@ function isApplicationDataSubtreePath(path: ApplicationStoragePath): boolean {
   return path.parts[1] === "data";
 }
 
+function isApplicationSkillsSubtreePath(path: ApplicationStoragePath): boolean {
+  return path.parts[1] === "skills";
+}
+
 function isApplicationManifestPath(path: ApplicationStoragePath): boolean {
   return path.parts.length === 2 && path.parts[1] === "manifest.json";
 }
@@ -146,6 +162,17 @@ function toApplicationDataPath(
     applicationId: rootPath.applicationId,
     path: dataPath.data,
   };
+}
+
+function isDataDirSkillsPath(args: DataDirSkillsPathArgs): boolean {
+  const relativePath = path.relative(
+    args.dataDirSkillsRootPath,
+    args.changedPath,
+  );
+  return (
+    relativePath.length === 0 ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  );
 }
 
 function toApplicationDataRootPath(
@@ -191,6 +218,7 @@ export function collectApplicationStorageObservedChanges(
   let targetsChanged = false;
   const appDataChanges = new Map<string, ApplicationStorageObservedChange>();
   const appDataResyncs = new Map<string, ApplicationStorageObservedChange>();
+  const appSkillChanges = new Map<string, InjectedSkillsObservedChange>();
 
   for (const changedPath of args.changedPaths) {
     const storagePath = toApplicationStoragePath({
@@ -206,6 +234,19 @@ export function collectApplicationStorageObservedChanges(
       isApplicationManifestPath(storagePath)
     ) {
       targetsChanged = true;
+      continue;
+    }
+    if (isApplicationSkillsSubtreePath(storagePath)) {
+      appSkillChanges.set(storagePath.applicationId, {
+        kind: "injected-skills-changed",
+        applicationId: storagePath.applicationId,
+        changedPaths: [
+          ...(appSkillChanges.get(storagePath.applicationId)?.changedPaths ??
+            []),
+          changedPath,
+        ].sort(),
+        sourceType: "global-app",
+      });
       continue;
     }
     if (isApplicationDataSubtreePath(storagePath)) {
@@ -243,7 +284,32 @@ export function collectApplicationStorageObservedChanges(
   }
   observedChanges.push(...appDataChanges.values());
   observedChanges.push(...appDataResyncs.values());
+  observedChanges.push(...appSkillChanges.values());
   return observedChanges;
+}
+
+export function collectDataDirSkillsObservedChanges(
+  args: CollectDataDirSkillsObservedChangesArgs,
+): InjectedSkillsObservedChange[] {
+  const changedPaths = args.changedPaths
+    .filter((changedPath) =>
+      isDataDirSkillsPath({
+        changedPath,
+        dataDirSkillsRootPath: args.dataDirSkillsRootPath,
+      }),
+    )
+    .sort();
+  if (changedPaths.length === 0) {
+    return [];
+  }
+  return [
+    {
+      kind: "injected-skills-changed",
+      applicationId: null,
+      changedPaths,
+      sourceType: "data-dir",
+    },
+  ];
 }
 
 function watchWorkspace(args: WatchWorkspaceArgs): () => Promise<void> {
@@ -315,10 +381,34 @@ function watchApplicationStorageRoot(
   });
 }
 
+function watchDataDirSkillsRoot(
+  args: WatchDataDirSkillsRootArgs,
+): () => Promise<void> {
+  return watchPathChanges(args.dataDirSkillsRootPath, {
+    onChange: ({ changedPaths }) => {
+      const events = collectDataDirSkillsObservedChanges({
+        changedPaths,
+        dataDirSkillsRootPath: args.dataDirSkillsRootPath,
+      });
+      for (const event of events) {
+        args.onChange(event);
+      }
+    },
+    onWatchError: (error) => {
+      args.onWatchError({
+        kind: "data-dir-skills-watch-error",
+        rootPath: error.rootPath,
+        message: error.message,
+      });
+    },
+  });
+}
+
 export function createParcelHostWatcher(): HostWatcher {
   return {
     watchWorkspace,
     watchThreadStorageRoot,
     watchApplicationStorageRoot,
+    watchDataDirSkillsRoot,
   };
 }

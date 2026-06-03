@@ -284,6 +284,7 @@ export async function buildThreadStartCommand(
     options: toRuntimeExecutionOptions(args),
     instructions: runtimeContext.instructions,
     dynamicTools: runtimeContext.dynamicTools,
+    injectedSkillSources: runtimeContext.injectedSkillSources,
     ...(runtimeContext.disallowedTools?.length
       ? { disallowedTools: [...runtimeContext.disallowedTools] }
       : {}),
@@ -312,6 +313,7 @@ function buildPreparedTurnSubmitCommandPayload(
       providerThreadId: args.providerThreadId,
       instructions: args.runtimeContext.instructions,
       dynamicTools: args.runtimeContext.dynamicTools,
+      injectedSkillSources: args.runtimeContext.injectedSkillSources,
       ...(args.runtimeContext.disallowedTools?.length
         ? { disallowedTools: [...args.runtimeContext.disallowedTools] }
         : {}),

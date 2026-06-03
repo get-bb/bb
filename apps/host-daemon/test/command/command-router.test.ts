@@ -266,6 +266,7 @@ function createStandardRuntimeCommandContext(args: {
     },
     instructions: "Be a helpful coding agent.",
     dynamicTools: [],
+    injectedSkillSources: [],
     instructionMode: "append" as const,
   };
 }
@@ -1417,6 +1418,7 @@ describe("CommandRouter", () => {
             providerThreadId: "provider-a",
             instructions: "Be a helpful coding agent.",
             dynamicTools: [],
+            injectedSkillSources: [],
             instructionMode: "append" as const,
           },
           target: { mode: "start" },
@@ -1449,6 +1451,7 @@ describe("CommandRouter", () => {
             providerThreadId: "provider-b",
             instructions: "Be a helpful coding agent.",
             dynamicTools: [],
+            injectedSkillSources: [],
             instructionMode: "append" as const,
           },
           target: { mode: "start" },

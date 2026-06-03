@@ -70,6 +70,7 @@ export async function startThread(
     const entry = await requireResolvedWorkspaceForCommand({
       dataDir: options.dataDir,
       environmentId: command.environmentId,
+      injectedSkillSources: command.injectedSkillSources,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
@@ -107,6 +108,7 @@ export async function ensureThreadRuntime(
   const entry = await requireResolvedWorkspaceForCommand({
     dataDir: options.dataDir,
     environmentId: command.environmentId,
+    injectedSkillSources: resumeContext.injectedSkillSources,
     runtimeManager: options.runtimeManager,
     workspaceContext: resumeContext.workspaceContext,
   });

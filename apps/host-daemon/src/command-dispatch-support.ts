@@ -8,6 +8,7 @@ import type { AvailableModel, ProviderInfo } from "@bb/domain";
 import type { BufferedEventInput } from "./event-buffer.js";
 import type {
   HostDaemonCommand,
+  HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
@@ -214,6 +215,7 @@ export async function requireWorkspaceEnvironment(
   args: {
     dataDir?: string;
     environmentId: string;
+    injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
     workspaceContext: WorkspaceContext;
   },
   runtimeManager: RuntimeManager,
@@ -227,11 +229,13 @@ export async function requireWorkspaceEnvironment(
         `Loaded environment ${args.environmentId} is bound to ${existing.path}, not ${args.workspaceContext.workspacePath}`,
       );
     }
-    return existing;
   }
 
   return runtimeManager.ensureEnvironment({
     environmentId: args.environmentId,
+    ...(args.injectedSkillSources !== undefined
+      ? { injectedSkillSources: args.injectedSkillSources }
+      : {}),
     ...(args.dataDir
       ? { personalWorkspaceRoot: getPersonalWorkspaceRoot(args.dataDir) }
       : {}),

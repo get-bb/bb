@@ -6,6 +6,7 @@ import type {
 } from "../src/host-watcher-types.js";
 import {
   collectApplicationStorageObservedChanges,
+  collectDataDirSkillsObservedChanges,
   collectThreadStorageObservedChanges,
 } from "../src/parcel-host-watcher.js";
 
@@ -132,6 +133,64 @@ describe("thread storage watcher classification", () => {
       {
         kind: "application-data-resync",
         applicationId: "app_status",
+      },
+    ]);
+  });
+
+  it("emits injected skill changes for app skill trees", () => {
+    const rootPath = path.join("/tmp", "apps");
+    const changes = collectApplicationStorageObservedChanges({
+      appsRootPath: rootPath,
+      changedPaths: [
+        path.join(rootPath, "app_status", "skills", "demo-skill", "SKILL.md"),
+        path.join(rootPath, "app_status", "skills", "demo-skill", "references", "notes.md"),
+        path.join(rootPath, "app_other", "skills"),
+      ],
+      resolveApplicationTarget: createApplicationResolver({}),
+    });
+
+    expect(changes).toEqual([
+      {
+        kind: "injected-skills-changed",
+        applicationId: "app_status",
+        changedPaths: [
+          path.join(rootPath, "app_status", "skills", "demo-skill", "SKILL.md"),
+          path.join(
+            rootPath,
+            "app_status",
+            "skills",
+            "demo-skill",
+            "references",
+            "notes.md",
+          ),
+        ],
+        sourceType: "global-app",
+      },
+      {
+        kind: "injected-skills-changed",
+        applicationId: "app_other",
+        changedPaths: [path.join(rootPath, "app_other", "skills")],
+        sourceType: "global-app",
+      },
+    ]);
+  });
+
+  it("emits injected skill changes for data-dir-level skills", () => {
+    const rootPath = path.join("/tmp", "skills");
+    const changes = collectDataDirSkillsObservedChanges({
+      dataDirSkillsRootPath: rootPath,
+      changedPaths: [
+        path.join(rootPath, "demo-skill", "SKILL.md"),
+        path.join(rootPath, "..", "apps", "app_status", "skills", "demo", "SKILL.md"),
+      ],
+    });
+
+    expect(changes).toEqual([
+      {
+        kind: "injected-skills-changed",
+        applicationId: null,
+        changedPaths: [path.join(rootPath, "demo-skill", "SKILL.md")],
+        sourceType: "data-dir",
       },
     ]);
   });

@@ -496,6 +496,7 @@ function createStandardThreadStartCommand(args: {
     },
     instructions: "Be a helpful coding agent.",
     dynamicTools: [],
+    injectedSkillSources: [],
     instructionMode: "append" as const,
   };
 }
@@ -533,6 +534,7 @@ function createTurnSubmitCommand(args: {
       providerThreadId: args.providerThreadId,
       instructions: "Be a helpful coding agent.",
       dynamicTools: [],
+      injectedSkillSources: [],
       instructionMode: "append" as const,
     },
     target: { mode: "start" as const },

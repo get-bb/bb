@@ -99,7 +99,11 @@ export function onDaemonSocketMessage(
       hostId: args.hostId,
       sessionId: args.sessionId,
     });
-    heartbeatSession(deps.db, session.id, Date.now() + session.leaseTimeoutMs);
+    heartbeatSession(
+      deps.db,
+      session.id,
+      Math.max(Date.now() + session.leaseTimeoutMs, session.leaseExpiresAt + 1),
+    );
     if (result.data.type === "environment-change") {
       notifyDaemonEnvironmentChange(deps, {
         hostId: args.hostId,

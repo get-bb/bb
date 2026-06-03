@@ -1,4 +1,5 @@
 import type {
+  HostDaemonInjectedSkillSource,
   WorkspaceContext,
   WorkspaceResolutionFailure,
   WorkspaceResolutionFailureCode,
@@ -29,6 +30,7 @@ interface WorkspaceResolutionFailureFromErrorArgs {
 interface ResolveWorkspaceForCommandArgs {
   dataDir?: string;
   environmentId: string;
+  injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
   requireGit?: boolean;
   requireManagedWorktree?: boolean;
   runtimeManager: RuntimeManager;
@@ -126,6 +128,9 @@ export async function resolveWorkspaceForCommand(
       {
         dataDir: args.dataDir,
         environmentId: args.environmentId,
+        ...(args.injectedSkillSources !== undefined
+          ? { injectedSkillSources: args.injectedSkillSources }
+          : {}),
         workspaceContext: args.workspaceContext,
       },
       args.runtimeManager,

@@ -53,6 +53,7 @@ export async function requireThreadStorageContext(
     threadStoragePath: resolveThreadStoragePathFromRoot({
       threadStorageRootPath: resolveThreadStorageRootPath({
         dataDir: session.dataDir,
+        env: {},
       }),
       threadId: args.threadId,
     }),

@@ -1196,6 +1196,7 @@ describe("internal event side effects", () => {
             providerThreadId: "provider-child-command-event-dedupe",
             instructions: "You are a helpful assistant.",
             dynamicTools: [],
+            injectedSkillSources: [],
             instructionMode: "append",
           },
           target: { mode: "steer", expectedTurnId: turnId },

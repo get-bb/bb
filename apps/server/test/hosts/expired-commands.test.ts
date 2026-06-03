@@ -145,6 +145,7 @@ describe("expired commands", () => {
         },
         instructions: "instructions",
         dynamicTools: [],
+        injectedSkillSources: [],
         instructionMode: "append" as const,
       }),
     },
@@ -409,6 +410,7 @@ describe("expired commands", () => {
           },
           instructions: "instructions",
           dynamicTools: [],
+          injectedSkillSources: [],
           instructionMode: "append",
         },
       });
@@ -603,6 +605,7 @@ describe("expired commands", () => {
             providerThreadId: "provider-expired-turn-submit",
             instructions: "instructions",
             dynamicTools: [],
+            injectedSkillSources: [],
             instructionMode: "append",
           },
         }),

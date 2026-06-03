@@ -4,8 +4,10 @@ import {
   createAgentRuntime,
   type AgentRuntime,
   type AgentRuntimeOptions,
+  type AgentRuntimeSkillRoot,
   type AgentRuntimeProcessExitInfo,
 } from "@bb/agent-runtime";
+import type { Logger } from "@bb/logger";
 import type {
   AppDataPath,
   ApplicationId,
@@ -25,11 +27,14 @@ import type {
   HostDaemonLoadedEnvironment,
   HostDaemonTrackedApplicationDataTarget,
   HostDaemonTrackedThreadTarget,
+  HostDaemonInjectedSkillSource,
 } from "@bb/host-daemon-contract";
 import type {
   ApplicationDataWatchTarget,
   ApplicationStorageWatchError,
+  DataDirSkillsWatchError,
   HostWatcher,
+  InjectedSkillsObservedChange,
   ThreadStorageWatchError,
   WorkspaceWatchError,
   WorkspaceStatusWatchChangeKind,
@@ -39,6 +44,12 @@ import {
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
+import {
+  cleanupInjectedSkillStagingDirs,
+  EMPTY_SKILL_CATALOG_HASH,
+  stageInjectedSkillSources,
+  type InjectedSkillsLogger,
+} from "./injected-skills.js";
 
 type StopWatching = () => void | Promise<void>;
 
@@ -77,6 +88,30 @@ interface BuildUnexpectedProviderExitEventsArgs {
   threads: Map<string, RuntimeThreadState>;
 }
 
+interface RuntimeSkillConfig {
+  catalogHash: string;
+  skillRoots: readonly AgentRuntimeSkillRoot[];
+}
+
+interface CreateEntryArgs extends EnsureEnvironmentArgs {
+  skillConfig: RuntimeSkillConfig | null;
+}
+
+interface ApplyExistingEnvironmentProvisionArgs {
+  entry: RuntimeEntry;
+  provision: ProvisionWorkspaceArgs | undefined;
+}
+
+interface EnsureCompatibleEntryArgs {
+  entry: RuntimeEntry;
+  skillConfig: RuntimeSkillConfig | null;
+}
+
+interface ReplaceEntryForSkillCatalogArgs {
+  entry: RuntimeEntry;
+  skillConfig: RuntimeSkillConfig;
+}
+
 function lazyProvisionOpts(
   environmentId: string,
   workspacePath: string,
@@ -106,11 +141,10 @@ function lazyProvisionOpts(
   }
 }
 
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-  return "Unknown workspace watch error";
+function toErrorMessage(error: Error): string {
+  return error.message.trim().length > 0
+    ? error.message
+    : "Unknown workspace watch error";
 }
 
 function formatProviderProcessExitStatus(
@@ -157,6 +191,7 @@ function workspaceWatchKindsIncludeSharedRefs(
 export interface RuntimeEntry {
   environmentId: string;
   runtime: AgentRuntime;
+  skillCatalogHash: string | null;
   stopWatchingStatus: StopWatching;
   workspace: HostWorkspace;
   path: string;
@@ -174,23 +209,28 @@ export interface ApplicationDataResyncNotification {
   applicationId: ApplicationId;
 }
 
+export interface InjectedSkillsChangedNotification {
+  applicationId: ApplicationId | null;
+  changedPaths: string[];
+  sourceType: InjectedSkillsObservedChange["sourceType"];
+}
+
 export interface EnsureEnvironmentArgs {
   environmentId: string;
+  injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
   personalWorkspaceRoot?: string;
   workspacePath?: string;
   workspaceProvisionType?: WorkspaceProvisionType;
   provision?: ProvisionWorkspaceArgs;
 }
 
-interface ApplyExistingEnvironmentProvisionArgs {
-  entry: RuntimeEntry;
-  provision: ProvisionWorkspaceArgs | undefined;
-}
-
 export interface RuntimeManagerOptions {
   bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"];
   createRuntime?: (options: AgentRuntimeOptions) => AgentRuntime;
+  dataDir?: string;
+  dataDirSkillsRootPath?: string | null;
   hostWatcher?: HostWatcher;
+  logger?: Pick<Logger, "debug" | "warn">;
   provisionWorkspace?: (
     options: ProvisionWorkspaceArgs,
   ) => Promise<HostWorkspace>;
@@ -203,11 +243,15 @@ export interface RuntimeManagerOptions {
     threadId: string;
   }) => void;
   appsRootPath?: string | null;
+  onInjectedSkillsChanged?: (args: InjectedSkillsChangedNotification) => void;
   onApplicationStorageTargetsChanged?: () => void;
   onApplicationDataChanged?: (args: ApplicationDataChangedNotification) => void;
   onApplicationDataResync?: (args: ApplicationDataResyncNotification) => void;
   onApplicationStorageWatchError?: (args: {
     error: ApplicationStorageWatchError;
+  }) => void;
+  onDataDirSkillsWatchError?: (args: {
+    error: DataDirSkillsWatchError;
   }) => void;
   onThreadStorageWatchError?: (args: {
     error: ThreadStorageWatchError;
@@ -251,6 +295,7 @@ export class RuntimeManager {
     null;
   private managedShellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {};
   private stopWatchingApplicationStorageRoot: StopWatching = STOP_WATCHING;
+  private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
   private stopWatchingThreadStorageRoot: StopWatching = STOP_WATCHING;
 
   constructor(private readonly options: RuntimeManagerOptions = {}) {
@@ -259,6 +304,7 @@ export class RuntimeManager {
     this.provisionWorkspace = options.provisionWorkspace ?? provisionWorkspace;
     this.baseShellEnv = { ...(options.shellEnv ?? {}) };
     this.ensureApplicationStorageWatcher();
+    this.ensureDataDirSkillsWatcher();
   }
 
   private runtimeWorkspaceWriteRoots(
@@ -381,7 +427,10 @@ export class RuntimeManager {
         error: {
           environmentId: args.environmentId,
           kind: "workspace-watch-error",
-          message: toErrorMessage(error),
+          message:
+            error instanceof Error
+              ? toErrorMessage(error)
+              : "Unknown workspace watch error",
           rootPath: args.workspacePath,
         },
       });
@@ -510,6 +559,107 @@ export class RuntimeManager {
     };
   }
 
+  private getInjectedSkillsLogger(): InjectedSkillsLogger | undefined {
+    return this.options.logger;
+  }
+
+  private async resolveRuntimeSkillConfig(
+    args: EnsureEnvironmentArgs,
+  ): Promise<RuntimeSkillConfig | null> {
+    if (args.injectedSkillSources === undefined) {
+      return null;
+    }
+    if (args.injectedSkillSources.length === 0) {
+      return {
+        catalogHash: EMPTY_SKILL_CATALOG_HASH,
+        skillRoots: [],
+      };
+    }
+    if (!this.options.dataDir) {
+      throw new Error("Runtime skill staging requires a host dataDir");
+    }
+    return stageInjectedSkillSources({
+      dataDir: this.options.dataDir,
+      injectedSkillSources: args.injectedSkillSources,
+      logger: this.getInjectedSkillsLogger(),
+    });
+  }
+
+  private entryHasActiveRuntimeWork(entry: RuntimeEntry): boolean {
+    if (entry.terminals.size > 0) {
+      return true;
+    }
+    for (const thread of entry.threads.values()) {
+      if (thread.status === "active") {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async cleanupUnusedInjectedSkillStagingDirs(): Promise<void> {
+    if (!this.options.dataDir) {
+      return;
+    }
+    try {
+      await cleanupInjectedSkillStagingDirs({
+        dataDir: this.options.dataDir,
+        keepCatalogHashes: [...this.entries.values()].flatMap((entry) =>
+          entry.skillCatalogHash === null ? [] : [entry.skillCatalogHash],
+        ),
+        logger: this.getInjectedSkillsLogger(),
+      });
+    } catch (error) {
+      this.options.logger?.warn(
+        {
+          reason:
+            error instanceof Error && error.message.trim().length > 0
+              ? error.message
+              : "Unable to clean injected skill staging directories",
+        },
+        "Failed to clean injected skill staging directories",
+      );
+    }
+  }
+
+  private async replaceEntryForSkillCatalog(
+    args: ReplaceEntryForSkillCatalogArgs,
+  ): Promise<void> {
+    if (this.entryHasActiveRuntimeWork(args.entry)) {
+      throw new Error(
+        `Environment ${args.entry.environmentId} already has an active runtime with injected skill catalog ${args.entry.skillCatalogHash ?? "none"}; requested ${args.skillConfig.catalogHash}`,
+      );
+    }
+
+    this.entries.delete(args.entry.environmentId);
+    this.removeTrackedThreadStorageTargetsForEnvironment(
+      args.entry.environmentId,
+    );
+    this.stopWatchingThreadStorageIfNoTrackedThreads();
+    await this.stopWatchingStatus(args.entry);
+    await args.entry.runtime.shutdown();
+    await this.cleanupUnusedInjectedSkillStagingDirs();
+  }
+
+  private async ensureCompatibleEntry(
+    args: EnsureCompatibleEntryArgs,
+  ): Promise<RuntimeEntry | null> {
+    if (
+      args.skillConfig === null ||
+      args.entry.skillCatalogHash === args.skillConfig.catalogHash ||
+      (args.entry.skillCatalogHash === null &&
+        args.skillConfig.skillRoots.length === 0)
+    ) {
+      return args.entry;
+    }
+
+    await this.replaceEntryForSkillCatalog({
+      entry: args.entry,
+      skillConfig: args.skillConfig,
+    });
+    return null;
+  }
+
   replaceManagedShellEnv(
     shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
   ): void {
@@ -576,28 +726,48 @@ export class RuntimeManager {
   }
 
   async ensureEnvironment(args: EnsureEnvironmentArgs): Promise<RuntimeEntry> {
+    const skillConfig = await this.resolveRuntimeSkillConfig(args);
     const existing = this.entries.get(args.environmentId);
     if (existing) {
       await this.applyExistingEnvironmentProvision({
         entry: existing,
         provision: args.provision,
       });
-      return existing;
+      const compatible = await this.ensureCompatibleEntry({
+        entry: existing,
+        skillConfig,
+      });
+      if (compatible) {
+        return compatible;
+      }
     }
 
     const pending = this.pendingEntries.get(args.environmentId);
     if (pending) {
-      return pending;
+      const entry = await pending;
+      const compatible = await this.ensureCompatibleEntry({
+        entry,
+        skillConfig,
+      });
+      if (compatible) {
+        return compatible;
+      }
     }
 
-    const creation = this.createEntry(args).finally(() => {
-      this.pendingEntries.delete(args.environmentId);
-    });
+    const creation = this.createEntry({
+      ...args,
+      skillConfig,
+    })
+      .then((entry) => {
+        this.entries.set(args.environmentId, entry);
+        return entry;
+      })
+      .finally(() => {
+        this.pendingEntries.delete(args.environmentId);
+      });
     this.pendingEntries.set(args.environmentId, creation);
 
-    const entry = await creation;
-    this.entries.set(args.environmentId, entry);
-    return entry;
+    return creation;
   }
 
   private async applyExistingEnvironmentProvision(
@@ -637,6 +807,7 @@ export class RuntimeManager {
     this.stopWatchingThreadStorageIfNoTrackedThreads();
     await entry.runtime.shutdown();
     await entry.workspace.destroy();
+    await this.cleanupUnusedInjectedSkillStagingDirs();
   }
 
   async forgetEnvironment(environmentId: string): Promise<void> {
@@ -661,6 +832,7 @@ export class RuntimeManager {
     this.entries.delete(environmentId);
     await this.stopWatchingStatus(entry);
     await entry.runtime.shutdown();
+    await this.cleanupUnusedInjectedSkillStagingDirs();
   }
 
   async evictIdleEnvironments(): Promise<string[]> {
@@ -696,6 +868,7 @@ export class RuntimeManager {
       throw firstRejected.reason;
     }
 
+    await this.cleanupUnusedInjectedSkillStagingDirs();
     return shutdownResults.flatMap((result) =>
       result.status === "fulfilled" ? [result.value] : [],
     );
@@ -736,6 +909,9 @@ export class RuntimeManager {
     this.stopWatchingThreadStorageRoot = STOP_WATCHING;
     await this.stopWatchingApplicationStorageRoot();
     this.stopWatchingApplicationStorageRoot = STOP_WATCHING;
+    await this.stopWatchingDataDirSkillsRoot();
+    this.stopWatchingDataDirSkillsRoot = STOP_WATCHING;
+    await this.cleanupUnusedInjectedSkillStagingDirs();
   }
 
   private buildUnexpectedProviderExitEvents(
@@ -825,9 +1001,7 @@ export class RuntimeManager {
     return runtime;
   }
 
-  private async createEntry(
-    args: EnsureEnvironmentArgs,
-  ): Promise<RuntimeEntry> {
+  private async createEntry(args: CreateEntryArgs): Promise<RuntimeEntry> {
     const provision =
       args.provision ??
       (args.workspacePath
@@ -881,6 +1055,9 @@ export class RuntimeManager {
       runtime = this.createRuntime({
         workspacePath: workspace.path,
         additionalWorkspaceWriteRoots,
+        ...(args.skillConfig
+          ? { skillRoots: args.skillConfig.skillRoots }
+          : {}),
         shellEnv: this.getShellEnv(),
         threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
         bridgeBundleDir: this.options.bridgeBundleDir,
@@ -954,6 +1131,7 @@ export class RuntimeManager {
     return {
       environmentId: args.environmentId,
       runtime,
+      skillCatalogHash: args.skillConfig?.catalogHash ?? null,
       stopWatchingStatus,
       terminals: new Set<string>(),
       workspace,
@@ -1036,9 +1214,47 @@ export class RuntimeManager {
               applicationId: event.applicationId,
             });
           }
+          if (event.kind === "injected-skills-changed") {
+            this.options.onInjectedSkillsChanged?.({
+              applicationId: event.applicationId,
+              changedPaths: event.changedPaths,
+              sourceType: event.sourceType,
+            });
+          }
         },
         onWatchError: (error) => {
           this.options.onApplicationStorageWatchError?.({
+            error,
+          });
+        },
+      });
+  }
+
+  private ensureDataDirSkillsWatcher(): void {
+    if (
+      !this.hostWatcher?.watchDataDirSkillsRoot ||
+      this.stopWatchingDataDirSkillsRoot !== STOP_WATCHING
+    ) {
+      return;
+    }
+
+    const dataDirSkillsRootPath = this.options.dataDirSkillsRootPath;
+    if (!dataDirSkillsRootPath) {
+      return;
+    }
+
+    this.stopWatchingDataDirSkillsRoot =
+      this.hostWatcher.watchDataDirSkillsRoot({
+        dataDirSkillsRootPath,
+        onChange: (event) => {
+          this.options.onInjectedSkillsChanged?.({
+            applicationId: event.applicationId,
+            changedPaths: event.changedPaths,
+            sourceType: event.sourceType,
+          });
+        },
+        onWatchError: (error) => {
+          this.options.onDataDirSkillsWatchError?.({
             error,
           });
         },

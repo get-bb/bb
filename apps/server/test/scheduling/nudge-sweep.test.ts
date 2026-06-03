@@ -321,6 +321,7 @@ describe("nudge sweep", () => {
               providerThreadId: "provider-manager-thread",
               instructions: "manager instructions",
               dynamicTools: [],
+              injectedSkillSources: [],
               instructionMode: "append",
             },
             target: { mode: "start" },

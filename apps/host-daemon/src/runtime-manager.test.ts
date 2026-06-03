@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import type { ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
+import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import type {
   HostWatcher,
   WatchApplicationStorageRootArgs,
@@ -61,6 +62,12 @@ interface RunGitOptions {
   cwd: string;
 }
 
+interface WriteInjectedSkillSourceArgs {
+  dataDir: string;
+  name: string;
+  token: string;
+}
+
 interface RuntimeOptionsRef {
   current: AgentRuntimeOptions | null;
 }
@@ -93,6 +100,34 @@ async function initRepo(): Promise<string> {
   await runGit(["add", "."], { cwd: repoPath });
   await runGit(["commit", "-m", "Initial commit"], { cwd: repoPath });
   return repoPath;
+}
+
+async function writeInjectedSkillSource(
+  args: WriteInjectedSkillSourceArgs,
+): Promise<HostDaemonInjectedSkillSource> {
+  const sourceRootPath = path.join(args.dataDir, "skills", args.name);
+  await fs.mkdir(sourceRootPath, { recursive: true });
+  await fs.writeFile(
+    path.join(sourceRootPath, "SKILL.md"),
+    [
+      "---",
+      `name: ${args.name}`,
+      `description: Use ${args.name} when runtime manager tests run.`,
+      "---",
+      "",
+      args.token,
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  return {
+    sourceType: "data-dir",
+    applicationId: null,
+    name: args.name,
+    description: `Use ${args.name} when runtime manager tests run.`,
+    sourceRootPath,
+    skillFilePath: path.join(sourceRootPath, "SKILL.md"),
+  };
 }
 
 afterEach(async () => {
@@ -285,6 +320,109 @@ describe("RuntimeManager", () => {
     expect(provisionWorkspace).toHaveBeenCalledTimes(1);
     expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(entry.path).toBe("/tmp/env-1");
+  });
+
+  it("passes staged injected skill roots to created runtimes", async () => {
+    const dataDir = await makeTempDir("bb-runtime-manager-skills-");
+    const source = await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "first-token",
+    });
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const runtimeOptions: RuntimeOptionsRef = { current: null };
+    const manager = new RuntimeManager({
+      dataDir,
+      provisionWorkspace,
+      createRuntime: (options) => {
+        runtimeOptions.current = options;
+        return createFakeRuntime();
+      },
+    });
+
+    const entry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      injectedSkillSources: [source],
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(entry.skillCatalogHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(runtimeOptions.current?.skillRoots).toEqual([
+      {
+        id: `global-skills:${entry.skillCatalogHash}:codex`,
+        providerId: "codex",
+        skillDirectoryRootPath: path.join(
+          dataDir,
+          "runtime",
+          "global-skills",
+          entry.skillCatalogHash ?? "",
+          "skills",
+        ),
+      },
+      {
+        id: `global-skills:${entry.skillCatalogHash}:claude-code`,
+        providerId: "claude-code",
+        localPluginPath: path.join(
+          dataDir,
+          "runtime",
+          "global-skills",
+          entry.skillCatalogHash ?? "",
+        ),
+        skillNames: ["release-notes"],
+      },
+    ]);
+  });
+
+  it("does not reuse an idle runtime with a stale skill catalog hash", async () => {
+    const dataDir = await makeTempDir("bb-runtime-manager-skills-stale-");
+    const source = await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "first-token",
+    });
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const runtimes = [createFakeRuntime(), createFakeRuntime()];
+    const createRuntime = vi.fn(() => {
+      const runtime = runtimes.shift();
+      if (!runtime) {
+        throw new Error("Unexpected runtime creation");
+      }
+      return runtime;
+    });
+    const manager = new RuntimeManager({
+      dataDir,
+      provisionWorkspace,
+      createRuntime,
+    });
+
+    const firstEntry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      injectedSkillSources: [source],
+      workspacePath: "/tmp/env-1",
+    });
+    await fs.writeFile(
+      source.skillFilePath,
+      [
+        "---",
+        "name: release-notes",
+        "description: Use release-notes when runtime manager tests run.",
+        "---",
+        "",
+        "second-token",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const secondEntry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      injectedSkillSources: [source],
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(secondEntry).not.toBe(firstEntry);
+    expect(secondEntry.skillCatalogHash).not.toBe(firstEntry.skillCatalogHash);
+    expect(createRuntime).toHaveBeenCalledTimes(2);
+    expect(firstEntry.runtime.shutdown).toHaveBeenCalledTimes(1);
   });
 
   it("applies unmanaged checkout provisioning to existing runtime entries", async () => {

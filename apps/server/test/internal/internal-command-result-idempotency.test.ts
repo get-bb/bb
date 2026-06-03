@@ -334,6 +334,7 @@ describe("internal command result idempotency", () => {
           },
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
+          injectedSkillSources: [],
           instructionMode: "append",
         },
       });

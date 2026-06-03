@@ -192,6 +192,7 @@ async function queueManagedTurnSubmitScenario(
         providerThreadId: args.providerThreadId,
         instructions: "You are a helpful assistant.",
         dynamicTools: [],
+        injectedSkillSources: [],
         instructionMode: "append",
       },
       target: { mode: "steer", expectedTurnId: args.turnId },
@@ -256,6 +257,7 @@ describe("thread command failure side effects", () => {
           },
           instructions: "You are a helpful assistant.",
           dynamicTools: [],
+          injectedSkillSources: [],
           instructionMode: "append",
         }),
       });
@@ -340,6 +342,7 @@ describe("thread command failure side effects", () => {
           },
           instructions: "You are a helpful assistant.",
           dynamicTools: [],
+          injectedSkillSources: [],
           instructionMode: "append",
         }),
       });
@@ -457,6 +460,7 @@ describe("thread command failure side effects", () => {
           },
           instructions: "You are a helpful assistant.",
           dynamicTools: [],
+          injectedSkillSources: [],
           instructionMode: "append",
         }),
       });
@@ -539,6 +543,7 @@ describe("thread command failure side effects", () => {
             providerThreadId: "provider-thread-1",
             instructions: "You are a helpful assistant.",
             dynamicTools: [],
+            injectedSkillSources: [],
             instructionMode: "append",
           },
           target: { mode: "steer", expectedTurnId: "turn-active" },
@@ -642,6 +647,7 @@ describe("thread command failure side effects", () => {
             providerThreadId: "provider-thread-stop-race",
             instructions: "You are a helpful assistant.",
             dynamicTools: [],
+            injectedSkillSources: [],
             instructionMode: "append",
           },
           target: { mode: "steer", expectedTurnId: "turn-stop-race" },
@@ -1021,6 +1027,7 @@ describe("thread command failure side effects", () => {
             providerThreadId: "provider-thread-1",
             instructions: "You are a helpful assistant.",
             dynamicTools: [],
+            injectedSkillSources: [],
             instructionMode: "append",
           },
           target: { mode: "start" },
@@ -1096,6 +1103,7 @@ describe("thread command failure side effects", () => {
           },
           instructions: "You are a helpful assistant.",
           dynamicTools: [],
+          injectedSkillSources: [],
           instructionMode: "append",
         }),
       });

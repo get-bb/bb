@@ -33,10 +33,12 @@ import {
 import { createReplayCaptureService } from "@bb/replay-capture/writer";
 import { createServerClient } from "./server-client.js";
 import { AppDataChangeReporter } from "./app-data-change-reporter.js";
+import { resolveDataDirSkillsRootPath } from "@bb/config/app-storage-paths";
 import {
   ensureAppsRootPath,
   listApplicationDataTargetsFromRoot,
 } from "./app-data-files.js";
+import { cleanupInjectedSkillStagingDirs } from "./injected-skills.js";
 import {
   ServerConnection,
   type CreateReconnectingWebSocket,
@@ -329,6 +331,12 @@ export async function createHostDaemonApp(
       : {},
   );
   const appsRootPath = await ensureAppsRootPath(options.dataDir);
+  const dataDirSkillsRootPath = resolveDataDirSkillsRootPath(options.dataDir);
+  await cleanupInjectedSkillStagingDirs({
+    dataDir: options.dataDir,
+    keepCatalogHashes: [],
+    logger: options.logger,
+  });
   const sessionState: SessionState = {
     value: null,
   };
@@ -503,7 +511,10 @@ export async function createHostDaemonApp(
   runtimeManager = new RuntimeManager({
     bridgeBundleDir: options.bridgeBundleDir,
     createRuntime: options.createRuntime,
+    dataDir: options.dataDir,
+    dataDirSkillsRootPath,
     hostWatcher: options.hostWatcher,
+    logger: options.logger,
     shellEnv: options.runtimeShellEnv,
     appsRootPath,
     onCapture: (entry) => {
@@ -559,6 +570,16 @@ export async function createHostDaemonApp(
     onApplicationDataResync: (change) => {
       void appDataChangeReporter.requestResync(change);
     },
+    onInjectedSkillsChanged: (change) => {
+      options.logger.debug(
+        {
+          applicationId: change.applicationId,
+          changedPaths: change.changedPaths,
+          sourceType: change.sourceType,
+        },
+        "Injected skills changed; future runtime launches will rescan",
+      );
+    },
     onApplicationStorageWatchError: ({ error }) => {
       options.logger.warn(
         {
@@ -566,6 +587,15 @@ export async function createHostDaemonApp(
           watchError: error.message,
         },
         "Application storage watch unavailable; retrying in background",
+      );
+    },
+    onDataDirSkillsWatchError: ({ error }) => {
+      options.logger.warn(
+        {
+          rootPath: error.rootPath,
+          watchError: error.message,
+        },
+        "Data-dir skills watch unavailable; retrying in background",
       );
     },
     onThreadStorageWatchError: ({ error }) => {

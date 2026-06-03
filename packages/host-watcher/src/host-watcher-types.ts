@@ -26,6 +26,12 @@ export type HostObservedChange =
   | {
       kind: "application-data-resync";
       applicationId: ApplicationId;
+    }
+  | {
+      kind: "injected-skills-changed";
+      applicationId: ApplicationId | null;
+      changedPaths: string[];
+      sourceType: "data-dir" | "global-app";
     };
 
 export type WorkspaceObservedChange = Extract<
@@ -46,7 +52,15 @@ export type ApplicationStorageObservedChange = Extract<
     kind:
       | "application-storage-targets-changed"
       | "application-data-changed"
-      | "application-data-resync";
+      | "application-data-resync"
+      | "injected-skills-changed";
+  }
+>;
+
+export type InjectedSkillsObservedChange = Extract<
+  HostObservedChange,
+  {
+    kind: "injected-skills-changed";
   }
 >;
 
@@ -71,10 +85,17 @@ export interface ApplicationStorageWatchError {
   message: string;
 }
 
+export interface DataDirSkillsWatchError {
+  kind: "data-dir-skills-watch-error";
+  rootPath: string;
+  message: string;
+}
+
 export type HostWatchError =
   | WorkspaceWatchError
   | ThreadStorageWatchError
-  | ApplicationStorageWatchError;
+  | ApplicationStorageWatchError
+  | DataDirSkillsWatchError;
 
 export interface ThreadStorageWatchTarget {
   environmentId: string;
@@ -109,6 +130,12 @@ export interface WatchApplicationStorageRootArgs {
   onWatchError: (error: ApplicationStorageWatchError) => void;
 }
 
+export interface WatchDataDirSkillsRootArgs {
+  dataDirSkillsRootPath: string;
+  onChange: (event: InjectedSkillsObservedChange) => void;
+  onWatchError: (error: DataDirSkillsWatchError) => void;
+}
+
 export interface HostWatcher {
   watchWorkspace(args: WatchWorkspaceArgs): () => void | Promise<void>;
   watchThreadStorageRoot(
@@ -116,6 +143,9 @@ export interface HostWatcher {
   ): () => void | Promise<void>;
   watchApplicationStorageRoot(
     args: WatchApplicationStorageRootArgs,
+  ): () => void | Promise<void>;
+  watchDataDirSkillsRoot?(
+    args: WatchDataDirSkillsRootArgs,
   ): () => void | Promise<void>;
 }
 

@@ -23,6 +23,7 @@ import {
 import { loadServerPortConfig } from "../src/server-port.js";
 import { loadServerConfig } from "../src/server.js";
 import { loadViteDevConfig } from "../src/vite-dev.js";
+import { resolveDataDirSkillsRootPath } from "../src/app-storage-paths.js";
 
 async function importConfigModules(): Promise<void> {
   vi.resetModules();
@@ -197,6 +198,12 @@ describe("data-dir helpers", () => {
   it("derives database path from a resolved data dir", () => {
     expect(resolveDataDirDatabasePath({ dataDir: "/tmp/bb-data" })).toBe(
       "/tmp/bb-data/bb.db",
+    );
+  });
+
+  it("derives the data-dir-level skills root from a resolved data dir", () => {
+    expect(resolveDataDirSkillsRootPath("/tmp/bb-data")).toBe(
+      "/tmp/bb-data/skills",
     );
   });
 });

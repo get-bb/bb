@@ -12,6 +12,7 @@ import type {
   WorkspaceProvisionType,
   EnvironmentStatus,
 } from "@bb/domain";
+import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import { renderTemplate } from "@bb/templates";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
@@ -21,6 +22,7 @@ import {
   buildExistingThreadExecutionInput,
   resolveExistingThreadExecutionPlan,
 } from "./thread-execution-plan.js";
+import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
 export { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
 const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
@@ -89,6 +91,7 @@ export interface ResolvePermissionEscalationArgs {
 export interface ResolvedThreadRuntimeCommandConfig {
   dynamicTools: DynamicTool[];
   disallowedTools?: readonly string[];
+  injectedSkillSources: HostDaemonInjectedSkillSource[];
   instructionMode: InstructionMode;
   instructions: string;
   projectId: string;
@@ -152,10 +155,14 @@ export async function resolveThreadRuntimeCommandConfig(
   const projectRootPath =
     defaultSource?.type === "local_path" ? defaultSource.path : workspacePath;
   const { workspaceProvisionType } = args.environment;
+  const injectedSkillSources = resolveInjectedSkillSources(deps.logger, {
+    dataDir: deps.config.dataDir,
+  });
 
   if (args.thread.type !== "manager") {
     return {
       dynamicTools: [],
+      injectedSkillSources,
       instructionMode: "append",
       instructions: STANDARD_AGENT_INSTRUCTIONS,
       projectId: args.thread.projectId,
@@ -175,6 +182,7 @@ export async function resolveThreadRuntimeCommandConfig(
   return {
     dynamicTools: MANAGER_DYNAMIC_TOOLS,
     disallowedTools: MANAGER_DISALLOWED_TOOLS,
+    injectedSkillSources,
     instructionMode: "replace",
     instructions: renderTemplate("managerAgentInstructions", {
       hostId: args.environment.hostId,

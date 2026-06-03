@@ -17,6 +17,7 @@ import {
   clientTurnRequestIdSchema,
   gitBranchNameSchema,
   jsonObjectSchema,
+  applicationIdSchema,
 } from "@bb/domain";
 import {
   replayCaptureDaemonListResponseSchema,
@@ -24,12 +25,14 @@ import {
 } from "@bb/replay-capture/schema";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 29 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 30 as const;
 
 export const FILE_LIST_QUERY_MAX_LENGTH = 256;
 export const FILE_LIST_LIMIT_MAX = 10_000;
 export const BRANCH_LIST_QUERY_MAX_LENGTH = 256;
 export const BRANCH_LIST_LIMIT_MAX = 1_000;
+const INJECTED_SKILL_NAME_PATTERN =
+  /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 
 export const HOST_DAEMON_DURABLE_COMMAND_TYPES = [
   "thread.start",
@@ -109,6 +112,42 @@ const hostDaemonProviderThreadTargetSchema = z.object({
   threadId: z.string().min(1),
 });
 
+export const hostDaemonInjectedSkillSourceBaseSchema = z
+  .object({
+    name: z.string().max(64).regex(INJECTED_SKILL_NAME_PATTERN),
+    description: z.string().min(1).max(1024),
+    sourceRootPath: z.string().min(1),
+    skillFilePath: z.string().min(1),
+  })
+  .strict();
+
+export const hostDaemonDataDirInjectedSkillSourceSchema =
+  hostDaemonInjectedSkillSourceBaseSchema
+    .extend({
+      sourceType: z.literal("data-dir"),
+      applicationId: z.null(),
+    })
+    .strict();
+
+export const hostDaemonGlobalAppInjectedSkillSourceSchema =
+  hostDaemonInjectedSkillSourceBaseSchema
+    .extend({
+      sourceType: z.literal("global-app"),
+      applicationId: applicationIdSchema,
+    })
+    .strict();
+
+export const hostDaemonInjectedSkillSourceSchema = z.discriminatedUnion(
+  "sourceType",
+  [
+    hostDaemonDataDirInjectedSkillSourceSchema,
+    hostDaemonGlobalAppInjectedSkillSourceSchema,
+  ],
+);
+export type HostDaemonInjectedSkillSource = z.infer<
+  typeof hostDaemonInjectedSkillSourceSchema
+>;
+
 const hostDaemonThreadRuntimeContextSchema = z.object({
   workspaceContext: workspaceContextSchema,
   projectId: z.string().min(1),
@@ -116,6 +155,7 @@ const hostDaemonThreadRuntimeContextSchema = z.object({
   options: hostDaemonExecutionOptionsSchema,
   instructions: z.string().min(1),
   dynamicTools: z.array(dynamicToolSchema),
+  injectedSkillSources: z.array(hostDaemonInjectedSkillSourceSchema),
   disallowedTools: z.array(z.string()).optional(),
   instructionMode: instructionModeSchema,
 });

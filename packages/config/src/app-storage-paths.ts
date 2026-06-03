@@ -5,6 +5,10 @@ export function resolveAppsRootPath(dataDir: string): string {
   return join(dataDir, "apps");
 }
 
+export function resolveDataDirSkillsRootPath(dataDir: string): string {
+  return join(dataDir, "skills");
+}
+
 export function resolveApplicationPath(
   dataDir: string,
   applicationId: ApplicationId,

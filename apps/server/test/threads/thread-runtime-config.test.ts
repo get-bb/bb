@@ -1,10 +1,14 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { markThreadDeleted, setThreadExecutionOverride } from "@bb/db";
+import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import {
   resolvePermissionEscalation,
   resolveExecutionOptions,
   resolveThreadRuntimeCommandConfig,
 } from "../../src/services/threads/thread-runtime-config.js";
+import { buildThreadStartCommand } from "../../src/services/threads/thread-commands.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -15,6 +19,30 @@ import { withTestHarness } from "../helpers/test-app.js";
 
 function resolveLocalTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+interface WriteRuntimeSkillArgs {
+  dataDir: string;
+  name: string;
+}
+
+async function writeRuntimeSkill(args: WriteRuntimeSkillArgs): Promise<string> {
+  const sourceRootPath = path.join(args.dataDir, "skills", args.name);
+  await mkdir(sourceRootPath, { recursive: true });
+  await writeFile(
+    path.join(sourceRootPath, "SKILL.md"),
+    [
+      "---",
+      `name: ${args.name}`,
+      `description: Use ${args.name} when server runtime tests run.`,
+      "---",
+      "",
+      "# Test Skill",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  return sourceRootPath;
 }
 
 describe("thread runtime config", () => {
@@ -260,6 +288,60 @@ describe("thread runtime config", () => {
       ).rejects.toThrow(
         "Provider codex does not support max reasoning level. Supported reasoning levels: low, medium, high, xhigh.",
       );
+    });
+  });
+
+  it("serializes injected skill sources into new thread start commands", async () => {
+    await withTestHarness(async (harness) => {
+      const sourceRootPath = await writeRuntimeSkill({
+        dataDir: harness.config.dataDir,
+        name: "release-notes",
+      });
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-injected-skills",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      const execution = await resolveExecutionOptions(harness.deps, {
+        threadId: thread.id,
+        requestedExecution: {
+          model: "gpt-5",
+          source: "client/turn/requested",
+        },
+      });
+
+      const command = await buildThreadStartCommand(harness.deps, {
+        environment,
+        execution,
+        permissionEscalation: "ask",
+        input: [{ type: "text", text: "hello" }],
+        managerTemplateName: null,
+        projectId: project.id,
+        providerId: "codex",
+        requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        thread,
+      });
+
+      expect(command.injectedSkillSources).toEqual([
+        {
+          sourceType: "data-dir",
+          applicationId: null,
+          name: "release-notes",
+          description: "Use release-notes when server runtime tests run.",
+          sourceRootPath,
+          skillFilePath: path.join(sourceRootPath, "SKILL.md"),
+        },
+      ]);
     });
   });
 

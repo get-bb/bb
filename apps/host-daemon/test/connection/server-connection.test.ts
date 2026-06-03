@@ -174,6 +174,7 @@ describe("ServerConnection", () => {
           providerThreadId: "provider-1",
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
+          injectedSkillSources: [],
           instructionMode: "append",
         },
         target: { mode: "start" },

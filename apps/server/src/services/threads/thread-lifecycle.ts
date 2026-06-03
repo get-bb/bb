@@ -957,6 +957,21 @@ async function advanceActiveThreadStartIfPresent(
   return true;
 }
 
+function hasQueuedActiveThreadStart(
+  deps: WorkSessionDeps,
+  args: QueueThreadStartCommandArgs,
+): boolean {
+  const operation = getThreadOperation(deps.db, {
+    threadId: args.thread.id,
+    kind: "start",
+  });
+  return (
+    operation !== null &&
+    isActiveLifecycleOperationState(operation.state) &&
+    hasQueuedThreadOperationCommand(deps, operation.commandId)
+  );
+}
+
 /**
  * Makes the provision-to-start durability boundary atomic: after a crash, the
  * thread should have either an active provision op to retry or an active start
@@ -1032,7 +1047,7 @@ async function requestThreadStartOnce(
   const baseCommand = await buildThreadStartCommand(deps, {
     ...args,
   });
-  if (await advanceActiveThreadStartIfPresent(deps, args)) {
+  if (hasQueuedActiveThreadStart(deps, args)) {
     return;
   }
 
