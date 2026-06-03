@@ -159,12 +159,9 @@ const BLANK_APP_SCAFFOLD_EXTRA_STYLES = `<style>
       }
     </style>`;
 
-// Blank-template scaffold rendered into apps/<id>/assets/index.html. Composes
-// the documented bb default styling head with a scaffold-only style block and
-// the task-list visual vocabulary borrowed from the bundled status app, so new
-// apps start out looking bb-native rather than like bare HTML. The same
-// scaffold powers both `bb app new` (any name) and the bundled default status
-// app seeded into every manager thread (name="Status").
+// Blank-template scaffold rendered into an app's assets/index.html. Composes
+// the documented bb default styling head with a scaffold-only style block so
+// new apps start out looking bb-native rather than like bare HTML.
 const BLANK_APP_INDEX_HTML_TEMPLATE = `<!doctype html>
 <html lang="en">
   <head>
@@ -202,8 +199,8 @@ const BLANK_APP_INDEX_HTML_TEMPLATE = `<!doctype html>
     </main>
 
     <script>
-      if (window.bb && window.bb.appId) {
-        document.getElementById("bb-app-id").textContent = window.bb.appId;
+      if (window.bb && window.bb.applicationId) {
+        document.getElementById("bb-app-id").textContent = window.bb.applicationId;
       }
     </script>
   </body>

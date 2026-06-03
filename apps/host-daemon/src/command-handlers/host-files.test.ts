@@ -249,19 +249,19 @@ describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
     const result = await writeHostRelativeFile({
       type: "host.write_file_relative",
       rootPath,
-      path: "apps/status/data/state.json",
+      path: "data/state.json",
       dotfiles: "deny",
       content,
       contentEncoding: "utf8",
     });
 
     expect(result).toMatchObject({
-      path: "apps/status/data/state.json",
+      path: "data/state.json",
       hash: createHash("sha256").update(content).digest("hex"),
       sizeBytes: Buffer.byteLength(content),
     });
     await expect(
-      fs.readFile(path.join(rootPath, "apps/status/data/state.json"), "utf8"),
+      fs.readFile(path.join(rootPath, "data/state.json"), "utf8"),
     ).resolves.toBe(content);
   });
 

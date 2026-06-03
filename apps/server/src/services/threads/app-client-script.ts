@@ -1,12 +1,14 @@
-import type { AppId } from "@bb/domain";
+import type { ApplicationId } from "@bb/domain";
 import type { AppCapability } from "@bb/server-contract";
 
 export interface AppClientBootstrap {
-  appId: AppId;
+  appId: ApplicationId;
+  applicationId: ApplicationId;
+  appSessionToken: string | null;
   capabilities: AppCapability[];
   dataUrl: string;
   messageUrl: string;
-  threadId: string;
+  targetThreadId: string | null;
   wsUrl: string;
 }
 
@@ -241,7 +243,7 @@ function buildAppClientJavascript(bootstrapJson: string): string {
   var socketSubscribed = false;
   var subscriptionReady = null;
   var resolveSubscriptionReady = null;
-  var subscriptionEntityId = bootstrap.threadId + ":app:" + bootstrap.appId + ":data";
+  var subscriptionEntityId = bootstrap.applicationId + ":data";
 
   function pathMatchesPrefix(path, prefix) {
     return prefix === "" || path === prefix || path.indexOf(prefix + "/") === 0;
@@ -274,8 +276,7 @@ function buildAppClientJavascript(bootstrapJson: string): string {
   function handleBroadcast(message) {
     if (
       !message ||
-      message.threadId !== bootstrap.threadId ||
-      message.appId !== bootstrap.appId
+      message.applicationId !== bootstrap.applicationId
     ) {
       return;
     }
@@ -449,8 +450,8 @@ function buildAppClientJavascript(bootstrapJson: string): string {
   }
 
   function message(text) {
-    if (typeof text !== "string") {
-      throw new TypeError("window.bb.message(text) requires a string");
+    if (text === undefined || !isJsonValue(text)) {
+      throw new TypeError("window.bb.message(payload) requires a JSON value");
     }
     return fetch(bootstrap.messageUrl, {
       method: "POST",
@@ -459,14 +460,17 @@ function buildAppClientJavascript(bootstrapJson: string): string {
         "Accept": "application/json",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ text: text })
+      body: JSON.stringify({
+        payload: text,
+        appSessionToken: bootstrap.appSessionToken || undefined
+      })
     }).then(function (response) {
       if (response.ok) return undefined;
       return rejectResponse(response);
     });
   }
 
-  var bb = { appId: bootstrap.appId };
+  var bb = { appId: bootstrap.appId, applicationId: bootstrap.applicationId };
   if (hasCapability("data")) {
     bb.data = {
       read: read,

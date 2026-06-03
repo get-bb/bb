@@ -64,11 +64,8 @@ After scope and landing mode are settled, figure out together:
 Create, replace, or update `PREFERENCES.md` with what you learn. If the user gives you a
 name, vibe, or other identity details for yourself, record those too.
 
-`apps/status/`, `PREFERENCES.md`, and `ASYNC.md` may already exist from user
-templates. Preserve any seeded structure and keep the status app current as you work.
-
-Depending on user preferences you might want to update `apps/status/data/state.json`
-to match their landing mode.
+`PREFERENCES.md`, `ASYNC.md`, notes, plans, or other files may already exist from user
+templates. Preserve any seeded structure as you work.
 
 If there is no `PREFERENCES.md` fill out this template with what you learn and save it:
 
@@ -96,19 +93,15 @@ This file is the manager's durable memory of how the user wants to be worked wit
   - Merge into a local branch (like a staging area) automatically without PRs, and push to origin on user go-ahead.
 
 ## Keeping the user updated
-  Adjust the `status` app to match the chosen mode.
-- **Status mode**: if the user opens PRs, the status app tracks open PRs in its primary section. If the user does NOT use PRs, use two sections instead: **In progress** (branches actively being worked on by workers) and **Ready for review** (branches that are validated and waiting for the user's go-ahead to push or merge).
-- **Status refresh**: keep `apps/status/data/state.json` current with the state of the world
-  - after any state-affecting action (worker spawn, branch ready, PR opened, merge, close, push).
-  - **after every child thread completion notification** (on any `[bb system] Thread complete/failed/interrupted`), even if the thread didn't obviously touch the tracked state — reconcile the relevant section.
-- **Status app**: run `bb guide app` for app data, `window.bb`, styling, and `bb app` commands.
-- Also keep running tasks and any user action items in the status app.
+- Update cadence: _(fill this out)_
+- What to surface: active workers, ready branches, PRs, blockers, user action items, or something else? _(fill this out)_
+- Preferred status format: brief messages, a storage file, a custom app, or another surface? _(fill this out)_
 
 ## Open questions to resolve when natural
 
 - Preferred name / how to address the user
 - Worker defaults (provider / reasoning level / permission mode / preferred model) — ask the user when it comes up; do not assume a default.
-- Anything else the user wants surfaced in the status app (extra sections, custom info, integrations) — ask once when natural and update the template accordingly.
+- Anything else the user wants surfaced regularly — ask once when natural and update the template accordingly.
 - Update verbosity preference (terse vs detailed)
 - Any specific area of the codebase that's currently the focus
 ```

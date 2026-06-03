@@ -17,7 +17,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     searchProjectPaths: vi.fn(),
-    listThreadApps: vi.fn(),
+    listApps: vi.fn(),
     listThreadStoragePaths: vi.fn(),
   };
 });
@@ -63,9 +63,9 @@ function isFilePathSearchSuggestion(
   return suggestion.entryKind === "file";
 }
 
-const STATUS_APP: AppSummary = {
-  id: "status",
-  name: "Status",
+const APP: AppSummary = {
+  applicationId: "app_status",
+  name: "Review Board",
   entry: { path: "index.html", kind: "html" },
   capabilities: ["data", "message"],
   icon: { kind: "builtin", name: "ListTodo" },
@@ -78,7 +78,7 @@ afterEach(() => {
 
 describe("useFileSearchSuggestions", () => {
   it("merges workspace and manager thread-storage file results", async () => {
-    vi.mocked(api.listThreadApps).mockResolvedValue([]);
+    vi.mocked(api.listApps).mockResolvedValue([]);
     vi.mocked(api.searchProjectPaths).mockResolvedValue(
       makePathResponse([
         {
@@ -106,7 +106,7 @@ describe("useFileSearchSuggestions", () => {
       () =>
         useFileSearchSuggestions({
           projectId: "proj-1",
-          query: "status",
+          query: "app_status",
           limit: 2,
           environmentId: "env-1",
           currentThreadId: "thr-manager",
@@ -126,7 +126,7 @@ describe("useFileSearchSuggestions", () => {
     ).toEqual(["notes/status.md", "src/project.ts"]);
     expect(api.searchProjectPaths).toHaveBeenCalledWith({
       projectId: "proj-1",
-      query: "status",
+      query: "app_status",
       limit: 4,
       environmentId: "env-1",
       includeFiles: true,
@@ -136,7 +136,7 @@ describe("useFileSearchSuggestions", () => {
       id: "thr-manager",
       options: {
         limit: 4,
-        query: "status",
+        query: "app_status",
         includeFiles: true,
         includeDirectories: false,
       },
@@ -145,7 +145,7 @@ describe("useFileSearchSuggestions", () => {
   });
 
   it("returns matching apps before files", async () => {
-    vi.mocked(api.listThreadApps).mockResolvedValue([STATUS_APP]);
+    vi.mocked(api.listApps).mockResolvedValue([APP]);
     vi.mocked(api.searchProjectPaths).mockResolvedValue(
       makePathResponse([
         {
@@ -165,7 +165,7 @@ describe("useFileSearchSuggestions", () => {
       () =>
         useFileSearchSuggestions({
           projectId: "proj-1",
-          query: "status",
+          query: "app_status",
           environmentId: "env-1",
           currentThreadId: "thr-manager",
           currentThreadType: "manager",
@@ -180,8 +180,8 @@ describe("useFileSearchSuggestions", () => {
     expect(result.current.suggestions[0]).toMatchObject({
       source: "app",
       entryKind: "app",
-      appId: "status",
-      name: "Status",
+      applicationId: "app_status",
+      name: "Review Board",
     });
     expect(result.current.suggestions[1]).toMatchObject({
       source: "workspace",

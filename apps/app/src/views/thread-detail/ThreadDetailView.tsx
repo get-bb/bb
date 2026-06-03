@@ -31,9 +31,9 @@ import {
 } from "../../hooks/queries/environment-queries";
 import {
   getLatestPendingInteraction,
+  useApps,
   useProjectThreadSubset,
   useThread,
-  useThreadApps,
   useThreadComposerBootstrap,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
@@ -99,10 +99,7 @@ import {
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import { ResolvedAppIcon } from "@/components/secondary-panel/AppIcon";
 import { useManagerStorageBrowser } from "@/components/secondary-panel/useManagerStorageBrowser";
-import {
-  STATUS_APP_ID,
-  useThreadFileTabs,
-} from "@/components/secondary-panel/useThreadFileTabs";
+import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
@@ -306,8 +303,8 @@ export function ThreadDetailView() {
     threadId,
     threadType: thread?.type,
   });
-  const threadAppsQuery = useThreadApps(threadId ?? "", {
-    enabled: Boolean(threadId) && thread !== undefined,
+  const appsQuery = useApps({
+    enabled: thread !== undefined,
   });
   const {
     activateAppTab,
@@ -336,7 +333,6 @@ export function ThreadDetailView() {
     isNewTabActive,
     openBrowserTab,
     openNewTab,
-    openApp,
     openHostFile,
     openStorageFile,
     openWorkspaceFile,
@@ -344,7 +340,7 @@ export function ThreadDetailView() {
     selectFileSearchResult,
     updateBrowserTab,
   } = useThreadFileTabs({
-    apps: threadAppsQuery.data,
+    apps: appsQuery.data,
     threadId,
     environmentId: thread?.environmentId,
     threadType: thread?.type,
@@ -375,16 +371,9 @@ export function ThreadDetailView() {
       setThreadSecondaryPanel(null);
       return;
     }
-    if (isManagerThread && activeFixedSecondaryTab === null) {
-      openApp(STATUS_APP_ID);
-      return;
-    }
     toggleDefaultPersistedSecondaryPanel();
   }, [
-    activeFixedSecondaryTab,
     fixedPanelTabsState.secondary.isOpen,
-    isManagerThread,
-    openApp,
     setThreadSecondaryPanel,
     toggleDefaultPersistedSecondaryPanel,
   ]);
@@ -581,30 +570,29 @@ export function ThreadDetailView() {
     },
     [openSecondaryPanelDiffFile, openWorkspaceFile],
   );
-  const threadAppsById = useMemo(() => {
+  const appsById = useMemo(() => {
     const entries = new Map(
-      (threadAppsQuery.data ?? []).map((app) => [app.id, app]),
+      (appsQuery.data ?? []).map((app) => [app.applicationId, app]),
     );
     return entries;
-  }, [threadAppsQuery.data]);
+  }, [appsQuery.data]);
   const fileTabs = useMemo<SecondaryPanelFileTab[] | undefined>(() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = orderedSecondaryFileTabs.map((tab): SecondaryPanelFileTab => {
       switch (tab.kind) {
         case "app": {
-          const app = threadAppsById.get(tab.appId);
-          const appName = app?.name ?? tab.appId;
+          const app = appsById.get(tab.applicationId);
+          const appName = app?.name ?? tab.applicationId;
           return {
             id: tab.id,
             filename: appName,
-            isActive: tab.appId === activeAppId,
-            isPinned: tab.appId === STATUS_APP_ID,
+            isActive: tab.applicationId === activeAppId,
             leadingVisual: app ? (
               <ResolvedAppIcon icon={app.icon} className="size-3.5" />
             ) : undefined,
             statusLabel: null,
-            onSelect: () => activateAppTab(tab.appId),
-            onClose: () => closeAppTab(tab.appId),
+            onSelect: () => activateAppTab(tab.applicationId),
+            onClose: () => closeAppTab(tab.applicationId),
           };
         }
         case "browser": {
@@ -683,7 +671,7 @@ export function ThreadDetailView() {
     closeWorkspaceFileTab,
     isNewTabActive,
     orderedSecondaryFileTabs,
-    threadAppsById,
+    appsById,
   ]);
   const requestedMergeBaseBranch =
     selectedMergeBaseBranch ?? environmentMergeBaseBranch;
@@ -1222,7 +1210,7 @@ export function ThreadDetailView() {
       onSelect={selectFileSearchResult}
     />
   ) : activeAppId ? (
-    <AppTabContent appId={activeAppId} threadId={thread.id} />
+    <AppTabContent applicationId={activeAppId} threadId={thread.id} />
   ) : activeWorkspaceFilePath ? (
     <WorkspaceFilePreviewTabContent
       activePath={activeWorkspaceFilePath}

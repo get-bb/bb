@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
-import { useAtomValue } from "jotai";
 import {
   closestCenter,
   DndContext,
@@ -31,11 +30,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ThreadListEntry } from "@bb/domain";
-import type { AppSummary, ProjectResponse } from "@bb/server-contract";
+import type { ProjectResponse } from "@bb/server-contract";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import { useArchiveEnvironmentThreads } from "@/hooks/mutations/environment-mutations";
-import { useThreadApps } from "@/hooks/queries/thread-queries";
 import { Button } from "@/components/ui/button.js";
 import {
   DropdownMenu,
@@ -75,9 +73,6 @@ import {
 import { cn } from "@/lib/utils";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { getProjectSettingsRoutePath } from "@/lib/app-route-paths";
-import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
-import type { FixedPanelTabsState } from "@/lib/fixed-panel-tabs-state";
-import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
@@ -90,7 +85,6 @@ import {
   type ThreadRowDragBindings,
   type ThreadRowOptions,
 } from "./ThreadRow";
-import { ThreadAppRow } from "./ThreadAppRow";
 import {
   buildProjectThreadGroups,
   type EnvironmentThreadGroup,
@@ -109,7 +103,6 @@ import {
   SIDEBAR_SECTION_GROUP_LINE_CLASS,
   SIDEBAR_SECTION_LINE_CONTINUATION_CLASS,
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-  type SidebarThreadRowIndent,
 } from "./sidebarRowClasses";
 import { SIDEBAR_SORTABLE_TRANSITION } from "./sortableMotion";
 import {
@@ -230,7 +223,6 @@ type ProjectItemClickCaptureHandler = MouseEventHandler<HTMLLIElement>;
 type ProjectThreadListClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 const EMPTY_PROJECT_THREADS: ThreadListEntry[] = [];
-const EMPTY_THREAD_APPS: readonly AppSummary[] = [];
 const PROJECT_ROW_LEADING_SLOT_CLASS =
   "h-7 w-8 max-md:pointer-coarse:h-10 max-md:pointer-coarse:w-10";
 
@@ -242,13 +234,6 @@ interface ProjectThreadTreeGroupProps {
 
 interface ManagerThreadOrderEntry {
   id: string;
-}
-
-interface ActiveThreadAppIdArgs {
-  fixedPanelTabsState: FixedPanelTabsState;
-  isConversationCollapsed: boolean;
-  selectedThreadId?: string;
-  threadId: string;
 }
 
 function getManagerThreadGroupId(
@@ -334,12 +319,6 @@ function getProjectThreadTreeManagedChildOptions(
     : THREAD_ROW_PROJECT_MANAGED_CHILD_OPTIONS;
 }
 
-function getProjectThreadTreeManagedAppIndent(
-  variant: ProjectThreadTreeVariant,
-): SidebarThreadRowIndent {
-  return variant === "section" ? "project-child" : "nested-child";
-}
-
 function getProjectThreadTreeEnvGroupedChildOptions(
   variant: ProjectThreadTreeVariant,
 ): ThreadRowOptions {
@@ -386,29 +365,6 @@ function getProjectThreadTreeManagerLineContinuationClassName(
   return variant === "section"
     ? SIDEBAR_SECTION_LINE_CONTINUATION_CLASS
     : SIDEBAR_MANAGER_LINE_CONTINUATION_CLASS;
-}
-
-function getActiveThreadAppId({
-  fixedPanelTabsState,
-  isConversationCollapsed,
-  selectedThreadId,
-  threadId,
-}: ActiveThreadAppIdArgs): string | null {
-  // An app is the active surface only for the open thread, and only while the
-  // conversation is tucked into the collapsed rail with the panel showing the
-  // app full. With the conversation visible it stays the selected surface, so
-  // no app row is highlighted and the manager row reads as selected instead.
-  if (selectedThreadId !== threadId || !isConversationCollapsed) {
-    return null;
-  }
-
-  const { activeTabId, isOpen, tabs } = fixedPanelTabsState.secondary;
-  if (!isOpen || activeTabId === null) {
-    return null;
-  }
-
-  const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  return activeTab?.kind === "app" ? activeTab.appId : null;
 }
 
 function ProjectThreadTreeGroup({
@@ -894,20 +850,7 @@ export const ManagerThreadGroupRow = memo(function ManagerThreadGroupRow({
   sortableStyle,
 }: ManagerThreadGroupRowProps) {
   const { managerThread, managedItems, stats } = managerThreadGroup;
-  const managerAppsQuery = useThreadApps(managerThread.id);
-  const managerApps = managerAppsQuery.data ?? EMPTY_THREAD_APPS;
-  const fixedPanelTabsState = useFixedPanelTabsState(managerThread.id);
-  const isConversationCollapsed = useAtomValue(
-    getThreadConversationCollapsedAtom(managerThread.id),
-  );
-  const activeAppId = getActiveThreadAppId({
-    fixedPanelTabsState,
-    isConversationCollapsed,
-    selectedThreadId,
-    threadId: managerThread.id,
-  });
-  const nestedChildCount = stats.managedChildCount + managerApps.length;
-  const appIndent = getProjectThreadTreeManagedAppIndent(variant);
+  const nestedChildCount = stats.managedChildCount;
   const managerOptions = useMemo<ThreadRowOptions>(
     () => ({
       kind: "manager",
@@ -939,10 +882,10 @@ export const ManagerThreadGroupRow = memo(function ManagerThreadGroupRow({
       <ThreadRow
         projectId={projectId}
         thread={managerThread}
-        // When one of this manager's apps is the active surface, that app row
-        // owns the single selected highlight; the manager row drops its full
-        // selected background (its nesting still shows context).
-        isActive={selectedThreadId === managerThread.id && activeAppId === null}
+        // The thread row itself drops its selected background when this thread
+        // shows a full-screen app (the app's sidebar row owns the highlight),
+        // so the manager row only needs to track route selection here.
+        isActive={selectedThreadId === managerThread.id}
         onProjectSelect={onProjectSelect}
         options={managerOptions}
       />
@@ -953,16 +896,6 @@ export const ManagerThreadGroupRow = memo(function ManagerThreadGroupRow({
             getProjectThreadTreeChildGroupLineClassName(variant),
           )}
         >
-          {managerApps.map((app) => (
-            <ThreadAppRow
-              key={`app:${app.id}`}
-              app={app}
-              indent={appIndent}
-              isActive={activeAppId === app.id}
-              projectId={projectId}
-              threadId={managerThread.id}
-            />
-          ))}
           {managedItems.map((item) =>
             item.kind === "thread" ? (
               <ThreadRow

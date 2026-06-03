@@ -1,12 +1,24 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { ThreadStorageWatchTarget } from "../src/host-watcher-types.js";
-import { collectThreadStorageObservedChanges } from "../src/parcel-host-watcher.js";
+import type {
+  ApplicationDataWatchTarget,
+  ThreadStorageWatchTarget,
+} from "../src/host-watcher-types.js";
+import {
+  collectApplicationStorageObservedChanges,
+  collectThreadStorageObservedChanges,
+} from "../src/parcel-host-watcher.js";
 
 function createResolver(
   targets: Record<string, ThreadStorageWatchTarget>,
 ): (threadId: string) => ThreadStorageWatchTarget | null {
   return (threadId) => targets[threadId] ?? null;
+}
+
+function createApplicationResolver(
+  targets: Record<string, ApplicationDataWatchTarget>,
+): (applicationId: string) => ApplicationDataWatchTarget | null {
+  return (applicationId) => targets[applicationId] ?? null;
 }
 
 describe("thread storage watcher classification", () => {
@@ -46,78 +58,80 @@ describe("thread storage watcher classification", () => {
     ]);
   });
 
-  it("emits targeted app data changes without broad storage changes", () => {
-    const rootPath = path.join("/tmp", "thread-storage");
-    const changes = collectThreadStorageObservedChanges({
-      threadStorageRootPath: rootPath,
+  it("emits app storage target refreshes for app folders and manifests", () => {
+    const rootPath = path.join("/tmp", "apps");
+    const changes = collectApplicationStorageObservedChanges({
+      appsRootPath: rootPath,
       changedPaths: [
-        path.join(rootPath, "thr_one", "apps", "status", "data", "state.json"),
-        path.join(rootPath, "thr_one", "apps", "status", "data", "state.json"),
-        path.join(rootPath, "thr_one", "apps", "kanban", "data", "cards", "1"),
-        path.join(rootPath, "thr_one", "apps", "bad.app", "data", "state.json"),
-        path.join(
-          rootPath,
-          "thr_unknown",
-          "apps",
-          "status",
-          "data",
-          "state.json",
-        ),
+        path.join(rootPath, "app_status", "manifest.json"),
+        path.join(rootPath, "app_new"),
+        path.join(rootPath, "bad.app", "data", "state.json"),
+        path.join(rootPath, ".tmp-app_app_status-abc", "manifest.json"),
+        path.join(rootPath, ".delete-app_app_status-abc", "manifest.json"),
       ],
-      resolveThreadTarget: createResolver({
-        thr_one: {
-          environmentId: "env_one",
-          threadId: "thr_one",
+      resolveApplicationTarget: createApplicationResolver({}),
+    });
+
+    expect(changes).toEqual([
+      { kind: "application-storage-targets-changed" },
+    ]);
+  });
+
+  it("emits targeted app data changes", () => {
+    const rootPath = path.join("/tmp", "apps");
+    const changes = collectApplicationStorageObservedChanges({
+      appsRootPath: rootPath,
+      changedPaths: [
+        path.join(rootPath, "app_status", "data", "state.json"),
+        path.join(rootPath, "app_status", "data", "state.json"),
+        path.join(rootPath, "app_kanban", "data", "cards", "1"),
+        path.join(rootPath, "app_unknown", "data", "state.json"),
+        path.join(rootPath, ".tmp-app_app_status-abc", "data", "state.json"),
+      ],
+      resolveApplicationTarget: createApplicationResolver({
+        app_status: {
+          applicationId: "app_status",
+          appDataPath: path.join(rootPath, "app_status", "data"),
+        },
+        app_kanban: {
+          applicationId: "app_kanban",
+          appDataPath: path.join(rootPath, "app_kanban", "data"),
         },
       }),
     });
 
     expect(changes).toEqual([
       {
-        kind: "thread-app-data-changed",
-        appId: "status",
-        environmentId: "env_one",
+        kind: "application-data-changed",
+        applicationId: "app_status",
+        appDataPath: path.join(rootPath, "app_status", "data"),
         path: "state.json",
-        threadId: "thr_one",
       },
       {
-        kind: "thread-app-data-changed",
-        appId: "kanban",
-        environmentId: "env_one",
+        kind: "application-data-changed",
+        applicationId: "app_kanban",
+        appDataPath: path.join(rootPath, "app_kanban", "data"),
         path: "cards/1",
-        threadId: "thr_one",
       },
     ]);
   });
 
-  it("emits resync hints and broad storage changes for unclassifiable app data changes", () => {
-    const rootPath = path.join("/tmp", "thread-storage");
-    const changes = collectThreadStorageObservedChanges({
-      threadStorageRootPath: rootPath,
+  it("emits app data resync hints for unclassifiable app data changes", () => {
+    const rootPath = path.join("/tmp", "apps");
+    const changes = collectApplicationStorageObservedChanges({
+      appsRootPath: rootPath,
       changedPaths: [
-        path.join(rootPath, "thr_one", "apps", "status", "data"),
-        path.join(rootPath, "thr_one", "apps", "status", "data", ".state.tmp"),
-        path.join(rootPath, "thr_one", "apps", "status", "data"),
+        path.join(rootPath, "app_status", "data"),
+        path.join(rootPath, "app_status", "data", ".state.tmp"),
+        path.join(rootPath, "app_status", "data"),
       ],
-      resolveThreadTarget: createResolver({
-        thr_one: {
-          environmentId: "env_one",
-          threadId: "thr_one",
-        },
-      }),
+      resolveApplicationTarget: createApplicationResolver({}),
     });
 
     expect(changes).toEqual([
       {
-        kind: "thread-storage-changed",
-        environmentId: "env_one",
-        threadId: "thr_one",
-      },
-      {
-        kind: "thread-app-data-resync",
-        appId: "status",
-        environmentId: "env_one",
-        threadId: "thr_one",
+        kind: "application-data-resync",
+        applicationId: "app_status",
       },
     ]);
   });

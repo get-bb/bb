@@ -59,8 +59,8 @@ export type {
 export { managerTemplateNameSchema } from "./manager-templates.js";
 export type { ManagerTemplateName } from "./manager-templates.js";
 
-export { appDataPathSchema, appIdSchema } from "./apps.js";
-export type { AppDataPath, AppId } from "./apps.js";
+export { appDataPathSchema, applicationIdSchema } from "./apps.js";
+export type { AppDataPath, ApplicationId } from "./apps.js";
 
 export { threadDynamicContextFileStatusValues } from "./manager-dynamic-context.js";
 export type { ThreadDynamicContextFileStatus } from "./manager-dynamic-context.js";

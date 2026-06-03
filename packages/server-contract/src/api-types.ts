@@ -36,13 +36,13 @@ import {
   managerTemplateNameSchema,
   jsonValueSchema,
   appDataPathSchema,
-  appIdSchema,
+  applicationIdSchema,
   callerExecutionInputSourceSchema,
 } from "@bb/domain";
 import { workspaceResolutionFailureSchema } from "@bb/host-daemon-contract";
 import type {
   AppDataPath,
-  AppId,
+  ApplicationId,
   CallerExecutionInputSource,
   GitBranchName,
   JsonValue,
@@ -1353,31 +1353,16 @@ export type AppEntry = z.infer<typeof appEntrySchema>;
 export const appCapabilitySchema = z.enum(["data", "message"]);
 export type AppCapability = z.infer<typeof appCapabilitySchema>;
 
-export const appContributionSchema = z.enum(["thread.app"]);
-
 export const appManifestSchema = z
   .object({
-    manifestVersion: z.literal(1),
-    id: appIdSchema,
+    manifestVersion: z.literal(1).default(1),
+    id: applicationIdSchema,
     name: z.string().min(1).max(80),
     icon: appIconNameSchema.optional(),
     entry: appEntryPathSchema.optional(),
-    contributions: z.array(appContributionSchema).min(1),
-    capabilities: z.array(appCapabilitySchema),
+    capabilities: z.array(appCapabilitySchema).default([]),
   })
-  .strict()
-  .superRefine((manifest, context) => {
-    if (
-      manifest.contributions.length !== 1 ||
-      manifest.contributions[0] !== "thread.app"
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["contributions"],
-        message: 'Only ["thread.app"] is supported',
-      });
-    }
-  });
+  .strict();
 export type AppManifest = z.infer<typeof appManifestSchema>;
 
 export const appIconSchema = z.discriminatedUnion("kind", [
@@ -1398,7 +1383,7 @@ export type AppIcon = z.infer<typeof appIconSchema>;
 
 export const appSummarySchema = z
   .object({
-    id: appIdSchema,
+    applicationId: applicationIdSchema,
     name: z.string().min(1).max(80),
     entry: appEntrySchema,
     capabilities: z.array(appCapabilitySchema),
@@ -1407,22 +1392,21 @@ export const appSummarySchema = z
   .strict();
 export type AppSummary = z.infer<typeof appSummarySchema>;
 
-export const appDetailSchema = appSummarySchema;
-export type AppDetail = z.infer<typeof appDetailSchema>;
-
-export const appTemplateSchema = z.enum(["blank", "status"]);
-export type AppTemplate = z.infer<typeof appTemplateSchema>;
-
-export const createThreadAppRequestSchema = z
-  .object({
-    id: appIdSchema,
-    name: z.string().min(1).max(80),
-    template: appTemplateSchema,
+export const appDetailSchema = appSummarySchema
+  .extend({
+    appsRootPath: z.string().min(1),
+    appRootPath: z.string().min(1),
+    appDataPath: z.string().min(1),
   })
   .strict();
-export type CreateThreadAppRequest = z.infer<
-  typeof createThreadAppRequestSchema
->;
+export type AppDetail = z.infer<typeof appDetailSchema>;
+
+export const createAppRequestSchema = z
+  .object({
+    name: z.string().min(1).max(80),
+  })
+  .strict();
+export type CreateAppRequest = z.infer<typeof createAppRequestSchema>;
 
 export const appDataEntrySchema = z
   .object({
@@ -1461,7 +1445,9 @@ export type AppDataWriteRequest = z.infer<typeof appDataWriteRequestSchema>;
 
 export const appMessageRequestSchema = z
   .object({
-    text: z.string().min(1),
+    payload: jsonValueSchema,
+    appSessionToken: z.string().regex(/^appsess_[A-Za-z0-9_-]+$/u).optional(),
+    targetThreadId: z.string().min(1).optional(),
   })
   .strict();
 export type AppMessageRequest = z.infer<typeof appMessageRequestSchema>;
@@ -1469,8 +1455,7 @@ export type AppMessageRequest = z.infer<typeof appMessageRequestSchema>;
 export const appDataChangedBroadcastMessageSchema = z
   .object({
     type: z.literal("app-data.changed"),
-    threadId: z.string().min(1),
-    appId: appIdSchema,
+    applicationId: applicationIdSchema,
     path: appDataPathSchema,
     value: jsonValueSchema.nullable(),
     deleted: z.boolean(),
@@ -1481,8 +1466,7 @@ export const appDataChangedBroadcastMessageSchema = z
 export const appDataResyncBroadcastMessageSchema = z
   .object({
     type: z.literal("app-data.resync"),
-    threadId: z.string().min(1),
-    appId: appIdSchema,
+    applicationId: applicationIdSchema,
   })
   .strict();
 
@@ -1519,9 +1503,10 @@ export interface BbData {
 }
 
 export interface Bb {
-  appId: AppId;
+  appId: ApplicationId;
+  applicationId: ApplicationId;
   data?: BbData;
-  message?(text: string): Promise<void>;
+  message?(payload: JsonValue): Promise<void>;
 }
 
 declare global {

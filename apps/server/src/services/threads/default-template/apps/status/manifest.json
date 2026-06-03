@@ -1,9 +1,0 @@
-{
-  "manifestVersion": 1,
-  "id": "status",
-  "name": "Status",
-  "icon": "ListTodo",
-  "entry": "index.html",
-  "contributions": ["thread.app"],
-  "capabilities": ["data", "message"]
-}

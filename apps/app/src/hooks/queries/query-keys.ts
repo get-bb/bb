@@ -36,9 +36,9 @@ export const THREAD_TERMINALS_QUERY_KEY = "threadTerminals";
 export const THREAD_STORAGE_FILES_QUERY_KEY = "threadStorageFiles";
 export const THREAD_STORAGE_PATHS_QUERY_KEY = "threadStoragePaths";
 export const THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY = "threadStorageFilePreview";
-export const THREAD_APPS_QUERY_KEY = "threadApps";
-export const THREAD_APP_QUERY_KEY = "threadApp";
-export const THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY = "threadAppMarkdownPreview";
+export const APPS_QUERY_KEY = "apps";
+export const APP_QUERY_KEY = "app";
+export const APP_MARKDOWN_PREVIEW_QUERY_KEY = "appMarkdownPreview";
 export const THREAD_HOST_FILE_PREVIEW_QUERY_KEY = "threadHostFilePreview";
 export const ENVIRONMENT_QUERY_KEY = "environment";
 export const ENVIRONMENT_WORK_STATUS_QUERY_KEY = "environmentWorkStatus";
@@ -238,35 +238,21 @@ export type ThreadStorageFilePreviewQueryKeyPrefix = readonly [
   typeof THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY,
   string,
 ];
-export type AllThreadAppsQueryKeyPrefix = readonly [
-  typeof THREAD_APPS_QUERY_KEY,
+export type AllAppsQueryKeyPrefix = readonly [typeof APPS_QUERY_KEY];
+export type AppsQueryKey = readonly [typeof APPS_QUERY_KEY];
+export type AllAppQueryKeyPrefix = readonly [typeof APP_QUERY_KEY];
+export type AppQueryKey = readonly [typeof APP_QUERY_KEY, string];
+export type AppQueryKeyPrefix = readonly [typeof APP_QUERY_KEY];
+export type AllAppMarkdownPreviewQueryKeyPrefix = readonly [
+  typeof APP_MARKDOWN_PREVIEW_QUERY_KEY,
 ];
-export type ThreadAppsQueryKey = readonly [
-  typeof THREAD_APPS_QUERY_KEY,
-  string,
-];
-export type AllThreadAppQueryKeyPrefix = readonly [typeof THREAD_APP_QUERY_KEY];
-export type ThreadAppQueryKey = readonly [
-  typeof THREAD_APP_QUERY_KEY,
-  string,
-  string,
-];
-export type ThreadAppQueryKeyPrefix = readonly [
-  typeof THREAD_APP_QUERY_KEY,
-  string,
-];
-export type AllThreadAppMarkdownPreviewQueryKeyPrefix = readonly [
-  typeof THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY,
-];
-export type ThreadAppMarkdownPreviewQueryKey = readonly [
-  typeof THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY,
-  string,
+export type AppMarkdownPreviewQueryKey = readonly [
+  typeof APP_MARKDOWN_PREVIEW_QUERY_KEY,
   string,
   string | null | undefined,
 ];
-export type ThreadAppMarkdownPreviewQueryKeyPrefix = readonly [
-  typeof THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY,
-  string,
+export type AppMarkdownPreviewQueryKeyPrefix = readonly [
+  typeof APP_MARKDOWN_PREVIEW_QUERY_KEY,
 ];
 export type ThreadHostFilePreviewQueryKey = readonly [
   typeof THREAD_HOST_FILE_PREVIEW_QUERY_KEY,
@@ -670,47 +656,39 @@ export function threadStorageFilePreviewQueryKeyPrefix(
   return [THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY, threadId];
 }
 
-export function allThreadAppsQueryKeyPrefix(): AllThreadAppsQueryKeyPrefix {
-  return [THREAD_APPS_QUERY_KEY];
+export function allAppsQueryKeyPrefix(): AllAppsQueryKeyPrefix {
+  return [APPS_QUERY_KEY];
 }
 
-export function threadAppsQueryKey(threadId: string): ThreadAppsQueryKey {
-  return [THREAD_APPS_QUERY_KEY, threadId];
+export function appsQueryKey(): AppsQueryKey {
+  return [APPS_QUERY_KEY];
 }
 
-export function allThreadAppQueryKeyPrefix(): AllThreadAppQueryKeyPrefix {
-  return [THREAD_APP_QUERY_KEY];
+export function allAppQueryKeyPrefix(): AllAppQueryKeyPrefix {
+  return [APP_QUERY_KEY];
 }
 
-export function threadAppQueryKey(
-  threadId: string,
-  appId: string,
-): ThreadAppQueryKey {
-  return [THREAD_APP_QUERY_KEY, threadId, appId];
+export function appQueryKey(applicationId: string): AppQueryKey {
+  return [APP_QUERY_KEY, applicationId];
 }
 
-export function threadAppQueryKeyPrefix(
-  threadId: string,
-): ThreadAppQueryKeyPrefix {
-  return [THREAD_APP_QUERY_KEY, threadId];
+export function appQueryKeyPrefix(): AppQueryKeyPrefix {
+  return [APP_QUERY_KEY];
 }
 
-export function allThreadAppMarkdownPreviewQueryKeyPrefix(): AllThreadAppMarkdownPreviewQueryKeyPrefix {
-  return [THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY];
+export function allAppMarkdownPreviewQueryKeyPrefix(): AllAppMarkdownPreviewQueryKeyPrefix {
+  return [APP_MARKDOWN_PREVIEW_QUERY_KEY];
 }
 
-export function threadAppMarkdownPreviewQueryKey(
-  threadId: string,
-  appId: string,
+export function appMarkdownPreviewQueryKey(
+  applicationId: string,
   entryPath: string | null | undefined,
-): ThreadAppMarkdownPreviewQueryKey {
-  return [THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY, threadId, appId, entryPath];
+): AppMarkdownPreviewQueryKey {
+  return [APP_MARKDOWN_PREVIEW_QUERY_KEY, applicationId, entryPath];
 }
 
-export function threadAppMarkdownPreviewQueryKeyPrefix(
-  threadId: string,
-): ThreadAppMarkdownPreviewQueryKeyPrefix {
-  return [THREAD_APP_MARKDOWN_PREVIEW_QUERY_KEY, threadId];
+export function appMarkdownPreviewQueryKeyPrefix(): AppMarkdownPreviewQueryKeyPrefix {
+  return [APP_MARKDOWN_PREVIEW_QUERY_KEY];
 }
 
 export function threadHostFilePreviewQueryKey(

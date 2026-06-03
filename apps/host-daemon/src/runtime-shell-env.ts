@@ -10,6 +10,7 @@ export interface ResolveLocalBbExecutableDirectoryOptions {
 }
 
 export interface PrepareRuntimeShellEnvOptions {
+  appsRootPath: string;
   bbExecutableDirectory: string;
   hostDaemonPort?: number;
   serverUrl: string;
@@ -97,6 +98,7 @@ export function prepareRuntimeShellEnv(
       options.bbExecutableDirectory,
       options.inheritedPath ?? process.env.PATH,
     ),
+    BB_APPS_ROOT: options.appsRootPath,
     BB_SERVER_URL: options.serverUrl,
   };
   assignIfDefined({

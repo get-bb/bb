@@ -1,16 +1,19 @@
 import path from "node:path";
 import {
   appDataPathSchema,
-  appIdSchema,
+  applicationIdSchema,
   type AppDataPath,
-  type AppId,
+  type ApplicationId,
 } from "@bb/domain";
 import { watchPathChanges } from "./watch-path.js";
 import { watchWorkspaceStatus } from "./watch-status.js";
 import type {
   HostWatcher,
+  ApplicationStorageObservedChange,
+  ApplicationDataWatchTarget,
   ThreadStorageObservedChange,
   ThreadStorageWatchTarget,
+  WatchApplicationStorageRootArgs,
   WatchThreadStorageRootArgs,
   WatchWorkspaceArgs,
 } from "./host-watcher-types.js";
@@ -25,21 +28,37 @@ interface ThreadStoragePath {
   threadId: string;
 }
 
-interface ThreadAppDataPath {
-  appId: AppId;
-  path: AppDataPath;
-  threadId: string;
+interface ApplicationStoragePathArgs {
+  appsRootPath: string;
+  changedPath: string;
 }
 
-interface ThreadAppDataRootPath {
-  appId: AppId;
-  threadId: string;
+interface ApplicationStoragePath {
+  applicationId: ApplicationId | null;
+  parts: string[];
+}
+
+interface ApplicationDataPath {
+  applicationId: ApplicationId;
+  path: AppDataPath;
+}
+
+interface ApplicationDataRootPath {
+  applicationId: ApplicationId;
 }
 
 interface CollectThreadStorageObservedChangesArgs {
   changedPaths: string[];
   threadStorageRootPath: string;
   resolveThreadTarget: (threadId: string) => ThreadStorageWatchTarget | null;
+}
+
+interface CollectApplicationStorageObservedChangesArgs {
+  appsRootPath: string;
+  changedPaths: string[];
+  resolveApplicationTarget: (
+    applicationId: ApplicationId,
+  ) => ApplicationDataWatchTarget | null;
 }
 
 function toThreadStoragePath(
@@ -67,41 +86,76 @@ function toThreadStoragePath(
   };
 }
 
-function isAppDataSubtreePath(path: ThreadStoragePath): boolean {
-  return path.parts[1] === "apps" && path.parts[3] === "data";
-}
-
-function toThreadAppDataPath(
-  path: ThreadStoragePath,
-): ThreadAppDataPath | null {
-  const rootPath = toThreadAppDataRootPath(path);
-  if (!rootPath || path.parts.length < 5) {
+function toApplicationStoragePath(
+  args: ApplicationStoragePathArgs,
+): ApplicationStoragePath | null {
+  const relativePath = path.relative(args.appsRootPath, args.changedPath);
+  if (
+    relativePath.length === 0 ||
+    relativePath.startsWith("..") ||
+    path.isAbsolute(relativePath)
+  ) {
     return null;
   }
-  const dataPath = appDataPathSchema.safeParse(path.parts.slice(4).join("/"));
+  const parts = relativePath.split(path.sep).filter(Boolean);
+  const rawApplicationId = parts[0];
+  if (!rawApplicationId) {
+    return {
+      applicationId: null,
+      parts,
+    };
+  }
+  const parsed = applicationIdSchema.safeParse(rawApplicationId);
+  return {
+    applicationId: parsed.success ? parsed.data : null,
+    parts,
+  };
+}
+
+function isApplicationDataSubtreePath(path: ApplicationStoragePath): boolean {
+  return path.parts[1] === "data";
+}
+
+function isApplicationManifestPath(path: ApplicationStoragePath): boolean {
+  return path.parts.length === 2 && path.parts[1] === "manifest.json";
+}
+
+function isApplicationFolderPath(path: ApplicationStoragePath): boolean {
+  return path.parts.length === 1;
+}
+
+function isIgnoredApplicationStorageEntry(path: ApplicationStoragePath): boolean {
+  const firstPart = path.parts[0] ?? "";
+  return (
+    firstPart.startsWith(".tmp-app_") || firstPart.startsWith(".delete-app_")
+  );
+}
+
+function toApplicationDataPath(
+  path: ApplicationStoragePath,
+): ApplicationDataPath | null {
+  const rootPath = toApplicationDataRootPath(path);
+  if (!rootPath || path.parts.length < 3) {
+    return null;
+  }
+  const dataPath = appDataPathSchema.safeParse(path.parts.slice(2).join("/"));
   if (!dataPath.success) {
     return null;
   }
   return {
-    appId: rootPath.appId,
-    threadId: path.threadId,
+    applicationId: rootPath.applicationId,
     path: dataPath.data,
   };
 }
 
-function toThreadAppDataRootPath(
-  path: ThreadStoragePath,
-): ThreadAppDataRootPath | null {
-  if (!isAppDataSubtreePath(path)) {
-    return null;
-  }
-  const appId = appIdSchema.safeParse(path.parts[2]);
-  if (!appId.success) {
+function toApplicationDataRootPath(
+  path: ApplicationStoragePath,
+): ApplicationDataRootPath | null {
+  if (!path.applicationId || !isApplicationDataSubtreePath(path)) {
     return null;
   }
   return {
-    appId: appId.data,
-    threadId: path.threadId,
+    applicationId: path.applicationId,
   };
 }
 
@@ -109,8 +163,6 @@ export function collectThreadStorageObservedChanges(
   args: CollectThreadStorageObservedChangesArgs,
 ): ThreadStorageObservedChange[] {
   const storageChanges = new Map<string, ThreadStorageWatchTarget>();
-  const appDataChanges = new Map<string, ThreadStorageObservedChange>();
-  const appDataResyncs = new Map<string, ThreadStorageObservedChange>();
   for (const changedPath of args.changedPaths) {
     const storagePath = toThreadStoragePath({
       changedPath,
@@ -123,47 +175,71 @@ export function collectThreadStorageObservedChanges(
     if (!target) {
       continue;
     }
-    if (isAppDataSubtreePath(storagePath)) {
-      const appDataRootPath = toThreadAppDataRootPath(storagePath);
-      const appDataPath = toThreadAppDataPath(storagePath);
-      if (appDataPath) {
-        appDataChanges.set(
-          `${target.environmentId}:${target.threadId}:${appDataPath.appId}:${appDataPath.path}`,
-          {
-            kind: "thread-app-data-changed",
-            appId: appDataPath.appId,
-            environmentId: target.environmentId,
-            path: appDataPath.path,
-            threadId: target.threadId,
-          },
-        );
-      } else if (appDataRootPath) {
-        storageChanges.set(
-          `${target.environmentId}:${target.threadId}`,
-          target,
-        );
-        appDataResyncs.set(
-          `${target.environmentId}:${target.threadId}:${appDataRootPath.appId}`,
-          {
-            kind: "thread-app-data-resync",
-            appId: appDataRootPath.appId,
-            environmentId: target.environmentId,
-            threadId: target.threadId,
-          },
-        );
-      }
-      continue;
-    }
     storageChanges.set(`${target.environmentId}:${target.threadId}`, target);
   }
 
-  const observedChanges: ThreadStorageObservedChange[] = [];
-  for (const target of storageChanges.values()) {
-    observedChanges.push({
+  return Array.from(storageChanges.values()).map((target) => ({
       kind: "thread-storage-changed",
       environmentId: target.environmentId,
       threadId: target.threadId,
+    }));
+}
+
+export function collectApplicationStorageObservedChanges(
+  args: CollectApplicationStorageObservedChangesArgs,
+): ApplicationStorageObservedChange[] {
+  let targetsChanged = false;
+  const appDataChanges = new Map<string, ApplicationStorageObservedChange>();
+  const appDataResyncs = new Map<string, ApplicationStorageObservedChange>();
+
+  for (const changedPath of args.changedPaths) {
+    const storagePath = toApplicationStoragePath({
+      changedPath,
+      appsRootPath: args.appsRootPath,
     });
+    if (!storagePath || isIgnoredApplicationStorageEntry(storagePath)) {
+      continue;
+    }
+    if (
+      storagePath.applicationId === null ||
+      isApplicationFolderPath(storagePath) ||
+      isApplicationManifestPath(storagePath)
+    ) {
+      targetsChanged = true;
+      continue;
+    }
+    if (isApplicationDataSubtreePath(storagePath)) {
+      const appDataRootPath = toApplicationDataRootPath(storagePath);
+      const appDataPath = toApplicationDataPath(storagePath);
+      if (appDataPath) {
+        const target = args.resolveApplicationTarget(
+          appDataPath.applicationId,
+        );
+        if (!target) {
+          continue;
+        }
+        appDataChanges.set(
+          `${appDataPath.applicationId}:${appDataPath.path}`,
+          {
+            kind: "application-data-changed",
+            applicationId: appDataPath.applicationId,
+            appDataPath: target.appDataPath,
+            path: appDataPath.path,
+          },
+        );
+      } else if (appDataRootPath) {
+        appDataResyncs.set(appDataRootPath.applicationId, {
+          kind: "application-data-resync",
+          applicationId: appDataRootPath.applicationId,
+        });
+      }
+      continue;
+    }
+  }
+
+  const observedChanges: ApplicationStorageObservedChange[] = [];
+  if (targetsChanged) {
+    observedChanges.push({ kind: "application-storage-targets-changed" });
   }
   observedChanges.push(...appDataChanges.values());
   observedChanges.push(...appDataResyncs.values());
@@ -215,9 +291,34 @@ function watchThreadStorageRoot(
   });
 }
 
+function watchApplicationStorageRoot(
+  args: WatchApplicationStorageRootArgs,
+): () => Promise<void> {
+  return watchPathChanges(args.appsRootPath, {
+    onChange: ({ changedPaths }) => {
+      const events = collectApplicationStorageObservedChanges({
+        changedPaths,
+        appsRootPath: args.appsRootPath,
+        resolveApplicationTarget: args.resolveApplicationTarget,
+      });
+      for (const event of events) {
+        args.onChange(event);
+      }
+    },
+    onWatchError: (error) => {
+      args.onWatchError({
+        kind: "application-storage-watch-error",
+        rootPath: error.rootPath,
+        message: error.message,
+      });
+    },
+  });
+}
+
 export function createParcelHostWatcher(): HostWatcher {
   return {
     watchWorkspace,
     watchThreadStorageRoot,
+    watchApplicationStorageRoot,
   };
 }

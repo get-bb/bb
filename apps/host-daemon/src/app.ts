@@ -1,4 +1,3 @@
-import path from "node:path";
 import { CommandRouter } from "./command-router.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
@@ -34,6 +33,10 @@ import {
 import { createReplayCaptureService } from "@bb/replay-capture/writer";
 import { createServerClient } from "./server-client.js";
 import { AppDataChangeReporter } from "./app-data-change-reporter.js";
+import {
+  ensureAppsRootPath,
+  listApplicationDataTargetsFromRoot,
+} from "./app-data-files.js";
 import {
   ServerConnection,
   type CreateReconnectingWebSocket,
@@ -325,6 +328,7 @@ export async function createHostDaemonApp(
       ? { env: { BB_THREAD_STORAGE: options.threadStorageRootPath } }
       : {},
   );
+  const appsRootPath = await ensureAppsRootPath(options.dataDir);
   const sessionState: SessionState = {
     value: null,
   };
@@ -370,6 +374,12 @@ export async function createHostDaemonApp(
     postAppDataChange: (payload) => serverClient.postAppDataChange(payload),
     postAppDataResync: (payload) => serverClient.postAppDataResync(payload),
   });
+
+  async function refreshTrackedApplicationDataTargets(): Promise<void> {
+    const targets = await listApplicationDataTargetsFromRoot({ appsRootPath });
+    runtimeManager.replaceTrackedApplicationDataTargets(targets);
+    await appDataChangeReporter.replaceTrackedApplications({ targets });
+  }
 
   function buildInteractiveInterruptKey(
     request: PendingInteractiveInterruptRequest,
@@ -495,6 +505,7 @@ export async function createHostDaemonApp(
     createRuntime: options.createRuntime,
     hostWatcher: options.hostWatcher,
     shellEnv: options.runtimeShellEnv,
+    appsRootPath,
     onCapture: (entry) => {
       replayCapture?.recordRuntimeCaptureEntry(entry);
     },
@@ -531,11 +542,31 @@ export async function createHostDaemonApp(
         change: "thread-storage-changed",
       });
     },
-    onThreadAppDataChanged: (change) => {
+    onApplicationStorageTargetsChanged: () => {
+      void refreshTrackedApplicationDataTargets().catch((error) => {
+        options.logger.warn(
+          {
+            appsRootPath,
+            ...runtimeErrorLogFields(error),
+          },
+          "Failed to refresh tracked app data targets",
+        );
+      });
+    },
+    onApplicationDataChanged: (change) => {
       void appDataChangeReporter.observe(change);
     },
-    onThreadAppDataResync: (change) => {
+    onApplicationDataResync: (change) => {
       void appDataChangeReporter.requestResync(change);
+    },
+    onApplicationStorageWatchError: ({ error }) => {
+      options.logger.warn(
+        {
+          rootPath: error.rootPath,
+          watchError: error.message,
+        },
+        "Application storage watch unavailable; retrying in background",
+      );
     },
     onThreadStorageWatchError: ({ error }) => {
       options.logger.warn(
@@ -742,11 +773,11 @@ export async function createHostDaemonApp(
       runtimeManager.replaceTrackedThreadStorageTargets(
         session.trackedThreadTargets,
       );
-      void appDataChangeReporter.replaceTrackedThreads({
-        targets: session.trackedThreadTargets.map((target) => ({
-          threadId: target.threadId,
-          threadStoragePath: path.join(threadStorageRootPath, target.threadId),
-        })),
+      runtimeManager.replaceTrackedApplicationDataTargets(
+        session.trackedApplicationDataTargets,
+      );
+      void appDataChangeReporter.replaceTrackedApplications({
+        targets: session.trackedApplicationDataTargets,
       });
       void eventBuffer.flush().catch((error) => {
         options.logger.warn(

@@ -100,8 +100,7 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("mcp__bb-bridge__message_user");
     expect(rendered).toContain("bb thread spawn");
     expect(rendered).toContain("Simple delegation");
-    expect(rendered).toContain("`apps/status/`");
-    expect(rendered).toContain("apps/status/data/state.json");
+    expect(rendered).toContain("Apps are global within the local host data dir");
     expect(rendered).toContain("bb guide app");
     expect(rendered).toContain("bb guide async");
     expect(rendered).toContain("bb guide manager-templates");
@@ -186,12 +185,10 @@ describe("@bb/templates", () => {
     const rendered = renderTemplate("bbGuideApp", {});
 
     expect(rendered).toContain("Apps");
-    expect(rendered).toContain("apps/status/data/state.json");
+    expect(rendered).toContain("<dataDir>/apps/<applicationId>/");
     expect(rendered).toContain("window.bb.data");
-    expect(rendered).toContain("bb app list --self");
-    expect(rendered).toContain(
-      "Do not start a web server, localhost dev server, npm",
-    );
+    expect(rendered).toContain("bb app current --json");
+    expect(rendered).toContain("Do not start a web server");
     expect(rendered).toContain(
       '<script src="https://cdn.tailwindcss.com"></script>',
     );

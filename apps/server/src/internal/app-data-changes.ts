@@ -8,44 +8,8 @@ import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
 import {
-  requireEnvironment,
-  requirePublicThread,
-} from "../services/lib/entity-lookup.js";
-import {
   requireAuthenticatedDaemonSession,
-  type RequireAuthenticatedDaemonSessionArgs,
 } from "./session-state.js";
-
-interface RequireSessionOwnedThreadArgs {
-  context: RequireAuthenticatedDaemonSessionArgs["context"];
-  deps: AppDeps;
-  sessionId: string;
-  threadId: string;
-}
-
-function requireSessionOwnedThread(args: RequireSessionOwnedThreadArgs): void {
-  const session = requireAuthenticatedDaemonSession({
-    context: args.context,
-    db: args.deps.db,
-    sessionId: args.sessionId,
-  });
-  const thread = requirePublicThread(args.deps.db, args.threadId);
-  if (!thread.environmentId) {
-    throw new ApiError(
-      403,
-      "invalid_request",
-      "Thread does not belong to an environment",
-    );
-  }
-  const environment = requireEnvironment(args.deps.db, thread.environmentId);
-  if (environment.hostId !== session.hostId) {
-    throw new ApiError(
-      403,
-      "invalid_request",
-      "Thread does not belong to the session host",
-    );
-  }
-}
 
 export function registerInternalAppDataChangeRoutes(
   app: Hono,
@@ -59,17 +23,15 @@ export function registerInternalAppDataChangeRoutes(
     "/session/app-data-change",
     hostDaemonAppDataChangeRequestSchema,
     async (context, payload) => {
-      requireSessionOwnedThread({
+      requireAuthenticatedDaemonSession({
         context,
-        deps,
+        db: deps.db,
         sessionId: payload.sessionId,
-        threadId: payload.threadId,
       });
 
-      deps.hub.notifyThreadAppData({
+      deps.hub.notifyAppData({
         type: "app-data.changed",
-        threadId: payload.threadId,
-        appId: payload.appId,
+        applicationId: payload.applicationId,
         path: payload.path,
         value: payload.value,
         deleted: payload.deleted,
@@ -83,17 +45,15 @@ export function registerInternalAppDataChangeRoutes(
     "/session/app-data-resync",
     hostDaemonAppDataResyncRequestSchema,
     async (context, payload) => {
-      requireSessionOwnedThread({
+      requireAuthenticatedDaemonSession({
         context,
-        deps,
+        db: deps.db,
         sessionId: payload.sessionId,
-        threadId: payload.threadId,
       });
 
-      deps.hub.notifyThreadAppData({
+      deps.hub.notifyAppData({
         type: "app-data.resync",
-        threadId: payload.threadId,
-        appId: payload.appId,
+        applicationId: payload.applicationId,
       });
       return context.json({ ok: true });
     },

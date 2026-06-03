@@ -26,8 +26,8 @@ describe("FilePreview", () => {
         state={{
           kind: "iframe",
           sandbox: null,
-          title: "Status",
-          url: "/api/v1/threads/thr_1/apps/status/",
+          title: "Review Board",
+          url: "/api/v1/apps/app_review_board/?targetThreadId=thr_1",
         }}
       />,
     );
@@ -54,13 +54,13 @@ describe("FilePreview", () => {
         state={{
           kind: "iframe",
           sandbox: null,
-          title: "Status",
-          url: "/api/v1/threads/thr_1/apps/status/",
+          title: "Review Board",
+          url: "/api/v1/apps/app_review_board/?targetThreadId=thr_1",
         }}
       />,
     );
 
-    fireEvent.load(screen.getByTitle("Status"));
+    fireEvent.load(screen.getByTitle("Review Board"));
     act(() => {
       vi.advanceTimersByTime(160);
     });

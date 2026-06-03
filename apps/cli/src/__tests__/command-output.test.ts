@@ -445,9 +445,10 @@ describe("CLI command output contracts", () => {
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output.trim().length).toBeGreaterThan(0);
     expect(output).toContain("Apps");
-    expect(output).toContain("apps/status/data/state.json");
+    expect(output).toContain("<dataDir>/apps/<applicationId>/");
     expect(output).toContain("window.bb.data");
-    expect(output).toContain("bb app list --self");
+    expect(output).toContain("bb app current --json");
+    expect(output).toContain("Do not start a web server");
   });
 
   it("bb guide unknown chapter lists styling in available chapters", async () => {
@@ -1151,23 +1152,22 @@ describe("CLI command output contracts", () => {
   });
 
   it("bb app list renders resolved app summaries", async () => {
-    vi.stubEnv("BB_THREAD_ID", "thr_current");
     const apps = [
       {
-        id: "status",
-        name: "Status",
+        applicationId: "app_status",
+        name: "Project Status",
         entry: { path: "index.html", kind: "html" },
         capabilities: ["data", "message"],
         icon: { kind: "builtin", name: "ListTodo" },
       },
       {
-        id: "demo",
+        applicationId: "app_demo",
         name: "Demo",
         entry: { path: "readme.md", kind: "md" },
         capabilities: [],
         icon: {
           kind: "logo",
-          url: "/api/v1/threads/thr_current/apps/demo/icon",
+          url: "/api/v1/apps/app_demo/icon",
         },
       },
     ];
@@ -1176,12 +1176,8 @@ describe("CLI command output contracts", () => {
       asServerClient({
         api: {
           v1: {
-            threads: {
-              ":id": {
-                apps: {
-                  $get: get,
-                },
-              },
+            apps: {
+              $get: get,
             },
           },
         },
@@ -1192,32 +1188,30 @@ describe("CLI command output contracts", () => {
       registerAppCommands(program, () => "http://server"),
     );
 
-    expect(get).toHaveBeenCalledWith({ param: { id: "thr_current" } });
+    expect(get).toHaveBeenCalledWith();
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "ID                        Name                      Entry                     Capabilities              Icon\n------------------------  ------------------------  ------------------------  ------------------------  ------------------\nstatus                    Status                    html:index.html           data,message              ListTodo\n------------------------  ------------------------  ------------------------  ------------------------  ------------------\ndemo                      Demo                      md:readme.md              -                         logo",
+      "Application ID                    Name                      Entry                     Capabilities              Icon\n--------------------------------  ------------------------  ------------------------  ------------------------  ------------------\napp_status                        Project Status            html:index.html           data,message              ListTodo\n--------------------------------  ------------------------  ------------------------  ------------------------  ------------------\napp_demo                          Demo                      md:readme.md              -                         logo",
     ]);
   });
 
-  it("bb app new targets the current thread and posts the selected template", async () => {
-    vi.stubEnv("BB_THREAD_ID", "thr_current");
+  it("bb app new creates a global app by display name", async () => {
     const created = {
-      id: "demo",
+      applicationId: "app_demo",
       name: "Demo",
       entry: { path: "index.html", kind: "html" },
       capabilities: ["data", "message"],
       icon: { kind: "builtin", name: "ListTodo" },
+      appsRootPath: "/tmp/bb-data/apps",
+      appRootPath: "/tmp/bb-data/apps/app_demo",
+      appDataPath: "/tmp/bb-data/apps/app_demo/data",
     };
     const post = vi.fn(async () => created);
     createClientMock.mockReturnValue(
       asServerClient({
         api: {
           v1: {
-            threads: {
-              ":id": {
-                apps: {
-                  $post: post,
-                },
-              },
+            apps: {
+              $post: post,
             },
           },
         },
@@ -1225,57 +1219,40 @@ describe("CLI command output contracts", () => {
     );
 
     await runCommand(
-      ["app", "new", "demo", "--template", "status"],
+      ["app", "new", "--name", "Demo"],
       (program) => registerAppCommands(program, () => "http://server"),
     );
 
     expect(post).toHaveBeenCalledWith({
-      param: { id: "thr_current" },
-      json: { id: "demo", name: "demo", template: "status" },
+      json: { name: "Demo" },
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "App created: demo",
-      "  Name:         Demo",
-      "  Entry:        html:index.html",
-      "  Capabilities: data,message",
-      "  Icon:         ListTodo",
+      "Application ID: app_demo",
+      "  Name:          Demo",
+      "  Entry:         html:index.html",
+      "  Capabilities:  data,message",
+      "  Icon:          ListTodo",
+      "  App root:      /tmp/bb-data/apps/app_demo",
+      "  App data path: /tmp/bb-data/apps/app_demo/data",
     ]);
   });
 
-  it("bb app new derives a valid id from a display name", async () => {
-    vi.stubEnv("BB_THREAD_ID", "thr_current");
-    const created = {
-      id: "my-app",
-      name: "My App",
-      entry: { path: "index.html", kind: "html" },
-      capabilities: ["data"],
-      icon: { kind: "builtin", name: "GridView" },
-    };
-    const post = vi.fn(async () => created);
-    createClientMock.mockReturnValue(
-      asServerClient({
-        api: {
-          v1: {
-            threads: {
-              ":id": {
-                apps: {
-                  $post: post,
-                },
-              },
-            },
-          },
-        },
-      }),
-    );
+  it("bb app current renders runtime app paths", async () => {
+    vi.stubEnv("BB_APP_ID", "app_current");
+    vi.stubEnv("BB_APP_ROOT", "/tmp/bb-data/apps/app_current");
+    vi.stubEnv("BB_APP_DATA_PATH", "/tmp/bb-data/apps/app_current/data");
+    vi.stubEnv("BB_APPS_ROOT", "/tmp/bb-data/apps");
 
-    await runCommand(["app", "new", "My App"], (program) =>
+    await runCommand(["app", "current"], (program) =>
       registerAppCommands(program, () => "http://server"),
     );
 
-    expect(post).toHaveBeenCalledWith({
-      param: { id: "thr_current" },
-      json: { id: "my-app", name: "My App", template: "blank" },
-    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Application ID: app_current",
+      "  App root:      /tmp/bb-data/apps/app_current",
+      "  App data path: /tmp/bb-data/apps/app_current/data",
+      "  Apps root:     /tmp/bb-data/apps",
+    ]);
   });
 
   it("bb manager status includes managed child threads", async () => {

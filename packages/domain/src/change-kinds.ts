@@ -7,6 +7,7 @@ export const REALTIME_ENTITIES = [
   "environment",
   "host",
   "system",
+  "app",
 ] as const;
 export type RealtimeEntity = (typeof REALTIME_ENTITIES)[number];
 export const realtimeEntitySchema = z.enum(REALTIME_ENTITIES);

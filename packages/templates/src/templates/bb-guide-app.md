@@ -1,29 +1,29 @@
 ---
 kind: instruction
 title: bb Guide - Apps
-summary: Thread app storage, browser API, CLI, and styling reference.
-intent: Explain the only supported way to build manager-visible dashboards and interactive thread apps.
-editingNotes: Keep this aligned with routes/threads/apps.ts, app-client-script.ts, app CLI commands, and the default status app template.
+summary: Global app storage, browser API, CLI, and styling reference.
+intent: Explain how to build global bb apps and use app data, messaging, and runtime paths.
+editingNotes: Keep this aligned with routes/apps.ts, app-client-script.ts, and app CLI commands.
 ---
 Apps
 
-Apps are the supported way to build dashboards, control panels, and other
-interactive surfaces inside thread storage. A manager's primary status surface
-is the built-in `status` app. Keep that app current instead of creating legacy
-top-level status files.
+Apps are global within the local host data directory. They are the supported
+way to build dashboards, control panels, and other interactive surfaces that
+can open inside a thread panel.
 
-Important: a bb app is self-contained static HTML/CSS/JS/SVG. Put files under
-`apps/<id>/assets/`; bb serves the `entry` file directly from the flat app URL
-through the host daemon. Do not start a web server, localhost dev server, npm
-install, build step, bundler, or framework for a normal app. Inline CSS/JS,
-relative asset refs, and CDN resources such as Tailwind or fonts are fine.
+Important: a bb app is self-contained static HTML/CSS/JS/SVG. Put browser
+files under `<dataDir>/apps/<applicationId>/assets/`; bb serves the `entry`
+file directly from `/api/v1/apps/<applicationId>/`. Do not start a web server,
+localhost dev server, npm install, build step, bundler, or framework for a
+normal app. Inline CSS/JS, relative asset refs, and CDN resources such as
+Tailwind or fonts are fine.
 
 Storage layout:
 
 ```text
-$BB_THREAD_STORAGE/
+<dataDir>/
   apps/
-    status/
+    app_k9D2example/
       manifest.json
       assets/
         index.html
@@ -31,37 +31,40 @@ $BB_THREAD_STORAGE/
         state.json
 ```
 
-Each app is rooted at `apps/<id>/`. The manifest lives at
-`apps/<id>/manifest.json`, browser files live under `apps/<id>/assets/`, and
-durable JSON state lives under `apps/<id>/data/`. The `status` app should keep
-its primary shared state in `apps/status/data/state.json`.
+Each app is rooted at `<dataDir>/apps/<applicationId>/`. The manifest lives at
+`manifest.json`, browser files live under `assets/`, and durable JSON state
+lives under `data/`.
+
+The app exists only when the local filesystem contains a valid manifest at
+`<dataDir>/apps/<applicationId>/manifest.json`. `manifest.id` is the canonical
+application id: it must be opaque, path-safe, `app_`-prefixed, globally unique
+inside the data dir, and equal to the containing folder name. `manifest.name`
+is a human display name only. Display names are not identifiers and may repeat.
 
 Manifest:
 
 ```json
 {
   "manifestVersion": 1,
-  "id": "status",
-  "name": "Status",
+  "id": "app_k9D2example",
+  "name": "Review Board",
   "icon": "ListTodo",
   "entry": "index.html",
-  "contributions": ["thread.app"],
   "capabilities": ["data", "message"]
 }
 ```
 
-`id` uses letters, numbers, underscores, and hyphens. `entry` is relative to
-`assets/`. HTML entries load in an app iframe and receive the `window.bb`
-bridge according to `capabilities`; Markdown entries render as static documents
-and do not receive `window.bb`. `capabilities` controls which `window.bb`
-helpers are injected for HTML entries: `data` enables `window.bb.data`, and
-`message` enables `window.bb.message`.
+`entry` is relative to `assets/`. HTML entries load in an app iframe and receive
+the `window.bb` bridge according to `capabilities`; Markdown entries render as
+static documents and do not receive `window.bb`. `capabilities` controls which
+`window.bb` helpers are injected for HTML entries: `data` enables
+`window.bb.data`, and `message` enables `window.bb.message`.
 
-The served app URL is flat: `/api/v1/threads/<thread-id>/apps/<id>/<file>`
-maps to `apps/<id>/assets/<file>` on disk. HTML should use flat relative refs
-like `./index-abc.js`, not `./assets/index-abc.js`. If you are migrating an
-existing Vite build output, set `build.assetsDir = ""` so emitted files sit
-alongside `index.html`; new bb apps should stay plain static files.
+The served app URL is flat: `/api/v1/apps/<applicationId>/<entry>` maps to
+`<dataDir>/apps/<applicationId>/assets/<entry>` on disk. HTML should use flat
+relative refs like `./index-abc.js`, not `./assets/index-abc.js`. If you are
+migrating an existing Vite build output, set `build.assetsDir = ""` so emitted
+files sit alongside `index.html`; new bb apps should stay plain static files.
 
 The icon is optional and uses a built-in icon name. Icon resolution order is:
 
@@ -73,27 +76,48 @@ The icon is optional and uses a built-in icon name. Icon resolution order is:
 CLI:
 
 ```bash
-bb app list --self
-bb app new "Review Board" --id review-board --template blank --self
-bb app new "Status" --id status --template status --self
-bb app open status --self
-bb app rm review-board --self --yes
+bb app list
+bb app new --name "Review Board"
+bb app show app_k9D2example
+bb app data list app_k9D2example
+bb app data read app_k9D2example state.json
+bb app data write app_k9D2example state.json --file ./state.json
+bb app message app_k9D2example --target-thread thr_123 --json '"Please review the current blockers."'
+bb app delete app_k9D2example --yes
 ```
 
-Pass a thread id instead of `--self` to target another thread. `bb app open`
-prints the app URL. `--json` is available for scripts.
+`--json` is available for scripts. Commands accept application ids only, never
+display names. There is no host selector in v1; apps are local-host only.
+
+Inside an app-capable runtime, inspect the current app context:
+
+```bash
+bb app current --json
+```
+
+Outside a current-app runtime, this returns `current_app_unavailable`.
+
+Runtime paths:
+
+```bash
+echo "$BB_APPS_ROOT"          # <dataDir>/apps
+echo "$BB_APP_ID"             # current application id, when available
+echo "$BB_APP_ROOT"           # <dataDir>/apps/<applicationId>, when available
+echo "$BB_APP_DATA_PATH"      # <dataDir>/apps/<applicationId>/data, when available
+```
 
 Agent writes:
 
-Write app data directly to `apps/<id>/data/<path>` using a temp file in the
-same directory and then `mv` into place. Same-directory rename is atomic on
-macOS and Linux, and bb broadcasts the committed app-data change.
+When a runtime has `BB_APP_ROOT`, create or edit the app directly in that
+canonical folder. Write app data with a temp file in the same directory and
+then `mv` into place. Same-directory rename is atomic on macOS and Linux, and
+bb broadcasts the committed app-data change.
 
 ```bash
-dir="$BB_THREAD_STORAGE/apps/status/data"
+dir="$BB_APP_DATA_PATH"
 mkdir -p "$dir"
 tmp=$(mktemp "$dir/.state.XXXXXX")
-printf '%s\n' '{"tasks":[],"updatedAt":"2026-05-28T00:00:00Z"}' > "$tmp" &&
+printf '%s\n' '{"tasks":[],"updatedAt":"2026-06-02T00:00:00Z"}' > "$tmp" &&
   mv "$tmp" "$dir/state.json"
 ```
 
@@ -105,6 +129,7 @@ numbers, dots, underscores, and hyphens.
 Browser API:
 
 ```ts
+window.bb.applicationId
 window.bb.appId
 await window.bb.data?.read("state.json")
 await window.bb.data?.write("state.json", { tasks: [] })
@@ -122,10 +147,14 @@ when the changed path is below `prefix + "/"`; `""` matches all app data.
 Registering a listener immediately replays existing matching data, and bb
 replays again after reconnects or app-data resync hints. Later filesystem
 writes, browser writes, and deletes are delivered after that replay.
-`window.bb.message(text)` sends a normal follow-up message to the thread that
-owns the app.
 
-Minimal status app pattern:
+`window.bb.message(payload)` sends a normal follow-up message to the thread
+context that opened the app. Non-iframe callers must provide a target thread
+through the message API or CLI; without a target, bb returns
+`message_target_required`. App data remains global. Only message delivery is
+contextual.
+
+Minimal app pattern:
 
 ```html
 <main>
@@ -208,9 +237,8 @@ body {
 </style>
 ```
 
-Keep one canonical app for each concept. For manager progress, update the
-`status` app instead of creating parallel views. Use additional apps only when
-they are distinct tools or dashboards.
+Keep one canonical app for each concept. Use additional apps only when they are
+distinct tools or dashboards.
 
 Related guides:
 

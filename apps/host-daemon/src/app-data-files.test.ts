@@ -1,20 +1,73 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { listThreadAppDataFromRoot } from "./app-data-files.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { listApplicationDataTargetsFromRoot } from "./app-data-files.js";
+
+const tempDirs: string[] = [];
+
+async function makeTempDir(prefix: string): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
+
+afterEach(async () => {
+  await Promise.all(
+    tempDirs
+      .splice(0)
+      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
+  );
+});
 
 describe("app data files", () => {
-  it("treats a missing thread storage root as an empty snapshot", async () => {
-    const missingRoot = path.join(
-      os.tmpdir(),
-      `bb-missing-thread-storage-${randomUUID()}`,
-    );
+  it("treats a missing apps root as an empty target list", async () => {
+    const missingRoot = path.join(os.tmpdir(), `bb-missing-apps-${randomUUID()}`);
 
     await expect(
-      listThreadAppDataFromRoot({
-        rootPath: missingRoot,
+      listApplicationDataTargetsFromRoot({
+        appsRootPath: missingRoot,
       }),
-    ).resolves.toEqual({ appIds: [], entries: [] });
+    ).resolves.toEqual([]);
+  });
+
+  it("lists valid global application data targets", async () => {
+    const dataDir = await makeTempDir("bb-app-data-files-");
+    const appsRootPath = path.join(dataDir, "apps");
+    const applicationPath = path.join(appsRootPath, "app_valid");
+    await fs.mkdir(path.join(applicationPath, "data"), { recursive: true });
+    await fs.writeFile(
+      path.join(applicationPath, "manifest.json"),
+      JSON.stringify({
+        manifestVersion: 1,
+        id: "app_valid",
+        name: "Valid App",
+        entry: "index.html",
+      }),
+      "utf8",
+    );
+    await fs.mkdir(path.join(appsRootPath, "app_broken"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(appsRootPath, "app_broken", "manifest.json"),
+      JSON.stringify({
+        manifestVersion: 1,
+        id: "app_other",
+        name: "Broken App",
+      }),
+      "utf8",
+    );
+
+    const resolvedApplicationPath = await fs.realpath(applicationPath);
+    await expect(
+      listApplicationDataTargetsFromRoot({ appsRootPath }),
+    ).resolves.toEqual([
+      {
+        applicationId: "app_valid",
+        appDataPath: path.join(resolvedApplicationPath, "data"),
+      },
+    ]);
   });
 });

@@ -49,9 +49,9 @@ import {
   threadStorageFilesQueryKey,
   threadStoragePathsQueryKey,
   threadStorageFilePreviewQueryKey,
-  threadAppMarkdownPreviewQueryKey,
-  threadAppQueryKey,
-  threadAppsQueryKey,
+  appMarkdownPreviewQueryKey,
+  appQueryKey,
+  appsQueryKey,
   threadHostFilePreviewQueryKey,
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
@@ -528,70 +528,51 @@ export function useThreadStorageFilePreview(
 }
 
 /**
- * Thread apps rarely change within a session and are read from both the sidebar
- * (a query per manager row) and the thread detail view. A shared default stale
- * window lets navigation reuse a recent sidebar fetch instead of refetching on
- * detail mount; callers can still override `staleTime` explicitly.
+ * Apps rarely change within a session and are read from both the sidebar and
+ * thread detail view. A shared default stale window lets navigation reuse a
+ * recent fetch instead of refetching on detail mount; callers can still
+ * override `staleTime` explicitly.
  */
-const THREAD_APPS_STALE_TIME_MS = 30_000;
+const APPS_STALE_TIME_MS = 30_000;
 
-export function useThreadApps(id: string, options?: QueryOptions) {
+export function useApps(options?: QueryOptions) {
   return useQuery<AppSummary[]>({
-    queryKey: threadAppsQueryKey(id),
-    queryFn: ({ signal }) =>
-      api.listThreadApps(requireThreadId(id, "useThreadApps"), signal),
-    enabled: (options?.enabled ?? true) && Boolean(id),
+    queryKey: appsQueryKey(),
+    queryFn: ({ signal }) => api.listApps(signal),
+    enabled: options?.enabled ?? true,
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,
-    staleTime: options?.staleTime ?? THREAD_APPS_STALE_TIME_MS,
+    staleTime: options?.staleTime ?? APPS_STALE_TIME_MS,
   });
 }
 
-export function useThreadApp(
-  id: string,
-  appId: string | null | undefined,
+export function useApp(
+  applicationId: string | null | undefined,
   options?: QueryOptions,
 ) {
-  const queryClient = useQueryClient();
-
   return useQuery<AppDetail>({
-    queryKey: threadAppQueryKey(id, appId ?? ""),
+    queryKey: appQueryKey(applicationId ?? ""),
     queryFn: ({ signal }) =>
-      api.getThreadApp(
-        requireThreadId(id, "useThreadApp"),
-        appId ?? "",
-        signal,
-      ),
-    enabled: (options?.enabled ?? true) && Boolean(id) && Boolean(appId),
+      api.getApp(applicationId ?? "", signal),
+    enabled: (options?.enabled ?? true) && Boolean(applicationId),
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,
-    placeholderData: () =>
-      queryClient
-        .getQueryData<AppSummary[]>(threadAppsQueryKey(id))
-        ?.find((app) => app.id === appId),
     staleTime: options?.staleTime,
   });
 }
 
-export function useThreadAppMarkdownPreview(
-  id: string,
-  appId: string | null | undefined,
+export function useAppMarkdownPreview(
+  applicationId: string | null | undefined,
   entryPath: string | null | undefined,
   options?: QueryOptions,
 ) {
   return useQuery<FilePreview>({
-    queryKey: threadAppMarkdownPreviewQueryKey(id, appId ?? "", entryPath),
+    queryKey: appMarkdownPreviewQueryKey(applicationId ?? "", entryPath),
     queryFn: ({ signal }) =>
-      api.getThreadAppMarkdownPreview(
-        requireThreadId(id, "useThreadAppMarkdownPreview"),
-        appId ?? "",
-        entryPath ?? "",
-        signal,
-      ),
+      api.getAppMarkdownPreview(applicationId ?? "", entryPath ?? "", signal),
     enabled:
       (options?.enabled ?? true) &&
-      Boolean(id) &&
-      Boolean(appId) &&
+      Boolean(applicationId) &&
       Boolean(entryPath),
     refetchOnWindowFocus: false,
     staleTime: options?.staleTime,

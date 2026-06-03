@@ -8,6 +8,7 @@ import type { ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
   HostWatcher,
+  WatchApplicationStorageRootArgs,
   ThreadStorageWatchError,
   WatchThreadStorageRootArgs,
   WatchWorkspaceArgs,
@@ -52,6 +53,9 @@ type WatchWorkspaceImplementation = (
 ) => StopWatchingStatus;
 type WatchThreadStorageRootImplementation = (
   args: WatchThreadStorageRootArgs,
+) => StopWatchingPathChanges;
+type WatchApplicationStorageRootImplementation = (
+  args: WatchApplicationStorageRootArgs,
 ) => StopWatchingPathChanges;
 interface RunGitOptions {
   cwd: string;
@@ -202,6 +206,7 @@ function createFakeWorkspace(path: string) {
 
 function createFakeHostWatcher(
   args: {
+    watchApplicationStorageRootImplementation?: WatchApplicationStorageRootImplementation;
     watchThreadStorageRootImplementation?: WatchThreadStorageRootImplementation;
     watchWorkspaceImplementation?: WatchWorkspaceImplementation;
   } = {},
@@ -212,13 +217,20 @@ function createFakeHostWatcher(
   const watchThreadStorageRoot = vi.fn<WatchThreadStorageRootImplementation>(
     args.watchThreadStorageRootImplementation ?? ((_args) => () => undefined),
   );
+  const watchApplicationStorageRoot =
+    vi.fn<WatchApplicationStorageRootImplementation>(
+      args.watchApplicationStorageRootImplementation ??
+        ((_args) => () => undefined),
+    );
   const hostWatcher = {
+    watchApplicationStorageRoot,
     watchWorkspace,
     watchThreadStorageRoot,
   } satisfies HostWatcher;
 
   return {
     hostWatcher,
+    watchApplicationStorageRoot,
     watchThreadStorageRoot,
     watchWorkspace,
   };
@@ -1086,15 +1098,11 @@ describe("RuntimeManager", () => {
       },
     });
     const onThreadStorageChanged = vi.fn();
-    const onThreadAppDataChanged = vi.fn();
-    const onThreadAppDataResync = vi.fn();
     const manager = new RuntimeManager({
       hostWatcher,
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-storage"),
       createRuntime: vi.fn(() => createFakeRuntime()),
       onThreadStorageChanged,
-      onThreadAppDataChanged,
-      onThreadAppDataResync,
       threadStorageRootPath: "/tmp/bb-data/thread-storage",
     });
 
@@ -1115,20 +1123,6 @@ describe("RuntimeManager", () => {
       environmentId: "env-storage",
       threadId: "thread-2",
     });
-    watchThreadStorageRootArgs?.onChange({
-      kind: "thread-app-data-changed",
-      appId: "status",
-      environmentId: "env-storage",
-      path: "state.json",
-      threadId: "thread-1",
-    });
-    watchThreadStorageRootArgs?.onChange({
-      kind: "thread-app-data-resync",
-      appId: "status",
-      environmentId: "env-storage",
-      threadId: "thread-1",
-    });
-
     expect(watchThreadStorageRoot).toHaveBeenCalledTimes(1);
     expect(watchThreadStorageRoot).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1144,22 +1138,82 @@ describe("RuntimeManager", () => {
       threadId: "thread-2",
     });
     expect(onThreadStorageChanged).toHaveBeenCalledTimes(2);
-    expect(onThreadAppDataChanged).toHaveBeenCalledWith({
-      appId: "status",
-      environmentId: "env-storage",
-      path: "state.json",
-      threadId: "thread-1",
-      threadStoragePath: "/tmp/bb-data/thread-storage/thread-1",
-    });
-    expect(onThreadAppDataResync).toHaveBeenCalledWith({
-      appId: "status",
-      environmentId: "env-storage",
-      threadId: "thread-1",
-      threadStoragePath: "/tmp/bb-data/thread-storage/thread-1",
-    });
     expect(stopWatchingPathChanges).not.toHaveBeenCalled();
 
     await manager.destroyEnvironment("env-storage");
+
+    expect(stopWatchingPathChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it("installs one shared application storage root watcher for app data", async () => {
+    const stopWatchingPathChanges = vi.fn(() => undefined);
+    let watchApplicationStorageRootArgs:
+      | WatchApplicationStorageRootArgs
+      | undefined;
+    const { hostWatcher, watchApplicationStorageRoot } = createFakeHostWatcher({
+      watchApplicationStorageRootImplementation: (args) => {
+        watchApplicationStorageRootArgs = args;
+        return stopWatchingPathChanges;
+      },
+    });
+    const onApplicationStorageTargetsChanged = vi.fn();
+    const onApplicationDataChanged = vi.fn();
+    const onApplicationDataResync = vi.fn();
+    const manager = new RuntimeManager({
+      appsRootPath: "/tmp/bb-data/apps",
+      hostWatcher,
+      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-storage"),
+      createRuntime: vi.fn(() => createFakeRuntime()),
+      onApplicationStorageTargetsChanged,
+      onApplicationDataChanged,
+      onApplicationDataResync,
+    });
+
+    manager.replaceTrackedApplicationDataTargets([
+      {
+        applicationId: "app_status",
+        appDataPath: "/tmp/bb-data/apps/app_status/data",
+      },
+    ]);
+
+    expect(watchApplicationStorageRoot).toHaveBeenCalledTimes(1);
+    expect(watchApplicationStorageRoot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appsRootPath: "/tmp/bb-data/apps",
+      }),
+    );
+    expect(
+      watchApplicationStorageRootArgs?.resolveApplicationTarget("app_status"),
+    ).toEqual({
+      applicationId: "app_status",
+      appDataPath: "/tmp/bb-data/apps/app_status/data",
+    });
+
+    watchApplicationStorageRootArgs?.onChange({
+      kind: "application-storage-targets-changed",
+    });
+    watchApplicationStorageRootArgs?.onChange({
+      kind: "application-data-changed",
+      applicationId: "app_status",
+      appDataPath: "/tmp/bb-data/apps/app_status/data",
+      path: "state.json",
+    });
+    watchApplicationStorageRootArgs?.onChange({
+      kind: "application-data-resync",
+      applicationId: "app_status",
+    });
+
+    expect(onApplicationStorageTargetsChanged).toHaveBeenCalledTimes(1);
+    expect(onApplicationDataChanged).toHaveBeenCalledWith({
+      applicationId: "app_status",
+      appDataPath: "/tmp/bb-data/apps/app_status/data",
+      path: "state.json",
+    });
+    expect(onApplicationDataResync).toHaveBeenCalledWith({
+      applicationId: "app_status",
+    });
+
+    await manager.shutdownAll();
 
     expect(stopWatchingPathChanges).toHaveBeenCalledTimes(1);
   });

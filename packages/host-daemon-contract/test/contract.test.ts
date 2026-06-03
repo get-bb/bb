@@ -796,13 +796,13 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.read_file_relative",
-        rootPath: "/tmp/bb-data/thread-storage/thread-123/apps/status/assets",
+        rootPath: "/tmp/bb-data/apps/app_demo/assets",
         path: "logo.png",
         dotfiles: "deny",
       }),
     ).toMatchObject({
       type: "host.read_file_relative",
-      rootPath: "/tmp/bb-data/thread-storage/thread-123/apps/status/assets",
+      rootPath: "/tmp/bb-data/apps/app_demo/assets",
       path: "logo.png",
       dotfiles: "deny",
     });
@@ -810,7 +810,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "host.write_file_relative",
-        rootPath: "/tmp/bb-data/thread-storage/thread-123/apps/status/data",
+        rootPath: "/tmp/bb-data/apps/app_demo/data",
         path: "state.json",
         dotfiles: "deny",
         content: "[1,2,3]\n",
@@ -824,7 +824,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "host.delete_file_relative",
-        rootPath: "/tmp/bb-data/thread-storage/thread-123/apps/status/data",
+        rootPath: "/tmp/bb-data/apps/app_demo/data",
         path: "state.json",
         dotfiles: "deny",
       }),
@@ -1088,7 +1088,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.read_file_relative",
-        rootPath: "/tmp/bb-data/thread-storage/thread-123/apps/status/assets",
+        rootPath: "/tmp/bb-data/apps/app_demo/assets",
         path: "logo.png",
       }),
     ).toThrow();

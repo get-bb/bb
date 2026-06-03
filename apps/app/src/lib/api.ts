@@ -92,7 +92,7 @@ import {
   type FilePreviewTarget,
 } from "./file-preview";
 import {
-  buildThreadAppAssetUrl,
+  buildAppAssetUrl,
   buildThreadHostFileContentUrl,
   buildThreadStorageContentUrl,
 } from "./file-content-urls";
@@ -886,34 +886,28 @@ export async function getThreadStorageFilePreview(
   );
 }
 
-export async function listThreadApps(
-  id: string,
+export async function listApps(
   signal?: AbortSignal,
 ): Promise<AppSummary[]> {
   return request<AppSummary[]>(
-    apiClient.threads[":id"].apps.$get(
-      { param: { id } },
-      requestOptions(signal),
-    ),
+    apiClient.apps.$get({}, requestOptions(signal)),
   );
 }
 
-export async function getThreadApp(
-  id: string,
-  appId: string,
+export async function getApp(
+  applicationId: string,
   signal?: AbortSignal,
 ): Promise<AppDetail> {
   return request<AppDetail>(
-    apiClient.threads[":id"].apps[":appId"].$get(
-      { param: { id, appId } },
+    apiClient.apps[":applicationId"].$get(
+      { param: { applicationId } },
       requestOptions(signal),
     ),
   );
 }
 
-export async function getThreadAppMarkdownPreview(
-  id: string,
-  appId: string,
+export async function getAppMarkdownPreview(
+  applicationId: string,
   path: string,
   signal?: AbortSignal,
 ): Promise<FilePreview> {
@@ -921,7 +915,7 @@ export async function getThreadAppMarkdownPreview(
     {
       name: path.split("/").at(-1),
       path,
-      url: buildThreadAppAssetUrl(id, appId, path),
+      url: buildAppAssetUrl(applicationId, path),
     },
     signal,
   );

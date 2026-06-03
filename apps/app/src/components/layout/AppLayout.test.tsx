@@ -351,12 +351,12 @@ describe("AppLayout desktop chrome", () => {
       await renderAppLayout({
         desktopInfo: null,
         initialEntry: "/projects/proj_sidebar_resize",
-        children: <iframe title="Status app" />,
+        children: <iframe title="Review Board app" />,
       });
 
       const appLayoutRoot = await screen.findByTestId("app-layout-root");
       const resizeHandle = screen.getByTestId("app-sidebar-resize-handle");
-      const iframe = screen.getByTitle("Status app");
+      const iframe = screen.getByTitle("Review Board app");
 
       expect(appLayoutRoot.contains(iframe)).toBe(true);
       expect(screen.queryByTestId("iframe-drag-guard-overlay")).toBeNull();

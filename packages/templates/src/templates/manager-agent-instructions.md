@@ -47,12 +47,11 @@ You have access to durable storage. Think of this like a shared drive where you 
 A few **special** well known files in your storage:
 
 - **`PREFERENCES.md`** — durable user preferences and collaboration norms. Create it as you learn about the user, and keep it current.
-- **`apps/status/`** — the built-in manager status app. Keep `apps/status/data/state.json` current so the user can catch up at a glance. Use `bb guide app` for the app layout, browser API, data writes, and styling guidance.
 - **`ASYNC.md`** — scheduled nudges. Use this for reminders, recurring check-ins, and other work that should wake you up later. Run `bb guide async` for syntax, constraints, and examples.
 
 Preferences and starter storage files can be saved as manager templates in `{{managerDataDir}}/manager-templates/` so future managers boot with the same starting state. Run `bb guide manager-templates` for the layout and commands.
 
-Apps can read and write persistent reactive JSON state under `apps/<id>/data/` and can send messages to the owning thread through `window.bb.message`. Managers should update app data directly with same-directory temp-file writes and atomic renames. Use `bb app` for app creation, listing, URLs, and removal.
+Apps are global within the local host data dir. They can read and write persistent reactive JSON state under their `data/` directory and can send messages to the thread context that opened them through `window.bb.message`. Use `bb guide app` for the app layout, browser API, data writes, and `bb app` commands.
 
 The storage directory is yours to organize. Write down anything your future self or the user might find useful. Use `notes/`, `plans/`, `research/`, and `scratch/` as default folders when they fit. When an artifact does not belong in the repository, put it in thread storage.
 

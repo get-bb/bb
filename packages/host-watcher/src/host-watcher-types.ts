@@ -1,5 +1,5 @@
 import type { HostType } from "@bb/domain";
-import type { AppDataPath, AppId } from "@bb/domain";
+import type { AppDataPath, ApplicationId } from "@bb/domain";
 import type { WorkspaceStatusWatchChangeKind } from "./watch-status-types.js";
 
 export type HostObservedChange =
@@ -15,17 +15,17 @@ export type HostObservedChange =
       threadId: string;
     }
   | {
-      kind: "thread-app-data-changed";
-      appId: AppId;
-      environmentId: string;
-      path: AppDataPath;
-      threadId: string;
+      kind: "application-storage-targets-changed";
     }
   | {
-      kind: "thread-app-data-resync";
-      appId: AppId;
-      environmentId: string;
-      threadId: string;
+      kind: "application-data-changed";
+      applicationId: ApplicationId;
+      appDataPath: string;
+      path: AppDataPath;
+    }
+  | {
+      kind: "application-data-resync";
+      applicationId: ApplicationId;
     };
 
 export type WorkspaceObservedChange = Extract<
@@ -36,10 +36,17 @@ export type WorkspaceObservedChange = Extract<
 export type ThreadStorageObservedChange = Extract<
   HostObservedChange,
   {
+    kind: "thread-storage-changed";
+  }
+>;
+
+export type ApplicationStorageObservedChange = Extract<
+  HostObservedChange,
+  {
     kind:
-      | "thread-storage-changed"
-      | "thread-app-data-changed"
-      | "thread-app-data-resync";
+      | "application-storage-targets-changed"
+      | "application-data-changed"
+      | "application-data-resync";
   }
 >;
 
@@ -58,7 +65,16 @@ export interface ThreadStorageWatchError {
   threadId?: string;
 }
 
-export type HostWatchError = WorkspaceWatchError | ThreadStorageWatchError;
+export interface ApplicationStorageWatchError {
+  kind: "application-storage-watch-error";
+  rootPath: string;
+  message: string;
+}
+
+export type HostWatchError =
+  | WorkspaceWatchError
+  | ThreadStorageWatchError
+  | ApplicationStorageWatchError;
 
 export interface ThreadStorageWatchTarget {
   environmentId: string;
@@ -79,10 +95,27 @@ export interface WatchThreadStorageRootArgs {
   onWatchError: (error: ThreadStorageWatchError) => void;
 }
 
+export interface ApplicationDataWatchTarget {
+  applicationId: ApplicationId;
+  appDataPath: string;
+}
+
+export interface WatchApplicationStorageRootArgs {
+  appsRootPath: string;
+  resolveApplicationTarget: (
+    applicationId: ApplicationId,
+  ) => ApplicationDataWatchTarget | null;
+  onChange: (event: ApplicationStorageObservedChange) => void;
+  onWatchError: (error: ApplicationStorageWatchError) => void;
+}
+
 export interface HostWatcher {
   watchWorkspace(args: WatchWorkspaceArgs): () => void | Promise<void>;
   watchThreadStorageRoot(
     args: WatchThreadStorageRootArgs,
+  ): () => void | Promise<void>;
+  watchApplicationStorageRoot(
+    args: WatchApplicationStorageRootArgs,
   ): () => void | Promise<void>;
 }
 

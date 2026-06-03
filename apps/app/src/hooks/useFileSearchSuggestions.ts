@@ -6,7 +6,7 @@ import {
   type PathSuggestion,
   type PathSuggestionSource,
 } from "./usePathSuggestions";
-import { useThreadApps } from "./queries/thread-queries";
+import { useApps } from "./queries/thread-queries";
 
 const DEFAULT_FILE_SEARCH_SUGGESTION_LIMIT = 8;
 
@@ -14,7 +14,7 @@ export interface AppSearchSuggestion {
   source: "app";
   entryKind: "app";
   app: AppSummary;
-  appId: string;
+  applicationId: string;
   name: string;
   score: number;
 }
@@ -84,7 +84,7 @@ function scoreAppSearchMatch(app: AppSummary, normalizedQuery: string): number {
   }
 
   const normalizedName = app.name.toLowerCase();
-  const normalizedId = app.id.toLowerCase();
+  const normalizedId = app.applicationId.toLowerCase();
   if (normalizedName === normalizedQuery || normalizedId === normalizedQuery) {
     return 100;
   }
@@ -119,7 +119,7 @@ function buildAppSearchSuggestions({
       source: "app",
       entryKind: "app",
       app,
-      appId: app.id,
+      applicationId: app.applicationId,
       name: app.name,
       score,
     });
@@ -149,17 +149,17 @@ export function useFileSearchSuggestions(
     includeDirectories: false,
   });
   const canSearchApps = Boolean(args.currentThreadId);
-  const threadApps = useThreadApps(args.currentThreadId ?? "", {
+  const apps = useApps({
     enabled: canSearchApps,
   });
   const appSuggestions = useMemo<AppSearchSuggestion[]>(
     () =>
       buildAppSearchSuggestions({
-        apps: threadApps.data ?? [],
+        apps: apps.data ?? [],
         limit,
         query: args.query ?? "",
       }),
-    [args.query, limit, threadApps.data],
+    [args.query, apps.data, limit],
   );
   const fileSuggestions = useMemo<FilePathSearchSuggestion[]>(
     () =>
@@ -180,8 +180,8 @@ export function useFileSearchSuggestions(
     suggestions,
     isLoading:
       suggestions.length === 0 &&
-      (pathSuggestions.isLoading || (canSearchApps && threadApps.isLoading)),
-    isError: pathSuggestions.isError || (canSearchApps && threadApps.isError),
+      (pathSuggestions.isLoading || (canSearchApps && apps.isLoading)),
+    isError: pathSuggestions.isError || (canSearchApps && apps.isError),
     isDebouncing: pathSuggestions.isDebouncing,
     isUnavailable: !canSearchApps && !canSearchWorkspace && !canSearchThreadStorage,
   };

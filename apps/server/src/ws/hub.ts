@@ -505,9 +505,9 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
-  notifyThreadAppData(message: AppDataBroadcastMessage): void {
+  notifyAppData(message: AppDataBroadcastMessage): void {
     this.notifyClientsByKey(
-      subKey("thread", `${message.threadId}:app:${message.appId}:data`),
+      subKey("app", `${message.applicationId}:data`),
       JSON.stringify(appDataBroadcastMessageSchema.parse(message)),
     );
   }

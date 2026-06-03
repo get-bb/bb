@@ -18,7 +18,6 @@ import {
   managerTemplateRootPath,
   seedManagerThreadStorage,
 } from "../../src/services/threads/manager-storage-templates.js";
-import { buildBlankAppIndexHtml } from "../../src/services/threads/blank-app-scaffold.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 import { seedHost } from "../helpers/seed.js";
 import { createTestAppHarness, testLogger, withTestHarness } from "../helpers/test-app.js";
@@ -74,42 +73,6 @@ async function createSeedHarness(): Promise<SeedHarness> {
     harness,
     hostId: host.id,
   };
-}
-
-async function readBundledManifestJson(): Promise<string> {
-  return readFile(
-    new URL(
-      "../../src/services/threads/default-template/apps/status/manifest.json",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-}
-
-const BUNDLED_STATUS_INDEX_HTML = buildBlankAppIndexHtml({ name: "Status" });
-const BUNDLED_STATUS_STATE_JSON = "{}\n";
-
-async function expectBundledStatusAppSeeded(
-  threadStoragePath: string,
-): Promise<void> {
-  await expect(
-    readFile(
-      path.join(threadStoragePath, "apps/status/manifest.json"),
-      "utf8",
-    ),
-  ).resolves.toBe(await readBundledManifestJson());
-  await expect(
-    readFile(
-      path.join(threadStoragePath, "apps/status/assets/index.html"),
-      "utf8",
-    ),
-  ).resolves.toBe(BUNDLED_STATUS_INDEX_HTML);
-  await expect(
-    readFile(
-      path.join(threadStoragePath, "apps/status/data/state.json"),
-      "utf8",
-    ),
-  ).resolves.toBe(BUNDLED_STATUS_STATE_JSON);
 }
 
 async function writeManagerTemplateSet(
@@ -169,7 +132,7 @@ describe("manager storage templates", () => {
     });
   });
 
-  it("seeds the bundled status app when default resolves and no user template directory exists", async () => {
+  it("does not seed hidden default files when no user template directory exists", async () => {
     const { dataDir, harness, hostId } = await createSeedHarness();
     try {
       const threadStoragePath = await seedStorage({
@@ -180,7 +143,7 @@ describe("manager storage templates", () => {
         threadId: "thr-default-fallback",
       });
 
-      await expectBundledStatusAppSeeded(threadStoragePath);
+      await expect(stat(threadStoragePath)).rejects.toThrow();
       await expect(
         stat(managerTemplateRootPath({ dataDir })),
       ).rejects.toThrow();
@@ -190,7 +153,7 @@ describe("manager storage templates", () => {
     }
   });
 
-  it("overlays the bundled status app on top of user-authored default files", async () => {
+  it("copies user-authored default template files", async () => {
     const { dataDir, harness, hostId } = await createSeedHarness();
     try {
       await writeManagerTemplateSet({
@@ -198,6 +161,7 @@ describe("manager storage templates", () => {
         name: DEFAULT_MANAGER_TEMPLATE_NAME,
         files: {
           "USER.md": "user notes\n",
+          "notes/state.json": '{"prs":[]}\n',
         },
       });
 
@@ -212,25 +176,41 @@ describe("manager storage templates", () => {
       await expect(
         readFile(path.join(threadStoragePath, "USER.md"), "utf8"),
       ).resolves.toBe("user notes\n");
-      await expectBundledStatusAppSeeded(threadStoragePath);
+      await expect(
+        readFile(path.join(threadStoragePath, "notes/state.json"), "utf8"),
+      ).resolves.toBe('{"prs":[]}\n');
+      await expect(
+        stat(path.join(threadStoragePath, "apps", "status", "manifest.json")),
+      ).rejects.toThrow();
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });
     }
   });
 
-  it("user-authored files win over the bundled overlay at the same path", async () => {
+  it("does not overwrite files that already exist in thread storage", async () => {
     const { dataDir, harness, hostId } = await createSeedHarness();
     try {
       await writeManagerTemplateSet({
         dataDir,
         name: DEFAULT_MANAGER_TEMPLATE_NAME,
         files: {
-          "apps/status/manifest.json": '{"user":true}\n',
+          "USER.md": "template notes\n",
         },
       });
+      const threadStoragePath = path.join(
+        dataDir,
+        "thread-storage",
+        "thr-user-overrides",
+      );
+      await mkdir(threadStoragePath, { recursive: true });
+      await writeFile(
+        path.join(threadStoragePath, "USER.md"),
+        "existing notes\n",
+        "utf8",
+      );
 
-      const threadStoragePath = await seedStorage({
+      await seedStorage({
         dataDir,
         explicitTemplateName: null,
         harness,
@@ -239,30 +219,15 @@ describe("manager storage templates", () => {
       });
 
       await expect(
-        readFile(
-          path.join(threadStoragePath, "apps/status/manifest.json"),
-          "utf8",
-        ),
-      ).resolves.toBe('{"user":true}\n');
-      await expect(
-        readFile(
-          path.join(threadStoragePath, "apps/status/assets/index.html"),
-          "utf8",
-        ),
-      ).resolves.toBe(BUNDLED_STATUS_INDEX_HTML);
-      await expect(
-        readFile(
-          path.join(threadStoragePath, "apps/status/data/state.json"),
-          "utf8",
-        ),
-      ).resolves.toBe(BUNDLED_STATUS_STATE_JSON);
+        readFile(path.join(threadStoragePath, "USER.md"), "utf8"),
+      ).resolves.toBe("existing notes\n");
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });
     }
   });
 
-  it("overlays the bundled status app even when the default template directory is empty", async () => {
+  it("creates an empty storage directory when the default template directory is empty", async () => {
     const { dataDir, harness, hostId } = await createSeedHarness();
     try {
       await writeManagerTemplateSet({
@@ -279,14 +244,18 @@ describe("manager storage templates", () => {
         threadId: "thr-empty-default",
       });
 
-      await expectBundledStatusAppSeeded(threadStoragePath);
+      const storageStat = await stat(threadStoragePath);
+      expect(storageStat.isDirectory()).toBe(true);
+      await expect(
+        stat(path.join(threadStoragePath, "apps", "status", "manifest.json")),
+      ).rejects.toThrow();
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });
     }
   });
 
-  it("warns and still overlays bundled status when active points to a missing non-default template", async () => {
+  it("warns and seeds nothing when active points to a missing non-default template", async () => {
     const { dataDir, harness, hostId } = await createSeedHarness();
     const logger = {
       ...testLogger,
@@ -308,13 +277,13 @@ describe("manager storage templates", () => {
         threadId: "thr-missing-active",
       });
 
-      await expectBundledStatusAppSeeded(threadStoragePath);
+      await expect(stat(threadStoragePath)).rejects.toThrow();
       expect(logger.warn).toHaveBeenCalledWith(
         expect.objectContaining({
           templateName: MINE_MANAGER_TEMPLATE_NAME,
           threadId: "thr-missing-active",
         }),
-        "Manager template directory is missing; overlaying bundled seed only",
+        "Manager template directory is missing; no template files were seeded",
       );
     } finally {
       await harness.cleanup();
@@ -322,7 +291,7 @@ describe("manager storage templates", () => {
     }
   });
 
-  it("warns and still overlays bundled status when an explicit non-default template is missing", async () => {
+  it("warns and seeds nothing when an explicit non-default template is missing", async () => {
     const { dataDir, harness, hostId } = await createSeedHarness();
     const logger = {
       ...testLogger,
@@ -339,13 +308,13 @@ describe("manager storage templates", () => {
         threadId: "thr-missing-explicit",
       });
 
-      await expectBundledStatusAppSeeded(threadStoragePath);
+      await expect(stat(threadStoragePath)).rejects.toThrow();
       expect(logger.warn).toHaveBeenCalledWith(
         expect.objectContaining({
           templateName: MINE_MANAGER_TEMPLATE_NAME,
           threadId: "thr-missing-explicit",
         }),
-        "Manager template directory is missing; overlaying bundled seed only",
+        "Manager template directory is missing; no template files were seeded",
       );
     } finally {
       await harness.cleanup();
@@ -353,7 +322,7 @@ describe("manager storage templates", () => {
     }
   });
 
-  it("seeds from the active non-default template and overlays bundled status when that directory exists", async () => {
+  it("seeds from the active non-default template when that directory exists", async () => {
     const { dataDir, harness, hostId } = await createSeedHarness();
     try {
       await writeActiveManagerTemplate({
@@ -389,7 +358,9 @@ describe("manager storage templates", () => {
           "utf8",
         ),
       ).resolves.toBe("{}\n");
-      await expectBundledStatusAppSeeded(threadStoragePath);
+      await expect(
+        stat(path.join(threadStoragePath, "apps", "status", "manifest.json")),
+      ).rejects.toThrow();
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });

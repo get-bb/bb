@@ -1,0 +1,1456 @@
+import { Buffer } from "node:buffer";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import type { Dirent, Stats } from "node:fs";
+import path from "node:path";
+import mimeTypes from "mime-types";
+import type { Hono } from "hono";
+import type { ZodIssue } from "zod";
+import {
+  resolveApplicationAssetsPath,
+  resolveApplicationDataPath,
+  resolveApplicationManifestPath,
+  resolveApplicationPath,
+  resolveAppsRootPath,
+} from "@bb/config/app-storage-paths";
+import {
+  appDataPathSchema,
+  applicationIdSchema,
+  jsonValueSchema,
+} from "@bb/domain";
+import type { AppDataPath, ApplicationId, JsonValue } from "@bb/domain";
+import {
+  appDataListQuerySchema,
+  appDataWriteRequestSchema,
+  appManifestSchema,
+  appMessageRequestSchema,
+  createAppRequestSchema,
+  typedRoutes,
+  type AppCapability,
+  type AppDataEntry,
+  type AppDetail,
+  type AppEntry,
+  type AppIcon,
+  type AppManifest,
+  type AppSummary,
+  type PublicApiSchema,
+} from "@bb/server-contract";
+import type { AppDeps, LoggedWorkSessionDeps } from "../types.js";
+import { ApiError } from "../errors.js";
+import { requirePublicThread } from "../services/lib/entity-lookup.js";
+import { requireThreadCommandEnvironment } from "../services/threads/thread-command-environment.js";
+import { sendThreadMessage } from "../services/threads/thread-send.js";
+import { injectAppClientScript } from "../services/threads/app-client-script.js";
+import { buildBlankAppIndexHtml } from "../services/threads/blank-app-scaffold.js";
+import {
+  extractRoutePath,
+  parseSafeRelativeRoutePath,
+  type SafeRelativeRoutePath,
+} from "./relative-route-path.js";
+
+interface InvalidAppManifestErrorArgs extends ApplicationManifestReadArgs {
+  issues: AppManifestValidationIssues;
+  manifestPath: string;
+}
+
+interface LogInvalidAppManifestArgs {
+  error: InvalidAppManifestError;
+  message: string;
+}
+
+interface ApplicationManifestReadArgs {
+  applicationId: ApplicationId;
+  dataDir: string;
+}
+
+interface ApplicationSummaryArgs extends ApplicationManifestReadArgs {
+  manifest: AppManifest;
+}
+
+interface ApplicationDetailArgs extends ApplicationManifestReadArgs {}
+
+interface ReadApplicationRelativeFileArgs {
+  applicationId: ApplicationId;
+  dataDir: string;
+  dotfiles: "allow" | "deny";
+  path: string;
+  rootKind: "app" | "assets" | "data";
+}
+
+interface ApplicationRootForKindArgs {
+  applicationId: ApplicationId;
+  dataDir: string;
+  rootKind: "app" | "assets" | "data";
+}
+
+interface ReadApplicationDataEntryArgs {
+  applicationId: ApplicationId;
+  dataDir: string;
+  dataPath: AppDataPath;
+}
+
+interface ListApplicationDataEntriesArgs {
+  applicationId: ApplicationId;
+  dataDir: string;
+  dataPath: AppDataPath | "";
+}
+
+interface WriteApplicationDataEntryArgs
+  extends ReadApplicationDataEntryArgs {
+  value: JsonValue;
+}
+
+interface DeleteApplicationDataEntryArgs extends ReadApplicationDataEntryArgs {}
+
+interface CreateInjectedAppHtmlResponseArgs {
+  appSessionToken: AppSessionToken | null;
+  applicationId: ApplicationId;
+  capabilities: AppCapability[];
+  html: string;
+  requestUrl: string;
+  targetThreadId: string | null;
+}
+
+interface ApplicationAssetRouteSegmentArgs {
+  applicationId: string;
+}
+
+interface LogoResolution {
+  extension: string;
+}
+
+interface CreateGlobalApplicationArgs {
+  dataDir: string;
+  name: string;
+}
+
+interface CreateApplicationTempRootArgs {
+  appsRootPath: string;
+  applicationId: ApplicationId;
+}
+
+interface PublishApplicationTempRootArgs {
+  applicationPath: string;
+  tempRootPath: string;
+}
+
+interface AppSession {
+  applicationId: ApplicationId;
+  projectId: string;
+  threadId: string;
+}
+
+interface ResolveAppMessageTargetArgs {
+  applicationId: ApplicationId;
+  payload: {
+    appSessionToken?: string;
+    targetThreadId?: string;
+  };
+  sessions: AppSessionStore;
+}
+
+interface CreateAppSessionArgs {
+  applicationId: ApplicationId;
+  projectId: string;
+  threadId: string;
+}
+
+interface AppSessionStore {
+  create(args: CreateAppSessionArgs): AppSessionToken;
+  get(token: string): AppSession | null;
+}
+
+type AppAssetPath = SafeRelativeRoutePath;
+type AppManifestValidationIssues = readonly ZodIssue[];
+type AppManifestValidationLoggerDeps = Pick<AppDeps, "logger">;
+type AppSessionToken = string;
+type LogoExtension = "svg" | "png" | "jpg" | "jpeg";
+
+const ASSETS_DIRECTORY_NAME = "assets";
+const DATA_DIRECTORY_NAME = "data";
+const MANIFEST_FILE_NAME = "manifest.json";
+const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
+const NO_STORE_CACHE_CONTROL = "no-store";
+const CONTENT_TYPE_OPTIONS = "nosniff";
+const HTML_ENTRY_MAX_BYTES = 5 * 1024 * 1024;
+const LOGO_MAX_BYTES = 1024 * 1024;
+const LOGO_EXTENSIONS: readonly LogoExtension[] = ["svg", "png", "jpg", "jpeg"];
+const APP_SESSION_TOKEN_PREFIX = "appsess_";
+const INVALID_APP_MANIFEST_MESSAGE =
+  "App manifest failed validation. Inspect manifest.json or rebuild the app.";
+
+class InvalidAppManifestError extends ApiError {
+  readonly applicationId: ApplicationId;
+  readonly manifestPath: string;
+  readonly issues: AppManifestValidationIssues;
+
+  constructor(args: InvalidAppManifestErrorArgs) {
+    super(422, "invalid_manifest", INVALID_APP_MANIFEST_MESSAGE);
+    this.name = "InvalidAppManifestError";
+    this.applicationId = args.applicationId;
+    this.manifestPath = args.manifestPath;
+    this.issues = args.issues;
+  }
+}
+
+function sha256(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function canonicalizeJson(value: JsonValue | AppManifest): string {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function isFsErrorWithCode(error: Error, code: string): boolean {
+  return "code" in error && error.code === code;
+}
+
+function parseApplicationId(rawApplicationId: string): ApplicationId {
+  const parsed = applicationIdSchema.safeParse(rawApplicationId);
+  if (!parsed.success) {
+    throw new ApiError(400, "invalid_request", "Invalid applicationId");
+  }
+  return parsed.data;
+}
+
+function parseAppDataPath(rawPath: string): AppDataPath {
+  const parsed = appDataPathSchema.safeParse(rawPath);
+  if (!parsed.success) {
+    throw new ApiError(400, "invalid_request", "Invalid app data path");
+  }
+  return parsed.data;
+}
+
+function applicationAssetRouteSegment(
+  args: ApplicationAssetRouteSegmentArgs,
+): string {
+  return `/apps/${encodeURIComponent(args.applicationId)}/assets/`;
+}
+
+function applicationDataRouteSegment(
+  args: ApplicationAssetRouteSegmentArgs,
+): string {
+  return `/apps/${encodeURIComponent(args.applicationId)}/data/`;
+}
+
+function parseAppDataRoutePath(
+  rawPath: string,
+): AppDataPath {
+  return parseAppDataPath(
+    parseSafeRelativeRoutePath({
+      rawPath,
+      dotfileSegmentPolicy: "allow",
+      invalidPathMessage: "Invalid app data path",
+    }).relativePath,
+  );
+}
+
+function parseOptionalAppDataPrefix(
+  rawPrefix: string | undefined,
+): AppDataPath | "" {
+  if (rawPrefix === undefined || rawPrefix === "") {
+    return "";
+  }
+  return parseAppDataPath(rawPrefix);
+}
+
+function applicationRootForKind(args: ApplicationRootForKindArgs): string {
+  if (args.rootKind === "app") {
+    return resolveApplicationPath(args.dataDir, args.applicationId);
+  }
+  if (args.rootKind === "assets") {
+    return resolveApplicationAssetsPath(args.dataDir, args.applicationId);
+  }
+  return resolveApplicationDataPath(args.dataDir, args.applicationId);
+}
+
+function parseApplicationAssetPath(rawPath: string): AppAssetPath {
+  return parseSafeRelativeRoutePath({
+    rawPath,
+    directoryIndexPath: "index.html",
+    dotfileSegmentPolicy: "not-found",
+    invalidPathMessage: "Invalid app asset path",
+  });
+}
+
+function summarizeAppManifestValidationIssues(
+  issues: AppManifestValidationIssues,
+): string {
+  return issues
+    .map((issue) => {
+      const issuePath = issue.path.map(String).join(".");
+      return `${issuePath || "<root>"}: ${issue.message}`;
+    })
+    .join("; ");
+}
+
+function logInvalidAppManifest(
+  deps: AppManifestValidationLoggerDeps,
+  args: LogInvalidAppManifestArgs,
+): void {
+  deps.logger.warn(
+    {
+      applicationId: args.error.applicationId,
+      manifestPath: args.error.manifestPath,
+      issueSummary: summarizeAppManifestValidationIssues(args.error.issues),
+      issues: args.error.issues,
+    },
+    args.message,
+  );
+}
+
+async function readApplicationRelativeFile(
+  args: ReadApplicationRelativeFileArgs,
+): Promise<Buffer> {
+  const rootPath = applicationRootForKind(args);
+  const filePath = path.join(rootPath, args.path);
+  if (
+    args.dotfiles === "deny" &&
+    args.path.split("/").some((segment) => segment.startsWith("."))
+  ) {
+    throw new ApiError(404, "ENOENT", "App file not found");
+  }
+  const relativePath = path.relative(rootPath, filePath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new ApiError(400, "invalid_request", "Invalid app file path");
+  }
+  try {
+    return await readFile(filePath);
+  } catch (error) {
+    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+      throw new ApiError(404, "ENOENT", "App file not found");
+    }
+    throw error;
+  }
+}
+
+async function statApplicationRelativeFile(
+  args: ReadApplicationRelativeFileArgs,
+): Promise<Stats> {
+  const rootPath = applicationRootForKind(args);
+  const filePath = path.join(rootPath, args.path);
+  const relativePath = path.relative(rootPath, filePath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new ApiError(400, "invalid_request", "Invalid app file path");
+  }
+  try {
+    return await stat(filePath);
+  } catch (error) {
+    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+      throw new ApiError(404, "ENOENT", "App file not found");
+    }
+    throw error;
+  }
+}
+
+async function ensureApplicationFolderExists(
+  args: ApplicationManifestReadArgs,
+): Promise<void> {
+  try {
+    const applicationStats = await stat(
+      resolveApplicationPath(args.dataDir, args.applicationId),
+    );
+    if (!applicationStats.isDirectory()) {
+      throw new InvalidAppManifestError({
+        ...args,
+        manifestPath: resolveApplicationManifestPath(
+          args.dataDir,
+          args.applicationId,
+        ),
+        issues: [],
+      });
+    }
+  } catch (error) {
+    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+      throw new ApiError(404, "app_missing", "App not found");
+    }
+    throw error;
+  }
+}
+
+async function readApplicationManifest(
+  args: ApplicationManifestReadArgs,
+): Promise<AppManifest> {
+  await ensureApplicationFolderExists(args);
+  const manifestPath = resolveApplicationManifestPath(
+    args.dataDir,
+    args.applicationId,
+  );
+  let manifestContent: string;
+  try {
+    manifestContent = await readFile(manifestPath, "utf8");
+  } catch (error) {
+    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+      throw new InvalidAppManifestError({
+        ...args,
+        manifestPath,
+        issues: [],
+      });
+    }
+    throw error;
+  }
+
+  let parsedJson;
+  try {
+    parsedJson = JSON.parse(manifestContent);
+  } catch {
+    throw new ApiError(422, "invalid_manifest", "App manifest is not valid JSON");
+  }
+  const manifest = appManifestSchema.safeParse(parsedJson);
+  if (!manifest.success) {
+    throw new InvalidAppManifestError({
+      ...args,
+      manifestPath,
+      issues: manifest.error.issues,
+    });
+  }
+  if (manifest.data.id !== args.applicationId) {
+    throw new ApiError(
+      422,
+      "invalid_manifest",
+      "App manifest id must match its directory name",
+    );
+  }
+  return manifest.data;
+}
+
+async function readApplicationManifestForRequest(
+  deps: AppDeps,
+  args: ApplicationManifestReadArgs,
+): Promise<AppManifest> {
+  try {
+    return await readApplicationManifest(args);
+  } catch (error) {
+    if (error instanceof InvalidAppManifestError) {
+      logInvalidAppManifest(deps, {
+        error,
+        message: "Rejected invalid global app manifest",
+      });
+    }
+    throw error;
+  }
+}
+
+function entryKindForPath(entryPath: string): AppEntry["kind"] {
+  const normalized = entryPath.toLowerCase();
+  if (normalized.endsWith(".html")) {
+    return "html";
+  }
+  if (normalized.endsWith(".md")) {
+    return "md";
+  }
+  throw new ApiError(
+    422,
+    "invalid_manifest",
+    "App entry must end in .html or .md",
+  );
+}
+
+async function resolveApplicationEntry(
+  args: ApplicationManifestReadArgs & { manifest: AppManifest },
+): Promise<AppEntry> {
+  if (args.manifest.entry !== undefined) {
+    return {
+      path: args.manifest.entry,
+      kind: entryKindForPath(args.manifest.entry),
+    };
+  }
+
+  for (const candidate of ["index.html", "index.md"]) {
+    try {
+      await statApplicationRelativeFile({
+        ...args,
+        path: candidate,
+        rootKind: "assets",
+        dotfiles: "deny",
+      });
+      return {
+        path: candidate,
+        kind: entryKindForPath(candidate),
+      };
+    } catch (error) {
+      if (error instanceof ApiError && error.body.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new ApiError(
+    404,
+    "ENOENT",
+    "App entry not found: index.html or index.md",
+  );
+}
+
+async function tryResolveLogo(
+  args: ApplicationManifestReadArgs,
+): Promise<LogoResolution | null> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(resolveApplicationPath(args.dataDir, args.applicationId), {
+      withFileTypes: true,
+    });
+  } catch (error) {
+    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+      return null;
+    }
+    throw error;
+  }
+  const topLevelFiles = new Set(
+    entries.filter((entry) => entry.isFile()).map((entry) => entry.name),
+  );
+  for (const extension of LOGO_EXTENSIONS) {
+    if (topLevelFiles.has(`logo.${extension}`)) {
+      return { extension };
+    }
+  }
+  return null;
+}
+
+async function resolveApplicationIcon(
+  args: ApplicationSummaryArgs,
+): Promise<AppIcon> {
+  if (args.manifest.icon !== undefined) {
+    return { kind: "builtin", name: args.manifest.icon };
+  }
+  const logo = await tryResolveLogo(args);
+  if (logo) {
+    return {
+      kind: "logo",
+      url: `/api/v1/apps/${encodeURIComponent(args.applicationId)}/icon`,
+    };
+  }
+  return { kind: "builtin", name: "GridView" };
+}
+
+async function buildApplicationSummary(
+  args: ApplicationSummaryArgs,
+): Promise<AppSummary> {
+  const [entry, icon] = await Promise.all([
+    resolveApplicationEntry(args),
+    resolveApplicationIcon(args),
+  ]);
+  return {
+    applicationId: args.manifest.id,
+    name: args.manifest.name,
+    entry,
+    capabilities: args.manifest.capabilities,
+    icon,
+  };
+}
+
+async function buildApplicationDetail(
+  deps: AppDeps,
+  args: ApplicationDetailArgs,
+): Promise<AppDetail> {
+  const manifest = await readApplicationManifestForRequest(deps, args);
+  return {
+    ...(await buildApplicationSummary({
+      ...args,
+      manifest,
+    })),
+    appsRootPath: resolveAppsRootPath(args.dataDir),
+    appRootPath: resolveApplicationPath(args.dataDir, args.applicationId),
+    appDataPath: resolveApplicationDataPath(args.dataDir, args.applicationId),
+  };
+}
+
+function assertAppCapability(
+  manifest: AppManifest,
+  capability: AppCapability,
+): void {
+  if (!manifest.capabilities.includes(capability)) {
+    throw new ApiError(
+      403,
+      "invalid_request",
+      `App does not have the ${capability} capability`,
+    );
+  }
+}
+
+function isIgnoredApplicationStorageEntry(entryName: string): boolean {
+  return (
+    entryName.startsWith(".tmp-app_") || entryName.startsWith(".delete-app_")
+  );
+}
+
+async function listGlobalApplications(deps: AppDeps): Promise<AppSummary[]> {
+  const appsRootPath = resolveAppsRootPath(deps.config.dataDir);
+  let entries: Dirent[];
+  try {
+    entries = await readdir(appsRootPath, { withFileTypes: true });
+  } catch (error) {
+    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+      return [];
+    }
+    throw error;
+  }
+
+  const applicationIds = entries
+    .filter(
+      (entry) =>
+        entry.isDirectory() && !isIgnoredApplicationStorageEntry(entry.name),
+    )
+    .map((entry) => applicationIdSchema.safeParse(entry.name))
+    .filter((entry) => entry.success)
+    .map((entry) => entry.data)
+    .sort((left, right) => left.localeCompare(right));
+
+  const summaries: AppSummary[] = [];
+  for (const applicationId of applicationIds) {
+    try {
+      const manifest = await readApplicationManifest({
+        dataDir: deps.config.dataDir,
+        applicationId,
+      });
+      summaries.push(
+        await buildApplicationSummary({
+          dataDir: deps.config.dataDir,
+          applicationId,
+          manifest,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof InvalidAppManifestError) {
+        logInvalidAppManifest(deps, {
+          error,
+          message: "Skipping invalid global app manifest",
+        });
+        continue;
+      }
+      if (error instanceof ApiError && error.body.code === "invalid_manifest") {
+        deps.logger.warn(
+          {
+            applicationId,
+            appRootPath: resolveApplicationPath(
+              deps.config.dataDir,
+              applicationId,
+            ),
+            message: error.body.message,
+          },
+          "Skipping invalid global app manifest",
+        );
+        continue;
+      }
+      throw error;
+    }
+  }
+  return summaries;
+}
+
+function createHtmlResponse(html: string): Response {
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "cache-control": NO_STORE_CACHE_CONTROL,
+      "content-type": HTML_CONTENT_TYPE,
+      "x-content-type-options": CONTENT_TYPE_OPTIONS,
+    },
+  });
+}
+
+function buildAppWebSocketUrl(
+  deps: LoggedWorkSessionDeps,
+  requestUrl: string,
+): string {
+  if (deps.config.isDevelopment) {
+    return `ws://localhost:${deps.config.serverPort}/ws`;
+  }
+  const url = new URL(requestUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/ws";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function createInjectedAppHtmlResponse(
+  deps: LoggedWorkSessionDeps,
+  args: CreateInjectedAppHtmlResponseArgs,
+): Response {
+  return createHtmlResponse(
+    injectAppClientScript(args.html, {
+      appId: args.applicationId,
+      applicationId: args.applicationId,
+      appSessionToken: args.appSessionToken,
+      capabilities: args.capabilities,
+      targetThreadId: args.targetThreadId,
+      dataUrl: `/api/v1/apps/${encodeURIComponent(args.applicationId)}/data`,
+      messageUrl: `/api/v1/apps/${encodeURIComponent(
+        args.applicationId,
+      )}/message`,
+      wsUrl: buildAppWebSocketUrl(deps, args.requestUrl),
+    }),
+  );
+}
+
+function createAppSessionStore(): AppSessionStore {
+  const sessions = new Map<AppSessionToken, AppSession>();
+  return {
+    create(args) {
+      const token = `${APP_SESSION_TOKEN_PREFIX}${randomUUID().replaceAll(
+        "-",
+        "",
+      )}`;
+      sessions.set(token, args);
+      return token;
+    },
+    get(token) {
+      return sessions.get(token) ?? null;
+    },
+  };
+}
+
+function maybeCreateAppSession(
+  deps: AppDeps,
+  sessions: AppSessionStore,
+  applicationId: ApplicationId,
+  rawTargetThreadId: string | undefined,
+): AppSessionToken | null {
+  if (rawTargetThreadId === undefined || rawTargetThreadId.trim() === "") {
+    return null;
+  }
+  const thread = requirePublicThread(deps.db, rawTargetThreadId);
+  return sessions.create({
+    applicationId,
+    projectId: thread.projectId,
+    threadId: thread.id,
+  });
+}
+
+async function serveApplicationEntry(
+  deps: AppDeps,
+  sessions: AppSessionStore,
+  rawApplicationId: string,
+  requestUrl: string,
+  rawTargetThreadId: string | undefined,
+): Promise<Response> {
+  const applicationId = parseApplicationId(rawApplicationId);
+  const manifest = await readApplicationManifestForRequest(deps, {
+    dataDir: deps.config.dataDir,
+    applicationId,
+  });
+  const entry = await resolveApplicationEntry({
+    dataDir: deps.config.dataDir,
+    applicationId,
+    manifest,
+  });
+  if (entry.kind !== "html") {
+    throw new ApiError(404, "invalid_request", "App entry is not HTML");
+  }
+  const metadata = await statApplicationRelativeFile({
+    dataDir: deps.config.dataDir,
+    applicationId,
+    rootKind: "assets",
+    path: entry.path,
+    dotfiles: "deny",
+  });
+  if (metadata.size > HTML_ENTRY_MAX_BYTES) {
+    throw new ApiError(
+      413,
+      "file_too_large",
+      "App HTML entry exceeds the 5 MB limit",
+      false,
+    );
+  }
+  const result = await readApplicationRelativeFile({
+    dataDir: deps.config.dataDir,
+    applicationId,
+    rootKind: "assets",
+    path: entry.path,
+    dotfiles: "deny",
+  });
+  const token = maybeCreateAppSession(
+    deps,
+    sessions,
+    applicationId,
+    rawTargetThreadId,
+  );
+  return createInjectedAppHtmlResponse(deps, {
+    applicationId,
+    requestUrl,
+    targetThreadId: rawTargetThreadId ?? null,
+    appSessionToken: token,
+    html: result.toString("utf8"),
+    capabilities: manifest.capabilities,
+  });
+}
+
+async function serveApplicationAsset(
+  deps: AppDeps,
+  rawApplicationId: string,
+  rawPath: string,
+): Promise<Response> {
+  const applicationId = parseApplicationId(rawApplicationId);
+  const assetPath = parseApplicationAssetPath(rawPath);
+  await readApplicationManifestForRequest(deps, {
+    dataDir: deps.config.dataDir,
+    applicationId,
+  });
+  const result = await readApplicationRelativeFile({
+    dataDir: deps.config.dataDir,
+    applicationId,
+    rootKind: "assets",
+    path: assetPath.relativePath,
+    dotfiles: "deny",
+  });
+  const contentType =
+    mimeTypes.lookup(assetPath.relativePath) || "application/octet-stream";
+  return new Response(new Uint8Array(result), {
+    status: 200,
+    headers: {
+      "cache-control": NO_STORE_CACHE_CONTROL,
+      "content-type": contentType,
+      "x-content-type-options": CONTENT_TYPE_OPTIONS,
+    },
+  });
+}
+
+async function serveApplicationIcon(
+  deps: AppDeps,
+  rawApplicationId: string,
+): Promise<Response> {
+  const applicationId = parseApplicationId(rawApplicationId);
+  const manifest = await readApplicationManifestForRequest(deps, {
+    dataDir: deps.config.dataDir,
+    applicationId,
+  });
+  if (manifest.icon !== undefined) {
+    throw new ApiError(404, "ENOENT", "App uses a built-in icon");
+  }
+  const logo = await tryResolveLogo({
+    dataDir: deps.config.dataDir,
+    applicationId,
+  });
+  if (!logo) {
+    throw new ApiError(404, "ENOENT", "App logo not found");
+  }
+  const logoPath = `logo.${logo.extension}`;
+  const metadata = await statApplicationRelativeFile({
+    dataDir: deps.config.dataDir,
+    applicationId,
+    rootKind: "app",
+    path: logoPath,
+    dotfiles: "deny",
+  });
+  if (metadata.size > LOGO_MAX_BYTES) {
+    throw new ApiError(
+      413,
+      "file_too_large",
+      "App logo exceeds the 1 MB limit",
+      false,
+    );
+  }
+  const result = await readApplicationRelativeFile({
+    dataDir: deps.config.dataDir,
+    applicationId,
+    rootKind: "app",
+    path: logoPath,
+    dotfiles: "deny",
+  });
+  const contentType = mimeTypes.lookup(logoPath) || "application/octet-stream";
+  return new Response(new Uint8Array(result), {
+    status: 200,
+    headers: {
+      "cache-control": NO_STORE_CACHE_CONTROL,
+      "content-type": contentType,
+      "x-content-type-options": CONTENT_TYPE_OPTIONS,
+    },
+  });
+}
+
+async function readApplicationDataEntry(
+  args: ReadApplicationDataEntryArgs,
+): Promise<AppDataEntry> {
+  const filePath = path.join(
+    resolveApplicationDataPath(args.dataDir, args.applicationId),
+    ...args.dataPath.split("/"),
+  );
+  let bytes: Buffer;
+  let metadata: Stats;
+  try {
+    [bytes, metadata] = await Promise.all([readFile(filePath), stat(filePath)]);
+  } catch (error) {
+    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+      throw new ApiError(404, "ENOENT", `App data not found: ${args.dataPath}`);
+    }
+    throw error;
+  }
+  let value: JsonValue;
+  try {
+    value = jsonValueSchema.parse(JSON.parse(bytes.toString("utf8")));
+  } catch {
+    throw new ApiError(
+      422,
+      "invalid_json",
+      `App data path ${args.dataPath} does not contain valid JSON`,
+    );
+  }
+  return {
+    path: args.dataPath,
+    value,
+    version: sha256(bytes),
+    sizeBytes: metadata.size,
+    modifiedAtMs: metadata.mtimeMs,
+  };
+}
+
+async function listAppDataFilePaths(
+  appDataRoot: string,
+  currentDirectory: string,
+): Promise<AppDataPath[]> {
+  const entries = await readdir(currentDirectory, { withFileTypes: true });
+  const paths: AppDataPath[] = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) {
+      continue;
+    }
+    const entryPath = path.join(currentDirectory, entry.name);
+    if (entry.isDirectory()) {
+      paths.push(...(await listAppDataFilePaths(appDataRoot, entryPath)));
+      continue;
+    }
+    if (!entry.isFile()) {
+      continue;
+    }
+    const relativePath = path
+      .relative(appDataRoot, entryPath)
+      .split(path.sep)
+      .join("/");
+    const parsed = appDataPathSchema.safeParse(relativePath);
+    if (parsed.success) {
+      paths.push(parsed.data);
+    }
+  }
+  return paths.sort((left, right) => left.localeCompare(right));
+}
+
+function shouldListAppDataPrefixAfterReadError(error: Error): boolean {
+  return error instanceof ApiError && error.body.code === "ENOENT";
+}
+
+async function listApplicationDataEntries(
+  args: ListApplicationDataEntriesArgs,
+): Promise<AppDataEntry[]> {
+  if (args.dataPath !== "") {
+    try {
+      return [
+        await readApplicationDataEntry({
+          applicationId: args.applicationId,
+          dataPath: args.dataPath,
+          dataDir: args.dataDir,
+        }),
+      ];
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !shouldListAppDataPrefixAfterReadError(error)
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  const appDataRoot = resolveApplicationDataPath(
+    args.dataDir,
+    args.applicationId,
+  );
+  const listRoot = args.dataPath
+    ? path.join(appDataRoot, args.dataPath)
+    : appDataRoot;
+  let dataPaths: AppDataPath[];
+  try {
+    dataPaths = await listAppDataFilePaths(appDataRoot, listRoot);
+  } catch (error) {
+    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+      return [];
+    }
+    throw error;
+  }
+
+  return Promise.all(
+    dataPaths.map((dataPath) =>
+      readApplicationDataEntry({
+        applicationId: args.applicationId,
+        dataDir: args.dataDir,
+        dataPath,
+      }),
+    ),
+  );
+}
+
+async function writeApplicationDataEntry(
+  args: WriteApplicationDataEntryArgs,
+): Promise<AppDataEntry> {
+  const content = canonicalizeJson(args.value);
+  const appDataRoot = resolveApplicationDataPath(
+    args.dataDir,
+    args.applicationId,
+  );
+  const filePath = path.join(appDataRoot, ...args.dataPath.split("/"));
+  const relativePath = path.relative(appDataRoot, filePath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new ApiError(400, "invalid_request", "Invalid app data path");
+  }
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, content, "utf8");
+  return readApplicationDataEntry(args);
+}
+
+async function deleteApplicationDataEntry(
+  args: DeleteApplicationDataEntryArgs,
+): Promise<void> {
+  const appDataRoot = resolveApplicationDataPath(
+    args.dataDir,
+    args.applicationId,
+  );
+  const filePath = path.join(appDataRoot, ...args.dataPath.split("/"));
+  const relativePath = path.relative(appDataRoot, filePath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new ApiError(400, "invalid_request", "Invalid app data path");
+  }
+  try {
+    await rm(filePath);
+  } catch (error) {
+    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+      throw new ApiError(404, "ENOENT", `App data not found: ${args.dataPath}`);
+    }
+    throw error;
+  }
+}
+
+function createApplicationId(): ApplicationId {
+  return applicationIdSchema.parse(
+    `app_${randomUUID().replaceAll("-", "").slice(0, 24)}`,
+  );
+}
+
+function createTempNonce(): string {
+  return randomUUID().replaceAll("-", "").slice(0, 16);
+}
+
+async function createApplicationTempRoot(
+  args: CreateApplicationTempRootArgs,
+): Promise<string> {
+  const tempRootPath = path.join(
+    args.appsRootPath,
+    `.tmp-${args.applicationId}-${createTempNonce()}`,
+  );
+  await mkdir(tempRootPath, { recursive: false });
+  return tempRootPath;
+}
+
+async function writeInitialApplicationFiles(
+  tempRootPath: string,
+  applicationId: ApplicationId,
+  name: string,
+): Promise<void> {
+  const manifest: AppManifest = {
+    manifestVersion: 1,
+    id: applicationId,
+    name,
+    entry: "index.html",
+    capabilities: ["data", "message"],
+  };
+  await mkdir(path.join(tempRootPath, ASSETS_DIRECTORY_NAME), {
+    recursive: true,
+  });
+  await mkdir(path.join(tempRootPath, DATA_DIRECTORY_NAME), {
+    recursive: true,
+  });
+  await writeFile(
+    path.join(tempRootPath, MANIFEST_FILE_NAME),
+    canonicalizeJson(manifest),
+    "utf8",
+  );
+  await writeFile(
+    path.join(tempRootPath, ASSETS_DIRECTORY_NAME, "index.html"),
+    buildBlankAppIndexHtml({ name }),
+    "utf8",
+  );
+  await writeFile(
+    path.join(tempRootPath, DATA_DIRECTORY_NAME, "state.json"),
+    canonicalizeJson({}),
+    "utf8",
+  );
+  appManifestSchema.parse(
+    JSON.parse(await readFile(path.join(tempRootPath, MANIFEST_FILE_NAME), "utf8")),
+  );
+}
+
+async function publishApplicationTempRoot(
+  args: PublishApplicationTempRootArgs,
+): Promise<"published" | "collision"> {
+  try {
+    await stat(args.applicationPath);
+    return "collision";
+  } catch (error) {
+    if (!(error instanceof Error) || !isFsErrorWithCode(error, "ENOENT")) {
+      throw error;
+    }
+  }
+  try {
+    await rename(args.tempRootPath, args.applicationPath);
+    return "published";
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (isFsErrorWithCode(error, "EEXIST") ||
+        isFsErrorWithCode(error, "ENOTEMPTY"))
+    ) {
+      return "collision";
+    }
+    throw error;
+  }
+}
+
+export async function createGlobalApplication(
+  args: CreateGlobalApplicationArgs,
+): Promise<ApplicationId> {
+  const appsRootPath = resolveAppsRootPath(args.dataDir);
+  await mkdir(appsRootPath, { recursive: true });
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const applicationId = createApplicationId();
+    const applicationPath = resolveApplicationPath(args.dataDir, applicationId);
+    let tempRootPath: string | null = null;
+    try {
+      tempRootPath = await createApplicationTempRoot({
+        appsRootPath,
+        applicationId,
+      });
+      await writeInitialApplicationFiles(tempRootPath, applicationId, args.name);
+      const result = await publishApplicationTempRoot({
+        applicationPath,
+        tempRootPath,
+      });
+      if (result === "published") {
+        return applicationId;
+      }
+      await rm(tempRootPath, { recursive: true, force: true });
+      tempRootPath = null;
+    } catch (error) {
+      if (tempRootPath !== null) {
+        await rm(tempRootPath, { recursive: true, force: true }).catch(
+          () => undefined,
+        );
+      }
+      throw new ApiError(
+        500,
+        "scaffold_failed",
+        error instanceof Error ? error.message : "Failed to scaffold app",
+      );
+    }
+  }
+
+  throw new ApiError(
+    500,
+    "app_id_allocation_failed",
+    "Could not allocate a unique app id",
+  );
+}
+
+async function deleteGlobalApplication(
+  dataDir: string,
+  applicationId: ApplicationId,
+): Promise<"deleted" | "partial"> {
+  const applicationPath = resolveApplicationPath(dataDir, applicationId);
+  try {
+    await stat(applicationPath);
+  } catch (error) {
+    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+      throw new ApiError(404, "app_missing", "App not found");
+    }
+    throw error;
+  }
+  const tombstonePath = path.join(
+    resolveAppsRootPath(dataDir),
+    `.delete-${applicationId}-${createTempNonce()}`,
+  );
+  try {
+    await rename(applicationPath, tombstonePath);
+  } catch (error) {
+    throw new ApiError(
+      500,
+      "delete_failed",
+      error instanceof Error ? error.message : "Failed to delete app",
+    );
+  }
+  try {
+    await rm(tombstonePath, { recursive: true, force: true });
+    return "deleted";
+  } catch {
+    return "partial";
+  }
+}
+
+function formatAppMessagePayload(payload: JsonValue): string {
+  return typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+}
+
+function resolveAppMessageTarget(
+  deps: AppDeps,
+  args: ResolveAppMessageTargetArgs,
+): AppSession {
+  const token =
+    args.payload.appSessionToken === undefined
+      ? null
+      : args.sessions.get(args.payload.appSessionToken);
+  if (args.payload.appSessionToken !== undefined && token === null) {
+    throw new ApiError(403, "forbidden", "Invalid app session token");
+  }
+  if (token !== null && token.applicationId !== args.applicationId) {
+    throw new ApiError(403, "forbidden", "App session token does not match app");
+  }
+  if (args.payload.targetThreadId !== undefined) {
+    const thread = requirePublicThread(deps.db, args.payload.targetThreadId);
+    if (token !== null && token.threadId !== thread.id) {
+      throw new ApiError(403, "forbidden", "App message target mismatch");
+    }
+    return {
+      applicationId: args.applicationId,
+      threadId: thread.id,
+      projectId: thread.projectId,
+    };
+  }
+  if (token !== null) {
+    return token;
+  }
+  throw new ApiError(
+    400,
+    "message_target_required",
+    "App message requires an app session token or targetThreadId",
+  );
+}
+
+export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
+  const { get, post, put, del } = typedRoutes<PublicApiSchema>(app, {
+    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
+  });
+  const appSessions = createAppSessionStore();
+
+  get("/apps", async (context) =>
+    context.json(await listGlobalApplications(deps)),
+  );
+
+  post("/apps", createAppRequestSchema, async (context, payload) => {
+    const applicationId = await createGlobalApplication({
+      dataDir: deps.config.dataDir,
+      name: payload.name,
+    });
+    const detail = await buildApplicationDetail(deps, {
+      dataDir: deps.config.dataDir,
+      applicationId,
+    });
+    return context.json(detail, 201);
+  });
+
+  get("/apps/:applicationId", async (context) => {
+    const applicationId = parseApplicationId(
+      context.req.param("applicationId"),
+    );
+    return context.json(
+      await buildApplicationDetail(deps, {
+        dataDir: deps.config.dataDir,
+        applicationId,
+      }),
+    );
+  });
+
+  del("/apps/:applicationId", async (context) => {
+    const applicationId = parseApplicationId(
+      context.req.param("applicationId"),
+    );
+    const result = await deleteGlobalApplication(
+      deps.config.dataDir,
+      applicationId,
+    );
+    if (result === "partial") {
+      throw new ApiError(
+        500,
+        "delete_partial",
+        "App was removed from normal lists, but tombstone cleanup failed",
+      );
+    }
+    return context.json({ ok: true });
+  });
+
+  get(
+    "/apps/:applicationId/data",
+    appDataListQuerySchema,
+    async (context, query) => {
+      const applicationId = parseApplicationId(
+        context.req.param("applicationId"),
+      );
+      const manifest = await readApplicationManifestForRequest(deps, {
+        dataDir: deps.config.dataDir,
+        applicationId,
+      });
+      assertAppCapability(manifest, "data");
+      const dataPath = parseOptionalAppDataPrefix(query.prefix);
+      return context.json({
+        entries: await listApplicationDataEntries({
+          dataDir: deps.config.dataDir,
+          applicationId,
+          dataPath,
+        }),
+      });
+    },
+  );
+
+  post(
+    "/apps/:applicationId/message",
+    appMessageRequestSchema,
+    async (context, payload) => {
+      const applicationId = parseApplicationId(
+        context.req.param("applicationId"),
+      );
+      const manifest = await readApplicationManifestForRequest(deps, {
+        dataDir: deps.config.dataDir,
+        applicationId,
+      });
+      assertAppCapability(manifest, "message");
+      const target = resolveAppMessageTarget(deps, {
+        applicationId,
+        payload,
+        sessions: appSessions,
+      });
+      const thread = requirePublicThread(deps.db, target.threadId);
+      const environment = await requireThreadCommandEnvironment(deps, {
+        thread,
+      });
+      await sendThreadMessage(deps, {
+        environment,
+        thread,
+        trigger: "user",
+        payload: {
+          input: [
+            {
+              type: "text",
+              text: formatAppMessagePayload(payload.payload),
+            },
+          ],
+          mode: "auto",
+        },
+      });
+      return context.json({ ok: true }, 202);
+    },
+  );
+
+  app.get("/apps/:applicationId/", async (context) =>
+    serveApplicationEntry(
+      deps,
+      appSessions,
+      context.req.param("applicationId"),
+      context.req.url,
+      context.req.query("targetThreadId"),
+    ),
+  );
+
+  app.get("/apps/:applicationId/icon", async (context) =>
+    serveApplicationIcon(deps, context.req.param("applicationId")),
+  );
+
+  get("/apps/:applicationId/data/*", async (context) => {
+    const applicationId = parseApplicationId(
+      context.req.param("applicationId"),
+    );
+    const manifest = await readApplicationManifestForRequest(deps, {
+      dataDir: deps.config.dataDir,
+      applicationId,
+    });
+    assertAppCapability(manifest, "data");
+    const dataPath = parseAppDataRoutePath(
+      extractRoutePath({
+        requestUrl: context.req.url,
+        routeSegment: applicationDataRouteSegment({ applicationId }),
+      }),
+    );
+    const entry = await readApplicationDataEntry({
+      dataDir: deps.config.dataDir,
+      applicationId,
+      dataPath,
+    });
+    const response = context.json(entry);
+    response.headers.set("cache-control", NO_STORE_CACHE_CONTROL);
+    response.headers.set("etag", `"${entry.version}"`);
+    return response;
+  });
+
+  put(
+    "/apps/:applicationId/data/*",
+    appDataWriteRequestSchema,
+    async (context, payload) => {
+      const applicationId = parseApplicationId(
+        context.req.param("applicationId"),
+      );
+      const manifest = await readApplicationManifestForRequest(deps, {
+        dataDir: deps.config.dataDir,
+        applicationId,
+      });
+      assertAppCapability(manifest, "data");
+      const dataPath = parseAppDataRoutePath(
+        extractRoutePath({
+          requestUrl: context.req.url,
+          routeSegment: applicationDataRouteSegment({ applicationId }),
+        }),
+      );
+      const entry = await writeApplicationDataEntry({
+        dataDir: deps.config.dataDir,
+        applicationId,
+        dataPath,
+        value: payload.value,
+      });
+      const response = context.json(entry);
+      response.headers.set("cache-control", NO_STORE_CACHE_CONTROL);
+      response.headers.set("etag", `"${entry.version}"`);
+      return response;
+    },
+  );
+
+  del("/apps/:applicationId/data/*", async (context) => {
+    const applicationId = parseApplicationId(
+      context.req.param("applicationId"),
+    );
+    const manifest = await readApplicationManifestForRequest(deps, {
+      dataDir: deps.config.dataDir,
+      applicationId,
+    });
+    assertAppCapability(manifest, "data");
+    const dataPath = parseAppDataRoutePath(
+      extractRoutePath({
+        requestUrl: context.req.url,
+        routeSegment: applicationDataRouteSegment({ applicationId }),
+      }),
+    );
+    await deleteApplicationDataEntry({
+      dataDir: deps.config.dataDir,
+      applicationId,
+      dataPath,
+    });
+    const response = context.json({ ok: true });
+    response.headers.set("cache-control", NO_STORE_CACHE_CONTROL);
+    return response;
+  });
+
+  app.get("/apps/:applicationId/assets/*", async (context) => {
+    const applicationId = context.req.param("applicationId");
+    return serveApplicationAsset(
+      deps,
+      applicationId,
+      extractRoutePath({
+        requestUrl: context.req.url,
+        routeSegment: applicationAssetRouteSegment({ applicationId }),
+      }),
+    );
+  });
+}

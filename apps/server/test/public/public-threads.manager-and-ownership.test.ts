@@ -471,7 +471,7 @@ describe("public thread manager and ownership routes", () => {
         name: "default",
         files: {
           "PREFERENCES.md": "default prefs\n",
-          "apps/status/data/state.json": '{"prs":[]}\n',
+          "notes/state.json": '{"prs":[]}\n',
         },
       });
 
@@ -529,8 +529,11 @@ describe("public thread manager and ownership routes", () => {
         readFile(path.join(storagePath, "PREFERENCES.md"), "utf8"),
       ).resolves.toBe("default prefs\n");
       await expect(
-        readFile(path.join(storagePath, "apps/status/data/state.json"), "utf8"),
+        readFile(path.join(storagePath, "notes/state.json"), "utf8"),
       ).resolves.toBe('{"prs":[]}\n');
+      await expect(
+        stat(path.join(storagePath, "apps", "status", "manifest.json")),
+      ).rejects.toThrow();
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });
@@ -1107,17 +1110,8 @@ describe("public thread manager and ownership routes", () => {
         stat(path.join(storagePath, "PREFERENCES.md")),
       ).rejects.toThrow();
       await expect(
-        readFile(path.join(storagePath, "apps/status/manifest.json"), "utf8"),
-      ).resolves.toContain('"id": "status"');
-      await expect(
-        readFile(
-          path.join(storagePath, "apps/status/assets/index.html"),
-          "utf8",
-        ),
-      ).resolves.toContain("<title>Status</title>");
-      await expect(
-        readFile(path.join(storagePath, "apps/status/data/state.json"), "utf8"),
-      ).resolves.toBe("{}\n");
+        stat(path.join(storagePath, "apps", "status", "manifest.json")),
+      ).rejects.toThrow();
     } finally {
       await harness.cleanup();
       await rm(dataDir, { recursive: true, force: true });

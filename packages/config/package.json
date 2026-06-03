@@ -97,6 +97,11 @@
       "source": "./src/bb-app-managed-config.ts",
       "types": "./src/bb-app-managed-config.ts",
       "default": "./src/bb-app-managed-config.ts"
+    },
+    "./app-storage-paths": {
+      "source": "./src/app-storage-paths.ts",
+      "types": "./src/app-storage-paths.ts",
+      "default": "./src/app-storage-paths.ts"
     }
   },
   "scripts": {

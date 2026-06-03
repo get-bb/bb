@@ -17,9 +17,6 @@ import {
   projectSourceBranchesQueryKey,
   projectsQueryKey,
   sidebarNavigationQueryKey,
-  threadAppMarkdownPreviewQueryKey,
-  threadAppQueryKey,
-  threadAppsQueryKey,
   threadQueuedMessagesQueryKey,
   threadListQueryKey,
   threadPromptHistoryQueryKey,
@@ -580,89 +577,6 @@ describe("createRealtimeCacheEffects", () => {
     );
 
     unsubscribeStoragePreview();
-    effects.dispose();
-  });
-
-  it("refetches active thread app queries for thread storage changes", async () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const threadKey = threadQueryKey("thr_1");
-    const appListKey = threadAppsQueryKey("thr_1");
-    const appDetailKey = threadAppQueryKey("thr_1", "status");
-    const markdownPreviewKey = threadAppMarkdownPreviewQueryKey(
-      "thr_1",
-      "status",
-      "index.md",
-    );
-    const nextAppDetail = {
-      id: "status",
-      name: "Status",
-      entry: { path: "index.html", kind: "html" },
-      capabilities: ["data"],
-      icon: { kind: "builtin", name: "ListTodo" },
-    };
-    const nextMarkdownPreview = {
-      kind: "text",
-      content: "new",
-      mimeType: "text/markdown",
-      path: "index.md",
-      url: "/new",
-    };
-    queryClient.setQueryData(threadKey, {
-      id: "thr_1",
-      environmentId: "env-1",
-    });
-    queryClient.setQueryData(appListKey, []);
-    queryClient.setQueryData(appDetailKey, {
-      ...nextAppDetail,
-      name: "Old Status",
-    });
-    queryClient.setQueryData(markdownPreviewKey, {
-      ...nextMarkdownPreview,
-      content: "old",
-    });
-    const appListQueryFn = vi.fn(async () => [nextAppDetail]);
-    const appDetailQueryFn = vi.fn(async () => nextAppDetail);
-    const markdownPreviewQueryFn = vi.fn(async () => nextMarkdownPreview);
-    const appListObserver = new QueryObserver(queryClient, {
-      queryKey: appListKey,
-      queryFn: appListQueryFn,
-      staleTime: Infinity,
-    });
-    const appDetailObserver = new QueryObserver(queryClient, {
-      queryKey: appDetailKey,
-      queryFn: appDetailQueryFn,
-      staleTime: Infinity,
-    });
-    const markdownPreviewObserver = new QueryObserver(queryClient, {
-      queryKey: markdownPreviewKey,
-      queryFn: markdownPreviewQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeAppList = appListObserver.subscribe(() => {});
-    const unsubscribeAppDetail = appDetailObserver.subscribe(() => {});
-    const unsubscribeMarkdownPreview = markdownPreviewObserver.subscribe(
-      () => {},
-    );
-    appListQueryFn.mockClear();
-    appDetailQueryFn.mockClear();
-    markdownPreviewQueryFn.mockClear();
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "environment",
-      id: "env-1",
-      changes: ["thread-storage-changed"],
-    });
-    await vi.advanceTimersByTimeAsync(250);
-
-    expect(appListQueryFn).toHaveBeenCalledTimes(1);
-    expect(appDetailQueryFn).toHaveBeenCalledTimes(1);
-    expect(markdownPreviewQueryFn).toHaveBeenCalledTimes(1);
-
-    unsubscribeAppList();
-    unsubscribeAppDetail();
-    unsubscribeMarkdownPreview();
     effects.dispose();
   });
 

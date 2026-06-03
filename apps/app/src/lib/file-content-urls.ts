@@ -35,33 +35,31 @@ export function buildThreadStorageRawContentUrl(
   return `/api/v1/threads/${encodeURIComponent(threadId)}/thread-storage/files/${encodePathSegments(path)}`;
 }
 
-export function buildThreadAppEntryUrl(
-  threadId: string,
-  appId: string,
+export function buildAppEntryUrl(
+  applicationId: string,
+  targetThreadId: string,
 ): string {
-  return `/api/v1/threads/${encodeURIComponent(
-    threadId,
-  )}/apps/${encodeURIComponent(appId)}/`;
+  return `/api/v1/apps/${encodeURIComponent(
+    applicationId,
+  )}/?targetThreadId=${encodeURIComponent(targetThreadId)}`;
 }
 
-export function buildThreadAppAssetUrl(
-  threadId: string,
-  appId: string,
+export function buildAppAssetUrl(
+  applicationId: string,
   path: string,
 ): string {
-  return `/api/v1/threads/${encodeURIComponent(
-    threadId,
-  )}/apps/${encodeURIComponent(appId)}/${encodePathSegments(path)}`;
+  return `/api/v1/apps/${encodeURIComponent(
+    applicationId,
+  )}/assets/${encodePathSegments(path)}`;
 }
 
-export function buildThreadAppAssetBaseUrl(
-  threadId: string,
-  appId: string,
+export function buildAppAssetBaseUrl(
+  applicationId: string,
   entryPath: string,
 ): string {
   const lastSlash = entryPath.lastIndexOf("/");
   const basePath = lastSlash === -1 ? "" : entryPath.slice(0, lastSlash + 1);
-  return buildThreadAppAssetUrl(threadId, appId, basePath);
+  return buildAppAssetUrl(applicationId, basePath);
 }
 
 export function buildThreadHostFileContentUrl(

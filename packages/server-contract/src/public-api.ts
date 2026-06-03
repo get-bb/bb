@@ -28,11 +28,11 @@ import type {
   AppDetail,
   AppMessageRequest,
   AppSummary,
+  CreateAppRequest,
   CreateAutomationRequest,
   CreateHostJoinRequest,
   CreateHostJoinResponse,
   CreateQueuedMessageRequest,
-  CreateThreadAppRequest,
   CreateManagerThreadRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
@@ -126,7 +126,7 @@ import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
 type PathProjectManagerThreadId = { param: { id: string; threadId: string } };
-type PathThreadApp = { param: { id: string; appId: string } };
+type PathApplicationApp = { param: { applicationId: string } };
 
 export type PublicApiSchema = {
   // ─── Development Only ────────────────────────────────────────────────
@@ -142,6 +142,48 @@ export type PublicApiSchema = {
       PathId & { json: ReplayRunRequest },
       ReplayRunResponse,
       201
+    >;
+  };
+
+  // ─── Apps ────────────────────────────────────────────────────────────
+
+  "/apps": {
+    /** List global local-host apps by scanning valid manifests in the app root. */
+    $get: Endpoint<EmptyInput, AppSummary[]>;
+    /** Create one global local-host app with an allocated applicationId. */
+    $post: Endpoint<{ json: CreateAppRequest }, AppDetail, 201>;
+  };
+  "/apps/:applicationId": {
+    /** Resolve one global app manifest and canonical storage paths. */
+    $get: Endpoint<PathApplicationApp, AppDetail>;
+    /** Delete one global app folder, including assets and data. */
+    $delete: Endpoint<PathApplicationApp, { ok: true }>;
+  };
+  "/apps/:applicationId/data": {
+    /** List JSON value files at or below an app data prefix. */
+    $get: Endpoint<
+      PathApplicationApp & { query?: AppDataListQuery },
+      AppDataListResponse
+    >;
+  };
+  "/apps/:applicationId/data/*": {
+    /**
+     * Read, write, or delete one app data JSON file. The wildcard suffix is
+     * validated by the route because hono-typed-routes only types named params.
+     */
+    $get: Endpoint<PathApplicationApp, AppDataReadResponse>;
+    $put: Endpoint<
+      PathApplicationApp & { json: AppDataWriteRequest },
+      AppDataReadResponse
+    >;
+    $delete: Endpoint<PathApplicationApp, { ok: true }>;
+  };
+  "/apps/:applicationId/message": {
+    /** Send a message from a global app to an explicit thread target context. */
+    $post: Endpoint<
+      PathApplicationApp & { json: AppMessageRequest },
+      { ok: true },
+      202
     >;
   };
 
@@ -599,41 +641,6 @@ export type PublicApiSchema = {
   "/threads/:id/default-execution-options": {
     /** Returns the last used options for the thread for use as defaults in the UI. */
     $get: Endpoint<PathId, ResolvedThreadExecutionOptions | null>;
-  };
-  "/threads/:id/apps": {
-    /** List thread apps by reading validated manifests from thread storage. */
-    $get: Endpoint<PathId, AppSummary[]>;
-    /** Scaffold a new thread app under apps/<appId>/ using a server-owned template. */
-    $post: Endpoint<PathId & { json: CreateThreadAppRequest }, AppDetail, 201>;
-  };
-  "/threads/:id/apps/:appId": {
-    /** Resolve one thread app manifest, entry, and icon. */
-    $get: Endpoint<PathThreadApp, AppDetail>;
-    /** Remove one thread app directory from thread storage. */
-    $delete: Endpoint<PathThreadApp, { ok: true }>;
-  };
-  "/threads/:id/apps/:appId/data": {
-    /** List JSON value files at or below an app data prefix. */
-    $get: Endpoint<
-      PathThreadApp & { query?: AppDataListQuery },
-      AppDataListResponse
-    >;
-  };
-  "/threads/:id/apps/:appId/data/*": {
-    /**
-     * Read, write, or delete one app data JSON file. The wildcard suffix is
-     * validated by the route because hono-typed-routes only types named params.
-     */
-    $get: Endpoint<PathThreadApp, AppDataReadResponse>;
-    $put: Endpoint<
-      PathThreadApp & { json: AppDataWriteRequest },
-      AppDataReadResponse
-    >;
-    $delete: Endpoint<PathThreadApp, { ok: true }>;
-  };
-  "/threads/:id/apps/:appId/message": {
-    /** Send a message from an app iframe to its owning thread. */
-    $post: Endpoint<PathThreadApp & { json: AppMessageRequest }, { ok: true }>;
   };
   "/threads/:id/thread-storage/files": {
     /**

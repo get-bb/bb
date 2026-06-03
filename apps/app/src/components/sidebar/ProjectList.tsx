@@ -33,13 +33,14 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { ProjectResponse } from "@bb/server-contract";
+import type { AppSummary, ProjectResponse } from "@bb/server-contract";
 import {
   findLocalPathProjectSourceForHost,
   PERSONAL_PROJECT_ID,
   type ThreadListEntry,
 } from "@bb/domain";
 import { useAppRoute } from "@/hooks/useAppRoute";
+import { useApps } from "@/hooks/queries/thread-queries";
 import {
   useConnectionAwareQueryState,
   type ConnectionAwareQueryStatus,
@@ -86,6 +87,7 @@ import {
   COARSE_POINTER_ROW_HEIGHT_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectRow, ProjectThreadTree } from "./ProjectRow";
+import { SidebarAppsSection } from "./SidebarAppsSection";
 import type {
   ProjectRowDragBindings,
   ProjectRowProps,
@@ -244,7 +246,12 @@ function hasSameSidebarSectionOrder(
 }
 
 function isSidebarSectionId(value: string): value is SidebarSectionId {
-  return value === "pinned" || value === "projects" || value === "threads";
+  return (
+    value === "pinned" ||
+    value === "projects" ||
+    value === "threads" ||
+    value === "apps"
+  );
 }
 
 function normalizeSidebarSectionOrder(
@@ -275,6 +282,8 @@ function normalizeSidebarSectionOrder(
 const EMPTY_PROJECT_THREAD_LIST_STATE: ProjectThreadListState = {
   status: "loading",
 };
+
+const EMPTY_APPS: readonly AppSummary[] = [];
 
 function getProjectThreadListState({
   status,
@@ -618,6 +627,8 @@ function ProjectListComponent({
   const setRootComposeMode = useSetRootComposeMode();
   const sidebarNavigationQuery = useSidebarNavigation();
   const sidebarNavigation = sidebarNavigationQuery.data;
+  const appsQuery = useApps();
+  const apps = appsQuery.data ?? EMPTY_APPS;
   const projects = useMemo(
     () => sidebarNavigation?.projects.map(stripProjectThreads),
     [sidebarNavigation],
@@ -894,12 +905,17 @@ function ProjectListComponent({
     [threads],
   );
   const hasPinnedSection = pinnedSidebarState.rootItems.length > 0;
+  // No apps → no section: the empty Apps list adds nothing, so it stays hidden
+  // (like the Pinned section) until at least one global app exists.
+  const hasAppsSection = apps.length > 0;
   const visibleSidebarSectionOrder = useMemo(
     () =>
-      sidebarSectionOrder.filter(
-        (sectionId) => sectionId !== "pinned" || hasPinnedSection,
-      ),
-    [hasPinnedSection, sidebarSectionOrder],
+      sidebarSectionOrder.filter((sectionId) => {
+        if (sectionId === "pinned") return hasPinnedSection;
+        if (sectionId === "apps") return hasAppsSection;
+        return true;
+      }),
+    [hasAppsSection, hasPinnedSection, sidebarSectionOrder],
   );
   const threadsByProject = useMemo(() => {
     const grouped = new Map<string, ThreadListEntry[]>();
@@ -1159,6 +1175,7 @@ function ProjectListComponent({
       onReorderManager={handleReorderManager}
     />
   );
+  const appsSectionContent = <SidebarAppsSection apps={apps} />;
   const projectsSectionActions = onNewProject ? (
     <ProjectListProjectsSectionActions
       onNewProject={onNewProject}
@@ -1215,7 +1232,7 @@ function ProjectListComponent({
                 >
                   {projectsSectionContent}
                 </SortableSidebarSection>
-              ) : (
+              ) : sectionId === "threads" ? (
                 <SortableSidebarSection
                   key={sectionId}
                   id={sectionId}
@@ -1227,6 +1244,18 @@ function ProjectListComponent({
                   }
                 >
                   {threadsSectionContent}
+                </SortableSidebarSection>
+              ) : (
+                <SortableSidebarSection
+                  key={sectionId}
+                  id={sectionId}
+                  label="Apps"
+                  disabled={visibleSidebarSectionOrder.length < 2}
+                  consumeClickSuppression={
+                    consumeSidebarSectionClickSuppression
+                  }
+                >
+                  {appsSectionContent}
                 </SortableSidebarSection>
               ),
             )}

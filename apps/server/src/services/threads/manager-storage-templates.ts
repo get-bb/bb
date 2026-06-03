@@ -1,54 +1,23 @@
-import { constants as fsConstants, readFileSync } from "node:fs";
+import { constants as fsConstants } from "node:fs";
 import type { Dirent } from "node:fs";
-import {
-  copyFile,
-  mkdir,
-  readdir,
-  readFile,
-  writeFile,
-} from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   managerTemplateNameSchema,
   type ManagerTemplateName,
 } from "@bb/domain";
 import type { LoggedWorkSessionDeps, ServerLogger } from "../../types.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
-import { buildBlankAppIndexHtml } from "./blank-app-scaffold.js";
 
 export const MANAGER_TEMPLATE_DIR_NAME = "manager-templates";
 export const ACTIVE_MANAGER_TEMPLATE_FILE_NAME = "active";
 export const DEFAULT_MANAGER_TEMPLATE_NAME: ManagerTemplateName = "default";
 
-const BUNDLED_STATUS_APP_NAME = "Status";
-const BUNDLED_STATUS_APP_INDEX_HTML = buildBlankAppIndexHtml({
-  name: BUNDLED_STATUS_APP_NAME,
-});
-const BUNDLED_STATUS_APP_STATE_JSON = "{}\n";
-
-const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const defaultTemplateAssetDir = path.join(moduleDir, "default-template");
-
-function loadDefaultTemplateAsset(fileName: string): string {
-  return readFileSync(path.join(defaultTemplateAssetDir, fileName), "utf8");
-}
-
 type ManagerTemplateLogger = Pick<ServerLogger, "debug" | "warn">;
-
-interface BuiltInManagerTemplateFile {
-  content: string;
-  fileName: string;
-}
 
 interface TemplateFileToCopy {
   relativePath: string;
   sourcePath: string;
-}
-
-interface BuiltInManagerTemplateSet {
-  files: readonly BuiltInManagerTemplateFile[];
-  name: ManagerTemplateName;
 }
 
 interface ResolveManagerTemplateNameArgs {
@@ -72,14 +41,6 @@ interface CopyTemplateFilesArgs {
   threadStoragePath: string;
 }
 
-interface CopyBuiltInTemplateFilesArgs {
-  files: readonly BuiltInManagerTemplateFile[];
-  logger: ManagerTemplateLogger;
-  templateName: ManagerTemplateName;
-  threadId: string;
-  threadStoragePath: string;
-}
-
 interface FsErrorWithCodeArgs {
   code: string;
   error: unknown;
@@ -94,34 +55,6 @@ interface ManagerTemplateSetPathArgs extends ManagerTemplateRootPathArgs {
 }
 
 type CopyTemplateFilesResult = "copied" | "missing";
-
-// Built-in defaults stay in the server bundle. They are always overlaid on top
-// of any user-authored template copy so newly-provisioned threads have a
-// working status surface even if the user's template omits these files.
-// User-authored files win because they are copied first and the overlay uses
-// the `wx` flag, which refuses to overwrite existing destinations.
-//
-// The bundled status app shares its index.html with the `bb app new` blank
-// scaffold (via buildBlankAppIndexHtml) so new users open a bb-styled
-// starting-point dashboard they can ask their agent to customize, rather than
-// inheriting any one workflow-specific UI.
-const BUILT_IN_DEFAULT_MANAGER_TEMPLATE_SET: BuiltInManagerTemplateSet = {
-  name: DEFAULT_MANAGER_TEMPLATE_NAME,
-  files: [
-    {
-      fileName: "apps/status/manifest.json",
-      content: loadDefaultTemplateAsset("apps/status/manifest.json"),
-    },
-    {
-      fileName: "apps/status/assets/index.html",
-      content: BUNDLED_STATUS_APP_INDEX_HTML,
-    },
-    {
-      fileName: "apps/status/data/state.json",
-      content: BUNDLED_STATUS_APP_STATE_JSON,
-    },
-  ],
-};
 
 function isFsErrorWithCode(args: FsErrorWithCodeArgs): boolean {
   return (
@@ -277,37 +210,6 @@ async function collectTemplateFiles(
   return files;
 }
 
-async function copyBuiltInTemplateFiles(
-  args: CopyBuiltInTemplateFilesArgs,
-): Promise<void> {
-  await mkdir(args.threadStoragePath, { recursive: true });
-
-  for (const file of args.files) {
-    const destinationPath = path.join(args.threadStoragePath, file.fileName);
-    try {
-      await mkdir(path.dirname(destinationPath), { recursive: true });
-      await writeFile(destinationPath, file.content, {
-        encoding: "utf8",
-        flag: "wx",
-      });
-    } catch (error) {
-      if (isFsErrorWithCode({ error, code: "EEXIST" })) {
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  args.logger.debug(
-    {
-      templateName: args.templateName,
-      threadId: args.threadId,
-      threadStoragePath: args.threadStoragePath,
-    },
-    "Overlaid bundled apps/status seed onto manager storage",
-  );
-}
-
 export async function seedManagerThreadStorage(
   deps: LoggedWorkSessionDeps,
   args: SeedManagerThreadStorageArgs,
@@ -342,15 +244,7 @@ export async function seedManagerThreadStorage(
         templateDirPath,
         threadId: args.threadId,
       },
-      "Manager template directory is missing; overlaying bundled seed only",
+      "Manager template directory is missing; no template files were seeded",
     );
   }
-
-  await copyBuiltInTemplateFiles({
-    files: BUILT_IN_DEFAULT_MANAGER_TEMPLATE_SET.files,
-    logger: deps.logger,
-    templateName,
-    threadId: args.threadId,
-    threadStoragePath: args.threadStoragePath,
-  });
 }

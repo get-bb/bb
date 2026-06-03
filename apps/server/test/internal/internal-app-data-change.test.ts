@@ -1,38 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
-import {
-  seedEnvironment,
-  seedHostSession,
-  seedProjectWithSource,
-  seedThread,
-} from "../helpers/seed.js";
+import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("internal app-data change route", () => {
-  it("broadcasts daemon-reported app data changes for session-owned threads", async () => {
+  it("broadcasts daemon-reported app data changes", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
+      const { session } = seedHostSession(harness.deps, {
         id: "host-app-data-change",
       });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/app-data-change",
-        status: "ready",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        type: "manager",
-      });
-      const notifyThreadAppDataSpy = vi.spyOn(
-        harness.hub,
-        "notifyThreadAppData",
-      );
+      const notifyAppDataSpy = vi.spyOn(harness.hub, "notifyAppData");
 
       const response = await harness.app.request(
         "/internal/session/app-data-change",
@@ -41,8 +19,7 @@ describe("internal app-data change route", () => {
           headers: internalAuthHeaders(harness),
           body: JSON.stringify({
             sessionId: session.id,
-            threadId: thread.id,
-            appId: "status",
+            applicationId: "app_status",
             path: "state.json",
             value: { workers: [] },
             deleted: false,
@@ -52,10 +29,9 @@ describe("internal app-data change route", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(notifyThreadAppDataSpy).toHaveBeenCalledWith({
+      expect(notifyAppDataSpy).toHaveBeenCalledWith({
         type: "app-data.changed",
-        threadId: thread.id,
-        appId: "status",
+        applicationId: "app_status",
         path: "state.json",
         value: { workers: [] },
         deleted: false,
@@ -64,32 +40,9 @@ describe("internal app-data change route", () => {
     });
   });
 
-  it("rejects daemon-reported app data changes for threads owned by another host", async () => {
+  it("rejects daemon-reported app data changes for unknown sessions", async () => {
     await withTestHarness(async (harness) => {
-      const hostA = seedHostSession(harness.deps, {
-        id: "host-app-data-change-a",
-      });
-      const hostB = seedHostSession(harness.deps, {
-        id: "host-app-data-change-b",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: hostB.host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: hostB.host.id,
-        projectId: project.id,
-        path: "/tmp/app-data-change-other",
-        status: "ready",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        type: "manager",
-      });
-      const notifyThreadAppDataSpy = vi.spyOn(
-        harness.hub,
-        "notifyThreadAppData",
-      );
+      const notifyAppDataSpy = vi.spyOn(harness.hub, "notifyAppData");
 
       const response = await harness.app.request(
         "/internal/session/app-data-change",
@@ -97,9 +50,8 @@ describe("internal app-data change route", () => {
           method: "POST",
           headers: internalAuthHeaders(harness),
           body: JSON.stringify({
-            sessionId: hostA.session.id,
-            threadId: thread.id,
-            appId: "status",
+            sessionId: "missing-session",
+            applicationId: "app_status",
             path: "state.json",
             value: null,
             deleted: true,
@@ -108,37 +60,20 @@ describe("internal app-data change route", () => {
         },
       );
 
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(401);
       await expect(readJson(response)).resolves.toMatchObject({
-        code: "invalid_request",
+        code: "inactive_session",
       });
-      expect(notifyThreadAppDataSpy).not.toHaveBeenCalled();
+      expect(notifyAppDataSpy).not.toHaveBeenCalled();
     });
   });
 
   it("broadcasts daemon-requested app data resync hints", async () => {
     await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
+      const { session } = seedHostSession(harness.deps, {
         id: "host-app-data-resync",
       });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/app-data-resync",
-        status: "ready",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        type: "manager",
-      });
-      const notifyThreadAppDataSpy = vi.spyOn(
-        harness.hub,
-        "notifyThreadAppData",
-      );
+      const notifyAppDataSpy = vi.spyOn(harness.hub, "notifyAppData");
 
       const response = await harness.app.request(
         "/internal/session/app-data-resync",
@@ -147,17 +82,15 @@ describe("internal app-data change route", () => {
           headers: internalAuthHeaders(harness),
           body: JSON.stringify({
             sessionId: session.id,
-            threadId: thread.id,
-            appId: "status",
+            applicationId: "app_status",
           }),
         },
       );
 
       expect(response.status).toBe(200);
-      expect(notifyThreadAppDataSpy).toHaveBeenCalledWith({
+      expect(notifyAppDataSpy).toHaveBeenCalledWith({
         type: "app-data.resync",
-        threadId: thread.id,
-        appId: "status",
+        applicationId: "app_status",
       });
     });
   });

@@ -6,12 +6,13 @@ const COLLAPSED_MANAGERS_STORAGE_KEY = "bb.sidebar.collapsedManagers";
 const COLLAPSED_ENVIRONMENTS_STORAGE_KEY = "bb.sidebar.collapsedEnvironments";
 const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
 
-export type SidebarSectionId = "pinned" | "projects" | "threads";
+export type SidebarSectionId = "pinned" | "projects" | "threads" | "apps";
 
 export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly SidebarSectionId[] = [
   "pinned",
   "projects",
   "threads",
+  "apps",
 ];
 
 export const collapsedProjectIdsAtom = atomWithStorage<string[]>(

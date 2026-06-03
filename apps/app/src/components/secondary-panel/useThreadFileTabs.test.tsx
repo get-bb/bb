@@ -26,7 +26,7 @@ import {
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
-import { STATUS_APP_ID, useThreadFileTabs } from "./useThreadFileTabs";
+import { useThreadFileTabs } from "./useThreadFileTabs";
 import { useThreadRecentItems } from "./threadRecentItems";
 
 const NOW = 1_700_000_000_000;
@@ -44,7 +44,7 @@ interface TestWrapperProps {
 }
 
 interface HookProps {
-  apps?: readonly { id: string }[];
+  apps?: readonly { applicationId: string }[];
   environmentId: string | null | undefined;
   storageFiles: readonly { path: string }[] | undefined;
   threadId: string;
@@ -148,7 +148,7 @@ function storageFilePaths(
 }
 
 function appTabIds(tabs: readonly SecondaryFileFixedPanelTab[]): string[] {
-  return tabs.filter(isAppTab).map((tab) => tab.appId);
+  return tabs.filter(isAppTab).map((tab) => tab.applicationId);
 }
 
 function tabIds(tabs: readonly SecondaryFileFixedPanelTab[]): string[] {
@@ -167,8 +167,8 @@ function hostFileTabId(path: string): string {
   return `host-file-preview:${encodeURIComponent(path)}`;
 }
 
-function appTabId(appId: string): string {
-  return `app:${encodeURIComponent(appId)}`;
+function appTabId(applicationId: string): string {
+  return `app:${encodeURIComponent(applicationId)}`;
 }
 
 function newTabId(): string {
@@ -236,7 +236,7 @@ function getStoredStoragePaths(state: FixedPanelTabsState): string[] {
 }
 
 function getStoredAppIds(state: FixedPanelTabsState): string[] {
-  return state.secondary.tabs.filter(isAppTab).map((tab) => tab.appId);
+  return state.secondary.tabs.filter(isAppTab).map((tab) => tab.applicationId);
 }
 
 afterEach(() => {
@@ -434,22 +434,17 @@ describe("useThreadFileTabs", () => {
     expect(result.current.activeHostFilePath).toBeNull();
   });
 
-  it("orders file tabs by open order with the pinned status app first", async () => {
+  it("orders file tabs by open order", () => {
     const { result } = renderThreadFileTabsHook({
-      apps: [{ id: STATUS_APP_ID }],
+      apps: [{ applicationId: "app_review" }],
       environmentId: "env-one",
       threadType: "manager",
       storageFiles: [{ path: "notes.md" }],
       threadId: "thr-manager-open-order",
     });
 
-    await waitFor(() => {
-      expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-        STATUS_APP_ID,
-      ]);
-    });
-
     act(() => {
+      result.current.openApp("app_review");
       result.current.openWorkspaceFile(
         buildWorkspaceFileTab({ lineNumber: null, path: "src/app.ts" }),
       );
@@ -458,7 +453,7 @@ describe("useThreadFileTabs", () => {
     });
 
     expect(tabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-      appTabId(STATUS_APP_ID),
+      appTabId("app_review"),
       workspaceFileTabId("src/app.ts"),
       storageFileTabId("notes.md"),
       hostFileTabId("/tmp/host.md"),
@@ -783,35 +778,35 @@ describe("useThreadFileTabs", () => {
     expect(result.current.activeStorageFilePath).toBeNull();
   });
 
-  it("opens the status app tab for managers and keeps it pinned", async () => {
+  it("closes app tabs", () => {
     const { result } = renderThreadFileTabsHook({
-      apps: [{ id: STATUS_APP_ID }],
+      apps: [{ applicationId: "app_review" }],
       environmentId: null,
       threadType: "manager",
       storageFiles: undefined,
-      threadId: "thr-manager-status-app",
+      threadId: "thr-manager-app",
     });
-
-    await waitFor(() => {
-      expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-        STATUS_APP_ID,
-      ]);
-    });
-    expect(result.current.activeAppId).toBe(STATUS_APP_ID);
 
     act(() => {
-      result.current.closeAppTab(STATUS_APP_ID);
+      result.current.openApp("app_review");
     });
 
     expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-      STATUS_APP_ID,
+      "app_review",
     ]);
-    expect(result.current.activeAppId).toBe(STATUS_APP_ID);
+    expect(result.current.activeAppId).toBe("app_review");
+
+    act(() => {
+      result.current.closeAppTab("app_review");
+    });
+
+    expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([]);
+    expect(result.current.activeAppId).toBeNull();
   });
 
   it("opens an app tab from launcher search selection", () => {
     const { result } = renderThreadFileTabsHook({
-      apps: [{ id: "demo" }],
+      apps: [{ applicationId: "app_demo" }],
       environmentId: "env-one",
       threadType: "standard",
       storageFiles: undefined,
@@ -822,16 +817,16 @@ describe("useThreadFileTabs", () => {
       result.current.openNewTab();
       result.current.selectFileSearchResult({
         source: "app",
-        appId: "demo",
+        applicationId: "app_demo",
       });
     });
 
     expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-      "demo",
+      "app_demo",
     ]);
-    expect(result.current.activeAppId).toBe("demo");
+    expect(result.current.activeAppId).toBe("app_demo");
     expect(getStoredAppIds(readStoredState("thr-app-selection"))).toEqual([
-      "demo",
+      "app_demo",
     ]);
   });
 

@@ -189,13 +189,13 @@ afterEach(() => {
 describe("ThreadSecondaryPanel", () => {
   it.each<SecondaryPanelChromeDragScenario>([
     {
-      name: "status app iframe",
+      name: "app iframe",
       activeTab: buildActiveFileTab({
-        id: "app:status",
-        filename: "Status",
+        id: "app:app_review_board",
+        filename: "Review Board",
         isPinned: true,
       }),
-      iframeTitle: "Status app",
+      iframeTitle: "Review Board app",
       closeButtonLabel: null,
     },
     {
@@ -275,9 +275,9 @@ describe("ThreadSecondaryPanel", () => {
   ])(
     "keeps iframe previews interactable after secondary panel resize ends via $name",
     async ({ finishDrag }) => {
-      const activeStatusTab: SecondaryPanelFileTab = {
-        id: "app:status",
-        filename: "Status",
+      const activeAppTab: SecondaryPanelFileTab = {
+        id: "app:app_review_board",
+        filename: "Review Board",
         isActive: true,
         isPinned: true,
         statusLabel: null,
@@ -286,8 +286,8 @@ describe("ThreadSecondaryPanel", () => {
       };
 
       renderPanel({
-        fileTabs: [activeStatusTab],
-        fileTabContent: <iframe title="Status app" />,
+        fileTabs: [activeAppTab],
+        fileTabContent: <iframe title="Review Board app" />,
         renderAsDrawer: false,
       });
 

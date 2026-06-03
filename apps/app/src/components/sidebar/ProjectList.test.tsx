@@ -29,7 +29,11 @@ import {
   resetFakeReconnectingWebSockets,
 } from "@/test/fake-reconnecting-websocket";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
+import {
+  installFetchRoutes,
+  jsonResponse,
+  type FetchRoute,
+} from "@/test/http-test-utils";
 import { wsManager } from "@/lib/ws";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
@@ -72,7 +76,7 @@ type ProjectThreadListEntryOverrides = Partial<ProjectThreadListEntry>;
 type ProjectWithThreadsOverrides = Partial<ProjectWithThreadsResponse>;
 
 interface MakeAppArgs {
-  id: string;
+  applicationId: string;
   name: string;
   icon: AppSummary["icon"];
 }
@@ -137,9 +141,26 @@ function makeThreadListEntry(
   };
 }
 
-function makeApp({ id, name, icon }: MakeAppArgs): AppSummary {
+// The sidebar now lists global apps unconditionally, so every render hits
+// `GET /api/v1/apps`. Default it to an empty list when a test doesn't care about
+// apps, so those tests don't have to register the route by hand.
+function installProjectListFetchRoutes(routes: FetchRoute[]) {
+  const hasAppsRoute = routes.some(
+    (route) => route.pathname === "/api/v1/apps",
+  );
+  return installFetchRoutes(
+    hasAppsRoute
+      ? routes
+      : [
+          ...routes,
+          { pathname: "/api/v1/apps", handler: () => jsonResponse([]) },
+        ],
+  );
+}
+
+function makeApp({ applicationId, name, icon }: MakeAppArgs): AppSummary {
   return {
-    id,
+    applicationId,
     name,
     entry: { path: "index.html", kind: "html" },
     capabilities: [],
@@ -147,20 +168,21 @@ function makeApp({ id, name, icon }: MakeAppArgs): AppSummary {
   };
 }
 
-const STATUS_APP = makeApp({
-  id: "status",
-  name: "Status",
+const REVIEW_BOARD_APP = makeApp({
+  applicationId: "app_review_board",
+  name: "Review Board",
   icon: { kind: "builtin", name: "ListTodo" },
 });
 
-// Manager app rows render after sidebar bootstrap plus a per-manager app query.
-const MANAGER_APP_ROW_TIMEOUT_MS = 5_000;
+// App rows render after the global app query resolves, which trails the sidebar
+// bootstrap, so allow a little extra time when finding one.
+const APP_ROW_TIMEOUT_MS = 5_000;
 
-function findStatusAppButton() {
+function findReviewBoardAppButton() {
   return screen.findByRole(
     "button",
-    { name: "Open Status app" },
-    { timeout: MANAGER_APP_ROW_TIMEOUT_MS },
+    { name: "Open Review Board app" },
+    { timeout: APP_ROW_TIMEOUT_MS },
   );
 }
 
@@ -346,7 +368,7 @@ describe("ProjectList", () => {
       projects,
       threadsByProjectId,
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () => {
@@ -417,7 +439,7 @@ describe("ProjectList", () => {
   });
 
   it("does not show project error or empty states before the websocket connects", async () => {
-    const fetchMock = installFetchRoutes([
+    const fetchMock = installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () => new Response("starting", { status: 503 }),
@@ -469,7 +491,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -525,7 +547,7 @@ describe("ProjectList", () => {
     expect(screen.getByText("Project Thread")).toBeTruthy();
   });
 
-  it("renders manager app rows directly under their owning manager", async () => {
+  it("lists global apps once in a top-level Apps section, not nested under managers", async () => {
     const project = makeProjectResponse({
       id: "project-1",
       name: "Project One",
@@ -548,7 +570,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -563,8 +585,8 @@ describe("ProjectList", () => {
           ),
       },
       {
-        pathname: `/api/v1/threads/${managerThread.id}/apps`,
-        handler: () => jsonResponse([STATUS_APP]),
+        pathname: "/api/v1/apps",
+        handler: () => jsonResponse([REVIEW_BOARD_APP]),
       },
       {
         pathname: "/api/v1/projects",
@@ -590,27 +612,34 @@ describe("ProjectList", () => {
 
     await renderProjectList();
 
-    const appRow = await findStatusAppButton();
+    const appRow = await findReviewBoardAppButton();
+    const appsLabel = screen.getByText("Apps");
     const managerLabel = screen.getByText("Sidebar Manager");
-    const workerLabel = screen.getByText("Worker Thread");
 
-    expect(appRow.classList.contains("pl-14")).toBe(true);
-    expect(appRow.parentElement?.className).toContain("before:left-10");
+    // One global app → exactly one app row, regardless of the manager present.
+    expect(
+      screen.getAllByRole("button", { name: "Open Review Board app" }),
+    ).toHaveLength(1);
+    // Top-level indent (pl-2), not the manager-nested indent (pl-14).
+    expect(appRow.classList.contains("pl-2")).toBe(true);
+    expect(appRow.classList.contains("pl-14")).toBe(false);
+    // The row lives in the standalone Apps section, after the manager that is
+    // listed under Projects — it is not a child of the manager group.
     expect(
       Boolean(
-        managerLabel.compareDocumentPosition(appRow) &
+        managerLabel.compareDocumentPosition(appsLabel) &
         Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
     expect(
       Boolean(
-        appRow.compareDocumentPosition(workerLabel) &
+        appsLabel.compareDocumentPosition(appRow) &
         Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
   });
 
-  it("opens a manager app row in the owning thread secondary panel", async () => {
+  it("opens a global app in the selected thread's secondary panel", async () => {
     const project = makeProjectResponse({
       id: "project-1",
       name: "Project One",
@@ -627,7 +656,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -640,8 +669,8 @@ describe("ProjectList", () => {
           ),
       },
       {
-        pathname: `/api/v1/threads/${managerThread.id}/apps`,
-        handler: () => jsonResponse([STATUS_APP]),
+        pathname: "/api/v1/apps",
+        handler: () => jsonResponse([REVIEW_BOARD_APP]),
       },
       {
         pathname: "/api/v1/projects",
@@ -665,18 +694,25 @@ describe("ProjectList", () => {
       },
     ]);
 
+    // The app opens into whatever thread is in view, so start on the manager.
+    window.history.pushState(
+      null,
+      "",
+      `/projects/${project.id}/threads/${managerThread.id}`,
+    );
+
     await renderProjectList(
       {},
       { extraUi: <PanelStateProbe threadId={managerThread.id} /> },
     );
 
-    fireEvent.click(
-      await findStatusAppButton(),
-    );
+    fireEvent.click(await findReviewBoardAppButton());
 
     await waitFor(() => {
       const probe = screen.getByTestId("panel-state");
-      expect(probe.textContent).toContain('"activeTabId":"app:status"');
+      expect(probe.textContent).toContain(
+        '"activeTabId":"app:app_review_board"',
+      );
       expect(probe.textContent).toContain('"isOpen":true');
     });
     expect(window.location.pathname).toBe(
@@ -684,7 +720,64 @@ describe("ProjectList", () => {
     );
   });
 
-  it("hides manager app rows when the owning manager is collapsed", async () => {
+  it("disables global app rows when no thread is selected", async () => {
+    const project = makeProjectResponse({
+      id: "project-1",
+      name: "Project One",
+    });
+    const personalProject = makeProjectWithThreadsResponse({
+      id: PERSONAL_PROJECT_ID,
+      kind: "personal",
+      name: "Personal",
+      threads: [],
+    });
+    installProjectListFetchRoutes([
+      {
+        pathname: "/api/v1/sidebar-bootstrap",
+        handler: () =>
+          jsonResponse(
+            buildSidebarNavigationResponse({
+              personalProject,
+              projects: [project],
+            }),
+          ),
+      },
+      {
+        pathname: "/api/v1/apps",
+        handler: () => jsonResponse([REVIEW_BOARD_APP]),
+      },
+      {
+        pathname: "/api/v1/projects",
+        handler: () => jsonResponse([project]),
+      },
+      {
+        pathname: "/api/v1/threads",
+        handler: () => jsonResponse([]),
+      },
+      {
+        pathname: "/api/v1/system/config",
+        handler: () =>
+          jsonResponse({
+            hostDaemonPort: null,
+            voiceTranscriptionEnabled: false,
+          }),
+      },
+      {
+        pathname: "/api/v1/hosts",
+        handler: () => jsonResponse([]),
+      },
+    ]);
+
+    // Root view: no thread is in view, so there is no panel to host the app.
+    window.history.pushState(null, "", "/");
+
+    await renderProjectList();
+
+    const appRow = await findReviewBoardAppButton();
+    expect(appRow).toHaveProperty("disabled", true);
+  });
+
+  it("keeps the Apps section visible when a manager is collapsed", async () => {
     const project = makeProjectResponse({
       id: "project-1",
       name: "Project One",
@@ -707,7 +800,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -722,8 +815,8 @@ describe("ProjectList", () => {
           ),
       },
       {
-        pathname: `/api/v1/threads/${managerThread.id}/apps`,
-        handler: () => jsonResponse([STATUS_APP]),
+        pathname: "/api/v1/apps",
+        handler: () => jsonResponse([REVIEW_BOARD_APP]),
       },
       {
         pathname: "/api/v1/projects",
@@ -749,21 +842,21 @@ describe("ProjectList", () => {
 
     await renderProjectList();
 
-    expect(
-      await findStatusAppButton(),
-    ).toBeTruthy();
+    expect(await findReviewBoardAppButton()).toBeTruthy();
     expect(screen.getByText("Worker Thread")).toBeTruthy();
 
+    // Apps are no longer nested under managers, so collapsing the manager hides
+    // its worker thread but leaves the global Apps section untouched.
     fireEvent.click(
       screen.getByRole("button", {
         name: "Collapse Sidebar Manager threads",
       }),
     );
 
-    expect(
-      screen.queryByRole("button", { name: "Open Status app" }),
-    ).toBeNull();
     expect(screen.queryByText("Worker Thread")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Open Review Board app" }),
+    ).toBeTruthy();
   });
 
   it("orders project hover actions as menu, new manager, then new thread", async () => {
@@ -780,7 +873,7 @@ describe("ProjectList", () => {
     });
     const reuseValues: (string | null)[] = [];
     const staleReuseValue = encodeReuseValue("env-stale");
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -890,7 +983,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -967,7 +1060,7 @@ describe("ProjectList", () => {
   });
 
   it("shows projects unavailable when the project request fails after the websocket connects", async () => {
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () => new Response("starting", { status: 503 }),
@@ -1001,7 +1094,7 @@ describe("ProjectList", () => {
 
   it("shows threads unavailable when the sidebar navigation fails after the websocket connects", async () => {
     const project = makeProjectResponse();
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () => new Response("starting", { status: 503 }),
@@ -1051,7 +1144,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [projectlessThread],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -1117,7 +1210,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -1177,7 +1270,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -1245,7 +1338,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -1311,7 +1404,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [projectlessManager, projectlessChild, projectlessThread],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -1323,7 +1416,7 @@ describe("ProjectList", () => {
           ),
       },
       {
-        pathname: `/api/v1/threads/${projectlessManager.id}/apps`,
+        pathname: "/api/v1/apps",
         handler: () => jsonResponse([]),
       },
       {
@@ -1378,7 +1471,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [projectlessThread],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -1432,7 +1525,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -1512,7 +1605,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -1574,7 +1667,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -1587,8 +1680,8 @@ describe("ProjectList", () => {
           ),
       },
       {
-        pathname: `/api/v1/threads/${managerThread.id}/apps`,
-        handler: () => jsonResponse([STATUS_APP]),
+        pathname: "/api/v1/apps",
+        handler: () => jsonResponse([REVIEW_BOARD_APP]),
       },
       {
         pathname: "/api/v1/projects",
@@ -1624,7 +1717,7 @@ describe("ProjectList", () => {
       { extraUi: <ConversationCollapseProbe threadId={managerThread.id} /> },
     );
 
-    const appRow = await findStatusAppButton();
+    const appRow = await findReviewBoardAppButton();
     const findManagerRow = () =>
       screen
         .getByText("Sidebar Manager")
@@ -1650,7 +1743,7 @@ describe("ProjectList", () => {
       ).toBe("true");
     });
     expect(
-      screen.getByRole("button", { name: "Open Status app" }).className,
+      screen.getByRole("button", { name: "Open Review Board app" }).className,
     ).toContain("bg-sidebar-border");
     expect(findManagerRow()?.className).not.toContain("bg-sidebar-border");
 
@@ -1665,7 +1758,7 @@ describe("ProjectList", () => {
       expect(findManagerRow()?.className).toContain("bg-sidebar-border");
     });
     expect(
-      screen.getByRole("button", { name: "Open Status app" }).className,
+      screen.getByRole("button", { name: "Open Review Board app" }).className,
     ).not.toContain("bg-sidebar-border");
   });
 
@@ -1686,7 +1779,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -1699,8 +1792,8 @@ describe("ProjectList", () => {
           ),
       },
       {
-        pathname: `/api/v1/threads/${managerThread.id}/apps`,
-        handler: () => jsonResponse([STATUS_APP]),
+        pathname: "/api/v1/apps",
+        handler: () => jsonResponse([REVIEW_BOARD_APP]),
       },
       {
         pathname: "/api/v1/projects",
@@ -1738,7 +1831,7 @@ describe("ProjectList", () => {
 
     // Opening the app collapses the conversation so the app fills the view.
     fireEvent.click(
-      await findStatusAppButton(),
+      await findReviewBoardAppButton(),
     );
     await waitFor(() => {
       expect(
@@ -1782,7 +1875,7 @@ describe("ProjectList", () => {
       name: "Personal",
       threads: [],
     });
-    installFetchRoutes([
+    installProjectListFetchRoutes([
       {
         pathname: "/api/v1/sidebar-bootstrap",
         handler: () =>
@@ -1795,12 +1888,8 @@ describe("ProjectList", () => {
           ),
       },
       {
-        pathname: `/api/v1/threads/${managerA.id}/apps`,
-        handler: () => jsonResponse([STATUS_APP]),
-      },
-      {
-        pathname: `/api/v1/threads/${managerB.id}/apps`,
-        handler: () => jsonResponse([]),
+        pathname: "/api/v1/apps",
+        handler: () => jsonResponse([REVIEW_BOARD_APP]),
       },
       {
         pathname: "/api/v1/projects",
@@ -1843,10 +1932,9 @@ describe("ProjectList", () => {
       },
     );
 
-    // Collapse A's conversation by opening its app full-screen.
-    fireEvent.click(
-      await findStatusAppButton(),
-    );
+    // The single global app row opens into the selected thread (Manager A),
+    // collapsing A's conversation to show the app full-screen.
+    fireEvent.click(await findReviewBoardAppButton());
     await waitFor(() => {
       expect(
         screen.getByTestId(`conversation-collapsed:${managerA.id}`).textContent,

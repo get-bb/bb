@@ -11,6 +11,7 @@ import {
 import type { AppDeps, ServerAppDeps } from "./types.js";
 import { ApiError, errorToResponse } from "./errors.js";
 import { registerAutomationRoutes } from "./routes/automations.js";
+import { registerGlobalAppRoutes } from "./routes/apps.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
@@ -244,6 +245,7 @@ export function createApp(
     return next();
   });
   const publicApi = new Hono();
+  registerGlobalAppRoutes(publicApi, deps);
   registerProjectRoutes(publicApi, deps);
   registerAutomationRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);

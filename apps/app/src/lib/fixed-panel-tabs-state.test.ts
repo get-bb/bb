@@ -86,11 +86,11 @@ describe("fixed panel tabs state storage", () => {
   });
 
   it("round-trips app tabs", () => {
-    const appTab = createAppFixedPanelTab({ appId: "status" });
+    const appTab = createAppFixedPanelTab({ applicationId: "app_status" });
     const state = makeFixedPanelTabsState({
       secondary: {
         tabs: [appTab],
-        activeTabId: appTabId("status"),
+        activeTabId: appTabId("app_status"),
         isOpen: true,
       },
     });

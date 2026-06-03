@@ -1,17 +1,18 @@
 import type { HostDaemonAppDataChangePayload } from "@bb/host-daemon-contract";
 import {
   appDataPathSchema,
-  appIdSchema,
+  applicationIdSchema,
   type AppDataPath,
-  type AppId,
+  type ApplicationId,
 } from "@bb/domain";
 import { CommandDispatchError } from "./command-dispatch-support.js";
 import { runtimeErrorLogFields } from "./error-utils.js";
 import type { HostDaemonLogger } from "./logger.js";
 import {
-  listThreadAppDataFromRoot,
-  readAppDataFromRoot,
-  type ThreadAppDataEntry,
+  listApplicationDataFromTargets,
+  readApplicationDataFromTarget,
+  type ApplicationDataEntry,
+  type ApplicationDataTarget,
 } from "./app-data-files.js";
 
 interface CreateAppDataChangeReporterOptions {
@@ -25,14 +26,12 @@ interface AppDataCacheEntry {
 }
 
 interface AppDataResyncPayload {
-  appId: AppId;
-  threadId: string;
+  applicationId: ApplicationId;
 }
 
 interface AppDataCacheKeyArgs {
-  appId: AppId;
+  applicationId: ApplicationId;
   path: AppDataPath;
-  threadId: string;
 }
 
 interface ReportObservedDeleteArgs extends AppDataCacheKeyArgs {
@@ -48,40 +47,34 @@ interface AppDataReporterGenerationArgs {
   generation: number;
 }
 
-interface TrackedAppDataThread {
-  threadId: string;
-  threadStoragePath: string;
+interface ReplaceTrackedApplicationDataTargetsArgs {
+  targets: readonly ApplicationDataTarget[];
 }
 
-interface ReplaceTrackedAppDataThreadsArgs {
-  targets: readonly TrackedAppDataThread[];
-}
-
-interface ReprimeThreadArgs {
+interface ReprimeApplicationsArgs {
   generation: number;
-  target: TrackedAppDataThread;
+  targets: readonly ApplicationDataTarget[];
 }
 
-interface ApplyThreadSnapshotArgs extends ReprimeThreadArgs {
-  snapshotEntries: readonly ThreadAppDataEntry[];
-  snapshotAppIds: readonly AppId[];
+interface ApplyApplicationSnapshotArgs extends ReprimeApplicationsArgs {
+  snapshotEntries: readonly ApplicationDataEntry[];
+  snapshotApplicationIds: readonly ApplicationId[];
 }
 
 interface CachedAppDataKey {
-  appId: AppId;
+  applicationId: ApplicationId;
   cacheKey: string;
   path: AppDataPath;
 }
 
 export interface ObserveAppDataChangeArgs {
-  appId: AppId;
+  applicationId: ApplicationId;
+  appDataPath: string;
   path: AppDataPath;
-  threadId: string;
-  threadStoragePath: string;
 }
 
 function appDataCacheKey(args: AppDataCacheKeyArgs): string {
-  return `${args.threadId}\0${args.appId}\0${args.path}`;
+  return `${args.applicationId}\0${args.path}`;
 }
 
 function isMissingAppDataEntryError(error: Error): boolean {
@@ -99,38 +92,30 @@ function isNonReportableAppDataReadError(error: Error): boolean {
 
 export class AppDataChangeReporter {
   private readonly cache = new Map<string, AppDataCacheEntry>();
-  private readonly appIdsByThreadId = new Map<string, Set<AppId>>();
   private readonly pendingByCacheKey = new Map<string, Promise<void>>();
-  private readonly trackedThreadIds = new Set<string>();
+  private readonly trackedTargets = new Map<ApplicationId, ApplicationDataTarget>();
   private generation = 0;
 
   constructor(private readonly options: CreateAppDataChangeReporterOptions) {}
 
-  async replaceTrackedThreads(
-    args: ReplaceTrackedAppDataThreadsArgs,
+  async replaceTrackedApplications(
+    args: ReplaceTrackedApplicationDataTargetsArgs,
   ): Promise<void> {
     this.generation += 1;
     const generation = this.generation;
-    const nextThreadIds = new Set(
-      args.targets.map((target) => target.threadId),
-    );
-    this.replaceTrackedThreadIds(nextThreadIds);
+    this.replaceTrackedTargets(args.targets);
     this.pendingByCacheKey.clear();
-    await Promise.all(
-      args.targets.map((target) =>
-        this.reprimeThread({
-          generation,
-          target,
-        }),
-      ),
-    );
+    await this.reprimeApplications({
+      generation,
+      targets: args.targets,
+    });
   }
 
   observe(args: ObserveAppDataChangeArgs): Promise<void> {
-    this.trackApp({
-      appId: args.appId,
-      threadId: args.threadId,
-    });
+    const target = this.trackedTargets.get(args.applicationId);
+    if (!target) {
+      return Promise.resolve();
+    }
     const cacheKey = appDataCacheKey(args);
     const generation = this.generation;
     const previous = this.pendingByCacheKey.get(cacheKey) ?? Promise.resolve();
@@ -138,16 +123,19 @@ export class AppDataChangeReporter {
       .catch(() => undefined)
       .then(() =>
         this.reportObservedChange({
-          change: args,
+          change: {
+            applicationId: args.applicationId,
+            appDataPath: target.appDataPath,
+            path: args.path,
+          },
           generation,
         }),
       )
       .catch((error) => {
         this.options.logger.warn(
           {
-            appId: args.appId,
+            applicationId: args.applicationId,
             path: args.path,
-            threadId: args.threadId,
             ...runtimeErrorLogFields(error),
           },
           "Failed to report observed app data change",
@@ -163,10 +151,6 @@ export class AppDataChangeReporter {
   }
 
   requestResync(args: AppDataResyncPayload): Promise<void> {
-    this.trackApp({
-      appId: args.appId,
-      threadId: args.threadId,
-    });
     return this.postResyncHint(args);
   }
 
@@ -174,81 +158,74 @@ export class AppDataChangeReporter {
     return args.generation === this.generation;
   }
 
-  private replaceTrackedThreadIds(threadIds: ReadonlySet<string>): void {
-    for (const threadId of Array.from(this.trackedThreadIds)) {
-      if (threadIds.has(threadId)) {
+  private replaceTrackedTargets(
+    targets: readonly ApplicationDataTarget[],
+  ): void {
+    const nextApplicationIds = new Set(
+      targets.map((target) => target.applicationId),
+    );
+    for (const applicationId of Array.from(this.trackedTargets.keys())) {
+      if (nextApplicationIds.has(applicationId)) {
         continue;
       }
-      this.trackedThreadIds.delete(threadId);
-      this.appIdsByThreadId.delete(threadId);
-      for (const cached of this.cachedKeysForThread({ threadId })) {
+      this.trackedTargets.delete(applicationId);
+      for (const cached of this.cachedKeysForApplication({ applicationId })) {
         this.cache.delete(cached.cacheKey);
       }
     }
-    for (const threadId of threadIds) {
-      this.trackedThreadIds.add(threadId);
+    for (const target of targets) {
+      this.trackedTargets.set(target.applicationId, target);
     }
   }
 
-  private trackApp(args: AppDataResyncPayload): void {
-    this.trackedThreadIds.add(args.threadId);
-    let appIds = this.appIdsByThreadId.get(args.threadId);
-    if (!appIds) {
-      appIds = new Set<AppId>();
-      this.appIdsByThreadId.set(args.threadId, appIds);
-    }
-    appIds.add(args.appId);
-  }
-
-  private cachedKeysForThread(args: { threadId: string }): CachedAppDataKey[] {
-    const prefix = `${args.threadId}\0`;
+  private cachedKeysForApplication(args: {
+    applicationId: ApplicationId;
+  }): CachedAppDataKey[] {
+    const prefix = `${args.applicationId}\0`;
     return Array.from(this.cache.keys())
       .filter((cacheKey) => cacheKey.startsWith(prefix))
       .map((cacheKey) => {
-        const [, rawAppId, rawDataPath] = cacheKey.split("\0");
+        const [rawApplicationId, rawDataPath] = cacheKey.split("\0");
         return {
-          appId: appIdSchema.parse(rawAppId),
+          applicationId: applicationIdSchema.parse(rawApplicationId),
           path: appDataPathSchema.parse(rawDataPath),
           cacheKey,
         };
       });
   }
 
-  private async reprimeThread(args: ReprimeThreadArgs): Promise<void> {
+  private async reprimeApplications(
+    args: ReprimeApplicationsArgs,
+  ): Promise<void> {
     try {
-      const snapshot = await listThreadAppDataFromRoot({
-        rootPath: args.target.threadStoragePath,
+      const snapshot = await listApplicationDataFromTargets({
+        targets: args.targets,
       });
       if (!this.isCurrentGeneration({ generation: args.generation })) {
         return;
       }
-      const previousAppIds = new Set(
-        this.appIdsByThreadId.get(args.target.threadId) ?? [],
-      );
-      await this.applyThreadSnapshot({
+      const previousApplicationIds = new Set(this.trackedTargets.keys());
+      await this.applyApplicationSnapshot({
         ...args,
         snapshotEntries: snapshot.entries,
-        snapshotAppIds: snapshot.appIds,
+        snapshotApplicationIds: snapshot.applicationIds,
       });
-      const resyncAppIds = new Set<AppId>([
-        ...previousAppIds,
-        ...snapshot.appIds,
+      const resyncApplicationIds = new Set<ApplicationId>([
+        ...previousApplicationIds,
+        ...snapshot.applicationIds,
       ]);
       await Promise.all(
-        Array.from(resyncAppIds)
+        Array.from(resyncApplicationIds)
           .sort((left, right) => left.localeCompare(right))
-          .map((appId) =>
+          .map((applicationId) =>
             this.postResyncHint({
-              appId,
-              threadId: args.target.threadId,
+              applicationId,
             }),
           ),
       );
     } catch (error) {
       this.options.logger.warn(
         {
-          threadId: args.target.threadId,
-          threadStoragePath: args.target.threadStoragePath,
           ...runtimeErrorLogFields(error),
         },
         "Failed to reprime app data change cache",
@@ -256,30 +233,26 @@ export class AppDataChangeReporter {
     }
   }
 
-  private async applyThreadSnapshot(
-    args: ApplyThreadSnapshotArgs,
+  private async applyApplicationSnapshot(
+    args: ApplyApplicationSnapshotArgs,
   ): Promise<void> {
     const seenCacheKeys = new Set<string>();
-    const appIds = new Set<AppId>(args.snapshotAppIds);
     for (const snapshotEntry of args.snapshotEntries) {
       if (!this.isCurrentGeneration({ generation: args.generation })) {
         return;
       }
-      appIds.add(snapshotEntry.appId);
       const cacheKey = appDataCacheKey({
-        appId: snapshotEntry.appId,
+        applicationId: snapshotEntry.applicationId,
         path: snapshotEntry.entry.path,
-        threadId: args.target.threadId,
       });
       seenCacheKeys.add(cacheKey);
       this.cache.set(cacheKey, { version: snapshotEntry.entry.version });
     }
-    this.appIdsByThreadId.set(args.target.threadId, appIds);
-    for (const cached of this.cachedKeysForThread({
-      threadId: args.target.threadId,
-    })) {
-      if (!seenCacheKeys.has(cached.cacheKey)) {
-        this.cache.delete(cached.cacheKey);
+    for (const applicationId of args.snapshotApplicationIds) {
+      for (const cached of this.cachedKeysForApplication({ applicationId })) {
+        if (!seenCacheKeys.has(cached.cacheKey)) {
+          this.cache.delete(cached.cacheKey);
+        }
       }
     }
   }
@@ -290,8 +263,7 @@ export class AppDataChangeReporter {
     } catch (error) {
       this.options.logger.warn(
         {
-          appId: args.appId,
-          threadId: args.threadId,
+          applicationId: args.applicationId,
           ...runtimeErrorLogFields(error),
         },
         "Failed to report app data resync hint",
@@ -305,14 +277,17 @@ export class AppDataChangeReporter {
     if (!this.isCurrentGeneration({ generation: args.generation })) {
       return;
     }
+    const target = this.trackedTargets.get(args.change.applicationId);
+    if (!target) {
+      return;
+    }
     const cacheKey = appDataCacheKey(args.change);
     const previous = this.cache.get(cacheKey);
 
     try {
-      const entry = await readAppDataFromRoot({
-        appId: args.change.appId,
+      const entry = await readApplicationDataFromTarget({
         path: args.change.path,
-        rootPath: args.change.threadStoragePath,
+        target,
       });
       if (!this.isCurrentGeneration({ generation: args.generation })) {
         return;
@@ -321,8 +296,7 @@ export class AppDataChangeReporter {
         return;
       }
       await this.options.postAppDataChange({
-        appId: args.change.appId,
-        threadId: args.change.threadId,
+        applicationId: args.change.applicationId,
         path: entry.path,
         deleted: false,
         value: entry.value,
@@ -331,27 +305,21 @@ export class AppDataChangeReporter {
       if (!this.isCurrentGeneration({ generation: args.generation })) {
         return;
       }
-      this.trackApp({
-        appId: args.change.appId,
-        threadId: args.change.threadId,
-      });
       this.cache.set(cacheKey, { version: entry.version });
     } catch (error) {
       if (error instanceof Error && isMissingAppDataEntryError(error)) {
         await this.reportObservedDelete({
-          appId: args.change.appId,
+          applicationId: args.change.applicationId,
           generation: args.generation,
           path: args.change.path,
-          threadId: args.change.threadId,
         });
         return;
       }
       if (error instanceof Error && isNonReportableAppDataReadError(error)) {
         this.options.logger.warn(
           {
-            appId: args.change.appId,
+            applicationId: args.change.applicationId,
             path: args.change.path,
-            threadId: args.change.threadId,
             ...runtimeErrorLogFields(error),
           },
           "Ignoring unreadable observed app data file",
@@ -368,9 +336,12 @@ export class AppDataChangeReporter {
     if (!this.isCurrentGeneration({ generation: args.generation })) {
       return;
     }
+    const cacheKey = appDataCacheKey(args);
+    if (!this.cache.has(cacheKey)) {
+      return;
+    }
     await this.options.postAppDataChange({
-      appId: args.appId,
-      threadId: args.threadId,
+      applicationId: args.applicationId,
       path: args.path,
       deleted: true,
       value: null,
@@ -379,10 +350,6 @@ export class AppDataChangeReporter {
     if (!this.isCurrentGeneration({ generation: args.generation })) {
       return;
     }
-    this.trackApp({
-      appId: args.appId,
-      threadId: args.threadId,
-    });
-    this.cache.delete(appDataCacheKey(args));
+    this.cache.delete(cacheKey);
   }
 }

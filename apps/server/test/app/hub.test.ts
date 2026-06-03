@@ -91,11 +91,10 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockSocket();
 
-    hub.subscribe(socket, "thread", "thread-1:app:status:data");
-    hub.notifyThreadAppData({
+    hub.subscribe(socket, "app", "app_status:data");
+    hub.notifyAppData({
       type: "app-data.changed",
-      threadId: "thread-1",
-      appId: "status",
+      applicationId: "app_status",
       path: "state.json",
       value: { workers: [] },
       deleted: false,
@@ -105,8 +104,7 @@ describe("NotificationHub", () => {
     expect(socket.messages).toHaveLength(1);
     expect(JSON.parse(socket.messages[0])).toEqual({
       type: "app-data.changed",
-      threadId: "thread-1",
-      appId: "status",
+      applicationId: "app_status",
       path: "state.json",
       value: { workers: [] },
       deleted: false,
@@ -118,18 +116,16 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockSocket();
 
-    hub.subscribe(socket, "thread", "thread-1:app:status:data");
-    hub.notifyThreadAppData({
+    hub.subscribe(socket, "app", "app_status:data");
+    hub.notifyAppData({
       type: "app-data.resync",
-      threadId: "thread-1",
-      appId: "status",
+      applicationId: "app_status",
     });
 
     expect(socket.messages).toHaveLength(1);
     expect(JSON.parse(socket.messages[0])).toEqual({
       type: "app-data.resync",
-      threadId: "thread-1",
-      appId: "status",
+      applicationId: "app_status",
     });
   });
 

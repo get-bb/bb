@@ -10,8 +10,8 @@ import type {
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
+  appsQueryKey,
   projectPathsQueryKey,
-  threadAppsQueryKey,
   threadStoragePathsQueryKey,
 } from "@/hooks/queries/query-keys";
 import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
@@ -87,10 +87,10 @@ const THREAD_STORAGE_PATH_RESULTS: WorkspacePathEntry[] = [
   },
 ];
 
-const THREAD_APPS_RESPONSE: AppSummary[] = [
+const APPS_RESPONSE: AppSummary[] = [
   {
-    id: "status",
-    name: "Status",
+    applicationId: "app_story_review_board",
+    name: "Review Board",
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data", "message"],
     icon: { kind: "builtin", name: "ListTodo" },
@@ -99,21 +99,21 @@ const THREAD_APPS_RESPONSE: AppSummary[] = [
 
 const APPS_ROW_APPS: AppSummary[] = [
   {
-    id: "status",
+    applicationId: "app_status",
     name: "Status",
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data", "message"],
     icon: { kind: "builtin", name: "ListTodo" },
   },
   {
-    id: "workspace-map",
+    applicationId: "app_workspace_map",
     name: "Workspace Map",
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data"],
     icon: { kind: "builtin", name: "GridView" },
   },
   {
-    id: "release-notes",
+    applicationId: "app_release_notes",
     name: "Release Notes",
     entry: { path: "index.html", kind: "html" },
     capabilities: ["message"],
@@ -259,9 +259,7 @@ function useStoryQueryClient({
       ),
       makeWorkspacePathResponse(workspacePaths),
     );
-    if (currentThreadId.length > 0) {
-      queryClient.setQueryData(threadAppsQueryKey(currentThreadId), apps);
-    }
+    queryClient.setQueryData(appsQueryKey(), apps);
     queryClient.setQueryData(
       threadStoragePathsQueryKey(currentThreadId, {
         limit: STORY_SOURCE_LIMIT,
@@ -333,11 +331,11 @@ function NewTabPanelStory({
             {
               id:
                 selection.source === "app"
-                  ? `app:${selection.appId}`
+                  ? `app:${selection.applicationId}`
                   : `${selection.source}:${selection.path}`,
               filename:
                 selection.source === "app"
-                  ? selection.appId
+                  ? selection.applicationId
                   : (selection.path.split("/").at(-1) ?? selection.path),
               isActive: true,
               statusLabel: null,
@@ -370,7 +368,7 @@ function NewTabPanelStory({
               : "thread storage file"}
         </p>
         <p className="pt-1 font-mono text-xs text-muted-foreground">
-          {selection.source === "app" ? selection.appId : selection.path}
+          {selection.source === "app" ? selection.applicationId : selection.path}
         </p>
       </div>
     );
@@ -454,7 +452,7 @@ export function NewTab() {
         hint="active New tab seeded with workspace and manager thread-storage matches"
       >
         <NewTabPanelStory
-          apps={THREAD_APPS_RESPONSE}
+          apps={APPS_RESPONSE}
           currentThreadId={SEARCH_THREAD_ID}
           currentThreadType="manager"
           initialQuery="thread"

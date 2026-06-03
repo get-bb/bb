@@ -33,16 +33,16 @@ import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { isPromptDraftEmpty, type PromptDraftState } from "@/lib/prompt-draft";
 
-export const CREATE_APP_PROMPT_TEMPLATE = `You are creating a new bb app for this thread.
+export const CREATE_APP_PROMPT_TEMPLATE = `You are creating a new global bb app.
 
 Apps system reference — run \`bb guide app\` for full detail. Layout:
-- apps/<id>/manifest.json — { manifestVersion: 1, id, name, icon | logo.svg, entry, contributions: ["thread.app"], capabilities: ["data"?, "message"?] }
-- apps/<id>/assets/index.html — self-contained static HTML/CSS/JS/SVG served by bb; use inline/relative files, no web server, npm, or build step
-- apps/<id>/data/state.json — initial state if the app uses window.bb.data
+- <dataDir>/apps/<applicationId>/manifest.json — { manifestVersion: 1, id: applicationId, name, icon | logo.svg, entry, capabilities: ["data"?, "message"?] }
+- <dataDir>/apps/<applicationId>/assets/index.html — self-contained static HTML/CSS/JS/SVG served by bb; use inline/relative files, no web server, npm, or build step
+- <dataDir>/apps/<applicationId>/data/state.json — state if the app uses window.bb.data
 
 In the page, use window.bb.data for live state (read / write / delete / list / onChange; onChange replays + streams) and window.bb.message(text) to send the thread a prompt. Guard with \`window.bb?.data?.…\` since capabilities are advisory.
 
-Scaffold with \`bb app new\` — the default styling is wired up already, so build on top of it and keep the UI polished, accessible, and dense like the rest of bb.
+Scaffold with \`bb app new --name "Name"\` or, inside an app-capable runtime, inspect \`bb app current --json\` and write directly to \`BB_APP_ROOT\` / \`BB_APP_DATA_PATH\`. The application id is the opaque \`app_...\` folder name; display names are not identifiers.
 
 What I want:
 
@@ -217,14 +217,6 @@ const RECENT_CHIP_ICON_NAME = {
 } satisfies Record<RecentFileChip, IconName>;
 const RECENT_ENTRY_ID_PREFIX = "file-search-result-recent";
 
-function slugifyAppName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 function getAvailableFileSearchSources({
   projectId,
   currentThreadId,
@@ -245,7 +237,9 @@ function getAvailableFileSearchSources({
 
 function getFileSearchResultId(suggestion: FileSearchSuggestion): string {
   const idSegment =
-    suggestion.entryKind === "app" ? suggestion.appId : suggestion.path;
+    suggestion.entryKind === "app"
+      ? suggestion.applicationId
+      : suggestion.path;
   return `file-search-result-${suggestion.source}-${encodeURIComponent(
     idSegment,
   )}`;
@@ -442,8 +436,6 @@ function AppResultRow({
   const handleSelect = useCallback(() => {
     onSelect(suggestion);
   }, [onSelect, suggestion]);
-  const showAppId = suggestion.appId !== slugifyAppName(suggestion.name);
-
   return (
     <LauncherTile
       id={id}
@@ -460,16 +452,12 @@ function AppResultRow({
       </span>
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="truncate text-foreground">{suggestion.name}</span>
-        {showAppId ? (
-          <>
-            <span className="shrink-0 text-muted-foreground opacity-50" aria-hidden>
-              ·
-            </span>
-            <span className="truncate font-mono text-muted-foreground">
-              {suggestion.appId}
-            </span>
-          </>
-        ) : null}
+        <span className="shrink-0 text-muted-foreground opacity-50" aria-hidden>
+          ·
+        </span>
+        <span className="truncate font-mono text-muted-foreground">
+          {suggestion.applicationId}
+        </span>
       </span>
     </LauncherTile>
   );
@@ -787,7 +775,7 @@ export function NewTabFileSearch({
 
   const handleAppSelect = useCallback(
     (suggestion: AppSearchSuggestion) => {
-      onSelect({ source: "app", appId: suggestion.appId });
+      onSelect({ source: "app", applicationId: suggestion.applicationId });
     },
     [onSelect],
   );
@@ -1067,7 +1055,7 @@ function NewTabResults({
               const suggestion = entry.suggestion;
               return (
                 <AppResultRow
-                  key={`app:${suggestion.appId}`}
+                  key={`app:${suggestion.applicationId}`}
                   id={getFileSearchEntryId(entry)}
                   suggestion={suggestion}
                   isActive={index === activeIndex}

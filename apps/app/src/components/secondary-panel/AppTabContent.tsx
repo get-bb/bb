@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import {
-  useThreadApp,
-  useThreadAppMarkdownPreview,
+  useApp,
+  useAppMarkdownPreview,
 } from "@/hooks/queries/thread-queries";
 import {
-  buildThreadAppAssetBaseUrl,
-  buildThreadAppEntryUrl,
+  buildAppAssetBaseUrl,
+  buildAppEntryUrl,
 } from "@/lib/file-content-urls";
 import { createAssetMarkdownUrlTransform } from "@/lib/markdown-url-transform";
 import { FilePreview as FilePreviewSurface } from "./FilePreview";
@@ -13,33 +13,32 @@ import { FilePreview as FilePreviewSurface } from "./FilePreview";
 const APP_HEADER_MODE = "none";
 
 interface BuildReloadableAppEntryUrlArgs {
-  appId: string;
+  applicationId: string;
   reloadToken: number;
   threadId: string;
 }
 
 export interface AppTabContentProps {
-  appId: string;
+  applicationId: string;
   threadId: string;
 }
 
 function buildReloadableAppEntryUrl({
-  appId,
+  applicationId,
   reloadToken,
   threadId,
 }: BuildReloadableAppEntryUrlArgs): string {
-  return `${buildThreadAppEntryUrl(threadId, appId)}?v=${encodeURIComponent(
+  return `${buildAppEntryUrl(applicationId, threadId)}&v=${encodeURIComponent(
     String(reloadToken),
   )}`;
 }
 
-export function AppTabContent({ appId, threadId }: AppTabContentProps) {
-  const appDetail = useThreadApp(threadId, appId);
+export function AppTabContent({ applicationId, threadId }: AppTabContentProps) {
+  const appDetail = useApp(applicationId);
   const markdownEntryPath =
     appDetail.data?.entry.kind === "md" ? appDetail.data.entry.path : null;
-  const markdownPreview = useThreadAppMarkdownPreview(
-    threadId,
-    appId,
+  const markdownPreview = useAppMarkdownPreview(
+    applicationId,
     markdownEntryPath,
     {
       enabled: markdownEntryPath !== null,
@@ -49,8 +48,8 @@ export function AppTabContent({ appId, threadId }: AppTabContentProps) {
     if (markdownEntryPath === null) {
       return null;
     }
-    return buildThreadAppAssetBaseUrl(threadId, appId, markdownEntryPath);
-  }, [appId, markdownEntryPath, threadId]);
+    return buildAppAssetBaseUrl(applicationId, markdownEntryPath);
+  }, [applicationId, markdownEntryPath]);
   const markdownUrlTransform = useMemo(() => {
     if (markdownAssetBaseUrl === null) {
       return undefined;
@@ -60,17 +59,17 @@ export function AppTabContent({ appId, threadId }: AppTabContentProps) {
   const htmlEntryUrl = useMemo(
     () =>
       buildReloadableAppEntryUrl({
-        appId,
+        applicationId,
         reloadToken: appDetail.dataUpdatedAt,
         threadId,
       }),
-    [appDetail.dataUpdatedAt, appId, threadId],
+    [appDetail.dataUpdatedAt, applicationId, threadId],
   );
 
   if (appDetail.isError) {
     return (
       <FilePreviewSurface
-        path={appId}
+        path={applicationId}
         headerMode={APP_HEADER_MODE}
         state={{
           kind: "error",
@@ -86,7 +85,7 @@ export function AppTabContent({ appId, threadId }: AppTabContentProps) {
   if (!appDetail.data) {
     return (
       <FilePreviewSurface
-        path={appId}
+        path={applicationId}
         headerMode={APP_HEADER_MODE}
         state={{ kind: "loading" }}
       />

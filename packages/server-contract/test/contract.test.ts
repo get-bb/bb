@@ -683,11 +683,10 @@ describe("server-contract canonical schemas", () => {
   it("validates app manifests, icon names, entries, and data broadcasts", () => {
     const manifest = {
       manifestVersion: 1,
-      id: "status",
+      id: "app_status",
       name: "Status",
       icon: "ListTodo",
       entry: "index.html",
-      contributions: ["thread.app"],
       capabilities: ["data", "message"],
     };
 
@@ -707,14 +706,19 @@ describe("server-contract canonical schemas", () => {
     expect(
       contract.appManifestSchema.safeParse({
         ...manifest,
-        contributions: ["thread.app", "sidebar"],
+        id: "status",
+      }).success,
+    ).toBe(false);
+    expect(
+      contract.appManifestSchema.safeParse({
+        ...manifest,
+        contributions: ["sidebar"],
       }).success,
     ).toBe(false);
 
     const message = {
       type: "app-data.changed",
-      threadId: "thr_123",
-      appId: "status",
+      applicationId: "app_status",
       path: "state.json",
       value: { workers: [] },
       deleted: false,

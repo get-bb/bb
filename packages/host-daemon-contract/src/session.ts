@@ -8,7 +8,7 @@ import {
   pendingInteractionCreateSchema,
   pendingInteractionStatusSchema,
   appDataPathSchema,
-  appIdSchema,
+  applicationIdSchema,
   terminalColsSchema,
   terminalDataBase64Schema,
   terminalRowsSchema,
@@ -55,6 +55,14 @@ export type HostDaemonTrackedThreadTarget = z.infer<
   typeof hostDaemonTrackedThreadTargetSchema
 >;
 
+export const hostDaemonTrackedApplicationDataTargetSchema = z.object({
+  applicationId: applicationIdSchema,
+  appDataPath: z.string().min(1),
+});
+export type HostDaemonTrackedApplicationDataTarget = z.infer<
+  typeof hostDaemonTrackedApplicationDataTargetSchema
+>;
+
 export const hostDaemonSessionOpenRequestSchema = z.object({
   hostId: z.string().min(1),
   instanceId: z.string().min(1),
@@ -98,6 +106,9 @@ export const hostDaemonSessionOpenResponseSchema = z
     heartbeatIntervalMs: z.number().int().positive(),
     leaseTimeoutMs: z.number().int().positive(),
     trackedThreadTargets: z.array(hostDaemonTrackedThreadTargetSchema),
+    trackedApplicationDataTargets: z.array(
+      hostDaemonTrackedApplicationDataTargetSchema,
+    ),
     retiredEnvironmentIds: z.array(z.string().min(1)).default([]),
   })
   .strict();
@@ -213,8 +224,7 @@ export type HostDaemonEnvironmentChangePayload = z.infer<
 
 const hostDaemonAppDataChangePayloadBaseSchema = z
   .object({
-    threadId: z.string().min(1),
-    appId: appIdSchema,
+    applicationId: applicationIdSchema,
     path: appDataPathSchema,
     value: jsonValueSchema.nullable(),
     deleted: z.boolean(),
@@ -266,8 +276,7 @@ export type HostDaemonAppDataChangeRequest = z.infer<
 
 export const hostDaemonAppDataResyncPayloadSchema = z
   .object({
-    threadId: z.string().min(1),
-    appId: appIdSchema,
+    applicationId: applicationIdSchema,
   })
   .strict();
 export type HostDaemonAppDataResyncPayload = z.infer<

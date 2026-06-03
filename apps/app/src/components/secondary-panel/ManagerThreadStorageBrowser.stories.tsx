@@ -28,8 +28,8 @@ function makeFile(path: string): WorkspaceFile {
 
 const FILES: WorkspaceFile[] = [
   makeFile("ASYNC.md"),
-  makeFile("apps/status/manifest.json"),
-  makeFile("apps/status/data/state.json"),
+  makeFile("notes/current-work.md"),
+  makeFile("plans/kickoff.md"),
   makeFile("PREFERENCES.md"),
 ];
 

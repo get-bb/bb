@@ -39,7 +39,7 @@ Run `bb guide <chapter>` for command details:
   managers       Hiring and managing project managers
   manager-templates
                  Seeding new manager storage from template bundles
-  app            Thread apps, the status app, app data, browser APIs, and styling
+  app            Global apps, app data, browser APIs, and styling
   providers      Discovering providers and models
   projects       Project CRUD and sources
   hosts          Listing and understanding hosts

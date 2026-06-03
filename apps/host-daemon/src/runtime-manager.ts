@@ -8,7 +8,7 @@ import {
 } from "@bb/agent-runtime";
 import type {
   AppDataPath,
-  AppId,
+  ApplicationId,
   PendingInteractionCreate,
   PendingInteractionResolution,
   ThreadEvent,
@@ -23,9 +23,12 @@ import type {
   HostDaemonActiveThread,
   HostDaemonEnvironmentChange,
   HostDaemonLoadedEnvironment,
+  HostDaemonTrackedApplicationDataTarget,
   HostDaemonTrackedThreadTarget,
 } from "@bb/host-daemon-contract";
 import type {
+  ApplicationDataWatchTarget,
+  ApplicationStorageWatchError,
   HostWatcher,
   ThreadStorageWatchError,
   WorkspaceWatchError,
@@ -54,6 +57,11 @@ interface RuntimeThreadState {
 interface ThreadStorageTarget {
   environmentId: string;
   threadId: string;
+}
+
+interface ApplicationDataTarget {
+  applicationId: ApplicationId;
+  appDataPath: string;
 }
 
 interface WorkspaceWatchState {
@@ -156,19 +164,14 @@ export interface RuntimeEntry {
   threads: Map<string, RuntimeThreadState>;
 }
 
-export interface ThreadAppDataChangedNotification {
-  appId: AppId;
-  environmentId: string;
+export interface ApplicationDataChangedNotification {
+  applicationId: ApplicationId;
+  appDataPath: string;
   path: AppDataPath;
-  threadId: string;
-  threadStoragePath: string;
 }
 
-export interface ThreadAppDataResyncNotification {
-  appId: AppId;
-  environmentId: string;
-  threadId: string;
-  threadStoragePath: string;
+export interface ApplicationDataResyncNotification {
+  applicationId: ApplicationId;
 }
 
 export interface EnsureEnvironmentArgs {
@@ -199,8 +202,13 @@ export interface RuntimeManagerOptions {
     environmentId: string;
     threadId: string;
   }) => void;
-  onThreadAppDataChanged?: (args: ThreadAppDataChangedNotification) => void;
-  onThreadAppDataResync?: (args: ThreadAppDataResyncNotification) => void;
+  appsRootPath?: string | null;
+  onApplicationStorageTargetsChanged?: () => void;
+  onApplicationDataChanged?: (args: ApplicationDataChangedNotification) => void;
+  onApplicationDataResync?: (args: ApplicationDataResyncNotification) => void;
+  onApplicationStorageWatchError?: (args: {
+    error: ApplicationStorageWatchError;
+  }) => void;
   onThreadStorageWatchError?: (args: {
     error: ThreadStorageWatchError;
   }) => void;
@@ -218,6 +226,7 @@ export interface RuntimeManagerOptions {
 }
 
 interface RuntimeWorkspaceWriteRootsArgs {
+  appsRootPath: string | null | undefined;
   threadStorageRootPath: string | null | undefined;
   workspaceRoots: readonly string[];
 }
@@ -233,10 +242,15 @@ export class RuntimeManager {
     string,
     ThreadStorageTarget
   >();
+  private readonly trackedApplicationDataTargets = new Map<
+    ApplicationId,
+    ApplicationDataTarget
+  >();
   private providerMaintenanceRuntime: AgentRuntime | null = null;
   private pendingProviderMaintenanceRuntime: Promise<AgentRuntime> | null =
     null;
   private managedShellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {};
+  private stopWatchingApplicationStorageRoot: StopWatching = STOP_WATCHING;
   private stopWatchingThreadStorageRoot: StopWatching = STOP_WATCHING;
 
   constructor(private readonly options: RuntimeManagerOptions = {}) {
@@ -244,12 +258,16 @@ export class RuntimeManager {
     this.hostWatcher = options.hostWatcher;
     this.provisionWorkspace = options.provisionWorkspace ?? provisionWorkspace;
     this.baseShellEnv = { ...(options.shellEnv ?? {}) };
+    this.ensureApplicationStorageWatcher();
   }
 
   private runtimeWorkspaceWriteRoots(
     args: RuntimeWorkspaceWriteRootsArgs,
   ): string[] {
     const roots = [...args.workspaceRoots];
+    if (args.appsRootPath) {
+      roots.push(args.appsRootPath);
+    }
     if (args.threadStorageRootPath) {
       // Provider runtimes are environment-scoped and may host multiple threads.
       // BB_THREAD_STORAGE still points agents at their own thread subdirectory;
@@ -515,6 +533,19 @@ export class RuntimeManager {
     this.stopWatchingThreadStorageIfNoTrackedThreads();
   }
 
+  replaceTrackedApplicationDataTargets(
+    targets: readonly HostDaemonTrackedApplicationDataTarget[],
+  ): void {
+    this.trackedApplicationDataTargets.clear();
+    for (const target of targets) {
+      this.trackedApplicationDataTargets.set(target.applicationId, {
+        applicationId: target.applicationId,
+        appDataPath: target.appDataPath,
+      });
+    }
+    this.ensureApplicationStorageWatcher();
+  }
+
   async openWorkspace(path: string): Promise<HostWorkspace> {
     return this.provisionWorkspace({
       workspaceProvisionType: "unmanaged",
@@ -682,6 +713,7 @@ export class RuntimeManager {
     this.entries.clear();
     this.pendingEntries.clear();
     this.trackedThreadStorageTargets.clear();
+    this.trackedApplicationDataTargets.clear();
 
     for (const entry of entries) {
       await this.stopWatchingStatus(entry);
@@ -702,6 +734,8 @@ export class RuntimeManager {
     }
     await this.stopWatchingThreadStorageRoot();
     this.stopWatchingThreadStorageRoot = STOP_WATCHING;
+    await this.stopWatchingApplicationStorageRoot();
+    this.stopWatchingApplicationStorageRoot = STOP_WATCHING;
   }
 
   private buildUnexpectedProviderExitEvents(
@@ -756,7 +790,9 @@ export class RuntimeManager {
     let runtime: AgentRuntime | null = null;
     runtime = this.createRuntime({
       workspacePath,
-      additionalWorkspaceWriteRoots: [],
+      additionalWorkspaceWriteRoots: this.options.appsRootPath
+        ? [this.options.appsRootPath]
+        : [],
       shellEnv: this.getShellEnv(),
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
@@ -815,6 +851,7 @@ export class RuntimeManager {
       workspace.getAdditionalWorkspaceWriteRoots(),
     ]);
     const additionalWorkspaceWriteRoots = this.runtimeWorkspaceWriteRoots({
+      appsRootPath: this.options.appsRootPath,
       threadStorageRootPath: this.options.threadStorageRootPath,
       workspaceRoots: workspaceWriteRoots,
     });
@@ -956,32 +993,52 @@ export class RuntimeManager {
               threadId: event.threadId,
             });
           }
-          if (event.kind === "thread-app-data-changed") {
-            this.options.onThreadAppDataChanged?.({
-              appId: event.appId,
-              environmentId: event.environmentId,
+        },
+        onWatchError: (error) => {
+          this.options.onThreadStorageWatchError?.({
+            error,
+          });
+        },
+      });
+  }
+
+  private ensureApplicationStorageWatcher(): void {
+    if (
+      !this.hostWatcher ||
+      this.stopWatchingApplicationStorageRoot !== STOP_WATCHING
+    ) {
+      return;
+    }
+
+    const appsRootPath = this.options.appsRootPath;
+    if (!appsRootPath) {
+      return;
+    }
+
+    this.stopWatchingApplicationStorageRoot =
+      this.hostWatcher.watchApplicationStorageRoot({
+        appsRootPath,
+        resolveApplicationTarget: (applicationId) =>
+          this.findTrackedApplicationDataTarget(applicationId),
+        onChange: (event) => {
+          if (event.kind === "application-storage-targets-changed") {
+            this.options.onApplicationStorageTargetsChanged?.();
+          }
+          if (event.kind === "application-data-changed") {
+            this.options.onApplicationDataChanged?.({
+              applicationId: event.applicationId,
+              appDataPath: event.appDataPath,
               path: event.path,
-              threadId: event.threadId,
-              threadStoragePath: path.join(
-                threadStorageRootPath,
-                event.threadId,
-              ),
             });
           }
-          if (event.kind === "thread-app-data-resync") {
-            this.options.onThreadAppDataResync?.({
-              appId: event.appId,
-              environmentId: event.environmentId,
-              threadId: event.threadId,
-              threadStoragePath: path.join(
-                threadStorageRootPath,
-                event.threadId,
-              ),
+          if (event.kind === "application-data-resync") {
+            this.options.onApplicationDataResync?.({
+              applicationId: event.applicationId,
             });
           }
         },
         onWatchError: (error) => {
-          this.options.onThreadStorageWatchError?.({
+          this.options.onApplicationStorageWatchError?.({
             error,
           });
         },
@@ -992,6 +1049,12 @@ export class RuntimeManager {
     threadId: string,
   ): ThreadStorageTarget | null {
     return this.trackedThreadStorageTargets.get(threadId) ?? null;
+  }
+
+  private findTrackedApplicationDataTarget(
+    applicationId: ApplicationId,
+  ): ApplicationDataWatchTarget | null {
+    return this.trackedApplicationDataTargets.get(applicationId) ?? null;
   }
 
   private removeTrackedThreadStorageTargetsForEnvironment(

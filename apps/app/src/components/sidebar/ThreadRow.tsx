@@ -1,11 +1,13 @@
 import { memo, useCallback, useState, type MouseEventHandler } from "react";
-import { useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
 import type { ThreadListEntry } from "@bb/domain";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
+import { getActiveSecondaryAppId } from "@/lib/fixed-panel-tabs-state";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
@@ -300,6 +302,18 @@ function ThreadRowComponent({
   const setConversationCollapsed = useSetAtom(
     getThreadConversationCollapsedAtom(thread.id),
   );
+  // When this thread tucks its conversation into the collapsed rail to show an
+  // app full-screen, the app's sidebar row owns the single selected highlight,
+  // so this row drops its own selected background even though it is the route's
+  // selected thread. Keeps exactly one row highlighted across the sidebar.
+  const isConversationCollapsed = useAtomValue(
+    getThreadConversationCollapsedAtom(thread.id),
+  );
+  const fixedPanelTabsState = useFixedPanelTabsState(thread.id);
+  const appOwnsSurface =
+    isConversationCollapsed &&
+    getActiveSecondaryAppId(fixedPanelTabsState) !== null;
+  const showActive = isActive && !appOwnsSurface;
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   const showUnreadBadge = !hasPendingInteraction && isUnreadDoneThread(thread);
@@ -353,7 +367,7 @@ function ThreadRowComponent({
       ? COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS
       : COARSE_POINTER_ROW_HEIGHT_CLASS,
     getSidebarThreadRowPaddingClass(options.indent),
-    isActive
+    showActive
       ? "bg-sidebar-border text-sidebar-foreground"
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   );
@@ -377,8 +391,8 @@ function ThreadRowComponent({
         onClick={() => {
           // Selecting a thread/agent row restores its conversation: the inverse
           // of opening an app row, which tucks the conversation into the
-          // collapsed rail so the app fills the view (see ThreadAppRow). Both
-          // write this thread's own collapse flag, so selecting one thread
+          // collapsed rail so the app fills the view (see SidebarAppsSection).
+          // Both write this thread's own collapse flag, so selecting one thread
           // never disturbs another's full-screen-app state.
           setConversationCollapsed(false);
           onProjectSelect?.();

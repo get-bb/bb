@@ -82,7 +82,7 @@ const threadStorageFilePreviewFixedPanelTabSchema = z
   .strict();
 const appFixedPanelTabSchema = z
   .object({
-    appId: z.string().min(1),
+    applicationId: z.string().min(1),
     id: z.string().min(1),
     kind: z.literal("app"),
   })
@@ -194,7 +194,7 @@ export interface ThreadStorageFilePreviewFixedPanelTab {
 }
 
 export interface AppFixedPanelTab {
-  appId: string;
+  applicationId: string;
   id: string;
   kind: "app";
 }
@@ -268,6 +268,23 @@ export interface FixedPanelTabsState {
   lastUsedAt: number;
 }
 
+/**
+ * The application id of the secondary panel's active tab when that tab is an
+ * app and the panel is open, else null. Lets sidebar rows tell whether a
+ * thread's panel is currently showing a given app without reaching into the
+ * tab list shape themselves.
+ */
+export function getActiveSecondaryAppId(
+  state: FixedPanelTabsState,
+): string | null {
+  const { activeTabId, isOpen, tabs } = state.secondary;
+  if (!isOpen || activeTabId === null) {
+    return null;
+  }
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  return activeTab?.kind === "app" ? activeTab.applicationId : null;
+}
+
 interface FixedPanelTabsStorageKeyArgs {
   threadId: string;
 }
@@ -317,7 +334,7 @@ interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
 }
 
 interface CreateAppFixedPanelTabArgs {
-  appId: string;
+  applicationId: string;
 }
 
 interface CreateBrowserFixedPanelTabArgs {
@@ -401,11 +418,11 @@ export function createThreadStorageFilePreviewFixedPanelTab({
 }
 
 export function createAppFixedPanelTab({
-  appId,
+  applicationId,
 }: CreateAppFixedPanelTabArgs): AppFixedPanelTab {
   return {
-    appId,
-    id: `app:${encodeURIComponent(appId)}`,
+    applicationId,
+    id: `app:${encodeURIComponent(applicationId)}`,
     kind: "app",
   };
 }
@@ -413,7 +430,7 @@ export function createAppFixedPanelTab({
 /**
  * Browser tabs get a fresh unique id per instance — the URL is mutable (it
  * changes on every navigation), so it cannot serve as a stable identity the way
- * an app id or file path does.
+ * an application id or file path does.
  */
 export function createBrowserFixedPanelTab({
   url,
@@ -697,7 +714,7 @@ export function areFixedPanelTabsEquivalent(
         a.path === b.path
       );
     case "app":
-      return b.kind === "app" && a.appId === b.appId;
+      return b.kind === "app" && a.applicationId === b.applicationId;
     case "browser":
       return b.kind === "browser" && a.url === b.url && a.title === b.title;
     case "thread-storage-file-preview":

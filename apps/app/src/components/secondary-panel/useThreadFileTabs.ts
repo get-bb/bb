@@ -29,14 +29,12 @@ import {
 } from "@/lib/file-preview";
 import { useRecordThreadRecentItem } from "./threadRecentItems";
 
-export const STATUS_APP_ID = "status";
-
-interface ThreadAppTabDescriptor {
-  id: string;
+interface AppTabDescriptor {
+  applicationId: string;
 }
 
 interface UseThreadFileTabsParams {
-  apps?: readonly ThreadAppTabDescriptor[] | undefined;
+  apps?: readonly AppTabDescriptor[] | undefined;
   threadId: string | null | undefined;
   environmentId: string | null | undefined;
   threadType: ThreadType | undefined;
@@ -67,7 +65,7 @@ export interface FileSearchThreadStorageSelection {
 
 export interface FileSearchAppSelection {
   source: "app";
-  appId: string;
+  applicationId: string;
 }
 
 export type FileSearchSelection =
@@ -200,10 +198,11 @@ function pruneStorageTabs(
 
 function pruneAppTabs(
   tabs: readonly FixedPanelTab[],
-  knownAppIds: ReadonlySet<string>,
+  knownApplicationIds: ReadonlySet<string>,
 ): readonly FixedPanelTab[] {
   const nextTabs = tabs.filter(
-    (tab) => !isAppTab(tab) || knownAppIds.has(tab.appId),
+    (tab) =>
+      !isAppTab(tab) || knownApplicationIds.has(tab.applicationId),
   );
   return nextTabs.length === tabs.length ? tabs : nextTabs;
 }
@@ -222,8 +221,8 @@ function createStorageTab(path: string): ThreadStorageFilePreviewFixedPanelTab {
   });
 }
 
-function createAppTab(appId: string): AppFixedPanelTab {
-  return createAppFixedPanelTab({ appId });
+function createAppTab(applicationId: string): AppFixedPanelTab {
+  return createAppFixedPanelTab({ applicationId });
 }
 
 function findWorkspaceTab(
@@ -264,10 +263,10 @@ function findStorageFileTab(
 
 function findAppTab(
   tabs: readonly FixedPanelTab[],
-  appId: string,
+  applicationId: string,
 ): AppFixedPanelTab | null {
   for (const tab of tabs) {
-    if (isAppTab(tab) && tab.appId === appId) {
+    if (isAppTab(tab) && tab.applicationId === applicationId) {
       return tab;
     }
   }
@@ -340,19 +339,10 @@ interface BuildOrderedSecondaryFileTabsArgs {
   isManagerThread: boolean;
 }
 
-function isPinnedAppTab(tab: SecondaryFileFixedPanelTab): boolean {
-  return tab.kind === "app" && tab.appId === STATUS_APP_ID;
-}
-
-function isPinnedSecondaryFileTab(tab: SecondaryFileFixedPanelTab): boolean {
-  return isPinnedAppTab(tab);
-}
-
 /**
  * Flattens the secondary panel's tabs into the closable file-tab strip, in the
- * order the user opened them. The pinned manager status app is floated to the
- * front; everything else (workspace, host, storage, new tab) keeps its
- * insertion order regardless of type.
+ * order the user opened them. Workspace, host, storage, app, browser, and new
+ * tabs keep their insertion order regardless of type.
  */
 function buildOrderedSecondaryFileTabs({
   tabs,
@@ -387,10 +377,7 @@ function buildOrderedSecondaryFileTabs({
         break;
     }
   }
-  return [
-    ...displayable.filter(isPinnedSecondaryFileTab),
-    ...displayable.filter((tab) => !isPinnedSecondaryFileTab(tab)),
-  ];
+  return displayable;
 }
 
 /**
@@ -402,11 +389,11 @@ function buildOrderedSecondaryFileTabs({
  */
 export function useOpenThreadAppTab(
   threadId: string | null | undefined,
-): (appId: string) => void {
+): (applicationId: string) => void {
   const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
   return useCallback(
-    (appId: string) => {
-      const nextTab = createAppTab(appId);
+    (applicationId: string) => {
+      const nextTab = createAppTab(applicationId);
       updateFixedPanelTabsState((state) => {
         const tabs = upsertSecondaryTab(state.secondary.tabs, nextTab);
         if (
@@ -443,8 +430,8 @@ export function useThreadFileTabs({
   const resolvedEnvironmentId = isThreadResolved
     ? (environmentId ?? null)
     : undefined;
-  const appIds = useMemo(
-    () => (apps ? new Set(apps.map((app) => app.id)) : null),
+  const applicationIds = useMemo(
+    () => (apps ? new Set(apps.map((app) => app.applicationId)) : null),
     [apps],
   );
 
@@ -519,9 +506,9 @@ export function useThreadFileTabs({
   ]);
 
   useEffect(() => {
-    if (!isThreadResolved || appIds === null) return;
+    if (!isThreadResolved || applicationIds === null) return;
     updateFixedPanelTabsState((state) => {
-      const tabs = pruneAppTabs(state.secondary.tabs, appIds);
+      const tabs = pruneAppTabs(state.secondary.tabs, applicationIds);
       const activeTabId = isActiveTabStillOpen(
         tabs,
         state.secondary.activeTabId,
@@ -535,29 +522,7 @@ export function useThreadFileTabs({
         tabs,
       });
     });
-  }, [appIds, isThreadResolved, updateFixedPanelTabsState]);
-
-  useEffect(() => {
-    if (!isManagerThread || appIds === null || !appIds.has(STATUS_APP_ID)) {
-      return;
-    }
-    updateFixedPanelTabsState((state) => {
-      const statusAppTab = createAppTab(STATUS_APP_ID);
-      const tabs = upsertSecondaryTab(state.secondary.tabs, statusAppTab);
-      const activeTabId = isActiveTabStillOpen(
-        tabs,
-        state.secondary.activeTabId,
-      )
-        ? state.secondary.activeTabId
-        : statusAppTab.id;
-      return setSecondaryTabs({
-        activeTabId,
-        isOpen: state.secondary.isOpen,
-        state,
-        tabs,
-      });
-    });
-  }, [appIds, isManagerThread, updateFixedPanelTabsState]);
+  }, [applicationIds, isThreadResolved, updateFixedPanelTabsState]);
 
   const openWorkspaceFile = useCallback(
     ({ lineNumber, path, source, statusLabel }: WorkspaceFileTabState) => {
@@ -745,10 +710,9 @@ export function useThreadFileTabs({
   const openApp = useOpenThreadAppTab(threadId);
 
   const closeAppTab = useCallback(
-    (appId: string) => {
-      if (appId === STATUS_APP_ID) return;
+    (applicationId: string) => {
       updateFixedPanelTabsState((state) => {
-        const tab = findAppTab(state.secondary.tabs, appId);
+        const tab = findAppTab(state.secondary.tabs, applicationId);
         if (!tab) {
           return state;
         }
@@ -768,9 +732,9 @@ export function useThreadFileTabs({
   );
 
   const activateAppTab = useCallback(
-    (appId: string) => {
+    (applicationId: string) => {
       updateFixedPanelTabsState((state) => {
-        const tab = findAppTab(state.secondary.tabs, appId);
+        const tab = findAppTab(state.secondary.tabs, applicationId);
         if (!tab) {
           return state;
         }
@@ -979,7 +943,7 @@ export function useThreadFileTabs({
   const selectFileSearchResult = useCallback(
     (selection: FileSearchSelection) => {
       if (selection.source === "app") {
-        const nextTab = createAppTab(selection.appId);
+        const nextTab = createAppTab(selection.applicationId);
         updateFixedPanelTabsState((state) => replaceNewTab({ nextTab, state }));
         return;
       }
@@ -1072,7 +1036,7 @@ export function useThreadFileTabs({
     activateHostFileTab,
     activateStorageFileTab,
     activateWorkspaceFileTab,
-    activeAppId: activeAppTab?.appId ?? null,
+    activeAppId: activeAppTab?.applicationId ?? null,
     activeBrowserTab,
     activeHostFileLineNumber: activeHostFileTab?.lineNumber ?? null,
     activeHostFilePath: activeHostFileTab?.path ?? null,

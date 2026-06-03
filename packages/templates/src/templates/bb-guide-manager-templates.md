@@ -11,8 +11,8 @@ Manager templates are named bundles of starter files for manager thread
 storage. When bb starts a new manager thread, the server resolves a template
 and recursively copies regular files into the new manager's thread storage
 before the host daemon receives the initial `thread.start` command. This is how
-a fresh manager can boot with starter `PREFERENCES.md`, `ASYNC.md`, and
-`apps/status/` files.
+a fresh manager can boot with starter files such as `PREFERENCES.md`,
+`ASYNC.md`, notes, plans, or other user-authored storage files.
 
 Directory layout:
 
@@ -20,22 +20,12 @@ Directory layout:
 <bb-data-dir>/manager-templates/
   active
   default/
-    apps/
-      status/
-        manifest.json
-        assets/
-          index.html
-        data/
-          state.json
+    PREFERENCES.md
+    ASYNC.md
   sawyer-next/
     PREFERENCES.md
-    apps/
-      status/
-        manifest.json
-        assets/
-          index.html
-        data/
-          state.json
+    plans/
+      kickoff.md
 ```
 
 In this guide, `<bb-data-dir>` is your bb data directory. Packaged installs
@@ -54,23 +44,13 @@ What gets seeded:
 
 bb recursively copies every regular file from the selected template directory
 into `<bb-data-dir>/thread-storage/<manager-thread-id>/`. There is no filename
-allowlist: `PREFERENCES.md`, `ASYNC.md`, `apps/status/manifest.json`, and
-`apps/status/data/state.json` are conventions, not the only files allowed.
-Symlinks and other non-regular files are ignored. Existing destination files
-are left as-is; seeding does not overwrite, delete, or refresh files.
+allowlist. Symlinks and other non-regular files are ignored. Existing
+destination files are left as-is; seeding does not overwrite, delete, or
+refresh files.
 
-After any selected template copy, bb overlays a bundled `status` app so every
-new manager has a working status surface:
-
-```text
-apps/status/manifest.json
-apps/status/assets/index.html
-apps/status/data/state.json
-```
-
-User-authored files at those same paths win; the overlay only fills missing
-files. If a selected non-default template is missing, bb logs a warning and
-still writes the bundled `status` app.
+There is no bundled app overlay. If the selected template directory is missing
+and the selected template is not `default`, bb logs a warning and seeds no
+template files.
 
 When it runs:
 
@@ -107,8 +87,6 @@ Creating a template:
 ```bash
 DATA_DIR="${BB_DATA_DIR:-$HOME/.bb}"
 mkdir -p "$DATA_DIR/manager-templates/sawyer-next"
-cp -R "$DATA_DIR/manager-templates/default/apps" \
-  "$DATA_DIR/manager-templates/sawyer-next/apps"
 $EDITOR "$DATA_DIR/manager-templates/sawyer-next/PREFERENCES.md"
 printf 'sawyer-next\n' > "$DATA_DIR/manager-templates/active"
 ```
@@ -116,22 +94,19 @@ printf 'sawyer-next\n' > "$DATA_DIR/manager-templates/active"
 Promoting current preferences:
 
 Managers see their storage path in runtime context. To save the current
-manager's `PREFERENCES.md` and status app starter state to the default
-template:
+manager's `PREFERENCES.md` to the default template:
 
 ```bash
 DATA_DIR="${BB_DATA_DIR:-$HOME/.bb}"
 THREAD_STORAGE="/absolute/path/from-manager-runtime-context"
-mkdir -p "$DATA_DIR/manager-templates/default/apps/status"
+mkdir -p "$DATA_DIR/manager-templates/default"
 cp "$THREAD_STORAGE/PREFERENCES.md" \
   "$DATA_DIR/manager-templates/default/PREFERENCES.md"
-cp -R "$THREAD_STORAGE/apps/status/." \
-  "$DATA_DIR/manager-templates/default/apps/status/"
 printf 'default\n' > "$DATA_DIR/manager-templates/active"
 ```
 
-Copy `ASYNC.md` or additional `apps/<id>/` directories into the same template
-directory when those starter files should be shared too.
+Copy `ASYNC.md`, notes, plans, or other starter files into the same template
+directory when those files should be shared too.
 
 Limitations and gotchas:
 
@@ -139,10 +114,8 @@ Limitations and gotchas:
 - Template file contents are not schema-validated before copying.
 - Symlinks and other non-regular files are ignored.
 - Existing thread storage files are never overwritten by seeding.
-- A user-authored `default/` directory does not suppress the bundled `status`
-  app overlay, but files already present at the bundled paths are preserved.
 - Missing selected non-default templates do not fall back to `default`; bb logs
-  a warning and writes only the bundled `status` app overlay.
+  a warning and seeds no template files.
 
 Related guides:
 

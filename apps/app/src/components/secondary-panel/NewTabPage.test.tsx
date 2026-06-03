@@ -24,7 +24,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     searchProjectPaths: vi.fn(),
-    listThreadApps: vi.fn(),
+    listApps: vi.fn(),
     listThreadStoragePaths: vi.fn(),
   };
 });
@@ -74,9 +74,9 @@ function makePathResponse(
   };
 }
 
-const STATUS_APP: AppSummary = {
-  id: "status",
-  name: "Status",
+const APP: AppSummary = {
+  applicationId: "app_status",
+  name: "Review Board",
   entry: { path: "index.html", kind: "html" },
   capabilities: ["data", "message"],
   icon: { kind: "builtin", name: "ListTodo" },
@@ -124,7 +124,7 @@ function seedRecentItems(threadId: string, items: ThreadRecentItem[]): void {
 }
 
 function mockEmptySearchSources(): void {
-  vi.mocked(api.listThreadApps).mockResolvedValue([]);
+  vi.mocked(api.listApps).mockResolvedValue([]);
   vi.mocked(api.searchProjectPaths).mockResolvedValue(makePathResponse([]));
   vi.mocked(api.listThreadStoragePaths).mockResolvedValue({
     ...makePathResponse([]),
@@ -162,7 +162,7 @@ afterEach(() => {
 
 describe("NewTabPage", () => {
   it("autofocuses search and selects a workspace result", async () => {
-    vi.mocked(api.listThreadApps).mockResolvedValue([]);
+    vi.mocked(api.listApps).mockResolvedValue([]);
     vi.mocked(api.searchProjectPaths).mockResolvedValue(
       makePathResponse([
         {
@@ -192,23 +192,23 @@ describe("NewTabPage", () => {
   });
 
   it("lists apps and opens an app selection", async () => {
-    vi.mocked(api.listThreadApps).mockResolvedValue([STATUS_APP]);
+    vi.mocked(api.listApps).mockResolvedValue([APP]);
     const { onSelect } = renderNewTabPage({
       currentThreadId: "thr-manager",
       currentThreadType: "manager",
     });
 
     expect(await screen.findByText("Apps")).toBeTruthy();
-    fireEvent.click(await screen.findByRole("option", { name: /Status/u }));
+    fireEvent.click(await screen.findByRole("option", { name: /Review Board/u }));
 
     expect(onSelect).toHaveBeenCalledWith({
       source: "app",
-      appId: "status",
+      applicationId: "app_status",
     });
   });
 
   it("prefills the composer draft with the create-app prompt", () => {
-    vi.mocked(api.listThreadApps).mockResolvedValue([]);
+    vi.mocked(api.listApps).mockResolvedValue([]);
     renderNewTabPage({ projectId: "proj-1" });
 
     fireEvent.click(screen.getByRole("option", { name: /Create App/u }));
@@ -233,7 +233,7 @@ describe("NewTabPage", () => {
   });
 
   it("leaves a non-empty composer draft unchanged when replacement is canceled", () => {
-    vi.mocked(api.listThreadApps).mockResolvedValue([]);
+    vi.mocked(api.listApps).mockResolvedValue([]);
     vi.spyOn(window, "confirm").mockReturnValue(false);
     setStoredThreadDraft(DRAFT_WITH_ATTACHMENT);
     renderNewTabPage({ projectId: "proj-1" });
@@ -244,7 +244,7 @@ describe("NewTabPage", () => {
   });
 
   it("replaces non-empty composer text and attachments after confirmation", () => {
-    vi.mocked(api.listThreadApps).mockResolvedValue([]);
+    vi.mocked(api.listApps).mockResolvedValue([]);
     vi.spyOn(window, "confirm").mockReturnValue(true);
     setStoredThreadDraft(DRAFT_WITH_ATTACHMENT);
     renderNewTabPage({ projectId: "proj-1" });
@@ -258,13 +258,13 @@ describe("NewTabPage", () => {
   });
 
   it("arrows past the app rows onto the create-app entry as the last option", async () => {
-    vi.mocked(api.listThreadApps).mockResolvedValue([STATUS_APP]);
+    vi.mocked(api.listApps).mockResolvedValue([APP]);
     renderNewTabPage({ projectId: "proj-1" });
 
     const input = screen.getByRole("textbox", {
       name: "Search apps and files",
     });
-    const appOption = await screen.findByRole("option", { name: /Status/u });
+    const appOption = await screen.findByRole("option", { name: /Review Board/u });
     const createAppOption = screen.getByRole("option", {
       name: /Create App/u,
     });
@@ -286,13 +286,13 @@ describe("NewTabPage", () => {
   });
 
   it("prefills the composer draft when the create-app entry is activated by Enter", async () => {
-    vi.mocked(api.listThreadApps).mockResolvedValue([STATUS_APP]);
+    vi.mocked(api.listApps).mockResolvedValue([APP]);
     renderNewTabPage({ projectId: "proj-1" });
 
     const input = screen.getByRole("textbox", {
       name: "Search apps and files",
     });
-    await screen.findByRole("option", { name: /Status/u });
+    await screen.findByRole("option", { name: /Review Board/u });
 
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -304,7 +304,7 @@ describe("NewTabPage", () => {
   });
 
   it("selects a manager thread-storage result with the keyboard", async () => {
-    vi.mocked(api.listThreadApps).mockResolvedValue([]);
+    vi.mocked(api.listApps).mockResolvedValue([]);
     vi.mocked(api.searchProjectPaths).mockResolvedValue(
       makePathResponse([
         {
@@ -333,7 +333,7 @@ describe("NewTabPage", () => {
     const input = screen.getByRole("textbox", {
       name: "Search apps and files",
     });
-    fireEvent.change(input, { target: { value: "status" } });
+    fireEvent.change(input, { target: { value: "app_status" } });
     await screen.findByText("Files");
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -351,7 +351,7 @@ describe("NewTabPage", () => {
       screen.getByText("No searchable app or file source is available."),
     ).toBeTruthy();
     expect(api.searchProjectPaths).not.toHaveBeenCalled();
-    expect(api.listThreadApps).not.toHaveBeenCalled();
+    expect(api.listApps).not.toHaveBeenCalled();
     expect(api.listThreadStoragePaths).not.toHaveBeenCalled();
   });
 });
@@ -467,7 +467,7 @@ describe("NewTabPage recent section", () => {
 
   it("reaches a recent row via keyboard navigation", async () => {
     mockEmptySearchSources();
-    vi.mocked(api.listThreadApps).mockResolvedValue([STATUS_APP]);
+    vi.mocked(api.listApps).mockResolvedValue([APP]);
     const threadId = "thr-recent-keys";
     seedRecentItems(threadId, [
       {
@@ -488,7 +488,7 @@ describe("NewTabPage recent section", () => {
     // Await the app row so the async sources have settled and the active-index
     // reset no longer fires; the recent row trails Apps + Create App in one
     // shared index space, so ArrowUp wraps onto it from the first entry.
-    const appOption = await screen.findByRole("option", { name: /Status/u });
+    const appOption = await screen.findByRole("option", { name: /Review Board/u });
     const recentOption = screen.getByRole("option", {
       name: /swap-model\.md/u,
     });

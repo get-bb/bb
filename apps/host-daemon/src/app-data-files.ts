@@ -3,11 +3,16 @@ import type { Stats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  resolveApplicationDataPath,
+  resolveApplicationManifestPath,
+  resolveAppsRootPath,
+} from "@bb/config/app-storage-paths";
+import {
   appDataPathSchema,
-  appIdSchema,
+  applicationIdSchema,
   jsonValueSchema,
   type AppDataPath,
-  type AppId,
+  type ApplicationId,
   type JsonValue,
 } from "@bb/domain";
 import {
@@ -26,25 +31,24 @@ export interface AppDataEntry {
   version: string;
 }
 
-export interface ThreadAppDataEntry {
-  appId: AppId;
+export interface ApplicationDataEntry {
+  applicationId: ApplicationId;
   entry: AppDataEntry;
 }
 
-export interface ThreadAppDataSnapshot {
-  appIds: AppId[];
-  entries: ThreadAppDataEntry[];
+export interface ApplicationDataSnapshot {
+  applicationIds: ApplicationId[];
+  entries: ApplicationDataEntry[];
+}
+
+export interface ApplicationDataTarget {
+  applicationId: ApplicationId;
+  appDataPath: string;
 }
 
 interface AppDataTargetArgs {
-  appId: AppId;
   path: AppDataPath;
-  rootPath: string;
-}
-
-interface ResolveAppDataRootArgs {
-  appId: AppId;
-  rootPath: string;
+  target: ApplicationDataTarget;
 }
 
 interface ReadAppDataJsonArgs {
@@ -57,8 +61,12 @@ interface ListAppDataFilesArgs {
   currentDirectory: string;
 }
 
-interface ListThreadAppDataArgs {
-  rootPath: string;
+interface ListApplicationDataArgs {
+  targets: readonly ApplicationDataTarget[];
+}
+
+interface ListApplicationDataTargetsFromRootArgs {
+  appsRootPath: string;
 }
 
 function sha256(bytes: Buffer): string {
@@ -91,41 +99,68 @@ function parseJsonValue(args: ReadAppDataJsonArgs): JsonValue {
   }
 }
 
-async function resolveAppDataRoot(
-  args: ResolveAppDataRootArgs,
-): Promise<string> {
-  const appId = appIdSchema.parse(args.appId);
-  if (!path.isAbsolute(args.rootPath)) {
-    throw new CommandDispatchError("invalid_path", "rootPath must be absolute");
+function isIgnoredApplicationStorageEntry(entryName: string): boolean {
+  return (
+    entryName.startsWith(".tmp-app_") || entryName.startsWith(".delete-app_")
+  );
+}
+
+async function isValidApplicationManifest(
+  appsRootPath: string,
+  applicationId: ApplicationId,
+): Promise<boolean> {
+  const dataDir = path.dirname(appsRootPath);
+  try {
+    const rawManifest = JSON.parse(
+      await fs.readFile(
+        resolveApplicationManifestPath(dataDir, applicationId),
+        "utf8",
+      ),
+    );
+    return (
+      rawManifest !== null &&
+      typeof rawManifest === "object" &&
+      "id" in rawManifest &&
+      rawManifest.id === applicationId &&
+      "name" in rawManifest &&
+      typeof rawManifest.name === "string" &&
+      rawManifest.name.trim().length > 0
+    );
+  } catch {
+    return false;
   }
-  const threadStoragePath = await resolveNonSymlinkDirectoryPath({
-    description: "Thread storage root",
-    path: args.rootPath,
-  });
-  const appDataPath = path.join(threadStoragePath, "apps", appId, "data");
-  const resolvedAppDataPath = await resolveNonSymlinkDirectoryPath({
-    description: "App data directory",
-    path: appDataPath,
-  });
-  if (!isPathWithinRoot(resolvedAppDataPath, threadStoragePath)) {
+}
+
+async function resolveAppDataRoot(
+  target: ApplicationDataTarget,
+): Promise<string> {
+  if (!path.isAbsolute(target.appDataPath)) {
     throw new CommandDispatchError(
       "invalid_path",
-      "App data path escapes thread storage root",
+      "appDataPath must be absolute",
+    );
+  }
+  const resolvedAppDataPath = await resolveNonSymlinkDirectoryPath({
+    description: "App data directory",
+    path: target.appDataPath,
+  });
+  const appRootPath = path.dirname(resolvedAppDataPath);
+  if (!isPathWithinRoot(resolvedAppDataPath, appRootPath)) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      "App data path escapes app root",
     );
   }
   return resolvedAppDataPath;
 }
 
-export async function readAppDataFromRoot(
+export async function readApplicationDataFromTarget(
   args: AppDataTargetArgs,
 ): Promise<AppDataEntry> {
   const appDataPath = appDataPathSchema.parse(args.path);
   let appDataRoot: string;
   try {
-    appDataRoot = await resolveAppDataRoot({
-      appId: args.appId,
-      rootPath: args.rootPath,
-    });
+    appDataRoot = await resolveAppDataRoot(args.target);
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {
       throw new ExpectedCommandDispatchError(
@@ -204,56 +239,58 @@ async function listAppDataFilePaths(
   return paths.sort((left, right) => left.localeCompare(right));
 }
 
-export async function listThreadAppDataFromRoot(
-  args: ListThreadAppDataArgs,
-): Promise<ThreadAppDataSnapshot> {
-  if (!path.isAbsolute(args.rootPath)) {
-    throw new CommandDispatchError("invalid_path", "rootPath must be absolute");
-  }
-  let threadStoragePath: string;
+export async function listApplicationDataTargetsFromRoot(
+  args: ListApplicationDataTargetsFromRootArgs,
+): Promise<ApplicationDataTarget[]> {
+  let appsRootPath;
   try {
-    threadStoragePath = await resolveNonSymlinkDirectoryPath({
-      description: "Thread storage root",
-      path: args.rootPath,
+    appsRootPath = await resolveNonSymlinkDirectoryPath({
+      description: "Apps root",
+      path: args.appsRootPath,
     });
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {
-      // Archived/deleted thread storage can be cleaned up while the daemon is
-      // still reconciling tracked targets. A missing root is an empty snapshot.
-      return { appIds: [], entries: [] };
+      return [];
     }
     throw error;
   }
-  const appsRoot = path.join(threadStoragePath, "apps");
-  let appDirectories;
-  try {
-    appDirectories = await fs.readdir(appsRoot, { withFileTypes: true });
-  } catch (error) {
-    if (isFsErrorWithCode(error, "ENOENT")) {
-      return { appIds: [], entries: [] };
+  const entries = await fs.readdir(appsRootPath, { withFileTypes: true });
+  const dataDir = path.dirname(appsRootPath);
+  const targets: ApplicationDataTarget[] = [];
+  for (const entry of entries) {
+    if (
+      !entry.isDirectory() ||
+      isIgnoredApplicationStorageEntry(entry.name)
+    ) {
+      continue;
     }
-    throw error;
+    const parsed = applicationIdSchema.safeParse(entry.name);
+    if (!parsed.success) {
+      continue;
+    }
+    if (!(await isValidApplicationManifest(appsRootPath, parsed.data))) {
+      continue;
+    }
+    targets.push({
+      applicationId: parsed.data,
+      appDataPath: resolveApplicationDataPath(dataDir, parsed.data),
+    });
   }
+  return targets.sort((left, right) =>
+    left.applicationId.localeCompare(right.applicationId),
+  );
+}
 
-  const appIds: AppId[] = [];
-  const snapshotEntries: ThreadAppDataEntry[] = [];
-  for (const directory of appDirectories) {
-    if (!directory.isDirectory()) {
-      continue;
-    }
-    const parsedAppId = appIdSchema.safeParse(directory.name);
-    if (!parsedAppId.success) {
-      continue;
-    }
-    const appId = parsedAppId.data;
-    appIds.push(appId);
-    const appDataRoot = path.join(appsRoot, appId, "data");
+export async function listApplicationDataFromTargets(
+  args: ListApplicationDataArgs,
+): Promise<ApplicationDataSnapshot> {
+  const applicationIds: ApplicationId[] = [];
+  const snapshotEntries: ApplicationDataEntry[] = [];
+  for (const target of args.targets) {
+    applicationIds.push(target.applicationId);
     let resolvedAppDataRoot;
     try {
-      resolvedAppDataRoot = await resolveNonSymlinkDirectoryPath({
-        description: "App data directory",
-        path: appDataRoot,
-      });
+      resolvedAppDataRoot = await resolveAppDataRoot(target);
     } catch (error) {
       if (isFsErrorWithCode(error, "ENOENT")) {
         continue;
@@ -266,25 +303,30 @@ export async function listThreadAppDataFromRoot(
     });
     for (const dataPath of dataPaths) {
       snapshotEntries.push({
-        appId,
-        entry: await readAppDataFromRoot({
-          appId,
+        applicationId: target.applicationId,
+        entry: await readApplicationDataFromTarget({
           path: dataPath,
-          rootPath: threadStoragePath,
+          target,
         }),
       });
     }
   }
 
-  appIds.sort((left, right) => left.localeCompare(right));
+  applicationIds.sort((left, right) => left.localeCompare(right));
   snapshotEntries.sort((left, right) => {
-    const appOrder = left.appId.localeCompare(right.appId);
+    const appOrder = left.applicationId.localeCompare(right.applicationId);
     return appOrder === 0
       ? left.entry.path.localeCompare(right.entry.path)
       : appOrder;
   });
   return {
-    appIds,
+    applicationIds,
     entries: snapshotEntries,
   };
+}
+
+export async function ensureAppsRootPath(dataDir: string): Promise<string> {
+  const appsRootPath = resolveAppsRootPath(dataDir);
+  await fs.mkdir(appsRootPath, { recursive: true });
+  return appsRootPath;
 }
