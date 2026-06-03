@@ -10,8 +10,10 @@ import {
 import type {
   BbDesktopBrowserApi,
   BbDesktopBrowserState,
+  BbDesktopBrowserViewportBounds,
   BbDesktopBrowserViewBounds,
 } from "@bb/server-contract";
+import { clampBbDesktopBrowserViewBounds } from "@bb/server-contract";
 import { Icon } from "@/components/ui/icon.js";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import {
@@ -19,6 +21,7 @@ import {
   resolveBrowserAddressInput,
 } from "@/lib/browser-url";
 import { useBrowserHistory } from "@/lib/browser-history";
+import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
 import {
   registerBrowserView,
@@ -67,6 +70,17 @@ interface NavButtonProps {
   onClick: () => void;
 }
 
+interface BrowserViewBoundsFromElementArgs {
+  element: HTMLElement;
+}
+
+const EMPTY_BROWSER_VIEW_BOUNDS: BbDesktopBrowserViewBounds = {
+  x: 0,
+  y: 0,
+  width: 0,
+  height: 0,
+};
+
 function roundedBoundsFromRect(rect: DOMRect): BbDesktopBrowserViewBounds {
   return {
     x: Math.round(rect.left),
@@ -74,6 +88,22 @@ function roundedBoundsFromRect(rect: DOMRect): BbDesktopBrowserViewBounds {
     width: Math.round(rect.width),
     height: Math.round(rect.height),
   };
+}
+
+function browserViewportBounds(): BbDesktopBrowserViewportBounds {
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  };
+}
+
+function browserViewBoundsFromElement(
+  args: BrowserViewBoundsFromElementArgs,
+): BbDesktopBrowserViewBounds {
+  return clampBbDesktopBrowserViewBounds({
+    bounds: roundedBoundsFromRect(args.element.getBoundingClientRect()),
+    viewport: browserViewportBounds(),
+  });
 }
 
 function NavButton({ icon, label, disabled, onClick }: NavButtonProps) {
@@ -226,24 +256,45 @@ export function BrowserTabContent({
   isActiveRef.current = isActive;
 
   const hasPage = currentUrl.length > 0;
-
   // Pending rAF handle for the coalesced bounds sync, so a burst of resize ticks
   // collapses to a single native setBounds per frame.
   const boundsSyncFrameRef = useRef<number | null>(null);
+
+  const readBounds = useCallback(() => {
+    const element = contentRef.current;
+    if (element === null) {
+      return null;
+    }
+    return browserViewBoundsFromElement({ element });
+  }, []);
+
+  const sendBounds = useCallback(
+    (bounds: BbDesktopBrowserViewBounds) => {
+      if (desktopBrowser === null) {
+        return;
+      }
+      desktopBrowser.setBounds({
+        tabId,
+        bounds,
+      });
+    },
+    [desktopBrowser, tabId],
+  );
 
   // Push the current content-rect to the native overlay immediately. The
   // coordinator's show() calls this synchronously so bounds always land before
   // the view is made visible (never a stale/zero-bounds flash on activation).
   const syncBounds = useCallback(() => {
-    const element = contentRef.current;
-    if (element === null || desktopBrowser === null) {
+    const bounds = readBounds();
+    if (bounds === null) {
       return;
     }
-    desktopBrowser.setBounds({
-      tabId,
-      bounds: roundedBoundsFromRect(element.getBoundingClientRect()),
-    });
-  }, [desktopBrowser, tabId]);
+    sendBounds(bounds);
+  }, [readBounds, sendBounds]);
+
+  const syncInitialBounds = useCallback(() => {
+    return readBounds() ?? EMPTY_BROWSER_VIEW_BOUNDS;
+  }, [readBounds]);
 
   // rAF-coalesced bounds sync for live resize tracking. A drag-resize fires the
   // ResizeObserver (and `window` resize) repeatedly; batching to one setBounds
@@ -267,11 +318,7 @@ export function BrowserTabContent({
     if (desktopBrowser === null) {
       return;
     }
-    const element = contentRef.current;
-    const initialBounds =
-      element !== null
-        ? roundedBoundsFromRect(element.getBoundingClientRect())
-        : { x: 0, y: 0, width: 0, height: 0 };
+    const initialBounds = syncInitialBounds();
     const mountUrl = initialUrlRef.current;
     registerBrowserView({ environmentId, tabId, threadId });
     desktopBrowser.attach({
@@ -309,7 +356,14 @@ export function BrowserTabContent({
       // listener and forgets any stale visibility ownership.
       visibilityCoordinator?.release(tabId);
     };
-  }, [desktopBrowser, environmentId, visibilityCoordinator, tabId, threadId]);
+  }, [
+    desktopBrowser,
+    environmentId,
+    syncInitialBounds,
+    visibilityCoordinator,
+    tabId,
+    threadId,
+  ]);
 
   // Track the panel content rect so the native overlay stays aligned — including
   // throughout a drag-resize, where the rect changes every frame. Coalesced via
@@ -334,13 +388,29 @@ export function BrowserTabContent({
     };
   }, [desktopBrowser, scheduleBoundsSync]);
 
+  // ResizeObserver only reports size changes; dragging the left sidebar can
+  // move this content rect without changing its width. AppLayout emits this
+  // event from the same rAF that applies the live sidebar width, so the native
+  // view is re-pinned to the content edge even on position-only layout shifts.
+  useEffect(() => {
+    if (desktopBrowser === null) {
+      return;
+    }
+
+    window.addEventListener(BROWSER_VIEW_BOUNDS_SYNC_EVENT, syncBounds);
+
+    return () => {
+      window.removeEventListener(BROWSER_VIEW_BOUNDS_SYNC_EVENT, syncBounds);
+    };
+  }, [desktopBrowser, syncBounds]);
+
   // The native view is shown whenever this tab is the active panel tab and has a
   // page. It is NOT hidden during a drag-resize — the overlay tracks the live
-  // bounds (see the ResizeObserver effect) so it follows the panel smoothly
-  // instead of blanking and flashing. It stays attached when hidden, so
-  // deactivation never reloads it. (Collapse/expand of the panel toggles
-  // `isActive`, which hides the view outright rather than chasing a CSS
-  // transition the overlay cannot clip to.)
+  // bounds (see the ResizeObserver and layout-sync effects) so it follows
+  // the panel smoothly instead of blanking and flashing. It stays attached when
+  // hidden, so deactivation never reloads it. (Collapse/expand of the panel
+  // toggles `isActive`, which hides the view outright rather than chasing a
+  // CSS transition the overlay cannot clip to.)
   const isViewVisible = isActive && hasPage;
   // A layout effect (pre-paint) declares visibility so showing/hiding lands in
   // the same frame as the DOM tab swap — no flash. Ordering across tabs (hide

@@ -7,11 +7,13 @@ import {
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
+  clampBbDesktopBrowserViewBounds,
   type BbDesktopBrowserAttachRequest,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserSetBoundsRequest,
   type BbDesktopBrowserSetVisibleRequest,
   type BbDesktopBrowserState,
+  type BbDesktopBrowserViewBounds,
 } from "@bb/server-contract";
 import {
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
@@ -65,6 +67,17 @@ interface HostScopedTabArgs {
   tabId: string;
 }
 
+interface ClampBoundsToHostWindowArgs {
+  bounds: BbDesktopBrowserViewBounds;
+  hostWindow: BrowserWindow;
+}
+
+interface SetEntryBoundsArgs {
+  bounds: BbDesktopBrowserViewBounds;
+  entry: BrowserViewEntry;
+  hostWindow: BrowserWindow;
+}
+
 export interface DesktopBrowserViewManager {
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
   detach(args: HostScopedTabArgs): void;
@@ -97,6 +110,28 @@ function send(hostWindow: BrowserWindow, channel: string, payload: unknown): voi
     return;
   }
   hostWindow.webContents.send(channel, payload);
+}
+
+function clampBoundsToHostWindow(
+  args: ClampBoundsToHostWindowArgs,
+): BbDesktopBrowserViewBounds {
+  const contentBounds = args.hostWindow.getContentBounds();
+  return clampBbDesktopBrowserViewBounds({
+    bounds: args.bounds,
+    viewport: {
+      width: contentBounds.width,
+      height: contentBounds.height,
+    },
+  });
+}
+
+function setEntryBounds(args: SetEntryBoundsArgs): void {
+  args.entry.view.setBounds(
+    clampBoundsToHostWindow({
+      bounds: args.bounds,
+      hostWindow: args.hostWindow,
+    }),
+  );
 }
 
 function buildBrowserState(
@@ -304,7 +339,7 @@ export function createDesktopBrowserViewManager(
     attach({ hostWindow, request }) {
       const key = browserViewKey(hostWindow, request.tabId);
       const entry = entries.get(key) ?? createEntry(hostWindow, request.tabId);
-      entry.view.setBounds(request.bounds);
+      setEntryBounds({ hostWindow, entry, bounds: request.bounds });
       entry.view.setVisible(request.visible);
       loadIfNeeded(entry, request.url);
       pushState(hostWindow, request.tabId);
@@ -343,7 +378,7 @@ export function createDesktopBrowserViewManager(
     },
     setBounds({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
-        entry.view.setBounds(request.bounds);
+        setEntryBounds({ hostWindow, entry, bounds: request.bounds });
       });
     },
     setVisible({ hostWindow, request }) {

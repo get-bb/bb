@@ -54,6 +54,7 @@ import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useStandardManagerTimelinePreference } from "@/lib/manager-timeline-view-preference";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
+import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -113,6 +114,7 @@ interface SidebarStateBridgeProps {
 }
 
 type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
+type SidebarOpenChangeHandler = (open: boolean) => void;
 
 type SidebarProviderStyle = CSSProperties & {
   "--sidebar-width": string;
@@ -125,6 +127,13 @@ function SidebarStateBridge({
   children,
 }: SidebarStateBridgeProps) {
   const [open, setOpen] = useAtom(sidebarOpenAtom);
+  const handleOpenChange = useCallback<SidebarOpenChangeHandler>(
+    (nextOpen) => {
+      setOpen(nextOpen);
+      window.requestAnimationFrame(dispatchBrowserViewBoundsSync);
+    },
+    [setOpen],
+  );
   return (
     <SidebarProvider
       ref={providerRef}
@@ -132,7 +141,7 @@ function SidebarStateBridge({
       className={className}
       data-testid="app-layout-root"
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={handleOpenChange}
     >
       {children}
     </SidebarProvider>
@@ -495,6 +504,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       "--sidebar-width",
       `${liveWidthRef.current}px`,
     );
+    dispatchBrowserViewBoundsSync();
     setSidebarWidth(liveWidthRef.current);
     setIsSidebarResizing(false);
     resetSidebarResizeDocumentState();
@@ -509,6 +519,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         "--sidebar-width",
         `${liveWidthRef.current}px`,
       );
+      dispatchBrowserViewBoundsSync();
     };
 
     const handleMouseMove = (event: MouseEvent) => {

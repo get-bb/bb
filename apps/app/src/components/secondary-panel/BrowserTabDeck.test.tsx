@@ -6,16 +6,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
+  BbDesktopBrowserViewBounds,
   BbDesktopInfo,
   BbDesktopInfoChangeHandler,
 } from "@bb/server-contract";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
 import { BrowserTabDeck } from "./BrowserTabDeck";
 import { resetBrowserViewPersistence } from "./browserViewVisibilityCoordinator";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 
 interface RecordedBrowserCall {
   method: "attach" | "detach" | "setVisible" | "setBounds" | "navigate";
+  bounds: BbDesktopBrowserViewBounds | null;
   tabId: string;
   visible: boolean | null;
 }
@@ -41,26 +44,38 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
     attach(request) {
       calls.push({
         method: "attach",
+        bounds: request.bounds,
         tabId: request.tabId,
         visible: request.visible,
       });
     },
     detach(tabId) {
-      calls.push({ method: "detach", tabId, visible: null });
+      calls.push({ method: "detach", bounds: null, tabId, visible: null });
     },
     navigate(request) {
-      calls.push({ method: "navigate", tabId: request.tabId, visible: null });
+      calls.push({
+        method: "navigate",
+        bounds: null,
+        tabId: request.tabId,
+        visible: null,
+      });
     },
     goBack() {},
     goForward() {},
     reload() {},
     stop() {},
     setBounds(request) {
-      calls.push({ method: "setBounds", tabId: request.tabId, visible: null });
+      calls.push({
+        method: "setBounds",
+        bounds: request.bounds,
+        tabId: request.tabId,
+        visible: null,
+      });
     },
     setVisible(request) {
       calls.push({
         method: "setVisible",
+        bounds: null,
         tabId: request.tabId,
         visible: request.visible,
       });
@@ -103,6 +118,31 @@ function browserTab(id: string, url: string): BrowserFixedPanelTab {
 const TAB_A = browserTab("browser:a", "https://a.example/");
 const TAB_B = browserTab("browser:b", "https://b.example/");
 const TAB_C = browserTab("browser:c", "https://c.example/");
+
+type RestoreHandler = () => void;
+
+interface BrowserContentRect {
+  height: number;
+  left: number;
+  top: number;
+  width: number;
+}
+
+interface BrowserViewportSize {
+  height: number;
+  width: number;
+}
+
+interface QueuedAnimationFrame {
+  callback: FrameRequestCallback;
+  canceled: boolean;
+  id: number;
+}
+
+interface QueuedAnimationFrameController {
+  flushNext(): void;
+  restore(): void;
+}
 
 interface ThreadDeckHostProps {
   activeBrowserTabId: string | null;
@@ -164,6 +204,102 @@ function maxConcurrentVisible(calls: readonly RecordedBrowserCall[]): number {
     max = Math.max(max, visible.size);
   }
   return max;
+}
+
+function installBrowserContentRect(
+  rect: BrowserContentRect,
+): RestoreHandler {
+  const rectMock = vi
+    .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+    .mockImplementation(
+      () => new DOMRect(rect.left, rect.top, rect.width, rect.height),
+    );
+  return () => rectMock.mockRestore();
+}
+
+function installViewportSize(size: BrowserViewportSize): RestoreHandler {
+  const previousWidth = window.innerWidth;
+  const previousHeight = window.innerHeight;
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: size.width,
+  });
+  Object.defineProperty(window, "innerHeight", {
+    configurable: true,
+    value: size.height,
+  });
+  return () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: previousWidth,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: previousHeight,
+    });
+  };
+}
+
+function installQueuedAnimationFrame(): QueuedAnimationFrameController {
+  const frames: QueuedAnimationFrame[] = [];
+  let nextId = 1;
+  const requestFrame = vi
+    .spyOn(window, "requestAnimationFrame")
+    .mockImplementation((callback) => {
+      const frame: QueuedAnimationFrame = {
+        callback,
+        canceled: false,
+        id: nextId,
+      };
+      nextId += 1;
+      frames.push(frame);
+      return frame.id;
+    });
+  const cancelFrame = vi
+    .spyOn(window, "cancelAnimationFrame")
+    .mockImplementation((id) => {
+      const frame = frames.find((candidate) => candidate.id === id);
+      if (frame !== undefined) {
+        frame.canceled = true;
+      }
+    });
+
+  return {
+    flushNext() {
+      const frame = frames.shift();
+      if (frame === undefined || frame.canceled) {
+        return;
+      }
+      frame.callback(0);
+    },
+    restore() {
+      requestFrame.mockRestore();
+      cancelFrame.mockRestore();
+    },
+  };
+}
+
+function lastSetBoundsFor(
+  calls: readonly RecordedBrowserCall[],
+  tabId: string,
+): BbDesktopBrowserViewBounds | null {
+  for (let index = calls.length - 1; index >= 0; index -= 1) {
+    const call = calls[index];
+    if (call?.method === "setBounds" && call.tabId === tabId) {
+      return call.bounds;
+    }
+  }
+  return null;
+}
+
+function attachBoundsFor(
+  calls: readonly RecordedBrowserCall[],
+  tabId: string,
+): BbDesktopBrowserViewBounds | null {
+  const call = calls.find(
+    (candidate) => candidate.method === "attach" && candidate.tabId === tabId,
+  );
+  return call?.bounds ?? null;
 }
 
 afterEach(() => {
@@ -359,6 +495,85 @@ describe("BrowserTabDeck", () => {
     expect(setBoundsIndex).toBeLessThan(showIndex);
   });
 
+  it("resyncs bounds when the panel position changes without resizing", () => {
+    const { api, calls } = createRecordingBrowserApi();
+    installDesktopBrowserApi(api);
+    const rect: BrowserContentRect = {
+      left: 320,
+      top: 96,
+      width: 480,
+      height: 360,
+    };
+    const restoreRect = installBrowserContentRect(rect);
+    try {
+      render(
+        <BrowserTabDeck
+          browserTabs={[TAB_A]}
+          activeBrowserTabId={TAB_A.id}
+          environmentId="env_test"
+          isPanelOpen
+          threadId="thr_test"
+          onUpdate={() => {}}
+        />,
+      );
+
+      calls.length = 0;
+
+      rect.left = 248;
+      rect.top = 88;
+
+      act(() => {
+        window.dispatchEvent(new Event(BROWSER_VIEW_BOUNDS_SYNC_EVENT));
+      });
+
+      expect(lastSetBoundsFor(calls, TAB_A.id)).toEqual({
+        x: 248,
+        y: 88,
+        width: 480,
+        height: 360,
+      });
+    } finally {
+      restoreRect();
+    }
+  });
+
+  it("anchors browser bounds to the content left edge and clamps them to the viewport", () => {
+    const { api, calls } = createRecordingBrowserApi();
+    installDesktopBrowserApi(api);
+    const restoreViewport = installViewportSize({ width: 500, height: 360 });
+    const restoreRect = installBrowserContentRect({
+      left: 180,
+      top: 48,
+      width: 400,
+      height: 420,
+    });
+
+    try {
+      render(
+        <BrowserTabDeck
+          browserTabs={[TAB_A]}
+          activeBrowserTabId={TAB_A.id}
+          environmentId="env_test"
+          isPanelOpen
+          threadId="thr_test"
+          onUpdate={() => {}}
+        />,
+      );
+
+      const expectedBounds: BbDesktopBrowserViewBounds = {
+        x: 180,
+        y: 48,
+        width: 320,
+        height: 312,
+      };
+      expect(attachBoundsFor(calls, TAB_A.id)).toEqual(expectedBounds);
+      expect(lastSetBoundsFor(calls, TAB_A.id)).toEqual(expectedBounds);
+    } finally {
+      restoreRect();
+      restoreViewport();
+    }
+  });
+
   it("hides the later view before showing the earlier one when switching B -> A", () => {
     const { api, calls } = createRecordingBrowserApi();
     installDesktopBrowserApi(api);
@@ -533,14 +748,7 @@ describe("BrowserTabDeck", () => {
       disconnect() {}
     }
     vi.stubGlobal("ResizeObserver", CapturingResizeObserver);
-    // Run the rAF-coalesced bounds sync synchronously so the resize tick lands a
-    // setBounds within this test's `act` scope.
-    const requestFrame = vi
-      .spyOn(window, "requestAnimationFrame")
-      .mockImplementation((callback) => {
-        callback(0);
-        return 0;
-      });
+    const animationFrame = installQueuedAnimationFrame();
 
     render(
       <BrowserTabDeck
@@ -562,6 +770,8 @@ describe("BrowserTabDeck", () => {
       for (const fireResizeTick of resizeCallbacks) {
         fireResizeTick();
       }
+      animationFrame.flushNext();
+      animationFrame.flushNext();
     });
     const duringResize = calls.slice(resizeStart);
 
@@ -584,7 +794,7 @@ describe("BrowserTabDeck", () => {
     // Net effect: the active view stays visible throughout the resize.
     expect(visibilityFor(calls, TAB_A.id)).toBe(true);
 
-    requestFrame.mockRestore();
+    animationFrame.restore();
     vi.unstubAllGlobals();
   });
 });

@@ -158,8 +158,8 @@ export const BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH = 1024;
 /**
  * Pixel rect (CSS px, which equal device-independent points on macOS) of the
  * panel region the native browser view must overlay. The renderer measures the
- * placeholder div and streams this on resize; the main process applies it
- * verbatim via `WebContentsView.setBounds`.
+ * placeholder div and streams a viewport-clamped rect on resize; the main
+ * process applies a final host-window clamp before `WebContentsView.setBounds`.
  */
 export const bbDesktopBrowserViewBoundsSchema = z
   .object({
@@ -172,6 +172,60 @@ export const bbDesktopBrowserViewBoundsSchema = z
 export type BbDesktopBrowserViewBounds = z.infer<
   typeof bbDesktopBrowserViewBoundsSchema
 >;
+
+export interface BbDesktopBrowserViewportBounds {
+  width: number;
+  height: number;
+}
+
+interface ClampIntegerToRangeArgs {
+  max: number;
+  min: number;
+  value: number;
+}
+
+export interface ClampBbDesktopBrowserViewBoundsArgs {
+  bounds: BbDesktopBrowserViewBounds;
+  viewport: BbDesktopBrowserViewportBounds;
+}
+
+function clampIntegerToRange(args: ClampIntegerToRangeArgs): number {
+  return Math.min(Math.max(args.value, args.min), args.max);
+}
+
+export function clampBbDesktopBrowserViewBounds(
+  args: ClampBbDesktopBrowserViewBoundsArgs,
+): BbDesktopBrowserViewBounds {
+  const viewportRight = Math.max(0, Math.round(args.viewport.width));
+  const viewportBottom = Math.max(0, Math.round(args.viewport.height));
+  const x = clampIntegerToRange({
+    value: args.bounds.x,
+    min: 0,
+    max: viewportRight,
+  });
+  const y = clampIntegerToRange({
+    value: args.bounds.y,
+    min: 0,
+    max: viewportBottom,
+  });
+  const right = clampIntegerToRange({
+    value: args.bounds.x + args.bounds.width,
+    min: x,
+    max: viewportRight,
+  });
+  const bottom = clampIntegerToRange({
+    value: args.bounds.y + args.bounds.height,
+    min: y,
+    max: viewportBottom,
+  });
+
+  return {
+    x,
+    y,
+    width: right - x,
+    height: bottom - y,
+  };
+}
 
 /**
  * Create-or-update the view for a browser tab. `url` may be empty to mean "no
