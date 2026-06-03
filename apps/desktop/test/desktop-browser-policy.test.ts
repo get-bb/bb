@@ -53,23 +53,25 @@ describe("browser IPC payload schemas", () => {
         tabId: "browser:abc",
         url: "",
         bounds: { x: 0, y: 0, width: 800, height: 600 },
+        layout: { left: 0, top: 0, rightInset: 0, bottomInset: 0 },
         visible: false,
       }).success,
     ).toBe(true);
 
-    // Empty tabId, negative size, and unknown keys are all rejected.
+    // Empty tabId, negative inset, and unknown keys are all rejected.
     expect(
       bbDesktopBrowserAttachRequestSchema.safeParse({
         tabId: "",
         url: "",
         bounds: { x: 0, y: 0, width: 800, height: 600 },
+        layout: { left: 0, top: 0, rightInset: 0, bottomInset: 0 },
         visible: false,
       }).success,
     ).toBe(false);
     expect(
       bbDesktopBrowserSetBoundsRequestSchema.safeParse({
         tabId: "browser:abc",
-        bounds: { x: 0, y: 0, width: -1, height: 600 },
+        layout: { left: 0, top: 0, rightInset: -1, bottomInset: 0 },
       }).success,
     ).toBe(false);
     expect(
@@ -77,6 +79,7 @@ describe("browser IPC payload schemas", () => {
         tabId: "browser:abc",
         url: "",
         bounds: { x: 0, y: 0, width: 800, height: 600 },
+        layout: { left: 0, top: 0, rightInset: 0, bottomInset: 0 },
         visible: false,
         extra: true,
       }).success,
@@ -99,7 +102,7 @@ describe("browser IPC payload schemas", () => {
     expect(
       bbDesktopBrowserSetBoundsRequestSchema.safeParse({
         tabId: "browser:abc",
-        bounds: { x: 0.5, y: 0, width: 800, height: 600 },
+        layout: { left: 0.5, top: 0, rightInset: 0, bottomInset: 0 },
       }).success,
     ).toBe(false);
   });
@@ -113,6 +116,7 @@ describe("browser IPC payload schemas", () => {
         tabId: "browser:abc",
         url: longUrl,
         bounds: { x: 0, y: 0, width: 800, height: 600 },
+        layout: { left: 0, top: 0, rightInset: 0, bottomInset: 0 },
         visible: true,
       }).success,
     ).toBe(false);

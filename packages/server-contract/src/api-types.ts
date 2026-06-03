@@ -164,9 +164,9 @@ export const BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH = 1024;
 
 /**
  * Pixel rect (CSS px, which equal device-independent points on macOS) of the
- * panel region the native browser view must overlay. The renderer measures the
- * placeholder div and streams a viewport-clamped rect on resize; the main
- * process applies a final host-window clamp before `WebContentsView.setBounds`.
+ * panel region the native browser view must overlay. The renderer still sends
+ * this absolute rect for immediate first paint, but resize ownership is driven
+ * by the layout descriptor below.
  */
 export const bbDesktopBrowserViewBoundsSchema = z
   .object({
@@ -179,6 +179,29 @@ export const bbDesktopBrowserViewBoundsSchema = z
 export type BbDesktopBrowserViewBounds = z.infer<
   typeof bbDesktopBrowserViewBoundsSchema
 >;
+
+/**
+ * Resize-invariant description of a browser view's layout relative to the
+ * BrowserWindow content area. The renderer sends this when the panel layout
+ * shape changes; the desktop main process reprojects it synchronously on native
+ * window resize without waiting for renderer layout or IPC.
+ */
+export const bbDesktopBrowserViewLayoutDescriptorSchema = z
+  .object({
+    left: z.number().int().nonnegative(),
+    top: z.number().int().nonnegative(),
+    rightInset: z.number().int().nonnegative(),
+    bottomInset: z.number().int().nonnegative(),
+  })
+  .strict();
+export type BbDesktopBrowserViewLayoutDescriptor = z.infer<
+  typeof bbDesktopBrowserViewLayoutDescriptorSchema
+>;
+
+export interface BbDesktopBrowserViewPlacement {
+  bounds: BbDesktopBrowserViewBounds;
+  layout: BbDesktopBrowserViewLayoutDescriptor;
+}
 
 export interface BbDesktopBrowserViewportBounds {
   width: number;
@@ -193,6 +216,21 @@ interface ClampIntegerToRangeArgs {
 
 export interface ClampBbDesktopBrowserViewBoundsArgs {
   bounds: BbDesktopBrowserViewBounds;
+  viewport: BbDesktopBrowserViewportBounds;
+}
+
+export interface BbDesktopBrowserViewLayoutDescriptorFromBoundsArgs {
+  bounds: BbDesktopBrowserViewBounds;
+  viewport: BbDesktopBrowserViewportBounds;
+}
+
+export interface BbDesktopBrowserViewBoundsFromLayoutDescriptorArgs {
+  layout: BbDesktopBrowserViewLayoutDescriptor;
+  viewport: BbDesktopBrowserViewportBounds;
+}
+
+export interface ClampBbDesktopBrowserViewLayoutDescriptorArgs {
+  layout: BbDesktopBrowserViewLayoutDescriptor;
   viewport: BbDesktopBrowserViewportBounds;
 }
 
@@ -234,6 +272,63 @@ export function clampBbDesktopBrowserViewBounds(
   };
 }
 
+export function bbDesktopBrowserViewLayoutDescriptorFromBounds(
+  args: BbDesktopBrowserViewLayoutDescriptorFromBoundsArgs,
+): BbDesktopBrowserViewLayoutDescriptor {
+  const viewportRight = Math.max(0, Math.round(args.viewport.width));
+  const viewportBottom = Math.max(0, Math.round(args.viewport.height));
+  const bounds = clampBbDesktopBrowserViewBounds(args);
+  return {
+    left: bounds.x,
+    top: bounds.y,
+    rightInset: viewportRight - (bounds.x + bounds.width),
+    bottomInset: viewportBottom - (bounds.y + bounds.height),
+  };
+}
+
+export function bbDesktopBrowserViewBoundsFromLayoutDescriptor(
+  args: BbDesktopBrowserViewBoundsFromLayoutDescriptorArgs,
+): BbDesktopBrowserViewBounds {
+  const viewportRight = Math.max(0, Math.round(args.viewport.width));
+  const viewportBottom = Math.max(0, Math.round(args.viewport.height));
+  const x = clampIntegerToRange({
+    value: args.layout.left,
+    min: 0,
+    max: viewportRight,
+  });
+  const y = clampIntegerToRange({
+    value: args.layout.top,
+    min: 0,
+    max: viewportBottom,
+  });
+  const right = clampIntegerToRange({
+    value: viewportRight - args.layout.rightInset,
+    min: x,
+    max: viewportRight,
+  });
+  const bottom = clampIntegerToRange({
+    value: viewportBottom - args.layout.bottomInset,
+    min: y,
+    max: viewportBottom,
+  });
+
+  return {
+    x,
+    y,
+    width: right - x,
+    height: bottom - y,
+  };
+}
+
+export function clampBbDesktopBrowserViewLayoutDescriptor(
+  args: ClampBbDesktopBrowserViewLayoutDescriptorArgs,
+): BbDesktopBrowserViewLayoutDescriptor {
+  return bbDesktopBrowserViewLayoutDescriptorFromBounds({
+    bounds: bbDesktopBrowserViewBoundsFromLayoutDescriptor(args),
+    viewport: args.viewport,
+  });
+}
+
 /**
  * Create-or-update the view for a browser tab. `url` may be empty to mean "no
  * page yet" (the renderer shows its new-tab screen and keeps the view hidden).
@@ -243,6 +338,7 @@ export const bbDesktopBrowserAttachRequestSchema = z
     tabId: z.string().min(1),
     url: z.string().max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
     bounds: bbDesktopBrowserViewBoundsSchema,
+    layout: bbDesktopBrowserViewLayoutDescriptorSchema,
     visible: z.boolean(),
   })
   .strict();
@@ -263,7 +359,7 @@ export type BbDesktopBrowserNavigateRequest = z.infer<
 export const bbDesktopBrowserSetBoundsRequestSchema = z
   .object({
     tabId: z.string().min(1),
-    bounds: bbDesktopBrowserViewBoundsSchema,
+    layout: bbDesktopBrowserViewLayoutDescriptorSchema,
   })
   .strict();
 export type BbDesktopBrowserSetBoundsRequest = z.infer<

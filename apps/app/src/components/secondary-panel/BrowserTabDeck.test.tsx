@@ -7,9 +7,11 @@ import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
   BbDesktopBrowserViewBounds,
+  BbDesktopBrowserViewLayoutDescriptor,
   BbDesktopInfo,
   BbDesktopInfoChangeHandler,
 } from "@bb/server-contract";
+import { bbDesktopBrowserViewLayoutDescriptorFromBounds } from "@bb/server-contract";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
 import { BrowserTabDeck } from "./BrowserTabDeck";
@@ -19,6 +21,7 @@ import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 interface RecordedBrowserCall {
   method: "attach" | "detach" | "setVisible" | "setBounds" | "navigate";
   bounds: BbDesktopBrowserViewBounds | null;
+  layout: BbDesktopBrowserViewLayoutDescriptor | null;
   tabId: string;
   visible: boolean | null;
 }
@@ -45,17 +48,25 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
       calls.push({
         method: "attach",
         bounds: request.bounds,
+        layout: request.layout,
         tabId: request.tabId,
         visible: request.visible,
       });
     },
     detach(tabId) {
-      calls.push({ method: "detach", bounds: null, tabId, visible: null });
+      calls.push({
+        method: "detach",
+        bounds: null,
+        layout: null,
+        tabId,
+        visible: null,
+      });
     },
     navigate(request) {
       calls.push({
         method: "navigate",
         bounds: null,
+        layout: null,
         tabId: request.tabId,
         visible: null,
       });
@@ -67,7 +78,8 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
     setBounds(request) {
       calls.push({
         method: "setBounds",
-        bounds: request.bounds,
+        bounds: null,
+        layout: request.layout,
         tabId: request.tabId,
         visible: null,
       });
@@ -76,6 +88,7 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
       calls.push({
         method: "setVisible",
         bounds: null,
+        layout: null,
         tabId: request.tabId,
         visible: request.visible,
       });
@@ -279,14 +292,14 @@ function installQueuedAnimationFrame(): QueuedAnimationFrameController {
   };
 }
 
-function lastSetBoundsFor(
+function lastSetLayoutFor(
   calls: readonly RecordedBrowserCall[],
   tabId: string,
-): BbDesktopBrowserViewBounds | null {
+): BbDesktopBrowserViewLayoutDescriptor | null {
   for (let index = calls.length - 1; index >= 0; index -= 1) {
     const call = calls[index];
     if (call?.method === "setBounds" && call.tabId === tabId) {
-      return call.bounds;
+      return call.layout;
     }
   }
   return null;
@@ -300,6 +313,16 @@ function attachBoundsFor(
     (candidate) => candidate.method === "attach" && candidate.tabId === tabId,
   );
   return call?.bounds ?? null;
+}
+
+function attachLayoutFor(
+  calls: readonly RecordedBrowserCall[],
+  tabId: string,
+): BbDesktopBrowserViewLayoutDescriptor | null {
+  const call = calls.find(
+    (candidate) => candidate.method === "attach" && candidate.tabId === tabId,
+  );
+  return call?.layout ?? null;
 }
 
 afterEach(() => {
@@ -498,6 +521,7 @@ describe("BrowserTabDeck", () => {
   it("resyncs bounds when the panel position changes without resizing", () => {
     const { api, calls } = createRecordingBrowserApi();
     installDesktopBrowserApi(api);
+    const restoreViewport = installViewportSize({ width: 1000, height: 700 });
     const rect: BrowserContentRect = {
       left: 320,
       top: 96,
@@ -526,14 +550,15 @@ describe("BrowserTabDeck", () => {
         window.dispatchEvent(new Event(BROWSER_VIEW_BOUNDS_SYNC_EVENT));
       });
 
-      expect(lastSetBoundsFor(calls, TAB_A.id)).toEqual({
-        x: 248,
-        y: 88,
-        width: 480,
-        height: 360,
+      expect(lastSetLayoutFor(calls, TAB_A.id)).toEqual({
+        left: 248,
+        top: 88,
+        rightInset: 272,
+        bottomInset: 252,
       });
     } finally {
       restoreRect();
+      restoreViewport();
     }
   });
 
@@ -566,8 +591,53 @@ describe("BrowserTabDeck", () => {
         width: 320,
         height: 312,
       };
+      const expectedLayout = bbDesktopBrowserViewLayoutDescriptorFromBounds({
+        bounds: expectedBounds,
+        viewport: { width: 500, height: 360 },
+      });
       expect(attachBoundsFor(calls, TAB_A.id)).toEqual(expectedBounds);
-      expect(lastSetBoundsFor(calls, TAB_A.id)).toEqual(expectedBounds);
+      expect(attachLayoutFor(calls, TAB_A.id)).toEqual(expectedLayout);
+      expect(lastSetLayoutFor(calls, TAB_A.id)).toEqual(expectedLayout);
+    } finally {
+      restoreRect();
+      restoreViewport();
+    }
+  });
+
+  it("does not stream descriptor IPC from the renderer on window resize alone", () => {
+    const { api, calls } = createRecordingBrowserApi();
+    installDesktopBrowserApi(api);
+    const restoreViewport = installViewportSize({ width: 1000, height: 700 });
+    const restoreRect = installBrowserContentRect({
+      left: 520,
+      top: 96,
+      width: 480,
+      height: 604,
+    });
+
+    try {
+      render(
+        <BrowserTabDeck
+          browserTabs={[TAB_A]}
+          activeBrowserTabId={TAB_A.id}
+          environmentId="env_test"
+          isPanelOpen
+          threadId="thr_test"
+          onUpdate={() => {}}
+        />,
+      );
+
+      calls.length = 0;
+
+      act(() => {
+        window.dispatchEvent(new Event("resize"));
+      });
+
+      expect(
+        calls.some(
+          (call) => call.method === "setBounds" && call.tabId === TAB_A.id,
+        ),
+      ).toBe(false);
     } finally {
       restoreRect();
       restoreViewport();
@@ -733,6 +803,14 @@ describe("BrowserTabDeck", () => {
     const { api, calls } = createRecordingBrowserApi();
     installDesktopBrowserApi(api);
     const store = getDefaultStore();
+    const restoreViewport = installViewportSize({ width: 1000, height: 700 });
+    const rect: BrowserContentRect = {
+      left: 520,
+      top: 96,
+      width: 280,
+      height: 360,
+    };
+    const restoreRect = installBrowserContentRect(rect);
 
     // Capture the callback the component subscribes its ResizeObserver with —
     // the drag-resize path runs through THIS (the panel handle shrinks/grows the
@@ -750,51 +828,57 @@ describe("BrowserTabDeck", () => {
     vi.stubGlobal("ResizeObserver", CapturingResizeObserver);
     const animationFrame = installQueuedAnimationFrame();
 
-    render(
-      <BrowserTabDeck
-        browserTabs={[TAB_A]}
-        activeBrowserTabId={TAB_A.id}
-        environmentId="env_test"
-        isPanelOpen
-        threadId="thr_test"
-        onUpdate={() => {}}
-      />,
-    );
-    expect(resizeCallbacks.length).toBeGreaterThan(0);
+    try {
+      render(
+        <BrowserTabDeck
+          browserTabs={[TAB_A]}
+          activeBrowserTabId={TAB_A.id}
+          environmentId="env_test"
+          isPanelOpen
+          threadId="thr_test"
+          onUpdate={() => {}}
+        />,
+      );
+      expect(resizeCallbacks.length).toBeGreaterThan(0);
 
-    const resizeStart = calls.length;
-    act(() => {
-      // Begin a drag-resize, then fire a ResizeObserver tick exactly as dragging
-      // the panel handle resizes the content element.
-      store.set(threadSecondaryPanelResizingAtom, true);
-      for (const fireResizeTick of resizeCallbacks) {
-        fireResizeTick();
-      }
-      animationFrame.flushNext();
-      animationFrame.flushNext();
-    });
-    const duringResize = calls.slice(resizeStart);
+      const resizeStart = calls.length;
+      act(() => {
+        // Begin a drag-resize, then fire a ResizeObserver tick exactly as dragging
+        // the panel handle resizes the content element.
+        store.set(threadSecondaryPanelResizingAtom, true);
+        rect.width = 340;
+        for (const fireResizeTick of resizeCallbacks) {
+          fireResizeTick();
+        }
+        animationFrame.flushNext();
+        animationFrame.flushNext();
+      });
+      const duringResize = calls.slice(resizeStart);
 
-    // The overlay must NOT be blanked mid-resize — hiding it for the whole drag
-    // was the flash this fixes.
-    expect(
-      duringResize.some(
-        (call) =>
-          call.method === "setVisible" &&
-          call.tabId === TAB_A.id &&
-          call.visible === false,
-      ),
-    ).toBe(false);
-    // Instead, the ResizeObserver tick syncs its bounds to the live panel size.
-    expect(
-      duringResize.some(
-        (call) => call.method === "setBounds" && call.tabId === TAB_A.id,
-      ),
-    ).toBe(true);
-    // Net effect: the active view stays visible throughout the resize.
-    expect(visibilityFor(calls, TAB_A.id)).toBe(true);
-
-    animationFrame.restore();
-    vi.unstubAllGlobals();
+      // The overlay must NOT be blanked mid-resize — hiding it for the whole drag
+      // was the flash this fixes.
+      expect(
+        duringResize.some(
+          (call) =>
+            call.method === "setVisible" &&
+            call.tabId === TAB_A.id &&
+            call.visible === false,
+        ),
+      ).toBe(false);
+      // Instead, the ResizeObserver tick syncs its layout descriptor to the live
+      // panel size.
+      expect(
+        duringResize.some(
+          (call) => call.method === "setBounds" && call.tabId === TAB_A.id,
+        ),
+      ).toBe(true);
+      // Net effect: the active view stays visible throughout the resize.
+      expect(visibilityFor(calls, TAB_A.id)).toBe(true);
+    } finally {
+      animationFrame.restore();
+      restoreRect();
+      restoreViewport();
+      vi.unstubAllGlobals();
+    }
   });
 });

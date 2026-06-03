@@ -731,6 +731,26 @@ interface DesktopBrowserTabCommandArgs {
   tabId: string;
 }
 
+interface DesktopBrowserWindowLifecycleArgs {
+  browserWindow: BrowserWindow;
+  manager: DesktopBrowserViewManager;
+}
+
+function registerDesktopBrowserWindowLifecycle({
+  browserWindow,
+  manager,
+}: DesktopBrowserWindowLifecycleArgs): void {
+  const hostWebContentsId = browserWindow.webContents.id;
+  const syncVisibleBounds = () => {
+    manager.syncVisibleBoundsForWindow(browserWindow);
+  };
+  browserWindow.on("will-resize", syncVisibleBounds);
+  browserWindow.on("resize", syncVisibleBounds);
+  browserWindow.once("closed", () => {
+    manager.releaseWindow(hostWebContentsId);
+  });
+}
+
 function registerDesktopBrowserIpc(manager: DesktopBrowserViewManager): void {
   // Every browser command is renderer → main fire-and-forget; navigation state
   // flows back over `BB_DESKTOP_BROWSER_STATE_CHANNEL`. Each handler resolves
@@ -999,9 +1019,12 @@ async function runDesktopApp(): Promise<void> {
     void desktopAutoUpdateService?.checkAfterActive();
   });
   app.on("browser-window-created", (_event, browserWindow) => {
-    const hostWebContentsId = browserWindow.webContents.id;
-    browserWindow.once("closed", () => {
-      desktopBrowserViewManager?.releaseWindow(hostWebContentsId);
+    if (desktopBrowserViewManager === null) {
+      return;
+    }
+    registerDesktopBrowserWindowLifecycle({
+      browserWindow,
+      manager: desktopBrowserViewManager,
     });
   });
   registerDesktopShutdownSignalHandlers({

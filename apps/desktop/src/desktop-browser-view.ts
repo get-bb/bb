@@ -1,19 +1,21 @@
 import {
   WebContentsView,
   session,
-  type BrowserWindow,
   type Session,
 } from "electron";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
+  bbDesktopBrowserViewBoundsFromLayoutDescriptor,
   clampBbDesktopBrowserViewBounds,
   type BbDesktopBrowserAttachRequest,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserSetBoundsRequest,
   type BbDesktopBrowserSetVisibleRequest,
   type BbDesktopBrowserState,
+  type BbDesktopBrowserViewportBounds,
   type BbDesktopBrowserViewBounds,
+  type BbDesktopBrowserViewLayoutDescriptor,
 } from "@bb/server-contract";
 import {
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
@@ -50,7 +52,36 @@ const ERR_ABORTED = -3;
 interface BrowserViewEntry {
   view: WebContentsView;
   lastErrorText: string | null;
+  layout: BbDesktopBrowserViewLayoutDescriptor;
   popupTimestamps: number[];
+  visible: boolean;
+}
+
+export type DesktopBrowserHostWebContentsPayload =
+  | BbDesktopBrowserState
+  | { url: string };
+
+export interface DesktopBrowserHostContentBounds {
+  height: number;
+  width: number;
+}
+
+export interface DesktopBrowserHostContentView {
+  addChildView(view: WebContentsView): void;
+  removeChildView(view: WebContentsView): void;
+}
+
+export interface DesktopBrowserHostWebContents {
+  id: number;
+  isDestroyed(): boolean;
+  send(channel: string, payload: DesktopBrowserHostWebContentsPayload): void;
+}
+
+export interface DesktopBrowserHostWindow {
+  contentView: DesktopBrowserHostContentView;
+  getContentBounds(): DesktopBrowserHostContentBounds;
+  isDestroyed(): boolean;
+  webContents: DesktopBrowserHostWebContents;
 }
 
 interface CreateDesktopBrowserViewManagerArgs {
@@ -58,25 +89,37 @@ interface CreateDesktopBrowserViewManagerArgs {
 }
 
 interface HostScopedRequestArgs<TRequest> {
-  hostWindow: BrowserWindow;
+  hostWindow: DesktopBrowserHostWindow;
   request: TRequest;
 }
 
 interface HostScopedTabArgs {
-  hostWindow: BrowserWindow;
+  hostWindow: DesktopBrowserHostWindow;
   tabId: string;
 }
 
 interface ClampBoundsToHostWindowArgs {
   bounds: BbDesktopBrowserViewBounds;
-  hostWindow: BrowserWindow;
+  hostWindow: DesktopBrowserHostWindow;
+}
+
+interface HostWindowViewportBoundsArgs {
+  hostWindow: DesktopBrowserHostWindow;
 }
 
 interface SetEntryBoundsArgs {
   bounds: BbDesktopBrowserViewBounds;
   entry: BrowserViewEntry;
-  hostWindow: BrowserWindow;
+  hostWindow: DesktopBrowserHostWindow;
 }
+
+interface ApplyEntryLayoutArgs {
+  entry: BrowserViewEntry;
+  hostWindow: DesktopBrowserHostWindow;
+  layout: BbDesktopBrowserViewLayoutDescriptor;
+}
+
+interface SetEntryLayoutArgs extends ApplyEntryLayoutArgs {}
 
 export interface DesktopBrowserViewManager {
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
@@ -93,6 +136,12 @@ export interface DesktopBrowserViewManager {
     args: HostScopedRequestArgs<BbDesktopBrowserSetVisibleRequest>,
   ): void;
   /**
+   * Reproject cached layout descriptors against the live BrowserWindow content
+   * size. Called from native resize events so visible WebContentsViews stay
+   * pinned without waiting for renderer layout or IPC.
+   */
+  syncVisibleBoundsForWindow(hostWindow: DesktopBrowserHostWindow): void;
+  /**
    * Drop every view owned by a closed host window. Keyed by the host
    * `webContents.id` because the host `BrowserWindow` (and its child views) are
    * already torn down by the time `closed` fires.
@@ -101,27 +150,40 @@ export interface DesktopBrowserViewManager {
   destroyAll(): void;
 }
 
-function browserViewKey(hostWindow: BrowserWindow, tabId: string): string {
+function browserViewKey(
+  hostWindow: DesktopBrowserHostWindow,
+  tabId: string,
+): string {
   return `${hostWindow.webContents.id}:${tabId}`;
 }
 
-function send(hostWindow: BrowserWindow, channel: string, payload: unknown): void {
+function send(
+  hostWindow: DesktopBrowserHostWindow,
+  channel: string,
+  payload: DesktopBrowserHostWebContentsPayload,
+): void {
   if (hostWindow.isDestroyed() || hostWindow.webContents.isDestroyed()) {
     return;
   }
   hostWindow.webContents.send(channel, payload);
 }
 
+function hostWindowViewportBounds(
+  args: HostWindowViewportBoundsArgs,
+): BbDesktopBrowserViewportBounds {
+  const contentBounds = args.hostWindow.getContentBounds();
+  return {
+    width: contentBounds.width,
+    height: contentBounds.height,
+  };
+}
+
 function clampBoundsToHostWindow(
   args: ClampBoundsToHostWindowArgs,
 ): BbDesktopBrowserViewBounds {
-  const contentBounds = args.hostWindow.getContentBounds();
   return clampBbDesktopBrowserViewBounds({
     bounds: args.bounds,
-    viewport: {
-      width: contentBounds.width,
-      height: contentBounds.height,
-    },
+    viewport: hostWindowViewportBounds({ hostWindow: args.hostWindow }),
   });
 }
 
@@ -132,6 +194,21 @@ function setEntryBounds(args: SetEntryBoundsArgs): void {
       hostWindow: args.hostWindow,
     }),
   );
+}
+
+function applyEntryLayout(args: ApplyEntryLayoutArgs): void {
+  const viewport = hostWindowViewportBounds({ hostWindow: args.hostWindow });
+  args.entry.view.setBounds(
+    bbDesktopBrowserViewBoundsFromLayoutDescriptor({
+      layout: args.layout,
+      viewport,
+    }),
+  );
+}
+
+function setEntryLayout(args: SetEntryLayoutArgs): void {
+  args.entry.layout = args.layout;
+  applyEntryLayout(args);
 }
 
 function buildBrowserState(
@@ -191,7 +268,10 @@ export function createDesktopBrowserViewManager(
     return browserSession;
   }
 
-  function pushState(hostWindow: BrowserWindow, tabId: string): void {
+  function pushState(
+    hostWindow: DesktopBrowserHostWindow,
+    tabId: string,
+  ): void {
     const entry = entries.get(browserViewKey(hostWindow, tabId));
     if (!entry || entry.view.webContents.isDestroyed()) {
       return;
@@ -204,7 +284,7 @@ export function createDesktopBrowserViewManager(
   }
 
   function wireWebContents(
-    hostWindow: BrowserWindow,
+    hostWindow: DesktopBrowserHostWindow,
     tabId: string,
     entry: BrowserViewEntry,
   ): void {
@@ -270,7 +350,7 @@ export function createDesktopBrowserViewManager(
   }
 
   function createEntry(
-    hostWindow: BrowserWindow,
+    hostWindow: DesktopBrowserHostWindow,
     tabId: string,
   ): BrowserViewEntry {
     ensureHardenedSession();
@@ -289,7 +369,14 @@ export function createDesktopBrowserViewManager(
     const entry: BrowserViewEntry = {
       view,
       lastErrorText: null,
+      layout: {
+        left: 0,
+        top: 0,
+        rightInset: Number.MAX_SAFE_INTEGER,
+        bottomInset: Number.MAX_SAFE_INTEGER,
+      },
       popupTimestamps: [],
+      visible: false,
     };
     wireWebContents(hostWindow, tabId, entry);
     hostWindow.contentView.addChildView(view);
@@ -310,7 +397,10 @@ export function createDesktopBrowserViewManager(
     });
   }
 
-  function destroyEntry(hostWindow: BrowserWindow, key: string): void {
+  function destroyEntry(
+    hostWindow: DesktopBrowserHostWindow,
+    key: string,
+  ): void {
     const entry = entries.get(key);
     if (!entry) {
       return;
@@ -340,7 +430,9 @@ export function createDesktopBrowserViewManager(
       const key = browserViewKey(hostWindow, request.tabId);
       const entry = entries.get(key) ?? createEntry(hostWindow, request.tabId);
       setEntryBounds({ hostWindow, entry, bounds: request.bounds });
-      entry.view.setVisible(request.visible);
+      entry.layout = request.layout;
+      entry.visible = request.visible;
+      entry.view.setVisible(entry.visible);
       loadIfNeeded(entry, request.url);
       pushState(hostWindow, request.tabId);
     },
@@ -378,13 +470,27 @@ export function createDesktopBrowserViewManager(
     },
     setBounds({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
-        setEntryBounds({ hostWindow, entry, bounds: request.bounds });
+        setEntryLayout({ hostWindow, entry, layout: request.layout });
       });
     },
     setVisible({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
-        entry.view.setVisible(request.visible);
+        entry.visible = request.visible;
+        entry.view.setVisible(entry.visible);
       });
+    },
+    syncVisibleBoundsForWindow(hostWindow) {
+      const prefix = `${hostWindow.webContents.id}:`;
+      for (const [key, entry] of entries.entries()) {
+        if (
+          !key.startsWith(prefix) ||
+          !entry.visible ||
+          entry.view.webContents.isDestroyed()
+        ) {
+          continue;
+        }
+        applyEntryLayout({ hostWindow, entry, layout: entry.layout });
+      }
     },
     releaseWindow(hostWebContentsId) {
       const prefix = `${hostWebContentsId}:`;

@@ -12,8 +12,13 @@ import type {
   BbDesktopBrowserState,
   BbDesktopBrowserViewportBounds,
   BbDesktopBrowserViewBounds,
+  BbDesktopBrowserViewLayoutDescriptor,
+  BbDesktopBrowserViewPlacement,
 } from "@bb/server-contract";
-import { clampBbDesktopBrowserViewBounds } from "@bb/server-contract";
+import {
+  bbDesktopBrowserViewLayoutDescriptorFromBounds,
+  clampBbDesktopBrowserViewBounds,
+} from "@bb/server-contract";
 import { Icon } from "@/components/ui/icon.js";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import {
@@ -70,8 +75,17 @@ interface NavButtonProps {
   onClick: () => void;
 }
 
-interface BrowserViewBoundsFromElementArgs {
+interface BrowserViewPlacementFromElementArgs {
   element: HTMLElement;
+}
+
+interface BrowserViewLayoutsEqualArgs {
+  a: BbDesktopBrowserViewLayoutDescriptor;
+  b: BbDesktopBrowserViewLayoutDescriptor;
+}
+
+interface SyncBrowserViewPlacementArgs {
+  force: boolean;
 }
 
 const EMPTY_BROWSER_VIEW_BOUNDS: BbDesktopBrowserViewBounds = {
@@ -79,6 +93,16 @@ const EMPTY_BROWSER_VIEW_BOUNDS: BbDesktopBrowserViewBounds = {
   y: 0,
   width: 0,
   height: 0,
+};
+
+const EMPTY_BROWSER_VIEW_PLACEMENT: BbDesktopBrowserViewPlacement = {
+  bounds: EMPTY_BROWSER_VIEW_BOUNDS,
+  layout: {
+    left: 0,
+    top: 0,
+    rightInset: Number.MAX_SAFE_INTEGER,
+    bottomInset: Number.MAX_SAFE_INTEGER,
+  },
 };
 
 function roundedBoundsFromRect(rect: DOMRect): BbDesktopBrowserViewBounds {
@@ -97,13 +121,30 @@ function browserViewportBounds(): BbDesktopBrowserViewportBounds {
   };
 }
 
-function browserViewBoundsFromElement(
-  args: BrowserViewBoundsFromElementArgs,
-): BbDesktopBrowserViewBounds {
-  return clampBbDesktopBrowserViewBounds({
+function browserViewPlacementFromElement(
+  args: BrowserViewPlacementFromElementArgs,
+): BbDesktopBrowserViewPlacement {
+  const viewport = browserViewportBounds();
+  const bounds = clampBbDesktopBrowserViewBounds({
     bounds: roundedBoundsFromRect(args.element.getBoundingClientRect()),
-    viewport: browserViewportBounds(),
+    viewport,
   });
+  return {
+    bounds,
+    layout: bbDesktopBrowserViewLayoutDescriptorFromBounds({
+      bounds,
+      viewport,
+    }),
+  };
+}
+
+function browserViewLayoutsEqual(args: BrowserViewLayoutsEqualArgs): boolean {
+  return (
+    args.a.left === args.b.left &&
+    args.a.top === args.b.top &&
+    args.a.rightInset === args.b.rightInset &&
+    args.a.bottomInset === args.b.bottomInset
+  );
 }
 
 function NavButton({ icon, label, disabled, onClick }: NavButtonProps) {
@@ -256,59 +297,79 @@ export function BrowserTabContent({
   isActiveRef.current = isActive;
 
   const hasPage = currentUrl.length > 0;
-  // Pending rAF handle for the coalesced bounds sync, so a burst of resize ticks
-  // collapses to a single native setBounds per frame.
+  // Pending rAF handle for layout-shape observation, so a burst of panel resize
+  // ticks collapses before the descriptor equality check.
   const boundsSyncFrameRef = useRef<number | null>(null);
+  const lastSentLayoutRef = useRef<BbDesktopBrowserViewLayoutDescriptor | null>(
+    null,
+  );
 
-  const readBounds = useCallback(() => {
+  const readPlacement = useCallback(() => {
     const element = contentRef.current;
     if (element === null) {
       return null;
     }
-    return browserViewBoundsFromElement({ element });
+    return browserViewPlacementFromElement({ element });
   }, []);
 
-  const sendBounds = useCallback(
-    (bounds: BbDesktopBrowserViewBounds) => {
+  const sendPlacement = useCallback(
+    (placement: BbDesktopBrowserViewPlacement) => {
       if (desktopBrowser === null) {
         return;
       }
+      lastSentLayoutRef.current = placement.layout;
       desktopBrowser.setBounds({
         tabId,
-        bounds,
+        layout: placement.layout,
       });
     },
     [desktopBrowser, tabId],
   );
 
-  // Push the current content-rect to the native overlay immediately. The
+  // Push the current layout descriptor to the native overlay immediately. The
   // coordinator's show() calls this synchronously so bounds always land before
   // the view is made visible (never a stale/zero-bounds flash on activation).
+  const syncPlacement = useCallback(
+    ({ force }: SyncBrowserViewPlacementArgs) => {
+      const placement = readPlacement();
+      if (placement === null) {
+        return;
+      }
+      const lastSentLayout = lastSentLayoutRef.current;
+      if (
+        !force &&
+        lastSentLayout !== null &&
+        browserViewLayoutsEqual({
+          a: lastSentLayout,
+          b: placement.layout,
+        })
+      ) {
+        return;
+      }
+      sendPlacement(placement);
+    },
+    [readPlacement, sendPlacement],
+  );
+
   const syncBounds = useCallback(() => {
-    const bounds = readBounds();
-    if (bounds === null) {
-      return;
-    }
-    sendBounds(bounds);
-  }, [readBounds, sendBounds]);
+    syncPlacement({ force: true });
+  }, [syncPlacement]);
 
-  const syncInitialBounds = useCallback(() => {
-    return readBounds() ?? EMPTY_BROWSER_VIEW_BOUNDS;
-  }, [readBounds]);
+  const syncInitialPlacement = useCallback(() => {
+    const placement = readPlacement() ?? EMPTY_BROWSER_VIEW_PLACEMENT;
+    lastSentLayoutRef.current = placement.layout;
+    return placement;
+  }, [readPlacement]);
 
-  // rAF-coalesced bounds sync for live resize tracking. A drag-resize fires the
-  // ResizeObserver (and `window` resize) repeatedly; batching to one setBounds
-  // per frame lets the visible overlay follow the panel smoothly — far better
-  // than blanking the view for the whole drag, which flashed.
   const scheduleBoundsSync = useCallback(() => {
     if (boundsSyncFrameRef.current !== null) {
       return;
     }
     boundsSyncFrameRef.current = window.requestAnimationFrame(() => {
       boundsSyncFrameRef.current = null;
-      syncBounds();
+      syncPlacement({ force: false });
     });
-  }, [syncBounds]);
+  }, [syncPlacement]);
 
   // Create (or re-attach to) the native view on mount and stream navigation
   // state back. Unmount is not ownership teardown: switching threads unmounts
@@ -318,13 +379,14 @@ export function BrowserTabContent({
     if (desktopBrowser === null) {
       return;
     }
-    const initialBounds = syncInitialBounds();
+    const initialPlacement = syncInitialPlacement();
     const mountUrl = initialUrlRef.current;
     registerBrowserView({ environmentId, tabId, threadId });
     desktopBrowser.attach({
       tabId,
       url: mountUrl,
-      bounds: initialBounds,
+      bounds: initialPlacement.bounds,
+      layout: initialPlacement.layout,
       // Only the active tab's view starts visible; background tabs attach hidden
       // (their page still loads) until activated.
       visible: isActiveRef.current && mountUrl.length > 0,
@@ -359,15 +421,15 @@ export function BrowserTabContent({
   }, [
     desktopBrowser,
     environmentId,
-    syncInitialBounds,
+    syncInitialPlacement,
     visibilityCoordinator,
     tabId,
     threadId,
   ]);
 
-  // Track the panel content rect so the native overlay stays aligned — including
-  // throughout a drag-resize, where the rect changes every frame. Coalesced via
-  // rAF so the overlay follows the live size instead of being hidden.
+  // Track true layout-shape changes. Native OS window resize is reprojected in
+  // the desktop main process from the cached descriptor; identical descriptors
+  // are ignored here so renderer IPC is not part of the window-edge drag path.
   useEffect(() => {
     const element = contentRef.current;
     if (element === null || desktopBrowser === null) {
@@ -377,10 +439,8 @@ export function BrowserTabContent({
       scheduleBoundsSync();
     });
     observer.observe(element);
-    window.addEventListener("resize", scheduleBoundsSync);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", scheduleBoundsSync);
       if (boundsSyncFrameRef.current !== null) {
         window.cancelAnimationFrame(boundsSyncFrameRef.current);
         boundsSyncFrameRef.current = null;
