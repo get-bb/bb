@@ -1180,6 +1180,7 @@ describe("host-daemon command schemas", () => {
             inputSchema: { type: "object" },
           },
         ],
+        injectedSkillSources: [],
         instructionMode: "replace",
       }),
     ).toMatchObject({
@@ -1914,6 +1915,7 @@ describe("host-daemon session schemas", () => {
             threadId: "thr_123",
           },
         ],
+        trackedApplicationDataTargets: [],
       }),
     ).toMatchObject({
       sessionId: "session_123",
@@ -2114,8 +2116,7 @@ describe("host-daemon session schemas", () => {
     expect(
       contract.hostDaemonAppDataChangeRequestSchema.parse({
         sessionId: "session_123",
-        threadId: "thr_123",
-        appId: "status",
+        applicationId: "status",
         path: "state.json",
         value: { workers: [] },
         deleted: false,
@@ -2123,8 +2124,7 @@ describe("host-daemon session schemas", () => {
       }),
     ).toEqual({
       sessionId: "session_123",
-      threadId: "thr_123",
-      appId: "status",
+      applicationId: "status",
       path: "state.json",
       value: { workers: [] },
       deleted: false,
@@ -2134,8 +2134,7 @@ describe("host-daemon session schemas", () => {
     expect(
       contract.hostDaemonAppDataChangeRequestSchema.parse({
         sessionId: "session_123",
-        threadId: "thr_123",
-        appId: "status",
+        applicationId: "status",
         path: "state.json",
         value: null,
         deleted: true,
@@ -2149,8 +2148,7 @@ describe("host-daemon session schemas", () => {
     expect(() =>
       contract.hostDaemonAppDataChangeRequestSchema.parse({
         sessionId: "session_123",
-        threadId: "thr_123",
-        appId: "status",
+        applicationId: "status",
         path: "state.json",
         value: { workers: [] },
         deleted: false,
@@ -2161,13 +2159,11 @@ describe("host-daemon session schemas", () => {
     expect(
       contract.hostDaemonAppDataResyncRequestSchema.parse({
         sessionId: "session_123",
-        threadId: "thr_123",
-        appId: "status",
+        applicationId: "status",
       }),
     ).toEqual({
       sessionId: "session_123",
-      threadId: "thr_123",
-      appId: "status",
+      applicationId: "status",
     });
 
     expect(

@@ -54,6 +54,8 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "App manifests may omit entry so the server can resolve index.html then index.md at the boundary.",
   "appManifestSchema.icon":
     "App manifests may omit icon so the server can resolve a logo file or the GridView fallback.",
+  "appManifestSchema.name":
+    "App manifests may omit name; the display label falls back to the slug applicationId when unset.",
   "createAutomationRequestSchema.action.threadRequest.environment.workspace.branch":
     "Unmanaged workspaces may omit branch when the daemon should not check out before starting the thread.",
   "createAutomationRequestSchema.action.threadRequest.environment.hostId":
@@ -762,13 +764,11 @@ describe("server-contract canonical schemas", () => {
     expect(
       contract.appDataBroadcastMessageSchema.parse({
         type: "app-data.resync",
-        threadId: "thr_123",
-        appId: "status",
+        applicationId: "status",
       }),
     ).toEqual({
       type: "app-data.resync",
-      threadId: "thr_123",
-      appId: "status",
+      applicationId: "status",
     });
   });
 
@@ -1204,7 +1204,7 @@ describe("server-contract canonical schemas", () => {
       "automations-changed",
       "nudges-changed",
     ]);
-    expect(SYSTEM_CHANGE_KINDS).toEqual(["config-changed"]);
+    expect(SYSTEM_CHANGE_KINDS).toEqual(["config-changed", "apps-changed"]);
   });
 
   it("keeps only intentional optional request fields", () => {
