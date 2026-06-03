@@ -86,9 +86,9 @@ describe("useAppRoute", () => {
   });
 
   it("recognizes the standalone app route", () => {
-    const route = renderRouteCapture({ initialEntry: "/apps/app_alpha" });
+    const route = renderRouteCapture({ initialEntry: "/apps/alpha" });
 
-    expect(route.applicationId).toBe("app_alpha");
+    expect(route.applicationId).toBe("alpha");
     expect(route.isAppView).toBe(true);
     expect(route.threadId).toBeUndefined();
     expect(route.projectId).toBeUndefined();

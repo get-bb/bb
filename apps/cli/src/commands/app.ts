@@ -1,7 +1,11 @@
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
-import { applicationIdSchema, jsonValueSchema } from "@bb/domain";
+import {
+  applicationIdSchema,
+  deriveApplicationIdFromName,
+  jsonValueSchema,
+} from "@bb/domain";
 import type { ApplicationId, JsonValue } from "@bb/domain";
 import type {
   AppDataEntry,
@@ -9,14 +13,12 @@ import type {
   AppDetail,
   AppIcon,
   AppSummary,
+  CreateAppRequest,
 } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createClient, unwrap } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
-import {
-  confirmDestructiveAction,
-  outputJson,
-} from "./helpers.js";
+import { confirmDestructiveAction, outputJson } from "./helpers.js";
 
 type ResolveServerUrl = () => string;
 
@@ -25,7 +27,9 @@ interface AppJsonOptions {
 }
 
 interface AppNewCommandOptions extends AppJsonOptions {
-  name: string;
+  id?: string;
+  name?: string;
+  slug?: string;
 }
 
 interface AppDeleteCommandOptions extends AppJsonOptions {
@@ -56,7 +60,44 @@ function parseApplicationId(value: string): ApplicationId {
   if (parsed.success) {
     return parsed.data;
   }
-  throw new Error("Invalid applicationId. Expected an app_-prefixed id.");
+  throw new Error(
+    "Invalid applicationId. Expected a lowercase slug like status or review-board.",
+  );
+}
+
+function deriveApplicationIdFromNameForCli(name: string): ApplicationId {
+  try {
+    return deriveApplicationIdFromName(name);
+  } catch {
+    throw new Error("App name cannot be converted to a valid applicationId.");
+  }
+}
+
+function resolveNewApplicationId(opts: AppNewCommandOptions): ApplicationId {
+  if (
+    opts.id !== undefined &&
+    opts.slug !== undefined &&
+    opts.id !== opts.slug
+  ) {
+    throw new Error("Use either --id or --slug, not both.");
+  }
+  const explicitApplicationId = opts.id ?? opts.slug;
+  if (explicitApplicationId !== undefined) {
+    return parseApplicationId(explicitApplicationId);
+  }
+  if (opts.name !== undefined) {
+    return deriveApplicationIdFromNameForCli(opts.name);
+  }
+  throw new Error("Provide --id <slug>, --slug <slug>, or --name <name>.");
+}
+
+function buildCreateAppRequest(opts: AppNewCommandOptions): CreateAppRequest {
+  const applicationId = resolveNewApplicationId(opts);
+  const request: CreateAppRequest = { applicationId };
+  if (opts.name !== undefined) {
+    request.name = opts.name;
+  }
+  return request;
 }
 
 function encodePathSegments(value: string): string {
@@ -143,7 +184,9 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-async function readWriteValue(opts: AppDataWriteCommandOptions): Promise<JsonValue> {
+async function readWriteValue(
+  opts: AppDataWriteCommandOptions,
+): Promise<JsonValue> {
   if (opts.file && opts.stdin) {
     throw new Error("Use either --file or --stdin, not both.");
   }
@@ -151,7 +194,9 @@ async function readWriteValue(opts: AppDataWriteCommandOptions): Promise<JsonVal
     throw new Error("Provide --file <localPath> or --stdin.");
   }
   const content =
-    opts.file !== undefined ? await readFile(opts.file, "utf8") : await readStdin();
+    opts.file !== undefined
+      ? await readFile(opts.file, "utf8")
+      : await readStdin();
   return parseJsonValueInput(content);
 }
 
@@ -193,14 +238,19 @@ export function registerAppCommands(
   app
     .command("new")
     .description("Create a global app")
-    .requiredOption("--name <name>", "Human display name")
+    .option("--id <slug>", "Application slug id")
+    .option("--slug <slug>", "Alias for --id")
+    .option(
+      "--name <name>",
+      "Human display name; derives slug when id is omitted",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: AppNewCommandOptions) => {
         const client = createClient(getUrl());
         const created = await unwrap<AppDetail>(
           client.api.v1.apps.$post({
-            json: { name: opts.name },
+            json: buildCreateAppRequest(opts),
           }),
         );
         if (outputJson(opts, created)) return;
@@ -248,10 +298,7 @@ export function registerAppCommands(
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
-        async (
-          rawApplicationId: string,
-          opts: AppDeleteCommandOptions,
-        ) => {
+        async (rawApplicationId: string, opts: AppDeleteCommandOptions) => {
           const applicationId = parseApplicationId(rawApplicationId);
           const client = createClient(getUrl());
           const appDetail = await unwrap<AppDetail>(
@@ -375,10 +422,7 @@ export function registerAppCommands(
     .requiredOption("--json <payload>", "JSON payload to send")
     .action(
       action(
-        async (
-          rawApplicationId: string,
-          opts: AppMessageCommandOptions,
-        ) => {
+        async (rawApplicationId: string, opts: AppMessageCommandOptions) => {
           const applicationId = parseApplicationId(rawApplicationId);
           const payload = parseJsonValueInput(opts.json);
           const client = createClient(getUrl());

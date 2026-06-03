@@ -27,7 +27,7 @@ describe("FilePreview", () => {
           kind: "iframe",
           sandbox: null,
           title: "Review Board",
-          url: "/api/v1/apps/app_review_board/?targetThreadId=thr_1",
+          url: "/api/v1/apps/review-board/?targetThreadId=thr_1",
         }}
       />,
     );
@@ -55,7 +55,7 @@ describe("FilePreview", () => {
           kind: "iframe",
           sandbox: null,
           title: "Review Board",
-          url: "/api/v1/apps/app_review_board/?targetThreadId=thr_1",
+          url: "/api/v1/apps/review-board/?targetThreadId=thr_1",
         }}
       />,
     );

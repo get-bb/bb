@@ -371,10 +371,9 @@ function expectHostRpcResponseRoundTrip(
     hostDaemonOnlineRpcResponseMessageSchema.parse(jsonRoundTripped),
     name,
   ).toEqual(message);
-  expect(
-    hostDaemonDaemonWsMessageSchema.parse(jsonRoundTripped),
-    name,
-  ).toEqual(message);
+  expect(hostDaemonDaemonWsMessageSchema.parse(jsonRoundTripped), name).toEqual(
+    message,
+  );
 }
 
 function terminalDataBase64(byteLength: number): string {
@@ -796,13 +795,13 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.read_file_relative",
-        rootPath: "/tmp/bb-data/apps/app_demo/assets",
+        rootPath: "/tmp/bb-data/apps/demo/assets",
         path: "logo.png",
         dotfiles: "deny",
       }),
     ).toMatchObject({
       type: "host.read_file_relative",
-      rootPath: "/tmp/bb-data/apps/app_demo/assets",
+      rootPath: "/tmp/bb-data/apps/demo/assets",
       path: "logo.png",
       dotfiles: "deny",
     });
@@ -810,7 +809,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "host.write_file_relative",
-        rootPath: "/tmp/bb-data/apps/app_demo/data",
+        rootPath: "/tmp/bb-data/apps/demo/data",
         path: "state.json",
         dotfiles: "deny",
         content: "[1,2,3]\n",
@@ -824,7 +823,7 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "host.delete_file_relative",
-        rootPath: "/tmp/bb-data/apps/app_demo/data",
+        rootPath: "/tmp/bb-data/apps/demo/data",
         path: "state.json",
         dotfiles: "deny",
       }),
@@ -1088,7 +1087,7 @@ describe("host-daemon command schemas", () => {
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.read_file_relative",
-        rootPath: "/tmp/bb-data/apps/app_demo/assets",
+        rootPath: "/tmp/bb-data/apps/demo/assets",
         path: "logo.png",
       }),
     ).toThrow();

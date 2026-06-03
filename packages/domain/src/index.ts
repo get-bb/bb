@@ -59,7 +59,12 @@ export type {
 export { managerTemplateNameSchema } from "./manager-templates.js";
 export type { ManagerTemplateName } from "./manager-templates.js";
 
-export { appDataPathSchema, applicationIdSchema } from "./apps.js";
+export {
+  APPLICATION_ID_MAX_LENGTH,
+  appDataPathSchema,
+  applicationIdSchema,
+  deriveApplicationIdFromName,
+} from "./apps.js";
 export type { AppDataPath, ApplicationId } from "./apps.js";
 
 export { threadDynamicContextFileStatusValues } from "./manager-dynamic-context.js";
@@ -423,9 +428,7 @@ export {
   providerTurnWatchdogReasonSchema,
   providerTurnWatchdogReasonValues,
 } from "./provider-turn-watchdog.js";
-export type {
-  ProviderTurnWatchdogActivityEventType,
-} from "./provider-turn-watchdog.js";
+export type { ProviderTurnWatchdogActivityEventType } from "./provider-turn-watchdog.js";
 
 export {
   buildThreadEvent,

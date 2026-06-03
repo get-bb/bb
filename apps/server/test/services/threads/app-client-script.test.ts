@@ -13,7 +13,10 @@ type OpenHandler = () => void;
 type CloseHandler = () => void;
 type ErrorHandler = () => void;
 type MessageHandler = (event: SocketMessageEvent) => void;
-type FetchMock = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+type FetchMock = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>;
 
 interface SocketMessageEvent {
   data: string;
@@ -34,12 +37,12 @@ interface DeferredResponse {
 }
 
 const bootstrap: AppClientBootstrap = {
-  appId: "app_status",
-  applicationId: "app_status",
+  appId: "status",
+  applicationId: "status",
   appSessionToken: "appsess_test",
   capabilities: ["data", "message"],
-  dataUrl: "/api/v1/apps/app_status/data",
-  messageUrl: "/api/v1/apps/app_status/message",
+  dataUrl: "/api/v1/apps/status/data",
+  messageUrl: "/api/v1/apps/status/message",
   targetThreadId: "thr_123",
   wsUrl: "ws://server/ws",
 };
@@ -149,10 +152,10 @@ describe("app client script", () => {
     expect(JSON.parse(socket.messages[0] ?? "")).toEqual({
       type: "subscribe",
       entity: "thread",
-      id: "app_status:data",
+      id: "status:data",
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/apps/app_status/data",
+      "/api/v1/apps/status/data",
       expect.objectContaining({ method: "GET" }),
     );
   });
@@ -196,12 +199,12 @@ describe("app client script", () => {
       {
         type: "subscribe",
         entity: "thread",
-        id: "app_status:data",
+        id: "status:data",
       },
       {
         type: "unsubscribe",
         entity: "thread",
-        id: "app_status:data",
+        id: "status:data",
       },
     ]);
   });
@@ -250,7 +253,7 @@ describe("app client script", () => {
     await flushPromises();
     socket.emit({
       type: "app-data.resync",
-      applicationId: "app_status",
+      applicationId: "status",
     });
     await vi.waitFor(() => {
       expect(callback).toHaveBeenCalledTimes(2);

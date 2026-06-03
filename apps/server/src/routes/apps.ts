@@ -24,6 +24,7 @@ import {
 import {
   appDataPathSchema,
   applicationIdSchema,
+  deriveApplicationIdFromName,
   jsonValueSchema,
 } from "@bb/domain";
 import type { AppDataPath, ApplicationId, JsonValue } from "@bb/domain";
@@ -41,6 +42,7 @@ import {
   type AppIcon,
   type AppManifest,
   type AppSummary,
+  type CreateAppRequest,
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { AppDeps, LoggedWorkSessionDeps } from "../types.js";
@@ -103,8 +105,7 @@ interface ListApplicationDataEntriesArgs {
   dataPath: AppDataPath | "";
 }
 
-interface WriteApplicationDataEntryArgs
-  extends ReadApplicationDataEntryArgs {
+interface WriteApplicationDataEntryArgs extends ReadApplicationDataEntryArgs {
   value: JsonValue;
 }
 
@@ -128,6 +129,7 @@ interface LogoResolution {
 }
 
 interface CreateGlobalApplicationArgs {
+  applicationId: ApplicationId;
   dataDir: string;
   name: string;
 }
@@ -241,9 +243,7 @@ function applicationDataRouteSegment(
   return `/apps/${encodeURIComponent(args.applicationId)}/data/`;
 }
 
-function parseAppDataRoutePath(
-  rawPath: string,
-): AppDataPath {
+function parseAppDataRoutePath(rawPath: string): AppDataPath {
   return parseAppDataPath(
     parseSafeRelativeRoutePath({
       rawPath,
@@ -402,7 +402,11 @@ async function readApplicationManifest(
   try {
     parsedJson = JSON.parse(manifestContent);
   } catch {
-    throw new ApiError(422, "invalid_manifest", "App manifest is not valid JSON");
+    throw new ApiError(
+      422,
+      "invalid_manifest",
+      "App manifest is not valid JSON",
+    );
   }
   const manifest = appManifestSchema.safeParse(parsedJson);
   if (!manifest.success) {
@@ -496,9 +500,12 @@ async function tryResolveLogo(
 ): Promise<LogoResolution | null> {
   let entries: Dirent[];
   try {
-    entries = await readdir(resolveApplicationPath(args.dataDir, args.applicationId), {
-      withFileTypes: true,
-    });
+    entries = await readdir(
+      resolveApplicationPath(args.dataDir, args.applicationId),
+      {
+        withFileTypes: true,
+      },
+    );
   } catch (error) {
     if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
       return null;
@@ -578,9 +585,7 @@ function assertAppCapability(
 }
 
 function isIgnoredApplicationStorageEntry(entryName: string): boolean {
-  return (
-    entryName.startsWith(".tmp-app_") || entryName.startsWith(".delete-app_")
-  );
+  return entryName.startsWith(".tmp-") || entryName.startsWith(".delete-");
 }
 
 async function listGlobalApplications(deps: AppDeps): Promise<AppSummary[]> {
@@ -1028,14 +1033,35 @@ async function deleteApplicationDataEntry(
   }
 }
 
-function createApplicationId(): ApplicationId {
-  return applicationIdSchema.parse(
-    `app_${randomUUID().replaceAll("-", "").slice(0, 24)}`,
-  );
-}
-
 function createTempNonce(): string {
   return randomUUID().replaceAll("-", "").slice(0, 16);
+}
+
+function deriveCreateApplicationId(payload: CreateAppRequest): ApplicationId {
+  if (payload.applicationId !== undefined) {
+    return payload.applicationId;
+  }
+  if (payload.name !== undefined) {
+    try {
+      return deriveApplicationIdFromName(payload.name);
+    } catch {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "App name cannot be converted to a valid applicationId",
+      );
+    }
+  }
+  throw new ApiError(400, "invalid_request", "Provide applicationId or name");
+}
+
+function resolveCreateApplicationName(
+  payload: CreateAppRequest,
+  applicationId: ApplicationId,
+): string {
+  return payload.name === undefined || payload.name.trim().length === 0
+    ? applicationId
+    : payload.name;
 }
 
 async function createApplicationTempRoot(
@@ -1083,7 +1109,9 @@ async function writeInitialApplicationFiles(
     "utf8",
   );
   appManifestSchema.parse(
-    JSON.parse(await readFile(path.join(tempRootPath, MANIFEST_FILE_NAME), "utf8")),
+    JSON.parse(
+      await readFile(path.join(tempRootPath, MANIFEST_FILE_NAME), "utf8"),
+    ),
   );
 }
 
@@ -1119,44 +1147,50 @@ export async function createGlobalApplication(
   const appsRootPath = resolveAppsRootPath(args.dataDir);
   await mkdir(appsRootPath, { recursive: true });
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const applicationId = createApplicationId();
-    const applicationPath = resolveApplicationPath(args.dataDir, applicationId);
-    let tempRootPath: string | null = null;
-    try {
-      tempRootPath = await createApplicationTempRoot({
-        appsRootPath,
-        applicationId,
-      });
-      await writeInitialApplicationFiles(tempRootPath, applicationId, args.name);
-      const result = await publishApplicationTempRoot({
-        applicationPath,
-        tempRootPath,
-      });
-      if (result === "published") {
-        return applicationId;
-      }
+  const applicationPath = resolveApplicationPath(
+    args.dataDir,
+    args.applicationId,
+  );
+  let tempRootPath: string | null = null;
+  try {
+    tempRootPath = await createApplicationTempRoot({
+      appsRootPath,
+      applicationId: args.applicationId,
+    });
+    await writeInitialApplicationFiles(
+      tempRootPath,
+      args.applicationId,
+      args.name,
+    );
+    const result = await publishApplicationTempRoot({
+      applicationPath,
+      tempRootPath,
+    });
+    if (result === "collision") {
       await rm(tempRootPath, { recursive: true, force: true });
       tempRootPath = null;
-    } catch (error) {
-      if (tempRootPath !== null) {
-        await rm(tempRootPath, { recursive: true, force: true }).catch(
-          () => undefined,
-        );
-      }
       throw new ApiError(
-        500,
-        "scaffold_failed",
-        error instanceof Error ? error.message : "Failed to scaffold app",
+        409,
+        "app_exists",
+        `an app with id "${args.applicationId}" already exists`,
       );
     }
+    return args.applicationId;
+  } catch (error) {
+    if (tempRootPath !== null) {
+      await rm(tempRootPath, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
+    }
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(
+      500,
+      "scaffold_failed",
+      error instanceof Error ? error.message : "Failed to scaffold app",
+    );
   }
-
-  throw new ApiError(
-    500,
-    "app_id_allocation_failed",
-    "Could not allocate a unique app id",
-  );
 }
 
 async function deleteGlobalApplication(
@@ -1194,7 +1228,9 @@ async function deleteGlobalApplication(
 }
 
 function formatAppMessagePayload(payload: JsonValue): string {
-  return typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+  return typeof payload === "string"
+    ? payload
+    : JSON.stringify(payload, null, 2);
 }
 
 function resolveAppMessageTarget(
@@ -1209,7 +1245,11 @@ function resolveAppMessageTarget(
     throw new ApiError(403, "forbidden", "Invalid app session token");
   }
   if (token !== null && token.applicationId !== args.applicationId) {
-    throw new ApiError(403, "forbidden", "App session token does not match app");
+    throw new ApiError(
+      403,
+      "forbidden",
+      "App session token does not match app",
+    );
   }
   if (args.payload.targetThreadId !== undefined) {
     const thread = requirePublicThread(deps.db, args.payload.targetThreadId);
@@ -1243,13 +1283,15 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
   );
 
   post("/apps", createAppRequestSchema, async (context, payload) => {
-    const applicationId = await createGlobalApplication({
+    const applicationId = deriveCreateApplicationId(payload);
+    const createdApplicationId = await createGlobalApplication({
+      applicationId,
       dataDir: deps.config.dataDir,
-      name: payload.name,
+      name: resolveCreateApplicationName(payload, applicationId),
     });
     const detail = await buildApplicationDetail(deps, {
       dataDir: deps.config.dataDir,
-      applicationId,
+      applicationId: createdApplicationId,
     });
     return context.json(detail, 201);
   });

@@ -166,7 +166,7 @@ function makeApp({ applicationId, name, icon }: MakeAppArgs): AppSummary {
 }
 
 const REVIEW_BOARD_APP = makeApp({
-  applicationId: "app_review_board",
+  applicationId: "review-board",
   name: "Review Board",
   icon: { kind: "builtin", name: "ListTodo" },
 });
@@ -661,7 +661,7 @@ describe("ProjectList", () => {
     fireEvent.click(await findReviewBoardAppButton());
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe("/apps/app_review_board");
+      expect(window.location.pathname).toBe("/apps/review-board");
     });
   });
 
@@ -725,7 +725,7 @@ describe("ProjectList", () => {
     fireEvent.click(appRow);
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe("/apps/app_review_board");
+      expect(window.location.pathname).toBe("/apps/review-board");
     });
   });
 

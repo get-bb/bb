@@ -1029,9 +1029,7 @@ describe("CLI command output contracts", () => {
     });
     expect(
       writeErr.mock.calls.map((callArgs) => String(callArgs[0] ?? "")).join(""),
-    ).toContain(
-      "error: unknown option '--permission-mode'",
-    );
+    ).toContain("error: unknown option '--permission-mode'");
   });
 
   it("bb manager list reports when no managers are hired", async () => {
@@ -1154,20 +1152,20 @@ describe("CLI command output contracts", () => {
   it("bb app list renders resolved app summaries", async () => {
     const apps = [
       {
-        applicationId: "app_status",
+        applicationId: "status",
         name: "Project Status",
         entry: { path: "index.html", kind: "html" },
         capabilities: ["data", "message"],
         icon: { kind: "builtin", name: "ListTodo" },
       },
       {
-        applicationId: "app_demo",
+        applicationId: "demo",
         name: "Demo",
         entry: { path: "readme.md", kind: "md" },
         capabilities: [],
         icon: {
           kind: "logo",
-          url: "/api/v1/apps/app_demo/icon",
+          url: "/api/v1/apps/demo/icon",
         },
       },
     ];
@@ -1190,20 +1188,20 @@ describe("CLI command output contracts", () => {
 
     expect(get).toHaveBeenCalledWith();
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "Application ID                    Name                      Entry                     Capabilities              Icon\n--------------------------------  ------------------------  ------------------------  ------------------------  ------------------\napp_status                        Project Status            html:index.html           data,message              ListTodo\n--------------------------------  ------------------------  ------------------------  ------------------------  ------------------\napp_demo                          Demo                      md:readme.md              -                         logo",
+      "Application ID                    Name                      Entry                     Capabilities              Icon\n--------------------------------  ------------------------  ------------------------  ------------------------  ------------------\nstatus                            Project Status            html:index.html           data,message              ListTodo\n--------------------------------  ------------------------  ------------------------  ------------------------  ------------------\ndemo                              Demo                      md:readme.md              -                         logo",
     ]);
   });
 
-  it("bb app new creates a global app by display name", async () => {
+  it("bb app new derives a slug from display name", async () => {
     const created = {
-      applicationId: "app_demo",
-      name: "Demo",
+      applicationId: "review-board",
+      name: "Review Board",
       entry: { path: "index.html", kind: "html" },
       capabilities: ["data", "message"],
       icon: { kind: "builtin", name: "ListTodo" },
       appsRootPath: "/tmp/bb-data/apps",
-      appRootPath: "/tmp/bb-data/apps/app_demo",
-      appDataPath: "/tmp/bb-data/apps/app_demo/data",
+      appRootPath: "/tmp/bb-data/apps/review-board",
+      appDataPath: "/tmp/bb-data/apps/review-board/data",
     };
     const post = vi.fn(async () => created);
     createClientMock.mockReturnValue(
@@ -1218,29 +1216,70 @@ describe("CLI command output contracts", () => {
       }),
     );
 
-    await runCommand(
-      ["app", "new", "--name", "Demo"],
-      (program) => registerAppCommands(program, () => "http://server"),
+    await runCommand(["app", "new", "--name", "Review Board"], (program) =>
+      registerAppCommands(program, () => "http://server"),
     );
 
     expect(post).toHaveBeenCalledWith({
-      json: { name: "Demo" },
+      json: { applicationId: "review-board", name: "Review Board" },
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "Application ID: app_demo",
-      "  Name:          Demo",
+      "Application ID: review-board",
+      "  Name:          Review Board",
       "  Entry:         html:index.html",
       "  Capabilities:  data,message",
       "  Icon:          ListTodo",
-      "  App root:      /tmp/bb-data/apps/app_demo",
-      "  App data path: /tmp/bb-data/apps/app_demo/data",
+      "  App root:      /tmp/bb-data/apps/review-board",
+      "  App data path: /tmp/bb-data/apps/review-board/data",
+    ]);
+  });
+
+  it("bb app new honors an explicit slug", async () => {
+    const created = {
+      applicationId: "status",
+      name: "status",
+      entry: { path: "index.html", kind: "html" },
+      capabilities: ["data", "message"],
+      icon: { kind: "builtin", name: "ListTodo" },
+      appsRootPath: "/tmp/bb-data/apps",
+      appRootPath: "/tmp/bb-data/apps/status",
+      appDataPath: "/tmp/bb-data/apps/status/data",
+    };
+    const post = vi.fn(async () => created);
+    createClientMock.mockReturnValue(
+      asServerClient({
+        api: {
+          v1: {
+            apps: {
+              $post: post,
+            },
+          },
+        },
+      }),
+    );
+
+    await runCommand(["app", "new", "--slug", "status"], (program) =>
+      registerAppCommands(program, () => "http://server"),
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: { applicationId: "status" },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Application ID: status",
+      "  Name:          status",
+      "  Entry:         html:index.html",
+      "  Capabilities:  data,message",
+      "  Icon:          ListTodo",
+      "  App root:      /tmp/bb-data/apps/status",
+      "  App data path: /tmp/bb-data/apps/status/data",
     ]);
   });
 
   it("bb app current renders runtime app paths", async () => {
-    vi.stubEnv("BB_APP_ID", "app_current");
-    vi.stubEnv("BB_APP_ROOT", "/tmp/bb-data/apps/app_current");
-    vi.stubEnv("BB_APP_DATA_PATH", "/tmp/bb-data/apps/app_current/data");
+    vi.stubEnv("BB_APP_ID", "current");
+    vi.stubEnv("BB_APP_ROOT", "/tmp/bb-data/apps/current");
+    vi.stubEnv("BB_APP_DATA_PATH", "/tmp/bb-data/apps/current/data");
     vi.stubEnv("BB_APPS_ROOT", "/tmp/bb-data/apps");
 
     await runCommand(["app", "current"], (program) =>
@@ -1248,9 +1287,9 @@ describe("CLI command output contracts", () => {
     );
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "Application ID: app_current",
-      "  App root:      /tmp/bb-data/apps/app_current",
-      "  App data path: /tmp/bb-data/apps/app_current/data",
+      "Application ID: current",
+      "  App root:      /tmp/bb-data/apps/current",
+      "  App data path: /tmp/bb-data/apps/current/data",
       "  Apps root:     /tmp/bb-data/apps",
     ]);
   });

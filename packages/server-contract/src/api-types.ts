@@ -1353,16 +1353,25 @@ export type AppEntry = z.infer<typeof appEntrySchema>;
 export const appCapabilitySchema = z.enum(["data", "message"]);
 export type AppCapability = z.infer<typeof appCapabilitySchema>;
 
+const appDisplayNameSchema = z.string().max(80);
+
 export const appManifestSchema = z
   .object({
     manifestVersion: z.literal(1).default(1),
     id: applicationIdSchema,
-    name: z.string().min(1).max(80),
+    name: appDisplayNameSchema.optional(),
     icon: appIconNameSchema.optional(),
     entry: appEntryPathSchema.optional(),
     capabilities: z.array(appCapabilitySchema).default([]),
   })
-  .strict();
+  .strict()
+  .transform((manifest) => ({
+    ...manifest,
+    name:
+      manifest.name === undefined || manifest.name.trim().length === 0
+        ? manifest.id
+        : manifest.name,
+  }));
 export type AppManifest = z.infer<typeof appManifestSchema>;
 
 export const appIconSchema = z.discriminatedUnion("kind", [
@@ -1403,9 +1412,20 @@ export type AppDetail = z.infer<typeof appDetailSchema>;
 
 export const createAppRequestSchema = z
   .object({
-    name: z.string().min(1).max(80),
+    applicationId: applicationIdSchema.optional(),
+    name: appDisplayNameSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((request, context) => {
+    const hasName =
+      request.name !== undefined && request.name.trim().length > 0;
+    if (request.applicationId === undefined && !hasName) {
+      context.addIssue({
+        code: "custom",
+        message: "Provide applicationId or name",
+      });
+    }
+  });
 export type CreateAppRequest = z.infer<typeof createAppRequestSchema>;
 
 export const appDataEntrySchema = z
@@ -1446,7 +1466,10 @@ export type AppDataWriteRequest = z.infer<typeof appDataWriteRequestSchema>;
 export const appMessageRequestSchema = z
   .object({
     payload: jsonValueSchema,
-    appSessionToken: z.string().regex(/^appsess_[A-Za-z0-9_-]+$/u).optional(),
+    appSessionToken: z
+      .string()
+      .regex(/^appsess_[A-Za-z0-9_-]+$/u)
+      .optional(),
     targetThreadId: z.string().min(1).optional(),
   })
   .strict();

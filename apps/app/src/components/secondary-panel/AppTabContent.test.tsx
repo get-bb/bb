@@ -19,25 +19,25 @@ vi.mock("@/lib/api", async (importOriginal) => {
 });
 
 const HTML_APP: AppDetail = {
-  applicationId: "app_status",
+  applicationId: "status",
   name: "Review Board",
   entry: { path: "index.html", kind: "html" },
   capabilities: ["data", "message"],
   icon: { kind: "builtin", name: "ListTodo" },
   appsRootPath: "/tmp/bb-data/apps",
-  appRootPath: "/tmp/bb-data/apps/app_status",
-  appDataPath: "/tmp/bb-data/apps/app_status/data",
+  appRootPath: "/tmp/bb-data/apps/status",
+  appDataPath: "/tmp/bb-data/apps/status/data",
 };
 
 const MARKDOWN_APP: AppDetail = {
-  applicationId: "app_readme",
+  applicationId: "readme",
   name: "Readme",
   entry: { path: "docs/index.md", kind: "md" },
   capabilities: [],
   icon: { kind: "builtin", name: "GridView" },
   appsRootPath: "/tmp/bb-data/apps",
-  appRootPath: "/tmp/bb-data/apps/app_readme",
-  appDataPath: "/tmp/bb-data/apps/app_readme/data",
+  appRootPath: "/tmp/bb-data/apps/readme",
+  appDataPath: "/tmp/bb-data/apps/readme/data",
 };
 
 afterEach(() => {
@@ -51,13 +51,13 @@ describe("AppTabContent", () => {
     vi.mocked(api.getApp).mockResolvedValue(HTML_APP);
     const { wrapper } = createQueryClientTestHarness();
 
-    render(<AppTabContent threadId="thr_1" applicationId="app_status" />, {
+    render(<AppTabContent threadId="thr_1" applicationId="status" />, {
       wrapper,
     });
 
     const frame = await screen.findByTitle("Review Board");
     expect(frame.getAttribute("src")).toMatch(
-      /^\/api\/v1\/apps\/app_status\/\?targetThreadId=thr_1&v=\d+$/u,
+      /^\/api\/v1\/apps\/status\/\?targetThreadId=thr_1&v=\d+$/u,
     );
     expect(frame.getAttribute("sandbox")).toBeNull();
     expect(api.getAppMarkdownPreview).not.toHaveBeenCalled();
@@ -66,12 +66,12 @@ describe("AppTabContent", () => {
   it("reloads HTML app iframes when app detail data refreshes", async () => {
     vi.mocked(api.getApp).mockReturnValue(new Promise(() => {}));
     const { queryClient, wrapper } = createQueryClientTestHarness();
-    const queryKey = appQueryKey("app_status");
+    const queryKey = appQueryKey("status");
     queryClient.setQueryData<AppDetail>(queryKey, HTML_APP, {
       updatedAt: 1_000,
     });
 
-    render(<AppTabContent threadId="thr_1" applicationId="app_status" />, {
+    render(<AppTabContent threadId="thr_1" applicationId="status" />, {
       wrapper,
     });
 
@@ -103,20 +103,20 @@ describe("AppTabContent", () => {
       kind: "text",
       path: "docs/index.md",
       name: "index.md",
-      url: "/api/v1/apps/app_readme/assets/docs/index.md",
+      url: "/api/v1/apps/readme/assets/docs/index.md",
       mimeType: "text/markdown",
       content: "# App Notes\n\nStatic content.",
     });
     const { wrapper } = createQueryClientTestHarness();
 
-    render(<AppTabContent threadId="thr_1" applicationId="app_readme" />, {
+    render(<AppTabContent threadId="thr_1" applicationId="readme" />, {
       wrapper,
     });
 
     expect(await screen.findByText("App Notes")).toBeTruthy();
     expect(screen.getByText("Static content.")).toBeTruthy();
     expect(api.getAppMarkdownPreview).toHaveBeenCalledWith(
-      "app_readme",
+      "readme",
       "docs/index.md",
       expect.any(AbortSignal),
     );

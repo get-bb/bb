@@ -64,7 +64,7 @@ function isFilePathSearchSuggestion(
 }
 
 const APP: AppSummary = {
-  applicationId: "app_status",
+  applicationId: "status",
   name: "Review Board",
   entry: { path: "index.html", kind: "html" },
   capabilities: ["data", "message"],
@@ -106,7 +106,7 @@ describe("useFileSearchSuggestions", () => {
       () =>
         useFileSearchSuggestions({
           projectId: "proj-1",
-          query: "app_status",
+          query: "status",
           limit: 2,
           environmentId: "env-1",
           currentThreadId: "thr-manager",
@@ -126,7 +126,7 @@ describe("useFileSearchSuggestions", () => {
     ).toEqual(["notes/status.md", "src/project.ts"]);
     expect(api.searchProjectPaths).toHaveBeenCalledWith({
       projectId: "proj-1",
-      query: "app_status",
+      query: "status",
       limit: 4,
       environmentId: "env-1",
       includeFiles: true,
@@ -136,7 +136,7 @@ describe("useFileSearchSuggestions", () => {
       id: "thr-manager",
       options: {
         limit: 4,
-        query: "app_status",
+        query: "status",
         includeFiles: true,
         includeDirectories: false,
       },
@@ -165,7 +165,7 @@ describe("useFileSearchSuggestions", () => {
       () =>
         useFileSearchSuggestions({
           projectId: "proj-1",
-          query: "app_status",
+          query: "status",
           environmentId: "env-1",
           currentThreadId: "thr-manager",
           currentThreadType: "manager",
@@ -180,7 +180,7 @@ describe("useFileSearchSuggestions", () => {
     expect(result.current.suggestions[0]).toMatchObject({
       source: "app",
       entryKind: "app",
-      applicationId: "app_status",
+      applicationId: "status",
       name: "Review Board",
     });
     expect(result.current.suggestions[1]).toMatchObject({

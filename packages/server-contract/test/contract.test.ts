@@ -1,4 +1,7 @@
-import { collectOptionalFieldPaths, makeWorkspaceStatus } from "@bb/test-helpers";
+import {
+  collectOptionalFieldPaths,
+  makeWorkspaceStatus,
+} from "@bb/test-helpers";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import publicApiSource from "../src/public-api.ts?raw";
@@ -683,7 +686,7 @@ describe("server-contract canonical schemas", () => {
   it("validates app manifests, icon names, entries, and data broadcasts", () => {
     const manifest = {
       manifestVersion: 1,
-      id: "app_status",
+      id: "status",
       name: "Status",
       icon: "ListTodo",
       entry: "index.html",
@@ -691,6 +694,24 @@ describe("server-contract canonical schemas", () => {
     };
 
     expect(contract.appManifestSchema.parse(manifest)).toEqual(manifest);
+    expect(
+      contract.appManifestSchema.parse({
+        ...manifest,
+        name: undefined,
+      }),
+    ).toEqual({
+      ...manifest,
+      name: "status",
+    });
+    expect(
+      contract.appManifestSchema.parse({
+        ...manifest,
+        name: "",
+      }),
+    ).toEqual({
+      ...manifest,
+      name: "status",
+    });
     expect(
       contract.appManifestSchema.safeParse({
         ...manifest,
@@ -706,7 +727,7 @@ describe("server-contract canonical schemas", () => {
     expect(
       contract.appManifestSchema.safeParse({
         ...manifest,
-        id: "status",
+        id: "Bad",
       }).success,
     ).toBe(false);
     expect(
@@ -718,7 +739,7 @@ describe("server-contract canonical schemas", () => {
 
     const message = {
       type: "app-data.changed",
-      applicationId: "app_status",
+      applicationId: "status",
       path: "state.json",
       value: { workers: [] },
       deleted: false,

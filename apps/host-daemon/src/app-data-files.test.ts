@@ -23,7 +23,10 @@ afterEach(async () => {
 
 describe("app data files", () => {
   it("treats a missing apps root as an empty target list", async () => {
-    const missingRoot = path.join(os.tmpdir(), `bb-missing-apps-${randomUUID()}`);
+    const missingRoot = path.join(
+      os.tmpdir(),
+      `bb-missing-apps-${randomUUID()}`,
+    );
 
     await expect(
       listApplicationDataTargetsFromRoot({
@@ -35,26 +38,26 @@ describe("app data files", () => {
   it("lists valid global application data targets", async () => {
     const dataDir = await makeTempDir("bb-app-data-files-");
     const appsRootPath = path.join(dataDir, "apps");
-    const applicationPath = path.join(appsRootPath, "app_valid");
+    const applicationPath = path.join(appsRootPath, "valid");
     await fs.mkdir(path.join(applicationPath, "data"), { recursive: true });
     await fs.writeFile(
       path.join(applicationPath, "manifest.json"),
       JSON.stringify({
         manifestVersion: 1,
-        id: "app_valid",
+        id: "valid",
         name: "Valid App",
         entry: "index.html",
       }),
       "utf8",
     );
-    await fs.mkdir(path.join(appsRootPath, "app_broken"), {
+    await fs.mkdir(path.join(appsRootPath, "broken"), {
       recursive: true,
     });
     await fs.writeFile(
-      path.join(appsRootPath, "app_broken", "manifest.json"),
+      path.join(appsRootPath, "broken", "manifest.json"),
       JSON.stringify({
         manifestVersion: 1,
-        id: "app_other",
+        id: "other",
         name: "Broken App",
       }),
       "utf8",
@@ -65,7 +68,7 @@ describe("app data files", () => {
       listApplicationDataTargetsFromRoot({ appsRootPath }),
     ).resolves.toEqual([
       {
-        applicationId: "app_valid",
+        applicationId: "valid",
         appDataPath: path.join(resolvedApplicationPath, "data"),
       },
     ]);

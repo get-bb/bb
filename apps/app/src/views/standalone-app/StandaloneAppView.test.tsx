@@ -21,14 +21,14 @@ vi.mock("@/lib/api", async (importOriginal) => {
 });
 
 const HTML_APP: AppDetail = {
-  applicationId: "app_status",
+  applicationId: "status",
   name: "Review Board",
   entry: { path: "index.html", kind: "html" },
   capabilities: ["data", "message"],
   icon: { kind: "builtin", name: "ListTodo" },
   appsRootPath: "/tmp/bb-data/apps",
-  appRootPath: "/tmp/bb-data/apps/app_status",
-  appDataPath: "/tmp/bb-data/apps/app_status/data",
+  appRootPath: "/tmp/bb-data/apps/status",
+  appDataPath: "/tmp/bb-data/apps/status/data",
 };
 
 function renderStandaloneApp(applicationId: string) {
@@ -36,7 +36,10 @@ function renderStandaloneApp(applicationId: string) {
   return render(
     <MemoryRouter initialEntries={[`/apps/${applicationId}`]}>
       <Routes>
-        <Route path={STANDALONE_APP_ROUTE_PATH} element={<StandaloneAppView />} />
+        <Route
+          path={STANDALONE_APP_ROUTE_PATH}
+          element={<StandaloneAppView />}
+        />
       </Routes>
     </MemoryRouter>,
     { wrapper },
@@ -52,13 +55,13 @@ describe("StandaloneAppView", () => {
   it("renders the app surface in a thread-independent iframe", async () => {
     vi.mocked(api.getApp).mockResolvedValue(HTML_APP);
 
-    renderStandaloneApp("app_status");
+    renderStandaloneApp("status");
 
     const frame = await screen.findByTitle("Review Board");
     // No targetThreadId on the standalone surface — the app renders without a
     // host thread.
     expect(frame.getAttribute("src")).toMatch(
-      /^\/api\/v1\/apps\/app_status\/\?v=\d+$/u,
+      /^\/api\/v1\/apps\/status\/\?v=\d+$/u,
     );
   });
 
@@ -71,7 +74,7 @@ describe("StandaloneAppView", () => {
       }),
     );
 
-    renderStandaloneApp("app_gone");
+    renderStandaloneApp("gone");
 
     expect(await screen.findByText("App not found.")).toBeTruthy();
   });
@@ -85,7 +88,7 @@ describe("StandaloneAppView", () => {
       }),
     );
 
-    renderStandaloneApp("app_broken");
+    renderStandaloneApp("broken");
 
     expect(
       await screen.findByText("This app's manifest is invalid."),

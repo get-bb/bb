@@ -1309,8 +1309,8 @@ describe("RuntimeManager", () => {
 
     manager.replaceTrackedApplicationDataTargets([
       {
-        applicationId: "app_status",
-        appDataPath: "/tmp/bb-data/apps/app_status/data",
+        applicationId: "status",
+        appDataPath: "/tmp/bb-data/apps/status/data",
       },
     ]);
 
@@ -1321,10 +1321,10 @@ describe("RuntimeManager", () => {
       }),
     );
     expect(
-      watchApplicationStorageRootArgs?.resolveApplicationTarget("app_status"),
+      watchApplicationStorageRootArgs?.resolveApplicationTarget("status"),
     ).toEqual({
-      applicationId: "app_status",
-      appDataPath: "/tmp/bb-data/apps/app_status/data",
+      applicationId: "status",
+      appDataPath: "/tmp/bb-data/apps/status/data",
     });
 
     watchApplicationStorageRootArgs?.onChange({
@@ -1332,23 +1332,23 @@ describe("RuntimeManager", () => {
     });
     watchApplicationStorageRootArgs?.onChange({
       kind: "application-data-changed",
-      applicationId: "app_status",
-      appDataPath: "/tmp/bb-data/apps/app_status/data",
+      applicationId: "status",
+      appDataPath: "/tmp/bb-data/apps/status/data",
       path: "state.json",
     });
     watchApplicationStorageRootArgs?.onChange({
       kind: "application-data-resync",
-      applicationId: "app_status",
+      applicationId: "status",
     });
 
     expect(onApplicationStorageTargetsChanged).toHaveBeenCalledTimes(1);
     expect(onApplicationDataChanged).toHaveBeenCalledWith({
-      applicationId: "app_status",
-      appDataPath: "/tmp/bb-data/apps/app_status/data",
+      applicationId: "status",
+      appDataPath: "/tmp/bb-data/apps/status/data",
       path: "state.json",
     });
     expect(onApplicationDataResync).toHaveBeenCalledWith({
-      applicationId: "app_status",
+      applicationId: "status",
     });
 
     await manager.shutdownAll();

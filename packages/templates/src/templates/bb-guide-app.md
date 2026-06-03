@@ -23,7 +23,7 @@ Storage layout:
 ```text
 <dataDir>/
   apps/
-    app_k9D2example/
+    review-board/
       manifest.json
       assets/
         index.html
@@ -37,16 +37,18 @@ lives under `data/`.
 
 The app exists only when the local filesystem contains a valid manifest at
 `<dataDir>/apps/<applicationId>/manifest.json`. `manifest.id` is the canonical
-application id: it must be opaque, path-safe, `app_`-prefixed, globally unique
-inside the data dir, and equal to the containing folder name. `manifest.name`
-is a human display name only. Display names are not identifiers and may repeat.
+application id: it must be a lowercase path-safe slug such as `status` or
+`review-board`, globally unique inside the data dir, and equal to the
+containing folder name. `manifest.name` is an optional human display name only.
+When it is absent or empty, bb displays the slug. Display names are not
+identifiers and may repeat.
 
 Manifest:
 
 ```json
 {
   "manifestVersion": 1,
-  "id": "app_k9D2example",
+  "id": "review-board",
   "name": "Review Board",
   "icon": "ListTodo",
   "entry": "index.html",
@@ -78,12 +80,13 @@ CLI:
 ```bash
 bb app list
 bb app new --name "Review Board"
-bb app show app_k9D2example
-bb app data list app_k9D2example
-bb app data read app_k9D2example state.json
-bb app data write app_k9D2example state.json --file ./state.json
-bb app message app_k9D2example --target-thread thr_123 --json '"Please review the current blockers."'
-bb app delete app_k9D2example --yes
+bb app new --slug status
+bb app show review-board
+bb app data list review-board
+bb app data read review-board state.json
+bb app data write review-board state.json --file ./state.json
+bb app message review-board --target-thread thr_123 --json '"Please review the current blockers."'
+bb app delete review-board --yes
 ```
 
 `--json` is available for scripts. Commands accept application ids only, never

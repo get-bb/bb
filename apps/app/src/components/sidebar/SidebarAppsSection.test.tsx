@@ -8,14 +8,14 @@ import { SidebarAppsSection } from "./SidebarAppsSection";
 
 const APPS: AppSummary[] = [
   {
-    applicationId: "app_alpha",
+    applicationId: "alpha",
     name: "Alpha",
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data"],
     icon: { kind: "builtin", name: "GridView" },
   },
   {
-    applicationId: "app_beta",
+    applicationId: "beta",
     name: "Beta",
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data"],
@@ -52,11 +52,11 @@ describe("SidebarAppsSection", () => {
 
     fireEvent.click(row);
 
-    expect(screen.getByTestId("location").textContent).toBe("/apps/app_alpha");
+    expect(screen.getByTestId("location").textContent).toBe("/apps/alpha");
   });
 
   it("marks the row for the active app route as current", () => {
-    renderSection("/apps/app_beta");
+    renderSection("/apps/beta");
 
     const activeRow = screen.getByRole("button", { name: "Open Beta app" });
     const inactiveRow = screen.getByRole("button", { name: "Open Alpha app" });

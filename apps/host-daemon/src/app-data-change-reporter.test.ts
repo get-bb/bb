@@ -39,7 +39,7 @@ afterEach(async () => {
 describe("AppDataChangeReporter", () => {
   it("posts changed app data values and suppresses duplicate versions", async () => {
     const rootPath = await makeTempDir("bb-app-data-reporter-");
-    const appDataPath = path.join(rootPath, "apps", "app_status", "data");
+    const appDataPath = path.join(rootPath, "apps", "status", "data");
     const statePath = path.join(appDataPath, "state.json");
     const posted: HostDaemonAppDataChangePayload[] = [];
     const reporter = new AppDataChangeReporter({
@@ -51,23 +51,23 @@ describe("AppDataChangeReporter", () => {
     });
 
     await reporter.replaceTrackedApplications({
-      targets: [{ applicationId: "app_status", appDataPath }],
+      targets: [{ applicationId: "status", appDataPath }],
     });
     await writeJsonFile(statePath, { workers: [] });
     await reporter.observe({
-      applicationId: "app_status",
+      applicationId: "status",
       appDataPath,
       path: "state.json",
     });
     await reporter.observe({
-      applicationId: "app_status",
+      applicationId: "status",
       appDataPath,
       path: "state.json",
     });
 
     expect(posted).toHaveLength(1);
     expect(posted[0]).toMatchObject({
-      applicationId: "app_status",
+      applicationId: "status",
       path: "state.json",
       deleted: false,
       value: { workers: [] },
@@ -77,7 +77,7 @@ describe("AppDataChangeReporter", () => {
 
   it("posts deleted events after observed files are removed", async () => {
     const rootPath = await makeTempDir("bb-app-data-reporter-delete-");
-    const appDataPath = path.join(rootPath, "apps", "app_status", "data");
+    const appDataPath = path.join(rootPath, "apps", "status", "data");
     const statePath = path.join(appDataPath, "state.json");
     const posted: HostDaemonAppDataChangePayload[] = [];
     const reporter = new AppDataChangeReporter({
@@ -90,23 +90,23 @@ describe("AppDataChangeReporter", () => {
 
     await writeJsonFile(statePath, { workers: [] });
     await reporter.replaceTrackedApplications({
-      targets: [{ applicationId: "app_status", appDataPath }],
+      targets: [{ applicationId: "status", appDataPath }],
     });
     await reporter.observe({
-      applicationId: "app_status",
+      applicationId: "status",
       appDataPath,
       path: "state.json",
     });
     await fs.rm(statePath);
     await reporter.observe({
-      applicationId: "app_status",
+      applicationId: "status",
       appDataPath,
       path: "state.json",
     });
 
     expect(posted).toHaveLength(1);
     expect(posted[0]).toEqual({
-      applicationId: "app_status",
+      applicationId: "status",
       path: "state.json",
       deleted: true,
       value: null,
@@ -116,7 +116,7 @@ describe("AppDataChangeReporter", () => {
 
   it("re-primes tracked threads and posts resync hints after reconnect", async () => {
     const rootPath = await makeTempDir("bb-app-data-reporter-reprime-");
-    const appDataPath = path.join(rootPath, "apps", "app_status", "data");
+    const appDataPath = path.join(rootPath, "apps", "status", "data");
     const statePath = path.join(appDataPath, "state.json");
     const posted: HostDaemonAppDataChangePayload[] = [];
     const resyncs: Array<{ applicationId: string }> = [];
@@ -132,27 +132,27 @@ describe("AppDataChangeReporter", () => {
 
     await writeJsonFile(statePath, { workers: [] });
     await reporter.replaceTrackedApplications({
-      targets: [{ applicationId: "app_status", appDataPath }],
+      targets: [{ applicationId: "status", appDataPath }],
     });
     await reporter.observe({
-      applicationId: "app_status",
+      applicationId: "status",
       appDataPath,
       path: "state.json",
     });
 
-    expect(resyncs).toEqual([{ applicationId: "app_status" }]);
+    expect(resyncs).toEqual([{ applicationId: "status" }]);
     expect(posted).toHaveLength(0);
 
     await writeJsonFile(statePath, { workers: [{ id: "worker-1" }] });
     await reporter.observe({
-      applicationId: "app_status",
+      applicationId: "status",
       appDataPath,
       path: "state.json",
     });
 
     expect(posted).toHaveLength(1);
     expect(posted[0]).toMatchObject({
-      applicationId: "app_status",
+      applicationId: "status",
       path: "state.json",
       deleted: false,
       value: { workers: [{ id: "worker-1" }] },
@@ -161,7 +161,7 @@ describe("AppDataChangeReporter", () => {
 
   it("posts resync hints for apps whose data disappeared while disconnected", async () => {
     const rootPath = await makeTempDir("bb-app-data-reporter-delete-resync-");
-    const appDataPath = path.join(rootPath, "apps", "app_status", "data");
+    const appDataPath = path.join(rootPath, "apps", "status", "data");
     const statePath = path.join(appDataPath, "state.json");
     const resyncs: Array<{ applicationId: string }> = [];
     const reporter = new AppDataChangeReporter({
@@ -174,16 +174,16 @@ describe("AppDataChangeReporter", () => {
 
     await writeJsonFile(statePath, { workers: [] });
     await reporter.replaceTrackedApplications({
-      targets: [{ applicationId: "app_status", appDataPath }],
+      targets: [{ applicationId: "status", appDataPath }],
     });
     await fs.rm(statePath);
     await reporter.replaceTrackedApplications({
-      targets: [{ applicationId: "app_status", appDataPath }],
+      targets: [{ applicationId: "status", appDataPath }],
     });
 
     expect(resyncs).toEqual([
-      { applicationId: "app_status" },
-      { applicationId: "app_status" },
+      { applicationId: "status" },
+      { applicationId: "status" },
     ]);
   });
 
@@ -198,9 +198,9 @@ describe("AppDataChangeReporter", () => {
     });
 
     await reporter.requestResync({
-      applicationId: "app_status",
+      applicationId: "status",
     });
 
-    expect(resyncs).toEqual([{ applicationId: "app_status" }]);
+    expect(resyncs).toEqual([{ applicationId: "status" }]);
   });
 });

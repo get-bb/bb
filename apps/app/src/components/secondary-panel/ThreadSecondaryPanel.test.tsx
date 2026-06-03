@@ -191,7 +191,7 @@ describe("ThreadSecondaryPanel", () => {
     {
       name: "app iframe",
       activeTab: buildActiveFileTab({
-        id: "app:app_review_board",
+        id: "app:review-board",
         filename: "Review Board",
         isPinned: true,
       }),
@@ -276,7 +276,7 @@ describe("ThreadSecondaryPanel", () => {
     "keeps iframe previews interactable after secondary panel resize ends via $name",
     async ({ finishDrag }) => {
       const activeAppTab: SecondaryPanelFileTab = {
-        id: "app:app_review_board",
+        id: "app:review-board",
         filename: "Review Board",
         isActive: true,
         isPinned: true,
@@ -317,7 +317,9 @@ describe("ThreadSecondaryPanel", () => {
       // Regression guard: the drag must be intercepted by the overlay, never by
       // disabling the iframe's pointer-events — that detaches the iframe's
       // compositor scroll node in Chromium and kills wheel-scroll after resize.
-      expect(aside?.className).not.toContain(IFRAME_POINTER_EVENTS_TOGGLE_CLASS);
+      expect(aside?.className).not.toContain(
+        IFRAME_POINTER_EVENTS_TOGGLE_CLASS,
+      );
 
       finishDrag();
 
@@ -348,7 +350,9 @@ describe("ThreadSecondaryPanel", () => {
     renderPanel({ reserveLeftForDesktopTrafficLights: false });
 
     const topChrome = screen.getByTestId("thread-secondary-panel-top-chrome");
-    expect(topChrome.className).not.toContain(MACOS_TRAFFIC_LIGHT_RESERVE_CLASS);
+    expect(topChrome.className).not.toContain(
+      MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
+    );
   });
 
   it("shows the resize seam hairline while the conversation is expanded", () => {
@@ -367,7 +371,11 @@ describe("ThreadSecondaryPanel", () => {
       isBrowserTabActive: true,
       browserDeck: <div>browser deck</div>,
       fileTabs: [
-        buildActiveFileTab({ id: "browser:a", filename: "Example", isPinned: false }),
+        buildActiveFileTab({
+          id: "browser:a",
+          filename: "Example",
+          isPinned: false,
+        }),
       ],
       fileTabContent: <div>file tab content</div>,
     });
@@ -382,7 +390,11 @@ describe("ThreadSecondaryPanel", () => {
       isBrowserTabActive: false,
       browserDeck: <div>browser deck</div>,
       fileTabs: [
-        buildActiveFileTab({ id: "app:status", filename: "Status", isPinned: true }),
+        buildActiveFileTab({
+          id: "app:status",
+          filename: "Status",
+          isPinned: true,
+        }),
       ],
       fileTabContent: <div>file tab content</div>,
     });
@@ -427,7 +439,7 @@ describe("ThreadSecondaryPanel", () => {
     expect(
       Boolean(
         toggle.compareDocumentPosition(hideButton) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
 

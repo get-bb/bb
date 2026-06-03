@@ -19,7 +19,7 @@ describe("internal app-data change route", () => {
           headers: internalAuthHeaders(harness),
           body: JSON.stringify({
             sessionId: session.id,
-            applicationId: "app_status",
+            applicationId: "status",
             path: "state.json",
             value: { workers: [] },
             deleted: false,
@@ -31,7 +31,7 @@ describe("internal app-data change route", () => {
       expect(response.status).toBe(200);
       expect(notifyAppDataSpy).toHaveBeenCalledWith({
         type: "app-data.changed",
-        applicationId: "app_status",
+        applicationId: "status",
         path: "state.json",
         value: { workers: [] },
         deleted: false,
@@ -51,7 +51,7 @@ describe("internal app-data change route", () => {
           headers: internalAuthHeaders(harness),
           body: JSON.stringify({
             sessionId: "missing-session",
-            applicationId: "app_status",
+            applicationId: "status",
             path: "state.json",
             value: null,
             deleted: true,
@@ -82,7 +82,7 @@ describe("internal app-data change route", () => {
           headers: internalAuthHeaders(harness),
           body: JSON.stringify({
             sessionId: session.id,
-            applicationId: "app_status",
+            applicationId: "status",
           }),
         },
       );
@@ -90,7 +90,7 @@ describe("internal app-data change route", () => {
       expect(response.status).toBe(200);
       expect(notifyAppDataSpy).toHaveBeenCalledWith({
         type: "app-data.resync",
-        applicationId: "app_status",
+        applicationId: "status",
       });
     });
   });

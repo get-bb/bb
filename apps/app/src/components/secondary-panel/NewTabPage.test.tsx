@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { AppSummary, WorkspacePathEntry } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import {
@@ -75,7 +81,7 @@ function makePathResponse(
 }
 
 const APP: AppSummary = {
-  applicationId: "app_status",
+  applicationId: "status",
   name: "Review Board",
   entry: { path: "index.html", kind: "html" },
   capabilities: ["data", "message"],
@@ -199,11 +205,13 @@ describe("NewTabPage", () => {
     });
 
     expect(await screen.findByText("Apps")).toBeTruthy();
-    fireEvent.click(await screen.findByRole("option", { name: /Review Board/u }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: /Review Board/u }),
+    );
 
     expect(onSelect).toHaveBeenCalledWith({
       source: "app",
-      applicationId: "app_status",
+      applicationId: "status",
     });
   });
 
@@ -264,7 +272,9 @@ describe("NewTabPage", () => {
     const input = screen.getByRole("textbox", {
       name: "Search apps and files",
     });
-    const appOption = await screen.findByRole("option", { name: /Review Board/u });
+    const appOption = await screen.findByRole("option", {
+      name: /Review Board/u,
+    });
     const createAppOption = screen.getByRole("option", {
       name: /Create App/u,
     });
@@ -333,7 +343,7 @@ describe("NewTabPage", () => {
     const input = screen.getByRole("textbox", {
       name: "Search apps and files",
     });
-    fireEvent.change(input, { target: { value: "app_status" } });
+    fireEvent.change(input, { target: { value: "status" } });
     await screen.findByText("Files");
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -488,7 +498,9 @@ describe("NewTabPage recent section", () => {
     // Await the app row so the async sources have settled and the active-index
     // reset no longer fires; the recent row trails Apps + Create App in one
     // shared index space, so ArrowUp wraps onto it from the first entry.
-    const appOption = await screen.findByRole("option", { name: /Review Board/u });
+    const appOption = await screen.findByRole("option", {
+      name: /Review Board/u,
+    });
     const recentOption = screen.getByRole("option", {
       name: /swap-model\.md/u,
     });

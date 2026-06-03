@@ -436,7 +436,7 @@ describe("useThreadFileTabs", () => {
 
   it("orders file tabs by open order", () => {
     const { result } = renderThreadFileTabsHook({
-      apps: [{ applicationId: "app_review" }],
+      apps: [{ applicationId: "review" }],
       environmentId: "env-one",
       threadType: "manager",
       storageFiles: [{ path: "notes.md" }],
@@ -444,7 +444,7 @@ describe("useThreadFileTabs", () => {
     });
 
     act(() => {
-      result.current.openApp("app_review");
+      result.current.openApp("review");
       result.current.openWorkspaceFile(
         buildWorkspaceFileTab({ lineNumber: null, path: "src/app.ts" }),
       );
@@ -453,7 +453,7 @@ describe("useThreadFileTabs", () => {
     });
 
     expect(tabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-      appTabId("app_review"),
+      appTabId("review"),
       workspaceFileTabId("src/app.ts"),
       storageFileTabId("notes.md"),
       hostFileTabId("/tmp/host.md"),
@@ -780,7 +780,7 @@ describe("useThreadFileTabs", () => {
 
   it("closes app tabs", () => {
     const { result } = renderThreadFileTabsHook({
-      apps: [{ applicationId: "app_review" }],
+      apps: [{ applicationId: "review" }],
       environmentId: null,
       threadType: "manager",
       storageFiles: undefined,
@@ -788,16 +788,16 @@ describe("useThreadFileTabs", () => {
     });
 
     act(() => {
-      result.current.openApp("app_review");
+      result.current.openApp("review");
     });
 
     expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-      "app_review",
+      "review",
     ]);
-    expect(result.current.activeAppId).toBe("app_review");
+    expect(result.current.activeAppId).toBe("review");
 
     act(() => {
-      result.current.closeAppTab("app_review");
+      result.current.closeAppTab("review");
     });
 
     expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([]);
@@ -806,7 +806,7 @@ describe("useThreadFileTabs", () => {
 
   it("opens an app tab from launcher search selection", () => {
     const { result } = renderThreadFileTabsHook({
-      apps: [{ applicationId: "app_demo" }],
+      apps: [{ applicationId: "demo" }],
       environmentId: "env-one",
       threadType: "standard",
       storageFiles: undefined,
@@ -817,16 +817,16 @@ describe("useThreadFileTabs", () => {
       result.current.openNewTab();
       result.current.selectFileSearchResult({
         source: "app",
-        applicationId: "app_demo",
+        applicationId: "demo",
       });
     });
 
     expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-      "app_demo",
+      "demo",
     ]);
-    expect(result.current.activeAppId).toBe("app_demo");
+    expect(result.current.activeAppId).toBe("demo");
     expect(getStoredAppIds(readStoredState("thr-app-selection"))).toEqual([
-      "app_demo",
+      "demo",
     ]);
   });
 
@@ -1007,9 +1007,9 @@ describe("useThreadFileTabs — browser tabs", () => {
     });
 
     expect(result.current.activeBrowserTab?.title).toBe("Example");
-    const persisted = readStoredState(
-      "thr-browser-update",
-    ).secondary.tabs.find((entry) => entry.kind === "browser");
+    const persisted = readStoredState("thr-browser-update").secondary.tabs.find(
+      (entry) => entry.kind === "browser",
+    );
     expect(persisted?.kind === "browser" ? persisted.url : null).toBe(
       "https://example.com",
     );

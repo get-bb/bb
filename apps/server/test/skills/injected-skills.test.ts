@@ -38,9 +38,7 @@ async function makeTempDir(): Promise<string> {
 
 afterEach(async () => {
   await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => rm(dir, { recursive: true, force: true })),
+    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
 });
 
@@ -113,7 +111,7 @@ async function writeApplication(args: WriteApplicationArgs): Promise<string> {
 describe("injected skill source discovery", () => {
   it("aggregates valid data-dir and global app skills", async () => {
     const dataDir = await makeTempDir();
-    const applicationId = applicationIdSchema.parse("app_skillstest");
+    const applicationId = applicationIdSchema.parse("skillstest");
     const appRootPath = await writeApplication({ dataDir, applicationId });
     const dataDirSkillRoot = await writeSkill({
       rootPath: path.join(dataDir, "skills"),
@@ -201,7 +199,7 @@ describe("injected skill source discovery", () => {
 
   it("excludes all sources with colliding names across both roots", async () => {
     const dataDir = await makeTempDir();
-    const applicationId = applicationIdSchema.parse("app_collision");
+    const applicationId = applicationIdSchema.parse("collision");
     const appRootPath = await writeApplication({ dataDir, applicationId });
     await writeSkill({
       rootPath: path.join(dataDir, "skills"),
@@ -214,8 +212,10 @@ describe("injected skill source discovery", () => {
     const { logger, warnings } = createCapturingLogger();
 
     expect(resolveInjectedSkillSources(logger, { dataDir })).toEqual([]);
-    expect(warnings.filter((warning) => warning.message === "Skipping colliding injected skill")).toHaveLength(
-      2,
-    );
+    expect(
+      warnings.filter(
+        (warning) => warning.message === "Skipping colliding injected skill",
+      ),
+    ).toHaveLength(2);
   });
 });

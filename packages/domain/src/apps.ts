@@ -1,14 +1,36 @@
 import { z } from "zod";
 
-const APPLICATION_ID_PATTERN = /^app_[A-Za-z0-9_-]{1,80}$/u;
+export const APPLICATION_ID_MAX_LENGTH = 64;
+const APPLICATION_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
+const APPLICATION_NAME_SLUG_SEGMENT_PATTERN = /[a-z0-9]+/gu;
 const APP_DATA_PATH_SEGMENT_PATTERN = /^[A-Za-z0-9._-]{1,80}$/u;
 const APP_DATA_PATH_MAX_DEPTH = 8;
 // Keep these app-data path limits in sync with the injected app client
 // validator in apps/server/src/services/threads/app-client-script.ts.
 const APP_DATA_PATH_MAX_LENGTH = 512;
 
-export const applicationIdSchema = z.string().regex(APPLICATION_ID_PATTERN);
+export const applicationIdSchema = z
+  .string()
+  .min(1)
+  .max(APPLICATION_ID_MAX_LENGTH)
+  .regex(
+    APPLICATION_ID_PATTERN,
+    "Application id must be a lowercase slug containing only letters, numbers, and hyphens",
+  );
 export type ApplicationId = z.infer<typeof applicationIdSchema>;
+
+export function deriveApplicationIdFromName(name: string): ApplicationId {
+  const normalizedName = name
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[\u0300-\u036f]/gu, "");
+  const segments = normalizedName.match(APPLICATION_NAME_SLUG_SEGMENT_PATTERN);
+  const slug = (segments ?? [])
+    .join("-")
+    .slice(0, APPLICATION_ID_MAX_LENGTH)
+    .replace(/-+$/u, "");
+  return applicationIdSchema.parse(slug);
+}
 
 export const appDataPathSchema = z.string().superRefine((value, context) => {
   if (

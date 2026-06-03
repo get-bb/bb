@@ -36,13 +36,13 @@ import { isPromptDraftEmpty, type PromptDraftState } from "@/lib/prompt-draft";
 export const CREATE_APP_PROMPT_TEMPLATE = `You are creating a new global bb app.
 
 Apps system reference — run \`bb guide app\` for full detail. Layout:
-- <dataDir>/apps/<applicationId>/manifest.json — { manifestVersion: 1, id: applicationId, name, icon | logo.svg, entry, capabilities: ["data"?, "message"?] }
+- <dataDir>/apps/<applicationId>/manifest.json — { manifestVersion: 1, id: applicationId, name?, icon | logo.svg, entry, capabilities: ["data"?, "message"?] }
 - <dataDir>/apps/<applicationId>/assets/index.html — self-contained static HTML/CSS/JS/SVG served by bb; use inline/relative files, no web server, npm, or build step
 - <dataDir>/apps/<applicationId>/data/state.json — state if the app uses window.bb.data
 
 In the page, use window.bb.data for live state (read / write / delete / list / onChange; onChange replays + streams) and window.bb.message(text) to send the thread a prompt. Guard with \`window.bb?.data?.…\` since capabilities are advisory.
 
-Scaffold with \`bb app new --name "Name"\` or, inside an app-capable runtime, inspect \`bb app current --json\` and write directly to \`BB_APP_ROOT\` / \`BB_APP_DATA_PATH\`. The application id is the opaque \`app_...\` folder name; display names are not identifiers.
+Scaffold with \`bb app new --name "Name"\` or \`bb app new --slug my-app\`; inside an app-capable runtime, inspect \`bb app current --json\` and write directly to \`BB_APP_ROOT\` / \`BB_APP_DATA_PATH\`. The application id is the lowercase slug folder name; display names are optional labels, not identifiers.
 
 What I want:
 
@@ -237,9 +237,7 @@ function getAvailableFileSearchSources({
 
 function getFileSearchResultId(suggestion: FileSearchSuggestion): string {
   const idSegment =
-    suggestion.entryKind === "app"
-      ? suggestion.applicationId
-      : suggestion.path;
+    suggestion.entryKind === "app" ? suggestion.applicationId : suggestion.path;
   return `file-search-result-${suggestion.source}-${encodeURIComponent(
     idSegment,
   )}`;
@@ -585,7 +583,10 @@ function RecentResultRow({
   const { chip, label } = resolveRecentFileKind(item.path);
   const name = getRecentItemName(item.path);
   const { directory } = splitPath(item.path);
-  const relativeTime = formatRelativeTime({ timestamp: item.openedAt, now: nowMs });
+  const relativeTime = formatRelativeTime({
+    timestamp: item.openedAt,
+    now: nowMs,
+  });
 
   return (
     <LauncherTile
@@ -704,7 +705,8 @@ export function NewTabFileSearch({
     !isUnavailable &&
     onOpenBrowser !== undefined &&
     isDesktopBrowserAvailable() &&
-    (!hasQuery || OPEN_BROWSER_ENTRY_KEYWORDS.includes(trimmedQuery.toLowerCase()));
+    (!hasQuery ||
+      OPEN_BROWSER_ENTRY_KEYWORDS.includes(trimmedQuery.toLowerCase()));
   const normalizedRecentQuery = hasQuery ? trimmedQuery.toLowerCase() : "";
   const matchingRecentItems = useMemo(
     () =>
@@ -745,9 +747,7 @@ export function NewTabFileSearch({
   );
   const navigableEntries = useMemo(
     () =>
-      sections.flatMap((section) =>
-        section.items.map(({ entry }) => entry),
-      ),
+      sections.flatMap((section) => section.items.map(({ entry }) => entry)),
     [sections],
   );
   const activeEntry = useMemo(
@@ -994,7 +994,8 @@ function NewTabResults({
   const showAppsSection = appsSection !== undefined;
   const showOpenSection = openSection !== undefined;
   const showFilesSection = filesSection !== undefined;
-  const showRecentSection = recentSection !== undefined || recent.emptyHintVisible;
+  const showRecentSection =
+    recentSection !== undefined || recent.emptyHintVisible;
   const hasSectionsAbove =
     showAppsSection || showOpenSection || showFilesSection;
   const showLoading = isLoading && !showFilesSection;

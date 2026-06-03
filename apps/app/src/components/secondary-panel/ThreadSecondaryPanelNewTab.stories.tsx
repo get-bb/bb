@@ -89,7 +89,7 @@ const THREAD_STORAGE_PATH_RESULTS: WorkspacePathEntry[] = [
 
 const APPS_RESPONSE: AppSummary[] = [
   {
-    applicationId: "app_story_review_board",
+    applicationId: "story-review-board",
     name: "Review Board",
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data", "message"],
@@ -368,7 +368,9 @@ function NewTabPanelStory({
               : "thread storage file"}
         </p>
         <p className="pt-1 font-mono text-xs text-muted-foreground">
-          {selection.source === "app" ? selection.applicationId : selection.path}
+          {selection.source === "app"
+            ? selection.applicationId
+            : selection.path}
         </p>
       </div>
     );

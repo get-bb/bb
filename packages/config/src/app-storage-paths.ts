@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { ApplicationId } from "@bb/domain";
+import { applicationIdSchema, type ApplicationId } from "@bb/domain";
 
 export function resolveAppsRootPath(dataDir: string): string {
   return join(dataDir, "apps");
@@ -13,7 +13,10 @@ export function resolveApplicationPath(
   dataDir: string,
   applicationId: ApplicationId,
 ): string {
-  return join(resolveAppsRootPath(dataDir), applicationId);
+  return join(
+    resolveAppsRootPath(dataDir),
+    applicationIdSchema.parse(applicationId),
+  );
 }
 
 export function resolveApplicationManifestPath(

@@ -150,7 +150,7 @@ export type PublicApiSchema = {
   "/apps": {
     /** List global local-host apps by scanning valid manifests in the app root. */
     $get: Endpoint<EmptyInput, AppSummary[]>;
-    /** Create one global local-host app with an allocated applicationId. */
+    /** Create one global local-host app with a slug applicationId, derived from name when omitted. */
     $post: Endpoint<{ json: CreateAppRequest }, AppDetail, 201>;
   };
   "/apps/:applicationId": {
