@@ -28,6 +28,19 @@ const macConfigSchema = z
   })
   .passthrough();
 
+const electronBuilderFileSetSchema = z
+  .object({
+    filter: z.array(z.string().min(1)),
+    from: z.string().min(1),
+    to: z.string().min(1),
+  })
+  .passthrough();
+
+const electronBuilderFilePatternSchema = z.union([
+  z.string().min(1),
+  electronBuilderFileSetSchema,
+]);
+
 const electronBuilderConfigSchema = z
   .object({
     afterPack: z.string().min(1),
@@ -37,7 +50,7 @@ const electronBuilderConfigSchema = z
         sign: z.boolean(),
       })
       .passthrough(),
-    files: z.array(z.string().min(1)),
+    files: z.array(electronBuilderFilePatternSchema),
     mac: macConfigSchema,
     npmRebuild: z.literal(false),
     publish: z.tuple([
@@ -238,6 +251,23 @@ describe("electron-builder signing config", () => {
     const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
 
     expect(config.files).toContain("!**/*.map");
+  });
+
+  it("copies the app scaffold template as a dedicated file set", async () => {
+    const configText = await readFile(
+      resolve(desktopPackageRoot, "electron-builder.config.json"),
+      "utf8",
+    );
+    const config = electronBuilderConfigSchema.parse(JSON.parse(configText));
+
+    // electron-builder prunes *.d.ts while collecting node_modules. The
+    // scaffold source is user-editable template content, so copy that subtree
+    // separately without relaxing dependency pruning for the rest of node_modules.
+    expect(config.files).toContainEqual({
+      filter: ["**/*"],
+      from: "node_modules/bb-app/server/dist/app-scaffold-template",
+      to: "node_modules/bb-app/server/dist/app-scaffold-template",
+    });
   });
 
   it("patches packaged node-pty helper path handling", async () => {

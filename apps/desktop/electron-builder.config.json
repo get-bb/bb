@@ -13,6 +13,11 @@
     "assets/**",
     "dist/**",
     "node_modules/**",
+    {
+      "from": "node_modules/bb-app/server/dist/app-scaffold-template",
+      "to": "node_modules/bb-app/server/dist/app-scaffold-template",
+      "filter": ["**/*"]
+    },
     "package.json",
     "!**/*.map"
   ],
