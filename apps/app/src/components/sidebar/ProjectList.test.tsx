@@ -15,7 +15,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
-import { useAtom } from "jotai";
 import type { QueryClient } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -35,8 +34,6 @@ import {
   type FetchRoute,
 } from "@/test/http-test-utils";
 import { wsManager } from "@/lib/ws";
-import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
-import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
 import {
@@ -196,10 +193,6 @@ interface RootComposeReuseProbeProps {
   onValue: (value: string | null) => void;
 }
 
-interface PanelStateProbeProps {
-  threadId: string;
-}
-
 function buildProjectListHandler(args: ProjectListHandlerArgs) {
   return (request: Request) => {
     const url = new URL(request.url);
@@ -267,44 +260,6 @@ function RootComposeReuseProbe({
   }, [onValue, value]);
 
   return null;
-}
-
-function PanelStateProbe({ threadId }: PanelStateProbeProps) {
-  const state = useFixedPanelTabsState(threadId);
-  return (
-    <div data-testid="panel-state">
-      {JSON.stringify({
-        activeTabId: state.secondary.activeTabId,
-        isOpen: state.secondary.isOpen,
-      })}
-    </div>
-  );
-}
-
-interface ConversationCollapseProbeProps {
-  threadId: string;
-}
-
-// Mirrors one thread's conversation-collapse preference the thread detail view
-// reads/writes, and exposes a button that stands in for the collapsed rail's
-// expand control so a sidebar-only test can drive the same state. Keyed by
-// threadId so a test can probe several threads independently.
-function ConversationCollapseProbe({
-  threadId,
-}: ConversationCollapseProbeProps) {
-  const [collapsed, setCollapsed] = useAtom(
-    getThreadConversationCollapsedAtom(threadId),
-  );
-  return (
-    <div>
-      <div data-testid={`conversation-collapsed:${threadId}`}>
-        {String(collapsed)}
-      </div>
-      <button type="button" onClick={() => setCollapsed(false)}>
-        {`expand-conversation:${threadId}`}
-      </button>
-    </div>
-  );
 }
 
 async function renderProjectList(
@@ -639,7 +594,7 @@ describe("ProjectList", () => {
     ).toBe(true);
   });
 
-  it("opens a global app in the selected thread's secondary panel", async () => {
+  it("opens a global app on its standalone route", async () => {
     const project = makeProjectResponse({
       id: "project-1",
       name: "Project One",
@@ -694,33 +649,23 @@ describe("ProjectList", () => {
       },
     ]);
 
-    // The app opens into whatever thread is in view, so start on the manager.
+    // Apps open on their own route regardless of the thread in view.
     window.history.pushState(
       null,
       "",
       `/projects/${project.id}/threads/${managerThread.id}`,
     );
 
-    await renderProjectList(
-      {},
-      { extraUi: <PanelStateProbe threadId={managerThread.id} /> },
-    );
+    await renderProjectList();
 
     fireEvent.click(await findReviewBoardAppButton());
 
     await waitFor(() => {
-      const probe = screen.getByTestId("panel-state");
-      expect(probe.textContent).toContain(
-        '"activeTabId":"app:app_review_board"',
-      );
-      expect(probe.textContent).toContain('"isOpen":true');
+      expect(window.location.pathname).toBe("/apps/app_review_board");
     });
-    expect(window.location.pathname).toBe(
-      `/projects/${project.id}/threads/${managerThread.id}`,
-    );
   });
 
-  it("disables global app rows when no thread is selected", async () => {
+  it("keeps global app rows enabled and routable when no thread is selected", async () => {
     const project = makeProjectResponse({
       id: "project-1",
       name: "Project One",
@@ -768,13 +713,20 @@ describe("ProjectList", () => {
       },
     ]);
 
-    // Root view: no thread is in view, so there is no panel to host the app.
+    // Root view: no thread selected. The app still opens via its standalone
+    // route, so the row is interactive rather than disabled.
     window.history.pushState(null, "", "/");
 
     await renderProjectList();
 
     const appRow = await findReviewBoardAppButton();
-    expect(appRow).toHaveProperty("disabled", true);
+    expect(appRow).toHaveProperty("disabled", false);
+
+    fireEvent.click(appRow);
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/apps/app_review_board");
+    });
   });
 
   it("keeps the Apps section visible when a manager is collapsed", async () => {
@@ -1648,323 +1600,5 @@ describe("ProjectList", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
-  });
-
-  it("collapses the conversation and moves the single selection to the opened app row", async () => {
-    const project = makeProjectResponse({
-      id: "project-1",
-      name: "Project One",
-    });
-    const managerThread = makeThreadListEntry(project.id, 10, {
-      id: "thread-manager-app-select",
-      title: "Sidebar Manager",
-      titleFallback: "Sidebar Manager",
-      type: "manager",
-    });
-    const personalProject = makeProjectWithThreadsResponse({
-      id: PERSONAL_PROJECT_ID,
-      kind: "personal",
-      name: "Personal",
-      threads: [],
-    });
-    installProjectListFetchRoutes([
-      {
-        pathname: "/api/v1/sidebar-bootstrap",
-        handler: () =>
-          jsonResponse(
-            buildSidebarNavigationResponse({
-              personalProject,
-              projects: [project],
-              threadsByProjectId: new Map([[project.id, [managerThread]]]),
-            }),
-          ),
-      },
-      {
-        pathname: "/api/v1/apps",
-        handler: () => jsonResponse([REVIEW_BOARD_APP]),
-      },
-      {
-        pathname: "/api/v1/projects",
-        handler: () => jsonResponse([project]),
-      },
-      {
-        pathname: "/api/v1/threads",
-        handler: () => jsonResponse([]),
-      },
-      {
-        pathname: "/api/v1/system/config",
-        handler: () =>
-          jsonResponse({
-            hostDaemonPort: null,
-            voiceTranscriptionEnabled: false,
-          }),
-      },
-      {
-        pathname: "/api/v1/hosts",
-        handler: () => jsonResponse([]),
-      },
-    ]);
-
-    // Start on the manager thread route so its row is the selected surface.
-    window.history.pushState(
-      null,
-      "",
-      `/projects/${project.id}/threads/${managerThread.id}`,
-    );
-
-    await renderProjectList(
-      {},
-      { extraUi: <ConversationCollapseProbe threadId={managerThread.id} /> },
-    );
-
-    const appRow = await findReviewBoardAppButton();
-    const findManagerRow = () =>
-      screen
-        .getByText("Sidebar Manager")
-        .closest("[data-sidebar-sticky-tier='manager']");
-
-    // Conversation active: the manager row owns the single selected highlight
-    // and no app row is highlighted.
-    expect(findManagerRow()?.className).toContain("bg-sidebar-border");
-    expect(appRow.className).not.toContain("bg-sidebar-border");
-    expect(
-      screen.getByTestId(`conversation-collapsed:${managerThread.id}`)
-        .textContent,
-    ).toBe("false");
-
-    fireEvent.click(appRow);
-
-    // App opened: the conversation collapses and the app row becomes the single
-    // selected row; the manager row drops its selected background.
-    await waitFor(() => {
-      expect(
-        screen.getByTestId(`conversation-collapsed:${managerThread.id}`)
-          .textContent,
-      ).toBe("true");
-    });
-    expect(
-      screen.getByRole("button", { name: "Open Review Board app" }).className,
-    ).toContain("bg-sidebar-border");
-    expect(findManagerRow()?.className).not.toContain("bg-sidebar-border");
-
-    // Expanding the conversation flips the selection back to the manager row.
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: `expand-conversation:${managerThread.id}`,
-      }),
-    );
-
-    await waitFor(() => {
-      expect(findManagerRow()?.className).toContain("bg-sidebar-border");
-    });
-    expect(
-      screen.getByRole("button", { name: "Open Review Board app" }).className,
-    ).not.toContain("bg-sidebar-border");
-  });
-
-  it("restores the conversation when its thread row is selected while collapsed", async () => {
-    const project = makeProjectResponse({
-      id: "project-1",
-      name: "Project One",
-    });
-    const managerThread = makeThreadListEntry(project.id, 10, {
-      id: "thread-manager-row-restore",
-      title: "Sidebar Manager",
-      titleFallback: "Sidebar Manager",
-      type: "manager",
-    });
-    const personalProject = makeProjectWithThreadsResponse({
-      id: PERSONAL_PROJECT_ID,
-      kind: "personal",
-      name: "Personal",
-      threads: [],
-    });
-    installProjectListFetchRoutes([
-      {
-        pathname: "/api/v1/sidebar-bootstrap",
-        handler: () =>
-          jsonResponse(
-            buildSidebarNavigationResponse({
-              personalProject,
-              projects: [project],
-              threadsByProjectId: new Map([[project.id, [managerThread]]]),
-            }),
-          ),
-      },
-      {
-        pathname: "/api/v1/apps",
-        handler: () => jsonResponse([REVIEW_BOARD_APP]),
-      },
-      {
-        pathname: "/api/v1/projects",
-        handler: () => jsonResponse([project]),
-      },
-      {
-        pathname: "/api/v1/threads",
-        handler: () => jsonResponse([]),
-      },
-      {
-        pathname: "/api/v1/system/config",
-        handler: () =>
-          jsonResponse({
-            hostDaemonPort: null,
-            voiceTranscriptionEnabled: false,
-          }),
-      },
-      {
-        pathname: "/api/v1/hosts",
-        handler: () => jsonResponse([]),
-      },
-    ]);
-
-    // Start on the manager thread route so its row is the selected surface.
-    window.history.pushState(
-      null,
-      "",
-      `/projects/${project.id}/threads/${managerThread.id}`,
-    );
-
-    await renderProjectList(
-      {},
-      { extraUi: <ConversationCollapseProbe threadId={managerThread.id} /> },
-    );
-
-    // Opening the app collapses the conversation so the app fills the view.
-    fireEvent.click(
-      await findReviewBoardAppButton(),
-    );
-    await waitFor(() => {
-      expect(
-        screen.getByTestId(`conversation-collapsed:${managerThread.id}`)
-          .textContent,
-      ).toBe("true");
-    });
-
-    // Selecting the agent/thread row is the inverse: it restores the
-    // conversation by clearing this thread's own collapse flag.
-    fireEvent.click(screen.getByRole("link", { name: "Open Sidebar Manager" }));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId(`conversation-collapsed:${managerThread.id}`)
-          .textContent,
-      ).toBe("false");
-    });
-  });
-
-  it("keeps each thread's collapse state isolated when selecting another thread", async () => {
-    const project = makeProjectResponse({
-      id: "project-1",
-      name: "Project One",
-    });
-    const managerA = makeThreadListEntry(project.id, 10, {
-      id: "thread-manager-a",
-      title: "Manager A",
-      titleFallback: "Manager A",
-      type: "manager",
-    });
-    const managerB = makeThreadListEntry(project.id, 9, {
-      id: "thread-manager-b",
-      title: "Manager B",
-      titleFallback: "Manager B",
-      type: "manager",
-    });
-    const personalProject = makeProjectWithThreadsResponse({
-      id: PERSONAL_PROJECT_ID,
-      kind: "personal",
-      name: "Personal",
-      threads: [],
-    });
-    installProjectListFetchRoutes([
-      {
-        pathname: "/api/v1/sidebar-bootstrap",
-        handler: () =>
-          jsonResponse(
-            buildSidebarNavigationResponse({
-              personalProject,
-              projects: [project],
-              threadsByProjectId: new Map([[project.id, [managerA, managerB]]]),
-            }),
-          ),
-      },
-      {
-        pathname: "/api/v1/apps",
-        handler: () => jsonResponse([REVIEW_BOARD_APP]),
-      },
-      {
-        pathname: "/api/v1/projects",
-        handler: () => jsonResponse([project]),
-      },
-      {
-        pathname: "/api/v1/threads",
-        handler: () => jsonResponse([]),
-      },
-      {
-        pathname: "/api/v1/system/config",
-        handler: () =>
-          jsonResponse({
-            hostDaemonPort: null,
-            voiceTranscriptionEnabled: false,
-          }),
-      },
-      {
-        pathname: "/api/v1/hosts",
-        handler: () => jsonResponse([]),
-      },
-    ]);
-
-    // Start on Manager A so opening its app targets A's thread.
-    window.history.pushState(
-      null,
-      "",
-      `/projects/${project.id}/threads/${managerA.id}`,
-    );
-
-    await renderProjectList(
-      {},
-      {
-        extraUi: (
-          <>
-            <ConversationCollapseProbe threadId={managerA.id} />
-            <ConversationCollapseProbe threadId={managerB.id} />
-          </>
-        ),
-      },
-    );
-
-    // The single global app row opens into the selected thread (Manager A),
-    // collapsing A's conversation to show the app full-screen.
-    fireEvent.click(await findReviewBoardAppButton());
-    await waitFor(() => {
-      expect(
-        screen.getByTestId(`conversation-collapsed:${managerA.id}`).textContent,
-      ).toBe("true");
-    });
-    // B was never collapsed.
-    expect(
-      screen.getByTestId(`conversation-collapsed:${managerB.id}`).textContent,
-    ).toBe("false");
-
-    // Selecting B's row restores only B and leaves A collapsed (full-screen app).
-    fireEvent.click(screen.getByRole("link", { name: "Open Manager B" }));
-    await waitFor(() => {
-      expect(window.location.pathname).toBe(
-        `/projects/${project.id}/threads/${managerB.id}`,
-      );
-    });
-    expect(
-      screen.getByTestId(`conversation-collapsed:${managerB.id}`).textContent,
-    ).toBe("false");
-    expect(
-      screen.getByTestId(`conversation-collapsed:${managerA.id}`).textContent,
-    ).toBe("true");
-
-    // Reselecting A restores only A.
-    fireEvent.click(screen.getByRole("link", { name: "Open Manager A" }));
-    await waitFor(() => {
-      expect(
-        screen.getByTestId(`conversation-collapsed:${managerA.id}`).textContent,
-      ).toBe("false");
-    });
   });
 });

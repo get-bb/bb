@@ -85,6 +85,16 @@ describe("useAppRoute", () => {
     expect(route.isProjectlessView).toBe(false);
   });
 
+  it("recognizes the standalone app route", () => {
+    const route = renderRouteCapture({ initialEntry: "/apps/app_alpha" });
+
+    expect(route.applicationId).toBe("app_alpha");
+    expect(route.isAppView).toBe(true);
+    expect(route.threadId).toBeUndefined();
+    expect(route.projectId).toBeUndefined();
+    expect(route.isThreadView).toBe(false);
+  });
+
   it("does not accept personal project thread routes", () => {
     const route = renderRouteCapture({
       initialEntry: `/projects/${PERSONAL_PROJECT_ID}/threads/thr_personal`,

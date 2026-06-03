@@ -6,6 +6,10 @@ export interface AppRouteState {
   projectId: string | undefined;
   /** ID of the thread in view (thread detail only), else undefined. */
   threadId: string | undefined;
+  /** ID of the global app in view (standalone app route only), else undefined. */
+  applicationId: string | undefined;
+  /** On the standalone app surface (`/apps/:applicationId`). */
+  isAppView: boolean;
   /** On a thread detail URL. */
   isThreadView: boolean;
   /** On the project's archived threads list. */
@@ -35,6 +39,7 @@ export function useAppRoute(): AppRouteState {
   const projectlessThreadMatch = useMatch("/threads/:threadId/*");
   const projectArchivedMatch = useMatch("/projects/:projectId/archived");
   const projectSettingsMatch = useMatch("/projects/:projectId/settings");
+  const appMatch = useMatch("/apps/:applicationId");
   const isRootView = location.pathname === "/";
   const isUnsupportedPersonalProjectThread =
     projectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID;
@@ -55,6 +60,8 @@ export function useAppRoute(): AppRouteState {
   return {
     projectId,
     threadId,
+    applicationId: appMatch?.params.applicationId,
+    isAppView: Boolean(appMatch),
     isThreadView:
       Boolean(projectlessThreadMatch) ||
       (Boolean(projectThreadMatch) && !isUnsupportedPersonalProjectThread),

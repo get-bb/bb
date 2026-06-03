@@ -5,6 +5,7 @@ export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
 export const APP_SETTINGS_ROUTE_PATH = "/settings";
 export const DEVELOPMENT_REPLAY_ROUTE_PATH = "/development-only/replay";
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
+export const STANDALONE_APP_ROUTE_PATH = "/apps/:applicationId";
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_THREAD_DETAIL_ROUTE_PATH = "/threads/:threadId";
 export const PROJECT_SETTINGS_ROUTE_PATH = "/projects/:projectId/settings";
@@ -45,10 +46,15 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
     : `/projects/${args.projectId}/threads/${args.threadId}`;
 }
 
+export function getStandaloneAppRoutePath(applicationId: string): string {
+  return `/apps/${applicationId}`;
+}
+
 const baseAppRoutePatterns: readonly string[] = [
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
   APP_SETTINGS_ROUTE_PATH,
+  STANDALONE_APP_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,

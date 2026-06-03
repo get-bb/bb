@@ -24,6 +24,7 @@ import {
   stripProjectThreads,
 } from "@/hooks/queries/project-queries";
 import {
+  useApp,
   useThread,
   useThreadDetailBootstrap,
 } from "@/hooks/queries/thread-queries";
@@ -340,6 +341,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const {
     projectId,
     threadId,
+    applicationId,
+    isAppView,
     isThreadView,
     isArchivedView,
     isSettingsView,
@@ -400,6 +403,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";
+  // The standalone app route has no thread/project chrome, so the global header
+  // carries the app name (resolved from the manifest) the way it carries thread
+  // and project titles elsewhere.
+  const { data: app } = useApp(applicationId, { enabled: isAppView });
+  const appDisplayTitle = app?.name ?? "App";
   useEffect(() => {
     if (!thread?.projectId) return;
     setRootComposeProjectId(thread.projectId);
@@ -409,7 +417,12 @@ export function AppLayout({ children }: AppLayoutProps) {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
         subtitle: undefined,
       }
-    : isArchivedView && projectId
+    : isAppView
+      ? {
+          title: appDisplayTitle,
+          subtitle: undefined,
+        }
+      : isArchivedView && projectId
       ? {
           title: "",
           subtitle: undefined,
@@ -443,6 +456,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const documentTitle = (() => {
     if (isThreadView) {
       return threadDisplayTitle;
+    }
+    if (isAppView) {
+      return appDisplayTitle;
     }
     if (isArchivedView && projectId) {
       return `${projectLabel ?? projectId} · Archived`;

@@ -20,6 +20,7 @@ import {
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
+  STANDALONE_APP_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
 } from "./lib/app-route-paths";
 
@@ -46,6 +47,11 @@ const InternalReplayListView = lazy(() =>
     default: m.InternalReplayListView,
   })),
 );
+const StandaloneAppView = lazy(() =>
+  import("./views/standalone-app/StandaloneAppView").then((m) => ({
+    default: m.StandaloneAppView,
+  })),
+);
 
 function AppRoutes() {
   return (
@@ -54,6 +60,10 @@ function AppRoutes() {
         <Routes>
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
           <Route path={APP_SETTINGS_ROUTE_PATH} element={<AppSettingsView />} />
+          <Route
+            path={STANDALONE_APP_ROUTE_PATH}
+            element={<StandaloneAppView />}
+          />
           {import.meta.env.DEV ? (
             <Route
               path={DEVELOPMENT_REPLAY_ROUTE_PATH}

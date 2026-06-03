@@ -35,13 +35,38 @@ export function buildThreadStorageRawContentUrl(
   return `/api/v1/threads/${encodeURIComponent(threadId)}/thread-storage/files/${encodePathSegments(path)}`;
 }
 
-export function buildAppEntryUrl(
-  applicationId: string,
-  targetThreadId: string,
-): string {
-  return `/api/v1/apps/${encodeURIComponent(
-    applicationId,
-  )}/?targetThreadId=${encodeURIComponent(targetThreadId)}`;
+export interface AppEntryUrlArgs {
+  applicationId: string;
+  /**
+   * Thread the app should target for its `message` capability. `null` for the
+   * standalone surface, where the app renders thread-independently and has no
+   * thread to post into.
+   */
+  targetThreadId: string | null;
+  /**
+   * Cache-busting token (typically the app detail's `dataUpdatedAt`) so the
+   * iframe reloads when the underlying app changes. Omitted when no reload
+   * tracking is needed.
+   */
+  reloadToken?: number | string;
+}
+
+export function buildAppEntryUrl({
+  applicationId,
+  targetThreadId,
+  reloadToken,
+}: AppEntryUrlArgs): string {
+  const params = new URLSearchParams();
+  if (targetThreadId !== null) {
+    params.set("targetThreadId", targetThreadId);
+  }
+  if (reloadToken !== undefined) {
+    params.set("v", String(reloadToken));
+  }
+  const query = params.toString();
+  return `/api/v1/apps/${encodeURIComponent(applicationId)}/${
+    query ? `?${query}` : ""
+  }`;
 }
 
 export function buildAppAssetUrl(
