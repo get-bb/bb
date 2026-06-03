@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
+import { useSetAtom } from "jotai";
 import type { ThreadType } from "@bb/domain";
 import {
   useFixedPanelTabsState,
@@ -27,6 +28,7 @@ import {
   type HostFileTabState,
   type WorkspaceFileTabState,
 } from "@/lib/file-preview";
+import { getThreadSecondaryPanelOpenAtom } from "./threadSecondaryPanelAtoms";
 import { useRecordThreadRecentItem } from "./threadRecentItems";
 
 interface AppTabDescriptor {
@@ -391,9 +393,13 @@ export function useOpenThreadAppTab(
   threadId: string | null | undefined,
 ): (applicationId: string) => void {
   const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
+  const setThreadSecondaryPanelOpen = useSetAtom(
+    getThreadSecondaryPanelOpenAtom(threadId),
+  );
   return useCallback(
     (applicationId: string) => {
       const nextTab = createAppTab(applicationId);
+      setThreadSecondaryPanelOpen(true);
       updateFixedPanelTabsState((state) => {
         const tabs = upsertSecondaryTab(state.secondary.tabs, nextTab);
         if (
@@ -411,7 +417,7 @@ export function useOpenThreadAppTab(
         });
       });
     },
-    [updateFixedPanelTabsState],
+    [setThreadSecondaryPanelOpen, updateFixedPanelTabsState],
   );
 }
 
@@ -424,6 +430,9 @@ export function useThreadFileTabs({
 }: UseThreadFileTabsParams) {
   const fixedPanelTabsState = useFixedPanelTabsState(threadId);
   const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
+  const setThreadSecondaryPanelOpen = useSetAtom(
+    getThreadSecondaryPanelOpenAtom(threadId),
+  );
   const recordRecentItem = useRecordThreadRecentItem(threadId);
   const isThreadResolved = threadType !== undefined;
   const isManagerThread = threadType === "manager";
@@ -527,6 +536,7 @@ export function useThreadFileTabs({
   const openWorkspaceFile = useCallback(
     ({ lineNumber, path, source, statusLabel }: WorkspaceFileTabState) => {
       if (resolvedEnvironmentId === undefined) return;
+      setThreadSecondaryPanelOpen(true);
       // Only working-tree opens are recorded as recent: a recent row reopens the
       // live file, so diff-only previews (head/merge-base) would reopen to the
       // wrong content.
@@ -564,7 +574,12 @@ export function useThreadFileTabs({
         });
       });
     },
-    [recordRecentItem, resolvedEnvironmentId, updateFixedPanelTabsState],
+    [
+      recordRecentItem,
+      resolvedEnvironmentId,
+      setThreadSecondaryPanelOpen,
+      updateFixedPanelTabsState,
+    ],
   );
 
   const closeWorkspaceFileTab = useCallback(
@@ -591,6 +606,10 @@ export function useThreadFileTabs({
 
   const activateWorkspaceFileTab = useCallback(
     (path: string) => {
+      if (findWorkspaceTab(fixedPanelTabsState.secondary.tabs, path) === null) {
+        return;
+      }
+      setThreadSecondaryPanelOpen(true);
       updateFixedPanelTabsState((state) => {
         const tab = findWorkspaceTab(state.secondary.tabs, path);
         if (!tab) {
@@ -607,12 +626,17 @@ export function useThreadFileTabs({
         });
       });
     },
-    [updateFixedPanelTabsState],
+    [
+      fixedPanelTabsState.secondary.tabs,
+      setThreadSecondaryPanelOpen,
+      updateFixedPanelTabsState,
+    ],
   );
 
   const openStorageFile = useCallback(
     (path: string) => {
       if (!isManagerThread) return;
+      setThreadSecondaryPanelOpen(true);
       recordRecentItem({ source: "thread-storage", path });
       const nextTab = createStorageTab(path);
       updateFixedPanelTabsState((state) => {
@@ -632,12 +656,18 @@ export function useThreadFileTabs({
         });
       });
     },
-    [isManagerThread, recordRecentItem, updateFixedPanelTabsState],
+    [
+      isManagerThread,
+      recordRecentItem,
+      setThreadSecondaryPanelOpen,
+      updateFixedPanelTabsState,
+    ],
   );
 
   const openHostFile = useCallback(
     ({ lineNumber, path }: HostFileTabState) => {
       if (!threadId) return;
+      setThreadSecondaryPanelOpen(true);
       const nextTab = createHostFilePreviewFixedPanelTab({
         lineNumber,
         path,
@@ -661,7 +691,7 @@ export function useThreadFileTabs({
         });
       });
     },
-    [threadId, updateFixedPanelTabsState],
+    [setThreadSecondaryPanelOpen, threadId, updateFixedPanelTabsState],
   );
 
   const closeHostFileTab = useCallback(
@@ -688,6 +718,10 @@ export function useThreadFileTabs({
 
   const activateHostFileTab = useCallback(
     (path: string) => {
+      if (findHostFileTab(fixedPanelTabsState.secondary.tabs, path) === null) {
+        return;
+      }
+      setThreadSecondaryPanelOpen(true);
       updateFixedPanelTabsState((state) => {
         const tab = findHostFileTab(state.secondary.tabs, path);
         if (!tab) {
@@ -704,7 +738,11 @@ export function useThreadFileTabs({
         });
       });
     },
-    [updateFixedPanelTabsState],
+    [
+      fixedPanelTabsState.secondary.tabs,
+      setThreadSecondaryPanelOpen,
+      updateFixedPanelTabsState,
+    ],
   );
 
   const openApp = useOpenThreadAppTab(threadId);
@@ -733,6 +771,12 @@ export function useThreadFileTabs({
 
   const activateAppTab = useCallback(
     (applicationId: string) => {
+      if (
+        findAppTab(fixedPanelTabsState.secondary.tabs, applicationId) === null
+      ) {
+        return;
+      }
+      setThreadSecondaryPanelOpen(true);
       updateFixedPanelTabsState((state) => {
         const tab = findAppTab(state.secondary.tabs, applicationId);
         if (!tab) {
@@ -749,7 +793,11 @@ export function useThreadFileTabs({
         });
       });
     },
-    [updateFixedPanelTabsState],
+    [
+      fixedPanelTabsState.secondary.tabs,
+      setThreadSecondaryPanelOpen,
+      updateFixedPanelTabsState,
+    ],
   );
 
   // Opening a browser tab swaps the transient new-tab in place (like selecting
@@ -759,13 +807,18 @@ export function useThreadFileTabs({
   const openBrowserTab = useCallback(
     (url?: string) => {
       const nextTab = createBrowserFixedPanelTab({ url: url ?? "" });
+      setThreadSecondaryPanelOpen(true);
       updateFixedPanelTabsState((state) => replaceNewTab({ nextTab, state }));
     },
-    [updateFixedPanelTabsState],
+    [setThreadSecondaryPanelOpen, updateFixedPanelTabsState],
   );
 
   const activateBrowserTab = useCallback(
     (tabId: string) => {
+      if (findBrowserTab(fixedPanelTabsState.secondary.tabs, tabId) === null) {
+        return;
+      }
+      setThreadSecondaryPanelOpen(true);
       updateFixedPanelTabsState((state) => {
         const tab = findBrowserTab(state.secondary.tabs, tabId);
         if (!tab) {
@@ -782,7 +835,11 @@ export function useThreadFileTabs({
         });
       });
     },
-    [updateFixedPanelTabsState],
+    [
+      fixedPanelTabsState.secondary.tabs,
+      setThreadSecondaryPanelOpen,
+      updateFixedPanelTabsState,
+    ],
   );
 
   const closeBrowserTab = useCallback(
@@ -863,6 +920,10 @@ export function useThreadFileTabs({
   const activateStorageFileTab = useCallback(
     (path: string) => {
       if (!isManagerThread) return;
+      if (findStorageFileTab(fixedPanelTabsState.secondary.tabs, path) === null) {
+        return;
+      }
+      setThreadSecondaryPanelOpen(true);
       updateFixedPanelTabsState((state) => {
         const tab = findStorageFileTab(state.secondary.tabs, path);
         if (!tab) {
@@ -879,11 +940,17 @@ export function useThreadFileTabs({
         });
       });
     },
-    [isManagerThread, updateFixedPanelTabsState],
+    [
+      fixedPanelTabsState.secondary.tabs,
+      isManagerThread,
+      setThreadSecondaryPanelOpen,
+      updateFixedPanelTabsState,
+    ],
   );
 
   const openNewTab = useCallback(() => {
     const newTab = createNewTabFixedPanelTab();
+    setThreadSecondaryPanelOpen(true);
     updateFixedPanelTabsState((state) => {
       const tabs = upsertSecondaryTab(state.secondary.tabs, newTab);
       if (
@@ -900,10 +967,14 @@ export function useThreadFileTabs({
         tabs,
       });
     });
-  }, [updateFixedPanelTabsState]);
+  }, [setThreadSecondaryPanelOpen, updateFixedPanelTabsState]);
 
   const activateNewTab = useCallback(() => {
     const newTab = createNewTabFixedPanelTab();
+    if (findNewTab(fixedPanelTabsState.secondary.tabs) === null) {
+      return;
+    }
+    setThreadSecondaryPanelOpen(true);
     updateFixedPanelTabsState((state) => {
       const existingTab = findNewTab(state.secondary.tabs);
       if (!existingTab) {
@@ -919,7 +990,11 @@ export function useThreadFileTabs({
         tabs: state.secondary.tabs,
       });
     });
-  }, [updateFixedPanelTabsState]);
+  }, [
+    fixedPanelTabsState.secondary.tabs,
+    setThreadSecondaryPanelOpen,
+    updateFixedPanelTabsState,
+  ]);
 
   const closeNewTab = useCallback(() => {
     const newTab = createNewTabFixedPanelTab();
@@ -944,12 +1019,14 @@ export function useThreadFileTabs({
     (selection: FileSearchSelection) => {
       if (selection.source === "app") {
         const nextTab = createAppTab(selection.applicationId);
+        setThreadSecondaryPanelOpen(true);
         updateFixedPanelTabsState((state) => replaceNewTab({ nextTab, state }));
         return;
       }
 
       if (selection.source === "workspace") {
         if (resolvedEnvironmentId === undefined) return;
+        setThreadSecondaryPanelOpen(true);
         recordRecentItem({ source: "workspace", path: selection.path });
         const nextTab = createWorkspaceFilePreviewFixedPanelTab({
           environmentId: resolvedEnvironmentId,
@@ -965,6 +1042,7 @@ export function useThreadFileTabs({
       }
 
       if (!isManagerThread) return;
+      setThreadSecondaryPanelOpen(true);
       recordRecentItem({ source: "thread-storage", path: selection.path });
       const nextTab = createStorageTab(selection.path);
       updateFixedPanelTabsState((state) => replaceNewTab({ nextTab, state }));
@@ -973,6 +1051,7 @@ export function useThreadFileTabs({
       isManagerThread,
       recordRecentItem,
       resolvedEnvironmentId,
+      setThreadSecondaryPanelOpen,
       updateFixedPanelTabsState,
     ],
   );

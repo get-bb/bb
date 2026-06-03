@@ -268,6 +268,11 @@ export interface FixedPanelTabsState {
   lastUsedAt: number;
 }
 
+interface GetActiveSecondaryAppIdArgs {
+  isSecondaryPanelOpen: boolean;
+  state: FixedPanelTabsState;
+}
+
 /**
  * The application id of the secondary panel's active tab when that tab is an
  * app and the panel is open, else null. Lets sidebar rows tell whether a
@@ -275,10 +280,10 @@ export interface FixedPanelTabsState {
  * tab list shape themselves.
  */
 export function getActiveSecondaryAppId(
-  state: FixedPanelTabsState,
+  { isSecondaryPanelOpen, state }: GetActiveSecondaryAppIdArgs,
 ): string | null {
-  const { activeTabId, isOpen, tabs } = state.secondary;
-  if (!isOpen || activeTabId === null) {
+  const { activeTabId, tabs } = state.secondary;
+  if (!isSecondaryPanelOpen || activeTabId === null) {
     return null;
   }
   const activeTab = tabs.find((tab) => tab.id === activeTabId);

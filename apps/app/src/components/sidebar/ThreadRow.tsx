@@ -5,7 +5,10 @@ import type {
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
 import type { ThreadListEntry } from "@bb/domain";
-import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import {
+  getThreadConversationCollapsedAtom,
+  getThreadSecondaryPanelOpenAtom,
+} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import { getActiveSecondaryAppId } from "@/lib/fixed-panel-tabs-state";
 import { Icon, type IconName } from "@/components/ui/icon.js";
@@ -309,10 +312,16 @@ function ThreadRowComponent({
   const isConversationCollapsed = useAtomValue(
     getThreadConversationCollapsedAtom(thread.id),
   );
+  const isSecondaryPanelOpen = useAtomValue(
+    getThreadSecondaryPanelOpenAtom(thread.id),
+  );
   const fixedPanelTabsState = useFixedPanelTabsState(thread.id);
   const appOwnsSurface =
     isConversationCollapsed &&
-    getActiveSecondaryAppId(fixedPanelTabsState) !== null;
+    getActiveSecondaryAppId({
+      isSecondaryPanelOpen,
+      state: fixedPanelTabsState,
+    }) !== null;
   const showActive = isActive && !appOwnsSurface;
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;

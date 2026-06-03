@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { Provider as JotaiProvider } from "jotai";
+import { Provider as JotaiProvider, useAtomValue } from "jotai";
 import { useCallback, type ReactNode } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  getThreadSecondaryPanelOpenAtom,
+  getThreadSecondaryPanelOpenStorageKey,
+} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   useFixedPanelTabsSecondaryPanelUrlSync,
   useFixedPanelTabsState,
@@ -53,6 +57,9 @@ function createTestWrapper(args: CreateTestWrapperArgs = {}) {
 
 function useSelectionHarness({ threadId }: SelectionHookProps) {
   const fixedPanelTabsState = useFixedPanelTabsState(threadId);
+  const isSecondaryPanelOpen = useAtomValue(
+    getThreadSecondaryPanelOpenAtom(threadId),
+  );
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
@@ -60,7 +67,7 @@ function useSelectionHarness({ threadId }: SelectionHookProps) {
     activeFixedSecondaryTab,
   });
   const activeSecondaryPanel = getActiveThreadSecondaryPanel({
-    fixedPanelTabsState,
+    isSecondaryPanelOpen,
     selectedSecondaryPanel,
   });
   const setThreadSecondaryPanel = useSetThreadSecondaryPanelSelection(threadId);
@@ -70,6 +77,7 @@ function useSelectionHarness({ threadId }: SelectionHookProps) {
   return {
     activeSecondaryPanel,
     fixedPanelTabsState,
+    isSecondaryPanelOpen,
     selectedSecondaryPanel,
     setThreadSecondaryPanel,
     toggleThreadSecondaryPanel,
@@ -116,6 +124,7 @@ describe("thread secondary panel selection", () => {
 
     expect(result.current.activeSecondaryPanel).toBe("git-diff");
     expect(result.current.selectedSecondaryPanel).toBe("git-diff");
+    expect(result.current.isSecondaryPanelOpen).toBe(true);
     expect(result.current.fixedPanelTabsState.secondary.isOpen).toBe(true);
     expect(result.current.fixedPanelTabsState.secondary.activeTabId).toBe(
       "git-diff",
@@ -130,6 +139,7 @@ describe("thread secondary panel selection", () => {
 
     expect(result.current.activeSecondaryPanel).toBeNull();
     expect(result.current.selectedSecondaryPanel).toBe("git-diff");
+    expect(result.current.isSecondaryPanelOpen).toBe(false);
     expect(result.current.fixedPanelTabsState.secondary.isOpen).toBe(false);
     expect(result.current.fixedPanelTabsState.secondary.activeTabId).toBe(
       "git-diff",
@@ -144,7 +154,79 @@ describe("thread secondary panel selection", () => {
 
     expect(result.current.activeSecondaryPanel).toBe("git-diff");
     expect(result.current.selectedSecondaryPanel).toBe("git-diff");
+    expect(result.current.isSecondaryPanelOpen).toBe(true);
     expect(result.current.fixedPanelTabsState.secondary.isOpen).toBe(true);
+  });
+
+  it("restores each thread's remembered panel-open state and hydrates it from storage", () => {
+    const threadA = "thr-panel-open-a";
+    const threadB = "thr-panel-open-b";
+    const { rerender, result, unmount } = renderHook(
+      (props: SelectionHookProps) => useSelectionHarness(props),
+      {
+        initialProps: { threadId: threadA },
+        wrapper: createTestWrapper({
+          initialEntries: [`/projects/proj_test/threads/${threadA}`],
+        }),
+      },
+    );
+
+    act(() => {
+      result.current.setThreadSecondaryPanel("thread-info");
+    });
+
+    expect(result.current.isSecondaryPanelOpen).toBe(true);
+    expect(
+      window.localStorage.getItem(
+        getThreadSecondaryPanelOpenStorageKey({ threadId: threadA }),
+      ),
+    ).toBe("true");
+
+    rerender({ threadId: threadB });
+
+    expect(result.current.isSecondaryPanelOpen).toBe(false);
+    expect(result.current.activeSecondaryPanel).toBeNull();
+    expect(
+      window.localStorage.getItem(
+        getThreadSecondaryPanelOpenStorageKey({ threadId: threadB }),
+      ),
+    ).toBeNull();
+
+    act(() => {
+      result.current.toggleThreadSecondaryPanel();
+    });
+    expect(result.current.isSecondaryPanelOpen).toBe(true);
+
+    act(() => {
+      result.current.toggleThreadSecondaryPanel();
+    });
+
+    expect(result.current.isSecondaryPanelOpen).toBe(false);
+    expect(
+      window.localStorage.getItem(
+        getThreadSecondaryPanelOpenStorageKey({ threadId: threadB }),
+      ),
+    ).toBe("false");
+
+    rerender({ threadId: threadA });
+
+    expect(result.current.isSecondaryPanelOpen).toBe(true);
+    expect(result.current.activeSecondaryPanel).toBe("thread-info");
+
+    unmount();
+
+    const { result: reloadedResult } = renderHook(
+      (props: SelectionHookProps) => useSelectionHarness(props),
+      {
+        initialProps: { threadId: threadA },
+        wrapper: createTestWrapper({
+          initialEntries: [`/projects/proj_test/threads/${threadA}`],
+        }),
+      },
+    );
+
+    expect(reloadedResult.current.isSecondaryPanelOpen).toBe(true);
+    expect(reloadedResult.current.activeSecondaryPanel).toBe("thread-info");
   });
 
   it("consumes a URL override without rewriting another thread preference", async () => {

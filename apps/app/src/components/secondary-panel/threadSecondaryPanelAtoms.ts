@@ -5,6 +5,24 @@ import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
 
 export const threadSecondaryPanelResizingAtom = atom(false);
 
+type ResolvedThreadSecondaryPanelThreadId = string;
+type ThreadSecondaryPanelThreadId =
+  | ResolvedThreadSecondaryPanelThreadId
+  | null
+  | undefined;
+
+interface ThreadSecondaryPanelStorageKeyArgs {
+  prefix: string;
+  threadId: ResolvedThreadSecondaryPanelThreadId;
+}
+
+function getThreadSecondaryPanelStorageKey({
+  prefix,
+  threadId,
+}: ThreadSecondaryPanelStorageKeyArgs): string {
+  return `${prefix}-${encodeURIComponent(threadId)}`;
+}
+
 /**
  * User's preferred secondary panel width as a percentage of the surrounding
  * PanelGroup. Persisted across reloads. The default (50) is used when the
@@ -28,6 +46,76 @@ export const secondaryPanelWidthPercentAtom = atomWithStorage<number>(
   { getOnInit: true },
 );
 
+const threadSecondaryPanelBooleanStorage =
+  createLocalStorageSyncStorage<boolean>({
+    parse: (storedValue, initialValue) => {
+      if (storedValue === "true") return true;
+      if (storedValue === "false") return false;
+      return initialValue;
+    },
+    serialize: (value) => String(value),
+  });
+
+/**
+ * Whether a given thread's secondary panel is open on wide viewports. Stored
+ * separately from the tab list so the user's right-panel layout choice is
+ * restored per thread even as app/fullscreen and conversation-collapse flows
+ * mutate the selected tab. Defaults closed for threads with no stored value,
+ * matching the empty fixed-panel state.
+ */
+const THREAD_SECONDARY_PANEL_OPEN_STORAGE_PREFIX =
+  "bb.thread.secondaryPanel.open";
+
+interface ThreadSecondaryPanelOpenStorageKeyArgs {
+  threadId: ResolvedThreadSecondaryPanelThreadId;
+}
+
+export function getThreadSecondaryPanelOpenStorageKey({
+  threadId,
+}: ThreadSecondaryPanelOpenStorageKeyArgs): string {
+  return getThreadSecondaryPanelStorageKey({
+    prefix: THREAD_SECONDARY_PANEL_OPEN_STORAGE_PREFIX,
+    threadId,
+  });
+}
+
+const threadSecondaryPanelOpenAtomFamily = atomFamily(
+  (threadId: ResolvedThreadSecondaryPanelThreadId) =>
+    atomWithStorage<boolean>(
+      getThreadSecondaryPanelOpenStorageKey({ threadId }),
+      false,
+      threadSecondaryPanelBooleanStorage,
+      { getOnInit: true },
+    ),
+);
+
+// Fallback for callers without a resolved thread id (e.g. before routing
+// settles). It stays false and any write lands on this throwaway atom, so no
+// real thread's panel-open state is affected.
+const disabledThreadSecondaryPanelOpenAtom = atom(false);
+
+function hasThreadId(
+  threadId: ThreadSecondaryPanelThreadId,
+): threadId is ResolvedThreadSecondaryPanelThreadId {
+  return threadId !== null && threadId !== undefined && threadId.length > 0;
+}
+
+/**
+ * The panel-open atom for a specific thread. `atomFamily` memoizes by threadId,
+ * so repeated calls with the same id return a stable atom reference safe to
+ * pass straight to `useAtom`/`useSetAtom`/`useAtomValue`.
+ */
+export function getThreadSecondaryPanelOpenAtom(
+  threadId: ThreadSecondaryPanelThreadId,
+) {
+  return hasThreadId(threadId)
+    ? threadSecondaryPanelOpenAtomFamily(threadId)
+    : disabledThreadSecondaryPanelOpenAtom;
+}
+
+const THREAD_CONVERSATION_COLLAPSED_STORAGE_PREFIX =
+  "bb.thread.conversation.collapsed";
+
 /**
  * Whether a given thread's conversation/timeline pane is collapsed so the
  * secondary panel fills the whole content area. Keyed per thread (like the
@@ -37,37 +125,29 @@ export const secondaryPanelWidthPercentAtom = atomWithStorage<number>(
  * Persisted per thread; only takes effect while the secondary panel is open on
  * a wide viewport — see ThreadDetailSecondaryContent for the gating.
  */
-const THREAD_CONVERSATION_COLLAPSED_STORAGE_PREFIX =
-  "bb.thread.conversation.collapsed";
-
 interface ThreadConversationCollapsedStorageKeyArgs {
-  threadId: string;
+  threadId: ResolvedThreadSecondaryPanelThreadId;
 }
 
 export function getThreadConversationCollapsedStorageKey({
   threadId,
 }: ThreadConversationCollapsedStorageKeyArgs): string {
-  return `${THREAD_CONVERSATION_COLLAPSED_STORAGE_PREFIX}-${encodeURIComponent(
+  return getThreadSecondaryPanelStorageKey({
+    prefix: THREAD_CONVERSATION_COLLAPSED_STORAGE_PREFIX,
     threadId,
-  )}`;
+  });
 }
 
-const conversationCollapsedStorage = createLocalStorageSyncStorage<boolean>({
-  parse: (storedValue, initialValue) => {
-    if (storedValue === "true") return true;
-    if (storedValue === "false") return false;
-    return initialValue;
-  },
-  serialize: (value) => String(value),
-});
+const conversationCollapsedStorage = threadSecondaryPanelBooleanStorage;
 
-const threadConversationCollapsedAtomFamily = atomFamily((threadId: string) =>
-  atomWithStorage<boolean>(
-    getThreadConversationCollapsedStorageKey({ threadId }),
-    false,
-    conversationCollapsedStorage,
-    { getOnInit: true },
-  ),
+const threadConversationCollapsedAtomFamily = atomFamily(
+  (threadId: ResolvedThreadSecondaryPanelThreadId) =>
+    atomWithStorage<boolean>(
+      getThreadConversationCollapsedStorageKey({ threadId }),
+      false,
+      conversationCollapsedStorage,
+      { getOnInit: true },
+    ),
 );
 
 // Fallback for callers without a resolved thread id (e.g. before routing
@@ -75,17 +155,13 @@ const threadConversationCollapsedAtomFamily = atomFamily((threadId: string) =>
 // real thread's collapse state is affected.
 const disabledThreadConversationCollapsedAtom = atom(false);
 
-function hasThreadId(threadId: string | null | undefined): threadId is string {
-  return threadId !== null && threadId !== undefined && threadId.length > 0;
-}
-
 /**
  * The conversation-collapsed atom for a specific thread. `atomFamily` memoizes
  * by threadId, so repeated calls with the same id return a stable atom
  * reference safe to pass straight to `useAtom`/`useSetAtom`/`useAtomValue`.
  */
 export function getThreadConversationCollapsedAtom(
-  threadId: string | null | undefined,
+  threadId: ThreadSecondaryPanelThreadId,
 ) {
   return hasThreadId(threadId)
     ? threadConversationCollapsedAtomFamily(threadId)

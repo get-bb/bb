@@ -38,6 +38,7 @@ interface LastFixedPanelTabsTouch {
 }
 
 type FixedPanelSecondaryPanelSetter = (panel: ThreadSecondaryPanel) => void;
+type FixedPanelSecondaryPanelOpener = () => void;
 type FixedPanelSecondaryPanelCloser = () => void;
 type FixedPanelSecondaryPanelToggler = () => void;
 type FixedPanelTerminalIdSetter = (terminalId: string | null) => void;
@@ -301,6 +302,15 @@ export function useCloseFixedSecondaryPanel(
   const updateState = useUpdateFixedPanelTabsState(threadId);
   return useCallback(() => {
     updateState(closeFixedSecondaryPanelState);
+  }, [updateState]);
+}
+
+export function useOpenFixedSecondaryPanel(
+  threadId: FixedPanelTabsThreadId,
+): FixedPanelSecondaryPanelOpener {
+  const updateState = useUpdateFixedPanelTabsState(threadId);
+  return useCallback(() => {
+    updateState(openFixedSecondaryPanelState);
   }, [updateState]);
 }
 

@@ -1,8 +1,10 @@
 import { useCallback } from "react";
+import { useAtomValue, useSetAtom } from "jotai";
+import { getThreadSecondaryPanelOpenAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   useCloseFixedSecondaryPanel,
+  useOpenFixedSecondaryPanel,
   useSetFixedSecondaryPanelTab,
-  useToggleFixedSecondaryPanel,
 } from "@/lib/fixed-panel-tabs";
 import type {
   FixedPanelTab,
@@ -25,7 +27,7 @@ interface GetSelectedThreadSecondaryPanelArgs {
 }
 
 interface GetActiveThreadSecondaryPanelArgs {
-  fixedPanelTabsState: FixedPanelTabsState;
+  isSecondaryPanelOpen: boolean;
   selectedSecondaryPanel: ActiveThreadSecondaryPanel;
 }
 
@@ -72,10 +74,10 @@ export function getSelectedThreadSecondaryPanel({
 }
 
 export function getActiveThreadSecondaryPanel({
-  fixedPanelTabsState,
+  isSecondaryPanelOpen,
   selectedSecondaryPanel,
 }: GetActiveThreadSecondaryPanelArgs): ActiveThreadSecondaryPanel {
-  return fixedPanelTabsState.secondary.isOpen ? selectedSecondaryPanel : null;
+  return isSecondaryPanelOpen ? selectedSecondaryPanel : null;
 }
 
 export function useSetThreadSecondaryPanelSelection(
@@ -83,21 +85,52 @@ export function useSetThreadSecondaryPanelSelection(
 ): NullableSecondaryPanelSetter {
   const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(threadId);
   const setFixedSecondaryPanelTab = useSetFixedSecondaryPanelTab(threadId);
+  const setThreadSecondaryPanelOpen = useSetAtom(
+    getThreadSecondaryPanelOpenAtom(threadId),
+  );
 
   return useCallback<NullableSecondaryPanelSetter>(
     (panel) => {
       if (panel === null) {
+        setThreadSecondaryPanelOpen(false);
         closeFixedSecondaryPanel();
         return;
       }
+      setThreadSecondaryPanelOpen(true);
       setFixedSecondaryPanelTab(panel);
     },
-    [closeFixedSecondaryPanel, setFixedSecondaryPanelTab],
+    [
+      closeFixedSecondaryPanel,
+      setFixedSecondaryPanelTab,
+      setThreadSecondaryPanelOpen,
+    ],
   );
 }
 
 export function useToggleThreadSecondaryPanelSelection(
   threadId: ThreadSecondaryPanelThreadId,
 ): () => void {
-  return useToggleFixedSecondaryPanel(threadId);
+  const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(threadId);
+  const openFixedSecondaryPanel = useOpenFixedSecondaryPanel(threadId);
+  const isSecondaryPanelOpen = useAtomValue(
+    getThreadSecondaryPanelOpenAtom(threadId),
+  );
+  const setThreadSecondaryPanelOpen = useSetAtom(
+    getThreadSecondaryPanelOpenAtom(threadId),
+  );
+
+  return useCallback(() => {
+    if (isSecondaryPanelOpen) {
+      setThreadSecondaryPanelOpen(false);
+      closeFixedSecondaryPanel();
+      return;
+    }
+    setThreadSecondaryPanelOpen(true);
+    openFixedSecondaryPanel();
+  }, [
+    closeFixedSecondaryPanel,
+    isSecondaryPanelOpen,
+    openFixedSecondaryPanel,
+    setThreadSecondaryPanelOpen,
+  ]);
 }

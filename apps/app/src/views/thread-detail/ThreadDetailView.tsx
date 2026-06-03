@@ -78,7 +78,10 @@ import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import { useThreadSecondaryPanelVisibility } from "./useThreadSecondaryPanelVisibility";
 import type { HostConnectionNotice } from "./ThreadTimelinePane";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
-import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import {
+  getThreadConversationCollapsedAtom,
+  getThreadSecondaryPanelOpenAtom,
+} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   HostFilePreviewTabContent,
   ThreadStorageFilePreviewTabContent,
@@ -191,6 +194,9 @@ export function ThreadDetailView() {
   useFixedPanelTabsStorageMaintenance(threadId);
   useThreadTerminalPanelStorageMaintenance(threadId);
   const fixedPanelTabsState = useFixedPanelTabsState(threadId);
+  const isPersistedSecondaryPanelOpen = useAtomValue(
+    getThreadSecondaryPanelOpenAtom(threadId),
+  );
   const terminalPanelState = useThreadTerminalPanelState(threadId);
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
@@ -199,7 +205,7 @@ export function ThreadDetailView() {
     activeFixedSecondaryTab,
   });
   const activeSecondaryPanel = getActiveThreadSecondaryPanel({
-    fixedPanelTabsState,
+    isSecondaryPanelOpen: isPersistedSecondaryPanelOpen,
     selectedSecondaryPanel,
   });
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
@@ -366,17 +372,6 @@ export function ThreadDetailView() {
     onSelectPath: openStorageFile,
     selectedPath: activeStorageFilePath,
   });
-  const togglePersistedSecondaryPanel = useCallback(() => {
-    if (fixedPanelTabsState.secondary.isOpen) {
-      setThreadSecondaryPanel(null);
-      return;
-    }
-    toggleDefaultPersistedSecondaryPanel();
-  }, [
-    fixedPanelTabsState.secondary.isOpen,
-    setThreadSecondaryPanel,
-    toggleDefaultPersistedSecondaryPanel,
-  ]);
   const handleUseStandardManagerTimelineChange = useCallback(
     (checked: boolean) => {
       if (!isManagerThread) {
@@ -494,13 +489,13 @@ export function ThreadDetailView() {
     togglePanel: toggleSecondaryPanel,
   } = useThreadSecondaryPanelVisibility({
     closePersistedPanel: closeThreadSecondaryPanel,
-    isPersistedOpen: fixedPanelTabsState.secondary.isOpen,
+    isPersistedOpen: isPersistedSecondaryPanelOpen,
     isCompactViewport: renderSecondaryPanelAsDrawer,
     openPersistedDiffFile,
     openPersistedDiffPanel,
     openPersistedPanel: openPersistedSecondaryPanel,
     threadId,
-    togglePersistedPanel: togglePersistedSecondaryPanel,
+    togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
   const [storedConversationCollapsed, setStoredConversationCollapsed] = useAtom(
     getThreadConversationCollapsedAtom(threadId),
