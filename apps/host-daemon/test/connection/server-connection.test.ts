@@ -583,6 +583,33 @@ describe("ServerConnection", () => {
     await connection.shutdown();
   });
 
+  it("sends application storage change hints over the daemon websocket", async () => {
+    testServer = await createTestServer();
+    const server = testServer;
+    const { connection } = createConnection(server);
+
+    await connection.start();
+    expect(
+      connection.sendMessage({
+        type: "application-storage-changed",
+      }),
+    ).toBe(true);
+
+    await waitFor(() =>
+      server.heartbeats.some(
+        (entry) => entry.message.type === "application-storage-changed",
+      ),
+    );
+    expect(server.heartbeats).toContainEqual({
+      sessionId: "session-1",
+      message: {
+        type: "application-storage-changed",
+      },
+    });
+
+    await connection.shutdown();
+  });
+
   it("buffers deduplicated environment change hints while disconnected and flushes after reconnect", async () => {
     testServer = await createTestServer();
     const server = testServer;
@@ -637,6 +664,46 @@ describe("ServerConnection", () => {
           type: "environment-change",
           environmentId: "env-1",
           change: "thread-storage-changed",
+        },
+      },
+    ]);
+
+    await connection.shutdown();
+  });
+
+  it("buffers one application storage change hint while disconnected and flushes after reconnect", async () => {
+    testServer = await createTestServer();
+    const server = testServer;
+    const { connection } = createConnection(server);
+
+    expect(
+      connection.sendMessage({
+        type: "application-storage-changed",
+      }),
+    ).toBe(false);
+    expect(
+      connection.sendMessage({
+        type: "application-storage-changed",
+      }),
+    ).toBe(false);
+    expect(server.heartbeats).toEqual([]);
+
+    await connection.start();
+    await waitFor(
+      () =>
+        server.heartbeats.filter(
+          (entry) => entry.message.type === "application-storage-changed",
+        ).length === 1,
+    );
+    expect(
+      server.heartbeats.filter(
+        (entry) => entry.message.type === "application-storage-changed",
+      ),
+    ).toEqual([
+      {
+        sessionId: "session-1",
+        message: {
+          type: "application-storage-changed",
         },
       },
     ]);

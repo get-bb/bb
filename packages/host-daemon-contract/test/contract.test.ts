@@ -2104,6 +2104,14 @@ describe("host-daemon session schemas", () => {
     });
 
     expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "application-storage-changed",
+      }),
+    ).toEqual({
+      type: "application-storage-changed",
+    });
+
+    expect(
       contract.hostDaemonAppDataChangeRequestSchema.parse({
         sessionId: "session_123",
         threadId: "thr_123",

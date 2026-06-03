@@ -64,11 +64,11 @@ describe("thread storage watcher classification", () => {
     const changes = collectApplicationStorageObservedChanges({
       appsRootPath: rootPath,
       changedPaths: [
-        path.join(rootPath, "app_status", "manifest.json"),
+        path.join(rootPath, "app-status", "manifest.json"),
         path.join(rootPath, "app_new"),
         path.join(rootPath, "bad.app", "data", "state.json"),
-        path.join(rootPath, ".tmp-app_app_status-abc", "manifest.json"),
-        path.join(rootPath, ".delete-app_app_status-abc", "manifest.json"),
+        path.join(rootPath, ".tmp-app_app-status-abc", "manifest.json"),
+        path.join(rootPath, ".delete-app_app-status-abc", "manifest.json"),
       ],
       resolveApplicationTarget: createApplicationResolver({}),
     });
@@ -83,20 +83,20 @@ describe("thread storage watcher classification", () => {
     const changes = collectApplicationStorageObservedChanges({
       appsRootPath: rootPath,
       changedPaths: [
-        path.join(rootPath, "app_status", "data", "state.json"),
-        path.join(rootPath, "app_status", "data", "state.json"),
-        path.join(rootPath, "app_kanban", "data", "cards", "1"),
-        path.join(rootPath, "app_unknown", "data", "state.json"),
-        path.join(rootPath, ".tmp-app_app_status-abc", "data", "state.json"),
+        path.join(rootPath, "app-status", "data", "state.json"),
+        path.join(rootPath, "app-status", "data", "state.json"),
+        path.join(rootPath, "app-kanban", "data", "cards", "1"),
+        path.join(rootPath, "app-unknown", "data", "state.json"),
+        path.join(rootPath, ".tmp-app_app-status-abc", "data", "state.json"),
       ],
       resolveApplicationTarget: createApplicationResolver({
-        app_status: {
-          applicationId: "app_status",
-          appDataPath: path.join(rootPath, "app_status", "data"),
+        "app-status": {
+          applicationId: "app-status",
+          appDataPath: path.join(rootPath, "app-status", "data"),
         },
-        app_kanban: {
-          applicationId: "app_kanban",
-          appDataPath: path.join(rootPath, "app_kanban", "data"),
+        "app-kanban": {
+          applicationId: "app-kanban",
+          appDataPath: path.join(rootPath, "app-kanban", "data"),
         },
       }),
     });
@@ -104,14 +104,14 @@ describe("thread storage watcher classification", () => {
     expect(changes).toEqual([
       {
         kind: "application-data-changed",
-        applicationId: "app_status",
-        appDataPath: path.join(rootPath, "app_status", "data"),
+        applicationId: "app-status",
+        appDataPath: path.join(rootPath, "app-status", "data"),
         path: "state.json",
       },
       {
         kind: "application-data-changed",
-        applicationId: "app_kanban",
-        appDataPath: path.join(rootPath, "app_kanban", "data"),
+        applicationId: "app-kanban",
+        appDataPath: path.join(rootPath, "app-kanban", "data"),
         path: "cards/1",
       },
     ]);
@@ -122,9 +122,9 @@ describe("thread storage watcher classification", () => {
     const changes = collectApplicationStorageObservedChanges({
       appsRootPath: rootPath,
       changedPaths: [
-        path.join(rootPath, "app_status", "data"),
-        path.join(rootPath, "app_status", "data", ".state.tmp"),
-        path.join(rootPath, "app_status", "data"),
+        path.join(rootPath, "app-status", "data"),
+        path.join(rootPath, "app-status", "data", ".state.tmp"),
+        path.join(rootPath, "app-status", "data"),
       ],
       resolveApplicationTarget: createApplicationResolver({}),
     });
@@ -132,7 +132,7 @@ describe("thread storage watcher classification", () => {
     expect(changes).toEqual([
       {
         kind: "application-data-resync",
-        applicationId: "app_status",
+        applicationId: "app-status",
       },
     ]);
   });
@@ -142,9 +142,9 @@ describe("thread storage watcher classification", () => {
     const changes = collectApplicationStorageObservedChanges({
       appsRootPath: rootPath,
       changedPaths: [
-        path.join(rootPath, "app_status", "skills", "demo-skill", "SKILL.md"),
-        path.join(rootPath, "app_status", "skills", "demo-skill", "references", "notes.md"),
-        path.join(rootPath, "app_other", "skills"),
+        path.join(rootPath, "app-status", "skills", "demo-skill", "SKILL.md"),
+        path.join(rootPath, "app-status", "skills", "demo-skill", "references", "notes.md"),
+        path.join(rootPath, "app-other", "skills"),
       ],
       resolveApplicationTarget: createApplicationResolver({}),
     });
@@ -152,12 +152,12 @@ describe("thread storage watcher classification", () => {
     expect(changes).toEqual([
       {
         kind: "injected-skills-changed",
-        applicationId: "app_status",
+        applicationId: "app-status",
         changedPaths: [
-          path.join(rootPath, "app_status", "skills", "demo-skill", "SKILL.md"),
+          path.join(rootPath, "app-status", "skills", "demo-skill", "SKILL.md"),
           path.join(
             rootPath,
-            "app_status",
+            "app-status",
             "skills",
             "demo-skill",
             "references",
@@ -168,8 +168,8 @@ describe("thread storage watcher classification", () => {
       },
       {
         kind: "injected-skills-changed",
-        applicationId: "app_other",
-        changedPaths: [path.join(rootPath, "app_other", "skills")],
+        applicationId: "app-other",
+        changedPaths: [path.join(rootPath, "app-other", "skills")],
         sourceType: "global-app",
       },
     ]);
@@ -181,7 +181,7 @@ describe("thread storage watcher classification", () => {
       dataDirSkillsRootPath: rootPath,
       changedPaths: [
         path.join(rootPath, "demo-skill", "SKILL.md"),
-        path.join(rootPath, "..", "apps", "app_status", "skills", "demo", "SKILL.md"),
+        path.join(rootPath, "..", "apps", "app-status", "skills", "demo", "SKILL.md"),
       ],
     });
 

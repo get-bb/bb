@@ -526,6 +526,12 @@ const hostDaemonEnvironmentChangeMessageSchema =
     })
     .strict();
 
+const hostDaemonApplicationStorageChangedMessageSchema = z
+  .object({
+    type: z.literal("application-storage-changed"),
+  })
+  .strict();
+
 const hostDaemonTerminalOpenedMessageSchema = z
   .object({
     type: z.literal("terminal.opened"),
@@ -580,6 +586,7 @@ const hostDaemonTerminalErrorMessageSchema = z
 export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonHeartbeatMessageSchema,
   hostDaemonEnvironmentChangeMessageSchema,
+  hostDaemonApplicationStorageChangedMessageSchema,
   hostDaemonTerminalOpenedMessageSchema,
   hostDaemonTerminalOutputMessageSchema,
   hostDaemonTerminalReplayMessageSchema,

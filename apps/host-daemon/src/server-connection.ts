@@ -51,6 +51,10 @@ type HostDaemonEnvironmentChangeMessage = Extract<
   { type: "environment-change" }
 >;
 
+const APPLICATION_STORAGE_CHANGED_MESSAGE = {
+  type: "application-storage-changed",
+} satisfies HostDaemonDaemonWsMessage;
+
 function environmentChangeMessageKey(
   message: HostDaemonEnvironmentChangeMessage,
 ): string {
@@ -96,6 +100,7 @@ export class ServerConnection {
     string,
     HostDaemonEnvironmentChangeMessage
   >();
+  private pendingApplicationStorageChanged = false;
 
   constructor(private readonly options: ServerConnectionOptions) {
     this.sessionCloseHandler = options.onSessionClose;
@@ -133,6 +138,7 @@ export class ServerConnection {
   async shutdown(): Promise<void> {
     this.stopped = true;
     this.pendingEnvironmentChanges.clear();
+    this.pendingApplicationStorageChanged = false;
     this.stopPollingFallback();
     this.clearHeartbeat();
     this.clearSession();
@@ -156,6 +162,9 @@ export class ServerConnection {
     this.websocket.send(JSON.stringify(payload));
     if (payload.type === "environment-change") {
       this.pendingEnvironmentChanges.delete(environmentChangeMessageKey(payload));
+    }
+    if (payload.type === "application-storage-changed") {
+      this.pendingApplicationStorageChanged = false;
     }
     return true;
   }
@@ -281,7 +290,7 @@ export class ServerConnection {
             "Connected to server",
           );
           await this.options.onSessionOpened?.(session);
-          this.flushPendingEnvironmentChanges();
+          this.flushPendingRecoverableMessages();
           if (!settled) {
             settled = true;
             resolve(session);
@@ -344,20 +353,25 @@ export class ServerConnection {
   private bufferMessageIfRecoverable(
     message: HostDaemonDaemonWsMessage,
   ): void {
-    if (message.type !== "environment-change") {
-      return;
+    if (message.type === "environment-change") {
+      this.pendingEnvironmentChanges.set(
+        environmentChangeMessageKey(message),
+        message,
+      );
     }
-    this.pendingEnvironmentChanges.set(
-      environmentChangeMessageKey(message),
-      message,
-    );
+    if (message.type === "application-storage-changed") {
+      this.pendingApplicationStorageChanged = true;
+    }
   }
 
-  private flushPendingEnvironmentChanges(): void {
+  private flushPendingRecoverableMessages(): void {
     for (const message of Array.from(this.pendingEnvironmentChanges.values())) {
       if (!this.sendMessage(message)) {
         return;
       }
+    }
+    if (this.pendingApplicationStorageChanged) {
+      this.sendMessage(APPLICATION_STORAGE_CHANGED_MESSAGE);
     }
   }
 

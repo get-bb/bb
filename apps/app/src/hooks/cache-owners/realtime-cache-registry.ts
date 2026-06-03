@@ -22,6 +22,9 @@ import {
 } from "./thread-list-cache-data";
 import {
   allHostQueryKeyPrefix,
+  allAppMarkdownPreviewQueryKeyPrefix,
+  allAppQueryKeyPrefix,
+  allAppsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
   allThreadQueryKeyPrefix,
   allThreadTerminalsQueryKeyPrefix,
@@ -269,6 +272,9 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
 export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   "config-changed": {
     dirty: [dirtySystemProviderQueries, dirtySystemExecutionOptionQueries],
+  },
+  "apps-changed": {
+    dirty: [dirtyAppListQueries],
   },
 } satisfies SystemChangeRegistry;
 
@@ -598,4 +604,12 @@ function dirtySystemProviderQueries(): QueryKey[] {
 
 function dirtySystemExecutionOptionQueries(): QueryKey[] {
   return [allSystemExecutionOptionsQueryKeyPrefix()];
+}
+
+function dirtyAppListQueries(): QueryKey[] {
+  return [
+    allAppsQueryKeyPrefix(),
+    allAppQueryKeyPrefix(),
+    allAppMarkdownPreviewQueryKeyPrefix(),
+  ];
 }

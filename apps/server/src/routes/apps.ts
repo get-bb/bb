@@ -190,6 +190,7 @@ interface AppSessionStore {
 type ApplicationStaticPath = SafeRelativeRoutePath;
 type AppManifestValidationIssues = readonly ZodIssue[];
 type AppManifestValidationLoggerDeps = Pick<AppDeps, "logger">;
+type GlobalAppListDeps = Pick<AppDeps, "config" | "hub" | "logger">;
 type AppSessionToken = string;
 type LogoExtension = "svg" | "png" | "jpg" | "jpeg";
 
@@ -205,6 +206,7 @@ const LOGO_EXTENSIONS: readonly LogoExtension[] = ["svg", "png", "jpg", "jpeg"];
 const APP_SESSION_TOKEN_PREFIX = "appsess_";
 const INVALID_APP_MANIFEST_MESSAGE =
   "App manifest failed validation. Inspect manifest.json or rebuild the app.";
+const globalAppListSignatureByDataDir = new Map<string, string>();
 
 class InvalidAppManifestError extends ApiError {
   readonly applicationId: ApplicationId;
@@ -603,7 +605,9 @@ function isIgnoredApplicationStorageEntry(entryName: string): boolean {
   return entryName.startsWith(".tmp-") || entryName.startsWith(".delete-");
 }
 
-async function listGlobalApplications(deps: AppDeps): Promise<AppSummary[]> {
+async function listGlobalApplications(
+  deps: GlobalAppListDeps,
+): Promise<AppSummary[]> {
   const appsRootPath = resolveAppsRootPath(deps.config.dataDir);
   let entries: Dirent[];
   try {
@@ -665,6 +669,49 @@ async function listGlobalApplications(deps: AppDeps): Promise<AppSummary[]> {
     }
   }
   return summaries;
+}
+
+function globalAppListSignature(apps: readonly AppSummary[]): string {
+  return JSON.stringify(apps);
+}
+
+function rememberGlobalAppListSignature(
+  deps: Pick<GlobalAppListDeps, "config">,
+  apps: readonly AppSummary[],
+): void {
+  globalAppListSignatureByDataDir.set(
+    deps.config.dataDir,
+    globalAppListSignature(apps),
+  );
+}
+
+export async function refreshGlobalAppListSignature(
+  deps: GlobalAppListDeps,
+): Promise<AppSummary[]> {
+  const apps = await listGlobalApplications(deps);
+  rememberGlobalAppListSignature(deps, apps);
+  return apps;
+}
+
+export async function notifyGlobalAppsChanged(
+  deps: GlobalAppListDeps,
+): Promise<void> {
+  await refreshGlobalAppListSignature(deps);
+  deps.hub.notifySystem(["apps-changed"]);
+}
+
+export async function notifyGlobalAppsChangedIfListChanged(
+  deps: GlobalAppListDeps,
+): Promise<void> {
+  const apps = await listGlobalApplications(deps);
+  const nextSignature = globalAppListSignature(apps);
+  const previousSignature = globalAppListSignatureByDataDir.get(
+    deps.config.dataDir,
+  );
+  globalAppListSignatureByDataDir.set(deps.config.dataDir, nextSignature);
+  if (previousSignature !== nextSignature) {
+    deps.hub.notifySystem(["apps-changed"]);
+  }
 }
 
 function createHtmlResponse(html: string): Response {
@@ -1319,7 +1366,7 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
   const appSessions = createAppSessionStore();
 
   get("/apps", async (context) =>
-    context.json(await listGlobalApplications(deps)),
+    context.json(await refreshGlobalAppListSignature(deps)),
   );
 
   post("/apps", createAppRequestSchema, async (context, payload) => {
@@ -1333,6 +1380,7 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
       dataDir: deps.config.dataDir,
       applicationId: createdApplicationId,
     });
+    await notifyGlobalAppsChanged(deps);
     return context.json(detail, 201);
   });
 
@@ -1356,6 +1404,7 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
       deps.config.dataDir,
       applicationId,
     );
+    await notifyGlobalAppsChanged(deps);
     if (result === "partial") {
       throw new ApiError(
         500,

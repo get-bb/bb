@@ -554,15 +554,21 @@ export async function createHostDaemonApp(
       });
     },
     onApplicationStorageTargetsChanged: () => {
-      void refreshTrackedApplicationDataTargets().catch((error) => {
-        options.logger.warn(
-          {
-            appsRootPath,
-            ...runtimeErrorLogFields(error),
-          },
-          "Failed to refresh tracked app data targets",
-        );
-      });
+      void refreshTrackedApplicationDataTargets()
+        .then(() => {
+          sendServerMessage({
+            type: "application-storage-changed",
+          });
+        })
+        .catch((error) => {
+          options.logger.warn(
+            {
+              appsRootPath,
+              ...runtimeErrorLogFields(error),
+            },
+            "Failed to refresh tracked app data targets",
+          );
+        });
     },
     onApplicationDataChanged: (change) => {
       void appDataChangeReporter.observe(change);

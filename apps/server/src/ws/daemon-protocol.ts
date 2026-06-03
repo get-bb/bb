@@ -10,6 +10,7 @@ import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
 import { requireAuthorizedActiveSession } from "../internal/session-state.js";
 import { handleDaemonSocketClosed } from "../internal/session-owner-side-effects.js";
 import { notifyDaemonEnvironmentChange } from "../internal/environment-changes.js";
+import { notifyGlobalAppsChangedIfListChanged } from "../routes/apps.js";
 import { decodeSocketPayload } from "./decode-payload.js";
 
 interface DaemonSocket {
@@ -109,6 +110,17 @@ export function onDaemonSocketMessage(
         hostId: args.hostId,
         environmentId: result.data.environmentId,
         change: result.data.change,
+      });
+      return;
+    }
+    if (result.data.type === "application-storage-changed") {
+      void notifyGlobalAppsChangedIfListChanged(deps).catch((error) => {
+        deps.logger.warn(
+          {
+            ...runtimeErrorLogFields(deps.config, error),
+          },
+          "Failed to refresh global app list after daemon storage change",
+        );
       });
       return;
     }

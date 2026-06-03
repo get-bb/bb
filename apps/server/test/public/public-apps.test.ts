@@ -12,7 +12,7 @@ import {
   appSummarySchema,
   type AppManifest,
 } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -411,11 +411,13 @@ describe("public global app routes", () => {
 
   it("creates and deletes apps atomically on the filesystem", async () => {
     await withTestHarness(async (harness) => {
+      const notifySystemSpy = vi.spyOn(harness.hub, "notifySystem");
       const createResponse = await harness.app.request("/api/v1/apps", {
         method: "POST",
         body: JSON.stringify({ name: "Created App" }),
       });
       expect(createResponse.status).toBe(201);
+      expect(notifySystemSpy).toHaveBeenCalledWith(["apps-changed"]);
       const created = appDetailSchema.parse(await readJson(createResponse));
       expect(created.applicationId).toBe("created-app");
       expect(created.name).toBe("Created App");
@@ -450,11 +452,13 @@ describe("public global app routes", () => {
         false,
       );
 
+      notifySystemSpy.mockClear();
       const deleteResponse = await harness.app.request(
         `/api/v1/apps/${created.applicationId}`,
         { method: "DELETE" },
       );
       expect(deleteResponse.status).toBe(200);
+      expect(notifySystemSpy).toHaveBeenCalledWith(["apps-changed"]);
       const deletedGetResponse = await harness.app.request(
         `/api/v1/apps/${created.applicationId}`,
       );

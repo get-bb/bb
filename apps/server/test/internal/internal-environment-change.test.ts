@@ -1,4 +1,12 @@
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import {
+  resolveApplicationManifestPath,
+  resolveApplicationPath,
+  resolveApplicationPublicPath,
+} from "@bb/config/app-storage-paths";
 import { getEnvironment } from "@bb/db";
+import type { AppManifest } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import { onDaemonSocketMessage } from "../../src/ws/daemon-protocol.js";
 import {
@@ -18,6 +26,38 @@ function createTestDaemonSocket(): TestDaemonSocket {
     close: vi.fn(),
     send: vi.fn(),
   };
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 1_000,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (!predicate()) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error("Timed out waiting for condition");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+async function writeApplication(
+  dataDir: string,
+  manifest: AppManifest,
+): Promise<void> {
+  await mkdir(resolveApplicationPublicPath(dataDir, manifest.id), {
+    recursive: true,
+  });
+  await writeFile(
+    resolveApplicationManifestPath(dataDir, manifest.id),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
+  await writeFile(
+    path.join(resolveApplicationPublicPath(dataDir, manifest.id), "index.html"),
+    "<!doctype html><title>External App</title>",
+    "utf8",
+  );
 }
 
 describe("internal environment change websocket hints", () => {
@@ -218,6 +258,81 @@ describe("internal environment change websocket hints", () => {
 
       expect(socket.close).toHaveBeenCalledWith(1008, "invalid-message");
       expect(notifyEnvironmentSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  it("notifies app list clients when a daemon watcher reports an externally added app", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-app-added",
+      });
+      const notifySystemSpy = vi.spyOn(harness.hub, "notifySystem");
+      const socket = createTestDaemonSocket();
+
+      const initialListResponse = await harness.app.request("/api/v1/apps");
+      expect(initialListResponse.status).toBe(200);
+      await writeApplication(harness.config.dataDir, {
+        manifestVersion: 1,
+        id: "external-added",
+        name: "External Added",
+        entry: "index.html",
+        capabilities: [],
+      });
+
+      onDaemonSocketMessage(harness.deps, {
+        hostId: host.id,
+        sessionId: session.id,
+        socket,
+        raw: JSON.stringify({
+          type: "application-storage-changed",
+        }),
+      });
+
+      await waitFor(() =>
+        notifySystemSpy.mock.calls.some(([changes]) =>
+          changes.includes("apps-changed"),
+        ),
+      );
+      expect(socket.close).not.toHaveBeenCalled();
+    });
+  });
+
+  it("notifies app list clients when a daemon watcher reports an externally removed app", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-app-removed",
+      });
+      await writeApplication(harness.config.dataDir, {
+        manifestVersion: 1,
+        id: "external-removed",
+        name: "External Removed",
+        entry: "index.html",
+        capabilities: [],
+      });
+      const initialListResponse = await harness.app.request("/api/v1/apps");
+      expect(initialListResponse.status).toBe(200);
+      const notifySystemSpy = vi.spyOn(harness.hub, "notifySystem");
+      const socket = createTestDaemonSocket();
+
+      await rm(
+        resolveApplicationPath(harness.config.dataDir, "external-removed"),
+        { recursive: true, force: true },
+      );
+      onDaemonSocketMessage(harness.deps, {
+        hostId: host.id,
+        sessionId: session.id,
+        socket,
+        raw: JSON.stringify({
+          type: "application-storage-changed",
+        }),
+      });
+
+      await waitFor(() =>
+        notifySystemSpy.mock.calls.some(([changes]) =>
+          changes.includes("apps-changed"),
+        ),
+      );
+      expect(socket.close).not.toHaveBeenCalled();
     });
   });
 });
