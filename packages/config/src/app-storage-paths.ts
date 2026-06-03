@@ -26,11 +26,11 @@ export function resolveApplicationManifestPath(
   return join(resolveApplicationPath(dataDir, applicationId), "manifest.json");
 }
 
-export function resolveApplicationAssetsPath(
+export function resolveApplicationPublicPath(
   dataDir: string,
   applicationId: ApplicationId,
 ): string {
-  return join(resolveApplicationPath(dataDir, applicationId), "assets");
+  return join(resolveApplicationPath(dataDir, applicationId), "public");
 }
 
 export function resolveApplicationDataPath(

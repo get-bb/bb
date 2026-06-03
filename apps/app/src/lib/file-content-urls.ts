@@ -69,22 +69,22 @@ export function buildAppEntryUrl({
   }`;
 }
 
-export function buildAppAssetUrl(
+export function buildAppPublicFileUrl(
   applicationId: string,
   path: string,
 ): string {
   return `/api/v1/apps/${encodeURIComponent(
     applicationId,
-  )}/assets/${encodePathSegments(path)}`;
+  )}/${encodePathSegments(path)}`;
 }
 
-export function buildAppAssetBaseUrl(
+export function buildAppPublicBaseUrl(
   applicationId: string,
   entryPath: string,
 ): string {
   const lastSlash = entryPath.lastIndexOf("/");
   const basePath = lastSlash === -1 ? "" : entryPath.slice(0, lastSlash + 1);
-  return buildAppAssetUrl(applicationId, basePath);
+  return buildAppPublicFileUrl(applicationId, basePath);
 }
 
 export function buildThreadHostFileContentUrl(

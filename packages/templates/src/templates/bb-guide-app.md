@@ -12,11 +12,12 @@ way to build dashboards, control panels, and other interactive surfaces that
 can open inside a thread panel.
 
 Important: a bb app is self-contained static HTML/CSS/JS/SVG. Put browser
-files under `<dataDir>/apps/<applicationId>/assets/`; bb serves the `entry`
-file directly from `/api/v1/apps/<applicationId>/`. Do not start a web server,
-localhost dev server, npm install, build step, bundler, or framework for a
-normal app. Inline CSS/JS, relative asset refs, and CDN resources such as
-Tailwind or fonts are fine.
+files under `<dataDir>/apps/<applicationId>/public/`; bb serves that directory
+as the app's web root at `/api/v1/apps/<applicationId>/`.
+
+Do not start a web server, localhost dev server, npm install, build step,
+bundler, or framework for a normal app. Inline CSS/JS, relative asset refs, and
+CDN resources such as Tailwind or fonts are fine.
 
 Storage layout:
 
@@ -25,15 +26,18 @@ Storage layout:
   apps/
     review-board/
       manifest.json
-      assets/
+      public/
         index.html
+        index-abc.js
+        assets/
+          index-def.css
       data/
         state.json
 ```
 
 Each app is rooted at `<dataDir>/apps/<applicationId>/`. The manifest lives at
-`manifest.json`, browser files live under `assets/`, and durable JSON state
-lives under `data/`.
+`manifest.json`, browser files live under `public/`, and durable JSON state
+lives under `data/`. Only `public/` is served as static web content.
 
 The app exists only when the local filesystem contains a valid manifest at
 `<dataDir>/apps/<applicationId>/manifest.json`. `manifest.id` is the canonical
@@ -56,17 +60,34 @@ Manifest:
 }
 ```
 
-`entry` is relative to `assets/`. HTML entries load in an app iframe and receive
+`entry` is relative to `public/`. HTML entries load in an app iframe and receive
 the `window.bb` bridge according to `capabilities`; Markdown entries render as
 static documents and do not receive `window.bb`. `capabilities` controls which
 `window.bb` helpers are injected for HTML entries: `data` enables
 `window.bb.data`, and `message` enables `window.bb.message`.
 
-The served app URL is flat: `/api/v1/apps/<applicationId>/<entry>` maps to
-`<dataDir>/apps/<applicationId>/assets/<entry>` on disk. HTML should use flat
-relative refs like `./index-abc.js`, not `./assets/index-abc.js`. If you are
-migrating an existing Vite build output, set `build.assetsDir = ""` so emitted
-files sit alongside `index.html`; new bb apps should stay plain static files.
+The served app entry URL is `/api/v1/apps/<applicationId>/`; bb serves
+`public/` transparently from that same URL root. Browser files in `public/`
+therefore resolve by normal browser URL rules with no `<base>` injection and no
+serve-time URL rewriting:
+`public/index-abc.js` maps to `/api/v1/apps/<applicationId>/index-abc.js`, and
+`public/assets/index-def.css` maps to
+`/api/v1/apps/<applicationId>/assets/index-def.css`.
+
+For Vite builds, set a relative base and copy the built `dist/` contents into
+`public/`:
+
+```ts
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  base: "./",
+});
+```
+
+Do not use Vite's default root-absolute base (`"/"`). Refs such as
+`/assets/index-abc.js` resolve against the bb server root, not the app route, so
+they will not load inside a mounted app.
 
 The icon is optional and uses a built-in icon name. Icon resolution order is:
 

@@ -1,11 +1,8 @@
 import { useMemo } from "react";
+import { useApp, useAppMarkdownPreview } from "@/hooks/queries/thread-queries";
 import {
-  useApp,
-  useAppMarkdownPreview,
-} from "@/hooks/queries/thread-queries";
-import {
-  buildAppAssetBaseUrl,
   buildAppEntryUrl,
+  buildAppPublicBaseUrl,
 } from "@/lib/file-content-urls";
 import { createAssetMarkdownUrlTransform } from "@/lib/markdown-url-transform";
 import { FilePreview as FilePreviewSurface } from "@/components/secondary-panel/FilePreview";
@@ -43,7 +40,7 @@ export function AppViewer({ applicationId, targetThreadId }: AppViewerProps) {
     if (markdownEntryPath === null) {
       return null;
     }
-    return buildAppAssetBaseUrl(applicationId, markdownEntryPath);
+    return buildAppPublicBaseUrl(applicationId, markdownEntryPath);
   }, [applicationId, markdownEntryPath]);
   const markdownUrlTransform = useMemo(() => {
     if (markdownAssetBaseUrl === null) {

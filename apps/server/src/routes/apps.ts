@@ -15,10 +15,10 @@ import mimeTypes from "mime-types";
 import type { Hono } from "hono";
 import type { ZodIssue } from "zod";
 import {
-  resolveApplicationAssetsPath,
   resolveApplicationDataPath,
   resolveApplicationManifestPath,
   resolveApplicationPath,
+  resolveApplicationPublicPath,
   resolveAppsRootPath,
 } from "@bb/config/app-storage-paths";
 import {
@@ -84,13 +84,13 @@ interface ReadApplicationRelativeFileArgs {
   dataDir: string;
   dotfiles: "allow" | "deny";
   path: string;
-  rootKind: "app" | "assets" | "data";
+  rootKind: "app" | "data" | "public";
 }
 
 interface ApplicationRootForKindArgs {
   applicationId: ApplicationId;
   dataDir: string;
-  rootKind: "app" | "assets" | "data";
+  rootKind: "app" | "data" | "public";
 }
 
 interface ReadApplicationDataEntryArgs {
@@ -113,15 +113,32 @@ interface DeleteApplicationDataEntryArgs extends ReadApplicationDataEntryArgs {}
 
 interface CreateInjectedAppHtmlResponseArgs {
   appSessionToken: AppSessionToken | null;
-  applicationId: ApplicationId;
   capabilities: AppCapability[];
   html: string;
+  applicationId: ApplicationId;
   requestUrl: string;
   targetThreadId: string | null;
 }
 
-interface ApplicationAssetRouteSegmentArgs {
+interface ApplicationRouteSegmentArgs {
   applicationId: string;
+}
+
+interface ServeApplicationStaticFileArgs {
+  deps: AppDeps;
+  rawApplicationId: string;
+  rawPath: string;
+}
+
+interface ApplicationStaticFile {
+  bytes: Buffer;
+  path: string;
+}
+
+interface ReadApplicationStaticFileArgs {
+  applicationId: ApplicationId;
+  staticPath: ApplicationStaticPath;
+  dataDir: string;
 }
 
 interface LogoResolution {
@@ -170,15 +187,15 @@ interface AppSessionStore {
   get(token: string): AppSession | null;
 }
 
-type AppAssetPath = SafeRelativeRoutePath;
+type ApplicationStaticPath = SafeRelativeRoutePath;
 type AppManifestValidationIssues = readonly ZodIssue[];
 type AppManifestValidationLoggerDeps = Pick<AppDeps, "logger">;
 type AppSessionToken = string;
 type LogoExtension = "svg" | "png" | "jpg" | "jpeg";
 
-const ASSETS_DIRECTORY_NAME = "assets";
 const DATA_DIRECTORY_NAME = "data";
 const MANIFEST_FILE_NAME = "manifest.json";
+const PUBLIC_DIRECTORY_NAME = "public";
 const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
 const NO_STORE_CACHE_CONTROL = "no-store";
 const CONTENT_TYPE_OPTIONS = "nosniff";
@@ -231,14 +248,12 @@ function parseAppDataPath(rawPath: string): AppDataPath {
   return parsed.data;
 }
 
-function applicationAssetRouteSegment(
-  args: ApplicationAssetRouteSegmentArgs,
-): string {
-  return `/apps/${encodeURIComponent(args.applicationId)}/assets/`;
+function applicationRouteSegment(args: ApplicationRouteSegmentArgs): string {
+  return `/apps/${encodeURIComponent(args.applicationId)}/`;
 }
 
 function applicationDataRouteSegment(
-  args: ApplicationAssetRouteSegmentArgs,
+  args: ApplicationRouteSegmentArgs,
 ): string {
   return `/apps/${encodeURIComponent(args.applicationId)}/data/`;
 }
@@ -266,18 +281,18 @@ function applicationRootForKind(args: ApplicationRootForKindArgs): string {
   if (args.rootKind === "app") {
     return resolveApplicationPath(args.dataDir, args.applicationId);
   }
-  if (args.rootKind === "assets") {
-    return resolveApplicationAssetsPath(args.dataDir, args.applicationId);
+  if (args.rootKind === "public") {
+    return resolveApplicationPublicPath(args.dataDir, args.applicationId);
   }
   return resolveApplicationDataPath(args.dataDir, args.applicationId);
 }
 
-function parseApplicationAssetPath(rawPath: string): AppAssetPath {
+function parseApplicationStaticPath(rawPath: string): ApplicationStaticPath {
   return parseSafeRelativeRoutePath({
     rawPath,
     directoryIndexPath: "index.html",
     dotfileSegmentPolicy: "not-found",
-    invalidPathMessage: "Invalid app asset path",
+    invalidPathMessage: "Invalid app static path",
   });
 }
 
@@ -473,7 +488,7 @@ async function resolveApplicationEntry(
       await statApplicationRelativeFile({
         ...args,
         path: candidate,
-        rootKind: "assets",
+        rootKind: "public",
         dotfiles: "deny",
       });
       return {
@@ -755,7 +770,7 @@ async function serveApplicationEntry(
   const metadata = await statApplicationRelativeFile({
     dataDir: deps.config.dataDir,
     applicationId,
-    rootKind: "assets",
+    rootKind: "public",
     path: entry.path,
     dotfiles: "deny",
   });
@@ -770,7 +785,7 @@ async function serveApplicationEntry(
   const result = await readApplicationRelativeFile({
     dataDir: deps.config.dataDir,
     applicationId,
-    rootKind: "assets",
+    rootKind: "public",
     path: entry.path,
     dotfiles: "deny",
   });
@@ -790,27 +805,52 @@ async function serveApplicationEntry(
   });
 }
 
-async function serveApplicationAsset(
-  deps: AppDeps,
-  rawApplicationId: string,
-  rawPath: string,
+function isPrivateApplicationStaticPath(
+  staticPath: ApplicationStaticPath,
+): boolean {
+  const [topLevelSegment] = staticPath.relativePath.split("/");
+  return (
+    topLevelSegment === MANIFEST_FILE_NAME ||
+    topLevelSegment === DATA_DIRECTORY_NAME
+  );
+}
+
+async function readApplicationStaticFile(
+  args: ReadApplicationStaticFileArgs,
+): Promise<ApplicationStaticFile> {
+  if (isPrivateApplicationStaticPath(args.staticPath)) {
+    throw new ApiError(404, "ENOENT", "App file not found");
+  }
+
+  return {
+    path: args.staticPath.relativePath,
+    bytes: await readApplicationRelativeFile({
+      dataDir: args.dataDir,
+      applicationId: args.applicationId,
+      rootKind: "public",
+      path: args.staticPath.relativePath,
+      dotfiles: "deny",
+    }),
+  };
+}
+
+async function serveApplicationStaticFile(
+  args: ServeApplicationStaticFileArgs,
 ): Promise<Response> {
-  const applicationId = parseApplicationId(rawApplicationId);
-  const assetPath = parseApplicationAssetPath(rawPath);
-  await readApplicationManifestForRequest(deps, {
-    dataDir: deps.config.dataDir,
+  const applicationId = parseApplicationId(args.rawApplicationId);
+  const staticPath = parseApplicationStaticPath(args.rawPath);
+  await readApplicationManifestForRequest(args.deps, {
+    dataDir: args.deps.config.dataDir,
     applicationId,
   });
-  const result = await readApplicationRelativeFile({
-    dataDir: deps.config.dataDir,
+  const result = await readApplicationStaticFile({
+    dataDir: args.deps.config.dataDir,
     applicationId,
-    rootKind: "assets",
-    path: assetPath.relativePath,
-    dotfiles: "deny",
+    staticPath,
   });
   const contentType =
-    mimeTypes.lookup(assetPath.relativePath) || "application/octet-stream";
-  return new Response(new Uint8Array(result), {
+    mimeTypes.lookup(result.path) || "application/octet-stream";
+  return new Response(new Uint8Array(result.bytes), {
     status: 200,
     headers: {
       "cache-control": NO_STORE_CACHE_CONTROL,
@@ -1087,7 +1127,7 @@ async function writeInitialApplicationFiles(
     entry: "index.html",
     capabilities: ["data", "message"],
   };
-  await mkdir(path.join(tempRootPath, ASSETS_DIRECTORY_NAME), {
+  await mkdir(path.join(tempRootPath, PUBLIC_DIRECTORY_NAME), {
     recursive: true,
   });
   await mkdir(path.join(tempRootPath, DATA_DIRECTORY_NAME), {
@@ -1099,7 +1139,7 @@ async function writeInitialApplicationFiles(
     "utf8",
   );
   await writeFile(
-    path.join(tempRootPath, ASSETS_DIRECTORY_NAME, "index.html"),
+    path.join(tempRootPath, PUBLIC_DIRECTORY_NAME, "index.html"),
     buildBlankAppIndexHtml({ name }),
     "utf8",
   );
@@ -1484,15 +1524,15 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
     return response;
   });
 
-  app.get("/apps/:applicationId/assets/*", async (context) => {
+  app.get("/apps/:applicationId/*", async (context) => {
     const applicationId = context.req.param("applicationId");
-    return serveApplicationAsset(
+    return serveApplicationStaticFile({
       deps,
-      applicationId,
-      extractRoutePath({
+      rawApplicationId: applicationId,
+      rawPath: extractRoutePath({
         requestUrl: context.req.url,
-        routeSegment: applicationAssetRouteSegment({ applicationId }),
+        routeSegment: applicationRouteSegment({ applicationId }),
       }),
-    );
+    });
   });
 }

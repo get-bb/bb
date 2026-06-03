@@ -37,7 +37,7 @@ export const CREATE_APP_PROMPT_TEMPLATE = `You are creating a new global bb app.
 
 Apps system reference — run \`bb guide app\` for full detail. Layout:
 - <dataDir>/apps/<applicationId>/manifest.json — { manifestVersion: 1, id: applicationId, name?, icon | logo.svg, entry, capabilities: ["data"?, "message"?] }
-- <dataDir>/apps/<applicationId>/assets/index.html — self-contained static HTML/CSS/JS/SVG served by bb; use inline/relative files, no web server, npm, or build step
+- <dataDir>/apps/<applicationId>/public/index.html — self-contained static HTML/CSS/JS/SVG served by bb; use inline/relative files, no web server, npm, or build step
 - <dataDir>/apps/<applicationId>/data/state.json — state if the app uses window.bb.data
 
 In the page, use window.bb.data for live state (read / write / delete / list / onChange; onChange replays + streams) and window.bb.message(text) to send the thread a prompt. Guard with \`window.bb?.data?.…\` since capabilities are advisory.

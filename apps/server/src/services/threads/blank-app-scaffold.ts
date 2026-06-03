@@ -159,7 +159,7 @@ const BLANK_APP_SCAFFOLD_EXTRA_STYLES = `<style>
       }
     </style>`;
 
-// Blank-template scaffold rendered into an app's assets/index.html. Composes
+// Blank-template scaffold rendered into an app's public/index.html. Composes
 // the documented bb default styling head with a scaffold-only style block so
 // new apps start out looking bb-native rather than like bare HTML.
 const BLANK_APP_INDEX_HTML_TEMPLATE = `<!doctype html>
@@ -180,7 +180,7 @@ const BLANK_APP_INDEX_HTML_TEMPLATE = `<!doctype html>
 
     <main class="panel">
       <p class="placeholder">
-        Customize this static app in assets/index.html. No web server or build step needed.
+        Customize this static app in public/index.html. No web server or build step needed.
       </p>
 
       <section class="section">

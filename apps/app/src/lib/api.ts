@@ -92,7 +92,7 @@ import {
   type FilePreviewTarget,
 } from "./file-preview";
 import {
-  buildAppAssetUrl,
+  buildAppPublicFileUrl,
   buildThreadHostFileContentUrl,
   buildThreadStorageContentUrl,
 } from "./file-content-urls";
@@ -915,7 +915,7 @@ export async function getAppMarkdownPreview(
     {
       name: path.split("/").at(-1),
       path,
-      url: buildAppAssetUrl(applicationId, path),
+      url: buildAppPublicFileUrl(applicationId, path),
     },
     signal,
   );

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveApplicationDataPath,
   resolveApplicationPath,
+  resolveApplicationPublicPath,
 } from "../src/app-storage-paths.js";
 
 describe("app storage paths", () => {
@@ -11,6 +12,9 @@ describe("app storage paths", () => {
     );
     expect(resolveApplicationDataPath("/tmp/bb-data", "status")).toBe(
       "/tmp/bb-data/apps/status/data",
+    );
+    expect(resolveApplicationPublicPath("/tmp/bb-data", "status")).toBe(
+      "/tmp/bb-data/apps/status/public",
     );
   });
 

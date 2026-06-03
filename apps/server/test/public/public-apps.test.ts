@@ -1,10 +1,10 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  resolveApplicationAssetsPath,
   resolveApplicationDataPath,
   resolveApplicationManifestPath,
   resolveApplicationPath,
+  resolveApplicationPublicPath,
   resolveAppsRootPath,
 } from "@bb/config/app-storage-paths";
 import {
@@ -37,7 +37,7 @@ async function writeApplication(
   dataDir: string,
   manifest: AppManifest,
 ): Promise<void> {
-  await mkdir(resolveApplicationAssetsPath(dataDir, manifest.id), {
+  await mkdir(resolveApplicationPublicPath(dataDir, manifest.id), {
     recursive: true,
   });
   await mkdir(resolveApplicationDataPath(dataDir, manifest.id), {
@@ -49,7 +49,7 @@ async function writeApplication(
     "utf8",
   );
   await writeFile(
-    path.join(resolveApplicationAssetsPath(dataDir, manifest.id), "index.html"),
+    path.join(resolveApplicationPublicPath(dataDir, manifest.id), "index.html"),
     "<!doctype html><title>Valid App</title>",
     "utf8",
   );
@@ -60,7 +60,7 @@ async function writeRawApplicationManifest(
   applicationId: string,
   manifestContent: string,
 ): Promise<void> {
-  await mkdir(resolveApplicationAssetsPath(dataDir, applicationId), {
+  await mkdir(resolveApplicationPublicPath(dataDir, applicationId), {
     recursive: true,
   });
   await writeFile(
@@ -70,12 +70,30 @@ async function writeRawApplicationManifest(
   );
   await writeFile(
     path.join(
-      resolveApplicationAssetsPath(dataDir, applicationId),
+      resolveApplicationPublicPath(dataDir, applicationId),
       "index.html",
     ),
     "<!doctype html><title>Test App</title>",
     "utf8",
   );
+}
+
+async function writeApplicationPublicFile(
+  dataDir: string,
+  applicationId: string,
+  relativePath: string,
+  content: string,
+): Promise<void> {
+  const filePath = path.join(
+    resolveApplicationPublicPath(dataDir, applicationId),
+    relativePath,
+  );
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, content, "utf8");
+}
+
+function appRequestPath(resolvedUrl: URL): string {
+  return `${resolvedUrl.pathname}${resolvedUrl.search}${resolvedUrl.hash}`;
 }
 
 describe("public global app routes", () => {
@@ -197,6 +215,200 @@ describe("public global app routes", () => {
     });
   });
 
+  it("serves public web-root files from the app route", async () => {
+    await withTestHarness(async (harness) => {
+      const applicationId = "vite-spa";
+      await writeApplication(harness.config.dataDir, {
+        manifestVersion: 1,
+        id: applicationId,
+        name: "Vite SPA",
+        entry: "index.html",
+        capabilities: ["data"],
+      });
+      await writeApplicationPublicFile(
+        harness.config.dataDir,
+        applicationId,
+        "index.html",
+        [
+          "<!doctype html>",
+          "<html><head>",
+          '<script type="module" src="./index-flat.js"></script>',
+          '<script type="module" src="./assets/index-relative.js"></script>',
+          '<link rel="stylesheet" href="./assets/index.css">',
+          "</head><body></body></html>",
+        ].join(""),
+      );
+      await writeApplicationPublicFile(
+        harness.config.dataDir,
+        applicationId,
+        "index-flat.js",
+        'import("./chunk.js"); window.flatAsset = true;',
+      );
+      await writeApplicationPublicFile(
+        harness.config.dataDir,
+        applicationId,
+        "chunk.js",
+        "window.dynamicChunk = true;",
+      );
+      await writeApplicationPublicFile(
+        harness.config.dataDir,
+        applicationId,
+        "assets/index-relative.js",
+        "window.relativeAsset = true;",
+      );
+      await writeApplicationPublicFile(
+        harness.config.dataDir,
+        applicationId,
+        "assets/index.css",
+        'body { background-image: url("./logo.svg"); }',
+      );
+      await writeApplicationPublicFile(
+        harness.config.dataDir,
+        applicationId,
+        "assets/logo.svg",
+        "<svg></svg>",
+      );
+
+      const entryResponse = await harness.app.request(
+        `/api/v1/apps/${applicationId}/`,
+      );
+      expect(entryResponse.status).toBe(200);
+      const html = await entryResponse.text();
+      expect(html).not.toContain("<base");
+      expect(html).toContain('src="./index-flat.js"');
+      expect(html).toContain('src="./assets/index-relative.js"');
+      expect(html).toContain('href="./assets/index.css"');
+
+      const pageUrl = new URL(`http://bb.test/api/v1/apps/${applicationId}/`);
+      const flatResponse = await harness.app.request(
+        appRequestPath(new URL("./index-flat.js", pageUrl)),
+      );
+      const relativeResponse = await harness.app.request(
+        appRequestPath(new URL("./assets/index-relative.js", pageUrl)),
+      );
+      const dynamicChunkResponse = await harness.app.request(
+        appRequestPath(new URL("./chunk.js", pageUrl)),
+      );
+      const cssResponse = await harness.app.request(
+        appRequestPath(new URL("./assets/index.css", pageUrl)),
+      );
+      const cssAssetResponse = await harness.app.request(
+        appRequestPath(
+          new URL("./logo.svg", new URL("./assets/index.css", pageUrl)),
+        ),
+      );
+
+      expect(flatResponse.status).toBe(200);
+      await expect(flatResponse.text()).resolves.toBe(
+        'import("./chunk.js"); window.flatAsset = true;',
+      );
+      expect(relativeResponse.status).toBe(200);
+      await expect(relativeResponse.text()).resolves.toBe(
+        "window.relativeAsset = true;",
+      );
+      expect(dynamicChunkResponse.status).toBe(200);
+      await expect(dynamicChunkResponse.text()).resolves.toBe(
+        "window.dynamicChunk = true;",
+      );
+      expect(cssResponse.status).toBe(200);
+      await expect(cssResponse.text()).resolves.toBe(
+        'body { background-image: url("./logo.svg"); }',
+      );
+      expect(cssAssetResponse.status).toBe(200);
+      await expect(cssAssetResponse.text()).resolves.toBe("<svg></svg>");
+    });
+  });
+
+  it("serves markdown entries from the public web root", async () => {
+    await withTestHarness(async (harness) => {
+      const applicationId = "readme";
+      await writeApplication(harness.config.dataDir, {
+        manifestVersion: 1,
+        id: applicationId,
+        name: "Readme",
+        entry: "docs/index.md",
+        capabilities: [],
+      });
+      await writeApplicationPublicFile(
+        harness.config.dataDir,
+        applicationId,
+        "docs/index.md",
+        "# App Notes\n",
+      );
+
+      const detailResponse = await harness.app.request(
+        `/api/v1/apps/${applicationId}`,
+      );
+      expect(detailResponse.status).toBe(200);
+      const detail = appDetailSchema.parse(await readJson(detailResponse));
+      expect(detail.entry).toEqual({
+        kind: "md",
+        path: "docs/index.md",
+      });
+
+      const markdownResponse = await harness.app.request(
+        `/api/v1/apps/${applicationId}/docs/index.md`,
+      );
+      expect(markdownResponse.status).toBe(200);
+      await expect(markdownResponse.text()).resolves.toBe("# App Notes\n");
+    });
+  });
+
+  it("rejects traversal attempts for public static files", async () => {
+    await withTestHarness(async (harness) => {
+      await writeApplication(harness.config.dataDir, VALID_MANIFEST);
+
+      const response = await harness.app.request(
+        `/api/v1/apps/${VALID_APP_ID}/..%2Fmanifest.json`,
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_path",
+      });
+    });
+  });
+
+  it("does not expose manifest or data files through the public static path", async () => {
+    await withTestHarness(async (harness) => {
+      const applicationId = "private-files";
+      await writeApplication(harness.config.dataDir, {
+        manifestVersion: 1,
+        id: applicationId,
+        name: "Private Files",
+        entry: "index.html",
+        capabilities: [],
+      });
+      await writeApplicationPublicFile(
+        harness.config.dataDir,
+        applicationId,
+        "manifest.json",
+        '{"leak":true}\n',
+      );
+      await writeFile(
+        path.join(
+          resolveApplicationDataPath(harness.config.dataDir, applicationId),
+          "state.json",
+        ),
+        '{"secret":true}\n',
+        "utf8",
+      );
+
+      const manifestResponse = await harness.app.request(
+        `/api/v1/apps/${applicationId}/manifest.json`,
+      );
+      expect(manifestResponse.status).toBe(404);
+
+      const dataResponse = await harness.app.request(
+        `/api/v1/apps/${applicationId}/data/state.json`,
+      );
+      expect(dataResponse.status).toBe(403);
+      await expect(readJson(dataResponse)).resolves.toMatchObject({
+        code: "invalid_request",
+      });
+    });
+  });
+
   it("creates and deletes apps atomically on the filesystem", async () => {
     await withTestHarness(async (harness) => {
       const createResponse = await harness.app.request("/api/v1/apps", {
@@ -219,6 +431,18 @@ describe("public global app routes", () => {
         id: "created-app",
         name: "Created App",
       });
+      await expect(
+        readFile(
+          path.join(
+            resolveApplicationPublicPath(
+              harness.config.dataDir,
+              created.applicationId,
+            ),
+            "index.html",
+          ),
+          "utf8",
+        ),
+      ).resolves.toContain("Created App");
       const appRootEntries = await readdir(
         resolveAppsRootPath(harness.config.dataDir),
       );
