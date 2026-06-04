@@ -8,11 +8,12 @@ import {
   type HostDaemonCommandEnvelope,
 } from "@bb/host-daemon-contract";
 import { createBrowserBbSdk, type AppRealtimeEvent } from "@bb/sdk/browser";
+import { wrapNodeWsWebsocket } from "@bb/sdk/node-websocket";
 import { createPublicApiClient } from "@bb/server-contract";
 import {
   turnScope,
-  type AppListChangeKind,
   type SystemChangeKind,
+  type ThreadChangeKind,
 } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { notifyGlobalAppsChanged } from "../../src/routes/apps.js";
@@ -29,48 +30,16 @@ function waitForOpen(socket: WebSocket): Promise<void> {
   });
 }
 
-class SdkWebSocketAdapter {
-  onclose: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  onmessage: ((event: { data: unknown }) => void) | null = null;
-  onopen: (() => void) | null = null;
-  private readonly socket: WebSocket;
-
-  constructor(url: string) {
-    this.socket = new WebSocket(url);
-    this.socket.on("open", () => {
-      this.onopen?.();
-    });
-    this.socket.on("message", (data) => {
-      this.onmessage?.({ data: data.toString("utf8") });
-    });
-    this.socket.on("close", () => {
-      this.onclose?.();
-    });
-    this.socket.on("error", () => {
-      this.onerror?.();
-    });
-  }
-
-  get readyState(): number {
-    return this.socket.readyState;
-  }
-
-  close(): void {
-    this.socket.close();
-  }
-
-  send(data: string): void {
-    this.socket.send(data);
-  }
-}
-
 interface AppBroadcastHub {
-  notifyApp(changes: AppListChangeKind[]): void;
+  notifyAppsChanged(): void;
 }
 
 interface SystemBroadcastHub {
   notifySystem(changes: SystemChangeKind[]): void;
+}
+
+interface ThreadBroadcastHub {
+  notifyThread(threadId: string, changes: ThreadChangeKind[]): void;
 }
 
 interface ChangedBroadcast {
@@ -79,15 +48,22 @@ interface ChangedBroadcast {
   id?: string;
 }
 
-function isChangedBroadcastFor(args: {
+interface ChangedBroadcastMatchArgs {
   entity: string;
+  /** Omitted means "any id" — list-level broadcasts carry none. */
+  id?: string;
   kind: string;
-}): (message: unknown) => message is ChangedBroadcast {
+}
+
+function isChangedBroadcastFor(
+  args: ChangedBroadcastMatchArgs,
+): (message: unknown) => message is ChangedBroadcast {
   return (message): message is ChangedBroadcast =>
     typeof message === "object" &&
     message !== null &&
     "entity" in message &&
     message.entity === args.entity &&
+    (args.id === undefined || ("id" in message && message.id === args.id)) &&
     "changes" in message &&
     Array.isArray(message.changes) &&
     message.changes.includes(args.kind);
@@ -96,6 +72,28 @@ function isChangedBroadcastFor(args: {
 interface WaitForSdkAppSubscriptionArgs {
   hub: AppBroadcastHub;
   waitForNextAppMessage: () => Promise<AppRealtimeEvent>;
+}
+
+interface BroadcastUntilObservedArgs {
+  fire: () => void;
+  observed: Promise<unknown>;
+}
+
+/**
+ * Subscriptions register asynchronously server-side, so a single broadcast
+ * can land before the subscription exists: keep re-firing every 25ms until
+ * the observer sees one.
+ */
+async function broadcastUntilObserved(
+  args: BroadcastUntilObservedArgs,
+): Promise<void> {
+  const interval = setInterval(args.fire, 25);
+  try {
+    args.fire();
+    await args.observed;
+  } finally {
+    clearInterval(interval);
+  }
 }
 
 function waitForClose(socket: WebSocket): Promise<void> {
@@ -143,79 +141,45 @@ function waitForMatchingMessage<T>(
 }
 
 async function waitForThreadSubscription(
-  hub: { notifyThread(threadId: string, changes: string[]): void },
+  hub: ThreadBroadcastHub,
   socket: WebSocket,
   threadId: string,
 ): Promise<void> {
-  const readyMessage = waitForMatchingMessage<{
-    changes: string[];
-    entity: string;
-    id?: string;
-  }>(
-    socket,
-    (
-      message,
-    ): message is { changes: string[]; entity: string; id?: string } => {
-      if (message == null || typeof message !== "object") {
-        return false;
-      }
-      const record = message as Record<string, unknown>;
-      return (
-        record.entity === "thread" &&
-        record.id === threadId &&
-        Array.isArray(record.changes) &&
-        record.changes.includes("status-changed")
-      );
-    },
-    2_000,
-  );
-  const interval = setInterval(() => {
-    hub.notifyThread(threadId, ["status-changed"]);
-  }, 25);
-
-  try {
-    hub.notifyThread(threadId, ["status-changed"]);
-    await readyMessage;
-  } finally {
-    clearInterval(interval);
-  }
+  await broadcastUntilObserved({
+    fire: () => hub.notifyThread(threadId, ["status-changed"]),
+    observed: waitForMatchingMessage(
+      socket,
+      isChangedBroadcastFor({
+        entity: "thread",
+        id: threadId,
+        kind: "status-changed",
+      }),
+      2_000,
+    ),
+  });
 }
 
 async function waitForSystemSubscription(
   hub: SystemBroadcastHub,
   socket: WebSocket,
 ): Promise<void> {
-  const readyMessage = waitForMatchingMessage(
-    socket,
-    isChangedBroadcastFor({ entity: "system", kind: "config-changed" }),
-    2_000,
-  );
-  const interval = setInterval(() => {
-    hub.notifySystem(["config-changed"]);
-  }, 25);
-
-  try {
-    hub.notifySystem(["config-changed"]);
-    await readyMessage;
-  } finally {
-    clearInterval(interval);
-  }
+  await broadcastUntilObserved({
+    fire: () => hub.notifySystem(["config-changed"]),
+    observed: waitForMatchingMessage(
+      socket,
+      isChangedBroadcastFor({ entity: "system", kind: "config-changed" }),
+      2_000,
+    ),
+  });
 }
 
 async function waitForSdkAppSubscription(
   args: WaitForSdkAppSubscriptionArgs,
 ): Promise<void> {
-  const readyMessage = args.waitForNextAppMessage();
-  const interval = setInterval(() => {
-    args.hub.notifyApp(["apps-changed"]);
-  }, 25);
-
-  try {
-    args.hub.notifyApp(["apps-changed"]);
-    await readyMessage;
-  } finally {
-    clearInterval(interval);
-  }
+  await broadcastUntilObserved({
+    fire: () => args.hub.notifyAppsChanged(),
+    observed: args.waitForNextAppMessage(),
+  });
 }
 
 async function fetchSingleCommand(
@@ -477,26 +441,13 @@ describe("server integration", () => {
       );
       await waitForThreadSubscription(server.hub, ws, thread.id);
 
-      const messagePromise = waitForMatchingMessage<{
-        changes: string[];
-        entity: string;
-        id?: string;
-      }>(
+      const messagePromise = waitForMatchingMessage(
         ws,
-        (
-          message,
-        ): message is { changes: string[]; entity: string; id?: string } => {
-          if (message == null || typeof message !== "object") {
-            return false;
-          }
-          const record = message as Record<string, unknown>;
-          return (
-            record.entity === "thread" &&
-            record.id === thread.id &&
-            Array.isArray(record.changes) &&
-            record.changes.includes("events-appended")
-          );
-        },
+        isChangedBroadcastFor({
+          entity: "thread",
+          id: thread.id,
+          kind: "events-appended",
+        }),
       );
       const eventResponse = await daemonClient.session.events.$post({
         json: {
@@ -531,7 +482,7 @@ describe("server integration", () => {
     try {
       const sdk = createBrowserBbSdk({
         baseUrl: server.baseUrl,
-        websocket: (url) => new SdkWebSocketAdapter(url),
+        websocket: wrapNodeWsWebsocket,
       });
       const connected = new Promise<void>((resolve) => {
         unsubscribeConnection = sdk.on({
@@ -565,7 +516,7 @@ describe("server integration", () => {
         waitForNextAppMessage,
       });
       const received = waitForNextAppMessage();
-      server.hub.notifyApp(["apps-changed"]);
+      server.hub.notifyAppsChanged();
 
       await expect(received).resolves.toEqual({
         type: "changed",

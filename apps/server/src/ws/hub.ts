@@ -1,6 +1,5 @@
 import type {
   ChangedMessage,
-  AppListChangeKind,
   ApplicationId,
   EnvironmentChangeKind,
   HostChangeKind,
@@ -518,11 +517,11 @@ export class NotificationHub implements DbNotifier {
    * List-level (id-less) app broadcast — some app was installed, updated, or
    * removed. App-scoped changes go through `notifyAppContentChanged` instead.
    */
-  notifyApp(changes: AppListChangeKind[]): void {
+  notifyAppsChanged(): void {
     this.notifyClients({
       type: "changed",
       entity: "app",
-      changes,
+      changes: ["apps-changed"],
     });
   }
 

@@ -46,6 +46,7 @@ interface StateChangedEventInput {
 class FakeWebSocket implements BbRealtimeSocket {
   static CONNECTING = 0;
   static OPEN = 1;
+  static CLOSING = 2;
   static CLOSED = 3;
 
   messages: string[] = [];
@@ -56,6 +57,14 @@ class FakeWebSocket implements BbRealtimeSocket {
   readyState = FakeWebSocket.CONNECTING;
 
   constructor(readonly url: string) {}
+
+  /**
+   * Emulates the server starting the close handshake: the socket reports
+   * CLOSING but the close event has not fired yet. Complete it with close().
+   */
+  beginServerClose(): void {
+    this.readyState = FakeWebSocket.CLOSING;
+  }
 
   close(): void {
     if (this.readyState === FakeWebSocket.CLOSED) {
@@ -171,6 +180,7 @@ describe("SDK realtime", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     Reflect.deleteProperty(globalThis, "location");
   });
 
@@ -1649,6 +1659,194 @@ describe("SDK realtime", () => {
       version: "va",
     });
     expect(sockets[0].readyState).toBe(FakeWebSocket.CLOSED);
+  });
+
+  it("announces the disconnect when the last listener unsubscribes while the socket is closing", async () => {
+    const { sockets, websocket } = createWebsocketFactory();
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        runtime: "node",
+        websocket,
+      }),
+    });
+    const connectionEvents: BbRealtimeConnectionEvent[] = [];
+
+    sdk.on({
+      event: "realtime:connection",
+      callback(event) {
+        connectionEvents.push(event);
+      },
+    });
+    const unsubscribeThread = sdk.on({
+      event: "thread:changed",
+      callback: vi.fn(),
+    });
+    sockets[0].open();
+    expect(connectionEvents[connectionEvents.length - 1]?.state).toBe(
+      "connected",
+    );
+
+    // The server starts the close handshake (e.g. after a socket error);
+    // the consumer unsubscribes its last listener while the socket is still
+    // CLOSING, then the close handshake completes.
+    sockets[0].beginServerClose();
+    unsubscribeThread();
+    sockets[0].close();
+
+    expect(connectionEvents[connectionEvents.length - 1]).toEqual({
+      state: "disconnected",
+      reconnected: false,
+      reconnectDelayMs: null,
+    });
+
+    // A late observer must see the real (disconnected) state, not a stale
+    // "connected" snapshot.
+    const lateObserver = vi.fn();
+    sdk.on({ event: "realtime:connection", callback: lateObserver });
+    await flushPromises();
+    expect(lateObserver).toHaveBeenCalledTimes(1);
+    expect(lateObserver).toHaveBeenCalledWith({
+      state: "disconnected",
+      reconnected: false,
+      reconnectDelayMs: null,
+    });
+  });
+
+  it("does not escalate the reconnect delay when a connection listener reconnects during the disconnected emit", async () => {
+    vi.useFakeTimers();
+    const { sockets, websocket } = createWebsocketFactory();
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        runtime: "node",
+        websocket,
+      }),
+    });
+    const reportedDelays: (number | null)[] = [];
+    let resubscribed = false;
+
+    sdk.on({
+      event: "realtime:connection",
+      callback(event) {
+        if (event.state !== "disconnected") {
+          return;
+        }
+        reportedDelays.push(event.reconnectDelayMs);
+        if (!resubscribed) {
+          // React to the drop by subscribing again — this connects a new
+          // socket synchronously, before onclose schedules its backoff timer.
+          resubscribed = true;
+          sdk.on({ event: "thread:changed", callback: vi.fn() });
+        }
+      },
+    });
+    sdk.on({ event: "thread:changed", callback: vi.fn() });
+    sockets[0].open();
+
+    sockets[0].close();
+    expect(sockets).toHaveLength(2);
+    sockets[1].open();
+    await flushPromises();
+
+    // The superseded retry must not fire later: it would escalate
+    // reconnectDelayMs while the listener-driven socket is already open.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(2);
+
+    sockets[1].close();
+    expect(reportedDelays).toEqual([1000, 1000]);
+  });
+
+  it("rolls back the listener when socket construction throws synchronously from on()", () => {
+    const sockets: FakeWebSocket[] = [];
+    let failConnect = true;
+    const websocket: BbRealtimeSocketFactory = (url) => {
+      if (failConnect) {
+        throw new Error("socket construction failed");
+      }
+      const socket = new FakeWebSocket(url);
+      sockets.push(socket);
+      return socket;
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        runtime: "node",
+        websocket,
+      }),
+    });
+
+    expect(() =>
+      sdk.on({ event: "project:changed", callback: vi.fn() }),
+    ).toThrow("socket construction failed");
+
+    // The throwing listener's target was released: a later subscribe opens a
+    // socket carrying only the new target, not the failed project one.
+    failConnect = false;
+    const callback = vi.fn();
+    sdk.on({ event: "thread:changed", threadId: "thr_1", callback });
+    expect(sockets).toHaveLength(1);
+    sockets[0].open();
+    expect(sockets[0].messages.map((message) => JSON.parse(message))).toEqual([
+      { type: "subscribe", entity: "thread", id: "thr_1" },
+    ]);
+    sockets[0].emit({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["events-appended"],
+    });
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws from on() when no WebSocket implementation is available", () => {
+    vi.stubGlobal("WebSocket", undefined);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        runtime: "node",
+      }),
+    });
+
+    expect(() => sdk.on({ event: "thread:changed", callback: vi.fn() })).toThrow(
+      "BB SDK realtime requires a WebSocket implementation",
+    );
+  });
+
+  it("contains synchronous connect failures inside the reconnect timer", async () => {
+    vi.useFakeTimers();
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const sockets: FakeWebSocket[] = [];
+    const websocket: BbRealtimeSocketFactory = (url) => {
+      if (sockets.length > 0) {
+        throw new Error("factory offline");
+      }
+      const socket = new FakeWebSocket(url);
+      sockets.push(socket);
+      return socket;
+    };
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        runtime: "node",
+        websocket,
+      }),
+    });
+
+    sdk.on({ event: "thread:changed", callback: vi.fn() });
+    sockets[0].open();
+    sockets[0].close();
+
+    // The reconnect timer's connectSocket throws synchronously; an escaped
+    // throw would reject the timer advance instead of being logged.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "bb realtime reconnect failed",
+      expect.any(Error),
+    );
   });
 
   it("leniently parses inbound messages by stripping unknown kinds and fields", () => {

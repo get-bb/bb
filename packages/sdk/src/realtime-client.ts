@@ -18,18 +18,18 @@ import type {
   BbRealtime,
   BbRealtimeCallback,
   BbRealtimeConnectionEvent,
+  BbRealtimeEventMap,
   BbRealtimeEventName,
   BbRealtimeListAppDataEntries,
   BbRealtimeOnArgs,
   BbRealtimeOnArgsUnion,
   BbRealtimeUnsubscribe,
   AppDataChangedRealtimeEvent,
+  AppDataChangedRealtimeOnArgs,
+  AppDataResyncRealtimeEvent,
+  AppDataResyncRealtimeOnArgs,
   AppRealtimeEvent,
-  EnvironmentRealtimeEvent,
-  HostRealtimeEvent,
-  ProjectRealtimeEvent,
   SystemRealtimeEvent,
-  ThreadRealtimeEvent,
 } from "./realtime-types.js";
 import type {
   BbRealtimeSocket,
@@ -70,75 +70,48 @@ interface OptionalTargetIdMatchesArgs {
   selectorId: string | undefined;
 }
 
-interface ThreadChangedListenerRecord {
+type IdScopedChangedEventName =
+  | "thread:changed"
+  | "project:changed"
+  | "environment:changed"
+  | "host:changed";
+
+type UnscopedChangedEventName =
+  | "system:changed"
+  | "system:config-changed"
+  | "system:apps-changed"
+  | "app:changed";
+
+/**
+ * Listener for an entity-changed event that may be scoped to one entity id:
+ * a set `selectorId` delivers only messages carrying that id.
+ */
+interface IdScopedChangedListenerRecord<
+  TEventName extends IdScopedChangedEventName,
+> {
   active: boolean;
-  callback: BbRealtimeCallback<"thread:changed">;
-  event: "thread:changed";
+  callback: BbRealtimeCallback<TEventName>;
+  event: TEventName;
   selectorId?: string;
   target: RealtimeTarget;
 }
 
-interface ProjectChangedListenerRecord {
+interface UnscopedChangedListenerRecord<
+  TEventName extends UnscopedChangedEventName,
+> {
   active: boolean;
-  callback: BbRealtimeCallback<"project:changed">;
-  event: "project:changed";
-  selectorId?: string;
-  target: RealtimeTarget;
-}
-
-interface EnvironmentChangedListenerRecord {
-  active: boolean;
-  callback: BbRealtimeCallback<"environment:changed">;
-  event: "environment:changed";
-  selectorId?: string;
-  target: RealtimeTarget;
-}
-
-interface HostChangedListenerRecord {
-  active: boolean;
-  callback: BbRealtimeCallback<"host:changed">;
-  event: "host:changed";
-  selectorId?: string;
-  target: RealtimeTarget;
-}
-
-interface SystemChangedListenerRecord {
-  active: boolean;
-  callback: BbRealtimeCallback<"system:changed">;
-  event: "system:changed";
-  target: RealtimeTarget;
-}
-
-interface SystemConfigChangedListenerRecord {
-  active: boolean;
-  callback: BbRealtimeCallback<"system:config-changed">;
-  event: "system:config-changed";
-  target: RealtimeTarget;
-}
-
-interface SystemAppsChangedListenerRecord {
-  active: boolean;
-  callback: BbRealtimeCallback<"system:apps-changed">;
-  event: "system:apps-changed";
-  target: RealtimeTarget;
-}
-
-interface AppChangedListenerRecord {
-  active: boolean;
-  callback: BbRealtimeCallback<"app:changed">;
-  event: "app:changed";
+  callback: BbRealtimeCallback<TEventName>;
+  event: TEventName;
   target: RealtimeTarget;
 }
 
 type ChangedListenerRecord =
-  | ThreadChangedListenerRecord
-  | ProjectChangedListenerRecord
-  | EnvironmentChangedListenerRecord
-  | HostChangedListenerRecord
-  | SystemChangedListenerRecord
-  | SystemConfigChangedListenerRecord
-  | SystemAppsChangedListenerRecord
-  | AppChangedListenerRecord;
+  | {
+      [TEventName in IdScopedChangedEventName]: IdScopedChangedListenerRecord<TEventName>;
+    }[IdScopedChangedEventName]
+  | {
+      [TEventName in UnscopedChangedEventName]: UnscopedChangedListenerRecord<TEventName>;
+    }[UnscopedChangedEventName];
 
 interface AppDataChangedListenerRecord {
   active: boolean;
@@ -252,6 +225,22 @@ function isTargetedListener(
   return listener.event !== "realtime:connection";
 }
 
+/**
+ * The union parameter is a TypeScript workaround: a predicate against the
+ * plain listener union cannot assert the generic record (the generic
+ * instantiation is not assignable to any single union member), but narrowing
+ * still resolves to exactly `IdScopedChangedListenerRecord<TEventName>`, which
+ * keeps the callback/message pairing type-safe in the shared dispatch loop.
+ */
+function isIdScopedChangedListenerFor<
+  TEventName extends IdScopedChangedEventName,
+>(
+  listener: RealtimeListenerRecord | IdScopedChangedListenerRecord<TEventName>,
+  event: TEventName,
+): listener is IdScopedChangedListenerRecord<TEventName> {
+  return listener.event === event;
+}
+
 export class BbRealtimeClient implements BbRealtime {
   private readonly context: BbSdkContext;
   private readonly listAppDataEntries: BbRealtimeListAppDataEntries;
@@ -361,7 +350,7 @@ export class BbRealtimeClient implements BbRealtime {
   }
 
   private addAppDataChangedListener(
-    args: Extract<BbRealtimeOnArgsUnion, { event: "app-data:changed" }>,
+    args: AppDataChangedRealtimeOnArgs,
   ): BbRealtimeUnsubscribe {
     const applicationId = this.resolveApplicationId(args.applicationId);
     const listener: AppDataChangedListenerRecord = {
@@ -381,7 +370,7 @@ export class BbRealtimeClient implements BbRealtime {
   }
 
   private addAppDataResyncListener(
-    args: Extract<BbRealtimeOnArgsUnion, { event: "app-data:resync" }>,
+    args: AppDataResyncRealtimeOnArgs,
   ): BbRealtimeUnsubscribe {
     const applicationId = this.resolveApplicationId(args.applicationId);
     return this.activateListener({
@@ -576,6 +565,17 @@ export class BbRealtimeClient implements BbRealtime {
         new Error("bb realtime socket closed before it became ready."),
       );
       if (this.targetSubscriptions.size === 0) {
+        // A socket that was already CLOSING when the last listener
+        // unsubscribed skips closeSocketIfIdle's teardown emit (it only
+        // handles OPEN/CONNECTING), so its close completes here: announce the
+        // terminal disconnect so observers never stay on a stale state.
+        if (this.lastConnectionEvent?.state !== "disconnected") {
+          this.emitConnection({
+            state: "disconnected",
+            reconnected: false,
+            reconnectDelayMs: null,
+          });
+        }
         return;
       }
       // Always record the reconnect intent and announce the drop, even if a
@@ -588,7 +588,12 @@ export class BbRealtimeClient implements BbRealtime {
         reconnected: false,
         reconnectDelayMs,
       });
-      if (this.reconnectTimer) {
+      // A connection listener may react to the disconnected emit by adding a
+      // listener, which connects a new socket before this timer would be
+      // scheduled. That connect supersedes the retry: scheduling it anyway
+      // would let the orphaned timer escalate reconnectDelayMs while already
+      // connected.
+      if (this.reconnectTimer || this.socket) {
         return;
       }
       this.reconnectTimer = setTimeout(() => {
@@ -700,16 +705,16 @@ export class BbRealtimeClient implements BbRealtime {
   private dispatchChangedMessage(message: ChangedMessage): void {
     switch (message.entity) {
       case "thread":
-        this.dispatchThreadChangedMessage(message);
+        this.dispatchIdScopedChangedMessage("thread:changed", message);
         break;
       case "project":
-        this.dispatchProjectChangedMessage(message);
+        this.dispatchIdScopedChangedMessage("project:changed", message);
         break;
       case "environment":
-        this.dispatchEnvironmentChangedMessage(message);
+        this.dispatchIdScopedChangedMessage("environment:changed", message);
         break;
       case "host":
-        this.dispatchHostChangedMessage(message);
+        this.dispatchIdScopedChangedMessage("host:changed", message);
         break;
       case "system":
         this.dispatchSystemChangedMessage(message);
@@ -720,60 +725,12 @@ export class BbRealtimeClient implements BbRealtime {
     }
   }
 
-  private dispatchThreadChangedMessage(message: ThreadRealtimeEvent): void {
+  private dispatchIdScopedChangedMessage<
+    TEventName extends IdScopedChangedEventName,
+  >(event: TEventName, message: BbRealtimeEventMap[TEventName]): void {
     for (const listener of this.listenerSnapshot()) {
       if (
-        listener.event !== "thread:changed" ||
-        !listener.active ||
-        !optionalTargetIdMatches({
-          messageId: message.id,
-          selectorId: listener.selectorId,
-        })
-      ) {
-        continue;
-      }
-      this.callListener(listener.callback, message);
-    }
-  }
-
-  private dispatchProjectChangedMessage(message: ProjectRealtimeEvent): void {
-    for (const listener of this.listenerSnapshot()) {
-      if (
-        listener.event !== "project:changed" ||
-        !listener.active ||
-        !optionalTargetIdMatches({
-          messageId: message.id,
-          selectorId: listener.selectorId,
-        })
-      ) {
-        continue;
-      }
-      this.callListener(listener.callback, message);
-    }
-  }
-
-  private dispatchEnvironmentChangedMessage(
-    message: EnvironmentRealtimeEvent,
-  ): void {
-    for (const listener of this.listenerSnapshot()) {
-      if (
-        listener.event !== "environment:changed" ||
-        !listener.active ||
-        !optionalTargetIdMatches({
-          messageId: message.id,
-          selectorId: listener.selectorId,
-        })
-      ) {
-        continue;
-      }
-      this.callListener(listener.callback, message);
-    }
-  }
-
-  private dispatchHostChangedMessage(message: HostRealtimeEvent): void {
-    for (const listener of this.listenerSnapshot()) {
-      if (
-        listener.event !== "host:changed" ||
+        !isIdScopedChangedListenerFor(listener, event) ||
         !listener.active ||
         !optionalTargetIdMatches({
           messageId: message.id,
@@ -839,7 +796,7 @@ export class BbRealtimeClient implements BbRealtime {
   }
 
   private dispatchAppDataResyncMessage(
-    message: Extract<ServerMessage, { type: "app-data.resync" }>,
+    message: AppDataResyncRealtimeEvent,
   ): void {
     for (const listener of this.listenerSnapshot()) {
       if (!listener.active) {

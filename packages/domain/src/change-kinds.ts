@@ -67,17 +67,11 @@ export const SYSTEM_CHANGE_KINDS = ["config-changed", "apps-changed"] as const;
 export type SystemChangeKind = (typeof SYSTEM_CHANGE_KINDS)[number];
 
 /**
- * List-level app change kinds broadcast without an app id (some app was
- * installed, updated, or removed). App-scoped kinds like `content-changed`
+ * `apps-changed` is the list-level kind broadcast without an app id (some app
+ * was installed, updated, or removed). App-scoped kinds like `content-changed`
  * always carry the application id and have dedicated producers.
  */
-export const APP_LIST_CHANGE_KINDS = ["apps-changed"] as const;
-export type AppListChangeKind = (typeof APP_LIST_CHANGE_KINDS)[number];
-
-export const APP_CHANGE_KINDS = [
-  ...APP_LIST_CHANGE_KINDS,
-  "content-changed",
-] as const;
+export const APP_CHANGE_KINDS = ["apps-changed", "content-changed"] as const;
 export type AppChangeKind = (typeof APP_CHANGE_KINDS)[number];
 
 export const threadChangeKindSchema = z.enum(THREAD_CHANGE_KINDS);
