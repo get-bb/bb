@@ -124,15 +124,18 @@ interface SkillCatalogConflictErrorArgs {
 }
 
 /**
- * Thrown when an environment's runtime must be replaced to pick up a changed
- * injected skill catalog while it has active work (active threads or open
- * terminals) and the requesting command targets no thread. Thread commands
- * never hit this: they reuse the busy runtime and defer the refresh instead.
+ * Internal invariant guard: thrown when an environment's runtime must be
+ * replaced to pick up a changed injected skill catalog while it has active
+ * work (active threads or open terminals) and the requesting command targets
+ * no thread. No production caller can reach this — only thread commands
+ * (thread.start, turn.submit) resolve with injected skill sources, and they
+ * always pass a targetThreadId, which reuses the busy runtime and defers the
+ * refresh instead. Reaching this error indicates a daemon bug.
  */
 export class SkillCatalogConflictError extends Error {
   constructor(args: SkillCatalogConflictErrorArgs) {
     super(
-      `Environment ${args.environmentId} already has an active runtime with injected skill catalog ${args.activeCatalogHash ?? "none"}; requested ${args.requestedCatalogHash}`,
+      `Daemon bug: a command targeting no thread carried injected skill sources into busy environment ${args.environmentId} (active catalog ${args.activeCatalogHash ?? "none"}, requested ${args.requestedCatalogHash})`,
     );
     this.name = "SkillCatalogConflictError";
   }
@@ -219,11 +222,13 @@ export interface RuntimeEntry {
   runtime: AgentRuntime;
   skillCatalogHash: string | null;
   /**
-   * The most recent requested catalog hash whose refresh was deferred because
-   * the runtime was busy; used to warn once per requested catalog instead of
-   * on every command.
+   * Log-throttle state only: the last stale requested catalog hash this entry
+   * warned about, so the deferral warn fires once per requested catalog
+   * instead of on every command while the runtime stays busy. It never drives
+   * the deferred refresh — every thread command re-stages and re-compares the
+   * catalog.
    */
-  deferredSkillCatalogHash: string | null;
+  lastWarnedStaleSkillCatalogHash: string | null;
   stopWatchingStatus: StopWatching;
   workspace: HostWorkspace;
   path: string;
@@ -728,9 +733,11 @@ export class RuntimeManager {
       this.entryHasActiveRuntimeWork(args.entry)
     ) {
       if (
-        args.entry.deferredSkillCatalogHash !== args.skillConfig.catalogHash
+        args.entry.lastWarnedStaleSkillCatalogHash !==
+        args.skillConfig.catalogHash
       ) {
-        args.entry.deferredSkillCatalogHash = args.skillConfig.catalogHash;
+        args.entry.lastWarnedStaleSkillCatalogHash =
+          args.skillConfig.catalogHash;
         this.options.logger?.warn(
           {
             environmentId: args.entry.environmentId,
@@ -1229,7 +1236,7 @@ export class RuntimeManager {
       environmentId: args.environmentId,
       runtime,
       skillCatalogHash: args.skillConfig?.catalogHash ?? null,
-      deferredSkillCatalogHash: null,
+      lastWarnedStaleSkillCatalogHash: null,
       stopWatchingStatus,
       terminals: new Set<string>(),
       workspace,

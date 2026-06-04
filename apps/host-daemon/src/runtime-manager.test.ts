@@ -477,6 +477,7 @@ describe("RuntimeManager", () => {
     });
 
     expect(idleEntry).not.toBe(firstEntry);
+    expect(idleEntry.skillCatalogHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(idleEntry.skillCatalogHash).not.toBe(firstCatalogHash);
     expect(createRuntime).toHaveBeenCalledTimes(2);
     expect(firstEntry.runtime.shutdown).toHaveBeenCalledTimes(1);
@@ -518,13 +519,16 @@ describe("RuntimeManager", () => {
     });
 
     expect(secondEntry).not.toBe(firstEntry);
+    expect(firstEntry.skillCatalogHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(secondEntry.skillCatalogHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(secondEntry.skillCatalogHash).not.toBe(firstEntry.skillCatalogHash);
     expect(createRuntime).toHaveBeenCalledTimes(2);
     expect(firstEntry.runtime.shutdown).toHaveBeenCalledTimes(1);
 
     // The replacement's staging cleanup must keep the about-to-be-active
     // catalog (the new runtime's skill roots point into it) and drop the
-    // replaced one.
+    // replaced one. The hash-shape assertions above keep the `?? ""` fallback
+    // from silently pointing these stats at the staging root itself.
     const stagingRoot = path.join(dataDir, "runtime", "global-skills");
     const newCatalogStat = await fs.stat(
       path.join(stagingRoot, secondEntry.skillCatalogHash ?? ""),

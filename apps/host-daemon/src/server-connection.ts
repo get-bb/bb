@@ -46,24 +46,27 @@ interface ServerMessagePayloadSummary {
 
 const SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS = 512;
 
-type HostDaemonEnvironmentChangeMessage = Extract<
-  HostDaemonDaemonWsMessage,
-  { type: "environment-change" }
->;
-
-type HostDaemonApplicationContentChangedMessage = Extract<
-  HostDaemonDaemonWsMessage,
-  { type: "application-content-changed" }
->;
-
-const APPLICATION_STORAGE_CHANGED_MESSAGE = {
-  type: "application-storage-changed",
-} satisfies HostDaemonDaemonWsMessage;
-
-function environmentChangeMessageKey(
-  message: HostDaemonEnvironmentChangeMessage,
-): string {
-  return `${message.environmentId}\u0000${message.change}`;
+/**
+ * Returns the dedup key for messages that survive a disconnect, or null for
+ * message kinds that are dropped when the websocket is down. Buffered
+ * messages coalesce per key to the latest value and replay in insertion
+ * order after reconnect. To make a new message kind recoverable, add a case
+ * here — buffering, success-clearing, shutdown clearing, and flushing all
+ * key off this function.
+ */
+function recoverableMessageKey(
+  message: HostDaemonDaemonWsMessage,
+): string | null {
+  switch (message.type) {
+    case "environment-change":
+      return `environment-change\u0000${message.environmentId}\u0000${message.change}`;
+    case "application-storage-changed":
+      return "application-storage-changed";
+    case "application-content-changed":
+      return `application-content-changed\u0000${message.applicationId}`;
+    default:
+      return null;
+  }
 }
 
 function summarizeServerMessagePayload(
@@ -101,14 +104,9 @@ export class ServerConnection {
   private stopped = false;
   private sessionCloseHandler: ServerConnectionOptions["onSessionClose"];
   private fatalConnectError: ServerResponseError | null = null;
-  private readonly pendingEnvironmentChanges = new Map<
+  private readonly pendingRecoverableMessages = new Map<
     string,
-    HostDaemonEnvironmentChangeMessage
-  >();
-  private pendingApplicationStorageChanged = false;
-  private readonly pendingApplicationContentChanges = new Map<
-    string,
-    HostDaemonApplicationContentChangedMessage
+    HostDaemonDaemonWsMessage
   >();
 
   constructor(private readonly options: ServerConnectionOptions) {
@@ -146,9 +144,7 @@ export class ServerConnection {
 
   async shutdown(): Promise<void> {
     this.stopped = true;
-    this.pendingEnvironmentChanges.clear();
-    this.pendingApplicationStorageChanged = false;
-    this.pendingApplicationContentChanges.clear();
+    this.pendingRecoverableMessages.clear();
     this.stopPollingFallback();
     this.clearHeartbeat();
     this.clearSession();
@@ -165,19 +161,16 @@ export class ServerConnection {
 
   sendMessage(message: HostDaemonDaemonWsMessage): boolean {
     const payload = hostDaemonDaemonWsMessageSchema.parse(message);
+    const recoverableKey = recoverableMessageKey(payload);
     if (!this.websocket || this.websocket.readyState !== OPEN_READY_STATE) {
-      this.bufferMessageIfRecoverable(payload);
+      if (recoverableKey !== null) {
+        this.pendingRecoverableMessages.set(recoverableKey, payload);
+      }
       return false;
     }
     this.websocket.send(JSON.stringify(payload));
-    if (payload.type === "environment-change") {
-      this.pendingEnvironmentChanges.delete(environmentChangeMessageKey(payload));
-    }
-    if (payload.type === "application-storage-changed") {
-      this.pendingApplicationStorageChanged = false;
-    }
-    if (payload.type === "application-content-changed") {
-      this.pendingApplicationContentChanges.delete(payload.applicationId);
+    if (recoverableKey !== null) {
+      this.pendingRecoverableMessages.delete(recoverableKey);
     }
     return true;
   }
@@ -363,36 +356,11 @@ export class ServerConnection {
     });
   }
 
-  private bufferMessageIfRecoverable(
-    message: HostDaemonDaemonWsMessage,
-  ): void {
-    if (message.type === "environment-change") {
-      this.pendingEnvironmentChanges.set(
-        environmentChangeMessageKey(message),
-        message,
-      );
-    }
-    if (message.type === "application-storage-changed") {
-      this.pendingApplicationStorageChanged = true;
-    }
-    if (message.type === "application-content-changed") {
-      this.pendingApplicationContentChanges.set(message.applicationId, message);
-    }
-  }
-
   private flushPendingRecoverableMessages(): void {
-    for (const message of Array.from(this.pendingEnvironmentChanges.values())) {
-      if (!this.sendMessage(message)) {
-        return;
-      }
-    }
-    if (this.pendingApplicationStorageChanged) {
-      if (!this.sendMessage(APPLICATION_STORAGE_CHANGED_MESSAGE)) {
-        return;
-      }
-    }
+    // Snapshot before sending: each send mutates the map (delete on
+    // success, re-set on failure), so don't iterate it live.
     for (const message of Array.from(
-      this.pendingApplicationContentChanges.values(),
+      this.pendingRecoverableMessages.values(),
     )) {
       if (!this.sendMessage(message)) {
         return;

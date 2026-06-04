@@ -6,7 +6,6 @@ import type {
 } from "@bb/host-daemon-contract";
 import { workspaceResolutionFailureCodeSchema } from "@bb/host-daemon-contract";
 import { WorkspaceError } from "@bb/host-workspace";
-import { SkillCatalogConflictError } from "./runtime-manager.js";
 import type { RuntimeEntry, RuntimeManager } from "./runtime-manager.js";
 import {
   CommandDispatchError,
@@ -108,13 +107,6 @@ export function workspaceResolutionFailureFromError(
   if (isPermissionDeniedError(error)) {
     return buildWorkspaceResolutionFailure({
       code: "permission_denied",
-      message: error.message,
-      workspacePath,
-    });
-  }
-  if (error instanceof SkillCatalogConflictError) {
-    return buildWorkspaceResolutionFailure({
-      code: "skill_catalog_conflict",
       message: error.message,
       workspacePath,
     });

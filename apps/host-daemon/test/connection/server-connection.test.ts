@@ -797,6 +797,67 @@ describe("ServerConnection", () => {
     await connection.shutdown();
   });
 
+  it("buffers mixed recoverable hint kinds without collisions and flushes them in arrival order", async () => {
+    testServer = await createTestServer();
+    const server = testServer;
+    const { connection } = createConnection(server);
+
+    expect(
+      connection.sendMessage({
+        type: "application-content-changed",
+        applicationId: "status",
+      }),
+    ).toBe(false);
+    expect(
+      connection.sendMessage({
+        type: "application-storage-changed",
+      }),
+    ).toBe(false);
+    expect(
+      connection.sendMessage({
+        type: "environment-change",
+        environmentId: "env-1",
+        change: "work-status-changed",
+      }),
+    ).toBe(false);
+    expect(server.heartbeats).toEqual([]);
+
+    await connection.start();
+    await waitFor(
+      () =>
+        server.heartbeats.filter(
+          (entry) => entry.message.type !== "heartbeat",
+        ).length === 3,
+    );
+    expect(
+      server.heartbeats.filter((entry) => entry.message.type !== "heartbeat"),
+    ).toEqual([
+      {
+        sessionId: "session-1",
+        message: {
+          type: "application-content-changed",
+          applicationId: "status",
+        },
+      },
+      {
+        sessionId: "session-1",
+        message: {
+          type: "application-storage-changed",
+        },
+      },
+      {
+        sessionId: "session-1",
+        message: {
+          type: "environment-change",
+          environmentId: "env-1",
+          change: "work-status-changed",
+        },
+      },
+    ]);
+
+    await connection.shutdown();
+  });
+
   it("includes active threads when opening the session", async () => {
     testServer = await createTestServer();
     const activeThreads: HostDaemonActiveThread[] = [
