@@ -357,12 +357,24 @@ describe("electron-builder signing config", () => {
     expect(config.publish[0]).toMatchObject(DESKTOP_AUTO_UPDATE_FEED_CONFIG);
   });
 
-  it("keeps local builds unsigned when signing secrets are absent", async () => {
+  it("signs local builds via keychain auto-discovery when signing secrets are absent", async () => {
+    // An unsigned bundle is provenance-tracked by macOS, which makes syspolicyd
+    // evaluate every exec in the app's process tree — local builds must sign
+    // with a keychain identity when one is available.
     const { config } = await readResolvedConfig({});
+
+    expect(config.mac).not.toHaveProperty("identity");
+    expect(config.mac.notarize).toBe(false);
+    expect(config.dmg.sign).toBe(false);
+  });
+
+  it("keeps builds unsigned when keychain auto-discovery is explicitly disabled", async () => {
+    const { config } = await readResolvedConfig({
+      CSC_IDENTITY_AUTO_DISCOVERY: "false",
+    });
 
     expect(config.mac.identity).toBeNull();
     expect(config.mac.notarize).toBe(false);
-    expect(config.dmg.sign).toBe(false);
   });
 
   it("rejects partial signing secret sets", async () => {

@@ -63,9 +63,14 @@ pnpm exec turbo run desktop:build --filter=@bb/desktop
 ```
 
 Artifacts are written under `apps/desktop/release/`. The desktop build is
-macOS-only and Apple Silicon arm64-only. Without signing secrets, local and CI
-builds remain unsigned and macOS shows the normal Gatekeeper warning on first
-launch.
+macOS-only and Apple Silicon arm64-only. Without signing secrets, local builds
+sign with a code-signing identity auto-discovered from the keychain and skip
+notarization. A valid signature matters even for local builds: macOS
+provenance-tracks unsigned apps, forcing syspolicyd to evaluate every exec in
+the app's process tree, which can stall process launches system-wide. On
+machines with no keychain identity (or with `CSC_IDENTITY_AUTO_DISCOVERY=false`,
+as CI sets for workflow-artifact-only builds), artifacts remain unsigned and
+macOS shows the normal Gatekeeper warning on first launch.
 
 ## Releasing
 
@@ -93,8 +98,9 @@ immutable releases and `desktop-latest` for the moving pointer.
 ## macOS signing + notarization
 
 The desktop package is ready for Developer ID signing and Apple notarization.
-Unsigned local builds continue to work with no secrets. To activate signed and
-notarized release artifacts, add these GitHub Actions secrets:
+Local builds with no secrets sign via keychain auto-discovery and skip
+notarization. To activate signed and notarized release artifacts, add these
+GitHub Actions secrets:
 
 | Secret                       | Value                                                                                                                                                                                  |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

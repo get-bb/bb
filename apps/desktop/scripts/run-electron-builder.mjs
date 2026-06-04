@@ -67,7 +67,7 @@ function logWarning(message) {
 }
 
 function logSigningPlan(signingPlan) {
-  if (signingPlan.codeSigningEnabled) {
+  if (signingPlan.mode === "environment") {
     if (signingPlan.identityName) {
       console.log(
         `macOS code signing enabled with CSC_NAME identity "${signingPlan.identityName}".`,
@@ -77,9 +77,13 @@ function logSigningPlan(signingPlan) {
         "macOS code signing enabled; electron-builder will derive the identity from CSC_LINK.",
       );
     }
+  } else if (signingPlan.mode === "keychain") {
+    console.log(
+      "macOS code signing via keychain auto-discovery; artifacts stay unsigned if no identity is installed. Notarization skipped.",
+    );
   } else {
     logWarning(
-      "macOS signing/notarization skipped: no required signing secrets found. Local artifacts will be unsigned.",
+      "macOS signing skipped: CSC_IDENTITY_AUTO_DISCOVERY=false and no signing secrets found. Artifacts will be unsigned.",
     );
   }
 
@@ -88,6 +92,28 @@ function logSigningPlan(signingPlan) {
   }
 }
 
+function autoDiscoveryExplicitlyDisabled(env) {
+  return (
+    envValueIsSet(env.CSC_IDENTITY_AUTO_DISCOVERY) &&
+    env.CSC_IDENTITY_AUTO_DISCOVERY.trim() === "false"
+  );
+}
+
+/**
+ * Resolves one of three signing modes:
+ *
+ * - "environment": all CI signing/notarization secrets are set — sign with the
+ *   provided certificate and notarize (the published-release path).
+ * - "keychain": no secrets — sign with an auto-discovered keychain identity and
+ *   skip notarization. Locally built apps never get the quarantine xattr, so
+ *   notarization is unnecessary, but a valid signature is not optional: an
+ *   unsigned bundle is provenance-tracked by macOS, which forces syspolicyd to
+ *   evaluate every exec in the app's process tree and can stall execs
+ *   system-wide. Machines without a signing identity fall back to unsigned
+ *   artifacts inside electron-builder.
+ * - "disabled": no secrets and CSC_IDENTITY_AUTO_DISCOVERY=false — explicitly
+ *   unsigned (the CI path for workflow-artifact-only builds).
+ */
 function createSigningPlan(env) {
   const presentSigningKeys = presentEnvironmentKeys(
     requiredSigningEnvironmentKeys,
@@ -106,19 +132,24 @@ function createSigningPlan(env) {
         presentSigningKeys,
       )}. Missing: ${formatEnvironmentKeyList(
         missingSigningKeys,
-      )}. Set all required keys or unset all of them for an unsigned local build.`,
+      )}. Set all required keys or unset all of them for a keychain-signed local build.`,
     );
   }
 
-  const codeSigningEnabled = hasAllSigningKeys;
-  const identityName = envValueIsSet(env.CSC_NAME)
-    ? env.CSC_NAME.trim()
-    : undefined;
+  if (hasAllSigningKeys) {
+    return {
+      mode: "environment",
+      identityName: envValueIsSet(env.CSC_NAME)
+        ? env.CSC_NAME.trim()
+        : undefined,
+      notarizationEnabled: true,
+    };
+  }
 
   return {
-    codeSigningEnabled,
-    identityName,
-    notarizationEnabled: codeSigningEnabled,
+    mode: autoDiscoveryExplicitlyDisabled(env) ? "disabled" : "keychain",
+    identityName: undefined,
+    notarizationEnabled: false,
   };
 }
 
@@ -130,14 +161,13 @@ export function resolveElectronBuilderConfig(baseConfig, env) {
     notarize: signingPlan.notarizationEnabled,
   };
 
-  if (signingPlan.codeSigningEnabled) {
-    if (signingPlan.identityName) {
-      mac.identity = signingPlan.identityName;
-    } else {
-      delete mac.identity;
-    }
-  } else {
+  if (signingPlan.mode === "disabled") {
     mac.identity = null;
+  } else if (signingPlan.identityName) {
+    mac.identity = signingPlan.identityName;
+  } else {
+    // Let electron-builder resolve the identity (CSC_LINK or keychain).
+    delete mac.identity;
   }
 
   config.mac = mac;
@@ -154,7 +184,7 @@ function createElectronBuilderEnv(signingPlan) {
   };
 
   childEnv.CSC_IDENTITY_AUTO_DISCOVERY =
-    signingPlan.codeSigningEnabled && !signingPlan.identityName
+    signingPlan.mode !== "disabled" && !signingPlan.identityName
       ? "true"
       : "false";
 
