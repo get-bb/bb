@@ -1433,6 +1433,7 @@ describe("CommandRouter", () => {
             model: "gpt-5",
             serviceTier: "default" as const,
             reasoningLevel: "medium" as const,
+            workflowsEnabled: false,
             permissionMode: "full" as const,
             permissionEscalation: null,
           },
