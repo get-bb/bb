@@ -211,7 +211,6 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
       {
         hostId: environment.hostId,
         input: payload.input,
-        mode: "change-detection",
         thread,
       },
     );

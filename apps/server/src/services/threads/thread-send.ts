@@ -261,7 +261,6 @@ export async function sendThreadMessage(
       {
         hostId: environment.hostId,
         input,
-        mode: "change-detection",
         thread,
       },
     );

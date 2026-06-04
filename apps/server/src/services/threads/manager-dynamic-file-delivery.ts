@@ -22,12 +22,9 @@ export const MANAGER_PREFERENCES_FILE_KEY = "manager-preferences";
 export const MANAGER_PREFERENCES_FILE_NAME = "PREFERENCES.md";
 export const MANAGER_PREFERENCES_INLINE_LIMIT_BYTES = 256 * 1024;
 
-type ManagerPreferencesDeliveryMode = "change-detection" | "first-boot";
-
 interface PrepareManagerPreferencesSystemMessageArgs {
   hostId: string;
   input: PromptInput[];
-  mode: ManagerPreferencesDeliveryMode;
   thread: Thread;
 }
 
@@ -70,7 +67,6 @@ interface ReadManagerPreferencesFileArgs {
 }
 
 interface BuildPreferencesSystemMessageArgs {
-  mode: ManagerPreferencesDeliveryMode;
   previousStatus: ThreadDynamicContextFileStatus | null;
   snapshot: DynamicFileSnapshot;
 }
@@ -253,7 +249,7 @@ function buildPreferencesSystemMessage(
     });
   }
   const templateId =
-    args.mode === "first-boot" || args.previousStatus === null
+    args.previousStatus === null
       ? "systemMessageManagerPreferencesCurrent"
       : "systemMessageManagerPreferencesUpdated";
   return renderTemplate(templateId, {
@@ -318,7 +314,6 @@ export async function prependManagerPreferencesSystemMessageIfChanged(
   }
 
   const message = buildPreferencesSystemMessage({
-    mode: args.mode,
     previousStatus: previous?.contentStatus ?? null,
     snapshot,
   });

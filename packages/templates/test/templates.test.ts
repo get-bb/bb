@@ -157,7 +157,10 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("starter/no-preferences");
     expect(rendered).toContain("mcp__bb-bridge__message_user");
     expect(rendered).toContain("name, vibe, or other identity details");
-    expect(rendered).toContain("Preserve any seeded structure");
+    // Storage seeding from user templates was removed; the welcome message
+    // must not reference it.
+    expect(rendered).not.toContain("may already exist from user");
+    expect(rendered).not.toContain("Preserve any seeded structure");
 
     // Anchors the two opening asks: scope + landing mode.
     expect(rendered).toContain(

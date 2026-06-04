@@ -308,7 +308,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
             />
           ) : null}
           {modeConfig.mode === "manager" ? (
-            <ManagerSlot host={modeConfig.host} />
+            <HostSlot host={modeConfig.host} />
           ) : (
             <ThreadEnvSlot
               environment={modeConfig.environment}
@@ -332,18 +332,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
     </div>
   );
 });
-
-interface ManagerSlotProps {
-  host: NewThreadHostConfig;
-}
-
-function ManagerSlot({ host }: ManagerSlotProps) {
-  return (
-    <>
-      <HostSlot host={host} />
-    </>
-  );
-}
 
 interface HostSlotProps {
   host: NewThreadHostConfig;

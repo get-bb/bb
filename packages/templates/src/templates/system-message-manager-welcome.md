@@ -64,9 +64,6 @@ After scope and landing mode are settled, figure out together:
 Create, replace, or update `PREFERENCES.md` with what you learn. If the user gives you a
 name, vibe, or other identity details for yourself, record those too.
 
-`PREFERENCES.md`, `ASYNC.md`, notes, plans, or other files may already exist from user
-templates. Preserve any seeded structure as you work.
-
 If there is no `PREFERENCES.md` fill out this template with what you learn and save it:
 
 ```

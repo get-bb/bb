@@ -825,6 +825,47 @@ describe("pruneCompletedCommandRows", () => {
     ).toEqual([durable.id]);
   });
 
+  it("prunes historical rows for removed command types in the read-only cohort", () => {
+    const { db, host } = setup();
+    const now = Date.now();
+    const completedAt = now - 10_000;
+    const completedBefore = now - 5_000;
+
+    // Rows of this type predate the removal of the manager storage
+    // templates feature; the contract no longer knows the type, so queue
+    // under a current type and rewrite the row to the historical value.
+    const legacy = queueCommand(db, noopNotifier, {
+      hostId: host.id,
+      sessionId: null,
+      type: "environment.cleanup_preflight",
+      payload: "{}",
+    });
+    reportCommandResult(db, noopNotifier, {
+      commandId: legacy.id,
+      state: "success",
+      completedAt,
+      resultPayload: null,
+    });
+    db.update(hostDaemonCommands)
+      .set({ type: "host.list_manager_templates" })
+      .where(eq(hostDaemonCommands.id, legacy.id))
+      .run();
+
+    expect(
+      pruneCompletedDurableCommandRows(db, {
+        completedBefore,
+        limit: 100,
+      }),
+    ).toEqual({ deleted: 0 });
+    expect(
+      pruneCompletedReadOnlyCommandRows(db, {
+        completedBefore,
+        limit: 100,
+      }),
+    ).toEqual({ deleted: 1 });
+    expect(db.select().from(hostDaemonCommands).all()).toEqual([]);
+  });
+
   it("honors the delete batch limit", () => {
     const { db, host } = setup();
     const now = Date.now();

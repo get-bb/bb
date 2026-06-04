@@ -118,23 +118,6 @@ async function reportCleanCleanupPreflightForEnvironment(
   return command;
 }
 
-async function respondToManagerPreferencesMissing(
-  harness: TestAppHarness,
-): Promise<void> {
-  const command = await waitForQueuedCommand(
-    harness,
-    ({ command, row }) =>
-      row.state === "pending" &&
-      command.type === "host.read_file" &&
-      command.path.endsWith("/PREFERENCES.md"),
-  );
-  const response = await reportQueuedCommandError(harness, command, {
-    errorCode: "ENOENT",
-    errorMessage: "File not found",
-  });
-  expect(response.status).toBe(200);
-}
-
 describe("public project and host routes", () => {
   it("supports project CRUD", async () => {
     await withTestHarness(async (harness) => {
@@ -808,7 +791,7 @@ describe("public project and host routes", () => {
         serviceTier: "default",
       });
 
-      const responsePromise = harness.app.request(
+      const response = await harness.app.request(
         `/api/v1/projects/${project.id}/managers`,
         {
           method: "POST",
@@ -821,8 +804,6 @@ describe("public project and host routes", () => {
           }),
         },
       );
-      await respondToManagerPreferencesMissing(harness);
-      const response = await responsePromise;
 
       expect(response.status).toBe(201);
       expect(
@@ -858,7 +839,7 @@ describe("public project and host routes", () => {
         id: "host-personal-manager",
       });
 
-      const responsePromise = harness.app.request(
+      const response = await harness.app.request(
         `/api/v1/projects/${PERSONAL_PROJECT_ID}/managers`,
         {
           method: "POST",
@@ -871,8 +852,6 @@ describe("public project and host routes", () => {
           }),
         },
       );
-      await respondToManagerPreferencesMissing(harness);
-      const response = await responsePromise;
 
       expect(response.status).toBe(201);
       const managerThread = threadSchema.parse(await readJson(response));
@@ -964,7 +943,7 @@ describe("public project and host routes", () => {
         serviceTier: "fast",
       });
 
-      const responsePromise = harness.app.request(
+      const response = await harness.app.request(
         `/api/v1/projects/${project.id}/managers`,
         {
           method: "POST",
@@ -977,8 +956,6 @@ describe("public project and host routes", () => {
           }),
         },
       );
-      await respondToManagerPreferencesMissing(harness);
-      const response = await responsePromise;
 
       expect(response.status).toBe(201);
       expect(
@@ -1006,7 +983,7 @@ describe("public project and host routes", () => {
         path: "/tmp/manager-defaults-cli-fallback",
       });
 
-      const responsePromise = harness.app.request(
+      const response = await harness.app.request(
         `/api/v1/projects/${project.id}/managers`,
         {
           method: "POST",
@@ -1019,8 +996,6 @@ describe("public project and host routes", () => {
           }),
         },
       );
-      await respondToManagerPreferencesMissing(harness);
-      const response = await responsePromise;
 
       expect(response.status).toBe(201);
       await expect(readJson(response)).resolves.toMatchObject({

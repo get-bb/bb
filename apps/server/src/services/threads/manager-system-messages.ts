@@ -168,7 +168,6 @@ export async function queueManagerSystemMessage(
         await prependManagerPreferencesSystemMessageIfChanged(deps, {
           hostId: environment.hostId,
           input,
-          mode: "change-detection",
           thread: managerThread,
         });
 

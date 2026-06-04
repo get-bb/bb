@@ -3,6 +3,7 @@ import { hostDaemonCommands, listEvents } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
+import { listQueuedThreadCommands } from "../helpers/commands.js";
 import { createCommandApprovalPayload } from "../helpers/pending-interactions.js";
 import { assertPromptHistoryForTurnRequest } from "../helpers/prompt-history.js";
 import {
@@ -212,6 +213,73 @@ describe("sendThreadMessage", () => {
             .all()
             .map((command) => command.type),
         ).toContain("turn.submit");
+      });
+    },
+  );
+
+  it.each([
+    { providerId: "claude-code", workflowsEnabled: true },
+    { providerId: "codex", workflowsEnabled: false },
+  ])(
+    "fills workflowsEnabled $workflowsEnabled into turn.submit runtime options for $providerId threads",
+    async ({ providerId, workflowsEnabled }) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: `host-thread-send-workflows-${providerId}`,
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          providerId,
+          status: "active",
+        });
+        const providerThreadId = `provider-thread-workflows-${providerId}`;
+        seedThreadRuntimeState(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId,
+        });
+        seedTurnStarted(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          turnId: `turn-workflows-${providerId}`,
+          providerThreadId,
+        });
+
+        await sendThreadMessage(harness.deps, {
+          environment,
+          payload: {
+            input: [{ type: "text", text: "check workflows policy" }],
+            mode: "auto",
+            model: "gpt-5.4",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+          },
+          thread,
+          trigger: "user",
+        });
+
+        const turnSubmits = listQueuedThreadCommands(
+          harness,
+          "turn.submit",
+          thread.id,
+        );
+        expect(turnSubmits).toHaveLength(1);
+        const command = turnSubmits[0];
+        if (command?.type !== "turn.submit") {
+          throw new Error("Expected a turn.submit command");
+        }
+        // The server-owned policy is the only writer of this field; it must
+        // arrive in the daemon command filled per provider.
+        expect(command.options.workflowsEnabled).toBe(workflowsEnabled);
       });
     },
   );

@@ -27,7 +27,6 @@ import { renderTemplate } from "@bb/templates";
 import { buildManagerToolReminderText } from "../../src/services/threads/manager-tool-reminder.js";
 import { MANAGER_PREFERENCES_FILE_KEY } from "../../src/services/threads/manager-dynamic-file-delivery.js";
 import {
-  reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
   waitForQueuedCommandAfter,
@@ -57,7 +56,7 @@ interface HostDataDirArgs {
 }
 
 interface RespondToManagerPreferencesReadArgs {
-  content?: string;
+  content: string;
   harness: TestAppHarness;
 }
 
@@ -85,23 +84,13 @@ async function respondToNextManagerPreferencesRead(
   if (queued.command.type !== "host.read_file") {
     throw new Error(`Expected host.read_file, got ${queued.command.type}`);
   }
-  const response =
-    args.content === undefined
-      ? await reportQueuedCommandError(args.harness, queued, {
-          errorCode: "ENOENT",
-          errorMessage: "File not found",
-        })
-      : await reportQueuedCommandSuccess(
-          args.harness,
-          queued,
-          {
-            path: queued.command.path,
-            content: args.content,
-            contentEncoding: "utf8",
-            mimeType: "text/markdown",
-            sizeBytes: Buffer.byteLength(args.content),
-          },
-        );
+  const response = await reportQueuedCommandSuccess(args.harness, queued, {
+    path: queued.command.path,
+    content: args.content,
+    contentEncoding: "utf8",
+    mimeType: "text/markdown",
+    sizeBytes: Buffer.byteLength(args.content),
+  });
   expect(response.status).toBe(200);
 }
 
@@ -330,7 +319,7 @@ describe("public thread manager and ownership routes", () => {
       });
       expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
 
-      const managerResponsePromise = harness.app.request(
+      const managerResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/managers`,
         {
           method: "POST",
@@ -350,8 +339,6 @@ describe("public thread manager and ownership routes", () => {
           }),
         },
       );
-      await respondToNextManagerPreferencesRead({ harness });
-      const managerResponse = await managerResponsePromise;
       expect(managerResponse.status).toBe(201);
       const managerThread = threadSchema.parse(await readJson(managerResponse));
       expect(managerThread.type).toBe("manager");
@@ -414,7 +401,7 @@ describe("public thread manager and ownership routes", () => {
         projectId: project.id,
         path: source.path,
       });
-      const responsePromise = harness.app.request(
+      const response = await harness.app.request(
         `/api/v1/projects/${project.id}/managers`,
         {
           method: "POST",
@@ -430,11 +417,6 @@ describe("public thread manager and ownership routes", () => {
           }),
         },
       );
-      await respondToNextManagerPreferencesRead({
-        harness,
-        content: "alpha prefs\n",
-      });
-      const response = await responsePromise;
       expect(response.status).toBe(201);
       const thread = threadSchema.parse(await readJson(response));
       await waitForQueuedCommand(
@@ -458,6 +440,15 @@ describe("public thread manager and ownership routes", () => {
         .set({ status: "idle", updatedAt: Date.now() })
         .where(eq(threads.id, thread.id))
         .run();
+      // Creation never reads PREFERENCES.md, so seed the change-detection
+      // baseline as if an earlier tell already delivered different contents.
+      upsertThreadDynamicContextFileState(harness.db, {
+        threadId: thread.id,
+        fileKey: MANAGER_PREFERENCES_FILE_KEY,
+        contentHash: "alpha-prefs-hash",
+        contentStatus: "present",
+        shownAt: Date.now() - 1,
+      });
       const storagePath = path.join(dataDir, "thread-storage", thread.id);
       await mkdir(storagePath, { recursive: true });
       await writeFile(
@@ -536,7 +527,7 @@ describe("public thread manager and ownership routes", () => {
         path: source.path,
       });
 
-      const responsePromise = harness.app.request(
+      const response = await harness.app.request(
         `/api/v1/projects/${project.id}/managers`,
         {
           method: "POST",
@@ -550,8 +541,6 @@ describe("public thread manager and ownership routes", () => {
           }),
         },
       );
-      await respondToNextManagerPreferencesRead({ harness });
-      const response = await responsePromise;
 
       expect(response.status).toBe(201);
       const thread = threadSchema.parse(await readJson(response));
@@ -621,7 +610,7 @@ describe("public thread manager and ownership routes", () => {
         path: source.path,
       });
 
-      const responsePromise = harness.app.request(
+      const response = await harness.app.request(
         `/api/v1/projects/${project.id}/managers`,
         {
           method: "POST",
@@ -634,8 +623,6 @@ describe("public thread manager and ownership routes", () => {
           }),
         },
       );
-      await respondToNextManagerPreferencesRead({ harness });
-      const response = await responsePromise;
 
       expect(response.status).toBe(201);
       const thread = threadSchema.parse(await readJson(response));
@@ -676,7 +663,7 @@ describe("public thread manager and ownership routes", () => {
         path: source.path,
       });
 
-      const responsePromise = harness.app.request(
+      const response = await harness.app.request(
         `/api/v1/projects/${project.id}/managers`,
         {
           method: "POST",
@@ -697,8 +684,6 @@ describe("public thread manager and ownership routes", () => {
           }),
         },
       );
-      await respondToNextManagerPreferencesRead({ harness });
-      const response = await responsePromise;
 
       expect(response.status).toBe(201);
       const thread = threadSchema.parse(await readJson(response));
@@ -731,7 +716,7 @@ describe("public thread manager and ownership routes", () => {
     }
   });
 
-  it("continues manager welcome flow when preferences are missing", async () => {
+  it("does not read PREFERENCES.md or seed thread storage during manager creation", async () => {
     const harness = await createTestAppHarness();
     const hostId = "host-manager-preferences-missing";
     const dataDir = hostDataDir({ hostId });
@@ -747,7 +732,10 @@ describe("public thread manager and ownership routes", () => {
         path: source.path,
       });
 
-      const responsePromise = harness.app.request(
+      // The creation response must resolve without any daemon round-trip:
+      // nothing seeds a fresh manager's storage, so a creation-time
+      // PREFERENCES.md read could only ever ENOENT.
+      const response = await harness.app.request(
         `/api/v1/projects/${project.id}/managers`,
         {
           method: "POST",
@@ -763,8 +751,6 @@ describe("public thread manager and ownership routes", () => {
           }),
         },
       );
-      await respondToNextManagerPreferencesRead({ harness });
-      const response = await responsePromise;
 
       expect(response.status).toBe(201);
       const thread = threadSchema.parse(await readJson(response));
@@ -773,6 +759,12 @@ describe("public thread manager and ownership routes", () => {
         ({ command }) =>
           command.type === "thread.start" && command.threadId === thread.id,
       );
+      const preferencesReads = harness.db
+        .select({ id: hostDaemonCommands.id })
+        .from(hostDaemonCommands)
+        .where(eq(hostDaemonCommands.type, "host.read_file"))
+        .all();
+      expect(preferencesReads).toEqual([]);
       const storagePath = path.join(dataDir, "thread-storage", thread.id);
       await expect(
         stat(path.join(storagePath, "PREFERENCES.md")),

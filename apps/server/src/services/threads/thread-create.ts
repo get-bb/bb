@@ -1,7 +1,6 @@
 import {
   deleteThread,
   findEnvironmentByHostPath,
-  getEnvironment,
   hasNonTerminalThreadInEnvironment,
 } from "@bb/db";
 import type { Project } from "@bb/domain";
@@ -12,11 +11,6 @@ import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { buildExecutionOptions } from "./thread-commands.js";
-import {
-  prependManagerPreferencesSystemMessageIfChanged,
-  recordManagerDynamicFileDelivery,
-  withManagerPreferencesDeliveryLock,
-} from "./manager-dynamic-file-delivery.js";
 import {
   rememberProjectExecutionDefaultsForCreate,
   resolveProjectExecutionDefaultsForCreate,
@@ -64,13 +58,6 @@ interface CreateProvisioningThreadArgs {
     typeof buildExecutionOptions
   >[2]["projectDefaults"];
   request: ThreadCreateServiceRequest;
-}
-
-interface PrepareManagerThreadInitialInputArgs {
-  environmentIntent: ThreadProvisionEnvironmentIntent;
-  input: ThreadCreateServiceRequest["input"];
-  request: ThreadCreateServiceRequest;
-  thread: NonNullable<ReturnType<typeof createThreadRecord>>;
 }
 
 function scheduleThreadProvisioningAdvance(
@@ -128,50 +115,6 @@ function assertProjectWorkspaceCompatibility(
       "Personal workspaces are only supported for the personal project",
     );
   }
-}
-
-function resolveProvisionHostId(
-  deps: ThreadCreateDeps,
-  environmentIntent: ThreadProvisionEnvironmentIntent,
-): string {
-  switch (environmentIntent.type) {
-    case "direct-managed":
-    case "direct-personal":
-    case "direct-unmanaged":
-    case "checkout-unmanaged":
-      return environmentIntent.hostId;
-    case "reuse": {
-      const environment = getEnvironment(
-        deps.db,
-        environmentIntent.environmentId,
-      );
-      if (!environment) {
-        throw new ApiError(
-          404,
-          "environment_not_found",
-          "Environment not found",
-        );
-      }
-      return environment.hostId;
-    }
-  }
-}
-
-async function prepareManagerThreadInitialInput(
-  deps: ThreadCreateDeps,
-  args: PrepareManagerThreadInitialInputArgs,
-) {
-  if (args.thread.type !== "manager") {
-    return { input: args.input, stateUpdate: null };
-  }
-
-  const hostId = resolveProvisionHostId(deps, args.environmentIntent);
-  return prependManagerPreferencesSystemMessageIfChanged(deps, {
-    hostId,
-    input: args.input,
-    mode: "first-boot",
-    thread: args.thread,
-  });
 }
 
 function existingUnmanagedEnvironmentIntentByHostPath(
@@ -265,21 +208,12 @@ async function createProvisioningThread(
       },
       "client/turn/requested",
     );
-    await withManagerPreferencesDeliveryLock({ thread }, async () => {
-      const preparedInput = await prepareManagerThreadInitialInput(deps, {
-        environmentIntent: args.environmentIntent,
-        input: args.request.input,
-        request: args.request,
-        thread,
-      });
-      requestThreadProvision(deps, {
-        thread,
-        environmentIntent: args.environmentIntent,
-        execution,
-        input: preparedInput.input,
-        titleProvided: Boolean(args.request.title),
-      });
-      recordManagerDynamicFileDelivery(deps, preparedInput.stateUpdate);
+    requestThreadProvision(deps, {
+      thread,
+      environmentIntent: args.environmentIntent,
+      execution,
+      input: args.request.input,
+      titleProvided: Boolean(args.request.title),
     });
   } catch (error) {
     deleteThread(deps.db, deps.hub, thread.id);

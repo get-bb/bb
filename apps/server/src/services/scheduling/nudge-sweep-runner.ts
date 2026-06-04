@@ -452,7 +452,6 @@ async function prepareDueNudge(
       {
         hostId: environment.hostId,
         input,
-        mode: "change-detection",
         thread,
       },
     );

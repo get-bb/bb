@@ -224,7 +224,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "first-boot",
           thread: setup.thread,
         },
       );
@@ -247,15 +246,14 @@ describe("manager dynamic file delivery", () => {
     }
   });
 
-  it("prepends the first-boot snapshot and suppresses repeats for the same hash", async () => {
-    const setup = await setupManager("host-manager-dynamic-first-boot");
+  it("prepends the first delivered snapshot and suppresses repeats for the same hash", async () => {
+    const setup = await setupManager("host-manager-dynamic-first-delivery");
     try {
       const preparedPromise = prependManagerPreferencesSystemMessageIfChanged(
         setup.harness.deps,
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "first-boot",
           thread: setup.thread,
         },
       );
@@ -287,7 +285,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "change-detection",
           thread: setup.thread,
         },
       );
@@ -313,7 +310,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "first-boot",
           thread: setup.thread,
         },
       );
@@ -331,7 +327,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "change-detection",
           thread: setup.thread,
         },
       );
@@ -359,7 +354,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "change-detection",
           thread: setup.thread,
         },
       );
@@ -382,7 +376,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "change-detection",
           thread: setup.thread,
         },
       );
@@ -407,7 +400,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "change-detection",
           thread: setup.thread,
         },
       );
@@ -444,7 +436,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "first-boot",
           thread: setup.thread,
         },
       );
@@ -472,7 +463,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "change-detection",
           thread: setup.thread,
         },
       );
@@ -496,7 +486,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "change-detection",
           thread: setup.thread,
         },
       );
@@ -712,7 +701,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "first-boot",
           thread: setup.thread,
         },
       );
@@ -783,7 +771,6 @@ describe("manager dynamic file delivery", () => {
         {
           hostId: setup.hostId,
           input: setup.input,
-          mode: "first-boot",
           thread: setup.thread,
         },
       );

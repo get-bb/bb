@@ -78,6 +78,9 @@ const LEGACY_READ_ONLY_HOST_DAEMON_COMMAND_TYPES = [
   "host.file_metadata",
   "host.list_branches",
   "host.list_files",
+  // Removed with the manager storage templates feature; keep pruning
+  // historical rows on deployments that still hold them.
+  "host.list_manager_templates",
   "host.list_paths",
   "host.read_file",
   "host.read_file_relative",
@@ -88,7 +91,8 @@ const LEGACY_READ_ONLY_HOST_DAEMON_COMMAND_TYPES = [
 ] as const;
 export const COMPLETED_READ_ONLY_COMMAND_PRUNE_TYPES = [
   ...READ_ONLY_HOST_DAEMON_COMMAND_TYPES,
-  // Historical rows for command types that now run only through online RPC.
+  // Historical rows for command types that now run only through online RPC
+  // or were removed entirely.
   ...LEGACY_READ_ONLY_HOST_DAEMON_COMMAND_TYPES,
   // Historical replay capture rows from the removed durable replay protocol.
   "replay.capture_get",
