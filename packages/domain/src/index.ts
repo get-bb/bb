@@ -194,6 +194,7 @@ export {
   LOW_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
   MEDIUM_REASONING_EFFORT,
+  ULTRACODE_REASONING_EFFORT,
   XHIGH_REASONING_EFFORT,
 } from "./reasoning-efforts.js";
 
@@ -534,6 +535,7 @@ export {
   providerEventTypeValues,
   providerRawEventSchema,
   systemEventSchema,
+  threadEventBackgroundTaskItemSchema,
   threadEventContextWindowUsageSchema,
   threadEventFileChangeKindSchema,
   threadEventFileChangeSchema,
@@ -562,6 +564,7 @@ export type {
   ProviderRawEvent,
   ProviderEvent,
   ThreadEvent,
+  ThreadEventBackgroundTaskItem,
   ThreadEventContextWindowUsage,
   ThreadEventFileChange,
   ThreadEventImageViewItem,
@@ -580,6 +583,27 @@ export type {
   ThreadEventWebFetchItem,
   ThreadEventWebSearchItem,
 } from "./provider-event.js";
+
+export {
+  LOCAL_WORKFLOW_TASK_TYPE,
+  backgroundTaskItemStatus,
+  backgroundTaskStatusSchema,
+  backgroundTaskStatusValues,
+  backgroundTaskUsageSchema,
+  workflowAgentSnapshotSchema,
+  workflowAgentStateSchema,
+  workflowAgentStateValues,
+  workflowPhaseSnapshotSchema,
+  workflowProgressSnapshotSchema,
+} from "./background-task.js";
+export type {
+  BackgroundTaskStatus,
+  BackgroundTaskUsage,
+  WorkflowAgentSnapshot,
+  WorkflowAgentState,
+  WorkflowPhaseSnapshot,
+  WorkflowProgressSnapshot,
+} from "./background-task.js";
 
 export { toPositiveNumber } from "./number-utils.js";
 

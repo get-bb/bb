@@ -651,6 +651,8 @@ function toCodexReasoningEffort(
       return "high";
     case "xhigh":
       return "xhigh";
+    case "ultracode":
+      throw new Error("Codex does not support ultracode reasoning level.");
     case "max":
       throw new Error("Codex does not support max reasoning level.");
   }

@@ -60,6 +60,10 @@ export type TimelineImageViewViewWorkRow = Extract<
   TimelineViewWorkRow,
   { workKind: "image-view" }
 >;
+export type TimelineViewWorkflowWorkRow = Extract<
+  TimelineViewWorkRow,
+  { workKind: "workflow" }
+>;
 
 export type TimelineViewSourceRow =
   | TimelineConversationRow
@@ -277,6 +281,7 @@ export function summarizeTimelineWork(
         break;
       case "question":
       case "approval":
+      case "workflow":
         break;
       default:
         assertNever(row);
@@ -354,6 +359,7 @@ function approvalStatusSummaryLabel(
       case "image-view":
       case "web-fetch":
       case "web-search":
+      case "workflow":
         return null;
       default:
         assertNever(row);
@@ -401,6 +407,7 @@ function getTimelineWorkSummaryCategory(
       return "delegations";
     case "approval":
     case "question":
+    case "workflow":
       return null;
     default:
       return assertNever(row);
@@ -678,7 +685,8 @@ function isSummarizableWorkRow(
   return (
     row.kind === "work" &&
     row.workKind !== "approval" &&
-    row.workKind !== "question"
+    row.workKind !== "question" &&
+    row.workKind !== "workflow"
   );
 }
 
@@ -719,8 +727,9 @@ function rowConcept(row: TimelineViewWorkRow): TimelineWorkSummaryCategory {
       return "imageViews";
     case "approval":
     case "question":
-      // Approval and question rows aren't summarizable; these branches are unreachable in
-      // practice because callers filter via isSummarizableWorkRow.
+    case "workflow":
+      // Approval, question, and workflow rows aren't summarizable; these branches are
+      // unreachable in practice because callers filter via isSummarizableWorkRow.
       return "tools";
     default:
       return assertNever(row);

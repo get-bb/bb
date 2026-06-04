@@ -48,6 +48,7 @@ const REASONING_LABELS: Record<ReasoningLevel, string> = {
   medium: "Medium",
   high: "High",
   xhigh: "Extra High",
+  ultracode: "Ultracode",
   max: "Max",
 };
 

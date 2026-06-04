@@ -1,0 +1,12 @@
+{
+  "type": "system",
+  "subtype": "task_started",
+  "task_id": "a35aa0d9e98a8e8e6",
+  "tool_use_id": "toolu_01W1cLr7AsTRvbya9LM5LSAV",
+  "description": "Single subagent reply test",
+  "subagent_type": "general-purpose",
+  "task_type": "local_agent",
+  "prompt": "Reply with exactly the word beta. Do not use any tools.",
+  "uuid": "87cfdefa-5124-4580-b8c9-4c777c7e093f",
+  "session_id": "9bf59028-47c3-4a78-aad8-3f999e49e329"
+}

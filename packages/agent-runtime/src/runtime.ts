@@ -208,7 +208,22 @@ function createAgentRuntimeInternal(
       threadIdentityRegistry.resolvePendingIdentityWaiters(
         providerProcess.identity,
       ),
-    onProviderThreadDetached: (threadId) => {
+    onProviderThreadDetached: (threadId, providerProcess) => {
+      // Reconcile adapter state that dies with the provider process (open
+      // background tasks) before the thread's identity mappings are cleared —
+      // the synthesized events still need provider-thread stamping.
+      const detachEvents =
+        providerProcess.adapter.buildThreadDetachedEvents?.({ threadId }) ??
+        [];
+      if (detachEvents.length > 0) {
+        emitTranslatedEvents({
+          events: detachEvents,
+          proc: providerProcess,
+          providerId: providerProcess.adapter.id,
+          rawMethod: "runtime/thread-detached",
+          sourceThreadId: threadId,
+        });
+      }
       threadIdentityRegistry.clearThread(threadId);
       clearThreadRuntimeConfig(threadId);
       turnState.clearThread(threadId);

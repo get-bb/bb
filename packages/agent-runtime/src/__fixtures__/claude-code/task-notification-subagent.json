@@ -1,0 +1,16 @@
+{
+  "type": "system",
+  "subtype": "task_notification",
+  "task_id": "a35aa0d9e98a8e8e6",
+  "tool_use_id": "toolu_01W1cLr7AsTRvbya9LM5LSAV",
+  "status": "completed",
+  "output_file": "",
+  "summary": "Single subagent reply test",
+  "usage": {
+    "total_tokens": 8908,
+    "tool_uses": 0,
+    "duration_ms": 1548
+  },
+  "uuid": "cc9b8ff9-17a7-4392-ae13-012d97e38683",
+  "session_id": "9bf59028-47c3-4a78-aad8-3f999e49e329"
+}

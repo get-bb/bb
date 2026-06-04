@@ -1,9 +1,12 @@
 import { z } from "zod";
 import {
+  backgroundTaskStatusSchema,
+  backgroundTaskUsageSchema,
   jsonValueSchema,
   pendingInteractionUserAnswerSchema,
   pendingInteractionUserQuestionQuestionSchema,
   threadTurnInitiatorSchema,
+  workflowProgressSnapshotSchema,
   type JsonObject,
 } from "@bb/domain";
 
@@ -418,6 +421,30 @@ export const timelineDelegationWorkRowSchema: z.ZodType<TimelineDelegationWorkRo
     childRows: z.array(z.lazy(() => timelineRowSchema)),
   });
 
+/**
+ * A dynamic workflow run (Claude Code Workflow tool). The row outlives its
+ * spawning turn: progress and terminal state arrive via thread-scoped events
+ * folded into this single row. `workflow` is the merged phase/agent tree;
+ * null when the provider reported no progress records (degraded rendering
+ * falls back to description + usage).
+ */
+export const timelineWorkflowWorkRowSchema = timelineWorkRowBaseSchema.extend({
+  workKind: z.literal("workflow"),
+  itemId: z.string(),
+  taskType: z.string(),
+  workflowName: z.string().nullable(),
+  description: z.string(),
+  taskStatus: backgroundTaskStatusSchema,
+  workflow: workflowProgressSnapshotSchema.nullable(),
+  usage: backgroundTaskUsageSchema.nullable(),
+  summary: z.string().nullable(),
+  error: z.string().nullable(),
+  completedAt: z.number().nullable(),
+});
+export type TimelineWorkflowWorkRow = z.infer<
+  typeof timelineWorkflowWorkRowSchema
+>;
+
 export type TimelineWorkRow =
   | TimelineCommandWorkRow
   | TimelineToolWorkRow
@@ -427,7 +454,8 @@ export type TimelineWorkRow =
   | TimelineImageViewWorkRow
   | TimelineApprovalWorkRow
   | TimelineQuestionWorkRow
-  | TimelineDelegationWorkRow;
+  | TimelineDelegationWorkRow
+  | TimelineWorkflowWorkRow;
 
 export const timelineWorkRowSchema: z.ZodType<TimelineWorkRow> = z.union([
   timelineCommandWorkRowSchema,
@@ -439,6 +467,7 @@ export const timelineWorkRowSchema: z.ZodType<TimelineWorkRow> = z.union([
   timelineApprovalWorkRowSchema,
   timelineQuestionWorkRowSchema,
   timelineDelegationWorkRowSchema,
+  timelineWorkflowWorkRowSchema,
 ]);
 
 export interface TimelineTurnRow extends TimelineRowBase {

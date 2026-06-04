@@ -1,6 +1,6 @@
 import { accessSync, constants } from "node:fs";
 import { delimiter, join } from "node:path";
-import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import type { Options, Settings } from "@anthropic-ai/claude-agent-sdk";
 import type {
   InstructionMode,
   PermissionEscalation,
@@ -22,6 +22,7 @@ export interface BuildSessionOptionsArgs {
   plugins?: Options["plugins"];
   reasoningLevel?: ReasoningLevel;
   skills?: Options["skills"];
+  workflowsEnabled?: boolean;
 }
 
 interface ResolveExecutableOnPathArgs {
@@ -49,6 +50,30 @@ const SUMMARIZED_ADAPTIVE_THINKING = {
   display: "summarized",
 } satisfies Exclude<Options["thinking"], undefined>;
 const CLAUDE_CODE_EXECUTABLE_ENV = "BB_CLAUDE_CODE_EXECUTABLE";
+
+/**
+ * BB's "ultracode" reasoning level is not an SDK effort: it decomposes into
+ * effort "xhigh" plus the session-scoped `ultracode` settings flag (standing
+ * dynamic-workflow orchestration). The SDK Settings flag tier is otherwise
+ * unused by BB, so it is owned entirely here.
+ */
+function toSdkEffort(
+  reasoningLevel: ReasoningLevel,
+): Exclude<Options["effort"], undefined> {
+  return reasoningLevel === "ultracode" ? "xhigh" : reasoningLevel;
+}
+
+function buildFlagSettings(
+  params: BuildSessionOptionsArgs,
+): Settings | undefined {
+  if (!params.workflowsEnabled) {
+    return undefined;
+  }
+  return {
+    enableWorkflows: true,
+    ...(params.reasoningLevel === "ultracode" ? { ultracode: true } : {}),
+  };
+}
 
 export function buildReadonlyDenialMessage(): string {
   return "bb readonly mode allows reading and analysis only. Continue with a read-only answer; do not modify files, run mutating shell commands, use network, or use mutating tools.";
@@ -204,6 +229,7 @@ export function buildSessionOptions(
       ? (params.additionalWorkspaceWriteRoots ?? [])
       : [];
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
+  const flagSettings = buildFlagSettings(params);
 
   return {
     cwd: params.cwd,
@@ -211,10 +237,13 @@ export function buildSessionOptions(
     model,
     env,
     permissionMode: params.permissionMode,
-    ...(params.reasoningLevel ? { effort: params.reasoningLevel } : {}),
+    ...(params.reasoningLevel
+      ? { effort: toSdkEffort(params.reasoningLevel) }
+      : {}),
     ...(params.reasoningLevel
       ? { thinking: SUMMARIZED_ADAPTIVE_THINKING }
       : {}),
+    ...(flagSettings ? { settings: flagSettings } : {}),
     ...(pathToClaudeCodeExecutable
       ? { pathToClaudeCodeExecutable }
       : {}),

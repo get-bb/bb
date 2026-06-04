@@ -40,6 +40,7 @@ import {
   type ThreadRuntimeCommandEnvironment,
 } from "./thread-runtime-config.js";
 import { appendManagerToolReminder } from "./manager-tool-reminder.js";
+import { resolveWorkflowsEnabledPolicy } from "./thread-default-policy.js";
 import {
   buildExistingThreadExecutionInput,
   resolveExistingThreadExecutionPlan,
@@ -121,6 +122,7 @@ export type PreparedTurnSubmitCommandPayload = Omit<
 interface RuntimeExecutionOptionsArgs {
   execution: ResolvedThreadExecutionOptions;
   permissionEscalation: PermissionEscalation;
+  providerId: string;
 }
 
 interface BuildExecutionOptionsArgs {
@@ -193,6 +195,7 @@ function toRuntimeExecutionOptions(
     model: args.execution.model,
     serviceTier: args.execution.serviceTier,
     reasoningLevel: args.execution.reasoningLevel,
+    workflowsEnabled: resolveWorkflowsEnabledPolicy(args.providerId),
   };
   if (args.execution.permissionMode === "full") {
     return {
@@ -265,7 +268,10 @@ function buildPreparedTurnSubmitCommandPayload(
     environmentId: args.environmentId,
     threadId: args.threadId,
     input: args.input,
-    options: toRuntimeExecutionOptions(args),
+    options: toRuntimeExecutionOptions({
+      ...args,
+      providerId: args.runtimeContext.providerId,
+    }),
     target: args.target,
     resumeContext: {
       workspaceContext: workspaceContextFromPath({

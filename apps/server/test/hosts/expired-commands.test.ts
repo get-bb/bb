@@ -139,6 +139,7 @@ describe("expired commands", () => {
         options: {
           model: "gpt-5",
           reasoningLevel: "medium" as const,
+          workflowsEnabled: false,
           permissionMode: "full" as const,
           permissionEscalation: null,
           serviceTier: "default" as const,
@@ -404,6 +405,7 @@ describe("expired commands", () => {
           options: {
             model: "gpt-5",
             reasoningLevel: "medium",
+            workflowsEnabled: false,
             permissionMode: "full",
             permissionEscalation: null,
             serviceTier: "default",
@@ -591,6 +593,7 @@ describe("expired commands", () => {
           options: {
             model: "gpt-5",
             reasoningLevel: "medium",
+            workflowsEnabled: false,
             permissionMode: "full",
             permissionEscalation: null,
             serviceTier: "default",

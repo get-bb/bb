@@ -15,6 +15,7 @@ import type {
   LoggedPendingInteractionWorkSessionDeps,
 } from "../types.js";
 import { reconcileDaemonReportedThreads } from "../services/threads/thread-lifecycle.js";
+import { settleDanglingBackgroundTasks } from "../services/threads/background-task-reconciliation.js";
 
 const DAEMON_RESTARTED_PENDING_INTERACTION_REASON =
   "Host daemon restarted while awaiting user interaction; retry the thread to continue";
@@ -89,6 +90,9 @@ export async function handleHostSessionOpened(
         hostId: args.hostId,
         reason: DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
       });
+      // The restarted daemon lost its in-memory background-task state and the
+      // CLI processes died with it — settle the persisted open items.
+      settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
     }
   }
 

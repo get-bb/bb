@@ -7,7 +7,7 @@ const SUPPORTED_REASONING_LEVELS_BY_PROVIDER: Record<
   ReasoningPolicyProviderId,
   readonly ReasoningLevel[]
 > = {
-  "claude-code": ["low", "medium", "high", "xhigh", "max"],
+  "claude-code": ["low", "medium", "high", "xhigh", "ultracode", "max"],
   codex: ["low", "medium", "high", "xhigh"],
   pi: ["low", "medium", "high", "xhigh"],
 };

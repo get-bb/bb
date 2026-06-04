@@ -2,6 +2,7 @@ import { performance } from "node:perf_hooks";
 import {
   getThread,
   getLatestThreadSequence,
+  pruneBackgroundTaskProgressEvents,
   pruneContextWindowUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
   pruneTokenUsageEventsBeforeSequence,
@@ -21,6 +22,7 @@ export interface PruneThreadEventHistoryArgs {
 export interface ThreadEventPruningResult {
   latestSequence: number;
   removedAgePrunableEvents: number;
+  removedBackgroundTaskProgressEvents: number;
   removedResolvedItemDeltas: number;
   sequenceCutoff: number;
   totalRemoved: number;
@@ -38,6 +40,7 @@ interface ActiveThreadPruneState {
 
 type ThreadEventPruningStep =
   | "get_latest_thread_sequence"
+  | "prune_background_task_progress"
   | "prune_context_window_usage"
   | "prune_generic_age_prunable_events"
   | "prune_resolved_item_deltas"
@@ -150,13 +153,24 @@ export function pruneThreadEventHistory(
         threadId: args.threadId,
       }),
   );
+  const removedBackgroundTaskProgressEvents = runThreadEventPruningStep(
+    "prune_background_task_progress",
+    () =>
+      pruneBackgroundTaskProgressEvents(deps.db, {
+        threadId: args.threadId,
+      }),
+  );
 
   return {
     latestSequence,
     removedAgePrunableEvents,
+    removedBackgroundTaskProgressEvents,
     removedResolvedItemDeltas,
     sequenceCutoff,
-    totalRemoved: removedAgePrunableEvents + removedResolvedItemDeltas,
+    totalRemoved:
+      removedAgePrunableEvents +
+      removedBackgroundTaskProgressEvents +
+      removedResolvedItemDeltas,
   };
 }
 

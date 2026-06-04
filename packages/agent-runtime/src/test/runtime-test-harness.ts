@@ -26,6 +26,7 @@ export const fullRuntimeOptions = {
   model: "test-model",
   serviceTier: "default",
   reasoningLevel: "medium",
+  workflowsEnabled: false,
   permissionMode: "full",
   permissionEscalation: null,
 } satisfies AgentRuntimeExecutionOptions;

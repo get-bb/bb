@@ -1,0 +1,11 @@
+{
+  "type": "system",
+  "subtype": "task_updated",
+  "task_id": "wu7ol9ras",
+  "patch": {
+    "status": "completed",
+    "end_time": 1780540131011
+  },
+  "uuid": "4d361e02-b650-41e7-9ae6-b80f71cbf31e",
+  "session_id": "441da07a-ae1d-49a0-96da-69418cb418c1"
+}

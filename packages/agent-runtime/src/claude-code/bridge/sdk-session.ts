@@ -29,6 +29,8 @@ export interface SdkSessionOptions {
   plugins?: Options["plugins"];
   skills?: Options["skills"];
   thinking?: Options["thinking"];
+  /** Flag-tier settings (highest user-controlled tier); BB owns this layer. */
+  settings?: Options["settings"];
 }
 
 type SdkSessionMessageHandler = (message: SDKMessage) => void;
@@ -124,6 +126,7 @@ export class SdkSession {
       ...(this.options.plugins ? { plugins: this.options.plugins } : {}),
       ...(this.options.skills ? { skills: this.options.skills } : {}),
       ...(this.options.thinking ? { thinking: this.options.thinking } : {}),
+      ...(this.options.settings ? { settings: this.options.settings } : {}),
     };
 
     this.query = query({

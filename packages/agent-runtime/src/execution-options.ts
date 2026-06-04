@@ -55,6 +55,7 @@ export function sameExecutionSettings(
     args.left.model === args.right.model &&
     args.left.serviceTier === args.right.serviceTier &&
     args.left.reasoningLevel === args.right.reasoningLevel &&
+    args.left.workflowsEnabled === args.right.workflowsEnabled &&
     args.left.permissionMode === args.right.permissionMode &&
     args.left.permissionEscalation === args.right.permissionEscalation
   );
@@ -68,6 +69,7 @@ export function toProviderExecutionContext(
     model: args.execOpts.model,
     serviceTier: args.execOpts.serviceTier,
     reasoningLevel: args.execOpts.reasoningLevel,
+    workflowsEnabled: args.execOpts.workflowsEnabled,
     ...permissionPolicy,
     instructions: args.instructions,
     envVars: args.envVars,

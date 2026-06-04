@@ -18,6 +18,7 @@ export const providerTurnWatchdogActivityEventTypeValues = [
   "item/plan/delta",
   "item/mcpToolCall/progress",
   "item/toolCall/progress",
+  "item/backgroundTask/progress",
   "turn/plan/updated",
   "turn/diff/updated",
   "provider/error",

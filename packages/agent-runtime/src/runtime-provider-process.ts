@@ -50,7 +50,10 @@ export interface RuntimeProviderProcessManagerArgs {
   onProviderIdentityWaitersInterrupted: (
     providerProcess: RuntimeProviderProcess,
   ) => void;
-  onProviderThreadDetached: (threadId: string) => void;
+  onProviderThreadDetached: (
+    threadId: string,
+    providerProcess: RuntimeProviderProcess,
+  ) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
   skillRoots: readonly AgentRuntimeSkillRoot[];
   workspacePath: string;
@@ -271,7 +274,7 @@ export class RuntimeProviderProcessManager {
       this.args.onProviderIdentityWaitersInterrupted(providerProcess);
 
       for (const threadId of providerProcess.identity.threadIds) {
-        this.args.onProviderThreadDetached(threadId);
+        this.args.onProviderThreadDetached(threadId, providerProcess);
       }
       this.processes.delete(providerId);
     }
@@ -453,7 +456,7 @@ export class RuntimeProviderProcessManager {
     this.processes.delete(args.providerId);
     const threadIds = [...args.providerProcess.identity.threadIds];
     for (const threadId of threadIds) {
-      this.args.onProviderThreadDetached(threadId);
+      this.args.onProviderThreadDetached(threadId, args.providerProcess);
     }
     for (const [, pending] of args.providerProcess.pending) {
       pending.reject(

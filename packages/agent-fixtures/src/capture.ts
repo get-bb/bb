@@ -61,6 +61,7 @@ const CAPTURE_CORPUS_ID = "agent-fixtures";
 interface BuildExecutionOptionsArgs {
   model?: string;
   execution?: FixtureScenarioExecutionOptions;
+  providerId: string;
 }
 
 type FixtureResolvedExecutionOptions = RuntimeThreadExecutionOptions;
@@ -576,6 +577,8 @@ function buildExecutionOptions(
     model: args.model ?? "provider-default",
     serviceTier: args.execution?.serviceTier ?? "fast",
     reasoningLevel: args.execution?.reasoningLevel ?? "medium",
+    // Mirrors the server's product policy (resolveWorkflowsEnabledPolicy).
+    workflowsEnabled: args.providerId === "claude-code",
   };
   const permissionMode = args.execution?.permissionMode ?? "full";
   if (permissionMode === "full") {
@@ -794,6 +797,7 @@ async function runScenario(args: {
   const executionOptions = buildExecutionOptions({
     model: args.model,
     execution: args.scenario.execution,
+    providerId: args.providerId,
   });
 
   await args.runtime.startThread({
@@ -820,6 +824,7 @@ async function runScenario(args: {
       options: buildExecutionOptions({
         model: args.model,
         execution: args.scenario.execution,
+        providerId: args.providerId,
       }),
     });
     await waitForCondition(

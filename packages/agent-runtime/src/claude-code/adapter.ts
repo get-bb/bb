@@ -121,6 +121,10 @@ import {
   type ClaudeTurnState,
   type ClaudeUnexpectedSdkEventArgs,
 } from "./translate-message.js";
+import {
+  buildInterruptedClaudeTaskEvents,
+  hasOpenClaudeBackgroundTasks,
+} from "./task-translation.js";
 
 type ClaudePendingFileChangeItem = Extract<
   ThreadEventItem,
@@ -842,12 +846,17 @@ export function createClaudeCodeProviderAdapter(
       },
       latestRequestContextTokens: undefined,
       openAssistantMessageIdsByScope: new Map(),
+      openCompaction: undefined,
       openReasoningItemIdsByScope: new Map(),
       pendingAcceptedUserMessages: [],
       reasoningItemCounter: 0,
       selectedModelContextWindow: null,
+      tasksById: new Map(),
       toolItemsByCallId: new Map(),
     }),
+    // An idle thread with a running workflow must keep its task state — LRU
+    // eviction would orphan the open backgroundTask items.
+    isEvictable: (state) => !hasOpenClaudeBackgroundTasks(state.tasksById),
     turnIdPrefix: opts?.turnIdPrefix,
   });
 
@@ -1090,6 +1099,9 @@ export function createClaudeCodeProviderAdapter(
               ...(command.options?.reasoningLevel
                 ? { reasoningLevel: command.options.reasoningLevel }
                 : {}),
+              ...(command.options?.workflowsEnabled
+                ? { workflowsEnabled: true }
+                : {}),
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
@@ -1150,6 +1162,9 @@ export function createClaudeCodeProviderAdapter(
                 : {}),
               ...(command.options?.reasoningLevel
                 ? { reasoningLevel: command.options.reasoningLevel }
+                : {}),
+              ...(command.options?.workflowsEnabled
+                ? { workflowsEnabled: true }
                 : {}),
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
@@ -1229,7 +1244,13 @@ export function createClaudeCodeProviderAdapter(
       ) {
         const state = turnState.getOrCreate({ threadId: command.threadId });
         state.pendingAcceptedUserMessages = [];
-        return [];
+        // Starting, resuming, or stopping a thread replaces/kills the CLI
+        // session, and background tasks die with it — settle them as
+        // interrupted so no workflow row dangles as running.
+        return buildInterruptedClaudeTaskEvents({
+          tasks: state.tasksById,
+          threadId: command.threadId,
+        });
       }
 
       if (command.type === "turn/start") {
@@ -1258,6 +1279,17 @@ export function createClaudeCodeProviderAdapter(
       }
 
       return [];
+    },
+
+    buildThreadDetachedEvents({ threadId }) {
+      const state = turnState.get({ threadId });
+      if (!state) {
+        return [];
+      }
+      return buildInterruptedClaudeTaskEvents({
+        tasks: state.tasksById,
+        threadId,
+      });
     },
 
     parseModelListResult(result: unknown) {

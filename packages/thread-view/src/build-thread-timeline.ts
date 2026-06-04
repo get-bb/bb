@@ -667,6 +667,29 @@ function convertMessage(
         },
       ];
     }
+    case "workflow":
+      // Ambient/housekeeping tasks stay out of the inline transcript.
+      if (message.skipTranscript) {
+        return [];
+      }
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "workflow",
+          status: message.status,
+          itemId: message.itemId,
+          taskType: message.taskType,
+          workflowName: message.workflowName,
+          description: message.description,
+          taskStatus: message.taskStatus,
+          workflow: message.workflow,
+          usage: message.usage,
+          summary: message.summary,
+          error: message.error,
+          completedAt: message.completedAt,
+        },
+      ];
     case "permission-grant-lifecycle":
       return [
         {

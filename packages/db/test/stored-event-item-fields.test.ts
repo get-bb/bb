@@ -42,6 +42,44 @@ describe("deriveStoredEventItemFields", () => {
     });
   });
 
+  it("derives item columns from backgroundTask lifecycle events", () => {
+    const item = {
+      id: "task:wf-1",
+      type: "backgroundTask",
+      taskType: "local_workflow",
+      description: "fixture workflow",
+      status: "pending",
+      taskStatus: "running",
+      skipTranscript: false,
+    } as const;
+
+    expect(
+      deriveStoredEventItemFields({
+        type: "item/backgroundTask/progress",
+        threadId: "thread-1",
+        providerThreadId: "provider-1",
+        scope: threadScope(),
+        item,
+      }),
+    ).toEqual({
+      itemId: "task:wf-1",
+      itemKind: "backgroundTask",
+    });
+
+    expect(
+      deriveStoredEventItemFields({
+        type: "item/backgroundTask/completed",
+        threadId: "thread-1",
+        providerThreadId: "provider-1",
+        scope: threadScope(),
+        item: { ...item, status: "completed", taskStatus: "completed" },
+      }),
+    ).toEqual({
+      itemId: "task:wf-1",
+      itemKind: "backgroundTask",
+    });
+  });
+
   it("derives item ids from delta and progress events without an item kind", () => {
     expect(
       deriveStoredEventItemFields({

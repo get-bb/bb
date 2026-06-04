@@ -114,6 +114,7 @@ export interface ResolveRuntimeOptionsArgs {
 export const fullRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
+  workflowsEnabled: false,
   permissionMode: "full",
   permissionEscalation: null,
 } satisfies RuntimeOptionsTemplate;
@@ -121,6 +122,7 @@ export const fullRuntimeOptionsTemplate = {
 export const workspaceWriteAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
+  workflowsEnabled: false,
   permissionMode: "workspace-write",
   permissionEscalation: "ask",
 } satisfies RuntimeOptionsTemplate;
@@ -128,6 +130,7 @@ export const workspaceWriteAskRuntimeOptionsTemplate = {
 export const workspaceWriteDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
+  workflowsEnabled: false,
   permissionMode: "workspace-write",
   permissionEscalation: "deny",
 } satisfies RuntimeOptionsTemplate;
@@ -135,6 +138,7 @@ export const workspaceWriteDenyRuntimeOptionsTemplate = {
 export const readonlyAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
+  workflowsEnabled: false,
   permissionMode: "readonly",
   permissionEscalation: "ask",
 } satisfies RuntimeOptionsTemplate;
@@ -142,6 +146,7 @@ export const readonlyAskRuntimeOptionsTemplate = {
 export const readonlyDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
+  workflowsEnabled: false,
   permissionMode: "readonly",
   permissionEscalation: "deny",
 } satisfies RuntimeOptionsTemplate;

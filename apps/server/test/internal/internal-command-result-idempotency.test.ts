@@ -329,6 +329,7 @@ describe("internal command result idempotency", () => {
             model: "gpt-5",
             serviceTier: "default",
             reasoningLevel: "medium",
+            workflowsEnabled: false,
             permissionMode: "full",
             permissionEscalation: null,
           },

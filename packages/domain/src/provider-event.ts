@@ -18,6 +18,11 @@ import {
   validateThreadEventScope,
 } from "./thread-event-scope.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
+import {
+  backgroundTaskStatusSchema,
+  backgroundTaskUsageSchema,
+  workflowProgressSnapshotSchema,
+} from "./background-task.js";
 
 export const threadEventItemStatusSchema = z.enum([
   "pending",
@@ -222,6 +227,40 @@ export const toolCallProgressEventSchema = z.object({
   parentToolCallId: z.string().optional(),
 });
 
+/**
+ * A provider-managed background task (dynamic workflow, backgrounded shell,
+ * background subagent). Currently only dynamic workflows
+ * (taskType "local_workflow") are materialized as items; foreground subagents
+ * share the same provider event family but stay on the delegation rendering
+ * path. The item id is derived from the provider task id and stays stable
+ * across the started → progress* → completed lifecycle.
+ */
+export const threadEventBackgroundTaskItemSchema = z.object({
+  type: z.literal("backgroundTask"),
+  id: z.string(),
+  /** Raw SDK task discriminant (e.g. "local_workflow"); "unknown" when the provider omitted it. */
+  taskType: z.string(),
+  description: z.string(),
+  status: threadEventItemStatusSchema,
+  taskStatus: backgroundTaskStatusSchema,
+  /** Ambient/housekeeping task; consumers hide it from the inline transcript. */
+  skipTranscript: z.boolean(),
+  /** meta.name of the workflow script; only present for workflow tasks. */
+  workflowName: z.string().optional(),
+  /** Merged workflow tree; absent until the provider reports progress records. */
+  workflow: workflowProgressSnapshotSchema.optional(),
+  /** Absent until the provider reports usage. */
+  usage: backgroundTaskUsageSchema.optional(),
+  /** Terminal summary from the provider; absent while the task runs. */
+  summary: z.string().optional(),
+  error: z.string().optional(),
+  outputFile: z.string().optional(),
+  parentToolCallId: z.string().optional(),
+});
+export type ThreadEventBackgroundTaskItem = z.infer<
+  typeof threadEventBackgroundTaskItemSchema
+>;
+
 export const threadEventItemSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -297,6 +336,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     id: z.string(),
     parentToolCallId: z.string().optional(),
   }),
+  threadEventBackgroundTaskItemSchema,
 ]);
 export type ThreadEventItem = z.infer<typeof threadEventItemSchema>;
 export type ThreadEventItemType = ThreadEventItem["type"];
@@ -423,6 +463,30 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     parentToolCallId: z.string().optional(),
   }),
   toolCallProgressEventSchema,
+  /**
+   * Superseding state snapshot for an in-flight background task. Thread-scoped
+   * (not turn-scoped) because tasks outlive their spawning turn: late events
+   * must not interleave into later turns' sequence-contiguous windows. Each
+   * progress event carries the full current item state; consumers replace, not
+   * merge. The item is placed in the timeline by its turn-scoped item/started.
+   */
+  z.object({
+    type: z.literal("item/backgroundTask/progress"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    item: threadEventBackgroundTaskItemSchema,
+  }),
+  /**
+   * Terminal state for a background task, carrying the full final item
+   * payload. Dedicated event (instead of the generic turn-scoped
+   * item/completed) because it may arrive turns after the item/started.
+   */
+  z.object({
+    type: z.literal("item/backgroundTask/completed"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    item: threadEventBackgroundTaskItemSchema,
+  }),
   z.object({
     type: z.literal("thread/tokenUsage/updated"),
     threadId: z.string(),

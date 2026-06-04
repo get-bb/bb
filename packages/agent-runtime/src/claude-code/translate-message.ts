@@ -35,6 +35,10 @@ import {
 } from "./schemas.js";
 import { buildClaudeProviderErrorInfo } from "./error-info.js";
 import {
+  translateClaudeTaskMessage,
+  type ClaudeTaskMap,
+} from "./task-translation.js";
+import {
   extractAssistantText,
   extractClaudeContextWindowUsage,
   extractClaudeRequestContextTokens,
@@ -58,6 +62,18 @@ export interface ClaudeTurnState {
   pendingAcceptedUserMessages: AcceptedUserMessageState["pendingAcceptedUserMessages"];
   reasoningItemCounter: number;
   selectedModelContextWindow: number | null;
+  /**
+   * Open context-compaction item for the turn it started in; status: null
+   * (compaction finished) completes it. Cleared on use and guarded by turn id
+   * so a stale entry can never complete under a later turn.
+   */
+  openCompaction: { itemId: string; turnId: string } | undefined;
+  /**
+   * Thread-lifetime background-task state. Deliberately NOT cleared by
+   * clearTransientTurnState — tasks outlive turns — and it pins the thread's
+   * registry entry against LRU eviction while any task is open.
+   */
+  tasksById: ClaudeTaskMap;
   toolItemsByCallId: Map<string, ThreadEventItem>;
 }
 
@@ -302,6 +318,8 @@ export function translateClaudeSdkMessage(
           state,
           threadId,
         });
+        const compactionItemId = buildClaudeCompactionItemId(turnId);
+        state.openCompaction = { itemId: compactionItemId, turnId };
         events.push({
           type: "item/started",
           threadId,
@@ -309,9 +327,28 @@ export function translateClaudeSdkMessage(
           scope: turnScope(turnId),
           item: {
             type: "contextCompaction",
-            id: buildClaudeCompactionItemId(turnId),
+            id: compactionItemId,
           },
         });
+        return events;
+      }
+      if (statusMessage.success) {
+        // Any non-compacting status (null = cleared) ends an open compaction;
+        // without this the contextCompaction item dangles as pending forever.
+        const openCompaction = state.openCompaction;
+        state.openCompaction = undefined;
+        if (openCompaction && state.currentTurnId === openCompaction.turnId) {
+          events.push({
+            type: "item/completed",
+            threadId,
+            providerThreadId: "",
+            scope: turnScope(openCompaction.turnId),
+            item: {
+              type: "contextCompaction",
+              id: openCompaction.itemId,
+            },
+          });
+        }
         return events;
       }
 
@@ -327,6 +364,19 @@ export function translateClaudeSdkMessage(
           });
         }
         events.push(buildClaudeCompactedEvent({ threadId, turnId }));
+        return events;
+      }
+
+      const taskEvents = translateClaudeTaskMessage({
+        ensureTurnStarted: () =>
+          args.ensureTurnStarted({ events, state, threadId }),
+        event: args.event,
+        now: Date.now(),
+        tasks: state.tasksById,
+        threadId,
+      });
+      if (taskEvents !== null) {
+        events.push(...taskEvents);
         return events;
       }
 

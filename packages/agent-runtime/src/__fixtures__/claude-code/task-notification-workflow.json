@@ -1,0 +1,16 @@
+{
+  "type": "system",
+  "subtype": "task_notification",
+  "task_id": "wu7ol9ras",
+  "tool_use_id": "toolu_012BkJCmbBgNqL6SXPKNfPvE",
+  "status": "completed",
+  "output_file": "/tmp/bb-fixture/tasks/wu7ol9ras.output",
+  "summary": "Dynamic workflow \"Tiny fixture workflow for BB capture\" completed",
+  "usage": {
+    "total_tokens": 26674,
+    "tool_uses": 0,
+    "duration_ms": 3277
+  },
+  "session_id": "441da07a-ae1d-49a0-96da-69418cb418c1",
+  "uuid": "ab9f46ad-3c3b-49d9-9b3f-1c7f86dca5b6"
+}

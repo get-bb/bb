@@ -4,6 +4,7 @@ import {
   LOW_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
   MEDIUM_REASONING_EFFORT,
+  ULTRACODE_REASONING_EFFORT,
   XHIGH_REASONING_EFFORT,
   type AvailableModel,
   type ModelReasoningEffort,
@@ -18,11 +19,14 @@ type ClaudeCodeCatalogEntry = {
   defaultReasoningEffort: AvailableModel["defaultReasoningEffort"];
 };
 
+// Ultracode requires an xhigh-capable model (it decomposes to xhigh effort +
+// standing workflow orchestration), so only the xhigh ladder offers it.
 const OPUS_4_8_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
   LOW_REASONING_EFFORT,
   MEDIUM_REASONING_EFFORT,
   HIGH_REASONING_EFFORT,
   XHIGH_REASONING_EFFORT,
+  ULTRACODE_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
 ];
 

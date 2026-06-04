@@ -517,6 +517,61 @@ describe("bridge", () => {
     expect(options.systemPrompt).toBe("You are a manager.");
   });
 
+  it("decomposes ultracode into xhigh effort plus the ultracode settings flag", () => {
+    const options = buildSessionOptions(
+      {
+        baseInstructions: "You are a coder.",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        reasoningLevel: "ultracode",
+        workflowsEnabled: true,
+        permissionEscalation: "ask",
+        permissionMode: "default",
+      },
+      {},
+    );
+
+    expect(options.effort).toBe("xhigh");
+    expect(options.settings).toEqual({
+      enableWorkflows: true,
+      ultracode: true,
+    });
+  });
+
+  it("enables workflows without the ultracode flag at lower efforts", () => {
+    const options = buildSessionOptions(
+      {
+        baseInstructions: "You are a coder.",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        reasoningLevel: "high",
+        workflowsEnabled: true,
+        permissionEscalation: "ask",
+        permissionMode: "default",
+      },
+      {},
+    );
+
+    expect(options.effort).toBe("high");
+    expect(options.settings).toEqual({ enableWorkflows: true });
+  });
+
+  it("passes no flag settings when workflows are not enabled", () => {
+    const options = buildSessionOptions(
+      {
+        baseInstructions: "You are a coder.",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        reasoningLevel: "xhigh",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+      },
+      {},
+    );
+
+    expect(options.settings).toBeUndefined();
+  });
+
   it("leaves standard sessions on the default Claude tool preset", () => {
     const options = buildSessionOptions(
       {

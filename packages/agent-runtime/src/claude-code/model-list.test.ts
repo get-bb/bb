@@ -55,6 +55,7 @@ describe("listClaudeCodeModels", () => {
       "medium",
       "high",
       "xhigh",
+      "ultracode",
       "max",
     ]);
     expect(effortLevelsByModel.get("claude-opus-4-7")).toEqual([
@@ -62,6 +63,7 @@ describe("listClaudeCodeModels", () => {
       "medium",
       "high",
       "xhigh",
+      "ultracode",
       "max",
     ]);
     expect(effortLevelsByModel.get("claude-opus-4-6")).toEqual([

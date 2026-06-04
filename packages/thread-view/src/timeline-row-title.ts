@@ -39,6 +39,7 @@ import {
   type TimelineQuestionViewWorkRow,
   type TimelineViewTurnRow,
   type TimelineViewWorkRow,
+  type TimelineViewWorkflowWorkRow,
 } from "./timeline-view.js";
 
 export type TimelineTitleTone = "default" | "summary";
@@ -790,6 +791,59 @@ function mapDelegationTitle(
   });
 }
 
+function workflowVerbForStatus(status: TimelineRowStatus): {
+  text: string;
+  shimmer: boolean;
+} {
+  switch (status) {
+    case "pending":
+      return { text: "Running workflow:", shimmer: true };
+    case "completed":
+      return { text: "Ran workflow:", shimmer: false };
+    case "error":
+      return { text: "Failed workflow:", shimmer: false };
+    case "interrupted":
+      return { text: "Interrupted workflow:", shimmer: false };
+    default:
+      return assertNever(status);
+  }
+}
+
+function formatWorkflowAgentProgress(
+  row: TimelineViewWorkflowWorkRow,
+): string | null {
+  const agents = row.workflow?.agents ?? [];
+  if (agents.length === 0) {
+    return null;
+  }
+  const done = agents.filter(
+    (agent) =>
+      agent.state === "done" ||
+      agent.state === "failed" ||
+      agent.state === "skipped",
+  ).length;
+  return `(${done}/${agents.length} agents)`;
+}
+
+function mapWorkflowTitle(row: TimelineViewWorkflowWorkRow): TimelineTitle {
+  const verb = workflowVerbForStatus(row.status);
+  const name = row.workflowName ?? row.description;
+  const segments: TimelineTitleSegment[] = [
+    segment(verb.text, { shimmer: verb.shimmer }),
+    segment(name, { em: true, truncate: true }),
+  ];
+  const agentProgress = formatWorkflowAgentProgress(row);
+  if (agentProgress) {
+    segments.push(segment(agentProgress, { em: false }));
+  }
+  return makeTitle({
+    segments,
+    decorations: filterNull([
+      durationDecoration(row.startedAt, row.completedAt),
+    ]),
+  });
+}
+
 function mapFileEditApprovalTitle(
   row: TimelineFileEditApprovalWorkRow,
 ): TimelineTitle {
@@ -1035,6 +1089,8 @@ function mapWorkTitle(
         return mapImageViewTitle(row);
       case "delegation":
         return mapDelegationTitle(row);
+      case "workflow":
+        return mapWorkflowTitle(row);
       case "approval":
         return mapApprovalTitle(row);
       case "question":

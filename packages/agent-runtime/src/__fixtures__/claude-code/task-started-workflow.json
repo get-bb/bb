@@ -1,0 +1,12 @@
+{
+  "type": "system",
+  "subtype": "task_started",
+  "task_id": "wu7ol9ras",
+  "tool_use_id": "toolu_012BkJCmbBgNqL6SXPKNfPvE",
+  "description": "Tiny fixture workflow for BB capture",
+  "task_type": "local_workflow",
+  "workflow_name": "fixture-mini",
+  "prompt": "export const meta = {\n  name: 'fixture-mini',\n  description: 'Tiny fixture workflow for BB capture',\n  phases: [\n    { title: 'Scan', detail: 'two parallel trivial agents' },\n    { title: 'Summarize', detail: 'one summarizing agent' },\n  ],\n}\nphase('Scan')\nconst words = await parallel([\n  () => agent(\"Reply with exactly the word alpha. Do not use any tools.\", {label: 'alpha', model: 'haiku', phase: 'Scan'}),\n  () => agent(\"Reply with exactly the word bravo. Do not use any tools.\", {label: 'bravo', model: 'haiku', phase: 'Scan'}),\n])\nphase('Summarize')\nconst summary = await agent('Combine the words \"' + words.filter(Boolean).join(' ') + '\" into one hyphenated token. Reply with just the token. Do not use any tools.', {label: 'combine', model: 'haiku', phase: 'Summarize'})\nreturn { words, summary }",
+  "uuid": "fc28e8a2-055d-428c-a8a4-487946048a64",
+  "session_id": "441da07a-ae1d-49a0-96da-69418cb418c1"
+}

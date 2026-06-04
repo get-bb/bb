@@ -98,6 +98,16 @@ export const threadEventScopeDefinitionByType = {
   "item/plan/delta": { policy: "turn" },
   "item/mcpToolCall/progress": { policy: "turn" },
   "item/toolCall/progress": { policy: "turn" },
+  "item/backgroundTask/progress": {
+    policy: "thread",
+    rationale:
+      "Background tasks outlive their spawning turn; thread scope keeps turn windows sequence-contiguous (late progress must not interleave into later turns' ranges).",
+  },
+  "item/backgroundTask/completed": {
+    policy: "thread",
+    rationale:
+      "Terminal task state can arrive turns after the spawning turn completed; thread scope avoids appending into a closed turn's sequence range.",
+  },
   "thread/tokenUsage/updated": { policy: "turn" },
   "thread/contextWindowUsage/updated": { policy: "turn" },
   "turn/plan/updated": { policy: "turn" },

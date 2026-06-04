@@ -189,6 +189,150 @@ export const claudeCompactBoundarySystemMessageSchema =
     })
     .passthrough();
 
+// -- Background task / workflow messages -------------------------------------
+// Shapes mirror @anthropic-ai/claude-agent-sdk sdk.d.ts (SDKTaskStartedMessage
+// et al). workflow_progress is intentionally untyped in the SDK; records are
+// parsed permissively so CLI additions never fail translation.
+
+const claudeTaskUsageSchema = z
+  .object({
+    total_tokens: z.number(),
+    tool_uses: z.number(),
+    duration_ms: z.number(),
+  })
+  .passthrough();
+export type ClaudeTaskUsage = z.infer<typeof claudeTaskUsageSchema>;
+
+export const claudeTaskStartedMessageSchema = claudeSystemMessageSchema
+  .extend({
+    subtype: z.literal("task_started"),
+    task_id: z.string(),
+    tool_use_id: z.string().optional(),
+    description: z.string(),
+    subagent_type: z.string().optional(),
+    task_type: z.string().optional(),
+    workflow_name: z.string().optional(),
+    prompt: z.string().optional(),
+    skip_transcript: z.boolean().optional(),
+  })
+  .passthrough();
+export type ClaudeTaskStartedMessage = z.infer<
+  typeof claudeTaskStartedMessageSchema
+>;
+
+export const claudeTaskUpdatedMessageSchema = claudeSystemMessageSchema
+  .extend({
+    subtype: z.literal("task_updated"),
+    task_id: z.string(),
+    patch: z
+      .object({
+        status: z
+          .enum([
+            "pending",
+            "running",
+            "completed",
+            "failed",
+            "killed",
+            "paused",
+          ])
+          .optional(),
+        description: z.string().optional(),
+        end_time: z.number().optional(),
+        total_paused_ms: z.number().optional(),
+        error: z.string().optional(),
+        is_backgrounded: z.boolean().optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+export type ClaudeTaskUpdatedMessage = z.infer<
+  typeof claudeTaskUpdatedMessageSchema
+>;
+
+export const claudeTaskProgressMessageSchema = claudeSystemMessageSchema
+  .extend({
+    subtype: z.literal("task_progress"),
+    task_id: z.string(),
+    tool_use_id: z.string().optional(),
+    description: z.string(),
+    subagent_type: z.string().optional(),
+    usage: claudeTaskUsageSchema,
+    last_tool_name: z.string().optional(),
+    summary: z.string().optional(),
+    /**
+     * Delta batch of workflow progress records (CLI ≥2.1.160, untyped in the
+     * SDK). Elements are parsed individually; unknown record kinds are
+     * ignored.
+     */
+    workflow_progress: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
+export type ClaudeTaskProgressMessage = z.infer<
+  typeof claudeTaskProgressMessageSchema
+>;
+
+export const claudeTaskNotificationMessageSchema = claudeSystemMessageSchema
+  .extend({
+    subtype: z.literal("task_notification"),
+    task_id: z.string(),
+    tool_use_id: z.string().optional(),
+    status: z.enum(["completed", "failed", "stopped"]),
+    output_file: z.string(),
+    summary: z.string(),
+    usage: claudeTaskUsageSchema.optional(),
+    skip_transcript: z.boolean().optional(),
+  })
+  .passthrough();
+export type ClaudeTaskNotificationMessage = z.infer<
+  typeof claudeTaskNotificationMessageSchema
+>;
+
+export const claudeWorkflowAgentRecordSchema = z
+  .object({
+    type: z.literal("workflow_agent"),
+    index: z.number(),
+    label: z.string(),
+    /** Raw record state machine value (start/progress/done/error); permissive for forward compat. */
+    state: z.string(),
+    model: z.string().optional(),
+    phaseIndex: z.number().optional(),
+    phaseTitle: z.string().optional(),
+    agentId: z.string().optional(),
+    agentType: z.string().optional(),
+    isolation: z.string().optional(),
+    queuedAt: z.number().optional(),
+    startedAt: z.number().optional(),
+    lastProgressAt: z.number().optional(),
+    attempt: z.number().optional(),
+    lastAttemptReason: z.string().optional(),
+    lastToolName: z.string().optional(),
+    lastToolSummary: z.string().optional(),
+    promptPreview: z.string().optional(),
+    resultPreview: z.string().optional(),
+    error: z.string().optional(),
+    skipped: z.boolean().optional(),
+    cached: z.boolean().optional(),
+    tokens: z.number().optional(),
+    toolCalls: z.number().optional(),
+    durationMs: z.number().optional(),
+  })
+  .passthrough();
+export type ClaudeWorkflowAgentRecord = z.infer<
+  typeof claudeWorkflowAgentRecordSchema
+>;
+
+export const claudeWorkflowPhaseRecordSchema = z
+  .object({
+    type: z.literal("workflow_phase"),
+    index: z.number(),
+    title: z.string(),
+    kind: z.string().optional(),
+  })
+  .passthrough();
+export type ClaudeWorkflowPhaseRecord = z.infer<
+  typeof claudeWorkflowPhaseRecordSchema
+>;
+
 export const claudeAssistantMessageSchema = z
   .object({
     type: z.literal("assistant"),

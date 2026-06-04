@@ -24,6 +24,7 @@ import {
   listRecentStoredEventRows,
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRowsInRange,
+  listLatestBackgroundTaskStateRowsByItemIds,
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
@@ -489,6 +490,45 @@ function ensureTimelineWindowTurnStartedRows(
   return mergeStoredEventRowsById([...turnStartedRows, ...args.rows]);
 }
 
+/**
+ * Background tasks outlive their spawning turn: a window containing an
+ * in-flight task's item/started may end long before the task's thread-scoped
+ * progress/completed rows. Backfill the latest state row per in-window item so
+ * the page renders the task's current (possibly terminal) state instead of
+ * pinning it "running" forever.
+ */
+function ensureTimelineWindowBackgroundTaskStateRows(
+  db: DbConnection,
+  args: EnsureTimelineWindowTurnStartedRowsArgs,
+): StoredEventRow[] {
+  const itemIds = new Set<string>();
+  for (const row of args.rows) {
+    if (row.itemKind === "backgroundTask" && row.itemId !== null) {
+      itemIds.add(row.itemId);
+    }
+  }
+  if (itemIds.size === 0) {
+    return [...args.rows];
+  }
+
+  const stateRows = listLatestBackgroundTaskStateRowsByItemIds(db, {
+    threadId: args.threadId,
+    itemIds: [...itemIds],
+  });
+  if (stateRows.length === 0) {
+    return [...args.rows];
+  }
+
+  const rowsById = new Map<string, StoredEventRow>();
+  for (const row of [...args.rows, ...stateRows]) {
+    rowsById.set(row.id, row);
+  }
+
+  return [...rowsById.values()].sort(
+    (left, right) => left.sequence - right.sequence,
+  );
+}
+
 interface ResolveTimelineSegmentWindowArgs {
   audience: TimelineSegmentAnchorAudience;
   page: ThreadTimelinePageRequest;
@@ -594,13 +634,16 @@ function selectStandardTimelineEventRows(
   const beforeSequence = window.beforeSequence;
   const sequenceStart = window.sequenceStart;
 
-  const selectedRows = ensureTimelineWindowTurnStartedRows(db, {
+  const selectedRows = ensureTimelineWindowBackgroundTaskStateRows(db, {
     threadId: thread.id,
-    rows: listStoredTimelineWindowEventRows(db, {
-      beforeSequence,
-      excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
-      sequenceStart,
+    rows: ensureTimelineWindowTurnStartedRows(db, {
       threadId: thread.id,
+      rows: listStoredTimelineWindowEventRows(db, {
+        beforeSequence,
+        excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+        sequenceStart,
+        threadId: thread.id,
+      }),
     }),
   });
   const selectedRowsWithContext =

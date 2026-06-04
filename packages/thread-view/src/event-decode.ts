@@ -18,6 +18,8 @@ export function getEventProviderThreadId(
     case "thread/compacted":
     case "item/started":
     case "item/completed":
+    case "item/backgroundTask/progress":
+    case "item/backgroundTask/completed":
     case "item/agentMessage/delta":
     case "item/commandExecution/outputDelta":
     case "item/fileChange/outputDelta":
@@ -60,6 +62,8 @@ export function getEventParentToolCallId(
   switch (decoded.type) {
     case "item/started":
     case "item/completed":
+    case "item/backgroundTask/progress":
+    case "item/backgroundTask/completed":
       return decoded.item.parentToolCallId;
     case "item/agentMessage/delta":
     case "item/commandExecution/outputDelta":

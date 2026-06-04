@@ -125,6 +125,7 @@ export type {
   TimelineWebFetchWorkRow,
   TimelineWebSearchWorkRow,
   TimelineWorkRow,
+  TimelineWorkflowWorkRow,
 } from "./thread-timeline.js";
 
 export {

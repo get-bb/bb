@@ -30,6 +30,7 @@ import {
   type ReasoningProjectionState,
 } from "./reasoning-lifecycle-projection.js";
 import { shouldPreservePendingMessages } from "./user-message-parsing.js";
+import type { BackgroundTaskProjectionState } from "./background-task-projection.js";
 
 export interface CompactionTurnFinalization {
   status: CompactionTurnFinalizationStatus;
@@ -69,7 +70,8 @@ interface ThreadInterruptedArgs {
 export interface ProjectionState
   extends AssistantStreamProjectionState,
     OperationProjectionState,
-    ReasoningProjectionState {
+    ReasoningProjectionState,
+    BackgroundTaskProjectionState {
   seenUserKeys: Set<string>;
   openTurnIds: Set<string>;
   closedTurnIds: Set<string>;
@@ -94,6 +96,7 @@ export function createProjectionState(): ProjectionState {
     ...createReasoningProjectionState(),
     delegationParentToolCallIdsByProviderThreadId: new Map(),
     toolActivity: createToolActivityState(),
+    backgroundTasksByItemId: new Map(),
   };
 }
 

@@ -9,6 +9,7 @@ import {
   lt,
   lte,
   max,
+  notExists,
   notInArray,
   or,
   sql,
@@ -29,8 +30,9 @@ import type {
   DbQueryConnection,
   DbTransaction,
 } from "../connection.js";
+import { alias } from "drizzle-orm/sqlite-core";
 import type { DbNotifier } from "../notifier.js";
-import { events } from "../schema.js";
+import { environments, events, threads } from "../schema.js";
 import { createEventId } from "../ids.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
 
@@ -740,6 +742,23 @@ export interface PruneResolvedItemDeltasArgs {
   threadId: string;
 }
 
+export interface PruneBackgroundTaskProgressEventsArgs {
+  threadId: string;
+}
+
+export interface ListOpenBackgroundTaskItemRowsForHostArgs {
+  hostId: string;
+}
+
+export interface OpenBackgroundTaskItemRow {
+  /** Raw data JSON of the latest lifecycle row; carries the item payload. */
+  data: string;
+  environmentId: string | null;
+  itemId: string;
+  providerThreadId: string | null;
+  threadId: string;
+}
+
 export function listEvents(db: DbConnection, options: ListEventsOptions) {
   const { threadId, afterSequence, limit } = options;
 
@@ -915,6 +934,50 @@ export function listStoredTurnStartedRowsByTurnIdsUpToSequence(
     )
     .orderBy(events.sequence)
     .all();
+}
+
+export interface ListLatestBackgroundTaskStateRowsByItemIdsArgs {
+  itemIds: readonly string[];
+  threadId: string;
+}
+
+/**
+ * Latest thread-scoped lifecycle row per backgroundTask item, regardless of
+ * sequence. Timeline windows backfill these for in-window items so a page
+ * containing only the spawning turn still renders the task's current/terminal
+ * state (which may live many sequences past the window's end).
+ */
+export function listLatestBackgroundTaskStateRowsByItemIds(
+  db: DbConnection,
+  args: ListLatestBackgroundTaskStateRowsByItemIdsArgs,
+): StoredEventRow[] {
+  if (args.itemIds.length === 0) {
+    return [];
+  }
+
+  const rows = db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        inArray(events.itemId, [...args.itemIds]),
+        inArray(events.type, [
+          "item/backgroundTask/progress",
+          "item/backgroundTask/completed",
+        ] satisfies ThreadEventType[]),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .all();
+
+  const latestByItemId = new Map<string, StoredEventRow>();
+  for (const row of rows) {
+    if (row.itemId !== null && !latestByItemId.has(row.itemId)) {
+      latestByItemId.set(row.itemId, row);
+    }
+  }
+  return [...latestByItemId.values()];
 }
 
 function listStoredTurnStartedKeysChunk(
@@ -1723,6 +1786,118 @@ export function pruneResolvedItemDeltas(
               AND COALESCE(json_extract(earlier_delta.data, '$.parentToolCallId'), '') =
                 COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '')
               AND earlier_delta.sequence < ${events.sequence}
+          )`,
+  );
+
+  return result.changes;
+}
+
+/**
+ * Latest lifecycle row per open backgroundTask item across all threads on a
+ * host. "Open" = no item/backgroundTask/completed row exists for the item.
+ * Used by the server's daemon-restart backstop: when the daemon's in-memory
+ * task state is lost, these are the items nobody will ever settle.
+ */
+export function listOpenBackgroundTaskItemRowsForHost(
+  db: DbQueryConnection,
+  args: ListOpenBackgroundTaskItemRowsForHostArgs,
+): OpenBackgroundTaskItemRow[] {
+  const lifecycleTypes = [
+    "item/started",
+    "item/backgroundTask/progress",
+  ] satisfies ThreadEventType[];
+  const completedType =
+    "item/backgroundTask/completed" satisfies ThreadEventType;
+  const settled = alias(events, "settled_background_task");
+
+  // The NOT EXISTS clause restricts this to open items, whose unsettled
+  // progress rows are already bounded by the adapter throttle + keep-latest
+  // pruning — picking the latest row per item in JS stays O(open items).
+  const rows = db
+    .select({
+      data: events.data,
+      environmentId: threads.environmentId,
+      itemId: events.itemId,
+      providerThreadId: events.providerThreadId,
+      threadId: events.threadId,
+    })
+    .from(events)
+    .innerJoin(threads, eq(events.threadId, threads.id))
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      and(
+        eq(environments.hostId, args.hostId),
+        eq(events.itemKind, "backgroundTask"),
+        inArray(events.type, lifecycleTypes),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(settled)
+            .where(
+              and(
+                eq(settled.threadId, events.threadId),
+                eq(settled.itemId, events.itemId),
+                eq(settled.type, completedType),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(events.threadId, events.itemId, desc(events.sequence))
+    .all();
+
+  const latestByItem = new Map<string, OpenBackgroundTaskItemRow>();
+  for (const row of rows) {
+    if (row.itemId === null) {
+      continue;
+    }
+    const key = `${row.threadId} ${row.itemId}`;
+    if (!latestByItem.has(key)) {
+      latestByItem.set(key, { ...row, itemId: row.itemId });
+    }
+  }
+  return [...latestByItem.values()];
+}
+
+/**
+ * Each item/backgroundTask/progress row carries the full superseding task
+ * snapshot, and the turn-scoped item/started anchors the row's sequence range
+ * — so while a task runs only the latest progress row per item is
+ * load-bearing, and once the dedicated item/backgroundTask/completed row
+ * exists (full final payload) none are. No sequence cutoff: deleting a
+ * superseded snapshot is always safe.
+ */
+export function pruneBackgroundTaskProgressEvents(
+  db: DbConnection,
+  args: PruneBackgroundTaskProgressEventsArgs,
+): number {
+  const progressType =
+    "item/backgroundTask/progress" satisfies ThreadEventType;
+  const completedType =
+    "item/backgroundTask/completed" satisfies ThreadEventType;
+
+  const result = db.run(
+    sql`DELETE FROM events
+        WHERE ${events.threadId} = ${args.threadId}
+          AND ${events.type} = ${progressType}
+          AND ${events.itemId} IS NOT NULL
+          AND (
+            EXISTS (
+              SELECT 1
+              FROM events completed
+              WHERE completed.thread_id = ${events.threadId}
+                AND completed.type = ${completedType}
+                AND completed.item_id = ${events.itemId}
+            )
+            OR ${events.id} NOT IN (
+              SELECT latest.id
+              FROM events latest
+              WHERE latest.thread_id = ${events.threadId}
+                AND latest.type = ${progressType}
+                AND latest.item_id = ${events.itemId}
+              ORDER BY latest.sequence DESC
+              LIMIT 1
+            )
           )`,
   );
 

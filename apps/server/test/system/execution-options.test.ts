@@ -50,7 +50,7 @@ describe("appendCustomModels", () => {
       models[0].supportedReasoningEfforts.map(
         (effort) => effort.reasoningEffort,
       ),
-    ).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    ).toEqual(["low", "medium", "high", "xhigh", "ultracode", "max"]);
   });
 
   it("caps codex and pi custom models at xhigh (no max)", () => {

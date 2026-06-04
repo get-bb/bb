@@ -32,7 +32,13 @@ export function reconcileReasoningLevel(
   }
   if (supported.includes(previous)) return previous;
 
-  const previousRank = reasoningRank(previous);
+  // Ultracode's underlying effort IS xhigh (plus workflow orchestration), so a
+  // model without ultracode support reconciles as if from xhigh — never up to
+  // max, which would silently select more raw effort than ultracode ever used.
+  const effectivePrevious = previous === "ultracode" ? "xhigh" : previous;
+  if (supported.includes(effectivePrevious)) return effectivePrevious;
+
+  const previousRank = reasoningRank(effectivePrevious);
   let bestLevel = supported[0];
   let bestDistance = Math.abs(reasoningRank(bestLevel) - previousRank);
   for (const candidate of supported.slice(1)) {

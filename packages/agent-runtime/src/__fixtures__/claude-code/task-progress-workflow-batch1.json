@@ -1,0 +1,82 @@
+{
+  "type": "system",
+  "subtype": "task_progress",
+  "task_id": "wu7ol9ras",
+  "tool_use_id": "toolu_012BkJCmbBgNqL6SXPKNfPvE",
+  "description": "Scan: bravo",
+  "usage": {
+    "total_tokens": 0,
+    "tool_uses": 0,
+    "duration_ms": 21
+  },
+  "last_tool_name": "bravo",
+  "summary": "Tiny fixture workflow for BB capture",
+  "workflow_progress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Scan"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 2,
+      "title": "Summarize"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "alpha",
+      "phaseIndex": 1,
+      "phaseTitle": "Scan",
+      "model": "haiku",
+      "state": "start",
+      "queuedAt": 1780540127739,
+      "promptPreview": "Reply with exactly the word alpha. Do not use any tools.",
+      "lastProgressAt": 1780540127739
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "bravo",
+      "phaseIndex": 1,
+      "phaseTitle": "Scan",
+      "model": "haiku",
+      "state": "start",
+      "queuedAt": 1780540127739,
+      "promptPreview": "Reply with exactly the word bravo. Do not use any tools.",
+      "lastProgressAt": 1780540127739
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "alpha",
+      "phaseIndex": 1,
+      "phaseTitle": "Scan",
+      "agentId": "aa7162d073cec4af6",
+      "model": "claude-haiku-4-5-20251001",
+      "state": "start",
+      "startedAt": 1780540127740,
+      "queuedAt": 1780540127739,
+      "attempt": 1,
+      "promptPreview": "Reply with exactly the word alpha. Do not use any tools.",
+      "lastProgressAt": 1780540127740
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "bravo",
+      "phaseIndex": 1,
+      "phaseTitle": "Scan",
+      "agentId": "a77e9eca223209800",
+      "model": "claude-haiku-4-5-20251001",
+      "state": "start",
+      "startedAt": 1780540127740,
+      "queuedAt": 1780540127739,
+      "attempt": 1,
+      "promptPreview": "Reply with exactly the word bravo. Do not use any tools.",
+      "lastProgressAt": 1780540127740
+    }
+  ],
+  "uuid": "a4ac6f68-6ff8-4b2b-82ab-4108cc39fe46",
+  "session_id": "441da07a-ae1d-49a0-96da-69418cb418c1"
+}

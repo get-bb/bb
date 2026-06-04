@@ -1,4 +1,6 @@
 import type {
+  BackgroundTaskStatus,
+  BackgroundTaskUsage,
   JsonObject,
   OwnershipChangeOperationMetadata,
   PendingInteractionUserAnswer,
@@ -8,6 +10,7 @@ import type {
   ThreadEventRow,
   ThreadEventScope,
   ThreadTurnInitiator,
+  WorkflowProgressSnapshot,
 } from "@bb/domain";
 import type { EventProjection } from "./event-projection.js";
 
@@ -354,6 +357,31 @@ export interface EventProjectionDelegationMessage
   childProjection: EventProjection;
 }
 
+/**
+ * A provider background task (dynamic workflow). One message per item across
+ * the whole thread: the turn-scoped item/started anchors placement and
+ * later thread-scoped progress/completed events replace its payload in place.
+ */
+export interface EventProjectionWorkflowMessage
+  extends EventProjectionMessageBase {
+  kind: "workflow";
+  itemId: string;
+  taskType: string;
+  workflowName: string | null;
+  description: string;
+  status: Extract<
+    EventProjectionMessageStatus,
+    "pending" | "completed" | "error" | "interrupted"
+  >;
+  taskStatus: BackgroundTaskStatus;
+  skipTranscript: boolean;
+  workflow: WorkflowProgressSnapshot | null;
+  usage: BackgroundTaskUsage | null;
+  summary: string | null;
+  error: string | null;
+  completedAt: number | null;
+}
+
 export interface EventProjectionErrorMessage extends EventProjectionMessageBase {
   kind: "error";
   message: string;
@@ -385,6 +413,7 @@ export type EventProjectionMessage =
   | EventProjectionPermissionGrantLifecycleMessage
   | EventProjectionUserQuestionLifecycleMessage
   | EventProjectionDelegationMessage
+  | EventProjectionWorkflowMessage
   | EventProjectionErrorMessage
   | EventProjectionDebugRawEventMessage;
 

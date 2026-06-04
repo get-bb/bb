@@ -161,6 +161,43 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.completedAt,
         timelineRowsSignature(row.childRows),
       ]);
+    case "workflow":
+      return joinSignatureParts([
+        ...baseParts,
+        row.itemId,
+        row.taskStatus,
+        row.workflowName,
+        row.description,
+        row.completedAt,
+        row.summary,
+        row.error,
+        row.usage?.totalTokens ?? null,
+        // Every progress-mutated agent field must break memo equality.
+        row.workflow
+          ? row.workflow.agents
+              .map((agent) =>
+                joinSignatureParts([
+                  agent.index,
+                  agent.label,
+                  agent.state,
+                  agent.attempt,
+                  agent.tokens ?? null,
+                  agent.toolCalls ?? null,
+                  agent.durationMs ?? null,
+                  agent.lastProgressAt,
+                  agent.error ?? null,
+                ]),
+              )
+              .join("\u001e")
+          : null,
+        row.workflow
+          ? row.workflow.phases
+              .map((phase) =>
+                joinSignatureParts([phase.index, phase.title, phase.kind ?? null]),
+              )
+              .join("\u001e")
+          : null,
+      ]);
     case "approval":
       return joinSignatureParts([
         ...baseParts,

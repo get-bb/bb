@@ -12,6 +12,7 @@ import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { TimelineFileDiffBlock } from "./TimelineFileDiffBlock.js";
 import { ToolCallDetailBlock } from "./ToolCallDetailBlock.js";
 import { QuestionWorkRowBody } from "./QuestionWorkRowBody.js";
+import { WorkflowWorkRowBody } from "./WorkflowWorkRowBody.js";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 import type { ThreadTimelineTheme } from "./types.js";
 import type { ThreadTimelineImageViewSrcResolver } from "./types.js";
@@ -166,6 +167,8 @@ export function WorkRowBody({
       return null;
     case "question":
       return <QuestionWorkRowBody row={row} />;
+    case "workflow":
+      return <WorkflowWorkRowBody row={row} />;
     case "image-view":
       return (
         <ImageViewWorkRowBody

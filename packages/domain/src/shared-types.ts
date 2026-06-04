@@ -1,10 +1,17 @@
 import { z } from "zod";
 
+/**
+ * Order is load-bearing: `reasoningRank` (index) drives model-switch
+ * reconciliation. "ultracode" sits between "xhigh" and "max" because its
+ * underlying effort IS xhigh (plus standing workflow orchestration) — a model
+ * without ultracode support should reconcile down to xhigh, not up to max.
+ */
 export const reasoningLevelValues = [
   "low",
   "medium",
   "high",
   "xhigh",
+  "ultracode",
   "max",
 ] as const;
 export const reasoningLevelSchema = z.enum(reasoningLevelValues);
@@ -137,6 +144,12 @@ const runtimeThreadExecutionBaseOptionsSchema = z.object({
   model: z.string().min(1),
   serviceTier: serviceTierSchema,
   reasoningLevel: reasoningLevelSchema,
+  /**
+   * Server-owned product policy: whether the provider session may use the
+   * Workflows feature. Filled explicitly at the server boundary (per-provider
+   * policy), never defaulted downstream.
+   */
+  workflowsEnabled: z.boolean(),
 });
 
 export const runtimeThreadExecutionOptionsSchema =

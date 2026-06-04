@@ -32,6 +32,7 @@ import {
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   MissingStoredTurnStartedError,
   listThreadTurnInterruptionEventStates,
+  pruneBackgroundTaskProgressEvents,
   pruneContextWindowUsageEventsBeforeSequence,
   pruneTokenUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
@@ -2573,6 +2574,192 @@ describe("events", () => {
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
     ).toEqual([1, 2]);
+  });
+
+  it("keeps only the latest backgroundTask progress row while the task runs", () => {
+    const { db, thread } = setup();
+
+    const progressData = (taskStatus: string) =>
+      JSON.stringify({
+        item: {
+          id: "task:wf-1",
+          type: "backgroundTask",
+          taskType: "local_workflow",
+          description: "fixture workflow",
+          status: "pending",
+          taskStatus,
+          skipTranscript: false,
+        },
+      });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: progressData("running"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: progressData("running"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: progressData("running"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: progressData("running"),
+      },
+    ]);
+
+    const removed = pruneBackgroundTaskProgressEvents(db, {
+      threadId: thread.id,
+    });
+
+    expect(removed).toBe(2);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
+    ).toEqual([1, 4]);
+  });
+
+  it("removes all backgroundTask progress rows once the completed event exists", () => {
+    const { db, thread } = setup();
+
+    const itemData = (taskStatus: string) =>
+      JSON.stringify({
+        item: {
+          id: "task:wf-1",
+          type: "backgroundTask",
+          taskType: "local_workflow",
+          description: "fixture workflow",
+          status: taskStatus === "completed" ? "completed" : "pending",
+          taskStatus,
+          skipTranscript: false,
+        },
+      });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: itemData("running"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: itemData("running"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: itemData("running"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        scope: threadScope(),
+        type: "item/backgroundTask/completed",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: itemData("completed"),
+      },
+    ]);
+
+    const removed = pruneBackgroundTaskProgressEvents(db, {
+      threadId: thread.id,
+    });
+
+    expect(removed).toBe(2);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
+    ).toEqual([1, 4]);
+  });
+
+  it("prunes settled tasks without touching another in-flight task's rows", () => {
+    const { db, thread } = setup();
+
+    const taskData = (taskId: string) =>
+      JSON.stringify({
+        item: {
+          id: taskId,
+          type: "backgroundTask",
+          taskType: "local_workflow",
+          description: "fixture workflow",
+          status: "pending",
+          taskStatus: "running",
+          skipTranscript: false,
+        },
+      });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-1"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-2",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-2"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        scope: threadScope(),
+        type: "item/backgroundTask/completed",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-1"),
+      },
+    ]);
+
+    const removed = pruneBackgroundTaskProgressEvents(db, {
+      threadId: thread.id,
+    });
+
+    expect(removed).toBe(1);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
+    ).toEqual([2, 3]);
   });
 
   it("pruning is scoped to the target thread", () => {

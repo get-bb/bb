@@ -26,6 +26,12 @@ export interface CreateProviderTurnStateRegistryOptions<
   TState extends ProviderTurnState,
 > {
   createState: () => TState;
+  /**
+   * When provided, idle entries for which this returns false are skipped by
+   * LRU pruning — e.g. threads whose state tracks open background tasks that
+   * outlive turns. Entries with an active turn are never pruned regardless.
+   */
+  isEvictable?: (state: TState) => boolean;
   maxEntries?: number;
   turnIdPrefix?: string;
 }
@@ -132,6 +138,9 @@ export function createProviderTurnStateRegistry<
       let removed = false;
       for (const [threadId, entry] of entries) {
         if (entry.state.currentTurnId !== undefined) {
+          continue;
+        }
+        if (options.isEvictable?.(entry.state) === false) {
           continue;
         }
         entries.delete(threadId);

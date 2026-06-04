@@ -40,6 +40,8 @@ export function deriveStoredEventItemFieldsFromSource(
   switch (source.type) {
     case "item/started":
     case "item/completed":
+    case "item/backgroundTask/progress":
+    case "item/backgroundTask/completed":
       if (!source.item) {
         throw new Error(`Missing item payload for ${source.type}`);
       }

@@ -49,6 +49,7 @@ type ClaudeMessageContentType =
 type ClaudeSystemSubtype =
   | "compact_boundary"
   | "init"
+  | "session_state_changed"
   | "status"
   | "task_notification"
   | "task_progress"
@@ -122,6 +123,14 @@ interface ClaudeRateLimitRawEvent {
   kind: "sdk/rate_limit_event";
 }
 
+interface ClaudeToolProgressRawEvent {
+  kind: "sdk/tool_progress";
+}
+
+interface ClaudeToolUseSummaryRawEvent {
+  kind: "sdk/tool_use_summary";
+}
+
 interface ClaudeStreamStartRawEvent {
   contentType: ClaudeStreamContentType;
   eventType: "content_block_start";
@@ -152,6 +161,8 @@ type ClaudeRawEvent =
   | ClaudeNonSdkRawEvent
   | ClaudeRateLimitRawEvent
   | ClaudeResultRawEvent
+  | ClaudeToolProgressRawEvent
+  | ClaudeToolUseSummaryRawEvent
   | ClaudeSimpleStreamRawEvent
   | ClaudeStreamDeltaRawEvent
   | ClaudeStreamStartRawEvent
@@ -185,6 +196,7 @@ function toClaudeSystemSubtype(
   switch (subtype) {
     case "compact_boundary":
     case "init":
+    case "session_state_changed":
     case "status":
     case "task_notification":
     case "task_progress":
@@ -361,6 +373,12 @@ function parseClaudeRawEvent(event: JsonRpcMessage): ClaudeRawEvent {
         ),
       };
 
+    case "tool_progress":
+      return { kind: "sdk/tool_progress" };
+
+    case "tool_use_summary":
+      return { kind: "sdk/tool_use_summary" };
+
     default:
       return {
         kind: "sdk/unknown",
@@ -437,11 +455,19 @@ function describeParsedClaudeRawEvent(
           };
         case "status":
           return { kind: "sdk/system:status", coverage: "normalized" };
-        case "init":
+        // Workflow tasks translate into backgroundTask item events; other
+        // task types are deliberately not materialized (foreground subagents
+        // render via delegation rows).
         case "task_notification":
         case "task_progress":
         case "task_started":
         case "task_updated":
+          return { kind: `sdk/system:${event.subtype}`, coverage: "normalized" };
+        case "init":
+        // The bg-agent turn-over signal and the live thinking-token estimate
+        // are intentionally unrendered; classified so they never surface as
+        // provider/unhandled debug rows.
+        case "session_state_changed":
         case "thinking_tokens":
           return { kind: `sdk/system:${event.subtype}`, coverage: "noise" };
         case "unknown":
@@ -455,6 +481,15 @@ function describeParsedClaudeRawEvent(
 
     case "sdk/rate_limit_event":
       return { kind: "sdk/rate_limit_event", coverage: "noise" };
+
+    // Heartbeat/summary streams; intentionally unrendered (the projection
+    // would append noise output lines), classified so they never surface as
+    // provider/unhandled debug rows.
+    case "sdk/tool_progress":
+      return { kind: "sdk/tool_progress", coverage: "noise" };
+
+    case "sdk/tool_use_summary":
+      return { kind: "sdk/tool_use_summary", coverage: "noise" };
 
     case "sdk/stream_event":
       switch (event.eventType) {

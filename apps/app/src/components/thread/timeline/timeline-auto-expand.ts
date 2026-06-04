@@ -31,6 +31,10 @@ export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
       return true;
     case "delegation":
       return row.childRows.length > 0 || row.output.trim().length > 0;
+    case "workflow":
+      // The phase/agent tree (or terminal summary) lives in the body; a
+      // degraded row with neither stays title-only.
+      return row.workflow !== null || row.summary !== null;
     default:
       return assertNever(row);
   }
@@ -80,7 +84,12 @@ function shouldAutoExpandFrontierRow(row: ThreadTimelineViewRow): boolean {
     case "bundle-summary":
       return true;
     case "work":
-      return row.workKind === "delegation" || row.workKind === "image-view";
+      return (
+        row.workKind === "delegation" ||
+        row.workKind === "image-view" ||
+        // A running workflow auto-opens so live agent progress is visible.
+        (row.workKind === "workflow" && row.status === "pending")
+      );
     case "conversation":
     case "step-summary":
     case "turn":

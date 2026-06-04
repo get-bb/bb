@@ -2,6 +2,10 @@ import type { ThreadEvent } from "@bb/domain";
 import { requireThreadEventScopeTurnId } from "@bb/domain";
 import { parseCompactionLifecycleEvent } from "./compaction-lifecycle.js";
 import {
+  parseBackgroundTaskLifecycleEvent,
+  upsertBackgroundTaskMessage,
+} from "./background-task-projection.js";
+import {
   getEventParentToolCallId,
   getEventProviderThreadId,
   getEventTurnId,
@@ -384,6 +388,12 @@ function buildFlatProjectionData(
         state,
       })
     ) {
+      continue;
+    }
+
+    if (parseBackgroundTaskLifecycleEvent(decoded)) {
+      flushToolActivityBeforeNonToolMessage(state);
+      upsertBackgroundTaskMessage(state, meta, decoded);
       continue;
     }
 

@@ -317,6 +317,7 @@ function formatWorkBody(
       return lines;
     case "approval":
     case "question":
+    case "workflow":
       return lines;
     case "delegation":
       if (row.childRows.length > 0) {

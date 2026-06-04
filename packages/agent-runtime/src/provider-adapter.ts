@@ -104,6 +104,8 @@ export type ProviderExecutionContext = {
   model?: string;
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
+  /** Server-owned workflows policy; absent for providers without the concept. */
+  workflowsEnabled?: boolean;
   instructions?: string;
   envVars?: Record<string, string>;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
@@ -231,6 +233,14 @@ export interface ProviderAdapter {
   translateAcceptedCommand(
     args: ProviderAcceptedCommandTranslationArgs,
   ): ThreadEvent[];
+  /**
+   * Called when a thread detaches because its provider process exited or the
+   * runtime is shutting down. Returns events reconciling adapter state that
+   * cannot survive the process — e.g. open background tasks settled as
+   * interrupted. Events must carry the real bb threadId; the runtime emits
+   * them before clearing the thread's runtime state.
+   */
+  buildThreadDetachedEvents?(args: { threadId: string }): ThreadEvent[];
   decodeToolCallRequest(
     request: ProviderInboundRequest,
   ): DecodedToolCallRequest | null;
