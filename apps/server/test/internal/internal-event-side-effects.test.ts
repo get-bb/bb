@@ -409,8 +409,8 @@ describe("internal event side effects", () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-event-stop-requested-start",
-      },
+          id: "host-event-stop-requested-start",
+        },
         thread: { status: "idle" },
       });
       markThreadStopRequested(harness.db, harness.hub, {
@@ -446,8 +446,8 @@ describe("internal event side effects", () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-provider-process-exit",
-      },
+          id: "host-provider-process-exit",
+        },
         thread: { status: "active" },
       });
 
@@ -481,8 +481,8 @@ describe("internal event side effects", () => {
     await withTestHarness(async (harness) => {
       const { session, environment, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-provider-process-exit-interaction",
-      },
+          id: "host-provider-process-exit-interaction",
+        },
         thread: { status: "active" },
       });
       seedTurnStarted(harness.deps, {
@@ -554,8 +554,8 @@ describe("internal event side effects", () => {
     await withTestHarness(async (harness) => {
       const { session, environment, thread } = seedThreadFixture(harness, {
         session: {
-        id: "host-provider-process-exit-stop-requested",
-      },
+          id: "host-provider-process-exit-stop-requested",
+        },
         thread: { status: "active" },
       });
       markThreadStopRequested(harness.db, harness.hub, {
@@ -2134,6 +2134,90 @@ describe("internal event side effects", () => {
       expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
         existingQueuedCommandCount,
       );
+    });
+  });
+
+  it("backgroundTask progress on an idle thread triggers pruning of superseded snapshots", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-event-task-progress-prune" },
+        // The workflow outlives its spawning turn: the thread is already idle
+        // while progress keeps streaming, so this path is the only pruner.
+        thread: { status: "idle", providerId: "claude-code" },
+      });
+
+      const progressItem = {
+        id: "task:wf-1",
+        type: "backgroundTask",
+        taskType: "local_workflow",
+        description: "fixture workflow",
+        status: "pending",
+        taskStatus: "running",
+        skipTranscript: false,
+      } as const;
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "claude-session-1",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-task-prune"),
+        data: { providerThreadId: "claude-session-1" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "claude-session-1",
+        sequence: 2,
+        type: "item/started",
+        scope: turnScope("turn-task-prune"),
+        data: { providerThreadId: "claude-session-1", item: progressItem },
+      });
+      // Enough accumulated snapshots to cross the active-prune sequence delta.
+      for (let sequence = 3; sequence <= 251; sequence++) {
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId: "claude-session-1",
+          sequence,
+          type: "item/backgroundTask/progress",
+          scope: threadScope(),
+          data: { providerThreadId: "claude-session-1", item: progressItem },
+        });
+      }
+
+      const response = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness),
+        body: JSON.stringify({
+          sessionId: session.id,
+          events: [
+            createTestDaemonEventEnvelope({
+              producerEventIdValue: 1,
+              event: {
+                type: "item/backgroundTask/progress",
+                threadId: thread.id,
+                providerThreadId: "claude-session-1",
+                scope: threadScope(),
+                item: progressItem,
+              },
+            }),
+          ],
+        }),
+      });
+      expect(response.status).toBe(200);
+
+      // Only the just-ingested snapshot survives; the 249 superseded rows are
+      // pruned by the progress-triggered active prune.
+      const progressSequences = harness.db
+        .select({ sequence: events.sequence, type: events.type })
+        .from(events)
+        .where(eq(events.threadId, thread.id))
+        .orderBy(events.sequence)
+        .all()
+        .filter((row) => row.type === "item/backgroundTask/progress")
+        .map((row) => row.sequence);
+      expect(progressSequences).toEqual([252]);
     });
   });
 });

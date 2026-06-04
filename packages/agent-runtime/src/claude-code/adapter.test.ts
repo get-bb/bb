@@ -38,11 +38,13 @@ function loadFixture(name: string): Record<string, unknown> {
 const fullProviderExecutionContext = {
   permissionMode: "full",
   permissionEscalation: null,
+  workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
 
 const workspaceWriteProviderExecutionContext = {
   permissionMode: "workspace-write",
   permissionEscalation: "deny",
+  workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
 
 function createClaudeUserQuestionPayload(): UserQuestionPendingInteractionPayload {
@@ -300,6 +302,30 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("buildCommand passes workflowsEnabled through explicitly on thread/start and thread/resume", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const start = adapter.buildCommandPlan({
+      type: "thread/start",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-1",
+      input: [{ type: "text", text: "hello" }],
+      instructionMode: "append",
+      options: { ...fullProviderExecutionContext, workflowsEnabled: true },
+    });
+    expect(start?.params).toMatchObject({ workflowsEnabled: true });
+
+    // An explicit false stays explicit: omission is not a hidden default.
+    const resume = adapter.buildCommandPlan({
+      type: "thread/resume",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-1",
+      providerThreadId: "claude-session-1",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+    });
+    expect(resume?.params).toMatchObject({ workflowsEnabled: false });
+  });
+
   it("buildCommand thread/start maps skill roots to Claude local plugins and skills", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const cmd = adapter.buildCommandPlan({
@@ -389,6 +415,7 @@ describe("claude-code provider adapter", () => {
       input: [{ type: "text", text: "hello" }],
       instructionMode: "append",
       options: {
+        workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "ask",
       },
@@ -417,6 +444,7 @@ describe("claude-code provider adapter", () => {
       input: [{ type: "text", text: "hello" }],
       instructionMode: "append",
       options: {
+        workflowsEnabled: false,
         permissionEscalation: "ask",
         model: "claude-opus-4-7",
         permissionMode: "workspace-write",
@@ -512,6 +540,7 @@ describe("claude-code provider adapter", () => {
       input: [{ type: "text", text: "hello" }],
       instructionMode: "append",
       options: {
+        workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "deny",
       },
@@ -531,6 +560,7 @@ describe("claude-code provider adapter", () => {
       input: [{ type: "text", text: "hello" }],
       instructionMode: "append",
       options: {
+        workflowsEnabled: false,
         permissionMode: "full",
         permissionEscalation: null,
       },
@@ -575,6 +605,7 @@ describe("claude-code provider adapter", () => {
       providerThreadId: "claude-session-1",
       instructionMode: "append",
       options: {
+        workflowsEnabled: false,
         permissionEscalation: "deny",
         permissionMode: "readonly",
       },
@@ -639,6 +670,7 @@ describe("claude-code provider adapter", () => {
       providerThreadId: "claude-session-readonly",
       instructionMode: "append",
       options: {
+        workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "ask",
       },
@@ -3894,6 +3926,62 @@ describe("claude-code provider adapter", () => {
         },
       }),
     );
+  });
+
+  it("translateEvent status null completes the open compaction item", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    adapter.translateEvent({
+      type: "system",
+      subtype: "status",
+      status: "compacting",
+      session_id: "sess-1",
+    });
+
+    const events = adapter.translateEvent({
+      type: "system",
+      subtype: "status",
+      status: null,
+      session_id: "sess-1",
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "contextCompaction",
+          id: "claude-compaction-turn-1",
+        },
+      }),
+    );
+  });
+
+  it("translateEvent status null after the compaction turn ended emits nothing", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    adapter.translateEvent({
+      type: "system",
+      subtype: "status",
+      status: "compacting",
+      session_id: "sess-1",
+    });
+    // The turn that owned the compaction completes before the status clears;
+    // a stale entry must not complete under a later turn.
+    adapter.translateEvent({
+      type: "result",
+      subtype: "end_turn",
+      session_id: "sess-1",
+    });
+
+    const events = adapter.translateEvent({
+      type: "system",
+      subtype: "status",
+      status: null,
+      session_id: "sess-1",
+    });
+
+    expect(
+      events.filter((event) => event.type === "item/completed"),
+    ).toHaveLength(0);
   });
 
   it("translateEvent compact_boundary emits thread/compacted", () => {

@@ -128,7 +128,7 @@ interface TimelineEventRowSelection {
   rows: StoredEventRow[];
 }
 
-interface EnsureTimelineWindowTurnStartedRowsArgs {
+interface TimelineWindowRowsArgs {
   rows: readonly StoredEventRow[];
   threadId: string;
 }
@@ -469,7 +469,7 @@ function maxStoredEventSequence(rows: readonly StoredEventRow[]): number {
 
 function ensureTimelineWindowTurnStartedRows(
   db: DbConnection,
-  args: EnsureTimelineWindowTurnStartedRowsArgs,
+  args: TimelineWindowRowsArgs,
 ): StoredEventRow[] {
   // Standard windows are selected by message anchors, while projection groups
   // by turn roots. Add only the real lifecycle rows needed by selected events.
@@ -499,7 +499,7 @@ function ensureTimelineWindowTurnStartedRows(
  */
 function ensureTimelineWindowBackgroundTaskStateRows(
   db: DbConnection,
-  args: EnsureTimelineWindowTurnStartedRowsArgs,
+  args: TimelineWindowRowsArgs,
 ): StoredEventRow[] {
   const itemIds = new Set<string>();
   for (const row of args.rows) {
@@ -519,14 +519,7 @@ function ensureTimelineWindowBackgroundTaskStateRows(
     return [...args.rows];
   }
 
-  const rowsById = new Map<string, StoredEventRow>();
-  for (const row of [...args.rows, ...stateRows]) {
-    rowsById.set(row.id, row);
-  }
-
-  return [...rowsById.values()].sort(
-    (left, right) => left.sequence - right.sequence,
-  );
+  return mergeStoredEventRowsById([...args.rows, ...stateRows]);
 }
 
 interface ResolveTimelineSegmentWindowArgs {

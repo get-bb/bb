@@ -1,3 +1,4 @@
+import { isSettledWorkflowAgentState } from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineApprovalStatus,
@@ -816,11 +817,8 @@ function formatWorkflowAgentProgress(
   if (agents.length === 0) {
     return null;
   }
-  const done = agents.filter(
-    (agent) =>
-      agent.state === "done" ||
-      agent.state === "failed" ||
-      agent.state === "skipped",
+  const done = agents.filter((agent) =>
+    isSettledWorkflowAgentState(agent.state),
   ).length;
   return `(${done}/${agents.length} agents)`;
 }

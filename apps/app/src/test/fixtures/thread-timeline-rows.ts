@@ -23,6 +23,7 @@ import type {
   TimelineTurnRow,
   TimelineWebFetchWorkRow,
   TimelineWebSearchWorkRow,
+  TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
 import type { ThreadTurnInitiator } from "@bb/domain";
 
@@ -134,6 +135,24 @@ export interface ImageViewRowArgs {
   sourceSeqStart?: number;
   status?: TimelineRowStatus;
   turnId?: string | null;
+}
+
+export interface WorkflowRowArgs {
+  description?: string;
+  durationMs?: number | null;
+  error?: string | null;
+  id?: string;
+  itemId?: string;
+  seq?: number;
+  sourceSeqEnd?: number;
+  sourceSeqStart?: number;
+  status?: TimelineRowStatus;
+  summary?: string | null;
+  taskStatus?: TimelineWorkflowWorkRow["taskStatus"];
+  turnId?: string | null;
+  usage?: TimelineWorkflowWorkRow["usage"];
+  workflow?: TimelineWorkflowWorkRow["workflow"];
+  workflowName?: string | null;
 }
 
 export interface ApprovalRowArgs {
@@ -263,6 +282,7 @@ const DEFAULT_TURN_ROW_ID = "turn-summary-1";
 const DEFAULT_WEB_FETCH_ID = "web-fetch-1";
 const DEFAULT_WEB_SEARCH_ID = "web-search-1";
 const DEFAULT_IMAGE_VIEW_ID = "image-view-1";
+const DEFAULT_WORKFLOW_ID = "workflow-1";
 
 function rowSequence({ seq, sourceSeqStart }: RowSequenceArgs): number {
   return seq ?? sourceSeqStart ?? 1;
@@ -624,6 +644,41 @@ export function imageViewRow({
     status,
     callId: callId ?? id,
     path,
+    completedAt: completedAtFromDuration(base.startedAt, durationMs),
+  };
+}
+
+export function workflowRow({
+  description = "Fixture workflow",
+  durationMs = null,
+  error = null,
+  id = DEFAULT_WORKFLOW_ID,
+  itemId,
+  seq,
+  sourceSeqEnd,
+  sourceSeqStart,
+  status = "completed",
+  summary = null,
+  taskStatus = "completed",
+  turnId,
+  usage = null,
+  workflow = null,
+  workflowName = "fixture-workflow",
+}: WorkflowRowArgs = {}): TimelineWorkflowWorkRow {
+  const base = baseRow({ id, seq, sourceSeqEnd, sourceSeqStart, turnId });
+  return {
+    ...base,
+    kind: "work",
+    workKind: "workflow",
+    status,
+    itemId: itemId ?? id,
+    workflowName,
+    description,
+    taskStatus,
+    workflow,
+    usage,
+    summary,
+    error,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
   };
 }

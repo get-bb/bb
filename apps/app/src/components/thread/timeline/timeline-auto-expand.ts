@@ -32,9 +32,12 @@ export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
     case "delegation":
       return row.childRows.length > 0 || row.output.trim().length > 0;
     case "workflow":
-      // The phase/agent tree (or terminal summary) lives in the body; a
-      // degraded row with neither stays title-only.
-      return row.workflow !== null || row.summary !== null;
+      // The phase/agent tree (or terminal summary/error) lives in the body; a
+      // degraded row with none of them stays title-only. Matches the
+      // body-collapse rule in WorkflowWorkRowBody.
+      return (
+        row.workflow !== null || row.summary !== null || row.error !== null
+      );
     default:
       return assertNever(row);
   }

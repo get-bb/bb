@@ -431,7 +431,6 @@ export const timelineDelegationWorkRowSchema: z.ZodType<TimelineDelegationWorkRo
 export const timelineWorkflowWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("workflow"),
   itemId: z.string(),
-  taskType: z.string(),
   workflowName: z.string().nullable(),
   description: z.string(),
   taskStatus: backgroundTaskStatusSchema,

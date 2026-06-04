@@ -1,15 +1,12 @@
+import { isSettledWorkflowAgentState } from "@bb/domain";
 import type {
   WorkflowAgentSnapshot,
   WorkflowPhaseSnapshot,
 } from "@bb/domain";
-import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
+import type { TimelineViewWorkflowWorkRow } from "@bb/thread-view";
 import { Icon } from "../../ui/icon.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { cn } from "@/lib/utils";
-
-type TimelineViewWorkflowRow = TimelineWorkflowWorkRow & {
-  inClosedStep?: boolean;
-};
 
 /**
  * Display state per agent. "interrupted" is derived, not persisted: a settled
@@ -21,10 +18,7 @@ function deriveAgentDisplayState(
   agent: WorkflowAgentSnapshot,
   workflowSettled: boolean,
 ): WorkflowAgentDisplayState {
-  if (
-    workflowSettled &&
-    (agent.state === "queued" || agent.state === "running")
-  ) {
+  if (workflowSettled && !isSettledWorkflowAgentState(agent.state)) {
     return "interrupted";
   }
   return agent.state;
@@ -189,11 +183,13 @@ function groupAgentsByPhase(
   phases: readonly WorkflowPhaseSnapshot[],
   agents: readonly WorkflowAgentSnapshot[],
 ): WorkflowPhaseGroup[] {
-  const groups: WorkflowPhaseGroup[] = phases.map((phase) => ({
-    phase,
-    agents: [],
-  }));
-  const byIndex = new Map(groups.map((group) => [group.phase!.index, group]));
+  const groups: WorkflowPhaseGroup[] = [];
+  const byIndex = new Map<number, WorkflowPhaseGroup>();
+  for (const phase of phases) {
+    const group: WorkflowPhaseGroup = { phase, agents: [] };
+    groups.push(group);
+    byIndex.set(phase.index, group);
+  }
   const unphased: WorkflowAgentSnapshot[] = [];
   for (const agent of agents) {
     const group =
@@ -214,16 +210,17 @@ function phaseProgressLabel(agents: readonly WorkflowAgentSnapshot[]): string {
   if (agents.length === 0) {
     return "not started";
   }
-  const settled = agents.filter(
-    (agent) =>
-      agent.state === "done" ||
-      agent.state === "failed" ||
-      agent.state === "skipped",
+  const settled = agents.filter((agent) =>
+    isSettledWorkflowAgentState(agent.state),
   ).length;
   return `${settled}/${agents.length}`;
 }
 
-export function WorkflowWorkRowBody({ row }: { row: TimelineViewWorkflowRow }) {
+export function WorkflowWorkRowBody({
+  row,
+}: {
+  row: TimelineViewWorkflowWorkRow;
+}) {
   const workflowSettled = row.status !== "pending";
 
   if (!row.workflow) {

@@ -31,13 +31,19 @@ type DaemonSocketClosedDeps = Pick<
 >;
 type ExpiredHostSessionLeaseDeps = Pick<
   AppDeps,
-  "db" | "hub" | "pendingInteractions"
+  "db" | "hub" | "logger" | "pendingInteractions"
 >;
 
 export interface HandleHostSessionOpenedArgs {
   activeThreads: HostDaemonActiveThread[];
   hostId: string;
   openedSession: HostDaemonSessionRow;
+  /**
+   * The host's most recent session before this open, regardless of status —
+   * a daemon crash closes its session immediately on socket close, so the
+   * restarted-daemon reconciliation below must not require the previous
+   * session to still be active.
+   */
   previousSession: HostDaemonSessionRow | null;
 }
 
@@ -71,27 +77,36 @@ export async function handleHostSessionOpened(
     args.previousSession &&
     args.previousSession.id !== args.openedSession.id
   ) {
-    deps.hub.closeDaemonSession(args.previousSession.id, "replaced");
+    if (args.previousSession.status === "active") {
+      deps.hub.closeDaemonSession(args.previousSession.id, "replaced");
+    }
 
     if (args.previousSession.instanceId !== args.openedSession.instanceId) {
-      // A different instanceId is a new daemon process: the prior process is
-      // gone and cannot report the commands it had fetched. Return them to the
-      // queue now so the restarted daemon re-fetches them, instead of waiting
-      // out the delivery lease (up to 20min for provision). Same-instance
-      // reconnects keep the lease as a safety window, since a blipped-but-alive
-      // daemon may still report the original attempt.
-      const requeued = requeueFetchedCommandsForSession(deps.db, {
-        sessionId: args.previousSession.id,
-      });
-      if (requeued.requeued > 0) {
-        deps.hub.notifyCommand(args.hostId);
+      if (args.previousSession.status === "active") {
+        // A different instanceId is a new daemon process: the prior process is
+        // gone and cannot report the commands it had fetched. Return them to
+        // the queue now so the restarted daemon re-fetches them, instead of
+        // waiting out the delivery lease (up to 20min for provision).
+        // Same-instance reconnects keep the lease as a safety window, since a
+        // blipped-but-alive daemon may still report the original attempt.
+        // Already-closed previous sessions are excluded: their threads are
+        // interrupted by the disconnect/lease reconciliation, and requeueing
+        // would replay stale work on top of the interruption.
+        const requeued = requeueFetchedCommandsForSession(deps.db, {
+          sessionId: args.previousSession.id,
+        });
+        if (requeued.requeued > 0) {
+          deps.hub.notifyCommand(args.hostId);
+        }
       }
       interruptPendingInteractionsForHostThreads(deps, {
         hostId: args.hostId,
         reason: DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
       });
       // The restarted daemon lost its in-memory background-task state and the
-      // CLI processes died with it — settle the persisted open items.
+      // CLI processes died with it — settle the persisted open items. This
+      // also covers restarts inside the disconnect grace window, where the
+      // grace callback sees the new active session and skips its settle.
       settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
     }
   }
@@ -155,6 +170,10 @@ export function handleExpiredHostSessionLeases(
         hostId,
         reason: DAEMON_SESSION_EXPIRED_PENDING_INTERACTION_REASON,
       });
+      // A host that never reconnects has no re-register to settle its open
+      // background tasks; mirror the pending-interaction reconciliation here
+      // so lost workflows do not dangle as running forever.
+      settleDanglingBackgroundTasks(deps, { hostId });
     }
     notifyHostThreadRuntimeStatusChanged(deps, hostId);
   }
@@ -172,6 +191,11 @@ function completeDaemonDisconnectGrace(
     hostId: args.hostId,
     reason: DAEMON_DISCONNECTED_PENDING_INTERACTION_REASON,
   });
+  // Same policy as pending interactions: after the grace window the daemon is
+  // treated as gone, so its background tasks are settled. If the daemon was
+  // alive-but-partitioned, its later real progress/completed events supersede
+  // the settle row (latest state row per item wins).
+  settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
 }
 

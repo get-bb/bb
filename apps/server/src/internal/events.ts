@@ -40,7 +40,7 @@ import type {
   LoggedPendingInteractionWorkSessionDeps,
 } from "../types.js";
 import {
-  isAgePrunableThreadEventType,
+  isActivePruneTriggerThreadEventType,
   maybePruneActiveThreadEventHistory,
 } from "../services/system/event-pruning.js";
 import {
@@ -603,7 +603,7 @@ function resolveActivePruneCandidates(
     if (!insertedEventIndexLookup.has(index)) {
       continue;
     }
-    if (!isAgePrunableThreadEventType(entry.event.type)) {
+    if (!isActivePruneTriggerThreadEventType(entry.event.type)) {
       continue;
     }
     const acceptedEvent = args.acceptedEvents[index];

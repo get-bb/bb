@@ -1,6 +1,13 @@
+import type { ProviderInfo } from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import { appendCustomModels } from "../../src/services/system/execution-options.js";
+import {
+  appendCustomModels,
+  resolveSystemExecutionOptions,
+} from "../../src/services/system/execution-options.js";
 import { availableModelFixture } from "../helpers/available-models.js";
+import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
+import { seedHostSession } from "../helpers/seed.js";
+import { withTestHarness } from "../helpers/test-app.js";
 
 describe("appendCustomModels", () => {
   it("appends custom models for the requested provider after the catalog", () => {
@@ -151,23 +158,6 @@ describe("appendCustomModels", () => {
     expect(models[0].displayName).toBe("First");
   });
 
-  it("appends custom models when the provider model list is empty", () => {
-    // Mirrors the modelLoadError path: the daemon catalog failed to load but
-    // configured custom models must stay selectable.
-    const { models } = appendCustomModels({
-      customModels: [
-        { providerId: "claude-code", model: "claude-example-preview" },
-      ],
-      models: [],
-      providerId: "claude-code",
-      selectedOnlyModels: [],
-    });
-
-    expect(models.map((model) => model.model)).toEqual([
-      "claude-example-preview",
-    ]);
-  });
-
   it("returns the catalog unchanged when no custom models match", () => {
     const catalogModel = availableModelFixture({ model: "claude-opus-4-8" });
     const retiredModel = availableModelFixture({ model: "claude-opus-4-6" });
@@ -183,5 +173,67 @@ describe("appendCustomModels", () => {
 
     expect(models).toEqual([catalogModel]);
     expect(selectedOnlyModels).toEqual([retiredModel]);
+  });
+});
+
+describe("resolveSystemExecutionOptions", () => {
+  const CLAUDE_CODE_PROVIDER: ProviderInfo = {
+    id: "claude-code",
+    displayName: "Claude Code",
+    capabilities: {
+      supportsArchive: true,
+      supportsRename: true,
+      supportsServiceTier: false,
+      supportsUserQuestion: true,
+      supportedPermissionModes: ["full"],
+    },
+    available: true,
+  };
+
+  it("keeps custom models selectable when the provider model list fails to load", async () => {
+    await withTestHarness(
+      {
+        customModels: [
+          {
+            providerId: "claude-code",
+            model: "claude-example-preview",
+            displayName: "Example Preview",
+          },
+        ],
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-execution-options-model-load-error",
+        });
+        registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          providers: [CLAUDE_CODE_PROVIDER],
+          modelErrorsByProviderId: {
+            "claude-code": {
+              errorCode: "provider_rpc_error",
+              errorMessage: "Provider failed",
+            },
+          },
+        });
+
+        const response = await resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId: "claude-code",
+        });
+
+        expect(response.modelLoadError).toEqual({
+          providerId: "claude-code",
+          code: "failed",
+        });
+        expect(response.models).toEqual([
+          expect.objectContaining({
+            model: "claude-example-preview",
+            displayName: "Example Preview",
+          }),
+        ]);
+        expect(response.selectedOnlyModels).toEqual([]);
+      },
+    );
   });
 });

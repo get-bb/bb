@@ -366,7 +366,6 @@ export interface EventProjectionWorkflowMessage
   extends EventProjectionMessageBase {
   kind: "workflow";
   itemId: string;
-  taskType: string;
   workflowName: string | null;
   description: string;
   status: Extract<

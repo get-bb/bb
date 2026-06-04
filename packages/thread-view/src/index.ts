@@ -65,6 +65,7 @@ export type {
   TimelineViewDelegationWorkRow,
   TimelineViewRowsCache,
   TimelineViewTurnRow,
+  TimelineViewWorkflowWorkRow,
   TimelineViewWorkRow,
   TimelineWorkSummaryKind,
   TimelineWorkSummaryRow,

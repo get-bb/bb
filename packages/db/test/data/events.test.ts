@@ -31,6 +31,8 @@ import {
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   MissingStoredTurnStartedError,
+  listLatestBackgroundTaskStateRowsByItemIds,
+  listOpenBackgroundTaskItemRowsForHost,
   listThreadTurnInterruptionEventStates,
   pruneBackgroundTaskProgressEvents,
   pruneContextWindowUsageEventsBeforeSequence,
@@ -39,6 +41,7 @@ import {
   pruneThreadEventsBeforeSequence,
   ProducerEventPayloadMismatchError,
 } from "../../src/data/events.js";
+import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
 import { upsertHost } from "../../src/data/hosts.js";
@@ -2760,6 +2763,215 @@ describe("events", () => {
     expect(
       listEvents(db, { threadId: thread.id }).map((event) => event.sequence),
     ).toEqual([2, 3]);
+  });
+
+  it("returns only the highest-sequence backgroundTask state row per item", () => {
+    const { db, thread } = setup();
+
+    const taskData = (itemId: string, taskStatus: string) =>
+      JSON.stringify({
+        item: {
+          id: itemId,
+          type: "backgroundTask",
+          taskType: "local_workflow",
+          description: "fixture workflow",
+          status: taskStatus === "completed" ? "completed" : "pending",
+          taskStatus,
+          skipTranscript: false,
+        },
+      });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-1", "running"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-1", "running"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-2",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-2", "running"),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        scope: threadScope(),
+        type: "item/backgroundTask/completed",
+        itemId: "task:wf-1",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-1", "completed"),
+      },
+      // Unrelated item id: must not appear in the result.
+      {
+        threadId: thread.id,
+        sequence: 5,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-other",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-other", "running"),
+      },
+    ]);
+
+    const rows = listLatestBackgroundTaskStateRowsByItemIds(db, {
+      threadId: thread.id,
+      itemIds: ["task:wf-1", "task:wf-2"],
+    });
+
+    expect(
+      rows.map((row) => ({
+        itemId: row.itemId,
+        sequence: row.sequence,
+        type: row.type,
+      })),
+    ).toEqual([
+      {
+        itemId: "task:wf-2",
+        sequence: 3,
+        type: "item/backgroundTask/progress",
+      },
+      {
+        itemId: "task:wf-1",
+        sequence: 4,
+        type: "item/backgroundTask/completed",
+      },
+    ]);
+
+    expect(
+      listLatestBackgroundTaskStateRowsByItemIds(db, {
+        threadId: thread.id,
+        itemIds: [],
+      }),
+    ).toEqual([]);
+  });
+
+  it("lists the latest lifecycle row per open backgroundTask item on a host", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    const host = upsertHost(db, noopNotifier, {
+      name: "task-host",
+      type: "persistent",
+    });
+    const { project } = createProject(db, noopNotifier, {
+      name: "task-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
+    });
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "unmanaged",
+    });
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "claude-code",
+    });
+
+    const taskData = (itemId: string, taskStatus: string) =>
+      JSON.stringify({
+        item: {
+          id: itemId,
+          type: "backgroundTask",
+          taskType: "local_workflow",
+          description: "fixture workflow",
+          status: taskStatus === "completed" ? "completed" : "pending",
+          taskStatus,
+          skipTranscript: false,
+        },
+      });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-open",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-open", "running"),
+      },
+      {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 2,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-open",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-open", "running"),
+      },
+      {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 3,
+        scope: threadScope(),
+        type: "item/backgroundTask/progress",
+        itemId: "task:wf-open",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-open", "paused"),
+      },
+      // Settled item: excluded entirely.
+      {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 4,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:wf-done",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-done", "running"),
+      },
+      {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 5,
+        scope: threadScope(),
+        type: "item/backgroundTask/completed",
+        itemId: "task:wf-done",
+        itemKind: "backgroundTask",
+        data: taskData("task:wf-done", "completed"),
+      },
+    ]);
+
+    const rows = listOpenBackgroundTaskItemRowsForHost(db, {
+      hostId: host.id,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      itemId: "task:wf-open",
+      threadId: thread.id,
+      environmentId: environment.id,
+    });
+    // The latest snapshot wins: sequence 3 carries the paused status.
+    expect(JSON.parse(rows[0]!.data)).toMatchObject({
+      item: { taskStatus: "paused" },
+    });
+
+    const otherHost = upsertHost(db, noopNotifier, {
+      name: "other-host",
+      type: "persistent",
+    });
+    expect(
+      listOpenBackgroundTaskItemRowsForHost(db, { hostId: otherHost.id }),
+    ).toEqual([]);
   });
 
   it("pruning is scoped to the target thread", () => {

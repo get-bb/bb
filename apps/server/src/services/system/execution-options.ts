@@ -3,23 +3,17 @@ import type {
   SystemExecutionOptionsModelLoadError,
   SystemExecutionOptionsResponse,
 } from "@bb/server-contract";
-import type { AgentProviderId } from "@bb/agent-providers";
 import type { CustomProviderModel } from "@bb/config/bb-app-managed-config";
 import {
-  ALL_REASONING_EFFORTS,
-  cloneReasoningEfforts,
-  HIGH_REASONING_EFFORT,
-  LOW_REASONING_EFFORT,
-  MEDIUM_REASONING_EFFORT,
-  XHIGH_REASONING_EFFORT,
+  reasoningEffortsForLevels,
   type AvailableModel,
-  type ModelReasoningEffort,
   type ProviderInfo,
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 
 export interface SystemExecutionOptionsRequest {
@@ -50,36 +44,19 @@ type AppendCustomModelsResult = Pick<
   "models" | "selectedOnlyModels"
 >;
 
-const XHIGH_CAPPED_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
-  LOW_REASONING_EFFORT,
-  MEDIUM_REASONING_EFFORT,
-  HIGH_REASONING_EFFORT,
-  XHIGH_REASONING_EFFORT,
-];
-
-// Custom models advertise the broadest reasoning ladder their provider
-// accepts: per-model support is unknowable server-side and the picker
-// reconciles the user's choice per model (see reconcileReasoningLevel in
-// @bb/domain). "max" is rejected provider-wide by codex
-// (toCodexReasoningEffort) and the pi bridge (piReasoningLevelValues), so
-// those cap at xhigh.
-const CUSTOM_MODEL_REASONING_EFFORTS: Record<
-  AgentProviderId,
-  readonly ModelReasoningEffort[]
-> = {
-  "claude-code": ALL_REASONING_EFFORTS,
-  codex: XHIGH_CAPPED_REASONING_EFFORTS,
-  pi: XHIGH_CAPPED_REASONING_EFFORTS,
-};
-
 function buildCustomModel(customModel: CustomProviderModel): AvailableModel {
   return {
     id: customModel.model,
     model: customModel.model,
     displayName: customModel.displayName ?? customModel.model,
     description: "Custom model from config.json",
-    supportedReasoningEfforts: cloneReasoningEfforts(
-      CUSTOM_MODEL_REASONING_EFFORTS[customModel.providerId],
+    // Custom models advertise the provider's full reasoning ladder: per-model
+    // support is unknowable server-side and the picker reconciles the user's
+    // choice per model (see reconcileReasoningLevel in @bb/domain). The
+    // ladder comes from the same per-provider policy table that validates
+    // reasoning overrides, so the picker and validation cannot drift apart.
+    supportedReasoningEfforts: reasoningEffortsForLevels(
+      getSupportedReasoningLevelsForProvider(customModel.providerId),
     ),
     defaultReasoningEffort: "medium",
     isDefault: false,

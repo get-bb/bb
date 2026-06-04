@@ -117,7 +117,6 @@ const workflowRowBase = {
   kind: "work" as const,
   workKind: "workflow" as const,
   itemId: "task:wu7ol9ras",
-  taskType: "local_workflow",
   workflowName: "fixture-mini",
   description: "Tiny fixture workflow for BB capture",
   summary: null,

@@ -69,6 +69,18 @@ export const AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
   "turn/diff/updated",
 ] as const;
 
+/**
+ * Event types whose ingestion may trigger an opportunistic prune of the
+ * thread's event history. Covers the age-prunable stream types plus
+ * backgroundTask progress snapshots: workflows keep streaming progress after
+ * their spawning turn completed, so without this trigger nothing would bound
+ * the superseded snapshots until the next turn completes.
+ */
+const ACTIVE_PRUNE_TRIGGER_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
+  ...AGE_PRUNABLE_THREAD_EVENT_TYPES,
+  "item/backgroundTask/progress",
+] as const;
+
 const GENERIC_AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
   "turn/diff/updated",
 ] as const;
@@ -79,8 +91,8 @@ const KEEP_RECENT_BY_MODE: Record<ThreadEventPruningMode, number> = {
   archived: ARCHIVED_THREAD_EVENT_KEEP_RECENT,
 };
 
-const agePrunableThreadEventTypeSet = new Set<ThreadEventType>(
-  AGE_PRUNABLE_THREAD_EVENT_TYPES,
+const activePruneTriggerThreadEventTypeSet = new Set<ThreadEventType>(
+  ACTIVE_PRUNE_TRIGGER_THREAD_EVENT_TYPES,
 );
 const activeThreadPruneStateByThreadId = new Map<
   string,
@@ -107,10 +119,10 @@ function runThreadEventPruningStep<TValue>(
   }
 }
 
-export function isAgePrunableThreadEventType(
+export function isActivePruneTriggerThreadEventType(
   eventType: ThreadEventType,
 ): boolean {
-  return agePrunableThreadEventTypeSet.has(eventType);
+  return activePruneTriggerThreadEventTypeSet.has(eventType);
 }
 
 export function pruneThreadEventHistory(
@@ -215,7 +227,14 @@ export function maybePruneActiveThreadEventHistory(
   args: MaybePruneActiveThreadEventHistoryArgs,
 ): ThreadEventPruningResult | null {
   const thread = getThread(deps.db, args.threadId);
-  if (!thread || thread.status !== "active" || thread.archivedAt !== null) {
+  // Idle threads still ingest prunable streams: a backgrounded workflow keeps
+  // emitting thread-scoped progress snapshots after its spawning turn
+  // completed, which is exactly when nothing else would prune them.
+  if (
+    !thread ||
+    (thread.status !== "active" && thread.status !== "idle") ||
+    thread.archivedAt !== null
+  ) {
     return null;
   }
 
@@ -240,7 +259,7 @@ export function maybePruneActiveThreadEventHistory(
   });
 
   return pruneThreadEventHistoryBestEffort(deps, {
-    mode: "active",
+    mode: thread.status === "active" ? "active" : "idle",
     threadId: args.threadId,
   });
 }

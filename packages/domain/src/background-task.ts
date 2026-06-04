@@ -42,6 +42,25 @@ export const workflowAgentStateValues = [
 export const workflowAgentStateSchema = z.enum(workflowAgentStateValues);
 export type WorkflowAgentState = z.infer<typeof workflowAgentStateSchema>;
 
+/**
+ * Whether an agent has reached a terminal state. The single source of truth
+ * for "n/m agents" progress counts and for deriving the render-time
+ * "interrupted" display state (a settled workflow with unsettled agents).
+ */
+export function isSettledWorkflowAgentState(
+  state: WorkflowAgentState,
+): boolean {
+  switch (state) {
+    case "done":
+    case "failed":
+    case "skipped":
+      return true;
+    case "queued":
+    case "running":
+      return false;
+  }
+}
+
 export const workflowAgentSnapshotSchema = z.object({
   /** 1-based agent counter; the stable identity for fold/replace semantics. */
   index: z.number().int().positive(),
@@ -118,4 +137,17 @@ export function backgroundTaskItemStatus(
     case "stopped":
       return "interrupted";
   }
+}
+
+/**
+ * Whether the provider-reported status already describes a finished task.
+ * Settle backstops (thread restart, daemon crash, lease expiry) must preserve
+ * these statuses instead of rewriting them to "stopped": a workflow whose
+ * completion patch arrived before its terminal notification is completed, not
+ * interrupted.
+ */
+export function isSettledBackgroundTaskStatus(
+  taskStatus: BackgroundTaskStatus,
+): boolean {
+  return backgroundTaskItemStatus(taskStatus) !== "pending";
 }

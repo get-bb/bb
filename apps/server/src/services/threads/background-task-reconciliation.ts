@@ -5,6 +5,7 @@ import {
 } from "@bb/db";
 import {
   backgroundTaskItemStatus,
+  isSettledBackgroundTaskStatus,
   threadEventBackgroundTaskItemSchema,
   threadScope,
 } from "@bb/domain";
@@ -36,12 +37,17 @@ function parseStoredBackgroundTaskItem(
 }
 
 /**
- * Server backstop for the daemon-crash case of the background-task lifecycle:
+ * Server backstop for the lost-daemon cases of the background-task lifecycle:
  * the adapter settles open tasks on thread/resume and provider process exit,
- * but a daemon restart loses that in-memory state entirely — leaving persisted
+ * but a daemon crash loses that in-memory state entirely — leaving persisted
  * items nobody will ever complete. Called when a daemon session re-registers
- * with a new instance id; every open backgroundTask item on the host is
- * settled as interrupted (the CLI processes died with the daemon).
+ * with a new instance id, when a host's session lease expires with no active
+ * replacement, and when the disconnect grace elapses without a reconnect.
+ * Open items whose latest snapshot already reports a finished task status
+ * (completed/failed/killed) keep it — only the terminal notification was
+ * lost, not the outcome — while genuinely open items are settled as
+ * interrupted ("stopped"). Idempotent: items with a completed row are not
+ * open, so repeated triggers (grace + lease expiry + re-register) no-op.
  */
 export function settleDanglingBackgroundTasks(
   deps: SettleDanglingBackgroundTasksDeps,
@@ -67,6 +73,9 @@ export function settleDanglingBackgroundTasks(
           continue;
         }
         const providerThreadId = row.providerThreadId ?? "";
+        const taskStatus = isSettledBackgroundTaskStatus(item.taskStatus)
+          ? item.taskStatus
+          : "stopped";
         appendThreadEventsInTransaction(tx, [
           {
             threadId: row.threadId,
@@ -78,8 +87,8 @@ export function settleDanglingBackgroundTasks(
               providerThreadId,
               item: {
                 ...item,
-                status: backgroundTaskItemStatus("stopped"),
-                taskStatus: "stopped",
+                status: backgroundTaskItemStatus(taskStatus),
+                taskStatus,
               },
             },
           },

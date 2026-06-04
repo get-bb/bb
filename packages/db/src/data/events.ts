@@ -955,29 +955,39 @@ export function listLatestBackgroundTaskStateRowsByItemIds(
     return [];
   }
 
-  const rows = db
+  const stateTypes = [
+    "item/backgroundTask/progress",
+    "item/backgroundTask/completed",
+  ] satisfies ThreadEventType[];
+  const latest = alias(events, "latest_background_task_state");
+
+  // (threadId, sequence) is unique, so matching the per-item MAX(sequence)
+  // set selects exactly one row per item in SQL instead of loading every
+  // snapshot row and folding in JS.
+  return db
     .select(storedEventRowFields)
     .from(events)
     .where(
       and(
         eq(events.threadId, args.threadId),
-        inArray(events.itemId, [...args.itemIds]),
-        inArray(events.type, [
-          "item/backgroundTask/progress",
-          "item/backgroundTask/completed",
-        ] satisfies ThreadEventType[]),
+        inArray(
+          events.sequence,
+          db
+            .select({ sequence: max(latest.sequence) })
+            .from(latest)
+            .where(
+              and(
+                eq(latest.threadId, args.threadId),
+                inArray(latest.itemId, [...args.itemIds]),
+                inArray(latest.type, stateTypes),
+              ),
+            )
+            .groupBy(latest.itemId),
+        ),
       ),
     )
-    .orderBy(desc(events.sequence))
+    .orderBy(events.sequence)
     .all();
-
-  const latestByItemId = new Map<string, StoredEventRow>();
-  for (const row of rows) {
-    if (row.itemId !== null && !latestByItemId.has(row.itemId)) {
-      latestByItemId.set(row.itemId, row);
-    }
-  }
-  return [...latestByItemId.values()];
 }
 
 function listStoredTurnStartedKeysChunk(
@@ -1802,17 +1812,16 @@ export function listOpenBackgroundTaskItemRowsForHost(
   db: DbQueryConnection,
   args: ListOpenBackgroundTaskItemRowsForHostArgs,
 ): OpenBackgroundTaskItemRow[] {
-  const lifecycleTypes = [
-    "item/started",
-    "item/backgroundTask/progress",
-  ] satisfies ThreadEventType[];
+  const startedType = "item/started" satisfies ThreadEventType;
+  const progressType =
+    "item/backgroundTask/progress" satisfies ThreadEventType;
   const completedType =
     "item/backgroundTask/completed" satisfies ThreadEventType;
   const settled = alias(events, "settled_background_task");
 
-  // The NOT EXISTS clause restricts this to open items, whose unsettled
-  // progress rows are already bounded by the adapter throttle + keep-latest
-  // pruning — picking the latest row per item in JS stays O(open items).
+  // The NOT EXISTS clause restricts this to open items; the correlated
+  // MAX(sequence) predicate selects each item's latest lifecycle row in SQL
+  // so only one row per open item is materialized.
   const rows = db
     .select({
       data: events.data,
@@ -1828,7 +1837,8 @@ export function listOpenBackgroundTaskItemRowsForHost(
       and(
         eq(environments.hostId, args.hostId),
         eq(events.itemKind, "backgroundTask"),
-        inArray(events.type, lifecycleTypes),
+        inArray(events.type, [startedType, progressType]),
+        isNotNull(events.itemId),
         notExists(
           db
             .select({ one: sql`1` })
@@ -1841,22 +1851,21 @@ export function listOpenBackgroundTaskItemRowsForHost(
               ),
             ),
         ),
+        sql`${events.sequence} = (
+          SELECT MAX(latest.sequence)
+          FROM events latest
+          WHERE latest.thread_id = ${events.threadId}
+            AND latest.item_id = ${events.itemId}
+            AND latest.type IN (${startedType}, ${progressType})
+        )`,
       ),
     )
-    .orderBy(events.threadId, events.itemId, desc(events.sequence))
+    .orderBy(events.threadId, events.itemId)
     .all();
 
-  const latestByItem = new Map<string, OpenBackgroundTaskItemRow>();
-  for (const row of rows) {
-    if (row.itemId === null) {
-      continue;
-    }
-    const key = `${row.threadId} ${row.itemId}`;
-    if (!latestByItem.has(key)) {
-      latestByItem.set(key, { ...row, itemId: row.itemId });
-    }
-  }
-  return [...latestByItem.values()];
+  return rows.flatMap((row) =>
+    row.itemId === null ? [] : [{ ...row, itemId: row.itemId }],
+  );
 }
 
 /**

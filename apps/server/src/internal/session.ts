@@ -1,5 +1,5 @@
 import {
-  getActiveSession,
+  getLatestSessionForHost,
   listRetiredLoadedEnvironmentIdsOnHost,
   listTrackedThreadStorageTargetsOnHost,
   openSession,
@@ -57,7 +57,13 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
         );
       }
 
-      const existingSession = getActiveSession(deps.db, daemon.hostId);
+      // The latest session regardless of status/lease: a crashed daemon's
+      // session is closed the moment its socket drops, so requiring an active
+      // previous session would skip the restarted-daemon reconciliation in
+      // exactly the case it exists for.
+      const previousSession = getLatestSessionForHost(deps.db, {
+        hostId: daemon.hostId,
+      });
       upsertHost(deps.db, deps.hub, {
         id: daemon.hostId,
         name: payload.hostName,
@@ -83,7 +89,7 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
         activeThreads: payload.activeThreads,
         hostId: daemon.hostId,
         openedSession: session,
-        previousSession: existingSession,
+        previousSession,
       });
 
       const trackedThreadTargets = listTrackedThreadStorageTargetsOnHost(
@@ -134,7 +140,11 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
       // Attachment paths are project-scoped upload tokens, so cross-check
       // projectId before reading bytes even though threadId identifies a thread.
       if (thread.projectId !== query.projectId) {
-        throw new ApiError(403, "forbidden", "Thread does not belong to project");
+        throw new ApiError(
+          403,
+          "forbidden",
+          "Thread does not belong to project",
+        );
       }
       if (environment.hostId !== session.hostId) {
         throw new ApiError(

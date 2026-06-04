@@ -405,6 +405,7 @@ function createBridgeUserQuestionInput(): ClaudeUserQuestionInput {
 
 async function startBridgeThread(args: StartBridgeThreadArgs): Promise<void> {
   args.bridge.sendRequest(1, "thread/start", {
+    workflowsEnabled: false,
     baseInstructions: "test",
     cwd: "/tmp/worktree",
     instructionMode: "append",
@@ -497,6 +498,7 @@ describe("bridge", () => {
   it("keeps manager sessions on a plain string system prompt", () => {
     const options = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a manager.",
         cwd: "/tmp/worktree",
         disallowedTools: ["ExitPlanMode", "NotebookEdit", "Task"],
@@ -559,6 +561,7 @@ describe("bridge", () => {
   it("passes no flag settings when workflows are not enabled", () => {
     const options = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -575,6 +578,7 @@ describe("bridge", () => {
   it("leaves standard sessions on the default Claude tool preset", () => {
     const options = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -602,6 +606,7 @@ describe("bridge", () => {
   it("passes Claude local plugins and skills through to the session", () => {
     const options = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -622,6 +627,7 @@ describe("bridge", () => {
   it("passes the resolved Claude permission mode through to the session", () => {
     const options = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -638,6 +644,7 @@ describe("bridge", () => {
     const { binDir, executablePath } = createTempClaudeExecutable();
     const options = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -654,6 +661,7 @@ describe("bridge", () => {
     const { executablePath } = createTempClaudeExecutable();
     const options = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -673,6 +681,7 @@ describe("bridge", () => {
     const { executablePath } = createTempClaudeExecutable();
     const options = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -696,6 +705,7 @@ describe("bridge", () => {
     expect(() =>
       buildSessionOptions(
         {
+          workflowsEnabled: false,
           baseInstructions: "You are a coder.",
           cwd: "/tmp/worktree",
           instructionMode: "append",
@@ -713,6 +723,7 @@ describe("bridge", () => {
   it("configures workspace-write sessions with Claude sandbox settings", () => {
     const askOptions = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -723,6 +734,7 @@ describe("bridge", () => {
     );
     const denyOptions = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -747,6 +759,7 @@ describe("bridge", () => {
   it("configures workspace-write sessions with additional writable roots", () => {
     const options = buildSessionOptions(
       {
+        workflowsEnabled: false,
         additionalWorkspaceWriteRoots: [
           "/repo/.git/worktrees/bb13",
           "/repo/.git/objects",
@@ -777,6 +790,7 @@ describe("bridge", () => {
   it("configures readonly sessions with PreToolUse policy hooks", async () => {
     const askOptions = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -787,6 +801,7 @@ describe("bridge", () => {
     );
     const denyOptions = buildSessionOptions(
       {
+        workflowsEnabled: false,
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1128,6 +1143,7 @@ describe("bridge", () => {
         const threadId = `thread-readonly-bash-policy-${testCase.id}`;
         const toolUseID = `tool-readonly-policy-${testCase.id}`;
         bridge.sendRequest(startRequestId, "thread/start", {
+          workflowsEnabled: false,
           baseInstructions: "test",
           cwd: "/tmp/worktree",
           instructionMode: "append",
@@ -1483,6 +1499,7 @@ describe("bridge", () => {
     process.env.HOME = "/Users/test-bb";
     try {
       bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1527,6 +1544,7 @@ describe("bridge", () => {
 
     try {
       bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1571,6 +1589,7 @@ describe("bridge", () => {
 
     try {
       bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
         additionalWorkspaceWriteRoots: [
           "/repo/.git/worktrees/bb13",
           "/repo/.git/objects",
@@ -1622,6 +1641,7 @@ describe("bridge", () => {
 
     try {
       bridge.sendRequest(1, "thread/resume", {
+        workflowsEnabled: false,
         additionalWorkspaceWriteRoots: [
           "/repo/.git/worktrees/bb13",
           "/repo/.git/objects",
@@ -1677,6 +1697,7 @@ describe("bridge", () => {
       const staleErrorText = `No conversation found with session ID: ${staleProviderThreadId}`;
       const inputText = "Reply READY";
       bridge.sendRequest(1, "thread/resume", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1761,6 +1782,7 @@ describe("bridge", () => {
       const staleProviderThreadId = "stale-provider-thread-legacy-result";
       const staleErrorText = `No conversation found with session ID: ${staleProviderThreadId}`;
       bridge.sendRequest(1, "thread/resume", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1817,6 +1839,7 @@ describe("bridge", () => {
       const differentProviderThreadId = "different-provider-thread";
       const differentErrorText = `No conversation found with session ID: ${differentProviderThreadId}`;
       bridge.sendRequest(1, "thread/resume", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1871,6 +1894,7 @@ describe("bridge", () => {
       const threadId = "thread-stale-resume-retry-cap";
       const staleProviderThreadId = "stale-provider-thread-retry-cap";
       bridge.sendRequest(1, "thread/resume", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1941,6 +1965,7 @@ describe("bridge", () => {
       const staleProviderThreadId = "stale-provider-thread-clears-state";
       const staleErrorText = `No conversation found with session ID: ${staleProviderThreadId}`;
       bridge.sendRequest(1, "thread/resume", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -2003,6 +2028,7 @@ describe("bridge", () => {
       const threadId = "thread-stale-resume-stop-replacement";
       const staleProviderThreadId = "stale-provider-thread-stop-replacement";
       bridge.sendRequest(1, "thread/resume", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -2047,6 +2073,7 @@ describe("bridge", () => {
       await bridge.waitForResponse(3);
 
       bridge.sendRequest(4, "thread/resume", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -2084,6 +2111,7 @@ describe("bridge", () => {
 
     try {
       bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -2124,6 +2152,7 @@ describe("bridge", () => {
 
     try {
       bridge.sendRequest(11, "thread/start", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -2138,6 +2167,7 @@ describe("bridge", () => {
       });
       await bridge.flushWork();
       bridge.sendRequest(13, "thread/start", {
+        workflowsEnabled: false,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",

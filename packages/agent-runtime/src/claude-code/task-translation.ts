@@ -11,6 +11,7 @@ import type {
 import {
   LOCAL_WORKFLOW_TASK_TYPE,
   backgroundTaskItemStatus,
+  isSettledBackgroundTaskStatus,
   threadScope,
   turnScope,
 } from "@bb/domain";
@@ -202,10 +203,8 @@ function buildWorkflowSnapshot(
   if (task.phasesByIndex.size === 0 && task.agentsByIndex.size === 0) {
     return undefined;
   }
-  const byIndex = (
-    a: { index: number },
-    b: { index: number },
-  ): number => a.index - b.index;
+  const byIndex = (a: { index: number }, b: { index: number }): number =>
+    a.index - b.index;
   return {
     phases: [...task.phasesByIndex.values()].sort(byIndex),
     agents: [...task.agentsByIndex.values()].sort(byIndex),
@@ -331,7 +330,10 @@ export function translateClaudeTaskMessage(
       foldWorkflowProgressRecords(task, message.workflow_progress);
     }
     task.usage = toBackgroundTaskUsage(message.usage);
-    if (args.now - task.lastProgressEmittedAt < CLAUDE_TASK_PROGRESS_THROTTLE_MS) {
+    if (
+      args.now - task.lastProgressEmittedAt <
+      CLAUDE_TASK_PROGRESS_THROTTLE_MS
+    ) {
       return [];
     }
     task.lastProgressEmittedAt = args.now;
@@ -395,11 +397,14 @@ export function translateClaudeTaskMessage(
 }
 
 /**
- * Settles every open task as interrupted. Used when the CLI session backing
- * the tasks is gone: thread/resume restarts the session (settings change,
- * reconnect re-resume) and provider process exit kills it outright. The
- * daemon-crash case — where this in-memory state is lost entirely — is
- * reconciled server-side on daemon session re-registration.
+ * Settles every open task. Used when the CLI session backing the tasks is
+ * gone: thread/resume restarts the session (settings change, reconnect
+ * re-resume) and provider process exit kills it outright. Tasks whose latest
+ * patch already reported a finished status (completed/failed/killed) keep it —
+ * only the terminal task_notification is lost, not the outcome — while
+ * genuinely open tasks settle as interrupted ("stopped"). The daemon-crash
+ * case — where this in-memory state is lost entirely — is reconciled
+ * server-side on daemon session re-registration.
  */
 export function buildInterruptedClaudeTaskEvents(args: {
   tasks: ClaudeTaskMap;
@@ -410,7 +415,9 @@ export function buildInterruptedClaudeTaskEvents(args: {
     if (task.terminal) {
       continue;
     }
-    task.taskStatus = "stopped";
+    if (!isSettledBackgroundTaskStatus(task.taskStatus)) {
+      task.taskStatus = "stopped";
+    }
     task.terminal = true;
     events.push(buildClaudeTaskCompletedEvent(task, args.threadId));
   }

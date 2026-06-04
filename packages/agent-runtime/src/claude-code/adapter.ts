@@ -432,11 +432,7 @@ function buildClaudeUserQuestionAnnotations(
   const annotations: NonNullable<ClaudeUserQuestionOutput["annotations"]> = {};
   for (const question of payload.questions) {
     const answer = resolution.answers[question.id];
-    if (
-      answer &&
-      answer.selected.length > 0 &&
-      answer.freeText !== undefined
-    ) {
+    if (answer && answer.selected.length > 0 && answer.freeText !== undefined) {
       annotations[question.prompt] = { notes: answer.freeText };
     }
   }
@@ -1099,9 +1095,7 @@ export function createClaudeCodeProviderAdapter(
               ...(command.options?.reasoningLevel
                 ? { reasoningLevel: command.options.reasoningLevel }
                 : {}),
-              ...(command.options?.workflowsEnabled
-                ? { workflowsEnabled: true }
-                : {}),
+              workflowsEnabled: command.options.workflowsEnabled,
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
@@ -1163,9 +1157,7 @@ export function createClaudeCodeProviderAdapter(
               ...(command.options?.reasoningLevel
                 ? { reasoningLevel: command.options.reasoningLevel }
                 : {}),
-              ...(command.options?.workflowsEnabled
-                ? { workflowsEnabled: true }
-                : {}),
+              workflowsEnabled: command.options.workflowsEnabled,
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),

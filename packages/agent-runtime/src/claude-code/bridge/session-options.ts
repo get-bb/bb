@@ -22,7 +22,7 @@ export interface BuildSessionOptionsArgs {
   plugins?: Options["plugins"];
   reasoningLevel?: ReasoningLevel;
   skills?: Options["skills"];
-  workflowsEnabled?: boolean;
+  workflowsEnabled: boolean;
 }
 
 interface ResolveExecutableOnPathArgs {
@@ -244,9 +244,7 @@ export function buildSessionOptions(
       ? { thinking: SUMMARIZED_ADAPTIVE_THINKING }
       : {}),
     ...(flagSettings ? { settings: flagSettings } : {}),
-    ...(pathToClaudeCodeExecutable
-      ? { pathToClaudeCodeExecutable }
-      : {}),
+    ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
     ...(params.skills ? { skills: params.skills } : {}),
     ...(sandbox ? { sandbox } : {}),

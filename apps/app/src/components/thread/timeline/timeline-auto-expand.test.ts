@@ -6,8 +6,32 @@ import {
   delegationRow,
   imageViewRow,
   systemRow,
+  workflowRow,
 } from "@/test/fixtures/thread-timeline-rows";
-import { collectTimelineAutoExpandedRowIds } from "./timeline-auto-expand";
+import {
+  collectTimelineAutoExpandedRowIds,
+  isWorkRowExpandable,
+} from "./timeline-auto-expand";
+
+describe("isWorkRowExpandable", () => {
+  it("marks an error-only degraded workflow row expandable so the error is reachable", () => {
+    // A workflow that fails before any workflow_progress arrives carries only
+    // an error: WorkflowWorkRowBody renders it, so the row must expand.
+    const row = workflowRow({
+      error: "agent abandoned: user requested retry on all 3 attempts",
+      status: "error",
+      taskStatus: "failed",
+    });
+
+    expect(isWorkRowExpandable(row)).toBe(true);
+  });
+
+  it("keeps a degraded workflow row without workflow, summary, or error title-only", () => {
+    const row = workflowRow({ status: "pending", taskStatus: "running" });
+
+    expect(isWorkRowExpandable(row)).toBe(false);
+  });
+});
 
 describe("collectTimelineAutoExpandedRowIds", () => {
   it("returns no auto-expanded ids when the scope is inactive", () => {

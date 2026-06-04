@@ -7,13 +7,15 @@ import {
 import {
   backgroundTaskItemStatus,
   encodeClientTurnRequestIdNumber,
-  providerTurnWatchdogThreadScopedActivityEventTypeValues,
   systemProviderTurnWatchdogEventDataSchema,
   systemThreadInterruptedEventDataSchema,
   threadScope,
   turnScope,
 } from "@bb/domain";
-import type { BackgroundTaskStatus } from "@bb/domain";
+import type {
+  BackgroundTaskStatus,
+  ProviderTurnWatchdogThreadScopedActivityEventType,
+} from "@bb/domain";
 import { desc } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
@@ -120,7 +122,7 @@ interface SeedBackgroundTaskEventArgs {
   providerThreadId?: string;
   sequence: number;
   taskStatus?: BackgroundTaskStatus;
-  type?: (typeof providerTurnWatchdogThreadScopedActivityEventTypeValues)[number];
+  type?: ProviderTurnWatchdogThreadScopedActivityEventType;
 }
 
 /**

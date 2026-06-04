@@ -1,10 +1,12 @@
-import { isAgentProviderId } from "@bb/agent-providers";
+import { isAgentProviderId, type AgentProviderId } from "@bb/agent-providers";
 import type { ReasoningLevel } from "@bb/domain";
 
-type ReasoningPolicyProviderId = "claude-code" | "codex" | "pi";
-
+// The server's single source of truth for each provider's reasoning ladder.
+// Mirrors daemon-side translation: codex rejects "max"/"ultracode" provider-wide
+// (toCodexReasoningEffort in @bb/agent-runtime) and the pi bridge caps at
+// xhigh (piReasoningLevelValues), so those ladders stop at xhigh.
 const SUPPORTED_REASONING_LEVELS_BY_PROVIDER: Record<
-  ReasoningPolicyProviderId,
+  AgentProviderId,
   readonly ReasoningLevel[]
 > = {
   "claude-code": ["low", "medium", "high", "xhigh", "ultracode", "max"],

@@ -9,6 +9,7 @@ import {
   resolveCreateThreadExecutionDefaults,
   resolveThreadDefaultPermissionMode,
   resolveThreadExecutionPermissionMode,
+  resolveWorkflowsEnabledPolicy,
 } from "../../src/services/threads/thread-default-policy.js";
 
 type PolicyTestThread = Pick<
@@ -58,6 +59,14 @@ function makeManagerParentThread(
     ...overrides,
   };
 }
+
+describe("resolveWorkflowsEnabledPolicy", () => {
+  it("enables workflows for claude-code sessions only", () => {
+    expect(resolveWorkflowsEnabledPolicy("claude-code")).toBe(true);
+    expect(resolveWorkflowsEnabledPolicy("codex")).toBe(false);
+    expect(resolveWorkflowsEnabledPolicy("pi")).toBe(false);
+  });
+});
 
 describe("resolveCreateThreadExecutionDefaults", () => {
   it("uses the server-owned Codex manager defaults when a manager omits provider and stored defaults", () => {

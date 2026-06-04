@@ -1,4 +1,5 @@
 import type { ModelReasoningEffort } from "./provider-types.js";
+import type { ReasoningLevel } from "./shared-types.js";
 
 export const LOW_REASONING_EFFORT: ModelReasoningEffort = {
   reasoningEffort: "low",
@@ -33,6 +34,25 @@ export const ALL_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
   ULTRACODE_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
 ];
+
+const REASONING_EFFORT_BY_LEVEL: Record<ReasoningLevel, ModelReasoningEffort> =
+  {
+    low: LOW_REASONING_EFFORT,
+    medium: MEDIUM_REASONING_EFFORT,
+    high: HIGH_REASONING_EFFORT,
+    xhigh: XHIGH_REASONING_EFFORT,
+    ultracode: ULTRACODE_REASONING_EFFORT,
+    max: MAX_REASONING_EFFORT,
+  };
+
+// Expands coarse reasoning levels into the descriptive picker entries above.
+// Returns fresh objects so callers can hand the result out in mutable API
+// responses without aliasing the module-level constants.
+export function reasoningEffortsForLevels(
+  levels: readonly ReasoningLevel[],
+): ModelReasoningEffort[] {
+  return levels.map((level) => ({ ...REASONING_EFFORT_BY_LEVEL[level] }));
+}
 
 // Defensive copy so callers can hand out reasoning efforts in mutable API
 // responses without aliasing the module-level constants above.

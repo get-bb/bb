@@ -220,6 +220,20 @@ export const threadOrTurnThreadEventTypes =
 export const threadEventScopePolicyByType = buildThreadEventScopePolicyByType();
 export const threadScopeRationaleByType = buildThreadScopeRationaleByType();
 
+type ThreadEventTypeForScopePolicy<Policy extends ThreadEventScopePolicy> = {
+  [Type in ThreadEventType]: (typeof threadEventScopeDefinitionByType)[Type]["policy"] extends Policy
+    ? Type
+    : never;
+}[ThreadEventType];
+
+/**
+ * Event types whose scope policy is strictly "thread" (always persisted with
+ * turn_id NULL). Derived from threadEventScopeDefinitionByType at the type
+ * level so downstream subsets can tie themselves to the scope policy instead
+ * of restating it.
+ */
+export type ThreadOnlyThreadEventType = ThreadEventTypeForScopePolicy<"thread">;
+
 export function threadScope(): ThreadEventScope {
   return { kind: "thread" };
 }

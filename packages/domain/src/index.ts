@@ -194,6 +194,7 @@ export {
   LOW_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
   MEDIUM_REASONING_EFFORT,
+  reasoningEffortsForLevels,
   ULTRACODE_REASONING_EFFORT,
   XHIGH_REASONING_EFFORT,
 } from "./reasoning-efforts.js";
@@ -444,7 +445,10 @@ export {
   providerTurnWatchdogReasonValues,
   providerTurnWatchdogThreadScopedActivityEventTypeValues,
 } from "./provider-turn-watchdog.js";
-export type { ProviderTurnWatchdogActivityEventType } from "./provider-turn-watchdog.js";
+export type {
+  ProviderTurnWatchdogActivityEventType,
+  ProviderTurnWatchdogThreadScopedActivityEventType,
+} from "./provider-turn-watchdog.js";
 
 export {
   buildThreadEvent,
@@ -523,6 +527,7 @@ export type {
   ThreadEventScope,
   ThreadEventScopeKind,
   ThreadEventScopePolicy,
+  ThreadOnlyThreadEventType,
   RequireThreadEventScopeTurnIdArgs,
   ValidateThreadEventScopeArgs,
   ValidateThreadEventScopeResult,
@@ -591,6 +596,8 @@ export {
   backgroundTaskStatusSchema,
   backgroundTaskStatusValues,
   backgroundTaskUsageSchema,
+  isSettledBackgroundTaskStatus,
+  isSettledWorkflowAgentState,
   workflowAgentSnapshotSchema,
   workflowAgentStateSchema,
   workflowAgentStateValues,
@@ -632,7 +639,6 @@ export {
   HOST_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
   APP_CHANGE_KINDS,
-  APP_LIST_CHANGE_KINDS,
   appChangedMessageSchema,
   appChangeKindSchema,
   changedMessageLenientSchema,
@@ -661,7 +667,6 @@ export type {
   HostChangeKind,
   SystemChangeKind,
   AppChangeKind,
-  AppListChangeKind,
   SubscribeMessage,
   UnsubscribeMessage,
   ClientMessage,

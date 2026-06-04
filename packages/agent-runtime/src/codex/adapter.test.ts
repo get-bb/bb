@@ -40,11 +40,13 @@ function codexEvent<M extends CodexEvent["method"]>(
 const fullProviderExecutionContext = {
   permissionMode: "full",
   permissionEscalation: null,
+  workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
 
 const workspaceWriteAskProviderExecutionContext = {
   permissionMode: "workspace-write",
   permissionEscalation: "ask",
+  workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
 
 type CodexProviderAdapter = ReturnType<typeof createCodexProviderAdapter>;
@@ -1412,6 +1414,7 @@ describe("codex provider adapter", () => {
       input: [{ type: "text", text: "hello" }],
       instructionMode: "append",
       options: {
+        workflowsEnabled: false,
         permissionMode: "workspace-write",
         permissionEscalation: "deny",
       },
@@ -1435,6 +1438,7 @@ describe("codex provider adapter", () => {
       input: [{ type: "text", text: "hello" }],
       instructionMode: "append",
       options: {
+        workflowsEnabled: false,
         permissionMode: "full",
         permissionEscalation: null,
       },
@@ -1780,6 +1784,7 @@ describe("codex provider adapter", () => {
       providerThreadId: "codex-1",
       input: [{ type: "text", text: "inspect it" }],
       options: {
+        workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "ask",
       },
@@ -1805,6 +1810,7 @@ describe("codex provider adapter", () => {
       providerThreadId: "codex-1",
       input: [{ type: "text", text: "inspect it" }],
       options: {
+        workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "deny",
       },

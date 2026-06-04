@@ -299,7 +299,8 @@ describe("claude-code background task translation", () => {
     // The session still renders: the Task tool call itself is a started item.
     expect(
       allEvents.some(
-        (event) => event.type === "item/started" && event.item.type === "toolCall",
+        (event) =>
+          event.type === "item/started" && event.item.type === "toolCall",
       ),
     ).toBe(true);
   });
@@ -339,6 +340,7 @@ describe("claude-code background task translation", () => {
         cwd: "/tmp/bb-fixture/workspace",
         providerThreadId: "claude-session-1",
         options: {
+          workflowsEnabled: false,
           permissionMode: "full",
           permissionEscalation: null,
         },
@@ -366,6 +368,7 @@ describe("claude-code background task translation", () => {
         cwd: "/tmp/bb-fixture/workspace",
         providerThreadId: "claude-session-1",
         options: {
+          workflowsEnabled: false,
           permissionMode: "full",
           permissionEscalation: null,
         },
@@ -375,6 +378,52 @@ describe("claude-code background task translation", () => {
     expect(
       repeat.filter((event) => event.type === "item/backgroundTask/completed"),
     ).toHaveLength(0);
+  });
+
+  it("settling preserves an already-completed status reported before the terminal notification", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const context = { threadId: "bb-thread-1" };
+
+    adapter.translateEvent(loadFixture("task-started-workflow.json"), context);
+    // task_updated may report "completed" minutes before task_notification
+    // arrives; a settle inside that window must not flip the workflow to
+    // interrupted.
+    adapter.translateEvent(
+      {
+        type: "system",
+        subtype: "task_updated",
+        task_id: "wu7ol9ras",
+        patch: { status: "completed" },
+        uuid: "u-1",
+        session_id: "s-1",
+      },
+      context,
+    );
+
+    const events = adapter.translateAcceptedCommand({
+      command: {
+        type: "thread/resume",
+        threadId: "bb-thread-1",
+        cwd: "/tmp/bb-fixture/workspace",
+        providerThreadId: "claude-session-1",
+        options: {
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionEscalation: null,
+        },
+        instructionMode: "append",
+      },
+    });
+
+    const completed = events.filter(
+      (event) => event.type === "item/backgroundTask/completed",
+    );
+    expect(completed).toHaveLength(1);
+    expect(backgroundTaskItem(completed[0]!)).toMatchObject({
+      id: "task:wu7ol9ras",
+      status: "completed",
+      taskStatus: "completed",
+    });
   });
 
   it("settles open tasks as interrupted when the thread detaches (process exit)", () => {
@@ -424,8 +473,6 @@ describe("claude-code background task translation", () => {
       (event) => event.type === "item/started",
     );
     expect(reopenedStarted).toHaveLength(1);
-    expect(backgroundTaskItem(reopenedStarted[0]!).id).toBe(
-      "task:wu7ol9ras#2",
-    );
+    expect(backgroundTaskItem(reopenedStarted[0]!).id).toBe("task:wu7ol9ras#2");
   });
 });

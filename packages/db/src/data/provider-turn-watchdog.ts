@@ -1,4 +1,5 @@
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { aliasedTable, and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import type { AnyColumn, SQL } from "drizzle-orm";
 import {
   providerTurnWatchdogActivityEventTypeSchema,
   providerTurnWatchdogActivityEventTypeValues,
@@ -41,6 +42,50 @@ const threadScopedActivityEventTypeSqlList = sql.join(
   ),
   sql`, `,
 );
+
+type LatestTurnStartedColumn = "created_at" | "turn_id";
+
+/**
+ * Correlated subquery selecting one column from the thread's latest
+ * turn/started event (the active turn). Parameterized by column so
+ * activeTurnId and activeTurnStartedAt are built from the same predicate and
+ * can never describe two different turns.
+ */
+function latestTurnStartedSql(column: LatestTurnStartedColumn): SQL {
+  return sql`(
+    SELECT latest_started.${sql.raw(column)}
+    FROM events AS latest_started
+    WHERE latest_started.thread_id = ${threads.id}
+      AND latest_started.type = 'turn/started'
+      AND latest_started.turn_id IS NOT NULL
+    ORDER BY latest_started.sequence DESC
+    LIMIT 1
+  )`;
+}
+
+interface ActivityAnchorShapeSqlArgs {
+  activeTurnIdSql: SQL;
+  turnIdColumn: AnyColumn;
+  typeColumn: AnyColumn;
+}
+
+/**
+ * The anchor-shape predicate: an event counts as provider activity when it is
+ * scoped to the active turn and in the activity list, or persisted
+ * thread-scoped (turn_id NULL) and in the thread-scoped activity list. Built
+ * once for both the candidate-row WHERE arm and the MAX(sequence) guard —
+ * the two occurrences must stay semantically identical or they describe
+ * different event sets (the watchdog then either never fires for the thread
+ * or anchors on the wrong row). Self-parenthesized: drizzle's and() joins raw
+ * fragments without wrapping them, so a bare OR would misassociate.
+ */
+function activityAnchorShapeSql(args: ActivityAnchorShapeSqlArgs): SQL {
+  return sql`(
+    (${args.turnIdColumn} = ${args.activeTurnIdSql} AND ${args.typeColumn} IN (${activityEventTypeSqlList}))
+    OR
+    (${args.turnIdColumn} IS NULL AND ${args.typeColumn} IN (${threadScopedActivityEventTypeSqlList}))
+  )`;
+}
 
 function parseNonEmptyString(value: string | null, fieldName: string): string {
   if (value === null || value.length === 0) {
@@ -132,27 +177,14 @@ export function listProviderTurnIdleWatchdogCandidates(
   db: DbQueryConnection,
   args: ListProviderTurnIdleWatchdogCandidatesArgs,
 ): ProviderTurnIdleWatchdogCandidateRow[] {
-  const activeTurnIdSql = sql`(
-    SELECT latest_started.turn_id
-    FROM events AS latest_started
-    WHERE latest_started.thread_id = ${threads.id}
-      AND latest_started.type = 'turn/started'
-      AND latest_started.turn_id IS NOT NULL
-    ORDER BY latest_started.sequence DESC
-    LIMIT 1
-  )`;
+  const activeTurnIdSql = latestTurnStartedSql("turn_id");
+  const activityEvents = aliasedTable(events, "activity");
   const rows = db
     .select({
       activeTurnId: sql<string | null>`${activeTurnIdSql}`,
-      activeTurnStartedAt: sql<number | null>`(
-        SELECT latest_started.created_at
-        FROM events AS latest_started
-        WHERE latest_started.thread_id = ${threads.id}
-          AND latest_started.type = 'turn/started'
-          AND latest_started.turn_id IS NOT NULL
-        ORDER BY latest_started.sequence DESC
-        LIMIT 1
-      )`,
+      activeTurnStartedAt: sql<number | null>`${latestTurnStartedSql(
+        "created_at",
+      )}`,
       elapsedMs: sql<number>`${args.now} - ${events.createdAt}`,
       environmentId: environments.id,
       hostId: environments.hostId,
@@ -184,22 +216,20 @@ export function listProviderTurnIdleWatchdogCandidates(
         isNull(threads.stopRequestedAt),
         isNotNull(threads.environmentId),
         sql`${activeTurnIdSql} IS NOT NULL`,
-        // Anchor shape. Self-parenthesized: drizzle's and() joins raw
-        // fragments without wrapping them, so a bare OR would misassociate.
-        sql`(
-          (${events.turnId} = ${activeTurnIdSql} AND ${events.type} IN (${activityEventTypeSqlList}))
-          OR
-          (${events.turnId} IS NULL AND ${events.type} IN (${threadScopedActivityEventTypeSqlList}))
-        )`,
+        activityAnchorShapeSql({
+          activeTurnIdSql,
+          turnIdColumn: events.turnId,
+          typeColumn: events.type,
+        }),
         sql`${events.sequence} = (
-          SELECT MAX(activity.sequence)
+          SELECT MAX(${activityEvents.sequence})
           FROM events AS activity
-          WHERE activity.thread_id = ${events.threadId}
-            AND (
-              (activity.turn_id = ${activeTurnIdSql} AND activity.type IN (${activityEventTypeSqlList}))
-              OR
-              (activity.turn_id IS NULL AND activity.type IN (${threadScopedActivityEventTypeSqlList}))
-            )
+          WHERE ${activityEvents.threadId} = ${events.threadId}
+            AND ${activityAnchorShapeSql({
+              activeTurnIdSql,
+              turnIdColumn: activityEvents.turnId,
+              typeColumn: activityEvents.type,
+            })}
         )`,
         sql`NOT EXISTS (
           SELECT 1

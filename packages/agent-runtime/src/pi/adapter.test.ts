@@ -20,6 +20,7 @@ function loadFixture(name: string): AgentSessionEvent {
 const fullProviderExecutionContext = {
   permissionMode: "full",
   permissionEscalation: null,
+  workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
 
 type PiProviderAdapter = ReturnType<typeof createPiProviderAdapter>;

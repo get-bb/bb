@@ -104,8 +104,12 @@ export type ProviderExecutionContext = {
   model?: string;
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
-  /** Server-owned workflows policy; absent for providers without the concept. */
-  workflowsEnabled?: boolean;
+  /**
+   * Server-owned workflows policy. Filled explicitly at the server boundary
+   * and passed through required end-to-end; providers without the concept
+   * receive (and ignore) an explicit false.
+   */
+  workflowsEnabled: boolean;
   instructions?: string;
   envVars?: Record<string, string>;
   skillRoots?: readonly AgentRuntimeSkillRoot[];

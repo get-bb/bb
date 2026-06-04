@@ -515,6 +515,285 @@ describe("buildThreadTimeline", () => {
     });
   });
 
+  it("backfills the latest backgroundTask state for older pages whose window predates the terminal row", async () => {
+    const harness = await createTestAppHarness();
+    harnesses.push(harness);
+
+    const { environmentId, thread } = seedTimelineThread(harness, {
+      type: "standard",
+    });
+    const workflowItem = (args: {
+      id: string;
+      description: string;
+      taskStatus?: "running" | "completed";
+      summary?: string;
+    }) => ({
+      type: "backgroundTask",
+      id: args.id,
+      taskType: "local_workflow",
+      description: args.description,
+      status: args.taskStatus === "completed" ? "completed" : "pending",
+      taskStatus: args.taskStatus ?? "running",
+      skipTranscript: false,
+      workflowName: "fixture-mini",
+      ...(args.summary !== undefined ? { summary: args.summary } : {}),
+    });
+
+    // Segment 1: the spawning turn containing both workflows' item/started.
+    seedTimelineClientTurnRequested(harness, {
+      environmentId,
+      requestId: "creq_23456789ab",
+      sequence: 1,
+      target: { kind: "thread-start" },
+      text: "Workflow request",
+      threadId: thread.id,
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      sequence: 2,
+      type: "turn/started",
+      data: {},
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      sequence: 3,
+      type: "turn/input/accepted",
+      data: { clientRequestId: "creq_23456789ab" },
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      sequence: 4,
+      type: "item/started",
+      data: {
+        providerThreadId: "provider-thread-1",
+        item: workflowItem({
+          id: "task:wf-done",
+          description: "done workflow",
+        }),
+      },
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      sequence: 5,
+      type: "item/started",
+      data: {
+        providerThreadId: "provider-thread-1",
+        item: workflowItem({
+          id: "task:wf-live",
+          description: "stale snapshot",
+        }),
+      },
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      sequence: 6,
+      type: "turn/completed",
+      data: { status: "completed" },
+    });
+
+    // Segment 2: a later turn pushing the workflows' thread-scoped state rows
+    // past the older page's window.
+    seedTimelineClientTurnRequested(harness, {
+      environmentId,
+      requestId: "creq_3456789abc",
+      sequence: 10,
+      target: { kind: "new-turn" },
+      text: "Second request",
+      threadId: thread.id,
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-2"),
+      sequence: 11,
+      type: "turn/started",
+      data: {},
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-2"),
+      sequence: 12,
+      type: "turn/input/accepted",
+      data: { clientRequestId: "creq_3456789abc" },
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-2"),
+      sequence: 13,
+      type: "turn/completed",
+      data: { status: "completed" },
+    });
+
+    // Segment 3: a third turn so the workflows' page is a bounded middle
+    // window (the window before the newest anchor has no upper bound).
+    seedTimelineClientTurnRequested(harness, {
+      environmentId,
+      requestId: "creq_456789abcd",
+      sequence: 30,
+      target: { kind: "new-turn" },
+      text: "Third request",
+      threadId: thread.id,
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-3"),
+      sequence: 31,
+      type: "turn/started",
+      data: {},
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-3"),
+      sequence: 32,
+      type: "turn/input/accepted",
+      data: { clientRequestId: "creq_456789abcd" },
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-3"),
+      sequence: 33,
+      type: "turn/completed",
+      data: { status: "completed" },
+    });
+
+    // Both workflows keep streaming after their spawning turn. The live one's
+    // latest snapshot updates its description; the done one ends with a
+    // terminal completed row that supersedes an older running snapshot.
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: threadScope(),
+      sequence: 40,
+      type: "item/backgroundTask/progress",
+      data: {
+        providerThreadId: "provider-thread-1",
+        item: workflowItem({
+          id: "task:wf-live",
+          description: "live workflow snapshot",
+        }),
+      },
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: threadScope(),
+      sequence: 41,
+      type: "item/backgroundTask/progress",
+      data: {
+        providerThreadId: "provider-thread-1",
+        item: workflowItem({
+          id: "task:wf-done",
+          description: "done workflow",
+        }),
+      },
+    });
+    seedEvent(harness.deps, {
+      threadId: thread.id,
+      environmentId,
+      providerThreadId: "provider-thread-1",
+      scope: threadScope(),
+      sequence: 42,
+      type: "item/backgroundTask/completed",
+      data: {
+        providerThreadId: "provider-thread-1",
+        item: workflowItem({
+          id: "task:wf-done",
+          description: "done workflow",
+          taskStatus: "completed",
+          summary: "done workflow completed",
+        }),
+      },
+    });
+
+    const latestPage = buildThreadTimeline(harness.db, thread, {
+      includeNestedRows: true,
+      isDevelopment: true,
+      page: {
+        kind: "latest",
+        segmentLimit: 1,
+      },
+    });
+    const latestOlderCursor = latestPage.timelinePage.olderCursor;
+    if (latestOlderCursor === null) {
+      throw new Error("Expected an older cursor for the latest page");
+    }
+    const middlePage = buildThreadTimeline(harness.db, thread, {
+      includeNestedRows: true,
+      isDevelopment: true,
+      page: {
+        kind: "older",
+        beforeCursor: latestOlderCursor,
+        segmentLimit: 1,
+      },
+    });
+    const middleOlderCursor = middlePage.timelinePage.olderCursor;
+    if (middleOlderCursor === null) {
+      throw new Error("Expected an older cursor for the middle page");
+    }
+
+    // The oldest page's window ends at the next anchor — far before the
+    // thread-scoped state rows: only the backfill can deliver each workflow's
+    // current state.
+    const olderPage = buildThreadTimeline(harness.db, thread, {
+      includeNestedRows: true,
+      isDevelopment: true,
+      page: {
+        kind: "older",
+        beforeCursor: middleOlderCursor,
+        segmentLimit: 1,
+      },
+    });
+
+    const workflowRows = flattenTimelineSourceRows(olderPage.rows)
+      .filter((row) => row.kind === "work" && row.workKind === "workflow")
+      .sort((left, right) => left.sourceSeqStart - right.sourceSeqStart);
+    expect(workflowRows).toHaveLength(2);
+    // The settled workflow shows its terminal state instead of pinning
+    // "running" forever.
+    expect(workflowRows[0]).toMatchObject({
+      workKind: "workflow",
+      itemId: "task:wf-done",
+      taskStatus: "completed",
+      summary: "done workflow completed",
+    });
+    // The live workflow renders its LATEST backfilled snapshot (seq 20), not
+    // the stale in-window item/started payload.
+    expect(workflowRows[1]).toMatchObject({
+      workKind: "workflow",
+      itemId: "task:wf-live",
+      taskStatus: "running",
+      description: "live workflow snapshot",
+    });
+  });
+
   it("keeps standard timeline rows that cross the older-page cursor anchor", async () => {
     const harness = await createTestAppHarness();
     harnesses.push(harness);
@@ -2112,10 +2391,14 @@ describe("buildThreadTimeline", () => {
       ],
     });
 
-    const managerConversationTimeline = buildThreadTimeline(harness.db, thread, {
-      isDevelopment: true,
-      timelineViewMode: "manager-conversation",
-    });
+    const managerConversationTimeline = buildThreadTimeline(
+      harness.db,
+      thread,
+      {
+        isDevelopment: true,
+        timelineViewMode: "manager-conversation",
+      },
+    );
     expect(managerConversationTimeline.pendingTodos).toBeNull();
   });
 

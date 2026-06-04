@@ -61,7 +61,6 @@ function applyBackgroundTaskItem(
   meta: EventMeta,
 ): void {
   const item = lifecycle.item;
-  message.taskType = item.taskType;
   message.workflowName = item.workflowName ?? null;
   message.description = item.description;
   message.status = toWorkflowMessageStatus(item.status);
@@ -84,6 +83,12 @@ function applyBackgroundTaskItem(
  * replace its payload in place — each event carries the full current item
  * state, so replace-not-merge is correct.
  *
+ * The message's source range stays pinned to its anchor event. Late events
+ * must not stretch `sourceSeqEnd`: turn and segment bounds are derived from
+ * member-message ranges, and the server validates turn-summary expansion
+ * requests against those ranges — a range stretched past later turns' rows is
+ * rejected, permanently breaking expansion of the spawning turn.
+ *
  * Returns true when the event was a background-task lifecycle event.
  */
 export function upsertBackgroundTaskMessage(
@@ -99,7 +104,6 @@ export function upsertBackgroundTaskMessage(
   const existing = state.backgroundTasksByItemId.get(lifecycle.item.id);
   if (existing) {
     applyBackgroundTaskItem(existing, lifecycle, meta);
-    existing.sourceSeqEnd = Math.max(existing.sourceSeqEnd, meta.seq);
     existing.createdAt = Math.max(existing.createdAt, meta.createdAt);
     return true;
   }
@@ -120,7 +124,6 @@ export function upsertBackgroundTaskMessage(
       ? { parentToolCallId: lifecycle.item.parentToolCallId }
       : {}),
     itemId: lifecycle.item.id,
-    taskType: lifecycle.item.taskType,
     workflowName: lifecycle.item.workflowName ?? null,
     description: lifecycle.item.description,
     status: toWorkflowMessageStatus(lifecycle.item.status),
