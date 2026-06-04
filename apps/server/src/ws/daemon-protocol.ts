@@ -122,6 +122,14 @@ export function onDaemonSocketMessage(
       });
       return;
     }
+    if (result.data.type === "application-content-changed") {
+      // Host-observed content change under the app's public/ tree. Unlike
+      // application-storage-changed there is no list-signature gate: content
+      // edits never alter the app list, so the hint broadcasts directly and
+      // open app surfaces live-reload.
+      deps.hub.notifyAppContentChanged(result.data.applicationId);
+      return;
+    }
     if (result.data.type === "host-rpc.response") {
       const disposition = deps.hub.recordHostOnlineRpcResponse({
         message: result.data,

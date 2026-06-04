@@ -2118,6 +2118,16 @@ describe("host-daemon session schemas", () => {
     });
 
     expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "application-content-changed",
+        applicationId: "status",
+      }),
+    ).toEqual({
+      type: "application-content-changed",
+      applicationId: "status",
+    });
+
+    expect(
       contract.hostDaemonAppDataChangeRequestSchema.parse({
         sessionId: "session_123",
         applicationId: "status",
@@ -2295,6 +2305,27 @@ describe("host-daemon session schemas", () => {
       hostDaemonDaemonWsMessageSchema.parse({
         type: "heartbeat",
         bufferDepth: 0,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "application-content-changed",
+        applicationId: "status",
+        path: "public/index.html",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "application-content-changed",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "application-content-changed",
+        applicationId: "Not A Slug",
       }),
     ).toThrow();
 

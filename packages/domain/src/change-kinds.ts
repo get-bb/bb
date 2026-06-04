@@ -66,7 +66,18 @@ export type HostChangeKind = (typeof HOST_CHANGE_KINDS)[number];
 export const SYSTEM_CHANGE_KINDS = ["config-changed", "apps-changed"] as const;
 export type SystemChangeKind = (typeof SYSTEM_CHANGE_KINDS)[number];
 
-export const APP_CHANGE_KINDS = ["apps-changed"] as const;
+/**
+ * List-level app change kinds broadcast without an app id (some app was
+ * installed, updated, or removed). App-scoped kinds like `content-changed`
+ * always carry the application id and have dedicated producers.
+ */
+export const APP_LIST_CHANGE_KINDS = ["apps-changed"] as const;
+export type AppListChangeKind = (typeof APP_LIST_CHANGE_KINDS)[number];
+
+export const APP_CHANGE_KINDS = [
+  ...APP_LIST_CHANGE_KINDS,
+  "content-changed",
+] as const;
 export type AppChangeKind = (typeof APP_CHANGE_KINDS)[number];
 
 export const threadChangeKindSchema = z.enum(THREAD_CHANGE_KINDS);
@@ -169,10 +180,17 @@ export const systemChangedMessageSchema = z
   .strict();
 export type SystemChangedMessage = z.infer<typeof systemChangedMessageSchema>;
 
+/**
+ * App changed messages carry an `id` only for app-scoped kinds: absence means
+ * a list-level signal (`apps-changed` — some app was installed, updated, or
+ * removed), presence means the change applies to that one application
+ * (`content-changed` — its served `public/` files changed on disk).
+ */
 export const appChangedMessageSchema = z
   .object({
     type: z.literal("changed"),
     entity: z.literal("app"),
+    id: z.string().optional(),
     changes: z.array(appChangeKindSchema).readonly(),
   })
   .strict();
@@ -260,6 +278,7 @@ const systemChangedMessageLenientSchema = z.object({
 const appChangedMessageLenientSchema = z.object({
   type: z.literal("changed"),
   entity: z.literal("app"),
+  id: z.string().optional(),
   changes: lenientKinds(APP_CHANGE_KINDS),
 });
 

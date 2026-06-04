@@ -125,8 +125,11 @@ export interface SystemAppsRealtimeOnArgs {
 }
 
 /**
- * app:changed is a global app-list signal (install/update/remove of any app),
- * broadcast alongside system:apps-changed; it carries no per-app identity.
+ * app:changed delivers every app-entity broadcast. `apps-changed` is the
+ * global app-list signal (install/update/remove of any app), broadcast
+ * alongside system:apps-changed with no per-app identity. `content-changed`
+ * is app-scoped — its event carries the application id and means that app's
+ * served `public/` files changed on disk.
  */
 export interface AppRealtimeOnArgs {
   callback: BbRealtimeCallback<"app:changed">;

@@ -51,6 +51,11 @@ type HostDaemonEnvironmentChangeMessage = Extract<
   { type: "environment-change" }
 >;
 
+type HostDaemonApplicationContentChangedMessage = Extract<
+  HostDaemonDaemonWsMessage,
+  { type: "application-content-changed" }
+>;
+
 const APPLICATION_STORAGE_CHANGED_MESSAGE = {
   type: "application-storage-changed",
 } satisfies HostDaemonDaemonWsMessage;
@@ -101,6 +106,10 @@ export class ServerConnection {
     HostDaemonEnvironmentChangeMessage
   >();
   private pendingApplicationStorageChanged = false;
+  private readonly pendingApplicationContentChanges = new Map<
+    string,
+    HostDaemonApplicationContentChangedMessage
+  >();
 
   constructor(private readonly options: ServerConnectionOptions) {
     this.sessionCloseHandler = options.onSessionClose;
@@ -139,6 +148,7 @@ export class ServerConnection {
     this.stopped = true;
     this.pendingEnvironmentChanges.clear();
     this.pendingApplicationStorageChanged = false;
+    this.pendingApplicationContentChanges.clear();
     this.stopPollingFallback();
     this.clearHeartbeat();
     this.clearSession();
@@ -165,6 +175,9 @@ export class ServerConnection {
     }
     if (payload.type === "application-storage-changed") {
       this.pendingApplicationStorageChanged = false;
+    }
+    if (payload.type === "application-content-changed") {
+      this.pendingApplicationContentChanges.delete(payload.applicationId);
     }
     return true;
   }
@@ -362,6 +375,9 @@ export class ServerConnection {
     if (message.type === "application-storage-changed") {
       this.pendingApplicationStorageChanged = true;
     }
+    if (message.type === "application-content-changed") {
+      this.pendingApplicationContentChanges.set(message.applicationId, message);
+    }
   }
 
   private flushPendingRecoverableMessages(): void {
@@ -371,7 +387,16 @@ export class ServerConnection {
       }
     }
     if (this.pendingApplicationStorageChanged) {
-      this.sendMessage(APPLICATION_STORAGE_CHANGED_MESSAGE);
+      if (!this.sendMessage(APPLICATION_STORAGE_CHANGED_MESSAGE)) {
+        return;
+      }
+    }
+    for (const message of Array.from(
+      this.pendingApplicationContentChanges.values(),
+    )) {
+      if (!this.sendMessage(message)) {
+        return;
+      }
     }
   }
 

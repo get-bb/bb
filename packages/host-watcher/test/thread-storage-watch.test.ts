@@ -137,6 +137,145 @@ describe("thread storage watcher classification", () => {
     ]);
   });
 
+  it("emits one app content change for a file under public/", () => {
+    const rootPath = path.join("/tmp", "apps");
+    const changes = collectApplicationStorageObservedChanges({
+      appsRootPath: rootPath,
+      changedPaths: [
+        path.join(rootPath, "app-status", "public", "index.html"),
+      ],
+      resolveApplicationTarget: createApplicationResolver({}),
+    });
+
+    expect(changes).toEqual([
+      {
+        kind: "application-content-changed",
+        applicationId: "app-status",
+      },
+    ]);
+  });
+
+  it("dedupes content changes per app and emits one event per changed app", () => {
+    const rootPath = path.join("/tmp", "apps");
+    const changes = collectApplicationStorageObservedChanges({
+      appsRootPath: rootPath,
+      changedPaths: [
+        path.join(rootPath, "app-status", "public", "index.html"),
+        path.join(rootPath, "app-status", "public", "assets", "main.js"),
+        path.join(rootPath, "app-status", "public", "assets", "main.css"),
+        path.join(rootPath, "app-kanban", "public", "index.html"),
+      ],
+      resolveApplicationTarget: createApplicationResolver({}),
+    });
+
+    expect(changes).toEqual([
+      {
+        kind: "application-content-changed",
+        applicationId: "app-status",
+      },
+      {
+        kind: "application-content-changed",
+        applicationId: "app-kanban",
+      },
+    ]);
+  });
+
+  it("treats the bare public directory itself as an app content change", () => {
+    const rootPath = path.join("/tmp", "apps");
+    const changes = collectApplicationStorageObservedChanges({
+      appsRootPath: rootPath,
+      changedPaths: [path.join(rootPath, "app-status", "public")],
+      resolveApplicationTarget: createApplicationResolver({}),
+    });
+
+    expect(changes).toEqual([
+      {
+        kind: "application-content-changed",
+        applicationId: "app-status",
+      },
+    ]);
+  });
+
+  it("leaves source/ and other unknown app subtrees unclassified", () => {
+    const rootPath = path.join("/tmp", "apps");
+    const changes = collectApplicationStorageObservedChanges({
+      appsRootPath: rootPath,
+      changedPaths: [
+        path.join(rootPath, "app-status", "source", "index.tsx"),
+        path.join(rootPath, "app-status", "source", "components", "App.tsx"),
+        path.join(rootPath, "app-status", "README.md"),
+      ],
+      resolveApplicationTarget: createApplicationResolver({}),
+    });
+
+    expect(changes).toEqual([]);
+  });
+
+  it("ignores public changes inside temporary app staging entries", () => {
+    const rootPath = path.join("/tmp", "apps");
+    const changes = collectApplicationStorageObservedChanges({
+      appsRootPath: rootPath,
+      changedPaths: [
+        path.join(rootPath, ".tmp-app_app-status-abc", "public", "index.html"),
+        path.join(rootPath, ".delete-app_app-status-abc", "public", "index.html"),
+      ],
+      resolveApplicationTarget: createApplicationResolver({}),
+    });
+
+    expect(changes).toEqual([]);
+  });
+
+  it("emits content changes for apps without a resolved data target", () => {
+    const rootPath = path.join("/tmp", "apps");
+    const changes = collectApplicationStorageObservedChanges({
+      appsRootPath: rootPath,
+      changedPaths: [
+        path.join(rootPath, "app-untracked", "public", "index.html"),
+        path.join(rootPath, "app-untracked", "data", "state.json"),
+      ],
+      resolveApplicationTarget: createApplicationResolver({}),
+    });
+
+    expect(changes).toEqual([
+      {
+        kind: "application-content-changed",
+        applicationId: "app-untracked",
+      },
+    ]);
+  });
+
+  it("classifies mixed batches into targets, data, and content changes", () => {
+    const rootPath = path.join("/tmp", "apps");
+    const changes = collectApplicationStorageObservedChanges({
+      appsRootPath: rootPath,
+      changedPaths: [
+        path.join(rootPath, "app-status", "manifest.json"),
+        path.join(rootPath, "app-status", "public", "index.html"),
+        path.join(rootPath, "app-status", "data", "state.json"),
+      ],
+      resolveApplicationTarget: createApplicationResolver({
+        "app-status": {
+          applicationId: "app-status",
+          appDataPath: path.join(rootPath, "app-status", "data"),
+        },
+      }),
+    });
+
+    expect(changes).toEqual([
+      { kind: "application-storage-targets-changed" },
+      {
+        kind: "application-data-changed",
+        applicationId: "app-status",
+        appDataPath: path.join(rootPath, "app-status", "data"),
+        path: "state.json",
+      },
+      {
+        kind: "application-content-changed",
+        applicationId: "app-status",
+      },
+    ]);
+  });
+
   it("emits injected skill changes for app skill trees", () => {
     const rootPath = path.join("/tmp", "apps");
     const changes = collectApplicationStorageObservedChanges({

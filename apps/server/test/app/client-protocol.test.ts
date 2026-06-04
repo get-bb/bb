@@ -4,34 +4,12 @@ import {
   onClientSocketOpen,
 } from "../../src/ws/client-protocol.js";
 import { NotificationHub } from "../../src/ws/hub.js";
-
-interface MockSocket {
-  closed: Array<{ code?: number; reason?: string }>;
-  messages: string[];
-  close(code?: number, reason?: string): void;
-  send(data: string): void;
-}
-
-function createMockSocket(): MockSocket {
-  const messages: string[] = [];
-  const closed: Array<{ code?: number; reason?: string }> = [];
-
-  return {
-    closed,
-    messages,
-    close(code?: number, reason?: string) {
-      closed.push({ code, reason });
-    },
-    send(data: string) {
-      messages.push(data);
-    },
-  };
-}
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 describe("client websocket protocol", () => {
   it("subscribes valid client messages parsed through the shared schema", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
     onClientSocketMessage(
@@ -57,7 +35,7 @@ describe("client websocket protocol", () => {
 
   it("rejects subscribe messages whose id is not a string", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
     onClientSocketMessage(
@@ -77,7 +55,7 @@ describe("client websocket protocol", () => {
 
   it("removes subscriptions after unsubscribe messages", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
     onClientSocketMessage(
@@ -106,7 +84,7 @@ describe("client websocket protocol", () => {
 
   it("rejects subscribe messages for unknown entities", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
     onClientSocketMessage(
@@ -124,7 +102,7 @@ describe("client websocket protocol", () => {
 
   it("rejects client messages with missing required fields", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
     onClientSocketMessage(
@@ -141,7 +119,7 @@ describe("client websocket protocol", () => {
 
   it("closes the socket instead of throwing on malformed JSON", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     onClientSocketOpen(hub, socket);
 

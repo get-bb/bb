@@ -476,6 +476,19 @@ const hostDaemonApplicationStorageChangedMessageSchema = z
   })
   .strict();
 
+/**
+ * Raw host observation that an app's served `public/` files changed on disk.
+ * The daemon reports the fact; the server decides how to surface it (it
+ * broadcasts a per-app `content-changed` realtime message so open app
+ * surfaces live-reload).
+ */
+const hostDaemonApplicationContentChangedMessageSchema = z
+  .object({
+    type: z.literal("application-content-changed"),
+    applicationId: applicationIdSchema,
+  })
+  .strict();
+
 const hostDaemonTerminalOpenedMessageSchema = z
   .object({
     type: z.literal("terminal.opened"),
@@ -531,6 +544,7 @@ export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonHeartbeatMessageSchema,
   hostDaemonEnvironmentChangeMessageSchema,
   hostDaemonApplicationStorageChangedMessageSchema,
+  hostDaemonApplicationContentChangedMessageSchema,
   hostDaemonTerminalOpenedMessageSchema,
   hostDaemonTerminalOutputMessageSchema,
   hostDaemonTerminalReplayMessageSchema,

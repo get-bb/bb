@@ -749,7 +749,10 @@ describe("server-contract canonical schemas", () => {
       message,
     );
     expect(contract.REALTIME_ENTITIES).toContain("app");
-    expect(contract.APP_CHANGE_KINDS).toEqual(["apps-changed"]);
+    expect(contract.APP_CHANGE_KINDS).toEqual([
+      "apps-changed",
+      "content-changed",
+    ]);
     expect(
       contract.serverMessageSchema.parse({
         type: "changed",
@@ -760,6 +763,19 @@ describe("server-contract canonical schemas", () => {
       type: "changed",
       entity: "app",
       changes: ["apps-changed"],
+    });
+    expect(
+      contract.serverMessageSchema.parse({
+        type: "changed",
+        entity: "app",
+        id: "review-board",
+        changes: ["content-changed"],
+      }),
+    ).toEqual({
+      type: "changed",
+      entity: "app",
+      id: "review-board",
+      changes: ["content-changed"],
     });
     expect(contract.serverMessageSchema.parse(message)).toEqual(message);
     expect(

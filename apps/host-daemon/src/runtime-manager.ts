@@ -209,6 +209,10 @@ export interface ApplicationDataResyncNotification {
   applicationId: ApplicationId;
 }
 
+export interface ApplicationContentChangedNotification {
+  applicationId: ApplicationId;
+}
+
 export interface InjectedSkillsChangedNotification {
   applicationId: ApplicationId | null;
   changedPaths: string[];
@@ -247,6 +251,9 @@ export interface RuntimeManagerOptions {
   onApplicationStorageTargetsChanged?: () => void;
   onApplicationDataChanged?: (args: ApplicationDataChangedNotification) => void;
   onApplicationDataResync?: (args: ApplicationDataResyncNotification) => void;
+  onApplicationContentChanged?: (
+    args: ApplicationContentChangedNotification,
+  ) => void;
   onApplicationStorageWatchError?: (args: {
     error: ApplicationStorageWatchError;
   }) => void;
@@ -1211,6 +1218,11 @@ export class RuntimeManager {
           }
           if (event.kind === "application-data-resync") {
             this.options.onApplicationDataResync?.({
+              applicationId: event.applicationId,
+            });
+          }
+          if (event.kind === "application-content-changed") {
+            this.options.onApplicationContentChanged?.({
               applicationId: event.applicationId,
             });
           }

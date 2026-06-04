@@ -1,5 +1,6 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
+  AppChangeKind,
   EnvironmentChangeKind,
   HostChangeKind,
   ProjectChangeKind,
@@ -26,6 +27,8 @@ import {
   allAppQueryKeyPrefix,
   allAppsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
+  appMarkdownPreviewQueryKeyPrefix,
+  appQueryKey,
   allThreadQueryKeyPrefix,
   allThreadTerminalsQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
@@ -278,6 +281,15 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   },
 } satisfies SystemChangeRegistry;
 
+export const REALTIME_APP_CHANGE_REGISTRY = {
+  "apps-changed": {
+    dirty: [], // List-level invalidation rides system:apps-changed (the canonical path); handling it here too would double-invalidate.
+  },
+  "content-changed": {
+    dirty: [dirtyAppContentQueries], // Served public/ files changed; reload just that app's open surfaces.
+  },
+} satisfies AppChangeRegistry;
+
 export type ThreadChangeFlushPriority = "debounced" | "immediate";
 
 export interface RealtimeDirtyContext {
@@ -301,6 +313,10 @@ export interface ProjectRealtimeDirtyContext extends RealtimeDirtyContext {
 }
 
 export type HostRealtimeDirtyContext = RealtimeDirtyContext;
+
+export interface AppRealtimeDirtyContext extends RealtimeDirtyContext {
+  applicationId: string | undefined;
+}
 
 export type RealtimeDirtyHandler<Context extends RealtimeDirtyContext> = (
   context: Context,
@@ -349,6 +365,12 @@ export interface SystemChangeRule {
 }
 
 export type SystemChangeRegistry = Record<SystemChangeKind, SystemChangeRule>;
+
+export interface AppChangeRule {
+  dirty: readonly RealtimeDirtyHandler<AppRealtimeDirtyContext>[];
+}
+
+export type AppChangeRegistry = Record<AppChangeKind, AppChangeRule>;
 
 export function executeRealtimeDirtyHandlers<
   Context extends RealtimeDirtyContext,
@@ -611,5 +633,19 @@ function dirtyAppListQueries(): QueryKey[] {
     allAppsQueryKeyPrefix(),
     allAppQueryKeyPrefix(),
     allAppMarkdownPreviewQueryKeyPrefix(),
+  ];
+}
+
+function dirtyAppContentQueries(
+  context: AppRealtimeDirtyContext,
+): QueryKey[] {
+  if (context.applicationId === undefined) {
+    // Defensive: a content change without app identity falls back to the
+    // every-app scope so no open surface misses the reload.
+    return [allAppQueryKeyPrefix(), allAppMarkdownPreviewQueryKeyPrefix()];
+  }
+  return [
+    appQueryKey(context.applicationId), // Detail refetch bumps dataUpdatedAt, which busts the iframe reloadToken.
+    appMarkdownPreviewQueryKeyPrefix(context.applicationId), // Markdown entries re-render from the refetched content.
   ];
 }

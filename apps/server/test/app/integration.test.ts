@@ -11,7 +11,7 @@ import { createBrowserBbSdk, type AppRealtimeEvent } from "@bb/sdk/browser";
 import { createPublicApiClient } from "@bb/server-contract";
 import {
   turnScope,
-  type AppChangeKind,
+  type AppListChangeKind,
   type SystemChangeKind,
 } from "@bb/domain";
 import { describe, expect, it } from "vitest";
@@ -66,7 +66,7 @@ class SdkWebSocketAdapter {
 }
 
 interface AppBroadcastHub {
-  notifyApp(changes: AppChangeKind[]): void;
+  notifyApp(changes: AppListChangeKind[]): void;
 }
 
 interface SystemBroadcastHub {

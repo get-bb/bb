@@ -15,6 +15,7 @@ import {
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 interface TestDaemonSocket {
   close: (code?: number, reason?: string) => void;
@@ -328,6 +329,44 @@ describe("internal environment change websocket hints", () => {
           changes.includes("apps-changed"),
         ),
       );
+      expect(socket.close).not.toHaveBeenCalled();
+    });
+  });
+
+  it("broadcasts app-scoped content changes from a daemon watcher without an apps-changed system hint", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-app-content-changed",
+      });
+      const notifySystemSpy = vi.spyOn(harness.hub, "notifySystem");
+      const clientSocket = createMockHubSocket();
+      harness.hub.subscribe(clientSocket, "app");
+      const socket = createTestDaemonSocket();
+
+      onDaemonSocketMessage(harness.deps, {
+        hostId: host.id,
+        sessionId: session.id,
+        socket,
+        raw: JSON.stringify({
+          type: "application-content-changed",
+          applicationId: "external-content",
+        }),
+      });
+
+      expect(
+        clientSocket.messages.map((message) => JSON.parse(message)),
+      ).toEqual([
+        {
+          type: "changed",
+          entity: "app",
+          id: "external-content",
+          changes: ["content-changed"],
+        },
+      ]);
+      // Give any erroneously triggered async app-list refresh a chance to run
+      // before asserting no system-level apps-changed broadcast happened.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(notifySystemSpy).not.toHaveBeenCalled();
       expect(socket.close).not.toHaveBeenCalled();
     });
   });

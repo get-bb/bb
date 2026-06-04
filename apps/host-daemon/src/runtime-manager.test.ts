@@ -1297,6 +1297,7 @@ describe("RuntimeManager", () => {
     const onApplicationStorageTargetsChanged = vi.fn();
     const onApplicationDataChanged = vi.fn();
     const onApplicationDataResync = vi.fn();
+    const onApplicationContentChanged = vi.fn();
     const manager = new RuntimeManager({
       appsRootPath: "/tmp/bb-data/apps",
       hostWatcher,
@@ -1305,6 +1306,7 @@ describe("RuntimeManager", () => {
       onApplicationStorageTargetsChanged,
       onApplicationDataChanged,
       onApplicationDataResync,
+      onApplicationContentChanged,
     });
 
     manager.replaceTrackedApplicationDataTargets([
@@ -1340,6 +1342,10 @@ describe("RuntimeManager", () => {
       kind: "application-data-resync",
       applicationId: "status",
     });
+    watchApplicationStorageRootArgs?.onChange({
+      kind: "application-content-changed",
+      applicationId: "status",
+    });
 
     expect(onApplicationStorageTargetsChanged).toHaveBeenCalledTimes(1);
     expect(onApplicationDataChanged).toHaveBeenCalledWith({
@@ -1348,6 +1354,10 @@ describe("RuntimeManager", () => {
       path: "state.json",
     });
     expect(onApplicationDataResync).toHaveBeenCalledWith({
+      applicationId: "status",
+    });
+    expect(onApplicationContentChanged).toHaveBeenCalledTimes(1);
+    expect(onApplicationContentChanged).toHaveBeenCalledWith({
       applicationId: "status",
     });
 

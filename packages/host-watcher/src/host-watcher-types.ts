@@ -28,6 +28,10 @@ export type HostObservedChange =
       applicationId: ApplicationId;
     }
   | {
+      kind: "application-content-changed";
+      applicationId: ApplicationId;
+    }
+  | {
       kind: "injected-skills-changed";
       applicationId: ApplicationId | null;
       changedPaths: string[];
@@ -53,6 +57,7 @@ export type ApplicationStorageObservedChange = Extract<
       | "application-storage-targets-changed"
       | "application-data-changed"
       | "application-data-resync"
+      | "application-content-changed"
       | "injected-skills-changed";
   }
 >;

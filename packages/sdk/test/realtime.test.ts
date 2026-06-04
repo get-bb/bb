@@ -436,6 +436,48 @@ describe("SDK realtime", () => {
     });
   });
 
+  it("delivers app content-changed messages with the application id to app:changed listeners", () => {
+    const { sockets, websocket } = createWebsocketFactory();
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        runtime: "node",
+        websocket,
+      }),
+    });
+    const callback = vi.fn();
+
+    sdk.on({ event: "app:changed", callback });
+    sockets[0].open();
+
+    sockets[0].emit({
+      type: "changed",
+      entity: "app",
+      id: "status",
+      changes: ["content-changed"],
+    });
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith({
+      type: "changed",
+      entity: "app",
+      id: "status",
+      changes: ["content-changed"],
+    });
+
+    // List-level apps-changed (no id) still reaches the same listener.
+    sockets[0].emit({
+      type: "changed",
+      entity: "app",
+      changes: ["apps-changed"],
+    });
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(callback).toHaveBeenNthCalledWith(2, {
+      type: "changed",
+      entity: "app",
+      changes: ["apps-changed"],
+    });
+  });
+
   it("subscribes before app-data replay and dedupes buffered events by version", async () => {
     const deferred = createDeferredResponse();
     const fetchMock: FetchImplementation = vi.fn(async () => deferred.promise);

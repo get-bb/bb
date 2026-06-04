@@ -712,6 +712,91 @@ describe("ServerConnection", () => {
     await connection.shutdown();
   });
 
+  it("sends application content change hints over the daemon websocket", async () => {
+    testServer = await createTestServer();
+    const server = testServer;
+    const { connection } = createConnection(server);
+
+    await connection.start();
+    expect(
+      connection.sendMessage({
+        type: "application-content-changed",
+        applicationId: "status",
+      }),
+    ).toBe(true);
+
+    await waitFor(() =>
+      server.heartbeats.some(
+        (entry) => entry.message.type === "application-content-changed",
+      ),
+    );
+    expect(server.heartbeats).toContainEqual({
+      sessionId: "session-1",
+      message: {
+        type: "application-content-changed",
+        applicationId: "status",
+      },
+    });
+
+    await connection.shutdown();
+  });
+
+  it("buffers application content change hints per app while disconnected and flushes after reconnect", async () => {
+    testServer = await createTestServer();
+    const server = testServer;
+    const { connection } = createConnection(server);
+
+    expect(
+      connection.sendMessage({
+        type: "application-content-changed",
+        applicationId: "status",
+      }),
+    ).toBe(false);
+    expect(
+      connection.sendMessage({
+        type: "application-content-changed",
+        applicationId: "status",
+      }),
+    ).toBe(false);
+    expect(
+      connection.sendMessage({
+        type: "application-content-changed",
+        applicationId: "tasks",
+      }),
+    ).toBe(false);
+    expect(server.heartbeats).toEqual([]);
+
+    await connection.start();
+    await waitFor(
+      () =>
+        server.heartbeats.filter(
+          (entry) => entry.message.type === "application-content-changed",
+        ).length === 2,
+    );
+    expect(
+      server.heartbeats.filter(
+        (entry) => entry.message.type === "application-content-changed",
+      ),
+    ).toEqual([
+      {
+        sessionId: "session-1",
+        message: {
+          type: "application-content-changed",
+          applicationId: "status",
+        },
+      },
+      {
+        sessionId: "session-1",
+        message: {
+          type: "application-content-changed",
+          applicationId: "tasks",
+        },
+      },
+    ]);
+
+    await connection.shutdown();
+  });
+
   it("includes active threads when opening the session", async () => {
     testServer = await createTestServer();
     const activeThreads: HostDaemonActiveThread[] = [

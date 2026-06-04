@@ -13,11 +13,7 @@ import {
 } from "../../src/services/system/bb-app-managed-config.js";
 import { NotificationHub } from "../../src/ws/hub.js";
 import type { ServerLogger, ServerRuntimeConfig } from "../../src/types.js";
-
-interface TestHubSocket {
-  close(code?: number, reason?: string): void;
-  send(data: string): void;
-}
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 interface CountingLogger {
   logger: ServerLogger;
@@ -198,13 +194,7 @@ describe("bb-app managed config", () => {
 
   it("reloads config file changes and notifies clients", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-managed-config-"));
-    const messages: string[] = [];
-    const socket: TestHubSocket = {
-      close(): void {},
-      send(data): void {
-        messages.push(data);
-      },
-    };
+    const socket = createMockHubSocket();
     const config = {
       ...createRuntimeConfig(),
       dataDir,
@@ -228,7 +218,7 @@ describe("bb-app managed config", () => {
       await reloader.reload({ notify: true });
       expect(config.openAiApiKey).toBe("live-openai-key");
       expect(
-        messages.some((message) => message.includes("config-changed")),
+        socket.messages.some((message) => message.includes("config-changed")),
       ).toBe(true);
     } finally {
       hub.unregisterClient(socket);

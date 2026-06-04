@@ -576,6 +576,12 @@ export async function createHostDaemonApp(
     onApplicationDataResync: (change) => {
       void appDataChangeReporter.requestResync(change);
     },
+    onApplicationContentChanged: ({ applicationId }) => {
+      sendServerMessage({
+        type: "application-content-changed",
+        applicationId,
+      });
+    },
     onInjectedSkillsChanged: (change) => {
       options.logger.debug(
         {

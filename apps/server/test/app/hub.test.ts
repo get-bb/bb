@@ -1,5 +1,5 @@
 import {
-  APP_CHANGE_KINDS,
+  APP_LIST_CHANGE_KINDS,
   ENVIRONMENT_CHANGE_KINDS,
   HOST_CHANGE_KINDS,
   PROJECT_CHANGE_KINDS,
@@ -9,29 +9,7 @@ import {
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { NotificationHub } from "../../src/ws/hub.js";
-
-interface MockSocket {
-  closed: Array<{ code?: number; reason?: string }>;
-  messages: string[];
-  close(code?: number, reason?: string): void;
-  send(data: string): void;
-}
-
-function createMockSocket(): MockSocket {
-  const messages: string[] = [];
-  const closed: Array<{ code?: number; reason?: string }> = [];
-
-  return {
-    closed,
-    messages,
-    close(code?: number, reason?: string) {
-      closed.push({ code, reason });
-    },
-    send(data: string) {
-      messages.push(data);
-    },
-  };
-}
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 /**
  * Smuggles an out-of-contract change kind into a typed changes array without a
@@ -46,7 +24,7 @@ function appendRawChangeKind(changes: string[], kind: string): void {
 describe("NotificationHub", () => {
   it("subscribes clients and delivers thread notifications", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     hub.subscribe(socket, "thread", "thread-1");
     hub.notifyThread("thread-1", ["events-appended"]);
@@ -62,7 +40,7 @@ describe("NotificationHub", () => {
 
   it("includes thread notification metadata when provided", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     hub.subscribe(socket, "thread", "thread-1");
     hub.notifyThread("thread-1", ["archived-changed"], {
@@ -81,7 +59,7 @@ describe("NotificationHub", () => {
 
   it("subscribes clients and delivers environment notifications", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     hub.subscribe(socket, "environment", "environment-1");
     hub.notifyEnvironment("environment-1", ["metadata-changed"]);
@@ -97,7 +75,7 @@ describe("NotificationHub", () => {
 
   it("stops notifications after unsubscribe", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     hub.subscribe(socket, "thread", "thread-1");
     hub.unsubscribe(socket, "thread", "thread-1");
@@ -108,7 +86,7 @@ describe("NotificationHub", () => {
 
   it("subscribes clients and delivers app data broadcasts", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     hub.subscribe(socket, "app", "status:data");
     hub.notifyAppData({
@@ -133,7 +111,7 @@ describe("NotificationHub", () => {
 
   it("delivers app list changes to entity-wide app subscribers", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     hub.subscribe(socket, "app");
     hub.notifyApp(["apps-changed"]);
@@ -146,10 +124,51 @@ describe("NotificationHub", () => {
     });
   });
 
+  it("delivers app content-changed broadcasts to entity-wide app subscribers", () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+
+    hub.subscribe(socket, "app");
+    hub.notifyAppContentChanged("some-app");
+
+    expect(socket.messages).toHaveLength(1);
+    expect(JSON.parse(socket.messages[0])).toEqual({
+      type: "changed",
+      entity: "app",
+      id: "some-app",
+      changes: ["content-changed"],
+    });
+  });
+
+  it("delivers app content-changed broadcasts to the matching app id only", () => {
+    const hub = new NotificationHub();
+    const idScopedSocket = createMockHubSocket();
+    const appDataSocket = createMockHubSocket();
+    const otherAppSocket = createMockHubSocket();
+
+    hub.subscribe(idScopedSocket, "app", "some-app");
+    hub.subscribe(appDataSocket, "app", "some-app:data");
+    hub.subscribe(otherAppSocket, "app", "other-app");
+    hub.notifyAppContentChanged("some-app");
+
+    expect(
+      idScopedSocket.messages.map((message) => JSON.parse(message)),
+    ).toEqual([
+      {
+        type: "changed",
+        entity: "app",
+        id: "some-app",
+        changes: ["content-changed"],
+      },
+    ]);
+    expect(appDataSocket.messages).toHaveLength(0);
+    expect(otherAppSocket.messages).toHaveLength(0);
+  });
+
   it("does not deliver app data broadcasts to entity-wide app subscribers", () => {
     const hub = new NotificationHub();
-    const entityWideSocket = createMockSocket();
-    const appDataSocket = createMockSocket();
+    const entityWideSocket = createMockHubSocket();
+    const appDataSocket = createMockHubSocket();
 
     hub.subscribe(entityWideSocket, "app");
     hub.subscribe(appDataSocket, "app", "status:data");
@@ -168,7 +187,7 @@ describe("NotificationHub", () => {
 
   it("delivers app data resync broadcasts", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     hub.subscribe(socket, "app", "status:data");
     hub.notifyAppData({
@@ -185,7 +204,7 @@ describe("NotificationHub", () => {
 
   it("cleans up subscriptions on client disconnect", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     hub.subscribe(socket, "thread", "thread-1");
     hub.subscribe(socket, "project", "project-1");
@@ -198,7 +217,7 @@ describe("NotificationHub", () => {
 
   it("registers terminal clients and removes them when the socket disconnects", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     hub.registerTerminalClient("term-1", socket);
     hub.sendTerminalClientMessage("term-1", {
@@ -230,8 +249,8 @@ describe("NotificationHub", () => {
 
   it("notifies only the daemon socket registered for the host", () => {
     const hub = new NotificationHub();
-    const socket1 = createMockSocket();
-    const socket2 = createMockSocket();
+    const socket1 = createMockHubSocket();
+    const socket2 = createMockHubSocket();
 
     hub.registerDaemon("session-1", "host-1", socket1);
     hub.registerDaemon("session-2", "host-2", socket2);
@@ -246,7 +265,7 @@ describe("NotificationHub", () => {
 
   it("treats daemon notifications for unknown hosts as a no-op", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     hub.registerDaemon("session-1", "host-1", socket);
 
@@ -256,9 +275,9 @@ describe("NotificationHub", () => {
 
   it("notifies all clients subscribed to the same thread", () => {
     const hub = new NotificationHub();
-    const socket1 = createMockSocket();
-    const socket2 = createMockSocket();
-    const socket3 = createMockSocket();
+    const socket1 = createMockHubSocket();
+    const socket2 = createMockHubSocket();
+    const socket3 = createMockHubSocket();
 
     hub.subscribe(socket1, "thread", "thread-1");
     hub.subscribe(socket2, "thread", "thread-1");
@@ -274,8 +293,8 @@ describe("NotificationHub", () => {
     vi.useFakeTimers();
     try {
       const hub = new NotificationHub();
-      const socket1 = createMockSocket();
-      const socket2 = createMockSocket();
+      const socket1 = createMockHubSocket();
+      const socket2 = createMockHubSocket();
       const callback = vi.fn();
 
       hub.registerDaemon("session-1", "host-1", socket1);
@@ -350,7 +369,7 @@ describe("NotificationHub", () => {
 
   it("sends host RPC requests to the active daemon and resolves responses", async () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
     hub.registerDaemon("session-1", "host-1", socket);
 
     const wait = hub.requestHostOnlineRpc({
@@ -393,9 +412,9 @@ describe("NotificationHub", () => {
 
   it("does not resolve host RPC waiters from mismatched daemon sessions", async () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
     hub.registerDaemon("session-1", "host-1", socket);
-    hub.registerDaemon("session-2", "host-2", createMockSocket());
+    hub.registerDaemon("session-2", "host-2", createMockHubSocket());
 
     const wait = hub.requestHostOnlineRpc({
       hostId: "host-1",
@@ -452,7 +471,7 @@ describe("NotificationHub", () => {
 
   it("rejects in-flight host RPC requests when the daemon unregisters", async () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
     hub.registerDaemon("session-1", "host-1", socket);
 
     const wait = hub.requestHostOnlineRpc({
@@ -471,7 +490,7 @@ describe("NotificationHub", () => {
 
   it("keeps subscription bookkeeping consistent across repeated changes", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     for (let index = 0; index < 20; index += 1) {
       hub.subscribe(socket, "thread", "thread-1");
@@ -494,7 +513,7 @@ describe("NotificationHub", () => {
       .mockImplementation(() => {});
     try {
       const hub = new NotificationHub();
-      const socket = createMockSocket();
+      const socket = createMockHubSocket();
       hub.subscribe(socket, "thread", "thread-1");
 
       const changes: ThreadChangeKind[] = ["events-appended"];
@@ -514,7 +533,7 @@ describe("NotificationHub", () => {
 
   it("delivers system notifications to system subscribers", () => {
     const hub = new NotificationHub();
-    const socket = createMockSocket();
+    const socket = createMockHubSocket();
 
     hub.subscribe(socket, "system");
     hub.notifySystem(["apps-changed"]);
@@ -529,9 +548,9 @@ describe("NotificationHub", () => {
 
   it("delivers host notifications to entity-wide and id-scoped subscribers", () => {
     const hub = new NotificationHub();
-    const entityWideSocket = createMockSocket();
-    const idScopedSocket = createMockSocket();
-    const otherHostSocket = createMockSocket();
+    const entityWideSocket = createMockHubSocket();
+    const idScopedSocket = createMockHubSocket();
+    const otherHostSocket = createMockHubSocket();
 
     hub.subscribe(entityWideSocket, "host");
     hub.subscribe(idScopedSocket, "host", "host-1");
@@ -558,7 +577,7 @@ describe("NotificationHub", () => {
       "delivers thread change kind %s",
       (kind) => {
         const hub = new NotificationHub();
-        const socket = createMockSocket();
+        const socket = createMockHubSocket();
 
         hub.subscribe(socket, "thread", "thread-1");
         hub.notifyThread("thread-1", [kind]);
@@ -577,7 +596,7 @@ describe("NotificationHub", () => {
       "delivers project change kind %s",
       (kind) => {
         const hub = new NotificationHub();
-        const socket = createMockSocket();
+        const socket = createMockHubSocket();
 
         hub.subscribe(socket, "project", "project-1");
         hub.notifyProject("project-1", [kind]);
@@ -596,7 +615,7 @@ describe("NotificationHub", () => {
       "delivers environment change kind %s",
       (kind) => {
         const hub = new NotificationHub();
-        const socket = createMockSocket();
+        const socket = createMockHubSocket();
 
         hub.subscribe(socket, "environment", "environment-1");
         hub.notifyEnvironment("environment-1", [kind]);
@@ -613,7 +632,7 @@ describe("NotificationHub", () => {
 
     it.each([...HOST_CHANGE_KINDS])("delivers host change kind %s", (kind) => {
       const hub = new NotificationHub();
-      const socket = createMockSocket();
+      const socket = createMockHubSocket();
 
       hub.subscribe(socket, "host", "host-1");
       hub.notifyHost("host-1", [kind]);
@@ -631,7 +650,7 @@ describe("NotificationHub", () => {
       "delivers system change kind %s",
       (kind) => {
         const hub = new NotificationHub();
-        const socket = createMockSocket();
+        const socket = createMockHubSocket();
 
         hub.subscribe(socket, "system");
         hub.notifySystem([kind]);
@@ -645,9 +664,9 @@ describe("NotificationHub", () => {
       },
     );
 
-    it.each([...APP_CHANGE_KINDS])("delivers app change kind %s", (kind) => {
+    it.each([...APP_LIST_CHANGE_KINDS])("delivers app change kind %s", (kind) => {
       const hub = new NotificationHub();
-      const socket = createMockSocket();
+      const socket = createMockHubSocket();
 
       hub.subscribe(socket, "app");
       hub.notifyApp([kind]);

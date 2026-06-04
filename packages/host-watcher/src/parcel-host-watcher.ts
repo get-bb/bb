@@ -132,6 +132,10 @@ function isApplicationSkillsSubtreePath(path: ApplicationStoragePath): boolean {
   return path.parts[1] === "skills";
 }
 
+function isApplicationPublicSubtreePath(path: ApplicationStoragePath): boolean {
+  return path.parts[1] === "public";
+}
+
 function isApplicationManifestPath(path: ApplicationStoragePath): boolean {
   return path.parts.length === 2 && path.parts[1] === "manifest.json";
 }
@@ -218,6 +222,7 @@ export function collectApplicationStorageObservedChanges(
   let targetsChanged = false;
   const appDataChanges = new Map<string, ApplicationStorageObservedChange>();
   const appDataResyncs = new Map<string, ApplicationStorageObservedChange>();
+  const appContentChanges = new Map<string, ApplicationStorageObservedChange>();
   const appSkillChanges = new Map<string, InjectedSkillsObservedChange>();
 
   for (const changedPath of args.changedPaths) {
@@ -234,6 +239,17 @@ export function collectApplicationStorageObservedChanges(
       isApplicationManifestPath(storagePath)
     ) {
       targetsChanged = true;
+      continue;
+    }
+    if (isApplicationPublicSubtreePath(storagePath)) {
+      // Served browser content changed (e.g. a rebuild into public/). One
+      // event per app per flush batch; consumers use it to live-reload open
+      // app surfaces. Changes under source/ deliberately stay unclassified —
+      // nothing served changes until a build writes into public/.
+      appContentChanges.set(storagePath.applicationId, {
+        kind: "application-content-changed",
+        applicationId: storagePath.applicationId,
+      });
       continue;
     }
     if (isApplicationSkillsSubtreePath(storagePath)) {
@@ -284,6 +300,7 @@ export function collectApplicationStorageObservedChanges(
   }
   observedChanges.push(...appDataChanges.values());
   observedChanges.push(...appDataResyncs.values());
+  observedChanges.push(...appContentChanges.values());
   observedChanges.push(...appSkillChanges.values());
   return observedChanges;
 }

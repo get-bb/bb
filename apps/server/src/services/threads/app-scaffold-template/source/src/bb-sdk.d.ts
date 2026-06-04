@@ -25,7 +25,7 @@ declare global {
 
   type SystemChangeKind = "config-changed" | "apps-changed";
 
-  type AppChangeKind = "apps-changed";
+  type AppChangeKind = "apps-changed" | "content-changed";
 
   interface ThreadChangeMetadata {
     eventTypes?: readonly ThreadEventType[] | undefined;
@@ -72,6 +72,7 @@ declare global {
     type: "changed";
     entity: "app";
     changes: readonly AppChangeKind[];
+    id?: string | undefined;
   }
 
   type ChangedMessage = ThreadChangedMessage | ProjectChangedMessage | EnvironmentChangedMessage | HostChangedMessage | SystemChangedMessage | AppChangedMessage;
@@ -230,8 +231,11 @@ declare global {
   }
 
   /**
-   * app:changed is a global app-list signal (install/update/remove of any app),
-   * broadcast alongside system:apps-changed; it carries no per-app identity.
+   * app:changed delivers every app-entity broadcast. `apps-changed` is the
+   * global app-list signal (install/update/remove of any app), broadcast
+   * alongside system:apps-changed with no per-app identity. `content-changed`
+   * is app-scoped — its event carries the application id and means that app's
+   * served `public/` files changed on disk.
    */
   interface AppRealtimeOnArgs {
     callback: BbRealtimeCallback<"app:changed">;
