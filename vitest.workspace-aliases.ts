@@ -97,11 +97,17 @@ export const workspaceTestAliases = {
     "packages/server-contract/src/index.ts",
   ),
   "@bb/sdk/core": path.resolve(repoRoot, "packages/sdk/src/core.ts"),
+  "@bb/sdk/node-websocket": path.resolve(
+    repoRoot,
+    "packages/sdk/src/node-websocket.ts",
+  ),
   "@bb/sdk/node": path.resolve(repoRoot, "packages/sdk/src/node.ts"),
   "@bb/sdk/browser": path.resolve(repoRoot, "packages/sdk/src/browser.ts"),
   "@bb/sdk/app-runtime": path.resolve(
     repoRoot,
     "packages/sdk/src/app-runtime.ts",
   ),
-  "@bb/sdk": path.resolve(repoRoot, "packages/sdk/src/index.ts"),
+  // Must match the package.json "." export so the same specifier resolves to
+  // the same module under vitest and tsc/production.
+  "@bb/sdk": path.resolve(repoRoot, "packages/sdk/src/node.ts"),
 } as const;

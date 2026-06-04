@@ -79,6 +79,30 @@ export class BbRequestTimeoutError extends Error {
   }
 }
 
+export interface BbHttpErrorArgs {
+  code: string | null;
+  message: string;
+  status: number;
+}
+
+/**
+ * Non-2xx HTTP response surfaced by the transport. `status` is the HTTP
+ * status code; `code` carries the server's machine-readable error code when
+ * the error body provides one, so callers can branch on the failure kind
+ * instead of parsing the message.
+ */
+export class BbHttpError extends Error {
+  readonly code: string | null;
+  readonly status: number;
+
+  constructor(args: BbHttpErrorArgs) {
+    super(`HTTP ${args.status}: ${args.message}`);
+    this.name = "BbHttpError";
+    this.code = args.code;
+    this.status = args.status;
+  }
+}
+
 export function createRequestTimeoutFetch(
   options: RequestTimeoutFetchOptions,
 ): FetchImplementation {
@@ -99,10 +123,7 @@ export function createRequestTimeoutFetch(
       const response = await fetch(input, { ...init, signal: requestSignal });
       return wrapRequestTimeoutResponse({ context, response });
     } catch (error) {
-      if (
-        error === context.timeoutSignal.reason ||
-        (error instanceof Error && isRequestTimeoutError(context, error))
-      ) {
+      if (isRequestTimeoutError(context, error)) {
         throw new BbRequestTimeoutError(options.timeoutMs);
       }
       throw error;
@@ -130,7 +151,7 @@ export async function resolveResponse<TResponse extends Response>(
   try {
     response = await args.response;
   } catch (error) {
-    if (error instanceof Error && isTypeErrorWithCauseCode(error, "ECONNREFUSED")) {
+    if (isTypeErrorWithCauseCode(error, "ECONNREFUSED")) {
       throw new Error(
         "Cannot connect to BB server. Ensure it is running and BB_SERVER_URL is correct.",
       );
@@ -138,8 +159,8 @@ export async function resolveResponse<TResponse extends Response>(
     throw error;
   }
   if (!response.ok) {
-    const message = await readHttpErrorMessage(response);
-    throw new Error(`HTTP ${response.status}: ${message}`);
+    const { code, message } = await readHttpErrorInfo(response);
+    throw new BbHttpError({ code, message, status: response.status });
   }
   return response;
 }
@@ -150,10 +171,7 @@ async function readResponseBodyWithTimeoutMapping<TBody>(
   try {
     return await args.read();
   } catch (error) {
-    if (
-      error === args.context.timeoutSignal.reason ||
-      (error instanceof Error && isRequestTimeoutError(args.context, error))
-    ) {
+    if (isRequestTimeoutError(args.context, error)) {
       throw new BbRequestTimeoutError(args.context.timeoutMs);
     }
     throw error;
@@ -223,10 +241,7 @@ function wrapRequestTimeoutBody(
         }
         controller.enqueue(result.value);
       } catch (error) {
-        if (
-          error === args.context.timeoutSignal.reason ||
-          (error instanceof Error && isRequestTimeoutError(args.context, error))
-        ) {
+        if (isRequestTimeoutError(args.context, error)) {
           controller.error(new BbRequestTimeoutError(args.context.timeoutMs));
           return;
         }
@@ -241,24 +256,32 @@ function wrapRequestTimeoutBody(
 
 function isRequestTimeoutError(
   context: RequestTimeoutContext,
-  error: Error,
+  error: unknown,
 ): boolean {
+  // Some paths reject with the timeout reason directly; others wrap it as a
+  // platform AbortError/TimeoutError while preserving the composed reason.
+  if (context.timeoutSignal.aborted && error === context.timeoutSignal.reason) {
+    return true;
+  }
+
   return (
     context.timeoutSignal.aborted &&
     context.requestSignal.reason === context.timeoutSignal.reason &&
+    error instanceof Error &&
     (error.name === "AbortError" || error.name === "TimeoutError")
   );
 }
 
 function validateRequestTimeoutMs(timeoutMs: number): void {
+  // timeoutMs=0 is an effectively immediate abort knob for tests and callers.
   if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
     throw new RangeError(
-      "CLI request timeout must be a non-negative finite number.",
+      "BB request timeout must be a non-negative finite number.",
     );
   }
 }
 
-function isTypeErrorWithCauseCode(error: Error, expectedCode: string): boolean {
+function isTypeErrorWithCauseCode(error: unknown, expectedCode: string): boolean {
   if (!(error instanceof TypeError)) {
     return false;
   }
@@ -269,7 +292,23 @@ function isTypeErrorWithCauseCode(error: Error, expectedCode: string): boolean {
   return "code" in cause && cause.code === expectedCode;
 }
 
-async function readHttpErrorMessage(response: Response): Promise<string> {
+interface HttpErrorInfo {
+  code: string | null;
+  message: string;
+}
+
+function readHttpErrorCode(parsed: unknown): string | null {
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  if (!("code" in parsed)) {
+    return null;
+  }
+  const { code } = parsed;
+  return typeof code === "string" ? code : null;
+}
+
+async function readHttpErrorInfo(response: Response): Promise<HttpErrorInfo> {
   let rawBody: string;
   try {
     rawBody = await response.text();
@@ -281,7 +320,7 @@ async function readHttpErrorMessage(response: Response): Promise<string> {
   }
   const normalized = rawBody.replace(/\s+/g, " ").trim();
   if (normalized.length === 0) {
-    return response.statusText;
+    return { code: null, message: response.statusText };
   }
 
   const contentType = response.headers.get("content-type");
@@ -290,13 +329,16 @@ async function readHttpErrorMessage(response: Response): Promise<string> {
     normalized.startsWith("{") ||
     normalized.startsWith("[");
   if (!shouldParseJson) {
-    return normalized;
+    return { code: null, message: normalized };
   }
 
   try {
-    const parsed = JSON.parse(normalized);
-    return extractErrorMessage(parsed, ERROR_EXTRACT_OPTS) ?? normalized;
+    const parsed: unknown = JSON.parse(normalized);
+    return {
+      code: readHttpErrorCode(parsed),
+      message: extractErrorMessage(parsed, ERROR_EXTRACT_OPTS) ?? normalized,
+    };
   } catch {
-    return normalized;
+    return { code: null, message: normalized };
   }
 }

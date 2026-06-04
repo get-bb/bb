@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ThreadTimelinePendingTodos } from "@bb/domain";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
-
 import {
-  fetchThreadPendingTodos,
-  type PendingTodosSdk,
-  printPendingTodos,
-} from "./pending-todos.js";
+  createNodeBbSdk,
+  type BbSdk,
+  type FetchImplementation,
+} from "@bb/sdk/node";
+
+import { fetchThreadPendingTodos, printPendingTodos } from "./pending-todos.js";
 
 function captureLogLines(fn: () => void): { lines: string[] } {
   const spy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -117,34 +118,60 @@ describe("fetchThreadPendingTodos", () => {
     };
   }
 
-  function makeSdkWithTimeline(
-    handler: () => Promise<ThreadTimelineResponse>,
-  ): PendingTodosSdk {
+  interface SdkOverHttpBoundary {
+    requestUrls: string[];
+    sdk: BbSdk;
+  }
+
+  function makeSdkOverHttpBoundary(
+    fetchImpl: (url: string) => Promise<Response>,
+  ): SdkOverHttpBoundary {
+    const requestUrls: string[] = [];
+    const fetchMock: FetchImplementation = async (input) => {
+      const url = String(input);
+      requestUrls.push(url);
+      return fetchImpl(url);
+    };
     return {
-      threads: {
-        timeline: vi.fn(handler),
-      },
+      requestUrls,
+      sdk: createNodeBbSdk({ baseUrl: "http://bb.test", fetch: fetchMock }),
     };
   }
 
-  it("returns the pendingTodos field from a successful timeline response", async () => {
+  it("requests a summary-only timeline and returns its pendingTodos field", async () => {
     const snapshot: ThreadTimelinePendingTodos = {
       sourceSeq: 7,
       updatedAt: 7,
       items: [{ id: "a", text: "Work", status: "in_progress" }],
     };
-    const sdk = makeSdkWithTimeline(async () => makeTimelineResponse(snapshot));
+    const { requestUrls, sdk } = makeSdkOverHttpBoundary(async () =>
+      Response.json(makeTimelineResponse(snapshot)),
+    );
     const result = await fetchThreadPendingTodos({
       sdk,
       threadId: "thread-1",
     });
     expect(result).toEqual(snapshot);
+    expect(requestUrls).toEqual([
+      "http://bb.test/api/v1/threads/thread-1/timeline?summaryOnly=true",
+    ]);
   });
 
-  it("returns null when the timeline call rejects (best-effort contract)", async () => {
-    const sdk = makeSdkWithTimeline(async () => {
+  it("returns null when the timeline request fails at the network level (best-effort contract)", async () => {
+    const { sdk } = makeSdkOverHttpBoundary(async () => {
       throw new Error("network down");
     });
+    const result = await fetchThreadPendingTodos({
+      sdk,
+      threadId: "thread-1",
+    });
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the server responds with an HTTP error (best-effort contract)", async () => {
+    const { sdk } = makeSdkOverHttpBoundary(async () =>
+      Response.json({ message: "Thread not found" }, { status: 404 }),
+    );
     const result = await fetchThreadPendingTodos({
       sdk,
       threadId: "thread-1",

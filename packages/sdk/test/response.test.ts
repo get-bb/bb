@@ -1,24 +1,25 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
-  createClient,
-  createCliRequestTimeoutFetch,
-  DEFAULT_CLI_REQUEST_TIMEOUT_MS,
-  unwrap,
-  unwrapVoid,
-} from "../client.js";
+  BbHttpError,
+  createRequestTimeoutFetch,
+  DEFAULT_BB_REQUEST_TIMEOUT_MS,
+  readJsonResponse,
+  readVoidResponse,
+} from "../src/response.js";
+import { createNodeTransport } from "../src/node.js";
 
-const CLI_REQUEST_TIMEOUT_ERROR_NAME = "CliRequestTimeoutError";
-const CLI_REQUEST_TIMEOUT_VALIDATION_MESSAGE =
-  "CLI request timeout must be a non-negative finite number.";
+const REQUEST_TIMEOUT_ERROR_NAME = "BbRequestTimeoutError";
+const REQUEST_TIMEOUT_VALIDATION_MESSAGE =
+  "BB request timeout must be a non-negative finite number.";
 
-function cliRequestTimeoutMessage(duration: string): string {
+function requestTimeoutMessage(duration: string): string {
   return `BB request timed out after ${duration}.`;
 }
 
 const IMMEDIATE_TIMEOUT_MS = 0;
-const IMMEDIATE_TIMEOUT_MESSAGE = cliRequestTimeoutMessage("0 seconds");
+const IMMEDIATE_TIMEOUT_MESSAGE = requestTimeoutMessage("0 seconds");
 const SHORT_TIMEOUT_MS = 20;
-const SHORT_TIMEOUT_MESSAGE = cliRequestTimeoutMessage("20 ms");
+const SHORT_TIMEOUT_MESSAGE = requestTimeoutMessage("20 ms");
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -52,7 +53,7 @@ async function expectPendingFetchTimeout(
 ): Promise<void> {
   mockPendingFetchUntilAbort();
 
-  const timeoutFetch = createCliRequestTimeoutFetch({
+  const timeoutFetch = createRequestTimeoutFetch({
     timeoutMs: args.timeoutMs,
   });
   const responsePromise = timeoutFetch(
@@ -60,7 +61,7 @@ async function expectPendingFetchTimeout(
   );
   const expectation = expect(responsePromise).rejects.toMatchObject({
     message: args.expectedMessage,
-    name: CLI_REQUEST_TIMEOUT_ERROR_NAME,
+    name: REQUEST_TIMEOUT_ERROR_NAME,
   });
 
   await expectation;
@@ -142,7 +143,11 @@ function useImmediateTimeoutSignalFor(args: ImmediateTimeoutSignalArgs): void {
   });
 }
 
-describe("unwrap()", () => {
+function readJson<TBody>(response: Response): Promise<TBody> {
+  return readJsonResponse({ response: Promise.resolve(response) });
+}
+
+describe("readJsonResponse()", () => {
   it("parses successful JSON response", async () => {
     const data = { id: "thread-1", title: "Hello" };
     const response = new Response(JSON.stringify(data), {
@@ -150,7 +155,7 @@ describe("unwrap()", () => {
       headers: { "Content-Type": "application/json" },
     });
 
-    const result = await unwrap<typeof data>(Promise.resolve(response));
+    const result = await readJson<typeof data>(response);
 
     expect(result).toEqual(data);
     expect(result.id).toBe("thread-1");
@@ -160,39 +165,37 @@ describe("unwrap()", () => {
   it("throws on empty response body", async () => {
     const response = new Response("", { status: 200 });
 
-    await expect(
-      unwrap<{ id: string }>(Promise.resolve(response)),
-    ).rejects.toThrow();
+    await expect(readJson<{ id: string }>(response)).rejects.toThrow();
   });
 
-  it("unwrapVoid succeeds for empty response body", async () => {
+  it("readVoidResponse succeeds for empty response body", async () => {
     const response = new Response("", { status: 200 });
 
     await expect(
-      unwrapVoid(Promise.resolve(response)),
+      readVoidResponse({ response: Promise.resolve(response) }),
     ).resolves.toBeUndefined();
   });
 
-  it("unwrapVoid succeeds for null body (204 No Content)", async () => {
+  it("readVoidResponse succeeds for null body (204 No Content)", async () => {
     const response = new Response(null, { status: 204 });
 
     await expect(
-      unwrapVoid(Promise.resolve(response)),
+      readVoidResponse({ response: Promise.resolve(response) }),
     ).resolves.toBeUndefined();
   });
 
-  it("unwrapVoid throws for non-ok response", async () => {
+  it("readVoidResponse throws for non-ok response", async () => {
     const response = new Response("", {
       status: 500,
       statusText: "Internal Server Error",
     });
 
-    await expect(unwrapVoid(Promise.resolve(response))).rejects.toThrow(
-      "HTTP 500: Internal Server Error",
-    );
+    await expect(
+      readVoidResponse({ response: Promise.resolve(response) }),
+    ).rejects.toThrow("HTTP 500: Internal Server Error");
   });
 
-  it("throws HTTP error with status and body for non-ok response", async () => {
+  it("throws BbHttpError carrying status and server code for non-ok response", async () => {
     const response = new Response(
       JSON.stringify({
         code: "thread_not_found",
@@ -206,9 +209,34 @@ describe("unwrap()", () => {
       },
     );
 
-    await expect(unwrap(Promise.resolve(response))).rejects.toThrow(
-      "HTTP 404: Thread thread-1 not found",
+    const error = await readJson(response).then(
+      () => {
+        throw new Error("Expected readJsonResponse to reject");
+      },
+      (caught: unknown) => caught,
     );
+
+    expect(error).toBeInstanceOf(BbHttpError);
+    if (!(error instanceof BbHttpError)) {
+      throw new Error("Expected a BbHttpError");
+    }
+    expect(error.message).toBe("HTTP 404: Thread thread-1 not found");
+    expect(error.status).toBe(404);
+    expect(error.code).toBe("thread_not_found");
+  });
+
+  it("reports a null code when the error body has none", async () => {
+    const response = new Response("plain failure", {
+      status: 502,
+      statusText: "Bad Gateway",
+    });
+
+    await expect(readJson(response)).rejects.toMatchObject({
+      code: null,
+      message: "HTTP 502: plain failure",
+      name: "BbHttpError",
+      status: 502,
+    });
   });
 
   it("falls back to legacy detail field when canonical message is absent", async () => {
@@ -218,7 +246,7 @@ describe("unwrap()", () => {
       headers: { "Content-Type": "application/json" },
     });
 
-    await expect(unwrap(Promise.resolve(response))).rejects.toThrow(
+    await expect(readJson(response)).rejects.toThrow(
       "HTTP 404: Thread not found",
     );
   });
@@ -229,7 +257,7 @@ describe("unwrap()", () => {
       statusText: "Internal Server Error",
     });
 
-    await expect(unwrap(Promise.resolve(response))).rejects.toThrow(
+    await expect(readJson(response)).rejects.toThrow(
       "HTTP 500: Internal Server Error",
     );
   });
@@ -239,7 +267,9 @@ describe("unwrap()", () => {
       cause: { code: "ECONNREFUSED" },
     });
 
-    await expect(unwrap(Promise.reject(connError))).rejects.toThrow(
+    await expect(
+      readJsonResponse({ response: Promise.reject(connError) }),
+    ).rejects.toThrow(
       "Cannot connect to BB server. Ensure it is running and BB_SERVER_URL is correct.",
     );
   });
@@ -247,24 +277,24 @@ describe("unwrap()", () => {
   it("rethrows other errors as-is", async () => {
     const otherError = new Error("Network timeout");
 
-    await expect(unwrap(Promise.reject(otherError))).rejects.toThrow(
-      "Network timeout",
-    );
+    await expect(
+      readJsonResponse({ response: Promise.reject(otherError) }),
+    ).rejects.toThrow("Network timeout");
   });
 
   it("rethrows non-TypeError connection errors", async () => {
     const error = new RangeError("something wrong");
 
-    await expect(unwrap(Promise.reject(error))).rejects.toThrow(
-      "something wrong",
-    );
-    await expect(unwrap(Promise.reject(error))).rejects.toBeInstanceOf(
-      RangeError,
-    );
+    await expect(
+      readJsonResponse({ response: Promise.reject(error) }),
+    ).rejects.toThrow("something wrong");
+    await expect(
+      readJsonResponse({ response: Promise.reject(error) }),
+    ).rejects.toBeInstanceOf(RangeError);
   });
 });
 
-describe("createCliRequestTimeoutFetch()", () => {
+describe("createRequestTimeoutFetch()", () => {
   it("times out hung API requests", async () => {
     await expectPendingFetchTimeout({
       timeoutMs: SHORT_TIMEOUT_MS,
@@ -272,15 +302,15 @@ describe("createCliRequestTimeoutFetch()", () => {
     });
   });
 
-  it("uses the default timeout when creating the CLI client", async () => {
+  it("uses the default timeout when creating the node transport", async () => {
     useImmediateTimeoutSignalFor({
-      timeoutMs: DEFAULT_CLI_REQUEST_TIMEOUT_MS,
+      timeoutMs: DEFAULT_BB_REQUEST_TIMEOUT_MS,
     });
     mockPendingFetchUntilAbort();
-    const client = createClient("http://server");
+    const transport = createNodeTransport({ baseUrl: "http://server" });
 
-    await expect(client.api.v1.hosts.$get()).rejects.toThrow(
-      cliRequestTimeoutMessage("75 seconds"),
+    await expect(transport.api.v1.hosts.$get()).rejects.toThrow(
+      requestTimeoutMessage("75 seconds"),
     );
   });
 
@@ -292,15 +322,15 @@ describe("createCliRequestTimeoutFetch()", () => {
   });
 
   it("rejects negative timeout values", () => {
-    expect(() => createCliRequestTimeoutFetch({ timeoutMs: -1 })).toThrow(
-      CLI_REQUEST_TIMEOUT_VALIDATION_MESSAGE,
+    expect(() => createRequestTimeoutFetch({ timeoutMs: -1 })).toThrow(
+      REQUEST_TIMEOUT_VALIDATION_MESSAGE,
     );
   });
 
   it("rejects non-finite timeout values", () => {
     for (const timeoutMs of [Infinity, -Infinity, Number.NaN]) {
-      expect(() => createCliRequestTimeoutFetch({ timeoutMs })).toThrow(
-        CLI_REQUEST_TIMEOUT_VALIDATION_MESSAGE,
+      expect(() => createRequestTimeoutFetch({ timeoutMs })).toThrow(
+        REQUEST_TIMEOUT_VALIDATION_MESSAGE,
       );
     }
   });
@@ -310,7 +340,7 @@ describe("createCliRequestTimeoutFetch()", () => {
 
     await expectPendingFetchTimeout({
       timeoutMs: 2_000,
-      expectedMessage: cliRequestTimeoutMessage("2 seconds"),
+      expectedMessage: requestTimeoutMessage("2 seconds"),
     });
   });
 
@@ -319,7 +349,7 @@ describe("createCliRequestTimeoutFetch()", () => {
 
     await expectPendingFetchTimeout({
       timeoutMs: 1_250,
-      expectedMessage: cliRequestTimeoutMessage("1250 ms"),
+      expectedMessage: requestTimeoutMessage("1250 ms"),
     });
   });
 
@@ -328,7 +358,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.resolve(new Response("ok"));
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 1_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
     const response = await timeoutFetch("http://server/api/v1/hosts");
 
     await expect(response.text()).resolves.toBe("ok");
@@ -344,7 +374,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       );
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 1_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
     const response = await timeoutFetch("http://server/api/v1/hosts");
 
     expect(response.status).toBe(202);
@@ -363,7 +393,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.resolve(new Response("ok"));
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 1_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
     const response = await timeoutFetch("http://server/api/v1/hosts", {
       body: requestBody,
       headers: { "x-bb-test": "yes" },
@@ -378,12 +408,12 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.resolve(new Response(null, { status: 204 }));
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 1_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
     const response = await timeoutFetch("http://server/api/v1/threads/wait");
 
     expect(response.body).toBeNull();
     await expect(
-      unwrapVoid(Promise.resolve(response)),
+      readVoidResponse({ response: Promise.resolve(response) }),
     ).resolves.toBeUndefined();
   });
 
@@ -392,7 +422,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.resolve(createStalledResponse({ signal: init?.signal }));
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({
+    const timeoutFetch = createRequestTimeoutFetch({
       timeoutMs: IMMEDIATE_TIMEOUT_MS,
     });
     const response = await timeoutFetch("http://server/api/v1/threads/output");
@@ -411,7 +441,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       );
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({
+    const timeoutFetch = createRequestTimeoutFetch({
       timeoutMs: IMMEDIATE_TIMEOUT_MS,
     });
 
@@ -451,11 +481,13 @@ describe("createCliRequestTimeoutFetch()", () => {
       );
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({
+    const timeoutFetch = createRequestTimeoutFetch({
       timeoutMs: IMMEDIATE_TIMEOUT_MS,
     });
     await expect(
-      unwrap<{ ok: boolean }>(timeoutFetch("http://server/api/v1/threads")),
+      readJsonResponse({
+        response: timeoutFetch("http://server/api/v1/threads"),
+      }),
     ).rejects.toThrow(IMMEDIATE_TIMEOUT_MESSAGE);
   });
 
@@ -465,7 +497,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.resolve(createErroredResponse(bodyError));
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 1_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
     const response = await timeoutFetch("http://server/api/v1/hosts");
 
     await expect(response.text()).rejects.toBe(bodyError);
@@ -486,7 +518,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       });
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 1_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
     const responsePromise = timeoutFetch("http://server/api/v1/hosts", {
       signal: upstreamController.signal,
     });
@@ -499,7 +531,7 @@ describe("createCliRequestTimeoutFetch()", () => {
     const upstreamController = new AbortController();
     mockPendingFetchUntilAbort();
 
-    const timeoutFetch = createCliRequestTimeoutFetch({
+    const timeoutFetch = createRequestTimeoutFetch({
       timeoutMs: IMMEDIATE_TIMEOUT_MS,
     });
 
@@ -509,7 +541,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       }),
     ).rejects.toMatchObject({
       message: IMMEDIATE_TIMEOUT_MESSAGE,
-      name: CLI_REQUEST_TIMEOUT_ERROR_NAME,
+      name: REQUEST_TIMEOUT_ERROR_NAME,
     });
     expect(upstreamController.signal.aborted).toBe(false);
   });
@@ -532,7 +564,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       });
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({
+    const timeoutFetch = createRequestTimeoutFetch({
       timeoutMs: IMMEDIATE_TIMEOUT_MS,
     });
 
@@ -542,7 +574,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       }),
     ).rejects.toMatchObject({
       message: IMMEDIATE_TIMEOUT_MESSAGE,
-      name: CLI_REQUEST_TIMEOUT_ERROR_NAME,
+      name: REQUEST_TIMEOUT_ERROR_NAME,
     });
   });
 
@@ -553,7 +585,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.resolve(createStalledResponse({ signal: init?.signal }));
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 60_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 60_000 });
     const response = await timeoutFetch("http://server/api/v1/hosts", {
       signal: upstreamController.signal,
     });
@@ -568,10 +600,12 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.resolve(new Response("not json"));
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 1_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
 
     await expect(
-      unwrap<{ ok: boolean }>(timeoutFetch("http://server/api/v1/hosts")),
+      readJsonResponse({
+        response: timeoutFetch("http://server/api/v1/hosts"),
+      }),
     ).rejects.toThrow(SyntaxError);
   });
 
@@ -580,7 +614,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.resolve(createStalledResponse({ signal: init?.signal }));
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({
+    const timeoutFetch = createRequestTimeoutFetch({
       timeoutMs: IMMEDIATE_TIMEOUT_MS,
     });
     const response = await timeoutFetch("http://server/api/v1/hosts");
@@ -592,7 +626,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.resolve(createStalledResponse({ signal: init?.signal }));
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({
+    const timeoutFetch = createRequestTimeoutFetch({
       timeoutMs: IMMEDIATE_TIMEOUT_MS,
     });
     const response = await timeoutFetch("http://server/api/v1/hosts");
@@ -618,7 +652,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       );
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 1_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
     const response = await timeoutFetch("http://server/api/v1/hosts");
     const body = response.body;
     if (body === null) {
@@ -635,7 +669,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.resolve(createStalledResponse({ signal: init?.signal }));
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({
+    const timeoutFetch = createRequestTimeoutFetch({
       timeoutMs: IMMEDIATE_TIMEOUT_MS,
     });
     const response = await timeoutFetch("http://server/api/v1/hosts");
@@ -649,7 +683,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.resolve(new Response("ok"));
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 1_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
     const response = await timeoutFetch("http://server/api/v1/hosts");
     const cloned = response.clone();
 
@@ -664,7 +698,7 @@ describe("createCliRequestTimeoutFetch()", () => {
       return Promise.reject(init?.signal?.reason);
     });
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 1_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
 
     await expect(
       timeoutFetch("http://server/api/v1/hosts", {
@@ -677,7 +711,7 @@ describe("createCliRequestTimeoutFetch()", () => {
     const fetchError = new Error("socket reset");
     vi.spyOn(globalThis, "fetch").mockRejectedValue(fetchError);
 
-    const timeoutFetch = createCliRequestTimeoutFetch({ timeoutMs: 1_000 });
+    const timeoutFetch = createRequestTimeoutFetch({ timeoutMs: 1_000 });
 
     await expect(timeoutFetch("http://server/api/v1/hosts")).rejects.toBe(
       fetchError,

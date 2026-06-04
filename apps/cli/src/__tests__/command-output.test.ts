@@ -12,6 +12,7 @@ import {
 } from "@bb/domain";
 import {
   createApiClient,
+  type ApiClient,
   type EnvironmentDiffResponse,
   type ThreadTimelineResponse,
   type TimelineRow,
@@ -25,58 +26,45 @@ const readlineState = vi.hoisted(() => ({
   close: vi.fn(),
 }));
 
+// Tests stub the server at the hono-client level: each test registers a
+// partial `api` tree whose methods resolve to parsed response bodies (or real
+// `Response` objects for raw routes).
+const serverClientState = vi.hoisted(() => ({
+  createClient: vi.fn(),
+}));
+
 vi.mock("../client.js", async () => {
-  const sdkCore =
+  const { createBbSdk } =
     await vi.importActual<typeof import("@bb/sdk/core")>("@bb/sdk/core");
-  const createClient = vi.fn();
-  const unwrap = vi.fn(async (responsePromise: MockTransportPromise) => {
-    return responsePromise;
-  });
-  const readJson = async (responsePromise: MockTransportPromise) => {
-    const response = await responsePromise;
-    if (!(response instanceof Response)) {
-      return response;
-    }
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-    }
-    return response.json();
-  };
-  const readVoid = async (responsePromise: MockTransportPromise) => {
-    const response = await responsePromise;
-    if (response instanceof Response && !response.ok) {
-      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-    }
-  };
-  const resolve = async <TResponse extends Response>(
-    responsePromise: Promise<TResponse>,
-  ): Promise<TResponse> => {
-    const response = await responsePromise;
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-    }
-    return response;
-  };
+  const { createHttpTransport } =
+    await vi.importActual<typeof import("@bb/sdk/node")>("@bb/sdk/node");
+  // Stubbed api methods may resolve to parsed bodies directly; wrap those in
+  // real 200 Responses so every read runs through the production transport
+  // semantics (error mapping included) instead of a test re-implementation.
+  const toResponse = (resolved: MockTransportResolved): Response =>
+    resolved instanceof Response
+      ? resolved
+      : new Response(JSON.stringify(resolved), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
   const createCliBbSdk = vi.fn(
-    (baseUrl: string, options: MockCliBbSdkOptions = {}) =>
-      sdkCore.createBbSdk({
+    (baseUrl: string, options: MockCliBbSdkOptions = {}) => {
+      const realTransport = createHttpTransport({ baseUrl, runtime: "node" });
+      return createBbSdk({
         context: options.context,
         transport: {
-          api: createClient(baseUrl)?.api ?? {},
-          baseUrl,
-          fetch,
-          readJson,
-          readVoid,
-          resolve,
-          runtime: "node",
+          ...realTransport,
+          api: serverClientState.createClient(baseUrl)?.api ?? {},
+          readJson: (responsePromise: MockTransportPromise) =>
+            realTransport.readJson(responsePromise.then(toResponse)),
+          readVoid: (responsePromise: MockTransportPromise) =>
+            realTransport.readVoid(responsePromise.then(toResponse)),
         },
-      }),
+      });
+    },
   );
-  return {
-    createCliBbSdk,
-    createClient,
-    unwrap,
-  };
+  return { createCliBbSdk };
 });
 
 vi.mock("node:readline/promises", () => ({
@@ -90,7 +78,6 @@ vi.mock("../daemon.js", () => ({
   fetchLocalHostId: vi.fn(async () => "host-test-001"),
 }));
 
-import { createClient, unwrap } from "../client.js";
 import { fetchLocalHostId } from "../daemon.js";
 import { registerAppCommands } from "../commands/app.js";
 import { registerEnvironmentCommands } from "../commands/environment.js";
@@ -102,7 +89,7 @@ import { registerProviderCommands } from "../commands/provider.js";
 import { registerStatusCommand } from "../commands/status.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
 
-type ServerClient = ReturnType<typeof createClient>;
+type ServerClient = ApiClient;
 type MockTransportResolved =
   | Response
   | object
@@ -421,8 +408,7 @@ async function getHelpOutput(
 }
 
 describe("CLI command output contracts", () => {
-  const createClientMock = vi.mocked(createClient);
-  const unwrapMock = vi.mocked(unwrap);
+  const createClientMock = serverClientState.createClient;
   const fetchLocalHostIdMock = vi.mocked(fetchLocalHostId);
 
   beforeEach(() => {
@@ -442,12 +428,6 @@ describe("CLI command output contracts", () => {
     );
 
     createClientMock.mockReset();
-    unwrapMock.mockReset();
-    unwrapMock.mockImplementation(
-      async (responsePromise: MockTransportPromise) => {
-        return responsePromise;
-      },
-    );
     fetchLocalHostIdMock.mockClear();
     fetchLocalHostIdMock.mockResolvedValue("host-test-001");
     Object.defineProperty(process.stdin, "isTTY", {
@@ -1343,6 +1323,55 @@ describe("CLI command output contracts", () => {
       "  App data path: /tmp/bb-data/apps/current/data",
       "  Apps root:     /tmp/bb-data/apps",
     ]);
+  });
+
+  it("bb app data read reports a missing data path for an existing app", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            code: "ENOENT",
+            message: "App data not found: state.json",
+          }),
+          {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    );
+
+    await expect(
+      runCommand(["app", "data", "read", "status", "state.json"], (program) =>
+        registerAppCommands(program, () => "http://server"),
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(collectLogLines(vi.mocked(console.error))).toContain(
+      "Error: App data path not found: state.json",
+    );
+  });
+
+  it("bb app data read surfaces the server error for a missing app", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({ code: "app_missing", message: "App not found" }),
+          {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    );
+
+    await expect(
+      runCommand(["app", "data", "read", "ghost", "state.json"], (program) =>
+        registerAppCommands(program, () => "http://server"),
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(collectLogLines(vi.mocked(console.error))).toContain(
+      "Error: HTTP 404: App not found",
+    );
   });
 
   it("bb manager status includes managed child threads", async () => {
@@ -3324,8 +3353,7 @@ describe("CLI command output contracts", () => {
 });
 
 describe("CLI JSON output contracts", () => {
-  const createClientMock = vi.mocked(createClient);
-  const unwrapMock = vi.mocked(unwrap);
+  const createClientMock = serverClientState.createClient;
 
   beforeEach(() => {
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -3337,12 +3365,6 @@ describe("CLI JSON output contracts", () => {
     );
 
     createClientMock.mockReset();
-    unwrapMock.mockReset();
-    unwrapMock.mockImplementation(
-      async (responsePromise: MockTransportPromise) => {
-        return responsePromise;
-      },
-    );
 
     vi.stubEnv("BB_PROJECT_ID", undefined);
     vi.stubEnv("BB_THREAD_ID", undefined);

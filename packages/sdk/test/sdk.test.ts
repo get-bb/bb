@@ -183,4 +183,49 @@ describe("@bb/sdk", () => {
       sdk.threads.get({ threadId: "thr_missing" }),
     ).rejects.toThrow("HTTP 404: Thread not found");
   });
+
+  it("apps.data.read resolves undefined when the data path has no entry", async () => {
+    const queue = createFetchQueue([
+      {
+        body: { code: "ENOENT", message: "App data not found: state.json" },
+        status: 404,
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.apps.data.read({ applicationId: "status", path: "state.json" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("apps.data.read surfaces a missing application as an error", async () => {
+    const queue = createFetchQueue([
+      {
+        body: { code: "app_missing", message: "App not found" },
+        status: 404,
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.apps.data.read({ applicationId: "ghost", path: "state.json" }),
+    ).rejects.toMatchObject({
+      code: "app_missing",
+      message: "HTTP 404: App not found",
+      name: "BbHttpError",
+      status: 404,
+    });
+  });
 });

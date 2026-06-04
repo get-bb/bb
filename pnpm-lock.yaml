@@ -252,9 +252,6 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@bb/host-daemon-contract':
-        specifier: workspace:*
-        version: link:../../packages/host-daemon-contract
       '@bb/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk

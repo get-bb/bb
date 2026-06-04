@@ -5,7 +5,6 @@ import {
   requireThreadId,
   requireThreadIdWithLabelOrSelf,
   resolveContextSnapshot,
-  resolveHostDaemonUrl,
   resolveProjectId,
   resolveServerUrl,
   resolveThreadId,
@@ -72,7 +71,6 @@ describe("context-env", () => {
     });
 
     expect(resolveServerUrl(context)).toBe("http://server.test");
-    expect(resolveHostDaemonUrl(context)).toBe("http://127.0.0.1:4567");
     expect(resolveContextSnapshot(context).serverUrl).toBe(
       "http://server.test",
     );

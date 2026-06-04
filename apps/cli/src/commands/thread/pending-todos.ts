@@ -3,16 +3,10 @@ import type {
   ThreadTimelinePendingTodoItem,
   ThreadTimelinePendingTodoItemStatus,
 } from "@bb/domain";
-import type { ThreadTimelineResponse } from "@bb/server-contract";
+import type { BbSdk } from "@bb/sdk";
 
-export interface PendingTodosSdk {
-  threads: {
-    timeline(args: PendingTodosTimelineArgs): Promise<ThreadTimelineResponse>;
-  };
-}
-
-interface PendingTodosTimelineArgs {
-  summaryOnly: "true";
+export interface FetchThreadPendingTodosArgs {
+  sdk: Pick<BbSdk, "threads">;
   threadId: string;
 }
 
@@ -24,10 +18,9 @@ interface PendingTodosTimelineArgs {
  * Uses `summaryOnly=true` so the server skips row generation/serialization;
  * the CLI only consumes `pendingTodos`, not the full timeline.
  */
-export async function fetchThreadPendingTodos(args: {
-  sdk: PendingTodosSdk;
-  threadId: string;
-}): Promise<ThreadTimelinePendingTodos | null> {
+export async function fetchThreadPendingTodos(
+  args: FetchThreadPendingTodosArgs,
+): Promise<ThreadTimelinePendingTodos | null> {
   try {
     const response = await args.sdk.threads.timeline({
       threadId: args.threadId,

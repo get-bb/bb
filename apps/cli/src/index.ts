@@ -70,7 +70,7 @@ registerAppCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerReplayCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
-registerGuideCommand(program, getUrl);
+registerGuideCommand(program);
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err.message);

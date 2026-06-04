@@ -17,6 +17,7 @@ import {
   type CreateAppRequest,
 } from "@bb/server-contract";
 import type { AppDataPath, JsonValue } from "@bb/domain";
+import { BbHttpError } from "../response.js";
 import { fetchApi } from "../transport-http.js";
 import type { BbRealtime } from "../realtime.js";
 import type { CreateSdkAreaArgs, OkResponse } from "./common.js";
@@ -113,6 +114,21 @@ export interface CreateCurrentAppDataAreaArgs extends CreateSdkAreaArgs {
   realtime: BbRealtime;
 }
 
+const APP_MISSING_ERROR_CODE = "app_missing";
+
+/**
+ * A 404 from the app data route means the data path has no entry — unless the
+ * server's error code says the application itself is missing, which callers
+ * must see as a failure rather than an empty read.
+ */
+function isAppDataPathMissingError(error: unknown): boolean {
+  return (
+    error instanceof BbHttpError &&
+    error.status === 404 &&
+    error.code !== APP_MISSING_ERROR_CODE
+  );
+}
+
 function encodePathSegments(value: string): string {
   return value.split("/").map(encodeURIComponent).join("/");
 }
@@ -169,7 +185,7 @@ export function createAppsArea(args: CreateSdkAreaArgs): AppsArea {
         );
         return appDataReadResponseSchema.parse(await response.json());
       } catch (error) {
-        if (error instanceof Error && error.message.startsWith("HTTP 404:")) {
+        if (isAppDataPathMissingError(error)) {
           return undefined;
         }
         throw error;

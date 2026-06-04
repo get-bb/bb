@@ -1,4 +1,9 @@
-import type { Thread, ThreadTimelinePendingTodos } from "@bb/domain";
+import type {
+  Thread,
+  ThreadStatus,
+  ThreadTimelinePendingTodos,
+  ThreadType,
+} from "@bb/domain";
 import type {
   ProjectResponse,
   ThreadTimelineResponse,
@@ -16,9 +21,9 @@ export interface StatusThreadResponse {
   parentThreadId: string | null;
   pinnedAt: number | null;
   projectId: string;
-  status: string;
+  status: ThreadStatus;
   title: string | null;
-  type: string;
+  type: ThreadType;
 }
 
 export interface StatusGetResponse {

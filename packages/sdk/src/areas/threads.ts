@@ -4,7 +4,6 @@ import {
   type PendingInteractionResolution,
   type Thread,
   type ThreadEventRow,
-  type ThreadStatus,
 } from "@bb/domain";
 import type {
   CreateThreadRequest,
@@ -78,20 +77,6 @@ export interface ThreadOutputResponse {
   output: string | null;
 }
 
-export interface ThreadWaitForStatusArgs {
-  pollIntervalMs: number;
-  status: ThreadStatus;
-  threadId: string;
-  timeoutMs: number;
-}
-
-export interface ThreadWaitForEventArgs {
-  eventType: string;
-  pollIntervalMs: number;
-  threadId: string;
-  timeoutMs: number;
-}
-
 export interface ThreadInteractionListArgs {
   threadId: string;
 }
@@ -132,8 +117,6 @@ export interface ThreadsArea {
   unarchive(args: ThreadStatusArgs): Promise<OkResponse>;
   unpin(args: ThreadStatusArgs): Promise<Thread>;
   update(args: ThreadUpdateArgs): Promise<Thread>;
-  waitForEvent(args: ThreadWaitForEventArgs): Promise<ThreadEventRow>;
-  waitForStatus(args: ThreadWaitForStatusArgs): Promise<Thread>;
 }
 
 function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
@@ -210,10 +193,6 @@ function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
       ? { beforeAnchorId: args.beforeAnchorId }
       : {}),
   };
-}
-
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
@@ -380,42 +359,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           json: updateJson(input),
         }),
       );
-    },
-    async waitForEvent(input) {
-      const deadline = Date.now() + input.timeoutMs;
-      while (true) {
-        const remainingMs = Math.max(0, deadline - Date.now());
-        const waitMs = Math.floor(Math.min(remainingMs, 30_000));
-        const event = await events.wait({
-          threadId: input.threadId,
-          type: input.eventType,
-          waitMs: String(waitMs),
-        });
-        if (event !== null) {
-          return event;
-        }
-        if (Date.now() >= deadline) {
-          throw new Error(
-            `Timed out waiting for thread ${input.threadId} event ${input.eventType}.`,
-          );
-        }
-        await sleep(input.pollIntervalMs);
-      }
-    },
-    async waitForStatus(input) {
-      const deadline = Date.now() + input.timeoutMs;
-      while (true) {
-        const thread = await getThread({ threadId: input.threadId });
-        if (thread.status === input.status) {
-          return thread;
-        }
-        if (Date.now() >= deadline) {
-          throw new Error(
-            `Timed out waiting for thread ${input.threadId} to reach status ${input.status}.`,
-          );
-        }
-        await sleep(input.pollIntervalMs);
-      }
     },
   };
 }
