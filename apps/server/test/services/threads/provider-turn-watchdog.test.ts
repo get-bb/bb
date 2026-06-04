@@ -5,11 +5,15 @@ import {
   hostDaemonCommands,
 } from "@bb/db";
 import {
+  backgroundTaskItemStatus,
   encodeClientTurnRequestIdNumber,
+  providerTurnWatchdogThreadScopedActivityEventTypeValues,
   systemProviderTurnWatchdogEventDataSchema,
   systemThreadInterruptedEventDataSchema,
+  threadScope,
   turnScope,
 } from "@bb/domain";
+import type { BackgroundTaskStatus } from "@bb/domain";
 import { desc } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
@@ -106,6 +110,45 @@ function seedActiveTurn(args: SeedActiveTurnArgs): void {
     data: {
       providerThreadId: PROVIDER_THREAD_ID,
       clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+    },
+  });
+}
+
+interface SeedBackgroundTaskEventArgs {
+  context: WatchdogTestContext;
+  createdAt: number;
+  providerThreadId?: string;
+  sequence: number;
+  taskStatus?: BackgroundTaskStatus;
+  type?: (typeof providerTurnWatchdogThreadScopedActivityEventTypeValues)[number];
+}
+
+/**
+ * Seeds a thread-scoped (turn_id NULL) background task event, the only
+ * liveness signal a provider emits while a dynamic workflow runs.
+ */
+function seedBackgroundTaskEvent(args: SeedBackgroundTaskEventArgs): void {
+  const taskStatus = args.taskStatus ?? "running";
+  const providerThreadId = args.providerThreadId ?? PROVIDER_THREAD_ID;
+  seedEvent(args.context.harness.deps, {
+    threadId: args.context.threadId,
+    environmentId: args.context.environmentId,
+    providerThreadId,
+    sequence: args.sequence,
+    type: args.type ?? "item/backgroundTask/progress",
+    scope: threadScope(),
+    createdAt: args.createdAt,
+    data: {
+      providerThreadId,
+      item: {
+        type: "backgroundTask",
+        id: "task:watchdog-workflow",
+        taskType: "local_workflow",
+        description: "Workflow under test",
+        status: backgroundTaskItemStatus(taskStatus),
+        taskStatus,
+        skipTranscript: false,
+      },
     },
   });
 }
@@ -261,6 +304,323 @@ describe("provider turn watchdog", () => {
 
       expect(result.interruptedThreadIds).toEqual([context.threadId]);
       expect(listWatchdogEvents(context)).toHaveLength(1);
+    } finally {
+      await context.harness.cleanup();
+    }
+  });
+
+  it("does not stop a provider turn while a background task streams thread-scoped progress", async () => {
+    const context = await createWatchdogTestContext();
+    try {
+      seedActiveTurn({
+        context,
+        startedAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 10_000,
+        acceptedAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 9_999,
+      });
+      seedBackgroundTaskEvent({
+        context,
+        sequence: 3,
+        createdAt: WATCHDOG_NOW - 1_000,
+      });
+
+      const result = runProviderTurnWatchdogSweep(context.harness.deps, {
+        now: WATCHDOG_NOW,
+      });
+
+      expect(result.interruptedThreadIds).toEqual([]);
+      expect(listWatchdogEvents(context)).toHaveLength(0);
+    } finally {
+      await context.harness.cleanup();
+    }
+  });
+
+  it("stops a provider turn when background task progress goes stale", async () => {
+    const context = await createWatchdogTestContext();
+    try {
+      const turnStartedAt =
+        WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 10_000;
+      seedActiveTurn({
+        context,
+        startedAt: turnStartedAt,
+        acceptedAt: turnStartedAt + 1,
+      });
+      seedBackgroundTaskEvent({
+        context,
+        sequence: 3,
+        createdAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 1,
+      });
+
+      const result = runProviderTurnWatchdogSweep(context.harness.deps, {
+        now: WATCHDOG_NOW,
+      });
+
+      expect(result.interruptedThreadIds).toEqual([context.threadId]);
+      const watchdogEvents = listWatchdogEvents(context);
+      expect(watchdogEvents).toHaveLength(1);
+      const watchdogData = systemProviderTurnWatchdogEventDataSchema.parse(
+        JSON.parse(watchdogEvents[0]?.data ?? "{}"),
+      );
+      expect(watchdogData).toMatchObject({
+        reason: "provider-turn-idle",
+        activeTurnId: ACTIVE_TURN_ID,
+        activeTurnStartedAt: turnStartedAt,
+        elapsedMs: PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS + 1,
+        lastActivityEventSequence: 3,
+        lastActivityEventType: "item/backgroundTask/progress",
+        providerThreadId: PROVIDER_THREAD_ID,
+      });
+    } finally {
+      await context.harness.cleanup();
+    }
+  });
+
+  it("measures idle from background task completion, not the pruned progress trail", async () => {
+    const context = await createWatchdogTestContext();
+    try {
+      seedActiveTurn({
+        context,
+        startedAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 10_000,
+      });
+      seedBackgroundTaskEvent({
+        context,
+        sequence: 2,
+        createdAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 5_000,
+      });
+      seedBackgroundTaskEvent({
+        context,
+        sequence: 3,
+        createdAt: WATCHDOG_NOW - 1_000,
+        taskStatus: "completed",
+        type: "item/backgroundTask/completed",
+      });
+
+      const result = runProviderTurnWatchdogSweep(context.harness.deps, {
+        now: WATCHDOG_NOW,
+      });
+
+      expect(result.interruptedThreadIds).toEqual([]);
+      expect(listWatchdogEvents(context)).toHaveLength(0);
+    } finally {
+      await context.harness.cleanup();
+    }
+  });
+
+  it("ignores thread-scoped activity when no turn has started", async () => {
+    const context = await createWatchdogTestContext();
+    try {
+      seedBackgroundTaskEvent({
+        context,
+        sequence: 1,
+        createdAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 1,
+      });
+
+      const result = runProviderTurnWatchdogSweep(context.harness.deps, {
+        now: WATCHDOG_NOW,
+      });
+
+      expect(result.interruptedThreadIds).toEqual([]);
+      expect(listWatchdogEvents(context)).toHaveLength(0);
+    } finally {
+      await context.harness.cleanup();
+    }
+  });
+
+  it("waits on a pending interaction even when the latest activity is thread-scoped", async () => {
+    const context = await createWatchdogTestContext();
+    try {
+      seedActiveTurn({
+        context,
+        startedAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 10_000,
+      });
+      seedBackgroundTaskEvent({
+        context,
+        sequence: 2,
+        createdAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 1,
+      });
+      createPendingInteraction(context.harness.db, {
+        threadId: context.threadId,
+        turnId: ACTIVE_TURN_ID,
+        providerId: "codex",
+        providerThreadId: PROVIDER_THREAD_ID,
+        providerRequestId: "request-active-turn",
+        sessionId: context.sessionId,
+        payload: "{}",
+      });
+
+      const result = runProviderTurnWatchdogSweep(context.harness.deps, {
+        now: WATCHDOG_NOW,
+      });
+
+      expect(result.interruptedThreadIds).toEqual([]);
+      expect(listWatchdogEvents(context)).toHaveLength(0);
+    } finally {
+      await context.harness.cleanup();
+    }
+  });
+
+  it("does not anchor on thread-scoped activity from before the active turn", async () => {
+    const context = await createWatchdogTestContext();
+    try {
+      seedBackgroundTaskEvent({
+        context,
+        sequence: 1,
+        createdAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 60_000,
+      });
+      seedEvent(context.harness.deps, {
+        threadId: context.threadId,
+        environmentId: context.environmentId,
+        providerThreadId: PROVIDER_THREAD_ID,
+        sequence: 2,
+        type: "turn/started",
+        scope: turnScope(ACTIVE_TURN_ID),
+        createdAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 1,
+        data: { providerThreadId: PROVIDER_THREAD_ID },
+      });
+
+      const result = runProviderTurnWatchdogSweep(context.harness.deps, {
+        now: WATCHDOG_NOW,
+      });
+
+      expect(result.interruptedThreadIds).toEqual([context.threadId]);
+      const watchdogEvents = listWatchdogEvents(context);
+      expect(watchdogEvents).toHaveLength(1);
+      const watchdogData = systemProviderTurnWatchdogEventDataSchema.parse(
+        JSON.parse(watchdogEvents[0]?.data ?? "{}"),
+      );
+      expect(watchdogData).toMatchObject({
+        lastActivityEventSequence: 2,
+        lastActivityEventType: "turn/started",
+        elapsedMs: PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS + 1,
+      });
+    } finally {
+      await context.harness.cleanup();
+    }
+  });
+
+  it("does not let thread-scoped provider errors defer a wedged turn", async () => {
+    const context = await createWatchdogTestContext();
+    try {
+      const turnStartedAt =
+        WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 10_000;
+      seedActiveTurn({ context, startedAt: turnStartedAt });
+      seedEvent(context.harness.deps, {
+        threadId: context.threadId,
+        environmentId: context.environmentId,
+        providerThreadId: PROVIDER_THREAD_ID,
+        sequence: 2,
+        type: "provider/error",
+        scope: threadScope(),
+        createdAt: WATCHDOG_NOW - 1_000,
+        data: {
+          providerThreadId: PROVIDER_THREAD_ID,
+          message: "session-level provider error",
+        },
+      });
+
+      const result = runProviderTurnWatchdogSweep(context.harness.deps, {
+        now: WATCHDOG_NOW,
+      });
+
+      expect(result.interruptedThreadIds).toEqual([context.threadId]);
+      const watchdogEvents = listWatchdogEvents(context);
+      expect(watchdogEvents).toHaveLength(1);
+      const watchdogData = systemProviderTurnWatchdogEventDataSchema.parse(
+        JSON.parse(watchdogEvents[0]?.data ?? "{}"),
+      );
+      expect(watchdogData).toMatchObject({
+        lastActivityEventSequence: 1,
+        lastActivityEventType: "turn/started",
+        elapsedMs: PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS + 10_000,
+      });
+    } finally {
+      await context.harness.cleanup();
+    }
+  });
+
+  it("stops a provider turn when idle for exactly the threshold", async () => {
+    const context = await createWatchdogTestContext();
+    try {
+      seedActiveTurn({
+        context,
+        startedAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS,
+      });
+
+      const result = runProviderTurnWatchdogSweep(context.harness.deps, {
+        now: WATCHDOG_NOW,
+      });
+
+      expect(result.interruptedThreadIds).toEqual([context.threadId]);
+    } finally {
+      await context.harness.cleanup();
+    }
+  });
+
+  it("falls back past an empty-string providerThreadId on the anchor event", async () => {
+    const context = await createWatchdogTestContext();
+    try {
+      seedActiveTurn({
+        context,
+        startedAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 10_000,
+      });
+      // The claude adapter emits background task events with providerThreadId
+      // "" until the session identity is stamped; the persisted watchdog
+      // event requires a non-empty-or-null provider thread id.
+      seedBackgroundTaskEvent({
+        context,
+        sequence: 2,
+        createdAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 1,
+        providerThreadId: "",
+      });
+
+      const result = runProviderTurnWatchdogSweep(context.harness.deps, {
+        now: WATCHDOG_NOW,
+      });
+
+      expect(result.interruptedThreadIds).toEqual([context.threadId]);
+      const watchdogEvents = listWatchdogEvents(context);
+      expect(watchdogEvents).toHaveLength(1);
+      const watchdogData = systemProviderTurnWatchdogEventDataSchema.parse(
+        JSON.parse(watchdogEvents[0]?.data ?? "{}"),
+      );
+      expect(watchdogData).toMatchObject({
+        lastActivityEventSequence: 2,
+        lastActivityEventType: "item/backgroundTask/progress",
+        providerThreadId: PROVIDER_THREAD_ID,
+      });
+    } finally {
+      await context.harness.cleanup();
+    }
+  });
+
+  it("does not resurrect a completed turn from trailing thread-scoped activity", async () => {
+    const context = await createWatchdogTestContext();
+    try {
+      seedActiveTurn({
+        context,
+        startedAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 10_000,
+      });
+      seedEvent(context.harness.deps, {
+        threadId: context.threadId,
+        environmentId: context.environmentId,
+        providerThreadId: PROVIDER_THREAD_ID,
+        sequence: 2,
+        type: "turn/completed",
+        scope: turnScope(ACTIVE_TURN_ID),
+        createdAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 9_000,
+        data: { providerThreadId: PROVIDER_THREAD_ID, status: "completed" },
+      });
+      seedBackgroundTaskEvent({
+        context,
+        sequence: 3,
+        createdAt: WATCHDOG_NOW - PROVIDER_TURN_IDLE_WATCHDOG_THRESHOLD_MS - 1,
+      });
+
+      const result = runProviderTurnWatchdogSweep(context.harness.deps, {
+        now: WATCHDOG_NOW,
+      });
+
+      expect(result.interruptedThreadIds).toEqual([]);
+      expect(listWatchdogEvents(context)).toHaveLength(0);
     } finally {
       await context.harness.cleanup();
     }

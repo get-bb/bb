@@ -442,6 +442,7 @@ export {
   providerTurnWatchdogActivityEventTypeValues,
   providerTurnWatchdogReasonSchema,
   providerTurnWatchdogReasonValues,
+  providerTurnWatchdogThreadScopedActivityEventTypeValues,
 } from "./provider-turn-watchdog.js";
 export type { ProviderTurnWatchdogActivityEventType } from "./provider-turn-watchdog.js";
 
