@@ -7,9 +7,10 @@ import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   bbDesktopBrowserViewBoundsFromLayoutDescriptor,
-  clampBbDesktopBrowserViewBounds,
+  bbDesktopBrowserViewLayoutDescriptorFromBounds,
   type BbDesktopBrowserAttachRequest,
   type BbDesktopBrowserNavigateRequest,
+  type BbDesktopBrowserOpenTabRequest,
   type BbDesktopBrowserSetBoundsRequest,
   type BbDesktopBrowserSetVisibleRequest,
   type BbDesktopBrowserState,
@@ -52,6 +53,11 @@ const ERR_ABORTED = -3;
 interface BrowserViewEntry {
   view: WebContentsView;
   lastErrorText: string | null;
+  /**
+   * Resize-invariant placement derived main-side from the last
+   * renderer-measured rect (see {@link layoutFromRendererBounds}), cached so
+   * native window resizes can reproject synchronously without renderer IPC.
+   */
   layout: BbDesktopBrowserViewLayoutDescriptor;
   popupTimestamps: number[];
   visible: boolean;
@@ -59,7 +65,7 @@ interface BrowserViewEntry {
 
 export type DesktopBrowserHostWebContentsPayload =
   | BbDesktopBrowserState
-  | { url: string };
+  | BbDesktopBrowserOpenTabRequest;
 
 export interface DesktopBrowserHostContentBounds {
   height: number;
@@ -98,18 +104,18 @@ interface HostScopedTabArgs {
   tabId: string;
 }
 
-interface ClampBoundsToHostWindowArgs {
-  bounds: BbDesktopBrowserViewBounds;
+interface CreateEntryArgs {
   hostWindow: DesktopBrowserHostWindow;
+  layout: BbDesktopBrowserViewLayoutDescriptor;
+  tabId: string;
 }
 
 interface HostWindowViewportBoundsArgs {
   hostWindow: DesktopBrowserHostWindow;
 }
 
-interface SetEntryBoundsArgs {
+interface LayoutFromRendererBoundsArgs {
   bounds: BbDesktopBrowserViewBounds;
-  entry: BrowserViewEntry;
   hostWindow: DesktopBrowserHostWindow;
 }
 
@@ -178,22 +184,21 @@ function hostWindowViewportBounds(
   };
 }
 
-function clampBoundsToHostWindow(
-  args: ClampBoundsToHostWindowArgs,
-): BbDesktopBrowserViewBounds {
-  return clampBbDesktopBrowserViewBounds({
+/**
+ * Derive the cached layout descriptor from a renderer-measured absolute rect.
+ * Derivation happens HERE, against the same `getContentBounds()` space the
+ * native-resize reprojection uses — never in the renderer, whose layout
+ * viewport (`window.innerWidth/innerHeight`) diverges from the window content
+ * area when DevTools is docked, which would misproject the view over the
+ * DevTools pane.
+ */
+function layoutFromRendererBounds(
+  args: LayoutFromRendererBoundsArgs,
+): BbDesktopBrowserViewLayoutDescriptor {
+  return bbDesktopBrowserViewLayoutDescriptorFromBounds({
     bounds: args.bounds,
     viewport: hostWindowViewportBounds({ hostWindow: args.hostWindow }),
   });
-}
-
-function setEntryBounds(args: SetEntryBoundsArgs): void {
-  args.entry.view.setBounds(
-    clampBoundsToHostWindow({
-      bounds: args.bounds,
-      hostWindow: args.hostWindow,
-    }),
-  );
 }
 
 function applyEntryLayout(args: ApplyEntryLayoutArgs): void {
@@ -349,10 +354,7 @@ export function createDesktopBrowserViewManager(
     );
   }
 
-  function createEntry(
-    hostWindow: DesktopBrowserHostWindow,
-    tabId: string,
-  ): BrowserViewEntry {
+  function createEntry(args: CreateEntryArgs): BrowserViewEntry {
     ensureHardenedSession();
     const view = new WebContentsView({
       webPreferences: {
@@ -369,18 +371,13 @@ export function createDesktopBrowserViewManager(
     const entry: BrowserViewEntry = {
       view,
       lastErrorText: null,
-      layout: {
-        left: 0,
-        top: 0,
-        rightInset: Number.MAX_SAFE_INTEGER,
-        bottomInset: Number.MAX_SAFE_INTEGER,
-      },
+      layout: args.layout,
       popupTimestamps: [],
       visible: false,
     };
-    wireWebContents(hostWindow, tabId, entry);
-    hostWindow.contentView.addChildView(view);
-    entries.set(browserViewKey(hostWindow, tabId), entry);
+    wireWebContents(args.hostWindow, args.tabId, entry);
+    args.hostWindow.contentView.addChildView(view);
+    entries.set(browserViewKey(args.hostWindow, args.tabId), entry);
     return entry;
   }
 
@@ -428,9 +425,14 @@ export function createDesktopBrowserViewManager(
   return {
     attach({ hostWindow, request }) {
       const key = browserViewKey(hostWindow, request.tabId);
-      const entry = entries.get(key) ?? createEntry(hostWindow, request.tabId);
-      setEntryBounds({ hostWindow, entry, bounds: request.bounds });
-      entry.layout = request.layout;
+      const layout = layoutFromRendererBounds({
+        bounds: request.bounds,
+        hostWindow,
+      });
+      const entry =
+        entries.get(key) ??
+        createEntry({ hostWindow, layout, tabId: request.tabId });
+      setEntryLayout({ entry, hostWindow, layout });
       entry.visible = request.visible;
       entry.view.setVisible(entry.visible);
       loadIfNeeded(entry, request.url);
@@ -470,7 +472,14 @@ export function createDesktopBrowserViewManager(
     },
     setBounds({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
-        setEntryLayout({ hostWindow, entry, layout: request.layout });
+        setEntryLayout({
+          entry,
+          hostWindow,
+          layout: layoutFromRendererBounds({
+            bounds: request.bounds,
+            hostWindow,
+          }),
+        });
       });
     },
     setVisible({ hostWindow, request }) {

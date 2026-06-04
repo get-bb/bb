@@ -13,7 +13,6 @@ import type {
   BbDesktopBrowserViewportBounds,
   BbDesktopBrowserViewBounds,
   BbDesktopBrowserViewLayoutDescriptor,
-  BbDesktopBrowserViewPlacement,
 } from "@bb/server-contract";
 import {
   bbDesktopBrowserViewLayoutDescriptorFromBounds,
@@ -79,6 +78,20 @@ interface BrowserViewPlacementFromElementArgs {
   element: HTMLElement;
 }
 
+/**
+ * A renderer-side placement measurement. Only `bounds` crosses the IPC
+ * boundary — the desktop main process derives its own resize-invariant layout
+ * descriptor from the rect against the window content bounds, the coordinate
+ * space it also reprojects in on native resize. `layout` here is computed
+ * against the renderer's layout viewport purely as a local dedupe key: it is
+ * invariant under native window resizes, so the ResizeObserver burst from a
+ * window edge-drag produces no renderer IPC (the main process owns that path).
+ */
+interface BrowserViewPlacement {
+  bounds: BbDesktopBrowserViewBounds;
+  layout: BbDesktopBrowserViewLayoutDescriptor;
+}
+
 interface BrowserViewLayoutsEqualArgs {
   a: BbDesktopBrowserViewLayoutDescriptor;
   b: BbDesktopBrowserViewLayoutDescriptor;
@@ -93,16 +106,6 @@ const EMPTY_BROWSER_VIEW_BOUNDS: BbDesktopBrowserViewBounds = {
   y: 0,
   width: 0,
   height: 0,
-};
-
-const EMPTY_BROWSER_VIEW_PLACEMENT: BbDesktopBrowserViewPlacement = {
-  bounds: EMPTY_BROWSER_VIEW_BOUNDS,
-  layout: {
-    left: 0,
-    top: 0,
-    rightInset: Number.MAX_SAFE_INTEGER,
-    bottomInset: Number.MAX_SAFE_INTEGER,
-  },
 };
 
 function roundedBoundsFromRect(rect: DOMRect): BbDesktopBrowserViewBounds {
@@ -123,7 +126,7 @@ function browserViewportBounds(): BbDesktopBrowserViewportBounds {
 
 function browserViewPlacementFromElement(
   args: BrowserViewPlacementFromElementArgs,
-): BbDesktopBrowserViewPlacement {
+): BrowserViewPlacement {
   const viewport = browserViewportBounds();
   const bounds = clampBbDesktopBrowserViewBounds({
     bounds: roundedBoundsFromRect(args.element.getBoundingClientRect()),
@@ -313,14 +316,14 @@ export function BrowserTabContent({
   }, []);
 
   const sendPlacement = useCallback(
-    (placement: BbDesktopBrowserViewPlacement) => {
+    (placement: BrowserViewPlacement) => {
       if (desktopBrowser === null) {
         return;
       }
       lastSentLayoutRef.current = placement.layout;
       desktopBrowser.setBounds({
         tabId,
-        layout: placement.layout,
+        bounds: placement.bounds,
       });
     },
     [desktopBrowser, tabId],
@@ -355,10 +358,13 @@ export function BrowserTabContent({
     syncPlacement({ force: true });
   }, [syncPlacement]);
 
-  const syncInitialPlacement = useCallback(() => {
-    const placement = readPlacement() ?? EMPTY_BROWSER_VIEW_PLACEMENT;
-    lastSentLayoutRef.current = placement.layout;
-    return placement;
+  // Initial bounds for attach. When the content element is not measurable yet
+  // the dedupe key stays null, so the first layout-shape observation always
+  // sends a real placement.
+  const syncInitialBounds = useCallback(() => {
+    const placement = readPlacement();
+    lastSentLayoutRef.current = placement?.layout ?? null;
+    return placement?.bounds ?? EMPTY_BROWSER_VIEW_BOUNDS;
   }, [readPlacement]);
 
   const scheduleBoundsSync = useCallback(() => {
@@ -379,14 +385,13 @@ export function BrowserTabContent({
     if (desktopBrowser === null) {
       return;
     }
-    const initialPlacement = syncInitialPlacement();
+    const initialBounds = syncInitialBounds();
     const mountUrl = initialUrlRef.current;
     registerBrowserView({ environmentId, tabId, threadId });
     desktopBrowser.attach({
       tabId,
       url: mountUrl,
-      bounds: initialPlacement.bounds,
-      layout: initialPlacement.layout,
+      bounds: initialBounds,
       // Only the active tab's view starts visible; background tabs attach hidden
       // (their page still loads) until activated.
       visible: isActiveRef.current && mountUrl.length > 0,
@@ -421,7 +426,7 @@ export function BrowserTabContent({
   }, [
     desktopBrowser,
     environmentId,
-    syncInitialPlacement,
+    syncInitialBounds,
     visibilityCoordinator,
     tabId,
     threadId,

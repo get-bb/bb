@@ -744,7 +744,11 @@ function registerDesktopBrowserWindowLifecycle({
   const syncVisibleBounds = () => {
     manager.syncVisibleBoundsForWindow(browserWindow);
   };
-  browserWindow.on("will-resize", syncVisibleBounds);
+  // `resize` fires per tick during an interactive resize, after the bounds
+  // change, so reprojecting here is the synchronous lockstep path. `will-resize`
+  // is intentionally NOT registered: it fires before the bounds change, so
+  // `getContentBounds()` still reports the old size and reprojection would be
+  // an inert duplicate of the work this listener does one event later.
   browserWindow.on("resize", syncVisibleBounds);
   browserWindow.once("closed", () => {
     manager.releaseWindow(hostWebContentsId);

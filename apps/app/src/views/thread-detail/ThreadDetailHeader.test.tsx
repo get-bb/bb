@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 
+import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { BbDesktopApi, BbDesktopInfo } from "@bb/server-contract";
+import { MACOS_WINDOW_NO_DRAG_CLASS } from "@/lib/bb-desktop";
+import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 
 vi.mock("@/components/ui/hooks/use-compact-viewport.js", () => ({
@@ -14,6 +18,7 @@ vi.mock("@/components/ui/sidebar.js", () => ({
 }));
 
 interface RenderHeaderOverrides {
+  actionsMenu?: ReactNode;
   isSecondaryPanelOpen?: boolean;
   onToggleSecondaryPanel?: () => void;
 }
@@ -21,7 +26,7 @@ interface RenderHeaderOverrides {
 function renderHeader(overrides: RenderHeaderOverrides = {}) {
   const noop = () => {};
   const props = {
-    actionsMenu: null,
+    actionsMenu: overrides.actionsMenu ?? null,
     activeTerminalCount: 0,
     isManagedThread: false,
     isManagerThread: false,
@@ -37,8 +42,66 @@ function renderHeader(overrides: RenderHeaderOverrides = {}) {
   return render(<ThreadDetailHeader {...props} />);
 }
 
+function installMacosDesktopChrome(): void {
+  const info: BbDesktopInfo = {
+    lastCheckedAt: null,
+    latestVersion: null,
+    pendingVersion: null,
+    platform: "macos",
+    updateAvailable: false,
+    updateDownloaded: false,
+    version: "0.0.1",
+  };
+  const desktop: BbDesktopApi = {
+    ...info,
+    browser: createNoopDesktopBrowserApi(),
+    async checkForUpdates() {
+      return info;
+    },
+    async getInfo() {
+      return info;
+    },
+    async installUpdate() {
+      return undefined;
+    },
+    onChange() {
+      return () => undefined;
+    },
+    setTheme() {},
+  };
+  window.bbDesktop = desktop;
+}
+
 afterEach(() => {
   cleanup();
+  delete window.bbDesktop;
+});
+
+describe("ThreadDetailHeader actions menu drag region", () => {
+  // The header center slot is a macOS title-bar drag region; without a no-drag
+  // exemption the actions-menu trigger's clicks are swallowed as window drags.
+  it("exempts the actions menu from window dragging under desktop chrome", () => {
+    installMacosDesktopChrome();
+    renderHeader({
+      actionsMenu: <button type="button">Thread actions</button>,
+    });
+
+    const wrapper = screen.getByTestId("thread-detail-header-actions-menu");
+    expect(wrapper.className).toContain(MACOS_WINDOW_NO_DRAG_CLASS);
+    expect(
+      screen.getByRole("button", { name: "Thread actions" }).parentElement,
+    ).toBe(wrapper);
+  });
+
+  it("keeps the desktop-only no-drag classes off the web build", () => {
+    renderHeader({
+      actionsMenu: <button type="button">Thread actions</button>,
+    });
+
+    const wrapper = screen.getByTestId("thread-detail-header-actions-menu");
+    expect(wrapper.className).not.toContain("app-region");
+    expect(wrapper.className).not.toContain("z-50");
+  });
 });
 
 describe("ThreadDetailHeader panel toggle", () => {

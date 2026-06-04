@@ -6,7 +6,6 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Provider as JotaiProvider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { MACOS_WINDOW_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { createAppQueryClient } from "@/lib/query-client";
 import { ThreadActionsProvider } from "./ThreadActionsProvider";
 import { ThreadActionsMenu } from "./ThreadActionsMenu";
@@ -58,14 +57,7 @@ function makeThread(
   };
 }
 
-interface RenderMenuOptions {
-  triggerClassName?: string;
-}
-
-function renderMenu(
-  thread: ThreadWithRuntime,
-  options: RenderMenuOptions = {},
-) {
+function renderMenu(thread: ThreadWithRuntime) {
   const queryClient = createAppQueryClient({
     defaultOptions: {
       mutations: { retry: false },
@@ -78,11 +70,7 @@ function renderMenu(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
           <ThreadActionsProvider>
-            <ThreadActionsMenu
-              thread={thread}
-              showManagerArchiveAll
-              triggerClassName={options.triggerClassName}
-            />
+            <ThreadActionsMenu thread={thread} showManagerArchiveAll />
           </ThreadActionsProvider>
         </MemoryRouter>
       </QueryClientProvider>
@@ -91,16 +79,6 @@ function renderMenu(
 }
 
 describe("ThreadActionsMenu", () => {
-  it("preserves caller-supplied trigger classes for header no-drag regions", () => {
-    renderMenu(makeThread(), {
-      triggerClassName: MACOS_WINDOW_NO_DRAG_CLASS,
-    });
-
-    expect(
-      screen.getByRole("button", { name: "Thread actions" }).className,
-    ).toContain(MACOS_WINDOW_NO_DRAG_CLASS);
-  });
-
   it("shows manager-specific archive actions when requested", async () => {
     renderMenu(makeThread({ type: "manager" }));
 

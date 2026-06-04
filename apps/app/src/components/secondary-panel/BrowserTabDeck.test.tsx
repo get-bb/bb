@@ -7,11 +7,9 @@ import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
   BbDesktopBrowserViewBounds,
-  BbDesktopBrowserViewLayoutDescriptor,
   BbDesktopInfo,
   BbDesktopInfoChangeHandler,
 } from "@bb/server-contract";
-import { bbDesktopBrowserViewLayoutDescriptorFromBounds } from "@bb/server-contract";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
 import { BrowserTabDeck } from "./BrowserTabDeck";
@@ -21,7 +19,6 @@ import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 interface RecordedBrowserCall {
   method: "attach" | "detach" | "setVisible" | "setBounds" | "navigate";
   bounds: BbDesktopBrowserViewBounds | null;
-  layout: BbDesktopBrowserViewLayoutDescriptor | null;
   tabId: string;
   visible: boolean | null;
 }
@@ -48,7 +45,6 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
       calls.push({
         method: "attach",
         bounds: request.bounds,
-        layout: request.layout,
         tabId: request.tabId,
         visible: request.visible,
       });
@@ -57,7 +53,6 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
       calls.push({
         method: "detach",
         bounds: null,
-        layout: null,
         tabId,
         visible: null,
       });
@@ -66,7 +61,6 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
       calls.push({
         method: "navigate",
         bounds: null,
-        layout: null,
         tabId: request.tabId,
         visible: null,
       });
@@ -78,8 +72,7 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
     setBounds(request) {
       calls.push({
         method: "setBounds",
-        bounds: null,
-        layout: request.layout,
+        bounds: request.bounds,
         tabId: request.tabId,
         visible: null,
       });
@@ -88,7 +81,6 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
       calls.push({
         method: "setVisible",
         bounds: null,
-        layout: null,
         tabId: request.tabId,
         visible: request.visible,
       });
@@ -292,14 +284,14 @@ function installQueuedAnimationFrame(): QueuedAnimationFrameController {
   };
 }
 
-function lastSetLayoutFor(
+function lastSetBoundsFor(
   calls: readonly RecordedBrowserCall[],
   tabId: string,
-): BbDesktopBrowserViewLayoutDescriptor | null {
+): BbDesktopBrowserViewBounds | null {
   for (let index = calls.length - 1; index >= 0; index -= 1) {
     const call = calls[index];
     if (call?.method === "setBounds" && call.tabId === tabId) {
-      return call.layout;
+      return call.bounds;
     }
   }
   return null;
@@ -313,16 +305,6 @@ function attachBoundsFor(
     (candidate) => candidate.method === "attach" && candidate.tabId === tabId,
   );
   return call?.bounds ?? null;
-}
-
-function attachLayoutFor(
-  calls: readonly RecordedBrowserCall[],
-  tabId: string,
-): BbDesktopBrowserViewLayoutDescriptor | null {
-  const call = calls.find(
-    (candidate) => candidate.method === "attach" && candidate.tabId === tabId,
-  );
-  return call?.layout ?? null;
 }
 
 afterEach(() => {
@@ -550,11 +532,11 @@ describe("BrowserTabDeck", () => {
         window.dispatchEvent(new Event(BROWSER_VIEW_BOUNDS_SYNC_EVENT));
       });
 
-      expect(lastSetLayoutFor(calls, TAB_A.id)).toEqual({
-        left: 248,
-        top: 88,
-        rightInset: 272,
-        bottomInset: 252,
+      expect(lastSetBoundsFor(calls, TAB_A.id)).toEqual({
+        x: 248,
+        y: 88,
+        width: 480,
+        height: 360,
       });
     } finally {
       restoreRect();
@@ -591,20 +573,15 @@ describe("BrowserTabDeck", () => {
         width: 320,
         height: 312,
       };
-      const expectedLayout = bbDesktopBrowserViewLayoutDescriptorFromBounds({
-        bounds: expectedBounds,
-        viewport: { width: 500, height: 360 },
-      });
       expect(attachBoundsFor(calls, TAB_A.id)).toEqual(expectedBounds);
-      expect(attachLayoutFor(calls, TAB_A.id)).toEqual(expectedLayout);
-      expect(lastSetLayoutFor(calls, TAB_A.id)).toEqual(expectedLayout);
+      expect(lastSetBoundsFor(calls, TAB_A.id)).toEqual(expectedBounds);
     } finally {
       restoreRect();
       restoreViewport();
     }
   });
 
-  it("does not stream descriptor IPC from the renderer on window resize alone", () => {
+  it("does not stream bounds IPC from the renderer on window resize alone", () => {
     const { api, calls } = createRecordingBrowserApi();
     installDesktopBrowserApi(api);
     const restoreViewport = installViewportSize({ width: 1000, height: 700 });
@@ -614,6 +591,12 @@ describe("BrowserTabDeck", () => {
       width: 480,
       height: 604,
     });
+    // Bounds syncs are deferred to rAF, so a re-added `window.resize` listener
+    // would only send IPC after a frame flush. Queue frames manually and flush
+    // them after the resize: with no listener nothing is scheduled and the
+    // flush is a no-op; a regressed listener gets its frame run and fails the
+    // assertion below.
+    const animationFrame = installQueuedAnimationFrame();
 
     try {
       render(
@@ -629,16 +612,33 @@ describe("BrowserTabDeck", () => {
 
       calls.length = 0;
 
-      act(() => {
-        window.dispatchEvent(new Event("resize"));
+      // Grow the viewport while the content rect stays put, so the rect's
+      // layout shape genuinely changes relative to the viewport — a resync
+      // triggered by this resize cannot be swallowed by the send dedupe.
+      const restoreResizedViewport = installViewportSize({
+        width: 1200,
+        height: 700,
       });
+      try {
+        act(() => {
+          window.dispatchEvent(new Event("resize"));
+          animationFrame.flushNext();
+          animationFrame.flushNext();
+        });
 
-      expect(
-        calls.some(
-          (call) => call.method === "setBounds" && call.tabId === TAB_A.id,
-        ),
-      ).toBe(false);
+        // Native window resizes are reprojected synchronously by the desktop
+        // main process from its cached descriptor; the renderer must stay
+        // silent on this path.
+        expect(
+          calls.some(
+            (call) => call.method === "setBounds" && call.tabId === TAB_A.id,
+          ),
+        ).toBe(false);
+      } finally {
+        restoreResizedViewport();
+      }
     } finally {
+      animationFrame.restore();
       restoreRect();
       restoreViewport();
     }

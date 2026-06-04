@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button.js";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
@@ -11,6 +11,12 @@ import {
 } from "@/components/layout/AppPageHeader";
 import { resolveShowPanelControl } from "@/components/secondary-panel/panelToggleControlState";
 import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
+import {
+  getBbDesktopInfo,
+  MACOS_WINDOW_NO_DRAG_CLASS,
+  shouldUseMacosDesktopChrome,
+} from "@/lib/bb-desktop";
+import { cn } from "@/lib/utils";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS =
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
@@ -53,6 +59,8 @@ export function ThreadDetailHeader({
 }: ThreadDetailHeaderProps) {
   const [primaryAction, ...secondaryActions] = threadHeaderGitActions;
   const renderAsDrawer = useIsCompactViewport();
+  const [desktopInfo] = useState(getBbDesktopInfo);
+  const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
 
   // On a wide viewport the conversation header only owns the panel-CLOSED
   // affordance: a button that opens the secondary panel (read as "open the
@@ -69,7 +77,25 @@ export function ThreadDetailHeader({
       {!isManagerThread && isManagedThread ? (
         <Pill variant="outline">managed</Pill>
       ) : null}
-      {actionsMenu}
+      {/*
+        The header's center slot sits inside the macOS title-bar drag region
+        (AppPageHeader only exempts the actions slot), so the interactive
+        actions menu must opt out of dragging or its clicks are swallowed as
+        window drags. Gated on desktop chrome like every other no-drag site —
+        the class also carries `relative z-50`, which must not leak into the
+        web build.
+      */}
+      {actionsMenu == null ? null : (
+        <span
+          data-testid="thread-detail-header-actions-menu"
+          className={cn(
+            "flex items-center",
+            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+          )}
+        >
+          {actionsMenu}
+        </span>
+      )}
     </>
   );
 

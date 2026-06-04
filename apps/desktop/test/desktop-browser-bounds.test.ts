@@ -3,7 +3,6 @@ import {
   bbDesktopBrowserViewBoundsFromLayoutDescriptor,
   bbDesktopBrowserViewLayoutDescriptorFromBounds,
   clampBbDesktopBrowserViewBounds,
-  clampBbDesktopBrowserViewLayoutDescriptor,
   type BbDesktopBrowserViewBounds,
   type BbDesktopBrowserViewLayoutDescriptor,
   type BbDesktopBrowserViewportBounds,
@@ -98,8 +97,11 @@ describe("desktop browser bounds containment", () => {
       bottomInset: 0,
     });
     expect(
-      clampBbDesktopBrowserViewLayoutDescriptor({
-        layout,
+      bbDesktopBrowserViewLayoutDescriptorFromBounds({
+        bounds: bbDesktopBrowserViewBoundsFromLayoutDescriptor({
+          layout,
+          viewport,
+        }),
         viewport,
       }),
     ).toEqual(layout);

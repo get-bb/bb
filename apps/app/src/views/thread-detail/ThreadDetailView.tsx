@@ -62,8 +62,6 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/app-route-paths";
-import { MACOS_WINDOW_NO_DRAG_CLASS } from "@/lib/bb-desktop";
-import { cn } from "@/lib/utils";
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import {
@@ -1040,10 +1038,7 @@ export function ThreadDetailView() {
   const threadActionsMenu = (
     <ThreadActionsMenu
       thread={thread}
-      triggerClassName={cn(
-        HEADER_ICON_BUTTON_CLASS,
-        MACOS_WINDOW_NO_DRAG_CLASS,
-      )}
+      triggerClassName={HEADER_ICON_BUTTON_CLASS}
       align="end"
       viewerToggleLabel={isManagerThread ? "Use standard timeline" : undefined}
       viewerToggleChecked={
