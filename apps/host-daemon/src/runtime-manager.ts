@@ -105,11 +105,32 @@ interface ApplyExistingEnvironmentProvisionArgs {
 interface EnsureCompatibleEntryArgs {
   entry: RuntimeEntry;
   skillConfig: RuntimeSkillConfig | null;
+  targetThreadId?: string;
 }
 
 interface ReplaceEntryForSkillCatalogArgs {
   entry: RuntimeEntry;
   skillConfig: RuntimeSkillConfig;
+}
+
+interface SkillCatalogConflictErrorArgs {
+  environmentId: string;
+  activeCatalogHash: string | null;
+  requestedCatalogHash: string;
+}
+
+/**
+ * Thrown when an environment's runtime must be replaced to pick up a changed
+ * injected skill catalog, but the runtime is busy with work that does not
+ * belong to the requesting thread (another active thread or an open terminal).
+ */
+export class SkillCatalogConflictError extends Error {
+  constructor(args: SkillCatalogConflictErrorArgs) {
+    super(
+      `Environment ${args.environmentId} already has an active runtime with injected skill catalog ${args.activeCatalogHash ?? "none"}; requested ${args.requestedCatalogHash}`,
+    );
+    this.name = "SkillCatalogConflictError";
+  }
 }
 
 function lazyProvisionOpts(
@@ -223,6 +244,13 @@ export interface EnsureEnvironmentArgs {
   environmentId: string;
   injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
   personalWorkspaceRoot?: string;
+  /**
+   * The thread the requesting command targets, when there is one. A busy
+   * runtime that already hosts this thread is reused even when its injected
+   * skill catalog is stale, instead of failing the command; the catalog
+   * refresh is deferred to the next launch on an idle environment.
+   */
+  targetThreadId?: string;
   workspacePath?: string;
   workspaceProvisionType?: WorkspaceProvisionType;
   provision?: ProvisionWorkspaceArgs;
@@ -633,9 +661,11 @@ export class RuntimeManager {
     args: ReplaceEntryForSkillCatalogArgs,
   ): Promise<void> {
     if (this.entryHasActiveRuntimeWork(args.entry)) {
-      throw new Error(
-        `Environment ${args.entry.environmentId} already has an active runtime with injected skill catalog ${args.entry.skillCatalogHash ?? "none"}; requested ${args.skillConfig.catalogHash}`,
-      );
+      throw new SkillCatalogConflictError({
+        environmentId: args.entry.environmentId,
+        activeCatalogHash: args.entry.skillCatalogHash,
+        requestedCatalogHash: args.skillConfig.catalogHash,
+      });
     }
 
     this.entries.delete(args.entry.environmentId);
@@ -657,6 +687,28 @@ export class RuntimeManager {
       (args.entry.skillCatalogHash === null &&
         args.skillConfig.skillRoots.length === 0)
     ) {
+      return args.entry;
+    }
+
+    // A command for a thread this runtime already hosts must not force a
+    // catalog swap: replacement would either kill the thread's own in-flight
+    // turn or fail outright while the environment is busy. An agent can
+    // trigger this against itself by installing a skill mid-turn. Reuse the
+    // runtime and defer the refresh to the next launch on an idle environment.
+    if (
+      args.targetThreadId !== undefined &&
+      args.entry.threads.has(args.targetThreadId) &&
+      this.entryHasActiveRuntimeWork(args.entry)
+    ) {
+      this.options.logger?.warn(
+        {
+          environmentId: args.entry.environmentId,
+          threadId: args.targetThreadId,
+          activeCatalogHash: args.entry.skillCatalogHash,
+          requestedCatalogHash: args.skillConfig.catalogHash,
+        },
+        "Deferring injected skill catalog refresh; busy runtime already hosts the target thread",
+      );
       return args.entry;
     }
 
@@ -743,6 +795,9 @@ export class RuntimeManager {
       const compatible = await this.ensureCompatibleEntry({
         entry: existing,
         skillConfig,
+        ...(args.targetThreadId !== undefined
+          ? { targetThreadId: args.targetThreadId }
+          : {}),
       });
       if (compatible) {
         return compatible;
@@ -755,6 +810,9 @@ export class RuntimeManager {
       const compatible = await this.ensureCompatibleEntry({
         entry,
         skillConfig,
+        ...(args.targetThreadId !== undefined
+          ? { targetThreadId: args.targetThreadId }
+          : {}),
       });
       if (compatible) {
         return compatible;

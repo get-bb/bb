@@ -198,6 +198,8 @@ export async function requireWorkspaceEnvironment(
     dataDir?: string;
     environmentId: string;
     injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
+    /** Set when the command targets a thread; see EnsureEnvironmentArgs. */
+    targetThreadId?: string;
     workspaceContext: WorkspaceContext;
   },
   runtimeManager: RuntimeManager,
@@ -217,6 +219,9 @@ export async function requireWorkspaceEnvironment(
     environmentId: args.environmentId,
     ...(args.injectedSkillSources !== undefined
       ? { injectedSkillSources: args.injectedSkillSources }
+      : {}),
+    ...(args.targetThreadId !== undefined
+      ? { targetThreadId: args.targetThreadId }
       : {}),
     ...(args.dataDir
       ? { personalWorkspaceRoot: getPersonalWorkspaceRoot(args.dataDir) }

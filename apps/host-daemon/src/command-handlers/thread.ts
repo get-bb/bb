@@ -72,6 +72,7 @@ export async function startThread(
       environmentId: command.environmentId,
       injectedSkillSources: command.injectedSkillSources,
       runtimeManager: options.runtimeManager,
+      targetThreadId: command.threadId,
       workspaceContext: command.workspaceContext,
     });
     const result = await entry.runtime.startThread({
@@ -110,6 +111,7 @@ export async function ensureThreadRuntime(
     environmentId: command.environmentId,
     injectedSkillSources: resumeContext.injectedSkillSources,
     runtimeManager: options.runtimeManager,
+    targetThreadId: command.threadId,
     workspaceContext: resumeContext.workspaceContext,
   });
 

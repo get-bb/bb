@@ -6,6 +6,7 @@ import type {
 } from "@bb/host-daemon-contract";
 import { workspaceResolutionFailureCodeSchema } from "@bb/host-daemon-contract";
 import { WorkspaceError } from "@bb/host-workspace";
+import { SkillCatalogConflictError } from "./runtime-manager.js";
 import type { RuntimeEntry, RuntimeManager } from "./runtime-manager.js";
 import {
   CommandDispatchError,
@@ -34,6 +35,8 @@ interface ResolveWorkspaceForCommandArgs {
   requireGit?: boolean;
   requireManagedWorktree?: boolean;
   runtimeManager: RuntimeManager;
+  /** Set when the command targets a thread; see EnsureEnvironmentArgs. */
+  targetThreadId?: string;
   workspaceContext: WorkspaceContext;
 }
 
@@ -106,6 +109,13 @@ export function workspaceResolutionFailureFromError(
       workspacePath,
     });
   }
+  if (error instanceof SkillCatalogConflictError) {
+    return buildWorkspaceResolutionFailure({
+      code: "skill_catalog_conflict",
+      message: error.message,
+      workspacePath,
+    });
+  }
   if (error instanceof Error && error.message.trim().length > 0) {
     return buildWorkspaceResolutionFailure({
       code: "unknown",
@@ -130,6 +140,9 @@ export async function resolveWorkspaceForCommand(
         environmentId: args.environmentId,
         ...(args.injectedSkillSources !== undefined
           ? { injectedSkillSources: args.injectedSkillSources }
+          : {}),
+        ...(args.targetThreadId !== undefined
+          ? { targetThreadId: args.targetThreadId }
           : {}),
         workspaceContext: args.workspaceContext,
       },

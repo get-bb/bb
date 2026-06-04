@@ -89,6 +89,7 @@ export const workspaceResolutionFailureCodeSchema = z.enum([
   "workspace_type_mismatch",
   "permission_denied",
   "unknown_environment",
+  "skill_catalog_conflict",
   "unknown",
 ]);
 export const workspaceResolutionFailureSchema = z
