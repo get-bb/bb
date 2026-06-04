@@ -1,32 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 import { resolveThreadExecutionOverrideUpdate } from "../../../src/services/threads/thread-execution-override.js";
+import { availableModelFixture } from "../../helpers/available-models.js";
 
-function model(
-  name: string,
-  reasoning: readonly ReasoningLevel[],
-  defaultReasoning: ReasoningLevel,
-): AvailableModel {
-  return {
-    id: name,
-    model: name,
-    displayName: name,
-    description: "",
-    supportedReasoningEfforts: reasoning.map((reasoningEffort) => ({
-      reasoningEffort,
-      description: "",
-    })),
-    defaultReasoningEffort: defaultReasoning,
-    isDefault: false,
-  };
-}
-
-const OPUS = model(
-  "claude-opus-4-8",
-  ["low", "medium", "high", "xhigh", "max"],
-  "medium",
-);
-const HAIKU = model("claude-haiku-4-5", ["low"], "low");
+const OPUS = availableModelFixture({
+  model: "claude-opus-4-8",
+  reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+  defaultReasoningLevel: "medium",
+});
+const HAIKU = availableModelFixture({ model: "claude-haiku-4-5" });
 const CATALOG = [OPUS, HAIKU];
 const EMPTY = { modelOverride: null, reasoningLevelOverride: null };
 

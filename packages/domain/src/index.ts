@@ -188,6 +188,16 @@ export type {
 } from "./provider-types.js";
 
 export {
+  ALL_REASONING_EFFORTS,
+  cloneReasoningEfforts,
+  HIGH_REASONING_EFFORT,
+  LOW_REASONING_EFFORT,
+  MAX_REASONING_EFFORT,
+  MEDIUM_REASONING_EFFORT,
+  XHIGH_REASONING_EFFORT,
+} from "./reasoning-efforts.js";
+
+export {
   environmentCleanupModeSchema,
   WORKSPACE_PROVISION_TYPES,
   discoveredWorkspacePropertiesSchema,

@@ -6,34 +6,9 @@
  */
 
 import { z } from "zod";
-import type { ModelReasoningEffort, ThreadEventItem } from "@bb/domain";
+import type { ThreadEventItem } from "@bb/domain";
 import { contentWrapperSchema, textBlockSchema } from "./tool-arg-schemas.js";
 import { getStringProperty, isRecord } from "./provider-visibility-helpers.js";
-
-// ---------------------------------------------------------------------------
-// Reasoning effort constants
-// ---------------------------------------------------------------------------
-
-export const LOW_REASONING_EFFORT: ModelReasoningEffort = {
-  reasoningEffort: "low",
-  description: "Low reasoning effort",
-};
-export const MEDIUM_REASONING_EFFORT: ModelReasoningEffort = {
-  reasoningEffort: "medium",
-  description: "Medium reasoning effort",
-};
-export const HIGH_REASONING_EFFORT: ModelReasoningEffort = {
-  reasoningEffort: "high",
-  description: "High reasoning effort",
-};
-export const XHIGH_REASONING_EFFORT: ModelReasoningEffort = {
-  reasoningEffort: "xhigh",
-  description: "Extra high reasoning effort",
-};
-export const MAX_REASONING_EFFORT: ModelReasoningEffort = {
-  reasoningEffort: "max",
-  description: "Maximum reasoning effort",
-};
 
 export interface NormalizeProviderCommandOutputArgs {
   emptyPlaceholders: readonly string[];

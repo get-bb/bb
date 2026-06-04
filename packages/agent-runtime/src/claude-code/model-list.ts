@@ -1,11 +1,13 @@
-import type { AvailableModel, ModelReasoningEffort } from "@bb/domain";
 import {
+  cloneReasoningEfforts,
   HIGH_REASONING_EFFORT,
   LOW_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
   MEDIUM_REASONING_EFFORT,
   XHIGH_REASONING_EFFORT,
-} from "../shared/adapter-utils.js";
+  type AvailableModel,
+  type ModelReasoningEffort,
+} from "@bb/domain";
 
 type ClaudeCodeCatalogEntry = {
   id: string;
@@ -176,12 +178,6 @@ const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
     defaultReasoningEffort: "low",
   },
 ];
-
-function cloneReasoningEfforts(
-  efforts: readonly ModelReasoningEffort[],
-): ModelReasoningEffort[] {
-  return efforts.map((effort) => ({ ...effort }));
-}
 
 function buildCatalogModel(entry: ClaudeCodeCatalogEntry): AvailableModel {
   return {

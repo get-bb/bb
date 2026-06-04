@@ -1,4 +1,5 @@
 export {
+  agentProviderIdSchema,
   getBuiltInAgentProviderInfo,
   isAgentProviderId,
   listBuiltInAgentProviderInfos,

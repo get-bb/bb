@@ -219,6 +219,7 @@ async function startIntegrationServer(
   pendingInteractions.start();
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-dev",
+    customModels: [],
     dataDir: serverDataDir,
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 3001,

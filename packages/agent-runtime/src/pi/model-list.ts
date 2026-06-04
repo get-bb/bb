@@ -1,11 +1,12 @@
 import { resolvePiDefaultModelId } from "@bb/agent-providers";
-import type { AvailableModel, ModelReasoningEffort } from "@bb/domain";
 import {
   HIGH_REASONING_EFFORT,
   LOW_REASONING_EFFORT,
   MEDIUM_REASONING_EFFORT,
   XHIGH_REASONING_EFFORT,
-} from "../shared/adapter-utils.js";
+  type AvailableModel,
+  type ModelReasoningEffort,
+} from "@bb/domain";
 
 export interface PiCatalogModel {
   id: string;

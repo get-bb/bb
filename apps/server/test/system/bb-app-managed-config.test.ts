@@ -1,6 +1,10 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  formatBbAppConfigPath,
+  formatBbAppEnvPath,
+} from "@bb/config/bb-app-managed-config";
 import { defaultFeatureFlags } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
@@ -50,6 +54,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
   return {
     appUrl: "https://ambient-app.example.test",
     appVersion: "0.0.0-test",
+    customModels: [],
     dataDir: "/tmp/bb-test",
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 38887,
@@ -121,6 +126,58 @@ describe("bb-app managed config", () => {
     expect(targetConfig.openAiApiKey).toBe("ambient-openai-key");
   });
 
+  it("applies custom models over the ambient runtime config", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {
+        customModels: [
+          {
+            providerId: "claude-code",
+            model: "claude-example-preview[1m]",
+            displayName: "Example Preview (1M)",
+          },
+        ],
+      },
+      managedEnvFile: {},
+      targetConfig,
+    });
+
+    expect(targetConfig.customModels).toEqual([
+      {
+        providerId: "claude-code",
+        model: "claude-example-preview[1m]",
+        displayName: "Example Preview (1M)",
+      },
+    ]);
+  });
+
+  it("restores base custom models when the key is removed", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {
+        customModels: [
+          { providerId: "claude-code", model: "claude-example-preview" },
+        ],
+      },
+      managedEnvFile: {},
+      targetConfig,
+    });
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {},
+      managedEnvFile: {},
+      targetConfig,
+    });
+
+    expect(targetConfig.customModels).toEqual([]);
+  });
+
   it("rejects invalid inference model config", () => {
     const baseConfig = createRuntimeConfig();
     const targetConfig = createRuntimeConfig();
@@ -163,7 +220,7 @@ describe("bb-app managed config", () => {
 
     try {
       writeFileSync(
-        join(dataDir, "env.json"),
+        formatBbAppEnvPath(dataDir),
         `${JSON.stringify({ env: { OPENAI_API_KEY: "live-openai-key" } })}\n`,
         "utf8",
       );
@@ -188,7 +245,7 @@ describe("bb-app managed config", () => {
     const logger = createCountingLogger();
 
     try {
-      writeFileSync(join(dataDir, "config.json"), "{", "utf8");
+      writeFileSync(formatBbAppConfigPath(dataDir), "{", "utf8");
 
       await expect(
         createBbAppManagedConfigReloader({
@@ -220,7 +277,7 @@ describe("bb-app managed config", () => {
 
     try {
       writeFileSync(
-        join(dataDir, "config.json"),
+        formatBbAppConfigPath(dataDir),
         `${JSON.stringify({ config: { BB_INFERENCE: "gpt-4o-mini" } })}\n`,
         "utf8",
       );

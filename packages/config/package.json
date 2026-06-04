@@ -110,6 +110,7 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "@bb/agent-providers": "workspace:*",
     "@bb/domain": "workspace:*",
     "zod": "4.3.6"
   },

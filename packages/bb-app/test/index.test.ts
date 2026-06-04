@@ -507,6 +507,40 @@ describe("bb-app launcher", () => {
     expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
   });
 
+  it("preserves customModels across managed config writes", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-custom-"));
+    const customModels = [
+      {
+        providerId: "claude-code",
+        model: "claude-example-preview[1m]",
+        displayName: "Example Preview (1M)",
+      },
+    ];
+    writeFileSync(
+      join(dataDir, "config.json"),
+      `${JSON.stringify({ customModels })}\n`,
+      "utf8",
+    );
+
+    await runBbApp([
+      "--data-dir",
+      dataDir,
+      "config",
+      "set",
+      "BB_APP_URL",
+      "https://bb.example.test",
+    ]);
+
+    expect(
+      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
+    ).toEqual({
+      config: {
+        BB_APP_URL: "https://bb.example.test",
+      },
+      customModels,
+    });
+  });
+
   it("keeps secrets out of the config command", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-secret-config-"));
 

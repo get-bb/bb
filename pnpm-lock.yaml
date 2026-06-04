@@ -749,6 +749,9 @@ importers:
 
   packages/config:
     dependencies:
+      '@bb/agent-providers':
+        specifier: workspace:*
+        version: link:../agent-providers
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
@@ -1251,6 +1254,9 @@ importers:
       '@bb/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
+      '@bb/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@bb/db':
         specifier: workspace:*
         version: link:../../packages/db

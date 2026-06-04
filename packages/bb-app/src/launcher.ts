@@ -731,6 +731,10 @@ function mergeManagedConfig(
     };
   }
 
+  if (patchConfig.customModels !== undefined) {
+    nextConfig.customModels = patchConfig.customModels;
+  }
+
   return nextConfig;
 }
 
@@ -741,6 +745,9 @@ function pruneManagedConfig(config: ManagedConfig): ManagedConfig {
   }
   if (config.config !== undefined && Object.keys(config.config).length > 0) {
     nextConfig.config = config.config;
+  }
+  if (config.customModels !== undefined && config.customModels.length > 0) {
+    nextConfig.customModels = config.customModels;
   }
   return nextConfig;
 }
@@ -1165,6 +1172,14 @@ function formatManagedConfig(config: ManagedConfig): string {
     if (value !== undefined) {
       lines.push(`${key}=${value}`);
     }
+  }
+  // customModels has no set/unset CLI surface (edit config.json directly),
+  // but list must still surface the entries so the file's contents are never
+  // invisible to the official inspection command.
+  for (const [index, customModel] of (config.customModels ?? []).entries()) {
+    lines.push(
+      `customModels[${index}]=${customModel.providerId}:${customModel.model}`,
+    );
   }
   return lines.length > 0 ? `${lines.join("\n")}\n` : "No bb-app config set.\n";
 }

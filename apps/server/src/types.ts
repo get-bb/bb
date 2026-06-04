@@ -1,3 +1,4 @@
+import type { CustomProviderModel } from "@bb/config/bb-app-managed-config";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags } from "@bb/domain";
 import type { Logger } from "@bb/logger";
@@ -13,6 +14,7 @@ export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
 export interface ServerRuntimeConfig {
   appVersion: string;
+  customModels: CustomProviderModel[];
   dataDir: string;
   featureFlags: FeatureFlags;
   hostDaemonPort: number;

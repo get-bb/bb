@@ -127,6 +127,7 @@ export async function createTestAppHarness(
   };
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-test",
+    customModels: [],
     dataDir,
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 3001,

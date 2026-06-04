@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { agentProviderIdSchema } from "@bb/agent-providers";
 import { z } from "zod";
 
 export const BB_APP_CONFIG_FILE_NAME = "config.json";
@@ -28,9 +29,21 @@ export const bbAppManagedConfigValuesSchema = z
   })
   .strict();
 
+// A user-registered model offered in the model picker in addition to the
+// provider's built-in catalog (e.g. a non-public preview model id). Omitting
+// `displayName` means "derive the label from the model id".
+export const customProviderModelSchema = z
+  .object({
+    providerId: agentProviderIdSchema,
+    model: z.string().min(1),
+    displayName: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const bbAppManagedConfigSchema = z
   .object({
     config: bbAppManagedConfigValuesSchema.optional(),
+    customModels: z.array(customProviderModelSchema).optional(),
     serverUrl: z.string().min(1).optional(),
   })
   .strict();
@@ -53,6 +66,7 @@ export const bbAppManagedEnvFileSchema = z
 export type BbAppManagedConfigValues = z.infer<
   typeof bbAppManagedConfigValuesSchema
 >;
+export type CustomProviderModel = z.infer<typeof customProviderModelSchema>;
 export type BbAppManagedConfig = z.infer<typeof bbAppManagedConfigSchema>;
 export type BbAppManagedEnvConfig = z.infer<typeof bbAppManagedEnvConfigSchema>;
 export type BbAppManagedEnvFile = z.infer<typeof bbAppManagedEnvFileSchema>;
