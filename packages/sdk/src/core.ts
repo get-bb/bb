@@ -8,11 +8,7 @@ import { createProjectsArea } from "./areas/projects.js";
 import { createProvidersArea } from "./areas/providers.js";
 import { createReplayArea } from "./areas/replay.js";
 import { createBbRealtimeClient } from "./realtime-client.js";
-import type {
-  BbRealtimeEventName,
-  BbRealtimeOnInput,
-  BbRealtimeUnsubscribe,
-} from "./realtime-types.js";
+import type { BbRealtime } from "./realtime-types.js";
 import { createStatusArea } from "./areas/status.js";
 import { createThreadsArea } from "./areas/threads.js";
 
@@ -21,7 +17,7 @@ export interface CreateBbSdkArgs {
   transport: BbSdkTransport;
 }
 
-export interface BbSdk {
+export interface BbSdk extends BbRealtime {
   applicationId?: string;
   appId?: string;
   apps: ReturnType<typeof createAppsArea>;
@@ -31,9 +27,6 @@ export interface BbSdk {
   hosts: ReturnType<typeof createHostsArea>;
   managers: ReturnType<typeof createManagersArea>;
   message: ReturnType<typeof createCurrentAppMessageArea>;
-  on<TEventName extends BbRealtimeEventName>(
-    input: BbRealtimeOnInput<TEventName>,
-  ): BbRealtimeUnsubscribe;
   projects: ReturnType<typeof createProjectsArea>;
   providers: ReturnType<typeof createProvidersArea>;
   replay: ReturnType<typeof createReplayArea>;
@@ -67,8 +60,8 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
     hosts: createHostsArea(sdkContext),
     managers: createManagersArea(sdkContext),
     message: createCurrentAppMessageArea(sdkContext),
-    on(input) {
-      return realtime.on(input);
+    on(args) {
+      return realtime.on(args);
     },
     projects: createProjectsArea(sdkContext),
     providers: createProvidersArea(sdkContext),

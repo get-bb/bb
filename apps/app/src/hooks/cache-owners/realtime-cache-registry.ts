@@ -1,6 +1,5 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
-  AppChangeKind,
   EnvironmentChangeKind,
   HostChangeKind,
   ProjectChangeKind,
@@ -279,12 +278,6 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   },
 } satisfies SystemChangeRegistry;
 
-export const REALTIME_APP_CHANGE_REGISTRY = {
-  "apps-changed": {
-    dirty: [dirtyAppListQueries],
-  },
-} satisfies AppChangeRegistry;
-
 export type ThreadChangeFlushPriority = "debounced" | "immediate";
 
 export interface RealtimeDirtyContext {
@@ -356,12 +349,6 @@ export interface SystemChangeRule {
 }
 
 export type SystemChangeRegistry = Record<SystemChangeKind, SystemChangeRule>;
-
-export interface AppChangeRule {
-  dirty: readonly RealtimeDirtyHandler<RealtimeDirtyContext>[];
-}
-
-export type AppChangeRegistry = Record<AppChangeKind, AppChangeRule>;
 
 export function executeRealtimeDirtyHandlers<
   Context extends RealtimeDirtyContext,

@@ -53,11 +53,13 @@
     "@bb/server-contract": "workspace:*",
     "@bb/templates": "workspace:*",
     "hono": "^4.7.0",
+    "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
     "esbuild": "^0.28.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.1"

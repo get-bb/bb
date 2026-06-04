@@ -3,6 +3,7 @@ import {
   type AppRuntimeBootstrap,
 } from "./app-runtime-core.js";
 import type { InjectedAppWindowBb } from "./app-window.js";
+import { wrapStandardWebsocket } from "./realtime-client.js";
 
 declare global {
   interface Window {
@@ -21,7 +22,7 @@ function requireBootstrap(): AppRuntimeBootstrap {
 const bb: InjectedAppWindowBb = createInjectedBbSdk({
   bootstrap: requireBootstrap(),
   fetch: window.fetch.bind(window),
-  websocket: (url) => new WebSocket(url),
+  websocket: (url) => wrapStandardWebsocket(new WebSocket(url)),
 });
 
 try {

@@ -109,21 +109,12 @@ export interface CurrentAppMessageArea {
 }
 
 export interface CreateCurrentAppDataAreaArgs extends CreateSdkAreaArgs {
-  apps?: AppsArea;
-  realtime?: BbRealtime;
+  apps: AppsArea;
+  realtime: BbRealtime;
 }
 
 function encodePathSegments(value: string): string {
   return value.split("/").map(encodeURIComponent).join("/");
-}
-
-function cloneValue<TValue extends JsonValue | undefined>(
-  value: TValue,
-): TValue {
-  if (value === undefined) {
-    return value;
-  }
-  return JSON.parse(JSON.stringify(value));
 }
 
 function appDataPath(args: AppDataReadArgs): string {
@@ -261,7 +252,7 @@ export function createAppsArea(args: CreateSdkAreaArgs): AppsArea {
 export function createCurrentAppDataArea(
   args: CreateCurrentAppDataAreaArgs,
 ): CurrentAppDataArea {
-  const apps = args.apps ?? createAppsArea(args);
+  const { apps } = args;
   const applicationId = () => requireCurrentApplicationId(args.context);
   const entries = async (input: CurrentAppDataListArgs = {}) => {
     const response = await apps.data.list({
@@ -287,17 +278,16 @@ export function createCurrentAppDataArea(
       }));
     },
     onChange(input) {
-      if (!args.realtime) {
-        throw new Error("bb.data.onChange requires SDK realtime support.");
-      }
       return args.realtime.on({
         event: "app-data:changed",
         applicationId: applicationId(),
         ...(input.prefix === undefined ? {} : { prefix: input.prefix }),
         callback(event) {
+          // The realtime dispatcher already delivers a per-listener clone;
+          // no defensive re-clone needed here.
           input.callback({
             path: event.path,
-            value: event.deleted ? undefined : cloneValue(event.value),
+            value: event.deleted ? undefined : event.value,
             deleted: event.deleted,
           });
         },

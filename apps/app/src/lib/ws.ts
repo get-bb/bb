@@ -1,5 +1,8 @@
 import ReconnectingWebSocket from "partysocket/ws";
-import { changedMessageSchema, REALTIME_ENTITIES } from "@bb/server-contract";
+import {
+  changedMessageLenientSchema,
+  REALTIME_ENTITIES,
+} from "@bb/server-contract";
 import type {
   ClientMessage,
   ChangedMessage,
@@ -64,11 +67,18 @@ export class WebSocketManager {
     this.socket.onmessage = (event: MessageEvent) => {
       if (typeof event.data !== "string") return;
       try {
-        const msg = changedMessageSchema.safeParse(JSON.parse(event.data));
+        // Lenient parse: tolerate a newer server (unknown fields stripped,
+        // unknown change kinds filtered) instead of dropping whole messages
+        // on additive contract changes.
+        const msg = changedMessageLenientSchema.safeParse(
+          JSON.parse(event.data),
+        );
         if (msg.success) {
           for (const cb of this.callbacks) {
             cb(msg.data);
           }
+        } else {
+          console.error("Ignored invalid realtime message", msg.error);
         }
       } catch {
         // Ignore malformed messages

@@ -37,6 +37,7 @@ import {
   appDataPathSchema,
   applicationIdSchema,
   changedMessageSchema,
+  changedMessageLenientSchema,
   callerExecutionInputSourceSchema,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_QUERY_MAX_LENGTH,
@@ -1662,6 +1663,34 @@ export const serverMessageSchema = z.union([
   appDataBroadcastMessageSchema,
 ]);
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
+
+const appDataChangedBroadcastMessageLenientSchema = z.object({
+  type: z.literal("app-data.changed"),
+  applicationId: applicationIdSchema,
+  path: appDataPathSchema,
+  value: jsonValueSchema.nullable(),
+  deleted: z.boolean(),
+  version: z.string().min(1).nullable(),
+});
+
+const appDataResyncBroadcastMessageLenientSchema = z.object({
+  type: z.literal("app-data.resync"),
+  applicationId: applicationIdSchema,
+});
+
+/**
+ * Lenient counterpart of {@link serverMessageSchema} for INBOUND parsing on
+ * clients. The strict schema guards the server's outgoing boundary; clients
+ * (SDK consumers, the web app) may be older than the server they talk to, so
+ * they strip unknown fields and filter unknown change kinds instead of
+ * dropping whole messages on additive server changes. Output stays assignable
+ * to {@link ServerMessage}.
+ */
+export const serverMessageLenientSchema = z.union([
+  changedMessageLenientSchema,
+  appDataChangedBroadcastMessageLenientSchema,
+  appDataResyncBroadcastMessageLenientSchema,
+]);
 
 export interface BbDataEntry {
   path: AppDataPath;

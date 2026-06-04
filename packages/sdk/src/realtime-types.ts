@@ -61,6 +61,12 @@ export interface BbRealtimeConnectionEvent {
   state: BbRealtimeConnectionState;
 }
 
+/**
+ * Entity-changed events are delivered as one shared object to every matching
+ * listener; their payload types are readonly so a listener cannot mutate what
+ * the next listener receives. app-data:changed events are defensively cloned
+ * per delivery because their values are arbitrary JSON.
+ */
 export interface BbRealtimeEventMap {
   "thread:changed": ThreadRealtimeEvent;
   "project:changed": ProjectRealtimeEvent;
@@ -79,96 +85,111 @@ export type BbRealtimeCallback<TEventName extends BbRealtimeEventName> = (
   event: BbRealtimeEventMap[TEventName],
 ) => void;
 
-export interface ThreadRealtimeOnInput {
+export interface ThreadRealtimeOnArgs {
   callback: BbRealtimeCallback<"thread:changed">;
   event: "thread:changed";
   threadId?: string;
 }
 
-export interface ProjectRealtimeOnInput {
+export interface ProjectRealtimeOnArgs {
   callback: BbRealtimeCallback<"project:changed">;
   event: "project:changed";
   projectId?: string;
 }
 
-export interface EnvironmentRealtimeOnInput {
+export interface EnvironmentRealtimeOnArgs {
   callback: BbRealtimeCallback<"environment:changed">;
   environmentId?: string;
   event: "environment:changed";
 }
 
-export interface HostRealtimeOnInput {
+export interface HostRealtimeOnArgs {
   callback: BbRealtimeCallback<"host:changed">;
   event: "host:changed";
   hostId?: string;
 }
 
-export interface SystemRealtimeOnInput {
+export interface SystemRealtimeOnArgs {
   callback: BbRealtimeCallback<"system:changed">;
   event: "system:changed";
 }
 
-export interface SystemConfigRealtimeOnInput {
+export interface SystemConfigRealtimeOnArgs {
   callback: BbRealtimeCallback<"system:config-changed">;
   event: "system:config-changed";
 }
 
-export interface SystemAppsRealtimeOnInput {
+export interface SystemAppsRealtimeOnArgs {
   callback: BbRealtimeCallback<"system:apps-changed">;
   event: "system:apps-changed";
 }
 
-export interface AppRealtimeOnInput {
+/**
+ * app:changed is a global app-list signal (install/update/remove of any app),
+ * broadcast alongside system:apps-changed; it carries no per-app identity.
+ */
+export interface AppRealtimeOnArgs {
   callback: BbRealtimeCallback<"app:changed">;
   event: "app:changed";
 }
 
-export interface AppDataChangedRealtimeOnInput {
+export interface AppDataChangedRealtimeOnArgs {
   applicationId?: ApplicationId;
   callback: BbRealtimeCallback<"app-data:changed">;
   event: "app-data:changed";
   prefix?: AppDataPath | "";
 }
 
-export interface AppDataResyncRealtimeOnInput {
+/**
+ * Fires when app-data broadcasts may have been missed and state should be
+ * re-read: on a server-initiated resync and after the SDK reconnects its
+ * websocket (before the reconnected realtime:connection event).
+ */
+export interface AppDataResyncRealtimeOnArgs {
   applicationId?: ApplicationId;
   callback: BbRealtimeCallback<"app-data:resync">;
   event: "app-data:resync";
 }
 
-export interface RealtimeConnectionOnInput {
+/**
+ * Connection listeners are pure observers — they never open or hold the
+ * socket. A listener registered while a socket already exists receives the
+ * latest connection event as a snapshot on the next microtask, so a status
+ * UI mounted after connect still learns the current state.
+ */
+export interface RealtimeConnectionOnArgs {
   callback: BbRealtimeCallback<"realtime:connection">;
   event: "realtime:connection";
 }
 
-export type BbRealtimeOnInputUnion =
-  | ThreadRealtimeOnInput
-  | ProjectRealtimeOnInput
-  | EnvironmentRealtimeOnInput
-  | HostRealtimeOnInput
-  | SystemRealtimeOnInput
-  | SystemConfigRealtimeOnInput
-  | SystemAppsRealtimeOnInput
-  | AppRealtimeOnInput
-  | AppDataChangedRealtimeOnInput
-  | AppDataResyncRealtimeOnInput
-  | RealtimeConnectionOnInput;
+export type BbRealtimeOnArgsUnion =
+  | ThreadRealtimeOnArgs
+  | ProjectRealtimeOnArgs
+  | EnvironmentRealtimeOnArgs
+  | HostRealtimeOnArgs
+  | SystemRealtimeOnArgs
+  | SystemConfigRealtimeOnArgs
+  | SystemAppsRealtimeOnArgs
+  | AppRealtimeOnArgs
+  | AppDataChangedRealtimeOnArgs
+  | AppDataResyncRealtimeOnArgs
+  | RealtimeConnectionOnArgs;
 
-export type BbRealtimeOnInput<
+export type BbRealtimeOnArgs<
   TEventName extends BbRealtimeEventName = BbRealtimeEventName,
-> = Extract<BbRealtimeOnInputUnion, { event: TEventName }>;
+> = Extract<BbRealtimeOnArgsUnion, { event: TEventName }>;
 
 export interface BbRealtime {
   on<TEventName extends BbRealtimeEventName>(
-    input: BbRealtimeOnInput<TEventName>,
+    args: BbRealtimeOnArgs<TEventName>,
   ): BbRealtimeUnsubscribe;
 }
 
-export interface BbRealtimeListAppDataEntriesInput {
+export interface BbRealtimeListAppDataEntriesArgs {
   applicationId: ApplicationId;
   prefix?: AppDataPath | "";
 }
 
 export type BbRealtimeListAppDataEntries = (
-  input: BbRealtimeListAppDataEntriesInput,
+  args: BbRealtimeListAppDataEntriesArgs,
 ) => Promise<AppDataEntry[]>;

@@ -9,8 +9,13 @@ import {
 } from "@bb/host-daemon-contract";
 import { createBrowserBbSdk, type AppRealtimeEvent } from "@bb/sdk/browser";
 import { createPublicApiClient } from "@bb/server-contract";
-import { turnScope, type AppChangeKind } from "@bb/domain";
+import {
+  turnScope,
+  type AppChangeKind,
+  type SystemChangeKind,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
+import { notifyGlobalAppsChanged } from "../../src/routes/apps.js";
 import { createTestDaemonEventEnvelope } from "../helpers/commands.js";
 import {
   createTestDaemonHostKey,
@@ -25,32 +30,25 @@ function waitForOpen(socket: WebSocket): Promise<void> {
 }
 
 class SdkWebSocketAdapter {
-  onclose: ((event: CloseEvent) => void) | null = null;
-  onerror: ((event: Event) => void) | null = null;
-  onmessage: ((event: MessageEvent) => void) | null = null;
-  onopen: ((event: Event) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  onopen: (() => void) | null = null;
   private readonly socket: WebSocket;
 
   constructor(url: string) {
     this.socket = new WebSocket(url);
     this.socket.on("open", () => {
-      this.onopen?.(new Event("open"));
+      this.onopen?.();
     });
     this.socket.on("message", (data) => {
-      this.onmessage?.(
-        new MessageEvent("message", { data: data.toString("utf8") }),
-      );
+      this.onmessage?.({ data: data.toString("utf8") });
     });
-    this.socket.on("close", (code, reason) => {
-      this.onclose?.(
-        new CloseEvent("close", {
-          code,
-          reason: reason.toString("utf8"),
-        }),
-      );
+    this.socket.on("close", () => {
+      this.onclose?.();
     });
     this.socket.on("error", () => {
-      this.onerror?.(new Event("error"));
+      this.onerror?.();
     });
   }
 
@@ -69,6 +67,30 @@ class SdkWebSocketAdapter {
 
 interface AppBroadcastHub {
   notifyApp(changes: AppChangeKind[]): void;
+}
+
+interface SystemBroadcastHub {
+  notifySystem(changes: SystemChangeKind[]): void;
+}
+
+interface ChangedBroadcast {
+  changes: string[];
+  entity: string;
+  id?: string;
+}
+
+function isChangedBroadcastFor(args: {
+  entity: string;
+  kind: string;
+}): (message: unknown) => message is ChangedBroadcast {
+  return (message): message is ChangedBroadcast =>
+    typeof message === "object" &&
+    message !== null &&
+    "entity" in message &&
+    message.entity === args.entity &&
+    "changes" in message &&
+    Array.isArray(message.changes) &&
+    message.changes.includes(args.kind);
 }
 
 interface WaitForSdkAppSubscriptionArgs {
@@ -153,6 +175,27 @@ async function waitForThreadSubscription(
 
   try {
     hub.notifyThread(threadId, ["status-changed"]);
+    await readyMessage;
+  } finally {
+    clearInterval(interval);
+  }
+}
+
+async function waitForSystemSubscription(
+  hub: SystemBroadcastHub,
+  socket: WebSocket,
+): Promise<void> {
+  const readyMessage = waitForMatchingMessage(
+    socket,
+    isChangedBroadcastFor({ entity: "system", kind: "config-changed" }),
+    2_000,
+  );
+  const interval = setInterval(() => {
+    hub.notifySystem(["config-changed"]);
+  }, 25);
+
+  try {
+    hub.notifySystem(["config-changed"]);
     await readyMessage;
   } finally {
     clearInterval(interval);
@@ -532,6 +575,51 @@ describe("server integration", () => {
     } finally {
       unsubscribeApp();
       unsubscribeConnection();
+      await server.close();
+    }
+  });
+
+  it("broadcasts apps-changed to system and app subscribers via notifyGlobalAppsChanged", async () => {
+    const server = await startTestServer();
+    try {
+      const wsUrl = `${server.baseUrl.replace("http", "ws")}/ws`;
+      const systemWs = new WebSocket(wsUrl);
+      const appWs = new WebSocket(wsUrl);
+      await Promise.all([waitForOpen(systemWs), waitForOpen(appWs)]);
+
+      systemWs.send(JSON.stringify({ type: "subscribe", entity: "system" }));
+      appWs.send(JSON.stringify({ type: "subscribe", entity: "app" }));
+      // Messages on a socket are handled in order, so confirming this later
+      // "system" subscription also confirms the earlier "app" one.
+      appWs.send(JSON.stringify({ type: "subscribe", entity: "system" }));
+      await waitForSystemSubscription(server.hub, systemWs);
+      await waitForSystemSubscription(server.hub, appWs);
+
+      const systemMessage = waitForMatchingMessage(
+        systemWs,
+        isChangedBroadcastFor({ entity: "system", kind: "apps-changed" }),
+      );
+      const appMessage = waitForMatchingMessage(
+        appWs,
+        isChangedBroadcastFor({ entity: "app", kind: "apps-changed" }),
+      );
+
+      await notifyGlobalAppsChanged(server.deps);
+
+      await expect(systemMessage).resolves.toEqual({
+        type: "changed",
+        entity: "system",
+        changes: ["apps-changed"],
+      });
+      await expect(appMessage).resolves.toEqual({
+        type: "changed",
+        entity: "app",
+        changes: ["apps-changed"],
+      });
+
+      systemWs.close();
+      appWs.close();
+    } finally {
       await server.close();
     }
   });

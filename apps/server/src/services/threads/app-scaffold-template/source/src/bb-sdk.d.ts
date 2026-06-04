@@ -28,51 +28,50 @@ declare global {
   type AppChangeKind = "apps-changed";
 
   interface ThreadChangeMetadata {
-    eventTypes?: readonly ThreadEventType[];
-    hasPendingInteraction?: boolean;
-    projectId?: string;
+    eventTypes?: readonly ThreadEventType[] | undefined;
+    hasPendingInteraction?: boolean | undefined;
+    projectId?: string | undefined;
   }
 
   interface ThreadChangedMessage {
     type: "changed";
     entity: "thread";
-    id?: string;
-    metadata?: ThreadChangeMetadata;
-    changes: ThreadChangeKind[];
+    changes: readonly ThreadChangeKind[];
+    id?: string | undefined;
+    metadata?: ThreadChangeMetadata | undefined;
   }
 
   interface ProjectChangedMessage {
     type: "changed";
     entity: "project";
-    id?: string;
-    changes: ProjectChangeKind[];
+    changes: readonly ProjectChangeKind[];
+    id?: string | undefined;
   }
 
   interface EnvironmentChangedMessage {
     type: "changed";
     entity: "environment";
-    id?: string;
-    changes: EnvironmentChangeKind[];
+    changes: readonly EnvironmentChangeKind[];
+    id?: string | undefined;
   }
 
   interface HostChangedMessage {
     type: "changed";
     entity: "host";
-    id?: string;
-    changes: HostChangeKind[];
+    changes: readonly HostChangeKind[];
+    id?: string | undefined;
   }
 
   interface SystemChangedMessage {
     type: "changed";
     entity: "system";
-    changes: SystemChangeKind[];
+    changes: readonly SystemChangeKind[];
   }
 
   interface AppChangedMessage {
     type: "changed";
     entity: "app";
-    id?: string;
-    changes: AppChangeKind[];
+    changes: readonly AppChangeKind[];
   }
 
   type ChangedMessage = ThreadChangedMessage | ProjectChangedMessage | EnvironmentChangedMessage | HostChangedMessage | SystemChangedMessage | AppChangedMessage;
@@ -169,6 +168,12 @@ declare global {
     state: BbRealtimeConnectionState;
   }
 
+  /**
+   * Entity-changed events are delivered as one shared object to every matching
+   * listener; their payload types are readonly so a listener cannot mutate what
+   * the next listener receives. app-data:changed events are defensively cloned
+   * per delivery because their values are arbitrary JSON.
+   */
   interface BbRealtimeEventMap {
     "thread:changed": ThreadRealtimeEvent;
     "project:changed": ProjectRealtimeEvent;
@@ -185,71 +190,86 @@ declare global {
 
   type BbRealtimeCallback<TEventName extends BbRealtimeEventName> = (event: BbRealtimeEventMap[TEventName]) => void;
 
-  interface ThreadRealtimeOnInput {
+  interface ThreadRealtimeOnArgs {
     callback: BbRealtimeCallback<"thread:changed">;
     event: "thread:changed";
     threadId?: string;
   }
 
-  interface ProjectRealtimeOnInput {
+  interface ProjectRealtimeOnArgs {
     callback: BbRealtimeCallback<"project:changed">;
     event: "project:changed";
     projectId?: string;
   }
 
-  interface EnvironmentRealtimeOnInput {
+  interface EnvironmentRealtimeOnArgs {
     callback: BbRealtimeCallback<"environment:changed">;
     environmentId?: string;
     event: "environment:changed";
   }
 
-  interface HostRealtimeOnInput {
+  interface HostRealtimeOnArgs {
     callback: BbRealtimeCallback<"host:changed">;
     event: "host:changed";
     hostId?: string;
   }
 
-  interface SystemRealtimeOnInput {
+  interface SystemRealtimeOnArgs {
     callback: BbRealtimeCallback<"system:changed">;
     event: "system:changed";
   }
 
-  interface SystemConfigRealtimeOnInput {
+  interface SystemConfigRealtimeOnArgs {
     callback: BbRealtimeCallback<"system:config-changed">;
     event: "system:config-changed";
   }
 
-  interface SystemAppsRealtimeOnInput {
+  interface SystemAppsRealtimeOnArgs {
     callback: BbRealtimeCallback<"system:apps-changed">;
     event: "system:apps-changed";
   }
 
-  interface AppRealtimeOnInput {
+  /**
+   * app:changed is a global app-list signal (install/update/remove of any app),
+   * broadcast alongside system:apps-changed; it carries no per-app identity.
+   */
+  interface AppRealtimeOnArgs {
     callback: BbRealtimeCallback<"app:changed">;
     event: "app:changed";
   }
 
-  interface AppDataChangedRealtimeOnInput {
+  interface AppDataChangedRealtimeOnArgs {
     applicationId?: ApplicationId;
     callback: BbRealtimeCallback<"app-data:changed">;
     event: "app-data:changed";
     prefix?: AppDataPath | "";
   }
 
-  interface AppDataResyncRealtimeOnInput {
+  /**
+   * Fires when app-data broadcasts may have been missed and state should be
+   * re-read: on a server-initiated resync and after the SDK reconnects its
+   * websocket (before the reconnected realtime:connection event).
+   */
+  interface AppDataResyncRealtimeOnArgs {
     applicationId?: ApplicationId;
     callback: BbRealtimeCallback<"app-data:resync">;
     event: "app-data:resync";
   }
 
-  interface RealtimeConnectionOnInput {
+  /**
+   * Connection listeners are pure observers — they never open or hold the
+   * socket. A listener registered while a socket already exists receives the
+   * latest connection event as a snapshot on the next microtask, so a status
+   * UI mounted after connect still learns the current state.
+   */
+  interface RealtimeConnectionOnArgs {
     callback: BbRealtimeCallback<"realtime:connection">;
     event: "realtime:connection";
   }
 
-  type BbRealtimeOnInputUnion = ThreadRealtimeOnInput | ProjectRealtimeOnInput | EnvironmentRealtimeOnInput | HostRealtimeOnInput | SystemRealtimeOnInput | SystemConfigRealtimeOnInput | SystemAppsRealtimeOnInput | AppRealtimeOnInput | AppDataChangedRealtimeOnInput | AppDataResyncRealtimeOnInput | RealtimeConnectionOnInput;
+  type BbRealtimeOnArgsUnion = ThreadRealtimeOnArgs | ProjectRealtimeOnArgs | EnvironmentRealtimeOnArgs | HostRealtimeOnArgs | SystemRealtimeOnArgs | SystemConfigRealtimeOnArgs | SystemAppsRealtimeOnArgs | AppRealtimeOnArgs | AppDataChangedRealtimeOnArgs | AppDataResyncRealtimeOnArgs | RealtimeConnectionOnArgs;
 
-  type BbRealtimeOnInput<TEventName extends BbRealtimeEventName = BbRealtimeEventName> = Extract<BbRealtimeOnInputUnion, {
+  type BbRealtimeOnArgs<TEventName extends BbRealtimeEventName = BbRealtimeEventName> = Extract<BbRealtimeOnArgsUnion, {
     event: TEventName;
   }>;
 
@@ -288,12 +308,11 @@ declare global {
 
   type BbMessage = CurrentAppMessageArea;
 
-  interface Bb {
+  interface Bb extends BbRealtime {
     appId?: ApplicationId;
     applicationId?: ApplicationId;
     data: CurrentAppDataArea;
     message: CurrentAppMessageArea;
-    on<TEventName extends BbRealtimeEventName>(input: BbRealtimeOnInput<TEventName>): BbRealtimeUnsubscribe;
   }
 
   interface Window {

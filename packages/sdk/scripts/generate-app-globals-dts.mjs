@@ -63,6 +63,22 @@ const domainChangedMessageInterfaceNames = [
   "SystemChangedMessage",
   "AppChangedMessage",
 ];
+// Keep the rendered fields referencing the alias declarations emitted above
+// instead of inlined string unions.
+const domainChangedMessageOverrides = {
+  ThreadChangeMetadata: {
+    eventTypes: "readonly ThreadEventType[] | undefined",
+  },
+  ThreadChangedMessage: {
+    changes: "readonly ThreadChangeKind[]",
+    metadata: "ThreadChangeMetadata | undefined",
+  },
+  ProjectChangedMessage: { changes: "readonly ProjectChangeKind[]" },
+  EnvironmentChangedMessage: { changes: "readonly EnvironmentChangeKind[]" },
+  HostChangedMessage: { changes: "readonly HostChangeKind[]" },
+  SystemChangedMessage: { changes: "readonly SystemChangeKind[]" },
+  AppChangedMessage: { changes: "readonly AppChangeKind[]" },
+};
 const realtimeDeclarationNames = [
   "BbRealtimeUnsubscribe",
   "BbRealtimeEventName",
@@ -78,19 +94,19 @@ const realtimeDeclarationNames = [
   "BbRealtimeConnectionEvent",
   "BbRealtimeEventMap",
   "BbRealtimeCallback",
-  "ThreadRealtimeOnInput",
-  "ProjectRealtimeOnInput",
-  "EnvironmentRealtimeOnInput",
-  "HostRealtimeOnInput",
-  "SystemRealtimeOnInput",
-  "SystemConfigRealtimeOnInput",
-  "SystemAppsRealtimeOnInput",
-  "AppRealtimeOnInput",
-  "AppDataChangedRealtimeOnInput",
-  "AppDataResyncRealtimeOnInput",
-  "RealtimeConnectionOnInput",
-  "BbRealtimeOnInputUnion",
-  "BbRealtimeOnInput",
+  "ThreadRealtimeOnArgs",
+  "ProjectRealtimeOnArgs",
+  "EnvironmentRealtimeOnArgs",
+  "HostRealtimeOnArgs",
+  "SystemRealtimeOnArgs",
+  "SystemConfigRealtimeOnArgs",
+  "SystemAppsRealtimeOnArgs",
+  "AppRealtimeOnArgs",
+  "AppDataChangedRealtimeOnArgs",
+  "AppDataResyncRealtimeOnArgs",
+  "RealtimeConnectionOnArgs",
+  "BbRealtimeOnArgsUnion",
+  "BbRealtimeOnArgs",
 ];
 
 function readCompilerConfig() {
@@ -171,7 +187,9 @@ function declarationText(sourceFile, declaration) {
   return printer
     .printNode(ts.EmitHint.Unspecified, declaration, sourceFile)
     .replace(/^ {4}/gmu, "  ")
-    .replace(/^export\s+/u, "");
+    // Strip `export` from declaration headers (start of line, so JSDoc'd
+    // declarations are handled too) — exports are invalid in declare global.
+    .replace(/^export\s+/gmu, "");
 }
 
 function renderStringAlias(sourceFile, aliasName) {
@@ -267,16 +285,17 @@ function buildDeclarationFile() {
     ...domainChangeKindAliasNames.map((name) =>
       renderStringAlias(domainChangeKindsSource, name),
     ),
+    // The changed-message types are z.infer aliases (the schemas are the
+    // source of truth); render them as expanded interfaces via the checker.
     ...domainChangedMessageInterfaceNames.map((name) =>
-      declarationText(
+      renderInterfaceFromType(
         domainChangeKindsSource,
-        findInterfaceDeclaration(domainChangeKindsSource, name),
+        name,
+        name,
+        domainChangedMessageOverrides[name] ?? {},
       ),
     ),
-    declarationText(
-      domainChangeKindsSource,
-      findTypeAliasDeclaration(domainChangeKindsSource, "ChangedMessage"),
-    ),
+    "type ChangedMessage = ThreadChangedMessage | ProjectChangedMessage | EnvironmentChangedMessage | HostChangedMessage | SystemChangedMessage | AppChangedMessage;",
     renderStringAlias(serverContractSource, "AppDataBroadcastMessage"),
     renderInterfaceFromType(
       serverContractSource,

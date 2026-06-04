@@ -3,18 +3,11 @@ import type {
   CurrentAppDataArea,
   CurrentAppMessageArea,
 } from "./areas/apps.js";
-import type {
-  BbRealtimeEventName,
-  BbRealtimeOnInput,
-  BbRealtimeUnsubscribe,
-} from "./realtime-types.js";
+import type { BbRealtime } from "./realtime-types.js";
 
-export interface InjectedAppWindowBb {
+export interface InjectedAppWindowBb extends BbRealtime {
   appId?: ApplicationId;
   applicationId?: ApplicationId;
   data: CurrentAppDataArea;
   message: CurrentAppMessageArea;
-  on<TEventName extends BbRealtimeEventName>(
-    input: BbRealtimeOnInput<TEventName>,
-  ): BbRealtimeUnsubscribe;
 }

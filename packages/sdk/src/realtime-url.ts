@@ -4,14 +4,26 @@ export interface ResolveRealtimeUrlArgs {
   transport: BbSdkTransport;
 }
 
-function websocketUrlFromHttpUrl(url: URL): string {
-  const websocketUrl = new URL(url.href);
+interface WebsocketUrlFromHttpUrlArgs {
+  /**
+   * Whether the URL's path is a server mount prefix to keep (configured
+   * baseUrl behind a reverse proxy) or an SPA page path to discard
+   * (same-origin browser location).
+   */
+  preservePathPrefix: boolean;
+  url: URL;
+}
+
+function websocketUrlFromHttpUrl(args: WebsocketUrlFromHttpUrlArgs): string {
+  const websocketUrl = new URL(args.url.href);
   if (websocketUrl.protocol === "http:") {
     websocketUrl.protocol = "ws:";
   } else if (websocketUrl.protocol === "https:") {
     websocketUrl.protocol = "wss:";
   }
-  websocketUrl.pathname = "/ws";
+  websocketUrl.pathname = args.preservePathPrefix
+    ? `${args.url.pathname.replace(/\/+$/u, "")}/ws`
+    : "/ws";
   websocketUrl.search = "";
   websocketUrl.hash = "";
   return websocketUrl.href;
@@ -37,7 +49,10 @@ function browserSameOriginRealtimeUrl(): string | null {
   if (currentUrl.protocol !== "http:" && currentUrl.protocol !== "https:") {
     return null;
   }
-  return websocketUrlFromHttpUrl(currentUrl);
+  return websocketUrlFromHttpUrl({
+    preservePathPrefix: false,
+    url: currentUrl,
+  });
 }
 
 export function resolveRealtimeUrl(args: ResolveRealtimeUrlArgs): string {
@@ -46,9 +61,14 @@ export function resolveRealtimeUrl(args: ResolveRealtimeUrlArgs): string {
     return transport.realtimeUrl;
   }
 
+  // Mirror the HTTP transport's derivation (`${baseUrl}/api/v1${path}`): a
+  // path-prefixed baseUrl keeps its prefix for the websocket endpoint too.
   const absoluteBaseUrl = absoluteHttpBaseUrl(transport.baseUrl);
   if (absoluteBaseUrl) {
-    return websocketUrlFromHttpUrl(absoluteBaseUrl);
+    return websocketUrlFromHttpUrl({
+      preservePathPrefix: true,
+      url: absoluteBaseUrl,
+    });
   }
 
   if (transport.runtime === "browser" || transport.runtime === "injected-app") {

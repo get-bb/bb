@@ -1,3 +1,12 @@
+import {
+  APP_CHANGE_KINDS,
+  ENVIRONMENT_CHANGE_KINDS,
+  HOST_CHANGE_KINDS,
+  PROJECT_CHANGE_KINDS,
+  SYSTEM_CHANGE_KINDS,
+  THREAD_CHANGE_KINDS,
+  type ThreadChangeKind,
+} from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { NotificationHub } from "../../src/ws/hub.js";
 
@@ -22,6 +31,16 @@ function createMockSocket(): MockSocket {
       messages.push(data);
     },
   };
+}
+
+/**
+ * Smuggles an out-of-contract change kind into a typed changes array without a
+ * cast: `ThreadChangeKind[]` is assignable to `string[]` (array covariance),
+ * so pushing through the widened parameter reproduces a producer bug that the
+ * type system cannot catch — exactly what the outgoing schema gate exists for.
+ */
+function appendRawChangeKind(changes: string[], kind: string): void {
+  changes.push(kind);
 }
 
 describe("NotificationHub", () => {
@@ -467,5 +486,178 @@ describe("NotificationHub", () => {
     hub.notifyThread("thread-1", ["events-appended"]);
 
     expect(socket.messages).toHaveLength(1);
+  });
+
+  it("skips and logs broadcasts that fail outgoing schema validation", () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      const hub = new NotificationHub();
+      const socket = createMockSocket();
+      hub.subscribe(socket, "thread", "thread-1");
+
+      const changes: ThreadChangeKind[] = ["events-appended"];
+      appendRawChangeKind(changes, "not-a-real-change-kind");
+
+      expect(() => hub.notifyThread("thread-1", changes)).not.toThrow();
+
+      expect(socket.messages).toHaveLength(0);
+      expect(consoleError).toHaveBeenCalledWith(
+        "Skipping invalid realtime broadcast",
+        expect.anything(),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("delivers system notifications to system subscribers", () => {
+    const hub = new NotificationHub();
+    const socket = createMockSocket();
+
+    hub.subscribe(socket, "system");
+    hub.notifySystem(["apps-changed"]);
+
+    expect(socket.messages).toHaveLength(1);
+    expect(JSON.parse(socket.messages[0])).toEqual({
+      type: "changed",
+      entity: "system",
+      changes: ["apps-changed"],
+    });
+  });
+
+  it("delivers host notifications to entity-wide and id-scoped subscribers", () => {
+    const hub = new NotificationHub();
+    const entityWideSocket = createMockSocket();
+    const idScopedSocket = createMockSocket();
+    const otherHostSocket = createMockSocket();
+
+    hub.subscribe(entityWideSocket, "host");
+    hub.subscribe(idScopedSocket, "host", "host-1");
+    hub.subscribe(otherHostSocket, "host", "host-2");
+    hub.notifyHost("host-1", ["host-connected"]);
+
+    const expected = {
+      type: "changed",
+      entity: "host",
+      id: "host-1",
+      changes: ["host-connected"],
+    };
+    expect(
+      entityWideSocket.messages.map((message) => JSON.parse(message)),
+    ).toEqual([expected]);
+    expect(
+      idScopedSocket.messages.map((message) => JSON.parse(message)),
+    ).toEqual([expected]);
+    expect(otherHostSocket.messages).toHaveLength(0);
+  });
+
+  describe("outgoing schema gate delivers every declared change kind", () => {
+    it.each([...THREAD_CHANGE_KINDS])(
+      "delivers thread change kind %s",
+      (kind) => {
+        const hub = new NotificationHub();
+        const socket = createMockSocket();
+
+        hub.subscribe(socket, "thread", "thread-1");
+        hub.notifyThread("thread-1", [kind]);
+
+        expect(socket.messages).toHaveLength(1);
+        expect(JSON.parse(socket.messages[0])).toEqual({
+          type: "changed",
+          entity: "thread",
+          id: "thread-1",
+          changes: [kind],
+        });
+      },
+    );
+
+    it.each([...PROJECT_CHANGE_KINDS])(
+      "delivers project change kind %s",
+      (kind) => {
+        const hub = new NotificationHub();
+        const socket = createMockSocket();
+
+        hub.subscribe(socket, "project", "project-1");
+        hub.notifyProject("project-1", [kind]);
+
+        expect(socket.messages).toHaveLength(1);
+        expect(JSON.parse(socket.messages[0])).toEqual({
+          type: "changed",
+          entity: "project",
+          id: "project-1",
+          changes: [kind],
+        });
+      },
+    );
+
+    it.each([...ENVIRONMENT_CHANGE_KINDS])(
+      "delivers environment change kind %s",
+      (kind) => {
+        const hub = new NotificationHub();
+        const socket = createMockSocket();
+
+        hub.subscribe(socket, "environment", "environment-1");
+        hub.notifyEnvironment("environment-1", [kind]);
+
+        expect(socket.messages).toHaveLength(1);
+        expect(JSON.parse(socket.messages[0])).toEqual({
+          type: "changed",
+          entity: "environment",
+          id: "environment-1",
+          changes: [kind],
+        });
+      },
+    );
+
+    it.each([...HOST_CHANGE_KINDS])("delivers host change kind %s", (kind) => {
+      const hub = new NotificationHub();
+      const socket = createMockSocket();
+
+      hub.subscribe(socket, "host", "host-1");
+      hub.notifyHost("host-1", [kind]);
+
+      expect(socket.messages).toHaveLength(1);
+      expect(JSON.parse(socket.messages[0])).toEqual({
+        type: "changed",
+        entity: "host",
+        id: "host-1",
+        changes: [kind],
+      });
+    });
+
+    it.each([...SYSTEM_CHANGE_KINDS])(
+      "delivers system change kind %s",
+      (kind) => {
+        const hub = new NotificationHub();
+        const socket = createMockSocket();
+
+        hub.subscribe(socket, "system");
+        hub.notifySystem([kind]);
+
+        expect(socket.messages).toHaveLength(1);
+        expect(JSON.parse(socket.messages[0])).toEqual({
+          type: "changed",
+          entity: "system",
+          changes: [kind],
+        });
+      },
+    );
+
+    it.each([...APP_CHANGE_KINDS])("delivers app change kind %s", (kind) => {
+      const hub = new NotificationHub();
+      const socket = createMockSocket();
+
+      hub.subscribe(socket, "app");
+      hub.notifyApp([kind]);
+
+      expect(socket.messages).toHaveLength(1);
+      expect(JSON.parse(socket.messages[0])).toEqual({
+        type: "changed",
+        entity: "app",
+        changes: [kind],
+      });
+    });
   });
 });

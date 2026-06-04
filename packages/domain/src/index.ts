@@ -633,6 +633,7 @@ export {
   APP_CHANGE_KINDS,
   appChangedMessageSchema,
   appChangeKindSchema,
+  changedMessageLenientSchema,
   changedMessageSchema,
   clientMessageSchema,
   environmentChangedMessageSchema,

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   threadEventTypeSchema,
+  threadEventTypeValues,
   type ThreadEventType,
 } from "./provider-event.js";
 
@@ -95,115 +96,87 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
-export interface ThreadChangedMessage {
-  type: "changed";
-  entity: "thread";
-  id?: string;
-  metadata?: ThreadChangeMetadata;
-  changes: ThreadChangeKind[];
-}
-
-export interface ThreadChangeMetadata {
-  eventTypes?: readonly ThreadEventType[];
-  hasPendingInteraction?: boolean;
-  projectId?: string;
-}
-
 export const threadChangeMetadataSchema = z
   .object({
-    eventTypes: z.array(threadEventTypeSchema).optional(),
+    eventTypes: z.array(threadEventTypeSchema).readonly().optional(),
     hasPendingInteraction: z.boolean().optional(),
     projectId: z.string().optional(),
   })
   .strict();
+export type ThreadChangeMetadata = z.infer<typeof threadChangeMetadataSchema>;
 
-export interface ProjectChangedMessage {
-  type: "changed";
-  entity: "project";
-  id?: string;
-  changes: ProjectChangeKind[];
-}
-
-export interface EnvironmentChangedMessage {
-  type: "changed";
-  entity: "environment";
-  id?: string;
-  changes: EnvironmentChangeKind[];
-}
-
-export interface HostChangedMessage {
-  type: "changed";
-  entity: "host";
-  id?: string;
-  changes: HostChangeKind[];
-}
-
-export interface SystemChangedMessage {
-  type: "changed";
-  entity: "system";
-  changes: SystemChangeKind[];
-}
-
-export interface AppChangedMessage {
-  type: "changed";
-  entity: "app";
-  id?: string;
-  changes: AppChangeKind[];
-}
-
+/**
+ * Strict changed-message schemas validate the server's OUTGOING broadcasts —
+ * the producer is in-repo, so unknown fields or kinds there are bugs and must
+ * fail loudly. Message types are derived from these schemas (z.infer) so the
+ * contract cannot drift from the validators.
+ *
+ * Clients must NOT parse inbound traffic with these: a long-lived tab or an
+ * older installed SDK talking to a newer server would drop entire messages
+ * over an additive change. Inbound parsing uses the lenient schemas below.
+ */
 export const threadChangedMessageSchema = z
   .object({
     type: z.literal("changed"),
     entity: z.literal("thread"),
     id: z.string().optional(),
     metadata: threadChangeMetadataSchema.optional(),
-    changes: z.array(threadChangeKindSchema),
+    changes: z.array(threadChangeKindSchema).readonly(),
   })
   .strict();
+export type ThreadChangedMessage = z.infer<typeof threadChangedMessageSchema>;
 
 export const projectChangedMessageSchema = z
   .object({
     type: z.literal("changed"),
     entity: z.literal("project"),
     id: z.string().optional(),
-    changes: z.array(projectChangeKindSchema),
+    changes: z.array(projectChangeKindSchema).readonly(),
   })
   .strict();
+export type ProjectChangedMessage = z.infer<
+  typeof projectChangedMessageSchema
+>;
 
 export const environmentChangedMessageSchema = z
   .object({
     type: z.literal("changed"),
     entity: z.literal("environment"),
     id: z.string().optional(),
-    changes: z.array(environmentChangeKindSchema),
+    changes: z.array(environmentChangeKindSchema).readonly(),
   })
   .strict();
+export type EnvironmentChangedMessage = z.infer<
+  typeof environmentChangedMessageSchema
+>;
 
 export const hostChangedMessageSchema = z
   .object({
     type: z.literal("changed"),
     entity: z.literal("host"),
     id: z.string().optional(),
-    changes: z.array(hostChangeKindSchema),
+    changes: z.array(hostChangeKindSchema).readonly(),
   })
   .strict();
+export type HostChangedMessage = z.infer<typeof hostChangedMessageSchema>;
 
 export const systemChangedMessageSchema = z
   .object({
     type: z.literal("changed"),
     entity: z.literal("system"),
-    changes: z.array(systemChangeKindSchema),
+    changes: z.array(systemChangeKindSchema).readonly(),
   })
   .strict();
+export type SystemChangedMessage = z.infer<typeof systemChangedMessageSchema>;
 
 export const appChangedMessageSchema = z
   .object({
     type: z.literal("changed"),
     entity: z.literal("app"),
-    id: z.string().optional(),
-    changes: z.array(appChangeKindSchema),
+    changes: z.array(appChangeKindSchema).readonly(),
   })
   .strict();
+export type AppChangedMessage = z.infer<typeof appChangedMessageSchema>;
 
 export const changedMessageSchema = z.discriminatedUnion("entity", [
   threadChangedMessageSchema,
@@ -213,11 +186,88 @@ export const changedMessageSchema = z.discriminatedUnion("entity", [
   systemChangedMessageSchema,
   appChangedMessageSchema,
 ]);
+export type ChangedMessage = z.infer<typeof changedMessageSchema>;
 
-export type ChangedMessage =
-  | ThreadChangedMessage
-  | ProjectChangedMessage
-  | EnvironmentChangedMessage
-  | HostChangedMessage
-  | SystemChangedMessage
-  | AppChangedMessage;
+/**
+ * Lenient changed-message schemas parse INBOUND broadcasts on clients (SDK
+ * consumers and the web app). They tolerate version skew against a newer
+ * server: unknown fields are stripped and unknown change kinds are filtered
+ * out instead of rejecting the whole message, so a stale client keeps
+ * receiving the kinds it understands. Their output remains assignable to the
+ * strict message types — dispatch sites enforce that at compile time.
+ */
+function lenientKinds<TKind extends string>(kinds: readonly TKind[]) {
+  const known: ReadonlySet<string> = new Set(kinds);
+  return z
+    .array(z.string())
+    .transform((values) =>
+      values.filter((value): value is TKind => known.has(value)),
+    );
+}
+
+const knownThreadEventTypes: ReadonlySet<string> = new Set(
+  threadEventTypeValues,
+);
+
+const threadChangeMetadataLenientSchema = z.object({
+  eventTypes: z
+    .array(z.string())
+    .transform((values) =>
+      values.filter((value): value is ThreadEventType =>
+        knownThreadEventTypes.has(value),
+      ),
+    )
+    .optional(),
+  hasPendingInteraction: z.boolean().optional(),
+  projectId: z.string().optional(),
+});
+
+const threadChangedMessageLenientSchema = z.object({
+  type: z.literal("changed"),
+  entity: z.literal("thread"),
+  id: z.string().optional(),
+  metadata: threadChangeMetadataLenientSchema.optional(),
+  changes: lenientKinds(THREAD_CHANGE_KINDS),
+});
+
+const projectChangedMessageLenientSchema = z.object({
+  type: z.literal("changed"),
+  entity: z.literal("project"),
+  id: z.string().optional(),
+  changes: lenientKinds(PROJECT_CHANGE_KINDS),
+});
+
+const environmentChangedMessageLenientSchema = z.object({
+  type: z.literal("changed"),
+  entity: z.literal("environment"),
+  id: z.string().optional(),
+  changes: lenientKinds(ENVIRONMENT_CHANGE_KINDS),
+});
+
+const hostChangedMessageLenientSchema = z.object({
+  type: z.literal("changed"),
+  entity: z.literal("host"),
+  id: z.string().optional(),
+  changes: lenientKinds(HOST_CHANGE_KINDS),
+});
+
+const systemChangedMessageLenientSchema = z.object({
+  type: z.literal("changed"),
+  entity: z.literal("system"),
+  changes: lenientKinds(SYSTEM_CHANGE_KINDS),
+});
+
+const appChangedMessageLenientSchema = z.object({
+  type: z.literal("changed"),
+  entity: z.literal("app"),
+  changes: lenientKinds(APP_CHANGE_KINDS),
+});
+
+export const changedMessageLenientSchema = z.discriminatedUnion("entity", [
+  threadChangedMessageLenientSchema,
+  projectChangedMessageLenientSchema,
+  environmentChangedMessageLenientSchema,
+  hostChangedMessageLenientSchema,
+  systemChangedMessageLenientSchema,
+  appChangedMessageLenientSchema,
+]);
