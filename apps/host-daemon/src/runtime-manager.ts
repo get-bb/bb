@@ -93,7 +93,11 @@ interface RuntimeSkillConfig {
   skillRoots: readonly AgentRuntimeSkillRoot[];
 }
 
-interface CreateEntryArgs extends EnsureEnvironmentArgs {
+interface CreateEntryArgs
+  extends Omit<
+    EnsureEnvironmentArgs,
+    "injectedSkillSources" | "targetThreadId"
+  > {
   skillConfig: RuntimeSkillConfig | null;
 }
 
@@ -121,8 +125,9 @@ interface SkillCatalogConflictErrorArgs {
 
 /**
  * Thrown when an environment's runtime must be replaced to pick up a changed
- * injected skill catalog, but the runtime is busy with work that does not
- * belong to the requesting thread (another active thread or an open terminal).
+ * injected skill catalog while it has active work (active threads or open
+ * terminals) and the requesting command targets no thread. Thread commands
+ * never hit this: they reuse the busy runtime and defer the refresh instead.
  */
 export class SkillCatalogConflictError extends Error {
   constructor(args: SkillCatalogConflictErrorArgs) {
@@ -213,6 +218,12 @@ export interface RuntimeEntry {
   environmentId: string;
   runtime: AgentRuntime;
   skillCatalogHash: string | null;
+  /**
+   * The most recent requested catalog hash whose refresh was deferred because
+   * the runtime was busy; used to warn once per requested catalog instead of
+   * on every command.
+   */
+  deferredSkillCatalogHash: string | null;
   stopWatchingStatus: StopWatching;
   workspace: HostWorkspace;
   path: string;
@@ -245,10 +256,12 @@ export interface EnsureEnvironmentArgs {
   injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
   personalWorkspaceRoot?: string;
   /**
-   * The thread the requesting command targets, when there is one. A busy
-   * runtime that already hosts this thread is reused even when its injected
-   * skill catalog is stale, instead of failing the command; the catalog
-   * refresh is deferred to the next launch on an idle environment.
+   * The thread the requesting command targets; set by thread commands that
+   * resolve with injected skill sources (thread.start, turn.submit). When
+   * set, a busy runtime is reused even when its injected skill catalog is
+   * stale, instead of failing the command and dropping the thread's message;
+   * the catalog refresh is deferred to the next launch on an idle
+   * environment.
    */
   targetThreadId?: string;
   workspacePath?: string;
@@ -632,16 +645,27 @@ export class RuntimeManager {
     return false;
   }
 
-  private async cleanupUnusedInjectedSkillStagingDirs(): Promise<void> {
+  /**
+   * Removes staged skill catalog directories no loaded entry references.
+   * `pendingCatalogHashes` names catalogs that are about to become active but
+   * are not yet registered in `entries` — e.g. the replacement catalog during
+   * a runtime swap — so the cleanup does not delete a just-staged directory.
+   */
+  private async cleanupUnusedInjectedSkillStagingDirs(
+    pendingCatalogHashes: readonly string[],
+  ): Promise<void> {
     if (!this.options.dataDir) {
       return;
     }
     try {
       await cleanupInjectedSkillStagingDirs({
         dataDir: this.options.dataDir,
-        keepCatalogHashes: [...this.entries.values()].flatMap((entry) =>
-          entry.skillCatalogHash === null ? [] : [entry.skillCatalogHash],
-        ),
+        keepCatalogHashes: [
+          ...pendingCatalogHashes,
+          ...[...this.entries.values()].flatMap((entry) =>
+            entry.skillCatalogHash === null ? [] : [entry.skillCatalogHash],
+          ),
+        ],
         logger: this.getInjectedSkillsLogger(),
       });
     } catch (error) {
@@ -675,7 +699,9 @@ export class RuntimeManager {
     this.stopWatchingThreadStorageIfNoTrackedThreads();
     await this.stopWatchingStatus(args.entry);
     await args.entry.runtime.shutdown();
-    await this.cleanupUnusedInjectedSkillStagingDirs();
+    await this.cleanupUnusedInjectedSkillStagingDirs([
+      args.skillConfig.catalogHash,
+    ]);
   }
 
   private async ensureCompatibleEntry(
@@ -690,25 +716,31 @@ export class RuntimeManager {
       return args.entry;
     }
 
-    // A command for a thread this runtime already hosts must not force a
-    // catalog swap: replacement would either kill the thread's own in-flight
-    // turn or fail outright while the environment is busy. An agent can
-    // trigger this against itself by installing a skill mid-turn. Reuse the
-    // runtime and defer the refresh to the next launch on an idle environment.
+    // A thread command must not force a catalog swap while the runtime is
+    // busy: replacement would kill in-flight work, and failing the command
+    // would drop the thread's message — an agent can trigger this against its
+    // own thread by installing a skill mid-turn, and an open terminal would
+    // otherwise pin every thread in the environment into the failure. Reuse
+    // the busy runtime with its stale catalog and defer the refresh to the
+    // next launch on an idle environment.
     if (
       args.targetThreadId !== undefined &&
-      args.entry.threads.has(args.targetThreadId) &&
       this.entryHasActiveRuntimeWork(args.entry)
     ) {
-      this.options.logger?.warn(
-        {
-          environmentId: args.entry.environmentId,
-          threadId: args.targetThreadId,
-          activeCatalogHash: args.entry.skillCatalogHash,
-          requestedCatalogHash: args.skillConfig.catalogHash,
-        },
-        "Deferring injected skill catalog refresh; busy runtime already hosts the target thread",
-      );
+      if (
+        args.entry.deferredSkillCatalogHash !== args.skillConfig.catalogHash
+      ) {
+        args.entry.deferredSkillCatalogHash = args.skillConfig.catalogHash;
+        this.options.logger?.warn(
+          {
+            environmentId: args.entry.environmentId,
+            threadId: args.targetThreadId,
+            activeCatalogHash: args.entry.skillCatalogHash,
+            requestedCatalogHash: args.skillConfig.catalogHash,
+          },
+          "Deferring injected skill catalog refresh for busy runtime",
+        );
+      }
       return args.entry;
     }
 
@@ -872,7 +904,7 @@ export class RuntimeManager {
     this.stopWatchingThreadStorageIfNoTrackedThreads();
     await entry.runtime.shutdown();
     await entry.workspace.destroy();
-    await this.cleanupUnusedInjectedSkillStagingDirs();
+    await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 
   async forgetEnvironment(environmentId: string): Promise<void> {
@@ -897,7 +929,7 @@ export class RuntimeManager {
     this.entries.delete(environmentId);
     await this.stopWatchingStatus(entry);
     await entry.runtime.shutdown();
-    await this.cleanupUnusedInjectedSkillStagingDirs();
+    await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 
   async evictIdleEnvironments(): Promise<string[]> {
@@ -933,7 +965,7 @@ export class RuntimeManager {
       throw firstRejected.reason;
     }
 
-    await this.cleanupUnusedInjectedSkillStagingDirs();
+    await this.cleanupUnusedInjectedSkillStagingDirs([]);
     return shutdownResults.flatMap((result) =>
       result.status === "fulfilled" ? [result.value] : [],
     );
@@ -976,7 +1008,7 @@ export class RuntimeManager {
     this.stopWatchingApplicationStorageRoot = STOP_WATCHING;
     await this.stopWatchingDataDirSkillsRoot();
     this.stopWatchingDataDirSkillsRoot = STOP_WATCHING;
-    await this.cleanupUnusedInjectedSkillStagingDirs();
+    await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 
   private buildUnexpectedProviderExitEvents(
@@ -1197,6 +1229,7 @@ export class RuntimeManager {
       environmentId: args.environmentId,
       runtime,
       skillCatalogHash: args.skillConfig?.catalogHash ?? null,
+      deferredSkillCatalogHash: null,
       stopWatchingStatus,
       terminals: new Set<string>(),
       workspace,

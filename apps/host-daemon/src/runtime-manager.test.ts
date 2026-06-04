@@ -428,7 +428,7 @@ describe("RuntimeManager", () => {
     expect(firstEntry.runtime.shutdown).toHaveBeenCalledTimes(1);
   });
 
-  it("reuses a busy runtime that hosts the target thread when the skill catalog is stale", async () => {
+  it("reuses a busy runtime with a stale skill catalog and refreshes it once idle", async () => {
     const dataDir = await makeTempDir("bb-runtime-manager-skills-defer-");
     const source = await writeInjectedSkillSource({
       dataDir,
@@ -448,6 +448,7 @@ describe("RuntimeManager", () => {
       injectedSkillSources: [source],
       workspacePath: "/tmp/env-1",
     });
+    const firstCatalogHash = firstEntry.skillCatalogHash;
     manager.markThreadActive("env-skills", "thread-1", "provider-1");
     await writeInjectedSkillSource({
       dataDir,
@@ -455,20 +456,33 @@ describe("RuntimeManager", () => {
       token: "second-token",
     });
 
-    const secondEntry = await manager.ensureEnvironment({
+    const busyEntry = await manager.ensureEnvironment({
       environmentId: "env-skills",
       injectedSkillSources: [source],
       targetThreadId: "thread-1",
       workspacePath: "/tmp/env-1",
     });
 
-    expect(secondEntry).toBe(firstEntry);
-    expect(secondEntry.skillCatalogHash).toBe(firstEntry.skillCatalogHash);
+    expect(busyEntry).toBe(firstEntry);
+    expect(busyEntry.skillCatalogHash).toBe(firstCatalogHash);
     expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(firstEntry.runtime.shutdown).not.toHaveBeenCalled();
+
+    manager.markThreadInactive("env-skills", "thread-1");
+    const idleEntry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      injectedSkillSources: [source],
+      targetThreadId: "thread-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(idleEntry).not.toBe(firstEntry);
+    expect(idleEntry.skillCatalogHash).not.toBe(firstCatalogHash);
+    expect(createRuntime).toHaveBeenCalledTimes(2);
+    expect(firstEntry.runtime.shutdown).toHaveBeenCalledTimes(1);
   });
 
-  it("replaces an idle runtime that hosts the target thread when the skill catalog is stale", async () => {
+  it("replaces an idle runtime that hosts the target thread and keeps the new staged catalog", async () => {
     const dataDir = await makeTempDir("bb-runtime-manager-skills-idle-host-");
     const source = await writeInjectedSkillSource({
       dataDir,
@@ -507,10 +521,22 @@ describe("RuntimeManager", () => {
     expect(secondEntry.skillCatalogHash).not.toBe(firstEntry.skillCatalogHash);
     expect(createRuntime).toHaveBeenCalledTimes(2);
     expect(firstEntry.runtime.shutdown).toHaveBeenCalledTimes(1);
+
+    // The replacement's staging cleanup must keep the about-to-be-active
+    // catalog (the new runtime's skill roots point into it) and drop the
+    // replaced one.
+    const stagingRoot = path.join(dataDir, "runtime", "global-skills");
+    const newCatalogStat = await fs.stat(
+      path.join(stagingRoot, secondEntry.skillCatalogHash ?? ""),
+    );
+    expect(newCatalogStat.isDirectory()).toBe(true);
+    await expect(
+      fs.stat(path.join(stagingRoot, firstEntry.skillCatalogHash ?? "")),
+    ).rejects.toThrow();
   });
 
-  it("rejects a stale skill catalog when the busy runtime does not host the target thread", async () => {
-    const dataDir = await makeTempDir("bb-runtime-manager-skills-conflict-");
+  it("reuses a busy runtime for a target thread it does not host yet", async () => {
+    const dataDir = await makeTempDir("bb-runtime-manager-skills-unhosted-");
     const source = await writeInjectedSkillSource({
       dataDir,
       name: "release-notes",
@@ -536,11 +562,85 @@ describe("RuntimeManager", () => {
       token: "second-token",
     });
 
+    const secondEntry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      injectedSkillSources: [source],
+      targetThreadId: "thread-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(secondEntry).toBe(firstEntry);
+    expect(createRuntime).toHaveBeenCalledTimes(1);
+    expect(firstEntry.runtime.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("reuses a runtime pinned busy by a terminal when a thread brings skill sources", async () => {
+    const dataDir = await makeTempDir("bb-runtime-manager-skills-terminal-");
+    const source = await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "first-token",
+    });
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const createRuntime = vi.fn(() => createFakeRuntime());
+    const manager = new RuntimeManager({
+      dataDir,
+      provisionWorkspace,
+      createRuntime,
+    });
+
+    // Terminal-first entry: created without skill sources, so the runtime has
+    // no catalog (hash null) and the open terminal keeps it busy.
+    const terminalEntry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      workspacePath: "/tmp/env-1",
+    });
+    manager.markTerminalActive("env-skills", "terminal-1");
+
+    const threadEntry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      injectedSkillSources: [source],
+      targetThreadId: "thread-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(threadEntry).toBe(terminalEntry);
+    expect(threadEntry.skillCatalogHash).toBeNull();
+    expect(createRuntime).toHaveBeenCalledTimes(1);
+    expect(terminalEntry.runtime.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale skill catalog on a busy runtime when no thread targets it", async () => {
+    const dataDir = await makeTempDir("bb-runtime-manager-skills-conflict-");
+    const source = await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "first-token",
+    });
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const createRuntime = vi.fn(() => createFakeRuntime());
+    const manager = new RuntimeManager({
+      dataDir,
+      provisionWorkspace,
+      createRuntime,
+    });
+
+    const firstEntry = await manager.ensureEnvironment({
+      environmentId: "env-skills",
+      injectedSkillSources: [source],
+      workspacePath: "/tmp/env-1",
+    });
+    manager.markThreadActive("env-skills", "thread-1", "provider-1");
+    await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "second-token",
+    });
+
     await expect(
       manager.ensureEnvironment({
         environmentId: "env-skills",
         injectedSkillSources: [source],
-        targetThreadId: "thread-1",
         workspacePath: "/tmp/env-1",
       }),
     ).rejects.toBeInstanceOf(SkillCatalogConflictError);

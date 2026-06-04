@@ -198,7 +198,10 @@ export async function requireWorkspaceEnvironment(
     dataDir?: string;
     environmentId: string;
     injectedSkillSources?: readonly HostDaemonInjectedSkillSource[];
-    /** Set when the command targets a thread; see EnsureEnvironmentArgs. */
+    /**
+     * Set by thread commands that resolve with injectedSkillSources, so a
+     * busy runtime is reused instead of conflicting; see EnsureEnvironmentArgs.
+     */
     targetThreadId?: string;
     workspaceContext: WorkspaceContext;
   },

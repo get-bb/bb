@@ -35,7 +35,10 @@ interface ResolveWorkspaceForCommandArgs {
   requireGit?: boolean;
   requireManagedWorktree?: boolean;
   runtimeManager: RuntimeManager;
-  /** Set when the command targets a thread; see EnsureEnvironmentArgs. */
+  /**
+   * Set by thread commands that resolve with injectedSkillSources, so a busy
+   * runtime is reused instead of conflicting; see EnsureEnvironmentArgs.
+   */
   targetThreadId?: string;
   workspaceContext: WorkspaceContext;
 }
