@@ -1,18 +1,23 @@
-import { readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(scriptDir, "..");
+const repoRoot = path.resolve(packageRoot, "..", "..");
 const entryPoint = path.join(packageRoot, "src", "app-runtime-browser.ts");
 const outputFile = path.join(
   packageRoot,
   "src",
   "app-runtime-browser-bundle.generated.ts",
 );
-const templatesFile = path.resolve(
+const outputRelativePath = path.relative(repoRoot, outputFile);
+const regenerateCommand =
+  "pnpm --filter @bb/sdk generate:app-runtime-browser-bundle";
+const templatesEntryPoint = path.resolve(
   packageRoot,
   "..",
   "templates",
@@ -21,17 +26,37 @@ const templatesFile = path.resolve(
   "templates.generated.ts",
 );
 
-function loadGuideTemplateDefinitions() {
-  const source = readFileSync(templatesFile, "utf8");
-  const match =
-    /export const templateDefinitions = (\[[\s\S]*?\]) as const;/u.exec(
-      source,
-    );
-  if (!match?.[1]) {
-    throw new Error("Unable to read generated template definitions.");
+const GUIDE_TEMPLATE_ID_PREFIX = "bbGuide";
+
+// Compile the generated templates module through esbuild (the real module
+// graph) and import the compiled output, instead of regex-extracting and
+// evaluating source text.
+async function loadGuideTemplateDefinitions() {
+  const result = await build({
+    // Pin the working directory: esbuild renders module paths relative to it
+    // in output comments, so the generated bundle must not depend on the
+    // invoking process's cwd.
+    absWorkingDir: packageRoot,
+    bundle: true,
+    conditions: ["source"],
+    entryPoints: [templatesEntryPoint],
+    format: "esm",
+    platform: "node",
+    target: "es2022",
+    write: false,
+  });
+  const moduleText = result.outputFiles[0]?.text;
+  if (!moduleText) {
+    throw new Error("esbuild did not produce a template definitions module.");
   }
-  const definitions = Function(`return ${match[1]};`)();
-  return definitions.filter((definition) => definition.id.startsWith("bbGuide"));
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(
+    moduleText,
+    "utf8",
+  ).toString("base64")}`;
+  const { templateDefinitions } = await import(moduleUrl);
+  return templateDefinitions.filter((definition) =>
+    definition.id.startsWith(GUIDE_TEMPLATE_ID_PREFIX),
+  );
 }
 
 function asciiStringLiteral(value) {
@@ -41,65 +66,96 @@ function asciiStringLiteral(value) {
   });
 }
 
-function safeJsonForInlineScript(value) {
-  return JSON.stringify(value).replace(/</gu, "\\u003c");
-}
-
-const result = await build({
-  bundle: true,
-  conditions: ["source"],
-  entryPoints: [entryPoint],
-  format: "iife",
-  legalComments: "none",
-  minify: false,
-  platform: "browser",
-  plugins: [
-    {
-      name: "bb-guide-template-definitions",
-      setup(buildContext) {
-        buildContext.onResolve(
-          { filter: /^@bb\/templates\/generated$/ },
-          () => ({
-            namespace: "bb-guide-template-definitions",
-            path: "bb-guide-template-definitions",
-          }),
-        );
-        buildContext.onLoad(
-          {
-            filter: /^bb-guide-template-definitions$/,
-            namespace: "bb-guide-template-definitions",
-          },
-          () => ({
-            contents: `export const templateDefinitions = ${safeJsonForInlineScript(
-              loadGuideTemplateDefinitions(),
-            )};`,
-            loader: "js",
-          }),
-        );
+async function buildRuntimeBundleText() {
+  const guideTemplateDefinitions = await loadGuideTemplateDefinitions();
+  const result = await build({
+    absWorkingDir: packageRoot,
+    bundle: true,
+    conditions: ["source"],
+    entryPoints: [entryPoint],
+    format: "iife",
+    legalComments: "none",
+    minify: false,
+    platform: "browser",
+    plugins: [
+      {
+        name: "bb-guide-template-definitions",
+        setup(buildContext) {
+          buildContext.onResolve(
+            { filter: /^@bb\/templates\/generated$/ },
+            () => ({
+              namespace: "bb-guide-template-definitions",
+              path: "bb-guide-template-definitions",
+            }),
+          );
+          buildContext.onLoad(
+            {
+              filter: /^bb-guide-template-definitions$/,
+              namespace: "bb-guide-template-definitions",
+            },
+            () => ({
+              contents: `export const templateDefinitions = ${JSON.stringify(
+                guideTemplateDefinitions,
+              )};`,
+              loader: "js",
+            }),
+          );
+        },
       },
-    },
-  ],
-  sourcemap: false,
-  target: "es2022",
-  write: false,
-});
+    ],
+    sourcemap: false,
+    target: "es2022",
+    write: false,
+  });
 
-const output = result.outputFiles[0]?.text;
-if (!output) {
-  throw new Error("esbuild did not produce an app-runtime browser bundle.");
+  const output = result.outputFiles[0]?.text;
+  if (!output) {
+    throw new Error("esbuild did not produce an app-runtime browser bundle.");
+  }
+  // The bundle is normally served as a standalone script, but escaping
+  // `</script` keeps it safe to inline into HTML as well. The sequence can
+  // only appear inside string literals (e.g. template bodies), where the
+  // added backslash is a no-op escape.
+  return output.replace(/<\/script/giu, "<\\/script");
 }
-const inlineSafeOutput = output
-  .replace(/<\/script/giu, "<\\/script")
-  .replace(/<base/giu, "\\x3cbase");
 
-await writeFile(
-  outputFile,
-  [
+async function buildGeneratedModule() {
+  const bundleText = await buildRuntimeBundleText();
+  const bundleSha256 = createHash("sha256")
+    .update(bundleText, "utf8")
+    .digest("hex");
+  return [
     "// Generated by packages/sdk/scripts/generate-app-runtime-browser-bundle.mjs",
-    "// Do not edit by hand.",
+    `// Do not edit by hand. Run ${regenerateCommand} to regenerate.`,
     `export const APP_RUNTIME_BROWSER_BUNDLE = ${asciiStringLiteral(
-      inlineSafeOutput,
+      bundleText,
     )};`,
     "",
-  ].join("\n"),
-);
+    `export const APP_RUNTIME_BROWSER_BUNDLE_SHA256 = ${JSON.stringify(
+      bundleSha256,
+    )};`,
+    "",
+  ].join("\n");
+}
+
+async function checkGeneratedFile(expected) {
+  let actual = "";
+  try {
+    actual = await readFile(outputFile, "utf8");
+  } catch {
+    console.error(`${outputRelativePath} is missing. Run ${regenerateCommand}.`);
+    process.exitCode = 1;
+    return;
+  }
+  if (actual !== expected) {
+    console.error(`${outputRelativePath} is stale. Run ${regenerateCommand}.`);
+    process.exitCode = 1;
+  }
+}
+
+const output = await buildGeneratedModule();
+if (process.argv.includes("--check")) {
+  await checkGeneratedFile(output);
+} else {
+  await writeFile(outputFile, output, "utf8");
+}

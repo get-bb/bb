@@ -6,6 +6,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -20,11 +21,13 @@ import {
   appSummarySchema,
   type AppManifest,
 } from "@bb/server-contract";
+import { appRuntimeBrowserBundle } from "@bb/sdk/app-runtime";
 import { describe, expect, it } from "vitest";
+import { appRuntimeScriptAsset } from "../../src/services/threads/app-client-script.js";
 import {
+  copyApplicationScaffoldTemplate,
   resolveApplicationScaffoldTemplatePathForModuleDir,
-  shouldCopyApplicationScaffoldTemplatePath,
-} from "../../src/routes/apps.js";
+} from "../../src/services/threads/app-scaffold-template-copy.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -113,11 +116,6 @@ async function writeMinimalScaffoldTemplate(
 ): Promise<void> {
   const { templatePath } = args;
   await mkdir(path.join(templatePath, "public"), { recursive: true });
-  await mkdir(path.join(templatePath, "data"), { recursive: true });
-  await mkdir(path.join(templatePath, "source"), { recursive: true });
-  await mkdir(path.join(templatePath, "skills", "add-todos"), {
-    recursive: true,
-  });
   await writeFile(
     path.join(templatePath, "manifest.json"),
     JSON.stringify(VALID_MANIFEST),
@@ -133,21 +131,6 @@ async function writeMinimalScaffoldTemplate(
     "<!doctype html>",
     "utf8",
   );
-  await writeFile(
-    path.join(templatePath, "data", "state.json"),
-    "{}\n",
-    "utf8",
-  );
-  await writeFile(
-    path.join(templatePath, "source", "package.json"),
-    "{}\n",
-    "utf8",
-  );
-  await writeFile(
-    path.join(templatePath, "skills", "add-todos", "SKILL.md"),
-    "# Add Todos\n",
-    "utf8",
-  );
 }
 
 function appRequestPath(resolvedUrl: URL): string {
@@ -155,22 +138,24 @@ function appRequestPath(resolvedUrl: URL): string {
 }
 
 describe("public global app routes", () => {
-  it("resolves the app scaffold template from source and bundled layouts", async () => {
-    const sourceModuleDir = path.resolve(process.cwd(), "src/routes");
-    const sourceTemplatePath = path.resolve(
-      process.cwd(),
-      "src/services/threads/app-scaffold-template",
-    );
+  it("resolves the app scaffold template beside the module in source and dist layouts", async () => {
+    const sourceModuleDir = path.resolve(process.cwd(), "src/services/threads");
     expect(
       resolveApplicationScaffoldTemplatePathForModuleDir({
         moduleDir: sourceModuleDir,
       }),
-    ).toBe(sourceTemplatePath);
+    ).toBe(path.join(sourceModuleDir, "app-scaffold-template"));
 
     const tempDistDir = await mkdtemp(
       path.join(tmpdir(), "bb-app-scaffold-dist-"),
     );
     try {
+      expect(() =>
+        resolveApplicationScaffoldTemplatePathForModuleDir({
+          moduleDir: tempDistDir,
+        }),
+      ).toThrow(/Missing app scaffold template/u);
+
       await writeMinimalScaffoldTemplate({
         templatePath: path.join(tempDistDir, "app-scaffold-template"),
       });
@@ -184,71 +169,55 @@ describe("public global app routes", () => {
     }
   });
 
-  it("copies the app scaffold template into the server dist build", async () => {
-    const packageJsonText = await readFile(
-      path.resolve(process.cwd(), "package.json"),
-      "utf8",
-    );
+  it("copies the scaffold template excluding source dev artifacts at every depth", async () => {
+    // Shared by the runtime scaffold copy and the dist build copy, so dev
+    // artifacts left behind by template regeneration never reach created
+    // apps or the packaged server.
+    const tempDir = await mkdtemp(path.join(tmpdir(), "bb-app-scaffold-copy-"));
+    try {
+      const templatePath = path.join(tempDir, "app-scaffold-template");
+      const targetPath = path.join(tempDir, "copy-target");
+      const copiedFiles = [
+        "manifest.json",
+        "README.md",
+        "public/index.html",
+        "public/screenshots/hero.png",
+        "skills/add-todos/SKILL.md",
+        "source/package.json",
+        "source/src/App.tsx",
+      ];
+      const excludedDevArtifacts = [
+        "source/node_modules/react/index.js",
+        "source/playwright-report/index.html",
+        "source/screenshots/after-full-light.png",
+        "source/test-results/results.json",
+        "source/src/screenshots/nested.png",
+      ];
+      for (const relativePath of [...copiedFiles, ...excludedDevArtifacts]) {
+        const filePath = path.join(templatePath, relativePath);
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, relativePath, "utf8");
+      }
 
-    expect(packageJsonText).toContain(
-      "--copy-dir src/services/threads/app-scaffold-template dist/app-scaffold-template",
-    );
-  });
+      await copyApplicationScaffoldTemplate({ targetPath, templatePath });
 
-  it("excludes source-side scaffold screenshot output from runtime copies", () => {
-    const templatePath = path.resolve("/tmp/app-scaffold-template");
-
-    expect(
-      shouldCopyApplicationScaffoldTemplatePath({
-        templatePath,
-        sourcePath: path.join(templatePath, "source", "screenshots"),
-      }),
-    ).toBe(false);
-    expect(
-      shouldCopyApplicationScaffoldTemplatePath({
-        templatePath,
-        sourcePath: path.join(templatePath, "source", "node_modules"),
-      }),
-    ).toBe(false);
-    expect(
-      shouldCopyApplicationScaffoldTemplatePath({
-        templatePath,
-        sourcePath: path.join(
-          templatePath,
-          "source",
-          "screenshots",
-          "after-full-light.png",
-        ),
-      }),
-    ).toBe(false);
-    expect(
-      shouldCopyApplicationScaffoldTemplatePath({
-        templatePath,
-        sourcePath: path.join(
-          templatePath,
-          "source",
-          "playwright-report",
-          "index.html",
-        ),
-      }),
-    ).toBe(false);
-    expect(
-      shouldCopyApplicationScaffoldTemplatePath({
-        templatePath,
-        sourcePath: path.join(templatePath, "source", "src", "App.tsx"),
-      }),
-    ).toBe(true);
-    expect(
-      shouldCopyApplicationScaffoldTemplatePath({
-        templatePath,
-        sourcePath: path.join(
-          templatePath,
-          "public",
-          "screenshots",
-          "hero.png",
-        ),
-      }),
-    ).toBe(true);
+      for (const relativePath of copiedFiles) {
+        await expect(
+          readFile(path.join(targetPath, relativePath), "utf8"),
+        ).resolves.toBe(relativePath);
+      }
+      for (const relativePath of excludedDevArtifacts) {
+        expect(existsSync(path.join(targetPath, relativePath))).toBe(false);
+      }
+      expect(existsSync(path.join(targetPath, "source", "node_modules"))).toBe(
+        false,
+      );
+      expect(
+        existsSync(path.join(targetPath, "source", "src", "screenshots")),
+      ).toBe(false);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("lists and gets valid global apps by application id", async () => {
@@ -473,6 +442,83 @@ describe("public global app routes", () => {
     });
   });
 
+  it("injects a runtime bootstrap containing exactly the fields the runtime consumes", async () => {
+    await withTestHarness(async (harness) => {
+      const applicationId = "bootstrap-app";
+      await writeApplication(harness.config.dataDir, {
+        manifestVersion: 1,
+        id: applicationId,
+        name: "Bootstrap App",
+        entry: "index.html",
+        capabilities: ["data", "message"],
+      });
+
+      const entryResponse = await harness.app.request(
+        `/api/v1/apps/${applicationId}/`,
+      );
+      expect(entryResponse.status).toBe(200);
+      const html = await entryResponse.text();
+      const bootstrapMatch =
+        /window\.__BB_APP_RUNTIME_BOOTSTRAP__ = (\{.*\});/u.exec(html);
+      if (!bootstrapMatch?.[1]) {
+        throw new Error("Injected app runtime bootstrap not found");
+      }
+      // The bootstrap is the server->runtime contract: it must carry exactly
+      // what the injected SDK reads. Decorative fields (capabilities,
+      // dataUrl, messageUrl, appId) were accepted-but-ignored and must not
+      // come back.
+      expect(JSON.parse(bootstrapMatch[1])).toEqual({
+        applicationId,
+        appSessionToken: null,
+        targetThreadId: null,
+        wsUrl: expect.stringMatching(/^wss?:\/\/.+\/ws$/u),
+      });
+    });
+  });
+
+  it("references the runtime as a shared immutable script instead of inlining it", async () => {
+    await withTestHarness(async (harness) => {
+      const applicationId = "runtime-asset";
+      await writeApplication(harness.config.dataDir, {
+        manifestVersion: 1,
+        id: applicationId,
+        name: "Runtime Asset App",
+        entry: "index.html",
+        capabilities: ["data"],
+      });
+
+      const entryResponse = await harness.app.request(
+        `/api/v1/apps/${applicationId}/`,
+      );
+      expect(entryResponse.status).toBe(200);
+      const html = await entryResponse.text();
+      expect(html).toContain(
+        `<script src="${appRuntimeScriptAsset.url}"></script>`,
+      );
+      expect(html).toContain("window.__BB_APP_RUNTIME_BOOTSTRAP__ = ");
+      expect(html).not.toContain(appRuntimeBrowserBundle.contents);
+
+      const runtimeResponse = await harness.app.request(
+        appRuntimeScriptAsset.url,
+      );
+      expect(runtimeResponse.status).toBe(200);
+      expect(runtimeResponse.headers.get("cache-control")).toBe(
+        "public, max-age=31536000, immutable",
+      );
+      expect(runtimeResponse.headers.get("content-type")).toBe(
+        "text/javascript; charset=utf-8",
+      );
+      await expect(runtimeResponse.text()).resolves.toBe(
+        appRuntimeBrowserBundle.contents,
+      );
+
+      const staleHashResponse = await harness.app.request(
+        `/api/v1/app-runtime/${"0".repeat(64)}.js`,
+      );
+      expect(staleHashResponse.status).toBe(404);
+    });
+  });
+
   it("serves markdown entries from the public web root", async () => {
     await withTestHarness(async (harness) => {
       const applicationId = "readme";
@@ -650,7 +696,7 @@ describe("public global app routes", () => {
         readdir(path.join(appRootPath, "source", "screenshots")),
       ).rejects.toThrow();
       expect(JSON.parse(sourcePackageText)).toMatchObject({
-        scripts: { build: "vite build" },
+        scripts: { build: expect.stringContaining("vite build") },
         dependencies: {
           react: expect.any(String),
           "react-dom": expect.any(String),
@@ -677,6 +723,28 @@ describe("public global app routes", () => {
         `/api/v1/apps/${created.applicationId}`,
       );
       expect(deletedGetResponse.status).toBe(404);
+    });
+  });
+
+  it("stamps app names containing $ replacement patterns into the README literally", async () => {
+    await withTestHarness(async (harness) => {
+      const createResponse = await harness.app.request("/api/v1/apps", {
+        method: "POST",
+        body: JSON.stringify({
+          applicationId: "dollar-app",
+          name: "Win $& $$ Fast",
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+
+      const readmeText = await readFile(
+        path.join(
+          resolveApplicationPath(harness.config.dataDir, "dollar-app"),
+          "README.md",
+        ),
+        "utf8",
+      );
+      expect(readmeText).toMatch(/^# Win \$& \$\$ Fast\n/u);
     });
   });
 

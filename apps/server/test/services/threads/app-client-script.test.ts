@@ -6,7 +6,9 @@ import type {
 import type { BbSdk } from "@bb/sdk";
 import { createBbSdk } from "@bb/sdk/core";
 import { createHttpTransport } from "@bb/sdk/browser";
+import { appRuntimeBrowserBundle } from "@bb/sdk/app-runtime";
 import {
+  appRuntimeScriptAsset,
   injectAppClientScript,
   type AppClientBootstrap,
 } from "../../../src/services/threads/app-client-script.js";
@@ -46,12 +48,8 @@ interface SdkSurfaceParityArgs {
 }
 
 const bootstrap: AppClientBootstrap = {
-  appId: "status",
   applicationId: "status",
   appSessionToken: "appsess_test",
-  capabilities: ["data", "message"],
-  dataUrl: "/api/v1/apps/status/data",
-  messageUrl: "/api/v1/apps/status/message",
   targetThreadId: "thr_123",
   wsUrl: "ws://server/ws",
 };
@@ -92,20 +90,36 @@ class FakeWebSocket {
   }
 }
 
-function extractScript(html: string): string {
-  const match = /<script[^>]*>([\s\S]*)<\/script>/u.exec(html);
+function extractBootstrapScript(html: string): string {
+  const match = /<script data-bb-app-client>([\s\S]*?)<\/script>/u.exec(html);
   const script = match?.[1];
   if (!script) {
-    throw new Error("Injected app client script not found");
+    throw new Error("Injected app client bootstrap script not found");
   }
   return script;
+}
+
+function extractRuntimeScriptUrl(html: string): string {
+  const match = /<script src="([^"]+)"><\/script>/u.exec(html);
+  const url = match?.[1];
+  if (!url) {
+    throw new Error("Injected app runtime script reference not found");
+  }
+  return url;
 }
 
 function executeScript(args: ExecuteScriptArgs): void {
   FakeWebSocket.instances = [];
   args.windowObject.fetch = args.fetchMock;
   const html = injectAppClientScript("<html><head></head></html>", bootstrap);
-  const script = extractScript(html);
+  if (extractRuntimeScriptUrl(html) !== appRuntimeScriptAsset.url) {
+    throw new Error("Injected HTML references an unexpected runtime URL");
+  }
+  // Mirror the browser: the inline bootstrap runs first, then the shared
+  // runtime bundle the script src points at.
+  const script = `${extractBootstrapScript(html)}\n${
+    appRuntimeBrowserBundle.contents
+  }`;
   const runScript = new Function("window", "fetch", "WebSocket", script);
   runScript(args.windowObject, args.fetchMock, FakeWebSocket);
 }

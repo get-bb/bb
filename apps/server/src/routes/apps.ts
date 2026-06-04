@@ -1,7 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
 import {
-  cp,
   mkdir,
   readdir,
   readFile,
@@ -10,10 +9,8 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { constants as fsConstants, existsSync } from "node:fs";
 import type { Dirent, Stats } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import mimeTypes from "mime-types";
 import type { Hono } from "hono";
 import type { ZodIssue } from "zod";
@@ -38,7 +35,6 @@ import {
   appMessageRequestSchema,
   createAppRequestSchema,
   typedRoutes,
-  type AppCapability,
   type AppDataEntry,
   type AppDetail,
   type AppEntry,
@@ -51,9 +47,13 @@ import {
 import type { AppDeps, LoggedWorkSessionDeps } from "../types.js";
 import { ApiError } from "../errors.js";
 import { requirePublicThread } from "../services/lib/entity-lookup.js";
+import { writeInitialApplicationFiles } from "../services/threads/app-scaffold.js";
 import { requireThreadCommandEnvironment } from "../services/threads/thread-command-environment.js";
 import { sendThreadMessage } from "../services/threads/thread-send.js";
-import { injectAppClientScript } from "../services/threads/app-client-script.js";
+import {
+  appRuntimeScriptAsset,
+  injectAppClientScript,
+} from "../services/threads/app-client-script.js";
 import {
   extractRoutePath,
   parseSafeRelativeRoutePath,
@@ -111,7 +111,6 @@ interface WriteApplicationDataEntryArgs extends ReadApplicationDataEntryArgs {
 
 interface CreateInjectedAppHtmlResponseArgs {
   appSessionToken: AppSessionToken | null;
-  capabilities: AppCapability[];
   html: string;
   applicationId: ApplicationId;
   requestUrl: string;
@@ -144,42 +143,6 @@ interface CreateGlobalApplicationArgs {
 interface CreateApplicationTempRootArgs {
   appsRootPath: string;
   applicationId: ApplicationId;
-}
-
-interface WriteInitialApplicationFilesArgs {
-  applicationId: ApplicationId;
-  name: string;
-  tempRootPath: string;
-}
-
-interface CopyApplicationScaffoldTemplateArgs {
-  templatePath: string;
-  tempRootPath: string;
-}
-
-interface CopyApplicationScaffoldSourceDirectoryArgs {
-  sourcePath: string;
-  targetPath: string;
-  templatePath: string;
-}
-
-interface ShouldCopyApplicationScaffoldTemplatePathArgs {
-  sourcePath: string;
-  templatePath: string;
-}
-
-interface RelativeFilesystemPathArgs {
-  basePath: string;
-  targetPath: string;
-}
-
-interface ResolveApplicationScaffoldTemplatePathArgs {
-  moduleDir: string;
-}
-
-interface PatchApplicationScaffoldReadmeArgs {
-  name: string;
-  tempRootPath: string;
 }
 
 interface PublishApplicationTempRootArgs {
@@ -225,12 +188,10 @@ type LogoExtension = "svg" | "png" | "jpg" | "jpeg";
 
 const DATA_DIRECTORY_NAME = "data";
 const MANIFEST_FILE_NAME = "manifest.json";
-const PUBLIC_DIRECTORY_NAME = "public";
-const APP_SCAFFOLD_TEMPLATE_DIRECTORY_NAME = "app-scaffold-template";
-const APP_SCAFFOLD_SOURCE_DIRECTORY_NAME = "source";
-const APP_SCAFFOLD_README_PLACEHOLDER = "BB_APP_NAME_PLACEHOLDER";
 const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
+const JAVASCRIPT_CONTENT_TYPE = "text/javascript; charset=utf-8";
 const NO_STORE_CACHE_CONTROL = "no-store";
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const CONTENT_TYPE_OPTIONS = "nosniff";
 const HTML_ENTRY_MAX_BYTES = 5 * 1024 * 1024;
 const LOGO_MAX_BYTES = 1024 * 1024;
@@ -238,14 +199,6 @@ const LOGO_EXTENSIONS: readonly LogoExtension[] = ["svg", "png", "jpg", "jpeg"];
 const APP_SESSION_TOKEN_PREFIX = "appsess_";
 const INVALID_APP_MANIFEST_MESSAGE =
   "App manifest failed validation. Inspect manifest.json or rebuild the app.";
-const APP_SCAFFOLD_SOURCE_DEV_OUTPUT_DIRECTORY_NAMES = new Set([
-  "node_modules",
-  "playwright-report",
-  "screenshots",
-  "test-results",
-]);
-const APP_SCAFFOLD_COPY_MODE = fsConstants.COPYFILE_FICLONE;
-const routesModuleDir = path.dirname(fileURLToPath(import.meta.url));
 
 class InvalidAppManifestError extends ApiError {
   readonly applicationId: ApplicationId;
@@ -265,88 +218,8 @@ function sha256(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function canonicalizeJson(value: JsonValue | AppManifest): string {
+function canonicalizeJson(value: JsonValue): string {
   return `${JSON.stringify(value, null, 2)}\n`;
-}
-
-function relativeFilesystemPath(args: RelativeFilesystemPathArgs): string {
-  return path
-    .relative(args.basePath, args.targetPath)
-    .split(path.sep)
-    .join("/");
-}
-
-export function shouldCopyApplicationScaffoldTemplatePath(
-  args: ShouldCopyApplicationScaffoldTemplatePathArgs,
-): boolean {
-  const relativePath = relativeFilesystemPath({
-    basePath: args.templatePath,
-    targetPath: args.sourcePath,
-  });
-  if (
-    relativePath === "" ||
-    relativePath === "." ||
-    relativePath === ".." ||
-    relativePath.startsWith("../") ||
-    path.isAbsolute(relativePath)
-  ) {
-    return relativePath === "" || relativePath === ".";
-  }
-
-  const pathSegments = relativePath.split("/");
-  if (pathSegments[0] !== APP_SCAFFOLD_SOURCE_DIRECTORY_NAME) {
-    return true;
-  }
-  return !pathSegments.some((segment) =>
-    APP_SCAFFOLD_SOURCE_DEV_OUTPUT_DIRECTORY_NAMES.has(segment),
-  );
-}
-
-function hasApplicationScaffoldTemplate(templatePath: string): boolean {
-  return (
-    existsSync(path.join(templatePath, MANIFEST_FILE_NAME)) &&
-    existsSync(path.join(templatePath, "README.md")) &&
-    existsSync(path.join(templatePath, PUBLIC_DIRECTORY_NAME, "index.html")) &&
-    existsSync(path.join(templatePath, DATA_DIRECTORY_NAME, "state.json")) &&
-    existsSync(path.join(templatePath, "source", "package.json")) &&
-    existsSync(path.join(templatePath, "skills", "add-todos", "SKILL.md"))
-  );
-}
-
-export function resolveApplicationScaffoldTemplatePathForModuleDir(
-  args: ResolveApplicationScaffoldTemplatePathArgs,
-): string {
-  const sourceTemplateCandidate = path.resolve(
-    args.moduleDir,
-    "../services/threads",
-    APP_SCAFFOLD_TEMPLATE_DIRECTORY_NAME,
-  );
-  const bundledTemplateCandidate = path.resolve(
-    args.moduleDir,
-    APP_SCAFFOLD_TEMPLATE_DIRECTORY_NAME,
-  );
-  const candidates = [sourceTemplateCandidate, bundledTemplateCandidate];
-
-  for (const candidate of candidates) {
-    if (hasApplicationScaffoldTemplate(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error(
-    `Missing app scaffold template. Expected ${APP_SCAFFOLD_TEMPLATE_DIRECTORY_NAME} under one of: ${candidates.join(", ")}`,
-  );
-}
-
-function resolveApplicationScaffoldTemplatePath(): string {
-  return resolveApplicationScaffoldTemplatePathForModuleDir({
-    moduleDir: routesModuleDir,
-  });
-}
-
-function formatReadmeTitle(name: string): string {
-  const title = name.replace(/\s+/gu, " ").trim();
-  return title.length > 0 ? title : "bb Todo App";
 }
 
 function isFsErrorWithCode(error: Error, code: string): boolean {
@@ -779,7 +652,32 @@ export async function notifyGlobalAppsChanged(
   deps: GlobalAppListDeps,
 ): Promise<void> {
   deps.hub.notifySystem(["apps-changed"]);
-  deps.hub.notifyApp(["apps-changed"]);
+  deps.hub.notifyAppsChanged();
+}
+
+const APP_RUNTIME_SCRIPT_BODY = Buffer.from(
+  appRuntimeScriptAsset.contents,
+  "utf8",
+);
+
+/**
+ * Serves the shared window.bb runtime bundle referenced by every injected app
+ * HTML response. The URL is keyed by the bundle's content hash, so the body
+ * can be cached forever; unknown hashes 404 because served HTML is no-store
+ * and always references the current hash.
+ */
+function serveAppRuntimeScript(rawFileName: string): Response {
+  if (rawFileName !== appRuntimeScriptAsset.fileName) {
+    throw new ApiError(404, "ENOENT", "App runtime script not found");
+  }
+  return new Response(new Uint8Array(APP_RUNTIME_SCRIPT_BODY), {
+    status: 200,
+    headers: {
+      "cache-control": IMMUTABLE_CACHE_CONTROL,
+      "content-type": JAVASCRIPT_CONTENT_TYPE,
+      "x-content-type-options": CONTENT_TYPE_OPTIONS,
+    },
+  });
 }
 
 function createHtmlResponse(html: string): Response {
@@ -814,15 +712,9 @@ function createInjectedAppHtmlResponse(
 ): Response {
   return createHtmlResponse(
     injectAppClientScript(args.html, {
-      appId: args.applicationId,
       applicationId: args.applicationId,
       appSessionToken: args.appSessionToken,
-      capabilities: args.capabilities,
       targetThreadId: args.targetThreadId,
-      dataUrl: `/api/v1/apps/${encodeURIComponent(args.applicationId)}/data`,
-      messageUrl: `/api/v1/apps/${encodeURIComponent(
-        args.applicationId,
-      )}/message`,
       wsUrl: buildAppWebSocketUrl(deps, args.requestUrl),
     }),
   );
@@ -916,7 +808,6 @@ async function serveApplicationEntry(
     targetThreadId: rawTargetThreadId ?? null,
     appSessionToken: token,
     html: result.toString("utf8"),
-    capabilities: manifest.capabilities,
   });
 }
 
@@ -1223,101 +1114,6 @@ async function createApplicationTempRoot(
   return tempRootPath;
 }
 
-async function patchApplicationScaffoldReadme(
-  args: PatchApplicationScaffoldReadmeArgs,
-): Promise<void> {
-  const readmePath = path.join(args.tempRootPath, "README.md");
-  const readme = await readFile(readmePath, "utf8");
-  await writeFile(
-    readmePath,
-    readme.replaceAll(
-      APP_SCAFFOLD_README_PLACEHOLDER,
-      formatReadmeTitle(args.name),
-    ),
-    "utf8",
-  );
-}
-
-async function copyApplicationScaffoldSourceDirectory(
-  args: CopyApplicationScaffoldSourceDirectoryArgs,
-): Promise<void> {
-  await mkdir(args.targetPath, { recursive: true });
-  const entries = await readdir(args.sourcePath, { withFileTypes: true });
-  for (const entry of entries) {
-    const sourcePath = path.join(args.sourcePath, entry.name);
-    if (
-      !shouldCopyApplicationScaffoldTemplatePath({
-        sourcePath,
-        templatePath: args.templatePath,
-      })
-    ) {
-      continue;
-    }
-    await cp(sourcePath, path.join(args.targetPath, entry.name), {
-      recursive: true,
-      force: false,
-      mode: APP_SCAFFOLD_COPY_MODE,
-    });
-  }
-}
-
-async function copyApplicationScaffoldTemplate(
-  args: CopyApplicationScaffoldTemplateArgs,
-): Promise<void> {
-  const entries = await readdir(args.templatePath, { withFileTypes: true });
-  for (const entry of entries) {
-    const sourcePath = path.join(args.templatePath, entry.name);
-    const targetPath = path.join(args.tempRootPath, entry.name);
-    if (
-      entry.isDirectory() &&
-      entry.name === APP_SCAFFOLD_SOURCE_DIRECTORY_NAME
-    ) {
-      await copyApplicationScaffoldSourceDirectory({
-        sourcePath,
-        targetPath,
-        templatePath: args.templatePath,
-      });
-      continue;
-    }
-    await cp(sourcePath, targetPath, {
-      recursive: true,
-      force: false,
-      mode: APP_SCAFFOLD_COPY_MODE,
-    });
-  }
-}
-
-async function writeInitialApplicationFiles(
-  args: WriteInitialApplicationFilesArgs,
-): Promise<void> {
-  const manifest: AppManifest = {
-    manifestVersion: 1,
-    id: args.applicationId,
-    name: args.name,
-    entry: "index.html",
-    capabilities: ["data", "message"],
-  };
-  const templatePath = resolveApplicationScaffoldTemplatePath();
-  await copyApplicationScaffoldTemplate({
-    templatePath,
-    tempRootPath: args.tempRootPath,
-  });
-  await writeFile(
-    path.join(args.tempRootPath, MANIFEST_FILE_NAME),
-    canonicalizeJson(manifest),
-    "utf8",
-  );
-  await patchApplicationScaffoldReadme({
-    tempRootPath: args.tempRootPath,
-    name: args.name,
-  });
-  appManifestSchema.parse(
-    JSON.parse(
-      await readFile(path.join(args.tempRootPath, MANIFEST_FILE_NAME), "utf8"),
-    ),
-  );
-}
-
 async function publishApplicationTempRoot(
   args: PublishApplicationTempRootArgs,
 ): Promise<PublishApplicationTempRootResult> {
@@ -1589,6 +1385,10 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
       });
       return context.json({ ok: true }, 202);
     },
+  );
+
+  app.get("/app-runtime/:fileName", (context) =>
+    serveAppRuntimeScript(context.req.param("fileName")),
   );
 
   app.get("/apps/:applicationId/", async (context) =>

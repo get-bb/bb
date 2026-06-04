@@ -28,10 +28,10 @@ pnpm install
 pnpm build
 ```
 
-`pnpm build` runs Vite and emits the browser build to `../public` with a
-relative base (`"./"`), `build.outDir: "../public"`, and
-`build.assetsDir: ""`. That keeps asset references flat and relative so bb can
-serve them from the app route.
+`pnpm build` typechecks with `tsc --noEmit`, then runs Vite and emits the
+browser build to `../public` with a relative base (`"./"`),
+`build.outDir: "../public"`, and `build.assetsDir: ""`. That keeps asset
+references flat and relative so bb can serve them from the app route.
 
 ## Development
 
@@ -63,10 +63,12 @@ todos/<id>
 }
 ```
 
-The app reads `window.bb.data.list({ prefix: "todos" })`, subscribes with
-`window.bb.data.onChange({ prefix: "todos", callback })`, writes with
-`window.bb.data.write({ path, value })`, deletes with
-`window.bb.data.delete({ path })`, and sends manager updates with
+The app subscribes with `window.bb.data.onChange({ prefix: "todos", callback })`
+— the SDK replays existing records to every new subscriber, so the
+subscription also hydrates initial state — and resets its state on
+`window.bb.on({ event: "app-data:resync", callback })` before the SDK
+re-replays records. It writes with `window.bb.data.write({ path, value })`,
+deletes with `window.bb.data.delete({ path })`, and sends manager updates with
 `window.bb.message.send({ payload })`.
 
 The vendored SDK declaration at `source/src/bb-sdk.d.ts` mirrors the current

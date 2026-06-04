@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { collectAppGlobalsDeclarationDiagnostics } from "./validate-app-globals-dts.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(scriptDir, "..");
@@ -107,6 +108,7 @@ const realtimeDeclarationNames = [
   "RealtimeConnectionOnArgs",
   "BbRealtimeOnArgsUnion",
   "BbRealtimeOnArgs",
+  "BbRealtime",
 ];
 
 function readCompilerConfig() {
@@ -351,9 +353,19 @@ function buildDeclarationFile() {
     "",
   ].join("\n");
 
-  if (/^\s*import\s/u.test(output)) {
+  // Self-containment guards: the declaration is vendored into scaffolded
+  // apps, so import statements and inline import("...") type references
+  // (which the checker emits for types it cannot name in scope, with
+  // machine-local absolute paths) must never appear.
+  if (/^\s*import\s/mu.test(output) || output.includes("import(")) {
     throw new Error(
-      "Generated app globals declaration must not contain imports.",
+      "Generated app globals declaration must not contain imports or inline import() type references.",
+    );
+  }
+  const diagnostics = collectAppGlobalsDeclarationDiagnostics(output);
+  if (diagnostics.length > 0) {
+    throw new Error(
+      `Generated app globals declaration failed to typecheck:\n${diagnostics.join("\n")}`,
     );
   }
   return output;

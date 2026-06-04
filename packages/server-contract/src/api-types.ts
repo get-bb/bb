@@ -165,9 +165,13 @@ export const BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH = 1024;
 
 /**
  * Pixel rect (CSS px, which equal device-independent points on macOS) of the
- * panel region the native browser view must overlay. The renderer still sends
- * this absolute rect for immediate first paint, but resize ownership is driven
- * by the layout descriptor below.
+ * panel region the native browser view must overlay, measured by the renderer.
+ * This absolute rect is the only placement data that crosses the renderer →
+ * main IPC boundary: the desktop main process derives its resize-invariant
+ * layout descriptor from it against its own `getContentBounds()`, so
+ * derivation and native-resize reprojection share one coordinate space (the
+ * renderer's `window.inner*` viewport diverges from the window content area
+ * when DevTools is docked).
  */
 export const bbDesktopBrowserViewBoundsSchema = z
   .object({
@@ -182,26 +186,18 @@ export type BbDesktopBrowserViewBounds = z.infer<
 >;
 
 /**
- * Resize-invariant description of a browser view's layout relative to the
- * BrowserWindow content area. The renderer sends this when the panel layout
- * shape changes; the desktop main process reprojects it synchronously on native
- * window resize without waiting for renderer layout or IPC.
+ * Resize-invariant description of a browser view's layout relative to a
+ * viewport (edge offsets/insets). It never crosses the renderer ↔ main IPC
+ * boundary: the desktop main process derives it from the renderer-measured
+ * absolute rect at receive time and reprojects it synchronously on native
+ * window resize; the renderer derives its own copy purely as a local dedupe
+ * key so window-resize ResizeObserver ticks produce no IPC.
  */
-export const bbDesktopBrowserViewLayoutDescriptorSchema = z
-  .object({
-    left: z.number().int().nonnegative(),
-    top: z.number().int().nonnegative(),
-    rightInset: z.number().int().nonnegative(),
-    bottomInset: z.number().int().nonnegative(),
-  })
-  .strict();
-export type BbDesktopBrowserViewLayoutDescriptor = z.infer<
-  typeof bbDesktopBrowserViewLayoutDescriptorSchema
->;
-
-export interface BbDesktopBrowserViewPlacement {
-  bounds: BbDesktopBrowserViewBounds;
-  layout: BbDesktopBrowserViewLayoutDescriptor;
+export interface BbDesktopBrowserViewLayoutDescriptor {
+  left: number;
+  top: number;
+  rightInset: number;
+  bottomInset: number;
 }
 
 export interface BbDesktopBrowserViewportBounds {
@@ -226,11 +222,6 @@ export interface BbDesktopBrowserViewLayoutDescriptorFromBoundsArgs {
 }
 
 export interface BbDesktopBrowserViewBoundsFromLayoutDescriptorArgs {
-  layout: BbDesktopBrowserViewLayoutDescriptor;
-  viewport: BbDesktopBrowserViewportBounds;
-}
-
-export interface ClampBbDesktopBrowserViewLayoutDescriptorArgs {
   layout: BbDesktopBrowserViewLayoutDescriptor;
   viewport: BbDesktopBrowserViewportBounds;
 }
@@ -321,25 +312,25 @@ export function bbDesktopBrowserViewBoundsFromLayoutDescriptor(
   };
 }
 
-export function clampBbDesktopBrowserViewLayoutDescriptor(
-  args: ClampBbDesktopBrowserViewLayoutDescriptorArgs,
-): BbDesktopBrowserViewLayoutDescriptor {
-  return bbDesktopBrowserViewLayoutDescriptorFromBounds({
-    bounds: bbDesktopBrowserViewBoundsFromLayoutDescriptor(args),
-    viewport: args.viewport,
-  });
-}
-
 /**
  * Create-or-update the view for a browser tab. `url` may be empty to mean "no
  * page yet" (the renderer shows its new-tab screen and keeps the view hidden).
+ *
+ * Version-skew warning: the desktop shell attaches to any already-running bb
+ * server that passes its health probe (no version handshake — see
+ * apps/desktop/src/server-probe.ts) and loads the SPA that server serves, so
+ * the renderer and the shell's main process routinely come from different
+ * builds. This and the other `.strict()` browser request shapes are therefore
+ * wire-frozen: adding a required field breaks old SPAs against a new shell,
+ * and adding any field breaks new SPAs against an old shell's strict parser.
+ * Change them only alongside an explicit capability/version negotiation in
+ * the preload bridge.
  */
 export const bbDesktopBrowserAttachRequestSchema = z
   .object({
     tabId: z.string().min(1),
     url: z.string().max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
     bounds: bbDesktopBrowserViewBoundsSchema,
-    layout: bbDesktopBrowserViewLayoutDescriptorSchema,
     visible: z.boolean(),
   })
   .strict();
@@ -360,7 +351,7 @@ export type BbDesktopBrowserNavigateRequest = z.infer<
 export const bbDesktopBrowserSetBoundsRequestSchema = z
   .object({
     tabId: z.string().min(1),
-    layout: bbDesktopBrowserViewLayoutDescriptorSchema,
+    bounds: bbDesktopBrowserViewBoundsSchema,
   })
   .strict();
 export type BbDesktopBrowserSetBoundsRequest = z.infer<
@@ -1507,6 +1498,14 @@ export const appEntrySchema = z
   .strict();
 export type AppEntry = z.infer<typeof appEntrySchema>;
 
+/**
+ * Inert reserved metadata. Capabilities are NOT enforced anywhere: every
+ * served app page receives the full `window.bb` runtime regardless of what
+ * the manifest declares (app iframes are same-origin with the public API, so
+ * a manifest gate was never a security boundary). The field stays in the
+ * strict manifest schema so existing manifests on disk that declare it keep
+ * loading; it is echoed verbatim in app summaries.
+ */
 export const appCapabilitySchema = z.enum(["data", "message"]);
 export type AppCapability = z.infer<typeof appCapabilitySchema>;
 
@@ -1519,6 +1518,7 @@ export const appManifestSchema = z
     name: appDisplayNameSchema.optional(),
     icon: appIconNameSchema.optional(),
     entry: appEntryPathSchema.optional(),
+    /** Inert reserved metadata — see {@link appCapabilitySchema}. */
     capabilities: z.array(appCapabilitySchema).default([]),
   })
   .strict()
@@ -1742,9 +1742,20 @@ export interface BbMessage {
   send(args: BbMessageSendArgs): Promise<void>;
 }
 
+/**
+ * Contract for the `window.bb` runtime that the server injects into served
+ * app pages. The injected object is the full SDK surface — `@bb/sdk`'s
+ * `InjectedAppWindowBb` (app-window.ts) is the source of truth and declares
+ * the realtime `on(...)` surface in addition to the fields here; this type
+ * mirrors the app-facing core so contract consumers can type `window.bb`
+ * without depending on `@bb/sdk`. The runtime always knows which app it
+ * serves, so both id fields are required; `window.bb` itself is optional
+ * because pages outside the app iframe never receive the runtime.
+ */
 export interface Bb {
-  appId?: ApplicationId;
-  applicationId?: ApplicationId;
+  /** @deprecated Alias of `applicationId`. */
+  appId: ApplicationId;
+  applicationId: ApplicationId;
   data: BbData;
   message: BbMessage;
 }

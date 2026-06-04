@@ -1,7 +1,34 @@
-import { TODO_DATA_PREFIX, type TodoRecord, type TodoSnapshot } from "./types";
+export const TODO_DATA_PREFIX = "todos";
 
-interface ApplyDataChangeArgs {
-  current: TodoRecord[];
+const TODO_PATH_PREFIX = `${TODO_DATA_PREFIX}/`;
+
+export interface TodoRecord {
+  id: string;
+  title: string;
+  done: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Todo state folded from the bb app data change stream. The SDK replays
+ * existing records to every new `onChange` subscriber, so this stream is the
+ * single source of truth — there is no separate list/snapshot load that could
+ * apply stale data over newer change events. `invalidPaths` tracks records
+ * under the todos prefix that are not well-formed todos.
+ */
+export interface TodoDataState {
+  todos: TodoRecord[];
+  invalidPaths: readonly AppDataPath[];
+}
+
+export const EMPTY_TODO_DATA_STATE: TodoDataState = {
+  todos: [],
+  invalidPaths: [],
+};
+
+interface ApplyTodoDataChangeArgs {
+  state: TodoDataState;
   event: BbDataChangeEvent;
 }
 
@@ -9,8 +36,6 @@ interface TodoRecordFieldArgs {
   key: string;
   value: JsonObject;
 }
-
-const TODO_PATH_PREFIX = `${TODO_DATA_PREFIX}/`;
 
 function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -39,6 +64,29 @@ function compareTodos(left: TodoRecord, right: TodoRecord): number {
     return left.done ? 1 : -1;
   }
   return right.createdAt.localeCompare(left.createdAt);
+}
+
+function withoutTodo(todos: TodoRecord[], id: string | null): TodoRecord[] {
+  if (id === null || !todos.some((todo) => todo.id === id)) {
+    return todos;
+  }
+  return todos.filter((todo) => todo.id !== id);
+}
+
+function withInvalidPath(
+  paths: readonly AppDataPath[],
+  path: AppDataPath,
+): readonly AppDataPath[] {
+  return paths.includes(path) ? paths : [...paths, path];
+}
+
+function withoutInvalidPath(
+  paths: readonly AppDataPath[],
+  path: AppDataPath,
+): readonly AppDataPath[] {
+  return paths.includes(path)
+    ? paths.filter((candidate) => candidate !== path)
+    : paths;
 }
 
 export function todoPath(id: string): AppDataPath {
@@ -87,44 +135,44 @@ export function todoToJsonValue(todo: TodoRecord): JsonObject {
   };
 }
 
-export function todosFromEntries(entries: BbDataEntry[]): TodoSnapshot {
-  const todos: TodoRecord[] = [];
-  let invalidCount = 0;
-
-  for (const entry of entries) {
-    const pathId = todoIdFromPath(entry.path);
-    const todo = todoFromJsonValue(entry.value);
-    if (pathId === null || todo === null || todo.id !== pathId) {
-      invalidCount += 1;
-      continue;
-    }
-    todos.push(todo);
-  }
-
-  return {
-    todos: todos.sort(compareTodos),
-    invalidCount,
-  };
-}
-
-export function applyDataChange(args: ApplyDataChangeArgs): TodoRecord[] {
+export function applyTodoDataChange(
+  args: ApplyTodoDataChangeArgs,
+): TodoDataState {
   const id = todoIdFromPath(args.event.path);
-  if (id === null) {
-    return args.current;
-  }
 
   if (args.event.deleted) {
-    return args.current.filter((todo) => todo.id !== id);
+    const todos = withoutTodo(args.state.todos, id);
+    const invalidPaths = withoutInvalidPath(
+      args.state.invalidPaths,
+      args.event.path,
+    );
+    return todos === args.state.todos &&
+      invalidPaths === args.state.invalidPaths
+      ? args.state
+      : { todos, invalidPaths };
   }
 
   const todo = todoFromJsonValue(args.event.value);
-  if (todo === null || todo.id !== id) {
-    return args.current;
+  if (id === null || todo === null || todo.id !== id) {
+    // The record at this path is not a well-formed todo: count it as invalid
+    // and drop any previously-valid todo it overwrote.
+    const todos = withoutTodo(args.state.todos, id);
+    const invalidPaths = withInvalidPath(
+      args.state.invalidPaths,
+      args.event.path,
+    );
+    return todos === args.state.todos &&
+      invalidPaths === args.state.invalidPaths
+      ? args.state
+      : { todos, invalidPaths };
   }
 
-  const next = args.current.filter((candidate) => candidate.id !== id);
-  next.push(todo);
-  return next.sort(compareTodos);
+  const todos = args.state.todos.filter((candidate) => candidate.id !== id);
+  todos.push(todo);
+  return {
+    todos: todos.sort(compareTodos),
+    invalidPaths: withoutInvalidPath(args.state.invalidPaths, args.event.path),
+  };
 }
 
 export function createTodoId(): string {
@@ -146,7 +194,7 @@ export function createTodoRecord(title: string): TodoRecord {
   };
 }
 
-export function updatedTodoRecord(todo: TodoRecord): TodoRecord {
+export function toggledTodoRecord(todo: TodoRecord): TodoRecord {
   return {
     ...todo,
     done: !todo.done,

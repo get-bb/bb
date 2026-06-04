@@ -1,22 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  applyDataChange,
+  EMPTY_TODO_DATA_STATE,
+  TODO_DATA_PREFIX,
+  applyTodoDataChange,
   createTodoRecord,
   todoPath,
   todoToJsonValue,
-  updatedTodoRecord,
-  todosFromEntries,
-} from "./todo-data";
-import {
-  TODO_DATA_PREFIX,
-  type AddTodo,
-  type NotifyManager,
-  type OperationStatus,
-  type RemoveTodo,
+  toggledTodoRecord,
+  type TodoDataState,
   type TodoRecord,
-  type TodoStats,
-  type ToggleTodo,
-  type UseTodosResult,
+} from "./todo-data";
+import type {
+  AddTodo,
+  NotifyManager,
+  OperationStatus,
+  RemoveTodo,
+  TodoStats,
+  ToggleTodo,
+  UseTodosResult,
 } from "./types";
 
 interface SendManagerPayloadArgs {
@@ -58,11 +59,13 @@ function createManagerPayload(args: SendManagerPayloadArgs): JsonObject {
 }
 
 export function useTodos(): UseTodosResult {
-  const [todos, setTodos] = useState<TodoRecord[]>([]);
-  const [invalidCount, setInvalidCount] = useState(0);
+  const [dataState, setDataState] = useState<TodoDataState>(
+    EMPTY_TODO_DATA_STATE,
+  );
   const [operationStatus, setOperationStatus] =
     useState<OperationStatus>("idle");
   const [errorText, setErrorText] = useState<string | null>(null);
+  const todos = dataState.todos;
   const stats = useMemo(() => createTodoStats(todos), [todos]);
   const isSdkAvailable = getBbSdk() !== null;
 
@@ -73,45 +76,39 @@ export function useTodos(): UseTodosResult {
       return;
     }
 
-    const data = bb.data;
     let active = true;
-    const unsubscribe = data.onChange({
+    // The SDK replays existing records to every new onChange subscriber, so
+    // this subscription alone hydrates initial state. Do not add a separate
+    // list() snapshot load: its response can arrive after newer change
+    // events and would clobber them.
+    const unsubscribeChanges = bb.data.onChange({
       prefix: TODO_DATA_PREFIX,
       callback(event) {
         if (!active) {
           return;
         }
-        setTodos((current) => applyDataChange({ current, event }));
+        setDataState((current) =>
+          applyTodoDataChange({ state: current, event }),
+        );
+      },
+    });
+    // When broadcasts may have been missed (e.g. after a reconnect) the SDK
+    // emits a resync and then replays every record to the onChange callback.
+    // Reset first so records deleted while disconnected drop out.
+    const unsubscribeResync = bb.on({
+      event: "app-data:resync",
+      callback() {
+        if (!active) {
+          return;
+        }
+        setDataState(EMPTY_TODO_DATA_STATE);
       },
     });
 
-    async function loadTodos(): Promise<void> {
-      try {
-        const entries = await data.list({ prefix: TODO_DATA_PREFIX });
-        if (!active) {
-          return;
-        }
-        const snapshot = todosFromEntries(entries);
-        setTodos(snapshot.todos);
-        setInvalidCount(snapshot.invalidCount);
-        setErrorText(null);
-      } catch (error) {
-        if (!active) {
-          return;
-        }
-        setErrorText(
-          error instanceof Error
-            ? errorMessage(error)
-            : "Failed to read app data.",
-        );
-      }
-    }
-
-    void loadTodos();
-
     return () => {
       active = false;
-      unsubscribe();
+      unsubscribeChanges();
+      unsubscribeResync();
     };
   }, []);
 
@@ -157,7 +154,7 @@ export function useTodos(): UseTodosResult {
         return;
       }
 
-      const nextTodo = updatedTodoRecord(todo);
+      const nextTodo = toggledTodoRecord(todo);
       setOperationStatus("saving");
       try {
         await bb.data.write({
@@ -225,7 +222,7 @@ export function useTodos(): UseTodosResult {
   return {
     addTodo,
     errorMessage: errorText,
-    invalidCount,
+    invalidCount: dataState.invalidPaths.length,
     isSdkAvailable,
     notifyManager,
     operationStatus,

@@ -19,11 +19,11 @@ function requireBootstrap(): AppRuntimeBootstrap {
   return bootstrap;
 }
 
-const bb: InjectedAppWindowBb = createInjectedBbSdk({
+const bb = createInjectedBbSdk({
   bootstrap: requireBootstrap(),
   fetch: window.fetch.bind(window),
   websocket: (url) => wrapStandardWebsocket(new WebSocket(url)),
-});
+}) satisfies InjectedAppWindowBb;
 
 try {
   Object.defineProperty(window, "bb", {

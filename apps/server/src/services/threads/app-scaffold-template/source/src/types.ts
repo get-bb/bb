@@ -1,19 +1,9 @@
 import type { ChangeEvent, FormEvent, MouseEvent } from "react";
+import type { TodoRecord } from "./todo-data";
 
-export const TODO_DATA_PREFIX = "todos";
-
-export interface TodoRecord {
-  id: string;
-  title: string;
-  done: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface TodoSnapshot {
-  todos: TodoRecord[];
-  invalidCount: number;
-}
+// The todo data types live next to the data logic in todo-data.ts; re-export
+// the record type so UI modules keep importing their types from one place.
+export type { TodoRecord };
 
 export type OperationStatus = "idle" | "saving" | "sending" | "sent" | "error";
 export type TodoFilter = "all" | "open" | "done";
