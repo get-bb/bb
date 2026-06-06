@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { AppSourcesSection } from "@/components/settings/AppSourcesSection";
 import { CONNECTED_DOT_CLASS } from "@/components/settings/constants";
 import {
   SettingsRow,
@@ -581,6 +582,8 @@ export function AppSettingsView() {
             </div>
           ) : null}
         </div>
+
+        <AppSourcesSection />
       </div>
 
       <HostRenameDialog

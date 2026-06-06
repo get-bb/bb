@@ -39,7 +39,7 @@ describe("app data files", () => {
     const dataDir = await makeTempDir("bb-app-data-files-");
     const appsRootPath = path.join(dataDir, "apps");
     const applicationPath = path.join(appsRootPath, "valid");
-    await fs.mkdir(path.join(applicationPath, "data"), { recursive: true });
+    await fs.mkdir(applicationPath, { recursive: true });
     await fs.writeFile(
       path.join(applicationPath, "manifest.json"),
       JSON.stringify({
@@ -63,13 +63,14 @@ describe("app data files", () => {
       "utf8",
     );
 
-    const resolvedApplicationPath = await fs.realpath(applicationPath);
+    const resolvedDataDir = path.dirname(await fs.realpath(appsRootPath));
     await expect(
       listApplicationDataTargetsFromRoot({ appsRootPath }),
     ).resolves.toEqual([
       {
         applicationId: "valid",
-        appDataPath: path.join(resolvedApplicationPath, "data"),
+        // App data lives outside the app folder, beside the apps root.
+        appDataPath: path.join(resolvedDataDir, "app-data", "valid"),
       },
     ]);
   });

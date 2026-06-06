@@ -13,6 +13,7 @@ const APPS: AppSummary[] = [
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data"],
     icon: { kind: "builtin", name: "GridView" },
+    source: null,
   },
   {
     applicationId: "beta",
@@ -20,6 +21,7 @@ const APPS: AppSummary[] = [
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data"],
     icon: { kind: "builtin", name: "GridView" },
+    source: null,
   },
 ];
 

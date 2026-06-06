@@ -67,9 +67,11 @@ export {
   APPLICATION_ID_MAX_LENGTH,
   appDataPathSchema,
   applicationIdSchema,
+  appSourceNameSchema,
   deriveApplicationIdFromName,
+  deriveAppSourceNameFromOrigin,
 } from "./apps.js";
-export type { AppDataPath, ApplicationId } from "./apps.js";
+export type { AppDataPath, ApplicationId, AppSourceName } from "./apps.js";
 
 export { threadDynamicContextFileStatusValues } from "./manager-dynamic-context.js";
 export type { ThreadDynamicContextFileStatus } from "./manager-dynamic-context.js";

@@ -1,5 +1,10 @@
 import { join } from "node:path";
-import { applicationIdSchema, type ApplicationId } from "@bb/domain";
+import {
+  applicationIdSchema,
+  appSourceNameSchema,
+  type ApplicationId,
+  type AppSourceName,
+} from "@bb/domain";
 
 export function resolveAppsRootPath(dataDir: string): string {
   return join(dataDir, "apps");
@@ -33,9 +38,61 @@ export function resolveApplicationPublicPath(
   return join(resolveApplicationPath(dataDir, applicationId), "public");
 }
 
+export function resolveAppDataRootPath(dataDir: string): string {
+  return join(dataDir, "app-data");
+}
+
+/**
+ * App data lives outside the app folder so app code (author-owned, replaceable
+ * by app-source syncs) and runtime data (user-owned) have independent
+ * lifecycles. Legacy layouts that kept `data/` inside the app folder are
+ * migrated at server boot.
+ */
 export function resolveApplicationDataPath(
   dataDir: string,
   applicationId: ApplicationId,
 ): string {
+  return join(
+    resolveAppDataRootPath(dataDir),
+    applicationIdSchema.parse(applicationId),
+  );
+}
+
+export function resolveLegacyApplicationDataPath(
+  dataDir: string,
+  applicationId: ApplicationId,
+): string {
   return join(resolveApplicationPath(dataDir, applicationId), "data");
+}
+
+export function resolveAppSourcesRootPath(dataDir: string): string {
+  return join(dataDir, "app-sources");
+}
+
+export function resolveAppSourcesConfigPath(dataDir: string): string {
+  return join(resolveAppSourcesRootPath(dataDir), "sources.json");
+}
+
+export function resolveAppSourcePath(
+  dataDir: string,
+  sourceName: AppSourceName,
+): string {
+  return join(
+    resolveAppSourcesRootPath(dataDir),
+    appSourceNameSchema.parse(sourceName),
+  );
+}
+
+export function resolveAppSourceRepoPath(
+  dataDir: string,
+  sourceName: AppSourceName,
+): string {
+  return join(resolveAppSourcePath(dataDir, sourceName), "repo");
+}
+
+export function resolveAppSourceStatePath(
+  dataDir: string,
+  sourceName: AppSourceName,
+): string {
+  return join(resolveAppSourcePath(dataDir, sourceName), "state.json");
 }

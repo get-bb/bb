@@ -97,6 +97,7 @@ const APPS_RESPONSE: AppSummary[] = [
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data", "message"],
     icon: { kind: "builtin", name: "ListTodo" },
+    source: null,
   },
 ];
 
@@ -107,6 +108,7 @@ const APPS_ROW_APPS: AppSummary[] = [
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data", "message"],
     icon: { kind: "builtin", name: "ListTodo" },
+    source: null,
   },
   {
     applicationId: "app_workspace_map",
@@ -114,6 +116,7 @@ const APPS_ROW_APPS: AppSummary[] = [
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data"],
     icon: { kind: "builtin", name: "GridView" },
+    source: null,
   },
   {
     applicationId: "app_release_notes",
@@ -121,6 +124,7 @@ const APPS_ROW_APPS: AppSummary[] = [
     entry: { path: "index.html", kind: "html" },
     capabilities: ["message"],
     icon: { kind: "builtin", name: "File" },
+    source: null,
   },
 ];
 

@@ -79,7 +79,9 @@ import type {
   ReplayCaptureListResponse,
   ReplayRunRequest,
   ReplayRunResponse,
+  AddAppSourceRequest,
   AppDetail,
+  AppSourceStatus,
   AppSummary,
 } from "@bb/server-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
@@ -890,6 +892,38 @@ export async function listApps(
 ): Promise<AppSummary[]> {
   return request<AppSummary[]>(
     apiClient.apps.$get({}, requestOptions(signal)),
+  );
+}
+
+export async function listAppSources(
+  signal?: AbortSignal,
+): Promise<AppSourceStatus[]> {
+  return request<AppSourceStatus[]>(
+    apiClient["app-sources"].$get({}, requestOptions(signal)),
+  );
+}
+
+export async function addAppSource(
+  req: AddAppSourceRequest,
+): Promise<AppSourceStatus> {
+  return request<AppSourceStatus>(apiClient["app-sources"].$post({ json: req }));
+}
+
+export async function syncAppSource(
+  name: string,
+  force: boolean,
+): Promise<AppSourceStatus> {
+  return request<AppSourceStatus>(
+    apiClient["app-sources"][":name"].sync.$post({
+      param: { name },
+      json: { force },
+    }),
+  );
+}
+
+export async function removeAppSource(name: string): Promise<void> {
+  await requestVoid(
+    apiClient["app-sources"][":name"].$delete({ param: { name } }),
   );
 }
 

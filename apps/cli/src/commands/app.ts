@@ -4,14 +4,21 @@ import { Command } from "commander";
 import {
   appDataPathSchema,
   applicationIdSchema,
+  appSourceNameSchema,
   deriveApplicationIdFromName,
   jsonValueSchema,
 } from "@bb/domain";
-import type { AppDataPath, ApplicationId, JsonValue } from "@bb/domain";
+import type {
+  AppDataPath,
+  ApplicationId,
+  AppSourceName,
+  JsonValue,
+} from "@bb/domain";
 import type {
   AppDataEntry,
   AppDetail,
   AppIcon,
+  AppSourceStatus,
   AppSummary,
   CreateAppRequest,
 } from "@bb/server-contract";
@@ -49,6 +56,20 @@ interface AppMessageCommandOptions {
   targetThread: string;
 }
 
+interface AppSourceAddCommandOptions extends AppJsonOptions {
+  name?: string;
+  ref?: string;
+}
+
+interface AppSourceSyncCommandOptions extends AppJsonOptions {
+  force?: boolean;
+  yes?: boolean;
+}
+
+interface AppSourceRemoveCommandOptions extends AppJsonOptions {
+  yes?: boolean;
+}
+
 function parseApplicationId(value: string): ApplicationId {
   const parsed = applicationIdSchema.safeParse(value);
   if (parsed.success) {
@@ -65,6 +86,16 @@ function parseAppDataPath(value: string): AppDataPath {
     return parsed.data;
   }
   throw new Error("Invalid app data path.");
+}
+
+function parseAppSourceName(value: string): AppSourceName {
+  const parsed = appSourceNameSchema.safeParse(value);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  throw new Error(
+    "Invalid app source name. Expected a lowercase slug like my-apps.",
+  );
 }
 
 function deriveApplicationIdFromNameForCli(name: string): ApplicationId {
@@ -106,7 +137,22 @@ function formatIcon(icon: AppIcon): string {
   return icon.kind === "builtin" ? icon.name : "logo";
 }
 
-function printAppsTable(apps: AppSummary[]): void {
+function formatAppSourceCell(
+  app: AppSummary,
+  sources: AppSourceStatus[],
+): string {
+  if (app.source === null) {
+    return "-";
+  }
+  const ownerState = sources
+    .find((source) => source.name === app.source?.name)
+    ?.apps.find((entry) => entry.applicationId === app.applicationId);
+  return ownerState?.status === "modified"
+    ? `${app.source.name} (modified)`
+    : app.source.name;
+}
+
+function printAppsTable(apps: AppSummary[], sources: AppSourceStatus[]): void {
   if (apps.length === 0) {
     console.log("No apps");
     return;
@@ -114,8 +160,8 @@ function printAppsTable(apps: AppSummary[]): void {
   console.log(
     renderBorderlessTable(
       {
-        head: ["Application ID", "Name", "Entry", "Capabilities", "Icon"],
-        colWidths: [32, 24, 24, 24, 18],
+        head: ["Application ID", "Name", "Entry", "Capabilities", "Icon", "Source"],
+        colWidths: [32, 24, 24, 24, 18, 24],
         trimTrailingWhitespace: true,
       },
       apps.map((app) => [
@@ -124,9 +170,66 @@ function printAppsTable(apps: AppSummary[]): void {
         `${app.entry.kind}:${app.entry.path}`,
         app.capabilities.join(",") || "-",
         formatIcon(app.icon),
+        formatAppSourceCell(app, sources),
       ]),
     ),
   );
+}
+
+function formatAppSourceAppsSummary(status: AppSourceStatus): string {
+  if (status.apps.length === 0) {
+    return "none";
+  }
+  const counts = new Map<string, number>();
+  for (const app of status.apps) {
+    counts.set(app.status, (counts.get(app.status) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([state, count]) => `${count} ${state}`)
+    .join(", ");
+}
+
+function printAppSourcesTable(sources: AppSourceStatus[]): void {
+  if (sources.length === 0) {
+    console.log("No app sources");
+    return;
+  }
+  console.log(
+    renderBorderlessTable(
+      {
+        head: ["Name", "Origin", "Ref", "Commit", "Last Synced", "Apps", "Error"],
+        colWidths: [20, 40, 12, 12, 26, 28, 30],
+        trimTrailingWhitespace: true,
+      },
+      sources.map((source) => [
+        source.name,
+        source.origin,
+        source.ref ?? "-",
+        source.lastCommitSha?.slice(0, 8) ?? "-",
+        source.lastSyncedAt ?? "never",
+        formatAppSourceAppsSummary(source),
+        source.lastError ?? "-",
+      ]),
+    ),
+  );
+}
+
+function printAppSourceStatus(status: AppSourceStatus): void {
+  console.log(`Source ${status.name}`);
+  console.log(`  Origin:      ${status.origin}`);
+  console.log(`  Ref:         ${status.ref ?? "(default branch)"}`);
+  console.log(`  Commit:      ${status.lastCommitSha ?? "-"}`);
+  console.log(`  Last synced: ${status.lastSyncedAt ?? "never"}`);
+  console.log(`  Error:       ${status.lastError ?? "-"}`);
+  if (status.apps.length === 0) {
+    console.log("  Apps:        none");
+    return;
+  }
+  console.log("  Apps:");
+  for (const app of status.apps) {
+    const detail = app.error === null ? "" : `  ${app.error}`;
+    console.log(`    ${app.applicationId.padEnd(28)}${app.status}${detail}`);
+  }
 }
 
 function printAppDetail(app: AppDetail): void {
@@ -219,7 +322,12 @@ export function registerAppCommands(
         const sdk = createCliBbSdk(getUrl());
         const apps = await sdk.apps.list();
         if (outputJson(opts, apps)) return;
-        printAppsTable(apps);
+        // Source states (for the modified marker) only matter when at least
+        // one listed app is source-managed.
+        const sources = apps.some((app) => app.source !== null)
+          ? await sdk.apps.sources.list()
+          : [];
+        printAppsTable(apps, sources);
       }),
     );
 
@@ -299,6 +407,132 @@ export function registerAppCommands(
           console.log(`App ${applicationId} deleted`);
         },
       ),
+    );
+
+  const source = app
+    .command("source")
+    .description(
+      "Manage app sources: git repos of apps that install and update as a unit. " +
+        "Only add repos you trust — their apps serve browser code and inject agent skills.",
+    );
+
+  source
+    .command("add <origin>")
+    .description("Register a git repo (or local path) of apps and install them")
+    .option("--name <slug>", "Source name; derived from the origin when omitted")
+    .option("--ref <ref>", "Pin to a branch, tag, or commit (default: remote default branch)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (origin: string, opts: AppSourceAddCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const status = await sdk.apps.sources.add({
+          origin,
+          ...(opts.name === undefined
+            ? {}
+            : { name: parseAppSourceName(opts.name) }),
+          ...(opts.ref === undefined ? {} : { ref: opts.ref }),
+        });
+        if (outputJson(opts, status)) return;
+        printAppSourceStatus(status);
+      }),
+    );
+
+  source
+    .command("list")
+    .description("List app sources and their sync state")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: AppJsonOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const sources = await sdk.apps.sources.list();
+        if (outputJson(opts, sources)) return;
+        printAppSourcesTable(sources);
+      }),
+    );
+
+  source
+    .command("sync [name]")
+    .description("Fetch a source (or all sources) and update its apps")
+    .option("--force", "Discard local edits to diverged apps")
+    .option("--yes", "Skip the --force confirmation prompt")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          rawName: string | undefined,
+          opts: AppSourceSyncCommandOptions,
+        ) => {
+          const sdk = createCliBbSdk(getUrl());
+          const force = opts.force === true;
+          if (force && !opts.yes) {
+            const confirmed = await confirmDestructiveAction(
+              "Force sync discards local edits to diverged apps. Continue?",
+            );
+            if (!confirmed) {
+              console.log("Sync cancelled");
+              return;
+            }
+          }
+          const names =
+            rawName !== undefined
+              ? [parseAppSourceName(rawName)]
+              : (await sdk.apps.sources.list()).map((status) => status.name);
+          if (names.length === 0) {
+            console.log("No app sources");
+            return;
+          }
+          const statuses = [];
+          for (const name of names) {
+            statuses.push(await sdk.apps.sources.sync({ name, force }));
+          }
+          if (outputJson(opts, statuses)) return;
+          for (const status of statuses) {
+            printAppSourceStatus(status);
+          }
+        },
+      ),
+    );
+
+  source
+    .command("detach <applicationId>")
+    .description("Detach a managed app from its source; it becomes a local app")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (rawApplicationId: string, opts: AppJsonOptions) => {
+        const applicationId = parseApplicationId(rawApplicationId);
+        const sdk = createCliBbSdk(getUrl());
+        await sdk.apps.detach({ applicationId });
+        const payload = { ok: true, applicationId };
+        if (outputJson(opts, payload)) return;
+        console.log(`App ${applicationId} detached; it is now locally managed`);
+      }),
+    );
+
+  source
+    .command("remove <name>")
+    .description(
+      "Remove a source and its managed apps (app data is kept and reattaches on reinstall)",
+    )
+    .option("--yes", "Skip the confirmation prompt")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (rawName: string, opts: AppSourceRemoveCommandOptions) => {
+        const name = parseAppSourceName(rawName);
+        const sdk = createCliBbSdk(getUrl());
+        if (!opts.yes) {
+          const confirmed = await confirmDestructiveAction(
+            `Remove app source "${name}" and its managed apps? App data is kept.`,
+          );
+          if (!confirmed) {
+            console.log(`App source ${name} removal cancelled`);
+            return;
+          }
+        }
+        await sdk.apps.sources.remove({ name });
+        const payload = { ok: true, name };
+        if (outputJson(opts, payload)) return;
+        console.log(`App source ${name} removed`);
+      }),
     );
 
   const data = app.command("data").description("Manage global app data");

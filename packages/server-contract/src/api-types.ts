@@ -36,6 +36,7 @@ import {
   jsonValueSchema,
   appDataPathSchema,
   applicationIdSchema,
+  appSourceNameSchema,
   changedMessageSchema,
   changedMessageLenientSchema,
   callerExecutionInputSourceSchema,
@@ -1515,6 +1516,18 @@ export const appIconSchema = z.discriminatedUnion("kind", [
 ]);
 export type AppIcon = z.infer<typeof appIconSchema>;
 
+/**
+ * Provenance of an externally sourced app. `null` means the app is locally
+ * managed (created or edited in place, not tracked against an app source).
+ */
+export const appSourceRefSchema = z
+  .object({
+    name: appSourceNameSchema,
+    commitSha: z.string().min(1),
+  })
+  .strict();
+export type AppSourceRef = z.infer<typeof appSourceRefSchema>;
+
 export const appSummarySchema = z
   .object({
     applicationId: applicationIdSchema,
@@ -1522,6 +1535,7 @@ export const appSummarySchema = z
     entry: appEntrySchema,
     capabilities: z.array(appCapabilitySchema),
     icon: appIconSchema,
+    source: appSourceRefSchema.nullable(),
   })
   .strict();
 export type AppSummary = z.infer<typeof appSummarySchema>;
@@ -1552,6 +1566,108 @@ export const createAppRequestSchema = z
     }
   });
 export type CreateAppRequest = z.infer<typeof createAppRequestSchema>;
+
+/**
+ * A git remote URL or local path. Rejecting a leading `-` keeps the value out
+ * of git's option namespace: passed in an argv position git scans for flags, a
+ * `-`-prefixed value could be parsed as an option (e.g. an injected
+ * `--upload-pack`). No real origin or git ref begins with a dash.
+ */
+export const appSourceOriginSchema = z
+  .string()
+  .min(1)
+  .refine((value) => !value.startsWith("-"), "Origin cannot begin with '-'");
+
+/** A branch, tag, or commit pin. Rejects option-like values — see {@link appSourceOriginSchema}. */
+export const appSourceGitRefSchema = z
+  .string()
+  .min(1)
+  .refine((value) => !value.startsWith("-"), "Ref cannot begin with '-'");
+
+/**
+ * User intent for one app source: a git repo (or local path) whose top-level
+ * directories containing a valid manifest.json are installed as global apps.
+ * `ref: null` tracks the remote default branch; otherwise a branch, tag, or
+ * commit pin.
+ */
+export const appSourceConfigSchema = z
+  .object({
+    name: appSourceNameSchema,
+    origin: appSourceOriginSchema,
+    ref: appSourceGitRefSchema.nullable(),
+  })
+  .strict();
+export type AppSourceConfig = z.infer<typeof appSourceConfigSchema>;
+
+/**
+ * Per-app outcome of the latest sync. `installed` apps match the source;
+ * `modified` apps have local edits and are never overwritten without force;
+ * `conflict` ids are owned by a local app or another source; `invalid` apps
+ * failed manifest validation in the source checkout.
+ */
+export const appSourceAppStatusSchema = z.enum([
+  "installed",
+  "modified",
+  "conflict",
+  "invalid",
+]);
+export type AppSourceAppStatus = z.infer<typeof appSourceAppStatusSchema>;
+
+export const appSourceAppStateSchema = z
+  .object({
+    applicationId: applicationIdSchema,
+    status: appSourceAppStatusSchema,
+    error: z.string().nullable(),
+  })
+  .strict();
+export type AppSourceAppState = z.infer<typeof appSourceAppStateSchema>;
+
+/**
+ * Machine-owned sync progress, persisted per source and rewritten whole on
+ * every sync. `lastCommitSha`/`lastSyncedAt` describe the last successful
+ * sync and survive failed attempts; `lastError` is null after a success.
+ */
+export const appSourceSyncStateSchema = z
+  .object({
+    lastSyncStartedAt: isoUtcDateTimeSchema.nullable(),
+    lastSyncedAt: isoUtcDateTimeSchema.nullable(),
+    lastCommitSha: z.string().min(1).nullable(),
+    lastError: z.string().nullable(),
+    apps: z.array(appSourceAppStateSchema),
+  })
+  .strict();
+export type AppSourceSyncState = z.infer<typeof appSourceSyncStateSchema>;
+
+/**
+ * Public per-source status: config + sync progress, minus the internal-only
+ * `lastSyncStartedAt` (a progress marker no client consumes).
+ */
+export const appSourceStatusSchema = appSourceConfigSchema
+  .extend({
+    ...appSourceSyncStateSchema.omit({ lastSyncStartedAt: true }).shape,
+    syncing: z.boolean(),
+  })
+  .strict();
+export type AppSourceStatus = z.infer<typeof appSourceStatusSchema>;
+
+export const addAppSourceRequestSchema = z
+  .object({
+    origin: appSourceOriginSchema,
+    /** Absent: derived from the origin's trailing repo name. */
+    name: appSourceNameSchema.optional(),
+    /** Absent: track the remote default branch. */
+    ref: appSourceGitRefSchema.optional(),
+  })
+  .strict();
+export type AddAppSourceRequest = z.infer<typeof addAppSourceRequestSchema>;
+
+export const syncAppSourceRequestSchema = z
+  .object({
+    /** Re-materializes diverged apps, discarding their local edits. */
+    force: z.boolean(),
+  })
+  .strict();
+export type SyncAppSourceRequest = z.infer<typeof syncAppSourceRequestSchema>;
 
 export const appDataEntrySchema = z
   .object({

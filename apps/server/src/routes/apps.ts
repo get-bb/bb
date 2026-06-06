@@ -24,16 +24,24 @@ import {
 import {
   appDataPathSchema,
   applicationIdSchema,
+  appSourceNameSchema,
   deriveApplicationIdFromName,
   jsonValueSchema,
 } from "@bb/domain";
-import type { AppDataPath, ApplicationId, JsonValue } from "@bb/domain";
+import type {
+  AppDataPath,
+  ApplicationId,
+  AppSourceName,
+  JsonValue,
+} from "@bb/domain";
 import {
+  addAppSourceRequestSchema,
   appDataListQuerySchema,
   appDataWriteRequestSchema,
   appManifestSchema,
   appMessageRequestSchema,
   createAppRequestSchema,
+  syncAppSourceRequestSchema,
   typedRoutes,
   type AppDataEntry,
   type AppDetail,
@@ -47,6 +55,14 @@ import {
 import type { AppDeps, LoggedWorkSessionDeps } from "../types.js";
 import { ApiError } from "../errors.js";
 import { requirePublicThread } from "../services/lib/entity-lookup.js";
+import { isFsErrorWithCode } from "../services/lib/fs-errors.js";
+import { readAppSourceRef } from "../services/app-sources/provenance.js";
+import { createAppSourceSyncService } from "../services/app-sources/sync-service.js";
+import {
+  appStorageTempDirName,
+  appStorageTombstoneDirName,
+  isIgnoredApplicationStorageEntry,
+} from "../services/apps/app-storage-staging.js";
 import { writeInitialApplicationFiles } from "../services/threads/app-scaffold.js";
 import { requireThreadCommandEnvironment } from "../services/threads/thread-command-environment.js";
 import { sendThreadMessage } from "../services/threads/thread-send.js";
@@ -222,10 +238,6 @@ function canonicalizeJson(value: JsonValue): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-function isFsErrorWithCode(error: Error, code: string): boolean {
-  return "code" in error && error.code === code;
-}
-
 function parseApplicationId(rawApplicationId: string): ApplicationId {
   const parsed = applicationIdSchema.safeParse(rawApplicationId);
   if (!parsed.success) {
@@ -238,6 +250,14 @@ function parseAppDataPath(rawPath: string): AppDataPath {
   const parsed = appDataPathSchema.safeParse(rawPath);
   if (!parsed.success) {
     throw new ApiError(400, "invalid_request", "Invalid app data path");
+  }
+  return parsed.data;
+}
+
+function parseAppSourceName(rawName: string): AppSourceName {
+  const parsed = appSourceNameSchema.safeParse(rawName);
+  if (!parsed.success) {
+    throw new ApiError(400, "invalid_request", "Invalid app source name");
   }
   return parsed.data;
 }
@@ -549,9 +569,10 @@ async function resolveApplicationIcon(
 async function buildApplicationSummary(
   args: ApplicationSummaryArgs,
 ): Promise<AppSummary> {
-  const [entry, icon] = await Promise.all([
+  const [entry, icon, source] = await Promise.all([
     resolveApplicationEntry(args),
     resolveApplicationIcon(args),
+    readAppSourceRef(resolveApplicationPath(args.dataDir, args.applicationId)),
   ]);
   return {
     applicationId: args.manifest.id,
@@ -559,6 +580,7 @@ async function buildApplicationSummary(
     entry,
     capabilities: args.manifest.capabilities,
     icon,
+    source,
   };
 }
 
@@ -578,9 +600,6 @@ async function buildApplicationDetail(
   };
 }
 
-function isIgnoredApplicationStorageEntry(entryName: string): boolean {
-  return entryName.startsWith(".tmp-") || entryName.startsWith(".delete-");
-}
 
 async function listGlobalApplications(
   deps: GlobalAppListDeps,
@@ -1072,10 +1091,6 @@ async function deleteApplicationDataEntry(
   }
 }
 
-function createTempNonce(): string {
-  return randomUUID().replaceAll("-", "").slice(0, 16);
-}
-
 function deriveCreateApplicationId(payload: CreateAppRequest): ApplicationId {
   if (payload.applicationId !== undefined) {
     return payload.applicationId;
@@ -1108,7 +1123,7 @@ async function createApplicationTempRoot(
 ): Promise<string> {
   const tempRootPath = path.join(
     args.appsRootPath,
-    `.tmp-${args.applicationId}-${createTempNonce()}`,
+    appStorageTempDirName(args.applicationId),
   );
   await mkdir(tempRootPath, { recursive: false });
   return tempRootPath;
@@ -1207,7 +1222,7 @@ async function deleteGlobalApplication(
   }
   const tombstonePath = path.join(
     resolveAppsRootPath(dataDir),
-    `.delete-${applicationId}-${createTempNonce()}`,
+    appStorageTombstoneDirName(applicationId),
   );
   try {
     await rename(applicationPath, tombstonePath);
@@ -1220,6 +1235,16 @@ async function deleteGlobalApplication(
   }
   try {
     await rm(tombstonePath, { recursive: true, force: true });
+  } catch {
+    return "partial";
+  }
+  // App data lives outside the app folder; deleting an app explicitly deletes
+  // its data too. Source-driven app removals never call this path.
+  try {
+    await rm(resolveApplicationDataPath(dataDir, applicationId), {
+      recursive: true,
+      force: true,
+    });
     return "deleted";
   } catch {
     return "partial";
@@ -1276,6 +1301,10 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const appSessions = createAppSessionStore();
+  const appSources = createAppSourceSyncService({
+    dataDir: deps.config.dataDir,
+    logger: deps.logger,
+  });
 
   get("/apps", async (context) =>
     context.json(await listGlobalApplications(deps)),
@@ -1312,6 +1341,13 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
     const applicationId = parseApplicationId(
       context.req.param("applicationId"),
     );
+    if (await appSources.isApplicationManaged(applicationId)) {
+      throw new ApiError(
+        409,
+        "app_managed_by_source",
+        "App is managed by an app source. Detach it first or remove the source.",
+      );
+    }
     const result = await deleteGlobalApplication(
       deps.config.dataDir,
       applicationId,
@@ -1386,6 +1422,52 @@ export function registerGlobalAppRoutes(app: Hono, deps: AppDeps): void {
       return context.json({ ok: true }, 202);
     },
   );
+
+  post("/apps/:applicationId/detach", async (context) => {
+    const applicationId = parseApplicationId(
+      context.req.param("applicationId"),
+    );
+    await appSources.detach({ applicationId });
+    await notifyGlobalAppsChanged(deps);
+    return context.json({ ok: true });
+  });
+
+  get("/app-sources", async (context) =>
+    context.json(await appSources.list()),
+  );
+
+  post("/app-sources", addAppSourceRequestSchema, async (context, payload) => {
+    const outcome = await appSources.add(payload);
+    if (outcome.changed) {
+      await notifyGlobalAppsChanged(deps);
+    }
+    return context.json(outcome.status, 201);
+  });
+
+  post(
+    "/app-sources/:name/sync",
+    syncAppSourceRequestSchema,
+    async (context, payload) => {
+      const outcome = await appSources.sync({
+        name: parseAppSourceName(context.req.param("name")),
+        force: payload.force,
+      });
+      if (outcome.changed) {
+        await notifyGlobalAppsChanged(deps);
+      }
+      return context.json(outcome.status);
+    },
+  );
+
+  del("/app-sources/:name", async (context) => {
+    const outcome = await appSources.remove({
+      name: parseAppSourceName(context.req.param("name")),
+    });
+    if (outcome.changed) {
+      await notifyGlobalAppsChanged(deps);
+    }
+    return context.json({ ok: true });
+  });
 
   app.get("/app-runtime/:fileName", (context) =>
     serveAppRuntimeScript(context.req.param("fileName")),

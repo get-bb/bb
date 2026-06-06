@@ -30,6 +30,9 @@ export const APP_SCAFFOLD_TEMPLATE_DIRECTORY_NAME = "app-scaffold-template";
 export const APP_SCAFFOLD_MANIFEST_FILE_NAME = "manifest.json";
 export const APP_SCAFFOLD_README_FILE_NAME = "README.md";
 const APP_SCAFFOLD_SOURCE_DIRECTORY_NAME = "source";
+// App data lives outside the app folder; a template data/ dir (present in
+// stale dist copies) must never be scaffolded into new apps.
+const APP_SCAFFOLD_DATA_DIRECTORY_NAME = "data";
 const APP_SCAFFOLD_SOURCE_DEV_OUTPUT_DIRECTORY_NAMES = new Set([
   "node_modules",
   "playwright-report",
@@ -64,6 +67,9 @@ function shouldCopyApplicationScaffoldTemplatePath(
     return false;
   }
   const pathSegments = relativePath.split("/");
+  if (pathSegments[0] === APP_SCAFFOLD_DATA_DIRECTORY_NAME) {
+    return false;
+  }
   if (pathSegments[0] !== APP_SCAFFOLD_SOURCE_DIRECTORY_NAME) {
     return true;
   }
@@ -104,8 +110,9 @@ export function resolveApplicationScaffoldTemplatePath(): string {
 }
 
 /**
- * Copies the template tree, excluding dev artifacts under source/
- * (node_modules, playwright-report, screenshots, test-results) at every depth.
+ * Copies the template tree, excluding a top-level data/ dir and dev artifacts
+ * under source/ (node_modules, playwright-report, screenshots, test-results)
+ * at every depth.
  */
 export async function copyApplicationScaffoldTemplate(
   args: CopyApplicationScaffoldTemplateArgs,

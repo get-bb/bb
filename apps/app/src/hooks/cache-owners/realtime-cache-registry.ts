@@ -29,6 +29,7 @@ import {
   allSystemExecutionOptionsQueryKeyPrefix,
   appMarkdownPreviewQueryKeyPrefix,
   appQueryKey,
+  appSourcesQueryKey,
   allThreadQueryKeyPrefix,
   allThreadTerminalsQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
@@ -633,6 +634,9 @@ function dirtyAppListQueries(): QueryKey[] {
     allAppsQueryKeyPrefix(),
     allAppQueryKeyPrefix(),
     allAppMarkdownPreviewQueryKeyPrefix(),
+    // App-source syncs broadcast apps-changed; source status (commit,
+    // per-app states) moves together with the app list.
+    appSourcesQueryKey(),
   ];
 }
 

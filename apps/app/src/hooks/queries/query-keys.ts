@@ -38,6 +38,7 @@ export const THREAD_STORAGE_PATHS_QUERY_KEY = "threadStoragePaths";
 export const THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY = "threadStorageFilePreview";
 export const APPS_QUERY_KEY = "apps";
 export const APP_QUERY_KEY = "app";
+export const APP_SOURCES_QUERY_KEY = "appSources";
 export const APP_MARKDOWN_PREVIEW_QUERY_KEY = "appMarkdownPreview";
 export const THREAD_HOST_FILE_PREVIEW_QUERY_KEY = "threadHostFilePreview";
 export const ENVIRONMENT_QUERY_KEY = "environment";
@@ -241,6 +242,7 @@ export type AllAppsQueryKeyPrefix = readonly [typeof APPS_QUERY_KEY];
 export type AppsQueryKey = readonly [typeof APPS_QUERY_KEY];
 export type AllAppQueryKeyPrefix = readonly [typeof APP_QUERY_KEY];
 export type AppQueryKey = readonly [typeof APP_QUERY_KEY, string];
+export type AppSourcesQueryKey = readonly [typeof APP_SOURCES_QUERY_KEY];
 export type AllAppMarkdownPreviewQueryKeyPrefix = readonly [
   typeof APP_MARKDOWN_PREVIEW_QUERY_KEY,
 ];
@@ -661,6 +663,10 @@ export function appsQueryKey(): AppsQueryKey {
 
 export function allAppQueryKeyPrefix(): AllAppQueryKeyPrefix {
   return [APP_QUERY_KEY];
+}
+
+export function appSourcesQueryKey(): AppSourcesQueryKey {
+  return [APP_SOURCES_QUERY_KEY];
 }
 
 export function appQueryKey(applicationId: string): AppQueryKey {

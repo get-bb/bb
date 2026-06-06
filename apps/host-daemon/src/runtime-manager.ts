@@ -325,6 +325,7 @@ export interface RuntimeManagerOptions {
     threadId: string;
   }) => void;
   appsRootPath?: string | null;
+  appDataRootPath?: string | null;
   onInjectedSkillsChanged?: (args: InjectedSkillsChangedNotification) => void;
   onApplicationStorageTargetsChanged?: () => void;
   onApplicationDataChanged?: (args: ApplicationDataChangedNotification) => void;
@@ -1482,13 +1483,15 @@ export class RuntimeManager {
     }
 
     const appsRootPath = this.options.appsRootPath;
-    if (!appsRootPath) {
+    const appDataRootPath = this.options.appDataRootPath;
+    if (!appsRootPath || !appDataRootPath) {
       return;
     }
 
     this.stopWatchingApplicationStorageRoot =
       this.hostWatcher.watchApplicationStorageRoot({
         appsRootPath,
+        appDataRootPath,
         resolveApplicationTarget: (applicationId) =>
           this.findTrackedApplicationDataTarget(applicationId),
         onChange: (event) => {

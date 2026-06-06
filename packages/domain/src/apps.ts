@@ -19,6 +19,35 @@ export const applicationIdSchema = z
   );
 export type ApplicationId = z.infer<typeof applicationIdSchema>;
 
+/**
+ * App sources are named with the same slug rules as application ids; the name
+ * doubles as the source's directory name under the app-sources root.
+ */
+export const appSourceNameSchema = z
+  .string()
+  .min(1)
+  .max(APPLICATION_ID_MAX_LENGTH)
+  .regex(
+    APPLICATION_ID_PATTERN,
+    "App source name must be a lowercase slug containing only letters, numbers, and hyphens",
+  );
+export type AppSourceName = z.infer<typeof appSourceNameSchema>;
+
+export function deriveAppSourceNameFromOrigin(origin: string): AppSourceName {
+  const trimmed = origin.replace(/\/+$/u, "").replace(/\.git$/u, "");
+  const lastSegment = trimmed.split(/[/:\\]/u).at(-1) ?? "";
+  const segments = lastSegment
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[\u0300-\u036f]/gu, "")
+    .match(APPLICATION_NAME_SLUG_SEGMENT_PATTERN);
+  const slug = (segments ?? [])
+    .join("-")
+    .slice(0, APPLICATION_ID_MAX_LENGTH)
+    .replace(/-+$/u, "");
+  return appSourceNameSchema.parse(slug);
+}
+
 export function deriveApplicationIdFromName(name: string): ApplicationId {
   const normalizedName = name
     .normalize("NFKD")

@@ -26,6 +26,7 @@ const HTML_APP: AppDetail = {
   entry: { path: "index.html", kind: "html" },
   capabilities: ["data", "message"],
   icon: { kind: "builtin", name: "ListTodo" },
+  source: null,
   appsRootPath: "/tmp/bb-data/apps",
   appRootPath: "/tmp/bb-data/apps/status",
   appDataPath: "/tmp/bb-data/apps/status/data",

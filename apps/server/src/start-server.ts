@@ -7,6 +7,7 @@ import { toOptionalString } from "@bb/config/strings";
 import { createLogger } from "@bb/logger";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
+import { migrateAppDataLayout } from "./services/apps/app-data-layout-migration.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "./services/machine-auth.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
@@ -26,6 +27,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     dataDir: serverConfig.BB_DATA_DIR,
   });
   const db = initDb(serverConfig.databasePath, { logger });
+  await migrateAppDataLayout({ dataDir: serverConfig.BB_DATA_DIR, logger });
   const hub = new NotificationHub();
   const pendingInteractions = new PendingInteractionLifecycle({
     db,

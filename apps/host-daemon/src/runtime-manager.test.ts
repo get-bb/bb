@@ -1643,6 +1643,7 @@ describe("RuntimeManager", () => {
     const onApplicationContentChanged = vi.fn();
     const manager = new RuntimeManager({
       appsRootPath: "/tmp/bb-data/apps",
+      appDataRootPath: "/tmp/bb-data/app-data",
       hostWatcher,
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-storage"),
       createRuntime: vi.fn(() => createFakeRuntime()),
@@ -1655,7 +1656,7 @@ describe("RuntimeManager", () => {
     manager.replaceTrackedApplicationDataTargets([
       {
         applicationId: "status",
-        appDataPath: "/tmp/bb-data/apps/status/data",
+        appDataPath: "/tmp/bb-data/app-data/status",
       },
     ]);
 
@@ -1663,13 +1664,14 @@ describe("RuntimeManager", () => {
     expect(watchApplicationStorageRoot).toHaveBeenCalledWith(
       expect.objectContaining({
         appsRootPath: "/tmp/bb-data/apps",
+        appDataRootPath: "/tmp/bb-data/app-data",
       }),
     );
     expect(
       watchApplicationStorageRootArgs?.resolveApplicationTarget("status"),
     ).toEqual({
       applicationId: "status",
-      appDataPath: "/tmp/bb-data/apps/status/data",
+      appDataPath: "/tmp/bb-data/app-data/status",
     });
 
     watchApplicationStorageRootArgs?.onChange({
@@ -1678,7 +1680,7 @@ describe("RuntimeManager", () => {
     watchApplicationStorageRootArgs?.onChange({
       kind: "application-data-changed",
       applicationId: "status",
-      appDataPath: "/tmp/bb-data/apps/status/data",
+      appDataPath: "/tmp/bb-data/app-data/status",
       path: "state.json",
     });
     watchApplicationStorageRootArgs?.onChange({
@@ -1693,7 +1695,7 @@ describe("RuntimeManager", () => {
     expect(onApplicationStorageTargetsChanged).toHaveBeenCalledTimes(1);
     expect(onApplicationDataChanged).toHaveBeenCalledWith({
       applicationId: "status",
-      appDataPath: "/tmp/bb-data/apps/status/data",
+      appDataPath: "/tmp/bb-data/app-data/status",
       path: "state.json",
     });
     expect(onApplicationDataResync).toHaveBeenCalledWith({

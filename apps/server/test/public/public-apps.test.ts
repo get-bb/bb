@@ -653,16 +653,6 @@ describe("public global app routes", () => {
         path.join(appRootPath, "skills", "add-todos", "SKILL.md"),
         "utf8",
       );
-      const dataStateText = await readFile(
-        path.join(
-          resolveApplicationDataPath(
-            harness.config.dataDir,
-            created.applicationId,
-          ),
-          "state.json",
-        ),
-        "utf8",
-      );
       const sourcePackageText = await readFile(
         path.join(appRootPath, "source", "package.json"),
         "utf8",
@@ -690,7 +680,19 @@ describe("public global app routes", () => {
       expect(readmeText).toMatch(/^# Created App\n/u);
       expect(skillText).toContain("todos/<id>");
       expect(skillText).toContain("bb app data write");
-      expect(JSON.parse(dataStateText)).toEqual({});
+      // Scaffolds no longer seed app data; the app folder stays pure code and
+      // the data dir is created lazily on first write outside the app folder.
+      await expect(
+        readdir(path.join(appRootPath, "data")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(
+        readdir(
+          resolveApplicationDataPath(
+            harness.config.dataDir,
+            created.applicationId,
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "ENOENT" });
       expect(sdkDeclarationText).toContain("GENERATED - do not edit");
       await expect(
         readdir(path.join(appRootPath, "source", "screenshots")),
@@ -714,6 +716,15 @@ describe("public global app routes", () => {
         false,
       );
 
+      const dataWriteResponse = await harness.app.request(
+        `/api/v1/apps/${created.applicationId}/data/state.json`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ value: { tasks: [] } }),
+        },
+      );
+      expect(dataWriteResponse.status).toBe(200);
+
       const deleteResponse = await harness.app.request(
         `/api/v1/apps/${created.applicationId}`,
         { method: "DELETE" },
@@ -723,6 +734,15 @@ describe("public global app routes", () => {
         `/api/v1/apps/${created.applicationId}`,
       );
       expect(deletedGetResponse.status).toBe(404);
+      // Explicit app deletion removes the detached data dir too.
+      await expect(
+        readdir(
+          resolveApplicationDataPath(
+            harness.config.dataDir,
+            created.applicationId,
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
 

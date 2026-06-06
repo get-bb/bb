@@ -2,6 +2,7 @@ import { memo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import type { AppSummary } from "@bb/server-contract";
 import { ResolvedAppIcon } from "@/components/secondary-panel/AppIcon";
+import { Icon } from "@/components/ui/icon.js";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
   COARSE_POINTER_GLYPH_BOX_CLASS,
@@ -70,6 +71,15 @@ const SidebarAppRow = memo(function SidebarAppRow({
         />
       </span>
       <span className="relative z-10 min-w-0 flex-1 truncate">{app.name}</span>
+      {app.source !== null ? (
+        // Source-managed apps update on source sync; the glyph marks them as
+        // externally owned without taking row space from the name.
+        <Icon
+          name="GitBranch"
+          aria-hidden="true"
+          className="relative z-10 size-3 shrink-0 text-muted-foreground"
+        />
+      ) : null}
     </button>
   );
 });

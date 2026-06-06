@@ -1188,6 +1188,7 @@ describe("CLI command output contracts", () => {
         entry: { path: "index.html", kind: "html" },
         capabilities: ["data", "message"],
         icon: { kind: "builtin", name: "ListTodo" },
+        source: null,
       },
       {
         applicationId: "demo",
@@ -1198,6 +1199,7 @@ describe("CLI command output contracts", () => {
           kind: "logo",
           url: "/api/v1/apps/demo/icon",
         },
+        source: null,
       },
     ];
     const get = vi.fn(async () => apps);
@@ -1219,7 +1221,7 @@ describe("CLI command output contracts", () => {
 
     expect(get).toHaveBeenCalledWith();
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "Application ID                    Name                      Entry                     Capabilities              Icon\n--------------------------------  ------------------------  ------------------------  ------------------------  ------------------\nstatus                            Project Status            html:index.html           data,message              ListTodo\n--------------------------------  ------------------------  ------------------------  ------------------------  ------------------\ndemo                              Demo                      md:readme.md              -                         logo",
+      "Application ID                    Name                      Entry                     Capabilities              Icon                Source\n--------------------------------  ------------------------  ------------------------  ------------------------  ------------------  ------------------------\nstatus                            Project Status            html:index.html           data,message              ListTodo            -\n--------------------------------  ------------------------  ------------------------  ------------------------  ------------------  ------------------------\ndemo                              Demo                      md:readme.md              -                         logo                -",
     ]);
   });
 
@@ -1232,7 +1234,7 @@ describe("CLI command output contracts", () => {
       icon: { kind: "builtin", name: "ListTodo" },
       appsRootPath: "/tmp/bb-data/apps",
       appRootPath: "/tmp/bb-data/apps/review-board",
-      appDataPath: "/tmp/bb-data/apps/review-board/data",
+      appDataPath: "/tmp/bb-data/app-data/review-board",
     };
     const post = vi.fn(async () => created);
     createClientMock.mockReturnValue(
@@ -1261,7 +1263,7 @@ describe("CLI command output contracts", () => {
       "  Capabilities:  data,message",
       "  Icon:          ListTodo",
       "  App root:      /tmp/bb-data/apps/review-board",
-      "  App data path: /tmp/bb-data/apps/review-board/data",
+      "  App data path: /tmp/bb-data/app-data/review-board",
     ]);
   });
 
@@ -1274,7 +1276,7 @@ describe("CLI command output contracts", () => {
       icon: { kind: "builtin", name: "ListTodo" },
       appsRootPath: "/tmp/bb-data/apps",
       appRootPath: "/tmp/bb-data/apps/status",
-      appDataPath: "/tmp/bb-data/apps/status/data",
+      appDataPath: "/tmp/bb-data/app-data/status",
     };
     const post = vi.fn(async () => created);
     createClientMock.mockReturnValue(
@@ -1303,14 +1305,14 @@ describe("CLI command output contracts", () => {
       "  Capabilities:  data,message",
       "  Icon:          ListTodo",
       "  App root:      /tmp/bb-data/apps/status",
-      "  App data path: /tmp/bb-data/apps/status/data",
+      "  App data path: /tmp/bb-data/app-data/status",
     ]);
   });
 
   it("bb app current renders runtime app paths", async () => {
     vi.stubEnv("BB_APP_ID", "current");
     vi.stubEnv("BB_APP_ROOT", "/tmp/bb-data/apps/current");
-    vi.stubEnv("BB_APP_DATA_PATH", "/tmp/bb-data/apps/current/data");
+    vi.stubEnv("BB_APP_DATA_PATH", "/tmp/bb-data/app-data/current");
     vi.stubEnv("BB_APPS_ROOT", "/tmp/bb-data/apps");
 
     await runCommand(["app", "current"], (program) =>
@@ -1320,8 +1322,152 @@ describe("CLI command output contracts", () => {
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "Application ID: current",
       "  App root:      /tmp/bb-data/apps/current",
-      "  App data path: /tmp/bb-data/apps/current/data",
+      "  App data path: /tmp/bb-data/app-data/current",
       "  Apps root:     /tmp/bb-data/apps",
+    ]);
+  });
+
+  it("bb app source add posts the request and renders the source status", async () => {
+    const status = {
+      name: "team-apps",
+      origin: "https://github.com/acme/team-apps.git",
+      ref: null,
+      lastSyncStartedAt: "2026-06-05T00:00:00.000Z",
+      lastSyncedAt: "2026-06-05T00:00:01.000Z",
+      lastCommitSha: "abcdef1234567890",
+      lastError: null,
+      syncing: false,
+      apps: [
+        { applicationId: "hello", status: "installed", error: null },
+        {
+          applicationId: "broken",
+          status: "invalid",
+          error: "manifest.json failed validation",
+        },
+      ],
+    };
+    const post = vi.fn(async () => status);
+    createClientMock.mockReturnValue(
+      asServerClient({
+        api: {
+          v1: {
+            "app-sources": {
+              $post: post,
+            },
+          },
+        },
+      }),
+    );
+
+    await runCommand(
+      ["app", "source", "add", "https://github.com/acme/team-apps.git"],
+      (program) => registerAppCommands(program, () => "http://server"),
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: { origin: "https://github.com/acme/team-apps.git" },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Source team-apps",
+      "  Origin:      https://github.com/acme/team-apps.git",
+      "  Ref:         (default branch)",
+      "  Commit:      abcdef1234567890",
+      "  Last synced: 2026-06-05T00:00:01.000Z",
+      "  Error:       -",
+      "  Apps:",
+      "    hello                       installed",
+      "    broken                      invalid  manifest.json failed validation",
+    ]);
+  });
+
+  it("bb app source sync forwards force after --yes", async () => {
+    const status = {
+      name: "team-apps",
+      origin: "https://github.com/acme/team-apps.git",
+      ref: "v1",
+      lastSyncStartedAt: "2026-06-05T00:00:00.000Z",
+      lastSyncedAt: "2026-06-05T00:00:01.000Z",
+      lastCommitSha: "abcdef1234567890",
+      lastError: null,
+      syncing: false,
+      apps: [],
+    };
+    const post = vi.fn(async () => status);
+    createClientMock.mockReturnValue(
+      asServerClient({
+        api: {
+          v1: {
+            "app-sources": {
+              ":name": {
+                sync: { $post: post },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    await runCommand(
+      ["app", "source", "sync", "team-apps", "--force", "--yes"],
+      (program) => registerAppCommands(program, () => "http://server"),
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { name: "team-apps" },
+      json: { force: true },
+    });
+  });
+
+  it("bb app source remove deletes after --yes", async () => {
+    const del = vi.fn(async () => ({ ok: true }));
+    createClientMock.mockReturnValue(
+      asServerClient({
+        api: {
+          v1: {
+            "app-sources": {
+              ":name": {
+                $delete: del,
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    await runCommand(
+      ["app", "source", "remove", "team-apps", "--yes"],
+      (program) => registerAppCommands(program, () => "http://server"),
+    );
+
+    expect(del).toHaveBeenCalledWith({ param: { name: "team-apps" } });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "App source team-apps removed",
+    ]);
+  });
+
+  it("bb app source detach posts the detach route", async () => {
+    const post = vi.fn(async () => ({ ok: true }));
+    createClientMock.mockReturnValue(
+      asServerClient({
+        api: {
+          v1: {
+            apps: {
+              ":applicationId": {
+                detach: { $post: post },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    await runCommand(["app", "source", "detach", "hello"], (program) =>
+      registerAppCommands(program, () => "http://server"),
+    );
+
+    expect(post).toHaveBeenCalledWith({ param: { applicationId: "hello" } });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "App hello detached; it is now locally managed",
     ]);
   });
 

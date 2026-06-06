@@ -40,6 +40,11 @@ interface ApplicationStoragePath {
   parts: string[];
 }
 
+interface ApplicationDataPathArgs {
+  appDataRootPath: string;
+  changedPath: string;
+}
+
 interface ApplicationDataPath {
   applicationId: ApplicationId;
   path: AppDataPath;
@@ -62,6 +67,11 @@ interface CollectThreadStorageObservedChangesArgs {
 
 interface CollectApplicationStorageObservedChangesArgs {
   appsRootPath: string;
+  changedPaths: string[];
+}
+
+interface CollectApplicationDataObservedChangesArgs {
+  appDataRootPath: string;
   changedPaths: string[];
   resolveApplicationTarget: (
     applicationId: ApplicationId,
@@ -124,10 +134,6 @@ function toApplicationStoragePath(
   };
 }
 
-function isApplicationDataSubtreePath(path: ApplicationStoragePath): boolean {
-  return path.parts[1] === "data";
-}
-
 function isApplicationSkillsSubtreePath(path: ApplicationStoragePath): boolean {
   return path.parts[1] === "skills";
 }
@@ -151,23 +157,6 @@ function isIgnoredApplicationStorageEntry(path: ApplicationStoragePath): boolean
   );
 }
 
-function toApplicationDataPath(
-  path: ApplicationStoragePath,
-): ApplicationDataPath | null {
-  const rootPath = toApplicationDataRootPath(path);
-  if (!rootPath || path.parts.length < 3) {
-    return null;
-  }
-  const dataPath = appDataPathSchema.safeParse(path.parts.slice(2).join("/"));
-  if (!dataPath.success) {
-    return null;
-  }
-  return {
-    applicationId: rootPath.applicationId,
-    path: dataPath.data,
-  };
-}
-
 function isDataDirSkillsPath(args: DataDirSkillsPathArgs): boolean {
   const relativePath = path.relative(
     args.dataDirSkillsRootPath,
@@ -179,15 +168,60 @@ function isDataDirSkillsPath(args: DataDirSkillsPathArgs): boolean {
   );
 }
 
-function toApplicationDataRootPath(
-  path: ApplicationStoragePath,
-): ApplicationDataRootPath | null {
-  if (!path.applicationId || !isApplicationDataSubtreePath(path)) {
+/**
+ * App data lives at {appDataRootPath}/<applicationId>/<dataPath...> — the
+ * per-app directory is itself the data subtree (no `data/` segment). Returns
+ * the parsed app id and parts relative to the app-data root, or null when the
+ * change is outside the root or names an invalid application id.
+ */
+function toApplicationDataStoragePath(
+  args: ApplicationDataPathArgs,
+): ApplicationStoragePath | null {
+  const relativePath = path.relative(args.appDataRootPath, args.changedPath);
+  if (
+    relativePath.length === 0 ||
+    relativePath.startsWith("..") ||
+    path.isAbsolute(relativePath)
+  ) {
+    return null;
+  }
+  const parts = relativePath.split(path.sep).filter(Boolean);
+  const rawApplicationId = parts[0];
+  if (!rawApplicationId) {
+    return null;
+  }
+  const parsed = applicationIdSchema.safeParse(rawApplicationId);
+  if (!parsed.success) {
+    return null;
+  }
+  return { applicationId: parsed.data, parts };
+}
+
+function toApplicationDataPath(
+  storagePath: ApplicationStoragePath,
+): ApplicationDataPath | null {
+  if (!storagePath.applicationId || storagePath.parts.length < 2) {
+    return null;
+  }
+  const dataPath = appDataPathSchema.safeParse(
+    storagePath.parts.slice(1).join("/"),
+  );
+  if (!dataPath.success) {
     return null;
   }
   return {
-    applicationId: path.applicationId,
+    applicationId: storagePath.applicationId,
+    path: dataPath.data,
   };
+}
+
+function toApplicationDataRootPath(
+  storagePath: ApplicationStoragePath,
+): ApplicationDataRootPath | null {
+  if (!storagePath.applicationId) {
+    return null;
+  }
+  return { applicationId: storagePath.applicationId };
 }
 
 export function collectThreadStorageObservedChanges(
@@ -216,12 +250,16 @@ export function collectThreadStorageObservedChanges(
     }));
 }
 
+/**
+ * Classifies changes under the apps root (app code): manifest/folder changes
+ * become targets-changed, public/ becomes content-changed, skills/ becomes
+ * injected-skills-changed. App data is NOT here — it lives under the app-data
+ * root and is classified by collectApplicationDataObservedChanges.
+ */
 export function collectApplicationStorageObservedChanges(
   args: CollectApplicationStorageObservedChangesArgs,
 ): ApplicationStorageObservedChange[] {
   let targetsChanged = false;
-  const appDataChanges = new Map<string, ApplicationStorageObservedChange>();
-  const appDataResyncs = new Map<string, ApplicationStorageObservedChange>();
   const appContentChanges = new Map<string, ApplicationStorageObservedChange>();
   const appSkillChanges = new Map<string, InjectedSkillsObservedChange>();
 
@@ -265,43 +303,67 @@ export function collectApplicationStorageObservedChanges(
       });
       continue;
     }
-    if (isApplicationDataSubtreePath(storagePath)) {
-      const appDataRootPath = toApplicationDataRootPath(storagePath);
-      const appDataPath = toApplicationDataPath(storagePath);
-      if (appDataPath) {
-        const target = args.resolveApplicationTarget(
-          appDataPath.applicationId,
-        );
-        if (!target) {
-          continue;
-        }
-        appDataChanges.set(
-          `${appDataPath.applicationId}:${appDataPath.path}`,
-          {
-            kind: "application-data-changed",
-            applicationId: appDataPath.applicationId,
-            appDataPath: target.appDataPath,
-            path: appDataPath.path,
-          },
-        );
-      } else if (appDataRootPath) {
-        appDataResyncs.set(appDataRootPath.applicationId, {
-          kind: "application-data-resync",
-          applicationId: appDataRootPath.applicationId,
-        });
-      }
-      continue;
-    }
   }
 
   const observedChanges: ApplicationStorageObservedChange[] = [];
   if (targetsChanged) {
     observedChanges.push({ kind: "application-storage-targets-changed" });
   }
-  observedChanges.push(...appDataChanges.values());
-  observedChanges.push(...appDataResyncs.values());
   observedChanges.push(...appContentChanges.values());
   observedChanges.push(...appSkillChanges.values());
+  return observedChanges;
+}
+
+/**
+ * Classifies changes under the app-data root ({dataDir}/app-data). A change to
+ * a known data file emits application-data-changed; a change to the per-app
+ * directory itself (or an unrepresentable path) emits application-data-resync
+ * so subscribers re-read the whole app's data.
+ */
+export function collectApplicationDataObservedChanges(
+  args: CollectApplicationDataObservedChangesArgs,
+): ApplicationStorageObservedChange[] {
+  const appDataChanges = new Map<string, ApplicationStorageObservedChange>();
+  const appDataResyncs = new Map<string, ApplicationStorageObservedChange>();
+
+  for (const changedPath of args.changedPaths) {
+    const storagePath = toApplicationDataStoragePath({
+      changedPath,
+      appDataRootPath: args.appDataRootPath,
+    });
+    if (!storagePath) {
+      continue;
+    }
+    const appDataPath = toApplicationDataPath(storagePath);
+    if (appDataPath) {
+      // A precise per-file change needs the tracked target's resolved data
+      // path; an untracked app has no subscriber, so skip it.
+      const target = args.resolveApplicationTarget(appDataPath.applicationId);
+      if (!target) {
+        continue;
+      }
+      appDataChanges.set(`${appDataPath.applicationId}:${appDataPath.path}`, {
+        kind: "application-data-changed",
+        applicationId: appDataPath.applicationId,
+        appDataPath: target.appDataPath,
+        path: appDataPath.path,
+      });
+      continue;
+    }
+    // Whole-dir or unrepresentable change: emit a resync hint so subscribers
+    // re-read. No target lookup — the hint carries only the application id.
+    const appDataRootPath = toApplicationDataRootPath(storagePath);
+    if (appDataRootPath) {
+      appDataResyncs.set(appDataRootPath.applicationId, {
+        kind: "application-data-resync",
+        applicationId: appDataRootPath.applicationId,
+      });
+    }
+  }
+
+  const observedChanges: ApplicationStorageObservedChange[] = [];
+  observedChanges.push(...appDataChanges.values());
+  observedChanges.push(...appDataResyncs.values());
   return observedChanges;
 }
 
@@ -377,25 +439,45 @@ function watchThreadStorageRoot(
 function watchApplicationStorageRoot(
   args: WatchApplicationStorageRootArgs,
 ): () => Promise<void> {
-  return watchPathChanges(args.appsRootPath, {
+  const onWatchError = (error: { rootPath: string; message: string }) => {
+    args.onWatchError({
+      kind: "application-storage-watch-error",
+      rootPath: error.rootPath,
+      message: error.message,
+    });
+  };
+  // App code (apps/) and app data (app-data/) live in sibling roots, so each
+  // needs its own watch. Code changes drive targets/content/skills events;
+  // data changes drive app-data broadcasts.
+  const stopWatchingApps = watchPathChanges(args.appsRootPath, {
     onChange: ({ changedPaths }) => {
       const events = collectApplicationStorageObservedChanges({
         changedPaths,
         appsRootPath: args.appsRootPath,
+      });
+      for (const event of events) {
+        args.onChange(event);
+      }
+    },
+    onWatchError,
+  });
+  const stopWatchingAppData = watchPathChanges(args.appDataRootPath, {
+    onChange: ({ changedPaths }) => {
+      const events = collectApplicationDataObservedChanges({
+        changedPaths,
+        appDataRootPath: args.appDataRootPath,
         resolveApplicationTarget: args.resolveApplicationTarget,
       });
       for (const event of events) {
         args.onChange(event);
       }
     },
-    onWatchError: (error) => {
-      args.onWatchError({
-        kind: "application-storage-watch-error",
-        rootPath: error.rootPath,
-        message: error.message,
-      });
-    },
+    onWatchError,
   });
+  return async () => {
+    await stopWatchingApps();
+    await stopWatchingAppData();
+  };
 }
 
 function watchDataDirSkillsRoot(

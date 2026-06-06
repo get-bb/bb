@@ -163,6 +163,7 @@ function makeApp({ applicationId, name, icon }: MakeAppArgs): AppSummary {
     entry: { path: "index.html", kind: "html" },
     capabilities: [],
     icon,
+    source: null,
   };
 }
 

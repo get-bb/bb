@@ -10,10 +10,12 @@ message back to the manager thread that opened it.
 manifest.json
 README.md
 public/                 # Served by bb as the app web root
-data/state.json          # Empty seed state
 skills/add-todos/        # Agent skill for out-of-band todo writes
 source/                  # Editable Vite + React + TypeScript app
 ```
+
+App data lives outside this folder at `<dataDir>/app-data/<applicationId>/`,
+created on first write.
 
 Only `public/` is served to the browser. The committed `public/` build lets a
 new app render immediately after `bb app new`.

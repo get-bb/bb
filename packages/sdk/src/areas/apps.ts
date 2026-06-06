@@ -1,9 +1,11 @@
 import {
   appDataReadResponseSchema,
+  type AddAppSourceRequest,
   type AppDataEntry,
   type AppDataListResponse,
   type AppDetail,
   type AppMessageRequest,
+  type AppSourceStatus,
   type AppSummary,
   type BbDataChangeCallback,
   type BbDataChangeEvent,
@@ -31,6 +33,22 @@ export interface AppCreateArgs extends CreateAppRequest {}
 
 export interface AppDeleteArgs {
   applicationId: string;
+}
+
+export interface AppDetachArgs {
+  applicationId: string;
+}
+
+export interface AppSourceAddArgs extends AddAppSourceRequest {}
+
+export interface AppSourceSyncArgs {
+  name: string;
+  /** Required so every caller states intent — matches the server contract. */
+  force: boolean;
+}
+
+export interface AppSourceRemoveArgs {
+  name: string;
 }
 
 export interface AppOpenUrlArgs {
@@ -85,15 +103,24 @@ export interface AppsDataArea {
   write(args: AppDataWriteArgs): Promise<AppDataEntry>;
 }
 
+export interface AppSourcesArea {
+  add(args: AppSourceAddArgs): Promise<AppSourceStatus>;
+  list(): Promise<AppSourceStatus[]>;
+  remove(args: AppSourceRemoveArgs): Promise<OkResponse>;
+  sync(args: AppSourceSyncArgs): Promise<AppSourceStatus>;
+}
+
 export interface AppsArea {
   create(args: AppCreateArgs): Promise<AppDetail>;
   current(): Promise<CurrentAppRuntimeContext>;
   data: AppsDataArea;
   delete(args: AppDeleteArgs): Promise<OkResponse>;
+  detach(args: AppDetachArgs): Promise<OkResponse>;
   get(args: AppGetArgs): Promise<AppDetail>;
   list(): Promise<AppSummary[]>;
   message(args: AppMessageArgs): Promise<OkResponse>;
   openUrl(args: AppOpenUrlArgs): string;
+  sources: AppSourcesArea;
 }
 
 export interface CurrentAppDataArea {
@@ -210,6 +237,33 @@ export function createAppsArea(args: CreateSdkAreaArgs): AppsArea {
     },
   };
 
+  const sources: AppSourcesArea = {
+    async add(input) {
+      return transport.readJson(
+        transport.api.v1["app-sources"].$post({ json: input }),
+      );
+    },
+    async list() {
+      return transport.readJson(transport.api.v1["app-sources"].$get());
+    },
+    async remove(input) {
+      await transport.readVoid(
+        transport.api.v1["app-sources"][":name"].$delete({
+          param: { name: input.name },
+        }),
+      );
+      return { ok: true };
+    },
+    async sync(input) {
+      return transport.readJson(
+        transport.api.v1["app-sources"][":name"].sync.$post({
+          param: { name: input.name },
+          json: { force: input.force },
+        }),
+      );
+    },
+  };
+
   return {
     async create(input) {
       return transport.readJson(
@@ -230,6 +284,14 @@ export function createAppsArea(args: CreateSdkAreaArgs): AppsArea {
     async delete(input) {
       await transport.readVoid(
         transport.api.v1.apps[":applicationId"].$delete({
+          param: { applicationId: input.applicationId },
+        }),
+      );
+      return { ok: true };
+    },
+    async detach(input) {
+      await transport.readVoid(
+        transport.api.v1.apps[":applicationId"].detach.$post({
           param: { applicationId: input.applicationId },
         }),
       );
@@ -262,6 +324,7 @@ export function createAppsArea(args: CreateSdkAreaArgs): AppsArea {
     openUrl(input) {
       return appEntryPath(input);
     },
+    sources,
   };
 }
 

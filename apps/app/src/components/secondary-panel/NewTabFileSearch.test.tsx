@@ -112,6 +112,7 @@ const APP_SUGGESTION = {
     entry: { path: "index.html", kind: "html" },
     capabilities: ["data", "message"],
     icon: { kind: "builtin", name: "ListTodo" },
+    source: null,
   },
   applicationId: "status",
   name: "Review Board",

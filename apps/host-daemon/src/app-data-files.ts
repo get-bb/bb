@@ -3,6 +3,7 @@ import type { Stats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  resolveAppDataRootPath,
   resolveApplicationDataPath,
   resolveApplicationManifestPath,
   resolveAppsRootPath,
@@ -329,4 +330,10 @@ export async function ensureAppsRootPath(dataDir: string): Promise<string> {
   const appsRootPath = resolveAppsRootPath(dataDir);
   await fs.mkdir(appsRootPath, { recursive: true });
   return appsRootPath;
+}
+
+export async function ensureAppDataRootPath(dataDir: string): Promise<string> {
+  const appDataRootPath = resolveAppDataRootPath(dataDir);
+  await fs.mkdir(appDataRootPath, { recursive: true });
+  return appDataRootPath;
 }

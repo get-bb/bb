@@ -69,6 +69,7 @@ const APP: AppSummary = {
   entry: { path: "index.html", kind: "html" },
   capabilities: ["data", "message"],
   icon: { kind: "builtin", name: "ListTodo" },
+  source: null,
 };
 
 afterEach(() => {

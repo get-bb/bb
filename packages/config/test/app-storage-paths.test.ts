@@ -3,6 +3,7 @@ import {
   resolveApplicationDataPath,
   resolveApplicationPath,
   resolveApplicationPublicPath,
+  resolveLegacyApplicationDataPath,
 } from "../src/app-storage-paths.js";
 
 describe("app storage paths", () => {
@@ -11,6 +12,9 @@ describe("app storage paths", () => {
       "/tmp/bb-data/apps/review-board",
     );
     expect(resolveApplicationDataPath("/tmp/bb-data", "status")).toBe(
+      "/tmp/bb-data/app-data/status",
+    );
+    expect(resolveLegacyApplicationDataPath("/tmp/bb-data", "status")).toBe(
       "/tmp/bb-data/apps/status/data",
     );
     expect(resolveApplicationPublicPath("/tmp/bb-data", "status")).toBe(
@@ -20,5 +24,6 @@ describe("app storage paths", () => {
 
   it("rejects invalid application id path segments", () => {
     expect(() => resolveApplicationPath("/tmp/bb-data", "a/b")).toThrow();
+    expect(() => resolveApplicationDataPath("/tmp/bb-data", "a/b")).toThrow();
   });
 });

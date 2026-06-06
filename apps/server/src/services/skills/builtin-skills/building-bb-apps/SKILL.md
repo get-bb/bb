@@ -17,7 +17,6 @@ A global app lives at:
 <dataDir>/apps/<slug>/
   manifest.json
   public/
-  data/
   skills/
   source/
 ```
@@ -38,8 +37,11 @@ served at `/api/v1/apps/<slug>/`; `public/index-abc.js` is served at
 `/api/v1/apps/<slug>/index-abc.js`. Use relative asset refs such as
 `./index-abc.js`, not root-absolute refs such as `/assets/index-abc.js`.
 
-`data/` stores durable JSON values addressed by app-data paths. It is private
-browser content and is exposed through the SDK, CLI, and server data API.
+Durable JSON values addressed by app-data paths live outside the app folder at
+`<dataDir>/app-data/<slug>/`, created lazily on first write. App data is
+private — never browser content — and is exposed through the SDK, CLI, and
+server data API. Keeping data out of the app folder lets app code be replaced
+wholesale (for example by app-source syncs) without touching user state.
 
 `skills/` stores app-local agent skills. Each skill is a normal
 `skills/<name>/SKILL.md` folder. Valid app-local skills are injected into agents
@@ -84,11 +86,12 @@ includes:
 manifest.json
 README.md
 public/                 # prebuilt browser output, served by bb
-data/state.json          # empty seed JSON object
 skills/add-todos/        # app-local skill for writing todo records
 source/                  # editable Vite React TypeScript project
 source/src/bb-sdk.d.ts   # generated window.bb types
 ```
+
+No data is seeded; `<dataDir>/app-data/<slug>/` appears on first write.
 
 The app renders immediately because `public/` is already built. Edit in
 `source/`, then rebuild:
@@ -293,7 +296,7 @@ as CLI-level power inside the browser prototype; prefer the current-app
 
 ## App Data
 
-App data paths are relative to `<dataDir>/apps/<slug>/data/`.
+App data paths are relative to `<dataDir>/app-data/<slug>/`.
 
 Rules:
 
@@ -364,6 +367,61 @@ There is also a message command for non-browser sends:
 ```bash
 bb app message review-board --target-thread thr_123 --json '"Please review this."'
 ```
+
+## App Sources
+
+An app source is a git repo (or local path) of bb apps that installs and
+updates as a unit. Every top-level directory in the repo with a valid
+`manifest.json` is an app; no catalog file is needed:
+
+```text
+my-bb-apps/              # the git repo
+  pomodoro/
+    manifest.json        # standard manifest; manifest.id is the app id
+    public/index.html
+    skills/...
+  standup-notes/
+    manifest.json
+    public/index.html
+  README.md              # non-app entries are ignored
+```
+
+Authoring rules: commit built `public/` output (no build step runs on
+install), never commit a `data/` directory (runtime data is user-owned and
+ignored), and never commit `.bb-app-source.json` (ignored — provenance is
+written by bb). Symlinks are skipped on install.
+
+Managing sources:
+
+```bash
+bb app source add https://github.com/you/my-bb-apps.git
+bb app source add /path/to/local/repo --name team-apps --ref v1
+bb app source list
+bb app source sync team-apps          # fetch + update that source's apps
+bb app source sync                    # sync every source
+bb app source sync team-apps --force  # discard local edits to diverged apps
+bb app source detach pomodoro         # app becomes permanently local
+bb app source remove team-apps --yes  # removes apps; app data is kept
+```
+
+Semantics:
+
+- Updates are manual: nothing syncs in the background. `bb app source sync`
+  fetches the origin and reconciles installed apps; the recorded commit sha
+  is the version.
+- Installed apps carry a `.bb-app-source.json` provenance marker and report
+  `source` in `bb app list`/`bb app show`. Managed apps cannot be deleted
+  with `bb app delete` — detach first or remove the source.
+- Local edits to a managed app mark it `modified`; sync never overwrites it
+  without `--force`. Upstream deletion never removes a modified app.
+- App ids already used by a local app (or another source) report `conflict`
+  and are skipped; the local app always wins.
+- App data lives in `<dataDir>/app-data/<slug>/` and survives updates,
+  upstream removal, and source removal; it reattaches when an app is
+  reinstalled.
+- Trust: adding a source is the trust decision. Its apps serve browser code
+  with a `window.bb` session and inject agent skills. Only add repos you
+  trust.
 
 ## Skills Injection
 

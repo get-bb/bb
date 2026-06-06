@@ -35,6 +35,7 @@ import { createServerClient } from "./server-client.js";
 import { AppDataChangeReporter } from "./app-data-change-reporter.js";
 import { resolveDataDirSkillsRootPath } from "@bb/config/app-storage-paths";
 import {
+  ensureAppDataRootPath,
   ensureAppsRootPath,
   listApplicationDataTargetsFromRoot,
 } from "./app-data-files.js";
@@ -331,6 +332,7 @@ export async function createHostDaemonApp(
       : {},
   );
   const appsRootPath = await ensureAppsRootPath(options.dataDir);
+  const appDataRootPath = await ensureAppDataRootPath(options.dataDir);
   const dataDirSkillsRootPath = resolveDataDirSkillsRootPath(options.dataDir);
   await cleanupInjectedSkillStagingDirs({
     dataDir: options.dataDir,
@@ -517,6 +519,7 @@ export async function createHostDaemonApp(
     logger: options.logger,
     shellEnv: options.runtimeShellEnv,
     appsRootPath,
+    appDataRootPath,
     onCapture: (entry) => {
       replayCapture?.recordRuntimeCaptureEntry(entry);
     },

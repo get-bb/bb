@@ -32,8 +32,6 @@ Storage layout:
         index.html
         index-abc.js
         index-def.css
-      data/
-        state.json
       skills/
         add-todos/
           SKILL.md
@@ -41,13 +39,19 @@ Storage layout:
         package.json
         vite.config.ts
         src/
+  app-data/
+    review-board/
+      state.json
 ```
 
 Each app is rooted at `<dataDir>/apps/<applicationId>/`. The manifest lives at
-`manifest.json`, browser files live under `public/`, and durable JSON state
-lives under `data/`. Only `public/` is served as static web content. `source/`
-and `skills/` are local app files for editing and agent workflows; they are not
-served as browser content.
+`manifest.json` and browser files live under `public/`. Only `public/` is
+served as static web content. `source/` and `skills/` are local app files for
+editing and agent workflows; they are not served as browser content.
+
+Durable JSON state lives outside the app folder at
+`<dataDir>/app-data/<applicationId>/`, so app code and runtime data have
+independent lifecycles. The data dir is created lazily on first write.
 
 The app exists only when the local filesystem contains a valid manifest at
 `<dataDir>/apps/<applicationId>/manifest.json`. `manifest.id` is the canonical
@@ -141,6 +145,21 @@ bb app delete review-board --yes
 `--json` is available for scripts. Commands accept application ids only, never
 display names. There is no host selector in v1; apps are local-host only.
 
+App sources install apps from a git repo (or local path) and update them with
+manual syncs. Every top-level repo directory with a valid `manifest.json` is
+an app. Updates never run in the background, local edits mark an app
+`modified` and are never overwritten without `--force`, and app data always
+survives updates and removal. Only add repos you trust — their apps serve
+browser code and inject agent skills.
+
+```bash
+bb app source add https://github.com/you/my-bb-apps.git
+bb app source list
+bb app source sync my-bb-apps
+bb app source detach pomodoro        # app becomes permanently local
+bb app source remove my-bb-apps --yes
+```
+
 Inside an app-capable runtime, inspect the current app context:
 
 ```bash
@@ -155,7 +174,7 @@ Runtime paths:
 echo "$BB_APPS_ROOT"          # <dataDir>/apps
 echo "$BB_APP_ID"             # current application id, when available
 echo "$BB_APP_ROOT"           # <dataDir>/apps/<applicationId>, when available
-echo "$BB_APP_DATA_PATH"      # <dataDir>/apps/<applicationId>/data, when available
+echo "$BB_APP_DATA_PATH"      # <dataDir>/app-data/<applicationId>, when available
 ```
 
 Agent writes:
@@ -193,7 +212,7 @@ printf '%s\n' '{"id":"todo_20260603_review_notes","title":"Review notes from the
   bb app data write review-board todos/todo_20260603_review_notes --stdin
 ```
 
-Data paths are relative to the app's `data/` directory. They must not start or
+Data paths are relative to the app's data directory. They must not start or
 end with `/`, must not contain backslashes, dot-prefixed segments, `.` or `..`,
 and may be nested up to eight path segments. Each segment may use letters,
 numbers, dots, underscores, and hyphens.

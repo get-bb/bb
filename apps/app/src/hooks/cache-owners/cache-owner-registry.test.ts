@@ -88,6 +88,8 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentQueryKey",
   ],
   "hooks/cache-owners/mutation-cache-effects.ts": [
+    "allAppsQueryKeyPrefix",
+    "appSourcesQueryKey",
     "projectDefaultExecutionOptionsQueryKeyPrefix",
     "projectPathsQueryKeyPrefix",
     "sidebarNavigationQueryKey",
@@ -136,6 +138,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allSystemExecutionOptionsQueryKeyPrefix",
     "appMarkdownPreviewQueryKeyPrefix",
     "appQueryKey",
+    "appSourcesQueryKey",
     "allThreadQueryKeyPrefix",
     "allThreadTerminalsQueryKeyPrefix",
     "environmentFilePreviewQueryKeyPrefix",

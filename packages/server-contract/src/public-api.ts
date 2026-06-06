@@ -25,10 +25,13 @@ import type {
   AppDataListResponse,
   AppDataReadResponse,
   AppDataWriteRequest,
+  AddAppSourceRequest,
   AppDetail,
   AppMessageRequest,
+  AppSourceStatus,
   AppSummary,
   CreateAppRequest,
+  SyncAppSourceRequest,
   CreateAutomationRequest,
   CreateHostJoinRequest,
   CreateHostJoinResponse,
@@ -125,6 +128,7 @@ import type { ApiError } from "./errors.js";
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
 type PathProjectManagerThreadId = { param: { id: string; threadId: string } };
 type PathApplicationApp = { param: { applicationId: string } };
+type PathAppSourceName = { param: { name: string } };
 
 export type PublicApiSchema = {
   // ─── Development Only ────────────────────────────────────────────────
@@ -182,6 +186,44 @@ export type PublicApiSchema = {
       PathApplicationApp & { json: AppMessageRequest },
       { ok: true },
       202
+    >;
+  };
+  "/apps/:applicationId/detach": {
+    /**
+     * Detach a source-managed app into local management: removes the
+     * provenance marker so the owning source stops syncing it (it reports a
+     * conflict for the id from then on) and the app delete guard lifts.
+     */
+    $post: Endpoint<PathApplicationApp, { ok: true }>;
+  };
+
+  // ─── App Sources ─────────────────────────────────────────────────────
+
+  "/app-sources": {
+    $get: Endpoint<EmptyInput, AppSourceStatus[]>;
+    /**
+     * Register a git repo (or local path) of apps and run its first sync
+     * inline, so the response reports which apps were installed. A failed
+     * first sync still registers the source, with lastError set.
+     */
+    $post: Endpoint<{ json: AddAppSourceRequest }, AppSourceStatus, 201>;
+  };
+  "/app-sources/:name": {
+    /**
+     * Remove the source, its checkout, and its managed apps. App data stays
+     * in the app-data root and reattaches if the apps are reinstalled.
+     */
+    $delete: Endpoint<PathAppSourceName, { ok: true }>;
+  };
+  "/app-sources/:name/sync": {
+    /**
+     * Fetch the origin and reconcile installed apps. Coalesces with an
+     * in-flight sync; `force: true` re-materializes diverged apps,
+     * discarding local edits.
+     */
+    $post: Endpoint<
+      PathAppSourceName & { json: SyncAppSourceRequest },
+      AppSourceStatus
     >;
   };
 

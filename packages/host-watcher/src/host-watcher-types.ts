@@ -127,7 +127,10 @@ export interface ApplicationDataWatchTarget {
 }
 
 export interface WatchApplicationStorageRootArgs {
+  /** App code (manifest, public/, skills/) lives here. */
   appsRootPath: string;
+  /** Runtime app data lives here, outside the app folders. */
+  appDataRootPath: string;
   resolveApplicationTarget: (
     applicationId: ApplicationId,
   ) => ApplicationDataWatchTarget | null;

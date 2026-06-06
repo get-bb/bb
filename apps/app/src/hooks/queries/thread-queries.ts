@@ -23,6 +23,7 @@ import type {
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
   AppDetail,
+  AppSourceStatus,
   AppSummary,
 } from "@bb/server-contract";
 import type { ThreadListFilters, FilePreview } from "@/lib/api";
@@ -51,6 +52,7 @@ import {
   threadStorageFilePreviewQueryKey,
   appMarkdownPreviewQueryKey,
   appQueryKey,
+  appSourcesQueryKey,
   appsQueryKey,
   threadHostFilePreviewQueryKey,
   threadTimelineQueryKey,
@@ -539,6 +541,17 @@ export function useApps(options?: QueryOptions) {
   return useQuery<AppSummary[]>({
     queryKey: appsQueryKey(),
     queryFn: ({ signal }) => api.listApps(signal),
+    enabled: options?.enabled ?? true,
+    refetchOnMount: options?.refetchOnMount ?? true,
+    refetchOnWindowFocus: false,
+    staleTime: options?.staleTime ?? APPS_STALE_TIME_MS,
+  });
+}
+
+export function useAppSources(options?: QueryOptions) {
+  return useQuery<AppSourceStatus[]>({
+    queryKey: appSourcesQueryKey(),
+    queryFn: ({ signal }) => api.listAppSources(signal),
     enabled: options?.enabled ?? true,
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,
