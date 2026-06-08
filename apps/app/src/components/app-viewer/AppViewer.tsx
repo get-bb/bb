@@ -85,8 +85,14 @@ export function AppViewer({ applicationId, targetThreadId }: AppViewerProps) {
   }
 
   if (appDetail.data.entry.kind === "html") {
+    // Keyed per app: an unkeyed iframe would be reused across apps via an
+    // in-place src swap, leaving the previous app's document visible under the
+    // loading state until the next app finishes loading. Within one app the
+    // key is stable, so reload-token changes still swap src in place (no blank
+    // flash on live reload).
     return (
       <FilePreviewSurface
+        key={applicationId}
         path={appDetail.data.name}
         headerMode={APP_HEADER_MODE}
         state={{

@@ -570,7 +570,12 @@ export function useApp(
     enabled: (options?.enabled ?? true) && Boolean(applicationId),
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,
-    staleTime: options?.staleTime,
+    // `dataUpdatedAt` doubles as the app iframe's reload token (see
+    // AppViewer), so any refetch visibly reloads open app surfaces. Freshness
+    // is owned by the realtime cache registry — content-changed/apps-changed
+    // invalidations plus reconnect reconciliation — so the data never goes
+    // stale on its own.
+    staleTime: options?.staleTime ?? Infinity,
   });
 }
 
@@ -588,7 +593,9 @@ export function useAppMarkdownPreview(
       Boolean(applicationId) &&
       Boolean(entryPath),
     refetchOnWindowFocus: false,
-    staleTime: options?.staleTime,
+    // Invalidation-owned like useApp above; mount refetches would re-render
+    // open markdown app surfaces for no reason.
+    staleTime: options?.staleTime ?? Infinity,
   });
 }
 
