@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import type { AppDetail } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
@@ -95,4 +95,66 @@ describe("StandaloneAppView", () => {
       await screen.findByText("This app's manifest is invalid."),
     ).toBeTruthy();
   });
+
+  it("keeps visited apps mounted so switching app pages reuses their iframes", async () => {
+    vi.mocked(api.getApp).mockImplementation((applicationId) =>
+      Promise.resolve(applicationId === "status" ? HTML_APP : PORTFOLIO_APP),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/apps/status"]}>
+        <Routes>
+          <Route
+            path={STANDALONE_APP_ROUTE_PATH}
+            element={
+              <>
+                <StandaloneAppView />
+                <AppPageNavButton applicationId="status" />
+                <AppPageNavButton applicationId="portfolio" />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    const statusFrame = await screen.findByTitle("Review Board");
+
+    fireEvent.click(screen.getByRole("button", { name: "go-portfolio" }));
+    const portfolioFrame = await screen.findByTitle("Paper Portfolio");
+
+    // The previous app stays mounted in a hidden deck entry — same iframe
+    // element, so its document and state survive the switch.
+    expect(screen.getByTitle("Review Board")).toBe(statusFrame);
+    expect(statusFrame.closest(".hidden")).not.toBeNull();
+    expect(portfolioFrame.closest(".hidden")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "go-status" }));
+
+    // Switching back is a visibility toggle, not a destroy/recreate.
+    expect(screen.getByTitle("Review Board")).toBe(statusFrame);
+    expect(statusFrame.closest(".hidden")).toBeNull();
+    expect(portfolioFrame.closest(".hidden")).not.toBeNull();
+  });
 });
+
+const PORTFOLIO_APP: AppDetail = {
+  ...HTML_APP,
+  applicationId: "portfolio",
+  name: "Paper Portfolio",
+  appRootPath: "/tmp/bb-data/apps/portfolio",
+  appDataPath: "/tmp/bb-data/apps/portfolio/data",
+};
+
+function AppPageNavButton({ applicationId }: { applicationId: string }) {
+  const navigate = useNavigate();
+  return (
+    <button
+      type="button"
+      onClick={() => void navigate(`/apps/${applicationId}`)}
+    >
+      {`go-${applicationId}`}
+    </button>
+  );
+}

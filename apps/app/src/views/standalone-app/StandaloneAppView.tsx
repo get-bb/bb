@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { useApp } from "@/hooks/queries/thread-queries";
 import { useAppRoute } from "@/hooks/useAppRoute";
 import { AppViewer } from "@/components/app-viewer/AppViewer";
 import { EmptyState } from "@/components/ui/empty-state.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { HttpError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { IconName } from "@/components/ui/icon.js";
 
 // Counters the padded `<main>` so the app fills the surface edge to edge below
@@ -54,16 +56,57 @@ function StandaloneAppLoading() {
   );
 }
 
+interface StandaloneAppDeckEntryProps {
+  applicationId: string;
+  isActive: boolean;
+}
+
+function StandaloneAppDeckEntry({
+  applicationId,
+  isActive,
+}: StandaloneAppDeckEntryProps) {
+  const appDetail = useApp(applicationId);
+
+  return (
+    <div className={cn(isActive ? "flex min-h-0 flex-1 flex-col" : "hidden")}>
+      {appDetail.isError ? (
+        <StandaloneAppMessage
+          {...resolveStandaloneAppErrorState(appDetail.error)}
+        />
+      ) : appDetail.isPending ? (
+        <StandaloneAppLoading />
+      ) : (
+        <AppViewer applicationId={applicationId} targetThreadId={null} />
+      )}
+    </div>
+  );
+}
+
 /**
  * Standalone, thread-independent surface for a global app at
  * `/apps/:applicationId`. The app name is shown in the global header (see
  * AppLayout); this view owns the missing/invalid/loading states and delegates
  * the rendered app to the shared {@link AppViewer}. Deep-linking here loads the
  * app with no thread or project context.
+ *
+ * Mirrors BrowserTabDeck: every app visited while this route is mounted stays
+ * mounted (its iframe keeps its document and state), and switching app pages
+ * is a visibility toggle rather than a destroy/recreate + cold boot. Route
+ * param changes don't remount this element, so the deck survives app→app
+ * navigation; leaving for a non-app route unmounts everything — unlike the
+ * browser deck's native views, an iframe can't outlive its DOM node. The
+ * retained set is bounded by the installed-apps list, so there's no eviction.
  */
 export function StandaloneAppView() {
   const { applicationId } = useAppRoute();
-  const appDetail = useApp(applicationId);
+  const [visitedAppIds, setVisitedAppIds] = useState<readonly string[]>([]);
+
+  // Adjust-state-during-render (not an effect) so the first render of a newly
+  // visited app already includes its deck entry — an effect would flash an
+  // empty deck for one frame.
+  if (applicationId !== undefined && !visitedAppIds.includes(applicationId)) {
+    setVisitedAppIds([...visitedAppIds, applicationId]);
+  }
 
   if (applicationId === undefined) {
     return (
@@ -75,15 +118,13 @@ export function StandaloneAppView() {
 
   return (
     <div className={STANDALONE_SHELL_CLASS}>
-      {appDetail.isError ? (
-        <StandaloneAppMessage
-          {...resolveStandaloneAppErrorState(appDetail.error)}
+      {visitedAppIds.map((visitedAppId) => (
+        <StandaloneAppDeckEntry
+          key={visitedAppId}
+          applicationId={visitedAppId}
+          isActive={visitedAppId === applicationId}
         />
-      ) : appDetail.isPending ? (
-        <StandaloneAppLoading />
-      ) : (
-        <AppViewer applicationId={applicationId} targetThreadId={null} />
-      )}
+      ))}
     </div>
   );
 }
