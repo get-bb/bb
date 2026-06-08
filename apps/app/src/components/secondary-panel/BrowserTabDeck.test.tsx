@@ -131,6 +131,7 @@ function installDesktopBrowserApi(browser: BbDesktopBrowserApi): void {
       return () => undefined;
     },
     setTheme() {},
+    openExternalUrl() {},
   };
   window.bbDesktop = desktop;
 }

@@ -77,6 +77,7 @@ function installMacosDesktopChrome(): void {
       return () => undefined;
     },
     setTheme() {},
+    openExternalUrl() {},
   };
   window.bbDesktop = desktop;
 }

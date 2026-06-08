@@ -66,6 +66,7 @@ import {
   BB_DESKTOP_GET_INFO_CHANNEL,
   BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
+  BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
 import {
@@ -705,6 +706,24 @@ function registerDesktopUpdateIpc(): void {
       return;
     }
     nativeTheme.themeSource = parsed.data;
+  });
+  // The in-app browser tab hands off the current address to the system
+  // browser. The URL originates from a possibly-hostile page, so only open
+  // well-formed `http(s)` URLs — never `file:`, custom schemes, or junk.
+  ipcMain.on(BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL, (_event, payload: unknown) => {
+    if (typeof payload !== "string") {
+      return;
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(payload);
+    } catch {
+      return;
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return;
+    }
+    void shell.openExternal(parsed.toString());
   });
 }
 

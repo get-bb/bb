@@ -116,6 +116,7 @@ function installRecordingDesktopBrowser(): RecordedBrowserCall[] {
       return () => undefined;
     },
     setTheme() {},
+    openExternalUrl() {},
   };
   window.bbDesktop = desktop;
   return calls;

@@ -82,6 +82,9 @@ function createBbDesktopApi(info: BbDesktopInfo): BbDesktopApi {
     setTheme() {
       // no-op
     },
+    openExternalUrl() {
+      // no-op
+    },
   };
 }
 

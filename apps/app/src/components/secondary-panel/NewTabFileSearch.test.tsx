@@ -227,6 +227,9 @@ function createDesktopApiStub(): BbDesktopApi {
     setTheme() {
       // no-op
     },
+    openExternalUrl() {
+      // no-op
+    },
   };
 }
 

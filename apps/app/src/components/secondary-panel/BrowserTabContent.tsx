@@ -20,7 +20,7 @@ import {
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
-import { getDesktopBrowserApi } from "@/lib/bb-desktop";
+import { getBbDesktopInfo, getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { cn } from "@/lib/utils";
 import {
   getBrowserUrlSecurity,
@@ -68,10 +68,11 @@ interface BrowserChromeProps {
   onBack: () => void;
   onForward: () => void;
   onReloadOrStop: () => void;
+  onOpenExternal: () => void;
 }
 
 interface NavButtonProps {
-  icon: "ChevronLeft" | "ChevronRight" | "RotateCcw" | "X";
+  icon: "ChevronLeft" | "ChevronRight" | "RotateCcw" | "X" | "ExternalLink";
   label: string;
   disabled?: boolean;
   onClick: () => void;
@@ -173,6 +174,7 @@ function BrowserChrome({
   onBack,
   onForward,
   onReloadOrStop,
+  onOpenExternal,
 }: BrowserChromeProps) {
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
@@ -247,6 +249,12 @@ function BrowserChrome({
           />
         </div>
       </form>
+      <NavButton
+        icon="ExternalLink"
+        label="Open in external browser"
+        disabled={currentUrl.length === 0}
+        onClick={onOpenExternal}
+      />
       {isLoading ? (
         <span className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
           <span className="block h-full w-1/3 animate-pulse bg-ring" />
@@ -575,6 +583,7 @@ export function BrowserTabContent({
         onBack={() => desktopBrowser.goBack(tabId)}
         onForward={() => desktopBrowser.goForward(tabId)}
         onReloadOrStop={handleReloadOrStop}
+        onOpenExternal={() => getBbDesktopInfo()?.openExternalUrl(currentUrl)}
       />
       {state?.errorText != null && hasPage ? (
         <div

@@ -64,6 +64,7 @@ function createDesktopApiStub(): DesktopApiStub {
     setTheme(theme: BbDesktopTheme): void {
       setThemeCalls.push(theme);
     },
+    openExternalUrl() {},
   };
   return { api, setThemeCalls };
 }

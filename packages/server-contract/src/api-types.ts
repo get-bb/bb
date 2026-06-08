@@ -163,6 +163,13 @@ export interface BbDesktopApi extends BbDesktopInfo {
   installUpdate(): Promise<void>;
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
   /**
+   * Open a URL in the user's default system browser, leaving the in-app
+   * browser tab. The main process only honors `http(s)` URLs — the address
+   * originates from a possibly-hostile page, so other schemes are dropped.
+   * No-op on the web build where `window.bbDesktop` is undefined.
+   */
+  openExternalUrl(url: string): void;
+  /**
    * Push the renderer-resolved theme to the Electron main process so the
    * NSWindow appearance — traffic lights and inactive title-bar chrome —
    * follows bb's theme rather than the OS appearance. No-op on the web build
