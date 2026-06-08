@@ -2164,6 +2164,36 @@ describe("claude-code provider adapter", () => {
     expect(events).toMatchObject([]);
   });
 
+  it("translateEvent ignores async hook lifecycle system events from the SDK envelope", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    for (const subtype of [
+      "hook_started",
+      "hook_progress",
+      "hook_response",
+      "commands_changed",
+      "permission_denied",
+    ] as const) {
+      const events = adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "sdk/message",
+        params: {
+          threadId: "claude-thread-1",
+          message: {
+            type: "system",
+            subtype,
+            hook_name: "SessionStart:startup",
+            hook_event: "SessionStart",
+            uuid: "message-1",
+            session_id: "session-1",
+          },
+        },
+      });
+
+      expect(events).toMatchObject([]);
+    }
+  });
+
   it("translateEvent maps thread identity envelopes", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
