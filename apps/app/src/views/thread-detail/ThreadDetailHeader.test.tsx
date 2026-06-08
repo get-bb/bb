@@ -3,9 +3,9 @@
 import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BbDesktopApi, BbDesktopInfo } from "@bb/server-contract";
+import type { BbDesktopInfo } from "@bb/server-contract";
 import { MACOS_WINDOW_NO_DRAG_CLASS } from "@/lib/bb-desktop";
-import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 
@@ -61,25 +61,7 @@ function installMacosDesktopChrome(): void {
     updateDownloaded: false,
     version: "0.0.1",
   };
-  const desktop: BbDesktopApi = {
-    ...info,
-    browser: createNoopDesktopBrowserApi(),
-    async checkForUpdates() {
-      return info;
-    },
-    async getInfo() {
-      return info;
-    },
-    async installUpdate() {
-      return undefined;
-    },
-    onChange() {
-      return () => undefined;
-    },
-    setTheme() {},
-    openExternalUrl() {},
-  };
-  window.bbDesktop = desktop;
+  window.bbDesktop = createBbDesktopApi(info);
 }
 
 afterEach(() => {

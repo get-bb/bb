@@ -17,11 +17,7 @@ import type {
   UseFileSearchSuggestionsArgs,
   UseFileSearchSuggestionsResult,
 } from "@/hooks/useFileSearchSuggestions";
-import type {
-  AppSummary,
-  BbDesktopApi,
-  BbDesktopInfo,
-} from "@bb/server-contract";
+import type { AppSummary, BbDesktopInfo } from "@bb/server-contract";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   NewTabActionMenu,
@@ -30,7 +26,7 @@ import {
   type NewTabFileSearchProps,
 } from "./NewTabFileSearch";
 import { getThreadRecentItemsStorageKey } from "./threadRecentItems";
-import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
@@ -208,31 +204,6 @@ function setFileSearchSuggestions(
   fileSearchMockState.suggestions = [...suggestions];
 }
 
-function createDesktopApiStub(): BbDesktopApi {
-  return {
-    ...DESKTOP_INFO,
-    browser: createNoopDesktopBrowserApi(),
-    async checkForUpdates() {
-      return DESKTOP_INFO;
-    },
-    async getInfo() {
-      return DESKTOP_INFO;
-    },
-    async installUpdate() {
-      return undefined;
-    },
-    onChange() {
-      return () => undefined;
-    },
-    setTheme() {
-      // no-op
-    },
-    openExternalUrl() {
-      // no-op
-    },
-  };
-}
-
 function renderLauncher(args: RenderLauncherArgs = {}) {
   const store = createStore();
   const wrapper = ({ children }: ProviderWrapperProps) =>
@@ -304,7 +275,7 @@ describe("NewTabActionMenu", () => {
   });
 
   it("shows Open browser as a headerless action row on the desktop build", () => {
-    window.bbDesktop = createDesktopApiStub();
+    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
 
     renderActionMenu({ onOpenBrowser: vi.fn() });
 
@@ -313,7 +284,7 @@ describe("NewTabActionMenu", () => {
   });
 
   it("orders action rows as Open file, Open browser, Start terminal, Create App with no Apps section when no apps exist", () => {
-    window.bbDesktop = createDesktopApiStub();
+    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
 
     renderActionMenu({ onOpenBrowser: vi.fn(), onStartTerminal: vi.fn() });
 
@@ -326,7 +297,7 @@ describe("NewTabActionMenu", () => {
   });
 
   it("orders installed apps between the open actions and Create App, with a divider and Apps title", () => {
-    window.bbDesktop = createDesktopApiStub();
+    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
     setAppSummaries([APP_SUGGESTION.app]);
 
     renderActionMenu({ onOpenBrowser: vi.fn(), onStartTerminal: vi.fn() });
@@ -420,7 +391,7 @@ describe("NewTabActionMenu", () => {
   });
 
   it("keeps menu actions compact with native button semantics and non-ring focus", () => {
-    window.bbDesktop = createDesktopApiStub();
+    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
 
     renderActionMenu({ onOpenBrowser: vi.fn() });
 
@@ -461,7 +432,7 @@ describe("NewTabActionMenu", () => {
   });
 
   it("closes the popout before opening the browser", () => {
-    window.bbDesktop = createDesktopApiStub();
+    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
     const calls: string[] = [];
     renderActionMenu({
       onCloseMenu: () => calls.push("close"),

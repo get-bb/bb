@@ -9,12 +9,8 @@ import {
 } from "@testing-library/react";
 import { type ReactNode } from "react";
 import { Panel, PanelGroup } from "react-resizable-panels";
-import type {
-  BbDesktopApi,
-  BbDesktopInfo,
-  BbDesktopInfoChangeHandler,
-} from "@bb/server-contract";
-import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
+import type { BbDesktopApi, BbDesktopInfo } from "@bb/server-contract";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -83,31 +79,6 @@ const MACOS_DESKTOP_INFO: BbDesktopInfo = {
   updateDownloaded: false,
   version: "0.0.1",
 };
-
-function createBbDesktopApi(info: BbDesktopInfo): BbDesktopApi {
-  return {
-    ...info,
-    browser: createNoopDesktopBrowserApi(),
-    async checkForUpdates() {
-      return info;
-    },
-    async getInfo() {
-      return info;
-    },
-    async installUpdate() {
-      return undefined;
-    },
-    onChange(_listener: BbDesktopInfoChangeHandler) {
-      return () => undefined;
-    },
-    setTheme() {
-      // no-op
-    },
-    openExternalUrl() {
-      // no-op
-    },
-  };
-}
 
 function setBbDesktopInfo(desktopInfo: BbDesktopApi | null): void {
   if (desktopInfo === null) {

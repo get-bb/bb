@@ -11,23 +11,15 @@ import {
 } from "@testing-library/react";
 import { Suspense, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import type {
-  BbDesktopApi,
-  BbDesktopInfo,
-  BbDesktopInfoChangeHandler,
-  SystemConfigResponse,
-} from "@bb/server-contract";
+import type { BbDesktopApi, SystemConfigResponse } from "@bb/server-contract";
 import { defaultExperiments } from "@bb/domain";
-import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
 import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
-import {
-  restoreMatchMedia,
-  setupMatchMedia,
-} from "@/test/helpers/match-media";
+import { restoreMatchMedia, setupMatchMedia } from "@/test/helpers/match-media";
 import { AppLayout } from "./AppLayout";
 import {
   BROWSER_COLLAPSED_HEADER_RESERVE_CLASS,
@@ -62,31 +54,6 @@ const testSystemConfig: SystemConfigResponse = {
   hostDaemonPort: null,
   voiceTranscriptionEnabled: false,
 };
-
-function createBbDesktopApi(info: BbDesktopInfo): BbDesktopApi {
-  return {
-    ...info,
-    browser: createNoopDesktopBrowserApi(),
-    async checkForUpdates() {
-      return info;
-    },
-    async getInfo() {
-      return info;
-    },
-    async installUpdate() {
-      return undefined;
-    },
-    onChange(_listener: BbDesktopInfoChangeHandler) {
-      return () => undefined;
-    },
-    setTheme() {
-      // no-op
-    },
-    openExternalUrl() {
-      // no-op
-    },
-  };
-}
 
 function setBbDesktopInfo(desktopInfo: BbDesktopApi | null): void {
   if (desktopInfo === null) {
