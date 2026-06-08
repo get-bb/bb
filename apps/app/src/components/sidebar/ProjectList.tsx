@@ -4,7 +4,9 @@ import {
   useEffect,
   useMemo,
   type CSSProperties,
+  type KeyboardEventHandler,
   type MouseEventHandler,
+  type PointerEventHandler,
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -71,10 +73,7 @@ import {
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectRow, ProjectThreadTree } from "./ProjectRow";
 import { SidebarAppsSection } from "./SidebarAppsSection";
-import type {
-  ProjectRowProps,
-  ProjectThreadListState,
-} from "./ProjectRow";
+import type { ProjectRowProps, ProjectThreadListState } from "./ProjectRow";
 import {
   PinnedThreadTree,
   type PinnedThreadTreeProps,
@@ -84,8 +83,10 @@ import {
   collapsedEnvironmentIdsAtom,
   collapsedThreadIdsAtom,
   collapsedProjectIdsAtom,
+  collapsedSidebarSectionIdsAtom,
   DEFAULT_SIDEBAR_SECTION_ORDER,
   sidebarSectionOrderAtom,
+  type CollapsibleSidebarSectionId,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import {
@@ -181,6 +182,9 @@ interface ToggleCollapsedIdListArgs {
 }
 
 type ToggleCollapsedId = (id: string) => void;
+type ToggleCollapsedSidebarSectionId = (
+  id: CollapsibleSidebarSectionId,
+) => void;
 
 interface SortableProjectRowProps extends ProjectRowProps {
   reorderDisabled: boolean;
@@ -191,6 +195,7 @@ interface TopLevelSidebarSectionProps {
   children: ReactNode;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
+  collapseControl?: TopLevelSidebarSectionCollapseControl;
   dragBindings?: SidebarSortableDragBindings;
   sectionRef?: (element: HTMLDivElement | null) => void;
   sectionStyle?: CSSProperties;
@@ -202,9 +207,14 @@ interface SortableSidebarSectionProps extends TopLevelSidebarSectionProps {
   disabled: boolean;
 }
 
-function hasSameSidebarSectionOrder(
-  left: readonly SidebarSectionId[],
-  right: readonly SidebarSectionId[],
+interface TopLevelSidebarSectionCollapseControl {
+  isCollapsed: boolean;
+  onToggleCollapsed: () => void;
+}
+
+function hasSameStringList(
+  left: readonly string[],
+  right: readonly string[],
 ): boolean {
   if (left.length !== right.length) {
     return false;
@@ -219,6 +229,12 @@ function isSidebarSectionId(value: string): value is SidebarSectionId {
     value === "threads" ||
     value === "apps"
   );
+}
+
+function isCollapsibleSidebarSectionId(
+  value: string,
+): value is CollapsibleSidebarSectionId {
+  return value === "projects" || value === "threads" || value === "apps";
 }
 
 function normalizeSidebarSectionOrder(
@@ -287,6 +303,21 @@ function toggleCollapsedIdList({
   }
 
   return Array.from(next);
+}
+
+function normalizeCollapsedSidebarSectionIds(
+  sectionIds: readonly CollapsibleSidebarSectionId[],
+): CollapsibleSidebarSectionId[] {
+  const seen = new Set<CollapsibleSidebarSectionId>();
+  const normalized: CollapsibleSidebarSectionId[] = [];
+  for (const sectionId of sectionIds) {
+    if (!isCollapsibleSidebarSectionId(sectionId) || seen.has(sectionId)) {
+      continue;
+    }
+    seen.add(sectionId);
+    normalized.push(sectionId);
+  }
+  return normalized;
 }
 
 function ProjectListSectionIconButton({
@@ -360,6 +391,7 @@ function TopLevelSidebarSection({
   children,
   actions,
   actionsAlwaysVisible = false,
+  collapseControl,
   dragBindings,
   sectionRef,
   sectionStyle,
@@ -375,6 +407,27 @@ function TopLevelSidebarSection({
     },
     [consumeClickSuppression],
   );
+  const handleCollapseControlClick = useCallback<
+    MouseEventHandler<HTMLButtonElement>
+  >(
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      collapseControl?.onToggleCollapsed();
+    },
+    [collapseControl],
+  );
+  const stopCollapseControlPointerDown = useCallback<
+    PointerEventHandler<HTMLButtonElement>
+  >((event) => {
+    event.stopPropagation();
+  }, []);
+  const stopCollapseControlKeyDown = useCallback<
+    KeyboardEventHandler<HTMLButtonElement>
+  >((event) => {
+    event.stopPropagation();
+  }, []);
+
   return (
     <SidebarStickyGroup
       ref={sectionRef}
@@ -397,6 +450,35 @@ function TopLevelSidebarSection({
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
       >
+        {collapseControl ? (
+          <button
+            type="button"
+            aria-expanded={!collapseControl.isCollapsed}
+            aria-label={
+              collapseControl.isCollapsed
+                ? `Expand ${label} section`
+                : `Collapse ${label} section`
+            }
+            title={
+              collapseControl.isCollapsed
+                ? `Expand ${label}`
+                : `Collapse ${label}`
+            }
+            className="relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2"
+            onClick={handleCollapseControlClick}
+            onPointerDown={stopCollapseControlPointerDown}
+            onKeyDown={stopCollapseControlKeyDown}
+          >
+            <Icon
+              name="ChevronRight"
+              className={cn(
+                "size-3 transition-transform duration-150",
+                !collapseControl.isCollapsed && "rotate-90",
+              )}
+              aria-hidden="true"
+            />
+          </button>
+        ) : null}
         <span
           className={cn(
             "relative z-10 min-w-0 flex-1 truncate text-left",
@@ -418,7 +500,9 @@ function TopLevelSidebarSection({
           </span>
         ) : null}
       </SidebarStickyTier>
-      <div className="mt-1">{children}</div>
+      {collapseControl?.isCollapsed ? null : (
+        <div className="mt-1">{children}</div>
+      )}
     </SidebarStickyGroup>
   );
 }
@@ -728,6 +812,8 @@ function ProjectListComponent({
   const [collapsedEnvironmentIdList, setCollapsedEnvironmentIdList] = useAtom(
     collapsedEnvironmentIdsAtom,
   );
+  const [collapsedSidebarSectionIdList, setCollapsedSidebarSectionIdList] =
+    useAtom(collapsedSidebarSectionIdsAtom);
   const [sidebarSectionOrderList, setSidebarSectionOrderList] = useAtom(
     sidebarSectionOrderAtom,
   );
@@ -747,10 +833,16 @@ function ProjectListComponent({
     () => normalizeSidebarSectionOrder(sidebarSectionOrderList),
     [sidebarSectionOrderList],
   );
+  const normalizedCollapsedSidebarSectionIds = useMemo(
+    () => normalizeCollapsedSidebarSectionIds(collapsedSidebarSectionIdList),
+    [collapsedSidebarSectionIdList],
+  );
+  const collapsedSidebarSectionIds = useMemo(
+    () => new Set(normalizedCollapsedSidebarSectionIds),
+    [normalizedCollapsedSidebarSectionIds],
+  );
   useEffect(() => {
-    if (
-      hasSameSidebarSectionOrder(sidebarSectionOrderList, sidebarSectionOrder)
-    ) {
+    if (hasSameStringList(sidebarSectionOrderList, sidebarSectionOrder)) {
       return;
     }
     setSidebarSectionOrderList(sidebarSectionOrder);
@@ -758,6 +850,21 @@ function ProjectListComponent({
     setSidebarSectionOrderList,
     sidebarSectionOrder,
     sidebarSectionOrderList,
+  ]);
+  useEffect(() => {
+    if (
+      hasSameStringList(
+        collapsedSidebarSectionIdList,
+        normalizedCollapsedSidebarSectionIds,
+      )
+    ) {
+      return;
+    }
+    setCollapsedSidebarSectionIdList(normalizedCollapsedSidebarSectionIds);
+  }, [
+    collapsedSidebarSectionIdList,
+    normalizedCollapsedSidebarSectionIds,
+    setCollapsedSidebarSectionIdList,
   ]);
   const pinnedSidebarState = useMemo(
     () => buildPinnedSidebarState({ threads }),
@@ -837,6 +944,18 @@ function ProjectListComponent({
     },
     [setCollapsedEnvironmentIdList],
   );
+
+  const toggleSidebarSectionCollapsed =
+    useCallback<ToggleCollapsedSidebarSectionId>(
+      (sectionId) => {
+        setCollapsedSidebarSectionIdList((current) => {
+          return toggleCollapsedIdList({ current, id: sectionId }).filter(
+            isCollapsibleSidebarSectionId,
+          );
+        });
+      },
+      [setCollapsedSidebarSectionIdList],
+    );
 
   const handleReorderSidebarSection = useCallback(
     (event: DragEndEvent) => {
@@ -1052,6 +1171,11 @@ function ProjectListComponent({
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={projectsSectionActions}
                   actionsAlwaysVisible={projectsSectionActionsAlwaysVisible}
+                  collapseControl={{
+                    isCollapsed: collapsedSidebarSectionIds.has("projects"),
+                    onToggleCollapsed: () =>
+                      toggleSidebarSectionCollapsed("projects"),
+                  }}
                   consumeClickSuppression={
                     consumeSidebarSectionClickSuppression
                   }
@@ -1065,6 +1189,11 @@ function ProjectListComponent({
                   label="Threads"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={threadsSectionActions}
+                  collapseControl={{
+                    isCollapsed: collapsedSidebarSectionIds.has("threads"),
+                    onToggleCollapsed: () =>
+                      toggleSidebarSectionCollapsed("threads"),
+                  }}
                   consumeClickSuppression={
                     consumeSidebarSectionClickSuppression
                   }
@@ -1077,6 +1206,11 @@ function ProjectListComponent({
                   id={sectionId}
                   label="Apps"
                   disabled={visibleSidebarSectionOrder.length < 2}
+                  collapseControl={{
+                    isCollapsed: collapsedSidebarSectionIds.has("apps"),
+                    onToggleCollapsed: () =>
+                      toggleSidebarSectionCollapsed("apps"),
+                  }}
                   consumeClickSuppression={
                     consumeSidebarSectionClickSuppression
                   }

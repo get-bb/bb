@@ -666,7 +666,7 @@ describe("ProjectList", () => {
     const appsLabel = screen.getByText("Apps");
     const managerLabel = screen.getByText("Sidebar Manager");
     expect(
-      appsLabel.closest("[data-sidebar-sticky-tier=\"label\"]")?.className,
+      appsLabel.closest('[data-sidebar-sticky-tier="label"]')?.className,
     ).toContain(CHROME_SECTION_LABEL_CLASS);
 
     // One global app → exactly one app row, regardless of the manager present.
@@ -1236,7 +1236,7 @@ describe("ProjectList", () => {
     const threadsLabel = screen.getByText("Threads");
     for (const label of [projectsLabel, threadsLabel]) {
       expect(
-        label.closest("[data-sidebar-sticky-tier=\"label\"]")?.className,
+        label.closest('[data-sidebar-sticky-tier="label"]')?.className,
       ).toContain(CHROME_SECTION_LABEL_CLASS);
     }
     const sectionStack = projectsLabel.closest(
@@ -1251,6 +1251,117 @@ describe("ProjectList", () => {
     expect(sectionStack?.classList.contains("space-y-4")).toBe(true);
     expect(projectlessThreadRow?.parentElement?.className).not.toContain(
       "before:bg-border-hairline",
+    );
+  });
+
+  it("collapses top-level Apps, Threads, and Projects sections", async () => {
+    const project = makeProjectResponse({
+      id: "project-1",
+      name: "Project One",
+    });
+    const projectlessThread = makeThreadListEntry(PERSONAL_PROJECT_ID, 10, {
+      title: "Projectless Thread",
+      titleFallback: "Projectless Thread",
+    });
+    const personalProject = makeProjectWithThreadsResponse({
+      id: PERSONAL_PROJECT_ID,
+      kind: "personal",
+      name: "Personal",
+      threads: [projectlessThread],
+    });
+    installProjectListFetchRoutes([
+      {
+        pathname: "/api/v1/sidebar-bootstrap",
+        handler: () =>
+          jsonResponse(
+            buildSidebarNavigationResponse({
+              personalProject,
+              projects: [project],
+            }),
+          ),
+      },
+      {
+        pathname: "/api/v1/apps",
+        handler: () => jsonResponse([REVIEW_BOARD_APP]),
+      },
+      {
+        pathname: "/api/v1/projects",
+        handler: () => jsonResponse([project]),
+      },
+      {
+        pathname: "/api/v1/threads",
+        handler: () => jsonResponse([]),
+      },
+      {
+        pathname: "/api/v1/system/config",
+        handler: () =>
+          jsonResponse({
+            hostDaemonPort: null,
+            voiceTranscriptionEnabled: false,
+          }),
+      },
+      {
+        pathname: "/api/v1/hosts",
+        handler: () => jsonResponse([]),
+      },
+    ]);
+
+    await renderProjectList();
+
+    expect(await screen.findByText("Project One")).toBeTruthy();
+    expect(screen.getByText("Projectless Thread")).toBeTruthy();
+    expect(await findReviewBoardAppButton()).toBeTruthy();
+
+    const collapseAppsButton = screen.getByRole("button", {
+      name: "Collapse Apps section",
+    });
+    const collapseThreadsButton = screen.getByRole("button", {
+      name: "Collapse Threads section",
+    });
+    const collapseProjectsButton = screen.getByRole("button", {
+      name: "Collapse Projects section",
+    });
+
+    expect(collapseAppsButton.getAttribute("aria-expanded")).toBe("true");
+    expect(collapseThreadsButton.getAttribute("aria-expanded")).toBe("true");
+    expect(collapseProjectsButton.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(collapseAppsButton);
+    fireEvent.click(collapseThreadsButton);
+    fireEvent.click(collapseProjectsButton);
+
+    expect(
+      screen.queryByRole("button", { name: "Open Review Board app" }),
+    ).toBeNull();
+    expect(screen.queryByText("Projectless Thread")).toBeNull();
+    expect(screen.queryByText("Project One")).toBeNull();
+
+    expect(
+      screen
+        .getByRole("button", { name: "Expand Apps section" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(
+      screen
+        .getByRole("button", { name: "Expand Threads section" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(
+      screen
+        .getByRole("button", { name: "Expand Projects section" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(window.localStorage.getItem("bb.sidebar.collapsedSections")).toBe(
+      JSON.stringify(["apps", "threads", "projects"]),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand Threads section" }),
+    );
+
+    expect(await screen.findByText("Projectless Thread")).toBeTruthy();
+    expect(window.localStorage.getItem("bb.sidebar.collapsedSections")).toBe(
+      JSON.stringify(["apps", "projects"]),
     );
   });
 
@@ -1633,7 +1744,9 @@ describe("ProjectList", () => {
       innerHeader instanceof HTMLElement ? innerHeader.style.paddingLeft : null,
     ).toBe("80px");
     expect(
-      innerThreadRow instanceof HTMLElement ? innerThreadRow.style.paddingLeft : null,
+      innerThreadRow instanceof HTMLElement
+        ? innerThreadRow.style.paddingLeft
+        : null,
     ).toBe("104px");
     expect(
       outerHeader instanceof HTMLElement
