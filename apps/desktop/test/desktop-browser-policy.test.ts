@@ -10,6 +10,7 @@ import {
   isAllowedBrowserUrl,
   isBlockedBrowserRequestHost,
   isBlockedBrowserRequestUrl,
+  isLocalBrowserRequestHost,
   resolveWindowOpenAction,
 } from "../src/desktop-browser-policy.js";
 
@@ -134,7 +135,7 @@ describe("browser IPC payload schemas", () => {
 });
 
 describe("isBlockedBrowserRequestHost (loopback / LAN firewall)", () => {
-  it("blocks loopback hosts", () => {
+  it("allows localhost and loopback hosts", () => {
     for (const host of [
       "127.0.0.1",
       "127.1.2.3",
@@ -145,7 +146,7 @@ describe("isBlockedBrowserRequestHost (loopback / LAN firewall)", () => {
       "[::1]",
       "::ffff:127.0.0.1",
     ]) {
-      expect(isBlockedBrowserRequestHost(host)).toBe(true);
+      expect(isBlockedBrowserRequestHost(host)).toBe(false);
     }
   });
 
@@ -183,13 +184,46 @@ describe("isBlockedBrowserRequestHost (loopback / LAN firewall)", () => {
   });
 });
 
+describe("isLocalBrowserRequestHost", () => {
+  it("recognizes loopback and localhost names", () => {
+    for (const host of [
+      "localhost",
+      "app.localhost",
+      "127.0.0.1",
+      "127.1.2.3",
+      "0.0.0.0",
+      "::1",
+      "[::1]",
+      "::ffff:127.0.0.1",
+    ]) {
+      expect(isLocalBrowserRequestHost(host)).toBe(true);
+    }
+  });
+
+  it("does not treat LAN and public hosts as localhost", () => {
+    for (const host of [
+      "example.com",
+      "10.0.0.5",
+      "192.168.1.1",
+      "printer.local",
+      "fc00::1",
+    ]) {
+      expect(isLocalBrowserRequestHost(host)).toBe(false);
+    }
+  });
+});
+
 describe("isBlockedBrowserRequestUrl", () => {
-  it("blocks requests to loopback/LAN over http(s)/ws(s)", () => {
-    expect(isBlockedBrowserRequestUrl("http://127.0.0.1:38886/")).toBe(true);
-    expect(isBlockedBrowserRequestUrl("https://127.0.0.1/x")).toBe(true);
-    expect(isBlockedBrowserRequestUrl("ws://localhost:38886/ws")).toBe(true);
+  it("allows requests to localhost and loopback over http(s)/ws(s)", () => {
+    expect(isBlockedBrowserRequestUrl("http://127.0.0.1:38886/")).toBe(false);
+    expect(isBlockedBrowserRequestUrl("https://127.0.0.1/x")).toBe(false);
+    expect(isBlockedBrowserRequestUrl("ws://localhost:38886/ws")).toBe(false);
+    expect(isBlockedBrowserRequestUrl("http://[::1]/")).toBe(false);
+  });
+
+  it("blocks requests to private LAN over http(s)/ws(s)", () => {
     expect(isBlockedBrowserRequestUrl("wss://10.0.0.5/socket")).toBe(true);
-    expect(isBlockedBrowserRequestUrl("http://[::1]/")).toBe(true);
+    expect(isBlockedBrowserRequestUrl("http://192.168.1.1/")).toBe(true);
   });
 
   it("allows requests to public hosts and non-network schemes", () => {

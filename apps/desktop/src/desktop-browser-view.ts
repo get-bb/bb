@@ -332,10 +332,8 @@ export function createDesktopBrowserViewManager(
     browserSession.on("will-download", (event) => {
       event.preventDefault();
     });
-    // Network firewall: untrusted pages must not be able to reach bb's loopback
-    // services or the user's LAN. This fires for ALL resource types — top-level
-    // navigation, subresources, fetch/XHR, and WebSockets — so CORS-bypassing
-    // requests to 127.0.0.1 / private ranges are cancelled before they are sent.
+    // Network firewall: localhost/loopback is allowed for local testing, but
+    // private LAN and mDNS targets are still cancelled before requests are sent.
     browserSession.webRequest.onBeforeRequest((details, callback) => {
       callback({ cancel: isBlockedBrowserRequestUrl(details.url) });
     });
@@ -368,11 +366,13 @@ export function createDesktopBrowserViewManager(
     webContents.on("will-navigate", (event, url) => {
       if (!isAllowedBrowserUrl(url)) {
         event.preventDefault();
+        return;
       }
     });
     webContents.on("will-redirect", (event, url) => {
       if (!isAllowedBrowserUrl(url)) {
         event.preventDefault();
+        return;
       }
     });
 

@@ -3,7 +3,8 @@
 
 const SEARCH_ENGINE_URL = "https://www.google.com/search";
 const HTTP_SCHEME_PATTERN = /^https?:\/\//i;
-const LOCALHOST_PATTERN = /^localhost(:\d+)?(\/|$)/i;
+const LOCALHOST_PATTERN = /^([a-z0-9-]+\.)*localhost(:\d+)?(\/\S*)?$/i;
+const LOOPBACK_IPV4_PATTERN = /^(0|127)(\.\d{1,3}){3}(:\d+)?(\/\S*)?$/i;
 // host.tld (one or more dotted labels), optional port, optional path/query.
 const HOSTNAME_PATTERN = /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(\/\S*)?$/i;
 
@@ -28,8 +29,16 @@ function buildSearchUrl(query: string): string {
   return `${SEARCH_ENGINE_URL}?q=${encodeURIComponent(query)}`;
 }
 
+function isBareLocalHttpUrl(input: string): boolean {
+  return LOCALHOST_PATTERN.test(input) || LOOPBACK_IPV4_PATTERN.test(input);
+}
+
 function normalizeUrl(input: string): string {
-  return HTTP_SCHEME_PATTERN.test(input) ? input : `https://${input}`;
+  if (HTTP_SCHEME_PATTERN.test(input)) {
+    return input;
+  }
+  const scheme = isBareLocalHttpUrl(input) ? "http" : "https";
+  return `${scheme}://${input}`;
 }
 
 /**

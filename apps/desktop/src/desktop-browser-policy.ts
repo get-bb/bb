@@ -30,18 +30,17 @@ export function resolveWindowOpenAction(url: string): WindowOpenDecision {
   return { openTabUrl: isAllowedBrowserUrl(url) ? url : null };
 }
 
-// --- Loopback / LAN request firewall ---
+// --- Local / LAN request firewall ---
 //
-// Untrusted browsed pages must never be able to reach bb's own loopback
-// services (server `/ws`, host-daemon local API) or other hosts on the user's
-// LAN. CORS only filters responses; it does not stop the request from being
-// sent and acted on. So we block at the network layer (see the
-// `session.webRequest` wiring in desktop-browser-view) using these predicates,
-// which classify the request's URL host as loopback / link-local / private.
+// The in-app browser is meant to test local sites, so localhost / loopback
+// hosts are allowed. Private LAN and mDNS hosts remain blocked at the network
+// layer (see the `session.webRequest` wiring in desktop-browser-view).
 //
 // Residual: this classifies the URL host, not the DNS-resolved address, so a
 // public name that resolves to a private IP (DNS rebinding) is not caught here.
 // That is a deeper, separate mitigation and out of scope for v1.
+
+const NETWORK_REQUEST_PROTOCOLS = new Set(["http:", "https:", "ws:", "wss:"]);
 
 function parseIpv4Octets(host: string): number[] | null {
   const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
@@ -54,10 +53,29 @@ function parseIpv4Octets(host: string): number[] | null {
   return octets.some((octet) => octet > 255) ? null : octets;
 }
 
+function normalizeRequestHost(rawHost: string): string | null {
+  let host = rawHost.trim().toLowerCase();
+  if (host.length === 0) {
+    return null;
+  }
+  if (host.startsWith("[") && host.endsWith("]")) {
+    host = host.slice(1, -1);
+  }
+  const zoneIndex = host.indexOf("%");
+  if (zoneIndex !== -1) {
+    host = host.slice(0, zoneIndex);
+  }
+  return host;
+}
+
+function isLocalIpv4(octets: readonly number[]): boolean {
+  const [a] = octets;
+  return a === 0 || a === 127;
+}
+
 function isBlockedIpv4(octets: readonly number[]): boolean {
   const [a, b] = octets;
-  if (a === 0) return true; // 0.0.0.0/8 "this host"
-  if (a === 127) return true; // 127.0.0.0/8 loopback
+  if (isLocalIpv4(octets)) return true; // 0.0.0.0/8, 127.0.0.0/8
   if (a === 10) return true; // 10.0.0.0/8 private
   if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private
   if (a === 192 && b === 168) return true; // 192.168.0.0/16 private
@@ -115,48 +133,84 @@ function expandIpv6(host: string): number[] | null {
   return hextets;
 }
 
+function ipv4TailFromIpv6(hextets: readonly number[]): number[] | null {
+  const firstFiveZero = hextets.slice(0, 5).every((value) => value === 0);
+  if (!firstFiveZero || (hextets[5] !== 0xffff && hextets[5] !== 0)) {
+    return null;
+  }
+  return [
+    hextets[6] >> 8,
+    hextets[6] & 0xff,
+    hextets[7] >> 8,
+    hextets[7] & 0xff,
+  ];
+}
+
+function isLocalIpv6(hextets: readonly number[]): boolean {
+  const leadingZeros = hextets.slice(0, 7).every((value) => value === 0);
+  if (leadingZeros && hextets[7] === 1) return true; // ::1 loopback
+  if (hextets.every((value) => value === 0)) return true; // :: unspecified
+  const ipv4Tail = ipv4TailFromIpv6(hextets);
+  return ipv4Tail !== null && isLocalIpv4(ipv4Tail);
+}
+
+function isLocalIpv6Literal(host: string): boolean {
+  const hextets = expandIpv6(host);
+  return hextets !== null && isLocalIpv6(hextets);
+}
+
 function isBlockedIpv6Literal(host: string): boolean {
   const hextets = expandIpv6(host);
   if (hextets === null) {
     return true; // unparseable IPv6 literal → block to be safe
   }
-  const leadingZeros = hextets.slice(0, 7).every((value) => value === 0);
-  if (leadingZeros && hextets[7] === 1) return true; // ::1 loopback
-  if (hextets.every((value) => value === 0)) return true; // :: unspecified
+  if (isLocalIpv6(hextets)) return true;
   if ((hextets[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
   if ((hextets[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
   // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d).
-  const firstFiveZero = hextets.slice(0, 5).every((value) => value === 0);
-  if (firstFiveZero && (hextets[5] === 0xffff || hextets[5] === 0)) {
-    return isBlockedIpv4([
-      hextets[6] >> 8,
-      hextets[6] & 0xff,
-      hextets[7] >> 8,
-      hextets[7] & 0xff,
-    ]);
+  const ipv4Tail = ipv4TailFromIpv6(hextets);
+  if (ipv4Tail !== null) {
+    return isBlockedIpv4(ipv4Tail);
+  }
+  return false;
+}
+
+/**
+ * Whether a request host names the user's own machine. The in-app browser is
+ * intended for local testing, so these hosts are not blocked by the request
+ * firewall.
+ */
+export function isLocalBrowserRequestHost(rawHost: string): boolean {
+  const host = normalizeRequestHost(rawHost);
+  if (host === null) {
+    return false;
+  }
+  if (host === "localhost" || host.endsWith(".localhost")) {
+    return true;
+  }
+  const ipv4 = parseIpv4Octets(host);
+  if (ipv4 !== null) {
+    return isLocalIpv4(ipv4);
+  }
+  if (host.includes(":")) {
+    return isLocalIpv6Literal(host);
   }
   return false;
 }
 
 /**
  * Whether a request host (URL hostname, no port) must be blocked because it
- * targets loopback, link-local, private/LAN, or mDNS `.local` space. Public
- * names and addresses return false. Exported for unit testing.
+ * targets link-local, private/LAN, or mDNS `.local` space. Localhost,
+ * loopback, public names, and public addresses return false. Exported for unit
+ * testing.
  */
 export function isBlockedBrowserRequestHost(rawHost: string): boolean {
-  let host = rawHost.trim().toLowerCase();
-  if (host.length === 0) {
+  const host = normalizeRequestHost(rawHost);
+  if (host === null) {
     return true;
   }
-  if (host.startsWith("[") && host.endsWith("]")) {
-    host = host.slice(1, -1);
-  }
-  const zoneIndex = host.indexOf("%");
-  if (zoneIndex !== -1) {
-    host = host.slice(0, zoneIndex);
-  }
-  if (host === "localhost" || host.endsWith(".localhost")) {
-    return true;
+  if (isLocalBrowserRequestHost(host)) {
+    return false;
   }
   if (host === "local" || host.endsWith(".local")) {
     return true;
@@ -183,13 +237,7 @@ export function isBlockedBrowserRequestUrl(url: string): boolean {
   } catch {
     return false;
   }
-  const protocol = parsed.protocol;
-  if (
-    protocol !== "http:" &&
-    protocol !== "https:" &&
-    protocol !== "ws:" &&
-    protocol !== "wss:"
-  ) {
+  if (!NETWORK_REQUEST_PROTOCOLS.has(parsed.protocol)) {
     return false;
   }
   return isBlockedBrowserRequestHost(parsed.hostname);

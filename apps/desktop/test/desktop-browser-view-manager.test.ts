@@ -1,6 +1,9 @@
 import type { WebContentsView } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BbDesktopBrowserViewBounds } from "@bb/server-contract";
+import type {
+  BbDesktopBrowserOpenTabRequest,
+  BbDesktopBrowserViewBounds,
+} from "@bb/server-contract";
 import {
   createDesktopBrowserViewManager,
   type DesktopBrowserHostContentBounds,
@@ -24,6 +27,28 @@ type FakeWindowOpenHandler = (
   details: FakeWindowOpenDetails,
 ) => FakeWindowOpenDecision;
 
+interface FakeBeforeRequestDetails {
+  url: string;
+  webContentsId?: number;
+}
+
+interface FakeBeforeRequestDecision {
+  cancel: boolean;
+}
+
+interface FakeBeforeRequestDecisionHolder {
+  value: FakeBeforeRequestDecision | null;
+}
+
+type FakeBeforeRequestCallback = (
+  decision: FakeBeforeRequestDecision,
+) => void;
+
+type FakeBeforeRequestHandler = (
+  details: FakeBeforeRequestDetails,
+  callback: FakeBeforeRequestCallback,
+) => void;
+
 const electronMock = vi.hoisted(() => {
   interface FakeNativeImage {
     isEmpty(): boolean;
@@ -34,11 +59,15 @@ const electronMock = vi.hoisted(() => {
     isEmpty: () => false,
     toJPEG: () => Buffer.from("jpeg-bytes"),
   };
+  const beforeRequestHandlers: FakeBeforeRequestHandler[] = [];
+  let nextWebContentsId = 1;
 
   class FakeWebContents {
+    public readonly id = nextWebContentsId++;
     public readonly pendingCaptureResolvers: Array<
       (image: FakeNativeImage) => void
     > = [];
+    public windowOpenHandler: FakeWindowOpenHandler | null = null;
 
     public readonly navigationHistory = {
       canGoBack() {
@@ -83,7 +112,9 @@ const electronMock = vi.hoisted(() => {
 
     reload(): void {}
 
-    setWindowOpenHandler(_handler: FakeWindowOpenHandler): void {}
+    setWindowOpenHandler(handler: FakeWindowOpenHandler): void {
+      this.windowOpenHandler = handler;
+    }
 
     stop(): void {}
   }
@@ -105,6 +136,7 @@ const electronMock = vi.hoisted(() => {
   const fakeViews: FakeWebContentsView[] = [];
 
   return {
+    beforeRequestHandlers,
     fakeCapturedImage,
     fakeViews,
     FakeWebContentsView: class extends FakeWebContentsView {
@@ -120,7 +152,9 @@ const electronMock = vi.hoisted(() => {
           setPermissionCheckHandler() {},
           setPermissionRequestHandler() {},
           webRequest: {
-            onBeforeRequest() {},
+            onBeforeRequest(handler: FakeBeforeRequestHandler) {
+              beforeRequestHandlers.push(handler);
+            },
           },
         };
       },
@@ -190,6 +224,7 @@ class FakeHostWindow implements DesktopBrowserHostWindow {
 }
 
 beforeEach(() => {
+  electronMock.beforeRequestHandlers.length = 0;
   electronMock.fakeViews.length = 0;
 });
 
@@ -216,6 +251,46 @@ function snapshotPushesOf(
     }
   }
   return pushes;
+}
+
+function openTabPushesOf(
+  hostWindow: FakeHostWindow,
+): BbDesktopBrowserOpenTabRequest[] {
+  const pushes: BbDesktopBrowserOpenTabRequest[] = [];
+  for (const payload of hostWindow.webContents.sentPayloads) {
+    if ("url" in payload && !("tabId" in payload)) {
+      pushes.push(payload);
+    }
+  }
+  return pushes;
+}
+
+function runBeforeRequest(details: FakeBeforeRequestDetails): boolean {
+  const handler = electronMock.beforeRequestHandlers.at(-1);
+  expect(handler).toBeDefined();
+  if (handler === undefined) {
+    throw new Error("Expected a webRequest handler to be registered.");
+  }
+  const decision: FakeBeforeRequestDecisionHolder = { value: null };
+  handler(details, (nextDecision) => {
+    decision.value = nextDecision;
+  });
+  expect(decision.value).not.toBeNull();
+  if (decision.value === null) {
+    throw new Error("Expected the webRequest handler to return a decision.");
+  }
+  return decision.value.cancel;
+}
+
+function getWindowOpenHandler(
+  view: (typeof electronMock.fakeViews)[number],
+): FakeWindowOpenHandler {
+  const handler = view.webContents.windowOpenHandler;
+  expect(handler).not.toBeNull();
+  if (handler === null) {
+    throw new Error("Expected the window.open handler to be registered.");
+  }
+  return handler;
 }
 
 describe("DesktopBrowserViewManager", () => {
@@ -483,5 +558,81 @@ describe("DesktopBrowserViewManager", () => {
 
     expect(view.boundsCalls).toHaveLength(1);
     expect(view.visible).toBe(false);
+  });
+
+  it("allows localhost requests through the session firewall", () => {
+    const manager = createDesktopBrowserViewManager({ partition: "persist:test" });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 47,
+    });
+
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        url: "https://example.com",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: true,
+      },
+    });
+
+    const view = electronMock.fakeViews[0];
+    expect(view).toBeDefined();
+    if (view === undefined) {
+      throw new Error("Expected the browser view to be created.");
+    }
+
+    expect(
+      runBeforeRequest({
+        url: "http://localhost:3000/",
+        webContentsId: view.webContents.id,
+      }),
+    ).toBe(false);
+    expect(
+      runBeforeRequest({
+        url: "ws://127.0.0.1:3000/socket",
+        webContentsId: view.webContents.id,
+      }),
+    ).toBe(false);
+    expect(
+      runBeforeRequest({
+        url: "http://192.168.1.1/",
+        webContentsId: view.webContents.id,
+      }),
+    ).toBe(true);
+    expect(runBeforeRequest({ url: "http://localhost:3000/" })).toBe(false);
+  });
+
+  it("allows localhost popup tabs", () => {
+    const manager = createDesktopBrowserViewManager({ partition: "persist:test" });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 48,
+    });
+
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        url: "https://example.com",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: true,
+      },
+    });
+
+    const view = electronMock.fakeViews[0];
+    expect(view).toBeDefined();
+    if (view === undefined) {
+      throw new Error("Expected the browser view to be created.");
+    }
+    const handler = getWindowOpenHandler(view);
+
+    expect(handler({ url: "http://localhost:3000/" })).toEqual({
+      action: "deny",
+    });
+    expect(openTabPushesOf(hostWindow)).toEqual([
+      { url: "http://localhost:3000/" },
+    ]);
   });
 });

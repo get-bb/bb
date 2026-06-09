@@ -18,6 +18,7 @@ describe("looksLikeUrl", () => {
     expect(looksLikeUrl("news.ycombinator.com")).toBe(true);
     expect(looksLikeUrl("example.com:8080/path")).toBe(true);
     expect(looksLikeUrl("localhost:3000")).toBe(true);
+    expect(looksLikeUrl("app.localhost:3000")).toBe(true);
     expect(looksLikeUrl("127.0.0.1:38886")).toBe(true);
   });
 
@@ -47,12 +48,21 @@ describe("resolveBrowserAddressInput", () => {
     );
   });
 
-  it("prepends https:// to a bare host", () => {
+  it("prepends https:// to a public bare host", () => {
     expect(resolveBrowserAddressInput("example.com")).toBe(
       "https://example.com",
     );
+  });
+
+  it("prepends http:// to bare localhost and loopback hosts", () => {
     expect(resolveBrowserAddressInput("localhost:3000")).toBe(
-      "https://localhost:3000",
+      "http://localhost:3000",
+    );
+    expect(resolveBrowserAddressInput("app.localhost:5173/path")).toBe(
+      "http://app.localhost:5173/path",
+    );
+    expect(resolveBrowserAddressInput("127.0.0.1:38886")).toBe(
+      "http://127.0.0.1:38886",
     );
   });
 
