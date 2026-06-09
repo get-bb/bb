@@ -38,6 +38,7 @@ import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
+import { SIDEBAR_HOVER_ACTIONS_CLASS } from "@/components/ui/sidebar-hover-actions";
 import {
   projectsQueryKey,
   sidebarNavigationQueryKey,
@@ -1321,10 +1322,24 @@ describe("ProjectList", () => {
     const collapseProjectsButton = screen.getByRole("button", {
       name: "Collapse Projects section",
     });
+    const sectionDisclosureButtons = [
+      { label: screen.getByText("Apps"), button: collapseAppsButton },
+      { label: screen.getByText("Threads"), button: collapseThreadsButton },
+      { label: screen.getByText("Projects"), button: collapseProjectsButton },
+    ];
 
     expect(collapseAppsButton.getAttribute("aria-expanded")).toBe("true");
     expect(collapseThreadsButton.getAttribute("aria-expanded")).toBe("true");
     expect(collapseProjectsButton.getAttribute("aria-expanded")).toBe("true");
+    for (const { label, button } of sectionDisclosureButtons) {
+      expect(
+        Boolean(
+          label.compareDocumentPosition(button) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+      ).toBe(true);
+      expect(button.classList.contains(SIDEBAR_HOVER_ACTIONS_CLASS)).toBe(true);
+    }
 
     fireEvent.click(collapseAppsButton);
     fireEvent.click(collapseThreadsButton);

@@ -450,42 +450,45 @@ function TopLevelSidebarSection({
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
       >
-        {collapseControl ? (
-          <button
-            type="button"
-            aria-expanded={!collapseControl.isCollapsed}
-            aria-label={
-              collapseControl.isCollapsed
-                ? `Expand ${label} section`
-                : `Collapse ${label} section`
-            }
-            title={
-              collapseControl.isCollapsed
-                ? `Expand ${label}`
-                : `Collapse ${label}`
-            }
-            className="relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2"
-            onClick={handleCollapseControlClick}
-            onPointerDown={stopCollapseControlPointerDown}
-            onKeyDown={stopCollapseControlKeyDown}
-          >
-            <Icon
-              name="ChevronRight"
-              className={cn(
-                "size-3 transition-transform duration-150",
-                !collapseControl.isCollapsed && "rotate-90",
-              )}
-              aria-hidden="true"
-            />
-          </button>
-        ) : null}
         <span
           className={cn(
-            "relative z-10 min-w-0 flex-1 truncate text-left",
+            "relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left",
             actions && "pr-14",
           )}
         >
-          {label}
+          <span className="min-w-0 truncate">{label}</span>
+          {collapseControl ? (
+            <button
+              type="button"
+              aria-expanded={!collapseControl.isCollapsed}
+              aria-label={
+                collapseControl.isCollapsed
+                  ? `Expand ${label} section`
+                  : `Collapse ${label} section`
+              }
+              title={
+                collapseControl.isCollapsed
+                  ? `Expand ${label}`
+                  : `Collapse ${label}`
+              }
+              className={cn(
+                SIDEBAR_HOVER_ACTIONS_CLASS,
+                "relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
+              )}
+              onClick={handleCollapseControlClick}
+              onPointerDown={stopCollapseControlPointerDown}
+              onKeyDown={stopCollapseControlKeyDown}
+            >
+              <Icon
+                name="ChevronRight"
+                className={cn(
+                  "size-3 transition-transform duration-150",
+                  !collapseControl.isCollapsed && "rotate-90",
+                )}
+                aria-hidden="true"
+              />
+            </button>
+          ) : null}
         </span>
         {actions ? (
           <span className="absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center">
