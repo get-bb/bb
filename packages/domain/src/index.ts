@@ -350,10 +350,12 @@ export type {
 } from "./thread.js";
 
 export {
+  rawDiffFileStatSchema,
   threadGitDiffResponseSchema,
   workspaceDiffTargetSchema,
 } from "./thread-git-diff.js";
 export type {
+  RawDiffFileStat,
   ThreadGitDiffResponse,
   WorkspaceDiffTarget,
 } from "./thread-git-diff.js";

@@ -1,14 +1,11 @@
 import { parsePatchFiles } from "@pierre/diffs";
+import type { GitDiffFileChangeKind } from "@bb/server-contract";
 
 export type ParsedGitDiffFile = ReturnType<
   typeof parsePatchFiles
 >[number]["files"][number];
 
-export type GitDiffFileChangeKind =
-  | "added"
-  | "modified"
-  | "deleted"
-  | "renamed";
+export type { GitDiffFileChangeKind };
 
 export interface GitDiffStats {
   filesCount: number;

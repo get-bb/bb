@@ -46,6 +46,9 @@ import type {
   EnvironmentDiffBranchesQuery,
   EnvironmentDiffResponse,
   EnvironmentDiffQuery,
+  EnvironmentDiffFilesResponse,
+  EnvironmentDiffPatchQuery,
+  EnvironmentDiffPatchResponse,
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
   EnvironmentDiffBranchesResponse,
@@ -398,6 +401,29 @@ export type PublicApiSchema = {
     $get: Endpoint<
       PathId & { query: EnvironmentDiffQuery },
       EnvironmentDiffResponse
+    >;
+  };
+  "/environments/:id/diff/files": {
+    /**
+     * Get the diff tab's table of contents (one entry per changed file: path,
+     * change kind, +/- counts, tiering decision) with no patch text. Proxies
+     * to `workspace.diffFiles`. Reuses the same target query as `/diff`.
+     */
+    $get: Endpoint<
+      PathId & { query: EnvironmentDiffQuery },
+      EnvironmentDiffFilesResponse
+    >;
+  };
+  "/environments/:id/diff/patch": {
+    /**
+     * Get unified patch text for a subset of changed files, one repeated
+     * `paths=` param per file. Proxies to `workspace.diffPatch`. The server
+     * re-derives each file's `previousPath` (rename/copy pairing) from its own
+     * TOC — the client supplies only new paths and never the rename pairing.
+     */
+    $get: Endpoint<
+      PathId & { query: EnvironmentDiffPatchQuery },
+      EnvironmentDiffPatchResponse
     >;
   };
   "/environments/:id/diff/file": {
