@@ -34,12 +34,19 @@ export class WebSocketManager {
     if (this.socket) return;
 
     // In dev mode, connect directly to the server to bypass Vite's WS proxy
-    // which does not handle reconnection after backend restarts.
+    // which does not handle reconnection after backend restarts. The baked
+    // URL targets localhost; rehost it onto the page's hostname so remote
+    // devices (BB_DEV_APP_HOST=0.0.0.0, e.g. over tailscale) reach the same
+    // server, which listens on all interfaces.
     // In production, use the same origin (server serves the app).
-    const url =
-      typeof __BB_DEV_WS_URL__ === "string"
-        ? __BB_DEV_WS_URL__
-        : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
+    let url: string;
+    if (typeof __BB_DEV_WS_URL__ === "string") {
+      const devUrl = new URL(__BB_DEV_WS_URL__);
+      devUrl.hostname = window.location.hostname;
+      url = devUrl.toString();
+    } else {
+      url = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
+    }
 
     this.socket = new ReconnectingWebSocket(url, undefined, {
       minReconnectionDelay: 1000,
