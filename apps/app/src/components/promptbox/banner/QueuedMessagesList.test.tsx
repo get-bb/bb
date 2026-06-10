@@ -37,6 +37,7 @@ function makeQueuedMessagesListProps(
     sendDisabled: false,
     actionDisabled: false,
     processingMessageId: null,
+    processingAction: null,
     onSendImmediately: vi.fn(),
     onReorder: vi.fn(),
     onEdit: vi.fn(),

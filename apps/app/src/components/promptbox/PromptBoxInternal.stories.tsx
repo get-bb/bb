@@ -378,7 +378,7 @@ function RunningWithStopRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      placeholder="Ask for a follow-up. @ to mention files or folders"
+      placeholder="Ask for a follow-up. @ to mention files, folders, or threads"
       typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}

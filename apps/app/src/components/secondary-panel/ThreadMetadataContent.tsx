@@ -25,7 +25,11 @@ import {
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
-import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
+import {
+  DetailCard,
+  DetailRow,
+  DetailRowIconLabel,
+} from "@/components/ui/detail-card.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens.js";
 import {
   formatCronCadence,
@@ -63,26 +67,6 @@ import { getThreadRoutePath } from "@/lib/app-route-paths";
 // that composes them. This shape lets per-row stories render exactly one row
 // without bypassing the production rendering path.
 // ---------------------------------------------------------------------------
-
-/**
- * Detail-row label with a leading icon, styled like the timeline's tool-call
- * leading icons (`size-3.5 text-muted-foreground`). Used for the workspace/git
- * rows so they read as a cohesive group.
- */
-function MetadataRowLabel({
-  icon,
-  children,
-}: {
-  icon: IconName;
-  children: ReactNode;
-}) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <Icon name={icon} className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 truncate">{children}</span>
-    </span>
-  );
-}
 
 export interface ParentSelectorRowProps {
   thread: Thread;
@@ -130,7 +114,7 @@ export function ParentSelectorRow({
 
   return (
     <DetailRow
-      label={<MetadataRowLabel icon="UserRound">Parent</MetadataRowLabel>}
+      label={<DetailRowIconLabel icon="UserRound">Parent</DetailRowIconLabel>}
       valueClassName="min-w-0"
     >
       {parentThreadId ? (
@@ -143,7 +127,7 @@ export function ParentSelectorRow({
           <Link
             to={getThreadRoutePath({ projectId, threadId: parentThreadId })}
             className={cn(
-              "min-w-0 truncate text-subtle-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
+              "min-w-0 truncate text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
               COARSE_POINTER_TEXT_SM_CLASS,
             )}
           >
@@ -182,7 +166,7 @@ export function ParentSelectorRow({
             >
               <span
                 className={cn(
-                  "min-w-0 truncate text-subtle-foreground",
+                  "min-w-0 truncate text-foreground",
                   COARSE_POINTER_TEXT_SM_CLASS,
                 )}
               >
@@ -233,6 +217,18 @@ export interface EnvironmentRowProps {
   environmentDisplayHost: EnvironmentDisplayHostContext;
 }
 
+// Reflect the actual environment: a managed (cloud) worktree, a local git
+// worktree, or working directly in the local checkout.
+function environmentRowIcon(environment: Environment): IconName {
+  if (environment.workspaceProvisionType === "managed-worktree") {
+    return "Container";
+  }
+  if (environment.isWorktree) {
+    return "FolderOpen";
+  }
+  return "Laptop";
+}
+
 export function EnvironmentRow({
   thread,
   environment,
@@ -250,8 +246,12 @@ export function EnvironmentRow({
   const showCreateThreadButton = isWorktreeEnvironment(environment);
   return (
     <DetailRow
-      label={<MetadataRowLabel icon="Folder">Environment</MetadataRowLabel>}
-      valueClassName="min-w-0 text-subtle-foreground"
+      label={
+        <DetailRowIconLabel icon={environmentRowIcon(environment)}>
+          Environment
+        </DetailRowIconLabel>
+      }
+      valueClassName="min-w-0"
     >
       <span className="flex min-w-0 items-center gap-1">
         <span className="min-w-0 truncate">{display.modeLabel}</span>
@@ -328,7 +328,6 @@ export function WorkspacePathRow({
         text={environment.path}
         label={display.copyLabel}
         title={environment.path}
-        className="text-subtle-foreground"
         successMessage={display.successMessage}
         errorMessage={display.errorMessage}
       />
@@ -346,13 +345,12 @@ export function BranchRow({ thread, workspaceStatus }: BranchRowProps) {
   if (!branchName) return null;
   return (
     <DetailRow
-      label={<MetadataRowLabel icon="GitBranch">Branch</MetadataRowLabel>}
+      label={<DetailRowIconLabel icon="GitBranch">Branch</DetailRowIconLabel>}
       valueClassName="min-w-0 truncate"
     >
       <CopyableInlineLabel
         text={branchName}
         label="Copy branch name"
-        className="text-subtle-foreground"
         successMessage="Branch name copied"
         errorMessage="Failed to copy branch name"
       />
@@ -435,7 +433,9 @@ export function MergeBaseRow({
 
   return (
     <DetailRow
-      label={<MetadataRowLabel icon="GitMerge">Merge base</MetadataRowLabel>}
+      label={
+        <DetailRowIconLabel icon="GitMerge">Merge base</DetailRowIconLabel>
+      }
       valueClassName="min-w-0 truncate"
     >
       {canSelectMergeBase && mergeBaseBranch ? (
@@ -509,11 +509,13 @@ export function GitStatusRow({
       ? "text-destructive"
       : display.label === "Clean" || display.label === "Up to date"
         ? "text-success"
-        : "text-readback-foreground";
+        : "text-foreground";
 
   return (
     <DetailRow
-      label={<MetadataRowLabel icon="FileDiff">Git status</MetadataRowLabel>}
+      label={
+        <DetailRowIconLabel icon="FileDiff">Git status</DetailRowIconLabel>
+      }
       align="start"
       valueClassName="min-w-0"
     >
@@ -524,7 +526,7 @@ export function GitStatusRow({
         <span className={cn("shrink-0 font-medium", labelClass)}>
           {display.label}
         </span>
-        <span className="min-w-0 truncate text-subtle-foreground">
+        <span className="min-w-0 truncate text-muted-foreground">
           {display.summaryContent}
         </span>
       </div>

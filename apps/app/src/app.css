@@ -53,6 +53,19 @@
   *::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in oklch, var(--foreground) 40%, transparent);
   }
+
+  /*
+   * Default the keyboard focus ring to the app's achromatic `--ring` instead of
+   * the browser's native outline, which `color-scheme` renders in the OS accent
+   * (blue in dark, the system accent in light) and clashes with the chroma-0
+   * design. Components that supply their own `focus-visible:outline-none` + ring
+   * override this from the utilities layer, so this only catches elements that
+   * would otherwise fall through to the UA focus ring.
+   */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+  }
 }
 
 @layer components {

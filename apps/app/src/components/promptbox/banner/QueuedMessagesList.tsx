@@ -29,11 +29,15 @@ import {
   type QueuedMessageReorderRequest,
 } from "@/lib/queued-message-reorder";
 
+/** Which in-flight action the processing message is running, for its label. */
+export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
+
 export interface QueuedMessagesListProps {
   queuedMessages: readonly ThreadQueuedMessage[];
   sendDisabled: boolean;
   actionDisabled: boolean;
   processingMessageId: string | null;
+  processingAction: QueuedMessageProcessingAction | null;
   onSendImmediately: (id: string) => void;
   onReorder: (request: QueuedMessageReorderRequest) => void;
   onEdit: (id: string) => void;
@@ -44,6 +48,7 @@ interface QueuedMessageRowProps {
   queuedMessage: ThreadQueuedMessage;
   index: number;
   isProcessing: boolean;
+  processingLabel: string;
   dragDisabled: boolean;
   sendDisabled: boolean;
   actionDisabled: boolean;
@@ -56,6 +61,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   queuedMessage,
   index,
   isProcessing,
+  processingLabel,
   dragDisabled,
   sendDisabled,
   actionDisabled,
@@ -95,16 +101,21 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
     <li
       ref={setNodeRef}
       style={rowStyle}
-      className={cn("px-2.5 py-0.5", isDragging && "relative z-10 opacity-80")}
+      className={cn(
+        "group px-2.5 py-0.5",
+        isDragging && "relative z-10 opacity-80",
+      )}
     >
       <div className="flex items-center gap-1.5">
+        {/* One drag handle holding the grip (hover-revealed) and the reorder
+            arrow. The grip is always rendered at opacity-0 so the button width
+            — and the row layout — stays constant whether or not it's hovered. */}
         <Button
           ref={setActivatorNodeRef}
           type="button"
-          size="icon"
           variant="ghost"
           className={cn(
-            "size-6 shrink-0 text-muted-foreground",
+            "-ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-md px-1 text-muted-foreground",
             !dragDisabled && "cursor-grab active:cursor-grabbing",
           )}
           disabled={dragDisabled}
@@ -113,7 +124,15 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           {...attributes}
           {...listeners}
         >
-          <Icon name="ArrowTurnForward" className="size-3.5 opacity-70" />
+          <Icon
+            name="DragDropVertical"
+            className={cn(
+              "size-3.5 shrink-0 opacity-0 transition-opacity",
+              !dragDisabled && "group-hover:opacity-100",
+            )}
+            aria-hidden="true"
+          />
+          <Icon name="ArrowTurnForward" className="size-3.5 shrink-0 opacity-70" />
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
@@ -127,36 +146,29 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                   : `${attachmentCount} attachments`}
               </span>
             ) : null}
-            {isProcessing ? (
-              <>
-                <span className="shrink-0 text-muted-foreground">.</span>
-                <span className="shrink-0 text-muted-foreground">
-                  Sending...
-                </span>
-              </>
-            ) : null}
           </div>
         </div>
         <div className="ml-1 flex shrink-0 items-center gap-1">
-          <Button
-            type="button"
-            size="sm"
-            variant="link"
-            className="h-auto px-0 pr-1 text-xs text-muted-foreground"
-            disabled={sendDisabled || isProcessing}
-            onClick={() => onSendImmediately(queuedMessage.id)}
-            aria-label={isProcessing ? "Sending queued message" : "Send now"}
-          >
-            {isProcessing ? (
-              "Sending..."
-            ) : (
-              <Icon
-                name="Sent"
-                className="size-3.5 shrink-0 opacity-70"
-                aria-hidden
-              />
-            )}
-          </Button>
+          {isProcessing ? (
+            // While an action is in flight, the status label takes the place of
+            // the send-now button (which an icon button can't hold as text).
+            <span className="whitespace-nowrap px-1 text-xs text-muted-foreground">
+              {processingLabel}
+            </span>
+          ) : (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-7 text-muted-foreground"
+              disabled={sendDisabled}
+              onClick={() => onSendImmediately(queuedMessage.id)}
+              aria-label="Send now"
+              title="Send now"
+            >
+              <Icon name="Sent" className="size-4 opacity-70" />
+            </Button>
+          )}
           <Button
             type="button"
             size="icon"
@@ -167,7 +179,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             aria-label={`Edit queued message ${index + 1}`}
             title="Edit queued message"
           >
-            <Icon name="Edit" className="size-3.5 opacity-70" />
+            <Icon name="Edit" className="size-4 opacity-70" />
           </Button>
           <Button
             type="button"
@@ -179,7 +191,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             aria-label={`Delete queued message ${index + 1}`}
             title="Delete queued message"
           >
-            <Icon name="Trash2" className="size-3.5 opacity-70" />
+            <Icon name="Trash2" className="size-4 opacity-70" />
           </Button>
         </div>
       </div>
@@ -192,11 +204,18 @@ export function QueuedMessagesList({
   sendDisabled,
   actionDisabled,
   processingMessageId,
+  processingAction,
   onSendImmediately,
   onReorder,
   onEdit,
   onDelete,
 }: QueuedMessagesListProps) {
+  const processingLabel =
+    processingAction === "edit"
+      ? "Editing..."
+      : processingAction === "delete"
+        ? "Deleting..."
+        : "Sending...";
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 4 },
@@ -242,27 +261,27 @@ export function QueuedMessagesList({
       // coming up from behind the composer rather than floating above it.
       className="-mb-3 overflow-hidden rounded-b-none border-b-0 pb-3"
     >
-      <div className="px-2.5 pb-1 pt-2.5">
-        <button
-          type="button"
-          aria-expanded={isExpanded}
-          onClick={() => setIsExpanded((prev) => !prev)}
-          className="-ml-1 flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
-        >
-          <span className="opacity-70">Queued</span>
-          <span className="text-2xs text-subtle-foreground">
-            {queuedMessages.length}
-          </span>
-          <Icon
-            name="ChevronDown"
-            className={cn(
-              "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
-              isExpanded && "rotate-180",
-            )}
-            aria-hidden="true"
-          />
-        </button>
-      </div>
+      {/* Whole header row is the collapse target (accordion-style), so the
+          caret sits at the far right rather than hugging the label. */}
+      <button
+        type="button"
+        aria-expanded={isExpanded}
+        onClick={() => setIsExpanded((prev) => !prev)}
+        className="flex w-full items-center gap-1.5 px-2.5 pb-1 pt-2.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
+      >
+        <span className="opacity-70">Queued</span>
+        <span className="text-2xs text-subtle-foreground">
+          {queuedMessages.length}
+        </span>
+        <Icon
+          name="ChevronDown"
+          className={cn(
+            "ml-auto size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
+            isExpanded && "rotate-180",
+          )}
+          aria-hidden="true"
+        />
+      </button>
       {isExpanded ? (
         <DndContext
           sensors={sensors}
@@ -280,6 +299,7 @@ export function QueuedMessagesList({
                   queuedMessage={queuedMessage}
                   index={index}
                   isProcessing={processingMessageId === queuedMessage.id}
+                  processingLabel={processingLabel}
                   dragDisabled={sortingDisabled}
                   sendDisabled={sendDisabled}
                   actionDisabled={actionDisabled}

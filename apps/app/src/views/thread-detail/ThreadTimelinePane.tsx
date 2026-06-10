@@ -22,6 +22,7 @@ import {
 } from "@/components/thread/timeline";
 import { TimelineStatusIndicator } from "@/components/thread/timeline";
 import { TimelineWorkingIndicator } from "@/components/thread/timeline";
+import { Skeleton } from "@/components/ui/skeleton.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 
@@ -278,5 +279,45 @@ function DelayedThreadLoadingIndicator() {
     return null;
   }
 
-  return <TimelineStatusIndicator label="Loading thread..." className="mt-6" />;
+  return <ThreadTimelineLoadingSkeleton />;
+}
+
+// A lightweight placeholder that mirrors the timeline's real building blocks
+// while the thread loads: a right-aligned user bubble, assistant prose, and a
+// run of work rows (leading icon + title), then more prose.
+function ThreadTimelineLoadingSkeleton() {
+  return (
+    <div className="mt-6 space-y-5" role="status" aria-label="Loading thread">
+      {/* User message bubble (right-aligned, like ConversationMessageContent). */}
+      <div className="flex justify-end px-2">
+        <Skeleton className="h-12 w-3/5" />
+      </div>
+      {/* Assistant prose (text-sm lines). */}
+      <div className="space-y-2 px-2">
+        <Skeleton className="h-3.5 w-11/12" />
+        <Skeleton className="h-3.5 w-full" />
+        <Skeleton className="h-3.5 w-3/4" />
+      </div>
+      {/* Work rows: leading icon + title, like tool-call / file-change rows. */}
+      <div className="space-y-2.5 px-2">
+        <div className="flex items-center gap-2">
+          <Skeleton className="size-3.5 shrink-0 rounded" />
+          <Skeleton className="h-3 w-2/5" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Skeleton className="size-3.5 shrink-0 rounded" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Skeleton className="size-3.5 shrink-0 rounded" />
+          <Skeleton className="h-3 w-1/3" />
+        </div>
+      </div>
+      {/* More assistant prose. */}
+      <div className="space-y-2 px-2">
+        <Skeleton className="h-3.5 w-5/6" />
+        <Skeleton className="h-3.5 w-2/3" />
+      </div>
+    </div>
+  );
 }

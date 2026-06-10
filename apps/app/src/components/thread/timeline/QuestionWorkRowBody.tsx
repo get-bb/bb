@@ -48,13 +48,13 @@ function AnsweredQuestionRow({ question, answer }: AnsweredQuestionRowProps) {
 
   return (
     <div>
-      {/* Flat text tiers like the timeline's other nested bodies (e.g. the
-          workflow body) — no bespoke surface. The prompt recedes as muted
-          context; the answer is the foreground payload (medium weight) so it
-          stays the skimmable line. */}
-      <div className="text-muted-foreground">{question.prompt}</div>
+      {/* Differentiate by bb's foreground tiers (color), not weight: the prompt
+          recedes to subtle-foreground while the answer is full foreground. The
+          two-tier gap (vs muted) is what keeps them distinguishable in dark
+          mode, where foreground and muted-foreground nearly coincide. */}
+      <div className="text-subtle-foreground">{question.prompt}</div>
       {hasContent ? (
-        <div className="mt-0.5 font-medium text-foreground">
+        <div className="mt-0.5 text-foreground">
           {selectedLabels.length > 0 ? (
             <div>{selectedLabels.join(", ")}</div>
           ) : null}

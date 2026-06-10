@@ -73,6 +73,7 @@
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
+  --shadow-lift: var(--shadow-lift);
 }
 
 /*
@@ -417,6 +418,9 @@
     0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 1px 2px -1px hsl(0 0% 20% / 0.15);
   --shadow-md:
     0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 2px 4px -1px hsl(0 0% 20% / 0.15);
+  /* Soft upward-cast lift for bottom-anchored surfaces (the composer), so the
+   * shadow reads on the content above rather than below the screen edge. */
+  --shadow-lift: 0px -4px 12px -4px hsl(0 0% 20% / 0.07);
   --shadow-lg:
     0px 2px 0px 0px hsl(0 0% 20% / 0.15), 0px 4px 6px -1px hsl(0 0% 20% / 0.15);
   --shadow-xl:
@@ -467,7 +471,7 @@
   /* Softened from a brighter near-white so dark-mode foreground text reads a
    * touch less intense; the whole achromatic ramp is anchored here, so chrome
    * follows by an imperceptible amount. */
-  --ink: oklch(0.84 0 0);
+  --ink: oklch(0.81 0 0);
   --background: var(--canvas);
   --foreground: var(--ink);
   /* Card and popover stay flush with the canvas here too — elevation comes from
@@ -564,6 +568,7 @@
     0px 2px 0px 0px hsl(0 0% 0% / 0.3), 0px 1px 2px -1px hsl(0 0% 0% / 0.4);
   --shadow-md:
     0px 2px 0px 0px hsl(0 0% 0% / 0.3), 0px 2px 4px -1px hsl(0 0% 0% / 0.5);
+  --shadow-lift: 0px -4px 12px -4px hsl(0 0% 0% / 0.26);
   --shadow-lg:
     0px 2px 0px 0px hsl(0 0% 0% / 0.3), 0px 4px 6px -1px hsl(0 0% 0% / 0.5);
   --shadow-xl:

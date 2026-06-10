@@ -28,7 +28,7 @@ export function getFollowUpPromptPlaceholder(
       return "Retry by sending a follow-up message";
     case "idle":
     case "active":
-      return "Ask for a follow-up. @ to mention files or folders";
+      return "Ask for a follow-up. @ to mention files, folders, or threads";
     default:
       return assertNever(displayStatus);
   }

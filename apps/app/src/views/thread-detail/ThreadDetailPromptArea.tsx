@@ -22,7 +22,10 @@ import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
 } from "@/components/workspace/workspace-change-summary";
-import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
+import {
+  QueuedMessagesList,
+  type QueuedMessageProcessingAction,
+} from "@/components/promptbox/banner/QueuedMessagesList";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
@@ -226,9 +229,10 @@ export function ThreadDetailPromptArea({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
-  const [processingQueuedMessageId, setProcessingQueuedMessageId] = useState<
-    string | null
-  >(null);
+  const [processingQueuedMessage, setProcessingQueuedMessage] = useState<{
+    id: string;
+    action: QueuedMessageProcessingAction;
+  } | null>(null);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
   const promptHistoryDrafts = useMemo(
@@ -447,7 +451,7 @@ export function ThreadDetailPromptArea({
         return;
       }
 
-      setProcessingQueuedMessageId(messageId);
+      setProcessingQueuedMessage({ id: messageId, action: "send" });
       try {
         await sendQueuedMessage.mutateAsync(
           buildSendQueuedMessageByIdRequest({
@@ -465,8 +469,8 @@ export function ThreadDetailPromptArea({
           }),
         );
       } finally {
-        setProcessingQueuedMessageId((currentMessageId) =>
-          currentMessageId === messageId ? null : currentMessageId,
+        setProcessingQueuedMessage((current) =>
+          current?.id === messageId ? null : current,
         );
       }
     },
@@ -552,7 +556,7 @@ export function ThreadDetailPromptArea({
         return;
       }
 
-      setProcessingQueuedMessageId(messageId);
+      setProcessingQueuedMessage({ id: messageId, action: "edit" });
       void deleteQueuedMessage
         .mutateAsync({
           id: thread.id,
@@ -572,8 +576,8 @@ export function ThreadDetailPromptArea({
           );
         })
         .finally(() => {
-          setProcessingQueuedMessageId((currentMessageId) =>
-            currentMessageId === messageId ? null : currentMessageId,
+          setProcessingQueuedMessage((current) =>
+            current?.id === messageId ? null : current,
           );
         });
     },
@@ -582,7 +586,7 @@ export function ThreadDetailPromptArea({
 
   const handleDeleteQueuedMessage = useCallback(
     (messageId: string) => {
-      setProcessingQueuedMessageId(messageId);
+      setProcessingQueuedMessage({ id: messageId, action: "delete" });
       void deleteQueuedMessage
         .mutateAsync({
           id: thread.id,
@@ -597,8 +601,8 @@ export function ThreadDetailPromptArea({
           );
         })
         .finally(() => {
-          setProcessingQueuedMessageId((currentMessageId) =>
-            currentMessageId === messageId ? null : currentMessageId,
+          setProcessingQueuedMessage((current) =>
+            current?.id === messageId ? null : current,
           );
         });
     },
@@ -846,7 +850,8 @@ export function ThreadDetailPromptArea({
             isQueueMutationPending
           }
           actionDisabled={isQueueMutationPending}
-          processingMessageId={processingQueuedMessageId}
+          processingMessageId={processingQueuedMessage?.id ?? null}
+          processingAction={processingQueuedMessage?.action ?? null}
           onSendImmediately={handleSendQueuedImmediately}
           onReorder={handleReorderQueuedMessage}
           onEdit={handleEditQueuedMessage}
@@ -870,7 +875,7 @@ export function ThreadDetailPromptArea({
       childThreadsSection,
       workflowsSection,
       pendingTodos,
-      processingQueuedMessageId,
+      processingQueuedMessage,
       queuedMessages,
       submitMode.kind,
       thread.archivedAt,

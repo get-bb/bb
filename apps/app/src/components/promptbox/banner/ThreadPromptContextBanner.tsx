@@ -749,7 +749,11 @@ export function ThreadPromptContextBanner({
             className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
             data-promptbox-hide-compact=""
           >
-            <span className="shrink-0">Merge base:</span>
+            <Icon
+              name="GitMerge"
+              className="size-3.5 shrink-0"
+              aria-label="Merge base"
+            />
             <BranchPicker
               value={gitSection.mergeBase.branch}
               options={mergeBaseCandidates.options}
@@ -761,9 +765,8 @@ export function ThreadPromptContextBanner({
               onChange={gitSection.mergeBase.onChange}
               onOpenChange={gitSection.mergeBase.onPickerOpenChange}
               onSearchQueryChange={gitSection.mergeBase.onSearchQueryChange}
-              className="h-6 max-w-[10rem] rounded-md border border-border px-1.5"
+              className="max-w-[10rem]"
               muted
-              showTriggerChevron={false}
               popoverAlign="end"
             />
           </div>

@@ -1,7 +1,11 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { assertNever } from "@bb/core-ui";
 import type { GitBranchRefClassification } from "@bb/domain";
-import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
+import {
+  DetailCard,
+  DetailRow,
+  DetailRowIconLabel,
+} from "@/components/ui/detail-card.js";
 import type { ThreadGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { ChangedFilesDetailRow } from "@/components/workspace/ChangedFilesDetailRow";
 import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
@@ -293,14 +297,26 @@ export function ThreadGitActionDialogContent({
         shouldShowChangedFilesRow ? (
           <DetailCard appearance="flat">
             {branchName ? (
-              <DetailRow label="Branch" valueClassName="min-w-0 truncate">
+              <DetailRow
+                label={
+                  <DetailRowIconLabel icon="GitBranch">Branch</DetailRowIconLabel>
+                }
+                valueClassName="min-w-0 truncate"
+              >
                 <span className="block truncate" title={branchName}>
                   {branchName}
                 </span>
               </DetailRow>
             ) : null}
             {gitStatusDisplay ? (
-              <DetailRow label="Git status" valueClassName="min-w-0">
+              <DetailRow
+                label={
+                  <DetailRowIconLabel icon="FileDiff">
+                    Git status
+                  </DetailRowIconLabel>
+                }
+                valueClassName="min-w-0"
+              >
                 <div
                   className="flex min-w-0 items-baseline gap-2 whitespace-nowrap"
                   title={`${gitStatusDisplay.label} ${gitStatusDisplay.summary}`.trim()}
@@ -315,7 +331,14 @@ export function ThreadGitActionDialogContent({
               </DetailRow>
             ) : null}
             {canShowMergeBase && selectedMergeBaseBranch ? (
-              <DetailRow label="Merge base" valueClassName="min-w-0">
+              <DetailRow
+                label={
+                  <DetailRowIconLabel icon="GitMerge">
+                    Merge base
+                  </DetailRowIconLabel>
+                }
+                valueClassName="min-w-0"
+              >
                 {canSelectMergeBase ? (
                   <BranchPicker
                     value={selectedMergeBaseBranch}
@@ -328,6 +351,7 @@ export function ThreadGitActionDialogContent({
                     loading={mergeBaseBranchOptionsLoading}
                     onChange={(branch) => onMergeBaseBranchChange?.(branch)}
                     onSearchQueryChange={onMergeBaseBranchSearchQueryChange}
+                    variant="minimal"
                     className="max-w-full"
                   />
                 ) : (
@@ -341,11 +365,19 @@ export function ThreadGitActionDialogContent({
               </DetailRow>
             ) : null}
             {shouldShowChangedFilesRow && changedFilesSection ? (
-              <ChangedFilesDetailRow
-                sections={[changedFilesSection]}
-                rowValueClassName="pt-0.5"
-                listClassName="max-h-40"
-              />
+              <>
+                {/* Separate the changed-files section from the metadata above,
+                    matching the info page's section divider + spacing. */}
+                <div
+                  className="mb-1 mt-3 border-t border-border"
+                  aria-hidden
+                />
+                <ChangedFilesDetailRow
+                  sections={[changedFilesSection]}
+                  rowValueClassName="pt-0.5"
+                  listClassName="max-h-40"
+                />
+              </>
             ) : null}
           </DetailCard>
         ) : null}
