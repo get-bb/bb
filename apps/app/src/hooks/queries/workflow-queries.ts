@@ -69,11 +69,20 @@ export function useWorkflowRuns(projectId: string) {
   });
 }
 
+export interface RecentWorkflowRunsQueryArgs {
+  /**
+   * Off while the workflows experiment is disabled: the sidebar section is
+   * hidden, so the list should not be fetched at all.
+   */
+  enabled: boolean;
+}
+
 /** Newest runs across all projects, capped, for the sidebar Workflows section. */
-export function useRecentWorkflowRuns() {
+export function useRecentWorkflowRuns({ enabled }: RecentWorkflowRunsQueryArgs) {
   return useQuery<WorkflowRunListResponse>({
     queryKey: recentWorkflowRunsQueryKey(),
     queryFn: () => api.listWorkflowRuns({ limit: RECENT_WORKFLOW_RUNS_LIMIT }),
+    enabled,
   });
 }
 

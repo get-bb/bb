@@ -17,6 +17,7 @@ import {
 } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  defaultExperiments,
   PERSONAL_PROJECT_ID,
   type Host,
   type ProjectSource,
@@ -128,6 +129,7 @@ const systemExecutionOptions = {
 } satisfies SystemExecutionOptionsResponse;
 
 const systemConfig = {
+  experiments: defaultExperiments,
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
   voiceTranscriptionEnabled: false,

@@ -26,6 +26,11 @@ import {
   type ThemePreference,
 } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { useUpdateExperiments } from "@/hooks/mutations/settings-mutations";
+import {
+  useExperiments,
+  useSystemConfig,
+} from "@/hooks/queries/system-queries";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import {
@@ -105,6 +110,13 @@ export interface GeneralSettingsSectionProps {
   onThemePreferenceChange: (themePreference: ThemePreference) => void;
   openLinksInAppBrowser: boolean;
   themePreference: ThemePreference;
+}
+
+export interface ExperimentsSettingsSectionProps {
+  /** True while the config query hasn't loaded or a toggle write is in flight. */
+  disabled: boolean;
+  onWorkflowsEnabledChange: (enabled: boolean) => void;
+  workflowsEnabled: boolean;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -465,6 +477,33 @@ export function GeneralSettingsSection({
   );
 }
 
+const WORKFLOWS_EXPERIMENT_LABEL = "Workflows";
+
+export function ExperimentsSettingsSection({
+  disabled,
+  onWorkflowsEnabledChange,
+  workflowsEnabled,
+}: ExperimentsSettingsSectionProps) {
+  return (
+    <SettingsSection
+      title="Experiments"
+      description="Early features that are off by default. Opt in to try them."
+    >
+      <SettingsWithControl
+        label={WORKFLOWS_EXPERIMENT_LABEL}
+        description="Multi-agent workflow runs: adds the Workflows sidebar section, project workflows page, and teaches agents the bb workflow CLI."
+      >
+        <Switch
+          checked={workflowsEnabled}
+          disabled={disabled}
+          onCheckedChange={onWorkflowsEnabledChange}
+          aria-label={WORKFLOWS_EXPERIMENT_LABEL}
+        />
+      </SettingsWithControl>
+    </SettingsSection>
+  );
+}
+
 export function AppSettingsView() {
   const themePreference = useThemePreference();
   const [faviconColor, setFaviconColor] = useFaviconColorPreference();
@@ -482,6 +521,9 @@ export function AppSettingsView() {
   // The in-app browser only exists on desktop; hide the toggle entirely on web,
   // where it would have no effect.
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
+  const systemConfigQuery = useSystemConfig();
+  const experiments = useExperiments();
+  const updateExperimentsMutation = useUpdateExperiments();
 
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
@@ -506,6 +548,21 @@ export function AppSettingsView() {
           onFileTargetChange={setFileTargetId}
           targets={workspaceOpenTargets}
         />
+
+        <ExperimentsSettingsSection
+          disabled={
+            systemConfigQuery.data === undefined ||
+            updateExperimentsMutation.isPending
+          }
+          onWorkflowsEnabledChange={(enabled) =>
+            updateExperimentsMutation.mutate({
+              ...experiments,
+              workflows: enabled,
+            })
+          }
+          workflowsEnabled={experiments.workflows}
+        />
+
 
         <AppSourcesSection />
       </div>

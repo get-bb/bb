@@ -877,3 +877,14 @@ export const workflowRunEvents = sqliteTable(
     ),
   ],
 );
+
+/**
+ * Server-persisted app settings, one JSON document per key (today:
+ * `experiments`). Typed accessors in `data/app-settings.ts` parse values at
+ * the boundary; nothing reads this table raw.
+ */
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});

@@ -50,6 +50,7 @@ import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
+import { useExperiments } from "@/hooks/queries/system-queries";
 import {
   useCloseThreadTerminal,
   useCreateThreadTerminal,
@@ -1021,9 +1022,13 @@ export function ThreadDetailView() {
       if (activeItems.length === 0) return null;
       return { items: activeItems };
     }, [childThreadSubsetQuery.data]);
+  const workflowsExperimentEnabled = useExperiments().workflows;
   const workflowsSection = useMemo(
-    () => selectThreadPromptWorkflowsSection(timelineRows),
-    [timelineRows],
+    () =>
+      workflowsExperimentEnabled
+        ? selectThreadPromptWorkflowsSection(timelineRows)
+        : null,
+    [timelineRows, workflowsExperimentEnabled],
   );
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({

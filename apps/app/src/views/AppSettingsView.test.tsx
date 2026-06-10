@@ -6,6 +6,7 @@ import { AppSourcesSection } from "@/components/settings/AppSourcesSection";
 import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
+  ExperimentsSettingsSection,
   GeneralSettingsSection,
   InAppBrowserLinkSettingsControl,
   LocalOpenTargetSettingsSection,
@@ -182,5 +183,62 @@ describe("RootComposeBehaviorSettingsControl", () => {
 
     fireEvent.click(toggle);
     expect(onNavigateToThreadAfterCreateChange).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("ExperimentsSettingsSection", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("reflects the enabled workflows experiment and toggles it off", () => {
+    const onWorkflowsEnabledChange = vi.fn();
+    render(
+      <ExperimentsSettingsSection
+        disabled={false}
+        onWorkflowsEnabledChange={onWorkflowsEnabledChange}
+        workflowsEnabled
+      />,
+    );
+
+    const toggle = screen.getByRole("switch", { name: "Workflows" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(toggle);
+    expect(onWorkflowsEnabledChange).toHaveBeenCalledWith(false);
+  });
+
+  it("reflects the disabled workflows experiment and toggles it on", () => {
+    const onWorkflowsEnabledChange = vi.fn();
+    render(
+      <ExperimentsSettingsSection
+        disabled={false}
+        onWorkflowsEnabledChange={onWorkflowsEnabledChange}
+        workflowsEnabled={false}
+      />,
+    );
+
+    const toggle = screen.getByRole("switch", { name: "Workflows" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(toggle);
+    expect(onWorkflowsEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  it("blocks toggling while the config has not loaded or a write is pending", () => {
+    const onWorkflowsEnabledChange = vi.fn();
+    render(
+      <ExperimentsSettingsSection
+        disabled
+        onWorkflowsEnabledChange={onWorkflowsEnabledChange}
+        workflowsEnabled={false}
+      />,
+    );
+
+    const toggle = screen.getByRole("switch", { name: "Workflows" });
+    expect(toggle).toHaveProperty("disabled", true);
+
+    fireEvent.click(toggle);
+    expect(onWorkflowsEnabledChange).not.toHaveBeenCalled();
   });
 });

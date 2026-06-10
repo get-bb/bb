@@ -17,6 +17,7 @@ import type {
   BbDesktopInfoChangeHandler,
   SystemConfigResponse,
 } from "@bb/server-contract";
+import { defaultExperiments } from "@bb/domain";
 import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
@@ -51,6 +52,7 @@ interface SidebarResizeEndScenario {
 }
 
 const testSystemConfig: SystemConfigResponse = {
+  experiments: defaultExperiments,
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
   voiceTranscriptionEnabled: false,

@@ -77,6 +77,7 @@ import {
   environmentWorkStatusQueryKeyPrefix,
   hostsQueryKey,
   sidebarNavigationQueryKey,
+  systemConfigQueryKey,
   systemProvidersQueryKey,
   threadQueryKey,
   threadTerminalsQueryKey,
@@ -323,7 +324,11 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
 
 export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   "config-changed": {
-    dirty: [dirtySystemProviderQueries, dirtySystemExecutionOptionQueries],
+    dirty: [
+      dirtySystemConfigQueries, // Experiments gate UI surfaces; other windows re-read after a settings write.
+      dirtySystemProviderQueries,
+      dirtySystemExecutionOptionQueries,
+    ],
   },
   "apps-changed": {
     dirty: [dirtyAppListQueries],
@@ -747,6 +752,10 @@ function dirtyProjectSourceDependentQueries({
 
 function dirtyHostAvailabilityQueries(): QueryKey[] {
   return [hostsQueryKey(), allHostQueryKeyPrefix()];
+}
+
+function dirtySystemConfigQueries(): QueryKey[] {
+  return [systemConfigQueryKey()];
 }
 
 function dirtySystemProviderQueries(): QueryKey[] {

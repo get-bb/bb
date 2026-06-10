@@ -36,6 +36,7 @@ import {
   stripProjectThreads,
   useSidebarNavigation,
 } from "@/hooks/queries/project-queries";
+import { useExperiments } from "@/hooks/queries/system-queries";
 import { useRecentWorkflowRuns } from "@/hooks/queries/workflow-queries";
 import { useReorderProject } from "@/hooks/mutations/project-mutations";
 import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
@@ -620,7 +621,10 @@ function ProjectListComponent({
   const sidebarNavigation = sidebarNavigationQuery.data;
   const appsQuery = useApps();
   const apps = appsQuery.data ?? EMPTY_APPS;
-  const recentWorkflowRunsQuery = useRecentWorkflowRuns();
+  const experiments = useExperiments();
+  const recentWorkflowRunsQuery = useRecentWorkflowRuns({
+    enabled: experiments.workflows,
+  });
   const workflowRuns = recentWorkflowRunsQuery.data ?? EMPTY_WORKFLOW_RUNS;
   const projects = useMemo(
     () => sidebarNavigation?.projects.map(stripProjectThreads),
@@ -823,8 +827,9 @@ function ProjectListComponent({
   // No apps → no section: the empty Apps list adds nothing, so it stays hidden
   // (like the Pinned section) until at least one global app exists.
   const hasAppsSection = apps.length > 0;
-  // Same rule for Workflows: hidden until at least one recent run exists.
-  const hasWorkflowsSection = workflowRuns.length > 0;
+  // Same rule for Workflows — plus the experiment opt-in: hidden until the
+  // user enables it in Settings and at least one recent run exists.
+  const hasWorkflowsSection = experiments.workflows && workflowRuns.length > 0;
   const visibleSidebarSectionOrder = useMemo(
     () =>
       sidebarSectionOrder.filter((sectionId) => {

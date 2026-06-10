@@ -1,6 +1,7 @@
 import { extractErrorMessage, toRecord } from "@bb/core-ui";
 import type {
   Environment,
+  Experiments,
   Host,
   PendingInteraction,
   ProjectExecutionDefaults,
@@ -1425,6 +1426,19 @@ export async function getSystemConfig(): Promise<SystemConfigResponse> {
 
 export async function listHosts(): Promise<Host[]> {
   return request<Host[]>(apiClient.hosts.$get());
+}
+
+/**
+ * Replace the user's opt-in experiments (full object — no partial updates).
+ * The server broadcasts system `config-changed`, so other windows re-read
+ * `/system/config` and re-gate their surfaces.
+ */
+export async function updateExperiments(
+  experiments: Experiments,
+): Promise<Experiments> {
+  return request<Experiments>(
+    apiClient.settings.experiments.$put({ json: experiments }),
+  );
 }
 
 interface GetWorkflowRunAgentEventsArgs {

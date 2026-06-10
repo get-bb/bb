@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { hc } from "hono/client";
 import type {
   Environment,
+  Experiments,
   Host,
   PendingInteraction,
   ProjectExecutionDefaults,
@@ -841,6 +842,14 @@ export type PublicApiSchema = {
 
   "/system/config": {
     $get: Endpoint<EmptyInput, SystemConfigResponse>;
+  };
+  "/settings/experiments": {
+    /**
+     * Replace the user's opt-in experiments (full object — no partial
+     * updates). Broadcasts system `config-changed` so every open window
+     * re-reads `/system/config` and re-gates its surfaces.
+     */
+    $put: Endpoint<{ json: Experiments }, Experiments>;
   };
   "/system/config/reload": {
     /** Rereads the server's local bb-app config file and applies supported runtime config. */

@@ -185,6 +185,8 @@ export type {
   UpdateThreadScheduleInput,
 } from "./thread-schedules.js";
 
+export { getExperiments, setExperiments } from "./app-settings.js";
+
 export {
   ALLOWED_WORKFLOW_RUN_STATUS_TRANSITIONS,
   createWorkflowRun,

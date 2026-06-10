@@ -50,6 +50,8 @@ export { reconcileReasoningLevel } from "./reasoning-level.js";
 
 export { defaultFeatureFlags, featureFlagsSchema } from "./feature-flags.js";
 export type { FeatureFlags } from "./feature-flags.js";
+export { defaultExperiments, experimentsSchema } from "./experiments.js";
+export type { Experiments } from "./experiments.js";
 
 export {
   BRANCH_LIST_LIMIT_MAX,

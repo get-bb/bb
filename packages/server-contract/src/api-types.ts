@@ -4,6 +4,7 @@ import {
   getProjectPathValidationMessage,
   normalizeProjectPathInput,
   activeThinkingSchema,
+  experimentsSchema,
   featureFlagsSchema,
   environmentSchema,
   gitBranchNameSchema,
@@ -2288,6 +2289,8 @@ export type SidebarBootstrapResponse = z.infer<
 >;
 
 export const systemConfigResponseSchema = z.object({
+  /** User-opt-in experiments (Settings → Experiments), persisted server-side. */
+  experiments: experimentsSchema,
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
   voiceTranscriptionEnabled: z.boolean(),

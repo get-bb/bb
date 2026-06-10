@@ -31,6 +31,7 @@ import {
   projectsQueryKey,
   replayCapturesQueryKey,
   sidebarNavigationQueryKey,
+  systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
   threadPromptHistoryQueryKeyPrefix,
@@ -76,6 +77,14 @@ export function refetchErroredRealtimeQueriesOnInitialConnect({
     queryClient,
     queryKeys: getServerReconnectInvalidationQueryKeys(),
   });
+}
+
+/**
+ * Refresh `/system/config` after an experiments write: the server broadcast
+ * covers other windows, this gives the writing window an immediate re-gate.
+ */
+export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
+  queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
 }
 
 export function invalidateReplayCaptures({

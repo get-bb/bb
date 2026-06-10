@@ -1,3 +1,5 @@
+import { getExperiments, setExperiments } from "@bb/db";
+import { experimentsSchema } from "@bb/domain";
 import {
   systemExecutionOptionsQuerySchema,
   systemProvidersQuerySchema,
@@ -17,17 +19,26 @@ import { resolveSystemExecutionOptions } from "../services/system/execution-opti
 import { resolveSystemLookupHostId } from "../services/system/host-lookup.js";
 
 export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
-  const { get, post } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
 
   get("/system/config", (context) =>
     context.json({
+      experiments: getExperiments(deps.db),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
     }),
   );
+
+  put("/settings/experiments", experimentsSchema, (context, payload) => {
+    setExperiments(deps.db, payload);
+    // The same kind a config reload broadcasts: every window re-reads
+    // /system/config and re-gates its experiment-flagged surfaces.
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(getExperiments(deps.db));
+  });
 
   post("/system/config/reload", async (context) => {
     try {

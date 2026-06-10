@@ -22,6 +22,7 @@ import {
   useSidebarNavigation,
   stripProjectThreads,
 } from "@/hooks/queries/project-queries";
+import { useExperiments } from "@/hooks/queries/system-queries";
 import { useWorkflowRun } from "@/hooks/queries/workflow-queries";
 import {
   useApp,
@@ -253,6 +254,7 @@ function AppHeader({
   project,
   meta,
 }: AppHeaderProps) {
+  const workflowsExperimentEnabled = useExperiments().workflows;
   const headerBreadcrumbs = meta.breadcrumbs;
   const headerTitle =
     headerBreadcrumbs || usesProjectChromeStyle ? undefined : meta.title;
@@ -331,21 +333,23 @@ function AppHeader({
         >
           <Icon name="Settings" />
         </Link>
-        <Link
-          to={getProjectWorkflowsRoutePath(projectId)}
-          className={cn(
-            HEADER_ICON_BUTTON_CLASS,
-            "inline-flex items-center justify-center transition-colors",
-            isWorkflowsView
-              ? "bg-state-active text-foreground"
-              : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-          )}
-          aria-label="Workflows"
-          aria-current={isWorkflowsView ? "page" : undefined}
-          title="Workflows"
-        >
-          <Icon name="Workflow" />
-        </Link>
+        {workflowsExperimentEnabled ? (
+          <Link
+            to={getProjectWorkflowsRoutePath(projectId)}
+            className={cn(
+              HEADER_ICON_BUTTON_CLASS,
+              "inline-flex items-center justify-center transition-colors",
+              isWorkflowsView
+                ? "bg-state-active text-foreground"
+                : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
+            )}
+            aria-label="Workflows"
+            aria-current={isWorkflowsView ? "page" : undefined}
+            title="Workflows"
+          >
+            <Icon name="Workflow" />
+          </Link>
+        ) : null}
         <Link
           to={getProjectArchivedRoutePath(projectId)}
           className={cn(
