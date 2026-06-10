@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import { INERT_TYPEAHEAD_COMMAND_CONFIG } from "@/components/promptbox/PromptBoxInternal";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
 import type {
   PendingInteraction,
@@ -28,6 +27,7 @@ import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
+import { useThreadCommandSuggestions } from "@/hooks/useThreadCommandSuggestions";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import {
@@ -211,6 +211,16 @@ export function ThreadDetailPromptArea({
   const promptMentions = usePromptMentions(projectId, {
     currentThreadId: thread.id,
     environmentId: thread.environmentId ?? null,
+  });
+  // Mirrors the @-mention query plumbing above: the composer feeds the text
+  // typed after the command trigger into `commandQuery`, which drives the hook.
+  // Called unconditionally (hooks rules); inert when the provider has no
+  // command trigger.
+  const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const threadCommands = useThreadCommandSuggestions({
+    threadId: thread.id,
+    providerId: thread.providerId,
+    query: commandQuery,
   });
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [expandedBannerSection, setExpandedBannerSection] =
@@ -759,8 +769,13 @@ export function ThreadDetailPromptArea({
         onQueryChange: promptMentions.setQuery,
         resolveLink: resolveMentionLink,
       },
-      // Command typeahead data is wired in a later task; inert for now.
-      command: INERT_TYPEAHEAD_COMMAND_CONFIG,
+      command: {
+        trigger: threadCommands.trigger,
+        suggestions: threadCommands.suggestions,
+        isLoading: threadCommands.isLoading,
+        isError: threadCommands.isError,
+        onQueryChange: setCommandQuery,
+      },
     }),
     [
       promptMentions.isError,
@@ -768,6 +783,10 @@ export function ThreadDetailPromptArea({
       promptMentions.setQuery,
       promptMentions.suggestions,
       resolveMentionLink,
+      threadCommands.isError,
+      threadCommands.isLoading,
+      threadCommands.suggestions,
+      threadCommands.trigger,
     ],
   );
 

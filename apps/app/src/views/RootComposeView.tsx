@@ -631,7 +631,10 @@ export function RootComposeView() {
         onQueryChange: promptMentions.setQuery,
         resolveLink: resolveMentionLink,
       },
-      // Command typeahead data is wired in a later task; inert for now.
+      // Command typeahead is deliberately inert in the new-thread composer:
+      // there is no thread id before creation, and discovery is thread-scoped
+      // (GET /threads/:id/commands), so commands cannot be fetched here.
+      // Project-scoped pre-creation discovery is a follow-up.
       command: INERT_TYPEAHEAD_COMMAND_CONFIG,
     }),
     [
