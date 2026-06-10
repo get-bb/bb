@@ -8,6 +8,7 @@ import type {
 import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
+  ThreadResponse,
   TimelineConversationAttachments,
   TimelineRow,
 } from "@bb/server-contract";
@@ -62,7 +63,7 @@ interface BeginCreateThreadTransactionArgs {
 interface CreateThreadSuccessArgs {
   queryClient: QueryClient;
   request: AppCreateThreadRequest;
-  thread: ThreadWithRuntime;
+  thread: ThreadResponse;
 }
 
 interface SendThreadMessageTransactionArgs {
@@ -151,7 +152,7 @@ export interface SendThreadMessageAcceptedTurnTransaction {
   kind: "accepted-turn";
   optimisticCreatedAt: number;
   optimisticRowId: string;
-  previousThread: ThreadWithRuntime | undefined;
+  previousThread: ThreadResponse | undefined;
 }
 
 export interface SendThreadMessageQueuedTransaction {
@@ -167,7 +168,7 @@ export interface ReorderQueuedMessageTransaction {
 }
 
 export interface StopThreadTransaction {
-  previousThread: ThreadWithRuntime | undefined;
+  previousThread: ThreadResponse | undefined;
   previousThreadLists: ThreadListSnapshot;
 }
 
@@ -341,7 +342,7 @@ export function applyCreateThreadResult({
   request,
   thread,
 }: CreateThreadSuccessArgs): void {
-  queryClient.setQueryData<ThreadWithRuntime>(
+  queryClient.setQueryData<ThreadResponse>(
     threadQueryKey(thread.id),
     thread,
   );
@@ -372,7 +373,7 @@ export async function beginSendThreadMessageTransaction({
 }: SendThreadMessageTransactionArgs): Promise<SendThreadMessageTransaction> {
   await queryClient.cancelQueries({ queryKey: threadQueryKey(request.id) });
 
-  const previousThread = queryClient.getQueryData<ThreadWithRuntime>(
+  const previousThread = queryClient.getQueryData<ThreadResponse>(
     threadQueryKey(request.id),
   );
   if (requestWillQueueForActiveThread(request, previousThread)) {
@@ -445,7 +446,7 @@ export function rollbackSendThreadMessageTransaction({
     return;
   }
 
-  queryClient.setQueryData<ThreadWithRuntime>(
+  queryClient.setQueryData<ThreadResponse>(
     threadQueryKey(request.id),
     transaction.previousThread,
   );
@@ -571,7 +572,7 @@ export async function beginStopThreadTransaction({
     queryClient.cancelQueries({ queryKey: threadsQueryKey() }),
   ]);
 
-  const previousThread = queryClient.getQueryData<ThreadWithRuntime>(
+  const previousThread = queryClient.getQueryData<ThreadResponse>(
     threadQueryKey(threadId),
   );
   const previousThreadLists = snapshotThreadLists(queryClient);

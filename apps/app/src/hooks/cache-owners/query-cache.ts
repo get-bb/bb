@@ -7,6 +7,7 @@ import {
 } from "./thread-list-cache-data";
 import type {
   SidebarBootstrapResponse,
+  ThreadResponse,
   ThreadTimelineResponse,
   TimelineRow,
 } from "@bb/server-contract";
@@ -432,9 +433,9 @@ export function getCachedThreadListPlaceholder(
 export function updateCachedThread(
   queryClient: QueryClient,
   threadId: string,
-  updater: (thread: ThreadWithRuntime) => ThreadWithRuntime,
+  updater: (thread: ThreadResponse) => ThreadResponse,
 ): void {
-  queryClient.setQueryData<ThreadWithRuntime>(
+  queryClient.setQueryData<ThreadResponse>(
     threadQueryKey(threadId),
     (thread) => {
       if (!thread) {
