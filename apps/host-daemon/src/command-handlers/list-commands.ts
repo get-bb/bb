@@ -1,7 +1,10 @@
 import os from "node:os";
 import path from "node:path";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
-import type { CommandOf } from "../command-dispatch-support.js";
+import {
+  CommandDispatchError,
+  type CommandOf,
+} from "../command-dispatch-support.js";
 import {
   discoverProviderCommands,
   type CommandScanRoot,
@@ -87,6 +90,9 @@ export function resolveCommandScanRoots(
 export async function listHostCommands(
   command: CommandOf<"host.list_commands">,
 ): Promise<HostDaemonOnlineRpcResult<"host.list_commands">> {
+  if (command.cwd !== null && !path.isAbsolute(command.cwd)) {
+    throw new CommandDispatchError("invalid_path", "cwd must be absolute");
+  }
   const homeDir = os.homedir();
   const roots = resolveCommandScanRoots({
     cwd: command.cwd,

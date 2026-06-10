@@ -1,4 +1,12 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -311,6 +319,37 @@ describe("discoverProviderCommands (claude-code)", () => {
     const commands = await discoverClaude(fixture, fixture.cwd);
 
     expect(byName(commands, "leaked")).toBeUndefined();
+  });
+  it("degrades to other roots when a root directory is unreadable", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeFileEnsuringDir(
+      path.join(fixture.homeDir, ".claude", "skills", "ok", "SKILL.md"),
+      "---\ndescription: readable\n---\n",
+    );
+    const blockedDir = path.join(fixture.cwd, ".claude", "commands");
+    await writeFileEnsuringDir(
+      path.join(blockedDir, "secret.md"),
+      "---\ndescription: secret\n---\n",
+    );
+    await chmod(blockedDir, 0o000);
+    try {
+      // If the dir is still readable (e.g. the test runs as root), this case
+      // can't exercise EACCES — skip rather than assert a state we can't create.
+      let unreadable = false;
+      try {
+        await readdir(blockedDir);
+      } catch {
+        unreadable = true;
+      }
+      if (!unreadable) return;
+
+      const commands = await discoverClaude(fixture, fixture.cwd);
+      // The unreadable root degrades to empty (no throw); readable roots return.
+      expect(byName(commands, "ok")).toBeDefined();
+      expect(byName(commands, "secret")).toBeUndefined();
+    } finally {
+      await chmod(blockedDir, 0o755);
+    }
   });
 });
 

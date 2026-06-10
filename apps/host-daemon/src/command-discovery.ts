@@ -7,7 +7,6 @@ import type {
   HostCommandSource,
   HostProviderCommand,
 } from "@bb/host-daemon-contract";
-import { isFsErrorWithCode } from "./fs-errors.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const MARKDOWN_FILE_EXTENSION = ".md";
@@ -64,14 +63,19 @@ async function readDirEntries(dirPath: string): Promise<Dirent[] | null> {
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     return entries.sort(sortDirentsByName);
-  } catch (error) {
-    if (isFsErrorWithCode(error, "ENOENT") || isFsErrorWithCode(error, "ENOTDIR")) {
-      return null;
-    }
-    throw error;
+  } catch {
+    // Any directory that can't be enumerated — missing (ENOENT), not a
+    // directory (ENOTDIR), or unreadable (EACCES/EPERM) — contributes no
+    // records. Discovery degrades per-root rather than failing the whole
+    // command list, so one locked-down dir never blanks the typeahead.
+    return null;
   }
 }
 
+// Conservative, intentional gate: only the canonical `---\n` / `---\r\n` opener
+// is treated as frontmatter before handing off to gray-matter. Anything else
+// (incl. BOM-prefixed or `---<tab>` openers) yields a name-only record rather
+// than risking gray-matter's looser, historically-quirky delimiter detection.
 function hasSupportedFrontmatterDelimiter(content: string): boolean {
   const trimmed = content.trimStart();
   return (

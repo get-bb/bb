@@ -2297,23 +2297,15 @@ export const commandListResponseSchema = z.object({
 });
 export type CommandListResponse = z.infer<typeof commandListResponseSchema>;
 
-export const projectCommandsQuerySchema = z.object({
+/**
+ * Command typeahead query. Extends the shared project file-search query
+ * (`query`/`limit`/`environmentId`, including the empty-string→null wire
+ * convention) with the `provider` whose skill/command surface to discover.
+ * `query` here is a case-insensitive substring filter on command name/description.
+ */
+export const projectCommandsQuerySchema = projectFilesQuerySchema.extend({
   /** Provider whose command/skill surface to discover (e.g. `claude-code`, `codex`). */
   provider: z.string().min(1),
-  /**
-   * Required + nullable. Pass an environment id to scope discovery to that
-   * environment's workspace (e.g. a thread's worktree); pass `null` to fall
-   * back to the project's default source. Encoded as the empty string on the
-   * wire because URL query params can't represent JSON null directly.
-   */
-  environmentId: z.preprocess(
-    (value) => (value === "" ? null : value),
-    z.string().min(1).nullable(),
-  ),
-  /** Case-insensitive substring filter on command name/description. */
-  query: z.string().min(1).max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
-  /** Max results after server-side de-dup/sort. Defaults to 8 server-side. */
-  limit: z.string().regex(/^\d+$/).optional(),
 });
 export type ProjectCommandsQuery = z.infer<typeof projectCommandsQuerySchema>;
 
