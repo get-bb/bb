@@ -160,6 +160,16 @@ export function createFakeWorkspace(pathname: string) {
         mergeBaseRef: null,
       };
     },
+    async diffFiles() {
+      return {
+        files: [],
+        shortstat: "",
+        mergeBaseRef: null,
+      };
+    },
+    async diffPatch() {
+      return [];
+    },
     async listBranches() {
       return ["main"];
     },

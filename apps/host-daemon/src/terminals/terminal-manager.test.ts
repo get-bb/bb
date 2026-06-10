@@ -198,6 +198,12 @@ function createFakeWorkspace(path: string): HostWorkspace {
       shortstat: "",
       truncated: false,
     })),
+    diffFiles: vi.fn(async () => ({
+      files: [],
+      shortstat: "",
+      mergeBaseRef: null,
+    })),
+    diffPatch: vi.fn(async () => []),
     listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
     commit: vi.fn(async () => ({

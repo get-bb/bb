@@ -11,6 +11,7 @@ import {
   providerInfoSchema,
   runtimeThreadExecutionOptionsSchema,
   provisioningTranscriptEntrySchema,
+  rawDiffFileStatSchema,
   workspaceDiffTargetSchema,
   workspaceStatusSchema,
   clientTurnRequestIdSchema,
@@ -589,6 +590,18 @@ const workspaceDiffCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   maxFileListBytes: z.number().int().positive(),
 });
 
+const workspaceDiffFilesCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
+  type: z.literal("workspace.diffFiles"),
+  target: workspaceDiffTargetSchema,
+});
+
+const workspaceDiffPatchCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
+  type: z.literal("workspace.diffPatch"),
+  target: workspaceDiffTargetSchema,
+  paths: z.array(z.string()),
+  maxBytesPerFile: z.number().int().positive(),
+});
+
 export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES = [
   "development.replay",
   "host.list_files",
@@ -602,6 +615,8 @@ export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES = [
   "environment.cleanup_preflight",
   "workspace.status",
   "workspace.diff",
+  "workspace.diffFiles",
+  "workspace.diffPatch",
 ] as const;
 export const hostDaemonOnlineRpcCommandTypeSchema = z.enum(
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
@@ -668,6 +683,8 @@ export const hostDaemonOnlineRpcCommandSchema = z.union([
   environmentCleanupPreflightCommandSchema,
   workspaceStatusCommandSchema,
   workspaceDiffCommandSchema,
+  workspaceDiffFilesCommandSchema,
+  workspaceDiffPatchCommandSchema,
 ]);
 export type HostDaemonOnlineRpcCommand = z.infer<
   typeof hostDaemonOnlineRpcCommandSchema
@@ -689,6 +706,8 @@ export const hostDaemonRetryableOnlineRpcCommandSchema = z.union([
   environmentCleanupPreflightCommandSchema,
   workspaceStatusCommandSchema,
   workspaceDiffCommandSchema,
+  workspaceDiffFilesCommandSchema,
+  workspaceDiffPatchCommandSchema,
 ]);
 export type HostDaemonRetryableOnlineRpcCommand = z.infer<
   typeof hostDaemonRetryableOnlineRpcCommandSchema
@@ -877,6 +896,46 @@ const workspaceDiffResultSchema = z.discriminatedUnion("outcome", [
     .strict(),
 ]);
 
+const workspaceDiffFilesResultSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("available"),
+      files: z.array(rawDiffFileStatSchema),
+      shortstat: z.string(),
+      mergeBaseRef: z.string().nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("unavailable"),
+      failure: workspaceResolutionFailureSchema,
+    })
+    .strict(),
+]);
+
+const workspaceDiffPatchResultSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("available"),
+      patches: z.array(
+        z
+          .object({
+            path: z.string(),
+            patch: z.string(),
+            truncated: z.boolean(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("unavailable"),
+      failure: workspaceResolutionFailureSchema,
+    })
+    .strict(),
+]);
+
 const fileListResultSchema = z.object({
   files: z.array(z.object({ path: z.string(), name: z.string() })),
   truncated: z.boolean(),
@@ -993,6 +1052,8 @@ export const hostDaemonOnlineRpcResultSchemaByType = {
   "environment.cleanup_preflight": environmentCleanupPreflightResultSchema,
   "workspace.status": workspaceStatusResultSchema,
   "workspace.diff": workspaceDiffResultSchema,
+  "workspace.diffFiles": workspaceDiffFilesResultSchema,
+  "workspace.diffPatch": workspaceDiffPatchResultSchema,
 } as const satisfies Record<HostDaemonOnlineRpcCommandType, z.ZodTypeAny>;
 
 export type HostDaemonOnlineRpcResultByType = {

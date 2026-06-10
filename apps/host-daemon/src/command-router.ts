@@ -733,6 +733,8 @@ export class CommandRouter {
       case "turn.submit":
       case "workspace.status":
       case "workspace.diff":
+      case "workspace.diffFiles":
+      case "workspace.diffPatch":
         return "read";
       case "environment.provision":
       case "environment.destroy":

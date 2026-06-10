@@ -145,6 +145,8 @@ function createWorkspace(): HostWorkspace {
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
     getStatus: unexpectedWorkspaceCall,
     getDiff: unexpectedWorkspaceCall,
+    diffFiles: unexpectedWorkspaceCall,
+    diffPatch: unexpectedWorkspaceCall,
     listBranches: unexpectedWorkspaceCall,
     listFiles: unexpectedWorkspaceCall,
     commit: unexpectedWorkspaceCall,
