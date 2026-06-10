@@ -1534,7 +1534,10 @@ describe("bridge", () => {
         settingSources?: string[];
       };
       expect(queryOptions.env?.HOME).toBe("/Users/test-bb");
-      expect(queryOptions.env?.CLAUDE_AGENT_SDK_CLIENT_APP).toBe("bb/1.0.0");
+      // Sessions report as the Claude CLI entrypoint (renders `sdk-cli` on the
+      // wire), with no `client-app/...` user-agent segment.
+      expect(queryOptions.env?.CLAUDE_CODE_ENTRYPOINT).toBe("cli");
+      expect(queryOptions.env?.CLAUDE_AGENT_SDK_CLIENT_APP).toBeUndefined();
       expect(queryOptions.settingSources).toEqual(["user", "project", "local"]);
 
       bridge.sendRequest(2, "thread/stop", {

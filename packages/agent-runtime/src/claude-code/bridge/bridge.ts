@@ -788,14 +788,31 @@ function extractEnvOverrides(
   return envOverrides;
 }
 
+/**
+ * Builds the environment for an SDK-spawned Claude session so its API traffic
+ * presents like the headless Claude CLI (`claude -p`) instead of a third-party
+ * SDK app.
+ *
+ * - `CLAUDE_CODE_ENTRYPOINT=cli` makes the session report `cc_entrypoint=sdk-cli`
+ *   and a `(external, sdk-cli, ...)` user-agent. The Agent SDK only defaults
+ *   this to `sdk-ts` when it is unset, so we set it explicitly. The spawned
+ *   binary always adds the `sdk-` prefix (and an `agent-sdk/<version>`
+ *   user-agent segment) because it runs in stream-json mode, so the interactive
+ *   `cli` entrypoint is not reachable from the SDK.
+ * - Omitting `CLAUDE_AGENT_SDK_CLIENT_APP` drops the `client-app/...` user-agent
+ *   segment, matching the CLI. The delete also clears any value inherited from a
+ *   parent SDK process.
+ */
 function buildSessionEnv(
   envOverrides: Record<string, string>,
 ): NodeJS.ProcessEnv {
-  return {
+  const sessionEnv: NodeJS.ProcessEnv = {
     ...process.env,
     ...envOverrides,
-    CLAUDE_AGENT_SDK_CLIENT_APP: "bb/1.0.0",
+    CLAUDE_CODE_ENTRYPOINT: "cli",
   };
+  delete sessionEnv.CLAUDE_AGENT_SDK_CLIENT_APP;
+  return sessionEnv;
 }
 
 function parseClaudePermissionUpdates(
