@@ -34,6 +34,7 @@ interface FileTreeHostStyle extends CSSProperties {
   "--trees-focus-ring-color-override": string;
   "--trees-font-family-override": string;
   "--trees-font-size-override": string;
+  "--trees-icon-width-override": string;
   "--trees-item-margin-x-override": string;
   "--trees-padding-inline-override": string;
   "--trees-scrollbar-thumb-override": string;
@@ -52,7 +53,10 @@ const FILE_TREE_BASE_HOST_STYLE: FileTreeHostStyle = {
   "--trees-fg-override": "var(--foreground)",
   "--trees-focus-ring-color-override": "var(--ring)",
   "--trees-font-family-override": "var(--font-sans)",
-  "--trees-font-size-override": "var(--text-sm)",
+  // Match the info page's compact text-xs rows and the app's smaller icon/caret
+  // scale (the tree's chevron caret + file icons size off --trees-icon-width).
+  "--trees-font-size-override": "var(--text-xs)",
+  "--trees-icon-width-override": "14px",
   "--trees-item-margin-x-override": "0",
   "--trees-padding-inline-override": "0",
   "--trees-scrollbar-thumb-override":

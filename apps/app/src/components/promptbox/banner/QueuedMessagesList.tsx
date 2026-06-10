@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -150,7 +150,11 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             {isProcessing ? (
               "Sending..."
             ) : (
-              <Icon name="Sent" className="size-3.5 shrink-0" aria-hidden />
+              <Icon
+                name="Sent"
+                className="size-3.5 shrink-0 opacity-70"
+                aria-hidden
+              />
             )}
           </Button>
           <Button
@@ -163,7 +167,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             aria-label={`Edit queued message ${index + 1}`}
             title="Edit queued message"
           >
-            <Icon name="Edit" className="size-3.5" />
+            <Icon name="Edit" className="size-3.5 opacity-70" />
           </Button>
           <Button
             type="button"
@@ -175,7 +179,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             aria-label={`Delete queued message ${index + 1}`}
             title="Delete queued message"
           >
-            <Icon name="Trash2" className="size-3.5" />
+            <Icon name="Trash2" className="size-3.5 opacity-70" />
           </Button>
         </div>
       </div>
@@ -201,6 +205,7 @@ export function QueuedMessagesList({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
+  const [isExpanded, setIsExpanded] = useState(true);
   const queuedMessageIds = useMemo(
     () => queuedMessages.map((queuedMessage) => queuedMessage.id),
     [queuedMessages],
@@ -230,42 +235,63 @@ export function QueuedMessagesList({
   if (queuedMessages.length === 0) return null;
 
   return (
-    <PromptStackCard ariaLabel="Queued messages" className="overflow-hidden">
-      <div className="flex items-center justify-between px-2.5 pb-1 pt-2.5">
-        <p className="text-xs text-muted-foreground">
-          <span className="opacity-70">Queued</span>{" "}
-          <span className="text-xs text-subtle-foreground">
+    <PromptStackCard
+      ariaLabel="Queued messages"
+      // Tuck the drawer's flat, borderless bottom behind the prompt box (which
+      // is `relative` + opaque, so it paints on top) so the queued list reads as
+      // coming up from behind the composer rather than floating above it.
+      className="-mb-3 overflow-hidden rounded-b-none border-b-0 pb-3"
+    >
+      <div className="px-2.5 pb-1 pt-2.5">
+        <button
+          type="button"
+          aria-expanded={isExpanded}
+          onClick={() => setIsExpanded((prev) => !prev)}
+          className="-ml-1 flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
+        >
+          <span className="opacity-70">Queued</span>
+          <span className="text-2xs text-subtle-foreground">
             {queuedMessages.length}
           </span>
-        </p>
+          <Icon
+            name="ChevronDown"
+            className={cn(
+              "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
+              isExpanded && "rotate-180",
+            )}
+            aria-hidden="true"
+          />
+        </button>
       </div>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext
-          items={queuedMessageIds}
-          strategy={verticalListSortingStrategy}
+      {isExpanded ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
         >
-          <ul>
-            {queuedMessages.map((queuedMessage, index) => (
-              <QueuedMessageRow
-                key={queuedMessage.id}
-                queuedMessage={queuedMessage}
-                index={index}
-                isProcessing={processingMessageId === queuedMessage.id}
-                dragDisabled={sortingDisabled}
-                sendDisabled={sendDisabled}
-                actionDisabled={actionDisabled}
-                onSendImmediately={onSendImmediately}
-                onEdit={onEdit}
-                onDelete={onDelete}
-              />
-            ))}
-          </ul>
-        </SortableContext>
-      </DndContext>
+          <SortableContext
+            items={queuedMessageIds}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul>
+              {queuedMessages.map((queuedMessage, index) => (
+                <QueuedMessageRow
+                  key={queuedMessage.id}
+                  queuedMessage={queuedMessage}
+                  index={index}
+                  isProcessing={processingMessageId === queuedMessage.id}
+                  dragDisabled={sortingDisabled}
+                  sendDisabled={sendDisabled}
+                  actionDisabled={actionDisabled}
+                  onSendImmediately={onSendImmediately}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
+      ) : null}
     </PromptStackCard>
   );
 }

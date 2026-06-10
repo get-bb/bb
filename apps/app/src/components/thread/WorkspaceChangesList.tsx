@@ -2,6 +2,7 @@ import type { WorkspaceStatus } from "@bb/domain";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { EmptyState } from "@/components/ui/empty-state.js";
 import { FilePathLink } from "@/components/ui/file-path-link.js";
+import { TruncatedList } from "@/components/ui/truncated-list.js";
 import { cn } from "@/lib/utils";
 import { formatWorkspaceFileStatus } from "@/components/workspace/workspace-change-summary";
 
@@ -17,6 +18,12 @@ export interface WorkspaceChangesListProps {
   className?: string;
   emptyMessage?: string;
   onFileClick?: WorkspaceChangedFileClickHandler;
+  /**
+   * When set, the list caps at `limit` files behind a "Show N more" / "Show
+   * less" toggle (like the Commits list) instead of the default scrollable
+   * box. `className` is ignored in this mode — the rollup sizes to content.
+   */
+  limit?: number;
 }
 
 interface WorkspaceChangesListItemProps {
@@ -26,6 +33,10 @@ interface WorkspaceChangesListItemProps {
 
 const WORKSPACE_CHANGE_ROW_CLASS =
   "grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-start gap-x-3";
+
+function fileKey(file: WorkspaceChangedFile): string {
+  return `${file.status}:${file.path}`;
+}
 
 function WorkspaceChangesListItem({
   file,
@@ -55,24 +66,22 @@ function WorkspaceChangesListItem({
   );
 
   if (!onFileClick) {
-    return <li className={WORKSPACE_CHANGE_ROW_CLASS}>{rowContent}</li>;
+    return <div className={WORKSPACE_CHANGE_ROW_CLASS}>{rowContent}</div>;
   }
 
   return (
-    <li>
-      <button
-        type="button"
-        className={cn(
-          WORKSPACE_CHANGE_ROW_CLASS,
-          "group w-full rounded px-1 text-left transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        )}
-        title={file.path}
-        aria-label={`Open ${file.path}`}
-        onClick={() => onFileClick(file)}
-      >
-        {rowContent}
-      </button>
-    </li>
+    <button
+      type="button"
+      className={cn(
+        WORKSPACE_CHANGE_ROW_CLASS,
+        "group w-full rounded px-1 text-left transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+      title={file.path}
+      aria-label={`Open ${file.path}`}
+      onClick={() => onFileClick(file)}
+    >
+      {rowContent}
+    </button>
   );
 }
 
@@ -81,19 +90,31 @@ export function WorkspaceChangesList({
   className = "max-h-32",
   emptyMessage = "No changed files detected.",
   onFileClick,
+  limit,
 }: WorkspaceChangesListProps) {
   if (!files || files.length === 0) {
     return <EmptyState message={emptyMessage} />;
   }
 
+  if (limit !== undefined) {
+    return (
+      <TruncatedList
+        items={files}
+        getKey={fileKey}
+        limit={limit}
+        renderItem={(file) => (
+          <WorkspaceChangesListItem file={file} onFileClick={onFileClick} />
+        )}
+      />
+    );
+  }
+
   return (
     <ul className={cn("space-y-1 overflow-auto", className)}>
       {files.map((file) => (
-        <WorkspaceChangesListItem
-          key={`${file.status}:${file.path}`}
-          file={file}
-          onFileClick={onFileClick}
-        />
+        <li key={fileKey(file)}>
+          <WorkspaceChangesListItem file={file} onFileClick={onFileClick} />
+        </li>
       ))}
     </ul>
   );

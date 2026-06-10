@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
 import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
+import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens.js";
 import {
   formatCronCadence,
   formatScheduleStatusLabel,
@@ -38,7 +39,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 import {
   BranchPicker,
   getMergeBaseBranchCandidateGroups,
@@ -62,6 +63,26 @@ import { getThreadRoutePath } from "@/lib/app-route-paths";
 // that composes them. This shape lets per-row stories render exactly one row
 // without bypassing the production rendering path.
 // ---------------------------------------------------------------------------
+
+/**
+ * Detail-row label with a leading icon, styled like the timeline's tool-call
+ * leading icons (`size-3.5 text-muted-foreground`). Used for the workspace/git
+ * rows so they read as a cohesive group.
+ */
+function MetadataRowLabel({
+  icon,
+  children,
+}: {
+  icon: IconName;
+  children: ReactNode;
+}) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <Icon name={icon} className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 truncate">{children}</span>
+    </span>
+  );
+}
 
 export interface ParentSelectorRowProps {
   thread: Thread;
@@ -108,7 +129,10 @@ export function ParentSelectorRow({
   }
 
   return (
-    <DetailRow label="Parent" valueClassName="min-w-0">
+    <DetailRow
+      label={<MetadataRowLabel icon="UserRound">Parent</MetadataRowLabel>}
+      valueClassName="min-w-0"
+    >
       {parentThreadId ? (
         <div
           className={cn(
@@ -119,7 +143,7 @@ export function ParentSelectorRow({
           <Link
             to={getThreadRoutePath({ projectId, threadId: parentThreadId })}
             className={cn(
-              "min-w-0 truncate text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
+              "min-w-0 truncate text-subtle-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
               COARSE_POINTER_TEXT_SM_CLASS,
             )}
           >
@@ -158,7 +182,7 @@ export function ParentSelectorRow({
             >
               <span
                 className={cn(
-                  "min-w-0 truncate text-foreground",
+                  "min-w-0 truncate text-subtle-foreground",
                   COARSE_POINTER_TEXT_SM_CLASS,
                 )}
               >
@@ -225,7 +249,10 @@ export function EnvironmentRow({
   });
   const showCreateThreadButton = isWorktreeEnvironment(environment);
   return (
-    <DetailRow label="Environment" valueClassName="min-w-0">
+    <DetailRow
+      label={<MetadataRowLabel icon="Folder">Environment</MetadataRowLabel>}
+      valueClassName="min-w-0 text-subtle-foreground"
+    >
       <span className="flex min-w-0 items-center gap-1">
         <span className="min-w-0 truncate">{display.modeLabel}</span>
         {showCreateThreadButton ? (
@@ -301,6 +328,7 @@ export function WorkspacePathRow({
         text={environment.path}
         label={display.copyLabel}
         title={environment.path}
+        className="text-subtle-foreground"
         successMessage={display.successMessage}
         errorMessage={display.errorMessage}
       />
@@ -317,10 +345,14 @@ export function BranchRow({ thread, workspaceStatus }: BranchRowProps) {
   const branchName = workspaceStatus?.branch.currentBranch ?? null;
   if (!branchName) return null;
   return (
-    <DetailRow label="Branch" valueClassName="min-w-0 truncate">
+    <DetailRow
+      label={<MetadataRowLabel icon="GitBranch">Branch</MetadataRowLabel>}
+      valueClassName="min-w-0 truncate"
+    >
       <CopyableInlineLabel
         text={branchName}
         label="Copy branch name"
+        className="text-subtle-foreground"
         successMessage="Branch name copied"
         errorMessage="Failed to copy branch name"
       />
@@ -402,7 +434,10 @@ export function MergeBaseRow({
   );
 
   return (
-    <DetailRow label="Merge base" valueClassName="min-w-0 truncate">
+    <DetailRow
+      label={<MetadataRowLabel icon="GitMerge">Merge base</MetadataRowLabel>}
+      valueClassName="min-w-0 truncate"
+    >
       {canSelectMergeBase && mergeBaseBranch ? (
         <BranchPicker
           value={mergeBaseBranch}
@@ -467,21 +502,29 @@ export function GitStatusRow({
     workspaceUnavailable,
     workspaceDeleted: isWorkspaceDeleted,
   });
+  // Dirty reads as the timeline error color; a clean tree reads green. Other
+  // states (Untracked / Ahead / Behind / Diverged) stay neutral.
   const labelClass =
-    workspaceStatus?.workingTree.state === "untracked"
-      ? "text-muted-foreground"
-      : "text-foreground";
+    display.label === "Dirty"
+      ? "text-destructive"
+      : display.label === "Clean" || display.label === "Up to date"
+        ? "text-success"
+        : "text-readback-foreground";
 
   return (
-    <DetailRow label="Git status" align="start" valueClassName="min-w-0">
+    <DetailRow
+      label={<MetadataRowLabel icon="FileDiff">Git status</MetadataRowLabel>}
+      align="start"
+      valueClassName="min-w-0"
+    >
       <div
-        className="flex min-w-0 items-baseline gap-2 whitespace-nowrap"
+        className="flex min-w-0 items-end gap-2 whitespace-nowrap"
         title={`${display.label} ${display.summary}`}
       >
         <span className={cn("shrink-0 font-medium", labelClass)}>
           {display.label}
         </span>
-        <span className="min-w-0 truncate text-muted-foreground">
+        <span className="min-w-0 truncate text-subtle-foreground">
           {display.summaryContent}
         </span>
       </div>
@@ -516,7 +559,12 @@ export function ThreadSchedulesRow({ schedules }: ThreadSchedulesRowProps) {
   if (schedules.length === 0) return null;
 
   return (
-    <DetailRow label="Schedules" align="start" valueClassName="min-w-0">
+    <DetailRow
+      label="Schedules"
+      align="start"
+      className="mt-3"
+      valueClassName="min-w-0"
+    >
       <TruncatedList
         items={schedules}
         getKey={(schedule) => schedule.id}
@@ -562,10 +610,12 @@ function ThreadCommitListItem({
 }: ThreadCommitListItemProps) {
   const detail = (
     <div className="flex min-w-0 items-baseline justify-between gap-2">
-      <span className="min-w-0 truncate text-foreground underline-offset-2 group-hover:underline">
+      <span className="min-w-0 truncate text-readback-foreground underline-offset-2 group-hover:underline">
         {commit.subject}
       </span>
-      <span className="shrink-0 text-muted-foreground">{commit.shortSha}</span>
+      <span className="shrink-0 font-mono text-subtle-foreground">
+        {commit.shortSha}
+      </span>
     </div>
   );
   if (!onCommitClick) {
@@ -590,15 +640,29 @@ export function ThreadCommitsRow({
   const commits = selectWorkspaceAheadCommits(workspaceStatus);
   if (commits.length === 0) return null;
   return (
-    <DetailRow label="Commits" orientation="vertical" valueClassName="min-w-0">
-      <TruncatedList
-        items={commits}
-        getKey={(commit) => commit.sha}
-        renderItem={(commit) => (
-          <ThreadCommitListItem commit={commit} onCommitClick={onCommitClick} />
-        )}
-      />
-    </DetailRow>
+    <>
+      {/* Divider separating the key/value metadata above from the Commits
+          section. Lives inside this row so it only renders when there are
+          commits to show. */}
+      <div className="mb-1 mt-3 border-t border-border" aria-hidden />
+      <DetailRow
+        label="Commits"
+        orientation="vertical"
+        labelClassName={CHROME_SECTION_LABEL_CLASS}
+        valueClassName="min-w-0"
+      >
+        <TruncatedList
+          items={commits}
+          getKey={(commit) => commit.sha}
+          renderItem={(commit) => (
+            <ThreadCommitListItem
+              commit={commit}
+              onCommitClick={onCommitClick}
+            />
+          )}
+        />
+      </DetailRow>
+    </>
   );
 }
 
@@ -617,8 +681,9 @@ export function ChangedFilesRow({
     <ChangedFilesDetailRow
       sections={selectWorkspaceChangedFilesSections(workspaceStatus)}
       onFileClick={onChangedFileClick}
-      rowValueClassName="min-h-0 flex-1"
-      listClassName="h-full"
+      labelClassName={CHROME_SECTION_LABEL_CLASS}
+      rowClassName="mt-3"
+      limit={5}
     />
   );
 }
@@ -645,7 +710,7 @@ export function ThreadStorageRow({
   return (
     <DetailRow
       orientation="vertical"
-      className="min-h-32 flex-1"
+      className="mt-3 min-h-32 flex-1"
       valueClassName="min-h-0 flex-1 overflow-hidden"
       labelClassName="flex items-center justify-between gap-2"
       label={

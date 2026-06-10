@@ -30,6 +30,13 @@ export interface ChangedFilesDetailRowProps {
   listClassName?: string;
   rowClassName?: string;
   rowValueClassName?: string;
+  /** Class applied to the row's label `<dt>` (e.g. a section-header style). */
+  labelClassName?: string;
+  /**
+   * When set, the file list caps at `limit` behind a "Show N more" / "Show
+   * less" toggle (like the Commits list) instead of a scrollable box.
+   */
+  limit?: number;
 }
 
 export function ChangedFilesDetailRow({
@@ -38,6 +45,8 @@ export function ChangedFilesDetailRow({
   listClassName,
   rowClassName,
   rowValueClassName,
+  labelClassName,
+  limit,
 }: ChangedFilesDetailRowProps) {
   const [selectedKind, setSelectedKind] = useState<
     WorkspaceChangedFilesSection["kind"] | null
@@ -115,11 +124,13 @@ export function ChangedFilesDetailRow({
       label={label}
       orientation="vertical"
       className={rowClassName}
+      labelClassName={labelClassName}
       valueClassName={rowValueClassName}
     >
       <WorkspaceChangesList
         files={activeSection.files}
         className={listClassName}
+        limit={limit}
         onFileClick={
           onFileClick
             ? (file) => onFileClick({ file, section: activeSection })

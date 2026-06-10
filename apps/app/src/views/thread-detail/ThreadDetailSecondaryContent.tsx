@@ -134,7 +134,7 @@ export function ThreadDetailSecondaryContent({
   ) : isMetadataLoading ? (
     <ThreadMetadataLoadingSkeleton />
   ) : (
-    <div className="pt-1 text-sm text-muted-foreground">
+    <div className="px-4 pt-1 text-sm text-muted-foreground">
       No thread details available.
     </div>
   );

@@ -258,10 +258,7 @@ function SectionToggleButton({
       aria-label={ariaLabel}
       onClick={onToggle}
       className={cn(
-        "flex min-w-0 items-center rounded px-1 py-0.5 text-xs transition-colors",
-        // The full-width row toggle drops the hover fill (a row-wide highlight
-        // reads as heavy); compact toggles keep it.
-        !grow && "hover:bg-state-hover",
+        "flex min-w-0 items-center rounded px-1 py-0.5 text-xs transition-colors hover:bg-state-hover",
         // When a label sits between the icon and the chevron we space the row
         // for legibility (6px). With no label the chevron sits right after the
         // icon — the icons' own internal padding provides enough separation,
