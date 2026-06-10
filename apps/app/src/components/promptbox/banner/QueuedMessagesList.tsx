@@ -150,7 +150,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             {isProcessing ? (
               "Sending..."
             ) : (
-              <Icon name="Sent" className="size-4 shrink-0" aria-hidden />
+              <Icon name="Sent" className="size-3.5 shrink-0" aria-hidden />
             )}
           </Button>
           <Button

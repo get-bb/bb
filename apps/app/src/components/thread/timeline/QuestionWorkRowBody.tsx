@@ -24,7 +24,7 @@ export function QuestionWorkRowBody({ row }: QuestionWorkRowBodyProps) {
     return null;
   }
   return (
-    <div className="space-y-2 text-xs leading-snug">
+    <div className="space-y-3 text-xs leading-snug">
       {row.questions.map((question) => (
         <AnsweredQuestionRow
           key={question.id}
@@ -48,12 +48,13 @@ function AnsweredQuestionRow({ question, answer }: AnsweredQuestionRowProps) {
 
   return (
     <div>
-      {/* The agent's prompt reads as a quiet label; the user's answer sits in a
-          faint "paper" reply card below it so the two are clearly
-          differentiated (echoing the raised user-content surface). */}
-      <div className="font-medium text-muted-foreground">{question.prompt}</div>
+      {/* Flat text tiers like the timeline's other nested bodies (e.g. the
+          workflow body) — no bespoke surface. The prompt recedes as muted
+          context; the answer is the foreground payload (medium weight) so it
+          stays the skimmable line. */}
+      <div className="text-muted-foreground">{question.prompt}</div>
       {hasContent ? (
-        <div className="mt-1 rounded-md bg-surface-raised px-2.5 py-1.5 text-foreground">
+        <div className="mt-0.5 font-medium text-foreground">
           {selectedLabels.length > 0 ? (
             <div>{selectedLabels.join(", ")}</div>
           ) : null}
@@ -62,7 +63,7 @@ function AnsweredQuestionRow({ question, answer }: AnsweredQuestionRowProps) {
           ) : null}
         </div>
       ) : (
-        <div className="mt-1 text-subtle-foreground">No answer</div>
+        <div className="mt-0.5 text-subtle-foreground">No answer</div>
       )}
     </div>
   );

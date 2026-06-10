@@ -464,7 +464,10 @@
 .dark {
   color-scheme: dark;
   --canvas: oklch(0.195 0 0);
-  --ink: oklch(0.8853 0 0);
+  /* Softened from a brighter near-white so dark-mode foreground text reads a
+   * touch less intense; the whole achromatic ramp is anchored here, so chrome
+   * follows by an imperceptible amount. */
+  --ink: oklch(0.84 0 0);
   --background: var(--canvas);
   --foreground: var(--ink);
   /* Card and popover stay flush with the canvas here too — elevation comes from

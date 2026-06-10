@@ -131,5 +131,15 @@ export function ThreadDetailHeader({
     </>
   );
 
-  return <AppPageHeader center={center} actions={actions} />;
+  // Use the stronger vertical-pane seam (not the quieter horizontal `border-seam`)
+  // so the chat header's bottom edge matches the chat/panel side borders. Pass
+  // `bordered={false}` to drop the default seam, then add the vertical one.
+  return (
+    <AppPageHeader
+      center={center}
+      actions={actions}
+      bordered={false}
+      className="border-b border-border-seam-vertical"
+    />
+  );
 }
