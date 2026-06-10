@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ForksRow,
   GitStatusRow,
+  hasAnyThreadMetadata,
   MergeBaseRow,
   ThreadSchedulesRow,
   WorkspacePathRow,
@@ -320,5 +321,27 @@ describe("ForksRow", () => {
         .getByRole("link", { name: "Try other path (fork)" })
         .getAttribute("href"),
     ).toBe("/projects/proj_test/threads/thr_fork_b");
+  });
+});
+
+describe("hasAnyThreadMetadata", () => {
+  function makeBareMetadataProps() {
+    return {
+      thread: makeThread(),
+      parentThreadDisplayName: null,
+      environment: null,
+      workspaceStatus: undefined,
+      workspaceStatusError: null,
+      workspaceUnavailable: undefined,
+      threadSchedules: [],
+    };
+  }
+
+  it("is false for a bare thread with no metadata and no forks", () => {
+    expect(hasAnyThreadMetadata(makeBareMetadataProps(), false)).toBe(false);
+  });
+
+  it("is true for a forks-only thread (otherwise-empty metadata)", () => {
+    expect(hasAnyThreadMetadata(makeBareMetadataProps(), true)).toBe(true);
   });
 });

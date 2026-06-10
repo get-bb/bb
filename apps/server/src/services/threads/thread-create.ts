@@ -296,6 +296,18 @@ export async function createThreadFromRequest(
         "startedOnBehalfOf.senderThreadId must match parentThreadId",
       );
     }
+    // Seeding a thread-start without a provider run (startedOnBehalfOf) is only
+    // meaningful for a tagged child spawn. Requiring childOrigin keeps the two
+    // signals coupled: a single source of truth for "this is a child spawn",
+    // so a seed-without-run thread is always tagged and is excluded from
+    // reshaping the project's stored execution defaults.
+    if (requestInput.childOrigin === null) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "startedOnBehalfOf requires a childOrigin",
+      );
+    }
   }
   // Both fork and side-chat are child threads, so they require a parent. Note a
   // side chat legitimately has startedOnBehalfOf null, so this is independent of

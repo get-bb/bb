@@ -321,6 +321,39 @@ describe("thread creation child-thread boundary validation", () => {
     );
   });
 
+  it("rejects startedOnBehalfOf without a childOrigin", async () => {
+    await withChildBoundaryHarness(
+      "started-on-behalf-no-origin",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        const error = await captureCreateError(() =>
+          createThreadFromRequest(harness.deps, {
+            automationId: null,
+            childOrigin: null,
+            environment: {
+              type: "host",
+              hostId,
+              workspace: { type: "unmanaged", path },
+            },
+            input: textInput("Untagged seed"),
+            origin: "app",
+            parentThreadId: sourceThreadId,
+            projectId,
+            providerId: "codex",
+            startedOnBehalfOf: {
+              initiator: "agent",
+              senderThreadId: sourceThreadId,
+            },
+          }),
+        );
+        expect(error.status).toBe(400);
+        expect(error.body.code).toBe("invalid_request");
+        expect(error.body.message).toBe(
+          "startedOnBehalfOf requires a childOrigin",
+        );
+      },
+    );
+  });
+
   it("accepts a fork anchored to its source thread", async () => {
     await withChildBoundaryHarness(
       "valid-fork",

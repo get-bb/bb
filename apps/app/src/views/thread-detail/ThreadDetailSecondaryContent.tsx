@@ -37,6 +37,7 @@ import {
   hasAnyThreadMetadata,
   type ThreadMetadataContentProps,
 } from "@/components/secondary-panel/ThreadMetadataContent";
+import { useThreads } from "@/hooks/queries/thread-queries";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
 import { ConversationCollapsedRail } from "@/components/secondary-panel/ConversationCollapsedRail";
 import {
@@ -210,7 +211,17 @@ export function ThreadDetailSecondaryContent({
     [persistTerminalPanelSize],
   );
 
-  const metadataContent = hasAnyThreadMetadata(metadata) ? (
+  // Mirror ForksRow's query (deduped by react-query) so the visibility gate
+  // accounts for the lazily-fetched Forks row.
+  const forksQuery = useThreads({
+    projectId: metadata.thread.projectId,
+    parentThreadId: metadata.thread.id,
+    childOrigin: "fork",
+    archived: false,
+  });
+  const hasForks = (forksQuery.data?.length ?? 0) > 0;
+
+  const metadataContent = hasAnyThreadMetadata(metadata, hasForks) ? (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <ThreadMetadataContent {...metadata} />
     </div>

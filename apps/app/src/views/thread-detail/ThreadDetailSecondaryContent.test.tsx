@@ -193,6 +193,11 @@ vi.mock("@/components/secondary-panel/ThreadMetadataContent", () => ({
   hasAnyThreadMetadata: () => false,
 }));
 
+vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useThreads: () => ({ data: [] }),
+}));
+
 vi.mock("./ThreadTimelinePane", () => ({
   ThreadTimelinePane({ footer, header }: MockThreadTimelinePaneProps) {
     return (

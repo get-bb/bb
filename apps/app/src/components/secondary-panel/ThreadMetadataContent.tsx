@@ -736,24 +736,31 @@ export interface ThreadMetadataContentProps {
  * The caller can use this to decide between rendering the card and rendering
  * its "no thread details available" fallback.
  */
-export function hasAnyThreadMetadata({
-  thread,
-  parentThreadDisplayName,
-  environment,
-  workspaceStatus,
-  workspaceStatusError,
-  workspaceUnavailable,
-  threadSchedules,
-}: Pick<
-  ThreadMetadataContentProps,
-  | "thread"
-  | "parentThreadDisplayName"
-  | "environment"
-  | "workspaceStatus"
-  | "workspaceStatusError"
-  | "workspaceUnavailable"
-  | "threadSchedules"
->): boolean {
+export function hasAnyThreadMetadata(
+  {
+    thread,
+    parentThreadDisplayName,
+    environment,
+    workspaceStatus,
+    workspaceStatusError,
+    workspaceUnavailable,
+    threadSchedules,
+  }: Pick<
+    ThreadMetadataContentProps,
+    | "thread"
+    | "parentThreadDisplayName"
+    | "environment"
+    | "workspaceStatus"
+    | "workspaceStatusError"
+    | "workspaceUnavailable"
+    | "threadSchedules"
+  >,
+  // The Forks row is fetched lazily; the caller passes its presence so the
+  // visibility gate and the rendered card agree on the same row set (otherwise
+  // a forks-only thread briefly shows the empty fallback while the environment
+  // query is still loading).
+  hasForks: boolean,
+): boolean {
   const parentThreadId = thread.parentThreadId ?? undefined;
   const isWorkspaceDeleted = environment?.status === "destroyed";
   const showWorkspaceStatus =
@@ -775,7 +782,8 @@ export function hasAnyThreadMetadata({
     showThreadChangedFiles ||
     threadSchedules.length > 0 ||
     thread.archivedAt != null ||
-    (parentThreadDisplayName && parentThreadId),
+    (parentThreadDisplayName && parentThreadId) ||
+    hasForks,
   );
 }
 

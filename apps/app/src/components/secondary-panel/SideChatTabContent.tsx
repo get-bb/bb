@@ -186,6 +186,9 @@ export function SideChatTabContent({
   const childTimelineQuery = useThreadTimeline(childThreadId ?? "", {
     enabled: childThreadId !== null,
   });
+  const childThreadQuery = useThread(childThreadId ?? "", {
+    enabled: childThreadId !== null,
+  });
   // Synchronous guard against a double create: `tab.threadId` only flips to the
   // new id after the async create resolves and the panel state propagates, so a
   // second submit in that window would otherwise spawn a second child thread.
@@ -284,9 +287,15 @@ export function SideChatTabContent({
     return result;
   }, [childTimelineQuery.data?.rows]);
 
+  // Only hand a result back once the side chat is idle, so a mid-stream partial
+  // can't be posted into the main thread (lastAssistantText reflects the live
+  // partial while a turn is in flight).
+  const childIsIdle =
+    childThreadQuery.data?.runtime.displayStatus === "idle";
   const canSendBack =
     childThreadId !== null &&
     lastAssistantText !== null &&
+    childIsIdle &&
     !sendThreadMessage.isPending;
 
   const handleSendToMainThread = useCallback(() => {
