@@ -126,6 +126,32 @@ describe("buildSideChatCreateRequest", () => {
     });
   });
 
+  it("keeps a personal workspace for a personal-project source even though it has a host", () => {
+    // Regression: a personal-project thread has a host but a personal workspace.
+    // The resolver previously saw the host and built a managed worktree, which
+    // the server rejects ("Personal project threads must use a personal
+    // workspace"). It must keep the personal workspace, carrying the host.
+    const request = buildSideChatCreateRequest({
+      projectId: "proj_personal",
+      sourceThreadId: "thr_main",
+      sourceEnvironment: makeEnvironment({
+        projectId: "proj_personal",
+        workspaceProvisionType: "personal",
+      }),
+      question: "Why this approach?",
+      contextSnapshot: CONTEXT_SNAPSHOT,
+      providerId: "codex",
+      model: "gpt-5",
+      title: "Why this approach?",
+    });
+
+    expect(request.environment).toEqual({
+      type: "host",
+      hostId: "hst_local",
+      workspace: { type: "personal" },
+    });
+  });
+
   it("puts the visible question first and the agent-only snapshot after it", () => {
     const request = buildSideChatCreateRequest({
       projectId: "proj_test",

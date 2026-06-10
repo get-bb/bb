@@ -73,6 +73,29 @@ describe("buildForkThreadRequest", () => {
     });
   });
 
+  it("uses a personal workspace (not a managed worktree) for a personal-workspace source", () => {
+    // A personal-project thread has a host but its workspace is personal; the
+    // server rejects a managed worktree there ("Personal project threads must
+    // use a personal workspace"), so the fork must stay on a personal workspace.
+    const request = buildForkThreadRequest({
+      sourceThread: makeThread({ projectId: "proj_personal" }),
+      sourceEnvironment: makeEnvironment({
+        projectId: "proj_personal",
+        workspaceProvisionType: "personal",
+      }),
+      anchorMessageText: "Reply only with ok.",
+      model: "gpt-5",
+      permissionMode: "readonly",
+    });
+
+    expect(request).not.toBeNull();
+    expect(request?.environment).toEqual({
+      type: "host",
+      hostId: "hst_local",
+      workspace: { type: "personal" },
+    });
+  });
+
   it("carries lineage, anchor input, provider and execution options", () => {
     const request = buildForkThreadRequest({
       sourceThread: makeThread({ id: "thr_source", providerId: "codex" }),

@@ -23,35 +23,40 @@ function resolveChildThreadBaseBranch(
  * (a fork or a side chat). Shared by both builders so the two flows stay in
  * lockstep:
  *
- * - When the source has a resolvable host, the child runs in a **fresh managed
- *   worktree** branched from the source's current branch HEAD (or the source's
- *   default branch when no branch is known). This keeps the child in the same
- *   project as its source, satisfying the same-project `parentThreadId` guard
- *   and the cross-project send-back constraint, while giving it its own
- *   checkout.
- * - When the source has **no host** (e.g. a personal-project source with no
- *   environment), there is no worktree to base on, so the child falls back to
- *   the **personal workspace**. The server only accepts personal workspaces
- *   inside the personal project, which is exactly where a host-less source
- *   lives.
+ * - A **personal-workspace** source (i.e. a personal-project thread) keeps a
+ *   **personal workspace**. The server requires personal-project threads to use
+ *   a personal workspace and rejects a managed worktree there, so we must not
+ *   build one even though the source has a host. A host-less source likewise
+ *   has no worktree to base on and falls back to the personal workspace.
+ * - Otherwise (a standard-project source with a host and a real worktree), the
+ *   child runs in a **fresh managed worktree** branched from the source's
+ *   current branch HEAD (or the source's default branch when no branch is
+ *   known). This keeps the child in the same project as its source, satisfying
+ *   the same-project `parentThreadId` guard and the cross-project send-back
+ *   constraint, while giving it its own checkout.
  */
 export function resolveChildThreadEnvironment(
   sourceEnvironment: Environment | null,
 ): EnvironmentArgs {
   const hostId = sourceEnvironment?.hostId ?? null;
-  if (hostId === null) {
+  const usesManagedWorktree =
+    hostId !== null && sourceEnvironment?.workspaceProvisionType !== "personal";
+
+  if (usesManagedWorktree) {
     return {
       type: "host",
-      workspace: { type: "personal" },
+      hostId,
+      workspace: {
+        type: "managed-worktree",
+        baseBranch: resolveChildThreadBaseBranch(sourceEnvironment),
+      },
     };
   }
 
-  return {
-    type: "host",
-    hostId,
-    workspace: {
-      type: "managed-worktree",
-      baseBranch: resolveChildThreadBaseBranch(sourceEnvironment),
-    },
-  };
+  // Personal-project / personal-workspace and host-less sources use the
+  // personal workspace; carry the source's host when known so the child stays
+  // on it.
+  return hostId === null
+    ? { type: "host", workspace: { type: "personal" } }
+    : { type: "host", hostId, workspace: { type: "personal" } };
 }
