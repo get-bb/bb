@@ -25,6 +25,33 @@ export function applyWorkflowRunLifecycleActionResult({
   queryClient.invalidateQueries({ queryKey: allWorkflowRunsQueryKeyPrefix() });
 }
 
+interface WorkflowRunArchiveResultArgs {
+  queryClient: QueryClient;
+}
+
+/**
+ * Refresh run lists after a user archive: the run drops out of every list
+ * surface server-side but stays reachable by id, so the cached detail row
+ * remains valid.
+ */
+export function applyWorkflowRunArchiveResult({
+  queryClient,
+}: WorkflowRunArchiveResultArgs): void {
+  queryClient.invalidateQueries({ queryKey: allWorkflowRunsQueryKeyPrefix() });
+}
+
+/**
+ * Apply a user delete: the run is gone from lists and 404s by id, so drop the
+ * cached detail row instead of inviting a refetch that can only fail.
+ */
+export function applyWorkflowRunDeleteResult({
+  queryClient,
+  runId,
+}: WorkflowRunLifecycleActionArgs): void {
+  queryClient.removeQueries({ queryKey: workflowRunQueryKey(runId) });
+  queryClient.invalidateQueries({ queryKey: allWorkflowRunsQueryKeyPrefix() });
+}
+
 interface WorkflowRunCreateResultArgs {
   queryClient: QueryClient;
   run: WorkflowRunResponse;

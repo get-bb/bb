@@ -23,6 +23,12 @@ export type {
   WorkflowRunDisplayState,
 } from "./workflow-display-state.js";
 export {
+  getWorkflowAgentProgressCounts,
+  getWorkflowRunIdFromRow,
+  isWorkflowRowActivelyRunning,
+} from "./workflow-run-rows.js";
+export type { WorkflowAgentProgressCounts } from "./workflow-run-rows.js";
+export {
   capitalize,
   durationToCompactString,
   formatDiffCount,

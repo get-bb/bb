@@ -756,7 +756,11 @@ export type PublicApiSchema = {
     $get: Endpoint<{ query: WorkflowListQuery }, WorkflowListResponse>;
   };
   "/workflow-runs": {
-    /** List a project's workflow runs, newest first (`limit` caps the page). */
+    /**
+     * List workflow runs, newest first (`limit` caps the page). `projectId`
+     * scopes to one project; omitted = all projects. User-archived and
+     * user-deleted runs are always excluded.
+     */
     $get: Endpoint<{ query: WorkflowRunListQuery }, WorkflowRunListResponse>;
     /**
      * Launch a workflow run: validate/resolve the source, snapshot it with
@@ -773,6 +777,20 @@ export type PublicApiSchema = {
   };
   "/workflow-runs/:id": {
     $get: Endpoint<PathId, WorkflowRunResponse>;
+    /**
+     * Soft-delete a settled run: it disappears from lists and 404s by id;
+     * the retention sweeps still clean up journal payloads and the daemon
+     * run dir. Active runs 409 `workflow_run_not_settled` (cancel first).
+     */
+    $delete: Endpoint<PathId, { ok: true }>;
+  };
+  "/workflow-runs/:id/archive": {
+    /**
+     * Hide a settled run from list surfaces (it stays reachable by id).
+     * Idempotent. Active runs 409 `workflow_run_not_settled` (cancel first).
+     * Distinct from journal-payload retention, which the sweep owns.
+     */
+    $post: Endpoint<PathId, { ok: true }>;
   };
   "/workflow-runs/:id/events": {
     /** Get durable run events with parsed payloads. `afterSeq` returns strictly-greater sequences. */

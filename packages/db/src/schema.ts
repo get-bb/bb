@@ -769,6 +769,13 @@ export const workflowRuns = sqliteTable(
      * retries (the daemon-side prune is idempotent).
      */
     runDirPrunedAt: integer("run_dir_pruned_at"),
+    /**
+     * User-facing archive (hidden from run lists); null = visible. Distinct
+     * from `retention`, which is the sweep-owned journal-payload state.
+     */
+    archivedAt: integer("archived_at"),
+    /** User-facing soft delete (run 404s by id); null = not deleted. */
+    deletedAt: integer("deleted_at"),
     createdAt: integer("created_at").notNull(),
     startedAt: integer("started_at"),
     settledAt: integer("settled_at"),
@@ -779,6 +786,8 @@ export const workflowRuns = sqliteTable(
       table.projectId,
       table.createdAt,
     ),
+    // The cross-project recent-runs list (sidebar): newest first.
+    index("workflow_runs_created_idx").on(table.createdAt),
     index("workflow_runs_host_status_idx").on(table.hostId, table.status),
     // The run-dir prune sweep's seek: archived-but-unpruned runs per host.
     index("workflow_runs_host_prune_idx").on(

@@ -209,8 +209,9 @@ export function requirePublicThread(
 
 /**
  * Public workflow-run lookup: rejects non-`wfr_` ids outright (the inverse
- * of the thread guard's workflow-id rejection) and hides runs whose project
- * is pending deletion, mirroring `requirePublicThread`.
+ * of the thread guard's workflow-id rejection) and hides user-deleted runs
+ * and runs whose project is pending deletion, mirroring
+ * `requirePublicThread`. User-archived runs stay reachable by id.
  */
 export function requirePublicWorkflowRun(
   db: DbConnection,
@@ -225,7 +226,7 @@ export function requirePublicWorkflowRun(
   }
   const run = getWorkflowRun(db, runId);
   const project = run ? getProject(db, run.projectId) : null;
-  if (!run || project?.deletedAt !== null) {
+  if (!run || run.deletedAt !== null || project?.deletedAt !== null) {
     throw new ApiError(404, "workflow_run_not_found", "Workflow run not found");
   }
   return run;

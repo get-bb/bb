@@ -8,8 +8,10 @@ import {
   createWorkflowRun,
   getWorkflowRun,
   InvalidWorkflowRunStatusTransitionError,
+  listWorkflowRuns,
   listWorkflowRunsByHostAndStatuses,
-  listWorkflowRunsForProject,
+  markWorkflowRunUserArchived,
+  markWorkflowRunUserDeleted,
   settleWorkflowRunInTransaction,
   transitionWorkflowRunStatusInTransaction,
   updateWorkflowRunProgressSnapshotInTransaction,
@@ -417,13 +419,49 @@ describe("workflow runs", () => {
     const first = createWorkflowRun(db, input);
     const second = createWorkflowRun(db, input);
 
-    const rows = listWorkflowRunsForProject(db, { projectId: project.id });
+    const rows = listWorkflowRuns(db, { projectId: project.id });
     expect(rows.map((run) => run.id).sort()).toEqual(
       [first.id, second.id].sort(),
     );
     expect(rows[0].createdAt).toBeGreaterThanOrEqual(rows[1].createdAt);
     expect(
-      listWorkflowRunsForProject(db, { projectId: project.id, limit: 1 }),
+      listWorkflowRuns(db, { projectId: project.id, limit: 1 }),
     ).toHaveLength(1);
+  });
+
+  it("excludes user-archived and user-deleted runs from lists but keeps rows", () => {
+    const { db, host, project } = setup();
+    const input = buildCreateInput({ hostId: host.id, projectId: project.id });
+    const archived = createWorkflowRun(db, input);
+    const deleted = createWorkflowRun(db, input);
+    const visible = createWorkflowRun(db, input);
+
+    markWorkflowRunUserArchived(db, { id: archived.id });
+    markWorkflowRunUserDeleted(db, { id: deleted.id });
+
+    const projectRows = listWorkflowRuns(db, { projectId: project.id });
+    expect(projectRows.map((run) => run.id)).toEqual([visible.id]);
+    const globalRows = listWorkflowRuns(db, { projectId: null });
+    expect(globalRows.map((run) => run.id)).toEqual([visible.id]);
+
+    // Soft flags only: the rows (and their sweep eligibility) survive.
+    expect(getWorkflowRun(db, archived.id)?.archivedAt).not.toBeNull();
+    expect(getWorkflowRun(db, deleted.id)?.deletedAt).not.toBeNull();
+  });
+
+  it("keeps the first archive/delete timestamp on repeat calls", () => {
+    const { db, host, project } = setup();
+    const input = buildCreateInput({ hostId: host.id, projectId: project.id });
+    const run = createWorkflowRun(db, input);
+
+    markWorkflowRunUserArchived(db, { id: run.id });
+    const archivedAt = getWorkflowRun(db, run.id)?.archivedAt;
+    markWorkflowRunUserArchived(db, { id: run.id });
+    expect(getWorkflowRun(db, run.id)?.archivedAt).toBe(archivedAt);
+
+    markWorkflowRunUserDeleted(db, { id: run.id });
+    const deletedAt = getWorkflowRun(db, run.id)?.deletedAt;
+    markWorkflowRunUserDeleted(db, { id: run.id });
+    expect(getWorkflowRun(db, run.id)?.deletedAt).toBe(deletedAt);
   });
 });

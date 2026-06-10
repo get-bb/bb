@@ -1,7 +1,3 @@
-import {
-  BB_WORKFLOW_TASK_TYPE,
-  isSettledWorkflowAgentState,
-} from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineApprovalStatus,
@@ -35,6 +31,10 @@ import {
   type TimelineExplorationWorkRow,
 } from "./timeline-activity-intents.js";
 import { fileNameFromPath } from "./timeline-path-display.js";
+import {
+  getWorkflowAgentProgressCounts,
+  getWorkflowRunIdFromRow,
+} from "./workflow-run-rows.js";
 import {
   buildTimelineWorkSummaryLabelParts,
   type ThreadTimelineViewRow,
@@ -817,14 +817,11 @@ function workflowVerbForStatus(status: TimelineRowStatus): {
 function formatWorkflowAgentProgress(
   row: TimelineViewWorkflowWorkRow,
 ): string | null {
-  const agents = row.workflow?.agents ?? [];
-  if (agents.length === 0) {
+  const counts = getWorkflowAgentProgressCounts(row.workflow);
+  if (counts === null) {
     return null;
   }
-  const done = agents.filter((agent) =>
-    isSettledWorkflowAgentState(agent.state),
-  ).length;
-  return `(${done}/${agents.length} agents)`;
+  return `(${counts.settled}/${counts.total} agents)`;
 }
 
 function mapWorkflowTitle(row: TimelineViewWorkflowWorkRow): TimelineTitle {
@@ -836,16 +833,17 @@ function mapWorkflowTitle(row: TimelineViewWorkflowWorkRow): TimelineTitle {
       ? { text: "Paused workflow:", shimmer: false }
       : workflowVerbForStatus(row.status);
   const name = row.workflowName ?? row.description;
+  // bb workflow runs anchor their `wfr_` run id in itemId; the run page
+  // deep link rides it. Provider-native local_workflow rows have no run
+  // page and stay plain.
+  const runId = getWorkflowRunIdFromRow(row);
   const segments: TimelineTitleSegment[] = [
     segment(verb.text, { shimmer: verb.shimmer }),
     segment(name, {
       em: true,
       truncate: true,
-      // bb workflow runs anchor their `wfr_` run id in itemId; the run page
-      // deep link rides it. Provider-native local_workflow rows have no run
-      // page and stay plain.
-      ...(row.taskType === BB_WORKFLOW_TASK_TYPE
-        ? { link: { kind: "workflow-run", runId: row.itemId } }
+      ...(runId !== null
+        ? { link: { kind: "workflow-run", runId } }
         : {}),
     }),
   ];

@@ -52,6 +52,7 @@ export const THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY =
   "threadTimelineTurnSummaryDetails";
 export const WORKFLOWS_QUERY_KEY = "workflows";
 export const WORKFLOW_RUNS_QUERY_KEY = "workflowRuns";
+const RECENT_WORKFLOW_RUNS_SCOPE = "recent";
 export const WORKFLOW_RUN_QUERY_KEY = "workflowRun";
 export const WORKFLOW_RUN_EVENTS_QUERY_KEY = "workflowRunEvents";
 export const WORKFLOW_RUN_AGENT_EVENTS_QUERY_KEY = "workflowRunAgentEvents";
@@ -253,6 +254,10 @@ export type AllWorkflowRunsQueryKeyPrefix = readonly [
 export type WorkflowRunsQueryKey = readonly [
   typeof WORKFLOW_RUNS_QUERY_KEY,
   string,
+];
+export type RecentWorkflowRunsQueryKey = readonly [
+  typeof WORKFLOW_RUNS_QUERY_KEY,
+  typeof RECENT_WORKFLOW_RUNS_SCOPE,
 ];
 export type AllWorkflowRunQueryKeyPrefix = readonly [
   typeof WORKFLOW_RUN_QUERY_KEY,
@@ -954,6 +959,16 @@ export function allWorkflowRunsQueryKeyPrefix(): AllWorkflowRunsQueryKeyPrefix {
 
 export function workflowRunsQueryKey(projectId: string): WorkflowRunsQueryKey {
   return [WORKFLOW_RUNS_QUERY_KEY, projectId];
+}
+
+/**
+ * The sidebar's cross-project recent-runs list. Shares the run-list key
+ * family with the project-scoped lists so `allWorkflowRunsQueryKeyPrefix()`
+ * invalidation (realtime `run-updated`, lifecycle actions) covers both. The
+ * scope segment can't collide with a project id (`proj_*`).
+ */
+export function recentWorkflowRunsQueryKey(): RecentWorkflowRunsQueryKey {
+  return [WORKFLOW_RUNS_QUERY_KEY, RECENT_WORKFLOW_RUNS_SCOPE];
 }
 
 export function allWorkflowRunQueryKeyPrefix(): AllWorkflowRunQueryKeyPrefix {

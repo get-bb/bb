@@ -8,6 +8,7 @@ import type {
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import {
+  recentWorkflowRunsQueryKey,
   workflowRunAgentEventsQueryKey,
   workflowRunEventsQueryKey,
   workflowRunQueryKey,
@@ -15,6 +16,12 @@ import {
   workflowsQueryKey,
   type WorkflowRunAgentEventsQueryIdentity,
 } from "./query-keys";
+
+/**
+ * Cap for the sidebar's cross-project recent-runs list: enough history to be
+ * useful without the sidebar scrolling forever once runs accumulate.
+ */
+const RECENT_WORKFLOW_RUNS_LIMIT = "20";
 
 function requireWorkflowRunId(id: string, hookName: string): string {
   if (!id) {
@@ -55,8 +62,18 @@ export function useWorkflowRuns(projectId: string) {
   return useQuery<WorkflowRunListResponse>({
     queryKey: workflowRunsQueryKey(projectId),
     queryFn: () =>
-      api.listWorkflowRuns(requireProjectId(projectId, "useWorkflowRuns")),
+      api.listWorkflowRuns({
+        projectId: requireProjectId(projectId, "useWorkflowRuns"),
+      }),
     enabled: Boolean(projectId),
+  });
+}
+
+/** Newest runs across all projects, capped, for the sidebar Workflows section. */
+export function useRecentWorkflowRuns() {
+  return useQuery<WorkflowRunListResponse>({
+    queryKey: recentWorkflowRunsQueryKey(),
+    queryFn: () => api.listWorkflowRuns({ limit: RECENT_WORKFLOW_RUNS_LIMIT }),
   });
 }
 

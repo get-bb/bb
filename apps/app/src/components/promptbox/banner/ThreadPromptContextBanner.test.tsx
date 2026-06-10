@@ -10,6 +10,7 @@ import {
   type ThreadPromptContextBannerProps,
   type ThreadPromptGitSection,
   type ThreadPromptTodoSection,
+  type ThreadPromptWorkflowsSection,
 } from "./ThreadPromptContextBanner";
 
 type BannerOverrides = Partial<ThreadPromptContextBannerProps>;
@@ -65,6 +66,17 @@ const parentThreadSection: ThreadPromptContextBannerProps["parentThreadSection"]
   href: "/projects/proj_1/threads/thr_parent",
 };
 
+const workflowsSection: ThreadPromptWorkflowsSection = {
+  items: [
+    {
+      id: "wfr_1",
+      name: "Repo audit fanout",
+      agentProgress: "2/5 agents",
+      href: "/workflows/runs/wfr_1",
+    },
+  ],
+};
+
 function renderBanner(overrides: BannerOverrides): void {
   render(
     <MemoryRouter>
@@ -75,6 +87,7 @@ function renderBanner(overrides: BannerOverrides): void {
         archivedSection={null}
         parentThreadSection={null}
         childThreadsSection={null}
+        workflowsSection={null}
         expandedSection={null}
         onToggleSection={vi.fn()}
         {...overrides}
@@ -162,6 +175,65 @@ describe("ThreadPromptContextBanner", () => {
         .getByRole("button", { name: /Changed files:/ })
         .querySelector("[data-promptbox-hide-compact]"),
     ).not.toBeNull();
+  });
+
+  it("renders nothing when workflows is the only section and it is null", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          todoSection={null}
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          parentThreadSection={null}
+          childThreadsSection={null}
+          workflowsSection={null}
+          expandedSection={null}
+          onToggleSection={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("hides the workflows section when the section has no items", () => {
+    renderBanner({ todoSection, workflowsSection: { items: [] } });
+
+    expect(
+      screen.queryByRole("button", { name: /workflow/ }),
+    ).toBeNull();
+  });
+
+  it("shows an active workflow with a link to its run page", () => {
+    renderBanner({ workflowsSection, expandedSection: "workflows" });
+
+    expect(
+      screen.getByRole("button", { name: "1 active workflow" }),
+    ).toBeTruthy();
+    const link = screen.getByRole("link", { name: /Repo audit fanout/ });
+    expect(link.getAttribute("href")).toBe("/workflows/runs/wfr_1");
+    expect(link.textContent).toContain("2/5 agents");
+  });
+
+  it("pluralizes the workflows label", () => {
+    renderBanner({
+      workflowsSection: {
+        items: [
+          ...workflowsSection.items,
+          {
+            id: "wfr_2",
+            name: "Adversarial review",
+            agentProgress: null,
+            href: "/workflows/runs/wfr_2",
+          },
+        ],
+      },
+    });
+
+    expect(
+      screen.getByRole("button", { name: "2 active workflows" }),
+    ).toBeTruthy();
   });
 
   it("hides the merge-base selector in compact markup", () => {

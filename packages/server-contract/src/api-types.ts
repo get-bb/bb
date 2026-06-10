@@ -2543,7 +2543,8 @@ export const workflowRunResponseSchema = z.object({
 export type WorkflowRunResponse = z.infer<typeof workflowRunResponseSchema>;
 
 export const workflowRunListQuerySchema = z.object({
-  projectId: z.string().min(1),
+  /** Omitted = runs across all projects (the sidebar's recent-runs list). */
+  projectId: z.string().min(1).optional(),
   limit: z.string().regex(/^\d+$/).optional(),
 });
 export type WorkflowRunListQuery = z.infer<typeof workflowRunListQuerySchema>;

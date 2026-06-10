@@ -19,7 +19,11 @@ export type WebSocketConnectionState =
 
 export class WebSocketManager {
   private socket: ReconnectingWebSocket | null = null;
-  private subscriptions = new Set<string>();
+  // Refcounted per key: independent surfaces can subscribe to the same
+  // entity/id (e.g. the sidebar Workflows section and the project Workflows
+  // tab both subscribe entity-wide to "workflow-run"), and one unmounting
+  // must not drop the other's subscription.
+  private subscriptions = new Map<string, number>();
   private callbacks = new Set<ChangeCallback>();
   private connectedCallbacks = new Set<ConnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
@@ -50,7 +54,7 @@ export class WebSocketManager {
       this.hasConnected = true;
       this.setConnectionState("connected");
       // Re-subscribe to all active subscriptions
-      for (const key of this.subscriptions) {
+      for (const key of this.subscriptions.keys()) {
         const parsed = parseSubKey(key);
         if (!parsed) continue;
         this.sendMessage({
@@ -102,16 +106,24 @@ export class WebSocketManager {
 
   subscribe(entity: RealtimeEntity, id?: string): void {
     const key = subKey(entity, id);
-    this.subscriptions.add(key);
-    if (this.socket?.readyState === WebSocket.OPEN) {
+    const count = this.subscriptions.get(key) ?? 0;
+    this.subscriptions.set(key, count + 1);
+    // The hub holds one subscription per key per connection, so only the
+    // 0 → 1 transition needs a message.
+    if (count === 0 && this.socket?.readyState === WebSocket.OPEN) {
       this.sendMessage({ type: "subscribe", entity, id });
     }
   }
 
   unsubscribe(entity: RealtimeEntity, id?: string): void {
     const key = subKey(entity, id);
+    const count = this.subscriptions.get(key) ?? 0;
+    if (count > 1) {
+      this.subscriptions.set(key, count - 1);
+      return;
+    }
     this.subscriptions.delete(key);
-    if (this.socket?.readyState === WebSocket.OPEN) {
+    if (count === 1 && this.socket?.readyState === WebSocket.OPEN) {
       this.sendMessage({ type: "unsubscribe", entity, id });
     }
   }

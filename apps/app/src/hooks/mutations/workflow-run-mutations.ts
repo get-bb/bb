@@ -2,7 +2,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CreateWorkflowRunRequest } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import {
+  applyWorkflowRunArchiveResult,
   applyWorkflowRunCreateResult,
+  applyWorkflowRunDeleteResult,
   applyWorkflowRunLifecycleActionResult,
 } from "../cache-owners/workflow-run-cache-owner";
 
@@ -57,6 +59,36 @@ export function useResumeWorkflowRun() {
       api.resumeWorkflowRun(runId),
     onSuccess: (_data, { runId }) => {
       applyWorkflowRunLifecycleActionResult({ queryClient, runId });
+    },
+  });
+}
+
+export function useArchiveWorkflowRun() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to archive workflow run.",
+    },
+    mutationFn: ({ runId }: WorkflowRunMutationRequest) =>
+      api.archiveWorkflowRun(runId),
+    onSuccess: () => {
+      applyWorkflowRunArchiveResult({ queryClient });
+    },
+  });
+}
+
+export function useDeleteWorkflowRun() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to delete workflow run.",
+    },
+    mutationFn: ({ runId }: WorkflowRunMutationRequest) =>
+      api.deleteWorkflowRun(runId),
+    onSuccess: (_data, { runId }) => {
+      applyWorkflowRunDeleteResult({ queryClient, runId });
     },
   });
 }

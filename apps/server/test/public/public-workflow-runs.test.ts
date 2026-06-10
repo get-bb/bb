@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import {
   appendWorkflowRunEventsInTransaction,
   getWorkflowRunOperation,
-  listWorkflowRunsForProject,
+  listWorkflowRuns,
 } from "@bb/db";
 import {
   workflowListResponseSchema,
@@ -114,7 +114,7 @@ describe("POST /workflow-runs", () => {
         run.id,
       );
       expect(
-        listWorkflowRunsForProject(harness.db, {
+        listWorkflowRuns(harness.db, {
           projectId: fixture.projectId,
         }),
       ).toHaveLength(1);
@@ -598,6 +598,110 @@ describe("GET /workflow-runs reads", () => {
         await readJson(waitResponse),
       );
       expect(settled.status).toBe("cancelled");
+    });
+  });
+});
+
+describe("workflow run archive and delete", () => {
+  it("archives settled runs out of lists while keeping them readable by id", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedWorkflowFixture(harness, "route-archive");
+      const archived = createRun(harness, fixture);
+      const visible = createRun(harness, fixture);
+      forceRunStatus(harness, archived.id, "starting");
+      forceRunStatus(harness, archived.id, "running");
+      forceRunStatus(harness, archived.id, "interrupted");
+
+      const response = await harness.app.request(
+        `/api/v1/workflow-runs/${archived.id}/archive`,
+        { method: "POST" },
+      );
+      expect(response.status).toBe(200);
+
+      const listResponse = await harness.app.request(
+        `/api/v1/workflow-runs?projectId=${fixture.projectId}`,
+      );
+      const runs = z
+        .array(workflowRunResponseSchema)
+        .parse(await readJson(listResponse));
+      expect(runs.map((run) => run.id)).toEqual([visible.id]);
+
+      // Archived runs stay reachable by id (old deep links keep working).
+      const detail = await harness.app.request(
+        `/api/v1/workflow-runs/${archived.id}`,
+      );
+      expect(detail.status).toBe(200);
+    });
+  });
+
+  it("soft-deletes settled runs: gone from lists and 404 by id", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedWorkflowFixture(harness, "route-delete");
+      const deleted = createRun(harness, fixture);
+      forceRunStatus(harness, deleted.id, "starting");
+      forceRunStatus(harness, deleted.id, "running");
+      forceRunStatus(harness, deleted.id, "interrupted");
+
+      const response = await harness.app.request(
+        `/api/v1/workflow-runs/${deleted.id}`,
+        { method: "DELETE" },
+      );
+      expect(response.status).toBe(200);
+
+      const listResponse = await harness.app.request(
+        `/api/v1/workflow-runs?projectId=${fixture.projectId}`,
+      );
+      expect(
+        z.array(workflowRunResponseSchema).parse(await readJson(listResponse)),
+      ).toEqual([]);
+      const detail = await harness.app.request(
+        `/api/v1/workflow-runs/${deleted.id}`,
+      );
+      expect(detail.status).toBe(404);
+
+      // The row survives for the retention/run-dir sweeps.
+      expect(requireRun(harness, deleted.id).deletedAt).not.toBeNull();
+    });
+  });
+
+  it("409s archive and delete for runs that are still active", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedWorkflowFixture(harness, "route-archive-active");
+      const run = createRun(harness, fixture);
+      forceRunStatus(harness, run.id, "starting");
+      forceRunStatus(harness, run.id, "running");
+
+      for (const request of [
+        harness.app.request(`/api/v1/workflow-runs/${run.id}/archive`, {
+          method: "POST",
+        }),
+        harness.app.request(`/api/v1/workflow-runs/${run.id}`, {
+          method: "DELETE",
+        }),
+      ]) {
+        const response = await request;
+        expect(response.status).toBe(409);
+        expect(apiErrorSchema.parse(await readJson(response)).code).toBe(
+          "workflow_run_not_settled",
+        );
+      }
+    });
+  });
+
+  it("lists runs across all projects when projectId is omitted", async () => {
+    await withTestHarness(async (harness) => {
+      const fixtureA = seedWorkflowFixture(harness, "route-global-a");
+      const fixtureB = seedWorkflowFixture(harness, "route-global-b");
+      const runA = createRun(harness, fixtureA);
+      const runB = createRun(harness, fixtureB);
+
+      const listResponse = await harness.app.request("/api/v1/workflow-runs");
+      const runs = z
+        .array(workflowRunResponseSchema)
+        .parse(await readJson(listResponse));
+      expect(runs.map((run) => run.id).sort()).toEqual(
+        [runA.id, runB.id].sort(),
+      );
     });
   });
 });

@@ -9,7 +9,9 @@ import {
   getWorkflowRun,
   getWorkflowRunByClientRequestId,
   listWorkflowRunEvents,
-  listWorkflowRunsForProject,
+  listWorkflowRuns,
+  markWorkflowRunUserArchived,
+  markWorkflowRunUserDeleted,
   type WorkflowRunRow,
 } from "@bb/db";
 import {
@@ -226,6 +228,22 @@ function buildLaunchOverrides(
 }
 
 /**
+ * Archive/delete are settled-run actions: a `created`/`starting`/`running`
+ * run must be cancelled first so the lifecycle (not a metadata flip) is what
+ * stops work. `interrupted` counts as settled — abandoning a paused run is
+ * exactly what archive/delete are for, at the cost of its resumability.
+ */
+function requireSettledWorkflowRun(run: WorkflowRunRow): void {
+  if (!isTerminalWorkflowRunStatus(run.status) && run.status !== "interrupted") {
+    throw new ApiError(
+      409,
+      "workflow_run_not_settled",
+      "Workflow run is still active; cancel it first",
+    );
+  }
+}
+
+/**
  * clientRequestId idempotency demands an identical request: a retried POST
  * carrying the same key with a different source, args, anchor, host, or
  * explicit override is a buggy client whose "new" launch would otherwise
@@ -313,7 +331,7 @@ async function startReplayedWorkflowRun(
 }
 
 export function registerWorkflowRunRoutes(app: Hono, deps: AppDeps): void {
-  const { get, post } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
 
@@ -331,13 +349,16 @@ export function registerWorkflowRunRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get("/workflow-runs", workflowRunListQuerySchema, (context, query) => {
-    requirePublicProject(deps.db, query.projectId);
+    const projectId = query.projectId ?? null;
+    if (projectId !== null) {
+      requirePublicProject(deps.db, projectId);
+    }
     const limit = parseOptionalInteger(query.limit, "limit");
     if (limit !== undefined && limit <= 0) {
       throw new ApiError(400, "invalid_request", "limit must be positive");
     }
-    const runs = listWorkflowRunsForProject(deps.db, {
-      projectId: query.projectId,
+    const runs = listWorkflowRuns(deps.db, {
+      projectId,
       ...(limit !== undefined ? { limit } : {}),
     });
     return context.json(runs.map(toWorkflowRunResponse));
@@ -524,6 +545,22 @@ export function registerWorkflowRunRoutes(app: Hono, deps: AppDeps): void {
   post("/workflow-runs/:id/resume", async (context) => {
     const run = requirePublicWorkflowRun(deps.db, context.req.param("id"));
     await requestWorkflowRunResume(deps, { runId: run.id });
+    return context.json({ ok: true });
+  });
+
+  post("/workflow-runs/:id/archive", (context) => {
+    const run = requirePublicWorkflowRun(deps.db, context.req.param("id"));
+    requireSettledWorkflowRun(run);
+    markWorkflowRunUserArchived(deps.db, { id: run.id });
+    deps.hub.notifyWorkflowRun(run.id, ["run-updated"]);
+    return context.json({ ok: true });
+  });
+
+  del("/workflow-runs/:id", (context) => {
+    const run = requirePublicWorkflowRun(deps.db, context.req.param("id"));
+    requireSettledWorkflowRun(run);
+    markWorkflowRunUserDeleted(deps.db, { id: run.id });
+    deps.hub.notifyWorkflowRun(run.id, ["run-updated"]);
     return context.json({ ok: true });
   });
 

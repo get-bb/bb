@@ -80,6 +80,7 @@ import {
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
+import { selectThreadPromptWorkflowsSection } from "./threadPromptWorkflowsSection";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import { useThreadSecondaryPanelVisibility } from "./useThreadSecondaryPanelVisibility";
 import type { HostConnectionNotice } from "./ThreadTimelinePane";
@@ -1020,6 +1021,10 @@ export function ThreadDetailView() {
       if (activeItems.length === 0) return null;
       return { items: activeItems };
     }, [childThreadSubsetQuery.data]);
+  const workflowsSection = useMemo(
+    () => selectThreadPromptWorkflowsSection(timelineRows),
+    [timelineRows],
+  );
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({
     markThreadRead,
@@ -1351,6 +1356,7 @@ export function ThreadDetailView() {
       pendingTodos={pendingTodos}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
+      workflowsSection={workflowsSection}
       thread={thread}
     />
   );

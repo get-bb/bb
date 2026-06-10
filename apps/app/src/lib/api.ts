@@ -83,6 +83,7 @@ import type {
   CreateWorkflowRunRequest,
   WorkflowListResponse,
   WorkflowRunEventsResponse,
+  WorkflowRunListQuery,
   WorkflowRunListResponse,
   WorkflowRunResponse,
 } from "@bb/server-contract";
@@ -1448,10 +1449,10 @@ export async function listWorkflows(
 }
 
 export async function listWorkflowRuns(
-  projectId: string,
+  query: WorkflowRunListQuery,
 ): Promise<WorkflowRunListResponse> {
   return request<WorkflowRunListResponse>(
-    apiClient["workflow-runs"].$get({ query: { projectId } }),
+    apiClient["workflow-runs"].$get({ query }),
   );
 }
 
@@ -1504,4 +1505,14 @@ export async function resumeWorkflowRun(id: string): Promise<void> {
   await requestVoid(
     apiClient["workflow-runs"][":id"].resume.$post({ param: { id } }),
   );
+}
+
+export async function archiveWorkflowRun(id: string): Promise<void> {
+  await requestVoid(
+    apiClient["workflow-runs"][":id"].archive.$post({ param: { id } }),
+  );
+}
+
+export async function deleteWorkflowRun(id: string): Promise<void> {
+  await requestVoid(apiClient["workflow-runs"][":id"].$delete({ param: { id } }));
 }

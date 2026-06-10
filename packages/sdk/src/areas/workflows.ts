@@ -24,7 +24,8 @@ export interface WorkflowRunIdArgs {
 
 export interface WorkflowRunListArgs {
   limit?: string;
-  projectId: string;
+  /** Omitted = runs across all projects. */
+  projectId?: string;
 }
 
 export interface WorkflowRunEventsArgs {
@@ -47,12 +48,16 @@ export interface WorkflowRunAgentEventsArgs {
 export interface WorkflowsArea {
   /** Per-agent provider-event log, proxied from the run's host. */
   agentEvents(args: WorkflowRunAgentEventsArgs): Promise<ThreadEventRow[]>;
+  /** Hide a settled run from list surfaces (stays reachable by id). */
+  archive(args: WorkflowRunIdArgs): Promise<OkResponse>;
   cancel(args: WorkflowRunIdArgs): Promise<OkResponse>;
+  /** Soft-delete a settled run (gone from lists, 404s by id). */
+  delete(args: WorkflowRunIdArgs): Promise<OkResponse>;
   events(args: WorkflowRunEventsArgs): Promise<WorkflowRunEventsResponse>;
   get(args: WorkflowRunIdArgs): Promise<WorkflowRunResponse>;
   /** Workflow definitions visible from the project's source root. */
   list(args: WorkflowListArgs): Promise<WorkflowListResponse>;
-  /** A project's workflow runs, newest first. */
+  /** Workflow runs, newest first; archived/deleted runs are excluded. */
   listRuns(args: WorkflowRunListArgs): Promise<WorkflowRunListResponse>;
   resume(args: WorkflowRunIdArgs): Promise<OkResponse>;
   run(args: WorkflowRunCreateArgs): Promise<WorkflowRunResponse>;
@@ -72,7 +77,7 @@ function listQuery(args: WorkflowListArgs): WorkflowListQuery {
 
 function runListQuery(args: WorkflowRunListArgs): WorkflowRunListQuery {
   return {
-    projectId: args.projectId,
+    ...(args.projectId !== undefined ? { projectId: args.projectId } : {}),
     ...(args.limit !== undefined ? { limit: args.limit } : {}),
   };
 }
@@ -87,9 +92,25 @@ export function createWorkflowsArea(args: CreateSdkAreaArgs): WorkflowsArea {
         }),
       );
     },
+    async archive(input) {
+      await transport.readVoid(
+        transport.api.v1["workflow-runs"][":id"].archive.$post({
+          param: { id: input.runId },
+        }),
+      );
+      return { ok: true };
+    },
     async cancel(input) {
       await transport.readVoid(
         transport.api.v1["workflow-runs"][":id"].cancel.$post({
+          param: { id: input.runId },
+        }),
+      );
+      return { ok: true };
+    },
+    async delete(input) {
+      await transport.readVoid(
+        transport.api.v1["workflow-runs"][":id"].$delete({
           param: { id: input.runId },
         }),
       );

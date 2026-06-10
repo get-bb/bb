@@ -149,22 +149,68 @@ export function listWorkflowRunsByIds(
     .all();
 }
 
-export interface ListWorkflowRunsForProjectArgs {
+export interface ListWorkflowRunsArgs {
   limit?: number;
-  projectId: string;
+  /** Null = all projects (the cross-project sidebar list). */
+  projectId: string | null;
 }
 
-export function listWorkflowRunsForProject(
+/**
+ * Newest-first run listing for the public list route. User-archived and
+ * user-deleted runs are always excluded — they have no list surface; archived
+ * runs stay reachable by id, deleted runs do not.
+ */
+export function listWorkflowRuns(
   db: WorkflowRunReadConnection,
-  args: ListWorkflowRunsForProjectArgs,
+  args: ListWorkflowRunsArgs,
 ): WorkflowRunRow[] {
   return db
     .select()
     .from(workflowRuns)
-    .where(eq(workflowRuns.projectId, args.projectId))
+    .where(
+      and(
+        args.projectId !== null
+          ? eq(workflowRuns.projectId, args.projectId)
+          : undefined,
+        isNull(workflowRuns.archivedAt),
+        isNull(workflowRuns.deletedAt),
+      ),
+    )
     .orderBy(desc(workflowRuns.createdAt), desc(workflowRuns.id))
     .limit(args.limit ?? -1)
     .all();
+}
+
+/**
+ * User-facing archive: hides the run from list surfaces. Idempotent (the
+ * first archive timestamp wins). Distinct from the retention sweep's
+ * `archiveWorkflowRunInTransaction` (journal-payload retention).
+ */
+export function markWorkflowRunUserArchived(
+  db: WorkflowRunWriteConnection,
+  args: { id: string },
+): void {
+  const now = Date.now();
+  db.update(workflowRuns)
+    .set({ archivedAt: now, updatedAt: now })
+    .where(and(eq(workflowRuns.id, args.id), isNull(workflowRuns.archivedAt)))
+    .run();
+}
+
+/**
+ * User-facing soft delete: the run disappears from lists and 404s by id.
+ * The row stays so the retention/run-dir-prune sweeps still clean up the
+ * journal payloads and the daemon run dir. Idempotent.
+ */
+export function markWorkflowRunUserDeleted(
+  db: WorkflowRunWriteConnection,
+  args: { id: string },
+): void {
+  const now = Date.now();
+  db.update(workflowRuns)
+    .set({ deletedAt: now, updatedAt: now })
+    .where(and(eq(workflowRuns.id, args.id), isNull(workflowRuns.deletedAt)))
+    .run();
 }
 
 /**
