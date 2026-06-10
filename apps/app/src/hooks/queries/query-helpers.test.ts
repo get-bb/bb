@@ -541,4 +541,42 @@ describe("optimisticallyInsertThread", () => {
       hostReconnectGraceExpiresAt: null,
     });
   });
+
+  it("respects the childOrigin filter when inserting child threads", () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const forkListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+      parentThreadId: "parent-1",
+      childOrigin: "fork",
+    });
+    queryClient.setQueryData(forkListKey, []);
+
+    // A side chat of the same parent must not contaminate the parent's
+    // fork-filtered list.
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadWithRuntime({
+        id: "side-chat-1",
+        parentThreadId: "parent-1",
+        childOrigin: "side-chat",
+      }),
+    );
+    expect(queryClient.getQueryData<ThreadListEntry[]>(forkListKey)).toEqual([]);
+
+    // A fork of the same parent does belong in the fork list.
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadWithRuntime({
+        id: "fork-1",
+        parentThreadId: "parent-1",
+        childOrigin: "fork",
+      }),
+    );
+    expect(
+      queryClient
+        .getQueryData<ThreadListEntry[]>(forkListKey)
+        ?.map((entry) => entry.id),
+    ).toEqual(["fork-1"]);
+  });
 });

@@ -8,6 +8,7 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedThread,
 } from "../../helpers/seed.js";
 import { textInput } from "../../helpers/prompt-input.js";
 import { withTestHarness } from "../../helpers/test-app.js";
@@ -119,6 +120,64 @@ describe("project execution defaults persistence", () => {
         reasoningLevel: "high",
         permissionMode: "workspace-write",
         serviceTier: "fast",
+      });
+    });
+  });
+
+  it("does not overwrite project defaults for a fork/side-chat child spawn", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-child-origin-defaults",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        projectId: project.id,
+      });
+
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5-mini",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+
+      // A side chat forces permissionMode "readonly" and inherits a model the
+      // user never picked in the composer; creating it must not reshape the
+      // project's stored defaults (like the reuse carve-out above).
+      await createThreadFromRequest(harness.deps, {
+        origin: "app",
+        automationId: null,
+        childOrigin: "side-chat",
+        startedOnBehalfOf: null,
+        parentThreadId: parentThread.id,
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "high",
+        permissionMode: "readonly",
+        serviceTier: "fast",
+        input: textInput("Quick question"),
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: null },
+        },
+      });
+
+      expect(
+        getProjectExecutionDefaults(harness.db, {
+          projectId: project.id,
+        }),
+      ).toEqual({
+        providerId: "codex",
+        model: "gpt-5-mini",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
       });
     });
   });

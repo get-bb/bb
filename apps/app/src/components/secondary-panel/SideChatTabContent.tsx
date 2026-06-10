@@ -210,6 +210,13 @@ export function SideChatTabContent({
       if (!executionOptions) {
         return;
       }
+      // A host-backed source whose environment query hasn't resolved yet would
+      // fall back to a personal workspace, which the server rejects outside the
+      // personal project. Wait for the environment before creating. A personal
+      // source (no environmentId) legitimately has a null environment.
+      if (sourceThread.environmentId !== null && sourceEnvironment === null) {
+        return;
+      }
       const contextSnapshot = buildSideChatContextSnapshot({
         rows: sourceTimelineRows,
         sourceMessageText: tab.sourceMessageText,
@@ -241,6 +248,7 @@ export function SideChatTabContent({
       onSetThreadId,
       sendThreadMessage,
       sourceEnvironment,
+      sourceThread.environmentId,
       sourceThread.id,
       sourceThread.projectId,
       sourceThread.providerId,

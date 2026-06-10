@@ -474,6 +474,12 @@ function threadMatchesListFilters(
   ) {
     return false;
   }
+  if (
+    filters?.childOrigin !== undefined &&
+    thread.childOrigin !== filters.childOrigin
+  ) {
+    return false;
+  }
 
   return true;
 }
