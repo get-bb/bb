@@ -91,7 +91,6 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     archiveThreadAndChildren: vi.fn(),
-    archiveThread: vi.fn(),
     deleteThread: vi.fn(),
     getThreadChildSummary: vi.fn(),
     markThreadRead: vi.fn(),
@@ -281,7 +280,7 @@ describe("ThreadActionsProvider", () => {
     });
   });
 
-  it("archives a thread and its children with a grouped success toast", async () => {
+  it("archives a thread and its children with a grouped success toast linking to the thread", async () => {
     const thread = makeThread({ id: "parent-1" });
     vi.mocked(api.archiveThreadAndChildren).mockResolvedValue({
       ok: true,
@@ -290,11 +289,14 @@ describe("ThreadActionsProvider", () => {
 
     let actions: ReturnType<typeof useThreadActions> | null = null;
     renderWithProvider(
-      <HookProbe
-        onReady={(a) => {
-          actions = a;
-        }}
-      />,
+      <>
+        <HookProbe
+          onReady={(a) => {
+            actions = a;
+          }}
+        />
+        <RouteProbe />
+      </>,
     );
 
     act(() => {
@@ -306,8 +308,22 @@ describe("ThreadActionsProvider", () => {
     });
     const successInvocation = requireLatestThreadToastInvocation();
     expect(successInvocation.props.tone).toBe("success");
-    expect(successInvocation.props.title).toBe(
-      "Archived thread and 1 child thread",
+
+    const { container: titleContainer } = render(
+      <>{successInvocation.props.title}</>,
+    );
+    expect(titleContainer.textContent).toBe(
+      "Archived Thread title and 1 child thread",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Thread title" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("route-pathname").textContent).toBe(
+        "/projects/project-1/threads/parent-1",
+      );
+    });
+    expect(threadToastState.dismiss).toHaveBeenCalledWith(
+      successInvocation.options.id,
     );
   });
 

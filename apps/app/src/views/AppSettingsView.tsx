@@ -35,6 +35,7 @@ import {
   type FaviconColorPreference,
 } from "@/lib/favicon-color-preference";
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
+import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { cn } from "@/lib/utils";
 import {
   resolvePreferredWorkspaceOpenTarget,
@@ -79,9 +80,31 @@ export interface LocalOpenTargetSettingsSectionProps {
   targets: WorkspaceOpenTarget[];
 }
 
-export interface InAppBrowserLinkSettingsSectionProps {
+export interface InAppBrowserLinkSettingsControlProps {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
+}
+
+export interface RootComposeBehaviorSettingsControlProps {
+  navigateToThreadAfterCreate: boolean;
+  onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
+}
+
+export interface FaviconColorSettingsControlProps {
+  faviconColor: FaviconColorPreference;
+  onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
+}
+
+export interface GeneralSettingsSectionProps {
+  desktopBrowserAvailable: boolean;
+  faviconColor: FaviconColorPreference;
+  navigateToThreadAfterCreate: boolean;
+  onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
+  onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
+  onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
+  onThemePreferenceChange: (themePreference: ThemePreference) => void;
+  openLinksInAppBrowser: boolean;
+  themePreference: ThemePreference;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -134,6 +157,56 @@ function FaviconColorPreview({ value }: { value: FaviconColorPreference }) {
           : { backgroundColor: FAVICON_COLOR_VALUES[value] }),
       }}
     />
+  );
+}
+
+export function FaviconColorSettingsControl({
+  faviconColor,
+  onFaviconColorChange,
+}: FaviconColorSettingsControlProps) {
+  return (
+    <SettingsWithControl
+      label="Favicon color"
+      description="Tint the browser tab icon to tell instances apart."
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-between border-border/60 bg-card sm:w-48"
+            aria-label="Favicon color"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <FaviconColorPreview value={faviconColor} />
+              <span className="min-w-0 truncate">
+                {FAVICON_COLOR_LABELS[faviconColor]}
+              </span>
+            </span>
+            <Icon name="ChevronDown" className="size-3.5 text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {FAVICON_COLOR_OPTIONS.map((option) => (
+            <DropdownMenuItem
+              key={option.value}
+              onSelect={() => onFaviconColorChange(option.value)}
+            >
+              <FaviconColorPreview value={option.value} />
+              {option.label}
+              <Icon
+                name="Check"
+                className={cn(
+                  "ml-auto",
+                  faviconColor !== option.value && "opacity-0",
+                  COARSE_POINTER_ICON_SIZE_CLASS,
+                )}
+              />
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SettingsWithControl>
   );
 }
 
@@ -260,7 +333,7 @@ export function LocalOpenTargetSettingsSection({
   targets,
 }: LocalOpenTargetSettingsSectionProps) {
   return (
-    <SettingsSection title="Open File Preferences">
+    <SettingsSection title="File Preferences">
       <div className="space-y-4">
         <LocalOpenTargetPreferenceControl
           definition={DIRECTORY_TARGET_PREFERENCE}
@@ -282,23 +355,112 @@ export function LocalOpenTargetSettingsSection({
 }
 
 const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
+const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
+  "Navigate to threads on creation";
 
-export function InAppBrowserLinkSettingsSection({
+export function RootComposeBehaviorSettingsControl({
+  navigateToThreadAfterCreate,
+  onNavigateToThreadAfterCreateChange,
+}: RootComposeBehaviorSettingsControlProps) {
+  return (
+    <SettingsWithControl label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}>
+      <Switch
+        checked={navigateToThreadAfterCreate}
+        onCheckedChange={onNavigateToThreadAfterCreateChange}
+        aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
+      />
+    </SettingsWithControl>
+  );
+}
+
+export function InAppBrowserLinkSettingsControl({
   enabled,
   onEnabledChange,
-}: InAppBrowserLinkSettingsSectionProps) {
+}: InAppBrowserLinkSettingsControlProps) {
   return (
-    <SettingsSection title="Browser">
-      <SettingsWithControl
-        label={IN_APP_BROWSER_LINK_SETTING_LABEL}
-        description="Open http and https links from chat in the in-app browser panel instead of your default browser."
-      >
-        <Switch
-          checked={enabled}
-          onCheckedChange={onEnabledChange}
-          aria-label={IN_APP_BROWSER_LINK_SETTING_LABEL}
+    <SettingsWithControl
+      label={IN_APP_BROWSER_LINK_SETTING_LABEL}
+      description="Open http and https links from chat in the in-app browser panel instead of your default browser."
+    >
+      <Switch
+        checked={enabled}
+        onCheckedChange={onEnabledChange}
+        aria-label={IN_APP_BROWSER_LINK_SETTING_LABEL}
+      />
+    </SettingsWithControl>
+  );
+}
+
+export function GeneralSettingsSection({
+  desktopBrowserAvailable,
+  faviconColor,
+  navigateToThreadAfterCreate,
+  onFaviconColorChange,
+  onNavigateToThreadAfterCreateChange,
+  onOpenLinksInAppBrowserChange,
+  onThemePreferenceChange,
+  openLinksInAppBrowser,
+  themePreference,
+}: GeneralSettingsSectionProps) {
+  return (
+    <SettingsSection title="General">
+      <div className="space-y-4">
+        <SettingsWithControl label="Theme">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-between border-border/60 bg-card sm:w-48"
+                aria-label="Theme"
+              >
+                {THEME_PREFERENCE_LABELS[themePreference]}
+                <Icon
+                  name="ChevronDown"
+                  className="size-3.5 text-muted-foreground"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {THEME_PREFERENCE_OPTIONS.map((option) => (
+                <DropdownMenuItem
+                  key={option.value}
+                  onSelect={() => onThemePreferenceChange(option.value)}
+                >
+                  {option.label}
+                  <Icon
+                    name="Check"
+                    className={cn(
+                      "ml-auto",
+                      themePreference !== option.value && "opacity-0",
+                      COARSE_POINTER_ICON_SIZE_CLASS,
+                    )}
+                  />
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SettingsWithControl>
+
+        <FaviconColorSettingsControl
+          faviconColor={faviconColor}
+          onFaviconColorChange={onFaviconColorChange}
         />
-      </SettingsWithControl>
+
+        <RootComposeBehaviorSettingsControl
+          navigateToThreadAfterCreate={navigateToThreadAfterCreate}
+          onNavigateToThreadAfterCreateChange={
+            onNavigateToThreadAfterCreateChange
+          }
+        />
+
+        {desktopBrowserAvailable ? (
+          <InAppBrowserLinkSettingsControl
+            enabled={openLinksInAppBrowser}
+            onEnabledChange={onOpenLinksInAppBrowserChange}
+          />
+        ) : null}
+      </div>
     </SettingsSection>
   );
 }
@@ -315,6 +477,8 @@ export function AppSettingsView() {
   const [fileTargetId, setFileTargetId] = useFileOpenTargetPreference();
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] =
     useOpenLinksInAppBrowserPreference();
+  const [navigateToThreadAfterCreate, setNavigateToThreadAfterCreate] =
+    useNavigateToThreadAfterCreatePreference();
   // The in-app browser only exists on desktop; hide the toggle entirely on web,
   // where it would have no effect.
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
@@ -322,91 +486,17 @@ export function AppSettingsView() {
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
       <div className="mx-auto w-full max-w-3xl space-y-6">
-        <SettingsSection title="Appearance">
-          <div className="space-y-4">
-            <SettingsWithControl label="Theme">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-between border-border/60 bg-card sm:w-48"
-                    aria-label="Theme"
-                  >
-                    {THEME_PREFERENCE_LABELS[themePreference]}
-                    <Icon
-                      name="ChevronDown"
-                      className="size-3.5 text-muted-foreground"
-                    />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  {THEME_PREFERENCE_OPTIONS.map((option) => (
-                    <DropdownMenuItem
-                      key={option.value}
-                      onSelect={() => setPreferredTheme(option.value)}
-                    >
-                      {option.label}
-                      <Icon
-                        name="Check"
-                        className={cn(
-                          "ml-auto",
-                          themePreference !== option.value && "opacity-0",
-                          COARSE_POINTER_ICON_SIZE_CLASS,
-                        )}
-                      />
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </SettingsWithControl>
-            <SettingsWithControl
-              label="Favicon color"
-              description="Tint the browser tab icon to tell instances apart."
-            >
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-between border-border/60 bg-card sm:w-48"
-                    aria-label="Favicon color"
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <FaviconColorPreview value={faviconColor} />
-                      <span className="min-w-0 truncate">
-                        {FAVICON_COLOR_LABELS[faviconColor]}
-                      </span>
-                    </span>
-                    <Icon
-                      name="ChevronDown"
-                      className="size-3.5 text-muted-foreground"
-                    />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  {FAVICON_COLOR_OPTIONS.map((option) => (
-                    <DropdownMenuItem
-                      key={option.value}
-                      onSelect={() => setFaviconColor(option.value)}
-                    >
-                      <FaviconColorPreview value={option.value} />
-                      {option.label}
-                      <Icon
-                        name="Check"
-                        className={cn(
-                          "ml-auto",
-                          faviconColor !== option.value && "opacity-0",
-                          COARSE_POINTER_ICON_SIZE_CLASS,
-                        )}
-                      />
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </SettingsWithControl>
-          </div>
-        </SettingsSection>
+        <GeneralSettingsSection
+          desktopBrowserAvailable={desktopBrowserAvailable}
+          faviconColor={faviconColor}
+          navigateToThreadAfterCreate={navigateToThreadAfterCreate}
+          openLinksInAppBrowser={openLinksInAppBrowser}
+          themePreference={themePreference}
+          onFaviconColorChange={setFaviconColor}
+          onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
+          onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
+          onThemePreferenceChange={setPreferredTheme}
+        />
 
         <LocalOpenTargetSettingsSection
           directoryTargetId={directoryTargetId}
@@ -416,13 +506,6 @@ export function AppSettingsView() {
           onFileTargetChange={setFileTargetId}
           targets={workspaceOpenTargets}
         />
-
-        {desktopBrowserAvailable ? (
-          <InAppBrowserLinkSettingsSection
-            enabled={openLinksInAppBrowser}
-            onEnabledChange={setOpenLinksInAppBrowser}
-          />
-        ) : null}
 
         <AppSourcesSection />
       </div>

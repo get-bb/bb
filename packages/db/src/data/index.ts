@@ -33,10 +33,12 @@ export type {
 
 export {
   getProjectExecutionDefaults,
+  listProjectExecutionDefaultsByProjectIds,
   upsertProjectExecutionDefaults,
 } from "./project-execution-defaults.js";
 export type {
   GetProjectExecutionDefaultsArgs,
+  ListProjectExecutionDefaultsByProjectIdsArgs,
   UpsertProjectExecutionDefaultsArgs,
 } from "./project-execution-defaults.js";
 

@@ -29,6 +29,24 @@ function getThemePreference(): ThemePreference {
 function applyThemeClass(theme: Theme): void {
   if (typeof document === "undefined") return;
   document.documentElement.classList.toggle("dark", theme === "dark");
+  syncThemeColorMeta();
+}
+
+/**
+ * Mirrors the resolved page background onto <meta name="theme-color"> so
+ * browser chrome (Android tab UI, iOS standalone status bar) blends with the
+ * app. Reads the computed body background rather than duplicating the
+ * theme.css color values; index.html sets the pre-paint value.
+ */
+function syncThemeColorMeta(): void {
+  const meta = document.querySelector<HTMLMetaElement>(
+    'meta[name="theme-color"]',
+  );
+  if (!meta || !document.body) return;
+  const background = window.getComputedStyle(document.body).backgroundColor;
+  // Keep the pre-paint value if styles haven't resolved yet (transparent).
+  if (!background || background === "rgba(0, 0, 0, 0)") return;
+  meta.content = background;
 }
 
 function getSystemTheme(): Theme {

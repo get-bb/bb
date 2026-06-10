@@ -1174,7 +1174,7 @@ function ProjectRowComponent({
               "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
               isActive
                 ? "bg-sidebar-border text-sidebar-foreground"
-                : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
               projectDragBindings &&
                 !projectDragBindings.disabled &&
                 "select-none cursor-grab active:cursor-grabbing",

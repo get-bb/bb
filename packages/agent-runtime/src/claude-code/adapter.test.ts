@@ -2120,6 +2120,29 @@ describe("claude-code provider adapter", () => {
     expect(events).toMatchObject([]);
   });
 
+  it("translateEvent ignores primary rate limit rejections when overage is allowed", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "rate_limit_event",
+          rate_limit_info: {
+            status: "rejected",
+            rateLimitType: "five_hour",
+            resetsAt: 1781120400,
+            overageStatus: "allowed",
+          },
+        },
+      },
+    });
+
+    expect(events).toEqual([]);
+  });
+
   it("translateEvent ignores task-updated system events from the SDK envelope", () => {
     const adapter = createClaudeCodeProviderAdapter();
 

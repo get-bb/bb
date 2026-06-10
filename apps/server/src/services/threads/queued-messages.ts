@@ -301,7 +301,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     command,
     hostId: environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: thread.id },
         "Live queued message command failed",

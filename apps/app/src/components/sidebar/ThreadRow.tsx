@@ -148,7 +148,7 @@ function ThreadDraftIndicator() {
   return (
     <Icon
       name="Edit"
-      className="pointer-events-none size-3.5 shrink-0 text-primary"
+      className="pointer-events-none size-3.5 shrink-0 text-muted-foreground"
       aria-hidden="true"
     />
   );

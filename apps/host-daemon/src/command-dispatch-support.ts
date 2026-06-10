@@ -89,6 +89,15 @@ export function isExpectedCommandDispatchError(
   return error instanceof ExpectedCommandDispatchError;
 }
 
+const EXPECTED_ONLINE_RPC_FAILURE_CODES = new Set(["provision_cancelled"]);
+
+export function isExpectedOnlineRpcFailureError(error: unknown): boolean {
+  return (
+    isExpectedCommandDispatchError(error) ||
+    EXPECTED_ONLINE_RPC_FAILURE_CODES.has(getErrorCode(error))
+  );
+}
+
 const MISSING_EXECUTABLE_PATTERN = /\bENOENT\b/;
 const SPAWN_PATTERN = /\bspawn\b/;
 

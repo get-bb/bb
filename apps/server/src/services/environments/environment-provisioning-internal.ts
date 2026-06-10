@@ -48,6 +48,8 @@ import {
 } from "./environment-provision-request.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import {
+  createLiveHostCommandExecution,
+  expectedLiveHostCommandErrorLogFields,
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../hosts/live-command.js";
@@ -863,15 +865,43 @@ function startTrackedEnvironmentProvisionCommand(
   if (hasLiveEnvironmentProvisionInFlight(args.environment.id)) {
     return;
   }
+  const execution = createLiveHostCommandExecution(args.environment.hostId);
   activeEnvironmentProvisionRpcEnvironmentIds.add(args.environment.id);
   void runLiveHostCommand(deps, {
     command: args.request.command,
+    execution,
     hostId: args.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   })
     .catch((error) => {
+      const expectedErrorFields =
+        error instanceof Error
+          ? expectedLiveHostCommandErrorLogFields(error)
+          : null;
+      if (expectedErrorFields !== null) {
+        deps.logger.debug(
+          {
+            commandType: args.request.command.type,
+            environmentId: args.environment.id,
+            ...expectedErrorFields,
+            executionId: execution.id,
+            hostId: args.environment.hostId,
+            initiatorThreadId: args.request.command.initiator?.threadId ?? null,
+            provisioningId:
+              args.request.command.initiator?.provisioningId ?? null,
+          },
+          "Live environment provisioning cancelled",
+        );
+        return;
+      }
       deps.logger.warn(
-        { err: error, environmentId: args.environment.id },
+        {
+          commandType: args.request.command.type,
+          err: error,
+          environmentId: args.environment.id,
+          executionId: execution.id,
+          hostId: args.environment.hostId,
+        },
         "Live environment provision command failed",
       );
     })

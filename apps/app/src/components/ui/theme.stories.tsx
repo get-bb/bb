@@ -5,6 +5,7 @@ import { Button } from "./button";
 import { Input } from "./input";
 import { Pill } from "./pill";
 import { EmptyStatePanel } from "./empty-state";
+import { SIDEBAR_UNREAD_DOT_CLASS } from "../sidebar/sidebarRowClasses";
 
 /**
  * The token audit board — every neutral surface, interactive state, status
@@ -113,6 +114,36 @@ function Swatch({ token, fill }: { token: string; fill: string }) {
   );
 }
 
+/** An inverted emphasis fill shown with its real paired foreground text, so the
+ *  two tiers (strong `foreground`, mid `primary`) read as the attention-grabbing
+ *  surfaces they are — and why the default button (strong) outweighs the primary
+ *  swatch (mid). */
+function EmphasisChip({
+  tier,
+  token,
+  className,
+}: {
+  tier: string;
+  token: string;
+  className: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div
+        className={cn(
+          "flex h-11 w-24 items-center justify-center rounded-md text-xs font-medium",
+          className,
+        )}
+      >
+        {tier}
+      </div>
+      <span className="text-center text-[10px] leading-tight text-muted-foreground">
+        {token}
+      </span>
+    </div>
+  );
+}
+
 /** A small surface label, colored with that surface's own paired foreground
  *  token so the board audits each surface/foreground pairing directly. */
 function SurfaceTag({
@@ -146,7 +177,10 @@ function SurfaceWidget() {
         <div className="rounded bg-state-hover px-2 py-1 text-[10px]">
           Hovered item
         </div>
-        <div className="px-2 py-1 text-[10px] text-muted-foreground">Item</div>
+        <div className="flex items-center justify-between px-2 py-1 text-[10px] text-muted-foreground">
+          <span>Unread item</span>
+          <span className={SIDEBAR_UNREAD_DOT_CLASS} />
+        </div>
         <div className="px-2 py-1 text-[10px] text-muted-foreground">Item</div>
       </div>
       <div className="relative flex-1 bg-background p-3 text-foreground">
@@ -266,7 +300,6 @@ function Primitives() {
       <div className="flex flex-wrap items-center gap-2">
         <Pill variant="outline">outline</Pill>
         <Pill variant="secondary">secondary</Pill>
-        <Pill variant="default">default</Pill>
         <Pill variant="emphasis">emphasis</Pill>
       </div>
       <Input placeholder="Input field" className="h-8 text-xs" />
@@ -325,12 +358,31 @@ export function Overview() {
       </StoryRow>
 
       <StoryRow
+        label="Emphasis fills"
+        hint="The two solid fills used to make something stand out — a dark chip with light text in light mode, flipped in dark. foreground is the strongest (the primary button, the emphasis pill); primary is one step softer (tooltips, count badges, selected controls). The pale fills in the ramp above are the quiet opposite of these."
+      >
+        <DualTheme>
+          <div className="flex flex-wrap gap-2">
+            <EmphasisChip
+              tier="strong"
+              token="foreground"
+              className="bg-foreground text-background"
+            />
+            <EmphasisChip
+              tier="mid"
+              token="primary"
+              className="bg-primary text-primary-foreground"
+            />
+          </div>
+        </DualTheme>
+      </StoryRow>
+
+      <StoryRow
         label="Status & accent"
         hint="The semantic palette — each should stay distinct from the others and from the neutral ramp."
       >
         <DualTheme>
           <div className="flex flex-wrap gap-2">
-            <Swatch token="primary" fill="bg-primary" />
             <Swatch token="destructive" fill="bg-destructive" />
             <Swatch token="warning" fill="bg-warning" />
             <Swatch token="attention" fill="bg-attention" />

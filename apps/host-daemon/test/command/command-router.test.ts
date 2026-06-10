@@ -3,22 +3,31 @@ import type {
   HostDaemonOnlineRpcRequestMessage,
   HostDaemonOnlineRpcResponseMessage,
 } from "@bb/host-daemon-contract";
+import { WorkspaceError } from "@bb/host-workspace";
 import {
   encodeClientTurnRequestIdNumber,
   type ClientTurnRequestId,
   type PromptInput,
 } from "@bb/domain";
-import { describe, expect, it } from "vitest";
-import { CommandRouter } from "../../src/command-router.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  CommandRouter,
+  type CommandRouterOptions,
+} from "../../src/command-router.js";
 import { noopEventSink } from "../../src/command-dispatch-support.js";
 import {
   createHarness,
   unexpectedProjectAttachmentFetch,
 } from "./dispatch-helpers.js";
+import { RuntimeManager } from "../../src/runtime-manager.js";
 
 type EnvironmentDestroyCommand = Extract<
   HostDaemonCommand,
   { type: "environment.destroy" }
+>;
+type EnvironmentProvisionCommand = Extract<
+  HostDaemonCommand,
+  { type: "environment.provision" }
 >;
 type RouterHarness = ReturnType<typeof createHarness>;
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
@@ -37,6 +46,11 @@ interface RunRouterCommandArgs {
   router: CommandRouter;
 }
 
+interface CreateRouterArgs {
+  logger?: CommandRouterOptions["logger"];
+  runtimeManager?: RuntimeManager;
+}
+
 interface ThreadStartProviderResult {
   providerThreadId: string;
 }
@@ -44,9 +58,7 @@ interface ThreadStartProviderResult {
 let nextClientRequestIdValue = 1;
 
 function createDeferred<T>(): Deferred<T> {
-  let resolveDeferred:
-    | ((value: T | PromiseLike<T>) => void)
-    | undefined;
+  let resolveDeferred: ((value: T | PromiseLike<T>) => void) | undefined;
   let rejectDeferred: ((error: Error) => void) | undefined;
   const promise = new Promise<T>((resolve, reject) => {
     resolveDeferred = resolve;
@@ -70,7 +82,10 @@ function createClientRequestId(): ClientTurnRequestId {
   return requestId;
 }
 
-function createRouter(harness: RouterHarness): CommandRouter {
+function createRouter(
+  harness: RouterHarness,
+  args: CreateRouterArgs = {},
+): CommandRouter {
   return new CommandRouter({
     dataDir: "/tmp/bb-router-test-data",
     eventSink: noopEventSink,
@@ -78,8 +93,9 @@ function createRouter(harness: RouterHarness): CommandRouter {
     logger: {
       debug: () => undefined,
       warn: () => undefined,
+      ...args.logger,
     },
-    runtimeManager: harness.manager,
+    runtimeManager: args.runtimeManager ?? harness.manager,
     threadStorageRootPath: "/tmp/bb-router-test-thread-storage",
   });
 }
@@ -159,6 +175,16 @@ function createEnvironmentDestroyCommand(): EnvironmentDestroyCommand {
   };
 }
 
+function createEnvironmentProvisionCommand(): EnvironmentProvisionCommand {
+  return {
+    type: "environment.provision",
+    environmentId: "env-router",
+    initiator: null,
+    workspaceProvisionType: "unmanaged",
+    path: "/tmp/env-router",
+  };
+}
+
 function flushAsyncWork(): Promise<void> {
   return new Promise((resolve) => {
     setImmediate(resolve);
@@ -179,6 +205,37 @@ async function runRouterCommand({
 }
 
 describe("CommandRouter", () => {
+  it("does not warn for expected provision cancellation RPC failures", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/env-router" });
+    const logger = {
+      debug: vi.fn(),
+      warn: vi.fn(),
+    };
+    const runtimeManager = new RuntimeManager({
+      createRuntime: () => harness.runtime,
+      provisionWorkspace: async () => {
+        throw new WorkspaceError(
+          "provision_cancelled",
+          "Workspace provisioning was cancelled",
+        );
+      },
+    });
+    const router = createRouter(harness, { logger, runtimeManager });
+
+    const response = await runRouterCommand({
+      command: createEnvironmentProvisionCommand(),
+      requestId: "provision-cancelled-env-router",
+      router,
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      errorCode: "provision_cancelled",
+      errorMessage: "Workspace provisioning was cancelled",
+    });
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it("orders turn.submit after an in-flight environment destroy", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-router" });
     await harness.manager.ensureEnvironment({

@@ -47,7 +47,10 @@ import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
-import { formatEnvironmentDisplay } from "@bb/core-ui";
+import {
+  formatEnvironmentDisplay,
+  type EnvironmentDisplayHostContext,
+} from "@bb/core-ui";
 import { assertNever } from "@bb/thread-view";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -841,6 +844,13 @@ export function ThreadDetailView() {
   const threadEnvironmentIsLocal = environment
     ? isLocalDaemonHost(environment.hostId)
     : false;
+  const environmentDisplayHostContext =
+    useMemo<EnvironmentDisplayHostContext>(
+      () => ({
+        locality: threadEnvironmentIsLocal ? "local" : "remote",
+      }),
+      [threadEnvironmentIsLocal],
+    );
   const localWorkspaceRootPath = resolveThreadLocalWorkspaceRootPath({
     environment,
     threadEnvironmentIsLocal,
@@ -1122,6 +1132,7 @@ export function ThreadDetailView() {
   const threadEnvironmentDisplay = environment
     ? formatEnvironmentDisplay({
         environment,
+        host: environmentDisplayHostContext,
       })
     : undefined;
   const threadEnvironmentIcon = threadEnvironmentDisplay
@@ -1191,7 +1202,6 @@ export function ThreadDetailView() {
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       activeTerminalCount={activeTerminalCount}
       isTerminalPanelOpen={terminalPanelState.isOpen}
-      isThreadGitActionPending={gitActions.isThreadGitActionPending}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
       onToggleSecondaryPanel={toggleSecondaryPanel}
       onToggleTerminalPanel={toggleTerminalPanel}
@@ -1387,6 +1397,7 @@ export function ThreadDetailView() {
           canAssignToParent,
           canTakeOverThread,
           environment: environment ?? null,
+          environmentDisplayHost: environmentDisplayHostContext,
           workspaceStatus,
           workspaceStatusError: workspaceStatusError ?? null,
           workspaceUnavailable,

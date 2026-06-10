@@ -34,6 +34,7 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { promptDraftToInput } from "@/lib/prompt-draft";
+import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   getThreadRoutePath,
@@ -198,6 +199,8 @@ export function RootComposeView() {
     setRootComposeProjectId(projectId);
   }, [projectId, projects, rootComposeProjectId, setRootComposeProjectId]);
   const createThread = useCreateThread();
+  const [navigateToThreadAfterCreate] =
+    useNavigateToThreadAfterCreatePreference();
   const primaryHostId = usePrimaryHost()?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ projectId, threadId: null });
@@ -240,9 +243,25 @@ export function RootComposeView() {
     () => currentProject?.sources ?? [],
     [currentProject?.sources],
   );
+  // Seed the picker with the project's stored execution defaults so the
+  // visible default matches what the server will use when the user submits
+  // without touching anything. Without this, the picker would show the
+  // system-wide first-provider/default-model (e.g. Codex / GPT-5.5) while
+  // the server falls back to the project's stored provider (e.g. Claude
+  // Code) — see resolveRequestedCreateExecutionValue, which discards
+  // submitted values that the client hasn't claimed in `executionInputSources`.
+  // Values ride along with the sidebar bootstrap so there's no extra
+  // round-trip per visit.
+  const projectDefaultExecutionOptions =
+    currentProject?.defaultExecutionOptions ?? null;
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
     projectId,
+    initialProviderId: projectDefaultExecutionOptions?.providerId,
+    initialModel: projectDefaultExecutionOptions?.model,
+    initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
+    initialReasoningLevel: projectDefaultExecutionOptions?.reasoningLevel,
+    initialPermissionMode: projectDefaultExecutionOptions?.permissionMode,
   });
   const {
     selectedProviderId,
@@ -530,12 +549,14 @@ export function RootComposeView() {
       });
       clearReuseEnvironment();
       promptDraft.clearIfCurrentMatches(submittedDraft);
-      navigate(
-        getThreadRoutePath({
-          projectId: thread.projectId,
-          threadId: thread.id,
-        }),
-      );
+      if (navigateToThreadAfterCreate) {
+        navigate(
+          getThreadRoutePath({
+            projectId: thread.projectId,
+            threadId: thread.id,
+          }),
+        );
+      }
     } catch {
       // Global mutation error handling already surfaced the failure.
     }
@@ -544,6 +565,7 @@ export function RootComposeView() {
     createThread,
     executionInputSources,
     navigate,
+    navigateToThreadAfterCreate,
     permissionMode,
     projectId,
     promptDraft,

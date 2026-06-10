@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { Host, PermissionMode, ProjectSource } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { restoreMatchMedia, setupMatchMedia } from "@/test/helpers/match-media";
+import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
+import { POINTER_COARSE_QUERY } from "@/components/ui/hooks/use-pointer-coarse";
 import {
   NewThreadPromptBoxUI,
   type NewThreadModeConfig,
@@ -132,12 +135,41 @@ function renderNewThreadPrompt(modeConfig: NewThreadModeConfig): void {
   );
 }
 
+function setupCompactViewport() {
+  setupMatchMedia({
+    matchesByQuery: new Map([[COMPACT_VIEWPORT_QUERY, true]]),
+  });
+}
+
+function setupCoarsePointerViewport() {
+  setupMatchMedia({
+    matchesByQuery: new Map([[POINTER_COARSE_QUERY, true]]),
+  });
+}
+
+function waitForAnimationFrame() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
 afterEach(() => {
   cleanup();
+  restoreMatchMedia();
   noop.mockClear();
 });
 
 describe("NewThreadPromptBoxUI", () => {
+  it("autofocuses the prompt editor in fine pointer desktop viewports", async () => {
+    renderNewThreadPrompt(buildThreadModeConfig());
+
+    const textbox = screen.getByRole("textbox");
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(textbox);
+    });
+  });
+
   it("omits file mention copy from the projectless thread placeholder", () => {
     renderNewThreadPrompt(buildThreadModeConfig());
 
@@ -168,5 +200,26 @@ describe("NewThreadPromptBoxUI", () => {
         "size-3.5",
       );
     }
+  });
+
+  it("autofocuses the prompt editor in compact fine pointer viewports", async () => {
+    setupCompactViewport();
+    renderNewThreadPrompt(buildThreadModeConfig());
+
+    const textbox = screen.getByRole("textbox");
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(textbox);
+    });
+  });
+
+  it("does not autofocus the prompt editor on coarse pointer devices", async () => {
+    setupCoarsePointerViewport();
+    renderNewThreadPrompt(buildThreadModeConfig());
+
+    const textbox = screen.getByRole("textbox");
+    await waitForAnimationFrame();
+
+    expect(document.activeElement).not.toBe(textbox);
   });
 });

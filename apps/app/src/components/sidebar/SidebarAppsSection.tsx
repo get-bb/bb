@@ -8,6 +8,7 @@ import {
   COARSE_POINTER_GLYPH_BOX_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
+import { useCloseMobileSidebar } from "@/components/ui/sidebar.js";
 import { useAppRoute } from "@/hooks/useAppRoute";
 import { getStandaloneAppRoutePath } from "@/lib/app-route-paths";
 import { cn } from "@/lib/utils";
@@ -32,12 +33,14 @@ const SidebarAppRow = memo(function SidebarAppRow({
   isActive,
 }: SidebarAppRowProps) {
   const navigate = useNavigate();
+  const closeMobileSidebar = useCloseMobileSidebar();
   // Global apps open on their own thread-independent route, so the row simply
   // navigates there — no thread required, and the active highlight follows the
   // current `/apps/:applicationId` route.
   const openApp = useCallback(() => {
+    closeMobileSidebar();
     navigate(getStandaloneAppRoutePath(app.applicationId));
-  }, [app.applicationId, navigate]);
+  }, [app.applicationId, closeMobileSidebar, navigate]);
 
   return (
     <button

@@ -627,7 +627,7 @@ async function runDueThreadSchedule(
     command: transactionResult.command,
     hostId: preparation.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         {
           err: error,

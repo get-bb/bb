@@ -132,7 +132,7 @@ export function EnvironmentPickerUI({
     }
     const modeLabel = parsed.mode === "worktree" ? "New worktree" : localLabel;
     const compactModeLabel =
-      parsed.mode === "worktree" ? "Worktree" : isLocal ? "Local" : "Host";
+      parsed.mode === "worktree" ? "Worktree" : isLocal ? "Local" : "Remote";
     const icon = getEnvironmentWorkspaceLabelIconName(
       parsed.mode === "worktree" ? "managed-worktree" : "other",
     );

@@ -466,7 +466,7 @@ export async function sendThreadMessage(
       command: command.command,
       hostId: readyEnvironment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-      onError: (error) => {
+      onError: ({ error }) => {
         deps.logger.warn(
           { err: error, threadId: thread.id },
           "Live ready turn command failed",
@@ -529,7 +529,7 @@ export async function sendThreadMessage(
     command,
     hostId: readyEnvironment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: thread.id },
         "Live turn submit command failed",

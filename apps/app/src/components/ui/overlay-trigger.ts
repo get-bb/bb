@@ -5,9 +5,53 @@ const OVERLAY_TRIGGER_CLASS_NAME = "select-none";
 
 type OverlayTriggerClassNameResolver = (className?: string) => string;
 
+const NON_TEXT_INPUT_TYPES = new Set([
+  "button",
+  "checkbox",
+  "file",
+  "hidden",
+  "image",
+  "radio",
+  "range",
+  "reset",
+  "submit",
+]);
+
 export const getOverlayTriggerClassName: OverlayTriggerClassNameResolver = (
   className,
 ) => cn(OVERLAY_TRIGGER_CLASS_NAME, className);
+
+function isKeyboardInputElement(element: Element): element is HTMLElement {
+  if (element instanceof HTMLTextAreaElement) return true;
+  if (element instanceof HTMLInputElement) {
+    return (
+      !element.disabled &&
+      !element.readOnly &&
+      !NON_TEXT_INPUT_TYPES.has(element.type)
+    );
+  }
+  if (!(element instanceof HTMLElement)) return false;
+
+  return (
+    element.isContentEditable ||
+    element.closest("[contenteditable='true']") !== null
+  );
+}
+
+/**
+ * Compact overlays render as drawers instead of Radix-managed floating
+ * content. If a prompt editor is still focused when a trigger opens the
+ * drawer, mobile Safari can restore the soft keyboard during the picker
+ * interaction. Blur only text-editing targets, and only before opening.
+ */
+export function blurActiveKeyboardInputBeforeOverlayOpen(): void {
+  if (typeof document === "undefined") return;
+
+  const activeElement = document.activeElement;
+  if (!activeElement || !isKeyboardInputElement(activeElement)) return;
+
+  activeElement.blur();
+}
 
 /**
  * Blocks the browser from starting a text-selection drag when the user clicks
