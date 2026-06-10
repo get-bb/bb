@@ -5,7 +5,10 @@ import {
   formatBbAppConfigPath,
   formatBbAppEnvPath,
 } from "@bb/config/bb-app-managed-config";
-import { defaultFeatureFlags } from "@bb/domain";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  defaultFeatureFlags,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   applyBbAppManagedConfig,
@@ -51,6 +54,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     appUrl: "https://ambient-app.example.test",
     appVersion: "0.0.0-test",
     builtinSkillsRootPath: "/tmp/bb-test/builtin-skills",
+    claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
     customModels: [],
     dataDir: "/tmp/bb-test",
     featureFlags: defaultFeatureFlags,
@@ -92,6 +96,28 @@ describe("bb-app managed config", () => {
       inferenceModel: "anthropic/claude-sonnet-4-5",
       openAiApiKey: "stored-openai-key",
       transcriptionModel: "openai/gpt-4o-transcribe",
+    });
+  });
+
+  it("applies Claude Code mock CLI traffic config", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {
+        config: {
+          BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC: "true",
+          BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT: "http://localhost:18950",
+        },
+      },
+      managedEnvFile: {},
+      targetConfig,
+    });
+
+    expect(targetConfig.claudeCodeMockCliTraffic).toEqual({
+      enabled: true,
+      endpoint: "http://localhost:18950",
     });
   });
 

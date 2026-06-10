@@ -7,6 +7,7 @@ import type {
   PendingInteractionPayload,
   PendingInteractionResolution,
   PromptInput,
+  ClaudeCodeMockCliTrafficConfig,
   ProviderCapabilities,
   ReasoningLevel,
   RuntimePermissionPolicy,
@@ -105,6 +106,7 @@ export type ProviderExecutionContext = {
   model?: string;
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
+  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   /**
    * Server-owned workflows policy. Filled explicitly at the server boundary
    * and passed through required end-to-end; providers without the concept

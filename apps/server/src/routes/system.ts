@@ -1,6 +1,7 @@
 import { getExperiments, setExperiments } from "@bb/db";
 import { experimentsSchema } from "@bb/domain";
 import {
+  systemClaudeCodeMockCliTrafficUpdateRequestSchema,
   systemExecutionOptionsQuerySchema,
   systemProvidersQuerySchema,
   typedRoutes,
@@ -23,14 +24,17 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
 
-  get("/system/config", (context) =>
-    context.json({
+  function buildSystemConfigResponse() {
+    return {
       experiments: getExperiments(deps.db),
+      claudeCodeMockCliTraffic: deps.config.claudeCodeMockCliTraffic,
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
-    }),
-  );
+    };
+  }
+
+  get("/system/config", (context) => context.json(buildSystemConfigResponse()));
 
   put("/settings/experiments", experimentsSchema, (context, payload) => {
     setExperiments(deps.db, payload);
@@ -49,6 +53,22 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
     }
     return context.json({ ok: true });
   });
+
+  post(
+    "/system/claude-code/mock-cli-traffic",
+    systemClaudeCodeMockCliTrafficUpdateRequestSchema,
+    async (context, payload) => {
+      try {
+        await deps.bbAppManagedConfig.updateClaudeCodeMockCliTraffic({
+          config: payload,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new ApiError(422, "invalid_config", message);
+      }
+      return context.json(buildSystemConfigResponse());
+    },
+  );
 
   get(
     "/system/providers",

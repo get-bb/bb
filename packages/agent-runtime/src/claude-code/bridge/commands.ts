@@ -1,4 +1,5 @@
 import {
+  claudeCodeMockCliTrafficConfigSchema,
   instructionModeValues,
   permissionEscalationValues,
   reasoningLevelValues,
@@ -62,6 +63,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       permissionMode: claudePermissionModeSchema,
       permissionEscalation: bridgePermissionEscalationSchema,
       config: z.record(z.string(), z.unknown()).optional(),
+      claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema,
       model: z.string().optional(),
       reasoningLevel: bridgeReasoningLevelSchema.optional(),
       workflowsEnabled: z.boolean(),
@@ -83,6 +85,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       permissionMode: claudePermissionModeSchema,
       permissionEscalation: bridgePermissionEscalationSchema,
       config: z.record(z.string(), z.unknown()).optional(),
+      claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema,
       model: z.string().optional(),
       reasoningLevel: bridgeReasoningLevelSchema.optional(),
       workflowsEnabled: z.boolean(),

@@ -1,3 +1,4 @@
+import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { decodeClaudeCodeJsonRpcRequest } from "../commands.js";
 
@@ -9,6 +10,7 @@ const baseThreadStartParams = {
   permissionEscalation: "ask",
   instructionMode: "append",
   workflowsEnabled: false,
+  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
 };
 
 describe("decodeClaudeCodeJsonRpcRequest", () => {

@@ -2,7 +2,12 @@ export {
   instructionModeValues,
   callerExecutionInputSourceSchema,
   callerExecutionInputSourceValues,
+  claudeCodeMockCliTrafficConfigSchema,
+  claudeCodeMockCliTrafficEndpointSchema,
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   instructionModeSchema,
+  isClaudeCodeMockCliTrafficEndpoint,
   permissionEscalationSchema,
   permissionEscalationValues,
   permissionModeSchema,
@@ -28,6 +33,7 @@ export {
 } from "./shared-types.js";
 export type {
   CallerExecutionInputSource,
+  ClaudeCodeMockCliTrafficConfig,
   InstructionMode,
   PermissionEscalation,
   PermissionMode,

@@ -8,6 +8,7 @@ import type {
   PromptInput,
   ProjectExecutionDefaults,
   PermissionEscalation,
+  ClaudeCodeMockCliTrafficConfig,
   ResolvedThreadExecutionOptions,
   RuntimeThreadExecutionOptions,
   Thread,
@@ -81,6 +82,7 @@ export interface ThreadStartCommandArgs {
 }
 
 interface PreparedTurnSubmitCommandBuildArgs {
+  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   environmentId: string;
   execution: ResolvedThreadExecutionOptions;
   permissionEscalation: PermissionEscalation;
@@ -112,6 +114,7 @@ export type PreparedTurnSubmitCommandPayload = Omit<
 >;
 
 interface RuntimeExecutionOptionsArgs {
+  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   execution: ResolvedThreadExecutionOptions;
   permissionEscalation: PermissionEscalation;
   providerId: string;
@@ -167,6 +170,7 @@ function toRuntimeExecutionOptions(
     model: args.execution.model,
     serviceTier: args.execution.serviceTier,
     reasoningLevel: args.execution.reasoningLevel,
+    claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
     workflowsEnabled: resolveWorkflowsEnabledPolicy(args.providerId),
   };
   if (args.execution.permissionMode === "full") {
@@ -224,7 +228,10 @@ export async function buildThreadStartCommand(
     providerId: args.providerId,
     requestId: args.requestId,
     input: args.input,
-    options: toRuntimeExecutionOptions(args),
+    options: toRuntimeExecutionOptions({
+      ...args,
+      claudeCodeMockCliTraffic: deps.config.claudeCodeMockCliTraffic,
+    }),
     instructions: runtimeContext.instructions,
     dynamicTools: runtimeContext.dynamicTools,
     injectedSkillSources: runtimeContext.injectedSkillSources,
@@ -243,6 +250,7 @@ function buildPreparedTurnSubmitCommandPayload(
     input: args.input,
     options: toRuntimeExecutionOptions({
       ...args,
+      claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
       providerId: args.runtimeContext.providerId,
     }),
     target: args.target,
@@ -284,6 +292,7 @@ export async function prepareTurnSubmitCommandPayload(
     environment: args.environment,
   });
   return buildPreparedTurnSubmitCommandPayload({
+    claudeCodeMockCliTraffic: deps.config.claudeCodeMockCliTraffic,
     environmentId: args.environment.id,
     execution: args.execution,
     permissionEscalation: args.permissionEscalation,

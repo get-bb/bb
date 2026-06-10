@@ -53,6 +53,10 @@ import {
   buildSessionOptions,
   buildWorkspaceWriteDenialMessage,
 } from "./session-options.js";
+import {
+  startClaudeCodeMockCliTrafficProxy,
+  type ClaudeCodeMockCliTrafficProxy,
+} from "./mock-cli-traffic-proxy.js";
 import { buildReadonlyBashUpdatedInput } from "./readonly-bash-policy.js";
 import {
   buildBridgeMcpServer,
@@ -190,6 +194,7 @@ interface ThreadSession {
   sessionOptions: SdkSessionOptions;
   sessionSerial: number;
   closing: boolean;
+  mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   pendingToolCalls: Map<string | number, PendingToolCall>;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
   permissionEscalation: PermissionEscalation | null;
@@ -213,6 +218,7 @@ interface ClaudeResumeRecoveryState {
 }
 
 interface CreateThreadSessionArgs {
+  mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   providerThreadId?: string;
@@ -231,6 +237,16 @@ interface RecoverStaleResumeArgs {
 interface StartFreshSessionAfterStaleResumeArgs {
   threadId: string;
   threadSession: ThreadSession;
+}
+
+interface PreparedSessionEnv {
+  env: NodeJS.ProcessEnv;
+  mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
+}
+
+interface PrepareSessionEnvParams {
+  claudeCodeMockCliTraffic: ThreadStartParams["claudeCodeMockCliTraffic"];
+  config?: ThreadStartParams["config"];
 }
 
 interface ReplaceThreadSessionArgs {
@@ -276,8 +292,7 @@ interface BuildUserQuestionRequestParamsArgs {
   toolUseId: string;
 }
 
-interface ForwardUserQuestionRequestArgs
-  extends BuildUserQuestionRequestParamsArgs {
+interface ForwardUserQuestionRequestArgs extends BuildUserQuestionRequestParamsArgs {
   signal: AbortSignal;
 }
 
@@ -450,6 +465,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionOptions: args.sessionOptions,
     sessionSerial,
     closing: false,
+    mockCliTrafficProxy: args.mockCliTrafficProxy,
     pendingToolCalls: new Map(),
     pendingInteractiveRequests: new Map(),
     permissionEscalation: args.permissionEscalation,
@@ -517,6 +533,7 @@ function startFreshSessionAfterStaleResume(
     ...(args.threadSession.resumeRecovery?.acceptedInputTexts ?? []),
   ];
   const replacementSession = createThreadSession({
+    mockCliTrafficProxy: args.threadSession.mockCliTrafficProxy,
     permissionEscalation: args.threadSession.permissionEscalation,
     permissionMode: args.threadSession.permissionMode,
     providerThreadId,
@@ -537,6 +554,7 @@ function startFreshSessionAfterStaleResume(
 
 function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
   args.threadSession.closing = true;
+  args.threadSession.mockCliTrafficProxy = null;
   resolvePendingSessionWork(
     args.threadSession,
     "Thread session replaced after stale Claude resume",
@@ -747,11 +765,18 @@ async function closeThreadSession(args: CloseThreadSessionArgs): Promise<void> {
   threadSession.closing = true;
   resolvePendingSessionWork(threadSession, args.message);
   const closePromise = (async () => {
-    if (args.graceful) {
-      await threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS);
-      return;
+    try {
+      if (args.graceful) {
+        await threadSession.session.closeGracefully(
+          THREAD_STOP_CLOSE_TIMEOUT_MS,
+        );
+      } else {
+        threadSession.session.stop();
+      }
+    } finally {
+      await threadSession.mockCliTrafficProxy?.close();
+      threadSession.mockCliTrafficProxy = null;
     }
-    threadSession.session.stop();
   })().finally(() => {
     if (sessions.get(args.threadId) === threadSession) {
       sessions.delete(args.threadId);
@@ -813,6 +838,47 @@ function buildSessionEnv(
   };
   delete sessionEnv.CLAUDE_AGENT_SDK_CLIENT_APP;
   return sessionEnv;
+}
+
+function appendNoProxyLoopback(value: string | undefined): string {
+  const entries = new Set(
+    (value ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0),
+  );
+  entries.add("127.0.0.1");
+  entries.add("localhost");
+  return [...entries].join(",");
+}
+
+async function prepareSessionEnv(
+  params: PrepareSessionEnvParams,
+): Promise<PreparedSessionEnv> {
+  const envOverrides = extractEnvOverrides(params.config);
+  if (!params.claudeCodeMockCliTraffic.enabled) {
+    return {
+      env: buildSessionEnv(envOverrides),
+      mockCliTrafficProxy: null,
+    };
+  }
+
+  const mockCliTrafficProxy = await startClaudeCodeMockCliTrafficProxy({
+    endpoint: params.claudeCodeMockCliTraffic.endpoint,
+  });
+  return {
+    env: buildSessionEnv({
+      ...envOverrides,
+      ANTHROPIC_BASE_URL: mockCliTrafficProxy.baseUrl,
+      NO_PROXY: appendNoProxyLoopback(
+        envOverrides.NO_PROXY ?? process.env.NO_PROXY,
+      ),
+      no_proxy: appendNoProxyLoopback(
+        envOverrides.no_proxy ?? process.env.no_proxy,
+      ),
+    }),
+    mockCliTrafficProxy,
+  };
 }
 
 function parseClaudePermissionUpdates(
@@ -1197,9 +1263,8 @@ async function handleThreadStart(
     });
   }
 
-  const envOverrides = extractEnvOverrides(params.config);
-  const sessionEnv = buildSessionEnv(envOverrides);
-  const sessionOptions = buildSessionOptions(params, sessionEnv);
+  const preparedEnv = await prepareSessionEnv(params);
+  const sessionOptions = buildSessionOptions(params, preparedEnv.env);
   const providerThreadId = randomUUID();
   sessionOptions.sessionId = providerThreadId;
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
@@ -1213,6 +1278,7 @@ async function handleThreadStart(
   }
 
   const threadSession = createThreadSession({
+    mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     providerThreadId,
@@ -1244,10 +1310,9 @@ async function handleThreadResume(
     });
   }
 
-  const envOverrides = extractEnvOverrides(params.config);
-  const sessionEnv = buildSessionEnv(envOverrides);
+  const preparedEnv = await prepareSessionEnv(params);
   const threadIdRef = { current: threadId };
-  const sessionOptions = buildSessionOptions(params, sessionEnv);
+  const sessionOptions = buildSessionOptions(params, preparedEnv.env);
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
   if (params.dynamicTools && params.dynamicTools.length > 0) {
     const mcpServer = buildBridgeMcpServer(
@@ -1258,6 +1323,7 @@ async function handleThreadResume(
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
   }
   const threadSession = createThreadSession({
+    mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     ...(requestedProviderThreadId
@@ -1345,8 +1411,7 @@ function localAttachmentMarker(args: {
   mimeType?: string | undefined;
   sizeBytes?: number | undefined;
 }): string {
-  const namePart =
-    args.name && args.name.length > 0 ? ` "${args.name}"` : "";
+  const namePart = args.name && args.name.length > 0 ? ` "${args.name}"` : "";
   const details: string[] = [];
   if (args.mimeType) details.push(args.mimeType);
   if (args.sizeBytes !== undefined) details.push(`${args.sizeBytes} bytes`);

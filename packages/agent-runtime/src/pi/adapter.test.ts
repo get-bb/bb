@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { threadScope, turnScope } from "@bb/domain";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  threadScope,
+  turnScope,
+} from "@bb/domain";
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import { createPiProviderAdapter } from "./adapter.js";
 import { buildPiAvailableModels } from "./model-list.js";
@@ -19,6 +23,7 @@ function loadFixture(name: string): AgentSessionEvent {
 }
 
 const fullProviderExecutionContext = {
+  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "full",
   permissionEscalation: null,
   workflowsEnabled: false,

@@ -1063,6 +1063,8 @@ export function createClaudeCodeProviderAdapter(
               threadId: command.threadId,
               cwd: command.cwd,
               instructionMode: command.instructionMode,
+              claudeCodeMockCliTraffic:
+                command.options.claudeCodeMockCliTraffic,
               permissionMode: toClaudePermissionMode(permissionPolicy),
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
@@ -1133,6 +1135,8 @@ export function createClaudeCodeProviderAdapter(
               cwd: command.cwd,
               providerThreadId: command.providerThreadId,
               instructionMode: command.instructionMode,
+              claudeCodeMockCliTraffic:
+                command.options.claudeCodeMockCliTraffic,
               permissionMode: toClaudePermissionMode(permissionPolicy),
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams

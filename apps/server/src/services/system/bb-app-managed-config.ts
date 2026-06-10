@@ -1,4 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import {
   bbAppManagedConfigSchema,
   bbAppManagedEnvFileSchema,
@@ -8,6 +10,10 @@ import {
   type BbAppManagedEnvConfig,
   type BbAppManagedEnvFile,
 } from "@bb/config/bb-app-managed-config";
+import {
+  claudeCodeMockCliTrafficConfigSchema,
+  type ClaudeCodeMockCliTrafficConfig,
+} from "@bb/domain";
 import {
   validateInferenceModel,
   validateTranscriptionModel,
@@ -41,14 +47,31 @@ export interface ReloadBbAppManagedConfigArgs {
   notify: boolean;
 }
 
+export interface UpdateClaudeCodeMockCliTrafficConfigArgs {
+  config: ClaudeCodeMockCliTrafficConfig;
+}
+
 export interface BbAppManagedConfigReloader {
   reload(args: ReloadBbAppManagedConfigArgs): Promise<void>;
+  updateClaudeCodeMockCliTraffic(
+    args: UpdateClaudeCodeMockCliTrafficConfigArgs,
+  ): Promise<void>;
 }
 
 interface ApplyManagedProcessEnvArgs {
   baseEnv: NodeJS.ProcessEnv;
   managedEnv: BbAppManagedEnvConfig;
   managedKeys: Set<string>;
+}
+
+interface ResolveClaudeCodeMockCliTrafficConfigArgs {
+  baseConfig: ServerRuntimeConfig;
+  managedConfig: BbAppManagedConfig;
+}
+
+interface WriteBbAppManagedConfigArgs {
+  config: BbAppManagedConfig;
+  configPath: string;
 }
 
 function cloneRuntimeConfig(config: ServerRuntimeConfig): ServerRuntimeConfig {
@@ -93,6 +116,87 @@ function applyManagedProcessEnv(args: ApplyManagedProcessEnvArgs): void {
   }
 }
 
+function parseManagedBooleanConfigValue(name: string, value: string): boolean {
+  const normalizedValue = value.trim().toLowerCase();
+  if (
+    normalizedValue === "true" ||
+    normalizedValue === "1" ||
+    normalizedValue === "yes" ||
+    normalizedValue === "y"
+  ) {
+    return true;
+  }
+  if (
+    normalizedValue === "false" ||
+    normalizedValue === "0" ||
+    normalizedValue === "no" ||
+    normalizedValue === "n"
+  ) {
+    return false;
+  }
+  throw new Error(`${name} must be a boolean`);
+}
+
+function resolveClaudeCodeMockCliTrafficConfig(
+  args: ResolveClaudeCodeMockCliTrafficConfigArgs,
+): ClaudeCodeMockCliTrafficConfig {
+  const managedConfig = args.managedConfig.config ?? {};
+  const enabled =
+    managedConfig.BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC === undefined
+      ? args.baseConfig.claudeCodeMockCliTraffic.enabled
+      : parseManagedBooleanConfigValue(
+          "BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC",
+          managedConfig.BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC,
+        );
+  const endpoint =
+    managedConfig.BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT ??
+    args.baseConfig.claudeCodeMockCliTraffic.endpoint;
+
+  return claudeCodeMockCliTrafficConfigSchema.parse({
+    enabled,
+    endpoint,
+  });
+}
+
+function pruneBbAppManagedConfig(
+  config: BbAppManagedConfig,
+): BbAppManagedConfig {
+  const nextConfig: BbAppManagedConfig = {
+    ...config,
+  };
+  if (nextConfig.config !== undefined) {
+    const configValues = nextConfig.config;
+    if (Object.keys(configValues).length === 0) {
+      delete nextConfig.config;
+    }
+  }
+  return nextConfig;
+}
+
+async function writeBbAppManagedConfig(
+  args: WriteBbAppManagedConfigArgs,
+): Promise<void> {
+  const config = bbAppManagedConfigSchema.parse(
+    pruneBbAppManagedConfig(args.config),
+  );
+  const configDir = dirname(args.configPath);
+  await mkdir(configDir, { recursive: true });
+  const tempPath = join(
+    configDir,
+    `.config.json.${process.pid}.${randomUUID()}.tmp`,
+  );
+  try {
+    await writeFile(tempPath, `${JSON.stringify(config, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await rename(tempPath, args.configPath);
+  } catch (error) {
+    await unlink(tempPath).catch(() => undefined);
+    throw error;
+  }
+}
+
 export function applyBbAppManagedConfig(
   args: ApplyBbAppManagedConfigArgs,
 ): void {
@@ -110,6 +214,11 @@ export function applyBbAppManagedConfig(
     managedConfig.BB_TRANSCRIPTION !== undefined
       ? validateTranscriptionModel(managedConfig.BB_TRANSCRIPTION)
       : args.baseConfig.transcriptionModel;
+  args.targetConfig.claudeCodeMockCliTraffic =
+    resolveClaudeCodeMockCliTrafficConfig({
+      baseConfig: args.baseConfig,
+      managedConfig: args.managedConfig,
+    });
   args.targetConfig.openAiApiKey =
     managedEnv.OPENAI_API_KEY ?? args.baseConfig.openAiApiKey;
 
@@ -193,5 +302,21 @@ export async function createBbAppManagedConfigReloader(
 
   return {
     reload,
+    async updateClaudeCodeMockCliTraffic(updateArgs) {
+      const managedConfig = await readBbAppManagedConfig({ configPath });
+      await writeBbAppManagedConfig({
+        config: {
+          ...managedConfig,
+          config: {
+            ...managedConfig.config,
+            BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC: String(updateArgs.config.enabled),
+            BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT:
+              updateArgs.config.endpoint,
+          },
+        },
+        configPath,
+      });
+      await reload({ notify: true });
+    },
   };
 }

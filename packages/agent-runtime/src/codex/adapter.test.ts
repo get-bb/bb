@@ -10,7 +10,10 @@ import { promptTextInput } from "../test/prompt-input.js";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { turnScope } from "@bb/domain";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  turnScope,
+} from "@bb/domain";
 
 import { createCodexProviderAdapter } from "./adapter.js";
 import type { CodexEvent } from "./adapter.js";
@@ -39,12 +42,14 @@ function codexEvent<M extends CodexEvent["method"]>(
 }
 
 const fullProviderExecutionContext = {
+  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "full",
   permissionEscalation: null,
   workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
 
 const workspaceWriteAskProviderExecutionContext = {
+  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "workspace-write",
   permissionEscalation: "ask",
   workflowsEnabled: false,
@@ -332,9 +337,7 @@ describe("codex provider adapter", () => {
           item: {
             type: "userMessage",
             id: "provider-user-2",
-            content: [
-              { type: "text", text: "steer turn", text_elements: [] },
-            ],
+            content: [{ type: "text", text: "steer turn", text_elements: [] }],
           },
         }),
       ),
@@ -1415,6 +1418,7 @@ describe("codex provider adapter", () => {
       input: [promptTextInput({ text: "hello" })],
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "workspace-write",
         permissionEscalation: "deny",
@@ -1439,6 +1443,7 @@ describe("codex provider adapter", () => {
       input: [promptTextInput({ text: "hello" })],
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionEscalation: null,
@@ -1823,6 +1828,7 @@ describe("codex provider adapter", () => {
       providerThreadId: "codex-1",
       input: [promptTextInput({ text: "inspect it" })],
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "ask",
@@ -1849,6 +1855,7 @@ describe("codex provider adapter", () => {
       providerThreadId: "codex-1",
       input: [promptTextInput({ text: "inspect it" })],
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "deny",

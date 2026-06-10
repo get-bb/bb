@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { threadScope, turnScope } from "@bb/domain";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  threadScope,
+  turnScope,
+} from "@bb/domain";
 import type {
   PendingInteractionResolution,
   UserQuestionPendingInteractionPayload,
@@ -37,12 +41,14 @@ function loadFixture(name: string): Record<string, unknown> {
 }
 
 const fullProviderExecutionContext = {
+  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "full",
   permissionEscalation: null,
   workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
 
 const workspaceWriteProviderExecutionContext = {
+  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "workspace-write",
   permissionEscalation: "deny",
   workflowsEnabled: false,
@@ -453,6 +459,7 @@ describe("claude-code provider adapter", () => {
       input: [promptTextInput({ text: "hello" })],
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "ask",
@@ -482,6 +489,7 @@ describe("claude-code provider adapter", () => {
       input: [promptTextInput({ text: "hello" })],
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionEscalation: "ask",
         model: "claude-opus-4-7",
@@ -578,6 +586,7 @@ describe("claude-code provider adapter", () => {
       input: [promptTextInput({ text: "hello" })],
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "deny",
@@ -598,6 +607,7 @@ describe("claude-code provider adapter", () => {
       input: [promptTextInput({ text: "hello" })],
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionEscalation: null,
@@ -643,6 +653,7 @@ describe("claude-code provider adapter", () => {
       providerThreadId: "claude-session-1",
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionEscalation: "deny",
         permissionMode: "readonly",
@@ -708,6 +719,7 @@ describe("claude-code provider adapter", () => {
       providerThreadId: "claude-session-readonly",
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "ask",
