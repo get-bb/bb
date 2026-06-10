@@ -28,6 +28,12 @@ import {
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import {
+  FAVICON_COLOR_VALUES,
+  getFaviconGlyphHref,
+  useFaviconColorPreference,
+  type FaviconColorPreference,
+} from "@/lib/favicon-color-preference";
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { cn } from "@/lib/utils";
@@ -44,6 +50,11 @@ import { getWorkspaceOpenTargetFallbackLabel } from "@/components/workspace-open
 interface ThemePreferenceOption {
   label: string;
   value: ThemePreference;
+}
+
+interface FaviconColorOption {
+  label: string;
+  value: FaviconColorPreference;
 }
 
 interface LocalOpenTargetPreferenceDefinition {
@@ -79,9 +90,16 @@ export interface RootComposeBehaviorSettingsControlProps {
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
 }
 
+export interface FaviconColorSettingsControlProps {
+  faviconColor: FaviconColorPreference;
+  onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
+}
+
 export interface GeneralSettingsSectionProps {
   desktopBrowserAvailable: boolean;
+  faviconColor: FaviconColorPreference;
   navigateToThreadAfterCreate: boolean;
+  onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
   onThemePreferenceChange: (themePreference: ThemePreference) => void;
@@ -100,6 +118,97 @@ const THEME_PREFERENCE_LABELS: Record<ThemePreference, string> = {
   light: "Light",
   system: "System",
 };
+
+const FAVICON_COLOR_OPTIONS: ReadonlyArray<FaviconColorOption> = [
+  { label: "Default", value: "default" },
+  { label: "Red", value: "red" },
+  { label: "Orange", value: "orange" },
+  { label: "Yellow", value: "yellow" },
+  { label: "Green", value: "green" },
+  { label: "Teal", value: "teal" },
+  { label: "Blue", value: "blue" },
+  { label: "Purple", value: "purple" },
+  { label: "Pink", value: "pink" },
+];
+
+const FAVICON_COLOR_LABELS: Record<FaviconColorPreference, string> = {
+  blue: "Blue",
+  default: "Default",
+  green: "Green",
+  orange: "Orange",
+  pink: "Pink",
+  purple: "Purple",
+  red: "Red",
+  teal: "Teal",
+  yellow: "Yellow",
+};
+
+// Renders the favicon glyph itself in the candidate color by using the
+// favicon image as a CSS mask, so the preview matches the resulting tab icon.
+function FaviconColorPreview({ value }: { value: FaviconColorPreference }) {
+  return (
+    <span
+      aria-hidden
+      className={cn("size-4 shrink-0", value === "default" && "bg-foreground")}
+      style={{
+        mask: `url("${getFaviconGlyphHref()}") center / contain no-repeat`,
+        ...(value === "default"
+          ? undefined
+          : { backgroundColor: FAVICON_COLOR_VALUES[value] }),
+      }}
+    />
+  );
+}
+
+export function FaviconColorSettingsControl({
+  faviconColor,
+  onFaviconColorChange,
+}: FaviconColorSettingsControlProps) {
+  return (
+    <SettingsWithControl
+      label="Favicon color"
+      description="Tint the browser tab icon to tell instances apart."
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-between border-border/60 bg-card sm:w-48"
+            aria-label="Favicon color"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <FaviconColorPreview value={faviconColor} />
+              <span className="min-w-0 truncate">
+                {FAVICON_COLOR_LABELS[faviconColor]}
+              </span>
+            </span>
+            <Icon name="ChevronDown" className="size-3.5 text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {FAVICON_COLOR_OPTIONS.map((option) => (
+            <DropdownMenuItem
+              key={option.value}
+              onSelect={() => onFaviconColorChange(option.value)}
+            >
+              <FaviconColorPreview value={option.value} />
+              {option.label}
+              <Icon
+                name="Check"
+                className={cn(
+                  "ml-auto",
+                  faviconColor !== option.value && "opacity-0",
+                  COARSE_POINTER_ICON_SIZE_CLASS,
+                )}
+              />
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SettingsWithControl>
+  );
+}
 
 const DIRECTORY_TARGET_PREFERENCE: LocalOpenTargetPreferenceDefinition = {
   capability: "openDirectory",
@@ -284,7 +393,9 @@ export function InAppBrowserLinkSettingsControl({
 
 export function GeneralSettingsSection({
   desktopBrowserAvailable,
+  faviconColor,
   navigateToThreadAfterCreate,
+  onFaviconColorChange,
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
   onThemePreferenceChange,
@@ -331,6 +442,11 @@ export function GeneralSettingsSection({
           </DropdownMenu>
         </SettingsWithControl>
 
+        <FaviconColorSettingsControl
+          faviconColor={faviconColor}
+          onFaviconColorChange={onFaviconColorChange}
+        />
+
         <RootComposeBehaviorSettingsControl
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           onNavigateToThreadAfterCreateChange={
@@ -351,6 +467,7 @@ export function GeneralSettingsSection({
 
 export function AppSettingsView() {
   const themePreference = useThemePreference();
+  const [faviconColor, setFaviconColor] = useFaviconColorPreference();
   const { hasDaemon } = useHostDaemon();
   const { workspaceOpenTargets } = useWorkspaceOpenTargets({
     enabled: hasDaemon,
@@ -371,9 +488,11 @@ export function AppSettingsView() {
       <div className="mx-auto w-full max-w-3xl space-y-6">
         <GeneralSettingsSection
           desktopBrowserAvailable={desktopBrowserAvailable}
+          faviconColor={faviconColor}
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           openLinksInAppBrowser={openLinksInAppBrowser}
           themePreference={themePreference}
+          onFaviconColorChange={setFaviconColor}
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onThemePreferenceChange={setPreferredTheme}

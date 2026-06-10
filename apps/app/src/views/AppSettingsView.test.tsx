@@ -45,9 +45,11 @@ describe("GeneralSettingsSection", () => {
     render(
       <GeneralSettingsSection
         desktopBrowserAvailable
+        faviconColor="default"
         navigateToThreadAfterCreate={false}
         openLinksInAppBrowser
         themePreference="system"
+        onFaviconColorChange={vi.fn()}
         onNavigateToThreadAfterCreateChange={vi.fn()}
         onOpenLinksInAppBrowserChange={vi.fn()}
         onThemePreferenceChange={vi.fn()}
@@ -56,6 +58,9 @@ describe("GeneralSettingsSection", () => {
 
     expect(screen.getByRole("heading", { name: "General" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Theme" })).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Favicon color" }),
+    ).not.toBeNull();
     expect(
       screen.getByRole("switch", {
         name: "Navigate to threads on creation",

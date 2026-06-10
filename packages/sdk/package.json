@@ -46,7 +46,6 @@
   "scripts": {
     "build": "node ../../scripts/build-package.mjs",
     "check:app-globals-dts": "node ./scripts/generate-app-globals-dts.mjs --check",
-    "check:app-runtime-browser-bundle": "node ./scripts/generate-app-runtime-browser-bundle.mjs --check",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "generate:app-globals-dts": "node ./scripts/generate-app-globals-dts.mjs",
     "generate:app-runtime-browser-bundle": "node ./scripts/generate-app-runtime-browser-bundle.mjs",

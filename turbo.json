@@ -93,8 +93,34 @@
       ],
       "outputs": ["dist/**"]
     },
-    "@bb/sdk#build": {
+    "@bb/sdk#generate:app-runtime-browser-bundle": {
       "dependsOn": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/*/package.json",
+        "$TURBO_ROOT$/apps/*/scripts/**",
+        "$TURBO_ROOT$/apps/*/src/**",
+        "$TURBO_ROOT$/apps/*/tsconfig.json",
+        "$TURBO_ROOT$/apps/*/vite.config.ts",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/*/package.json",
+        "$TURBO_ROOT$/packages/*/scripts/**",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/*/tsconfig.json",
+        "$TURBO_ROOT$/packages/db/drizzle/**",
+        "$TURBO_ROOT$/packages/templates/scripts/**",
+        "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/scripts/*.mjs",
+        "$TURBO_ROOT$/turbo.json",
+        "!src/app-runtime-browser-bundle.generated.ts",
+        "!$TURBO_ROOT$/packages/sdk/src/app-runtime-browser-bundle.generated.ts"
+      ],
+      "outputs": ["src/app-runtime-browser-bundle.generated.ts"]
+    },
+    "@bb/sdk#build": {
+      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/*/package.json",
@@ -118,7 +144,7 @@
       "outputs": ["dist/**"]
     },
     "@bb/sdk#test": {
-      "dependsOn": [],
+      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/*/package.json",
@@ -141,7 +167,7 @@
       ]
     },
     "@bb/server#build": {
-      "dependsOn": [],
+      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/*/package.json",
@@ -253,7 +279,7 @@
       "passThroughEnv": ["*"]
     },
     "@bb/server#dev": {
-      "dependsOn": [],
+      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
       "cache": false,
       "persistent": true,
       "passThroughEnv": ["*"]
@@ -278,7 +304,7 @@
       "dependsOn": []
     },
     "@bb/integration-tests#typecheck": {
-      "dependsOn": [],
+      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/server/package.json",
@@ -298,7 +324,7 @@
       "outputs": []
     },
     "@bb/integration-tests#test": {
-      "dependsOn": [],
+      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/server/package.json",
@@ -313,7 +339,7 @@
       "dependsOn": []
     },
     "@bb/integration-tests#test:smoke": {
-      "dependsOn": [],
+      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/server/package.json",
@@ -328,7 +354,10 @@
       "dependsOn": []
     },
     "@bb/integration-tests#test:integration": {
-      "dependsOn": ["@bb/agent-runtime#test:integration"],
+      "dependsOn": [
+        "@bb/agent-runtime#test:integration",
+        "@bb/sdk#generate:app-runtime-browser-bundle"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/server/package.json",
@@ -338,6 +367,15 @@
         "$TURBO_ROOT$/packages/templates/scripts/**",
         "$TURBO_ROOT$/packages/templates/src/**"
       ]
+    },
+    "@bb/sdk#typecheck": {
+      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"]
+    },
+    "@bb/server#typecheck": {
+      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"]
+    },
+    "@bb/server#test": {
+      "dependsOn": ["@bb/sdk#generate:app-runtime-browser-bundle"]
     }
   }
 }
