@@ -127,8 +127,12 @@ describe("public thread command typeahead route", () => {
 
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
-      // query "re": names review/refactor match; deploy does not.
-      // prefix-matches (review, refactor both start with "re") then alpha.
+      // query "re": names review/refactor match; deploy does not. Section rank
+      // is primary (skills before legacy commands), then within a section the
+      // prefix-then-alphabetical order: skills `refactor` < `review`, then the
+      // `command`-source `review`. The (skill review) collision keeps the
+      // project-origin entry over the user-origin one, while the cross-source
+      // (command review) is retained as a distinct invocation.
       expect(body.commands).toEqual([
         {
           name: "refactor",
@@ -139,17 +143,17 @@ describe("public thread command typeahead route", () => {
         },
         {
           name: "review",
-          source: "command",
-          origin: "project",
-          description: "Legacy review command",
-          argumentHint: null,
-        },
-        {
-          name: "review",
           source: "skill",
           origin: "project",
           description: "Project review skill",
           argumentHint: "<path>",
+        },
+        {
+          name: "review",
+          source: "command",
+          origin: "project",
+          description: "Legacy review command",
+          argumentHint: null,
         },
       ]);
       expect(body.truncated).toBe(false);

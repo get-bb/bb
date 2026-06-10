@@ -2249,6 +2249,48 @@ export const providerCommandSchema = z.object({
 });
 export type ProviderCommand = z.infer<typeof providerCommandSchema>;
 
+/**
+ * The command typeahead menu's visual sections, top-to-bottom: skills first,
+ * then Claude Code's legacy project commands, then user commands. This single
+ * ordered list is the one source of truth for both the server's flat sort
+ * (which buckets the response in this order) and the composer menu's section
+ * grouping, so keyboard navigation (which walks the flat order) can never
+ * disagree with what the user sees.
+ */
+export const PROVIDER_COMMAND_SECTIONS = [
+  "skill",
+  "project-command",
+  "user-command",
+] as const;
+export type ProviderCommandSection = (typeof PROVIDER_COMMAND_SECTIONS)[number];
+
+/**
+ * Derive the menu section a command belongs to from its source + origin:
+ * `skill` source → the skills section; otherwise the legacy `command` source
+ * splits by origin into the project- and user-command sections.
+ */
+export function providerCommandSection(cmd: {
+  source: ProviderCommandSource;
+  origin: ProviderCommandOrigin;
+}): ProviderCommandSection {
+  if (cmd.source === "skill") {
+    return "skill";
+  }
+  return cmd.origin === "project" ? "project-command" : "user-command";
+}
+
+/**
+ * Section rank used as the primary sort key for the command-list response, so
+ * the flat order is grouped in {@link PROVIDER_COMMAND_SECTIONS} order. Lower
+ * ranks sort first.
+ */
+export function providerCommandSectionRank(cmd: {
+  source: ProviderCommandSource;
+  origin: ProviderCommandOrigin;
+}): number {
+  return PROVIDER_COMMAND_SECTIONS.indexOf(providerCommandSection(cmd));
+}
+
 export const commandListResponseSchema = z.object({
   commands: z.array(providerCommandSchema),
   truncated: z.boolean(),

@@ -1496,6 +1496,95 @@ describe("PromptBoxInternal command typeahead", () => {
     expect(screen.queryByText("Failed to load commands")).toBeNull();
   });
 
+  it("keeps keyboard nav aligned with the visual section order across sections", async () => {
+    // The server returns commands already grouped in the menu's visual section
+    // order (skills → project commands → user commands). The composer walks this
+    // flat order for keyboard nav while the menu re-buckets it into the same
+    // sections, so highlight/Arrow/Enter must track the rendered rows top to
+    // bottom. This spans all three sections.
+    //
+    // This catches the flat-vs-section bug: before the server sorted by section
+    // rank it returned a name-alphabetical order (`a-user`, `m-skill`,
+    // `z-project`) that the menu re-bucketed to `m-skill`, `z-project`,
+    // `a-user`. Flat index 0 (`a-user`) is then rendered LAST, so selectedIndex
+    // 0 would highlight the bottom row instead of the top, and Enter would apply
+    // `a-user` while `m-skill` looked selected. With the section-first sort the
+    // flat order equals the rendered order and the assertions below hold.
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "/x", attachments: [] }}
+        historyEntries={[]}
+        command={makeCommandConfig({
+          trigger: "/",
+          suggestions: [
+            makeCommandSuggestion({
+              name: "m-skill",
+              source: "skill",
+              origin: "project",
+            }),
+            makeCommandSuggestion({
+              name: "z-project",
+              source: "command",
+              origin: "project",
+            }),
+            makeCommandSuggestion({
+              name: "a-user",
+              source: "command",
+              origin: "user",
+            }),
+          ],
+        })}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    fireEvent.click(editor);
+
+    await screen.findByText("Skills");
+    expect(screen.getByText("Project commands")).toBeTruthy();
+    expect(screen.getByText("User commands")).toBeTruthy();
+
+    // Visual (DOM) order matches the section order, top to bottom.
+    const commandRows = screen
+      .getAllByRole("button")
+      .filter((button) =>
+        ["m-skill", "z-project", "a-user"].includes(
+          button.textContent?.trim() ?? "",
+        ),
+      );
+    expect(commandRows.map((row) => row.textContent?.trim())).toEqual([
+      "m-skill",
+      "z-project",
+      "a-user",
+    ]);
+
+    const isHighlighted = (row: HTMLElement): boolean =>
+      row.classList.contains("bg-state-active");
+
+    // selectedIndex starts at 0 → the FIRST visual row is highlighted.
+    await waitFor(() => {
+      expect(isHighlighted(commandRows[0]!)).toBe(true);
+    });
+    expect(isHighlighted(commandRows[1]!)).toBe(false);
+    expect(isHighlighted(commandRows[2]!)).toBe(false);
+
+    // ArrowDown walks the rows top-to-bottom in visual order.
+    fireEvent.keyDown(editor, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(isHighlighted(commandRows[1]!)).toBe(true);
+    });
+    expect(isHighlighted(commandRows[0]!)).toBe(false);
+    expect(isHighlighted(commandRows[2]!)).toBe(false);
+
+    // Enter applies the visually-highlighted command (the second row).
+    fireEvent.keyDown(editor, { key: "Enter" });
+    await waitForAnimationFrame();
+    await waitFor(() => {
+      expect(getDraftText()).toBe("/z-project ");
+    });
+  });
+
   it("still inserts a mention pill while a command trigger is configured", async () => {
     render(
       <PromptBoxHarness

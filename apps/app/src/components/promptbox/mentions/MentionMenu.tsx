@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import {
+  PROVIDER_COMMAND_SECTIONS,
+  providerCommandSection,
+  type ProviderCommandSection,
+} from "@bb/server-contract";
 import { directoryFromPath } from "@bb/thread-view";
 import { promptMentionResourceFromSuggestion } from "@/components/promptbox/editor/prompt-editor-serialization";
 import { promptMentionIconName } from "@/components/promptbox/mentions/prompt-mention-display";
@@ -133,30 +138,15 @@ function getMentionKey(item: PromptMentionSuggestion, index: number): string {
   return `${item.kind}-${item.path}-${index}`;
 }
 
-// Command sections group by source/origin per §6: skills first, then Claude's
-// legacy project/user commands.
-type CommandSectionKind = "skills" | "project-commands" | "user-commands";
-
-const COMMAND_SECTION_ORDER: readonly CommandSectionKind[] = [
-  "skills",
-  "project-commands",
-  "user-commands",
-];
-
-function getCommandSectionKind(
-  item: ProviderCommandSuggestion,
-): CommandSectionKind {
-  if (item.source === "skill") {
-    return "skills";
-  }
-  return item.origin === "project" ? "project-commands" : "user-commands";
-}
-
-function getCommandSectionLabel(kind: CommandSectionKind): string {
-  if (kind === "skills") {
+// Command sections derive from the shared `PROVIDER_COMMAND_SECTIONS` order and
+// `providerCommandSection` mapping in @bb/server-contract — the SAME definition
+// the server sorts the flat response by — so the menu's visual order and the
+// keyboard-nav order can't drift. The menu only adds the human-readable labels.
+function getCommandSectionLabel(kind: ProviderCommandSection): string {
+  if (kind === "skill") {
     return "Skills";
   }
-  return kind === "project-commands" ? "Project commands" : "User commands";
+  return kind === "project-command" ? "Project commands" : "User commands";
 }
 
 function getCommandIconName(item: ProviderCommandSuggestion): IconName {
@@ -344,8 +334,8 @@ function CommandResults({
     () =>
       groupSections({
         suggestions,
-        order: COMMAND_SECTION_ORDER,
-        sectionKind: getCommandSectionKind,
+        order: PROVIDER_COMMAND_SECTIONS,
+        sectionKind: providerCommandSection,
         sectionLabel: getCommandSectionLabel,
       }),
     [suggestions],
