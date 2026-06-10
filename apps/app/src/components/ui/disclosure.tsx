@@ -32,7 +32,7 @@ function Chevron({ className }: ChevronProps) {
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="0.75"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={cn("lucide lucide-chevron-right", className)}
@@ -94,12 +94,16 @@ export function CollapsibleHeader({
       <span className={summaryClass}>{summaryContent}</span>
       <Chevron
         className={cn(
-          "pointer-events-none size-4 shrink-0 origin-center transition-[opacity,rotate] duration-200 ease-out",
+          "pointer-events-none size-3 shrink-0 origin-center text-subtle-foreground/60 transition-[opacity,rotate] duration-200 ease-out",
           isExpanded
             ? "rotate-90"
             : forceChevronVisible
               ? "opacity-100"
-              : "opacity-0 group-hover/timeline-row:opacity-100 group-focus-within/timeline-row:opacity-100 group-hover/toggle:opacity-100 group-focus-visible/toggle:opacity-100 max-md:pointer-coarse:opacity-100",
+              : // Furled carets reveal only on hover/focus of their own row header
+                // (the toggle button), not the wrapping timeline-row group —
+                // so hovering a row's body or a nested child doesn't surface a
+                // sibling/parent caret.
+                "opacity-0 group-hover/toggle:opacity-100 group-focus-visible/toggle:opacity-100 max-md:pointer-coarse:opacity-100",
         )}
       />
     </button>
@@ -269,13 +273,10 @@ export function ExpandablePanel({
       return;
     }
     setIsClosing(true);
-    const timeout = setTimeout(
-      () => {
-        renderedBodyRef.current = null;
-        setIsClosing(false);
-      },
-      EXPANDABLE_PANEL_TRANSITION_MS,
-    );
+    const timeout = setTimeout(() => {
+      renderedBodyRef.current = null;
+      setIsClosing(false);
+    }, EXPANDABLE_PANEL_TRANSITION_MS);
     return () => clearTimeout(timeout);
   }, [hasCollapsedContent, isExpanded]);
   const renderedBody = isExpanded

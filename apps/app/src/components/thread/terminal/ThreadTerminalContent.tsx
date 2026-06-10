@@ -56,7 +56,7 @@ export function ThreadTerminalContent({
 }: ThreadTerminalContentProps) {
   if (controller.hasTerminalQueryError) {
     return (
-      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-destructive">
+      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-destructive-text">
         Failed to load terminals.
       </div>
     );

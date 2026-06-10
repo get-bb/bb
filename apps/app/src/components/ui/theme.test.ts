@@ -57,6 +57,82 @@ const REQUIRED_RAMP_TOKENS = [
 
 const MODES = ["light", "dark"] as const;
 
+interface OklchColor {
+  lightness: number;
+  chroma: number;
+  hueDegrees: number;
+}
+
+interface LinearRgb {
+  blue: number;
+  green: number;
+  red: number;
+}
+
+function variableValue(block: string, token: string): string {
+  const re = new RegExp(`--${token}:\\s*([^;]+);`);
+  const match = block.match(re);
+  const value = match?.[1];
+  if (value === undefined) {
+    throw new Error(`--${token} not defined`);
+  }
+  return value.trim();
+}
+
+function parseOklch(value: string): OklchColor {
+  const match = value.match(
+    /^oklch\(([\d.]+)\s+([\d.]+)\s+([\d.]+)\)$/,
+  );
+  const lightness = match?.[1];
+  const chroma = match?.[2];
+  const hueDegrees = match?.[3];
+  if (
+    lightness === undefined ||
+    chroma === undefined ||
+    hueDegrees === undefined
+  ) {
+    throw new Error(`expected oklch() value, got ${value}`);
+  }
+  return {
+    lightness: Number(lightness),
+    chroma: Number(chroma),
+    hueDegrees: Number(hueDegrees),
+  };
+}
+
+function oklchToLinearRgb(color: OklchColor): LinearRgb {
+  const hueRadians = (color.hueDegrees * Math.PI) / 180;
+  const a = color.chroma * Math.cos(hueRadians);
+  const b = color.chroma * Math.sin(hueRadians);
+
+  const l = color.lightness + 0.3963377774 * a + 0.2158037573 * b;
+  const m = color.lightness - 0.1055613458 * a - 0.0638541728 * b;
+  const s = color.lightness - 0.0894841775 * a - 1.291485548 * b;
+
+  const l3 = l * l * l;
+  const m3 = m * m * m;
+  const s3 = s * s * s;
+
+  return {
+    red: 4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3,
+    green: -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3,
+    blue: -0.0041960863 * l3 - 0.7034186147 * m3 + 1.707614701 * s3,
+  };
+}
+
+function relativeLuminance(color: OklchColor): number {
+  const rgb = oklchToLinearRgb(color);
+  return 0.2126 * rgb.red + 0.7152 * rgb.green + 0.0722 * rgb.blue;
+}
+
+function contrastRatio(foreground: OklchColor, background: OklchColor): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 describe("theme.css neutral ramp", () => {
   for (const mode of MODES) {
     describe(mode, () => {
@@ -121,4 +197,37 @@ describe("theme.css neutral ramp", () => {
     const dark = [...rampSteps(modeBlock("dark")).keys()].sort();
     expect(light).toEqual(dark);
   });
+});
+
+describe("theme.css Cadence text tokens", () => {
+  it("registers Cadence color and type utilities with Tailwind", () => {
+    expect(css).toMatch(
+      /--color-readback-foreground:\s*var\(--readback-foreground\);/,
+    );
+    expect(css).toMatch(
+      /--color-destructive-text:\s*var\(--destructive-text\);/,
+    );
+    expect(css).toMatch(/--text-2xs:\s*0\.625rem;/);
+    expect(css).toMatch(/--text-2xs--line-height:\s*0\.875rem;/);
+  });
+
+  for (const mode of MODES) {
+    it(`keeps ${mode} Cadence text tokens above the AA text floor`, () => {
+      const block = modeBlock(mode);
+      const canvas = parseOklch(variableValue(block, "canvas"));
+      const readbackForeground = parseOklch(
+        variableValue(block, "readback-foreground"),
+      );
+      const destructiveText = parseOklch(
+        variableValue(block, "destructive-text"),
+      );
+
+      expect(contrastRatio(readbackForeground, canvas)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(contrastRatio(destructiveText, canvas)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+    });
+  }
 });

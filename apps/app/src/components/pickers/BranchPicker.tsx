@@ -695,6 +695,8 @@ export interface BranchPickerProps {
   modal?: boolean;
   /** Popover alignment relative to the trigger. Use "end" when the picker is pinned to the right edge of its container. */
   popoverAlign?: "start" | "end";
+  /** Hide the trailing chevron on the trigger (e.g. when the trigger is styled as a plain bordered value chip). Defaults to true. */
+  showTriggerChevron?: boolean;
 }
 
 export function BranchPicker({
@@ -729,6 +731,7 @@ export function BranchPicker({
   defaultOpen = false,
   modal = true,
   popoverAlign = "start",
+  showTriggerChevron = true,
 }: BranchPickerProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
@@ -1017,15 +1020,17 @@ export function BranchPicker({
               />
             </span>
           )}
-          <Icon
-            name="ChevronDown"
-            className={cn(
-              "shrink-0 text-muted-foreground",
-              variant === "default" && "size-4",
-              variant === "minimal" && "size-3",
-              variant === "option" && COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
-            )}
-          />
+          {showTriggerChevron ? (
+            <Icon
+              name="ChevronDown"
+              className={cn(
+                "shrink-0 text-muted-foreground",
+                variant === "default" && "size-4",
+                variant === "minimal" && "size-3",
+                variant === "option" && COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+              )}
+            />
+          ) : null}
         </Button>
       </PopoverTrigger>
       <PopoverContent

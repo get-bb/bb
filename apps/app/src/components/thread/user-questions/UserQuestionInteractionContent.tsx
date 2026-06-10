@@ -420,7 +420,7 @@ export function UserQuestionAnswerForm({
         </div>
       </div>
       {mutationErrorMessage ? (
-        <div className="mt-2 rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive">
+        <div className="mt-2 rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">
           {mutationErrorMessage}
         </div>
       ) : null}

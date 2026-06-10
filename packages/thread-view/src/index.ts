@@ -42,6 +42,7 @@ export type {
   TimelineTitleDecoration,
   TimelineTitleLink,
   TimelineTitleSegment,
+  TimelineTitleSegmentAccent,
   TimelineTitleTone,
 } from "./timeline-row-title.js";
 export { THREAD_TIMELINE_EXCLUDED_EVENT_TYPES } from "./timeline-noise-events.js";

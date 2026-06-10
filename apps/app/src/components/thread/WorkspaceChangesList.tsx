@@ -33,12 +33,15 @@ function WorkspaceChangesListItem({
 }: WorkspaceChangesListItemProps) {
   const rowContent = (
     <>
-      <span className="text-xs leading-5 text-muted-foreground">
+      <span className="text-xs leading-5 text-muted-foreground opacity-70">
         {formatWorkspaceFileStatus(file.status)}
       </span>
       <FilePathLink
         path={file.path}
-        className={onFileClick ? "group-hover:underline" : undefined}
+        className={cn(
+          "opacity-70",
+          onFileClick ? "group-hover:underline" : undefined,
+        )}
       />
       {file.insertions !== null && file.deletions !== null ? (
         <DiffStatsTally
@@ -52,11 +55,7 @@ function WorkspaceChangesListItem({
   );
 
   if (!onFileClick) {
-    return (
-      <li className={WORKSPACE_CHANGE_ROW_CLASS}>
-        {rowContent}
-      </li>
-    );
+    return <li className={WORKSPACE_CHANGE_ROW_CLASS}>{rowContent}</li>;
   }
 
   return (

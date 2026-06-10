@@ -113,7 +113,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           {...attributes}
           {...listeners}
         >
-          <Icon name="CornerDownRight" className="size-3.5" />
+          <Icon name="ArrowTurnForward" className="size-3.5 opacity-70" />
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
@@ -121,14 +121,11 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
               {preview}
             </p>
             {attachmentCount > 0 ? (
-              <>
-                <span className="shrink-0 text-muted-foreground">.</span>
-                <span className="shrink-0 text-muted-foreground">
-                  {attachmentCount === 1
-                    ? "1 attachment"
-                    : `${attachmentCount} attachments`}
-                </span>
-              </>
+              <span className="shrink-0 text-subtle-foreground opacity-70">
+                {attachmentCount === 1
+                  ? "1 attachment"
+                  : `${attachmentCount} attachments`}
+              </span>
             ) : null}
             {isProcessing ? (
               <>
@@ -145,7 +142,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             type="button"
             size="sm"
             variant="link"
-            className="h-auto px-0 pr-1 text-xs text-muted-foreground underline"
+            className="h-auto px-0 pr-1 text-xs text-muted-foreground"
             disabled={sendDisabled || isProcessing}
             onClick={() => onSendImmediately(queuedMessage.id)}
             aria-label={isProcessing ? "Sending queued message" : "Send now"}
@@ -153,14 +150,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             {isProcessing ? (
               "Sending..."
             ) : (
-              <>
-                <span className="underline" data-promptbox-full-label="">
-                  Send now
-                </span>
-                <span className="underline" data-promptbox-compact-label="">
-                  Send
-                </span>
-              </>
+              <Icon name="Sent" className="size-4 shrink-0" aria-hidden />
             )}
           </Button>
           <Button
@@ -243,7 +233,8 @@ export function QueuedMessagesList({
     <PromptStackCard ariaLabel="Queued messages" className="overflow-hidden">
       <div className="flex items-center justify-between px-2.5 pb-1 pt-2.5">
         <p className="text-xs text-muted-foreground">
-          Queued ({queuedMessages.length})
+          <span className="opacity-70">Queued</span>{" "}
+          <span className="text-sm opacity-60">{queuedMessages.length}</span>
         </p>
       </div>
       <DndContext

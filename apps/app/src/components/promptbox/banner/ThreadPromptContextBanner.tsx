@@ -231,6 +231,10 @@ interface SectionToggleButtonProps {
   hideLabelInCompact?: boolean;
   isExpanded: boolean;
   onToggle: () => void;
+  /** Hide the trailing chevron (e.g. when the whole row is the click target). */
+  hideChevron?: boolean;
+  /** Grow to fill the header row so the full width is a toggle target. */
+  grow?: boolean;
 }
 
 function SectionToggleButton({
@@ -242,6 +246,8 @@ function SectionToggleButton({
   hideLabelInCompact = true,
   isExpanded,
   onToggle,
+  hideChevron = false,
+  grow = false,
 }: SectionToggleButtonProps) {
   return (
     <button
@@ -252,12 +258,16 @@ function SectionToggleButton({
       aria-label={ariaLabel}
       onClick={onToggle}
       className={cn(
-        "flex min-w-0 items-center rounded px-1 py-0.5 text-xs transition-colors hover:bg-state-hover",
+        "flex min-w-0 items-center rounded px-1 py-0.5 text-xs transition-colors",
+        // The full-width row toggle drops the hover fill (a row-wide highlight
+        // reads as heavy); compact toggles keep it.
+        !grow && "hover:bg-state-hover",
         // When a label sits between the icon and the chevron we space the row
         // for legibility (6px). With no label the chevron sits right after the
         // icon — the icons' own internal padding provides enough separation,
         // and a gap here makes the pair look untethered.
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
+        grow && "flex-1 justify-start",
         isExpanded ? "text-foreground" : "text-muted-foreground",
       )}
     >
@@ -272,14 +282,16 @@ function SectionToggleButton({
           {label}
         </span>
       ) : null}
-      <Icon
-        name="ChevronDown"
-        className={cn(
-          "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
-          isExpanded && "rotate-180",
-        )}
-        aria-hidden="true"
-      />
+      {hideChevron ? null : (
+        <Icon
+          name="ChevronDown"
+          className={cn(
+            "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
+            isExpanded && "rotate-180",
+          )}
+          aria-hidden="true"
+        />
+      )}
     </button>
   );
 }
@@ -452,7 +464,7 @@ function AnimatedBody({
           : "pointer-events-none grid-rows-[0fr] border-t border-transparent opacity-0",
       )}
     >
-      <div className="overflow-hidden">{children}</div>
+      <div className="overflow-hidden bg-popover">{children}</div>
     </section>
   );
 }
@@ -612,7 +624,7 @@ export function ThreadPromptContextBanner({
   return (
     <PromptStackCard
       ariaLabel="Thread context before sending"
-      className="overflow-hidden"
+      className="overflow-hidden bg-surface-recessed"
       style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
     >
       <div className="flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground">
@@ -732,6 +744,7 @@ export function ThreadPromptContextBanner({
             ariaLabel={`Changed files: ${gitSummaryText}`}
             isExpanded={isGitExpanded}
             onToggle={() => onToggleSection("git")}
+            grow
           />
         ) : null}
         {showGit && gitSection.mergeBase ? (
@@ -751,8 +764,9 @@ export function ThreadPromptContextBanner({
               onChange={gitSection.mergeBase.onChange}
               onOpenChange={gitSection.mergeBase.onPickerOpenChange}
               onSearchQueryChange={gitSection.mergeBase.onSearchQueryChange}
-              className="max-w-[10rem]"
+              className="h-6 max-w-[10rem] rounded-md border border-border px-1.5"
               muted
+              showTriggerChevron={false}
               popoverAlign="end"
             />
           </div>

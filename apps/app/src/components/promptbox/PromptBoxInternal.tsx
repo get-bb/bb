@@ -1701,12 +1701,14 @@ export function PromptBoxInternal({
               editor={editor}
               className={cn(
                 "h-full min-h-full",
-                "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-relaxed [&_.ProseMirror]:outline-none",
+                "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-[1.7] [&_.ProseMirror]:outline-none",
                 "[&_.ProseMirror_p]:m-0",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-subtle-foreground",
+                "[&_.ProseMirror_p.is-editor-empty:first-child::before]:font-light",
+                "[&_.ProseMirror_p.is-editor-empty:first-child::before]:opacity-70",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
               )}
             />

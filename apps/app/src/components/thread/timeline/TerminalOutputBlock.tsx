@@ -82,7 +82,7 @@ const ANSI_TO_HTML = new Convert({
   // ansi-to-html uses hardcoded hex defaults that fight the theme. Pointing
   // them at the theme tokens keeps non-ANSI text in step with the rest of
   // the app whether the user is on light or dark.
-  fg: "var(--foreground)",
+  fg: "var(--muted-foreground)",
   bg: "var(--background)",
   colors: ANSI_THEME_COLORS,
 });
@@ -134,7 +134,7 @@ export function TerminalOutputBlock({
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <div className="px-4 py-3 font-mono text-xs leading-tight text-foreground">
+      <div className="px-4 py-3 font-mono text-xs leading-tight text-foreground opacity-70">
         {commandLine ? (
           <ExpandableLine
             fullText={commandLine}
@@ -161,7 +161,7 @@ export function TerminalOutputBlock({
             className={cn(
               commandLine || metadataLines.length > 0 ? "mt-1.5" : null,
             )}
-            scrollClassName="whitespace-pre leading-tight text-foreground"
+            scrollClassName="whitespace-pre leading-tight text-muted-foreground"
           >
             <div dangerouslySetInnerHTML={{ __html: renderedOutputHtml }} />
           </TimelineDetailScroll>

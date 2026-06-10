@@ -43,6 +43,8 @@ export interface ExpandableTimelineRowProps {
   expandable?: boolean;
   horizontalPadding?: TimelineRowHorizontalPadding;
   leadingIcon?: IconName;
+  /** Extra classes on the header summary line only (not the expanded body). */
+  summaryClassName?: string;
   onTitleAction?: TimelineTitleActionResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
 }
@@ -85,6 +87,7 @@ function ExpandableTimelineRowComponent({
   onTitleAction,
   renderBody,
   resolveSegmentLinkHref,
+  summaryClassName,
   terminalAutoExpanded = false,
   title,
 }: ExpandableTimelineRowProps) {
@@ -195,7 +198,12 @@ function ExpandableTimelineRowComponent({
         ) : null
       }
       summaryContent={
-        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+        <span
+          className={cn(
+            "inline-flex min-w-0 max-w-full items-center gap-1.5",
+            summaryClassName,
+          )}
+        >
           {leadingIcon ? (
             <Icon
               name={leadingIcon}
