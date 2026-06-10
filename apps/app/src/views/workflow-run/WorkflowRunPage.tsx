@@ -1,15 +1,14 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import {
   isTerminalWorkflowRunStatus,
   type Host,
-  type WorkflowAgentSnapshot,
   type WorkflowProgressSnapshot,
   type WorkflowRunStatus,
 } from "@bb/domain";
 import type { WorkflowRunResponse, WorkflowRunUsage } from "@bb/server-contract";
 import { workflowRunDisplayState } from "@bb/thread-view";
-import { WorkflowAgentTree } from "@/components/workflow/WorkflowAgentTree.js";
 import { workflowRunStatusPillVariant } from "@/components/workflow/workflow-run-status.js";
 import { Button } from "@/components/ui/button.js";
 import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
@@ -18,9 +17,10 @@ import {
   getCollapsibleHeaderToneClass,
 } from "@/components/ui/disclosure.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
-import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
 import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { WorkflowAgentChatPanel } from "./WorkflowAgentChatPanel";
+import { WorkflowRunAgentList } from "./WorkflowRunAgentList";
 
 interface WorkflowRunStatusGlossArgs {
   isHostOffline: boolean;
@@ -127,15 +127,25 @@ function JsonBlock({ json }: { json: string }) {
   );
 }
 
-interface AgentTimelinePanelProps {
-  agent: WorkflowAgentSnapshot;
-  renderAgentTimeline: (agent: WorkflowAgentSnapshot) => ReactNode;
+interface RunDetailsSectionProps {
+  host: Host | null;
+  isHostOffline: boolean;
+  run: WorkflowRunResponse;
+  worktreeBranches: readonly string[];
 }
 
-function AgentTimelinePanel({
-  agent,
-  renderAgentTimeline,
-}: AgentTimelinePanelProps) {
+/**
+ * The run's configuration/usage card, collapsed by default so the agent list
+ * — the page's primary content — leads. Failure and result stay outside: a
+ * failed run's reason and a finished run's result must not hide in a
+ * disclosure.
+ */
+function RunDetailsSection({
+  host,
+  isHostOffline,
+  run,
+  worktreeBranches,
+}: RunDetailsSectionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   return (
     <ExpandablePanel
@@ -143,99 +153,8 @@ function AgentTimelinePanel({
       headerToneClass={getCollapsibleHeaderToneClass(isExpanded)}
       isExpanded={isExpanded}
       onToggle={() => setIsExpanded((expanded) => !expanded)}
-      renderBody={() => renderAgentTimeline(agent)}
-      summaryContent={
-        <span className="text-xs">
-          {agent.index}. {agent.label}
-        </span>
-      }
-    />
-  );
-}
-
-export interface WorkflowRunPageProps {
-  /** Resolved host row; null while loading. Offline hosts mark the runtime unknown. */
-  host: Host | null;
-  isCancelPending: boolean;
-  isResumePending: boolean;
-  onCancel: () => void;
-  onResume: () => void;
-  /** Drill-in body for one agent — the container wires the per-agent event log query. */
-  renderAgentTimeline: (agent: WorkflowAgentSnapshot) => ReactNode;
-  run: WorkflowRunResponse;
-  /** Preserved worktree branches collected from settled agent journal entries. */
-  worktreeBranches: readonly string[];
-}
-
-export function WorkflowRunPage({
-  host,
-  isCancelPending,
-  isResumePending,
-  onCancel,
-  onResume,
-  renderAgentTimeline,
-  run,
-  worktreeBranches,
-}: WorkflowRunPageProps) {
-  const snapshot = run.progressSnapshot;
-  const isHostOffline = host !== null && host.status !== "connected";
-  const showCancel =
-    run.retention === "live" && !isTerminalWorkflowRunStatus(run.status);
-  const showResume = run.retention === "live" && run.status === "interrupted";
-  const statusGloss = workflowRunStatusGloss({
-    isHostOffline,
-    status: run.status,
-  });
-  const cachedAgents = describeCachedAgents(snapshot);
-  const agents = snapshot
-    ? [...snapshot.agents].sort((a, b) => a.index - b.index)
-    : [];
-
-  return (
-    <PageShell>
-      <div className="flex flex-col gap-4 pt-3">
-        <header className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <h1 className="min-w-0 truncate text-base font-medium text-foreground">
-            {run.workflowName}
-          </h1>
-          <Pill variant={workflowRunStatusPillVariant(run.status)}>
-            {run.status}
-          </Pill>
-          {statusGloss ? (
-            <span className="text-xs text-muted-foreground">{statusGloss}</span>
-          ) : null}
-          {showCancel || showResume ? (
-            <div className="ml-auto flex items-center gap-2">
-              {showResume ? (
-                <>
-                  {cachedAgents ? (
-                    <span className="text-xs text-muted-foreground">
-                      {cachedAgents} — completed work replays free
-                    </span>
-                  ) : null}
-                  <Button
-                    disabled={isResumePending}
-                    onClick={onResume}
-                    size="sm"
-                  >
-                    {isResumePending ? "Resuming…" : "Resume"}
-                  </Button>
-                </>
-              ) : null}
-              {showCancel ? (
-                <Button
-                  disabled={isCancelPending}
-                  onClick={onCancel}
-                  size="sm"
-                  variant="outline"
-                >
-                  {isCancelPending ? "Cancelling…" : "Cancel"}
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-        </header>
-
+      summaryContent={<span className="text-xs">Details</span>}
+      renderBody={() => (
         <DetailCard labelWidth="112px">
           <DetailRow label="Workflow">
             <span className="flex min-w-0 items-center gap-2">
@@ -288,46 +207,206 @@ export function WorkflowRunPage({
               <JsonBlock json={run.argsJson} />
             </DetailRow>
           )}
-          {run.failureReason !== null ? (
-            <DetailRow label="Failure" valueClassName="text-destructive">
-              {run.failureReason}
-            </DetailRow>
-          ) : null}
-          {run.resultJson !== null ? (
-            <DetailRow label="Result" orientation="vertical">
-              <JsonBlock json={run.resultJson} />
-            </DetailRow>
-          ) : null}
         </DetailCard>
+      )}
+    />
+  );
+}
 
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-foreground">Agents</h2>
-          {snapshot !== null &&
-          snapshot.agents.length + snapshot.phases.length > 0 ? (
-            <>
-              <div className="rounded-md border border-border bg-surface-raised px-2 py-1">
-                <WorkflowAgentTree
-                  runState={workflowRunDisplayState(run.status)}
-                  snapshot={snapshot}
-                />
-              </div>
-              {agents.length > 0 ? (
-                <div className="flex flex-col gap-1">
-                  {agents.map((agent) => (
-                    <AgentTimelinePanel
-                      agent={agent}
-                      key={agent.index}
-                      renderAgentTimeline={renderAgentTimeline}
-                    />
-                  ))}
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <EmptyStatePanel>No progress reported yet.</EmptyStatePanel>
-          )}
-        </section>
-      </div>
-    </PageShell>
+function RunResultSection({ resultJson }: { resultJson: string }) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  return (
+    <ExpandablePanel
+      className="border border-border"
+      headerToneClass={getCollapsibleHeaderToneClass(isExpanded)}
+      isExpanded={isExpanded}
+      onToggle={() => setIsExpanded((expanded) => !expanded)}
+      summaryContent={<span className="text-xs">Result</span>}
+      renderBody={() => <JsonBlock json={resultJson} />}
+    />
+  );
+}
+
+export interface WorkflowAgentTimelineRenderArgs {
+  /** Journal-stable 1-based display index (snapshot `agent.index`). */
+  agentIndex: number;
+  isAgentLive: boolean;
+}
+
+export interface WorkflowRunPageProps {
+  /** Resolved host row; null while loading. Offline hosts mark the runtime unknown. */
+  host: Host | null;
+  isCancelPending: boolean;
+  isResumePending: boolean;
+  onCancel: () => void;
+  /** Navigate back to the bare run route (deselect the agent). */
+  onCloseAgent: () => void;
+  onResume: () => void;
+  /** Navigate to the agent drill-in sub-route. */
+  onSelectAgent: (agentIndex: number) => void;
+  /** Drill-in body for one agent — the container wires the per-agent event log query. */
+  renderAgentTimeline: (args: WorkflowAgentTimelineRenderArgs) => ReactNode;
+  run: WorkflowRunResponse;
+  /** Agent open in the chat panel (from the URL), or null for the bare run route. */
+  selectedAgentIndex: number | null;
+  /** Preserved worktree branches collected from settled agent journal entries. */
+  worktreeBranches: readonly string[];
+}
+
+/**
+ * Workflow run detail, omegacode-viewer style: a fixed header bar, then a
+ * resizable split with the phase/agent list on the left and — when an agent
+ * is selected via the URL sub-route — that agent's chat timeline on the
+ * right, rendered with the standard thread timeline components.
+ */
+export function WorkflowRunPage({
+  host,
+  isCancelPending,
+  isResumePending,
+  onCancel,
+  onCloseAgent,
+  onResume,
+  onSelectAgent,
+  renderAgentTimeline,
+  run,
+  selectedAgentIndex,
+  worktreeBranches,
+}: WorkflowRunPageProps) {
+  const snapshot = run.progressSnapshot;
+  const isHostOffline = host !== null && host.status !== "connected";
+  const isRunLive = run.status === "starting" || run.status === "running";
+  const showCancel =
+    run.retention === "live" && !isTerminalWorkflowRunStatus(run.status);
+  const showResume = run.retention === "live" && run.status === "interrupted";
+  const statusGloss = workflowRunStatusGloss({
+    isHostOffline,
+    status: run.status,
+  });
+  const cachedAgents = describeCachedAgents(snapshot);
+  const runState = workflowRunDisplayState(run.status);
+  const selectedAgent =
+    selectedAgentIndex !== null
+      ? (snapshot?.agents.find((agent) => agent.index === selectedAgentIndex) ??
+        null)
+      : null;
+  const isChatOpen = selectedAgentIndex !== null;
+
+  const leftPanelContent = (
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto px-4 py-3 md:px-5">
+      {run.failureReason !== null ? (
+        <div className="shrink-0 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {run.failureReason}
+        </div>
+      ) : null}
+      <RunDetailsSection
+        host={host}
+        isHostOffline={isHostOffline}
+        run={run}
+        worktreeBranches={worktreeBranches}
+      />
+      {run.resultJson !== null ? (
+        <RunResultSection resultJson={run.resultJson} />
+      ) : null}
+      {snapshot !== null &&
+      snapshot.agents.length + snapshot.phases.length > 0 ? (
+        <WorkflowRunAgentList
+          onSelectAgent={onSelectAgent}
+          runState={runState}
+          selectedAgentIndex={selectedAgentIndex}
+          snapshot={snapshot}
+        />
+      ) : (
+        <EmptyStatePanel>No progress reported yet.</EmptyStatePanel>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border-hairline px-4 py-2.5 md:px-5">
+        <h1 className="min-w-0 truncate text-base font-medium text-foreground">
+          {run.workflowName}
+        </h1>
+        <Pill variant={workflowRunStatusPillVariant(run.status)}>
+          {run.status}
+        </Pill>
+        {statusGloss ? (
+          <span className="text-xs text-muted-foreground">{statusGloss}</span>
+        ) : null}
+        {showCancel || showResume ? (
+          <div className="ml-auto flex items-center gap-2">
+            {showResume ? (
+              <>
+                {cachedAgents ? (
+                  <span className="text-xs text-muted-foreground">
+                    {cachedAgents} — completed work replays free
+                  </span>
+                ) : null}
+                <Button disabled={isResumePending} onClick={onResume} size="sm">
+                  {isResumePending ? "Resuming…" : "Resume"}
+                </Button>
+              </>
+            ) : null}
+            {showCancel ? (
+              <Button
+                disabled={isCancelPending}
+                onClick={onCancel}
+                size="sm"
+                variant="outline"
+              >
+                {isCancelPending ? "Cancelling…" : "Cancel"}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </header>
+
+      {isChatOpen ? (
+        <PanelGroup
+          direction="horizontal"
+          className="min-h-0 min-w-0 flex-1"
+          // react-resizable-panels sets an inline `overflow: hidden` that is
+          // still programmatically scrollable; `clip` keeps the group a
+          // non-scroll container (same guard as the thread detail panels).
+          style={{ overflow: "clip" }}
+        >
+          <Panel
+            id="workflow-run-agents-panel"
+            defaultSize={45}
+            minSize={25}
+            order={1}
+            className="min-w-0 overflow-clip"
+          >
+            {leftPanelContent}
+          </Panel>
+          <PanelResizeHandle className="group relative w-1.5 shrink-0">
+            <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-hairline transition-colors group-hover:bg-accent-foreground/35 group-data-[resize-handle-active]:bg-accent-foreground/35" />
+          </PanelResizeHandle>
+          <Panel
+            id="workflow-run-chat-panel"
+            defaultSize={55}
+            minSize={30}
+            order={2}
+            className="min-w-0 overflow-clip"
+          >
+            <WorkflowAgentChatPanel
+              agent={selectedAgent}
+              agentIndex={selectedAgentIndex}
+              onClose={onCloseAgent}
+              runState={runState}
+            >
+              {renderAgentTimeline({
+                agentIndex: selectedAgentIndex,
+                isAgentLive: isRunLive && selectedAgent?.state === "running",
+              })}
+            </WorkflowAgentChatPanel>
+          </Panel>
+        </PanelGroup>
+      ) : (
+        <div className="mx-auto min-h-0 w-full max-w-[760px] flex-1">
+          {leftPanelContent}
+        </div>
+      )}
+    </div>
   );
 }

@@ -25,6 +25,7 @@ import {
   PROJECT_SETTINGS_ROUTE_PATH,
   STANDALONE_APP_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
+  WORKFLOW_RUN_AGENT_ROUTE_PATH,
   WORKFLOW_RUN_ROUTE_PATH,
 } from "./lib/app-route-paths";
 
@@ -115,6 +116,10 @@ function AppRoutes() {
             element={<ThreadDetailRoute />}
           />
           <Route path={WORKFLOW_RUN_ROUTE_PATH} element={<WorkflowRunView />} />
+          <Route
+            path={WORKFLOW_RUN_AGENT_ROUTE_PATH}
+            element={<WorkflowRunView />}
+          />
           <Route
             path="*"
             element={<Navigate to={APP_ROOT_ROUTE_PATH} replace />}

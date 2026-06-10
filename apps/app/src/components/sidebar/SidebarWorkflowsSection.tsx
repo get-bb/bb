@@ -92,12 +92,15 @@ const SidebarWorkflowRunRow = memo(function SidebarWorkflowRunRow({
         aria-current={isActive ? "page" : undefined}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
-      <span className="relative z-10 min-w-0 flex-1 truncate">
+      {/* Row content paints above the stretched NavLink but must stay
+          click-transparent (pointer-events-none) so clicks on the name/pill
+          fall through to the link — same pattern as ProjectRow. */}
+      <span className="pointer-events-none relative z-10 min-w-0 flex-1 truncate">
         {run.workflowName}
       </span>
       <Pill
         variant={workflowRunStatusPillVariant(run.status)}
-        className="relative z-10 shrink-0"
+        className="pointer-events-none relative z-10 shrink-0"
       >
         {run.status}
       </Pill>
@@ -111,7 +114,7 @@ const SidebarWorkflowRunRow = memo(function SidebarWorkflowRunRow({
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-              "absolute inset-0 flex items-center justify-center",
+              "pointer-events-none absolute inset-0 flex items-center justify-center",
             )}
           >
             <Icon

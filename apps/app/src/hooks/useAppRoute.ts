@@ -47,7 +47,13 @@ export function useAppRoute(): AppRouteState {
   const projectWorkflowsMatch = useMatch("/projects/:projectId/workflows");
   const projectSettingsMatch = useMatch("/projects/:projectId/settings");
   const appMatch = useMatch("/apps/:applicationId");
+  // The run page and its agent drill-in sub-route are the same logical view;
+  // both must resolve `workflowRunId` so the sidebar active state and the
+  // document title survive selecting an agent.
   const workflowRunMatch = useMatch("/workflows/runs/:runId");
+  const workflowRunAgentMatch = useMatch(
+    "/workflows/runs/:runId/agents/:agentIndex",
+  );
   const isRootView = location.pathname === "/";
   const isUnsupportedPersonalProjectThread =
     projectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID;
@@ -69,14 +75,15 @@ export function useAppRoute(): AppRouteState {
     projectId,
     threadId,
     applicationId: appMatch?.params.applicationId,
-    workflowRunId: workflowRunMatch?.params.runId,
+    workflowRunId:
+      workflowRunMatch?.params.runId ?? workflowRunAgentMatch?.params.runId,
     isAppView: Boolean(appMatch),
     isThreadView:
       Boolean(projectlessThreadMatch) ||
       (Boolean(projectThreadMatch) && !isUnsupportedPersonalProjectThread),
     isArchivedView: Boolean(projectArchivedMatch),
     isWorkflowsView: Boolean(projectWorkflowsMatch),
-    isWorkflowRunView: Boolean(workflowRunMatch),
+    isWorkflowRunView: Boolean(workflowRunMatch) || Boolean(workflowRunAgentMatch),
     isSettingsView: Boolean(projectSettingsMatch),
     isRootView,
     isProjectlessView: isRootView || projectlessThreadId !== undefined,

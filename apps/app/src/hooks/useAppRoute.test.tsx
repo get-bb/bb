@@ -107,6 +107,17 @@ describe("useAppRoute", () => {
     expect(route.isWorkflowsView).toBe(false);
   });
 
+  it("recognizes the workflow-run agent drill-in sub-route", () => {
+    const route = renderRouteCapture({
+      initialEntry: "/workflows/runs/wfr_abc123/agents/2",
+    });
+
+    expect(route.workflowRunId).toBe("wfr_abc123");
+    expect(route.isWorkflowRunView).toBe(true);
+    expect(route.projectId).toBeUndefined();
+    expect(route.threadId).toBeUndefined();
+  });
+
   it("does not accept personal project thread routes", () => {
     const route = renderRouteCapture({
       initialEntry: `/projects/${PERSONAL_PROJECT_ID}/threads/thr_personal`,

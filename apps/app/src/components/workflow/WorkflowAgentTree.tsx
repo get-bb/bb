@@ -12,7 +12,11 @@ import {
 import { Icon } from "../ui/icon.js";
 import { cn } from "@/lib/utils";
 
-function WorkflowAgentStateIcon({
+/**
+ * Shared agent-state glyph for every workflow agent surface (inline tree,
+ * run-page agent list, chat panel header).
+ */
+export function WorkflowAgentStateIcon({
   state,
 }: {
   state: WorkflowAgentDisplayState;
@@ -97,7 +101,11 @@ function shortModelName(model: string): string {
   return match?.[1] ?? model;
 }
 
-function buildAgentStats(
+/**
+ * One-line agent metadata (`agentType · model · tokens · tools · duration …`)
+ * shared by the inline tree and the run page's agent list.
+ */
+export function buildAgentStats(
   agent: WorkflowAgentSnapshot,
   displayState: WorkflowAgentDisplayState,
 ): string {
@@ -168,7 +176,7 @@ function WorkflowAgentLine({
   );
 }
 
-interface WorkflowPhaseGroup {
+export interface WorkflowPhaseGroup {
   agents: WorkflowAgentSnapshot[];
   phase: WorkflowPhaseSnapshot | null;
 }
@@ -178,7 +186,7 @@ interface WorkflowPhaseGroup {
  * phases that have not started yet and collecting phase-less agents into a
  * trailing group.
  */
-function groupAgentsByPhase(
+export function groupAgentsByPhase(
   phases: readonly WorkflowPhaseSnapshot[],
   agents: readonly WorkflowAgentSnapshot[],
 ): WorkflowPhaseGroup[] {
@@ -205,7 +213,10 @@ function groupAgentsByPhase(
   return groups;
 }
 
-function phaseProgressLabel(agents: readonly WorkflowAgentSnapshot[]): string {
+/** Settled-over-total progress label for one phase ("2/3", "not started"). */
+export function phaseProgressLabel(
+  agents: readonly WorkflowAgentSnapshot[],
+): string {
   if (agents.length === 0) {
     return "not started";
   }

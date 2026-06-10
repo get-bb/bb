@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { isTerminalWorkflowRunStatus } from "@bb/domain";
 import type { WorkflowRunEventsResponse } from "@bb/server-contract";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
@@ -14,6 +14,10 @@ import {
   useWorkflowRunEvents,
 } from "@/hooks/queries/workflow-queries";
 import { HttpError } from "@/lib/api";
+import {
+  getWorkflowRunAgentRoutePath,
+  getWorkflowRunRoutePath,
+} from "@/lib/app-route-paths";
 import { wsManager } from "@/lib/ws";
 import { WorkflowAgentTimeline } from "./WorkflowAgentTimeline";
 import { WorkflowRunPage } from "./WorkflowRunPage";
@@ -49,8 +53,26 @@ function describeRunLoadError(error: unknown): string {
   return "Failed to load workflow run.";
 }
 
+/**
+ * Agent selection is URL-driven via the `/agents/:agentIndex` sub-route so a
+ * drill-in is linkable and survives reloads. A malformed index renders as no
+ * selection rather than an error page.
+ */
+function parseAgentIndexParam(param: string | undefined): number | null {
+  if (param === undefined) {
+    return null;
+  }
+  const parsed = Number.parseInt(param, 10);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : null;
+}
+
 export function WorkflowRunView() {
-  const { runId = "" } = useParams<{ runId: string }>();
+  const { runId = "", agentIndex: agentIndexParam } = useParams<{
+    agentIndex?: string;
+    runId: string;
+  }>();
+  const navigate = useNavigate();
+  const selectedAgentIndex = parseAgentIndexParam(agentIndexParam);
 
   // Workflow-run realtime is per-id by design (useWebSocket's entity-wide
   // list deliberately omits it): subscribe while the page is open so the
@@ -110,23 +132,28 @@ export function WorkflowRunView() {
     );
   }
 
-  const isRunLive = run.status === "starting" || run.status === "running";
-
   return (
     <WorkflowRunPage
       host={hostQuery.data ?? null}
       isCancelPending={cancelRun.isPending}
       isResumePending={resumeRun.isPending}
       onCancel={() => cancelRun.mutate({ runId: run.id })}
+      onCloseAgent={() => {
+        navigate(getWorkflowRunRoutePath(run.id));
+      }}
       onResume={() => resumeRun.mutate({ runId: run.id })}
-      renderAgentTimeline={(agent) => (
+      onSelectAgent={(agentIndex) => {
+        navigate(getWorkflowRunAgentRoutePath({ agentIndex, runId: run.id }));
+      }}
+      renderAgentTimeline={({ agentIndex, isAgentLive }) => (
         <WorkflowAgentTimeline
-          agentIndex={agent.index}
-          isAgentLive={isRunLive && agent.state === "running"}
+          agentIndex={agentIndex}
+          isAgentLive={isAgentLive}
           runId={run.id}
         />
       )}
       run={run}
+      selectedAgentIndex={selectedAgentIndex}
       worktreeBranches={worktreeBranches}
     />
   );

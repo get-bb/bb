@@ -16,10 +16,18 @@ export const PROJECT_WORKFLOWS_ROUTE_PATH = "/projects/:projectId/workflows";
 export const THREAD_DETAIL_ROUTE_PATH =
   "/projects/:projectId/threads/:threadId";
 export const WORKFLOW_RUN_ROUTE_PATH = "/workflows/runs/:runId";
+export const WORKFLOW_RUN_AGENT_ROUTE_PATH =
+  "/workflows/runs/:runId/agents/:agentIndex";
 
 export interface ThreadRoutePathArgs {
   projectId: string;
   threadId: string;
+}
+
+export interface WorkflowRunAgentRoutePathArgs {
+  /** Journal-stable 1-based agent index (snapshot `agent.index`). */
+  agentIndex: number;
+  runId: string;
 }
 
 export interface IsAppRoutePathArgs {
@@ -79,6 +87,12 @@ export function getWorkflowRunRoutePath(runId: string): string {
   return `/workflows/runs/${runId}`;
 }
 
+export function getWorkflowRunAgentRoutePath(
+  args: WorkflowRunAgentRoutePathArgs,
+): string {
+  return `/workflows/runs/${args.runId}/agents/${args.agentIndex}`;
+}
+
 const baseAppRoutePatterns: readonly string[] = [
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
@@ -92,6 +106,7 @@ const baseAppRoutePatterns: readonly string[] = [
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
   WORKFLOW_RUN_ROUTE_PATH,
+  WORKFLOW_RUN_AGENT_ROUTE_PATH,
 ];
 
 export const APP_ROUTE_PATTERNS = import.meta.env.DEV

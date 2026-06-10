@@ -208,8 +208,8 @@ const drillInRows: TimelineRow[] = [
 function storyAgentTimeline(
   stateByIndex: Record<number, WorkflowAgentTimelineState>,
 ) {
-  return (agent: { index: number }) => {
-    const state = stateByIndex[agent.index] ?? { kind: "missing" as const };
+  return ({ agentIndex }: { agentIndex: number }) => {
+    const state = stateByIndex[agentIndex] ?? { kind: "missing" as const };
     return <WorkflowAgentTimelineBody state={state} />;
   };
 }
@@ -218,7 +218,9 @@ const noopActions = {
   isCancelPending: false,
   isResumePending: false,
   onCancel: () => {},
+  onCloseAgent: () => {},
   onResume: () => {},
+  onSelectAgent: () => {},
 };
 
 export function Live() {
@@ -227,12 +229,43 @@ export function Live() {
       <WorkflowRunPage
         {...noopActions}
         host={connectedHost}
+        renderAgentTimeline={storyAgentTimeline({})}
+        run={runBase}
+        selectedAgentIndex={null}
+        worktreeBranches={[]}
+      />
+    </PageStage>
+  );
+}
+
+export function LiveWithAgentChat() {
+  return (
+    <PageStage>
+      <WorkflowRunPage
+        {...noopActions}
+        host={connectedHost}
         renderAgentTimeline={storyAgentTimeline({
           1: { kind: "ready", isLive: false, rows: drillInRows },
-          2: { kind: "loading" },
-          3: { kind: "missing" },
         })}
         run={runBase}
+        selectedAgentIndex={1}
+        worktreeBranches={[]}
+      />
+    </PageStage>
+  );
+}
+
+export function AgentChatLoading() {
+  return (
+    <PageStage>
+      <WorkflowRunPage
+        {...noopActions}
+        host={connectedHost}
+        renderAgentTimeline={storyAgentTimeline({
+          2: { kind: "loading" },
+        })}
+        run={runBase}
+        selectedAgentIndex={2}
         worktreeBranches={[]}
       />
     </PageStage>
@@ -249,6 +282,7 @@ export function PausedWithResume() {
           1: { kind: "ready", isLive: false, rows: drillInRows },
         })}
         run={interruptedRun}
+        selectedAgentIndex={null}
         worktreeBranches={[]}
       />
     </PageStage>
@@ -265,6 +299,7 @@ export function Completed() {
           1: { kind: "ready", isLive: false, rows: drillInRows },
         })}
         run={completedRun}
+        selectedAgentIndex={null}
         worktreeBranches={["bb-workflow/wfr_storyrun01/alpha"]}
       />
     </PageStage>
@@ -279,10 +314,9 @@ export function HostOffline() {
         host={offlineHost}
         renderAgentTimeline={storyAgentTimeline({
           1: { kind: "unavailable" },
-          2: { kind: "unavailable" },
-          3: { kind: "unavailable" },
         })}
         run={runBase}
+        selectedAgentIndex={1}
         worktreeBranches={[]}
       />
     </PageStage>
