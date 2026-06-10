@@ -25,6 +25,7 @@ import type {
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
   EnvironmentStatusResponse,
+  EnvironmentPullRequestResponse,
   ManagerArchiveThreadsResponse,
   CreateThreadRequest,
   CreateThreadTerminalRequest,
@@ -1242,6 +1243,18 @@ export async function getEnvironmentWorkStatus(
         param: { id: environmentId },
         query: mergeBaseBranch ? { mergeBaseBranch } : {},
       },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function getEnvironmentPullRequest(
+  environmentId: string,
+  signal?: AbortSignal,
+): Promise<EnvironmentPullRequestResponse> {
+  return request<EnvironmentPullRequestResponse>(
+    apiClient.environments[":id"]["pull-request"].$get(
+      { param: { id: environmentId } },
       requestOptions(signal),
     ),
   );

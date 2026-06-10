@@ -198,6 +198,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
       shortstat: "",
       truncated: false,
     })),
+    getPullRequest: vi.fn(async () => null),
     listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
     commit: vi.fn(async () => ({

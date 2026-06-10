@@ -1,4 +1,5 @@
 import type {
+  GitHostPullRequest,
   ThreadGitDiffResponse,
   WorkspaceCommitSummary,
   WorkspaceDiffTarget,
@@ -7,6 +8,7 @@ import type {
   WorkspaceStatus,
 } from "@bb/domain";
 import path from "node:path";
+import { getPullRequestForBranch } from "./git-host.js";
 import {
   createTempDir,
   detectGitRepo,
@@ -440,6 +442,19 @@ export class Workspace {
 
   get currentBranch(): Promise<string | undefined> {
     return getCurrentBranch(this.path);
+  }
+
+  /**
+   * Raw `gh` pull request data for the workspace's current branch, or `null`
+   * when there is no branch or no detectable PR. Never throws — see
+   * {@link getPullRequestForBranch}.
+   */
+  async getPullRequest(): Promise<GitHostPullRequest | null> {
+    const branch = await getCurrentBranch(this.path);
+    if (!branch) {
+      return null;
+    }
+    return getPullRequestForBranch({ cwd: this.path, branch });
   }
 
   async getStatus(options: StatusOptions = {}): Promise<WorkspaceStatus> {

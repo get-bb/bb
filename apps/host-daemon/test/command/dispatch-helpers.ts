@@ -160,6 +160,9 @@ export function createFakeWorkspace(pathname: string) {
         mergeBaseRef: null,
       };
     },
+    async getPullRequest() {
+      return null;
+    },
     async listBranches() {
       return ["main"];
     },

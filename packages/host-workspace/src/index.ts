@@ -40,3 +40,8 @@ export {
   readGitBlob,
 } from "./git.js";
 export type { ReadGitBlobResult } from "./git.js";
+
+export {
+  getPullRequestForBranch,
+  parseGitHostPullRequest,
+} from "./git-host.js";

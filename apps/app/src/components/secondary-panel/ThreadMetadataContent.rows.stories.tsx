@@ -5,6 +5,7 @@ import {
   WorkspacePathRow,
   BranchRow,
   MergeBaseRow,
+  PullRequestRow,
   GitStatusRow,
   ArchivedRow,
   ThreadSchedulesRow,
@@ -268,6 +269,51 @@ export function MergeBase() {
             isLoadingMergeBaseBranchOptions={false}
             onMergeBaseBranchChange={noop}
             defaultOpen
+          />
+        </RowStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pull request — one row per PR state.
+// ---------------------------------------------------------------------------
+
+export function PullRequest() {
+  const url = "https://github.com/acme/bb/pull/128";
+  const title = "Show the branch's GitHub pull request in the Info tab";
+  return (
+    <StoryCard>
+      <StoryRow label="open">
+        <RowStage>
+          <PullRequestRow
+            thread={makeThread()}
+            pullRequest={{ number: 128, title, state: "open", url }}
+          />
+        </RowStage>
+      </StoryRow>
+      <StoryRow label="draft">
+        <RowStage>
+          <PullRequestRow
+            thread={makeThread()}
+            pullRequest={{ number: 128, title, state: "draft", url }}
+          />
+        </RowStage>
+      </StoryRow>
+      <StoryRow label="merged">
+        <RowStage>
+          <PullRequestRow
+            thread={makeThread()}
+            pullRequest={{ number: 128, title, state: "merged", url }}
+          />
+        </RowStage>
+      </StoryRow>
+      <StoryRow label="closed">
+        <RowStage>
+          <PullRequestRow
+            thread={makeThread()}
+            pullRequest={{ number: 128, title, state: "closed", url }}
           />
         </RowStage>
       </StoryRow>

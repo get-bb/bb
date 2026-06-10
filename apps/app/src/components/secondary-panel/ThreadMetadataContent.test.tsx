@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Environment, Thread } from "@bb/domain";
+import type { Environment, Thread, ThreadPullRequest } from "@bb/domain";
 import type { ThreadSchedule } from "@bb/server-contract";
 import { makeWorkspaceStatus } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GitStatusRow,
   MergeBaseRow,
+  PullRequestRow,
   ThreadSchedulesRow,
   WorkspacePathRow,
 } from "./ThreadMetadataContent";
@@ -194,6 +195,71 @@ describe("GitStatusRow", () => {
         "Loaded environment env_test is bound to /tmp/old, not /tmp/current",
       ),
     ).not.toBeNull();
+  });
+});
+
+describe("PullRequestRow", () => {
+  function makePullRequest(
+    overrides: Partial<ThreadPullRequest> = {},
+  ): ThreadPullRequest {
+    return {
+      number: 42,
+      title: "Add pull request section",
+      state: "open",
+      url: "https://github.com/acme/bb/pull/42",
+      ...overrides,
+    };
+  }
+
+  it("renders the PR number, state, and an external link", () => {
+    render(
+      <PullRequestRow thread={makeThread()} pullRequest={makePullRequest()} />,
+    );
+
+    const link = screen.getByRole("link");
+    expect(link.getAttribute("href")).toBe(
+      "https://github.com/acme/bb/pull/42",
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link.textContent).toContain("PR #42");
+    expect(link.textContent).toContain("Open");
+    // The full title is surfaced via the link tooltip.
+    expect(link.getAttribute("title")).toBe("Add pull request section");
+  });
+
+  it.each([
+    ["draft", "Draft"],
+    ["merged", "Merged"],
+    ["closed", "Closed"],
+  ] as const)("labels the %s state as %s", (state, label) => {
+    render(
+      <PullRequestRow
+        thread={makeThread()}
+        pullRequest={makePullRequest({ state })}
+      />,
+    );
+
+    expect(screen.getByRole("link").textContent).toContain(label);
+  });
+
+  it("renders nothing when there is no PR", () => {
+    const { container } = render(
+      <PullRequestRow thread={makeThread()} pullRequest={null} />,
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("renders nothing for manager threads", () => {
+    const { container } = render(
+      <PullRequestRow
+        thread={makeThread({ type: "manager" })}
+        pullRequest={makePullRequest()}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
   });
 });
 

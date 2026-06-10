@@ -29,6 +29,7 @@ import { useSendThreadMessage } from "../../hooks/mutations/thread-runtime-mutat
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import {
   useEnvironment,
+  useEnvironmentPullRequest,
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
 import {
@@ -825,6 +826,10 @@ export function ThreadDetailView() {
     workStatusResponse?.outcome === "unavailable"
       ? workStatusResponse.failure
       : undefined;
+  const pullRequestQuery = useEnvironmentPullRequest(thread?.environmentId, {
+    enabled: canUseGitUi && environment !== undefined,
+  });
+  const pullRequest = pullRequestQuery.data?.pullRequest ?? null;
   const workspaceBranch = workspaceStatus?.branch;
   const workspaceChangedFilesSection = useMemo(
     () => selectWorkspaceChangedFilesSection(workspaceStatus),
@@ -1411,6 +1416,7 @@ export function ThreadDetailView() {
           workspaceStatus,
           workspaceStatusError: workspaceStatusError ?? null,
           workspaceUnavailable,
+          pullRequest,
           selectedMergeBaseBranch,
           mergeBaseBranchRef: selectedMergeBaseBranchRef,
           mergeBaseBranchOptions,

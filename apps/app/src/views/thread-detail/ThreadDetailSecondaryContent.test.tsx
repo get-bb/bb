@@ -270,6 +270,7 @@ function buildSecondaryContentProps({
       environment: null,
       workspaceStatus: undefined,
       workspaceStatusError: null,
+      pullRequest: null,
       selectedMergeBaseBranch: undefined,
       mergeBaseBranchOptions: undefined,
       isLoadingMergeBaseBranchOptions: false,

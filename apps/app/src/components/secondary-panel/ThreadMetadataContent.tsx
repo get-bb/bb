@@ -5,8 +5,10 @@ import { Link } from "react-router-dom";
 import type {
   Environment,
   GitBranchRefClassification,
+  PullRequestState,
   Thread,
   ThreadListEntry,
+  ThreadPullRequest,
   WorkspaceStatus,
 } from "@bb/domain";
 import type { ThreadSchedule } from "@bb/server-contract";
@@ -319,6 +321,71 @@ export function BranchRow({ thread, workspaceStatus }: BranchRowProps) {
   );
 }
 
+interface PullRequestStateDisplay {
+  label: string;
+  /** Background utility for the leading state dot. */
+  dotClass: string;
+}
+
+const PULL_REQUEST_STATE_DISPLAY: Record<
+  PullRequestState,
+  PullRequestStateDisplay
+> = {
+  open: { label: "Open", dotClass: "bg-success" },
+  draft: { label: "Draft", dotClass: "bg-muted-foreground" },
+  merged: { label: "Merged", dotClass: "bg-primary" },
+  closed: { label: "Closed", dotClass: "bg-destructive" },
+};
+
+export interface PullRequestRowProps {
+  thread: Thread;
+  pullRequest: ThreadPullRequest | null;
+}
+
+export function PullRequestRow({ thread, pullRequest }: PullRequestRowProps) {
+  if (thread.type === "manager") return null;
+  if (!pullRequest) return null;
+  const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
+  return (
+    <DetailRow
+      label={
+        <span className="flex items-center gap-1.5">
+          <Icon
+            name="GitMerge"
+            className="size-3.5 shrink-0 text-muted-foreground"
+          />
+          Pull request
+        </span>
+      }
+      valueClassName="min-w-0"
+    >
+      <a
+        href={pullRequest.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={pullRequest.title}
+        className="inline-flex max-w-full min-w-0 items-center gap-1.5 text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
+      >
+        <span className="shrink-0">PR #{pullRequest.number}</span>
+        <span className="shrink-0 text-muted-foreground">·</span>
+        <span
+          aria-hidden
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            stateDisplay.dotClass,
+          )}
+        />
+        <span className="min-w-0 truncate">{stateDisplay.label}</span>
+        <Icon
+          name="ExternalLink"
+          aria-hidden
+          className="size-3 shrink-0 text-muted-foreground"
+        />
+      </a>
+    </DetailRow>
+  );
+}
+
 export interface MergeBaseRowProps {
   thread: Thread;
   workspaceStatus: WorkspaceStatus | undefined;
@@ -627,6 +694,7 @@ export interface ThreadMetadataContentProps {
   workspaceStatus: WorkspaceStatus | undefined;
   workspaceStatusError: Error | null;
   workspaceUnavailable?: WorkspaceResolutionFailure;
+  pullRequest: ThreadPullRequest | null;
   selectedMergeBaseBranch: string | undefined;
   mergeBaseBranchRef?: GitBranchRefClassification | null;
   mergeBaseBranchOptions: readonly string[] | undefined;
@@ -655,6 +723,7 @@ export function hasAnyThreadMetadata({
   workspaceStatus,
   workspaceStatusError,
   workspaceUnavailable,
+  pullRequest,
   threadSchedules,
 }: Pick<
   ThreadMetadataContentProps,
@@ -664,6 +733,7 @@ export function hasAnyThreadMetadata({
   | "workspaceStatus"
   | "workspaceStatusError"
   | "workspaceUnavailable"
+  | "pullRequest"
   | "threadSchedules"
 >): boolean {
   const isManagerThread = thread.type === "manager";
@@ -688,6 +758,7 @@ export function hasAnyThreadMetadata({
     parentThreadId ||
     (!isManagerThread && environment) ||
     (!isManagerThread && branchName) ||
+    (!isManagerThread && pullRequest) ||
     showWorkspaceStatus ||
     showThreadChangedFiles ||
     threadSchedules.length > 0 ||
@@ -731,6 +802,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     workspaceStatus,
     workspaceStatusError,
     workspaceUnavailable,
+    pullRequest,
     selectedMergeBaseBranch,
     mergeBaseBranchRef,
     mergeBaseBranchOptions,
@@ -784,6 +856,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         workspaceUnavailable={workspaceUnavailable}
         selectedMergeBaseBranch={selectedMergeBaseBranch}
       />
+      <PullRequestRow thread={thread} pullRequest={pullRequest} />
       <ArchivedRow thread={thread} />
       <ThreadSchedulesRow schedules={threadSchedules} />
       <ChangedFilesRow

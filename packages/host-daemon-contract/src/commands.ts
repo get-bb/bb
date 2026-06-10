@@ -13,6 +13,7 @@ import {
   provisioningTranscriptEntrySchema,
   workspaceDiffTargetSchema,
   workspaceStatusSchema,
+  gitHostPullRequestSchema,
   clientTurnRequestIdSchema,
   gitBranchNameSchema,
   jsonObjectSchema,
@@ -28,7 +29,7 @@ import {
 } from "@bb/replay-capture/schema";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 33 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 34 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -589,6 +590,13 @@ const workspaceDiffCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   maxFileListBytes: z.number().int().positive(),
 });
 
+// The daemon derives the branch from the workspace HEAD, so the command needs
+// no fields beyond the workspace target.
+const workspacePullRequestCommandSchema =
+  hostDaemonWorkspaceTargetSchema.extend({
+    type: z.literal("workspace.pull_request"),
+  });
+
 export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES = [
   "development.replay",
   "host.list_files",
@@ -602,6 +610,7 @@ export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES = [
   "environment.cleanup_preflight",
   "workspace.status",
   "workspace.diff",
+  "workspace.pull_request",
 ] as const;
 export const hostDaemonOnlineRpcCommandTypeSchema = z.enum(
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
@@ -668,6 +677,7 @@ export const hostDaemonOnlineRpcCommandSchema = z.union([
   environmentCleanupPreflightCommandSchema,
   workspaceStatusCommandSchema,
   workspaceDiffCommandSchema,
+  workspacePullRequestCommandSchema,
 ]);
 export type HostDaemonOnlineRpcCommand = z.infer<
   typeof hostDaemonOnlineRpcCommandSchema
@@ -689,6 +699,7 @@ export const hostDaemonRetryableOnlineRpcCommandSchema = z.union([
   environmentCleanupPreflightCommandSchema,
   workspaceStatusCommandSchema,
   workspaceDiffCommandSchema,
+  workspacePullRequestCommandSchema,
 ]);
 export type HostDaemonRetryableOnlineRpcCommand = z.infer<
   typeof hostDaemonRetryableOnlineRpcCommandSchema
@@ -877,6 +888,15 @@ const workspaceDiffResultSchema = z.discriminatedUnion("outcome", [
     .strict(),
 ]);
 
+// Every failure mode (gh missing / not authed / no remote / no PR / malformed
+// output / unresolvable workspace) collapses to `pullRequest: null`, so there
+// is no available/unavailable discrimination here.
+const workspacePullRequestResultSchema = z
+  .object({
+    pullRequest: gitHostPullRequestSchema.nullable(),
+  })
+  .strict();
+
 const fileListResultSchema = z.object({
   files: z.array(z.object({ path: z.string(), name: z.string() })),
   truncated: z.boolean(),
@@ -993,6 +1013,7 @@ export const hostDaemonOnlineRpcResultSchemaByType = {
   "environment.cleanup_preflight": environmentCleanupPreflightResultSchema,
   "workspace.status": workspaceStatusResultSchema,
   "workspace.diff": workspaceDiffResultSchema,
+  "workspace.pull_request": workspacePullRequestResultSchema,
 } as const satisfies Record<HostDaemonOnlineRpcCommandType, z.ZodTypeAny>;
 
 export type HostDaemonOnlineRpcResultByType = {
