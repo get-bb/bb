@@ -34,6 +34,7 @@ export interface QuickCreateProjectController {
   isCreating: boolean;
   openCreateDialog: () => void;
   platform: HostPlatform | null;
+  hostName: string | null;
   projectPathDialog: QuickCreateProjectDialogState;
   submitProjectPath: ProjectPathDialogSubmitHandler;
 }
@@ -88,6 +89,7 @@ export function useQuickCreateProject(): QuickCreateProjectController {
       isCreating: isPending,
       openCreateDialog,
       platform: controller.platform,
+      hostName: controller.hostName,
       projectPathDialog: controller.projectPathDialog,
       submitProjectPath: controller.submitProjectPath,
     }),
