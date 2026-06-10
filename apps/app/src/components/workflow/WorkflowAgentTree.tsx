@@ -113,7 +113,11 @@ export function buildAgentStats(
   if (agent.agentType) {
     parts.push(agent.agentType);
   }
-  parts.push(shortModelName(agent.model));
+  // No model override on the run leaves the snapshot model empty — skip it
+  // rather than emit a dangling "·" separator.
+  if (agent.model) {
+    parts.push(shortModelName(agent.model));
+  }
   if (agent.tokens !== undefined && agent.tokens > 0) {
     parts.push(`${formatCompactTokens(agent.tokens)} tok`);
   }
