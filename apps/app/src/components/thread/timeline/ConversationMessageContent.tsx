@@ -274,7 +274,7 @@ function UserConversationMessage({
 
   return (
     <div className="w-full">
-      <div className="group ml-auto w-fit max-w-[80%]">
+      <div className="group/message ml-auto w-fit max-w-[80%]">
         <div className="rounded-md bg-surface-selected p-2 text-sm leading-relaxed text-foreground">
           {messageText ? (
             <CollapsibleMessageText
@@ -332,7 +332,7 @@ function AssistantConversationMessage({
   }, [onOpenLink, onOpenLocalFileLink]);
 
   return (
-    <div className="group w-full px-2 text-sm leading-relaxed">
+    <div className="group/message w-full px-2 text-sm leading-relaxed">
       <MarkdownPreview content={text} linkRouting={linkRouting} />
       <ConversationAttachments
         filePaths={attachmentItems.filePaths}

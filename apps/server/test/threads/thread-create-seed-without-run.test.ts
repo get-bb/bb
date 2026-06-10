@@ -1,6 +1,7 @@
 import { getThread, listEvents } from "@bb/db";
 import { turnRequestEventDataSchema } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../src/errors.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
 import {
   canThreadSpawnChild,
@@ -17,7 +18,7 @@ import {
   seedProjectWithSource,
   seedThread,
 } from "../helpers/seed.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 function threadStartTurnRequest(harness: { db: Parameters<typeof listEvents>[0] }, threadId: string) {
   const events = listEvents(harness.db, { threadId });
@@ -174,5 +175,208 @@ describe("canThreadSpawnChild", () => {
       // Depth 4 is at the cap — no further children allowed.
       expect(canThreadSpawnChild(harness.deps, { thread: level4 })).toBe(false);
     });
+  });
+});
+
+describe("thread creation child-thread boundary validation", () => {
+  // Each case shares one project + ready source environment so a parent thread
+  // is a live, same-project thread and child creation resolves an environment.
+  async function withChildBoundaryHarness(
+    name: string,
+    run: (args: {
+      harness: TestAppHarness;
+      hostId: string;
+      path: string;
+      projectId: string;
+      sourceThreadId: string;
+    }) => Promise<void>,
+  ) {
+    await withTestHarness(async (harness) => {
+      const path = `/tmp/${name}-project`;
+      const { host } = seedHostSession(harness.deps, { id: `host-${name}` });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      await run({
+        harness,
+        hostId: host.id,
+        path,
+        projectId: project.id,
+        sourceThreadId: sourceThread.id,
+      });
+    });
+  }
+
+  async function captureCreateError(create: () => Promise<unknown>) {
+    try {
+      await create();
+    } catch (error) {
+      if (error instanceof ApiError) {
+        return error;
+      }
+      throw error;
+    }
+    throw new Error("Expected createThreadFromRequest to throw an ApiError");
+  }
+
+  it("rejects startedOnBehalfOf whose senderThreadId differs from parentThreadId", async () => {
+    await withChildBoundaryHarness(
+      "behalf-sender-mismatch",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        const error = await captureCreateError(() =>
+          createThreadFromRequest(harness.deps, {
+            automationId: null,
+            childOrigin: "fork",
+            environment: {
+              type: "host",
+              hostId,
+              workspace: { type: "unmanaged", path },
+            },
+            input: textInput("Forged sender"),
+            origin: "app",
+            parentThreadId: sourceThreadId,
+            projectId,
+            providerId: "codex",
+            startedOnBehalfOf: {
+              initiator: "agent",
+              senderThreadId: "thr_someone_else",
+            },
+          }),
+        );
+        expect(error.status).toBe(400);
+        expect(error.body.code).toBe("invalid_request");
+        expect(error.body.message).toBe(
+          "startedOnBehalfOf.senderThreadId must match parentThreadId",
+        );
+      },
+    );
+  });
+
+  it("rejects startedOnBehalfOf without a parentThreadId", async () => {
+    await withChildBoundaryHarness(
+      "behalf-no-parent",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        const error = await captureCreateError(() =>
+          createThreadFromRequest(harness.deps, {
+            automationId: null,
+            childOrigin: null,
+            environment: {
+              type: "host",
+              hostId,
+              workspace: { type: "unmanaged", path },
+            },
+            input: textInput("Orphan anchor"),
+            origin: "app",
+            projectId,
+            providerId: "codex",
+            startedOnBehalfOf: {
+              initiator: "agent",
+              senderThreadId: sourceThreadId,
+            },
+          }),
+        );
+        expect(error.status).toBe(400);
+        expect(error.body.code).toBe("invalid_request");
+        expect(error.body.message).toBe(
+          "startedOnBehalfOf requires a parentThreadId",
+        );
+      },
+    );
+  });
+
+  it("rejects childOrigin without a parentThreadId", async () => {
+    await withChildBoundaryHarness(
+      "child-origin-no-parent",
+      async ({ harness, hostId, path, projectId }) => {
+        const error = await captureCreateError(() =>
+          createThreadFromRequest(harness.deps, {
+            automationId: null,
+            childOrigin: "side-chat",
+            environment: {
+              type: "host",
+              hostId,
+              workspace: { type: "unmanaged", path },
+            },
+            input: textInput("Parentless side chat"),
+            origin: "app",
+            projectId,
+            providerId: "codex",
+            startedOnBehalfOf: null,
+          }),
+        );
+        expect(error.status).toBe(400);
+        expect(error.body.code).toBe("invalid_request");
+        expect(error.body.message).toBe("childOrigin requires a parentThreadId");
+      },
+    );
+  });
+
+  it("accepts a fork anchored to its source thread", async () => {
+    await withChildBoundaryHarness(
+      "valid-fork",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        const fork = await createThreadFromRequest(harness.deps, {
+          automationId: null,
+          childOrigin: "fork",
+          environment: {
+            type: "host",
+            hostId,
+            workspace: { type: "unmanaged", path },
+          },
+          input: textInput("Forked anchor"),
+          origin: "app",
+          parentThreadId: sourceThreadId,
+          projectId,
+          providerId: "codex",
+          startedOnBehalfOf: {
+            initiator: "agent",
+            senderThreadId: sourceThreadId,
+          },
+        });
+        expect(getThread(harness.db, fork.id)?.childOrigin).toBe("fork");
+        expect(getThread(harness.db, fork.id)?.parentThreadId).toBe(
+          sourceThreadId,
+        );
+      },
+    );
+  });
+
+  it("accepts a side chat with a parent and null startedOnBehalfOf", async () => {
+    await withChildBoundaryHarness(
+      "valid-side-chat",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        const sideChat = await createThreadFromRequest(harness.deps, {
+          automationId: null,
+          childOrigin: "side-chat",
+          environment: {
+            type: "host",
+            hostId,
+            workspace: { type: "unmanaged", path },
+          },
+          input: textInput("Side chat opener"),
+          origin: "app",
+          parentThreadId: sourceThreadId,
+          projectId,
+          providerId: "codex",
+          startedOnBehalfOf: null,
+        });
+        expect(getThread(harness.db, sideChat.id)?.childOrigin).toBe(
+          "side-chat",
+        );
+        expect(getThread(harness.db, sideChat.id)?.parentThreadId).toBe(
+          sourceThreadId,
+        );
+      },
+    );
   });
 });

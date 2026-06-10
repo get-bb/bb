@@ -284,10 +284,14 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
       scrollTop: 0,
     });
 
-    // Exhaust the settle attempts; the last one re-enables stick-to-bottom and
-    // queues a bottom restore, landing the view at the bottom.
+    // Exhaust the settle attempts. The mount layout effect consumed the first of
+    // the 8 attempts, so 7 ResizeObserver passes drive the remainder to zero; the
+    // final pass re-enables stick-to-bottom and scrolls to the bottom inline.
+    // (No surplus trigger here: an extra pass after the fallback would scroll to
+    // bottom via `handleScrollAreaResize`'s own `queueBottomRestore`, masking a
+    // fallback that forgot to scroll.)
     const observer = getLatestResizeObserver();
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    for (let attempt = 0; attempt < 7; attempt += 1) {
       observer.trigger();
     }
 

@@ -11,13 +11,14 @@ interface MessageActionBarProps {
 }
 
 // Shared hover-reveal classes for every action in the bar: hidden until the
-// surrounding `group` row is hovered or the control is keyboard-focused. The
-// fork/side-chat buttons mirror CopyButton's own classes so all three read as
-// one consistent affordance.
+// surrounding named `group/message` row is hovered or a child control takes
+// keyboard focus (`group-focus-within`, matching disclosure.tsx so tabbing onto
+// an action button reveals the bar). The fork/side-chat buttons mirror
+// CopyButton's own classes so all three read as one consistent affordance.
 const ACTION_BUTTON_CLASS =
   "inline-flex size-5 items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
 const HOVER_REVEAL_CLASS =
-  "opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100";
+  "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100";
 
 /**
  * Hover-revealed footer of per-message actions (copy, and — when wired —

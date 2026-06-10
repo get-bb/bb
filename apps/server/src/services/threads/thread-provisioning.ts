@@ -132,7 +132,17 @@ async function startThreadIfEnvironmentReady(
     // displayed (initiator agent/system). The started agent must wait for the
     // user's first message, so we do not dispatch a provider run here — we land
     // the thread in `idle`, ready to accept the user's turn.
-    tryTransition(deps.db, deps.hub, args.thread.id, "idle");
+    const seeded = tryTransition(deps.db, deps.hub, args.thread.id, "idle");
+    if (!seeded) {
+      // The thread left `provisioning` before we could seed it idle (e.g. a
+      // concurrent stop/transition). The anchor turn is persisted but the
+      // thread will not land in `idle` here, so surface it instead of silently
+      // dropping the transition.
+      deps.logger.warn(
+        { threadId: args.thread.id },
+        "Seed-without-run thread was no longer provisioning; idle transition skipped",
+      );
+    }
     return;
   }
 

@@ -547,10 +547,15 @@ export function BottomAnchoredScrollBody({
       if (appliedScrollTop === null) {
         shouldStickToBottomRef.current = true;
         setIsAtBottom(true);
+        // Scroll to the bottom in this same call. We return true below, so the
+        // caller (`handleScrollAreaResize`) early-returns and won't run its own
+        // `queueBottomRestore()`; without this the view would stay pinned at the
+        // top until some later resize happened to fire.
+        queueBottomRestore();
       }
     }
     return true;
-  }, [applyScrollRestore]);
+  }, [applyScrollRestore, queueBottomRestore]);
 
   const handleScrollAreaResize = useCallback(() => {
     // While a restore is pending, the ResizeObserver is the settle signal; the

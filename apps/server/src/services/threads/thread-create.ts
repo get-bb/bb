@@ -276,6 +276,37 @@ export async function createThreadFromRequest(
         projectId: requestInput.projectId,
       })
     : null;
+  // Child-thread coherence + anti-forgery. assertValidParentThread above has
+  // already proven parentThreadId is a live, same-project thread, so anchoring
+  // senderThreadId to it transitively validates the sender — a caller cannot
+  // claim a thread was started on behalf of an arbitrary or cross-project
+  // thread.
+  if (requestInput.startedOnBehalfOf !== null) {
+    if (parentThread === null) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "startedOnBehalfOf requires a parentThreadId",
+      );
+    }
+    if (requestInput.startedOnBehalfOf.senderThreadId !== parentThread.id) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "startedOnBehalfOf.senderThreadId must match parentThreadId",
+      );
+    }
+  }
+  // Both fork and side-chat are child threads, so they require a parent. Note a
+  // side chat legitimately has startedOnBehalfOf null, so this is independent of
+  // the check above.
+  if (requestInput.childOrigin !== null && parentThread === null) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "childOrigin requires a parentThreadId",
+    );
+  }
   await validatePromptAttachmentReferences({
     dataDir: deps.config.dataDir,
     input: requestInput.input,

@@ -127,9 +127,11 @@ export interface EnvironmentBranchListRequest extends BranchListRequest {
 export type ProjectBranchListRequest = EnvironmentBranchListRequest;
 
 // Built by the client and sent to POST /threads, which parses with
-// createThreadRequestSchema. `startedOnBehalfOf` and `childOrigin` carry a
-// server boundary default (null), so callers may omit them; everything else
-// matches the parsed request shape.
+// createThreadRequestSchema. `startedOnBehalfOf` and `childOrigin` are
+// `.nullable().default(null)` in the schema, so callers (only the fork /
+// side-chat paths) may omit them; the explicit `null` is supplied once in
+// `createThread` because the wire body type is the schema's *output* shape,
+// where those defaulted fields are required.
 export type AppCreateThreadRequest = Omit<
   CreateThreadRequest,
   "origin" | "startedOnBehalfOf" | "childOrigin"
