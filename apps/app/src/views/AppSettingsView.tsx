@@ -28,6 +28,11 @@ import {
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import {
+  FAVICON_COLOR_VALUES,
+  useFaviconColorPreference,
+  type FaviconColorPreference,
+} from "@/lib/favicon-color-preference";
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
 import { cn } from "@/lib/utils";
 import {
@@ -43,6 +48,11 @@ import { getWorkspaceOpenTargetFallbackLabel } from "@/components/workspace-open
 interface ThemePreferenceOption {
   label: string;
   value: ThemePreference;
+}
+
+interface FaviconColorOption {
+  label: string;
+  value: FaviconColorPreference;
 }
 
 interface LocalOpenTargetPreferenceDefinition {
@@ -84,6 +94,47 @@ const THEME_PREFERENCE_LABELS: Record<ThemePreference, string> = {
   light: "Light",
   system: "System",
 };
+
+const FAVICON_COLOR_OPTIONS: ReadonlyArray<FaviconColorOption> = [
+  { label: "Default", value: "default" },
+  { label: "Red", value: "red" },
+  { label: "Orange", value: "orange" },
+  { label: "Yellow", value: "yellow" },
+  { label: "Green", value: "green" },
+  { label: "Teal", value: "teal" },
+  { label: "Blue", value: "blue" },
+  { label: "Purple", value: "purple" },
+  { label: "Pink", value: "pink" },
+];
+
+const FAVICON_COLOR_LABELS: Record<FaviconColorPreference, string> = {
+  blue: "Blue",
+  default: "Default",
+  green: "Green",
+  orange: "Orange",
+  pink: "Pink",
+  purple: "Purple",
+  red: "Red",
+  teal: "Teal",
+  yellow: "Yellow",
+};
+
+function FaviconColorSwatch({ value }: { value: FaviconColorPreference }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "size-3.5 shrink-0 rounded-full",
+        value === "default" && "bg-foreground",
+      )}
+      style={
+        value === "default"
+          ? undefined
+          : { backgroundColor: FAVICON_COLOR_VALUES[value] }
+      }
+    />
+  );
+}
 
 const DIRECTORY_TARGET_PREFERENCE: LocalOpenTargetPreferenceDefinition = {
   capability: "openDirectory",
@@ -253,6 +304,7 @@ export function InAppBrowserLinkSettingsSection({
 
 export function AppSettingsView() {
   const themePreference = useThemePreference();
+  const [faviconColor, setFaviconColor] = useFaviconColorPreference();
   const { hasDaemon } = useHostDaemon();
   const { workspaceOpenTargets } = useWorkspaceOpenTargets({
     enabled: hasDaemon,
@@ -270,42 +322,89 @@ export function AppSettingsView() {
     <PageShell contentClassName="pt-4 md:pt-5">
       <div className="mx-auto w-full max-w-3xl space-y-6">
         <SettingsSection title="Appearance">
-          <SettingsWithControl label="Theme">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-between border-border/60 bg-card sm:w-48"
-                  aria-label="Theme"
-                >
-                  {THEME_PREFERENCE_LABELS[themePreference]}
-                  <Icon
-                    name="ChevronDown"
-                    className="size-3.5 text-muted-foreground"
-                  />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {THEME_PREFERENCE_OPTIONS.map((option) => (
-                  <DropdownMenuItem
-                    key={option.value}
-                    onSelect={() => setPreferredTheme(option.value)}
+          <div className="space-y-4">
+            <SettingsWithControl label="Theme">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-between border-border/60 bg-card sm:w-48"
+                    aria-label="Theme"
                   >
-                    {option.label}
+                    {THEME_PREFERENCE_LABELS[themePreference]}
                     <Icon
-                      name="Check"
-                      className={cn(
-                        "ml-auto",
-                        themePreference !== option.value && "opacity-0",
-                        COARSE_POINTER_ICON_SIZE_CLASS,
-                      )}
+                      name="ChevronDown"
+                      className="size-3.5 text-muted-foreground"
                     />
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SettingsWithControl>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  {THEME_PREFERENCE_OPTIONS.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onSelect={() => setPreferredTheme(option.value)}
+                    >
+                      {option.label}
+                      <Icon
+                        name="Check"
+                        className={cn(
+                          "ml-auto",
+                          themePreference !== option.value && "opacity-0",
+                          COARSE_POINTER_ICON_SIZE_CLASS,
+                        )}
+                      />
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SettingsWithControl>
+            <SettingsWithControl
+              label="Favicon color"
+              description="Tint the browser tab icon to tell instances apart."
+            >
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-between border-border/60 bg-card sm:w-48"
+                    aria-label="Favicon color"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <FaviconColorSwatch value={faviconColor} />
+                      <span className="min-w-0 truncate">
+                        {FAVICON_COLOR_LABELS[faviconColor]}
+                      </span>
+                    </span>
+                    <Icon
+                      name="ChevronDown"
+                      className="size-3.5 text-muted-foreground"
+                    />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  {FAVICON_COLOR_OPTIONS.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onSelect={() => setFaviconColor(option.value)}
+                    >
+                      <FaviconColorSwatch value={option.value} />
+                      {option.label}
+                      <Icon
+                        name="Check"
+                        className={cn(
+                          "ml-auto",
+                          faviconColor !== option.value && "opacity-0",
+                          COARSE_POINTER_ICON_SIZE_CLASS,
+                        )}
+                      />
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SettingsWithControl>
+          </div>
         </SettingsSection>
 
         <LocalOpenTargetSettingsSection
