@@ -234,7 +234,9 @@ export function QueuedMessagesList({
       <div className="flex items-center justify-between px-2.5 pb-1 pt-2.5">
         <p className="text-xs text-muted-foreground">
           <span className="opacity-70">Queued</span>{" "}
-          <span className="text-sm opacity-60">{queuedMessages.length}</span>
+          <span className="text-xs text-subtle-foreground">
+            {queuedMessages.length}
+          </span>
         </p>
       </div>
       <DndContext
