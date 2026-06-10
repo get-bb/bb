@@ -2230,6 +2230,31 @@ export type WorkspacePathListResponse = z.infer<
   typeof workspacePathListResponseSchema
 >;
 
+/** `command` = Claude Code legacy slash command (`.claude/commands/*.md`). */
+export const providerCommandSourceSchema = z.enum(["skill", "command"]);
+export type ProviderCommandSource = z.infer<typeof providerCommandSourceSchema>;
+
+export const providerCommandOriginSchema = z.enum(["project", "user"]);
+export type ProviderCommandOrigin = z.infer<typeof providerCommandOriginSchema>;
+
+export const providerCommandSchema = z.object({
+  /** Invocation name, e.g. "review" or "frontend:component". */
+  name: z.string(),
+  source: providerCommandSourceSchema,
+  origin: providerCommandOriginSchema,
+  /** `null` = no description (menu falls back to the name). */
+  description: z.string().nullable(),
+  /** `null` = no argument hint. */
+  argumentHint: z.string().nullable(),
+});
+export type ProviderCommand = z.infer<typeof providerCommandSchema>;
+
+export const commandListResponseSchema = z.object({
+  commands: z.array(providerCommandSchema),
+  truncated: z.boolean(),
+});
+export type CommandListResponse = z.infer<typeof commandListResponseSchema>;
+
 export const threadStorageFileListResponseSchema =
   workspaceFileListResponseSchema.extend({
     /**

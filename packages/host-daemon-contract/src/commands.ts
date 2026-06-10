@@ -442,6 +442,41 @@ const hostListPathsCommandSchema = z
     message: "At least one path kind must be included",
   });
 
+export const hostCommandSourceSchema = z.enum(["skill", "command"]);
+export type HostCommandSource = z.infer<typeof hostCommandSourceSchema>;
+
+export const hostCommandOriginSchema = z.enum(["project", "user"]);
+export type HostCommandOrigin = z.infer<typeof hostCommandOriginSchema>;
+
+/**
+ * A discovered provider skill or legacy slash command. The daemon returns the
+ * raw parsed records; server policy (filter/de-dup/sort/limit) is applied on
+ * top. Mirrors `@bb/server-contract`'s `ProviderCommand` shape (the contract
+ * packages intentionally define matching record shapes independently, like
+ * `hostPathEntrySchema` / `workspacePathEntrySchema`).
+ */
+export const hostProviderCommandSchema = z.object({
+  name: z.string(),
+  source: hostCommandSourceSchema,
+  origin: hostCommandOriginSchema,
+  description: z.string().nullable(),
+  argumentHint: z.string().nullable(),
+});
+export type HostProviderCommand = z.infer<typeof hostProviderCommandSchema>;
+
+/**
+ * List the provider's discoverable skills / legacy slash commands. The daemon
+ * resolves the user-home roots itself and scans the project roots under `cwd`
+ * when provided; `cwd: null` (unprovisioned thread) skips the project roots and
+ * returns only user-origin entries. Returns the full raw set — the server owns
+ * de-dup/sort/limit, so there is no `truncated` field here.
+ */
+const hostListCommandsCommandSchema = z.object({
+  type: z.literal("host.list_commands"),
+  providerId: z.string().min(1),
+  cwd: z.string().min(1).nullable(),
+});
+
 /**
  * List a bounded page of git branches at an absolute host path. Path-only
  * sibling of `host.list_files`. Does not require an environment row, does not
@@ -792,6 +827,7 @@ export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES = [
   "development.replay",
   "host.list_files",
   "host.list_paths",
+  "host.list_commands",
   "host.list_branches",
   "host.file_metadata",
   "host.read_file",
@@ -861,6 +897,7 @@ export const hostDaemonOnlineRpcCommandSchema = z.union([
   developmentReplayCommandSchema,
   hostListFilesCommandSchema,
   hostListPathsCommandSchema,
+  hostListCommandsCommandSchema,
   hostListBranchesCommandSchema,
   hostFileMetadataCommandSchema,
   hostReadFileCommandSchema,
@@ -885,6 +922,7 @@ export type HostDaemonOnlineRpcCommandType = z.infer<
 export const hostDaemonRetryableOnlineRpcCommandSchema = z.union([
   hostListFilesCommandSchema,
   hostListPathsCommandSchema,
+  hostListCommandsCommandSchema,
   hostListBranchesCommandSchema,
   hostFileMetadataCommandSchema,
   hostReadFileCommandSchema,
@@ -1101,6 +1139,12 @@ const pathListResultSchema = z.object({
   truncated: z.boolean(),
 });
 
+// No `truncated` here, unlike `pathListResultSchema`: the daemon returns the
+// full raw set across all roots and the server owns de-dup/sort/limit.
+const commandListResultSchema = z.object({
+  commands: z.array(hostProviderCommandSchema),
+});
+
 const providerListResultSchema = z.object({
   providers: z.array(providerInfoSchema),
 });
@@ -1252,6 +1296,7 @@ export const hostDaemonOnlineRpcResultSchemaByType = {
   "development.replay": developmentReplayResultSchema,
   "host.list_files": fileListResultSchema,
   "host.list_paths": pathListResultSchema,
+  "host.list_commands": commandListResultSchema,
   "host.file_metadata": fileMetadataResultSchema,
   "host.list_branches": projectSourceCheckoutSchema,
   "host.read_file": fileReadResultSchema,

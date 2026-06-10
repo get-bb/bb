@@ -191,6 +191,17 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     truncated: false,
   },
+  "host.list_commands": {
+    commands: [
+      {
+        name: "review",
+        source: "skill",
+        origin: "project",
+        description: "Review the current diff",
+        argumentHint: null,
+      },
+    ],
+  },
   "host.list_branches": {
     branches: ["main"],
     branchesTruncated: false,
