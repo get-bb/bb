@@ -30,7 +30,7 @@
     {
       "id": "S3",
       "title": "Fork feature wiring (request, create flow, button, lineage)",
-      "status": "pending",
+      "status": "done",
       "priority": 1,
       "depends_on": [
         "S1",
@@ -46,7 +46,7 @@
     {
       "id": "S4",
       "title": "Side chat (composer spike, panel tab kind, lazy child thread, send-back)",
-      "status": "pending",
+      "status": "done",
       "priority": 1,
       "depends_on": [
         "S1",
@@ -155,7 +155,7 @@
       "id": "8",
       "title": "Build fork request body + source-environment resolver (approach-independent)",
       "description": "Success: a util/hook assembles the fork CreateThreadRequest in an approach-independent way: origin app; input=anchor text; startedOnBehalfOf={initiator:'agent',senderThreadId:source}; parentThreadId=source; childOrigin='fork'; environment=managed-worktree with hostId + baseBranch={kind:'named',name:<source branch>} resolved from the source thread's environment; provider/model/permissionMode inherited; title '{source} (fork)'. Pure assembly + env resolution, no navigation yet. Files: apps/app fork-request util + env resolver. Scope: frontend; depends on S1 contract (1,3,4) and row identity (7).",
-      "status": "pending",
+      "status": "done",
       "priority": 1,
       "type": "frontend",
       "depends_on": [
@@ -170,7 +170,7 @@
       "id": "9",
       "title": "Fork create -> navigate -> focus per recorded approach",
       "description": "Success: forkThreadFromMessage performs the create->navigate->deferred-focus sequence per task 2's recorded A/B verdict \u2014 approach A: create via useCreateThread then navigate(getThreadRoutePath) to the existing thread and focus the composer once interactive; approach B: navigate to the compose surface seam (location.state) and create on first submit. Focus deferred until the thread accepts input (provisioning-aware). Files: apps/app/src/hooks/mutations/thread-runtime-mutations.ts (or new hook). Scope: frontend; depends on task 2 verdict + request builder (8).",
-      "status": "pending",
+      "status": "done",
       "priority": 1,
       "type": "frontend",
       "depends_on": [
@@ -183,7 +183,7 @@
       "id": "10",
       "title": "Wire Fork button + depth guard + anchor fork icon",
       "description": "Success: agent MessageActionBar Fork button calls forkThreadFromMessage; disabled with tooltip when the source thread's canSpawnChild is false; the forked anchor row renders via GeneratedConversationMessage with the Fork leading icon. Files: apps/app MessageActionBar wiring in ConversationMessageContent.tsx, GeneratedConversationMessage.tsx (fork icon), depth-guard read of canSpawnChild. Scope: frontend; depends on canSpawnChild (4) + fork flow (9).",
-      "status": "pending",
+      "status": "done",
       "priority": 1,
       "type": "frontend",
       "depends_on": [
@@ -196,7 +196,7 @@
       "id": "11",
       "title": "Fork lineage UI (Forks list in metadata)",
       "description": "Success: source thread metadata shows a 'Forks' list of children with childOrigin='fork', each linking to the fork; the fork links back to its source via the existing parent link. Uses a parentThreadId-scoped fetch filtered by childOrigin (small, parent-bounded result set; no load-all). Files: apps/app ThreadMetadataContent.tsx + a child-threads query/hook. Scope: frontend; depends on childOrigin (3) + button live (10).",
-      "status": "pending",
+      "status": "done",
       "priority": 2,
       "type": "frontend",
       "depends_on": [
@@ -209,7 +209,7 @@
       "id": "12",
       "title": "Spike: confirm PromptBoxInternal can drive a non-route thread (OQ4)",
       "description": "Success: a recorded determination of whether PromptBoxInternal (apps/app/src/components/promptbox/PromptBoxInternal.tsx) can compose+submit turns against a thread that is NOT the route's active thread (the side-chat child thread in the panel); if yes, document the integration seam; if no, record the additional scope needed and adjust task 14. Outcome noted in the task file or spec. Files: investigation + short note. Scope: frontend spike; de-risks task 14 before its dependents.",
-      "status": "pending",
+      "status": "done",
       "priority": 2,
       "type": "frontend",
       "depends_on": [
@@ -221,7 +221,7 @@
       "id": "13",
       "title": "Add side-chat panel tab kind",
       "description": "Success: SideChatFixedPanelTab { kind:'side-chat'; id; threadId: string|null; title } added with Zod schema, factory, arms in SecondaryFixedPanelTab and SecondaryFileFixedPanelTab, and handled at EVERY site that discriminates on tab.kind (predicates and per-kind blocks across fixed-panel-tabs-state.ts, useThreadFileTabs.ts, ThreadDetailView.tsx \u2014 grep tab.kind, don't trust line numbers). Tab icon=SideChat, title from source message. Files: apps/app/src/lib/fixed-panel-tabs-state.ts, useThreadFileTabs.ts, views/thread-detail/ThreadDetailView.tsx. Scope: frontend, additive union member; no content yet.",
-      "status": "pending",
+      "status": "done",
       "priority": 2,
       "type": "frontend",
       "depends_on": [
@@ -233,7 +233,7 @@
       "id": "14",
       "title": "openSideChat + SideChatTabContent (lazy child thread)",
       "description": "Success: openSideChat (in useThreadFileTabs.ts) opens a side-chat tab with a focused composer and no thread; on first submit it creates a child thread (parentThreadId=main, childOrigin='side-chat', personal workspace, permissionMode readonly) whose first turn carries the user's question + an agent-only snapshot of the main thread (spawning message + the current turn and 3 preceding messages; N=3 default); the tab is kept mounted like BrowserTabDeck so streaming survives tab switches; later turns render in the panel. Uses the seam from task 12. Files: apps/app/src/components/secondary-panel/SideChatTabContent.tsx (new), useThreadFileTabs.ts, a context-snapshot util. Scope: frontend, largest side-chat task; depends on input-agent-only (1), childOrigin (3), spike (12), tab kind (13).",
-      "status": "pending",
+      "status": "done",
       "priority": 2,
       "type": "frontend",
       "depends_on": [
@@ -248,7 +248,7 @@
       "id": "15",
       "title": "Side chat send-back + depth guard + button wiring",
       "description": "Success: agent MessageActionBar SideChat button calls openSideChat, disabled when source canSpawnChild is false; the side-chat composer has a 'Send to main thread' action calling the existing cross-thread-send hook directly (no bespoke wrapper), posting into the main thread as 'Message from {side chat}'. Files: apps/app SideChatTabContent.tsx, MessageActionBar wiring, existing send hook. Scope: frontend; depends on canSpawnChild (4) + SideChatTabContent (14).",
-      "status": "pending",
+      "status": "done",
       "priority": 2,
       "type": "frontend",
       "depends_on": [

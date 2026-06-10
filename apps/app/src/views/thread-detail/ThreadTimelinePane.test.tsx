@@ -18,6 +18,8 @@ function renderLoadingTimelinePane(): RenderResult {
   return render(
     <ThreadTimelinePane
       activeThinking={null}
+      canSpawnChild={false}
+      threadChildOrigin={null}
       footer={<div>Composer</div>}
       hasOlderTimelineRows={false}
       header={<div>Header</div>}
@@ -66,6 +68,8 @@ describe("ThreadTimelinePane", () => {
     view.rerender(
       <ThreadTimelinePane
         activeThinking={null}
+        canSpawnChild={false}
+        threadChildOrigin={null}
         footer={<div>Composer</div>}
         hasOlderTimelineRows={false}
         header={<div>Header</div>}
@@ -92,6 +96,8 @@ describe("ThreadTimelinePane", () => {
     render(
       <ThreadTimelinePane
         activeThinking={null}
+        canSpawnChild={false}
+        threadChildOrigin={null}
         footer={<div>Composer</div>}
         hasOlderTimelineRows={false}
         header={<div>Header</div>}
@@ -135,6 +141,8 @@ describe("ThreadTimelinePane", () => {
     render(
       <ThreadTimelinePane
         activeThinking={null}
+        canSpawnChild={false}
+        threadChildOrigin={null}
         footer={<div>Composer</div>}
         hasOlderTimelineRows={false}
         header={<div>Header</div>}

@@ -61,6 +61,7 @@ function getSecondaryPanelForFixedTab(
     case "app":
     case "browser":
     case "new-tab":
+    case "side-chat":
       return "thread-info";
     case "terminal":
       return null;

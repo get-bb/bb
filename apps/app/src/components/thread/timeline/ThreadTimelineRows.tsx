@@ -10,7 +10,11 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { QueryClientContext, type QueryClient } from "@tanstack/react-query";
-import type { ThreadRuntimeDisplayStatus, ThreadWithRuntime } from "@bb/domain";
+import type {
+  ThreadChildOrigin,
+  ThreadRuntimeDisplayStatus,
+  ThreadWithRuntime,
+} from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import {
   assertNever,
@@ -35,6 +39,8 @@ import {
 } from "./timeline-auto-expand.js";
 import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
 import type {
+  ThreadTimelineForkMessageHandler,
+  ThreadTimelineSideChatMessageHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineImageViewSrcResolver,
@@ -87,6 +93,21 @@ export interface ThreadTimelineRowsProps {
    * a running runtime status.
    */
   initialExpanded?: ReadonlySet<string>;
+  /**
+   * Whether the rendered thread may spawn a child thread (depth-cap policy from
+   * the thread response). When false the per-message Fork action renders
+   * disabled. Omit when the spawn policy is unknown (treated as not allowed).
+   */
+  canSpawnChild?: boolean;
+  /**
+   * Origin of the rendered thread as a child (`fork` / `side-chat`), or null for
+   * root threads. Selects the fork leading icon on the seed-without-run anchor.
+   */
+  threadChildOrigin?: ThreadChildOrigin | null;
+  /** Fork the rendered thread from a specific agent message. */
+  onForkMessage?: ThreadTimelineForkMessageHandler;
+  /** Open a side chat anchored on a specific agent message. */
+  onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
@@ -116,7 +137,11 @@ export interface ThreadTimelineRowsProps {
  * loads.
  */
 interface TimelineRendererStaticContextValue {
+  canSpawnChild: boolean;
   getViewRows: GetTimelineViewRows;
+  onForkMessage: ThreadTimelineForkMessageHandler | undefined;
+  onSideChatMessage: ThreadTimelineSideChatMessageHandler | undefined;
+  threadChildOrigin: ThreadChildOrigin | null;
   onOpenLink: ThreadTimelineLinkHandler | undefined;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler | undefined;
   onTitleAction: TimelineTitleActionResolver | undefined;
@@ -653,6 +678,10 @@ function timelineRowsListGapClassName(
 
 function ConversationRow({ row }: ConversationRowProps) {
   const {
+    canSpawnChild,
+    onForkMessage,
+    onSideChatMessage,
+    threadChildOrigin,
     onOpenLink,
     onOpenLocalFileLink,
     projectId,
@@ -668,6 +697,7 @@ function ConversationRow({ row }: ConversationRowProps) {
     return (
       <ConversationMessageContent
         attachments={row.attachments}
+        childOrigin={threadChildOrigin}
         initiator={row.initiator}
         mentions={row.mentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
@@ -682,10 +712,29 @@ function ConversationRow({ row }: ConversationRowProps) {
       />
     );
   }
+  // Fork anchors on the exact agent row: the handler keys on this row's text +
+  // turn id (forwarded row identity, now consumed), so a click forks the active
+  // thread from this message. Omit the handler entirely when no host can fork,
+  // which keeps the Fork button out of the action bar rather than rendering it
+  // dead.
+  const onFork =
+    onForkMessage === undefined
+      ? undefined
+      : () =>
+          onForkMessage({ messageText: row.text, sourceTurnId: row.turnId });
+  // Side chat anchors on the same agent row text; both actions share the
+  // canSpawnChild depth guard (both spawn a child thread off the active thread).
+  const onSideChat =
+    onSideChatMessage === undefined
+      ? undefined
+      : () => onSideChatMessage({ messageText: row.text });
   return (
     <ConversationMessageContent
       attachments={row.attachments}
       id={row.id}
+      onFork={onFork}
+      onSideChat={onSideChat}
+      forkDisabled={!canSpawnChild}
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
@@ -1273,7 +1322,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   }, [projectId]);
   const staticContextValue = useMemo<TimelineRendererStaticContextValue>(
     () => ({
+      canSpawnChild: props.canSpawnChild ?? false,
       getViewRows,
+      onForkMessage: props.onForkMessage,
+      onSideChatMessage: props.onSideChatMessage,
+      threadChildOrigin: props.threadChildOrigin ?? null,
       onOpenLink: props.onOpenLink,
       onOpenLocalFileLink: props.onOpenLocalFileLink,
       onTitleAction: props.onTitleAction,
@@ -1287,7 +1340,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       workspaceRootPath: props.workspaceRootPath,
     }),
     [
+      props.canSpawnChild,
       getViewRows,
+      props.onForkMessage,
+      props.onSideChatMessage,
+      props.threadChildOrigin,
       props.onOpenLink,
       props.onOpenLocalFileLink,
       props.onTitleAction,

@@ -6,6 +6,7 @@ import type {
   ProjectExecutionDefaults,
   ProjectSource,
   ResolvedThreadExecutionOptions,
+  ThreadChildOrigin,
   ThreadQueuedMessage,
   WorkspaceDiffTarget,
 } from "@bb/domain";
@@ -688,6 +689,8 @@ export interface ThreadListFilters {
   projectId?: string;
   parentThreadId?: string;
   hasParent?: boolean;
+  /** Restrict to child threads spawned with this origin (fork or side-chat). */
+  childOrigin?: ThreadChildOrigin;
   /** App callers must choose active or archived; server omission intentionally means both. */
   archived: boolean;
   limit?: number;
@@ -713,6 +716,7 @@ export async function listThreads(
           ...(filters.hasParent !== undefined
             ? { hasParent: toBooleanQueryValue(filters.hasParent) }
             : {}),
+          ...(filters.childOrigin ? { childOrigin: filters.childOrigin } : {}),
           archived: toBooleanQueryValue(filters.archived),
           ...(filters.limit !== undefined
             ? { limit: String(filters.limit) }

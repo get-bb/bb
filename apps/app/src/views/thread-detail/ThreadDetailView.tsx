@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom, useAtomValue } from "jotai";
 import type {
+  ThreadTimelineForkMessageHandler,
+  ThreadTimelineSideChatMessageHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLink,
   ThreadTimelineLocalFileLinkHandler,
@@ -20,6 +22,7 @@ import {
   useToggleThreadTerminalPanel,
   useUpdateThreadTerminalPanelState,
 } from "@/lib/thread-terminal-panel";
+import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { useRequestEnvironmentAction } from "../../hooks/mutations/environment-mutations";
 import {
   useMarkThreadRead,
@@ -94,6 +97,7 @@ import {
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { AppTabContent } from "@/components/secondary-panel/AppTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
+import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import { NewTabActionMenu } from "@/components/secondary-panel/NewTabFileSearch";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { Icon } from "@/components/ui/icon.js";
@@ -411,22 +415,28 @@ export function ThreadDetailView() {
     activeWorkspaceFilePath,
     activeWorkspaceFileSource,
     activeWorkspaceFileStatusLabel,
+    activeSideChatTabId,
+    activateSideChatTab,
     browserTabs,
     clearActiveFileTabs,
     closeAppTab,
     closeBrowserTab,
     closeHostFileTab,
     closeNewTab,
+    closeSideChatTab,
     closeStorageFileTab,
     closeWorkspaceFileTab,
     isNewTabActive,
     openBrowserTab,
     openNewTab,
     openHostFile,
+    openSideChat,
     openStorageFile,
     openWorkspaceFile,
     orderedSecondaryFileTabs,
     selectFileSearchResult,
+    setSideChatThreadId,
+    sideChatTabs,
     updateBrowserTab,
   } = useThreadFileTabs({
     apps: appsQuery.data,
@@ -555,6 +565,26 @@ export function ThreadDetailView() {
     staleTime: 5_000,
   });
   const environment = environmentQuery.data;
+  const forkThreadFromMessage = useForkThreadFromMessage({
+    sourceThread: thread ?? null,
+    sourceEnvironment: environment ?? null,
+  });
+  const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(
+    (target) => {
+      void forkThreadFromMessage(target);
+    },
+    [forkThreadFromMessage],
+  );
+  const handleSideChatMessage = useCallback<ThreadTimelineSideChatMessageHandler>(
+    (target) => {
+      if (!threadId) return;
+      openSideChat({
+        sourceThreadId: threadId,
+        sourceMessageText: target.messageText,
+      });
+    },
+    [openSideChat, threadId],
+  );
   const createThreadInWorktree = useCreateThreadInWorktree({
     projectId: projectId ?? "",
     environmentId: thread?.environmentId ?? "",
@@ -777,6 +807,18 @@ export function ThreadDetailView() {
             onSelect: activateNewTab,
             onClose: closeNewTab,
           };
+        case "side-chat":
+          return {
+            id: tab.id,
+            filename: tab.title,
+            isActive: tab.id === activeSideChatTabId,
+            leadingVisual: (
+              <Icon name="SideChat" className="size-3.5" aria-hidden />
+            ),
+            statusLabel: null,
+            onSelect: () => activateSideChatTab(tab.id),
+            onClose: () => closeSideChatTab(tab.id),
+          };
       }
     });
     return tabs.length > 0 ? tabs : undefined;
@@ -787,15 +829,18 @@ export function ThreadDetailView() {
     activateHostFileTab,
     activateStorageFileTab,
     activateWorkspaceFileTab,
+    activateSideChatTab,
     activeAppId,
     activeBrowserTab,
     activeHostFilePath,
+    activeSideChatTabId,
     activeStorageFilePath,
     activeWorkspaceFilePath,
     closeAppTab,
     closeBrowserTab,
     closeHostFileTab,
     closeNewTab,
+    closeSideChatTab,
     closeStorageFileTab,
     closeWorkspaceFileTab,
     isNewTabActive,
@@ -1369,6 +1414,20 @@ export function ThreadDetailView() {
       onUpdate={updateBrowserTab}
     />
   );
+  // Side-chat tabs, like browser tabs, keep a live conversation surface mounted
+  // across tab switches so streaming + composer state survive deactivation; the
+  // deck self-collapses when no side-chat tab is active, and suppresses the
+  // normal file-content slot when one is.
+  const isSideChatTabActive = activeSideChatTabId !== null;
+  const sideChatDeck = (
+    <SideChatTabDeck
+      sideChatTabs={sideChatTabs}
+      activeSideChatTabId={activeSideChatTabId}
+      sourceThread={thread}
+      sourceTimelineRows={timelineRows}
+      onSetThreadId={setSideChatThreadId}
+    />
+  );
 
   return (
     <>
@@ -1417,6 +1476,8 @@ export function ThreadDetailView() {
           fileTabContent,
           browserDeck,
           isBrowserTabActive,
+          sideChatDeck,
+          isSideChatTabActive,
           isOpen: isSecondaryPanelOpen,
           onClose: closeSecondaryPanel,
           onCollapse: closeSecondaryPanel,
@@ -1445,11 +1506,15 @@ export function ThreadDetailView() {
         onTerminalPanelResize={handleTerminalPanelResize}
         timeline={{
           activeThinking,
+          canSpawnChild: thread.canSpawnChild,
+          threadChildOrigin: thread.childOrigin,
           hasOlderTimelineRows,
           hostConnectionNotice,
           isLoadingOlderTimelineRows,
           isThreadTimelinePending,
           timelineError: Boolean(timelineError),
+          onForkMessage: handleForkMessage,
+          onSideChatMessage: handleSideChatMessage,
           onLoadOlderRows: loadOlderTimelineRows,
           onOpenLink: handleOpenTimelineLink,
           onOpenLocalFileLink: handleOpenTimelineLocalFileLink,

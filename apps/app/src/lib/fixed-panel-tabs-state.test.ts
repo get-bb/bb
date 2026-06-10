@@ -4,15 +4,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
+  areFixedPanelTabsEquivalent,
   createAppFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createNewTabFixedPanelTab,
+  createSideChatFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
   normalizeFixedPanelTabsState,
   parseFixedPanelTabsState,
   pruneFixedPanelTabsStorage,
   serializeFixedPanelTabsState,
   type FixedPanelTabsState,
+  type SideChatFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
 } from "./fixed-panel-tabs-state";
 
@@ -101,6 +104,39 @@ describe("fixed panel tabs state storage", () => {
         storedValue: serializeFixedPanelTabsState({ state }),
       }),
     ).toEqual(state);
+  });
+
+  it("round-trips side-chat tabs (threadId null and set)", () => {
+    const pendingTab = createSideChatFixedPanelTab({ title: "Why this index?" });
+    const createdTab: SideChatFixedPanelTab = {
+      ...createSideChatFixedPanelTab({ title: "Created side chat" }),
+      threadId: "thr_side_child",
+    };
+    const state = makeFixedPanelTabsState({
+      secondary: {
+        tabs: [pendingTab, createdTab],
+        activeTabId: pendingTab.id,
+        isOpen: true,
+      },
+    });
+
+    expect(
+      parseFixedPanelTabsState({
+        initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+        now: NOW,
+        storedValue: serializeFixedPanelTabsState({ state }),
+      }),
+    ).toEqual(state);
+  });
+
+  it("treats a side-chat threadId change as a non-equivalent update", () => {
+    const pendingTab = createSideChatFixedPanelTab({ title: "Side chat" });
+    const createdTab: SideChatFixedPanelTab = {
+      ...pendingTab,
+      threadId: "thr_side_child",
+    };
+    expect(areFixedPanelTabsEquivalent(pendingTab, pendingTab)).toBe(true);
+    expect(areFixedPanelTabsEquivalent(pendingTab, createdTab)).toBe(false);
   });
 
   it("falls back for invalid JSON, invalid shapes, and unsupported regions", () => {

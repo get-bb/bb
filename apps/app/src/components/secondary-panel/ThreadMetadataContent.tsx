@@ -45,8 +45,10 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { useUnarchiveThread } from "../../hooks/mutations/thread-state-mutations";
+import { useThreads } from "@/hooks/queries/thread-queries";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadDisplayTitle } from "@/lib/thread-title";
 
 // ---------------------------------------------------------------------------
 // Each row of the Info tab is a function component that owns its own raw
@@ -179,6 +181,48 @@ export function ParentSelectorRow({
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+    </DetailRow>
+  );
+}
+
+export interface ForksRowProps {
+  thread: Thread;
+  projectId: string;
+}
+
+/**
+ * Lists the thread's forks (children created with `childOrigin === "fork"`),
+ * each linking to the fork. The fork links back here via the parent-thread link.
+ * Fetched with a targeted list query filtered by `parentThreadId` + `childOrigin`
+ * — no load-all-and-filter. Renders nothing when the thread has no forks.
+ */
+export function ForksRow({ thread, projectId }: ForksRowProps) {
+  const forksQuery = useThreads({
+    projectId: thread.projectId,
+    parentThreadId: thread.id,
+    childOrigin: "fork",
+    archived: false,
+  });
+  const forks = forksQuery.data ?? [];
+  if (forks.length === 0) {
+    return null;
+  }
+
+  return (
+    <DetailRow label="Forks" align="start" valueClassName="min-w-0">
+      <TruncatedList
+        items={forks}
+        getKey={(fork) => fork.id}
+        renderItem={(fork) => (
+          <Link
+            to={getThreadRoutePath({ projectId, threadId: fork.id })}
+            className="block min-w-0 truncate text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
+            title={getThreadDisplayTitle(fork)}
+          >
+            {getThreadDisplayTitle(fork)}
+          </Link>
+        )}
+      />
     </DetailRow>
   );
 }
@@ -801,6 +845,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         updateThreadPending={updateThreadPending}
         onAssignParent={onAssignParent}
       />
+      <ForksRow thread={thread} projectId={projectId} />
       <EnvironmentRow thread={thread} environment={environment} />
       <WorkspacePathRow thread={thread} environment={environment} />
       <BranchRow thread={thread} workspaceStatus={workspaceStatus} />

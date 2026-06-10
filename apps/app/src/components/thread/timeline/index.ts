@@ -15,6 +15,10 @@ export {
   type ThreadContextWindowIndicatorProps,
 } from "./ThreadContextWindowIndicator.js";
 export type {
+  ThreadTimelineForkMessageHandler,
+  ThreadTimelineForkMessageTarget,
+  ThreadTimelineSideChatMessageHandler,
+  ThreadTimelineSideChatMessageTarget,
   ThreadTimelineLinkHandler,
   ThreadTimelineImageViewSrcResolver,
   ThreadTimelineImageViewSrcTarget,

@@ -145,6 +145,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -162,6 +163,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -180,6 +182,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -197,6 +200,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -214,6 +218,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -228,6 +233,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -246,6 +252,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -265,6 +272,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_sender123"
@@ -285,6 +293,7 @@ export function Overview() {
         <div className="flex w-full max-w-[760px] flex-col gap-3">
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_sender123"
@@ -298,6 +307,7 @@ export function Overview() {
           />
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -315,6 +325,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -332,6 +343,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -351,6 +363,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}

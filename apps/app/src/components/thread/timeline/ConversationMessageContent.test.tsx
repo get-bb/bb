@@ -60,6 +60,7 @@ describe("ConversationMessageContent", () => {
     render(
       <ConversationMessageContent
         role="user"
+        childOrigin={null}
         initiator="user"
         senderThreadId={null}
         senderThreadTitle={null}
@@ -89,6 +90,7 @@ describe("ConversationMessageContent", () => {
       <MemoryRouter>
         <ConversationMessageContent
           role="user"
+          childOrigin={null}
           initiator="user"
           senderThreadId={null}
           senderThreadTitle={null}
@@ -129,6 +131,7 @@ describe("ConversationMessageContent", () => {
     render(
       <ConversationMessageContent
         role="user"
+        childOrigin={null}
         initiator="user"
         senderThreadId={null}
         senderThreadTitle={null}
@@ -171,6 +174,7 @@ describe("ConversationMessageContent", () => {
       <MemoryRouter>
         <ConversationMessageContent
           role="user"
+          childOrigin={null}
           initiator="user"
           senderThreadId={null}
           senderThreadTitle={null}
@@ -207,6 +211,7 @@ describe("ConversationMessageContent", () => {
         <AppRouteNavigationProvider>
           <ConversationMessageContent
             role="user"
+            childOrigin={null}
             initiator="agent"
             resolveSegmentLinkHref={(link) => {
               switch (link.kind) {
@@ -261,6 +266,7 @@ describe("ConversationMessageContent", () => {
     render(
       <ConversationMessageContent
         role="user"
+        childOrigin={null}
         initiator="agent"
         senderThreadId="thr_sender123"
         senderThreadTitle="Frontend thread"
@@ -295,6 +301,7 @@ describe("ConversationMessageContent", () => {
       <MemoryRouter>
         <ConversationMessageContent
           role="user"
+          childOrigin={null}
           initiator="agent"
           resolveSegmentLinkHref={(link) => {
             switch (link.kind) {
@@ -336,4 +343,151 @@ describe("ConversationMessageContent", () => {
     expect(screen.queryByText(token)).toBeNull();
   });
 
+  it("invokes onFork from the assistant message action bar", () => {
+    const onFork = vi.fn();
+    render(
+      <ConversationMessageContent
+        role="assistant"
+        id="row_assistant_fork"
+        threadId="thr_assistant"
+        turnId="turn_assistant_fork"
+        sourceSeqStart={0}
+        sourceSeqEnd={0}
+        attachments={null}
+        text="Agent answer to fork from."
+        turnRequest={null}
+        onFork={onFork}
+        forkDisabled={false}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Fork into new thread" }),
+    );
+
+    expect(onFork).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the fork button when forkDisabled is set (depth cap)", () => {
+    const onFork = vi.fn();
+    render(
+      <ConversationMessageContent
+        role="assistant"
+        id="row_assistant_fork_disabled"
+        threadId="thr_assistant"
+        turnId="turn_assistant_fork_disabled"
+        sourceSeqStart={0}
+        sourceSeqEnd={0}
+        attachments={null}
+        text="Agent answer at the depth cap."
+        turnRequest={null}
+        onFork={onFork}
+        forkDisabled={true}
+      />,
+    );
+
+    const forkButton = screen.getByRole("button", {
+      name: "Fork into new thread",
+    });
+    expect(forkButton).toBeInstanceOf(HTMLButtonElement);
+    expect((forkButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(forkButton);
+    expect(onFork).not.toHaveBeenCalled();
+  });
+
+  it("omits the fork button entirely when no onFork handler is supplied", () => {
+    render(
+      <ConversationMessageContent
+        role="assistant"
+        id="row_assistant_no_fork"
+        threadId="thr_assistant"
+        turnId="turn_assistant_no_fork"
+        sourceSeqStart={0}
+        sourceSeqEnd={0}
+        attachments={null}
+        text="Agent answer with no fork affordance."
+        turnRequest={null}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Fork into new thread" }),
+    ).toBeNull();
+  });
+
+  it("invokes onSideChat from the assistant message action bar", () => {
+    const onSideChat = vi.fn();
+    render(
+      <ConversationMessageContent
+        role="assistant"
+        id="row_assistant_side_chat"
+        threadId="thr_assistant"
+        turnId="turn_assistant_side_chat"
+        sourceSeqStart={0}
+        sourceSeqEnd={0}
+        attachments={null}
+        text="Agent answer to ask about."
+        turnRequest={null}
+        onSideChat={onSideChat}
+        forkDisabled={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open side chat" }));
+
+    expect(onSideChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the side-chat button under the shared depth-cap guard", () => {
+    const onFork = vi.fn();
+    const onSideChat = vi.fn();
+    render(
+      <ConversationMessageContent
+        role="assistant"
+        id="row_assistant_side_chat_disabled"
+        threadId="thr_assistant"
+        turnId="turn_assistant_side_chat_disabled"
+        sourceSeqStart={0}
+        sourceSeqEnd={0}
+        attachments={null}
+        text="Agent answer at the depth cap."
+        turnRequest={null}
+        onFork={onFork}
+        onSideChat={onSideChat}
+        forkDisabled={true}
+      />,
+    );
+
+    // The single forkDisabled guard greys both fork and side chat.
+    const forkButton = screen.getByRole("button", {
+      name: "Fork into new thread",
+    });
+    const sideChatButton = screen.getByRole("button", {
+      name: "Open side chat",
+    });
+    expect((forkButton as HTMLButtonElement).disabled).toBe(true);
+    expect((sideChatButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(sideChatButton);
+    expect(onSideChat).not.toHaveBeenCalled();
+  });
+
+  it("omits the side-chat button when no onSideChat handler is supplied", () => {
+    render(
+      <ConversationMessageContent
+        role="assistant"
+        id="row_assistant_no_side_chat"
+        threadId="thr_assistant"
+        turnId="turn_assistant_no_side_chat"
+        sourceSeqStart={0}
+        sourceSeqEnd={0}
+        attachments={null}
+        text="Agent answer with no side-chat affordance."
+        turnRequest={null}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Open side chat" }),
+    ).toBeNull();
+  });
 });

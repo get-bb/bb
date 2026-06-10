@@ -5,7 +5,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ActiveThinking, ThreadRuntimeDisplayStatus } from "@bb/domain";
+import type {
+  ActiveThinking,
+  ThreadChildOrigin,
+  ThreadRuntimeDisplayStatus,
+} from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import { Button } from "@/components/ui/button.js";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
@@ -15,6 +19,8 @@ import { PageShell } from "@/components/ui/page-shell.js";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import {
   ThreadTimelineRows,
+  type ThreadTimelineForkMessageHandler,
+  type ThreadTimelineSideChatMessageHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLinkHandler,
   type ThreadTimelineUnreadDividerPlacement,
@@ -27,6 +33,8 @@ import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 
 interface ThreadTimelinePaneProps {
   activeThinking: ActiveThinking | null;
+  canSpawnChild: boolean;
+  threadChildOrigin: ThreadChildOrigin | null;
   footer: ReactNode;
   hasOlderTimelineRows: boolean;
   header: ReactNode;
@@ -34,6 +42,8 @@ interface ThreadTimelinePaneProps {
   isLoadingOlderTimelineRows: boolean;
   isThreadTimelinePending: boolean;
   timelineError: boolean;
+  onForkMessage?: ThreadTimelineForkMessageHandler;
+  onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
   onLoadOlderRows: () => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -123,6 +133,8 @@ function useTimelineRowsWithPendingStop({
 
 export function ThreadTimelinePane({
   activeThinking,
+  canSpawnChild,
+  threadChildOrigin,
   footer,
   hasOlderTimelineRows,
   header,
@@ -130,6 +142,8 @@ export function ThreadTimelinePane({
   isLoadingOlderTimelineRows,
   isThreadTimelinePending,
   timelineError,
+  onForkMessage,
+  onSideChatMessage,
   onLoadOlderRows,
   onOpenLink,
   onOpenLocalFileLink,
@@ -193,6 +207,10 @@ export function ThreadTimelinePane({
             />
           ) : timelineRowsWithPendingStop.length > 0 ? (
             <ThreadTimelineRows
+              canSpawnChild={canSpawnChild}
+              threadChildOrigin={threadChildOrigin}
+              onForkMessage={onForkMessage}
+              onSideChatMessage={onSideChatMessage}
               onOpenLink={onOpenLink}
               onOpenLocalFileLink={onOpenLocalFileLink}
               onTitleAction={onTitleAction}

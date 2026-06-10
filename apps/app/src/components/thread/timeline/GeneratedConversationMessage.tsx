@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo } from "react";
 import type { TimelineUserConversationRow } from "@bb/server-contract";
-import type { PromptTextMention } from "@bb/domain";
+import type { PromptTextMention, ThreadChildOrigin } from "@bb/domain";
 import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
 import { type IconName } from "@/components/ui/icon.js";
 import {
@@ -22,6 +22,12 @@ import { TurnRequestLabel } from "./TurnRequestLabel.js";
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
+  /**
+   * `childOrigin` of the thread this generated row belongs to. A fork's
+   * seed-without-run anchor (`"fork"`) renders the Fork leading icon for
+   * consistency with the Fork action; otherwise the per-`sourceKind` icon.
+   */
+  childOrigin: ThreadChildOrigin | null;
   mentions: readonly PromptTextMention[];
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
@@ -156,7 +162,13 @@ function generatedConversationEmptyText(
 
 function generatedConversationIconName(
   sourceKind: GeneratedConversationSourceKind,
+  childOrigin: ThreadChildOrigin | null,
 ): IconName {
+  // A fork's anchor uses the Fork icon (matching the Fork action) regardless of
+  // source kind; in practice fork anchors are always agent-initiated.
+  if (childOrigin === "fork") {
+    return "Fork";
+  }
   switch (sourceKind) {
     case "agent":
       return "MessageSquare";
@@ -168,6 +180,7 @@ function generatedConversationIconName(
 export const GeneratedConversationMessage = memo(
   function GeneratedConversationMessage({
     attachmentItems,
+    childOrigin,
     mentions,
     onOpenLocalFileLink,
     projectId,
@@ -199,7 +212,7 @@ export const GeneratedConversationMessage = memo(
         }),
       [sourceKind, sourceName, sourceThreadId],
     );
-    const leadingIcon = generatedConversationIconName(sourceKind);
+    const leadingIcon = generatedConversationIconName(sourceKind, childOrigin);
     const hasExpandedOnlyContent =
       attachmentItems.filePaths.length > 0 ||
       attachmentItems.imageItems.length > 0 ||

@@ -108,6 +108,14 @@ const terminalFixedPanelTabSchema = z
     terminalId: z.string().min(1),
   })
   .strict();
+const sideChatFixedPanelTabSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.literal("side-chat"),
+    threadId: z.string().min(1).nullable(),
+    title: z.string().min(1),
+  })
+  .strict();
 const secondaryFixedPanelTabSchema = z.discriminatedUnion("kind", [
   threadInfoFixedPanelTabSchema,
   gitDiffFixedPanelTabSchema,
@@ -117,6 +125,7 @@ const secondaryFixedPanelTabSchema = z.discriminatedUnion("kind", [
   appFixedPanelTabSchema,
   browserFixedPanelTabSchema,
   newTabFixedPanelTabSchema,
+  sideChatFixedPanelTabSchema,
 ]);
 const bottomFixedPanelTabSchema = z.discriminatedUnion("kind", [
   terminalFixedPanelTabSchema,
@@ -225,6 +234,21 @@ export interface TerminalFixedPanelTab {
   terminalId: string;
 }
 
+/**
+ * A message-anchored side chat hosted in the secondary panel. The child thread
+ * is created lazily on the user's first submit, so `threadId` is null until then
+ * (the composer is shown with no thread yet). `title` is derived from the source
+ * agent message at open time (and could later mirror the child thread's title).
+ * Like a browser tab, the live conversation/streaming state lives in a
+ * kept-mounted deck so it survives switching to another panel tab.
+ */
+export interface SideChatFixedPanelTab {
+  id: string;
+  kind: "side-chat";
+  threadId: string | null;
+  title: string;
+}
+
 export type SecondaryFixedPanelTab =
   | ThreadInfoFixedPanelTab
   | GitDiffFixedPanelTab
@@ -233,7 +257,8 @@ export type SecondaryFixedPanelTab =
   | ThreadStorageFilePreviewFixedPanelTab
   | AppFixedPanelTab
   | BrowserFixedPanelTab
-  | NewTabFixedPanelTab;
+  | NewTabFixedPanelTab
+  | SideChatFixedPanelTab;
 
 /**
  * The subset of secondary-panel tabs rendered as closable file tabs in the tab
@@ -246,7 +271,8 @@ export type SecondaryFileFixedPanelTab =
   | ThreadStorageFilePreviewFixedPanelTab
   | AppFixedPanelTab
   | BrowserFixedPanelTab
-  | NewTabFixedPanelTab;
+  | NewTabFixedPanelTab
+  | SideChatFixedPanelTab;
 
 export type BottomFixedPanelTab = TerminalFixedPanelTab;
 
@@ -344,6 +370,10 @@ interface CreateAppFixedPanelTabArgs {
 
 interface CreateBrowserFixedPanelTabArgs {
   url: string;
+}
+
+interface CreateSideChatFixedPanelTabArgs {
+  title: string;
 }
 
 interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
@@ -452,6 +482,24 @@ export function createNewTabFixedPanelTab(): NewTabFixedPanelTab {
   return {
     id: NEW_TAB_TAB_ID,
     kind: "new-tab",
+  };
+}
+
+/**
+ * Side-chat tabs get a fresh unique id per instance — the source agent message
+ * is not a stable identity (the same message can spawn multiple side chats, and
+ * the thread does not exist yet), so it cannot key the tab the way a file path
+ * or application id does. `threadId` starts null; the child thread is created on
+ * the user's first submit.
+ */
+export function createSideChatFixedPanelTab({
+  title,
+}: CreateSideChatFixedPanelTabArgs): SideChatFixedPanelTab {
+  return {
+    id: `side-chat:${crypto.randomUUID()}`,
+    kind: "side-chat",
+    threadId: null,
+    title,
   };
 }
 
@@ -722,6 +770,12 @@ export function areFixedPanelTabsEquivalent(
       return b.kind === "app" && a.applicationId === b.applicationId;
     case "browser":
       return b.kind === "browser" && a.url === b.url && a.title === b.title;
+    case "side-chat":
+      return (
+        b.kind === "side-chat" &&
+        a.threadId === b.threadId &&
+        a.title === b.title
+      );
     case "thread-storage-file-preview":
       return (
         b.kind === "thread-storage-file-preview" &&

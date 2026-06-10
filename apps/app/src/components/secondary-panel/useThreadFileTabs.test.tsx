@@ -1020,3 +1020,104 @@ describe("useThreadFileTabs — browser tabs", () => {
     expect(ids).not.toContain(second.id);
   });
 });
+
+describe("useThreadFileTabs — side-chat tabs", () => {
+  it("opens a side-chat tab (threadId null) titled from the source message", () => {
+    const { result } = renderThreadFileTabsHook({
+      environmentId: "env-one",
+      storageFiles: undefined,
+      threadId: "thr-side-open",
+    });
+
+    act(() => {
+      result.current.openSideChat({
+        sourceThreadId: "thr-side-open",
+        sourceMessageText: "Why did you pick that approach?\nmore",
+      });
+    });
+
+    expect(result.current.sideChatTabs).toHaveLength(1);
+    const tab = result.current.sideChatTabs[0];
+    expect(tab?.threadId).toBeNull();
+    expect(tab?.title).toBe("Why did you pick that approach?");
+    expect(result.current.activeSideChatTabId).toBe(tab?.id);
+
+    const persisted = readStoredState("thr-side-open").secondary.tabs.filter(
+      (entry) => entry.kind === "side-chat",
+    );
+    expect(persisted).toHaveLength(1);
+  });
+
+  it("records the child thread id on first submit via setSideChatThreadId", () => {
+    const { result } = renderThreadFileTabsHook({
+      environmentId: "env-one",
+      storageFiles: undefined,
+      threadId: "thr-side-set-id",
+    });
+
+    act(() => {
+      result.current.openSideChat({
+        sourceThreadId: "thr-side-set-id",
+        sourceMessageText: "Question",
+      });
+    });
+    const tabId = result.current.sideChatTabs[0]?.id;
+    if (!tabId) {
+      throw new Error("expected a side-chat tab");
+    }
+
+    act(() => {
+      result.current.setSideChatThreadId({
+        tabId,
+        threadId: "thr_side_child",
+      });
+    });
+
+    expect(result.current.sideChatTabs[0]?.threadId).toBe("thr_side_child");
+    const persisted = readStoredState("thr-side-set-id").secondary.tabs.find(
+      (entry) => entry.kind === "side-chat",
+    );
+    expect(persisted?.kind === "side-chat" ? persisted.threadId : null).toBe(
+      "thr_side_child",
+    );
+  });
+
+  it("supports multiple side chats and closes by id", () => {
+    const { result } = renderThreadFileTabsHook({
+      environmentId: "env-one",
+      storageFiles: undefined,
+      threadId: "thr-side-multi",
+    });
+
+    act(() => {
+      result.current.openSideChat({
+        sourceThreadId: "thr-side-multi",
+        sourceMessageText: "First",
+      });
+    });
+    const first = result.current.sideChatTabs[0]?.id;
+    act(() => {
+      result.current.openSideChat({
+        sourceThreadId: "thr-side-multi",
+        sourceMessageText: "Second",
+      });
+    });
+    const ids = result.current.sideChatTabs.map((tab) => tab.id);
+    expect(ids).toHaveLength(2);
+    const second = ids[1];
+    if (!first || !second) {
+      throw new Error("expected two side-chat tabs");
+    }
+    expect(first).not.toBe(second);
+
+    act(() => {
+      result.current.closeSideChatTab(second);
+    });
+
+    const remaining = readStoredState("thr-side-multi")
+      .secondary.tabs.filter((entry) => entry.kind === "side-chat")
+      .map((entry) => entry.id);
+    expect(remaining).toContain(first);
+    expect(remaining).not.toContain(second);
+  });
+});

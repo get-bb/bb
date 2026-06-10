@@ -1,16 +1,20 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Environment, Thread } from "@bb/domain";
+import { MemoryRouter } from "react-router-dom";
+import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
 import type { ThreadSchedule } from "@bb/server-contract";
 import { makeWorkspaceStatus } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  ForksRow,
   GitStatusRow,
   MergeBaseRow,
   ThreadSchedulesRow,
   WorkspacePathRow,
 } from "./ThreadMetadataContent";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { threadListQueryKey } from "@/hooks/queries/query-keys";
 
 type ThreadOverrides = Partial<Thread>;
 type EnvironmentOverrides = Partial<Environment>;
@@ -63,6 +67,39 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
     updatedAt: 1,
   };
 
+  return { ...base, ...overrides };
+}
+
+function makeForkListEntry(
+  overrides: Partial<ThreadListEntry> = {},
+): ThreadListEntry {
+  const base: ThreadListEntry = {
+    id: "thr_fork",
+    projectId: "proj_test",
+    environmentId: "env_fork",
+    automationId: null,
+    providerId: "openai",
+    title: "Test thread (fork)",
+    titleFallback: null,
+    status: "idle",
+    parentThreadId: "thr_test",
+    childOrigin: "fork",
+    archivedAt: null,
+    pinnedAt: null,
+    pinSortKey: null,
+    stopRequestedAt: null,
+    deletedAt: null,
+    lastReadAt: null,
+    latestAttentionAt: 1,
+    createdAt: 1,
+    updatedAt: 1,
+    hasPendingInteraction: false,
+    environmentHostId: null,
+    environmentName: null,
+    environmentBranchName: null,
+    environmentWorkspaceDisplayKind: "managed-worktree",
+    runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+  };
   return { ...base, ...overrides };
 }
 
@@ -223,5 +260,65 @@ describe("ThreadSchedulesRow", () => {
 
     expect(screen.getByText(/Paused/)).not.toBeNull();
     expect(screen.queryByText(/Next /)).toBeNull();
+  });
+});
+
+describe("ForksRow", () => {
+  it("renders nothing when the thread has no forks", () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const thread = makeThread();
+    queryClient.setQueryData(
+      threadListQueryKey({
+        projectId: thread.projectId,
+        parentThreadId: thread.id,
+        childOrigin: "fork",
+        archived: false,
+      }),
+      [],
+    );
+
+    const { container } = render(
+      <MemoryRouter>
+        <ForksRow thread={thread} projectId="proj_test" />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(container.textContent).toBe("");
+  });
+
+  it("links each fork child to its thread route", () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const thread = makeThread();
+    queryClient.setQueryData(
+      threadListQueryKey({
+        projectId: thread.projectId,
+        parentThreadId: thread.id,
+        childOrigin: "fork",
+        archived: false,
+      }),
+      [
+        makeForkListEntry({ id: "thr_fork_a", title: "Explore alt (fork)" }),
+        makeForkListEntry({ id: "thr_fork_b", title: "Try other path (fork)" }),
+      ],
+    );
+
+    render(
+      <MemoryRouter>
+        <ForksRow thread={thread} projectId="proj_test" />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(screen.getByText("Forks")).not.toBeNull();
+    const forkLink = screen.getByRole("link", { name: "Explore alt (fork)" });
+    expect(forkLink.getAttribute("href")).toBe(
+      "/projects/proj_test/threads/thr_fork_a",
+    );
+    expect(
+      screen
+        .getByRole("link", { name: "Try other path (fork)" })
+        .getAttribute("href"),
+    ).toBe("/projects/proj_test/threads/thr_fork_b");
   });
 });

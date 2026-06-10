@@ -8,7 +8,7 @@ import type {
   TimelineRowBase,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
-import type { PromptTextMention } from "@bb/domain";
+import type { PromptTextMention, ThreadChildOrigin } from "@bb/domain";
 import { cn } from "@/lib/utils";
 import { MarkdownPreview } from "../../ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -52,6 +52,12 @@ interface ConversationMessageContentBaseProps {
 
 export interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
   role: "user";
+  /**
+   * `childOrigin` of the thread this row belongs to. Selects the fork leading
+   * icon when an agent-initiated thread-start anchor (a fork's seed-without-run
+   * row) renders as "Message from {source}". Null for non-fork threads.
+   */
+  childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
@@ -80,6 +86,21 @@ export interface ConversationMessageContentAssistantProps
   // (CollapsibleMessageText), so this handler lives on the assistant variant
   // only — never accepted-but-ignored.
   onOpenLink?: ThreadTimelineLinkHandler;
+  /**
+   * Fork the active thread from this agent message. Omitted when forking is
+   * unavailable (no host) — the action bar then renders without a Fork button.
+   */
+  onFork?: () => void;
+  /**
+   * Open a side chat anchored on this agent message. Omitted when side chats are
+   * unavailable (no host secondary panel) — the bar then renders without it.
+   */
+  onSideChat?: () => void;
+  /**
+   * Greys the Fork + Side-chat buttons when the thread is at the spawn-depth cap
+   * — both spawn a child thread off the active thread, so they share one guard.
+   */
+  forkDisabled?: boolean;
   turnRequest: null;
 }
 
@@ -96,6 +117,7 @@ export type ConversationMessageContentProps =
 
 interface UserConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
+  childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -109,6 +131,9 @@ interface UserConversationMessageProps {
 
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
   attachmentItems: ConversationAttachmentItems;
+  onFork?: () => void;
+  onSideChat?: () => void;
+  forkDisabled?: boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
@@ -211,6 +236,7 @@ function CollapsibleMessageText({
 
 function UserConversationMessage({
   attachmentItems,
+  childOrigin,
   initiator,
   mentions,
   onOpenLocalFileLink,
@@ -231,6 +257,7 @@ function UserConversationMessage({
     return (
       <GeneratedConversationMessage
         attachmentItems={attachmentItems}
+        childOrigin={childOrigin}
         mentions={bodyMentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
@@ -254,6 +281,7 @@ function UserConversationMessage({
     return (
       <GeneratedConversationMessage
         attachmentItems={attachmentItems}
+        childOrigin={null}
         mentions={bodyMentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
@@ -306,6 +334,9 @@ function UserConversationMessage({
 
 function AssistantConversationMessage({
   attachmentItems,
+  onFork,
+  onSideChat,
+  forkDisabled,
   onOpenLink,
   onOpenLocalFileLink,
   projectId,
@@ -341,13 +372,20 @@ function AssistantConversationMessage({
         projectId={projectId}
       />
       {/*
-        Copy + (S3/S4) fork / side-chat actions. `onFork` / `onSideChat` are
-        omitted until those sessions wire them, so this currently reveals copy
-        alone on hover — the inert-button approach (no permanently-disabled
-        placeholders in the DOM).
+        Copy + fork (S3) + side chat (S4) actions. Each button is dropped
+        entirely (not rendered disabled) when its handler is absent — e.g. fork
+        is omitted for a personal-only source with no host to base a worktree
+        fork on. `disabled` greys both fork and side chat together when the
+        thread is at the spawn-depth cap (both spawn a child thread, one guard).
       */}
       <div className="mt-1">
-        <MessageActionBar messageText={text} alignment="start" />
+        <MessageActionBar
+          messageText={text}
+          alignment="start"
+          onFork={onFork}
+          onSideChat={onSideChat}
+          disabled={forkDisabled}
+        />
       </div>
     </div>
   );
@@ -377,6 +415,7 @@ export function ConversationMessageContent(
     return (
       <UserConversationMessage
         attachmentItems={attachmentItems}
+        childOrigin={props.childOrigin}
         initiator={props.initiator}
         mentions={props.mentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
@@ -394,6 +433,9 @@ export function ConversationMessageContent(
     <AssistantConversationMessage
       attachmentItems={attachmentItems}
       id={props.id}
+      onFork={props.onFork}
+      onSideChat={props.onSideChat}
+      forkDisabled={props.forkDisabled}
       onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}

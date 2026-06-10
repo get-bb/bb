@@ -302,6 +302,8 @@ function buildSecondaryContentProps({
     onTerminalPanelResize,
     timeline: {
       activeThinking: null,
+      canSpawnChild: false,
+      threadChildOrigin: null,
       hasOlderTimelineRows: false,
       hostConnectionNotice: null,
       isLoadingOlderTimelineRows: false,
