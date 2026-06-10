@@ -30,6 +30,7 @@ import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import {
   FAVICON_COLOR_VALUES,
+  getFaviconGlyphHref,
   useFaviconColorPreference,
   type FaviconColorPreference,
 } from "@/lib/favicon-color-preference";
@@ -119,19 +120,19 @@ const FAVICON_COLOR_LABELS: Record<FaviconColorPreference, string> = {
   yellow: "Yellow",
 };
 
-function FaviconColorSwatch({ value }: { value: FaviconColorPreference }) {
+// Renders the favicon glyph itself in the candidate color by using the
+// favicon image as a CSS mask, so the preview matches the resulting tab icon.
+function FaviconColorPreview({ value }: { value: FaviconColorPreference }) {
   return (
     <span
       aria-hidden
-      className={cn(
-        "size-3.5 shrink-0 rounded-full",
-        value === "default" && "bg-foreground",
-      )}
-      style={
-        value === "default"
+      className={cn("size-4 shrink-0", value === "default" && "bg-foreground")}
+      style={{
+        mask: `url("${getFaviconGlyphHref()}") center / contain no-repeat`,
+        ...(value === "default"
           ? undefined
-          : { backgroundColor: FAVICON_COLOR_VALUES[value] }
-      }
+          : { backgroundColor: FAVICON_COLOR_VALUES[value] }),
+      }}
     />
   );
 }
@@ -372,7 +373,7 @@ export function AppSettingsView() {
                     aria-label="Favicon color"
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      <FaviconColorSwatch value={faviconColor} />
+                      <FaviconColorPreview value={faviconColor} />
                       <span className="min-w-0 truncate">
                         {FAVICON_COLOR_LABELS[faviconColor]}
                       </span>
@@ -389,7 +390,7 @@ export function AppSettingsView() {
                       key={option.value}
                       onSelect={() => setFaviconColor(option.value)}
                     >
-                      <FaviconColorSwatch value={option.value} />
+                      <FaviconColorPreview value={option.value} />
                       {option.label}
                       <Icon
                         name="Check"

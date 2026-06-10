@@ -54,6 +54,15 @@ export function useFaviconColorPreference() {
 const FAVICON_SIZES = [32, 16] as const;
 
 /**
+ * Favicon glyph used as a CSS mask when previewing colors in the UI. Only
+ * the alpha channel matters for masking, so the light/dark variants are
+ * interchangeable; dev builds use the dev glyph to match the actual favicon.
+ */
+export function getFaviconGlyphHref(): string {
+  return import.meta.env.DEV ? "/favicon-32x32-dev.png" : "/favicon-32x32.png";
+}
+
+/**
  * Mirrors the favicon bootstrap script in index.html: dev builds use the
  * "-dev" variant, production follows the system color scheme.
  */
