@@ -32,7 +32,7 @@ export const THREAD_PENDING_INTERACTIONS_QUERY_KEY =
   "threadPendingInteractions";
 export const THREAD_SCHEDULES_QUERY_KEY = "threadSchedules";
 export const THREAD_TERMINALS_QUERY_KEY = "threadTerminals";
-export const THREAD_COMMANDS_QUERY_KEY = "commands";
+export const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
 export const THREAD_STORAGE_FILES_QUERY_KEY = "threadStorageFiles";
 export const THREAD_STORAGE_PATHS_QUERY_KEY = "threadStoragePaths";
 export const THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY = "threadStorageFilePreview";
@@ -205,16 +205,12 @@ export type ThreadTerminalsQueryKey = readonly [
   typeof THREAD_TERMINALS_QUERY_KEY,
   string,
 ];
-export type ThreadCommandsQueryKey = readonly [
-  typeof THREAD_QUERY_KEY,
+export type ProjectCommandsQueryKey = readonly [
+  typeof PROJECT_COMMANDS_QUERY_KEY,
+  string | undefined,
+  string | undefined,
+  string | null,
   string,
-  typeof THREAD_COMMANDS_QUERY_KEY,
-  string,
-];
-export type ThreadCommandsForThreadQueryKeyPrefix = readonly [
-  typeof THREAD_QUERY_KEY,
-  string,
-  typeof THREAD_COMMANDS_QUERY_KEY,
 ];
 export type ThreadStorageFilesQueryKey = readonly [
   typeof THREAD_STORAGE_FILES_QUERY_KEY,
@@ -660,17 +656,19 @@ export function allThreadTerminalsQueryKeyPrefix(): AllThreadTerminalsQueryKeyPr
   return [THREAD_TERMINALS_QUERY_KEY];
 }
 
-export function threadCommandsQueryKey(
-  threadId: string,
+export function projectCommandsQueryKey(
+  projectId: string | undefined,
+  providerId: string | undefined,
+  environmentId: string | null,
   query: string,
-): ThreadCommandsQueryKey {
-  return [THREAD_QUERY_KEY, threadId, THREAD_COMMANDS_QUERY_KEY, query];
-}
-
-export function threadCommandsForThreadQueryKeyPrefix(
-  threadId: string,
-): ThreadCommandsForThreadQueryKeyPrefix {
-  return [THREAD_QUERY_KEY, threadId, THREAD_COMMANDS_QUERY_KEY];
+): ProjectCommandsQueryKey {
+  return [
+    PROJECT_COMMANDS_QUERY_KEY,
+    projectId,
+    providerId,
+    environmentId,
+    query,
+  ];
 }
 
 export function threadStorageFilesQueryKey(

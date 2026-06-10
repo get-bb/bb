@@ -27,7 +27,7 @@ import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
-import { useThreadCommandSuggestions } from "@/hooks/useThreadCommandSuggestions";
+import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import {
@@ -217,9 +217,10 @@ export function ThreadDetailPromptArea({
   // Called unconditionally (hooks rules); inert when the provider has no
   // command trigger.
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
-  const threadCommands = useThreadCommandSuggestions({
-    threadId: thread.id,
+  const commandSuggestions = useCommandSuggestions({
+    projectId: thread.projectId,
     providerId: thread.providerId,
+    environmentId: thread.environmentId,
     query: commandQuery,
   });
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -770,10 +771,10 @@ export function ThreadDetailPromptArea({
         resolveLink: resolveMentionLink,
       },
       command: {
-        trigger: threadCommands.trigger,
-        suggestions: threadCommands.suggestions,
-        isLoading: threadCommands.isLoading,
-        isError: threadCommands.isError,
+        trigger: commandSuggestions.trigger,
+        suggestions: commandSuggestions.suggestions,
+        isLoading: commandSuggestions.isLoading,
+        isError: commandSuggestions.isError,
         onQueryChange: setCommandQuery,
       },
     }),
@@ -783,10 +784,10 @@ export function ThreadDetailPromptArea({
       promptMentions.setQuery,
       promptMentions.suggestions,
       resolveMentionLink,
-      threadCommands.isError,
-      threadCommands.isLoading,
-      threadCommands.suggestions,
-      threadCommands.trigger,
+      commandSuggestions.isError,
+      commandSuggestions.isLoading,
+      commandSuggestions.suggestions,
+      commandSuggestions.trigger,
     ],
   );
 

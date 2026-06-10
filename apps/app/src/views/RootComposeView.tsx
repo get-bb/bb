@@ -5,10 +5,7 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
-import {
-  INERT_TYPEAHEAD_COMMAND_CONFIG,
-  type PromptBoxHandle,
-} from "@/components/promptbox/PromptBoxInternal";
+import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import {
   encodeHostValue,
   encodeReuseValue,
@@ -27,6 +24,7 @@ import {
   stripProjectThreads,
 } from "@/hooks/queries/project-queries";
 import { useThreads } from "@/hooks/queries/thread-queries";
+import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
@@ -622,6 +620,22 @@ export function RootComposeView() {
         : null,
     [navigate, projectId],
   );
+  // Mirrors the @-mention plumbing: the composer feeds the text typed after the
+  // command trigger into `commandQuery`, which drives the project+provider-
+  // scoped command typeahead. When the picker reuses an existing environment,
+  // scope discovery to that environment's workspace; otherwise fall back to the
+  // project's default source (null).
+  const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const reuseEnvironmentId =
+    parsedEnvironment?.type === "reuse"
+      ? parsedEnvironment.environmentId
+      : null;
+  const commandSuggestions = useCommandSuggestions({
+    projectId: isProjectless ? undefined : projectId,
+    providerId: selectedProviderId,
+    environmentId: reuseEnvironmentId,
+    query: commandQuery,
+  });
   const typeaheadConfig = useMemo(
     () => ({
       mention: {
@@ -631,11 +645,13 @@ export function RootComposeView() {
         onQueryChange: promptMentions.setQuery,
         resolveLink: resolveMentionLink,
       },
-      // Command typeahead is deliberately inert in the new-thread composer:
-      // there is no thread id before creation, and discovery is thread-scoped
-      // (GET /threads/:id/commands), so commands cannot be fetched here.
-      // Project-scoped pre-creation discovery is a follow-up.
-      command: INERT_TYPEAHEAD_COMMAND_CONFIG,
+      command: {
+        trigger: commandSuggestions.trigger,
+        suggestions: commandSuggestions.suggestions,
+        isLoading: commandSuggestions.isLoading,
+        isError: commandSuggestions.isError,
+        onQueryChange: setCommandQuery,
+      },
     }),
     [
       promptMentions.isError,
@@ -643,6 +659,10 @@ export function RootComposeView() {
       promptMentions.setQuery,
       promptMentions.suggestions,
       resolveMentionLink,
+      commandSuggestions.isError,
+      commandSuggestions.isLoading,
+      commandSuggestions.suggestions,
+      commandSuggestions.trigger,
     ],
   );
   const attachmentsConfig = useMemo(

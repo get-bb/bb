@@ -5,19 +5,25 @@ import {
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
 } from "@/components/promptbox/mentions/types";
-import { useThreadCommands } from "./queries/thread-queries";
+import { useProjectCommands } from "./queries/project-queries";
 import { PATH_SUGGESTION_DEBOUNCE_MS } from "./usePathSuggestions";
 
 const COMMAND_SUGGESTION_LIMIT = 8;
 
-export interface UseThreadCommandSuggestionsArgs {
-  threadId: string;
-  providerId: string;
+export interface UseCommandSuggestionsArgs {
+  projectId: string | undefined;
+  providerId: string | undefined;
+  /**
+   * Environment whose workspace scopes discovery (e.g. a thread's worktree, or
+   * a reused environment in the new-thread composer), or `null` to fall back to
+   * the project's default source.
+   */
+  environmentId: string | null;
   /** Text typed after the trigger char, or `null` when no command trigger is active. */
   query: string | null;
 }
 
-export interface UseThreadCommandSuggestionsResult {
+export interface UseCommandSuggestionsResult {
   /** The provider's command trigger char, or `null` when the feature is inert. */
   trigger: "/" | "$" | null;
   suggestions: ProviderCommandSuggestion[];
@@ -31,18 +37,24 @@ export interface UseThreadCommandSuggestionsResult {
 }
 
 /**
- * Thread-scoped command typeahead data source, parallel to `usePromptMentions`.
- * Resolves the provider's trigger char and, when present, fetches the
- * discoverable skills/commands for the thread (debounced like path
- * suggestions). With no command trigger the hook is inert: it never fetches and
- * returns an empty list. Unlike mentions, it is enabled even when `query` is
- * empty — `/`/`$` show the full available list.
+ * Project+provider-scoped command typeahead data source, parallel to
+ * `usePromptMentions`. Resolves the provider's trigger char and, when present,
+ * fetches the discoverable skills/commands for the project (debounced like path
+ * suggestions). Serves both the existing-thread follow-up composer and the
+ * new-thread composer. The hook is inert — never fetches, returns an empty list
+ * — when there is no project, no command trigger for the provider, or no active
+ * command query. Unlike mentions, it is enabled even when `query` is empty —
+ * `/`/`$` show the full available list.
  */
-export function useThreadCommandSuggestions(
-  args: UseThreadCommandSuggestionsArgs,
-): UseThreadCommandSuggestionsResult {
-  const trigger = commandTriggerForProvider(args.providerId);
-  const isActive = trigger !== null && args.query !== null;
+export function useCommandSuggestions(
+  args: UseCommandSuggestionsArgs,
+): UseCommandSuggestionsResult {
+  const trigger =
+    args.providerId !== undefined
+      ? commandTriggerForProvider(args.providerId)
+      : null;
+  const isActive =
+    args.projectId !== undefined && trigger !== null && args.query !== null;
 
   const [debouncedNonNullQuery] = useDebounceValue(
     args.query,
@@ -53,13 +65,15 @@ export function useThreadCommandSuggestions(
   const debouncedTrimmedQuery = debouncedQuery?.trim() ?? "";
   const isDebouncing = isActive && trimmedQuery !== debouncedTrimmedQuery;
 
-  const commandsQuery = useThreadCommands(
+  const commandsQuery = useProjectCommands(
     {
-      threadId: args.threadId,
+      projectId: args.projectId,
+      providerId: args.providerId,
+      environmentId: args.environmentId,
       query: debouncedTrimmedQuery,
       limit: COMMAND_SUGGESTION_LIMIT,
     },
-    { enabled: isActive && Boolean(args.threadId) },
+    { enabled: isActive },
   );
 
   const suggestions = useMemo<ProviderCommandSuggestion[]>(() => {

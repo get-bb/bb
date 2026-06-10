@@ -12,7 +12,6 @@ import {
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
-  seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -82,7 +81,7 @@ function legacyCommand(
   };
 }
 
-describe("public thread command typeahead route", () => {
+describe("public project command typeahead route", () => {
   it("filters, sorts, and de-dupes claude-code commands with project winning over user", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -96,11 +95,6 @@ describe("public thread command typeahead route", () => {
         hostId: host.id,
         projectId: project.id,
         path: "/tmp/claude-commands-env",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "claude-code",
       });
       const stub = registerCommandRpc(harness, {
         hostId: host.id,
@@ -122,7 +116,7 @@ describe("public thread command typeahead route", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/commands?query=re`,
+        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}&query=re`,
       );
 
       expect(response.status).toBe(200);
@@ -158,7 +152,7 @@ describe("public thread command typeahead route", () => {
       ]);
       expect(body.truncated).toBe(false);
 
-      // Exactly one RPC, carrying the resolved provider + workspace cwd.
+      // Exactly one RPC, carrying the requested provider + resolved env cwd.
       expect(stub.requests.map((request) => request.command)).toEqual([
         {
           type: "host.list_commands",
@@ -169,7 +163,7 @@ describe("public thread command typeahead route", () => {
     });
   });
 
-  it("returns codex skills for a codex thread", async () => {
+  it("returns codex skills for a codex request", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-codex",
@@ -183,11 +177,6 @@ describe("public thread command typeahead route", () => {
         projectId: project.id,
         path: "/tmp/codex-commands-env",
       });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "codex",
-      });
       const stub = registerCommandRpc(harness, {
         hostId: host.id,
         sessionId: session.id,
@@ -198,7 +187,7 @@ describe("public thread command typeahead route", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/commands`,
+        `/api/v1/projects/${project.id}/commands?provider=codex&environmentId=${environment.id}`,
       );
 
       expect(response.status).toBe(200);
@@ -228,11 +217,6 @@ describe("public thread command typeahead route", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "pi",
-      });
       const stub = registerCommandRpc(harness, {
         hostId: host.id,
         sessionId: session.id,
@@ -240,7 +224,7 @@ describe("public thread command typeahead route", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/commands`,
+        `/api/v1/projects/${project.id}/commands?provider=pi&environmentId=${environment.id}`,
       );
 
       expect(response.status).toBe(200);
@@ -251,20 +235,15 @@ describe("public thread command typeahead route", () => {
     });
   });
 
-  it("passes cwd: null for an unprovisioned thread and returns user-origin entries", async () => {
+  it("falls back to the project source (cwd) with no environmentId and returns user-origin entries", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
-        id: "host-commands-unprovisioned",
+        id: "host-commands-no-env",
       });
       seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
-        path: "/tmp/unprovisioned-project",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: null,
-        providerId: "claude-code",
+        path: "/tmp/no-env-project",
       });
       const stub = registerCommandRpc(harness, {
         hostId: host.id,
@@ -272,8 +251,10 @@ describe("public thread command typeahead route", () => {
         commands: [skill("user-only", "user", { description: "Home skill" })],
       });
 
+      // environmentId="" encodes null on the wire → the new-thread composer
+      // path, which has no environment yet.
       const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/commands`,
+        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=`,
       );
 
       expect(response.status).toBe(200);
@@ -282,16 +263,16 @@ describe("public thread command typeahead route", () => {
         "user-only",
       ]);
       // Falls back to the project source path on the primary host, since the
-      // project has a local-path source even though no environment is ready.
+      // project has a local-path source even though no environment is given.
       expect(stub.requests[0]?.command).toEqual({
         type: "host.list_commands",
         providerId: "claude-code",
-        cwd: "/tmp/unprovisioned-project",
+        cwd: "/tmp/no-env-project",
       });
     });
   });
 
-  it("degrades to the project source (no 409) when the thread's environment is still provisioning", async () => {
+  it("degrades to the project source (no 409) when the given environment is still provisioning", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-provisioning",
@@ -310,11 +291,6 @@ describe("public thread command typeahead route", () => {
         path: "/tmp/provisioning-env",
         status: "provisioning",
       });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "claude-code",
-      });
       const stub = registerCommandRpc(harness, {
         hostId: host.id,
         sessionId: session.id,
@@ -322,7 +298,7 @@ describe("public thread command typeahead route", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/commands`,
+        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}`,
       );
 
       expect(response.status).toBe(200);
@@ -339,24 +315,18 @@ describe("public thread command typeahead route", () => {
     });
   });
 
-  it("passes cwd: null when the thread has neither a ready environment nor a project source", async () => {
+  it("passes cwd: null when there is neither a given environment nor a project source", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-no-source",
       });
       seedPrimaryHost(harness.deps, host.id);
-      // Source-less project: createProject requires a source, so seed one then
-      // point the thread at a project without a local-path source on the
-      // primary host by using a project whose source is on a different host.
+      // Source-less (for the primary host) project: seed the project's source
+      // on a different host so the primary host has no local-path source.
       const otherHost = seedHost(harness.deps, { id: "host-commands-other" });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: otherHost.id,
         path: "/tmp/other-host-project",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: null,
-        providerId: "claude-code",
       });
       const stub = registerCommandRpc(harness, {
         hostId: host.id,
@@ -365,7 +335,7 @@ describe("public thread command typeahead route", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/commands`,
+        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=`,
       );
 
       expect(response.status).toBe(200);
@@ -391,14 +361,9 @@ describe("public thread command typeahead route", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "claude-code",
-      });
 
       const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/commands`,
+        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}`,
       );
 
       expect(response.status).toBe(502);
@@ -422,11 +387,6 @@ describe("public thread command typeahead route", () => {
         projectId: project.id,
         path: "/tmp/limit-env",
       });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "claude-code",
-      });
       registerCommandRpc(harness, {
         hostId: host.id,
         sessionId: session.id,
@@ -439,7 +399,7 @@ describe("public thread command typeahead route", () => {
       });
 
       const limitedResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/commands?limit=2`,
+        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}&limit=2`,
       );
       expect(limitedResponse.status).toBe(200);
       const limited = commandListResponseSchema.parse(
@@ -452,7 +412,7 @@ describe("public thread command typeahead route", () => {
       expect(limited.truncated).toBe(true);
 
       const fullResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/commands`,
+        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}`,
       );
       expect(fullResponse.status).toBe(200);
       const full = commandListResponseSchema.parse(

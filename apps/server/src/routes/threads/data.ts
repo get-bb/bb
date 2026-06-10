@@ -4,7 +4,6 @@ import type { Hono } from "hono";
 import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
 import {
   promptHistoryQuerySchema,
-  threadCommandsQuerySchema,
   threadHostFileContentQuerySchema,
   threadStorageContentQuerySchema,
   threadStorageFilesQuerySchema,
@@ -56,13 +55,6 @@ import {
   listThreadEventRows,
 } from "../../services/threads/thread-data.js";
 import { resolveSystemExecutionOptions } from "../../services/system/execution-options.js";
-import {
-  buildCommandListResponse,
-  providerHasCommandSurface,
-  resolveThreadCommandWorkspace,
-  PROVIDER_COMMAND_DEFAULT_LIMIT,
-  PROVIDER_COMMAND_LIMIT_MAX,
-} from "../../services/threads/provider-command-typeahead.js";
 import { listThreadPromptHistory } from "../../services/prompt-history.js";
 import { tryResolveExistingThreadExecutionPlan } from "../../services/threads/thread-execution-plan.js";
 import {
@@ -391,47 +383,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     context.json(
       await buildThreadComposerBootstrapResponse(deps, context.req.param("id")),
     ),
-  );
-
-  get(
-    "/threads/:id/commands",
-    threadCommandsQuerySchema,
-    async (context, query) => {
-      const thread = requirePublicThread(deps.db, context.req.param("id"));
-
-      // Providers without a command surface (pi, anything unknown) have no
-      // typeahead entries, so skip the daemon roundtrip entirely.
-      if (!providerHasCommandSurface(thread.providerId)) {
-        return context.json({ commands: [], truncated: false });
-      }
-
-      const limit = parseBoundedPositiveOptionalInteger({
-        defaultValue: PROVIDER_COMMAND_DEFAULT_LIMIT,
-        max: PROVIDER_COMMAND_LIMIT_MAX,
-        name: "limit",
-        value: query.limit,
-      });
-      const workspace = resolveThreadCommandWorkspace(deps, {
-        environmentId: thread.environmentId,
-        projectId: thread.projectId,
-      });
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: workspace.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_commands",
-          providerId: thread.providerId,
-          cwd: workspace.cwd,
-        },
-      });
-      return context.json(
-        buildCommandListResponse({
-          commands: result.commands,
-          limit,
-          query: query.query,
-        }),
-      );
-    },
   );
 
   get("/threads/:id/queued-messages", (context) => {

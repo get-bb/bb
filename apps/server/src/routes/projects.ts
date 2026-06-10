@@ -21,6 +21,7 @@ import {
   createProjectSourceRequestSchema,
   projectAttachmentContentQuerySchema,
   projectBranchesQuerySchema,
+  projectCommandsQuerySchema,
   projectDefaultExecutionOptionsQuerySchema,
   projectFilesQuerySchema,
   projectPathsQuerySchema,
@@ -60,6 +61,13 @@ import {
 } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
+import {
+  buildCommandListResponse,
+  providerHasCommandSurface,
+  resolveCommandWorkspace,
+  PROVIDER_COMMAND_DEFAULT_LIMIT,
+  PROVIDER_COMMAND_LIMIT_MAX,
+} from "../services/threads/provider-command-typeahead.js";
 import {
   beginProjectDeletion,
   requestProjectDeletionAdvance,
@@ -606,6 +614,48 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return context.json({ paths: result.paths, truncated: result.truncated });
+    },
+  );
+
+  get(
+    "/projects/:id/commands",
+    projectCommandsQuerySchema,
+    async (context, query) => {
+      const projectId = context.req.param("id");
+      requirePublicStandardProject(deps.db, projectId);
+
+      // Providers without a command surface (pi, anything unknown) have no
+      // typeahead entries, so skip the daemon roundtrip entirely.
+      if (!providerHasCommandSurface(query.provider)) {
+        return context.json({ commands: [], truncated: false });
+      }
+
+      const limit = parseBoundedPositiveOptionalInteger({
+        defaultValue: PROVIDER_COMMAND_DEFAULT_LIMIT,
+        max: PROVIDER_COMMAND_LIMIT_MAX,
+        name: "limit",
+        value: query.limit,
+      });
+      const workspace = resolveCommandWorkspace(deps, {
+        environmentId: query.environmentId,
+        projectId,
+      });
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: workspace.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_commands",
+          providerId: query.provider,
+          cwd: workspace.cwd,
+        },
+      });
+      return context.json(
+        buildCommandListResponse({
+          commands: result.commands,
+          limit,
+          query: query.query,
+        }),
+      );
     },
   );
 

@@ -157,11 +157,11 @@ export interface TypeaheadMentionConfig {
 /**
  * The command-typeahead half of {@link TypeaheadConfig}. `trigger` is the
  * provider's command char (`/` for Claude Code, `$` for Codex) or `null` when
- * the thread's provider has no command surface — in which case the composer
- * never activates a command trigger and the rest of this config is inert.
+ * the provider has no command surface — in which case the composer never
+ * activates a command trigger and the rest of this config is inert.
  *
  * Hosts wire `suggestions` / `isLoading` / `isError` from
- * `useThreadCommandSuggestions`; `onQueryChange` feeds that hook the text typed
+ * `useCommandSuggestions`; `onQueryChange` feeds that hook the text typed
  * after the trigger (`null` when no command trigger is active).
  */
 export interface TypeaheadCommandConfig {
@@ -187,8 +187,8 @@ export interface TypeaheadConfig {
 /**
  * Inert command half: no trigger, no suggestions, no-op query change. Hosts use
  * it as `typeahead.command` until they wire real command data from
- * `useThreadCommandSuggestions`. With `trigger: null` the composer never
- * activates a command trigger, so the rest of the fields are never read.
+ * `useCommandSuggestions`. With `trigger: null` the composer never activates a
+ * command trigger, so the rest of the fields are never read.
  */
 export const INERT_TYPEAHEAD_COMMAND_CONFIG: TypeaheadCommandConfig = {
   trigger: null,

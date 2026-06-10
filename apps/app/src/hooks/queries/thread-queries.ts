@@ -11,7 +11,6 @@ import type {
 } from "@bb/domain";
 import type {
   AutomationsOverviewResponse,
-  CommandListResponse,
   PromptHistoryResponse,
   ThreadComposerBootstrapResponse,
   ThreadQueuedMessageListResponse,
@@ -60,7 +59,6 @@ import {
   threadListQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
-  threadCommandsQueryKey,
   threadQueryKey,
   threadSchedulesQueryKey,
   threadStorageFilesQueryKey,
@@ -596,38 +594,6 @@ export function useThreadStoragePaths(
         signal,
       }),
     enabled: (options?.enabled ?? true) && Boolean(id),
-    refetchOnWindowFocus: false,
-    placeholderData: (previousData) => previousData,
-  });
-}
-
-export interface UseThreadCommandsArgs {
-  threadId: string;
-  query: string;
-  limit: number;
-}
-
-/**
- * Fetches the discoverable provider skills/commands for a thread. Backs
- * `useThreadCommandSuggestions`, which owns trigger resolution, debounce, and
- * mapping to menu rows. Unlike mentions, the command list is enabled even with
- * an empty query (commands show the full list on `/`/`$`).
- */
-export function useThreadCommands(
-  args: UseThreadCommandsArgs,
-  options?: QueryOptions,
-) {
-  return useQuery<CommandListResponse>({
-    queryKey: threadCommandsQueryKey(args.threadId, args.query),
-    queryFn: () =>
-      api.listThreadCommands({
-        threadId: requireThreadId(args.threadId, "useThreadCommands"),
-        query: args.query,
-        limit: args.limit,
-      }),
-    enabled: (options?.enabled ?? true) && Boolean(args.threadId),
-    staleTime: 15_000,
-    retry: false,
     refetchOnWindowFocus: false,
     placeholderData: (previousData) => previousData,
   });

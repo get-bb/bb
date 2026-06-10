@@ -631,26 +631,32 @@ export async function searchProjectPaths(
   );
 }
 
-interface ListThreadCommandsArgs {
-  threadId: string;
+interface ListProjectCommandsArgs {
+  projectId: string;
+  providerId: string;
+  environmentId: string | null;
   query: string;
   limit: number;
 }
 
 /**
- * List the provider skills/slash-commands discoverable for a thread, for the
- * in-composer command typeahead (`/` Claude Code, `$` Codex). Mirrors
- * {@link searchProjectPaths}: the typed Hono client resolves the route from
- * `@bb/server-contract`'s public-api schema, so this types against the
- * committed `CommandListResponse` contract with no cast.
+ * List the provider skills/slash-commands discoverable for a project, scoped by
+ * provider + environment, for the in-composer command typeahead (`/` Claude
+ * Code, `$` Codex). Serves both the existing-thread follow-up composer and the
+ * new-thread composer. Mirrors {@link searchProjectPaths}: the typed Hono
+ * client resolves the route from `@bb/server-contract`'s public-api schema, so
+ * this types against the committed `CommandListResponse` contract with no cast,
+ * and encodes a null `environmentId` as the empty string on the wire.
  */
-export async function listThreadCommands(
-  args: ListThreadCommandsArgs,
+export async function listProjectCommands(
+  args: ListProjectCommandsArgs,
 ): Promise<CommandListResponse> {
   return request<CommandListResponse>(
-    apiClient.threads[":id"].commands.$get({
-      param: { id: args.threadId },
+    apiClient.projects[":id"].commands.$get({
+      param: { id: args.projectId },
       query: {
+        provider: args.providerId,
+        environmentId: args.environmentId ?? "",
         ...(args.query.length > 0 ? { query: args.query } : {}),
         limit: String(args.limit),
       },
