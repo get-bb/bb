@@ -993,6 +993,33 @@ describe("bridge", () => {
       ),
     ).resolves.toEqual({ continue: true });
 
+    // StructuredOutput is the SDK structured-response channel: it must pass
+    // the readonly policy in both ask and deny escalation modes, or sessions
+    // without an approver (workflow agents) wedge on structured output.
+    for (const hookUnderTest of [
+      askHook,
+      denyOptions.hooks?.PreToolUse?.[0]?.hooks[0],
+    ]) {
+      if (!hookUnderTest) {
+        throw new Error("Expected readonly PreToolUse hook");
+      }
+      await expect(
+        hookUnderTest(
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: "StructuredOutput",
+            tool_input: { ok: true },
+            tool_use_id: "tool-structured",
+            session_id: "session-1",
+            transcript_path: "/tmp/transcript.jsonl",
+            cwd: "/tmp/worktree",
+          },
+          "tool-structured",
+          { signal: new AbortController().signal },
+        ),
+      ).resolves.toEqual({ continue: true });
+    }
+
     const preToolUseHook = denyOptions.hooks?.PreToolUse?.[0]?.hooks[0];
     if (!preToolUseHook) {
       throw new Error("Expected readonly PreToolUse hook");

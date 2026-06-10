@@ -2369,6 +2369,60 @@ describe("claude-code provider adapter", () => {
     );
   });
 
+  it("translateEvent surfaces result structured_output as a final agent message", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "assistant",
+          message: {
+            id: "assistant-1",
+            content: [],
+          },
+        },
+      },
+    });
+
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          structured_output: { ok: true, count: 2 },
+          usage: {},
+          modelUsage: {},
+        },
+      },
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "agentMessage",
+          id: "claude-structured-output-turn-1",
+          text: JSON.stringify({ ok: true, count: 2 }),
+        },
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      }),
+    );
+  });
+
   it("translateEvent maps Claude API retry events to retrying provider errors", () => {
     const adapter = createClaudeCodeProviderAdapter();
 

@@ -640,6 +640,27 @@ export function translateClaudeSdkMessage(
             }),
           );
         }
+        // Session-level structured output (SDK outputFormat json_schema)
+        // arrives only on the result message. Surface it as the turn's final
+        // agent message so consumers that read message text (the workflow
+        // agent executor) receive the structured value; sessions without
+        // outputFormat never carry the field.
+        if (
+          message.structured_output !== undefined &&
+          !isClaudeResultFailure(message)
+        ) {
+          events.push({
+            type: "item/completed",
+            threadId,
+            providerThreadId: "",
+            scope: turnScope(state.currentTurnId),
+            item: {
+              type: "agentMessage",
+              id: `claude-structured-output-${state.currentTurnId}`,
+              text: JSON.stringify(message.structured_output),
+            },
+          });
+        }
         events.push({
           type: "turn/completed",
           threadId,
