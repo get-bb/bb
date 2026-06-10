@@ -79,7 +79,9 @@ describe("discoverProviderCommands (claude-code)", () => {
     const fixture = await makeWorkspaceFixture();
     await writeFileEnsuringDir(
       path.join(fixture.cwd, ".claude", "skills", "x", "SKILL.md"),
-      "---\nname: x\ndescription: The x skill\nargument-hint: <target>\n---\nBody",
+      // Frontmatter `name` deliberately differs from the dir name: the
+      // invocation name must come from the directory, not frontmatter.
+      "---\nname: frontmatter-name-ignored\ndescription: The x skill\nargument-hint: <target>\n---\nBody",
     );
     await writeFileEnsuringDir(
       path.join(fixture.cwd, ".claude", "commands", "review.md"),
@@ -172,6 +174,38 @@ describe("discoverProviderCommands (claude-code)", () => {
     expect(byName(commands, "no-frontmatter")).toEqual({
       name: "no-frontmatter",
       source: "command",
+      origin: "project",
+      description: null,
+      argumentHint: null,
+    });
+  });
+
+  it("derives skill name from the directory (ignoring frontmatter name) and coerces a non-string description to null", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".claude", "skills", "real-dir", "SKILL.md"),
+      "---\nname: bogus\ndescription:\n  - not\n  - a\n  - string\n---\nBody",
+    );
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".claude", "skills", "bare", "SKILL.md"),
+      "No frontmatter at all.",
+    );
+
+    const commands = await discoverClaude(fixture, fixture.cwd);
+
+    // Directory name wins; the frontmatter `name: bogus` is never used.
+    expect(byName(commands, "bogus")).toBeUndefined();
+    expect(byName(commands, "real-dir")).toEqual({
+      name: "real-dir",
+      source: "skill",
+      origin: "project",
+      description: null,
+      argumentHint: null,
+    });
+    // Skill with no frontmatter -> name-only record (parity with commands).
+    expect(byName(commands, "bare")).toEqual({
+      name: "bare",
+      source: "skill",
       origin: "project",
       description: null,
       argumentHint: null,

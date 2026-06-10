@@ -181,6 +181,12 @@ async function scanSkillRoot(
  * Bounded recursive walk collecting `*.md` paths. Symlinks are not followed;
  * the depth and file-count caps mirror `walkSkillTree`. Hitting a cap stops the
  * walk early rather than throwing — discovery degrades to a partial list.
+ *
+ * This is a deliberate separate walker, not an extraction of `walkSkillTree`:
+ * that walker throws on caps/symlinks (skill staging must be exact and safe)
+ * and collects file bytes, whereas discovery degrades gracefully and collects
+ * only `*.md` paths. Forcing a shared walker across throw-vs-degrade semantics
+ * would be the wrong abstraction; revisit if a third caller appears.
  */
 async function walkCommandTree(args: WalkCommandTreeArgs): Promise<void> {
   if (args.depth > MAX_SCAN_DEPTH) {
