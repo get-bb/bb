@@ -287,6 +287,8 @@ describe("ConversationMessageContent", () => {
               switch (link.kind) {
                 case "thread":
                   return `/projects/proj_123/threads/${link.threadId}`;
+                default:
+                  return null;
               }
             }}
             senderThreadId="thr_sender123"

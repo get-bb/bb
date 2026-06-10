@@ -12,13 +12,12 @@ export function workflowRunStatusPillVariant(
     case "completed":
       return "secondary";
     case "running":
-      return "default";
+      return "emphasis";
     case "failed":
       return "destructive";
     case "cancelled":
-      return "outline";
     case "interrupted":
-      return "emphasis";
+      return "outline";
     default:
       return assertNever(status);
   }

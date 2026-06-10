@@ -59,6 +59,7 @@ function makePersonalProject(): ProjectWithThreadsResponse {
       name: "Personal",
     }),
     threads: [],
+    defaultExecutionOptions: null,
   };
 }
 
@@ -67,7 +68,11 @@ function buildSidebarNavigationResponse(args: {
   projects: ProjectResponse[];
 }): SidebarBootstrapResponse {
   return {
-    projects: args.projects.map((project) => ({ ...project, threads: [] })),
+    projects: args.projects.map((project) => ({
+      ...project,
+      threads: [],
+      defaultExecutionOptions: null,
+    })),
     personalProject: args.personalProject,
   };
 }
