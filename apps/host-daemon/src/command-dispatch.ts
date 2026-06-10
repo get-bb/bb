@@ -24,6 +24,7 @@ import {
   provisionEnvironment,
 } from "./command-handlers/environment.js";
 import { listHostBranches } from "./command-handlers/host-branches.js";
+import { listHostCommands } from "./command-handlers/list-commands.js";
 import {
   listHostFiles,
   listHostPaths,
@@ -377,6 +378,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "development.replay": dispatchDevelopmentReplayCommand,
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
+  "host.list_commands": listHostCommands,
   "host.list_branches": listHostBranches,
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
