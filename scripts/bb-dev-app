@@ -77,7 +77,9 @@ require_command() {
 }
 
 ensure_repo() {
-  [[ -d "${REPO_ROOT}/.git" ]] || die "Repo not found: ${REPO_ROOT}"
+  # Accept both a normal checkout (.git directory) and a linked worktree
+  # (.git is a file pointing at the common git dir).
+  [[ -e "${REPO_ROOT}/.git" ]] || die "Repo not found: ${REPO_ROOT}"
 }
 
 load_config() {
