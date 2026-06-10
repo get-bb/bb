@@ -287,6 +287,54 @@ describe("public thread command typeahead route", () => {
     });
   });
 
+  it("degrades to the project source (no 409) when the thread's environment is still provisioning", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-commands-provisioning",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/provisioning-project",
+      });
+      // Environment exists but is NOT ready — a freshly-created thread whose
+      // worktree is still provisioning. The route must not 409; it degrades to
+      // the project source path and still returns user-home entries.
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/provisioning-env",
+        status: "provisioning",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "claude-code",
+      });
+      const stub = registerCommandRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        commands: [skill("user-only", "user", { description: "Home skill" })],
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/commands`,
+      );
+
+      expect(response.status).toBe(200);
+      const body = commandListResponseSchema.parse(await readJson(response));
+      expect(body.commands.map((command) => command.name)).toEqual([
+        "user-only",
+      ]);
+      // Not the provisioning env path; the project source path on the primary host.
+      expect(stub.requests[0]?.command).toEqual({
+        type: "host.list_commands",
+        providerId: "claude-code",
+        cwd: "/tmp/provisioning-project",
+      });
+    });
+  });
+
   it("passes cwd: null when the thread has neither a ready environment nor a project source", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
