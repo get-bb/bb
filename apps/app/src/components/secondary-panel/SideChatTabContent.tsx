@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import type { PromptTextMention } from "@bb/domain";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { Environment, PromptTextMention } from "@bb/domain";
 import type { Thread } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import {
@@ -23,6 +23,7 @@ import {
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { buildSideChatContextSnapshot } from "@/lib/side-chat-context-snapshot";
 import { buildSideChatCreateRequest } from "@/lib/side-chat-create-request";
+import { HttpError } from "@/lib/api";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 
 // Side chats are conversation-only in v1 (no @-mentions / file reach), so the
@@ -44,6 +45,11 @@ export interface SideChatTabContentProps {
   tab: SideChatFixedPanelTab;
   /** The main thread the side chat is anchored to (lineage + provider source). */
   sourceThread: Thread;
+  /**
+   * The main thread's environment (host + branch), or null when not yet loaded
+   * / for a personal-project source. Resolves the side chat's own workspace.
+   */
+  sourceEnvironment: Environment | null;
   /** The main thread's timeline rows, snapshotted into the first turn. */
   sourceTimelineRows: readonly TimelineRow[];
   onSetThreadId: SetSideChatThreadId;
@@ -114,6 +120,19 @@ function SideChatConversation({ threadId }: SideChatConversationProps) {
   const displayStatus =
     threadQuery.data?.runtime.displayStatus ?? "idle";
 
+  // A persisted side-chat tab can outlive its child thread (the thread was
+  // deleted). The thread query then 404s — show an explicit terminal empty
+  // state instead of the indefinite "Waiting…" placeholder below.
+  const isChildThreadMissing =
+    threadQuery.error instanceof HttpError && threadQuery.error.status === 404;
+  if (isChildThreadMissing) {
+    return (
+      <EmptyStatePanel className="mx-2 rounded-lg">
+        This side chat is no longer available.
+      </EmptyStatePanel>
+    );
+  }
+
   if (timelineQuery.isPending && rows.length === 0) {
     return (
       <div className="space-y-2 px-2 pt-2">
@@ -154,6 +173,7 @@ function SideChatConversation({ threadId }: SideChatConversationProps) {
 export function SideChatTabContent({
   tab,
   sourceThread,
+  sourceEnvironment,
   sourceTimelineRows,
   onSetThreadId,
 }: SideChatTabContentProps) {
@@ -166,6 +186,11 @@ export function SideChatTabContent({
   const childTimelineQuery = useThreadTimeline(childThreadId ?? "", {
     enabled: childThreadId !== null,
   });
+  // Synchronous guard against a double create: `tab.threadId` only flips to the
+  // new id after the async create resolves and the panel state propagates, so a
+  // second submit in that window would otherwise spawn a second child thread.
+  // (`createThread.isPending` lags a synchronous re-submit.) Cleared on settle.
+  const createInFlightRef = useRef(false);
 
   const handleSubmitText = useCallback(
     (text: string) => {
@@ -178,26 +203,34 @@ export function SideChatTabContent({
         return;
       }
 
+      if (createInFlightRef.current) {
+        return;
+      }
       const executionOptions = executionOptionsQuery.data;
       if (!executionOptions) {
         return;
       }
       const contextSnapshot = buildSideChatContextSnapshot({
         rows: sourceTimelineRows,
-        sourceMessageText: tab.title,
+        sourceMessageText: tab.sourceMessageText,
       });
       const request = buildSideChatCreateRequest({
         projectId: sourceThread.projectId,
         sourceThreadId: sourceThread.id,
+        sourceEnvironment,
         question: text,
         contextSnapshot,
         providerId: sourceThread.providerId,
         model: executionOptions.model,
         title: tab.title,
       });
+      createInFlightRef.current = true;
       createThread.mutate(request, {
         onSuccess: (thread) => {
           onSetThreadId({ tabId: tab.id, threadId: thread.id });
+        },
+        onSettled: () => {
+          createInFlightRef.current = false;
         },
       });
     },
@@ -207,11 +240,13 @@ export function SideChatTabContent({
       executionOptionsQuery.data,
       onSetThreadId,
       sendThreadMessage,
+      sourceEnvironment,
       sourceThread.id,
       sourceThread.projectId,
       sourceThread.providerId,
       sourceTimelineRows,
       tab.id,
+      tab.sourceMessageText,
       tab.title,
     ],
   );

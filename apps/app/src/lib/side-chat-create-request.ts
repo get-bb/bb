@@ -1,5 +1,6 @@
-import type { PermissionMode, PromptInput } from "@bb/domain";
+import type { Environment, PermissionMode, PromptInput } from "@bb/domain";
 import type { AppCreateThreadRequest } from "@/lib/api";
+import { resolveChildThreadEnvironment } from "@/lib/child-thread-environment";
 
 /**
  * Inputs for building a side chat's create-thread request. A side chat is a
@@ -10,6 +11,11 @@ export interface BuildSideChatCreateRequestArgs {
   projectId: string;
   /** Main thread the side chat is anchored to; becomes its parent. */
   sourceThreadId: string;
+  /**
+   * The main thread's environment (host + branch), or null when not yet loaded
+   * / for a personal-project source. Resolves the side chat's own workspace.
+   */
+  sourceEnvironment: Environment | null;
   /** The user's visible question (the first executed turn's prompt). */
   question: string;
   /**
@@ -29,8 +35,15 @@ export interface BuildSideChatCreateRequestArgs {
  * Builds the create-thread request for a message-anchored side chat. The first
  * turn carries the visible question followed by the `agent-only` context
  * snapshot; the thread is a child of the main thread (`childOrigin: "side-chat"`,
- * `parentThreadId = sourceThreadId`) running in the personal workspace with
- * read-only reach (v1 conversation-only — no worktree files).
+ * `parentThreadId = sourceThreadId`) running with read-only reach.
+ *
+ * The side chat runs in the **same project** as its source — a fresh managed
+ * worktree branched off the source's host + branch (its own checkout), via the
+ * shared {@link resolveChildThreadEnvironment} resolver also used by forks. It
+ * falls back to the personal workspace only when the source has no host (a
+ * personal-project source); routing a standard-project side chat into the
+ * personal project is not viable (it would break the same-project
+ * `parentThreadId` guard and the cross-project send-back).
  *
  * `startedOnBehalfOf` is null: unlike a fork, a side chat's first turn is the
  * user's question (a normal user-initiated start), not a seed-without-run agent
@@ -41,6 +54,7 @@ export interface BuildSideChatCreateRequestArgs {
 export function buildSideChatCreateRequest({
   projectId,
   sourceThreadId,
+  sourceEnvironment,
   question,
   contextSnapshot,
   providerId,
@@ -58,10 +72,7 @@ export function buildSideChatCreateRequest({
       { type: "text", text: question, mentions: [] },
       ...contextSnapshot,
     ],
-    environment: {
-      type: "host",
-      workspace: { type: "personal" },
-    },
+    environment: resolveChildThreadEnvironment(sourceEnvironment),
     parentThreadId: sourceThreadId,
     startedOnBehalfOf: null,
     childOrigin: "side-chat",

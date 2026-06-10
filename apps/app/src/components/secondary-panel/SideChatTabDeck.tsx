@@ -1,4 +1,4 @@
-import type { Thread } from "@bb/domain";
+import type { Environment, Thread } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import { cn } from "@/lib/utils";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
@@ -12,6 +12,11 @@ export interface SideChatTabDeckProps {
   activeSideChatTabId: string | null;
   /** The main thread the side chats are anchored to. */
   sourceThread: Thread;
+  /**
+   * The main thread's environment (host + branch), or null when not yet loaded
+   * / for a personal-project source. Resolves each side chat's own workspace.
+   */
+  sourceEnvironment: Environment | null;
   /** The main thread's timeline rows, snapshotted into each side chat's first turn. */
   sourceTimelineRows: readonly TimelineRow[];
   onSetThreadId: SetSideChatThreadId;
@@ -30,6 +35,7 @@ export function SideChatTabDeck({
   sideChatTabs,
   activeSideChatTabId,
   sourceThread,
+  sourceEnvironment,
   sourceTimelineRows,
   onSetThreadId,
 }: SideChatTabDeckProps) {
@@ -54,6 +60,7 @@ export function SideChatTabDeck({
             <SideChatTabContent
               tab={tab}
               sourceThread={sourceThread}
+              sourceEnvironment={sourceEnvironment}
               sourceTimelineRows={sourceTimelineRows}
               onSetThreadId={onSetThreadId}
             />

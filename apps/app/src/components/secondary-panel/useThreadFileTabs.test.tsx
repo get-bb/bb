@@ -1040,6 +1040,11 @@ describe("useThreadFileTabs — side-chat tabs", () => {
     const tab = result.current.sideChatTabs[0];
     expect(tab?.threadId).toBeNull();
     expect(tab?.title).toBe("Why did you pick that approach?");
+    // The full, untruncated source message is preserved separately from the
+    // pill title so the context snapshot can anchor on the exact message.
+    expect(tab?.sourceMessageText).toBe(
+      "Why did you pick that approach?\nmore",
+    );
     expect(result.current.activeSideChatTabId).toBe(tab?.id);
 
     const persisted = readStoredState("thr-side-open").secondary.tabs.filter(

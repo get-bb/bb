@@ -854,6 +854,7 @@ export function useThreadFileTabs({
   const openSideChat = useCallback(
     ({ sourceMessageText }: OpenSideChatArgs) => {
       const nextTab = createSideChatFixedPanelTab({
+        sourceMessageText,
         title: deriveSideChatTitle(sourceMessageText),
       });
       setThreadSecondaryPanelOpen(true);

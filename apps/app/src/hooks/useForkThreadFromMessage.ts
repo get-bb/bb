@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Environment, Thread } from "@bb/domain";
@@ -11,8 +11,6 @@ import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 export interface ForkThreadFromMessageArgs {
   /** The forked agent message's visible text (rendered as the fork anchor). */
   messageText: string;
-  /** Turn the anchor message belongs to. Reserved for richer fork context. */
-  sourceTurnId: string | null;
 }
 
 export interface UseForkThreadFromMessageArgs {
@@ -42,35 +40,45 @@ export function useForkThreadFromMessage({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createThread = useCreateThread();
+  // Synchronous re-entrancy guard: the first `await` below yields before
+  // `createThread.isPending` flips, so a second click in that gap would slip
+  // past the pending check and create a duplicate fork. The ref is set at entry
+  // and cleared in `finally`, closing that window.
+  const forkInFlightRef = useRef(false);
 
   return useCallback(
     async ({ messageText }: ForkThreadFromMessageArgs) => {
-      if (sourceThread === null || createThread.isPending) {
+      if (
+        sourceThread === null ||
+        createThread.isPending ||
+        forkInFlightRef.current
+      ) {
         return;
       }
 
-      // model / permissionMode are not on the thread row; resolve the source's
-      // effective execution options (cached if already fetched by the composer).
-      const executionOptions = await queryClient.fetchQuery({
-        queryKey: threadDefaultExecutionOptionsQueryKey(sourceThread.id),
-        queryFn: () => api.getThreadDefaultExecutionOptions(sourceThread.id),
-      });
-      if (executionOptions === null) {
-        return;
-      }
-
-      const request = buildForkThreadRequest({
-        sourceThread,
-        sourceEnvironment,
-        anchorMessageText: messageText,
-        model: executionOptions.model,
-        permissionMode: executionOptions.permissionMode,
-      });
-      if (request === null) {
-        return;
-      }
-
+      forkInFlightRef.current = true;
       try {
+        // model / permissionMode are not on the thread row; resolve the source's
+        // effective execution options (cached if already fetched by the composer).
+        const executionOptions = await queryClient.fetchQuery({
+          queryKey: threadDefaultExecutionOptionsQueryKey(sourceThread.id),
+          queryFn: () => api.getThreadDefaultExecutionOptions(sourceThread.id),
+        });
+        if (executionOptions === null) {
+          return;
+        }
+
+        const request = buildForkThreadRequest({
+          sourceThread,
+          sourceEnvironment,
+          anchorMessageText: messageText,
+          model: executionOptions.model,
+          permissionMode: executionOptions.permissionMode,
+        });
+        if (request === null) {
+          return;
+        }
+
         const thread = await createThread.mutateAsync(request);
         navigate(
           getThreadRoutePath({
@@ -80,6 +88,8 @@ export function useForkThreadFromMessage({
         );
       } catch {
         // Global mutation error handling already surfaced the failure.
+      } finally {
+        forkInFlightRef.current = false;
       }
     },
     [createThread, navigate, queryClient, sourceEnvironment, sourceThread],

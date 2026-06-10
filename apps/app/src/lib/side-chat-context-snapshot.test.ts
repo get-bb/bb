@@ -137,6 +137,57 @@ describe("buildSideChatContextSnapshot", () => {
     expect(text).toContain("User: follow-up after anchor");
   });
 
+  it("anchors on a long source message (>48 chars), not the latest tail", () => {
+    // A real spawning agent message that exceeds the tab-title truncation
+    // length (48). The tab title would be a truncated prefix that fails the
+    // exact-match anchor; the full text must be passed so the window anchors
+    // on THIS message rather than silently falling back to the tail.
+    const longMessage =
+      "This is the agent message the side chat was opened from and it is well over forty-eight characters long.";
+    expect(longMessage.length).toBeGreaterThan(48);
+    const rows = [
+      conversationRow("user", "u1"),
+      conversationRow("assistant", "a1"),
+      conversationRow("user", "u2"),
+      conversationRow("assistant", "a2"),
+      conversationRow("user", "u3"),
+      conversationRow("assistant", longMessage),
+      conversationRow("user", "later-user"),
+      conversationRow("assistant", "later-assistant-tail"),
+    ];
+
+    const text = snapshotText(rows, longMessage);
+    // Anchor on the long message + its 3 preceding messages (a2, u3 + the
+    // anchor's own preceding pair) — not the latest tail beyond it.
+    expect(text).toContain(`Assistant: ${longMessage}`);
+    expect(text).toContain("Assistant: a2");
+    expect(text).toContain("User: u3");
+    // Messages after the anchor are still included (captured tail).
+    expect(text).toContain("User: later-user");
+    expect(text).toContain("Assistant: later-assistant-tail");
+    // The window starts at the anchor minus 3, so earlier messages drop out.
+    expect(text).not.toContain("User: u1");
+    expect(text).not.toContain("Assistant: a1");
+  });
+
+  it("truncated tab-title text fails to anchor and falls back to the tail", () => {
+    // Regression guard: passing the truncated pill title (not the full source
+    // text) misses the exact-match anchor, so the window degrades to the tail.
+    const longMessage =
+      "This is the agent message the side chat was opened from and it is well over forty-eight characters long.";
+    const truncatedTitle = `${longMessage.slice(0, 47)}…`;
+    const rows = [
+      conversationRow("user", "u1"),
+      conversationRow("assistant", longMessage),
+      conversationRow("user", "u2"),
+      conversationRow("assistant", "newer-tail"),
+    ];
+
+    const text = snapshotText(rows, truncatedTitle);
+    // No exact match for the truncated title => anchors on the last message.
+    expect(text).toContain("Assistant: newer-tail");
+  });
+
   it("falls back to the conversation tail when the anchor is not found", () => {
     const rows = [
       conversationRow("user", "u1"),

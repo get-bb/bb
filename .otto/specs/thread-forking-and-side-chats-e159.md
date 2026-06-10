@@ -72,9 +72,14 @@ Full sourced research is summarized in *Future Considerations → Research notes
 ### Non-Goals
 - **Full-transcript / context-faithful forking.** bb threads don't share provider
   sessions; v1 forks carry the single anchor message, not the whole prior context.
-- **Side chats reading live code (v1).** Per product decision, v1 side chats run on
-  **conversation context only** — they cannot inspect the main thread's worktree
-  files. (Read-only code access is a future enhancement.)
+- **Side chats reading live code (v1).** Per product decision, v1 side chats answer
+  from **conversation context only** — the `agent-only` snapshot is the main thread's
+  conversation, never its worktree files. (Reading the *source* thread's files is a
+  future enhancement.) Note this is about *context source*, not workspace: per the
+  review fix, a side chat does run in its **own same-project readonly worktree** (a
+  fresh isolated checkout), because a personal/no workspace is rejected outside the
+  personal project. The side chat simply does not pull the source's files into its
+  context.
 - **Carrying uncommitted source edits into a fork (v1).** The fork branches from the
   source branch HEAD; uncommitted working-tree changes are not carried.
 - **Conversation-tree visualization.** Lineage is a parent↔child link + back-nav,
@@ -217,7 +222,19 @@ thread is **created on the user's first submit** (avoids the "create requires
 - `input` = the user's question (visible) + the **main-thread context snapshot** as
   `agent-only` parts.
 - `parentThreadId` = main thread; `childOrigin: "side-chat"`.
-- `environment` = **personal workspace** (no worktree) — v1 conversation-only reach.
+- `environment` = a **same-project fresh managed worktree** branched off the source
+  thread's host + branch (its own checkout), resolved by the shared
+  `resolveChildThreadEnvironment` helper that also builds the fork's environment.
+  It falls back to the **personal workspace** only when the source has **no host**
+  (a personal-project source). **Forced decision (review fix):** routing a
+  standard-project side chat into the personal workspace is *not* viable — the
+  server rejects personal workspaces outside the personal project
+  (`assertProjectWorkspaceCompatibility`), and personal-project routing would break
+  both the same-project `parentThreadId` guard and the cross-project send-back. The
+  side chat therefore always runs in **its own same-project readonly worktree**, not
+  a personal/no-workspace environment. v1 still does not *use* the worktree files for
+  context (the snapshot is conversation-only); the worktree is the side chat's own
+  isolated checkout, not a window into the source's files.
 - `permissionMode: "readonly"`.
 
 **Context snapshot (decision: snapshot at creation, bounded window).** The
@@ -429,6 +446,20 @@ import { TrendingUpDownIcon, MessageAdd02Icon } from "@hugeicons/core-free-icons
 2. **[TBD: context window size N]** How many preceding main-thread messages the
    side-chat `agent-only` snapshot includes (current turn only, last N, or the whole
    current turn's lead-up). Token-cost vs grounding.
+
+   **[RESOLVED — side-chat workspace (review fix).]** The original "personal
+   workspace (no worktree)" plan for the side-chat environment is **not viable**:
+   the server rejects personal workspaces outside the personal project
+   (`assertProjectWorkspaceCompatibility`), so a side chat spawned from a
+   standard-project thread 400s on create. Personal-project routing is also
+   rejected — it breaks the same-project `parentThreadId` guard and the
+   cross-project send-back. **Decision:** a side chat runs in its **own
+   same-project fresh managed worktree** (readonly), branched off the source's host
+   + branch via the shared `resolveChildThreadEnvironment` resolver (the same one
+   forks use), falling back to the personal workspace only when the source itself
+   has no host (a personal-project source). This is a forced infrastructure
+   decision; v1 reach into *context* stays conversation-only (Open Question 2's
+   window), independent of the side chat now having its own checkout.
 3. **[TBD: childOrigin migration]** Confirm the nullable `childOrigin` thread-column
    migration (default null for existing rows) and that no consumer treats absence as
    an error.

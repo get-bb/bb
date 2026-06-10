@@ -107,9 +107,15 @@ describe("fixed panel tabs state storage", () => {
   });
 
   it("round-trips side-chat tabs (threadId null and set)", () => {
-    const pendingTab = createSideChatFixedPanelTab({ title: "Why this index?" });
+    const pendingTab = createSideChatFixedPanelTab({
+      sourceMessageText: "Why this index? Full source agent message text.",
+      title: "Why this index?",
+    });
     const createdTab: SideChatFixedPanelTab = {
-      ...createSideChatFixedPanelTab({ title: "Created side chat" }),
+      ...createSideChatFixedPanelTab({
+        sourceMessageText: "Created side chat source message.",
+        title: "Created side chat",
+      }),
       threadId: "thr_side_child",
     };
     const state = makeFixedPanelTabsState({
@@ -130,7 +136,10 @@ describe("fixed panel tabs state storage", () => {
   });
 
   it("treats a side-chat threadId change as a non-equivalent update", () => {
-    const pendingTab = createSideChatFixedPanelTab({ title: "Side chat" });
+    const pendingTab = createSideChatFixedPanelTab({
+      sourceMessageText: "Side chat source message.",
+      title: "Side chat",
+    });
     const createdTab: SideChatFixedPanelTab = {
       ...pendingTab,
       threadId: "thr_side_child",

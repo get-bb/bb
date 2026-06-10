@@ -112,6 +112,7 @@ const sideChatFixedPanelTabSchema = z
   .object({
     id: z.string().min(1),
     kind: z.literal("side-chat"),
+    sourceMessageText: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     title: z.string().min(1),
   })
@@ -237,14 +238,18 @@ export interface TerminalFixedPanelTab {
 /**
  * A message-anchored side chat hosted in the secondary panel. The child thread
  * is created lazily on the user's first submit, so `threadId` is null until then
- * (the composer is shown with no thread yet). `title` is derived from the source
- * agent message at open time (and could later mirror the child thread's title).
- * Like a browser tab, the live conversation/streaming state lives in a
- * kept-mounted deck so it survives switching to another panel tab.
+ * (the composer is shown with no thread yet). `title` is the truncated pill
+ * label derived from the source agent message at open time (and could later
+ * mirror the child thread's title); `sourceMessageText` is the full, untruncated
+ * source message used to anchor the context snapshot on the exact spawning
+ * message (the truncated title would fail the exact-match anchor). Like a
+ * browser tab, the live conversation/streaming state lives in a kept-mounted
+ * deck so it survives switching to another panel tab.
  */
 export interface SideChatFixedPanelTab {
   id: string;
   kind: "side-chat";
+  sourceMessageText: string;
   threadId: string | null;
   title: string;
 }
@@ -373,6 +378,7 @@ interface CreateBrowserFixedPanelTabArgs {
 }
 
 interface CreateSideChatFixedPanelTabArgs {
+  sourceMessageText: string;
   title: string;
 }
 
@@ -493,11 +499,13 @@ export function createNewTabFixedPanelTab(): NewTabFixedPanelTab {
  * the user's first submit.
  */
 export function createSideChatFixedPanelTab({
+  sourceMessageText,
   title,
 }: CreateSideChatFixedPanelTabArgs): SideChatFixedPanelTab {
   return {
     id: `side-chat:${crypto.randomUUID()}`,
     kind: "side-chat",
+    sourceMessageText,
     threadId: null,
     title,
   };
@@ -773,6 +781,7 @@ export function areFixedPanelTabsEquivalent(
     case "side-chat":
       return (
         b.kind === "side-chat" &&
+        a.sourceMessageText === b.sourceMessageText &&
         a.threadId === b.threadId &&
         a.title === b.title
       );

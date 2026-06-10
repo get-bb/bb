@@ -16,8 +16,6 @@ export type ThreadTimelineLinkHandler = MarkdownPreviewLinkHandler;
 export interface ThreadTimelineForkMessageTarget {
   /** Visible text of the agent message the fork anchors on. */
   messageText: string;
-  /** Turn the anchor message belongs to. Null for turn-less rows. */
-  sourceTurnId: string | null;
 }
 
 /**

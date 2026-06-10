@@ -676,6 +676,24 @@ function timelineRowsListGapClassName(
   }
 }
 
+/**
+ * Whether a conversation row is the fork's seed anchor — the thread-start turn
+ * rendered as "Message from {source}". The thread-start user message is
+ * agent-initiated with a sender thread and carries no turn id (it predates the
+ * first executed turn), which distinguishes it from a *later* cross-thread agent
+ * message in the same thread (those belong to a turn, so `turnId` is non-null).
+ * Only this row should take the fork leading icon; later cross-thread agent rows
+ * keep their per-sourceKind icon even though the thread's `childOrigin` is fork.
+ */
+function isForkSeedAnchorRow(row: TimelineConversationViewRow): boolean {
+  return (
+    row.role === "user" &&
+    row.initiator === "agent" &&
+    row.senderThreadId !== null &&
+    row.turnId === null
+  );
+}
+
 function ConversationRow({ row }: ConversationRowProps) {
   const {
     canSpawnChild,
@@ -694,10 +712,14 @@ function ConversationRow({ row }: ConversationRowProps) {
       row.senderThreadId === null
         ? null
         : (senderThreadMetadataById.get(row.senderThreadId) ?? null);
+    // The fork leading icon is the thread's `childOrigin`, but only on the seed
+    // anchor (thread-start) row — pass null for every other generated row so a
+    // later cross-thread agent message in a forked thread keeps its own icon.
+    const childOrigin = isForkSeedAnchorRow(row) ? threadChildOrigin : null;
     return (
       <ConversationMessageContent
         attachments={row.attachments}
-        childOrigin={threadChildOrigin}
+        childOrigin={childOrigin}
         initiator={row.initiator}
         mentions={row.mentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
@@ -712,16 +734,14 @@ function ConversationRow({ row }: ConversationRowProps) {
       />
     );
   }
-  // Fork anchors on the exact agent row: the handler keys on this row's text +
-  // turn id (forwarded row identity, now consumed), so a click forks the active
-  // thread from this message. Omit the handler entirely when no host can fork,
-  // which keeps the Fork button out of the action bar rather than rendering it
-  // dead.
+  // Fork anchors on the exact agent row: the handler keys on this row's text,
+  // so a click forks the active thread from this message. Omit the handler
+  // entirely when no host can fork, which keeps the Fork button out of the
+  // action bar rather than rendering it dead.
   const onFork =
     onForkMessage === undefined
       ? undefined
-      : () =>
-          onForkMessage({ messageText: row.text, sourceTurnId: row.turnId });
+      : () => onForkMessage({ messageText: row.text });
   // Side chat anchors on the same agent row text; both actions share the
   // canSpawnChild depth guard (both spawn a child thread off the active thread).
   const onSideChat =

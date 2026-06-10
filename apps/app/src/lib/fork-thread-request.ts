@@ -1,6 +1,6 @@
-import type { BaseBranchSpec, EnvironmentArgs } from "@bb/server-contract";
 import type { Environment, PermissionMode, Thread } from "@bb/domain";
 import type { AppCreateThreadRequest } from "@/lib/api";
+import { resolveChildThreadEnvironment } from "@/lib/child-thread-environment";
 
 /**
  * Inputs for building a fork's create-thread request. The source thread
@@ -22,20 +22,18 @@ export interface BuildForkThreadRequestArgs {
 }
 
 /**
- * Resolves the base branch for the fork's fresh managed worktree. A fork
- * branches from the source thread's current branch HEAD when that branch is
- * known (`named`); otherwise it defers to the source's default branch
- * (`default`, resolved server-side) so a source on a non-branch / freshly
- * provisioned worktree still produces a valid request.
+ * Whether a thread can be forked: a fork always runs in a fresh managed worktree
+ * branched off the source's host, so it is only possible when the source has a
+ * resolved environment (which always carries a host). A host-less source (a
+ * personal-project thread with no environment) cannot be forked, so the Fork
+ * affordance is dropped rather than rendered as a no-op. Keeps the gate in
+ * lockstep with {@link buildForkThreadRequest}, which returns null in the same
+ * case.
  */
-function resolveForkBaseBranch(
+export function isThreadForkable(
   sourceEnvironment: Environment | null,
-): BaseBranchSpec {
-  const branchName = sourceEnvironment?.branchName ?? null;
-  if (branchName !== null && branchName.length > 0) {
-    return { kind: "named", name: branchName };
-  }
-  return { kind: "default" };
+): boolean {
+  return (sourceEnvironment?.hostId ?? null) !== null;
 }
 
 /**
@@ -46,7 +44,9 @@ function resolveForkBaseBranch(
  * Returns `null` when the source has no resolvable host (e.g. a personal-only
  * source with no environment): a fork always runs in a fresh managed worktree,
  * so without a host there is no valid fork to create and the caller should
- * leave the Fork action disabled.
+ * leave the Fork action disabled. (A side chat shares the worktree resolution
+ * via {@link resolveChildThreadEnvironment} but falls back to the personal
+ * workspace instead of bailing — a fork cannot.)
  */
 export function buildForkThreadRequest({
   sourceThread,
@@ -55,19 +55,11 @@ export function buildForkThreadRequest({
   model,
   permissionMode,
 }: BuildForkThreadRequestArgs): AppCreateThreadRequest | null {
-  const hostId = sourceEnvironment?.hostId ?? null;
-  if (hostId === null) {
+  if (!isThreadForkable(sourceEnvironment)) {
     return null;
   }
 
-  const environment: EnvironmentArgs = {
-    type: "host",
-    hostId,
-    workspace: {
-      type: "managed-worktree",
-      baseBranch: resolveForkBaseBranch(sourceEnvironment),
-    },
-  };
+  const environment = resolveChildThreadEnvironment(sourceEnvironment);
 
   const sourceTitle = sourceThread.title ?? sourceThread.titleFallback;
   const title =

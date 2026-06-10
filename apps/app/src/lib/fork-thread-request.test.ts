@@ -1,6 +1,6 @@
 import type { Environment, Thread } from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import { buildForkThreadRequest } from "./fork-thread-request";
+import { buildForkThreadRequest, isThreadForkable } from "./fork-thread-request";
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   const base: Thread = {
@@ -143,5 +143,30 @@ describe("buildForkThreadRequest", () => {
     });
 
     expect(request).toBeNull();
+  });
+});
+
+describe("isThreadForkable", () => {
+  it("is true when the source has a resolved environment (and therefore a host)", () => {
+    expect(isThreadForkable(makeEnvironment())).toBe(true);
+  });
+
+  it("is false for a host-less (null-environment) personal source", () => {
+    // The Fork button/handler is dropped in this case so it never renders as a
+    // dead no-op on a personal/no-host source.
+    expect(isThreadForkable(null)).toBe(false);
+  });
+
+  it("agrees with buildForkThreadRequest's null gate", () => {
+    expect(isThreadForkable(null)).toBe(false);
+    expect(
+      buildForkThreadRequest({
+        sourceThread: makeThread({ environmentId: null }),
+        sourceEnvironment: null,
+        anchorMessageText: "x",
+        model: "gpt-5",
+        permissionMode: "readonly",
+      }),
+    ).toBeNull();
   });
 });

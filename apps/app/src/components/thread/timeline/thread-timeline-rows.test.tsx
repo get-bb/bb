@@ -214,6 +214,57 @@ describe("ThreadTimelineRows", () => {
     ).toBeTruthy();
   });
 
+  it("renders the fork icon only on the seed anchor, not on later cross-thread agent rows", () => {
+    const view = renderTimelineRows({
+      overrides: {
+        threadChildOrigin: "fork",
+      },
+      timelineRows: [
+        // The fork seed anchor: the thread-start turn (agent-initiated, no turn
+        // id) rendered as "Message from {source}".
+        conversationRow({
+          id: "fork-seed-anchor",
+          role: "user",
+          initiator: "agent",
+          senderThreadId: "thr_source",
+          turnId: null,
+          text: "Anchor agent message the fork branched from.",
+          sourceSeqStart: 1,
+        }),
+        // A later cross-thread agent message in the same forked thread. It is
+        // also agent-initiated with a sender thread, but belongs to a turn — it
+        // is NOT the fork seed, so it must keep its own per-source-kind icon.
+        conversationRow({
+          id: "later-cross-thread-message",
+          role: "user",
+          initiator: "agent",
+          senderThreadId: "thr_other",
+          turnId: "turn-7",
+          text: "Later message from another thread.",
+          sourceSeqStart: 2,
+        }),
+      ],
+    });
+
+    const seedRow = view.container.querySelector(
+      '[data-timeline-row-id="fork-seed-anchor"]',
+    );
+    const laterRow = view.container.querySelector(
+      '[data-timeline-row-id="later-cross-thread-message"]',
+    );
+    if (!seedRow || !laterRow) {
+      throw new Error("Expected both generated rows to render.");
+    }
+    // Seed anchor takes the Fork icon; the later cross-thread row keeps the
+    // generic agent-message icon.
+    expect(seedRow.querySelector('[data-icon="Fork"]')).toBeTruthy();
+    expect(seedRow.querySelector('[data-icon="MessageSquare"]')).toBeNull();
+    expect(laterRow.querySelector('[data-icon="Fork"]')).toBeNull();
+    expect(
+      laterRow.querySelector('[data-icon="MessageSquare"]'),
+    ).toBeTruthy();
+  });
+
   it("renders an unread divider before the first row newer than the frozen read cutoff", () => {
     renderTimelineRows({
       overrides: {

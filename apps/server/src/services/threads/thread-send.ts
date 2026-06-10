@@ -229,6 +229,14 @@ export function resolveMessageSenderThreadId(
   if (senderThread.deletedAt !== null) {
     throwSenderThreadInvalid("deleted");
   }
+  // The cross-thread message template instructs the receiving agent to reply
+  // via `bb thread tell {{senderThreadId}}`, so a sender from another project
+  // would become a cross-project write primitive. Mirror the create-path guard
+  // (assertValidParentThread) here so both the immediate-send and queued
+  // paths, which share this resolver, reject project mismatches.
+  if (senderThread.projectId !== args.targetThread.projectId) {
+    throwSenderThreadInvalid("wrong_project");
+  }
 
   return senderThread.id;
 }
