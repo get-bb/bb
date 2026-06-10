@@ -86,10 +86,10 @@ For managed worktrees, keep the stable work-ref label but show drift:
 - Detached: `Worktree` `bb/my-task-thr_123 -> detached abc1234`
 - Unhealthy: add `Dirty`, `Conflicts`, or `Rebase`.
 
-For remote environments, keep the host suffix and use the same checkout chips:
+For remote environments, use the same checkout chips:
 
-- `Working remotely · Mac mini` `main`
-- `Working remotely · Mac mini` `detached abc1234`
+- `Working remotely` `main`
+- `Working remotely` `detached abc1234`
 
 ### Follow-Up Prompt Labels
 
@@ -97,7 +97,7 @@ For remote environments, keep the host suffix and use the same checkout chips:
 bottom row read-only. The `ThreadEnvironmentSummary` slot should evolve from a
 naked optional `environmentBranchName` chip to structured chips:
 
-- mode label: `Working locally`, `Working remotely · <host>`, or `Worktree`;
+- mode label: `Working locally`, `Working remotely`, or `Worktree`;
 - stable identity chip when useful: `bb/my-task-thr_123`;
 - current checkout chip when different or primary: `<branch>` or
   `detached <short-sha>`;

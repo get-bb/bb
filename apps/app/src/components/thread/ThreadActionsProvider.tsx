@@ -36,9 +36,13 @@ import {
   ThreadDeleteDialog,
   type ThreadDeleteDialogTarget,
 } from "@/components/dialogs/ThreadDeleteDialog";
+import { ArchivedThreadToastTitle } from "@/components/thread/ArchivedThreadToastTitle";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
-import { getRootComposeRoutePath } from "@/lib/app-route-paths";
+import {
+  getRootComposeRoutePath,
+  getThreadRoutePath,
+} from "@/lib/app-route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 
@@ -77,18 +81,6 @@ interface DeleteThreadActionRequest {
 
 interface ThreadActionContext {
   childThreadCount: number;
-}
-
-function formatArchiveThreadAndChildrenSuccessMessage(
-  archivedThreadCount: number,
-): string {
-  if (archivedThreadCount <= 1) {
-    return "Archived thread";
-  }
-  const childThreadCount = archivedThreadCount - 1;
-  return childThreadCount === 1
-    ? "Archived thread and 1 child thread"
-    : `Archived thread and ${childThreadCount} child threads`;
 }
 
 export function ThreadActionsProvider({
@@ -291,10 +283,22 @@ export function ThreadActionsProvider({
               setRootComposeProjectId(thread.projectId);
               navigate(getRootComposeRoutePath());
             }
+            const toastId = `thread-archived-${thread.id}`;
             appToast.success(
-              formatArchiveThreadAndChildrenSuccessMessage(
-                response.archivedThreadIds.length,
-              ),
+              <ArchivedThreadToastTitle
+                archivedThreadCount={response.archivedThreadIds.length}
+                threadTitle={getThreadDisplayTitle(thread)}
+                onOpenThread={() => {
+                  navigate(
+                    getThreadRoutePath({
+                      projectId: thread.projectId,
+                      threadId: thread.id,
+                    }),
+                  );
+                  appToast.dismiss(toastId);
+                }}
+              />,
+              { id: toastId },
             );
           },
           onError: (error) => {

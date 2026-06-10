@@ -17,7 +17,7 @@ export const SIDEBAR_ROW_GLYPH_SLOT_CLASS =
  * worktree header. Inner styling only — call sites own wrapper, positioning,
  * fade, and the aria-label.
  */
-export const SIDEBAR_UNREAD_DOT_CLASS = `rounded-full bg-primary ${COARSE_POINTER_DOT_SIZE_CLASS}`;
+export const SIDEBAR_UNREAD_DOT_CLASS = `rounded-full bg-foreground ${COARSE_POINTER_DOT_SIZE_CLASS}`;
 
 const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 8;
 const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 24;
@@ -40,7 +40,7 @@ export function getSidebarThreadGroupLineLeft(depth: number): number {
 }
 
 export const SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =
-  "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
+  "text-sidebar-foreground/85 dark:text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
 
 /**
  * Hairline that runs through an expanded project's thread list, sitting

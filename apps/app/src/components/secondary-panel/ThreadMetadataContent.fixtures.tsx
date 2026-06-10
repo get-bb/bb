@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
+import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   makeEnvironment,
   makeThread,
@@ -20,6 +21,10 @@ export {
 };
 
 const noop = () => {};
+
+export const localEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "local",
+};
 
 export function PanelStage({ children }: { children: ReactNode }) {
   return (
@@ -50,6 +55,7 @@ export const baseProps: ThreadMetadataContentProps = {
   canAssignToParent: true,
   canTakeOverThread: false,
   environment: makeEnvironment(),
+  environmentDisplayHost: localEnvironmentDisplayHost,
   workspaceStatus: makeWorkspaceStatus(),
   workspaceStatusError: null,
   selectedMergeBaseBranch: undefined,

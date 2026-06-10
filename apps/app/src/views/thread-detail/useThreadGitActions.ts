@@ -1,4 +1,10 @@
-import { createElement, useCallback, useMemo, type ReactNode } from "react";
+import {
+  createElement,
+  useCallback,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react";
 import { appToast } from "@/components/ui/app-toast";
 import { AppToastCommitDescription } from "@/components/ui/app-toast-descriptions";
 import type {
@@ -48,9 +54,29 @@ interface AskAgentToFixGitActionParams {
   threadId: string;
 }
 
+interface EnqueueGitActionParams {
+  action: GitActionKind;
+  run: QueuedGitActionRunner;
+}
+
+interface RunQueuedGitActionParams {
+  toastId: string | number;
+}
+
+interface SquashMergeThreadParams {
+  mergeBaseBranch: string;
+}
+
+interface RunSquashMergeThreadParams
+  extends SquashMergeThreadParams,
+    RunQueuedGitActionParams {}
+
 type AskAgentToFixGitAction = (params: AskAgentToFixGitActionParams) => void;
 
 type GitActionKind = "commit" | "squash_merge";
+type QueuedGitActionRunner = (
+  params: RunQueuedGitActionParams,
+) => Promise<void>;
 
 interface ShowGitActionErrorToastParams {
   action: GitActionKind;
@@ -64,10 +90,6 @@ interface ShowGitActionErrorToastParams {
 interface ShowGitActionSuccessToastParams {
   response: GitActionSuccessResponse;
   toastId: string | number;
-}
-
-interface SquashMergeThreadParams {
-  mergeBaseBranch: string;
 }
 
 interface UseThreadGitActionsParams {
@@ -226,6 +248,28 @@ function getGitActionSuccessTitle(action: GitActionKind): string {
   }
 }
 
+function getGitActionLoadingTitle(action: GitActionKind): string {
+  switch (action) {
+    case "commit":
+      return "Creating commit";
+    case "squash_merge":
+      return "Squash merging";
+    default:
+      return action;
+  }
+}
+
+function getGitActionQueuedTitle(action: GitActionKind): string {
+  switch (action) {
+    case "commit":
+      return "Commit queued";
+    case "squash_merge":
+      return "Squash merge queued";
+    default:
+      return action;
+  }
+}
+
 function getGitActionErrorTitle(action: GitActionKind): string {
   switch (action) {
     case "commit":
@@ -295,6 +339,8 @@ export function useThreadGitActions({
   workspaceStatus,
 }: UseThreadGitActionsParams) {
   const threadGitActionDialog = useDialogState<ThreadGitActionDialogTarget>();
+  const gitActionQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const queuedGitActionCountRef = useRef(0);
   const workspaceWorkingTree = workspaceStatus?.workingTree;
   const workspaceMergeBase = workspaceStatus?.mergeBase;
   const isArchivedThread = thread?.archivedAt != null;
@@ -372,47 +418,87 @@ export function useThreadGitActions({
     [sendMessage],
   );
 
-  const handleCommitThread = useCallback(async () => {
-    const attachedEnvironmentId = thread?.environmentId;
-    if (!thread || !attachedEnvironmentId) {
-      return;
-    }
-    const threadId = thread.id;
+  const enqueueGitAction = useCallback(
+    ({ action, run }: EnqueueGitActionParams): Promise<void> => {
+      const isQueuedBehindGitAction = queuedGitActionCountRef.current > 0;
+      queuedGitActionCountRef.current += 1;
+      const toastId = appToast.loading(
+        isQueuedBehindGitAction
+          ? getGitActionQueuedTitle(action)
+          : getGitActionLoadingTitle(action),
+      );
 
-    const toastId = appToast.loading("Creating commit");
+      const runQueuedGitAction = async (): Promise<void> => {
+        if (isQueuedBehindGitAction) {
+          appToast.loading(getGitActionLoadingTitle(action), { id: toastId });
+        }
+        await run({ toastId });
+      };
 
-    try {
-      const response = await requestEnvironmentAction.mutateAsync({
-        id: attachedEnvironmentId,
-        action: "commit",
-      });
-      if (response.action !== "commit") {
-        throw new Error("Expected commit action response.");
-      }
-      showGitActionSuccessToast({
-        response,
-        toastId,
-      });
-    } catch (nextError) {
-      showGitActionErrorToast({
-        action: "commit",
-        error: nextError,
-        onAskAgentToFix: (params) => void handleAskAgentToFixGitAction(params),
-        threadId,
-        toastId,
-      });
-    }
-  }, [handleAskAgentToFixGitAction, requestEnvironmentAction, thread]);
+      const queuedAction = gitActionQueueRef.current.then(
+        runQueuedGitAction,
+        runQueuedGitAction,
+      );
+      gitActionQueueRef.current = queuedAction
+        .catch(() => undefined)
+        .finally(() => {
+          queuedGitActionCountRef.current -= 1;
+        });
+      return queuedAction;
+    },
+    [],
+  );
 
-  const handleSquashMergeThread = useCallback(
-    async ({ mergeBaseBranch }: SquashMergeThreadParams) => {
+  const runCommitThread = useCallback(
+    async ({ toastId }: RunQueuedGitActionParams) => {
       const attachedEnvironmentId = thread?.environmentId;
       if (!thread || !attachedEnvironmentId) {
+        appToast.dismiss(toastId);
         return;
       }
       const threadId = thread.id;
 
-      const toastId = appToast.loading("Squash merging");
+      try {
+        const response = await requestEnvironmentAction.mutateAsync({
+          id: attachedEnvironmentId,
+          action: "commit",
+        });
+        if (response.action !== "commit") {
+          throw new Error("Expected commit action response.");
+        }
+        showGitActionSuccessToast({
+          response,
+          toastId,
+        });
+      } catch (nextError) {
+        showGitActionErrorToast({
+          action: "commit",
+          error: nextError,
+          onAskAgentToFix: (params) =>
+            void handleAskAgentToFixGitAction(params),
+          threadId,
+          toastId,
+        });
+      }
+    },
+    [handleAskAgentToFixGitAction, requestEnvironmentAction, thread],
+  );
+
+  const handleCommitThread = useCallback(async () => {
+    if (!thread?.environmentId) {
+      return;
+    }
+    await enqueueGitAction({ action: "commit", run: runCommitThread });
+  }, [enqueueGitAction, runCommitThread, thread?.environmentId]);
+
+  const runSquashMergeThread = useCallback(
+    async ({ mergeBaseBranch, toastId }: RunSquashMergeThreadParams) => {
+      const attachedEnvironmentId = thread?.environmentId;
+      if (!thread || !attachedEnvironmentId) {
+        appToast.dismiss(toastId);
+        return;
+      }
+      const threadId = thread.id;
 
       try {
         const response = await requestEnvironmentAction.mutateAsync({
@@ -444,11 +530,24 @@ export function useThreadGitActions({
     [handleAskAgentToFixGitAction, requestEnvironmentAction, thread],
   );
 
+  const handleSquashMergeThread = useCallback(
+    async ({ mergeBaseBranch }: SquashMergeThreadParams) => {
+      if (!thread?.environmentId) {
+        return;
+      }
+      await enqueueGitAction({
+        action: "squash_merge",
+        run: async ({ toastId }) =>
+          runSquashMergeThread({ mergeBaseBranch, toastId }),
+      });
+    },
+    [enqueueGitAction, runSquashMergeThread, thread?.environmentId],
+  );
+
   return {
     handleAskAgentToFixGitAction,
     handleCommitThread,
     handleSquashMergeThread,
-    isThreadGitActionPending: requestEnvironmentAction.isPending,
     threadGitActionDialog,
     threadHeaderGitActions,
   };

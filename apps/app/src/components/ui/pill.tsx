@@ -2,14 +2,12 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export type PillVariant =
-  | "default"
   | "secondary"
   | "destructive"
   | "outline"
   | "emphasis";
 
 const PILL_VARIANT_CLASS: Record<PillVariant, string> = {
-  default: "border-transparent bg-primary text-primary-foreground",
   secondary: "border-transparent bg-secondary text-secondary-foreground",
   destructive: "border-transparent bg-destructive text-destructive-foreground",
   outline: "border-border bg-background text-foreground",

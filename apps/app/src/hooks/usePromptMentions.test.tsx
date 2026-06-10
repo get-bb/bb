@@ -68,6 +68,7 @@ function makeProjectFixture(
 ): SidebarProjectFixture {
   return {
     createdAt: 1,
+    defaultExecutionOptions: null,
     id: options.id,
     kind: options.kind ?? "standard",
     name: options.name,

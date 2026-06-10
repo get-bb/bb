@@ -83,18 +83,25 @@ export function ConversationCollapsedRail({
         aria-label="Expand conversation"
         aria-expanded={false}
         title="Expand conversation"
-        className="flex min-h-0 w-full flex-1 flex-col items-center bg-surface-recessed py-3 text-muted-foreground outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex min-h-0 w-full flex-1 flex-col items-center bg-surface-recessed text-muted-foreground outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         {/*
-          Chat glyph standing in for the collapsed conversation, centered in the
-          rail, with the working indicator pinned to the bottom. Both are
-          decorative — the whole recessed body is the button, and its aria-label
-          ("Expand conversation") carries the semantics for AT users. The
-          canonical expand/collapse control is the panel-header toggle; the rail
-          just reopens the conversation on click, so it no longer needs its own
-          chevron affordance.
+          Chat glyph standing in for the collapsed conversation, with the working
+          indicator directly beneath it. The glyph sits in a chrome-row-height
+          band at the top of the rail (`CHROME_ROW_HEIGHT_CLASS`) so it centers
+          on the same line as the secondary panel's tab row rather than floating
+          in the middle of the rail. Both are decorative — the whole recessed
+          body is the button, and its aria-label ("Expand conversation") carries
+          the semantics for AT users. The canonical expand/collapse control is
+          the panel-header toggle; the rail just reopens the conversation on
+          click, so it no longer needs its own chevron affordance.
         */}
-        <span className="flex flex-1 items-center justify-center">
+        <span
+          className={cn(
+            CHROME_ROW_HEIGHT_CLASS,
+            "flex shrink-0 items-center justify-center",
+          )}
+        >
           <Icon name="MessageSquare" className="size-4 shrink-0" aria-hidden="true" />
         </span>
         <span

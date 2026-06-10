@@ -38,6 +38,7 @@ import {
   type ProjectSelectorCreateProjectConfig,
   type ProjectSelectorOption,
 } from "@/components/pickers/ProjectSelector";
+import { useShouldAvoidSoftKeyboardAutofocus } from "@/components/ui/hooks/use-soft-keyboard-autofocus";
 import {
   WorktreePicker,
   type ReuseThreadOption,
@@ -200,6 +201,8 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
     }),
     [],
   );
+  const shouldAvoidSoftKeyboardAutofocus =
+    useShouldAvoidSoftKeyboardAutofocus();
   const voice = usePromptVoice(promptBoxRef);
   const isProjectlessPrompt = project?.value === null;
   const placeholder = getNewThreadPromptPlaceholder(isProjectlessPrompt);
@@ -212,7 +215,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
         mentionRanges={mentionRanges}
         onChange={onChange}
         onSubmit={onSubmit}
-        autoFocus
+        autoFocus={!shouldAvoidSoftKeyboardAutofocus}
         history={history}
         mentions={mentions}
         mentionMenuPlacement="bottom"

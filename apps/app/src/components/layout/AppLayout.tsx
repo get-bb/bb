@@ -216,7 +216,7 @@ function SidebarTriggerOverlay({
 }
 
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
-  "/": { title: "Threads" },
+  "/": { title: "bb" },
   [AUTOMATIONS_ROUTE_PATH]: { title: "Automations" },
   "/settings": { title: "Settings" },
   "/development-only/replay": { title: "Replay threads" },

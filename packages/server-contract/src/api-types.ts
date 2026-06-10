@@ -40,6 +40,7 @@ import {
   changedMessageSchema,
   changedMessageLenientSchema,
   callerExecutionInputSourceSchema,
+  projectExecutionDefaultsSchema,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
@@ -2256,6 +2257,14 @@ export type ProjectResponse = z.infer<typeof projectResponseSchema>;
 
 export const projectWithThreadsResponseSchema = projectResponseSchema.extend({
   threads: z.array(threadListEntrySchema),
+  /**
+   * Project's stored execution defaults (provider/model/reasoning/permission/
+   * tier). `null` when the project has never had a thread created in the app
+   * UI. Inlined here so the new-thread composer can seed its picker without a
+   * second round-trip per visit — the value comes from the sidebar bootstrap
+   * the page is already loading.
+   */
+  defaultExecutionOptions: projectExecutionDefaultsSchema.nullable(),
 });
 export type ProjectWithThreadsResponse = z.infer<
   typeof projectWithThreadsResponseSchema

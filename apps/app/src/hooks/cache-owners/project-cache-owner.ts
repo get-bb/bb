@@ -66,7 +66,16 @@ function applyProjectOrderToSidebarNavigation(
     ...currentNavigation,
     projects: orderedProjects.map((project) => {
       const currentProject = currentProjectsById.get(project.id);
-      return currentProject ?? { ...project, threads: [] };
+      // A reorder mutation can introduce a project the sidebar hadn't seen yet.
+      // Until the sidebar query refetches, synthesize the missing fields —
+      // empty threads and unknown defaults — so the cache shape stays valid.
+      return (
+        currentProject ?? {
+          ...project,
+          threads: [],
+          defaultExecutionOptions: null,
+        }
+      );
     }),
   };
 }

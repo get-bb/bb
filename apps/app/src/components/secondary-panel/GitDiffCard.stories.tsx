@@ -3,6 +3,8 @@ import type { FileContents } from "@pierre/diffs";
 import {
   GIT_DIFF_VIEW_BASE_OPTIONS,
   GitDiffCard,
+  type DiffFileContentsResult,
+  type RequestDiffFileContents,
 } from "../git-diff/GitDiffCard";
 import {
   GitDiffToolbar,
@@ -510,6 +512,122 @@ const RENAMED = buildRenameDiff(
 
 const ALL_FIXTURES = [SMALL, LARGER, NEW_FILE, DELETED_FILE, RENAMED] as const;
 
+// ---------------------------------------------------------------------------
+// Image fixtures. Binary image changes parse to zero-hunk file entries, so the
+// card renders inline previews fed by `onRequestFileContents` returning
+// `{ kind: "image" }` instead of the text diff. The diff body below is the
+// real `git diff --binary` shape (a `GIT binary patch` blob the parser keeps
+// as a file entry with no hunks); the actual bytes shown come from the data
+// URLs, mirroring how production reads them off the diff-file route.
+// ---------------------------------------------------------------------------
+
+interface ImageDiffResult {
+  unifiedDiff: string;
+  filename: string;
+  oldImageUrl: string | null;
+  newImageUrl: string | null;
+  // Plausible on-disk byte sizes so the header shows a realistic `+/- KB`
+  // delta. The embedded data URLs are tiny and wouldn't illustrate it.
+  oldSizeBytes: number | null;
+  newSizeBytes: number | null;
+}
+
+interface ImageDiffSide {
+  url: string;
+  sizeBytes: number;
+}
+
+// Small, visually distinct 96x96 PNGs (flat background + centered diamond) so
+// old vs. new reads at a glance and the lightbox has something to zoom into.
+const OLD_IMAGE_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAABM0lEQVR42u3c2W3EMAwFwNfMVpay00G2hyCpYH8sSyQ9wKtgAB/ioby+3vIhQQAIECBAgAABAiSAAAECBAgQIEBSFej75/c/gD7pVDNKQZ1SRqmpU8coZXWKGKWyTgWjFNc5bpT6OmeN0kLnoFG66JwySiOdI0bppbPfKO10Nhulo85OozTV2WaUvjp7jNJaZ4NRuuvcbZQBOrcaZYbOfUYZo3OTUSbp3GGUYTrLjTJPZ61RRuosNMpUnVVGGayzxCizda4bZbzORaM8QeeKESCP2JFHzEvaZ96PoqOGw2qfw6pyh4KZkquivbaPxuGkxqHWs+EF4y8GqIzgGeI0BvysMWCD5FYRLLNYh7JQZyXTUq+1cGvhLhZwNYXLTQQQIECAAAECBAiQAAIECBAgQIAemD+n0rjUKA9l+AAAAABJRU5ErkJggg==";
+const NEW_IMAGE_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAABNUlEQVR42u3cyXHEMAwEwIlig3KaTsv/TcIPO4L9iCIBqKsmgq7SQRzM6/tLPiQIAAECBAgQIECABBAgQIAAAQIESKoC/fy+/wPok041oxTUKWWUmjp1jFJWp4hRKutUMEpxneNGqa9z1igtdA4apYvOKaM00jlilF46+43STmezUTrq7DRKU51tRumrs8corXU2GKW7zt1GGaBzq1Fm6NxnlDE6Nxllks4dRhmms9wo83TWGmWkzkKjTNVZZZTBOkuMMlvnulHG61w0yhN0rhgB8ogdecS8pH3m/Sg6ajis9jmsKncomCm5Ktpr+2gcTmocaj0bXjD+YoDKCJ4hTmPAzxoDNkhuFcEyi3UoC3VWMi31Wgu3Fu5iAVdTuNxEAAECBAgQIECAAAkgQIAAAQIE6IH5A7KtCNDxpTKzAAAAAElFTkSuQmCC";
+const ADDED_IMAGE_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAABNElEQVR42u3cuXEEMQwEwInu8neVgTz550iK4JzlkgC2qyaCrtqHeJiv1498SBAAAgQIECBAgAAJIECAAAECBAiQVAV6f//+B9AnnWpGKahTyig1deoYpaxOEaNU1qlglOI6x41SX+esUVroHDRKF51TRmmkc8QovXT2G6WdzmajdNTZaZSmOtuM0ldnj1Fa62wwSnedu40yQOdWo8zQuc8oY3RuMsoknTuMMkxnuVHm6aw1ykidhUaZqrPKKIN1lhhlts51o4zXuWiUJ+hcMQLkETvyiHlJ+8z7UXTUcFjtc1hV7lAwU3JVtNf20Tic1DjUeja8YPzFAJURPEOcxoCfNQZskNwqgmUW61AW6qxkWuq1Fm4t3MUCrqZwuYkAAgQIECBAgAABEkCAAAECBAjQA/MHNxr5rgQT6G0AAAAASUVORK5CYII=";
+
+function buildAddedImageDiff(
+  filename: string,
+  dataUrl: string,
+  sizeBytes: number,
+): ImageDiffResult {
+  return {
+    filename,
+    oldImageUrl: null,
+    newImageUrl: dataUrl,
+    oldSizeBytes: null,
+    newSizeBytes: sizeBytes,
+    unifiedDiff: `diff --git a/${filename} b/${filename}
+new file mode 100644
+index 0000000..1111111
+GIT binary patch
+literal 95
+zcmeAS@N?(olHy\`uVBq!ia0vp^0wB!61|;P_|4#
+`,
+  };
+}
+
+function buildModifiedImageDiff(
+  filename: string,
+  oldSide: ImageDiffSide,
+  newSide: ImageDiffSide,
+): ImageDiffResult {
+  return {
+    filename,
+    oldImageUrl: oldSide.url,
+    newImageUrl: newSide.url,
+    oldSizeBytes: oldSide.sizeBytes,
+    newSizeBytes: newSide.sizeBytes,
+    unifiedDiff: `diff --git a/${filename} b/${filename}
+index 1111111..2222222 100644
+GIT binary patch
+delta 64
+zcmV-G0Kfm_0q_7
+delta 64
+zcmV-G0Kfl_0q_8
+`,
+  };
+}
+
+function buildDeletedImageDiff(
+  filename: string,
+  dataUrl: string,
+  sizeBytes: number,
+): ImageDiffResult {
+  return {
+    filename,
+    oldImageUrl: dataUrl,
+    newImageUrl: null,
+    oldSizeBytes: sizeBytes,
+    newSizeBytes: null,
+    unifiedDiff: `diff --git a/${filename} b/${filename}
+deleted file mode 100644
+index 1111111..0000000
+GIT binary patch
+literal 0
+HcmV?d00001
+`,
+  };
+}
+
+const ADDED_IMAGE = buildAddedImageDiff(
+  "apps/app/public/icons/logo-mark.png",
+  ADDED_IMAGE_DATA_URL,
+  18_432,
+);
+
+const MODIFIED_IMAGE = buildModifiedImageDiff(
+  "apps/app/public/icons/logo-mark.png",
+  { url: OLD_IMAGE_DATA_URL, sizeBytes: 18_432 },
+  { url: NEW_IMAGE_DATA_URL, sizeBytes: 24_960 },
+);
+
+const DELETED_IMAGE = buildDeletedImageDiff(
+  "apps/app/public/icons/legacy-logo.png",
+  OLD_IMAGE_DATA_URL,
+  12_288,
+);
+
 const SELECTION_OPTIONS: readonly GitDiffSelectionOption[] = [
   { value: "working", label: "Working changes" },
   {
@@ -524,9 +642,60 @@ const SELECTION_OPTIONS: readonly GitDiffSelectionOption[] = [
   },
 ];
 
+type DiffPanelFixture = AlignedDiffResult | ImageDiffResult;
+
 interface InteractiveDiffPanelDiff {
   fileKey: string;
-  fixture: AlignedDiffResult;
+  fixture: DiffPanelFixture;
+}
+
+interface FixtureSideContents {
+  paths: readonly string[];
+  old: DiffFileContentsResult | null;
+  new: DiffFileContentsResult | null;
+}
+
+function isImageDiffResult(
+  fixture: DiffPanelFixture,
+): fixture is ImageDiffResult {
+  return "filename" in fixture;
+}
+
+// Resolve a fixture into the per-side content the panel fetcher hands back,
+// keyed by every path the card might ask for (renames register both names).
+function getFixtureSideContents(
+  fixture: DiffPanelFixture,
+): FixtureSideContents {
+  if (isImageDiffResult(fixture)) {
+    return {
+      paths: [fixture.filename],
+      old:
+        fixture.oldImageUrl === null || fixture.oldSizeBytes === null
+          ? null
+          : {
+              kind: "image",
+              dataUrl: fixture.oldImageUrl,
+              sizeBytes: fixture.oldSizeBytes,
+            },
+      new:
+        fixture.newImageUrl === null || fixture.newSizeBytes === null
+          ? null
+          : {
+              kind: "image",
+              dataUrl: fixture.newImageUrl,
+              sizeBytes: fixture.newSizeBytes,
+            },
+    };
+  }
+  const paths =
+    fixture.oldFile.name === fixture.newFile.name
+      ? [fixture.newFile.name]
+      : [fixture.oldFile.name, fixture.newFile.name];
+  return {
+    paths,
+    old: { kind: "text", file: fixture.oldFile },
+    new: { kind: "text", file: fixture.newFile },
+  };
 }
 
 interface InteractiveDiffPanelArgs {
@@ -558,7 +727,7 @@ function InteractiveDiffPanel({
             fileKey: string;
             fileDiff: ParsedGitDiffFile;
             fullDiff: string;
-            fixture: AlignedDiffResult;
+            fixture: DiffPanelFixture;
           } => entry.fileDiff !== undefined,
         ),
     [diffs],
@@ -612,26 +781,23 @@ function InteractiveDiffPanel({
   }, []);
 
   // Single panel-level fetcher that mirrors production: looks up the right
-  // FileContents by path. Cards don't need to know which fixture they came
+  // per-side content by path. Cards don't need to know which fixture they came
   // from; they just call onRequestFileContents(path, side).
   const contentsByPath = useMemo(() => {
-    const map = new Map<string, { old: FileContents; new: FileContents }>();
+    const map = new Map<
+      string,
+      { old: DiffFileContentsResult | null; new: DiffFileContentsResult | null }
+    >();
     for (const { fixture } of parsed) {
-      map.set(fixture.newFile.name, {
-        old: fixture.oldFile,
-        new: fixture.newFile,
-      });
-      if (fixture.oldFile.name !== fixture.newFile.name) {
-        map.set(fixture.oldFile.name, {
-          old: fixture.oldFile,
-          new: fixture.newFile,
-        });
+      const sides = getFixtureSideContents(fixture);
+      for (const path of sides.paths) {
+        map.set(path, { old: sides.old, new: sides.new });
       }
     }
     return map;
   }, [parsed]);
-  const onRequestFileContents = useCallback(
-    (path: string, side: "old" | "new") => {
+  const onRequestFileContents = useCallback<RequestDiffFileContents>(
+    (path, side) => {
       const entry = contentsByPath.get(path);
       if (!entry) return Promise.resolve(null);
       return Promise.resolve(side === "old" ? entry.old : entry.new);
@@ -711,6 +877,30 @@ export function Overview() {
       >
         <InteractiveDiffPanel
           diffs={[{ fileKey: "rename", fixture: RENAMED }]}
+        />
+      </StoryRow>
+      <StoryRow
+        label="added image"
+        hint="header shows the new file's size as +18 KB; click the preview to open the lightbox"
+      >
+        <InteractiveDiffPanel
+          diffs={[{ fileKey: "added-image", fixture: ADDED_IMAGE }]}
+        />
+      </StoryRow>
+      <StoryRow
+        label="modified image"
+        hint="header shows new and old sizes as a +24 KB -18 KB pair (no net math); old + new stay on one row (no wrap); click to zoom and arrow between them"
+      >
+        <InteractiveDiffPanel
+          diffs={[{ fileKey: "modified-image", fixture: MODIFIED_IMAGE }]}
+        />
+      </StoryRow>
+      <StoryRow
+        label="deleted image"
+        hint="loads the preview + -12 KB header size on view; no Load diff gate (that's only for the expensive text-deletion renderer)"
+      >
+        <InteractiveDiffPanel
+          diffs={[{ fileKey: "deleted-image", fixture: DELETED_IMAGE }]}
         />
       </StoryRow>
       <StoryRow

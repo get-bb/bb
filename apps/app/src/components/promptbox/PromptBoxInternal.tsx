@@ -34,6 +34,7 @@ import {
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
   COARSE_POINTER_TEXT_BASE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
 import {
   arePromptDraftStatesEqual,
@@ -576,6 +577,9 @@ export function PromptBoxInternal({
     resetKey: zenModeResetKey,
     resetOnSubmit: resetZenModeOnSubmit = false,
   } = zenMode;
+  const isPointerCoarse = usePointerCoarse();
+  const canSubmitWithEnterKey = !isPointerCoarse;
+  const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
   const formRef = useRef<HTMLFormElement>(null);
   const heightAnimationFromRef = useRef<number | null>(null);
   const editorRef = useRef<Editor | null>(null);
@@ -753,7 +757,7 @@ export function PromptBoxInternal({
           "min-h-full whitespace-pre-wrap break-words outline-none",
           "placeholder:select-none placeholder:text-subtle-foreground",
         ),
-        enterkeyhint: "send",
+        enterkeyhint: editorEnterKeyHint,
         ...(id ? { id } : {}),
         role: "textbox",
       },
@@ -841,8 +845,9 @@ export function PromptBoxInternal({
 
     editor.view.dom.setAttribute("aria-label", placeholder);
     editor.view.dom.setAttribute("data-placeholder", placeholder);
+    editor.view.dom.setAttribute("enterkeyhint", editorEnterKeyHint);
     editor.view.dispatch(editor.state.tr);
-  }, [editor, placeholder]);
+  }, [editor, editorEnterKeyHint, placeholder]);
 
   useLayoutEffect(() => {
     if (!autoFocus) return;
@@ -1408,7 +1413,7 @@ export function PromptBoxInternal({
         return true;
       }
 
-      if (isZenMode) return false;
+      if (isZenMode || !canSubmitWithEnterKey) return false;
       const isSubmitKey = event.key === "Enter" && !event.shiftKey;
 
       if (!isSubmitKey) return false;
@@ -1421,6 +1426,7 @@ export function PromptBoxInternal({
       activeMention,
       applyHistoryDraft,
       applyMention,
+      canSubmitWithEnterKey,
       history,
       isZenMode,
       mentionSuggestions,

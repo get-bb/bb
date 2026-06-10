@@ -367,7 +367,7 @@ function dispatchEnvironmentDestroy(
     execution,
     hostId: environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         { err: error, environmentId: environment.id },
         "Live environment destroy command failed",

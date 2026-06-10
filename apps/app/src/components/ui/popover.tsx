@@ -11,6 +11,7 @@ import {
   stripRadixContentProps,
 } from "./responsive-overlay.js";
 import {
+  blurActiveKeyboardInputBeforeOverlayOpen,
   getOverlayTriggerClassName,
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
@@ -99,7 +100,12 @@ const PopoverTrigger = React.forwardRef<
       ref={ref}
       asChild={asChild}
       className={getOverlayTriggerClassName(className)}
-      onMouseDown={preventOverlayTriggerSelection}
+      onMouseDown={(event) => {
+        if (!open) {
+          blurActiveKeyboardInputBeforeOverlayOpen();
+        }
+        preventOverlayTriggerSelection(event);
+      }}
       {...props}
     >
       {children}

@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import type { AppSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it } from "vitest";
+import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { SidebarAppsSection } from "./SidebarAppsSection";
 
 const APPS: AppSummary[] = [
@@ -30,11 +31,29 @@ function LocationDisplay() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
+// Reads and drives the mobile drawer state so tests can assert that opening an
+// app closes the drawer, without simulating a compact viewport.
+function MobileDrawerProbe() {
+  const { openMobile, setOpenMobile } = useSidebar();
+  return (
+    <button
+      type="button"
+      data-testid="mobile-drawer-state"
+      onClick={() => setOpenMobile(true)}
+    >
+      {String(openMobile)}
+    </button>
+  );
+}
+
 function renderSection(initialEntry: string) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <SidebarAppsSection apps={APPS} />
-      <LocationDisplay />
+      <SidebarProvider>
+        <SidebarAppsSection apps={APPS} />
+        <LocationDisplay />
+        <MobileDrawerProbe />
+      </SidebarProvider>
     </MemoryRouter>,
   );
 }
@@ -55,6 +74,19 @@ describe("SidebarAppsSection", () => {
     fireEvent.click(row);
 
     expect(screen.getByTestId("location").textContent).toBe("/apps/alpha");
+  });
+
+  it("closes the mobile drawer when opening an app", () => {
+    renderSection("/");
+
+    const drawerProbe = screen.getByTestId("mobile-drawer-state");
+    fireEvent.click(drawerProbe);
+    expect(drawerProbe.textContent).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Alpha app" }));
+
+    expect(screen.getByTestId("location").textContent).toBe("/apps/alpha");
+    expect(drawerProbe.textContent).toBe("false");
   });
 
   it("marks the row for the active app route as current", () => {

@@ -14,6 +14,10 @@ import { CopyButton } from "@/components/ui/copy-button.js";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { FilePathLink } from "@/components/ui/file-path-link.js";
 import { Icon } from "@/components/ui/icon.js";
+import {
+  getWrappedImageIndex,
+  ImageLightbox,
+} from "@/components/ui/image-lightbox.js";
 import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
@@ -23,16 +27,27 @@ import {
   formatGitDiffFileLabel,
   getGitDiffFileChangeKind,
   getOpenableGitDiffPath,
+  isImageGitDiffFile,
   normalizeGitDiffPath,
   summarizeGitDiffFile,
   type GitDiffFileChangeKind,
   type ParsedGitDiffFile,
 } from "./git-diff-parsing";
 
+/**
+ * One side of a diff file resolved for the card. `text` carries UTF-8
+ * contents for `@pierre/diffs` context expansion; `image` carries a data URL
+ * the card renders directly instead of a text diff, plus the byte size used
+ * for the header's `+/-` size delta.
+ */
+export type DiffFileContentsResult =
+  | { kind: "text"; file: FileContents }
+  | { kind: "image"; dataUrl: string; sizeBytes: number };
+
 export type RequestDiffFileContents = (
   path: string,
   side: "old" | "new",
-) => Promise<FileContents | null>;
+) => Promise<DiffFileContentsResult | null>;
 
 export const GIT_DIFF_VIEW_BASE_OPTIONS = {
   overflow: "scroll",
@@ -79,13 +94,14 @@ export interface GitDiffCardProps {
   cardRef?: (element: HTMLDivElement | null) => void;
   /**
    * When provided, the card lazy-fetches `oldFile`/`newFile` the first time
-   * it scrolls into view and forwards them to `<DiffView>`. That unlocks
-   * `@pierre/diffs`'s built-in expand-context buttons in the gaps between
-   * hunks. Without this prop the card renders today's hunk-only view.
+   * it scrolls into view. Text results are forwarded to `<DiffView>`, which
+   * unlocks `@pierre/diffs`'s built-in expand-context buttons in the gaps
+   * between hunks; image results render as an inline preview instead of the
+   * text diff. Without this prop the card renders the hunk-only view.
    *
-   * The callback should resolve to `null` for binary files (the diff
-   * renderer needs a UTF-8 string) so the card can leave expand disabled
-   * for that file.
+   * The callback should resolve to `null` for binary files the card can't
+   * preview (the diff renderer needs a UTF-8 string) so the card can leave
+   * expand disabled for that file.
    */
   onRequestFileContents?: RequestDiffFileContents;
 }
@@ -117,6 +133,13 @@ type DiffFileEnrichmentState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "ready"; oldLines: string[]; newLines: string[] }
+  | {
+      status: "ready-image";
+      oldImageUrl: string | null;
+      newImageUrl: string | null;
+      oldSizeBytes: number | null;
+      newSizeBytes: number | null;
+    }
   | { status: "unavailable" }
   | { status: "error" };
 
@@ -167,9 +190,12 @@ function describeDiffFileContentSource(source: DiffFileContentSource): string {
 function resolveDiffFileContentSource(
   source: DiffFileContentSource,
   fetcher: RequestDiffFileContents,
-): Promise<FileContents | null> {
+): Promise<DiffFileContentsResult | null> {
   if (source.kind === "empty") {
-    return Promise.resolve({ name: source.path, contents: "" });
+    return Promise.resolve({
+      kind: "text",
+      file: { name: source.path, contents: "" },
+    });
   }
   return fetcher(source.path, source.side);
 }
@@ -177,6 +203,187 @@ function resolveDiffFileContentSource(
 function splitFileContentsForDiffContext(file: FileContents): string[] {
   if (file.contents.length === 0) return [];
   return file.contents.split(SPLIT_WITH_NEWLINES);
+}
+
+function GitDiffCardBodySkeleton() {
+  return (
+    <div className="space-y-1.5 px-3 py-3">
+      <Skeleton className="h-3 w-full rounded-sm" />
+      <Skeleton className="h-3 w-[96%] rounded-sm" />
+      <Skeleton className="h-3 w-[93%] rounded-sm" />
+      <Skeleton className="h-3 w-[90%] rounded-sm" />
+      <Skeleton className="h-3 w-[87%] rounded-sm" />
+      <Skeleton className="h-3 w-[84%] rounded-sm" />
+    </div>
+  );
+}
+
+// Image add/delete (and net resize on modify) is conveyed by the header's
+// `+/- size` delta and the card tint, so per-image captions only earn their
+// keep when there are two images to tell apart (a modified file's old vs new).
+interface GitDiffCardImageSide {
+  url: string;
+  caption: string | null;
+}
+
+function buildGitDiffCardImageSides(
+  oldImageUrl: string | null,
+  newImageUrl: string | null,
+): GitDiffCardImageSide[] {
+  const showSideLabels = oldImageUrl !== null && newImageUrl !== null;
+  const sides: GitDiffCardImageSide[] = [];
+  if (oldImageUrl !== null) {
+    sides.push({ url: oldImageUrl, caption: showSideLabels ? "Old" : null });
+  }
+  if (newImageUrl !== null) {
+    sides.push({ url: newImageUrl, caption: showSideLabels ? "New" : null });
+  }
+  return sides;
+}
+
+function getGitDiffCardImageAlt(
+  fileDiffLabel: string,
+  side: GitDiffCardImageSide,
+): string {
+  return side.caption === null
+    ? fileDiffLabel
+    : `${fileDiffLabel} (${side.caption.toLowerCase()})`;
+}
+
+const BYTES_PER_UNIT = 1024;
+
+function formatByteSize(bytes: number): string {
+  if (bytes < BYTES_PER_UNIT) {
+    return `${bytes} B`;
+  }
+  const kb = bytes / BYTES_PER_UNIT;
+  if (kb < BYTES_PER_UNIT) {
+    return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)} KB`;
+  }
+  const mb = kb / BYTES_PER_UNIT;
+  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+}
+
+interface ImageSizeStat {
+  addedBytes: number | null;
+  removedBytes: number | null;
+}
+
+interface GitDiffCardImageSizeStatProps {
+  stat: ImageSizeStat;
+}
+
+/**
+ * Header size indicator for an image card. An image change swaps the whole
+ * binary, so rather than netting the two sizes we surface them like a text
+ * diff's `+/-` tally: the new file's bytes as added, the old file's bytes as
+ * removed. Adds show only `+`, deletes only `-`, edits show both. Returns null
+ * until the bytes load.
+ */
+function getImageSizeStat(
+  enrichment: DiffFileEnrichmentState,
+  changeKind: GitDiffFileChangeKind,
+): ImageSizeStat | null {
+  if (enrichment.status !== "ready-image") return null;
+  const addedBytes = changeKind === "deleted" ? null : enrichment.newSizeBytes;
+  const removedBytes = changeKind === "added" ? null : enrichment.oldSizeBytes;
+  if (addedBytes === null && removedBytes === null) return null;
+  return { addedBytes, removedBytes };
+}
+
+function GitDiffCardImageSizeStat({
+  stat,
+}: GitDiffCardImageSizeStatProps) {
+  return (
+    <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs tabular-nums">
+      {stat.addedBytes !== null ? (
+        <span className="text-diff-added">{`+${formatByteSize(stat.addedBytes)}`}</span>
+      ) : null}
+      {stat.removedBytes !== null ? (
+        <span className="text-diff-removed">{`-${formatByteSize(stat.removedBytes)}`}</span>
+      ) : null}
+    </span>
+  );
+}
+
+interface GitDiffCardImageBodyProps {
+  enrichment: DiffFileEnrichmentState;
+  fileDiffLabel: string;
+}
+
+function GitDiffCardImageBody({
+  enrichment,
+  fileDiffLabel,
+}: GitDiffCardImageBodyProps) {
+  const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(
+    null,
+  );
+  if (enrichment.status === "idle" || enrichment.status === "loading") {
+    return <GitDiffCardBodySkeleton />;
+  }
+  if (enrichment.status !== "ready-image") {
+    return (
+      <div className="px-3 py-3 text-xs text-muted-foreground">
+        No preview available for this image.
+      </div>
+    );
+  }
+  const imageSides = buildGitDiffCardImageSides(
+    enrichment.oldImageUrl,
+    enrichment.newImageUrl,
+  );
+  const expandedImageSide =
+    expandedImageIndex === null ? undefined : imageSides[expandedImageIndex];
+  const stepExpandedImage = (direction: "previous" | "next") => {
+    setExpandedImageIndex((currentIndex) =>
+      currentIndex === null
+        ? null
+        : getWrappedImageIndex({
+            currentIndex,
+            direction,
+            itemCount: imageSides.length,
+          }),
+    );
+  };
+  return (
+    <>
+      <div className="flex items-start gap-3 px-3 py-3">
+        {imageSides.map((side, index) => (
+          <figure key={side.url} className="min-w-0">
+            <button
+              type="button"
+              className="block max-w-full cursor-zoom-in"
+              onClick={() => setExpandedImageIndex(index)}
+            >
+              <img
+                src={side.url}
+                alt={getGitDiffCardImageAlt(fileDiffLabel, side)}
+                className="block max-h-80 max-w-full rounded-md border border-border object-contain"
+              />
+            </button>
+            {side.caption !== null ? (
+              <figcaption className="mt-1 text-xs text-muted-foreground">
+                {side.caption}
+              </figcaption>
+            ) : null}
+          </figure>
+        ))}
+      </div>
+      <ImageLightbox
+        title={`${fileDiffLabel} image preview`}
+        imageSrc={expandedImageSide?.url ?? null}
+        imageAlt={
+          expandedImageSide
+            ? getGitDiffCardImageAlt(fileDiffLabel, expandedImageSide)
+            : fileDiffLabel
+        }
+        hasMultipleImages={imageSides.length > 1}
+        onPrevious={() => stepExpandedImage("previous")}
+        onNext={() => stepExpandedImage("next")}
+        onClose={() => setExpandedImageIndex(null)}
+      />
+    </>
+  );
 }
 
 export const GitDiffCard = memo(function GitDiffCard({
@@ -206,6 +413,15 @@ export const GitDiffCard = memo(function GitDiffCard({
   );
   const isAddedFile = fileDiffChangeKind === "added";
   const isDeletedFile = fileDiffChangeKind === "deleted";
+  // Binary image changes parse to zero hunks, so the text diff view has
+  // nothing to show, so render an inline image preview instead. Gated on the
+  // fetcher because the preview bytes come through `onRequestFileContents`;
+  // pure renames stay body-less like their text counterparts.
+  const isImagePreviewCard =
+    fileDiff.hunks.length === 0 &&
+    fileDiff.type !== "rename-pure" &&
+    onRequestFileContents !== undefined &&
+    isImageGitDiffFile(fileDiff);
   const headerInsertions = isDeletedFile ? 0 : fileDiffStats.insertions;
   const headerDeletions = isAddedFile ? 0 : fileDiffStats.deletions;
   const hideEmptyHeaderStats = isAddedFile || isDeletedFile;
@@ -226,8 +442,9 @@ export const GitDiffCard = memo(function GitDiffCard({
     : null;
   const canOpenFile = Boolean(openablePath);
   // Pure renames + identical content land here with zero hunks; nothing for
-  // the body to show, so force-collapse and disable the chevron.
-  const hasChanges = fileDiff.hunks.length > 0;
+  // the body to show, so force-collapse and disable the chevron. Image
+  // preview cards have a body despite their zero hunks.
+  const hasChanges = fileDiff.hunks.length > 0 || isImagePreviewCard;
   const supportsCollapse =
     isCollapsed !== undefined && onToggleCollapsed !== undefined;
   const isBodyHidden = !hasChanges || (supportsCollapse && isCollapsed);
@@ -266,9 +483,7 @@ export const GitDiffCard = memo(function GitDiffCard({
   const [enrichment, setEnrichment] = useState<DiffFileEnrichmentState>({
     status: "idle",
   });
-  const enrichmentStatusRef = useRef<DiffFileEnrichmentState["status"]>(
-    "idle",
-  );
+  const enrichmentStatusRef = useRef<DiffFileEnrichmentState["status"]>("idle");
   const [hasBodyEnteredViewport, setHasBodyEnteredViewport] = useState(false);
   const [hasLoadedDeletedDiff, setHasLoadedDeletedDiff] = useState(false);
   // Reset cached enrichment when the card swaps to different diff contents.
@@ -284,7 +499,12 @@ export const GitDiffCard = memo(function GitDiffCard({
       setHasBodyEnteredViewport(true);
     }
   }, [isBodyHidden, isBodyVisible]);
-  const shouldGateDeletedDiff = isDeletedFile && !hasLoadedDeletedDiff;
+  // The deleted-file gate defers the expensive text-diff renderer (and the old
+  // file fetch behind it) until the user asks for it. Image previews have no
+  // such renderer, so they load on viewport entry like added/modified images, so
+  // the header size and preview appear without a "Load diff" step.
+  const shouldGateDeletedDiff =
+    isDeletedFile && !isImagePreviewCard && !hasLoadedDeletedDiff;
   const shouldRenderDiffView =
     hasBodyEnteredViewport && !isRendering && !shouldGateDeletedDiff;
   // Fire the fetch once the diff view is actually renderable. Effect deps
@@ -305,9 +525,22 @@ export const GitDiffCard = memo(function GitDiffCard({
       resolveDiffFileContentSource(fileContentPlan.old, fetcher),
       resolveDiffFileContentSource(fileContentPlan.new, fetcher),
     ])
-      .then(([oldFile, newFile]) => {
+      .then(([oldResult, newResult]) => {
         if (cancelled) return;
-        if (!oldFile || !newFile) {
+        const oldImage = oldResult?.kind === "image" ? oldResult : null;
+        const newImage = newResult?.kind === "image" ? newResult : null;
+        if (oldImage !== null || newImage !== null) {
+          enrichmentStatusRef.current = "ready-image";
+          setEnrichment({
+            status: "ready-image",
+            oldImageUrl: oldImage?.dataUrl ?? null,
+            newImageUrl: newImage?.dataUrl ?? null,
+            oldSizeBytes: oldImage?.sizeBytes ?? null,
+            newSizeBytes: newImage?.sizeBytes ?? null,
+          });
+          return;
+        }
+        if (oldResult?.kind !== "text" || newResult?.kind !== "text") {
           enrichmentStatusRef.current = "unavailable";
           setEnrichment({ status: "unavailable" });
           return;
@@ -315,8 +548,8 @@ export const GitDiffCard = memo(function GitDiffCard({
         enrichmentStatusRef.current = "ready";
         setEnrichment({
           status: "ready",
-          oldLines: splitFileContentsForDiffContext(oldFile),
-          newLines: splitFileContentsForDiffContext(newFile),
+          oldLines: splitFileContentsForDiffContext(oldResult.file),
+          newLines: splitFileContentsForDiffContext(newResult.file),
         });
       })
       .catch(() => {
@@ -341,6 +574,10 @@ export const GitDiffCard = memo(function GitDiffCard({
       newLines: enrichment.newLines,
     };
   }, [fileDiff, enrichment]);
+
+  const imageSizeStat = isImagePreviewCard
+    ? getImageSizeStat(enrichment, fileDiffChangeKind)
+    : null;
 
   return (
     <div
@@ -448,12 +685,18 @@ export const GitDiffCard = memo(function GitDiffCard({
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-1">
-            <DiffStatsTally
-              insertions={headerInsertions}
-              deletions={headerDeletions}
-              hideZero={hideEmptyHeaderStats}
-              className="text-xs"
-            />
+            {isImagePreviewCard ? (
+              imageSizeStat !== null ? (
+                <GitDiffCardImageSizeStat stat={imageSizeStat} />
+              ) : null
+            ) : (
+              <DiffStatsTally
+                insertions={headerInsertions}
+                deletions={headerDeletions}
+                hideZero={hideEmptyHeaderStats}
+                className="text-xs"
+              />
+            )}
           </span>
         </div>
       </div>
@@ -485,14 +728,12 @@ export const GitDiffCard = memo(function GitDiffCard({
               </span>
             </div>
           ) : !shouldRenderDiffView ? (
-            <div className="space-y-1.5 px-3 py-3">
-              <Skeleton className="h-3 w-full rounded-sm" />
-              <Skeleton className="h-3 w-[96%] rounded-sm" />
-              <Skeleton className="h-3 w-[93%] rounded-sm" />
-              <Skeleton className="h-3 w-[90%] rounded-sm" />
-              <Skeleton className="h-3 w-[87%] rounded-sm" />
-              <Skeleton className="h-3 w-[84%] rounded-sm" />
-            </div>
+            <GitDiffCardBodySkeleton />
+          ) : isImagePreviewCard ? (
+            <GitDiffCardImageBody
+              enrichment={enrichment}
+              fileDiffLabel={fileDiffLabel}
+            />
           ) : (
             <div className="overflow-x-auto">
               <div

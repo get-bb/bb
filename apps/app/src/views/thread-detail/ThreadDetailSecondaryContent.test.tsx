@@ -267,6 +267,9 @@ function buildSecondaryContentProps({
       canAssignToParent: false,
       canTakeOverThread: false,
       environment: null,
+      environmentDisplayHost: {
+        locality: "local",
+      },
       workspaceStatus: undefined,
       workspaceStatusError: null,
       selectedMergeBaseBranch: undefined,

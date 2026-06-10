@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { Environment } from "@bb/domain";
-import { formatEnvironmentDisplay } from "../src/environment-display.js";
+import {
+  formatEnvironmentDisplay,
+  type EnvironmentDisplayHostContext,
+} from "../src/environment-display.js";
+
+const localHostContext: EnvironmentDisplayHostContext = {
+  locality: "local",
+};
+
+const remoteHostContext: EnvironmentDisplayHostContext = {
+  locality: "remote",
+};
 
 function makeEnvironment(overrides?: Partial<Environment>): Environment {
   return {
@@ -31,10 +42,25 @@ describe("formatEnvironmentDisplay", () => {
     it("returns 'Working locally' for unmanaged workspace", () => {
       const result = formatEnvironmentDisplay({
         environment: makeEnvironment(),
+        host: localHostContext,
       });
       expect(result).toEqual({
         modeLabel: "Working locally",
         compactModeLabel: "Local",
+        id: "env_test",
+        mode: "direct",
+        workspaceDisplayKind: "other",
+      });
+    });
+
+    it("returns a remote label for remote unmanaged workspace", () => {
+      const result = formatEnvironmentDisplay({
+        environment: makeEnvironment(),
+        host: remoteHostContext,
+      });
+      expect(result).toEqual({
+        modeLabel: "Working remotely",
+        compactModeLabel: "Remote",
         id: "env_test",
         mode: "direct",
         workspaceDisplayKind: "other",
@@ -47,6 +73,7 @@ describe("formatEnvironmentDisplay", () => {
           isWorktree: true,
           workspaceProvisionType: "managed-worktree",
         }),
+        host: remoteHostContext,
       });
       expect(result).toEqual({
         modeLabel: "Worktree",
@@ -64,6 +91,7 @@ describe("formatEnvironmentDisplay", () => {
           name: "Review workspace",
           workspaceProvisionType: "managed-worktree",
         }),
+        host: remoteHostContext,
       });
 
       expect(result.modeLabel).toBe("Review workspace");
@@ -75,6 +103,7 @@ describe("formatEnvironmentDisplay", () => {
         environment: makeEnvironment({
           name: "Working locally copy",
         }),
+        host: remoteHostContext,
       });
 
       expect(result.modeLabel).toBe("Working locally copy");
@@ -87,6 +116,7 @@ describe("formatEnvironmentDisplay", () => {
           isGitRepo: false,
           workspaceProvisionType: "personal",
         }),
+        host: localHostContext,
       });
       expect(result).toMatchObject({
         modeLabel: "Working locally",
@@ -105,6 +135,7 @@ describe("formatEnvironmentDisplay", () => {
           workspaceProvisionType: "managed-worktree",
           isWorktree: false,
         }),
+        host: remoteHostContext,
       });
       expect(result.modeLabel).toBe("Provisioning");
       expect(result.compactModeLabel).toBe("Provisioning");
@@ -120,6 +151,7 @@ describe("formatEnvironmentDisplay", () => {
           workspaceProvisionType: "managed-worktree",
           isWorktree: false,
         }),
+        host: remoteHostContext,
       });
       expect(result).toEqual({
         modeLabel: "Provisioning",
@@ -133,14 +165,16 @@ describe("formatEnvironmentDisplay", () => {
     it("reports 'Provisioning' for a local unmanaged env", () => {
       const result = formatEnvironmentDisplay({
         environment: makeEnvironment({ status: "provisioning" }),
+        host: localHostContext,
       });
       expect(result.modeLabel).toBe("Provisioning");
       expect(result.compactModeLabel).toBe("Provisioning");
     });
 
-    it("reports 'Provisioning' without host display state", () => {
+    it("reports 'Provisioning' before local or remote display applies", () => {
       const result = formatEnvironmentDisplay({
         environment: makeEnvironment({ status: "provisioning" }),
+        host: remoteHostContext,
       });
       expect(result).toEqual({
         modeLabel: "Provisioning",

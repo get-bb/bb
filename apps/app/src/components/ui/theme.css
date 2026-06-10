@@ -324,7 +324,9 @@
    * Stronger than horizontal seams, softer than the default content border. */
   --border-seam-vertical: color-mix(in oklch, var(--ink) 11.5%, var(--canvas));
   --input: color-mix(in oklch, var(--ink) 29.5%, var(--canvas));
-  --ring: oklch(0.4891 0 0);
+  /* Focus ring shares the primary accent — kept as one value so they can't
+   * drift apart. */
+  --ring: var(--primary);
   /* Inset panel tints on the ink ramp: recessed a clear sunken step, raised a
    * faint lift, both translucent so they read on card or page alike. */
   --surface-recessed: color-mix(in oklch, var(--ink) 6%, transparent);
@@ -351,7 +353,7 @@
   --sidebar-accent: color-mix(in oklch, var(--ink) 11.8%, var(--canvas));
   --sidebar-accent-foreground: var(--ink);
   --sidebar-border: color-mix(in oklch, var(--ink) 14%, var(--canvas));
-  --sidebar-ring: oklch(0.4891 0 0);
+  --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Fira Code", monospace;
@@ -461,7 +463,7 @@
    * than the default content border. */
   --border-seam-vertical: color-mix(in oklch, var(--ink) 13%, var(--canvas));
   --input: color-mix(in oklch, var(--ink) 32.6%, var(--canvas));
-  --ring: oklch(0.7058 0 0);
+  --ring: var(--primary);
   /* Same model as light; ink is light here, so these lift the dark canvas. */
   --surface-recessed: color-mix(in oklch, var(--ink) 6%, transparent);
   --surface-raised: color-mix(in oklch, var(--ink) 2.5%, transparent);
@@ -487,7 +489,7 @@
   --sidebar-accent: color-mix(in oklch, var(--ink) 15.2%, var(--canvas));
   --sidebar-accent-foreground: var(--ink);
   --sidebar-border: color-mix(in oklch, var(--ink) 18.1%, var(--canvas));
-  --sidebar-ring: oklch(0.7058 0 0);
+  --sidebar-ring: var(--primary);
   --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: "Fira Code", monospace;
