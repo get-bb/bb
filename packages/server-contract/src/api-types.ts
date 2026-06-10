@@ -2255,6 +2255,14 @@ export const commandListResponseSchema = z.object({
 });
 export type CommandListResponse = z.infer<typeof commandListResponseSchema>;
 
+export const threadCommandsQuerySchema = z.object({
+  /** Case-insensitive substring filter on command name/description. */
+  query: z.string().min(1).max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
+  /** Max results after server-side de-dup/sort. Defaults to 8 server-side. */
+  limit: z.string().regex(/^\d+$/).optional(),
+});
+export type ThreadCommandsQuery = z.infer<typeof threadCommandsQuerySchema>;
+
 export const threadStorageFileListResponseSchema =
   workspaceFileListResponseSchema.extend({
     /**

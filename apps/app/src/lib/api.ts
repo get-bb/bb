@@ -13,6 +13,7 @@ import type {
 } from "@bb/domain";
 import type {
   AutomationsOverviewResponse,
+  CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
   CreateQueuedMessageRequest,
@@ -625,6 +626,33 @@ export async function searchProjectPaths(
         includeDirectories: toPathListIncludeQueryValue(
           args.includeDirectories,
         ),
+      },
+    }),
+  );
+}
+
+interface ListThreadCommandsArgs {
+  threadId: string;
+  query: string;
+  limit: number;
+}
+
+/**
+ * List the provider skills/slash-commands discoverable for a thread, for the
+ * in-composer command typeahead (`/` Claude Code, `$` Codex). Mirrors
+ * {@link searchProjectPaths}: the typed Hono client resolves the route from
+ * `@bb/server-contract`'s public-api schema, so this types against the
+ * committed `CommandListResponse` contract with no cast.
+ */
+export async function listThreadCommands(
+  args: ListThreadCommandsArgs,
+): Promise<CommandListResponse> {
+  return request<CommandListResponse>(
+    apiClient.threads[":id"].commands.$get({
+      param: { id: args.threadId },
+      query: {
+        ...(args.query.length > 0 ? { query: args.query } : {}),
+        limit: String(args.limit),
       },
     }),
   );

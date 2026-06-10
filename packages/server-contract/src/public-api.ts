@@ -120,6 +120,8 @@ import type {
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
   ThreadStoragePathsQuery,
+  ThreadCommandsQuery,
+  CommandListResponse,
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
   ReplayCaptureListResponse,
@@ -707,6 +709,21 @@ export type PublicApiSchema = {
     $get: Endpoint<
       PathId & { query?: ThreadStorageFilesQuery },
       ThreadStorageFileListResponse
+    >;
+  };
+  "/threads/:id/commands": {
+    /**
+     * List the provider command/skill typeahead entries available to this
+     * thread. Resolves the thread's provider + workspace cwd, proxies to
+     * `host.list_commands`, then applies server policy (filter, de-dup by
+     * (source,name) with project origin winning, prefix-then-alpha sort,
+     * limit). Returns `{ commands: [], truncated: false }` for providers
+     * without a command surface. The trigger char (`/` for claude-code, `$`
+     * for codex) is a client concern; this route is provider-agnostic.
+     */
+    $get: Endpoint<
+      PathId & { query: ThreadCommandsQuery },
+      CommandListResponse
     >;
   };
   "/threads/:id/thread-storage/paths": {
