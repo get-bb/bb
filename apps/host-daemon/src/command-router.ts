@@ -22,7 +22,7 @@ import {
   getErrorCode,
   type CommandDispatchOptions,
 } from "./command-dispatch.js";
-import { isExpectedCommandDispatchError } from "./command-dispatch-support.js";
+import { isExpectedOnlineRpcFailureError } from "./command-dispatch-support.js";
 import type { HostDaemonLogger } from "./logger.js";
 import {
   RuntimeManager,
@@ -166,7 +166,7 @@ export class CommandRouter {
       });
     } catch (error) {
       const errorCode = getErrorCode(error);
-      if (!isExpectedCommandDispatchError(error)) {
+      if (!isExpectedOnlineRpcFailureError(error)) {
         this.logger.warn(
           {
             type: message.command.type,
@@ -505,9 +505,7 @@ export class CommandRouter {
     });
   }
 
-  private getFileWriteLaneKey(
-    command: HostDaemonCommand,
-  ): string | null {
+  private getFileWriteLaneKey(command: HostDaemonCommand): string | null {
     if (!this.isFileWriteLaneCommand(command)) {
       return null;
     }

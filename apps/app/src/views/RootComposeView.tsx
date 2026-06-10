@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import {
-  PERSONAL_PROJECT_ID,
-  type ThreadListEntry,
-} from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
@@ -27,7 +24,7 @@ import {
   stripProjectThreads,
 } from "@/hooks/queries/project-queries";
 import { useThreads } from "@/hooks/queries/thread-queries";
-import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -37,6 +34,7 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { promptDraftToInput } from "@/lib/prompt-draft";
+import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   getThreadRoutePath,
@@ -201,7 +199,9 @@ export function RootComposeView() {
     setRootComposeProjectId(projectId);
   }, [projectId, projects, rootComposeProjectId, setRootComposeProjectId]);
   const createThread = useCreateThread();
-  const { localHostId } = useHostDaemon();
+  const [navigateToThreadAfterCreate] =
+    useNavigateToThreadAfterCreatePreference();
+  const primaryHostId = usePrimaryHost()?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ projectId, threadId: null });
   const { data: projectPromptHistory = [] } =
@@ -243,9 +243,25 @@ export function RootComposeView() {
     () => currentProject?.sources ?? [],
     [currentProject?.sources],
   );
+  // Seed the picker with the project's stored execution defaults so the
+  // visible default matches what the server will use when the user submits
+  // without touching anything. Without this, the picker would show the
+  // system-wide first-provider/default-model (e.g. Codex / GPT-5.5) while
+  // the server falls back to the project's stored provider (e.g. Claude
+  // Code) — see resolveRequestedCreateExecutionValue, which discards
+  // submitted values that the client hasn't claimed in `executionInputSources`.
+  // Values ride along with the sidebar bootstrap so there's no extra
+  // round-trip per visit.
+  const projectDefaultExecutionOptions =
+    currentProject?.defaultExecutionOptions ?? null;
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
     projectId,
+    initialProviderId: projectDefaultExecutionOptions?.providerId,
+    initialModel: projectDefaultExecutionOptions?.model,
+    initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
+    initialReasoningLevel: projectDefaultExecutionOptions?.reasoningLevel,
+    initialPermissionMode: projectDefaultExecutionOptions?.permissionMode,
   });
   const {
     selectedProviderId,
@@ -290,12 +306,7 @@ export function RootComposeView() {
       replace: true,
       state: null,
     });
-  }, [
-    location.search,
-    location.state,
-    navigate,
-    setEnvironmentSelectionValue,
-  ]);
+  }, [location.search, location.state, navigate, setEnvironmentSelectionValue]);
 
   // Worktree picker options come from the project's unarchived threads.
   // Threads on managed or unmanaged worktrees with a non-null environmentId
@@ -315,19 +326,19 @@ export function RootComposeView() {
   const effectiveEnvironmentValue = useMemo(() => {
     const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
     if (isProjectless) {
-      return localHostId ? encodeHostValue(localHostId, "local") : "";
+      return primaryHostId ? encodeHostValue(primaryHostId, "local") : "";
     }
     if (parsedSelection?.type === "reuse") {
       return environmentSelectionValue;
     }
-    if (localHostId) {
+    if (primaryHostId) {
       return encodeHostValue(
-        localHostId,
+        primaryHostId,
         parsedSelection?.type === "host" ? parsedSelection.mode : "local",
       );
     }
     return "";
-  }, [environmentSelectionValue, isProjectless, localHostId]);
+  }, [environmentSelectionValue, isProjectless, primaryHostId]);
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(effectiveEnvironmentValue),
     [effectiveEnvironmentValue],
@@ -538,12 +549,14 @@ export function RootComposeView() {
       });
       clearReuseEnvironment();
       promptDraft.clearIfCurrentMatches(submittedDraft);
-      navigate(
-        getThreadRoutePath({
-          projectId: thread.projectId,
-          threadId: thread.id,
-        }),
-      );
+      if (navigateToThreadAfterCreate) {
+        navigate(
+          getThreadRoutePath({
+            projectId: thread.projectId,
+            threadId: thread.id,
+          }),
+        );
+      }
     } catch {
       // Global mutation error handling already surfaced the failure.
     }
@@ -552,6 +565,7 @@ export function RootComposeView() {
     createThread,
     executionInputSources,
     navigate,
+    navigateToThreadAfterCreate,
     permissionMode,
     projectId,
     promptDraft,

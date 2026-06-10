@@ -12,6 +12,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 import type { PromptMentionSuggestion } from "@/components/promptbox/mentions/types";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import { POINTER_COARSE_QUERY } from "@/components/ui/hooks/use-pointer-coarse";
+import { restoreMatchMedia, setupMatchMedia } from "@/test/helpers/match-media";
 import {
   PromptBoxInternal,
   type PromptBoxZenModeConfig,
@@ -30,6 +32,7 @@ interface PromptBoxHarnessProps {
   initialDraft: PromptBoxHarnessDraft;
   mentionSuggestions?: PromptMentionSuggestion[];
   onChangeSpy?: PromptBoxHarnessChangeSpy;
+  onSubmitSpy?: PromptBoxSubmitSpy;
   onAttachFiles?: (files: File[]) => void | Promise<void>;
   placeholder?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
@@ -45,6 +48,8 @@ type PromptBoxHarnessChangeSpy = (
   nextText: string,
   nextMentions: PromptDraftState["mentions"],
 ) => void;
+
+type PromptBoxSubmitSpy = () => void;
 
 type HistoryArrowKey = "ArrowUp" | "ArrowDown";
 
@@ -95,7 +100,7 @@ function PromptBoxHarness(args: PromptBoxHarnessProps) {
             mentions: nextMentions,
           }));
         }}
-        onSubmit={() => {}}
+        onSubmit={args.onSubmitSpy ?? noopPromptSubmit}
         autoFocus={args.autoFocus ?? false}
         placeholder={args.placeholder}
         attachments={{
@@ -131,6 +136,8 @@ function PromptBoxHarness(args: PromptBoxHarnessProps) {
   );
 }
 
+function noopPromptSubmit(): void {}
+
 function normalizeHarnessDraft(draft: PromptBoxHarnessDraft): PromptDraftState {
   return {
     ...draft,
@@ -140,6 +147,7 @@ function normalizeHarnessDraft(draft: PromptBoxHarnessDraft): PromptDraftState {
 
 afterEach(() => {
   cleanup();
+  restoreMatchMedia();
   vi.clearAllMocks();
 });
 
@@ -609,6 +617,51 @@ describe("PromptBoxInternal rich paste", () => {
     });
     expect(onAttachFiles).toHaveBeenCalledWith([file]);
     expect(getDraftText()).toBe("");
+  });
+});
+
+describe("PromptBoxInternal submit shortcuts", () => {
+  it("submits on unshifted Enter for fine pointer devices", () => {
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "Run this", attachments: [] }}
+        historyEntries={[]}
+        onSubmitSpy={onSubmit}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    const wasNotCanceled = fireEvent.keyDown(editor, { key: "Enter" });
+
+    expect(wasNotCanceled).toBe(false);
+    expect(editor.getAttribute("enterkeyhint")).toBe("send");
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not submit on unshifted Enter for coarse pointer devices", async () => {
+    setupMatchMedia({
+      matchesByQuery: new Map([[POINTER_COARSE_QUERY, true]]),
+    });
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "First line", attachments: [] }}
+        historyEntries={[]}
+        onSubmitSpy={onSubmit}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    fireEvent.keyDown(editor, { key: "Enter" });
+
+    expect(editor.getAttribute("enterkeyhint")).toBe("enter");
+    expect(onSubmit).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(getDraftText()).toBe("First line\n");
+    });
   });
 });
 

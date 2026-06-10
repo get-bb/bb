@@ -39,6 +39,7 @@ import {
 } from "../environments/environment-cleanup-internal.js";
 import {
   isCommandTimeoutError,
+  isHostUnavailableError,
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
 import { advanceEnvironmentProvisioning } from "../environments/environment-provisioning-internal.js";
@@ -89,6 +90,11 @@ export interface PeriodicSweepJob {
 interface PeriodicSweepJobState {
   lastStartedAt: number;
   running: boolean;
+}
+
+interface ManagedEnvironmentArchiveCleanupEvaluationResult {
+  candidates: number;
+  hostUnavailableDeferrals: number;
 }
 
 type PeriodicSweepJobList = readonly PeriodicSweepJob[];
@@ -164,7 +170,7 @@ async function evaluateManagedEnvironmentArchiveCleanupCandidates(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
   orphanedDestroyUpdatedBefore: number,
-): Promise<void> {
+): Promise<ManagedEnvironmentArchiveCleanupEvaluationResult> {
   recoverOrphanedEnvironmentDestroyRequests(deps, {
     now,
     updatedBefore: orphanedDestroyUpdatedBefore,
@@ -172,11 +178,23 @@ async function evaluateManagedEnvironmentArchiveCleanupCandidates(
 
   const environmentsToClean = sweepManagedEnvironments(deps.db);
   if (environmentsToClean.length === 0) {
-    return;
+    return {
+      candidates: 0,
+      hostUnavailableDeferrals: 0,
+    };
   }
 
-  lastManagedEnvironmentArchiveCleanupRecoveryAt = now;
+  let hostUnavailableDeferrals = 0;
   for (const environment of environmentsToClean) {
+    if (environment.path && !deps.hub.hasDaemonForHost(environment.hostId)) {
+      hostUnavailableDeferrals += 1;
+      deps.logger.debug(
+        { environmentId: environment.id, hostId: environment.hostId },
+        "Managed environment archive cleanup deferred until host reconnects",
+      );
+      continue;
+    }
+
     try {
       await runEnvironmentCleanupAdvance(deps, {
         environmentId: environment.id,
@@ -192,6 +210,17 @@ async function evaluateManagedEnvironmentArchiveCleanupCandidates(
         );
         continue;
       }
+      if (isHostUnavailableError(error)) {
+        hostUnavailableDeferrals += 1;
+        deps.logger.debug(
+          {
+            environmentId: environment.id,
+            ...runtimeErrorLogFields(deps.config, error),
+          },
+          "Managed environment archive cleanup deferred until host reconnects",
+        );
+        continue;
+      }
       deps.logger.warn(
         {
           environmentId: environment.id,
@@ -201,6 +230,11 @@ async function evaluateManagedEnvironmentArchiveCleanupCandidates(
       );
     }
   }
+
+  return {
+    candidates: environmentsToClean.length,
+    hostUnavailableDeferrals,
+  };
 }
 
 export function runDatabaseMaintenanceSweep(
@@ -334,11 +368,17 @@ export async function runManagedEnvironmentArchiveCleanupRecoverySweep(
     return;
   }
 
-  await evaluateManagedEnvironmentArchiveCleanupCandidates(
+  const result = await evaluateManagedEnvironmentArchiveCleanupCandidates(
     deps,
     now,
     now - ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS,
   );
+  if (
+    result.candidates > 0 &&
+    result.hostUnavailableDeferrals < result.candidates
+  ) {
+    lastManagedEnvironmentArchiveCleanupRecoveryAt = now;
+  }
 }
 
 export async function runProjectDeletionSweep(

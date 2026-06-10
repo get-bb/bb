@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/server-contract";
 import { MACOS_WINDOW_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
+import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 
 vi.mock("@/components/ui/hooks/use-compact-viewport.js", () => ({
@@ -20,7 +21,14 @@ vi.mock("@/components/ui/sidebar.js", () => ({
 interface RenderHeaderOverrides {
   actionsMenu?: ReactNode;
   isSecondaryPanelOpen?: boolean;
+  onOpenThreadGitAction?: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel?: () => void;
+  threadHeaderGitActions?: TestThreadHeaderGitAction[];
+}
+
+interface TestThreadHeaderGitAction {
+  label: string;
+  target: ThreadGitActionDialogTarget;
 }
 
 function renderHeader(overrides: RenderHeaderOverrides = {}) {
@@ -31,11 +39,10 @@ function renderHeader(overrides: RenderHeaderOverrides = {}) {
     isChildThread: false,
     isSecondaryPanelOpen: overrides.isSecondaryPanelOpen ?? false,
     isTerminalPanelOpen: false,
-    isThreadGitActionPending: false,
-    onOpenThreadGitAction: noop,
+    onOpenThreadGitAction: overrides.onOpenThreadGitAction ?? noop,
     onToggleSecondaryPanel: overrides.onToggleSecondaryPanel ?? noop,
     onToggleTerminalPanel: noop,
-    threadHeaderGitActions: [],
+    threadHeaderGitActions: overrides.threadHeaderGitActions ?? [],
     threadTitle: "Test thread",
   };
   return render(<ThreadDetailHeader {...props} />);
@@ -100,6 +107,32 @@ describe("ThreadDetailHeader actions menu drag region", () => {
     const wrapper = screen.getByTestId("thread-detail-header-actions-menu");
     expect(wrapper.className).not.toContain("app-region");
     expect(wrapper.className).not.toContain("z-50");
+  });
+});
+
+describe("ThreadDetailHeader git actions", () => {
+  it("keeps git action buttons clickable so actions can queue", () => {
+    const onOpenThreadGitAction = vi.fn();
+    renderHeader({
+      onOpenThreadGitAction,
+      threadHeaderGitActions: [
+        { label: "Commit", target: { kind: "commit" } },
+        { label: "Squash merge", target: { kind: "squash_merge" } },
+      ],
+    });
+
+    const commitButton = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Commit",
+    });
+    const moreActionsButton = screen.getByRole<HTMLButtonElement>("button", {
+      name: "More actions",
+    });
+
+    expect(commitButton.disabled).toBe(false);
+    expect(moreActionsButton.disabled).toBe(false);
+
+    fireEvent.click(commitButton);
+    expect(onOpenThreadGitAction).toHaveBeenCalledWith({ kind: "commit" });
   });
 });
 

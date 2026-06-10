@@ -20,6 +20,7 @@ import {
   STORY_WORKTREE_OPTIONS,
   makeAttachmentsConfig as makeAttachments,
   makeExecutionControlsProps,
+  makeHost,
   makeMentionsConfig as makeMentions,
 } from "../../../.ladle/story-fixtures";
 
@@ -35,7 +36,8 @@ const baseEnvironment: NewThreadEnvironmentConfig = {
   value: `host:${HOST_IDS.local}:local`,
   onChange: noop,
   sources: STORY_PROJECT_SOURCES,
-  hostId: HOST_IDS.local,
+  host: makeHost({ id: HOST_IDS.local }),
+  isLocal: true,
 };
 
 const baseBranch: NewThreadBranchConfig = {

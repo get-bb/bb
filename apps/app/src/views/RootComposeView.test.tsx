@@ -32,6 +32,7 @@ import type {
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
 import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { NAVIGATE_TO_THREAD_AFTER_CREATE_STORAGE_KEY } from "@/lib/root-compose-create-preference";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
 import { RootComposeRoute } from "./RootComposeView";
 
@@ -42,9 +43,12 @@ type ProjectWithThreadsOverrides = Partial<ProjectWithThreadsResponse>;
 vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({
     localHostId: "host_local",
+    localDaemonHostId: "host_local",
     hasDaemon: true,
     supportsNativeFolderPicker: false,
     platform: null,
+    isLocalDaemonHost: (hostId: string | null | undefined) =>
+      hostId === "host_local",
     pickFolder: null,
   }),
 }));
@@ -150,18 +154,6 @@ function RootComposeWithFocusButton() {
   );
 }
 
-function ThreadRouteWithReturnToCompose() {
-  const navigate = useNavigate();
-  return (
-    <>
-      <LocationCapture />
-      <button type="button" onClick={() => navigate("/")}>
-        New thread
-      </button>
-    </>
-  );
-}
-
 function makeThread(overrides: ThreadOverrides = {}): ThreadWithRuntime {
   return {
     archivedAt: null,
@@ -216,6 +208,7 @@ function makeProjectWithThreadsResponse(
 ): ProjectWithThreadsResponse {
   return {
     createdAt: 1,
+    defaultExecutionOptions: null,
     id: PERSONAL_PROJECT_ID,
     kind: "personal",
     name: "Personal",
@@ -257,6 +250,13 @@ function seedProjectRootComposeDraft(projectId: string, text: string): void {
   window.localStorage.setItem(
     getRootComposeDraftStorageKey(projectId),
     JSON.stringify({ text, attachments: [] }),
+  );
+}
+
+function seedNavigateToThreadAfterCreatePreference(enabled: boolean): void {
+  window.localStorage.setItem(
+    NAVIGATE_TO_THREAD_AFTER_CREATE_STORAGE_KEY,
+    JSON.stringify(enabled),
   );
 }
 
@@ -372,13 +372,10 @@ function renderRootComposeRoute(
           <QuickCreateProjectProvider>
             <Routes>
               <Route path="/" element={rootRouteElement} />
-              <Route
-                path="/threads/:threadId"
-                element={<ThreadRouteWithReturnToCompose />}
-              />
+              <Route path="/threads/:threadId" element={<LocationCapture />} />
               <Route
                 path="/projects/:projectId/threads/:threadId"
-                element={<ThreadRouteWithReturnToCompose />}
+                element={<LocationCapture />}
               />
             </Routes>
           </QuickCreateProjectProvider>
@@ -415,9 +412,29 @@ describe("RootComposeRoute", () => {
     );
   });
 
-  it("navigates to a successfully created new thread", async () => {
+  it("stays on root compose after creating a thread by default", async () => {
+    const requests = installRootComposeFetchRoutes();
+    seedRootComposeDraft("Open a debugging thread");
+    renderRootComposeRoute();
+
+    await screen.findByRole("textbox");
+    const submitButton = screen.getByTitle("Submit (Enter)");
+    await waitFor(() => {
+      expect(isEnabledButton(submitButton)).toBe(true);
+    });
+
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(requests.createThread).toHaveLength(1);
+    });
+    expect(screen.getByTestId("pathname").textContent).toBe("/");
+  });
+
+  it("navigates to a created thread when the navigate-on-create preference is on", async () => {
     const thread = makeThread({ id: "thr_new_thread" });
     installRootComposeFetchRoutes({ createdThread: thread });
+    seedNavigateToThreadAfterCreatePreference(true);
     seedRootComposeDraft("Open a debugging thread");
     renderRootComposeRoute();
 
@@ -460,7 +477,7 @@ describe("RootComposeRoute", () => {
     });
   });
 
-  it("does not keep reuse-environment selection after creating a thread", async () => {
+  it("clears the reuse-environment selection after creating a thread", async () => {
     const standardProject = makeStandardProjectWithThreadsResponse();
     const createdThread = makeThread({
       id: "thr_standard_created",
@@ -487,56 +504,33 @@ describe("RootComposeRoute", () => {
     });
 
     await screen.findByRole("button", { name: "Stop reusing worktree" });
-    const firstSubmitButton = screen.getByTitle("Submit (Enter)");
+    const submitButton = screen.getByTitle("Submit (Enter)");
     await waitFor(() => {
-      expect(isEnabledButton(firstSubmitButton)).toBe(true);
+      expect(isEnabledButton(submitButton)).toBe(true);
     });
 
-    fireEvent.click(firstSubmitButton);
+    fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByTestId("pathname").textContent).toBe(
-        getThreadRoutePath({
-          projectId: STANDARD_PROJECT_ID,
-          threadId: createdThread.id,
-        }),
-      );
+      expect(requests.createThread).toHaveLength(1);
     });
-    expect(requests.createThread).toHaveLength(1);
-    const firstCreateBody = await requests.createThread[0]?.json();
-    expect(firstCreateBody.environment).toEqual({
+    const createBody = await requests.createThread[0]?.json();
+    expect(createBody.environment).toEqual({
       type: "reuse",
       environmentId: "env_reuse",
     });
-
-    seedProjectRootComposeDraft(
-      STANDARD_PROJECT_ID,
-      "Start a regular new thread",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "New thread" }));
-
-    await screen.findByRole("textbox");
-    const secondSubmitButton = screen.getByTitle("Submit (Enter)");
     await waitFor(() => {
-      expect(isEnabledButton(secondSubmitButton)).toBe(true);
-    });
-
-    fireEvent.click(secondSubmitButton);
-
-    await waitFor(() => {
-      expect(requests.createThread).toHaveLength(2);
-    });
-    const secondCreateBody = await requests.createThread[1]?.json();
-    expect(secondCreateBody.environment).toMatchObject({
-      type: "host",
-      hostId: "host_local",
+      expect(
+        screen.queryByRole("button", { name: "Stop reusing worktree" }),
+      ).toBeNull();
     });
   });
 
-  it("does not navigate when new thread creation fails", async () => {
+  it("does not navigate when creation fails and the navigate-on-create preference is on", async () => {
     const requests = installRootComposeFetchRoutes({
       createThreadShouldFail: true,
     });
+    seedNavigateToThreadAfterCreatePreference(true);
     seedRootComposeDraft("Open a debugging thread");
     renderRootComposeRoute();
 

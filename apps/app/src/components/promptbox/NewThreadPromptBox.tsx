@@ -38,10 +38,12 @@ import {
   type ProjectSelectorCreateProjectConfig,
   type ProjectSelectorOption,
 } from "@/components/pickers/ProjectSelector";
+import { useShouldAvoidSoftKeyboardAutofocus } from "@/components/ui/hooks/use-soft-keyboard-autofocus";
 import {
   WorktreePicker,
   type ReuseThreadOption,
 } from "@/components/pickers/WorktreePicker";
+import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 
 const NEW_THREAD_PROMPT_BOX_MIN_HEIGHT = 80;
@@ -50,7 +52,8 @@ export interface NewThreadEnvironmentConfig {
   value: string;
   onChange: (value: string) => void;
   sources: readonly ProjectSource[];
-  hostId: EnvironmentPickerUIProps["hostId"];
+  host: EnvironmentPickerUIProps["host"];
+  isLocal: EnvironmentPickerUIProps["isLocal"];
   /** When true, the picker's "Reuse existing worktree" entry is disabled.
    * Caller signals the project has no worktree envs available. */
   reuseDisabled?: boolean;
@@ -198,6 +201,8 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
     }),
     [],
   );
+  const shouldAvoidSoftKeyboardAutofocus =
+    useShouldAvoidSoftKeyboardAutofocus();
   const voice = usePromptVoice(promptBoxRef);
   const isProjectlessPrompt = project?.value === null;
   const placeholder = getNewThreadPromptPlaceholder(isProjectlessPrompt);
@@ -210,7 +215,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
         mentionRanges={mentionRanges}
         onChange={onChange}
         onSubmit={onSubmit}
-        autoFocus
+        autoFocus={!shouldAvoidSoftKeyboardAutofocus}
         history={history}
         mentions={mentions}
         mentionMenuPlacement="bottom"
@@ -274,11 +279,7 @@ interface ThreadEnvSlotProps {
   worktree: NewThreadWorktreeConfig;
 }
 
-function ThreadEnvSlot({
-  environment,
-  branch,
-  worktree,
-}: ThreadEnvSlotProps) {
+function ThreadEnvSlot({ environment, branch, worktree }: ThreadEnvSlotProps) {
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(environment.value),
     [environment.value],
@@ -292,7 +293,8 @@ function ThreadEnvSlot({
         value={environment.value}
         onChange={environment.onChange}
         sources={environment.sources}
-        hostId={environment.hostId}
+        host={environment.host}
+        isLocal={environment.isLocal}
         reuseDisabled={environment.reuseDisabled}
         muted
       />
@@ -409,7 +411,9 @@ function ConnectedThreadModeBranch({
   threadConfig,
   ...rest
 }: ConnectedThreadModeBranchProps) {
-  const { localHostId } = useHostDaemon();
+  const primaryHost = usePrimaryHost();
+  const { isLocalDaemonHost } = useHostDaemon();
+  const isLocalHost = primaryHost ? isLocalDaemonHost(primaryHost.id) : false;
 
   const parsedEnvironment = parseEnvironmentValue(
     threadConfig.environment.value,
@@ -422,8 +426,12 @@ function ConnectedThreadModeBranch({
   const allowCreate = isHostMode && parsedEnvironment.mode === "local";
 
   const uiEnvironment = useMemo(
-    () => ({ ...threadConfig.environment, hostId: localHostId }),
-    [threadConfig.environment, localHostId],
+    () => ({
+      ...threadConfig.environment,
+      host: primaryHost,
+      isLocal: isLocalHost,
+    }),
+    [threadConfig.environment, primaryHost, isLocalHost],
   );
   const uiBranch = useMemo<NewThreadBranchConfig>(() => {
     const branch = threadConfig.branch;

@@ -60,6 +60,18 @@ function sleep(milliseconds: Milliseconds): Promise<void> {
   });
 }
 
+// The host daemon's local API is bound to 127.0.0.1 and only sends CORS headers
+// for loopback app origins. Opened from another device — or from this machine
+// via a Tailscale name — every probe is a blocked cross-origin / mixed-content
+// request, so we only reach for the daemon when the page itself is loopback.
+export function isLoopbackOrigin(): boolean {
+  if (typeof window === "undefined") return false;
+  const { hostname } = window.location;
+  return (
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+  );
+}
+
 async function fetchHostStatusWithRetry({
   port,
   retryDelaysMs,
@@ -145,10 +157,10 @@ export const localHostStatusAtom = atom<
   Promise<HostDaemonStatusSnapshot | null>
 >(async (get) => {
   get(localHostStatusRefreshTickAtom);
-  const config = await get(systemConfigAtom);
-  if (!config.hostDaemonPort) return null;
+  const port = await get(hostDaemonPortAtom);
+  if (!port) return null;
   return fetchHostStatusWithRetry({
-    port: config.hostDaemonPort,
+    port,
     retryDelaysMs: LOCAL_HOST_STATUS_RETRY_DELAYS_MS,
   });
 });
@@ -187,20 +199,25 @@ export const localWorkspaceOpenTargetsAtom = atom<
     return [];
   }
 
-  const config = await get(systemConfigAtom);
-  if (!config.hostDaemonPort) {
+  const port = await get(hostDaemonPortAtom);
+  if (!port) {
     return [];
   }
 
-  return fetchWorkspaceOpenTargets(config.hostDaemonPort);
+  return fetchWorkspaceOpenTargets(port);
 });
 
 // ---------------------------------------------------------------------------
 // Derived: host daemon port (sync access after config resolves)
 // ---------------------------------------------------------------------------
 
-/** The host daemon port, or null if not configured. */
+/**
+ * The host daemon port to probe from this browser, or null when unreachable —
+ * either unconfigured by the server, or the page isn't a loopback origin (see
+ * isLoopbackOrigin). The single chokepoint for whether we touch the daemon.
+ */
 export const hostDaemonPortAtom = atom<Promise<number | null>>(async (get) => {
+  if (!isLoopbackOrigin()) return null;
   const config = await get(systemConfigAtom);
   return config.hostDaemonPort;
 });

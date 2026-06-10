@@ -13,6 +13,7 @@ import { WorktreePicker } from "@/components/pickers/WorktreePicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   HOST_IDS,
+  makeHost,
   PROJECT_IDS,
   STORY_BRANCH_OPTIONS,
   STORY_PROJECTS,
@@ -85,7 +86,8 @@ function EnvironmentOptionsStrip({
               value={environmentValue}
               onChange={noop}
               sources={STORY_PROJECT_SOURCES}
-              hostId={HOST_IDS.local}
+              host={makeHost({ id: HOST_IDS.local })}
+              isLocal
               muted
               modal={false}
               {...environment}

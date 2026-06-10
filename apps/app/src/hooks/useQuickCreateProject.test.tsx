@@ -435,6 +435,106 @@ describe("useQuickCreateProject", () => {
     });
   });
 
+  it("falls back to the connected primary host when the local daemon is unreachable", async () => {
+    const createdProjectRequests: CreateProjectRequest[] = [];
+    installQuickCreateFetchRoutes(
+      {
+        daemonConnected: false,
+        hostDaemonPort: null,
+        hosts: [makeHost({ id: "host-remote", name: "Remote Host" })],
+      },
+      createdProjectRequests,
+    );
+
+    const { useQuickCreateProject } = await importFreshUseQuickCreateProject();
+    const latestSnapshot: { current: QuickCreateProjectSnapshot | null } = {
+      current: null,
+    };
+    await act(async () => {
+      render(
+        <QuickCreateProjectCapture
+          onSnapshot={(snapshot) => {
+            latestSnapshot.current = snapshot;
+          }}
+          useQuickCreateProject={useQuickCreateProject}
+        />,
+        { wrapper: createSuspenseWrapper() },
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        requireQuickCreateProjectSnapshot(latestSnapshot.current).isAvailable,
+      ).toBe(true);
+    });
+    expect(
+      requireQuickCreateProjectSnapshot(latestSnapshot.current).hostName,
+    ).toBe("Remote Host");
+
+    act(() => {
+      requireQuickCreateProjectSnapshot(
+        latestSnapshot.current,
+      ).openCreateDialog();
+    });
+
+    expect(
+      requireQuickCreateProjectSnapshot(latestSnapshot.current)
+        .projectPathDialog.target,
+    ).toEqual({ kind: "create" });
+
+    act(() => {
+      requireQuickCreateProjectSnapshot(
+        latestSnapshot.current,
+      ).submitProjectPath({ kind: "create" }, "/srv/repos/demo");
+    });
+
+    await waitFor(() => {
+      expect(createdProjectRequests).toHaveLength(1);
+    });
+    expect(createdProjectRequests[0]).toEqual({
+      name: "demo",
+      source: {
+        hostId: "host-remote",
+        path: "/srv/repos/demo",
+        type: "local_path",
+      },
+    });
+  });
+
+  it("stays unavailable when the only known host is disconnected", async () => {
+    installQuickCreateFetchRoutes(
+      {
+        daemonConnected: false,
+        hostDaemonPort: null,
+        hosts: [makeHost({ status: "disconnected" })],
+      },
+      [],
+    );
+
+    const { useQuickCreateProject } = await importFreshUseQuickCreateProject();
+    const latestSnapshot: { current: QuickCreateProjectSnapshot | null } = {
+      current: null,
+    };
+    await act(async () => {
+      render(
+        <QuickCreateProjectCapture
+          onSnapshot={(snapshot) => {
+            latestSnapshot.current = snapshot;
+          }}
+          useQuickCreateProject={useQuickCreateProject}
+        />,
+        { wrapper: createSuspenseWrapper() },
+      );
+    });
+
+    await waitFor(() => {
+      expect(latestSnapshot.current).not.toBeNull();
+    });
+    expect(
+      requireQuickCreateProjectSnapshot(latestSnapshot.current).isAvailable,
+    ).toBe(false);
+  });
+
   it("does not open the create dialog when no local host is available", async () => {
     installQuickCreateFetchRoutes(
       {

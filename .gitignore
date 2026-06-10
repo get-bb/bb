@@ -24,6 +24,9 @@ out
 /apps/desktop/release/
 /apps/desktop/.electron-builder.generated.json
 
+# generated at build time (see @bb/sdk#generate:app-runtime-browser-bundle)
+/packages/sdk/src/app-runtime-browser-bundle.generated.ts
+
 # misc
 .DS_Store
 *.pem

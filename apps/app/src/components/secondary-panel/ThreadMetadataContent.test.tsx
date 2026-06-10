@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 
+import type { ReactElement } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
 import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
+import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import type { ThreadSchedule } from "@bb/server-contract";
 import { makeWorkspaceStatus } from "@bb/test-helpers";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  EnvironmentRow,
   ForksRow,
   GitStatusRow,
   hasAnyThreadMetadata,
@@ -20,6 +23,18 @@ import { threadListQueryKey } from "@/hooks/queries/query-keys";
 type ThreadOverrides = Partial<Thread>;
 type EnvironmentOverrides = Partial<Environment>;
 type ThreadScheduleOverrides = Partial<ThreadSchedule>;
+
+const localEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "local",
+};
+
+const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "remote",
+};
+
+function renderWithRouter(element: ReactElement) {
+  return render(<MemoryRouter>{element}</MemoryRouter>);
+}
 
 function makeThread(overrides: ThreadOverrides = {}): Thread {
   const base: Thread = {
@@ -176,6 +191,38 @@ describe("WorkspacePathRow", () => {
     );
 
     expect(container.textContent).toBe("");
+  });
+});
+
+describe("EnvironmentRow", () => {
+  it("labels a direct workspace on a remote host as remote", () => {
+    renderWithRouter(
+      <EnvironmentRow
+        thread={makeThread()}
+        environment={makeEnvironment({
+          isWorktree: false,
+          workspaceProvisionType: "unmanaged",
+        })}
+        environmentDisplayHost={remoteEnvironmentDisplayHost}
+      />,
+    );
+
+    expect(screen.getByText("Working remotely")).not.toBeNull();
+  });
+
+  it("keeps local direct workspace labels local", () => {
+    renderWithRouter(
+      <EnvironmentRow
+        thread={makeThread()}
+        environment={makeEnvironment({
+          isWorktree: false,
+          workspaceProvisionType: "unmanaged",
+        })}
+        environmentDisplayHost={localEnvironmentDisplayHost}
+      />,
+    );
+
+    expect(screen.getByText("Working locally")).not.toBeNull();
   });
 });
 

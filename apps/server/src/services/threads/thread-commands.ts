@@ -361,7 +361,7 @@ export function dispatchThreadRenameCommand(
     },
     hostId: args.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: args.threadId },
         "Live thread rename command failed",
@@ -430,7 +430,7 @@ export function dispatchArchivedThreadProviderArchiveCommand(
     },
     hostId: environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: thread.id },
         "Live thread archive command failed",
@@ -461,7 +461,7 @@ export function dispatchThreadUnarchiveCommand(
     },
     hostId: args.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: args.thread.id },
         "Live thread unarchive command failed",

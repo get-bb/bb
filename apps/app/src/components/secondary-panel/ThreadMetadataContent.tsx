@@ -12,7 +12,10 @@ import type {
 } from "@bb/domain";
 import type { ThreadSchedule } from "@bb/server-contract";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
-import { formatEnvironmentDisplay } from "@bb/core-ui";
+import {
+  formatEnvironmentDisplay,
+  type EnvironmentDisplayHostContext,
+} from "@bb/core-ui";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button.js";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
@@ -230,11 +233,13 @@ export function ForksRow({ thread, projectId }: ForksRowProps) {
 export interface EnvironmentRowProps {
   thread: Thread;
   environment: Environment | null;
+  environmentDisplayHost: EnvironmentDisplayHostContext;
 }
 
 export function EnvironmentRow({
   thread,
   environment,
+  environmentDisplayHost,
 }: EnvironmentRowProps) {
   const createThreadInWorktree = useCreateThreadInWorktree({
     projectId: thread.projectId,
@@ -243,6 +248,7 @@ export function EnvironmentRow({
   if (!environment) return null;
   const display = formatEnvironmentDisplay({
     environment,
+    host: environmentDisplayHost,
   });
   const showCreateThreadButton = isWorktreeEnvironment(environment);
   return (
@@ -711,6 +717,7 @@ export interface ThreadMetadataContentProps {
   canAssignToParent: boolean;
   canTakeOverThread: boolean;
   environment: Environment | null;
+  environmentDisplayHost: EnvironmentDisplayHostContext;
   workspaceStatus: WorkspaceStatus | undefined;
   workspaceStatusError: Error | null;
   workspaceUnavailable?: WorkspaceResolutionFailure;
@@ -821,6 +828,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     canAssignToParent,
     canTakeOverThread,
     environment,
+    environmentDisplayHost,
     workspaceStatus,
     workspaceStatusError,
     workspaceUnavailable,
@@ -854,7 +862,11 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         onAssignParent={onAssignParent}
       />
       <ForksRow thread={thread} projectId={projectId} />
-      <EnvironmentRow thread={thread} environment={environment} />
+      <EnvironmentRow
+        thread={thread}
+        environment={environment}
+        environmentDisplayHost={environmentDisplayHost}
+      />
       <WorkspacePathRow thread={thread} environment={environment} />
       <BranchRow thread={thread} workspaceStatus={workspaceStatus} />
       <MergeBaseRow

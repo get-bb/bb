@@ -6,7 +6,10 @@ import type {
   ThreadQueuedMessage,
   WorkspaceStatus,
 } from "@bb/domain";
-import { formatEnvironmentDisplay } from "@bb/core-ui";
+import {
+  formatEnvironmentDisplay,
+  type EnvironmentDisplayHostContext,
+} from "@bb/core-ui";
 import type { ThreadContextWindowUsage } from "@bb/server-contract";
 import {
   FollowUpPromptBox,
@@ -75,17 +78,20 @@ const basePermission = {
 
 interface EnvironmentSummaryArgs {
   environment: Environment;
+  host: EnvironmentDisplayHostContext;
   branchName?: string;
   onCreateNewThreadInWorktree?: () => void;
 }
 
 function makeEnvironmentSummary({
   environment,
+  host,
   branchName,
   onCreateNewThreadInWorktree,
 }: EnvironmentSummaryArgs): ReactNode {
   const display = formatEnvironmentDisplay({
     environment,
+    host,
   });
   return (
     <ThreadEnvironmentSummary
@@ -100,6 +106,14 @@ function makeEnvironmentSummary({
   );
 }
 
+const localEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "local",
+};
+
+const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "remote",
+};
+
 const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   environment: makeEnvironment({
     managed: false,
@@ -107,6 +121,18 @@ const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     workspaceProvisionType: "unmanaged",
     status: "ready",
   }),
+  host: localEnvironmentDisplayHost,
+  branchName: "bb/promptbox-stories",
+});
+
+const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
+  environment: makeEnvironment({
+    managed: false,
+    isWorktree: false,
+    workspaceProvisionType: "unmanaged",
+    status: "ready",
+  }),
+  host: remoteEnvironmentDisplayHost,
   branchName: "bb/promptbox-stories",
 });
 
@@ -116,6 +142,7 @@ const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     workspaceProvisionType: "managed-worktree",
     status: "ready",
   }),
+  host: localEnvironmentDisplayHost,
   branchName: "bb/promptbox-stories",
   // Worktree threads expose a "new thread in this worktree" affordance —
   // production wires it to the new-thread route. The story just needs a
@@ -135,6 +162,7 @@ const provisioningEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     workspaceProvisionType: "managed-worktree",
     status: "ready",
   }),
+  host: localEnvironmentDisplayHost,
 });
 
 const usage: ThreadContextWindowUsage = {
@@ -456,6 +484,12 @@ export function Overview() {
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={worktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow label="env: remote direct" hint="remote label + icon">
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={remoteEnvironmentSummary}
         />
       </StoryRow>
     </StoryCard>

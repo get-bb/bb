@@ -20,6 +20,7 @@ describe("ProjectPathDialog", () => {
       <ProjectPathDialog
         target={{ kind: "create" }}
         platform="linux"
+        hostName={null}
         onOpenChange={() => {}}
         onSubmit={() => {}}
       />,
@@ -43,5 +44,23 @@ describe("ProjectPathDialog", () => {
         screen.queryByText("Project path must be an absolute path."),
       ).toBeNull();
     });
+  });
+
+  it("names the host in the description when provided", () => {
+    render(
+      <ProjectPathDialog
+        target={{ kind: "create" }}
+        platform={null}
+        hostName="Sawyer's MacBook"
+        onOpenChange={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Enter an absolute path on Sawyer's MacBook to the project folder.",
+      ),
+    ).toBeTruthy();
   });
 });

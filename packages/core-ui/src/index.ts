@@ -1,7 +1,11 @@
 export { assertNever } from "./assert-never.js";
 
 export { formatEnvironmentDisplay } from "./environment-display.js";
-export type { EnvironmentDisplayInfo } from "./environment-display.js";
+export type {
+  EnvironmentDisplayHostContext,
+  EnvironmentDisplayHostLocality,
+  EnvironmentDisplayInfo,
+} from "./environment-display.js";
 
 export {
   buildPendingInteractionApprovalResolution,

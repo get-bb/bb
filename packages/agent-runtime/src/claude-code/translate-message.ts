@@ -230,6 +230,17 @@ function buildClaudeRateLimitEventDetail(
   return details.join("; ");
 }
 
+function isHardClaudeRateLimitRejection(message: ClaudeRateLimitEvent): boolean {
+  const info = message.rate_limit_info;
+  if (info.status !== "rejected") {
+    return false;
+  }
+  return (
+    info.overageStatus !== "allowed" &&
+    info.overageStatus !== "allowed_warning"
+  );
+}
+
 function isClaudeResultFailure(message: ClaudeResultMessage): boolean {
   return message.is_error === true || message.subtype.startsWith("error");
 }
@@ -654,7 +665,7 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
-      if (message.rate_limit_info.status !== "rejected") {
+      if (!isHardClaudeRateLimitRejection(message)) {
         return [];
       }
       const turnId = state.currentTurnId ?? null;

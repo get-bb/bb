@@ -1033,7 +1033,7 @@ export function requestThreadStop(
     command: buildThreadStopCommand(args),
     hostId: args.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: args.threadId },
         "Live thread stop command failed",
@@ -1120,7 +1120,7 @@ function requestPreStartThreadStop(
       },
       hostId: result.cancelHostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-      onError: (error) => {
+      onError: ({ error }) => {
         deps.logger.warn(
           {
             err: error,

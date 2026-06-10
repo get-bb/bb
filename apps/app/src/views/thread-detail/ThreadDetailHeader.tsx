@@ -32,7 +32,6 @@ interface ThreadDetailHeaderProps {
   isChildThread: boolean;
   isSecondaryPanelOpen: boolean;
   isTerminalPanelOpen: boolean;
-  isThreadGitActionPending: boolean;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel: () => void;
   onToggleTerminalPanel: () => void;
@@ -47,7 +46,6 @@ export function ThreadDetailHeader({
   isChildThread,
   isSecondaryPanelOpen,
   isTerminalPanelOpen,
-  isThreadGitActionPending,
   onOpenThreadGitAction,
   onToggleSecondaryPanel,
   onToggleTerminalPanel,
@@ -99,7 +97,6 @@ export function ThreadDetailHeader({
       {workspaceOpenButton}
       {primaryAction && secondaryActions.length > 0 ? (
         <SplitButton
-          disabled={isThreadGitActionPending}
           primaryAction={{
             label: primaryAction.label,
             onSelect: () => onOpenThreadGitAction(primaryAction.target),
@@ -114,7 +111,6 @@ export function ThreadDetailHeader({
           type="button"
           variant="outline"
           size="sm"
-          disabled={isThreadGitActionPending}
           className={THREAD_HEADER_ACTION_BUTTON_CLASS}
           onClick={() => onOpenThreadGitAction(primaryAction.target)}
         >

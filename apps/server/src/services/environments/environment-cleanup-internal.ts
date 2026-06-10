@@ -115,15 +115,20 @@ interface EnvironmentCleanupSettlementDeps extends EnvironmentCleanupWriteDeps {
 }
 
 type EnvironmentCleanupDecisionDeps = Pick<AppDeps, "db">;
+type EnvironmentCleanupHostConnectionDeps = Pick<AppDeps, "db" | "hub">;
 type EnvironmentCleanupPreflightResult =
   HostDaemonOnlineRpcResult<"environment.cleanup_preflight">;
 
-function hasConnectedHostSession(
-  deps: Pick<AppDeps, "db">,
+function hasConnectedHostDaemon(
+  deps: EnvironmentCleanupHostConnectionDeps,
   hostId: string,
 ): boolean {
   const session = getActiveSession(deps.db, hostId);
-  return session !== null && session.leaseExpiresAt > Date.now();
+  return (
+    session !== null &&
+    session.leaseExpiresAt > Date.now() &&
+    deps.hub.hasDaemonForHost(hostId)
+  );
 }
 
 function cleanupPreflightAllowsDestroy(
@@ -154,7 +159,7 @@ async function workspaceCanBeSafelyCleaned(
     return false;
   }
 
-  if (!hasConnectedHostSession(deps, environment.hostId)) {
+  if (!hasConnectedHostDaemon(deps, environment.hostId)) {
     return false;
   }
 
@@ -362,7 +367,7 @@ function dispatchEnvironmentDestroy(
     execution,
     hostId: environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         { err: error, environmentId: environment.id },
         "Live environment destroy command failed",

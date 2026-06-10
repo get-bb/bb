@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { ProjectSource } from "@bb/domain";
+import type { Host, ProjectSource } from "@bb/domain";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { findLocalPathProjectSourceForHost } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
@@ -8,6 +8,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
 import {
@@ -15,7 +16,6 @@ import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
-import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { cn } from "@/lib/utils";
 import {
@@ -45,7 +45,12 @@ export interface EnvironmentPickerUIProps {
   value: string;
   onChange: (value: string) => void;
   sources: readonly ProjectSource[];
-  hostId: string | null;
+  /** The host bb runs work on, or null while it loads / before one connects. */
+  host: Host | null;
+  /** Whether `host` is the machine this browser runs on. When false (e.g. a
+   * phone on the tailnet), the picker surfaces the host name so it's clear work
+   * runs on a remote machine, and "Work locally" becomes "Work on host". */
+  isLocal: boolean;
   /** When true, the "Reuse existing worktree" entry is disabled — the
    * caller signals that the project has no worktree envs available to
    * reuse. The entry is always rendered so the affordance stays
@@ -63,22 +68,54 @@ export function EnvironmentPickerUI({
   value,
   onChange,
   sources,
-  hostId,
+  host,
+  isLocal,
   reuseDisabled,
   muted,
   defaultOpen,
   modal,
 }: EnvironmentPickerUIProps) {
+  const hostId = host?.id ?? null;
+  const hostConnected = host?.status === "connected";
   const hasSource = useMemo(
     () =>
       hostId !== null &&
       findLocalPathProjectSourceForHost(sources, hostId) !== undefined,
     [hostId, sources],
   );
+  // Plain "Work locally" labels read wrong from a phone on the tailnet, where
+  // work runs on a different machine — surface the host name there instead.
+  const localLabel = isLocal ? "Work locally" : "Work remotely";
+
+  // An unreachable host blocks every option, so the menu collapses to a single
+  // reason instead of repeating it on each row. Source/worktree availability
+  // only narrows the individual options once the host itself is reachable.
+  const hostUnavailableReason = !host
+    ? "No host connected"
+    : !hostConnected
+      ? "Host is offline"
+      : null;
+  const workspaceDisabledReason = hasSource
+    ? null
+    : "Project source unavailable";
+  const reuseDisabledReason = reuseDisabled
+    ? "No worktrees in this project yet"
+    : null;
 
   const parsed = useMemo(() => parseEnvironmentValue(value), [value]);
 
   const selected = useMemo((): SelectedEnvironment => {
+    // A down host overrides whatever mode is persisted: surfacing "Host
+    // offline" is clearer than a stale "Work remotely" or a blank "Environment"
+    // that hides why nothing can run. The selection itself is kept so it
+    // resumes once the host reconnects.
+    if (hostUnavailableReason !== null) {
+      return {
+        modeLabel: hostUnavailableReason,
+        compactModeLabel: host ? "Offline" : "No host",
+        icon: "AlertTriangle" as const,
+      };
+    }
     if (!parsed) {
       return {
         modeLabel: "Environment",
@@ -93,15 +130,14 @@ export function EnvironmentPickerUI({
         icon: getEnvironmentWorkspaceLabelIconName("managed-worktree"),
       };
     }
-    const modeLabel =
-      parsed.mode === "worktree" ? "New worktree" : "Work locally";
+    const modeLabel = parsed.mode === "worktree" ? "New worktree" : localLabel;
     const compactModeLabel =
-      parsed.mode === "worktree" ? "Worktree" : "Local";
+      parsed.mode === "worktree" ? "Worktree" : isLocal ? "Local" : "Remote";
     const icon = getEnvironmentWorkspaceLabelIconName(
       parsed.mode === "worktree" ? "managed-worktree" : "other",
     );
     return { modeLabel, compactModeLabel, icon };
-  }, [parsed]);
+  }, [parsed, localLabel, isLocal, hostUnavailableReason, host]);
 
   return (
     <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
@@ -151,8 +187,11 @@ export function EnvironmentPickerUI({
       >
         <EnvironmentOptionsSection
           hostId={hostId}
-          hasProjectSource={hostId !== null && hasSource}
-          reuseDisabled={Boolean(reuseDisabled)}
+          hostName={isLocal ? null : (host?.name ?? null)}
+          hostUnavailableReason={hostUnavailableReason}
+          localLabel={localLabel}
+          workspaceDisabledReason={workspaceDisabledReason}
+          reuseDisabledReason={reuseDisabledReason}
           selectedType={parsed?.type}
           value={value}
           onChange={onChange}
@@ -162,45 +201,19 @@ export function EnvironmentPickerUI({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Connected variant — wires app-wide hooks into the presentational
-// EnvironmentPickerUI. App callers use this; stories use EnvironmentPickerUI
-// directly with mocks.
-// ---------------------------------------------------------------------------
-
-export interface EnvironmentPickerProps {
-  value: string;
-  onChange: (value: string) => void;
-  sources: readonly ProjectSource[];
-  reuseDisabled?: boolean;
-  muted?: boolean;
-}
-
-export function EnvironmentPicker({
-  value,
-  onChange,
-  sources,
-  reuseDisabled,
-  muted,
-}: EnvironmentPickerProps) {
-  const { localHostId } = useHostDaemon();
-
-  return (
-    <EnvironmentPickerUI
-      value={value}
-      onChange={onChange}
-      sources={sources}
-      hostId={localHostId}
-      reuseDisabled={reuseDisabled}
-      muted={muted}
-    />
-  );
-}
-
 interface EnvironmentOptionsSectionProps {
   hostId: string | null;
-  hasProjectSource: boolean;
-  reuseDisabled: boolean;
+  /** Host name to label the group with, or null when the host is this machine. */
+  hostName: string | null;
+  /** When set, the host can't run any work — the group shows this reason alone
+   * and renders none of the options. Null when the host is reachable. */
+  hostUnavailableReason: string | null;
+  /** Label for the non-worktree option ("Work locally" vs "Work remotely"). */
+  localLabel: string;
+  /** Why the local/worktree options are unavailable, or null when usable. */
+  workspaceDisabledReason: string | null;
+  /** Why the reuse option is unavailable, or null when usable. */
+  reuseDisabledReason: string | null;
   selectedType:
     | NonNullable<ReturnType<typeof parseEnvironmentValue>>["type"]
     | undefined;
@@ -210,51 +223,63 @@ interface EnvironmentOptionsSectionProps {
 
 function EnvironmentOptionsSection({
   hostId,
-  hasProjectSource,
-  reuseDisabled,
+  hostName,
+  hostUnavailableReason,
+  localLabel,
+  workspaceDisabledReason,
+  reuseDisabledReason,
   selectedType,
   value,
   onChange,
 }: EnvironmentOptionsSectionProps) {
   const localValue = hostId ? encodeHostValue(hostId, "local") : null;
   const worktreeValue = hostId ? encodeHostValue(hostId, "worktree") : null;
-  const workspaceDisabled = !hasProjectSource;
-  const workspaceDisabledDescription = workspaceDisabled
-    ? "Project source unavailable"
-    : undefined;
+  const workspaceDisabled = workspaceDisabledReason !== null;
+  const workspaceDisabledDescription = workspaceDisabledReason ?? undefined;
 
   return (
     <DropdownMenuGroup>
-      <EnvironmentMenuItem
-        label="Work locally"
-        description={workspaceDisabledDescription}
-        icon={getEnvironmentWorkspaceLabelIconName("other")}
-        selected={localValue !== null && value === localValue}
-        disabled={workspaceDisabled || localValue === null}
-        onSelect={() => {
-          if (localValue !== null) onChange(localValue);
-        }}
-      />
-      <EnvironmentMenuItem
-        label="New worktree"
-        description={workspaceDisabledDescription}
-        icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
-        selected={worktreeValue !== null && value === worktreeValue}
-        disabled={workspaceDisabled || worktreeValue === null}
-        onSelect={() => {
-          if (worktreeValue !== null) onChange(worktreeValue);
-        }}
-      />
-      <EnvironmentMenuItem
-        label="Existing worktree"
-        description={
-          reuseDisabled ? "No worktrees in this project yet" : undefined
-        }
-        icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
-        selected={selectedType === "reuse"}
-        disabled={reuseDisabled}
-        onSelect={() => onChange(REUSE_VALUE_WITHOUT_ENVIRONMENT)}
-      />
+      {hostName ? (
+        <DropdownMenuLabel className="truncate text-muted-foreground">
+          {hostName}
+        </DropdownMenuLabel>
+      ) : null}
+      {hostUnavailableReason !== null ? (
+        <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+          {hostUnavailableReason}
+        </DropdownMenuItem>
+      ) : (
+        <>
+          <EnvironmentMenuItem
+            label={localLabel}
+            description={workspaceDisabledDescription}
+            icon={getEnvironmentWorkspaceLabelIconName("other")}
+            selected={localValue !== null && value === localValue}
+            disabled={workspaceDisabled || localValue === null}
+            onSelect={() => {
+              if (localValue !== null) onChange(localValue);
+            }}
+          />
+          <EnvironmentMenuItem
+            label="New worktree"
+            description={workspaceDisabledDescription}
+            icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
+            selected={worktreeValue !== null && value === worktreeValue}
+            disabled={workspaceDisabled || worktreeValue === null}
+            onSelect={() => {
+              if (worktreeValue !== null) onChange(worktreeValue);
+            }}
+          />
+          <EnvironmentMenuItem
+            label="Existing worktree"
+            description={reuseDisabledReason ?? undefined}
+            icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
+            selected={selectedType === "reuse"}
+            disabled={reuseDisabledReason !== null}
+            onSelect={() => onChange(REUSE_VALUE_WITHOUT_ENVIRONMENT)}
+          />
+        </>
+      )}
     </DropdownMenuGroup>
   );
 }

@@ -1,7 +1,15 @@
 import type { ProjectSource } from "@bb/domain";
 import { EnvironmentPickerUI } from "./EnvironmentPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { HOST_IDS } from "../../../.ladle/story-fixtures";
+import { HOST_IDS, makeHost } from "../../../.ladle/story-fixtures";
+
+const localHost = makeHost({ id: HOST_IDS.local });
+const remoteHost = makeHost({ id: HOST_IDS.local, name: "studio-mac-mini" });
+const offlineHost = makeHost({
+  id: HOST_IDS.local,
+  name: "studio-mac-mini",
+  status: "disconnected",
+});
 
 export default {
   title: "pickers/Environment Picker",
@@ -34,7 +42,8 @@ export function Overview() {
           value={`host:${HOST_IDS.local}:local`}
           onChange={noop}
           sources={localProjectSources}
-          hostId={HOST_IDS.local}
+          host={localHost}
+          isLocal
         />
       </StoryRow>
       <StoryRow label="muted" hint="prompt-box treatment">
@@ -42,7 +51,8 @@ export function Overview() {
           value={`host:${HOST_IDS.local}:local`}
           onChange={noop}
           sources={localProjectSources}
-          hostId={HOST_IDS.local}
+          host={localHost}
+          isLocal
           muted
         />
       </StoryRow>
@@ -51,7 +61,8 @@ export function Overview() {
           value={`host:${HOST_IDS.local}:worktree`}
           onChange={noop}
           sources={localProjectSources}
-          hostId={HOST_IDS.local}
+          host={localHost}
+          isLocal
         />
       </StoryRow>
       <StoryRow
@@ -62,7 +73,8 @@ export function Overview() {
           value="reuse"
           onChange={noop}
           sources={localProjectSources}
-          hostId={HOST_IDS.local}
+          host={localHost}
+          isLocal
         />
       </StoryRow>
       <StoryRow
@@ -73,16 +85,47 @@ export function Overview() {
           value={`host:${HOST_IDS.local}:local`}
           onChange={noop}
           sources={localProjectSources}
-          hostId={HOST_IDS.local}
+          host={localHost}
+          isLocal
           reuseDisabled
         />
       </StoryRow>
-      <StoryRow label="open menu" hint="defaultOpen + modal=false">
+      <StoryRow
+        label="host offline"
+        hint="host down with a prior selection — the trigger reads 'Host is offline' (overriding the stale mode); open the menu for the host name and a single 'Host is offline' row, no options"
+      >
         <EnvironmentPickerUI
           value={`host:${HOST_IDS.local}:local`}
           onChange={noop}
           sources={localProjectSources}
-          hostId={HOST_IDS.local}
+          host={offlineHost}
+          isLocal={false}
+          modal={false}
+        />
+      </StoryRow>
+      <StoryRow
+        label="remote host (online)"
+        hint="viewed from another device: open the menu to see the host name and 'Work remotely' enabled"
+      >
+        <EnvironmentPickerUI
+          value={`host:${HOST_IDS.local}:local`}
+          onChange={noop}
+          sources={localProjectSources}
+          host={remoteHost}
+          isLocal={false}
+          modal={false}
+        />
+      </StoryRow>
+      <StoryRow
+        label="open menu"
+        hint="defaultOpen + modal=false — local host, online: the full set of options enabled"
+      >
+        <EnvironmentPickerUI
+          value={`host:${HOST_IDS.local}:local`}
+          onChange={noop}
+          sources={localProjectSources}
+          host={localHost}
+          isLocal
           defaultOpen
           modal={false}
         />

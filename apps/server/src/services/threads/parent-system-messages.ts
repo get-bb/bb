@@ -100,8 +100,7 @@ interface QueueReadyParentSystemMessageArgs {
   thread: Thread;
 }
 
-interface QueueActiveParentSystemMessageInTransactionArgs
-  extends QueueReadyParentSystemMessageArgs {
+interface QueueActiveParentSystemMessageInTransactionArgs extends QueueReadyParentSystemMessageArgs {
   sessionId: string;
   preparedCommand: PreparedTurnSubmitCommandPayload;
 }
@@ -282,7 +281,7 @@ async function queueActiveParentSystemMessage(
     command: queued.command,
     hostId: args.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: args.thread.id },
         "Live active parent system message command failed",
@@ -362,7 +361,7 @@ async function queueReadyParentSystemMessage(
     command: command.command,
     hostId: args.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: args.thread.id },
         "Live parent system message command failed",

@@ -6,6 +6,7 @@ import {
   deleteProjectSource,
   getProjectSourceByHost,
   getProjectSourceForProject,
+  listProjectExecutionDefaultsByProjectIds,
   listPublicProjects,
   listProjectSourcesByProjectIds,
   listThreadsWithPendingInteractionStateForProjects,
@@ -191,10 +192,15 @@ function buildProjectsWithThreadsResponseFromRows(
     }
     threadsByProjectId.set(thread.projectId, [thread]);
   }
+  const defaultsByProjectId = listProjectExecutionDefaultsByProjectIds(
+    deps.db,
+    { projectIds },
+  );
 
   return projects.map((project) => ({
     ...project,
     threads: threadsByProjectId.get(project.id) ?? [],
+    defaultExecutionOptions: defaultsByProjectId.get(project.id) ?? null,
   }));
 }
 

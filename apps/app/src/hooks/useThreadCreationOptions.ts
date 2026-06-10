@@ -582,7 +582,11 @@ export function useThreadCreationOptions(
   );
   const renderedThreadSelections = useMemo(() => {
     if (!usesLocalThreadSelections) {
-      return threadSelections;
+      // New-thread scope writes user picks to atoms, never to `threadSelections`,
+      // so the useState seed cannot reflect late-arriving project defaults.
+      // Track `nextThreadSelections` directly — the seed becomes the empty
+      // baseline before any initial values resolve, and updates as they do.
+      return nextThreadSelections;
     }
     if (threadResetKeyRef.current !== resetKey) {
       return nextThreadSelections;

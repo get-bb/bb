@@ -51,6 +51,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
 import { Icon, type IconName } from "@/components/ui/icon.js";
+import { Skeleton } from "@/components/ui/skeleton.js";
 import {
   SidebarGroupContent,
   SidebarStickyGroup,
@@ -135,6 +136,10 @@ interface ProjectListProjectsSectionActionsProps {
 
 interface ProjectListThreadsSectionActionsProps {
   onNewThread: () => void;
+}
+
+interface ProjectListNavigationLoadingRowProps {
+  textWidthClassName: string;
 }
 
 interface LocalSourcePathTarget {
@@ -359,6 +364,37 @@ function ProjectListThreadsSectionActions({
       iconName="MessageSquarePlus"
       onClick={onNewThread}
     />
+  );
+}
+
+export function ProjectListNavigationLoadingState() {
+  return (
+    <div
+      aria-label="Loading sidebar navigation"
+      className="space-y-1.5 px-2 pt-1 group-data-[collapsible=icon]:hidden"
+    >
+      <ProjectListNavigationLoadingRow textWidthClassName="w-2/3" />
+      <ProjectListNavigationLoadingRow textWidthClassName="w-1/2" />
+    </div>
+  );
+}
+
+function ProjectListNavigationLoadingRow({
+  textWidthClassName,
+}: ProjectListNavigationLoadingRowProps) {
+  return (
+    <div
+      data-sidebar="navigation-loading-row"
+      className="flex h-7 items-center gap-2 rounded-md"
+    >
+      <Skeleton className="size-4 shrink-0 rounded-md bg-sidebar-border/60" />
+      <Skeleton
+        className={cn(
+          "h-3 rounded-sm bg-sidebar-border/50",
+          textWidthClassName,
+        )}
+      />
+    </div>
   );
 }
 
@@ -987,6 +1023,14 @@ function ProjectListComponent({
       onNewThread={handleCreateProjectlessThread}
     />
   );
+
+  if (projectsState.status === "loading") {
+    return (
+      <ProjectListShell>
+        <ProjectListNavigationLoadingState />
+      </ProjectListShell>
+    );
+  }
 
   return (
     <ProjectListShell>

@@ -259,6 +259,11 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
+  hasDaemonForHost(hostId: string): boolean {
+    const sessionId = this.daemonSessionIdsByHost.get(hostId);
+    return sessionId !== undefined && this.daemonSessions.has(sessionId);
+  }
+
   closeDaemonSession(
     sessionId: string,
     reason: HostDaemonSessionCloseReason,

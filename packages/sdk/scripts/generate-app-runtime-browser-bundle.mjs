@@ -1,20 +1,18 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(scriptDir, "..");
-const repoRoot = path.resolve(packageRoot, "..", "..");
 const entryPoint = path.join(packageRoot, "src", "app-runtime-browser.ts");
 const outputFile = path.join(
   packageRoot,
   "src",
   "app-runtime-browser-bundle.generated.ts",
 );
-const outputRelativePath = path.relative(repoRoot, outputFile);
 const regenerateCommand =
   "pnpm --filter @bb/sdk generate:app-runtime-browser-bundle";
 const templatesEntryPoint = path.resolve(
@@ -138,24 +136,5 @@ async function buildGeneratedModule() {
   ].join("\n");
 }
 
-async function checkGeneratedFile(expected) {
-  let actual = "";
-  try {
-    actual = await readFile(outputFile, "utf8");
-  } catch {
-    console.error(`${outputRelativePath} is missing. Run ${regenerateCommand}.`);
-    process.exitCode = 1;
-    return;
-  }
-  if (actual !== expected) {
-    console.error(`${outputRelativePath} is stale. Run ${regenerateCommand}.`);
-    process.exitCode = 1;
-  }
-}
-
 const output = await buildGeneratedModule();
-if (process.argv.includes("--check")) {
-  await checkGeneratedFile(output);
-} else {
-  await writeFile(outputFile, output, "utf8");
-}
+await writeFile(outputFile, output, "utf8");

@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import type { ProjectExecutionDefaults } from "@bb/domain";
 import type {
   ProjectBranchesResponse,
-  ProjectResponse,
   ProjectWithThreadsResponse,
   PromptHistoryResponse,
   SidebarBootstrapResponse,
@@ -59,11 +58,13 @@ function requireProjectId(
   });
 }
 
+export type SidebarProject = Omit<ProjectWithThreadsResponse, "threads">;
+
 export function stripProjectThreads(
   project: ProjectWithThreadsResponse,
-): ProjectResponse {
-  const { threads, ...projectResponse } = project;
-  return projectResponse;
+): SidebarProject {
+  const { threads, ...rest } = project;
+  return rest;
 }
 
 export function useSidebarNavigation(options?: QueryOptions) {

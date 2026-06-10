@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   ParentSelectorRow,
   EnvironmentRow,
@@ -15,6 +16,7 @@ import {
 import {
   PanelStage,
   baseProps,
+  localEnvironmentDisplayHost,
   parentThreads,
   makeEnvironment,
   makeThread,
@@ -28,6 +30,10 @@ export default {
 };
 
 const noop = () => {};
+
+const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "remote",
+};
 
 function RowStage({ children }: { children: ReactNode }) {
   return (
@@ -114,7 +120,11 @@ export function Environment() {
     <StoryCard>
       <StoryRow label="worktree">
         <RowStage>
-          <EnvironmentRow thread={makeThread()} environment={makeEnvironment()} />
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment()}
+            environmentDisplayHost={localEnvironmentDisplayHost}
+          />
         </RowStage>
       </StoryRow>
       <StoryRow label="direct">
@@ -125,6 +135,19 @@ export function Environment() {
               isWorktree: false,
               workspaceProvisionType: "unmanaged",
             })}
+            environmentDisplayHost={localEnvironmentDisplayHost}
+          />
+        </RowStage>
+      </StoryRow>
+      <StoryRow label="remote direct">
+        <RowStage>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment({
+              isWorktree: false,
+              workspaceProvisionType: "unmanaged",
+            })}
+            environmentDisplayHost={remoteEnvironmentDisplayHost}
           />
         </RowStage>
       </StoryRow>
@@ -137,6 +160,7 @@ export function Environment() {
               isWorktree: false,
               workspaceProvisionType: "managed-worktree",
             })}
+            environmentDisplayHost={localEnvironmentDisplayHost}
           />
         </RowStage>
       </StoryRow>

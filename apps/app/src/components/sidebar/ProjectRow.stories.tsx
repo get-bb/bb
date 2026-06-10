@@ -346,12 +346,6 @@ const multipleProjects: StoryProjectRow[] = [
 export function Overview() {
   return (
     <StoryCard>
-      <StoryRow
-        label="loading threads"
-        hint="project header rendered, skeleton stands in for the thread list"
-      >
-        {singleProject({ threadListState: { status: "loading" } })}
-      </StoryRow>
       <StoryRow label="ready, no threads" hint='empty state: "No threads"'>
         {singleProject({
           threadListState: { status: "ready", threads: [] },

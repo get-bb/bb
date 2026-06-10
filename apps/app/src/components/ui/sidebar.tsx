@@ -62,6 +62,17 @@ function useIsSidebarShowing() {
   return isCompactViewport ? openMobile : state === "expanded";
 }
 
+/**
+ * Stable callback that closes the mobile sidebar drawer. Every navigation
+ * triggered from inside the sidebar must call this so the destination view is
+ * revealed on compact viewports; on wider viewports the drawer state is
+ * already closed and the call is a no-op.
+ */
+function useCloseMobileSidebar() {
+  const { setOpenMobile } = useSidebar();
+  return React.useCallback(() => setOpenMobile(false), [setOpenMobile]);
+}
+
 const SidebarProvider = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
@@ -865,6 +876,7 @@ export {
   SidebarStickyStack,
   SidebarStickyTier,
   SidebarTrigger,
+  useCloseMobileSidebar,
   useIsSidebarShowing,
   useSidebar,
 };
