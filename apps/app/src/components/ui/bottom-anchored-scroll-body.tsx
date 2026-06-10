@@ -639,6 +639,12 @@ export function BottomAnchoredScrollBody({
 
     queueBottomRestore();
 
+    // Capture the (stable) throttle-state object so the cleanup doesn't read a
+    // ref's `.current` directly (react-hooks/exhaustive-deps). The ref is never
+    // reassigned — only its `trailingTimeout` field mutates — so this still
+    // clears the live pending timeout at cleanup time.
+    const captureThrottle = scrollAnchorCaptureThrottleRef.current;
+
     return () => {
       resizeObserver?.disconnect();
       scrollArea.removeEventListener("scroll", handleScroll);
@@ -652,10 +658,9 @@ export function BottomAnchoredScrollBody({
       cancelQueuedRestore();
       // Flush the final resting position before the key={threadId} teardown:
       // a pending trailing capture would otherwise be dropped on unmount.
-      const throttle = scrollAnchorCaptureThrottleRef.current;
-      if (throttle.trailingTimeout !== null) {
-        window.clearTimeout(throttle.trailingTimeout);
-        throttle.trailingTimeout = null;
+      if (captureThrottle.trailingTimeout !== null) {
+        window.clearTimeout(captureThrottle.trailingTimeout);
+        captureThrottle.trailingTimeout = null;
       }
       writeScrollAnchor();
     };
