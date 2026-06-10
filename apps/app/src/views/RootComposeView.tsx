@@ -5,7 +5,10 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
-import type { PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
+import {
+  INERT_TYPEAHEAD_COMMAND_CONFIG,
+  type PromptBoxHandle,
+} from "@/components/promptbox/PromptBoxInternal";
 import {
   encodeHostValue,
   encodeReuseValue,
@@ -619,13 +622,17 @@ export function RootComposeView() {
         : null,
     [navigate, projectId],
   );
-  const mentionsConfig = useMemo(
+  const typeaheadConfig = useMemo(
     () => ({
-      suggestions: promptMentions.suggestions,
-      isLoading: promptMentions.isLoading,
-      isError: promptMentions.isError,
-      onQueryChange: promptMentions.setQuery,
-      resolveLink: resolveMentionLink,
+      mention: {
+        suggestions: promptMentions.suggestions,
+        isLoading: promptMentions.isLoading,
+        isError: promptMentions.isError,
+        onQueryChange: promptMentions.setQuery,
+        resolveLink: resolveMentionLink,
+      },
+      // Command typeahead data is wired in a later task; inert for now.
+      command: INERT_TYPEAHEAD_COMMAND_CONFIG,
     }),
     [
       promptMentions.isError,
@@ -863,7 +870,7 @@ export function RootComposeView() {
         disabled={isSubmitDisabled}
         zenModeStorageKey={rootComposeZenModeStorageKey}
         history={historyConfig}
-        mentions={mentionsConfig}
+        typeahead={typeaheadConfig}
         attachments={attachmentsConfig}
         modeConfig={{
           environment: environmentConfig,

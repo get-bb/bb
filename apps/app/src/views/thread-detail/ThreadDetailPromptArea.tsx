@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import { INERT_TYPEAHEAD_COMMAND_CONFIG } from "@/components/promptbox/PromptBoxInternal";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
 import type {
   PendingInteraction,
@@ -749,13 +750,17 @@ export function ThreadDetailPromptArea({
     ],
   );
 
-  const mentionsConfig = useMemo(
+  const typeaheadConfig = useMemo(
     () => ({
-      suggestions: promptMentions.suggestions,
-      isLoading: promptMentions.isLoading,
-      isError: promptMentions.isError,
-      onQueryChange: promptMentions.setQuery,
-      resolveLink: resolveMentionLink,
+      mention: {
+        suggestions: promptMentions.suggestions,
+        isLoading: promptMentions.isLoading,
+        isError: promptMentions.isError,
+        onQueryChange: promptMentions.setQuery,
+        resolveLink: resolveMentionLink,
+      },
+      // Command typeahead data is wired in a later task; inert for now.
+      command: INERT_TYPEAHEAD_COMMAND_CONFIG,
     }),
     [
       promptMentions.isError,
@@ -874,7 +879,7 @@ export function ThreadDetailPromptArea({
       contextWindowUsage={contextWindowUsage ?? null}
       execution={executionConfig}
       permission={permissionConfig}
-      mentions={mentionsConfig}
+      typeahead={typeaheadConfig}
     />
   );
 }

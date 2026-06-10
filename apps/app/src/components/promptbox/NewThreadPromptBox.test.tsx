@@ -103,11 +103,20 @@ function renderNewThreadPrompt(modeConfig: NewThreadModeConfig): void {
         entries: [],
         onSelectEntry: noop,
       }}
-      mentions={{
-        suggestions: [],
-        isLoading: false,
-        isError: false,
-        onQueryChange: noop,
+      typeahead={{
+        mention: {
+          suggestions: [],
+          isLoading: false,
+          isError: false,
+          onQueryChange: noop,
+        },
+        command: {
+          trigger: null,
+          suggestions: [],
+          isLoading: false,
+          isError: false,
+          onQueryChange: noop,
+        },
       }}
       attachments={{ items: [] }}
       modeConfig={modeConfig}

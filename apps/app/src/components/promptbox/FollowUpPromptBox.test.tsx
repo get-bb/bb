@@ -49,11 +49,20 @@ function makeFollowUpPromptBoxProps(): FollowUpPromptBoxProps {
       onChange: vi.fn(),
       supported: false,
     },
-    mentions: {
-      suggestions: [],
-      isLoading: false,
-      isError: false,
-      onQueryChange: vi.fn(),
+    typeahead: {
+      mention: {
+        suggestions: [],
+        isLoading: false,
+        isError: false,
+        onQueryChange: vi.fn(),
+      },
+      command: {
+        trigger: null,
+        suggestions: [],
+        isLoading: false,
+        isError: false,
+        onQueryChange: vi.fn(),
+      },
     },
     zenModeResetKey: "thread-1",
   };

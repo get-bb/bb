@@ -16,8 +16,8 @@ import {
   PromptBoxInternal,
   type AttachmentsConfig,
   type HistoryConfig,
-  type MentionsConfig,
   type PromptBoxHandle,
+  type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
 import {
@@ -136,7 +136,7 @@ export interface NewThreadPromptBoxUIProps {
   zenModeStorageKey: string;
 
   history: HistoryConfig;
-  mentions: MentionsConfig;
+  typeahead: TypeaheadConfig;
   attachments: AttachmentsConfig;
 
   /** Thread environment, branch/worktree, permission, and optional header config. */
@@ -181,7 +181,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   disabled,
   zenModeStorageKey,
   history,
-  mentions,
+  typeahead,
   attachments,
   modeConfig,
   project,
@@ -217,7 +217,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
         onSubmit={onSubmit}
         autoFocus={!shouldAvoidSoftKeyboardAutofocus}
         history={history}
-        mentions={mentions}
+        typeahead={typeahead}
         mentionMenuPlacement="bottom"
         attachments={attachments}
         voice={voice}

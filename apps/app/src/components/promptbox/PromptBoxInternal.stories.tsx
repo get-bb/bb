@@ -13,7 +13,7 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeAttachmentsConfig as makeAttachments,
   makeExecutionControlsProps,
-  makeMentionsConfig as makeMentions,
+  makeTypeaheadConfig as makeTypeahead,
 } from "../../../.ladle/story-fixtures";
 
 export default {
@@ -246,7 +246,7 @@ function DefaultRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}
@@ -267,7 +267,7 @@ function WithAttachmentsRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments({ items: mockAttachments })}
       history={baseHistory}
@@ -309,7 +309,7 @@ function WithMentionsRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}
@@ -331,7 +331,7 @@ function WithLiveMentionsRow() {
       onChange={onChange}
       onSubmit={noop}
       placeholder="Type @ to mention a file, folder, or thread"
-      mentions={makeMentions({
+      typeahead={makeTypeahead({
         suggestions,
         onQueryChange: setQuery,
       })}
@@ -355,7 +355,7 @@ function SubmittingRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}
@@ -379,7 +379,7 @@ function RunningWithStopRow() {
       onChange={onChange}
       onSubmit={noop}
       placeholder="Ask for a follow-up. @ to mention files or folders"
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}
@@ -402,7 +402,7 @@ function RecordingActiveRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}
@@ -421,7 +421,7 @@ function RecordingProcessingRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}

@@ -13,8 +13,8 @@ import {
   PromptBoxInternal,
   type AttachmentsConfig,
   type HistoryConfig,
-  type MentionsConfig,
   type PromptBoxHandle,
+  type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
 import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
@@ -146,7 +146,7 @@ export interface FollowUpPromptBoxProps {
   execution: ExecutionControlsProps;
   /** Permission mode picker rendered in the bottom row. */
   permission: ExecutionPermissionConfig;
-  mentions: MentionsConfig;
+  typeahead: TypeaheadConfig;
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
 }
@@ -160,7 +160,7 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
   contextWindowUsage,
   execution,
   permission,
-  mentions,
+  typeahead,
   zenModeResetKey,
 }: FollowUpPromptBoxProps) {
   const submitMode = composer.submitMode;
@@ -251,7 +251,7 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
                 : "Submit (Enter)",
             isRunning: canStopRuntime,
           }}
-          mentions={mentions}
+          typeahead={typeahead}
           attachments={attachments}
           zenMode={{
             layout: "thread",

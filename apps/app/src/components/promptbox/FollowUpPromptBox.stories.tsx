@@ -17,9 +17,10 @@ import {
 } from "@/components/promptbox/FollowUpPromptBox";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
-import type {
-  AttachmentsConfig,
-  MentionsConfig,
+import {
+  INERT_TYPEAHEAD_COMMAND_CONFIG,
+  type AttachmentsConfig,
+  type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
@@ -175,11 +176,14 @@ const usage: ThreadContextWindowUsage = {
 // Mentions + attachments + history (mostly empty fixtures)
 // ---------------------------------------------------------------------------
 
-const mentionsBase: MentionsConfig = {
-  suggestions: [],
-  isLoading: false,
-  isError: false,
-  onQueryChange: noop,
+const typeaheadBase: TypeaheadConfig = {
+  mention: {
+    suggestions: [],
+    isLoading: false,
+    isError: false,
+    onQueryChange: noop,
+  },
+  command: INERT_TYPEAHEAD_COMMAND_CONFIG,
 };
 
 const attachmentsBase: AttachmentsConfig = {
@@ -392,7 +396,7 @@ function Row({
         contextWindowUsage={contextWindowUsage}
         execution={baseExecution}
         permission={basePermission}
-        mentions={mentionsBase}
+        typeahead={typeaheadBase}
         zenModeResetKey={zenModeResetKey}
       />
     </PromptStage>
