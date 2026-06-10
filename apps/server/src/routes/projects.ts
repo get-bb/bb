@@ -13,6 +13,7 @@ import {
   reorderProject,
   updateProject,
   updateProjectSource,
+  upsertProjectWorkflowPolicy,
   type ReorderProjectResult,
 } from "@bb/db";
 import {
@@ -30,6 +31,7 @@ import {
   typedRoutes,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
+  updateProjectWorkflowPolicyRequestSchema,
   type ProjectListIncludeOption,
   type ProjectListQuery,
   type ProjectResponse,
@@ -63,6 +65,7 @@ import {
   requestProjectDeletionAdvance,
 } from "../services/projects/project-deletion.js";
 import { listProjectPromptHistory } from "../services/prompt-history.js";
+import { getEffectiveProjectWorkflowPolicy } from "../services/workflows/workflow-run-policy.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import {
   normalizeBranchQuery,
@@ -312,7 +315,7 @@ function resolveProjectSourcePath(
 }
 
 export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
-  const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, patch, put, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
 
@@ -511,6 +514,30 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     }
     return context.json({ ok: true });
   });
+
+  get("/projects/:id/workflow-policy", (context) => {
+    requirePublicProject(deps.db, context.req.param("id"));
+    return context.json(
+      getEffectiveProjectWorkflowPolicy(deps.db, context.req.param("id")),
+    );
+  });
+
+  put(
+    "/projects/:id/workflow-policy",
+    updateProjectWorkflowPolicyRequestSchema,
+    (context, payload) => {
+      const projectId = context.req.param("id");
+      requirePublicProject(deps.db, projectId);
+      upsertProjectWorkflowPolicy(deps.db, {
+        projectId,
+        sandboxCeiling: payload.sandboxCeiling,
+        defaultBudgetOutputTokens: payload.defaultBudgetOutputTokens,
+      });
+      return context.json(
+        getEffectiveProjectWorkflowPolicy(deps.db, projectId),
+      );
+    },
+  );
 
   get(
     "/projects/:id/files",

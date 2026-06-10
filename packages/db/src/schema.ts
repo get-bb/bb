@@ -13,6 +13,7 @@ import type {
   EnvironmentCleanupMode,
   EnvironmentStatus,
   HostType,
+  LifecycleOperationState,
   PendingInteractionStatus,
   PermissionMode,
   PromptHistoryScope,
@@ -26,6 +27,13 @@ import type {
   ThreadEventItemType,
   ThreadEventScopeKind,
   ThreadEventType,
+  WorkflowRunEventType,
+  WorkflowRunOperationKind,
+  WorkflowRunPendingManagerNotification,
+  WorkflowRunRetention,
+  WorkflowRunSourceTier,
+  WorkflowRunStatus,
+  WorkflowSandbox,
   WorkspaceProvisionType,
   ProjectKind,
 } from "@bb/domain";
@@ -133,6 +141,28 @@ export const projectExecutionDefaults = sqliteTable(
     uniqueIndex("project_execution_defaults_project_idx").on(table.projectId),
   ],
 );
+
+/**
+ * Explicit per-project workflow policy (plan M7): `sandboxCeiling` is the
+ * most permissive sandbox the project's workflow launches and per-call
+ * `agent({sandbox})` specs may use — raising it to "danger-full-access" IS
+ * the danger-full-access allowance — and `defaultBudgetOutputTokens` fills
+ * the run budget when a launch doesn't override it. Row absence means the
+ * built-in policy defaults (`PROJECT_WORKFLOW_POLICY_DEFAULTS`, server-side);
+ * the server resolves the effective policy once at the launch boundary.
+ * Unlike `project_execution_defaults` (implicitly-remembered last selection)
+ * this is an explicit, user-edited contract surface.
+ */
+export const projectWorkflowPolicies = sqliteTable("project_workflow_policies", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  sandboxCeiling: text("sandbox_ceiling").$type<WorkflowSandbox>().notNull(),
+  /** Null = no project budget default; launches without an override run unbounded. */
+  defaultBudgetOutputTokens: integer("default_budget_output_tokens"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
 
 export const projectSources = sqliteTable(
   "project_sources",
@@ -642,6 +672,199 @@ export const pendingInteractions = sqliteTable(
     index("pending_interactions_status_created_idx").on(
       table.status,
       table.createdAt,
+    ),
+  ],
+);
+
+/**
+ * A deterministic workflow run. Source, args, seed, host, workspace, and all
+ * execution defaults are snapshotted as explicit columns at create time
+ * (server boundary), so a run is self-contained and auditable — an edited or
+ * deleted on-disk workflow file never strands it. `status` is strictly the
+ * run's current state; requested/queued work lives on
+ * `workflow_run_operations`.
+ */
+export const workflowRuns = sqliteTable(
+  "workflow_runs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    hostId: text("host_id")
+      .notNull()
+      .references(() => hosts.id, { onDelete: "cascade" }),
+    /** The resolved checkout/cwd for non-worktree agents. */
+    workspacePath: text("workspace_path").notNull(),
+    /** Null has real semantics: launched outside a thread. */
+    anchorThreadId: text("anchor_thread_id").references(() => threads.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Client-supplied idempotency key for POST /workflow-runs (unique;
+     * replayed requests return the original run). Null = launched without
+     * replay protection.
+     */
+    clientRequestId: text("client_request_id"),
+    workflowName: text("workflow_name").notNull(),
+    sourceTier: text("source_tier").$type<WorkflowRunSourceTier>().notNull(),
+    scriptSource: text("script_source").notNull(),
+    scriptHash: text("script_hash").notNull(),
+    /** Null = launched without args (distinct from "null" JSON args). */
+    argsJson: text("args_json"),
+    seed: integer("seed").notNull(),
+    keyVersion: text("key_version").notNull(),
+    providerId: text("provider_id").notNull(),
+    /** Null = no run-level model override; each provider uses its default model. */
+    model: text("model"),
+    effort: text("effort").$type<ReasoningLevel>().notNull(),
+    sandbox: text("sandbox").$type<WorkflowSandbox>().notNull(),
+    /**
+     * The project's sandbox ceiling snapshotted at launch (fill-once): the
+     * daemon executor enforces per-call `agent({sandbox})` specs against it,
+     * and resume rebuilds `workflow.start` from the run row. The snapshot is
+     * the run's UPPER bound — a later policy raise never loosens it — while
+     * each command queue clamps it to the project's current effective
+     * ceiling, so a revoked grant reaches held starts and resumes. The
+     * column default exists only to backfill pre-M7 rows with the ceiling
+     * they were launched under; the create path always writes it explicitly.
+     */
+    sandboxCeiling: text("sandbox_ceiling")
+      .$type<WorkflowSandbox>()
+      .notNull()
+      .default("workspace-write"),
+    concurrency: integer("concurrency").notNull(),
+    maxAgents: integer("max_agents").notNull(),
+    maxFanout: integer("max_fanout").notNull(),
+    /** Null = no output-token ceiling. */
+    budgetOutputTokens: integer("budget_output_tokens"),
+    status: text("status").$type<WorkflowRunStatus>().notNull(),
+    failureReason: text("failure_reason"),
+    /**
+     * Durable manager-notification intent for anchored runs ("paused" |
+     * "settled"); null = nothing owed. Set/cleared only by the lifecycle
+     * writers (internal-lifecycle): interruption sets "paused", the
+     * server-side cancel settle sets "settled" (as does the best-effort
+     * terminal push when a pending manager command transiently blocks it),
+     * and any move out of `interrupted`, into a terminal status, or into
+     * `archived` retention clears stale intent. The delivery sweep consumes
+     * it once the manager's host is reachable.
+     */
+    pendingManagerNotification: text(
+      "pending_manager_notification",
+    ).$type<WorkflowRunPendingManagerNotification>(),
+    /** Superseding WorkflowProgressSnapshot JSON; null until the first fold. */
+    progressSnapshot: text("progress_snapshot"),
+    usageInputTokens: integer("usage_input_tokens").notNull().default(0),
+    usageOutputTokens: integer("usage_output_tokens").notNull().default(0),
+    usageToolUses: integer("usage_tool_uses").notNull().default(0),
+    usageDurationMs: integer("usage_duration_ms").notNull().default(0),
+    resultJson: text("result_json"),
+    retention: text("retention").$type<WorkflowRunRetention>().notNull(),
+    /**
+     * When the daemon confirmed the run dir (per-agent event logs, worktree
+     * checkouts, journal hot cache) was pruned after archive; null = not yet
+     * pruned. The durable marker the run-dir prune sweep converges on — a
+     * lost RPC result or offline host leaves it null and a later sweep pass
+     * retries (the daemon-side prune is idempotent).
+     */
+    runDirPrunedAt: integer("run_dir_pruned_at"),
+    createdAt: integer("created_at").notNull(),
+    startedAt: integer("started_at"),
+    settledAt: integer("settled_at"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("workflow_runs_project_created_idx").on(
+      table.projectId,
+      table.createdAt,
+    ),
+    index("workflow_runs_host_status_idx").on(table.hostId, table.status),
+    // The run-dir prune sweep's seek: archived-but-unpruned runs per host.
+    index("workflow_runs_host_prune_idx").on(
+      table.hostId,
+      table.retention,
+      table.runDirPrunedAt,
+    ),
+    index("workflow_runs_anchor_thread_idx").on(table.anchorThreadId),
+    index("workflow_runs_pending_notification_idx").on(
+      table.pendingManagerNotification,
+    ),
+    uniqueIndex("workflow_runs_client_request_id_idx").on(
+      table.clientRequestId,
+    ),
+  ],
+);
+
+export const workflowRunOperations = sqliteTable(
+  "workflow_run_operations",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<WorkflowRunOperationKind>().notNull(),
+    state: text("state").$type<LifecycleOperationState>().notNull(),
+    payload: text("payload").notNull(),
+    commandId: text("command_id"),
+    requestedAt: integer("requested_at").notNull(),
+    queuedAt: integer("queued_at"),
+    completedAt: integer("completed_at"),
+    failureReason: text("failure_reason"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("workflow_run_operations_run_kind_idx").on(
+      table.runId,
+      table.kind,
+    ),
+    index("workflow_run_operations_state_idx").on(table.state),
+    index("workflow_run_operations_run_idx").on(table.runId),
+  ],
+);
+
+/**
+ * The authoritative durable run-event log AND resume journal (agent/completed
+ * + agent/failed payloads rebuild the runner journal). Producer-idempotent
+ * like `events`: duplicates re-ack with their original sequence; a reused
+ * producer id with a different payload hash rejects. Deliberately a separate
+ * table from `events` so the completed-item output truncation sweep can never
+ * touch live journal payloads.
+ */
+export const workflowRunEvents = sqliteTable(
+  "workflow_run_events",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    /** Per-run monotonic, assigned server-side at append. */
+    sequence: integer("sequence").notNull(),
+    type: text("type").$type<WorkflowRunEventType>().notNull(),
+    /** The journal-stable display agent index, for agent-scoped events. */
+    agentIndex: integer("agent_index"),
+    // NOT NULL unlike `events`: every workflow run event is daemon-spooled
+    // with a minted producer id — no server-authored writer exists — and
+    // SQLite unique indexes permit unlimited NULLs, so nullability would
+    // structurally weaken the at-least-once idempotency constraint.
+    producerEventId: text("producer_event_id").notNull(),
+    producerEventPayloadHash: text("producer_event_payload_hash").notNull(),
+    payload: text("payload").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("workflow_run_events_run_sequence_idx").on(
+      table.runId,
+      table.sequence,
+    ),
+    uniqueIndex("workflow_run_events_producer_event_id_idx").on(
+      table.producerEventId,
+    ),
+    index("workflow_run_events_run_agent_sequence_idx").on(
+      table.runId,
+      table.agentIndex,
+      table.sequence,
     ),
   ],
 );

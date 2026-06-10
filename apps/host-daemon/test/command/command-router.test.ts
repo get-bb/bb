@@ -135,6 +135,7 @@ function createTurnSubmitCommand(): TurnSubmitCommand {
 function createThreadStartCommand(): ThreadStartCommand {
   return {
     type: "thread.start",
+    sessionKind: "thread",
     environmentId: "env-router",
     threadId: "thread-router-start",
     workspaceContext: {

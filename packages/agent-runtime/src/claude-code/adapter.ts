@@ -1077,6 +1077,14 @@ export function createClaudeCodeProviderAdapter(
                 ? { reasoningLevel: command.options.reasoningLevel }
                 : {}),
               workflowsEnabled: command.options.workflowsEnabled,
+              ...(command.outputSchema !== undefined
+                ? {
+                    outputFormat: {
+                      type: "json_schema",
+                      schema: command.outputSchema,
+                    },
+                  }
+                : {}),
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
@@ -1149,6 +1157,11 @@ export function createClaudeCodeProviderAdapter(
           };
         }
         case "turn/start":
+          if (command.outputSchema !== undefined) {
+            throw new Error(
+              `Provider "${providerInfo.id}" structured output is session-level; pass outputSchema on thread/start instead.`,
+            );
+          }
           if (command.options?.model) {
             setClaudeModelContextWindowHint(
               command.threadId,

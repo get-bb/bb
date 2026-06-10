@@ -34,6 +34,7 @@
     "@bb/process-utils": "workspace:*",
     "@bb/replay-capture": "workspace:*",
     "@bb/templates": "workspace:*",
+    "@bb/workflow-runtime": "workspace:*",
     "@hono/node-server": "^1.19.11",
     "@parcel/watcher": "2.5.6",
     "better-sqlite3": "12.10.0",
@@ -52,6 +53,7 @@
   "devDependencies": {
     "@bb/scripts": "workspace:*",
     "@bb/test-helpers": "workspace:*",
+    "@bb/thread-view": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/better-sqlite3": "^7.6.12",
     "@types/mime-types": "^3.0.1",

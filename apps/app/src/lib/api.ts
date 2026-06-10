@@ -6,6 +6,7 @@ import type {
   ProjectExecutionDefaults,
   ProjectSource,
   ResolvedThreadExecutionOptions,
+  ThreadEventRow,
   ThreadQueuedMessage,
   WorkspaceDiffTarget,
 } from "@bb/domain";
@@ -79,6 +80,11 @@ import type {
   AppDetail,
   AppSourceStatus,
   AppSummary,
+  CreateWorkflowRunRequest,
+  WorkflowListResponse,
+  WorkflowRunEventsResponse,
+  WorkflowRunListResponse,
+  WorkflowRunResponse,
 } from "@bb/server-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
 import {
@@ -1173,6 +1179,15 @@ export async function markThreadUnread(id: string): Promise<ThreadResponse> {
   );
 }
 
+export async function getHost(
+  id: string,
+  signal?: AbortSignal,
+): Promise<Host> {
+  return request<Host>(
+    apiClient.hosts[":id"].$get({ param: { id } }, requestOptions(signal)),
+  );
+}
+
 export async function getEnvironment(
   id: string,
   signal?: AbortSignal,
@@ -1409,4 +1424,84 @@ export async function getSystemConfig(): Promise<SystemConfigResponse> {
 
 export async function listHosts(): Promise<Host[]> {
   return request<Host[]>(apiClient.hosts.$get());
+}
+
+interface GetWorkflowRunAgentEventsArgs {
+  /** Journal-stable 1-based display index (snapshot `agent.index`). */
+  agentIndex: number;
+  runId: string;
+}
+
+/**
+ * Workflow definitions across the registry tiers (project > user > builtin)
+ * from the project's default source root. Requires the source host online —
+ * 502 `host_unavailable` otherwise; 409 when the project has no default
+ * source. (The route accepts an explicit `hostId` for CLI/SDK callers; the
+ * SPA lists the default source only — host choice is launch-time-only.)
+ */
+export async function listWorkflows(
+  projectId: string,
+): Promise<WorkflowListResponse> {
+  return request<WorkflowListResponse>(
+    apiClient.workflows.$get({ query: { projectId } }),
+  );
+}
+
+export async function listWorkflowRuns(
+  projectId: string,
+): Promise<WorkflowRunListResponse> {
+  return request<WorkflowRunListResponse>(
+    apiClient["workflow-runs"].$get({ query: { projectId } }),
+  );
+}
+
+export async function createWorkflowRun(
+  req: CreateWorkflowRunRequest,
+): Promise<WorkflowRunResponse> {
+  return request<WorkflowRunResponse>(
+    apiClient["workflow-runs"].$post({ json: req }),
+  );
+}
+
+export async function getWorkflowRun(id: string): Promise<WorkflowRunResponse> {
+  return request<WorkflowRunResponse>(
+    apiClient["workflow-runs"][":id"].$get({ param: { id } }),
+  );
+}
+
+export async function getWorkflowRunEvents(
+  id: string,
+): Promise<WorkflowRunEventsResponse> {
+  return request<WorkflowRunEventsResponse>(
+    apiClient["workflow-runs"][":id"].events.$get({ param: { id } }),
+  );
+}
+
+/**
+ * Per-agent provider-event log, proxied from the run's host. 404 when the log
+ * does not exist (agent not started or run dir pruned); 502 `host_unavailable`
+ * when the daemon is offline — both surface as `HttpError`s for the drill-in
+ * UI to render as distinct non-error states.
+ */
+export async function getWorkflowRunAgentEvents({
+  agentIndex,
+  runId,
+}: GetWorkflowRunAgentEventsArgs): Promise<ThreadEventRow[]> {
+  return request<ThreadEventRow[]>(
+    apiClient["workflow-runs"][":id"].agents[":index"].events.$get({
+      param: { id: runId, index: String(agentIndex) },
+    }),
+  );
+}
+
+export async function cancelWorkflowRun(id: string): Promise<void> {
+  await requestVoid(
+    apiClient["workflow-runs"][":id"].cancel.$post({ param: { id } }),
+  );
+}
+
+export async function resumeWorkflowRun(id: string): Promise<void> {
+  await requestVoid(
+    apiClient["workflow-runs"][":id"].resume.$post({ param: { id } }),
+  );
 }

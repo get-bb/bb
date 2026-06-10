@@ -61,6 +61,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     serverPort: 38886,
     threadStorageRootPath: "/tmp/bb-test/thread-storage",
     transcriptionModel: "openai/gpt-4o-transcribe",
+    workflowMaxConcurrentRunsPerHost: 4,
   };
 }
 

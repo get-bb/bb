@@ -51,6 +51,18 @@ export const bundleTargets = [
   },
   {
     banner: NODE_ESM_REQUIRE_BANNER,
+    entryPoint: resolve(
+      workspaceRoot,
+      "packages",
+      "workflow-runtime",
+      "src",
+      "runner-main.ts",
+    ),
+    label: "workflow runner",
+    outfile: resolve(packageRoot, "dist", "bb-workflow-runner.mjs"),
+  },
+  {
+    banner: NODE_ESM_REQUIRE_BANNER,
     entryPoint: resolve(workspaceRoot, "apps", "cli", "src", "index.ts"),
     executable: true,
     label: "bb cli",

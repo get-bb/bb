@@ -244,12 +244,14 @@ export {
   encodeClientTurnRequestIdAlphabetIndexes,
   encodeClientTurnRequestIdNumber,
   formatClientTurnRequestIdSuffix,
+  hostDaemonProducerEventIdSchema,
 } from "./protocol-ids.js";
 export type {
   ClientTurnRequestId,
   EncodeClientTurnRequestIdAlphabetIndexesArgs,
   EncodeClientTurnRequestIdNumberArgs,
   FormatClientTurnRequestIdSuffixArgs,
+  HostDaemonProducerEventId,
 } from "./protocol-ids.js";
 
 export {
@@ -265,6 +267,82 @@ export type {
   TagThreadNameArgs,
   UntagThreadNameArgs,
 } from "./thread-name-tags.js";
+
+export {
+  canonicalizeEventSpoolPayload,
+  canonicalizeProducerEventPayload,
+  canonicalizeWorkflowRunEventPayload,
+} from "./producer-event-payload.js";
+export type {
+  CanonicalizeEventSpoolPayloadArgs,
+  CanonicalizeProducerEventPayloadArgs,
+  CanonicalizeWorkflowRunEventPayloadArgs,
+} from "./producer-event-payload.js";
+
+export {
+  activeLifecycleOperationStates,
+  environmentOperationKindSchema,
+  environmentOperationKindValues,
+  isActiveLifecycleOperationState,
+  lifecycleOperationStateSchema,
+  lifecycleOperationStateValues,
+  projectOperationKindSchema,
+  projectOperationKindValues,
+  threadOperationKindSchema,
+  threadOperationKindValues,
+  threadProvisioningStageSchema,
+  threadProvisioningStageValues,
+  workflowRunOperationKindSchema,
+  workflowRunOperationKindValues,
+} from "./lifecycle-operations.js";
+export type {
+  EnvironmentOperationKind,
+  LifecycleOperationState,
+  ProjectOperationKind,
+  ThreadOperationKind,
+  ThreadProvisioningState,
+  ThreadProvisioningStage,
+  WorkflowRunOperationKind,
+} from "./lifecycle-operations.js";
+
+export {
+  clampWorkflowSandboxToCeiling,
+  getWorkflowRunEventAgentIndex,
+  isTerminalWorkflowRunStatus,
+  isWorkflowSandboxAllowedByCeiling,
+  WORKFLOW_RUN_JOURNAL_EVENT_TYPES,
+  WORKFLOW_RUN_TERMINAL_EVENT_TYPES,
+  workflowAgentStatusSchema,
+  workflowAgentStatusValues,
+  workflowAgentUsageSchema,
+  workflowRunEventSchema,
+  workflowRunJournalEntrySchema,
+  workflowRunPendingManagerNotificationSchema,
+  workflowRunPendingManagerNotificationValues,
+  workflowRunRetentionSchema,
+  workflowRunRetentionValues,
+  workflowRunSourceTierSchema,
+  workflowRunSourceTierValues,
+  workflowRunStatusSchema,
+  workflowRunStatusValues,
+  workflowRunTerminalStatusSchema,
+  workflowRunTerminalStatusValues,
+  workflowSandboxSchema,
+  workflowSandboxValues,
+} from "./workflow-run.js";
+export type {
+  WorkflowAgentStatus,
+  WorkflowAgentUsage,
+  WorkflowRunEvent,
+  WorkflowRunEventType,
+  WorkflowRunJournalEntry,
+  WorkflowRunPendingManagerNotification,
+  WorkflowRunRetention,
+  WorkflowRunSourceTier,
+  WorkflowRunStatus,
+  WorkflowRunTerminalStatus,
+  WorkflowSandbox,
+} from "./workflow-run.js";
 
 export {
   PERSONAL_PROJECT_ID,
@@ -553,6 +631,7 @@ export type {
 } from "./provider-event.js";
 
 export {
+  BB_WORKFLOW_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
   backgroundTaskItemStatus,
   backgroundTaskStatusSchema,
@@ -607,6 +686,7 @@ export {
   HOST_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
   APP_CHANGE_KINDS,
+  WORKFLOW_RUN_CHANGE_KINDS,
   appChangedMessageSchema,
   appChangeKindSchema,
   changedMessageLenientSchema,
@@ -626,6 +706,8 @@ export {
   threadChangeKindSchema,
   threadChangeMetadataSchema,
   unsubscribeMessageSchema,
+  workflowRunChangedMessageSchema,
+  workflowRunChangeKindSchema,
 } from "./change-kinds.js";
 export type {
   RealtimeEntity,
@@ -635,6 +717,7 @@ export type {
   HostChangeKind,
   SystemChangeKind,
   AppChangeKind,
+  WorkflowRunChangeKind,
   SubscribeMessage,
   UnsubscribeMessage,
   ClientMessage,
@@ -645,6 +728,7 @@ export type {
   HostChangedMessage,
   SystemChangedMessage,
   AppChangedMessage,
+  WorkflowRunChangedMessage,
   ChangedMessage,
 } from "./change-kinds.js";
 

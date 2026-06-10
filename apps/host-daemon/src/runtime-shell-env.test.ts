@@ -1,9 +1,11 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path, { delimiter } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   prepareRuntimeShellEnv,
+  prepareWorkflowAgentShellEnv,
   resolveLocalBbExecutableDirectory,
 } from "./runtime-shell-env.js";
 
@@ -188,4 +190,92 @@ describe("prepareRuntimeShellEnv", () => {
       BB_SERVER_URL: "http://127.0.0.1:3334",
     });
   });
+});
+
+describe("prepareWorkflowAgentShellEnv", () => {
+  it("prepends the failing bb shim to the intact inherited PATH and carries no server coordinates", async () => {
+    const shimDir = path.join(await makeTempDir("bb-wf-shim-"), "shim");
+    // A toolchain directory that also exposes a foreign `bb` (e.g. Babashka):
+    // it must stay on PATH — only the leading shim shadows the name.
+    const toolchainDir = await makeTempDir("bb-wf-toolchain-");
+    await fs.writeFile(path.join(toolchainDir, "bb"), "#!/bin/sh\nexit 0\n", {
+      mode: 0o755,
+    });
+    const inheritedPath = [toolchainDir, "/usr/bin"].join(delimiter);
+
+    const env = await prepareWorkflowAgentShellEnv({
+      appsRootPath: "/tmp/bb-data/apps",
+      shimDirectoryPath: shimDir,
+      inheritedPath,
+    });
+
+    expect(env).toEqual({
+      PATH: `${shimDir}${delimiter}${inheritedPath}`,
+      BB_APPS_ROOT: "/tmp/bb-data/apps",
+    });
+    // Both shim flavors are materialized (POSIX script + Windows bb.cmd).
+    await expect(fs.stat(path.join(shimDir, "bb"))).resolves.toBeDefined();
+    await expect(fs.stat(path.join(shimDir, "bb.cmd"))).resolves.toBeDefined();
+  });
+
+  it("falls back to process.env.PATH when inheritedPath is omitted", async () => {
+    const shimDir = path.join(await makeTempDir("bb-wf-shim-"), "shim");
+    vi.stubEnv("PATH", "/usr/local/bin:/usr/bin");
+
+    await expect(
+      prepareWorkflowAgentShellEnv({
+        appsRootPath: "/tmp/bb-data/apps",
+        shimDirectoryPath: shimDir,
+      }),
+    ).resolves.toEqual({
+      PATH: `${shimDir}${delimiter}/usr/local/bin:/usr/bin`,
+      BB_APPS_ROOT: "/tmp/bb-data/apps",
+    });
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "bb invocations resolve to the shim and fail fast with no side effects",
+    async () => {
+      // A "real" bb on the inherited PATH that would mint state if it ever ran.
+      const realBbDir = await makeTempDir("bb-wf-real-");
+      const sideEffectPath = path.join(realBbDir, "side-effect");
+      await fs.writeFile(
+        path.join(realBbDir, "bb"),
+        `#!/bin/sh\ntouch "${sideEffectPath}"\nexit 0\n`,
+        { mode: 0o755 },
+      );
+      const shimDir = path.join(await makeTempDir("bb-wf-shim-"), "shim");
+      const env = await prepareWorkflowAgentShellEnv({
+        appsRootPath: "/tmp/bb-data/apps",
+        shimDirectoryPath: shimDir,
+        inheritedPath: [realBbDir, "/usr/bin", "/bin"].join(delimiter),
+      });
+
+      // The no-nesting contract: a workflow agent shell running a nested bb
+      // command (`bb thread spawn` / `bb workflow run`) fails fast...
+      const result = await new Promise<{ code: number; stderr: string }>(
+        (resolve) => {
+          execFile(
+            "/bin/sh",
+            ["-c", "bb thread spawn nested-work"],
+            { env: { PATH: env.PATH } },
+            (error, _stdout, stderr) => {
+              resolve({
+                code:
+                  error && typeof error.code === "number" ? error.code : 0,
+                stderr,
+              });
+            },
+          );
+        },
+      );
+      expect(result.code).not.toBe(0);
+      expect(result.stderr).toContain(
+        "not available inside workflow agent sessions",
+      );
+      // ...and no real bb ever executed, so no thread/workflow-run state could
+      // have been created (the row-level DB assertion rides M3's harness).
+      await expect(fs.stat(sideEffectPath)).rejects.toThrow();
+    },
+  );
 });

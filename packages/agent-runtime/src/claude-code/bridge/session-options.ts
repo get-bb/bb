@@ -17,6 +17,7 @@ export interface BuildSessionOptionsArgs {
   disallowedTools?: readonly string[];
   instructionMode: InstructionMode;
   model?: string;
+  outputFormat?: Options["outputFormat"];
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   plugins?: Options["plugins"];
@@ -244,6 +245,7 @@ export function buildSessionOptions(
       : {}),
     ...(flagSettings ? { settings: flagSettings } : {}),
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
+    ...(params.outputFormat ? { outputFormat: params.outputFormat } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
     ...(sandbox ? { sandbox } : {}),
     ...(hooks ? { hooks } : {}),

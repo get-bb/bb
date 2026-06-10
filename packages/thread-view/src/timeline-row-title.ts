@@ -1,4 +1,7 @@
-import { isSettledWorkflowAgentState } from "@bb/domain";
+import {
+  BB_WORKFLOW_TASK_TYPE,
+  isSettledWorkflowAgentState,
+} from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineApprovalStatus,
@@ -54,7 +57,9 @@ export type TimelineStatusDecorationStatus =
  * navigation (the App) can wrap the segment in a link; CLI renderers ignore
  * the link and render the segment text directly.
  */
-export type TimelineTitleLink = { kind: "thread"; threadId: string };
+export type TimelineTitleLink =
+  | { kind: "thread"; threadId: string }
+  | { kind: "workflow-run"; runId: string };
 
 /**
  * One slice of the title's text. Renderers walk the segment list and apply
@@ -823,11 +828,26 @@ function formatWorkflowAgentProgress(
 }
 
 function mapWorkflowTitle(row: TimelineViewWorkflowWorkRow): TimelineTitle {
-  const verb = workflowVerbForStatus(row.status);
+  // A paused run is resumable, not running: its item status stays "pending"
+  // by design (backgroundTaskItemStatus), so the verb must branch on
+  // taskStatus to render paused distinctly from both running and stopped.
+  const verb =
+    row.taskStatus === "paused"
+      ? { text: "Paused workflow:", shimmer: false }
+      : workflowVerbForStatus(row.status);
   const name = row.workflowName ?? row.description;
   const segments: TimelineTitleSegment[] = [
     segment(verb.text, { shimmer: verb.shimmer }),
-    segment(name, { em: true, truncate: true }),
+    segment(name, {
+      em: true,
+      truncate: true,
+      // bb workflow runs anchor their `wfr_` run id in itemId; the run page
+      // deep link rides it. Provider-native local_workflow rows have no run
+      // page and stay plain.
+      ...(row.taskType === BB_WORKFLOW_TASK_TYPE
+        ? { link: { kind: "workflow-run", runId: row.itemId } }
+        : {}),
+    }),
   ];
   const agentProgress = formatWorkflowAgentProgress(row);
   if (agentProgress) {

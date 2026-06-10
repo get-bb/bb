@@ -307,6 +307,7 @@ rl.on("line", (line) => {
 
     try {
       await runtime.startThread({
+        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -401,6 +402,7 @@ rl.on("line", (line) => {
 
     try {
       const { providerThreadId } = await runtime.startThread({
+        sessionKind: "thread",
         environmentId: "env-1",
         options: workspaceWriteOptions,
         projectId: "p1",
@@ -450,6 +452,7 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
+      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -489,6 +492,7 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
+      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -539,6 +543,7 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
+      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -741,6 +746,7 @@ process.on("SIGTERM", () => {
 
     await expect(
       runtime.startThread({
+        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -776,6 +782,7 @@ process.on("SIGTERM", () => {
     });
 
     await runtime.startThread({
+      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",

@@ -65,7 +65,10 @@ import {
   timelineRowsSignature,
 } from "./timelineRowSignatures.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import {
+  getThreadRoutePath,
+  getWorkflowRunRoutePath,
+} from "@/lib/app-route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
 import {
   allThreadQueryKeyPrefix,
@@ -1246,18 +1249,19 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const senderThreadMetadataById = useSenderThreadMetadataById({
     queryClient,
   });
-  const resolveSegmentLinkHref = useMemo<
-    TimelineTitleLinkResolver | undefined
-  >(() => {
-    if (projectId === undefined) {
-      return undefined;
-    }
+  const resolveSegmentLinkHref = useMemo<TimelineTitleLinkResolver>(() => {
     return (link) => {
       switch (link.kind) {
         case "thread":
-          return getThreadRoutePath({ projectId, threadId: link.threadId });
+          // Thread routes are project-scoped; without a project context the
+          // segment renders as plain text.
+          return projectId !== undefined
+            ? getThreadRoutePath({ projectId, threadId: link.threadId })
+            : null;
+        case "workflow-run":
+          return getWorkflowRunRoutePath(link.runId);
         default:
-          return assertNever(link.kind);
+          return assertNever(link);
       }
     };
   }, [projectId]);

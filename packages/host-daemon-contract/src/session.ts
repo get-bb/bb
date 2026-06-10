@@ -14,6 +14,8 @@ import {
   threadEventSchema,
   toolCallRequestSchema,
   toolCallResponseSchema,
+  workflowRunEventSchema,
+  workflowRunJournalEntrySchema,
 } from "@bb/domain";
 import { z } from "zod";
 import type { Endpoint } from "./common.js";
@@ -72,6 +74,15 @@ export const hostDaemonSessionOpenRequestSchema = z.object({
   // actionable protocol mismatch instead of an opaque validation failure.
   protocolVersion: z.number().int().positive(),
   activeThreads: z.array(hostDaemonActiveThreadSchema),
+  /**
+   * Live workflow run ids, recomputed per (re)connect for reconnect
+   * reconciliation. Trustworthy across daemon restarts: a run is reported
+   * iff the daemon holds a live runner handle OR its run-dir heartbeat is
+   * fresh. Required like `activeThreads`: omission has no semantic meaning
+   * (and a defaulted-absent field would read as "interrupt every running
+   * run on this host" — the most destructive possible misreading).
+   */
+  activeWorkflowRunIds: z.array(z.string().min(1)),
   loadedEnvironments: z.array(hostDaemonLoadedEnvironmentSchema).default([]),
 });
 export type HostDaemonSessionOpenRequest = z.input<
@@ -194,6 +205,97 @@ export const hostDaemonEventBatchResponseSchema = z
   .strict();
 export type HostDaemonEventBatchResponse = z.infer<
   typeof hostDaemonEventBatchResponseSchema
+>;
+
+/**
+ * One spooled workflow run event as posted by the daemon's durable
+ * workflow-event spool (producer-idempotent: the server re-acks duplicates by
+ * producerEventId with their original sequence).
+ */
+export const hostDaemonWorkflowRunEventEnvelopeSchema = z
+  .object({
+    producerEventId: z.string().min(1),
+    runId: z.string().min(1),
+    event: workflowRunEventSchema,
+  })
+  .strict();
+export type HostDaemonWorkflowRunEventEnvelope = z.infer<
+  typeof hostDaemonWorkflowRunEventEnvelopeSchema
+>;
+
+export const hostDaemonWorkflowRunEventBatchRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  events: z.array(hostDaemonWorkflowRunEventEnvelopeSchema),
+});
+export type HostDaemonWorkflowRunEventBatchRequest = z.infer<
+  typeof hostDaemonWorkflowRunEventBatchRequestSchema
+>;
+
+/**
+ * The only rejection is ownership (unknown run id or a run owned by another
+ * host) — never run status. Rejection is settlement daemon-side (logged and
+ * discarded), so new reasons must not be added casually.
+ */
+export const hostDaemonWorkflowRunEventRejectionReasonSchema = z.enum([
+  "run_not_owned_by_host",
+]);
+export type HostDaemonWorkflowRunEventRejectionReason = z.infer<
+  typeof hostDaemonWorkflowRunEventRejectionReasonSchema
+>;
+
+export const hostDaemonRejectedWorkflowRunEventSchema = z
+  .object({
+    producerEventId: z.string().min(1),
+    runId: z.string().min(1),
+    reason: hostDaemonWorkflowRunEventRejectionReasonSchema,
+  })
+  .strict();
+export type HostDaemonRejectedWorkflowRunEvent = z.infer<
+  typeof hostDaemonRejectedWorkflowRunEventSchema
+>;
+
+export const hostDaemonAcceptedWorkflowRunEventSchema = z
+  .object({
+    producerEventId: z.string().min(1),
+    runId: z.string().min(1),
+    sequence: z.number().int().nonnegative(),
+  })
+  .strict();
+export type HostDaemonAcceptedWorkflowRunEvent = z.infer<
+  typeof hostDaemonAcceptedWorkflowRunEventSchema
+>;
+
+export const hostDaemonWorkflowRunEventBatchResponseSchema = z
+  .object({
+    acceptedEvents: z.array(hostDaemonAcceptedWorkflowRunEventSchema),
+    rejectedEvents: z.array(hostDaemonRejectedWorkflowRunEventSchema),
+  })
+  .strict();
+export type HostDaemonWorkflowRunEventBatchResponse = z.infer<
+  typeof hostDaemonWorkflowRunEventBatchResponseSchema
+>;
+
+export const hostDaemonWorkflowRunJournalQuerySchema = z.object({
+  sessionId: z.string().min(1),
+  runId: z.string().min(1),
+});
+export type HostDaemonWorkflowRunJournalQuery = z.infer<
+  typeof hostDaemonWorkflowRunJournalQuerySchema
+>;
+
+/**
+ * The resume journal rebuilt from `workflow_run_events`: every settled
+ * agent() entry — completed AND failed/interrupted (failed entries pin agent
+ * display indexes and billed usage; a completed-only rebuild would shift
+ * indexes and under-bill on resume).
+ */
+export const hostDaemonWorkflowRunJournalResponseSchema = z
+  .object({
+    entries: z.array(workflowRunJournalEntrySchema),
+  })
+  .strict();
+export type HostDaemonWorkflowRunJournalResponse = z.infer<
+  typeof hostDaemonWorkflowRunJournalResponseSchema
 >;
 
 export const hostDaemonEnvironmentChangeSchema = z
@@ -358,6 +460,9 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("provider.list"),
     onlineRpcResponseSuccessSchemaFor("provider.list_models"),
     onlineRpcResponseSuccessSchemaFor("environment.cleanup_preflight"),
+    onlineRpcResponseSuccessSchemaFor("workflow.list"),
+    onlineRpcResponseSuccessSchemaFor("workflow.prune"),
+    onlineRpcResponseSuccessSchemaFor("workflow.resolve"),
     onlineRpcResponseSuccessSchemaFor("workspace.status"),
     onlineRpcResponseSuccessSchemaFor("workspace.diff"),
     commandRpcResponseSuccessSchemaFor("thread.start"),
@@ -378,6 +483,8 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("environment.destroy"),
     commandRpcResponseSuccessSchemaFor("workspace.commit"),
     commandRpcResponseSuccessSchemaFor("workspace.squash_merge"),
+    commandRpcResponseSuccessSchemaFor("workflow.start"),
+    commandRpcResponseSuccessSchemaFor("workflow.cancel"),
   ],
 );
 
@@ -677,6 +784,20 @@ export type HostDaemonInternalSchema = {
     $post: Endpoint<
       { json: HostDaemonEventBatchRequest },
       HostDaemonEventBatchResponse
+    >;
+  };
+  "/session/workflow-run-events": {
+    /** Used by the daemon's workflow-event spool: producer-idempotent, append-always run-event ingestion. */
+    $post: Endpoint<
+      { json: HostDaemonWorkflowRunEventBatchRequest },
+      HostDaemonWorkflowRunEventBatchResponse
+    >;
+  };
+  "/session/workflow-run-journal": {
+    /** Used by the daemon on workflow resume to rebuild the runner journal from the authoritative server event log. */
+    $get: Endpoint<
+      { query: HostDaemonWorkflowRunJournalQuery },
+      HostDaemonWorkflowRunJournalResponse
     >;
   };
   "/session/app-data-change": {

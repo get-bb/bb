@@ -15,6 +15,14 @@ export {
 } from "./timeline-row-title.js";
 export { hasTimelineExplorationIntent } from "./timeline-activity-intents.js";
 export {
+  deriveWorkflowAgentDisplayState,
+  workflowRunDisplayState,
+} from "./workflow-display-state.js";
+export type {
+  WorkflowAgentDisplayState,
+  WorkflowRunDisplayState,
+} from "./workflow-display-state.js";
+export {
   capitalize,
   durationToCompactString,
   formatDiffCount,

@@ -87,6 +87,7 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
 
       await handleHostSessionOpened(deps, {
         activeThreads: payload.activeThreads,
+        activeWorkflowRunIds: payload.activeWorkflowRunIds,
         hostId: daemon.hostId,
         openedSession: session,
         previousSession,

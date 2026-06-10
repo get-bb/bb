@@ -61,6 +61,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     serverPort: serverConfig.BB_SERVER_PORT,
     threadStorageRootPath,
     transcriptionModel: serverConfig.BB_TRANSCRIPTION,
+    workflowMaxConcurrentRunsPerHost:
+      serverConfig.BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST,
   };
 
   if (appUrl !== undefined) {

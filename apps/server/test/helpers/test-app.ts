@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
+import { DEFAULTS } from "@bb/config/defaults";
 import type { DbConnection } from "@bb/db";
 import { defaultFeatureFlags, type HostType } from "@bb/domain";
 import { initDb } from "../../src/db.js";
@@ -135,6 +136,8 @@ export async function createTestAppHarness(
       env: {},
     }),
     transcriptionModel: "test/mock-transcription",
+    workflowMaxConcurrentRunsPerHost:
+      DEFAULTS.workflowMaxConcurrentRunsPerHost,
     appUrl: "https://bb.example.test",
     ...configOverrides,
   };

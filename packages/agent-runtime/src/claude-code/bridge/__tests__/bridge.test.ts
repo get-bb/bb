@@ -1571,6 +1571,53 @@ describe("bridge", () => {
     }
   });
 
+  it("passes thread/start json_schema output format through to Claude SDK options", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const outputFormat = {
+      type: "json_schema",
+      schema: {
+        type: "object",
+        properties: { answer: { type: "string" } },
+        required: ["answer"],
+      },
+    };
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        outputFormat,
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        threadId: "thread-output-format",
+      });
+      await bridge.waitForResponse(1);
+
+      expect(queryMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({ outputFormat }),
+        }),
+      );
+
+      bridge.sendRequest(2, "thread/stop", {
+        threadId: "thread-output-format",
+      });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(2);
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("passes thread/start additional workspace-write roots to Claude SDK options", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];

@@ -51,6 +51,8 @@ import type {
   AgentRuntime,
   AgentRuntimeExecutionOptions,
   AgentRuntimeOptions,
+  AgentRuntimeSessionKind,
+  AgentRuntimeShellEnvironment,
   AgentRuntimeSkillRoot,
 } from "./types.js";
 import { buildThreadShellEnvironment } from "./thread-shell-environment.js";
@@ -100,6 +102,7 @@ interface ThreadRuntimeConfig {
   options: AgentRuntimeExecutionOptions;
   projectId?: string;
   providerId: string;
+  sessionKind: AgentRuntimeSessionKind;
   skillRoots: readonly AgentRuntimeSkillRoot[];
   workspacePath: string;
 }
@@ -326,6 +329,16 @@ function createAgentRuntimeInternal(
     );
   }
 
+  function resolveBaseShellEnv(
+    sessionKind: AgentRuntimeSessionKind,
+  ): AgentRuntimeShellEnvironment | undefined {
+    // Workflow agents never fall back to the full thread env — the restricted
+    // env is the whole point of the session kind.
+    return sessionKind === "workflowAgent"
+      ? options.workflowAgentShellEnv
+      : options.shellEnv;
+  }
+
   function setThreadRuntimeConfig(
     threadId: string,
     config: ThreadRuntimeConfig,
@@ -453,9 +466,10 @@ function createAgentRuntimeInternal(
     const proc = requireProviderProcess(currentConfig.providerId);
     const providerSkillRoots = currentConfig.skillRoots;
     const envVars = buildThreadShellEnvironment({
-      baseShellEnv: options.shellEnv,
+      baseShellEnv: resolveBaseShellEnv(currentConfig.sessionKind),
       environmentId: currentConfig.environmentId,
       projectId: currentConfig.projectId,
+      sessionKind: currentConfig.sessionKind,
       threadStoragePath: resolveThreadStoragePath({
         options,
         threadId: args.threadId,
@@ -727,6 +741,7 @@ function createAgentRuntimeInternal(
       threadId,
       projectId,
       providerId,
+      sessionKind,
       clientRequestId,
       input,
       options: execOpts,
@@ -734,6 +749,7 @@ function createAgentRuntimeInternal(
       dynamicTools,
       disallowedTools,
       instructionMode = "append",
+      outputSchema,
     }) {
       await runtime.ensureProvider({ providerId });
 
@@ -759,14 +775,16 @@ function createAgentRuntimeInternal(
         options: execOpts,
         projectId,
         providerId,
+        sessionKind,
         skillRoots: providerSkillRoots,
         workspacePath: options.workspacePath,
       });
 
       const envVars = buildThreadShellEnvironment({
-        baseShellEnv: options.shellEnv,
+        baseShellEnv: resolveBaseShellEnv(sessionKind),
         environmentId,
         projectId,
+        sessionKind,
         threadStoragePath: resolveThreadStoragePath({
           options,
           threadId,
@@ -787,6 +805,7 @@ function createAgentRuntimeInternal(
         dynamicTools,
         disallowedTools,
         instructionMode,
+        ...(outputSchema !== undefined ? { outputSchema } : {}),
       };
       const cmd = requireProviderRequestPlan({
         commandType: adapterCommand.type,
@@ -856,6 +875,17 @@ function createAgentRuntimeInternal(
       disallowedTools,
       instructionMode = "append",
     }) {
+      // Structural no-nesting guard: resuming a workflowAgent-kind thread
+      // through this interactive-thread path would rebuild the FULL thread env
+      // (BB_SERVER_URL, bb-on-PATH, BB_THREAD_ID) — exactly the hole the
+      // session kind exists to close. Workflow agent sessions are ephemeral
+      // and are never resumed.
+      const existingConfig = threadRuntimeConfigs.get(threadId);
+      if (existingConfig?.sessionKind === "workflowAgent") {
+        throw new Error(
+          `Workflow agent sessions are ephemeral and cannot be resumed: ${threadId}`,
+        );
+      }
       await runtime.ensureProvider({ providerId });
 
       const proc = requireProviderProcess(providerId);
@@ -880,6 +910,9 @@ function createAgentRuntimeInternal(
         options: execOpts,
         projectId,
         providerId,
+        // Resume is an interactive-thread operation; workflowAgent-kind
+        // threads were rejected above.
+        sessionKind: "thread",
         skillRoots: providerSkillRoots,
         workspacePath: options.workspacePath,
       });
@@ -892,6 +925,7 @@ function createAgentRuntimeInternal(
         baseShellEnv: options.shellEnv,
         environmentId,
         projectId,
+        sessionKind: "thread",
         threadStoragePath: resolveThreadStoragePath({
           options,
           threadId,
@@ -959,6 +993,7 @@ function createAgentRuntimeInternal(
       clientRequestId,
       options: execOpts,
       instructions,
+      outputSchema,
     }) {
       const pid = resolveProviderForThread(threadId);
       const proc = requireProviderProcess(pid);
@@ -984,6 +1019,7 @@ function createAgentRuntimeInternal(
           execOpts,
           instructions,
         }),
+        ...(outputSchema !== undefined ? { outputSchema } : {}),
       };
       const cmd = requireProviderRequestPlan({
         commandType: adapterCommand.type,

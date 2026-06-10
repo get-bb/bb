@@ -12,8 +12,10 @@ export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_THREAD_DETAIL_ROUTE_PATH = "/threads/:threadId";
 export const PROJECT_SETTINGS_ROUTE_PATH = "/projects/:projectId/settings";
 export const PROJECT_ARCHIVED_ROUTE_PATH = "/projects/:projectId/archived";
+export const PROJECT_WORKFLOWS_ROUTE_PATH = "/projects/:projectId/workflows";
 export const THREAD_DETAIL_ROUTE_PATH =
   "/projects/:projectId/threads/:threadId";
+export const WORKFLOW_RUN_ROUTE_PATH = "/workflows/runs/:runId";
 
 export interface ThreadRoutePathArgs {
   projectId: string;
@@ -59,6 +61,10 @@ export function getProjectArchivedRoutePath(projectId: string): string {
   return `/projects/${projectId}/archived`;
 }
 
+export function getProjectWorkflowsRoutePath(projectId: string): string {
+  return `/projects/${projectId}/workflows`;
+}
+
 export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
   return isProjectlessProjectId(args.projectId)
     ? `/threads/${args.threadId}`
@@ -67,6 +73,10 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
 
 export function getStandaloneAppRoutePath(applicationId: string): string {
   return `/apps/${applicationId}`;
+}
+
+export function getWorkflowRunRoutePath(runId: string): string {
+  return `/workflows/runs/${runId}`;
 }
 
 const baseAppRoutePatterns: readonly string[] = [
@@ -78,8 +88,10 @@ const baseAppRoutePatterns: readonly string[] = [
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
+  PROJECT_WORKFLOWS_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
+  WORKFLOW_RUN_ROUTE_PATH,
 ];
 
 export const APP_ROUTE_PATTERNS = import.meta.env.DEV

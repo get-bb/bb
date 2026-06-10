@@ -525,6 +525,32 @@ describe("pi provider adapter", () => {
     });
   });
 
+  it("buildCommand rejects output schemas on thread/start and turn/start", () => {
+    const adapter = createPiProviderAdapter();
+    expect(() =>
+      adapter.buildCommandPlan({
+        type: "thread/start",
+        cwd: "/tmp/worktree",
+        threadId: "t1",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        instructionMode: "append",
+        options: fullProviderExecutionContext,
+        outputSchema: { type: "object" },
+      }),
+    ).toThrow(/does not support output schemas/);
+    expect(() =>
+      adapter.buildCommandPlan({
+        type: "turn/start",
+        clientRequestId: "creq_222222228d",
+        threadId: "t1",
+        providerThreadId: "pi-1",
+        input: [{ type: "text", text: "extract", mentions: [] }],
+        options: fullProviderExecutionContext,
+        outputSchema: { type: "object" },
+      }),
+    ).toThrow(/does not support output schemas/);
+  });
+
   it("buildCommand turn/steer includes expectedTurnId", () => {
     const adapter = createPiProviderAdapter();
     const cmd = adapter.buildCommandPlan({

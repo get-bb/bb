@@ -353,6 +353,21 @@
     "test:integration": {
       "dependsOn": []
     },
+    "test:soak": {
+      "dependsOn": []
+    },
+    "@bb/integration-tests#test:soak": {
+      "dependsOn": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/server/package.json",
+        "$TURBO_ROOT$/apps/server/tsconfig.json",
+        "$TURBO_ROOT$/apps/server/src/**",
+        "$TURBO_ROOT$/packages/templates/package.json",
+        "$TURBO_ROOT$/packages/templates/scripts/**",
+        "$TURBO_ROOT$/packages/templates/src/**"
+      ]
+    },
     "@bb/integration-tests#test:integration": {
       "dependsOn": [
         "@bb/agent-runtime#test:integration",

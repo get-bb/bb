@@ -27,6 +27,11 @@ export const DEFAULT_REASONING_LEVEL: ReasoningLevel = "medium";
  * govern when the model actually uses it, and the feature is meaningless for
  * providers without the concept. Host-level user/org disables still win inside
  * the CLI.
+ *
+ * Deliberately kept enabled alongside bb workflow runs — the convergence
+ * decision, rationale, and re-evaluation triggers are recorded in
+ * docs/workflows-local-workflow-convergence.md (M7 convergence memo). Note
+ * the ultracode coupling documented there before changing this policy.
  */
 export function resolveWorkflowsEnabledPolicy(providerId: string): boolean {
   if (!isAgentProviderId(providerId)) {

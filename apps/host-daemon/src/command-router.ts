@@ -105,6 +105,8 @@ export interface CommandRouterOptions {
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
   runtimeManager: RuntimeManager;
   terminalManager?: CommandDispatchOptions["terminalManager"];
+  workflowRunManager?: CommandDispatchOptions["workflowRunManager"];
+  fetchWorkflowRunJournal?: CommandDispatchOptions["fetchWorkflowRunJournal"];
   eventSink: CommandDispatchOptions["eventSink"];
   listModels?: CommandDispatchOptions["listModels"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
@@ -308,6 +310,8 @@ export class CommandRouter {
       fetchProjectAttachment: this.options.fetchProjectAttachment,
       runtimeManager: this.options.runtimeManager,
       terminalManager: this.options.terminalManager,
+      workflowRunManager: this.options.workflowRunManager,
+      fetchWorkflowRunJournal: this.options.fetchWorkflowRunJournal,
       dataDir: this.options.dataDir,
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,

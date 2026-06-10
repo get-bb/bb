@@ -57,6 +57,13 @@ import {
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
+import { runWorkflowRunLifecycleSweep } from "../workflows/workflow-run-lifecycle.js";
+import { runWorkflowRunPendingNotificationSweep } from "../workflows/workflow-run-pending-notifications.js";
+import { runWorkflowRunInterruptionBackstopSweep } from "../workflows/workflow-run-reconciliation.js";
+import {
+  runWorkflowRunDirPruneSweep,
+  runWorkflowRunRetentionSweep,
+} from "../workflows/workflow-run-retention.js";
 
 export type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
 
@@ -646,6 +653,36 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "durable-intent-retry",
     name: "project-deletion",
     run: runProjectDeletionSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "workflow-run-lifecycle",
+    run: runWorkflowRunLifecycleSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "workflow-run-interruption-backstop",
+    run: runWorkflowRunInterruptionBackstopSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "workflow-run-pending-notification",
+    run: runWorkflowRunPendingNotificationSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "retention",
+    name: "workflow-run-retention",
+    run: runWorkflowRunRetentionSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "retention",
+    name: "workflow-run-dir-prune",
+    run: runWorkflowRunDirPruneSweep,
   },
   {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,

@@ -19,6 +19,10 @@ import {
   settleThreadStopCommandResult,
   settleTurnSubmitCommandResult,
 } from "../services/threads/thread-lifecycle.js";
+import {
+  settleWorkflowCancelCommandResult,
+  settleWorkflowStartCommandResult,
+} from "../services/workflows/workflow-run-lifecycle.js";
 import { notifyWorkspaceMutationResult } from "./environment-changes.js";
 
 type ParsedCommandType = HostDaemonSettledCommandType;
@@ -73,6 +77,12 @@ const commandResultOwners: CommandResultOwnerRegistry = {
   },
   "turn.submit": {
     applySideEffects: settleTurnSubmitCommandResult,
+  },
+  "workflow.cancel": {
+    applySideEffects: settleWorkflowCancelCommandResult,
+  },
+  "workflow.start": {
+    applySideEffects: settleWorkflowStartCommandResult,
   },
   "workspace.commit": {
     applySideEffects: ({ deps, command, report }) => {

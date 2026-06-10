@@ -169,6 +169,13 @@
       "when": 1780973302146,
       "tag": "0023_wealthy_harpoon",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1781067867735,
+      "tag": "0024_dashing_ultimates",
+      "breakpoints": true
     }
   ]
 }
