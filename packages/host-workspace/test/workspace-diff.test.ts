@@ -471,4 +471,147 @@ describe("Workspace.diffPatch", () => {
     // A path with no changes yields an empty patch rather than an error.
     expect(patches.find((p) => p.path === "does-not-exist.txt")?.patch).toBe("");
   });
+
+  it("returns a non-empty patch for a tracked path containing a space", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "my file.txt", "alpha\nbeta\ngamma\n");
+    await write(repoPath, "other.txt", "untouched\n");
+    await commitAll(repoPath, "base");
+
+    await write(repoPath, "my file.txt", "alpha\nBETA\ngamma\ndelta\n");
+
+    const workspace = new Workspace(repoPath);
+    const expected = await fullDiffSectionFor(
+      workspace,
+      UNCOMMITTED,
+      "my file.txt",
+    );
+    const patches = await workspace.diffPatch({
+      target: UNCOMMITTED,
+      paths: ["my file.txt"],
+      maxBytesPerFile: BIG_BUDGET,
+    });
+
+    expect(patches).toHaveLength(1);
+    expect(patches[0]?.path).toBe("my file.txt");
+    expect(patches[0]?.patch.length).toBeGreaterThan(0);
+    // Byte-equal to the full-diff slice: a space in the path must not break the
+    // per-file split (git does not C-quote spaces, so a header-token split that
+    // tokenizes on the first space would key the wrong path and return "").
+    expect(patches[0]?.patch).toBe(expected);
+    expect(expected.length).toBeGreaterThan(0);
+  });
+
+  it("preserves rename framing when a renamed side's path contains a space", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "old name.txt", "alpha\nbeta\ngamma\ndelta\nepsilon\n");
+    await commitAll(repoPath, "base");
+
+    await runGit(["mv", "old name.txt", "new name.txt"], { cwd: repoPath });
+    await write(
+      repoPath,
+      "new name.txt",
+      "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\n",
+    );
+    await commitAll(repoPath, "rename with edit");
+
+    const target: WorkspaceDiffTarget = { type: "commit", sha: "HEAD" };
+    const workspace = new Workspace(repoPath);
+
+    const expected = await fullDiffSectionFor(
+      workspace,
+      target,
+      "new name.txt",
+    );
+    const patches = await workspace.diffPatch({
+      target,
+      paths: ["new name.txt"],
+      maxBytesPerFile: BIG_BUDGET,
+    });
+
+    expect(patches).toHaveLength(1);
+    expect(patches[0]?.path).toBe("new name.txt");
+    expect(patches[0]?.patch).toBe(expected);
+    expect(expected.length).toBeGreaterThan(0);
+    // Rename detection intact even with spaces on both sides of the pairing.
+    expect(patches[0]?.patch).toMatch(/rename from /);
+    expect(patches[0]?.patch).toMatch(/rename to /);
+  });
+
+  it("returns a non-empty patch for a path with non-ASCII characters", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "café.txt", "un\ndeux\ntrois\n");
+    await write(repoPath, "plain.txt", "stable\n");
+    await commitAll(repoPath, "base");
+
+    await write(repoPath, "café.txt", "un\nDEUX\ntrois\nquatre\n");
+
+    const workspace = new Workspace(repoPath);
+    // The daemon keys patches by the literal requested path, so a non-ASCII
+    // path must resolve to its own changes rather than an empty patch. (The
+    // header path is git-C-quoted at the default quotePath setting, so we assert
+    // on the keyed result and hunk content, not a header-parsed ground truth.)
+    const patches = await workspace.diffPatch({
+      target: UNCOMMITTED,
+      paths: ["café.txt"],
+      maxBytesPerFile: BIG_BUDGET,
+    });
+
+    expect(patches).toHaveLength(1);
+    expect(patches[0]?.path).toBe("café.txt");
+    expect(patches[0]?.patch.length).toBeGreaterThan(0);
+    expect(patches[0]?.patch).toContain("+DEUX");
+    expect(patches[0]?.patch).toContain("+quatre");
+    // The subset must not bleed the other changed file into the patch.
+    expect(patches[0]?.patch).not.toContain("plain.txt");
+  });
+
+  it("truncates on a UTF-8 boundary without emitting U+FFFD or overshooting", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "seed.txt", "seed\n");
+    await commitAll(repoPath, "base");
+
+    // A patch body dense with the 3-byte character 中 (E4 B8 AD): a byte budget
+    // that lands on either continuation byte of a sequence must trim back to the
+    // sequence start, dropping the straddled character whole.
+    const multibyteBody = `${"中".repeat(200)}\n`;
+    await write(repoPath, "multibyte.txt", multibyteBody);
+
+    const workspace = new Workspace(repoPath);
+    const [full] = await workspace.diffPatch({
+      target: UNCOMMITTED,
+      paths: ["multibyte.txt"],
+      maxBytesPerFile: BIG_BUDGET,
+    });
+    const fullPatch = full?.patch ?? "";
+    const fullBytes = Buffer.from(fullPatch, "utf8");
+    // Byte offset of the first 中 lead byte (E4) in the added "+中中…" line.
+    const leadOffset = fullBytes.indexOf(0xe4);
+    expect(leadOffset).toBeGreaterThan(0);
+
+    // Budgets that land exactly on the lead byte (clean boundary) and on each of
+    // the two continuation bytes of that 中 (mid-character straddles).
+    for (const maxBytes of [leadOffset, leadOffset + 1, leadOffset + 2]) {
+      const [entry] = await workspace.diffPatch({
+        target: UNCOMMITTED,
+        paths: ["multibyte.txt"],
+        maxBytesPerFile: maxBytes,
+      });
+
+      expect(entry?.truncated).toBe(true);
+      // No replacement character: a naive byte slice would corrupt the straddled
+      // 中 into U+FFFD (which would also overshoot the budget).
+      expect(entry?.patch).not.toContain("�");
+      expect(
+        Buffer.byteLength(entry?.patch ?? "", "utf8"),
+      ).toBeLessThanOrEqual(maxBytes);
+      // The kept prefix must be a byte-exact prefix of the full patch — i.e. we
+      // only dropped a tail, never mutated bytes.
+      expect(
+        fullBytes
+          .subarray(0, Buffer.byteLength(entry?.patch ?? "", "utf8"))
+          .toString("utf8"),
+      ).toBe(entry?.patch);
+    }
+  });
 });

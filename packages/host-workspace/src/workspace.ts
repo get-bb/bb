@@ -10,7 +10,6 @@ import type {
 import path from "node:path";
 import {
   createTempDir,
-  decodeGitQuotedPath,
   detectGitRepo,
   ensureGitRepo,
   getCurrentBranch,
@@ -411,12 +410,26 @@ function formatShortstat(args: {
   return `${parts.join(", ")}\n`;
 }
 
+/**
+ * Truncates a string to at most `maxBytes` UTF-8 bytes on a codepoint boundary.
+ * A naive `buffer.subarray(0, maxBytes)` can slice through a multibyte
+ * character, which `toString("utf8")` then renders as a replacement character
+ * (U+FFFD, 3 bytes) — corrupting the text AND overshooting the byte budget. We
+ * cut at `maxBytes`, then walk the cut point back over any trailing UTF-8
+ * continuation bytes (`0b10xxxxxx`) so the result never ends mid-character; the
+ * straddling codepoint is dropped whole. The result is always valid UTF-8 and
+ * `Buffer.byteLength(result) <= maxBytes`.
+ */
 function truncateToMaxBytes(value: string, maxBytes: number): string {
   const buffer = Buffer.from(value, "utf8");
   if (buffer.byteLength <= maxBytes) {
     return value;
   }
-  return buffer.subarray(0, maxBytes).toString("utf8");
+  let cut = maxBytes;
+  while (cut > 0 && (buffer[cut] & 0xc0) === 0x80) {
+    cut -= 1;
+  }
+  return buffer.subarray(0, cut).toString("utf8");
 }
 
 function truncateOutputToMaxBytes(
@@ -708,7 +721,6 @@ export class Workspace {
   async diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]> {
     await ensureGitRepo(this.path);
 
-    const requested = new Set(args.paths);
     const untrackedForTarget = this.targetIncludesUntracked(args.target)
       ? new Set(await this.listUntrackedPaths())
       : new Set<string>();
@@ -739,7 +751,7 @@ export class Workspace {
     const seen = new Set<string>();
     const entries: DiffPatchEntry[] = [];
     for (const path of args.paths) {
-      if (!requested.has(path) || seen.has(path)) {
+      if (seen.has(path)) {
         continue;
       }
       seen.add(path);
@@ -1472,10 +1484,14 @@ export class Workspace {
 
   /**
    * Computes the per-file tracked patch for the requested paths, keyed by the
-   * (new) file path. Renamed/copied entries are expanded to include their
-   * source path in the pathspec so git's rename detection still pairs them in
-   * the scoped diff — without the old path, git would report the rename as an
-   * unrelated add/delete and lose the patch's `a/old → b/new` framing.
+   * requested (new) file path. Each file gets its OWN target-scoped `git diff`
+   * invocation whose pathspec is exactly that file — plus its rename/copy source
+   * when one exists, so git's `-M` rename detection still pairs them and the
+   * patch keeps its `a/old → b/new` framing. Keying by the requested path
+   * directly (rather than parsing the `diff --git` header) is unambiguous for
+   * every path, including paths that contain spaces — which git does not quote
+   * and which a header-token split would mangle. Pages are bounded
+   * (≤ DIFF_PATCH_MAX_PATHS_PER_REQUEST), so per-file invocations are fine.
    */
   private async readTrackedPatchByPath(
     args: ReadTrackedPatchByPathArgs,
@@ -1487,23 +1503,24 @@ export class Workspace {
       ),
     );
 
-    const pathspec = new Set<string>();
-    for (const path of args.paths) {
-      pathspec.add(path);
-      const previousPath = previousPathByPath.get(path);
-      if (previousPath) {
-        pathspec.add(previousPath);
-      }
-    }
+    const entries = await Promise.all(
+      args.paths.map(async (path) => {
+        const previousPath = previousPathByPath.get(path);
+        const pathspec =
+          previousPath != null && previousPath !== path
+            ? [previousPath, path]
+            : [path];
+        const {
+          artifacts: [diff],
+        } = await this.readDiffArtifacts({
+          target: args.target,
+          paths: pathspec,
+        });
+        return [path, diff] as const;
+      }),
+    );
 
-    const {
-      artifacts: [combinedDiff],
-    } = await this.readDiffArtifacts({
-      target: args.target,
-      paths: [...pathspec],
-    });
-
-    return splitUnifiedDiffByNewPath(combinedDiff);
+    return new Map(entries);
   }
 
   private async readDiffArtifacts(
@@ -1850,7 +1867,9 @@ function normalizeNameStatusLetter(
 
 /**
  * Truncates a single file's patch to at most `maxBytes` UTF-8 bytes, flagging
- * whether the tail was cut. A non-positive budget disables truncation.
+ * whether the tail was cut. A non-positive budget disables truncation. The cut
+ * is codepoint-safe (see `truncateToMaxBytes`), so a multibyte character at the
+ * budget boundary is dropped whole rather than corrupted into U+FFFD.
  */
 function truncatePatchToMaxBytes(
   patch: string,
@@ -1859,129 +1878,9 @@ function truncatePatchToMaxBytes(
   if (maxBytes <= 0) {
     return { patch, truncated: false };
   }
-  const buffer = Buffer.from(patch, "utf8");
-  if (buffer.byteLength <= maxBytes) {
+  if (Buffer.byteLength(patch, "utf8") <= maxBytes) {
     return { patch, truncated: false };
   }
-  return {
-    patch: buffer.subarray(0, maxBytes).toString("utf8"),
-    truncated: true,
-  };
+  return { patch: truncateToMaxBytes(patch, maxBytes), truncated: true };
 }
 
-/**
- * Splits a combined unified diff into per-file patch text keyed by the new
- * (post-image) path. Each file section starts at a `diff --git a/<old> b/<new>`
- * header; the new path is the `b/` side (for a deletion it equals the deleted
- * path, for a rename it is the destination). Quoted paths (git's C-style
- * quoting for paths with special characters) are decoded so the key matches the
- * repo-relative path used elsewhere.
- */
-function splitUnifiedDiffByNewPath(combinedDiff: string): Map<string, string> {
-  const byPath = new Map<string, string>();
-  const lines = combinedDiff.split("\n");
-  let currentPath: string | null = null;
-  let currentLines: string[] = [];
-
-  const flush = (): void => {
-    if (currentPath !== null) {
-      byPath.set(currentPath, formatDiffSection(currentLines));
-    }
-  };
-
-  for (const line of lines) {
-    if (line.startsWith("diff --git ")) {
-      flush();
-      currentPath = parseDiffGitNewPath(line);
-      currentLines = [line];
-      continue;
-    }
-    if (currentPath !== null) {
-      currentLines.push(line);
-    }
-  }
-  flush();
-
-  return byPath;
-}
-
-/**
- * Renders one file's diff section as the content lines joined by `\n` with a
- * single trailing newline. Trailing empty lines (produced when a `\n` at the
- * combined diff's boundary splits into a final empty token) are dropped so a
- * file's patch is identical whether it sits mid-stream or at the end of the
- * combined diff. A patch line that is itself meaningfully blank (e.g. a context
- * line for an empty source line) is never trailing — it is always followed by
- * the next file's `diff --git` header or by structural lines — so stripping
- * trailing empties does not lose patch content.
- */
-function formatDiffSection(lines: string[]): string {
-  let end = lines.length;
-  while (end > 0 && lines[end - 1] === "") {
-    end -= 1;
-  }
-  if (end === 0) {
-    return "";
-  }
-  return `${lines.slice(0, end).join("\n")}\n`;
-}
-
-/**
- * Extracts the new (`b/`) path from a `diff --git a/<old> b/<new>` header. The
- * header carries two space-separated path tokens, each either bare or git
- * C-style quoted (`"..."`) when it contains special characters; the two sides
- * may be quoted independently. We tokenize the first token, then take the
- * remainder as the second (new) token, decode quoting if present, and strip the
- * `b/` prefix. Returns `null` if the header is malformed.
- */
-function parseDiffGitNewPath(headerLine: string): string | null {
-  const body = headerLine.slice("diff --git ".length);
-  const firstTokenEnd = findHeaderTokenEnd(body, 0);
-  if (firstTokenEnd === -1 || body[firstTokenEnd] !== " ") {
-    return null;
-  }
-  const secondToken = body.slice(firstTokenEnd + 1);
-  if (secondToken.length === 0) {
-    return null;
-  }
-  const decoded = secondToken.startsWith('"')
-    ? decodeGitQuotedPath(secondToken)
-    : secondToken;
-  return stripDiffPathPrefix(decoded);
-}
-
-/**
- * Returns the index just past the first path token in a `diff --git` header
- * body (i.e. the index of the space separating the two tokens), accounting for
- * C-style quoting. Returns -1 if a quoted token is never closed.
- */
-function findHeaderTokenEnd(body: string, startIndex: number): number {
-  if (body[startIndex] !== '"') {
-    const spaceIndex = body.indexOf(" ", startIndex);
-    return spaceIndex === -1 ? body.length : spaceIndex;
-  }
-  const closingQuote = findClosingQuote(body, startIndex);
-  return closingQuote === -1 ? -1 : closingQuote + 1;
-}
-
-function findClosingQuote(value: string, openIndex: number): number {
-  let index = openIndex + 1;
-  while (index < value.length) {
-    if (value[index] === "\\") {
-      index += 2;
-      continue;
-    }
-    if (value[index] === '"') {
-      return index;
-    }
-    index += 1;
-  }
-  return -1;
-}
-
-function stripDiffPathPrefix(value: string): string {
-  if (value.startsWith("a/") || value.startsWith("b/")) {
-    return value.slice(2);
-  }
-  return value;
-}

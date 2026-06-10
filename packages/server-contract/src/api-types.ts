@@ -33,6 +33,7 @@ import {
   threadWithRuntimeSchema,
   threadQueuedMessageSchema,
   workspaceStatusSchema,
+  workspaceDiffTargetSchema,
   jsonValueSchema,
   appDataPathSchema,
   applicationIdSchema,
@@ -2400,12 +2401,6 @@ export type EnvironmentDiffResponse = z.infer<
 /** Max paths accepted per `/environments/:id/diff/patch` request. */
 export const DIFF_PATCH_MAX_PATHS_PER_REQUEST = 50;
 
-const diffOutcomeSchema = z.enum([
-  "available",
-  "not_applicable",
-  "unavailable",
-]);
-
 /**
  * One entry per changed file — the diff tab's table of contents. Carries no
  * patch text; patches are fetched separately and on demand via `/diff/patch`.
@@ -2430,13 +2425,27 @@ export const diffFileEntrySchema = z.object({
 });
 export type DiffFileEntry = z.infer<typeof diffFileEntrySchema>;
 
-export const environmentDiffFilesResponseSchema = z.object({
-  outcome: diffOutcomeSchema,
-  files: z.array(diffFileEntrySchema).optional(),
-  shortstat: z.string().optional(),
-  /** Required + nullable: null = no merge-base for the current target. */
-  mergeBaseRef: z.string().nullable().optional(),
-});
+export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z
+      .object({
+        outcome: z.literal("available"),
+        files: z.array(diffFileEntrySchema),
+        shortstat: z.string(),
+        /** Required + nullable: null = no merge-base for the current target. */
+        mergeBaseRef: z.string().nullable(),
+      })
+      .strict(),
+    environmentWorkspaceNotApplicableOutcomeSchema,
+    z
+      .object({
+        outcome: z.literal("unavailable"),
+        failure: workspaceResolutionFailureSchema,
+      })
+      .strict(),
+  ],
+);
 export type EnvironmentDiffFilesResponse = z.infer<
   typeof environmentDiffFilesResponseSchema
 >;
@@ -2450,31 +2459,46 @@ export const diffPatchEntrySchema = z.object({
 });
 export type DiffPatchEntry = z.infer<typeof diffPatchEntrySchema>;
 
-export const environmentDiffPatchResponseSchema = z.object({
-  outcome: diffOutcomeSchema,
-  patches: z.array(diffPatchEntrySchema).optional(),
-});
+export const environmentDiffPatchResponseSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z
+      .object({
+        outcome: z.literal("available"),
+        patches: z.array(diffPatchEntrySchema),
+      })
+      .strict(),
+    environmentWorkspaceNotApplicableOutcomeSchema,
+    z
+      .object({
+        outcome: z.literal("unavailable"),
+        failure: workspaceResolutionFailureSchema,
+      })
+      .strict(),
+  ],
+);
 export type EnvironmentDiffPatchResponse = z.infer<
   typeof environmentDiffPatchResponseSchema
 >;
 
 /**
- * Query for `/diff/patch`: the existing target union plus the repeated
- * `paths=` param (one value per file, never comma-joined — git paths may
- * contain commas). The client sends only new paths; the server re-derives each
- * file's rename pairing from its own TOC.
+ * Body for `POST /diff/patch`: the diff target plus the list of new paths whose
+ * patches the client wants. A POST (not GET) because the repeated `paths` array
+ * cannot survive flat query parsing. The client supplies only new paths; the
+ * server re-derives each file's rename/copy pairing (`previousPath`) from its
+ * own TOC.
  */
-export const environmentDiffPatchQuerySchema = z.intersection(
-  environmentDiffQuerySchema,
-  z.object({
+export const environmentDiffPatchRequestSchema = z
+  .object({
+    target: workspaceDiffTargetSchema,
     paths: z
       .array(z.string().min(1))
       .min(1)
       .max(DIFF_PATCH_MAX_PATHS_PER_REQUEST),
-  }),
-);
-export type EnvironmentDiffPatchQuery = z.infer<
-  typeof environmentDiffPatchQuerySchema
+  })
+  .strict();
+export type EnvironmentDiffPatchRequest = z.infer<
+  typeof environmentDiffPatchRequestSchema
 >;
 
 export const uploadedPromptAttachmentSchema = z.object({

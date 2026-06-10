@@ -47,7 +47,7 @@ import type {
   EnvironmentDiffResponse,
   EnvironmentDiffQuery,
   EnvironmentDiffFilesResponse,
-  EnvironmentDiffPatchQuery,
+  EnvironmentDiffPatchRequest,
   EnvironmentDiffPatchResponse,
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
@@ -416,13 +416,14 @@ export type PublicApiSchema = {
   };
   "/environments/:id/diff/patch": {
     /**
-     * Get unified patch text for a subset of changed files, one repeated
-     * `paths=` param per file. Proxies to `workspace.diffPatch`. The server
-     * re-derives each file's `previousPath` (rename/copy pairing) from its own
-     * TOC — the client supplies only new paths and never the rename pairing.
+     * Get unified patch text for a subset of changed files. POST (not GET)
+     * because the repeated `paths` array cannot survive flat query parsing.
+     * Proxies to `workspace.diffPatch`. The server re-derives each file's
+     * `previousPath` (rename/copy pairing) from its own TOC — the client
+     * supplies only new paths and never the rename pairing.
      */
-    $get: Endpoint<
-      PathId & { query: EnvironmentDiffPatchQuery },
+    $post: Endpoint<
+      PathId & { json: EnvironmentDiffPatchRequest },
       EnvironmentDiffPatchResponse
     >;
   };
