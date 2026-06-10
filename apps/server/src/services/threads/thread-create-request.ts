@@ -1,12 +1,14 @@
-import type { PromptInput } from "@bb/domain";
+import type { PromptInput, ThreadChildOrigin } from "@bb/domain";
 import type {
   CreateThreadRequest,
   EnvironmentArgs,
+  StartedOnBehalfOf,
   ThreadCreateOrigin,
 } from "@bb/server-contract";
 
 export interface ThreadCreateServiceRequestInput {
   automationId: string | null;
+  childOrigin: ThreadChildOrigin | null;
   environment: EnvironmentArgs;
   executionInputSources?: CreateThreadRequest["executionInputSources"];
   input: PromptInput[];
@@ -18,6 +20,7 @@ export interface ThreadCreateServiceRequestInput {
   providerId?: CreateThreadRequest["providerId"];
   reasoningLevel?: CreateThreadRequest["reasoningLevel"];
   serviceTier?: CreateThreadRequest["serviceTier"];
+  startedOnBehalfOf: StartedOnBehalfOf | null;
   title?: string;
 }
 

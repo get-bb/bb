@@ -68,6 +68,7 @@ function makeThread(): ThreadWithRuntime {
     lastReadAt: null,
     latestAttentionAt: 10,
     parentThreadId: null,
+    childOrigin: null,
     pinnedAt: null,
     projectId: "project-1",
     providerId: "provider-1",
@@ -987,10 +988,12 @@ describe("project thread subset query", () => {
     const child = makeThreadListEntry({
       id: "child-1",
       parentThreadId: "parent-1",
+      childOrigin: null,
     });
     const otherChild = makeThreadListEntry({
       id: "child-2",
       parentThreadId: "parent-2",
+      childOrigin: null,
     });
     const { queryClient, wrapper } = createWrapper();
     queryClient.setQueryData<ThreadListResponse>(
@@ -1017,6 +1020,7 @@ describe("project thread subset query", () => {
     const parent = makeThreadListEntry({
       id: "parent-1",
       parentThreadId: null,
+      childOrigin: null,
     });
     const requestUrlRef: { current: URL | null } = { current: null };
     installFetchRoutes([

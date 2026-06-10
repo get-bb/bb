@@ -1338,3 +1338,76 @@ describe("transitionThreadStatus", () => {
     );
   });
 });
+
+describe("thread childOrigin", () => {
+  it("defaults to null for threads created without an origin", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    expect(thread.childOrigin).toBeNull();
+    expect(getThread(db, thread.id)?.childOrigin).toBeNull();
+  });
+
+  it("persists and round-trips fork and side-chat origins", () => {
+    const { db, project } = setup();
+    const parent = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const fork = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      parentThreadId: parent.id,
+      childOrigin: "fork",
+    });
+    const sideChat = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      parentThreadId: parent.id,
+      childOrigin: "side-chat",
+    });
+
+    expect(getThread(db, fork.id)?.childOrigin).toBe("fork");
+    expect(getThread(db, sideChat.id)?.childOrigin).toBe("side-chat");
+  });
+
+  it("filters listings by childOrigin", () => {
+    const { db, project } = setup();
+    const parent = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const fork = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      parentThreadId: parent.id,
+      childOrigin: "fork",
+    });
+    const sideChat = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      parentThreadId: parent.id,
+      childOrigin: "side-chat",
+    });
+
+    const forks = listThreads(db, {
+      projectId: project.id,
+      childOrigin: "fork",
+    });
+    expect(forks.map((thread) => thread.id)).toEqual([fork.id]);
+
+    const sideChats = listThreads(db, {
+      projectId: project.id,
+      childOrigin: "side-chat",
+    });
+    expect(sideChats.map((thread) => thread.id)).toEqual([sideChat.id]);
+
+    const all = listThreads(db, { projectId: project.id });
+    expect(all.map((thread) => thread.id).sort()).toEqual(
+      [parent.id, fork.id, sideChat.id].sort(),
+    );
+  });
+});

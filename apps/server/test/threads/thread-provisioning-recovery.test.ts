@@ -120,6 +120,7 @@ describe("thread provisioning recovery", () => {
         execution: THREAD_START_EXECUTION,
         input: textInput("start after workspace ready"),
         titleProvided: true,
+        seedWithoutRun: false,
       });
       const attachedContext = createEnvironmentAttachedContext(
         createEnvironmentPendingContext(requestedContext, { branchSlug: null }),
@@ -241,6 +242,7 @@ describe("thread provisioning recovery", () => {
         execution: THREAD_START_EXECUTION,
         input: textInput("start before first turn event"),
         titleProvided: true,
+        seedWithoutRun: false,
       });
       const attachedContext = createEnvironmentAttachedContext(
         createEnvironmentPendingContext(requestedContext, { branchSlug: null }),

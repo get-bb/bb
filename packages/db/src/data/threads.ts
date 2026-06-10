@@ -15,6 +15,7 @@ import type {
   EnvironmentWorkspaceDisplayKind,
   ReasoningLevel,
   ThreadChangeKind,
+  ThreadChildOrigin,
   ThreadStatus,
   WorkspaceProvisionType,
 } from "@bb/domain";
@@ -55,6 +56,7 @@ export interface CreateThreadInput {
   titleFallback?: string | null;
   status?: ThreadStatus;
   parentThreadId?: string | null;
+  childOrigin?: ThreadChildOrigin | null;
 }
 
 export function createThread(
@@ -76,6 +78,7 @@ export function createThread(
       titleFallback: input.titleFallback ?? null,
       status: input.status ?? "created",
       parentThreadId: input.parentThreadId ?? null,
+      childOrigin: input.childOrigin ?? null,
       lastReadAt: now,
       latestAttentionAt: now,
       createdAt: now,
@@ -100,6 +103,8 @@ export interface ListThreadsOptions {
   parentThreadId?: string;
   /** When true, restrict to child threads. When false, restrict to root threads. */
   hasParent?: boolean;
+  /** Restrict to child threads spawned with this origin (fork or side-chat). */
+  childOrigin?: ThreadChildOrigin;
   limit?: number;
   offset?: number;
 }
@@ -428,6 +433,9 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     isNull(threads.deletedAt),
     options.parentThreadId
       ? eq(threads.parentThreadId, options.parentThreadId)
+      : undefined,
+    options.childOrigin
+      ? eq(threads.childOrigin, options.childOrigin)
       : undefined,
     options.archived === true
       ? isNotNull(threads.archivedAt)

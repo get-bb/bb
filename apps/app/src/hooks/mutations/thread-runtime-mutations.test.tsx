@@ -11,6 +11,7 @@ import type {
   PromptHistoryResponse,
   SendQueuedMessageResponse,
   ThreadQueuedMessageListResponse,
+  ThreadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -89,15 +90,17 @@ const createdThread = {
   title: null,
   titleFallback: null,
   parentThreadId: null,
+  childOrigin: null,
   archivedAt: null,
   pinnedAt: null,
   stopRequestedAt: null,
   deletedAt: null,
+  canSpawnChild: true,
   runtime: {
     displayStatus: "idle",
     hostReconnectGraceExpiresAt: null,
   },
-} satisfies ThreadWithRuntime;
+} satisfies ThreadResponse;
 
 function makeThreadWithRuntime(
   thread: Partial<ThreadWithRuntime> = {},
@@ -116,6 +119,7 @@ function makeThreadWithRuntime(
     title: null,
     titleFallback: null,
     parentThreadId: null,
+    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     stopRequestedAt: null,

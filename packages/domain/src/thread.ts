@@ -7,8 +7,14 @@ import {
   serviceTierSchema,
 } from "./shared-types.js";
 import { threadStatusSchema, threadStatusValues } from "./thread-status.js";
+import { threadChildOriginSchema } from "./thread-child-origin.js";
 export { threadStatusSchema, threadStatusValues } from "./thread-status.js";
 export type { ThreadStatus } from "./thread-status.js";
+export {
+  threadChildOriginSchema,
+  threadChildOriginValues,
+} from "./thread-child-origin.js";
+export type { ThreadChildOrigin } from "./thread-child-origin.js";
 
 export const threadRuntimeDisplayStatusValues = [
   ...threadStatusValues,
@@ -147,6 +153,7 @@ export const threadSchema = z.object({
   titleFallback: z.string().nullable(),
   status: threadStatusSchema,
   parentThreadId: z.string().nullable(),
+  childOrigin: threadChildOriginSchema.nullable(),
   archivedAt: z.number().nullable(),
   pinnedAt: z.number().nullable(),
   stopRequestedAt: z.number().nullable(),

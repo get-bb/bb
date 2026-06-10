@@ -296,6 +296,8 @@ describe("environment reprovisioning", () => {
       try {
         await createThreadFromRequest(harness.deps, {
           automationId: null,
+          childOrigin: null,
+          startedOnBehalfOf: null,
           environment: {
             type: "host",
             hostId: host.id,
@@ -345,6 +347,8 @@ describe("environment reprovisioning", () => {
 
       const thread = await createThreadFromRequest(harness.deps, {
         automationId: null,
+        childOrigin: null,
+        startedOnBehalfOf: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -428,6 +432,8 @@ describe("environment reprovisioning", () => {
 
       const firstThread = await createThreadFromRequest(harness.deps, {
         automationId: null,
+        childOrigin: null,
+        startedOnBehalfOf: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -461,6 +467,8 @@ describe("environment reprovisioning", () => {
 
       const secondThread = await createThreadFromRequest(harness.deps, {
         automationId: null,
+        childOrigin: null,
+        startedOnBehalfOf: null,
         environment: {
           type: "reuse",
           environmentId: environment.id,

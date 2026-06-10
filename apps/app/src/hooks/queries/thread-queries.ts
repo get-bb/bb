@@ -8,6 +8,7 @@ import { useMemo } from "react";
 import type {
   PendingInteraction,
   ResolvedThreadExecutionOptions,
+  ThreadWithRuntime,
 } from "@bb/domain";
 import type {
   AutomationsOverviewResponse,
@@ -439,8 +440,21 @@ export function useThread(id: string, options?: QueryOptions) {
     refetchOnMount: options?.refetchOnMount ?? true,
     placeholderData: (previousData, previousQuery) =>
       resolveThreadPlaceholder(previousData, previousQuery?.queryKey, id) ??
-      getCachedThreadListPlaceholder(queryClient, id),
+      liftThreadListPlaceholder(getCachedThreadListPlaceholder(queryClient, id)),
   });
+}
+
+// A thread primed from the sidebar list cache has no spawn-policy flag (the
+// list response omits it). Conservatively hide the spawn affordance on the
+// placeholder; the real single-thread response, which carries the server-
+// computed value, resolves moments later.
+function liftThreadListPlaceholder(
+  thread: ThreadWithRuntime | undefined,
+): ThreadResponse | undefined {
+  if (thread === undefined) {
+    return undefined;
+  }
+  return { ...thread, canSpawnChild: false };
 }
 
 export function useThreadDetailBootstrap(

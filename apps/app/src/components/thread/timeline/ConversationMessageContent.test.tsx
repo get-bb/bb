@@ -34,6 +34,11 @@ describe("ConversationMessageContent", () => {
     render(
       <ConversationMessageContent
         role="assistant"
+        id="row_assistant_1"
+        threadId="thr_assistant"
+        turnId="turn_assistant_1"
+        sourceSeqStart={0}
+        sourceSeqEnd={0}
         attachments={null}
         text="[Docs](https://example.com/docs)"
         turnRequest={null}

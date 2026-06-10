@@ -195,6 +195,8 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Thread event listing may omit limit to use the server-side default page size.",
   "threadListQuerySchema.archived":
     "Thread listing may omit archived to include both archived and unarchived threads.",
+  "threadListQuerySchema.childOrigin":
+    "Thread listing may omit childOrigin to include children of every origin (and non-children).",
   "threadListQuerySchema.limit":
     "Thread listing may omit limit to return all matching threads without pagination.",
   "threadListQuerySchema.hasParent":
@@ -961,6 +963,7 @@ describe("server-contract canonical schemas", () => {
           titleFallback: "Pending thread",
           status: "idle",
           parentThreadId: null,
+          childOrigin: null,
           archivedAt: null,
           pinnedAt: null,
           pinSortKey: null,
@@ -1223,6 +1226,114 @@ describe("server-contract canonical schemas", () => {
       }),
     ).toThrow();
 
+  });
+
+  it("defaults startedOnBehalfOf and childOrigin to null", () => {
+    const parsed = createThreadRequestSchema.parse({
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "app",
+      input: [{ type: "text", text: "Normal user start" }],
+      environment: {
+        type: "host",
+        hostId: "host_abc",
+        workspace: { type: "unmanaged", path: null },
+      },
+    });
+    expect(parsed.startedOnBehalfOf).toBeNull();
+    expect(parsed.childOrigin).toBeNull();
+  });
+
+  it("accepts an agent startedOnBehalfOf with a sender thread", () => {
+    const parsed = createThreadRequestSchema.parse({
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "app",
+      input: [{ type: "text", text: "Forked anchor" }],
+      environment: {
+        type: "host",
+        hostId: "host_abc",
+        workspace: { type: "unmanaged", path: null },
+      },
+      startedOnBehalfOf: { initiator: "agent", senderThreadId: "thr_source" },
+      childOrigin: "fork",
+    });
+    expect(parsed.startedOnBehalfOf).toEqual({
+      initiator: "agent",
+      senderThreadId: "thr_source",
+    });
+    expect(parsed.childOrigin).toBe("fork");
+  });
+
+  it("rejects startedOnBehalfOf without a sender thread or with initiator user", () => {
+    const baseRequest = {
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "app" as const,
+      input: [{ type: "text", text: "Bad anchor" }],
+      environment: {
+        type: "host" as const,
+        hostId: "host_abc",
+        workspace: { type: "unmanaged" as const, path: null },
+      },
+    };
+    // Missing senderThreadId.
+    expect(() =>
+      createThreadRequestSchema.parse({
+        ...baseRequest,
+        startedOnBehalfOf: { initiator: "agent" },
+      }),
+    ).toThrow();
+    // Empty senderThreadId.
+    expect(() =>
+      createThreadRequestSchema.parse({
+        ...baseRequest,
+        startedOnBehalfOf: { initiator: "agent", senderThreadId: "" },
+      }),
+    ).toThrow();
+    // "user" is not a valid started-on-behalf-of initiator.
+    expect(() =>
+      createThreadRequestSchema.parse({
+        ...baseRequest,
+        startedOnBehalfOf: { initiator: "user", senderThreadId: "thr_source" },
+      }),
+    ).toThrow();
+  });
+
+  it("rejects an unknown childOrigin", () => {
+    expect(() =>
+      createThreadRequestSchema.parse({
+        projectId: "proj_123",
+        providerId: "codex",
+        origin: "app",
+        input: [{ type: "text", text: "Bad origin" }],
+        environment: {
+          type: "host",
+          hostId: "host_abc",
+          workspace: { type: "unmanaged", path: null },
+        },
+        childOrigin: "branch",
+      }),
+    ).toThrow();
+  });
+
+  it("accepts input parts marked agent-only", () => {
+    const parsed = createThreadRequestSchema.parse({
+      projectId: "proj_123",
+      providerId: "codex",
+      origin: "app",
+      input: [
+        { type: "text", text: "Visible question" },
+        { type: "text", text: "Hidden context", visibility: "agent-only" },
+      ],
+      environment: {
+        type: "host",
+        hostId: "host_abc",
+        workspace: { type: "unmanaged", path: null },
+      },
+    });
+    expect(parsed.input).toHaveLength(2);
+    expect(parsed.input[1]).toMatchObject({ visibility: "agent-only" });
   });
 });
 

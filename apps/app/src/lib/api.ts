@@ -126,7 +126,15 @@ export interface EnvironmentBranchListRequest extends BranchListRequest {
 
 export type ProjectBranchListRequest = EnvironmentBranchListRequest;
 
-export type AppCreateThreadRequest = Omit<CreateThreadRequest, "origin">;
+// Built by the client and sent to POST /threads, which parses with
+// createThreadRequestSchema. `startedOnBehalfOf` and `childOrigin` carry a
+// server boundary default (null), so callers may omit them; everything else
+// matches the parsed request shape.
+export type AppCreateThreadRequest = Omit<
+  CreateThreadRequest,
+  "origin" | "startedOnBehalfOf" | "childOrigin"
+> &
+  Partial<Pick<CreateThreadRequest, "startedOnBehalfOf" | "childOrigin">>;
 
 export interface GetProjectDefaultExecutionOptionsRequest {
   projectId: string;
@@ -667,6 +675,8 @@ export async function createThread(
       json: {
         ...req,
         origin: "app",
+        startedOnBehalfOf: req.startedOnBehalfOf ?? null,
+        childOrigin: req.childOrigin ?? null,
       },
     }),
   );

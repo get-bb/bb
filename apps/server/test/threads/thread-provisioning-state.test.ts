@@ -67,6 +67,7 @@ describe("thread provisioning state", () => {
           permissionMode: "full",
           source: "client/turn/requested",
         },
+        startedOnBehalfOf: null,
         titleProvided: true,
       },
     );

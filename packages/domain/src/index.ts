@@ -312,6 +312,8 @@ export {
 export type { Host, HostType } from "./host.js";
 
 export {
+  threadChildOriginSchema,
+  threadChildOriginValues,
   threadQueuedMessageSchema,
   threadSchema,
   threadListEntrySchema,
@@ -334,6 +336,7 @@ export {
 } from "./thread.js";
 export type {
   Thread,
+  ThreadChildOrigin,
   ThreadListEntry,
   ThreadQueuedMessage,
   ThreadRuntimeDisplayStatus,

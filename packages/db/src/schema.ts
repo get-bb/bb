@@ -9,6 +9,7 @@ import {
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
+import { threadChildOriginValues } from "@bb/domain/thread-child-origin";
 import type {
   EnvironmentCleanupMode,
   EnvironmentStatus,
@@ -275,6 +276,12 @@ export const threads = sqliteTable(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
     ),
+    // How this thread was spawned from its parent (fork vs side-chat). NULL for
+    // threads created normally. Explicit discriminator because the thread-start
+    // turn shape alone is ambiguous between fork and side-chat.
+    childOrigin: text("child_origin", {
+      enum: threadChildOriginValues,
+    }),
     archivedAt: integer("archived_at"),
     pinnedAt: integer("pinned_at"),
     pinSortKey: text("pin_sort_key"),

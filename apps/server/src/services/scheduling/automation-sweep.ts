@@ -129,8 +129,10 @@ async function runAutomation(
     await createThreadFromRequest(deps, {
       ...executionContext.action.threadRequest,
       automationId: automation.id,
+      childOrigin: null,
       origin: null,
       projectId: automation.projectId,
+      startedOnBehalfOf: null,
     });
   } catch (error) {
     const restored = restoreAutomationAfterFailedRun(deps.db, deps.hub, {

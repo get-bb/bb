@@ -8,13 +8,16 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { PERSONAL_PROJECT_ID, type ThreadWithRuntime } from "@bb/domain";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { Provider as JotaiProvider } from "jotai";
 import { QueryClientProvider } from "@tanstack/react-query";
-import type { ThreadChildSummaryResponse } from "@bb/server-contract";
+import type {
+  ThreadChildSummaryResponse,
+  ThreadResponse,
+} from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { createAppQueryClient } from "@/lib/query-client";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
@@ -110,9 +113,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-function makeThread(
-  overrides: Partial<ThreadWithRuntime> = {},
-): ThreadWithRuntime {
+function makeThread(overrides: Partial<ThreadResponse> = {}): ThreadResponse {
   return {
     archivedAt: null,
     automationId: null,
@@ -123,6 +124,8 @@ function makeThread(
     lastReadAt: null,
     latestAttentionAt: 10,
     parentThreadId: null,
+    childOrigin: null,
+    canSpawnChild: true,
     pinnedAt: null,
     projectId: "project-1",
     providerId: "provider-1",

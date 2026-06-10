@@ -5,10 +5,10 @@ import {
 } from "react";
 import type {
   TimelineConversationAttachments,
+  TimelineRowBase,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
 import type { PromptTextMention } from "@bb/domain";
-import { CopyButton } from "../../ui/copy-button.js";
 import { cn } from "@/lib/utils";
 import { MarkdownPreview } from "../../ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -36,6 +36,7 @@ import {
 import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
+import { MessageActionBar } from "./MessageActionBar.js";
 import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
@@ -59,7 +60,20 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
 
-export interface ConversationMessageContentAssistantProps extends ConversationMessageContentBaseProps {
+/**
+ * Identity of the source timeline row, forwarded onto the assistant message so
+ * the per-message fork / side-chat actions (wired in later sessions) can anchor
+ * on the exact agent message. Sourced from `TimelineRowBase` rather than inlined
+ * primitives so it stays in lockstep with the contract.
+ */
+type AssistantMessageRowIdentity = Pick<
+  TimelineRowBase,
+  "id" | "threadId" | "turnId" | "sourceSeqStart" | "sourceSeqEnd"
+>;
+
+export interface ConversationMessageContentAssistantProps
+  extends ConversationMessageContentBaseProps,
+    AssistantMessageRowIdentity {
   role: "assistant";
   // Assistant content renders through MarkdownPreview, which is the only
   // surface with clickable links. User messages render as plain text
@@ -93,7 +107,7 @@ interface UserConversationMessageProps {
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
 
-interface AssistantConversationMessageProps {
+interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
   attachmentItems: ConversationAttachmentItems;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -260,7 +274,7 @@ function UserConversationMessage({
 
   return (
     <div className="w-full">
-      <div className="ml-auto w-fit max-w-[80%]">
+      <div className="group ml-auto w-fit max-w-[80%]">
         <div className="rounded-md bg-surface-selected p-2 text-sm leading-relaxed text-foreground">
           {messageText ? (
             <CollapsibleMessageText
@@ -282,9 +296,7 @@ function UserConversationMessage({
         {showToolbar ? (
           <div className="mt-1 flex items-center justify-end gap-2">
             <TurnRequestLabel turnRequest={turnRequest} />
-            {messageText ? (
-              <CopyButton text={text} label="Copy message" />
-            ) : null}
+            <MessageActionBar messageText={messageText} alignment="end" />
           </div>
         ) : null}
       </div>
@@ -328,6 +340,15 @@ function AssistantConversationMessage({
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
       />
+      {/*
+        Copy + (S3/S4) fork / side-chat actions. `onFork` / `onSideChat` are
+        omitted until those sessions wire them, so this currently reveals copy
+        alone on hover — the inert-button approach (no permanently-disabled
+        placeholders in the DOM).
+      */}
+      <div className="mt-1">
+        <MessageActionBar messageText={text} alignment="start" />
+      </div>
     </div>
   );
 }
@@ -372,10 +393,15 @@ export function ConversationMessageContent(
   return (
     <AssistantConversationMessage
       attachmentItems={attachmentItems}
+      id={props.id}
       onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
+      sourceSeqEnd={props.sourceSeqEnd}
+      sourceSeqStart={props.sourceSeqStart}
       text={text}
+      threadId={props.threadId}
+      turnId={props.turnId}
     />
   );
 }

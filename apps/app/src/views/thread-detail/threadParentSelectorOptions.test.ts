@@ -11,6 +11,7 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
   return {
     archivedAt: null,
     automationId: null,
+    childOrigin: null,
     createdAt: 1,
     deletedAt: null,
     environmentBranchName: null,

@@ -66,6 +66,11 @@ export const threadProvisionCommonPayloadSchema = z.object({
   execution: resolvedThreadExecutionOptionsSchema,
   input: z.array(promptInputSchema),
   titleProvided: z.boolean(),
+  // When true the thread-start turn is persisted/displayed but no provider run
+  // is dispatched — the started agent waits for the user's first message (fork
+  // and side-chat anchors). The thread lands in `idle` once the workspace is
+  // ready. Defaults false (a normal start dispatches immediately).
+  seedWithoutRun: z.boolean().default(false),
 });
 
 export type ThreadProvisionEnvironmentIntent = z.infer<
@@ -179,6 +184,7 @@ export interface CreateMetadataPendingContextArgs {
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
   input: PromptInput[];
+  seedWithoutRun: boolean;
   titleProvided: boolean;
 }
 
@@ -319,6 +325,7 @@ export function createMetadataPendingContext(
       execution: args.execution,
       input: args.input,
       titleProvided: args.titleProvided,
+      seedWithoutRun: args.seedWithoutRun,
     },
     state: {
       environmentId: null,
@@ -424,6 +431,7 @@ export function createReprovisioningContext(
       execution: args.execution,
       input: args.input,
       titleProvided: true,
+      seedWithoutRun: false,
     },
     state: {
       environmentId: args.environmentId,

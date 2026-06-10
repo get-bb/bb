@@ -271,6 +271,10 @@ function restorePre0022ThreadTypeSchema(db: DbConnection): void {
     ALTER TABLE threads ADD COLUMN sort_key text;
     CREATE INDEX threads_project_type_sort_idx
       ON threads (project_id, type, sort_key, id);
+
+    -- Drop columns added by migrations after this restore point so the forward
+    -- replay re-applies them (0024 child_origin) without duplicate-column errors.
+    ALTER TABLE threads DROP COLUMN child_origin;
   `);
 }
 

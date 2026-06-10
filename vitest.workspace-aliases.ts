@@ -45,6 +45,10 @@ export const workspaceTestAliases = {
     repoRoot,
     "packages/domain/src/thread-status.ts",
   ),
+  "@bb/domain/thread-child-origin": path.resolve(
+    repoRoot,
+    "packages/domain/src/thread-child-origin.ts",
+  ),
   "@bb/domain": path.resolve(repoRoot, "packages/domain/src/index.ts"),
   "@bb/templates/generated": path.resolve(
     repoRoot,

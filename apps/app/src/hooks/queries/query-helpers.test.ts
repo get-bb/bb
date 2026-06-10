@@ -14,6 +14,7 @@ import type {
   EnvironmentDiffResponse,
   EnvironmentStatusResponse,
   ProjectBranchesResponse,
+  ThreadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import {
@@ -141,6 +142,7 @@ function makeThreadWithRuntime(
     title: null,
     titleFallback: null,
     parentThreadId: null,
+    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     stopRequestedAt: null,
@@ -215,7 +217,10 @@ describe("resolveEnvironmentWorkStatusPlaceholder", () => {
 
 describe("resolveThreadPlaceholder", () => {
   it("reuses previous thread data only for the same thread query", () => {
-    const previousThread = makeThreadWithRuntime({ id: "thread-1" });
+    const previousThread: ThreadResponse = {
+      ...makeThreadWithRuntime({ id: "thread-1" }),
+      canSpawnChild: false,
+    };
 
     expect(
       resolveThreadPlaceholder(

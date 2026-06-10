@@ -239,6 +239,7 @@ async function createProvisioningThread(
       environmentIntent: args.environmentIntent,
       execution,
       input: args.request.input,
+      startedOnBehalfOf: args.request.startedOnBehalfOf,
       titleProvided: Boolean(args.request.title),
     });
   } catch (error) {

@@ -685,12 +685,17 @@ function ConversationRow({ row }: ConversationRowProps) {
   return (
     <ConversationMessageContent
       attachments={row.attachments}
+      id={row.id}
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
       resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
       role="assistant"
+      sourceSeqEnd={row.sourceSeqEnd}
+      sourceSeqStart={row.sourceSeqStart}
       text={row.text}
+      threadId={row.threadId}
+      turnId={row.turnId}
       turnRequest={row.turnRequest}
     />
   );
@@ -845,12 +850,17 @@ function TimelineExpandableBody({
               {row.output.trim().length > 0 ? (
                 <ConversationMessageContent
                   attachments={null}
+                  id={row.id}
                   onOpenLink={onOpenLink}
                   onOpenLocalFileLink={onOpenLocalFileLink}
                   projectId={projectId}
                   resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
                   role="assistant"
+                  sourceSeqEnd={row.sourceSeqEnd}
+                  sourceSeqStart={row.sourceSeqStart}
                   text={row.output}
+                  threadId={row.threadId}
+                  turnId={row.turnId}
                   turnRequest={null}
                 />
               ) : null}

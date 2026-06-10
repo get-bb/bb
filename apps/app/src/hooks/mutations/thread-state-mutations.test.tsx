@@ -4,7 +4,10 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
-import type { SidebarBootstrapResponse } from "@bb/server-contract";
+import type {
+  SidebarBootstrapResponse,
+  ThreadResponse,
+} from "@bb/server-contract";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import * as api from "@/lib/api";
 import {
@@ -47,7 +50,7 @@ interface SeedThreadCachesArgs {
 
 function makeThread(
   overrides: Partial<ThreadWithRuntime> = {},
-): ThreadWithRuntime {
+): ThreadResponse {
   return {
     archivedAt: null,
     automationId: null,
@@ -58,6 +61,8 @@ function makeThread(
     lastReadAt: null,
     latestAttentionAt: 10,
     parentThreadId: null,
+    childOrigin: null,
+    canSpawnChild: true,
     pinnedAt: null,
     projectId: "project-1",
     providerId: "codex",
@@ -178,7 +183,7 @@ describe("thread state mutations", () => {
   it("pins sidebar navigation threads optimistically", async () => {
     const thread = makeThread();
     const listEntry = makeThreadListEntry();
-    const pinDeferred = createDeferred<ThreadWithRuntime>();
+    const pinDeferred = createDeferred<ThreadResponse>();
     vi.mocked(api.pinThread).mockReturnValue(pinDeferred.promise);
     const { queryClient, wrapper } = createQueryClientTestHarness();
     seedThreadCaches({ queryClient, threads: [listEntry] });
@@ -208,7 +213,7 @@ describe("thread state mutations", () => {
   it("unpins sidebar navigation threads optimistically", async () => {
     const thread = makeThread({ pinnedAt: 123 });
     const listEntry = makeThreadListEntry({ pinnedAt: 123, pinSortKey: "a" });
-    const unpinDeferred = createDeferred<ThreadWithRuntime>();
+    const unpinDeferred = createDeferred<ThreadResponse>();
     vi.mocked(api.unpinThread).mockReturnValue(unpinDeferred.promise);
     const { queryClient, wrapper } = createQueryClientTestHarness();
     seedThreadCaches({ queryClient, threads: [listEntry] });
@@ -356,6 +361,7 @@ describe("thread state mutations", () => {
     const childThread = makeThread({
       id: "child-1",
       parentThreadId: parentThread.id,
+      childOrigin: null,
     });
     const otherThread = makeThread({
       id: "thread-2",
@@ -380,6 +386,7 @@ describe("thread state mutations", () => {
       makeThreadListEntry({
         id: childThread.id,
         parentThreadId: parentThread.id,
+        childOrigin: null,
       }),
       makeThreadListEntry({
         id: otherThread.id,
@@ -432,6 +439,7 @@ describe("thread state mutations", () => {
     const childThread = makeThread({
       id: "child-1",
       parentThreadId: parentThread.id,
+      childOrigin: null,
     });
     const parentListEntry = makeThreadListEntry({
       id: parentThread.id,
@@ -439,6 +447,7 @@ describe("thread state mutations", () => {
     const childListEntry = makeThreadListEntry({
       id: childThread.id,
       parentThreadId: parentThread.id,
+      childOrigin: null,
     });
     vi.mocked(api.archiveThreadAndChildren).mockRejectedValue(
       new Error("archive failed"),

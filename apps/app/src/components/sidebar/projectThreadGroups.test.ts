@@ -25,6 +25,7 @@ function createThread(
     titleFallback: "Thread",
     status: "idle",
     parentThreadId: null,
+    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
@@ -99,16 +100,19 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "standard-child",
         parentThreadId: "manager-root",
+        childOrigin: null,
         createdAt: 20,
       }),
       createThread({
         id: "standard-grandchild",
         parentThreadId: "standard-child",
+        childOrigin: null,
         createdAt: 30,
       }),
       createThread({
         id: "manager-grandchild",
         parentThreadId: "standard-grandchild",
+        childOrigin: null,
         createdAt: 40,
       }),
     ]);
@@ -137,6 +141,7 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "orphan-child",
         parentThreadId: "missing-parent",
+        childOrigin: null,
         createdAt: 20,
         latestAttentionAt: 20,
       }),
@@ -158,11 +163,13 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "cycle-a",
         parentThreadId: "cycle-b",
+        childOrigin: null,
         createdAt: 10,
       }),
       createThread({
         id: "cycle-b",
         parentThreadId: "cycle-a",
+        childOrigin: null,
         createdAt: 20,
       }),
     ]);
@@ -184,6 +191,7 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "worktree-a",
         parentThreadId: "parent",
+        childOrigin: null,
         environmentId: "env_shared",
         environmentWorkspaceDisplayKind: "managed-worktree",
         createdAt: 10,
@@ -192,6 +200,7 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "worktree-b",
         parentThreadId: "parent",
+        childOrigin: null,
         environmentId: "env_shared",
         environmentWorkspaceDisplayKind: "managed-worktree",
         createdAt: 20,
@@ -200,6 +209,7 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "loose-child",
         parentThreadId: "parent",
+        childOrigin: null,
         createdAt: 5,
         latestAttentionAt: 50,
       }),
@@ -224,6 +234,7 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "active-older-created",
         parentThreadId: "root",
+        childOrigin: null,
         status: "active",
         createdAt: 10,
         latestAttentionAt: 2_000,
@@ -235,6 +246,7 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "active-newer-created",
         parentThreadId: "root",
+        childOrigin: null,
         status: "active",
         createdAt: 20,
         latestAttentionAt: 1_500,
@@ -246,12 +258,14 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "idle-newer-attention",
         parentThreadId: "root",
+        childOrigin: null,
         createdAt: 40,
         latestAttentionAt: 900,
       }),
       createThread({
         id: "idle-older-attention",
         parentThreadId: "root",
+        childOrigin: null,
         createdAt: 30,
         latestAttentionAt: 750,
       }),
@@ -278,10 +292,12 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "quiet-child",
         parentThreadId: "parent",
+        childOrigin: null,
       }),
       createThread({
         id: "busy-grandchild",
         parentThreadId: "quiet-child",
+        childOrigin: null,
         status: "active",
         runtime: {
           displayStatus: "active",
@@ -291,6 +307,7 @@ describe("buildProjectThreadGroups", () => {
       createThread({
         id: "pending-grandchild",
         parentThreadId: "quiet-child",
+        childOrigin: null,
         hasPendingInteraction: true,
       }),
     ]);

@@ -105,6 +105,25 @@ function resolveThreadSubtreeDepth(
   return maxChildDepth + 1;
 }
 
+export interface CanThreadSpawnChildArgs {
+  thread: ParentThread;
+}
+
+/**
+ * True when a fork/side-chat may be created under this thread, i.e. its current
+ * hierarchy depth is below MAX_THREAD_HIERARCHY_DEPTH so a new child would not
+ * exceed the cap. Server-derived policy so clients never recompute the cap.
+ */
+export function canThreadSpawnChild(
+  deps: Pick<AppDeps, "db">,
+  args: CanThreadSpawnChildArgs,
+): boolean {
+  const depth = resolveParentDepth(deps, {
+    parentThread: args.thread,
+  });
+  return depth < MAX_THREAD_HIERARCHY_DEPTH;
+}
+
 export function assertValidParentThread(
   deps: Pick<AppDeps, "db">,
   args: AssertValidParentThreadArgs,

@@ -124,6 +124,7 @@ function makeThreadListEntry(
     lastReadAt: null,
     latestAttentionAt: index,
     parentThreadId: null,
+    childOrigin: null,
     pinnedAt: null,
     pinSortKey: null,
     projectId,
@@ -610,6 +611,7 @@ describe("ProjectList", () => {
     const workerThread = makeThreadListEntry(project.id, 9, {
       id: "thread-parent-worker",
       parentThreadId: parentThread.id,
+      childOrigin: null,
       title: "Worker Thread",
       titleFallback: "Worker Thread",
     });
@@ -838,6 +840,7 @@ describe("ProjectList", () => {
     const workerThread = makeThreadListEntry(project.id, 9, {
       id: "thread-parent-collapse-worker",
       parentThreadId: parentThread.id,
+      childOrigin: null,
       title: "Worker Thread",
       titleFallback: "Worker Thread",
     });
@@ -1476,6 +1479,7 @@ describe("ProjectList", () => {
     const childThread = makeThreadListEntry(project.id, 21, {
       id: "thread-child",
       parentThreadId: pinnedParent.id,
+      childOrigin: null,
       title: "Child Thread",
       titleFallback: "Child Thread",
     });
@@ -1537,6 +1541,7 @@ describe("ProjectList", () => {
     const projectlessChild = makeThreadListEntry(PERSONAL_PROJECT_ID, 13, {
       id: "thread-projectless-child",
       parentThreadId: projectlessParent.id,
+      childOrigin: null,
       title: "Projectless Child",
       titleFallback: "Projectless Child",
     });
@@ -1638,6 +1643,7 @@ describe("ProjectList", () => {
       title: "Inner A",
       titleFallback: "Inner A",
       parentThreadId: outerA.id,
+      childOrigin: null,
       environmentId: "env-inner",
       environmentBranchName: "inner",
       environmentWorkspaceDisplayKind: "managed-worktree",
@@ -1648,6 +1654,7 @@ describe("ProjectList", () => {
       title: "Inner B",
       titleFallback: "Inner B",
       parentThreadId: outerA.id,
+      childOrigin: null,
       environmentId: "env-inner",
       environmentBranchName: "inner",
       environmentWorkspaceDisplayKind: "managed-worktree",

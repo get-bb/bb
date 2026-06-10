@@ -17,6 +17,7 @@ function createThread(
     titleFallback: "Thread",
     status: "idle",
     parentThreadId: null,
+    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
@@ -101,10 +102,12 @@ describe("buildPinnedSidebarState", () => {
         createThread({
           id: "manager-child",
           parentThreadId: "standard-parent",
+          childOrigin: null,
         }),
         createThread({
           id: "standard-grandchild",
           parentThreadId: "manager-child",
+          childOrigin: null,
         }),
         createThread({
           id: "root",
@@ -130,6 +133,7 @@ describe("buildPinnedSidebarState", () => {
         createThread({
           id: "child",
           parentThreadId: "parent",
+          childOrigin: null,
           pinnedAt: 1_000,
           pinSortKey: "a",
         }),
@@ -150,6 +154,7 @@ describe("buildPinnedSidebarState", () => {
         createThread({
           id: "child",
           parentThreadId: "parent",
+          childOrigin: null,
           pinnedAt: 1_000,
           pinSortKey: "b",
         }),

@@ -78,6 +78,7 @@ function threadWithRuntime({
     lastReadAt: null,
     latestAttentionAt: 10,
     parentThreadId: null,
+    childOrigin: null,
     pinnedAt: null,
     projectId,
     providerId: "provider-1",

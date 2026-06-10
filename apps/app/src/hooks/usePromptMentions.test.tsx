@@ -46,6 +46,7 @@ function makeThreadListEntry(
     lastReadAt: null,
     latestAttentionAt: 1,
     parentThreadId: null,
+    childOrigin: null,
     pinSortKey: null,
     pinnedAt: null,
     projectId: "proj_code",

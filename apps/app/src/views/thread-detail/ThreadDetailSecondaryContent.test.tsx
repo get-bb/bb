@@ -226,6 +226,7 @@ function makeThread(): Thread {
     titleFallback: null,
     status: "idle",
     parentThreadId: null,
+    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     stopRequestedAt: null,

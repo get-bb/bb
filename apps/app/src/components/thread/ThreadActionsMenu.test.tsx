@@ -41,6 +41,7 @@ function makeThread(
     lastReadAt: null,
     latestAttentionAt: 10,
     parentThreadId: null,
+    childOrigin: null,
     pinnedAt: null,
     projectId: "project-1",
     providerId: "provider-1",

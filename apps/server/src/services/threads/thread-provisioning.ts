@@ -8,6 +8,7 @@ import {
   type ThreadTurnInitiator,
   type TurnRequestTarget,
 } from "@bb/domain";
+import type { StartedOnBehalfOf } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import {
   appendClientTurnEvent,
@@ -33,12 +34,17 @@ import {
   type ThreadProvisioningDeps,
 } from "./thread-provisioning-environment.js";
 import { forgetActiveThreadProvisionContext } from "./thread-provisioning-active-context.js";
+import { tryTransition } from "./thread-transitions.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
   input: PromptInput[];
+  // Non-null ⇒ the thread-start turn is attributed to another agent/thread and
+  // the provider run is deferred until the user's first message (fork /
+  // side-chat anchors). null ⇒ a normal user-initiated start.
+  startedOnBehalfOf: StartedOnBehalfOf | null;
   thread: Thread;
   titleProvided: boolean;
 }
@@ -121,6 +127,15 @@ async function startThreadIfEnvironmentReady(
     throw new Error("Workspace ready event sequence was not recorded");
   }
 
+  if (args.context.request.seedWithoutRun) {
+    // Fork / side-chat anchor: the thread-start turn is already persisted and
+    // displayed (initiator agent/system). The started agent must wait for the
+    // user's first message, so we do not dispatch a provider run here — we land
+    // the thread in `idle`, ready to accept the user's turn.
+    tryTransition(deps.db, deps.hub, args.thread.id, "idle");
+    return;
+  }
+
   await requestThreadStart(deps, {
     thread: args.thread,
     environment: {
@@ -148,7 +163,9 @@ export function requestThreadProvision(
   deps: Pick<AppDeps, "db" | "hub">,
   args: RequestThreadProvisionArgs,
 ): ThreadProvisionContext {
-  const initiator: ThreadTurnInitiator = "user";
+  const initiator: ThreadTurnInitiator =
+    args.startedOnBehalfOf?.initiator ?? "user";
+  const senderThreadId = args.startedOnBehalfOf?.senderThreadId ?? null;
   const target: TurnRequestTarget = { kind: "thread-start" };
   const request = appendClientTurnEvent(deps, {
     threadId: args.thread.id,
@@ -157,7 +174,7 @@ export function requestThreadProvision(
     input: args.input,
     execution: args.execution,
     initiator,
-    senderThreadId: null,
+    senderThreadId,
     requestMethod: "thread/start",
     source: "spawn",
     target,
@@ -181,6 +198,7 @@ export function requestThreadProvision(
   const context = createMetadataPendingContext({
     ...args,
     clientRequestId: request.requestId,
+    seedWithoutRun: args.startedOnBehalfOf !== null,
   });
   saveThreadProvisionContext({
     threadId: args.thread.id,

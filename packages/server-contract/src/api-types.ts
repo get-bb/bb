@@ -26,6 +26,7 @@ import {
   terminalColsSchema,
   terminalDataBase64Schema,
   terminalRowsSchema,
+  threadChildOriginSchema,
   threadListEntrySchema,
   threadGitDiffResponseSchema,
   threadTimelinePendingTodosSchema,
@@ -532,6 +533,23 @@ export type ExistingThreadExecutionInputSources = z.infer<
   typeof existingThreadExecutionInputSourcesSchema
 >;
 
+// "started on behalf of another thread/agent": the thread-start turn is
+// attributed to {initiator} and rendered as "Message from {senderThreadId}".
+// null ⇒ a normal user-initiated start. A non-null value also flags the
+// thread-start turn as seed-without-run (the started agent waits for the user's
+// first message), mirroring the `client/turn/requested` event whose
+// `senderThreadId` is non-null only for agent/system starts.
+export const startedOnBehalfOfInitiatorSchema = z.enum(["agent", "system"]);
+export type StartedOnBehalfOfInitiator = z.infer<
+  typeof startedOnBehalfOfInitiatorSchema
+>;
+
+export const startedOnBehalfOfSchema = z.object({
+  initiator: startedOnBehalfOfInitiatorSchema,
+  senderThreadId: z.string().min(1),
+});
+export type StartedOnBehalfOf = z.infer<typeof startedOnBehalfOfSchema>;
+
 export const createThreadRequestSchema = z.object({
   projectId: z.string().min(1),
   providerId: z.string().min(1).optional(),
@@ -545,6 +563,8 @@ export const createThreadRequestSchema = z.object({
   executionInputSources: createExecutionInputSourcesSchema.optional(),
   environment: environmentArgsSchema,
   parentThreadId: z.string().min(1).optional(),
+  startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
+  childOrigin: threadChildOriginSchema.nullable().default(null),
 });
 export type CreateThreadRequest = z.infer<typeof createThreadRequestSchema>;
 
@@ -847,7 +867,13 @@ export type SendQueuedMessageResponse = z.infer<
 export const threadListResponseSchema = z.array(threadListEntrySchema);
 export type ThreadListResponse = z.infer<typeof threadListResponseSchema>;
 
-export const threadResponseSchema = threadWithRuntimeSchema;
+// canSpawnChild is a server-derived policy flag: true when the thread's
+// hierarchy depth is below MAX_THREAD_HIERARCHY_DEPTH, so a fork/side-chat may
+// be created under it. Computed on the server so clients never recompute the
+// depth cap.
+export const threadResponseSchema = threadWithRuntimeSchema.extend({
+  canSpawnChild: z.boolean(),
+});
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;
 
 export const threadIncludeOptionSchema = z.enum(["environment", "host"]);
@@ -1270,6 +1296,8 @@ export const threadListQuerySchema = z.object({
   archived: z.enum(["true", "false"]).optional(),
   /** Filter by parent thread presence: "true" means child threads; "false" means root threads. */
   hasParent: z.enum(["true", "false"]).optional(),
+  /** Restrict to child threads spawned with this origin (fork or side-chat). */
+  childOrigin: threadChildOriginSchema.optional(),
   limit: z.string().regex(/^\d+$/).optional(),
   offset: z.string().regex(/^\d+$/).optional(),
 });
