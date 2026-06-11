@@ -4,7 +4,6 @@ import {
   type ReactNode,
   useCallback,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { useAtomValue } from "jotai";
@@ -14,11 +13,6 @@ import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@/components/ui/button.js";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import { COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover.js";
 import { cn } from "@/lib/utils";
 import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
@@ -78,12 +72,6 @@ const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
 };
 const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 
-export interface NewTabMenuRenderProps {
-  closeMenu: () => void;
-}
-
-export type NewTabMenuRenderer = (props: NewTabMenuRenderProps) => ReactNode;
-
 interface ResolveActiveFixedPanelArgs {
   activeTab: SecondaryFixedPanelTab | null;
   canUseGitUi: boolean;
@@ -117,7 +105,7 @@ export interface ThreadSecondaryPanelProps {
   onPanelChange: (panel: ThreadSecondaryPanelTab) => void;
   onCollapse: () => void;
   onClose: () => void;
-  renderNewTabMenu: NewTabMenuRenderer;
+  onOpenNewTab: () => void;
   workspaceRootPath?: string | null;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
@@ -193,7 +181,7 @@ export function ThreadSecondaryPanel({
   onPanelChange,
   onCollapse,
   onClose,
-  renderNewTabMenu,
+  onOpenNewTab,
   workspaceRootPath,
   onOpenFileInEditor,
   onOpenFilePreview,
@@ -387,7 +375,7 @@ export function ThreadSecondaryPanel({
               />
             ) : null}
             <NewTabButton
-              renderNewTabMenu={renderNewTabMenu}
+              onOpenNewTab={onOpenNewTab}
               usesDesktopChrome={usesDesktopChrome}
             />
           </div>
@@ -548,58 +536,29 @@ export function ThreadSecondaryPanel({
 }
 
 interface NewTabButtonProps {
-  renderNewTabMenu: NewTabMenuRenderer;
+  onOpenNewTab: () => void;
   usesDesktopChrome: boolean;
 }
 
 function NewTabButton({
-  renderNewTabMenu,
+  onOpenNewTab,
   usesDesktopChrome,
 }: NewTabButtonProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const closeMenu = useCallback(() => {
-    setIsOpen(false);
-  }, []);
-  const handleOpenAutoFocus = useCallback((event: Event) => {
-    // Radix focuses the first row on open, which paints it with the
-    // keyboard-focus highlight and makes the menu read as if Open file were
-    // already selected. Move focus to the popout container instead so no row is
-    // highlighted at rest; the first Tab still lands on Open file with the
-    // visible focus cue, and the menu stays keyboard-reachable inside the portal.
-    event.preventDefault();
-    contentRef.current?.focus();
-  }, []);
-
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={cn(
-            SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
-            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-          )}
-          aria-label="Open tab menu"
-          title="New tab"
-        >
-          <Icon name="Plus" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        ref={contentRef}
-        align="start"
-        side="bottom"
-        sideOffset={6}
-        className="w-auto min-w-40 p-1 focus-visible:ring-0"
-        mobileTitle="New tab menu"
-        onOpenAutoFocus={handleOpenAutoFocus}
-      >
-        {renderNewTabMenu({ closeMenu })}
-      </PopoverContent>
-    </Popover>
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className={cn(
+        SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
+        usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+      )}
+      onClick={onOpenNewTab}
+      aria-label="Open new tab"
+      title="New tab"
+    >
+      <Icon name="Plus" />
+    </Button>
   );
 }
 
