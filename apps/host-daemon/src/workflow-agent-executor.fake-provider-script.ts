@@ -26,7 +26,7 @@ type JsonRpcId = number | string;
 interface ThreadState {
   providerThreadId: string;
   turnCount: number;
-  activeTurn: { turnId: string; timer: NodeJS.Timeout | null } | null;
+  activeTurn: { turnId: string; timer: ReturnType<typeof setTimeout> | null } | null;
   /** Set by a working turn carrying `schema-miss-once:<path>`. */
   schemaMissMarkerPath: string | null;
 }

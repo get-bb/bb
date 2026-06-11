@@ -122,35 +122,6 @@ describe("@bb/templates", () => {
     );
   });
 
-
-  it("renders bbGuideApp", () => {
-    const templates = listTemplates();
-    expect(templates.some((template) => template.id === "bbGuideApp")).toBe(
-      true,
-    );
-
-    const rendered = renderTemplate("bbGuideApp", {});
-
-    expect(rendered).toContain("Apps");
-    expect(rendered).toContain("<dataDir>/apps/<applicationId>/");
-    expect(rendered).toContain("window.bb.data");
-    expect(rendered).toContain("bb app current --json");
-    expect(rendered).toContain("Vite + React + TypeScript Todo app");
-    expect(rendered).toContain("pnpm build");
-    expect(rendered).toContain("skills/add-todos/SKILL.md");
-    expect(rendered).toContain(
-      '<script src="https://cdn.tailwindcss.com"></script>',
-    );
-    expect(rendered).toContain(
-      "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap",
-    );
-    expect(rendered).toContain("--background: oklch(1 0 0);");
-    expect(rendered).toContain(
-      "@media (prefers-color-scheme: dark) {\n  :root {",
-    );
-    expect(rendered).toContain("--background: oklch(0.195 0 0);");
-  });
-
   it("renders bbGuideSchedules", () => {
     const templates = listTemplates();
     expect(

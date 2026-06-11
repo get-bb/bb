@@ -293,7 +293,7 @@ interface RunHandle {
   stderrTail: string[];
   journalStream: WriteStream | null;
   /** Armed by cancelRun: forces termination if the child never settles. */
-  cancelEscalation: NodeJS.Timeout | null;
+  cancelEscalation: ReturnType<typeof setTimeout> | null;
   exited: boolean;
   /** Resolves after exit cleanup (executor shutdown, pid/heartbeat removal). */
   done: Promise<void>;
@@ -461,7 +461,7 @@ export class WorkflowRunManager {
     handle.abort.abort();
     this.writeRunnerLine(handle, encodeWorkflowRunnerAbort());
     if (handle.cancelEscalation === null) {
-      handle.cancelEscalation = setTimeout(() => {
+      const cancelEscalation = setTimeout(() => {
         if (!handle.exited) {
           this.options.logger.warn(
             { runId: handle.runId },
@@ -470,7 +470,8 @@ export class WorkflowRunManager {
           void this.terminateRun(handle);
         }
       }, this.options.cancelEscalationGraceMs);
-      handle.cancelEscalation.unref();
+      cancelEscalation.unref?.();
+      handle.cancelEscalation = cancelEscalation;
     }
     return true;
   }

@@ -6,7 +6,7 @@ import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
 import { workflowRunStatusPillVariant } from "@/components/workflow/workflow-run-status.js";
-import { getWorkflowRunRoutePath } from "@/lib/app-route-paths";
+import { getWorkflowRunRoutePath } from "@/lib/route-paths";
 import { formatRelativeTime } from "@/lib/relative-time";
 
 /**

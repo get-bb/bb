@@ -22,7 +22,7 @@ import remarkGfm from "remark-gfm";
 import { ImageLightbox } from "./image-lightbox.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "./icon.js";
-import { AppRouteAnchor } from "./app-route-anchor.js";
+import { RouteAnchor } from "./app-route-anchor.js";
 import { normalizeLocalFileMarkdownLinks } from "./markdown-local-file-link-normalize.js";
 import {
   buildLocalFileAnchorHref,
@@ -34,7 +34,7 @@ import type {
   MarkdownLocalFileLinkRouting,
 } from "./markdown-link-routing.js";
 import { usePreferredTheme, type Theme } from "@/hooks/useTheme";
-import { resolveAppRouteHref } from "@/lib/app-route-paths";
+import { resolveRouteHref } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 
 export interface MarkdownPreviewProps {
@@ -128,7 +128,7 @@ function isMarkdownAppRouteHref({
   }
 
   return (
-    resolveAppRouteHref({
+    resolveRouteHref({
       currentOrigin: window.location.origin,
       href,
     }) !== null
@@ -208,7 +208,7 @@ function MarkdownAnchor({
   };
 
   return (
-    <AppRouteAnchor
+    <RouteAnchor
       {...anchorProps}
       href={anchorHref}
       className={cn(
@@ -227,7 +227,7 @@ function MarkdownAnchor({
           className="size-3 shrink-0 self-center text-subtle-foreground"
         />
       ) : null}
-    </AppRouteAnchor>
+    </RouteAnchor>
   );
 }
 

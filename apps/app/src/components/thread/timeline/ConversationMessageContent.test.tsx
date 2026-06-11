@@ -17,7 +17,7 @@ import {
   installElementOverflowMetrics,
   restoreElementOverflowMetrics,
 } from "./conversation-message-overflow.test-utils";
-import { AppRouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 
 interface LocationProbeProps {
   label: string;
@@ -233,7 +233,7 @@ describe("ConversationMessageContent", () => {
       "Line 1\nLine 2\nLine 3\nLine 4\nAdditional details that make this generated message long enough to expand.";
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <AppRouteNavigationProvider>
+        <RouteNavigationProvider>
           <ConversationMessageContent
             role="user"
             initiator="agent"
@@ -253,7 +253,7 @@ describe("ConversationMessageContent", () => {
             turnRequest={{ kind: "message", status: "accepted" }}
           />
           <LocationProbe label="location" />
-        </AppRouteNavigationProvider>
+        </RouteNavigationProvider>
       </MemoryRouter>,
     );
 
@@ -263,7 +263,7 @@ describe("ConversationMessageContent", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
 
     // Clicking the sender thread link navigates and does NOT also toggle the
-    // row — this is the AppRouteAnchor stopPropagation contract that lets a
+    // row — this is the RouteAnchor stopPropagation contract that lets a
     // <a> live inside the header <button> without HTML's nested-button
     // restriction surfacing as a UX bug.
     const senderLink = screen.getByRole("link", { name: "Frontend thread" });
@@ -288,7 +288,7 @@ describe("ConversationMessageContent", () => {
   it("renders short agent-originated messages as static rows with no expansion affordance", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <AppRouteNavigationProvider>
+        <RouteNavigationProvider>
           <ConversationMessageContent
             role="user"
             initiator="agent"
@@ -307,7 +307,7 @@ describe("ConversationMessageContent", () => {
             text={"[bb message from thread:thr_sender123]\n\nDone."}
             turnRequest={{ kind: "message", status: "accepted" }}
           />
-        </AppRouteNavigationProvider>
+        </RouteNavigationProvider>
       </MemoryRouter>,
     );
 
@@ -338,7 +338,7 @@ describe("ConversationMessageContent", () => {
       try {
         render(
           <MemoryRouter initialEntries={["/"]}>
-            <AppRouteNavigationProvider>
+            <RouteNavigationProvider>
               <ConversationMessageContent
                 role="user"
                 initiator="agent"
@@ -356,7 +356,7 @@ describe("ConversationMessageContent", () => {
                 text={`[bb message from thread:thr_sender123]\n\n${messageBody}`}
                 turnRequest={{ kind: "message", status: "accepted" }}
               />
-            </AppRouteNavigationProvider>
+            </RouteNavigationProvider>
           </MemoryRouter>,
         );
 

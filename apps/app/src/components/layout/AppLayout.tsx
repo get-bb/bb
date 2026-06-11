@@ -25,11 +25,10 @@ import {
 import { useExperiments } from "@/hooks/queries/system-queries";
 import { useWorkflowRun } from "@/hooks/queries/workflow-queries";
 import {
-  useApp,
   useThread,
   useThreadDetailBootstrap,
 } from "@/hooks/queries/thread-queries";
-import { useAppRoute } from "@/hooks/useAppRoute";
+import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
 import { cn } from "@/lib/utils";
@@ -54,7 +53,7 @@ import {
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
   getProjectWorkflowsRoutePath,
-} from "@/lib/app-route-paths";
+} from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
@@ -393,16 +392,14 @@ export function AppLayout({ children }: AppLayoutProps) {
   const {
     projectId,
     threadId,
-    applicationId,
     workflowRunId,
-    isAppView,
     isThreadView,
     isArchivedView,
     isWorkflowsView,
     isWorkflowRunView,
     isSettingsView,
     isRootView,
-  } = useAppRoute();
+  } = useRouteState();
   const sidebarNavigationQuery = useSidebarNavigation();
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
@@ -446,11 +443,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";
-  // The standalone app route has no thread/project chrome, so the global header
-  // carries the app name (resolved from the manifest) the way it carries thread
-  // and project titles elsewhere.
-  const { data: app } = useApp(applicationId, { enabled: isAppView });
-  const appDisplayTitle = app?.name ?? "App";
   // The run page route is projectless, so the run row (shared query with the
   // page itself) is the only synchronous source for the document title.
   const { data: workflowRun } = useWorkflowRun(
@@ -465,12 +457,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
         subtitle: undefined,
       }
-    : isAppView
-      ? {
-          title: appDisplayTitle,
-          subtitle: undefined,
-        }
-      : isArchivedView && projectId
+    : isArchivedView && projectId
         ? {
             title: "",
             subtitle: undefined,
@@ -516,9 +503,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const documentTitle = (() => {
     if (isThreadView) {
       return threadDisplayTitle;
-    }
-    if (isAppView) {
-      return appDisplayTitle;
     }
     if (isArchivedView && projectId) {
       return `${projectLabel ?? projectId} · Archived`;

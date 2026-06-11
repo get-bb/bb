@@ -11,7 +11,6 @@ export const REALTIME_ENTITIES = [
   "environment",
   "host",
   "system",
-  "app",
   "workflow-run",
 ] as const;
 export type RealtimeEntity = (typeof REALTIME_ENTITIES)[number];
@@ -63,16 +62,8 @@ export const HOST_CHANGE_KINDS = [
 ] as const;
 export type HostChangeKind = (typeof HOST_CHANGE_KINDS)[number];
 
-export const SYSTEM_CHANGE_KINDS = ["config-changed", "apps-changed"] as const;
+export const SYSTEM_CHANGE_KINDS = ["config-changed"] as const;
 export type SystemChangeKind = (typeof SYSTEM_CHANGE_KINDS)[number];
-
-/**
- * `apps-changed` is the list-level kind broadcast without an app id (some app
- * was installed, updated, or removed). App-scoped kinds like `content-changed`
- * always carry the application id and have dedicated producers.
- */
-export const APP_CHANGE_KINDS = ["apps-changed", "content-changed"] as const;
-export type AppChangeKind = (typeof APP_CHANGE_KINDS)[number];
 
 /**
  * `run-updated` covers run row changes (status, snapshot fold, usage,
@@ -90,7 +81,6 @@ export const projectChangeKindSchema = z.enum(PROJECT_CHANGE_KINDS);
 export const environmentChangeKindSchema = z.enum(ENVIRONMENT_CHANGE_KINDS);
 export const hostChangeKindSchema = z.enum(HOST_CHANGE_KINDS);
 export const systemChangeKindSchema = z.enum(SYSTEM_CHANGE_KINDS);
-export const appChangeKindSchema = z.enum(APP_CHANGE_KINDS);
 export const workflowRunChangeKindSchema = z.enum(WORKFLOW_RUN_CHANGE_KINDS);
 
 export const subscribeMessageSchema = z.object({
@@ -186,22 +176,6 @@ export const systemChangedMessageSchema = z
   .strict();
 export type SystemChangedMessage = z.infer<typeof systemChangedMessageSchema>;
 
-/**
- * App changed messages carry an `id` only for app-scoped kinds: absence means
- * a list-level signal (`apps-changed` — some app was installed, updated, or
- * removed), presence means the change applies to that one application
- * (`content-changed` — its served `public/` files changed on disk).
- */
-export const appChangedMessageSchema = z
-  .object({
-    type: z.literal("changed"),
-    entity: z.literal("app"),
-    id: z.string().optional(),
-    changes: z.array(appChangeKindSchema).readonly(),
-  })
-  .strict();
-export type AppChangedMessage = z.infer<typeof appChangedMessageSchema>;
-
 export const workflowRunChangedMessageSchema = z
   .object({
     type: z.literal("changed"),
@@ -220,7 +194,6 @@ export const changedMessageSchema = z.discriminatedUnion("entity", [
   environmentChangedMessageSchema,
   hostChangedMessageSchema,
   systemChangedMessageSchema,
-  appChangedMessageSchema,
   workflowRunChangedMessageSchema,
 ]);
 export type ChangedMessage = z.infer<typeof changedMessageSchema>;
@@ -294,13 +267,6 @@ const systemChangedMessageLenientSchema = z.object({
   changes: lenientKinds(SYSTEM_CHANGE_KINDS),
 });
 
-const appChangedMessageLenientSchema = z.object({
-  type: z.literal("changed"),
-  entity: z.literal("app"),
-  id: z.string().optional(),
-  changes: lenientKinds(APP_CHANGE_KINDS),
-});
-
 const workflowRunChangedMessageLenientSchema = z.object({
   type: z.literal("changed"),
   entity: z.literal("workflow-run"),
@@ -314,6 +280,5 @@ export const changedMessageLenientSchema = z.discriminatedUnion("entity", [
   environmentChangedMessageLenientSchema,
   hostChangedMessageLenientSchema,
   systemChangedMessageLenientSchema,
-  appChangedMessageLenientSchema,
   workflowRunChangedMessageLenientSchema,
 ]);

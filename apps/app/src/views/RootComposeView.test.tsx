@@ -35,7 +35,7 @@ import type {
 import { createProjectRequestSchema } from "@bb/server-contract";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { NAVIGATE_TO_THREAD_AFTER_CREATE_STORAGE_KEY } from "@/lib/root-compose-create-preference";
 import {
   QuickCreateProjectProvider,

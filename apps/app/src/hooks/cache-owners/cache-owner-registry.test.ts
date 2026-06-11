@@ -89,8 +89,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentQueryKey",
   ],
   "hooks/cache-owners/mutation-cache-effects.ts": [
-    "allAppsQueryKeyPrefix",
-    "appSourcesQueryKey",
     "projectPathsQueryKeyPrefix",
     "sidebarNavigationQueryKey",
     "threadDefaultExecutionOptionsQueryKey",
@@ -131,15 +129,9 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
   "hooks/cache-owners/realtime-cache-registry.ts": [
     "allHostQueryKeyPrefix",
-    "allAppMarkdownPreviewQueryKeyPrefix",
-    "allAppQueryKeyPrefix",
-    "allAppsQueryKeyPrefix",
     "allSystemExecutionOptionsQueryKeyPrefix",
     "allThreadSchedulesQueryKeyPrefix",
     "automationsOverviewQueryKey",
-    "appMarkdownPreviewQueryKeyPrefix",
-    "appQueryKey",
-    "appSourcesQueryKey",
     "allThreadQueryKeyPrefix",
     "allThreadTerminalsQueryKeyPrefix",
     "environmentFilePreviewQueryKeyPrefix",
@@ -170,9 +162,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allEnvironmentQueryKeyPrefix",
     "allEnvironmentWorkStatusQueryKeyPrefix",
     "allHostQueryKeyPrefix",
-    "allAppMarkdownPreviewQueryKeyPrefix",
-    "allAppQueryKeyPrefix",
-    "allAppsQueryKeyPrefix",
     "allProjectPathsQueryKeyPrefix",
     "allSystemExecutionOptionsQueryKeyPrefix",
     "allThreadDefaultExecutionOptionsQueryKeyPrefix",
@@ -242,7 +231,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
 };
 
-function getAppSourceRoot(): string {
+function getSourceRoot(): string {
   return path.resolve(new URL("../../", import.meta.url).pathname);
 }
 
@@ -263,7 +252,7 @@ function collectSourceFilePaths(directoryPath: string): string[] {
 }
 
 function toAppRelativePath(filePath: string): string {
-  return path.relative(getAppSourceRoot(), filePath).split(path.sep).join("/");
+  return path.relative(getSourceRoot(), filePath).split(path.sep).join("/");
 }
 
 function isTestOrStoryFile(relativePath: string): boolean {
@@ -337,7 +326,7 @@ function compareSourceFileViolations(
 
 function collectRawCacheWriteViolations(): SourceFileViolation[] {
   const violations: SourceFileViolation[] = [];
-  for (const filePath of collectSourceFilePaths(getAppSourceRoot())) {
+  for (const filePath of collectSourceFilePaths(getSourceRoot())) {
     const relativePath = toAppRelativePath(filePath);
     if (isTestOrStoryFile(relativePath) || isCacheOwnerFile(relativePath)) {
       continue;
@@ -383,7 +372,7 @@ function collectCacheOwnerQueryKeyImportViolations(): SourceFileViolation[] {
   const actualImportsByFile = new Map<string, Set<string>>();
   const cacheOwnerSourceFiles = new Map<string, ts.SourceFile>();
 
-  for (const filePath of collectSourceFilePaths(getAppSourceRoot())) {
+  for (const filePath of collectSourceFilePaths(getSourceRoot())) {
     const relativePath = toAppRelativePath(filePath);
     if (isTestOrStoryFile(relativePath) || !isCacheOwnerFile(relativePath)) {
       continue;
@@ -503,7 +492,7 @@ function collectCacheOwnerQueryKeyImportViolations(): SourceFileViolation[] {
 
 function collectCacheImportBoundaryViolations(): SourceFileViolation[] {
   const violations: SourceFileViolation[] = [];
-  for (const filePath of collectSourceFilePaths(getAppSourceRoot())) {
+  for (const filePath of collectSourceFilePaths(getSourceRoot())) {
     const relativePath = toAppRelativePath(filePath);
     if (
       isTestOrStoryFile(relativePath) ||
@@ -551,7 +540,7 @@ function resolveAppImportModulePath(
 
 function collectDeprecatedCacheShimImportViolations(): SourceFileViolation[] {
   const violations: SourceFileViolation[] = [];
-  for (const filePath of collectSourceFilePaths(getAppSourceRoot())) {
+  for (const filePath of collectSourceFilePaths(getSourceRoot())) {
     const relativePath = toAppRelativePath(filePath);
     const sourceFile = parseSourceFile(filePath);
     sourceFile.forEachChild((node) => {
@@ -584,7 +573,7 @@ function collectDeprecatedCacheShimImportViolations(): SourceFileViolation[] {
 }
 
 describe("cache owner boundaries", () => {
-  it("keeps raw app-domain cache writes inside cache owners", () => {
+  it("keeps raw frontend-domain cache writes inside cache owners", () => {
     expect(collectRawCacheWriteViolations()).toEqual([]);
   });
 

@@ -9,10 +9,6 @@ import {
   type HostDaemonInteractiveInterruptResponse,
   type HostDaemonInteractiveRequestResponse,
   type HostDaemonActiveThread,
-  type HostDaemonAppDataChangePayload,
-  type HostDaemonAppDataChangeRequest,
-  type HostDaemonAppDataResyncPayload,
-  type HostDaemonAppDataResyncRequest,
   type HostDaemonEventBatchRequest,
   type HostDaemonEventEnvelope,
   type HostDaemonInteractiveInterruptRequest,
@@ -174,8 +170,6 @@ export interface ServerClient {
   fetchProjectAttachment(
     args: FetchProjectAttachmentArgs,
   ): Promise<FetchedProjectAttachment>;
-  postAppDataChange(args: HostDaemonAppDataChangePayload): Promise<void>;
-  postAppDataResync(args: HostDaemonAppDataResyncPayload): Promise<void>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
   postWorkflowRunEvents(
     events: HostDaemonWorkflowRunEventEnvelope[],
@@ -407,44 +401,6 @@ export function createServerClient(
       return {
         bytes,
       };
-    },
-
-    async postAppDataChange(args): Promise<void> {
-      const payload: HostDaemonAppDataChangeRequest = {
-        sessionId: requireSessionId(),
-        ...args,
-      };
-      const response = await fetchFn(
-        buildInternalUrl("/session/app-data-change"),
-        {
-          method: "POST",
-          headers: headers(),
-          body: JSON.stringify(payload),
-        },
-      );
-
-      if (!response.ok) {
-        throw await createResponseError("post app data change", response);
-      }
-    },
-
-    async postAppDataResync(args): Promise<void> {
-      const payload: HostDaemonAppDataResyncRequest = {
-        sessionId: requireSessionId(),
-        ...args,
-      };
-      const response = await fetchFn(
-        buildInternalUrl("/session/app-data-resync"),
-        {
-          method: "POST",
-          headers: headers(),
-          body: JSON.stringify(payload),
-        },
-      );
-
-      if (!response.ok) {
-        throw await createResponseError("post app data resync", response);
-      }
     },
 
     async postEvents(

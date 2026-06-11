@@ -4,7 +4,7 @@ import type {
   JsonBodyOf,
 } from "./response.js";
 
-export type BbSdkRuntime = "node" | "browser" | "injected-app";
+export type BbSdkRuntime = "node" | "browser";
 
 export interface BbSdkTransport {
   api: ApiClient["api"];
@@ -50,14 +50,7 @@ export interface BbRealtimeSocket {
 
 export type BbRealtimeSocketFactory = (url: string) => BbRealtimeSocket;
 
-export interface BbSdkContext {
-  applicationId?: string;
-  appSessionToken?: string;
-  targetThreadId?: string;
-  appRootPath?: string;
-  appDataPath?: string;
-  appsRootPath?: string;
-}
+export interface BbSdkContext {}
 
 export interface CreateHttpTransportArgs {
   baseUrl?: string;

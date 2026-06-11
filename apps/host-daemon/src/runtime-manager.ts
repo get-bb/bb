@@ -10,8 +10,6 @@ import {
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
 import type {
-  AppDataPath,
-  ApplicationId,
   PendingInteractionCreate,
   PendingInteractionResolution,
   ThreadEvent,
@@ -26,13 +24,10 @@ import type {
   HostDaemonActiveThread,
   HostDaemonEnvironmentChange,
   HostDaemonLoadedEnvironment,
-  HostDaemonTrackedApplicationDataTarget,
   HostDaemonTrackedThreadTarget,
   HostDaemonInjectedSkillSource,
 } from "@bb/host-daemon-contract";
 import type {
-  ApplicationDataWatchTarget,
-  ApplicationStorageWatchError,
   DataDirSkillsWatchError,
   HostWatcher,
   InjectedSkillsObservedChange,
@@ -87,11 +82,6 @@ interface UpsertTrackedThreadStateArgs {
   environmentId: string;
   state: RuntimeThreadState;
   threadId: string;
-}
-
-interface ApplicationDataTarget {
-  applicationId: ApplicationId;
-  appDataPath: string;
 }
 
 interface WorkspaceWatchState {
@@ -277,22 +267,7 @@ export interface RecordThreadProviderStartArgs {
   threadId: string;
 }
 
-export interface ApplicationDataChangedNotification {
-  applicationId: ApplicationId;
-  appDataPath: string;
-  path: AppDataPath;
-}
-
-export interface ApplicationDataResyncNotification {
-  applicationId: ApplicationId;
-}
-
-export interface ApplicationContentChangedNotification {
-  applicationId: ApplicationId;
-}
-
 export interface InjectedSkillsChangedNotification {
-  applicationId: ApplicationId | null;
   changedPaths: string[];
   sourceType: InjectedSkillsObservedChange["sourceType"];
 }
@@ -341,18 +316,7 @@ export interface RuntimeManagerOptions {
     environmentId: string;
     threadId: string;
   }) => void;
-  appsRootPath?: string | null;
-  appDataRootPath?: string | null;
   onInjectedSkillsChanged?: (args: InjectedSkillsChangedNotification) => void;
-  onApplicationStorageTargetsChanged?: () => void;
-  onApplicationDataChanged?: (args: ApplicationDataChangedNotification) => void;
-  onApplicationDataResync?: (args: ApplicationDataResyncNotification) => void;
-  onApplicationContentChanged?: (
-    args: ApplicationContentChangedNotification,
-  ) => void;
-  onApplicationStorageWatchError?: (args: {
-    error: ApplicationStorageWatchError;
-  }) => void;
   onDataDirSkillsWatchError?: (args: {
     error: DataDirSkillsWatchError;
   }) => void;
@@ -373,7 +337,6 @@ export interface RuntimeManagerOptions {
 }
 
 interface RuntimeWorkspaceWriteRootsArgs {
-  appsRootPath: string | null | undefined;
   threadStorageRootPath: string | null | undefined;
   workspaceRoots: readonly string[];
 }
@@ -403,15 +366,10 @@ export class RuntimeManager {
     string,
     ThreadStorageTarget
   >();
-  private readonly trackedApplicationDataTargets = new Map<
-    ApplicationId,
-    ApplicationDataTarget
-  >();
   private providerMaintenanceRuntime: AgentRuntime | null = null;
   private pendingProviderMaintenanceRuntime: Promise<AgentRuntime> | null =
     null;
   private managedShellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {};
-  private stopWatchingApplicationStorageRoot: StopWatching = STOP_WATCHING;
   private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
   private stopWatchingThreadStorageRoot: StopWatching = STOP_WATCHING;
 
@@ -420,7 +378,6 @@ export class RuntimeManager {
     this.hostWatcher = options.hostWatcher;
     this.provisionWorkspace = options.provisionWorkspace ?? provisionWorkspace;
     this.baseShellEnv = { ...(options.shellEnv ?? {}) };
-    this.ensureApplicationStorageWatcher();
     this.ensureDataDirSkillsWatcher();
   }
 
@@ -428,9 +385,6 @@ export class RuntimeManager {
     args: RuntimeWorkspaceWriteRootsArgs,
   ): string[] {
     const roots = [...args.workspaceRoots];
-    if (args.appsRootPath) {
-      roots.push(args.appsRootPath);
-    }
     if (args.threadStorageRootPath) {
       // Provider runtimes are environment-scoped and may host multiple threads.
       // BB_THREAD_STORAGE still points agents at their own thread subdirectory;
@@ -945,19 +899,6 @@ export class RuntimeManager {
     this.stopWatchingThreadStorageIfNoTrackedThreads();
   }
 
-  replaceTrackedApplicationDataTargets(
-    targets: readonly HostDaemonTrackedApplicationDataTarget[],
-  ): void {
-    this.trackedApplicationDataTargets.clear();
-    for (const target of targets) {
-      this.trackedApplicationDataTargets.set(target.applicationId, {
-        applicationId: target.applicationId,
-        appDataPath: target.appDataPath,
-      });
-    }
-    this.ensureApplicationStorageWatcher();
-  }
-
   async openWorkspace(path: string): Promise<HostWorkspace> {
     return this.provisionWorkspace({
       workspaceProvisionType: "unmanaged",
@@ -1229,7 +1170,6 @@ export class RuntimeManager {
     this.entries.clear();
     this.pendingEntries.clear();
     this.trackedThreadStorageTargets.clear();
-    this.trackedApplicationDataTargets.clear();
 
     for (const entry of entries) {
       await this.stopWatchingStatus(entry);
@@ -1250,8 +1190,6 @@ export class RuntimeManager {
     }
     await this.stopWatchingThreadStorageRoot();
     this.stopWatchingThreadStorageRoot = STOP_WATCHING;
-    await this.stopWatchingApplicationStorageRoot();
-    this.stopWatchingApplicationStorageRoot = STOP_WATCHING;
     await this.stopWatchingDataDirSkillsRoot();
     this.stopWatchingDataDirSkillsRoot = STOP_WATCHING;
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
@@ -1312,9 +1250,7 @@ export class RuntimeManager {
     let runtime: AgentRuntime | null = null;
     runtime = this.createRuntime({
       workspacePath,
-      additionalWorkspaceWriteRoots: this.options.appsRootPath
-        ? [this.options.appsRootPath]
-        : [],
+      additionalWorkspaceWriteRoots: [],
       shellEnv: this.getShellEnv(),
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
@@ -1374,7 +1310,6 @@ export class RuntimeManager {
       workspace.getAdditionalWorkspaceWriteRoots(),
     ]);
     const additionalWorkspaceWriteRoots = this.runtimeWorkspaceWriteRoots({
-      appsRootPath: this.options.appsRootPath,
       threadStorageRootPath: this.options.threadStorageRootPath,
       workspaceRoots: workspaceWriteRoots,
     });
@@ -1531,63 +1466,6 @@ export class RuntimeManager {
       });
   }
 
-  private ensureApplicationStorageWatcher(): void {
-    if (
-      !this.hostWatcher ||
-      this.stopWatchingApplicationStorageRoot !== STOP_WATCHING
-    ) {
-      return;
-    }
-
-    const appsRootPath = this.options.appsRootPath;
-    const appDataRootPath = this.options.appDataRootPath;
-    if (!appsRootPath || !appDataRootPath) {
-      return;
-    }
-
-    this.stopWatchingApplicationStorageRoot =
-      this.hostWatcher.watchApplicationStorageRoot({
-        appsRootPath,
-        appDataRootPath,
-        resolveApplicationTarget: (applicationId) =>
-          this.findTrackedApplicationDataTarget(applicationId),
-        onChange: (event) => {
-          if (event.kind === "application-storage-targets-changed") {
-            this.options.onApplicationStorageTargetsChanged?.();
-          }
-          if (event.kind === "application-data-changed") {
-            this.options.onApplicationDataChanged?.({
-              applicationId: event.applicationId,
-              appDataPath: event.appDataPath,
-              path: event.path,
-            });
-          }
-          if (event.kind === "application-data-resync") {
-            this.options.onApplicationDataResync?.({
-              applicationId: event.applicationId,
-            });
-          }
-          if (event.kind === "application-content-changed") {
-            this.options.onApplicationContentChanged?.({
-              applicationId: event.applicationId,
-            });
-          }
-          if (event.kind === "injected-skills-changed") {
-            this.options.onInjectedSkillsChanged?.({
-              applicationId: event.applicationId,
-              changedPaths: event.changedPaths,
-              sourceType: event.sourceType,
-            });
-          }
-        },
-        onWatchError: (error) => {
-          this.options.onApplicationStorageWatchError?.({
-            error,
-          });
-        },
-      });
-  }
-
   private ensureDataDirSkillsWatcher(): void {
     if (
       !this.hostWatcher?.watchDataDirSkillsRoot ||
@@ -1606,7 +1484,6 @@ export class RuntimeManager {
         dataDirSkillsRootPath,
         onChange: (event) => {
           this.options.onInjectedSkillsChanged?.({
-            applicationId: event.applicationId,
             changedPaths: event.changedPaths,
             sourceType: event.sourceType,
           });
@@ -1623,12 +1500,6 @@ export class RuntimeManager {
     threadId: string,
   ): ThreadStorageTarget | null {
     return this.trackedThreadStorageTargets.get(threadId) ?? null;
-  }
-
-  private findTrackedApplicationDataTarget(
-    applicationId: ApplicationId,
-  ): ApplicationDataWatchTarget | null {
-    return this.trackedApplicationDataTargets.get(applicationId) ?? null;
   }
 
   private removeTrackedThreadStorageTargetsForEnvironment(

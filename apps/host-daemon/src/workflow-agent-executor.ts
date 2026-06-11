@@ -195,7 +195,7 @@ interface AgentSession {
   finalMessageText: string | null;
   deltaText: string;
   lastProviderError: { message: string; category?: ProviderErrorCategory } | null;
-  stallTimer: NodeJS.Timeout | null;
+  stallTimer: ReturnType<typeof setTimeout> | null;
   stalled: boolean;
   /** Set when the session was killed outside a turn waiter (abort, provider
    *  exit, executor shutdown); later runtime-call failures map to it. */
@@ -1041,10 +1041,11 @@ export class WorkflowAgentExecutor implements Worker {
   private armStallTimer(entry: RuntimeEntry, session: AgentSession): void {
     this.clearStallTimer(session);
     if (this.options.turnStallTimeoutMs <= 0) return;
-    session.stallTimer = setTimeout(() => {
+    const stallTimer = setTimeout(() => {
       this.onTurnStalled(entry, session);
     }, this.options.turnStallTimeoutMs);
-    session.stallTimer.unref?.();
+    stallTimer.unref?.();
+    session.stallTimer = stallTimer;
   }
 
   private clearStallTimer(session: AgentSession): void {

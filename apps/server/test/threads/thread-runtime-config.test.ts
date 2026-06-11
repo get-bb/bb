@@ -348,7 +348,7 @@ describe("thread runtime config", () => {
         rootPath: path.join(harness.config.dataDir, "skills"),
       });
       const builtinSourceRootPath = await writeRuntimeSkill({
-        name: "building-bb-apps",
+        name: "bb-cli",
         rootPath: harness.config.builtinSkillsRootPath,
       });
       const { host } = seedHostSession(harness.deps, {
@@ -389,15 +389,13 @@ describe("thread runtime config", () => {
       expect(command.injectedSkillSources).toEqual([
         {
           sourceType: "builtin",
-          applicationId: null,
-          name: "building-bb-apps",
-          description: "Use building-bb-apps when server runtime tests run.",
+          name: "bb-cli",
+          description: "Use bb-cli when server runtime tests run.",
           sourceRootPath: builtinSourceRootPath,
           skillFilePath: path.join(builtinSourceRootPath, "SKILL.md"),
         },
         {
           sourceType: "data-dir",
-          applicationId: null,
           name: "release-notes",
           description: "Use release-notes when server runtime tests run.",
           sourceRootPath,
@@ -414,7 +412,7 @@ describe("thread runtime config", () => {
         rootPath: harness.config.builtinSkillsRootPath,
       });
       await writeRuntimeSkill({
-        name: "building-bb-apps",
+        name: "bb-cli",
         rootPath: harness.config.builtinSkillsRootPath,
       });
       const { host } = seedHostSession(harness.deps, {
@@ -455,7 +453,7 @@ describe("thread runtime config", () => {
       // Experiments default to off: the bb-workflows skill never ships.
       const gated = await buildCommand(1);
       expect(gated.injectedSkillSources.map((skill) => skill.name)).toEqual([
-        "building-bb-apps",
+        "bb-cli",
       ]);
 
       setExperiments(harness.db, {
@@ -464,8 +462,8 @@ describe("thread runtime config", () => {
       });
       const enabled = await buildCommand(2);
       expect(enabled.injectedSkillSources.map((skill) => skill.name)).toEqual([
+        "bb-cli",
         "bb-workflows",
-        "building-bb-apps",
       ]);
       expect(
         enabled.injectedSkillSources.find(

@@ -1,5 +1,4 @@
 import type { BbSdkContext, BbSdkTransport } from "./transport.js";
-import { createAppsArea, createCurrentAppDataArea, createCurrentAppMessageArea } from "./areas/apps.js";
 import { createEnvironmentsArea } from "./areas/environments.js";
 import { createGuideArea } from "./areas/guide.js";
 import { createHostsArea } from "./areas/hosts.js";
@@ -18,14 +17,9 @@ export interface CreateBbSdkArgs {
 }
 
 export interface BbSdk extends BbRealtime {
-  applicationId?: string;
-  appId?: string;
-  apps: ReturnType<typeof createAppsArea>;
-  data: ReturnType<typeof createCurrentAppDataArea>;
   environments: ReturnType<typeof createEnvironmentsArea>;
   guide: ReturnType<typeof createGuideArea>;
   hosts: ReturnType<typeof createHostsArea>;
-  message: ReturnType<typeof createCurrentAppMessageArea>;
   projects: ReturnType<typeof createProjectsArea>;
   providers: ReturnType<typeof createProvidersArea>;
   replay: ReturnType<typeof createReplayArea>;
@@ -37,28 +31,13 @@ export interface BbSdk extends BbRealtime {
 export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
   const context = args.context ?? {};
   const sdkContext = { transport: args.transport, context };
-  const apps = createAppsArea(sdkContext);
   const realtime = createBbRealtimeClient({
-    context,
     transport: args.transport,
-    async listAppDataEntries(input) {
-      const response = await apps.data.list(input);
-      return response.entries;
-    },
   });
   return {
-    applicationId: context.applicationId,
-    appId: context.applicationId,
-    apps,
-    data: createCurrentAppDataArea({
-      ...sdkContext,
-      apps,
-      realtime,
-    }),
     environments: createEnvironmentsArea(sdkContext),
     guide: createGuideArea(),
     hosts: createHostsArea(sdkContext),
-    message: createCurrentAppMessageArea(sdkContext),
     on(args) {
       return realtime.on(args);
     },

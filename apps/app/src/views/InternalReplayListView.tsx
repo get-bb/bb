@@ -19,7 +19,7 @@ import { getProviderIconInfo } from "@/lib/provider-icon";
 import {
   getLegacyProjectComposeRoutePath,
   getThreadRoutePath,
-} from "@/lib/app-route-paths";
+} from "@/lib/route-paths";
 import * as api from "@/lib/api";
 
 const DEFAULT_REPLAY_SPEED: ReplayRunSpeed = 1;

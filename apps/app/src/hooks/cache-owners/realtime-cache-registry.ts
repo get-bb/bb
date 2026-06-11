@@ -6,7 +6,8 @@
  * each `REALTIME_*_CHANGE_REGISTRY` entry lists the dirty handlers that turn one
  * change kind into the precise set of queries to invalidate. New change kinds
  * are added here, in one place, and the `satisfies *Registry` constraints force
- * every kind to be mapped (verified by `realtime-cache-effects.test.ts`).
+ * mapped kinds to use the right context shape (verified by
+ * `realtime-cache-effects.test.ts`).
  *
  * Why this isn't a flat `invalidateQueries(prefix)` table:
  * - Scoping uses notification metadata, not just the change kind. Thread changes
@@ -34,7 +35,6 @@
  */
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
-  AppChangeKind,
   EnvironmentChangeKind,
   HostChangeKind,
   ProjectChangeKind,
@@ -63,13 +63,7 @@ import {
   allHostQueryKeyPrefix,
   allThreadSchedulesQueryKeyPrefix,
   automationsOverviewQueryKey,
-  allAppMarkdownPreviewQueryKeyPrefix,
-  allAppQueryKeyPrefix,
-  allAppsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
-  appMarkdownPreviewQueryKeyPrefix,
-  appQueryKey,
-  appSourcesQueryKey,
   allThreadQueryKeyPrefix,
   allThreadTerminalsQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
@@ -330,19 +324,7 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtySystemExecutionOptionQueries,
     ],
   },
-  "apps-changed": {
-    dirty: [dirtyAppListQueries],
-  },
 } satisfies SystemChangeRegistry;
-
-export const REALTIME_APP_CHANGE_REGISTRY = {
-  "apps-changed": {
-    dirty: [], // List-level invalidation rides system:apps-changed (the canonical path); handling it here too would double-invalidate.
-  },
-  "content-changed": {
-    dirty: [dirtyAppContentQueries], // Served public/ files changed; reload just that app's open surfaces.
-  },
-} satisfies AppChangeRegistry;
 
 /**
  * Workflow-run changes arrive per ingested daemon batch (the hub does not
@@ -388,10 +370,6 @@ export interface ProjectRealtimeDirtyContext extends RealtimeDirtyContext {
 }
 
 export type HostRealtimeDirtyContext = RealtimeDirtyContext;
-
-export interface AppRealtimeDirtyContext extends RealtimeDirtyContext {
-  applicationId: string | undefined;
-}
 
 export interface WorkflowRunRealtimeDirtyContext extends RealtimeDirtyContext {
   workflowRunId: string | undefined;
@@ -443,13 +421,9 @@ export interface SystemChangeRule {
   dirty: readonly RealtimeDirtyHandler<RealtimeDirtyContext>[];
 }
 
-export type SystemChangeRegistry = Record<SystemChangeKind, SystemChangeRule>;
-
-export interface AppChangeRule {
-  dirty: readonly RealtimeDirtyHandler<AppRealtimeDirtyContext>[];
-}
-
-export type AppChangeRegistry = Record<AppChangeKind, AppChangeRule>;
+export type SystemChangeRegistry = Partial<
+  Record<SystemChangeKind, SystemChangeRule>
+>;
 
 export interface WorkflowRunChangeRule {
   dirty: readonly RealtimeDirtyHandler<WorkflowRunRealtimeDirtyContext>[];
@@ -766,17 +740,6 @@ function dirtySystemExecutionOptionQueries(): QueryKey[] {
   return [allSystemExecutionOptionsQueryKeyPrefix()];
 }
 
-function dirtyAppListQueries(): QueryKey[] {
-  return [
-    allAppsQueryKeyPrefix(),
-    allAppQueryKeyPrefix(),
-    allAppMarkdownPreviewQueryKeyPrefix(),
-    // App-source syncs broadcast apps-changed; source status (commit,
-    // per-app states) moves together with the app list.
-    appSourcesQueryKey(),
-  ];
-}
-
 function dirtyWorkflowRunDetailQueries({
   workflowRunId,
 }: WorkflowRunRealtimeDirtyContext): QueryKey[] {
@@ -804,16 +767,4 @@ function dirtyWorkflowRunAgentEventsQueries({
   return workflowRunId
     ? [workflowRunAgentEventsQueryKeyPrefix(workflowRunId)]
     : [allWorkflowRunAgentEventsQueryKeyPrefix()];
-}
-
-function dirtyAppContentQueries(context: AppRealtimeDirtyContext): QueryKey[] {
-  if (context.applicationId === undefined) {
-    // Defensive: a content change without app identity falls back to the
-    // every-app scope so no open surface misses the reload.
-    return [allAppQueryKeyPrefix(), allAppMarkdownPreviewQueryKeyPrefix()];
-  }
-  return [
-    appQueryKey(context.applicationId), // Detail refetch bumps dataUpdatedAt, which busts the iframe reloadToken.
-    appMarkdownPreviewQueryKeyPrefix(context.applicationId), // Markdown entries re-render from the refetched content.
-  ];
 }

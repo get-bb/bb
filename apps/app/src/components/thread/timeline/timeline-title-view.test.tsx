@@ -11,7 +11,7 @@ import type {
   TimelineTitleSegment,
 } from "@bb/thread-view";
 import { TimelineTitleView } from "@/components/thread/timeline/TimelineTitleView";
-import { AppRouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 
 interface TitleArgs {
   segments: TimelineTitleSegment[];
@@ -138,7 +138,7 @@ describe("TimelineTitleView", () => {
 
     render(
       <MemoryRouter>
-        <AppRouteNavigationProvider>
+        <RouteNavigationProvider>
           <div onClick={onWrapperClick} onKeyDown={onWrapperKeyDown}>
             <TimelineTitleView
               title={title({
@@ -148,7 +148,7 @@ describe("TimelineTitleView", () => {
               onTitleAction={() => onAction}
             />
           </div>
-        </AppRouteNavigationProvider>
+        </RouteNavigationProvider>
       </MemoryRouter>,
     );
 
@@ -166,7 +166,7 @@ describe("TimelineTitleView", () => {
 
     render(
       <MemoryRouter>
-        <AppRouteNavigationProvider>
+        <RouteNavigationProvider>
           <div onClick={onWrapperClick}>
             <TimelineTitleView
               title={title({
@@ -183,7 +183,7 @@ describe("TimelineTitleView", () => {
               resolveSegmentLinkHref={() => "/projects/p/threads/thr_parent"}
             />
           </div>
-        </AppRouteNavigationProvider>
+        </RouteNavigationProvider>
       </MemoryRouter>,
     );
 
@@ -195,7 +195,7 @@ describe("TimelineTitleView", () => {
   it("routes segment links through client-side navigation", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <AppRouteNavigationProvider>
+        <RouteNavigationProvider>
           <TimelineTitleView
             title={title({
               segments: [
@@ -213,7 +213,7 @@ describe("TimelineTitleView", () => {
             }
           />
           <LocationProbe label="location" />
-        </AppRouteNavigationProvider>
+        </RouteNavigationProvider>
       </MemoryRouter>,
     );
 

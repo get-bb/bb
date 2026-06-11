@@ -10,7 +10,6 @@ import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
 import { requireAuthorizedActiveSession } from "../internal/session-state.js";
 import { handleDaemonSocketClosed } from "../internal/session-owner-side-effects.js";
 import { notifyDaemonEnvironmentChange } from "../internal/environment-changes.js";
-import { notifyGlobalAppsChanged } from "../routes/apps.js";
 import { scheduleWorkflowRunPendingNotificationDelivery } from "../services/workflows/workflow-run-pending-notifications.js";
 import { decodeSocketPayload } from "./decode-payload.js";
 
@@ -126,24 +125,6 @@ export function onDaemonSocketMessage(
         environmentId: result.data.environmentId,
         change: result.data.change,
       });
-      return;
-    }
-    if (result.data.type === "application-storage-changed") {
-      void notifyGlobalAppsChanged(deps).catch((error) => {
-        deps.logger.warn(
-          {
-            ...runtimeErrorLogFields(deps.config, error),
-          },
-          "Failed to refresh global app list after daemon storage change",
-        );
-      });
-      return;
-    }
-    if (result.data.type === "application-content-changed") {
-      // Host-observed content change under the app's public/ tree. Content
-      // edits never alter the app list, so this broadcasts a per-app
-      // content-changed hint directly and open app surfaces live-reload.
-      deps.hub.notifyAppContentChanged(result.data.applicationId);
       return;
     }
     if (result.data.type === "host-rpc.response") {

@@ -103,7 +103,6 @@ function createFetchRecorder(
           heartbeatIntervalMs: 30000,
           leaseTimeoutMs: 90000,
           trackedThreadTargets: [],
-          trackedApplicationDataTargets: [],
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
         },
         { status: 201 },
@@ -302,7 +301,6 @@ describe("createHostDaemonApp", () => {
       shutdown: vi.fn(async () => undefined),
     } satisfies AgentRuntime;
     const hostWatcher = {
-      watchApplicationStorageRoot: vi.fn(() => () => undefined),
       watchWorkspace: vi.fn(() => stopWatchingStatus),
       watchThreadStorageRoot: vi.fn(() => () => undefined),
     } satisfies HostWatcher;

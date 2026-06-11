@@ -78,10 +78,6 @@ import type {
   ReplayCaptureListResponse,
   ReplayRunRequest,
   ReplayRunResponse,
-  AddAppSourceRequest,
-  AppDetail,
-  AppSourceStatus,
-  AppSummary,
   CreateWorkflowRunRequest,
   WorkflowListResponse,
   WorkflowRunEventsResponse,
@@ -98,7 +94,6 @@ import {
   type FilePreviewTarget,
 } from "./file-preview";
 import {
-  buildAppPublicFileUrl,
   buildThreadHostFileContentUrl,
   buildThreadStorageContentUrl,
 } from "./file-content-urls";
@@ -935,71 +930,6 @@ export async function getThreadStorageFilePreview(
     {
       path,
       url: buildThreadStorageContentUrl(id, path),
-    },
-    signal,
-  );
-}
-
-export async function listApps(signal?: AbortSignal): Promise<AppSummary[]> {
-  return request<AppSummary[]>(apiClient.apps.$get({}, requestOptions(signal)));
-}
-
-export async function listAppSources(
-  signal?: AbortSignal,
-): Promise<AppSourceStatus[]> {
-  return request<AppSourceStatus[]>(
-    apiClient["app-sources"].$get({}, requestOptions(signal)),
-  );
-}
-
-export async function addAppSource(
-  req: AddAppSourceRequest,
-): Promise<AppSourceStatus> {
-  return request<AppSourceStatus>(
-    apiClient["app-sources"].$post({ json: req }),
-  );
-}
-
-export async function syncAppSource(
-  name: string,
-  force: boolean,
-): Promise<AppSourceStatus> {
-  return request<AppSourceStatus>(
-    apiClient["app-sources"][":name"].sync.$post({
-      param: { name },
-      json: { force },
-    }),
-  );
-}
-
-export async function removeAppSource(name: string): Promise<void> {
-  await requestVoid(
-    apiClient["app-sources"][":name"].$delete({ param: { name } }),
-  );
-}
-
-export async function getApp(
-  applicationId: string,
-  signal?: AbortSignal,
-): Promise<AppDetail> {
-  return request<AppDetail>(
-    apiClient.apps[":applicationId"].$get(
-      { param: { applicationId } },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function getAppMarkdownPreview(
-  applicationId: string,
-  path: string,
-  signal?: AbortSignal,
-): Promise<FilePreview> {
-  return loadFilePreview(
-    {
-      name: path.split("/").at(-1),
-      path,
-      url: buildAppPublicFileUrl(applicationId, path),
     },
     signal,
   );

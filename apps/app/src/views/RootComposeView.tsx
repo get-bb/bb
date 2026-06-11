@@ -41,7 +41,7 @@ import {
   getThreadRoutePath,
   getRootComposeRoutePath,
   isProjectlessProjectId,
-} from "@/lib/app-route-paths";
+} from "@/lib/route-paths";
 import {
   useRootComposeProjectId,
   useSetRootComposeProjectId,

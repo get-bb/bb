@@ -18,7 +18,6 @@ import {
   getFixedPanelTabsStateStorageKey,
   parseFixedPanelTabsState,
   serializeFixedPanelTabsState,
-  type AppFixedPanelTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
   type HostFilePreviewFixedPanelTab,
@@ -45,7 +44,6 @@ interface TestWrapperProps {
 }
 
 interface HookProps {
-  apps?: readonly { applicationId: string }[];
   environmentId: string | null | undefined;
   storageFiles: readonly { path: string }[] | undefined;
   threadId: string;
@@ -156,10 +154,6 @@ function isHostFilePreviewTab(
   return tab.kind === "host-file-preview";
 }
 
-function isAppTab(tab: FixedPanelTab): tab is AppFixedPanelTab {
-  return tab.kind === "app";
-}
-
 function workspaceFileStates(
   tabs: readonly SecondaryFileFixedPanelTab[],
 ): WorkspaceFileTabState[] {
@@ -195,10 +189,6 @@ function storageFileStates(
   }));
 }
 
-function appTabIds(tabs: readonly SecondaryFileFixedPanelTab[]): string[] {
-  return tabs.filter(isAppTab).map((tab) => tab.applicationId);
-}
-
 function tabIds(tabs: readonly SecondaryFileFixedPanelTab[]): string[] {
   return tabs.map((tab) => tab.id);
 }
@@ -213,10 +203,6 @@ function storageFileTabId(path: string): string {
 
 function hostFileTabId(path: string): string {
   return `host-file-preview:${encodeURIComponent(path)}`;
-}
-
-function appTabId(applicationId: string): string {
-  return `app:${encodeURIComponent(applicationId)}`;
 }
 
 function newTabId(): string {
@@ -282,10 +268,6 @@ function getStoredStoragePaths(state: FixedPanelTabsState): string[] {
   return state.secondary.tabs
     .filter(isStorageFilePreviewTab)
     .map((tab) => tab.path);
-}
-
-function getStoredAppIds(state: FixedPanelTabsState): string[] {
-  return state.secondary.tabs.filter(isAppTab).map((tab) => tab.applicationId);
 }
 
 function getStoredSecondaryTabIds(state: FixedPanelTabsState): string[] {
@@ -485,17 +467,12 @@ describe("useThreadFileTabs", () => {
 
   it("orders file tabs by open order", () => {
     const { result } = renderThreadFileTabsHook({
-      apps: [{ applicationId: "review" }],
       environmentId: "env-one",
       storageFiles: [{ path: "notes.md" }],
       threadId: "thr-manager-open-order",
     });
 
     act(() => {
-      result.current.selectFileSearchResult({
-        source: "app",
-        applicationId: "review",
-      });
       result.current.openWorkspaceFile(
         buildWorkspaceFileTab({ lineRange: null, path: "src/app.ts" }),
       );
@@ -504,7 +481,6 @@ describe("useThreadFileTabs", () => {
     });
 
     expect(tabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-      appTabId("review"),
       workspaceFileTabId("src/app.ts"),
       storageFileTabId("notes.md"),
       hostFileTabId("/tmp/host.md"),
@@ -514,17 +490,12 @@ describe("useThreadFileTabs", () => {
   it("persists reordered file tabs", () => {
     const threadId = "thr-manager-reorder";
     const { result } = renderThreadFileTabsHook({
-      apps: [{ applicationId: "review" }],
       environmentId: "env-one",
       storageFiles: [{ path: "notes.md" }],
       threadId,
     });
 
     act(() => {
-      result.current.selectFileSearchResult({
-        source: "app",
-        applicationId: "review",
-      });
       result.current.openWorkspaceFile(
         buildWorkspaceFileTab({ lineRange: null, path: "src/app.ts" }),
       );
@@ -540,13 +511,11 @@ describe("useThreadFileTabs", () => {
     });
 
     expect(tabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-      appTabId("review"),
       hostFileTabId("/tmp/host.md"),
       workspaceFileTabId("src/app.ts"),
       storageFileTabId("notes.md"),
     ]);
     expect(getStoredSecondaryTabIds(readStoredState(threadId))).toEqual([
-      appTabId("review"),
       hostFileTabId("/tmp/host.md"),
       workspaceFileTabId("src/app.ts"),
       storageFileTabId("notes.md"),
@@ -923,59 +892,6 @@ describe("useThreadFileTabs", () => {
       [],
     );
     expect(result.current.activeStorageFilePath).toBeNull();
-  });
-
-  it("closes app tabs", () => {
-    const { result } = renderThreadFileTabsHook({
-      apps: [{ applicationId: "review" }],
-      environmentId: null,
-      storageFiles: undefined,
-      threadId: "thr-storage-app",
-    });
-
-    act(() => {
-      result.current.selectFileSearchResult({
-        source: "app",
-        applicationId: "review",
-      });
-    });
-
-    expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-      "review",
-    ]);
-    expect(result.current.activeAppId).toBe("review");
-
-    act(() => {
-      result.current.closeAppTab("review");
-    });
-
-    expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([]);
-    expect(result.current.activeAppId).toBeNull();
-  });
-
-  it("opens an app tab from launcher search selection", () => {
-    const { result } = renderThreadFileTabsHook({
-      apps: [{ applicationId: "demo" }],
-      environmentId: "env-one",
-      storageFiles: undefined,
-      threadId: "thr-app-selection",
-    });
-
-    act(() => {
-      result.current.openNewTab();
-      result.current.selectFileSearchResult({
-        source: "app",
-        applicationId: "demo",
-      });
-    });
-
-    expect(appTabIds(result.current.orderedSecondaryFileTabs)).toEqual([
-      "demo",
-    ]);
-    expect(result.current.activeAppId).toBe("demo");
-    expect(getStoredAppIds(readStoredState("thr-app-selection"))).toEqual([
-      "demo",
-    ]);
   });
 
   it("does not rewrite workspace tabs for no-op callbacks", () => {

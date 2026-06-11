@@ -97,7 +97,6 @@ export { BbHttpError, BbRequestTimeoutError } from "./response.js";
 export { createGuideArea } from "./areas/guide.js";
 export type { BbSdk, BbSdkContext, BbSdkTransport, FetchImplementation };
 export type * from "./realtime.js";
-export type * from "./areas/apps.js";
 export type * from "./areas/guide.js";
 export type * from "./areas/environments.js";
 export type * from "./areas/hosts.js";

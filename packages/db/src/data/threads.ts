@@ -698,7 +698,7 @@ export function listHostThreadIds(
 }
 
 /**
- * Threads whose app-data storage the daemon should track for a host. Archived
+ * Threads whose storage the daemon should track for a host. Archived
  * and deleted thread storage can be reaped, so those rows must not trigger
  * reprime work.
  */

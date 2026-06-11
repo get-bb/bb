@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { UrlTransform } from "react-markdown";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { AppRouteNavigationProvider } from "@/components/ui/app-route-anchor";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import type {
@@ -586,13 +586,13 @@ describe("MarkdownPreview", () => {
     const onOpenLink = vi.fn(() => true);
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <AppRouteNavigationProvider>
+        <RouteNavigationProvider>
           <MarkdownPreview
             content="[Thread](/projects/proj_1/threads/thr_1?panel=files#row)"
             linkRouting={buildMarkdownLinkRouting({ onOpenLink })}
           />
           <LocationProbe label="location" />
-        </AppRouteNavigationProvider>
+        </RouteNavigationProvider>
       </MemoryRouter>,
     );
 

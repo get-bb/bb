@@ -27,7 +27,6 @@ import {
 } from "../../hooks/queries/environment-queries";
 import {
   getLatestPendingInteraction,
-  useApps,
   useProjectThreadSubset,
   useThread,
   useThreadComposerBootstrap,
@@ -68,13 +67,10 @@ import {
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
-import {
-  ThreadDetailPromptArea,
-  THREAD_DETAIL_COMPOSER_TEXTAREA_ID,
-} from "./ThreadDetailPromptArea";
+import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
@@ -95,7 +91,6 @@ import {
   ThreadStorageFilePreviewTabContent,
   WorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
-import { AppTabContent } from "@/components/secondary-panel/AppTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
@@ -111,7 +106,6 @@ import {
 } from "@/lib/in-app-browser-link-preference";
 import { getFilePreviewLineRangeStart } from "@/lib/file-preview";
 import { getBrowserUrlHost } from "@/lib/browser-url";
-import { ResolvedAppIcon } from "@/components/secondary-panel/AppIcon";
 import {
   useThreadStorageBrowser,
   type ThreadStoragePathSelectHandler,
@@ -163,7 +157,7 @@ import {
   useSetThreadSecondaryPanelSelection,
   useToggleThreadSecondaryPanelSelection,
 } from "./threadSecondaryPanelSelection";
-import { useAppRoute } from "@/hooks/useAppRoute";
+import { useRouteState } from "@/hooks/useRouteState";
 import { resolveThreadComposerBootstrapReady } from "./threadDetailComposerBootstrapState";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
@@ -201,21 +195,6 @@ export interface ResolveHostFilePreviewLinkRootPathArgs {
   baseDir: string | undefined;
   threadStorageRootPath: string | null;
   workspaceRootPath: string | null;
-}
-
-function focusThreadDetailComposer(): void {
-  window.requestAnimationFrame(() => {
-    const composer = document.getElementById(
-      THREAD_DETAIL_COMPOSER_TEXTAREA_ID,
-    );
-    if (!(composer instanceof HTMLTextAreaElement)) {
-      return;
-    }
-
-    composer.focus();
-    const cursor = composer.value.length;
-    composer.setSelectionRange(cursor, cursor);
-  });
 }
 
 function buildHostConnectionNotice(
@@ -303,7 +282,7 @@ export function resolveHostFilePreviewLinkRootPath({
 }
 
 export function ThreadDetailView() {
-  const { projectId, threadId } = useAppRoute();
+  const { projectId, threadId } = useRouteState();
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
   const fixedPanelTabsState = useFixedPanelTabsState(threadId);
@@ -417,17 +396,12 @@ export function ThreadDetailView() {
     filePreviewEnabled: false,
     threadId,
   });
-  const appsQuery = useApps({
-    enabled: thread !== undefined,
-  });
   const {
-    activateAppTab,
     activateBrowserTab,
     activateNewTab,
     activateHostFileTab,
     activateStorageFileTab,
     activateWorkspaceFileTab,
-    activeAppId,
     activeBrowserTab,
     activeHostFileLineRange,
     activeHostFilePath,
@@ -439,7 +413,6 @@ export function ThreadDetailView() {
     activeWorkspaceFileStatusLabel,
     browserTabs,
     clearActiveFileTabs,
-    closeAppTab,
     closeBrowserTab,
     closeHostFileTab,
     closeNewTab,
@@ -456,7 +429,6 @@ export function ThreadDetailView() {
     selectFileSearchResult,
     updateBrowserTab,
   } = useThreadFileTabs({
-    apps: appsQuery.data,
     threadId,
     environmentId: thread?.environmentId,
     storageFiles: threadStorageFiles?.files,
@@ -704,11 +676,6 @@ export function ThreadDetailView() {
   const handleOpenBrowser = useCallback(() => {
     openBrowserTab();
   }, [openBrowserTab]);
-  const handleCreateAppPromptPrefill = useCallback(() => {
-    closeNewTab();
-    closeSecondaryPanel();
-    focusThreadDetailComposer();
-  }, [closeNewTab, closeSecondaryPanel]);
   const handleStartTerminal = useCallback(() => {
     if (!canCreateTerminal || createTerminal.isPending || !threadId) {
       return;
@@ -781,40 +748,10 @@ export function ThreadDetailView() {
     },
     [openSecondaryPanelCommitDiff],
   );
-  const appsById = useMemo(() => {
-    const entries = new Map(
-      (appsQuery.data ?? []).map((app) => [app.applicationId, app]),
-    );
-    return entries;
-  }, [appsQuery.data]);
   const fileTabs = useMemo<SecondaryPanelFileTab[] | undefined>(() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
     const tabs = orderedSecondaryFileTabs.map((tab): SecondaryPanelFileTab => {
       switch (tab.kind) {
-        case "app": {
-          const app = appsById.get(tab.applicationId);
-          const appName = app?.name ?? tab.applicationId;
-          return {
-            id: tab.id,
-            filename: appName,
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: app ? (
-              <ResolvedAppIcon
-                icon={app.icon}
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-              />
-            ) : (
-              <Icon
-                name="AppWindow"
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                aria-hidden
-              />
-            ),
-            statusLabel: null,
-            onSelect: () => activateAppTab(tab.applicationId),
-            onClose: () => closeAppTab(tab.applicationId),
-          };
-        }
         case "browser": {
           const browserLabel =
             tab.title ?? (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
@@ -906,14 +843,12 @@ export function ThreadDetailView() {
     });
     return tabs.length > 0 ? tabs : undefined;
   }, [
-    activateAppTab,
     activateBrowserTab,
     activateNewTab,
     activateHostFileTab,
     activateStorageFileTab,
     activateWorkspaceFileTab,
     activeFixedSecondaryTabId,
-    closeAppTab,
     closeBrowserTab,
     closeHostFileTab,
     closeNewTab,
@@ -922,7 +857,6 @@ export function ThreadDetailView() {
     handleActivateTerminalTab,
     handleCloseTerminalTab,
     orderedSecondaryFileTabs,
-    appsById,
     terminalsById,
   ]);
   const requestedMergeBaseBranch =
@@ -1463,12 +1397,9 @@ export function ThreadDetailView() {
       currentThreadId={thread.id}
       focusRequest={newTabFocusRequest}
       onSelect={selectFileSearchResult}
-      onCreateAppPromptPrefill={handleCreateAppPromptPrefill}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
     />
-  ) : activeAppId ? (
-    <AppTabContent applicationId={activeAppId} threadId={thread.id} />
   ) : activeWorkspaceFilePath ? (
     <WorkspaceFilePreviewTabContent
       activePath={activeWorkspaceFilePath}

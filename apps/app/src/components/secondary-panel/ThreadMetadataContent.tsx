@@ -59,7 +59,7 @@ import {
 import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { useUnarchiveThread } from "../../hooks/mutations/thread-state-mutations";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 
 // ---------------------------------------------------------------------------
 // Each row of the Info tab is a function component that owns its own raw

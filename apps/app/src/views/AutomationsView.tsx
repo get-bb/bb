@@ -8,7 +8,7 @@ import type {
 import { PageShell } from "@/components/ui/page-shell.js";
 import { TruncatedList } from "@/components/ui/truncated-list.js";
 import { useAutomationsOverview } from "@/hooks/queries/thread-queries";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   formatCronCadence,

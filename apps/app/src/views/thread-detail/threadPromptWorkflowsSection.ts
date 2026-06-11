@@ -4,7 +4,7 @@ import {
   getWorkflowRunIdFromRow,
   isWorkflowRowActivelyRunning,
 } from "@bb/thread-view";
-import { getWorkflowRunRoutePath } from "@/lib/app-route-paths";
+import { getWorkflowRunRoutePath } from "@/lib/route-paths";
 import type {
   ThreadPromptWorkflowItem,
   ThreadPromptWorkflowsSection,

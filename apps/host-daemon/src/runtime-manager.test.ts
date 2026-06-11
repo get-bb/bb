@@ -9,7 +9,6 @@ import { threadScope, turnScope } from "@bb/domain";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import type {
   HostWatcher,
-  WatchApplicationStorageRootArgs,
   ThreadStorageWatchError,
   WatchThreadStorageRootArgs,
   WatchWorkspaceArgs,
@@ -57,9 +56,6 @@ type WatchWorkspaceImplementation = (
 ) => StopWatchingStatus;
 type WatchThreadStorageRootImplementation = (
   args: WatchThreadStorageRootArgs,
-) => StopWatchingPathChanges;
-type WatchApplicationStorageRootImplementation = (
-  args: WatchApplicationStorageRootArgs,
 ) => StopWatchingPathChanges;
 interface RunGitOptions {
   cwd: string;
@@ -125,7 +121,6 @@ async function writeInjectedSkillSource(
   );
   return {
     sourceType: "data-dir",
-    applicationId: null,
     name: args.name,
     description: `Use ${args.name} when runtime manager tests run.`,
     sourceRootPath,
@@ -244,7 +239,6 @@ function createFakeWorkspace(path: string) {
 
 function createFakeHostWatcher(
   args: {
-    watchApplicationStorageRootImplementation?: WatchApplicationStorageRootImplementation;
     watchThreadStorageRootImplementation?: WatchThreadStorageRootImplementation;
     watchWorkspaceImplementation?: WatchWorkspaceImplementation;
   } = {},
@@ -255,20 +249,13 @@ function createFakeHostWatcher(
   const watchThreadStorageRoot = vi.fn<WatchThreadStorageRootImplementation>(
     args.watchThreadStorageRootImplementation ?? ((_args) => () => undefined),
   );
-  const watchApplicationStorageRoot =
-    vi.fn<WatchApplicationStorageRootImplementation>(
-      args.watchApplicationStorageRootImplementation ??
-        ((_args) => () => undefined),
-    );
   const hostWatcher = {
-    watchApplicationStorageRoot,
     watchWorkspace,
     watchThreadStorageRoot,
   } satisfies HostWatcher;
 
   return {
     hostWatcher,
-    watchApplicationStorageRoot,
     watchThreadStorageRoot,
     watchWorkspace,
   };
@@ -1622,91 +1609,6 @@ describe("RuntimeManager", () => {
     expect(stopWatchingPathChanges).not.toHaveBeenCalled();
 
     await manager.destroyEnvironment("env-storage");
-
-    expect(stopWatchingPathChanges).toHaveBeenCalledTimes(1);
-  });
-
-  it("installs one shared application storage root watcher for app data", async () => {
-    const stopWatchingPathChanges = vi.fn(() => undefined);
-    let watchApplicationStorageRootArgs:
-      | WatchApplicationStorageRootArgs
-      | undefined;
-    const { hostWatcher, watchApplicationStorageRoot } = createFakeHostWatcher({
-      watchApplicationStorageRootImplementation: (args) => {
-        watchApplicationStorageRootArgs = args;
-        return stopWatchingPathChanges;
-      },
-    });
-    const onApplicationStorageTargetsChanged = vi.fn();
-    const onApplicationDataChanged = vi.fn();
-    const onApplicationDataResync = vi.fn();
-    const onApplicationContentChanged = vi.fn();
-    const manager = new RuntimeManager({
-      appsRootPath: "/tmp/bb-data/apps",
-      appDataRootPath: "/tmp/bb-data/app-data",
-      hostWatcher,
-      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-storage"),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      onApplicationStorageTargetsChanged,
-      onApplicationDataChanged,
-      onApplicationDataResync,
-      onApplicationContentChanged,
-    });
-
-    manager.replaceTrackedApplicationDataTargets([
-      {
-        applicationId: "status",
-        appDataPath: "/tmp/bb-data/app-data/status",
-      },
-    ]);
-
-    expect(watchApplicationStorageRoot).toHaveBeenCalledTimes(1);
-    expect(watchApplicationStorageRoot).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appsRootPath: "/tmp/bb-data/apps",
-        appDataRootPath: "/tmp/bb-data/app-data",
-      }),
-    );
-    expect(
-      watchApplicationStorageRootArgs?.resolveApplicationTarget("status"),
-    ).toEqual({
-      applicationId: "status",
-      appDataPath: "/tmp/bb-data/app-data/status",
-    });
-
-    watchApplicationStorageRootArgs?.onChange({
-      kind: "application-storage-targets-changed",
-    });
-    watchApplicationStorageRootArgs?.onChange({
-      kind: "application-data-changed",
-      applicationId: "status",
-      appDataPath: "/tmp/bb-data/app-data/status",
-      path: "state.json",
-    });
-    watchApplicationStorageRootArgs?.onChange({
-      kind: "application-data-resync",
-      applicationId: "status",
-    });
-    watchApplicationStorageRootArgs?.onChange({
-      kind: "application-content-changed",
-      applicationId: "status",
-    });
-
-    expect(onApplicationStorageTargetsChanged).toHaveBeenCalledTimes(1);
-    expect(onApplicationDataChanged).toHaveBeenCalledWith({
-      applicationId: "status",
-      appDataPath: "/tmp/bb-data/app-data/status",
-      path: "state.json",
-    });
-    expect(onApplicationDataResync).toHaveBeenCalledWith({
-      applicationId: "status",
-    });
-    expect(onApplicationContentChanged).toHaveBeenCalledTimes(1);
-    expect(onApplicationContentChanged).toHaveBeenCalledWith({
-      applicationId: "status",
-    });
-
-    await manager.shutdownAll();
 
     expect(stopWatchingPathChanges).toHaveBeenCalledTimes(1);
   });

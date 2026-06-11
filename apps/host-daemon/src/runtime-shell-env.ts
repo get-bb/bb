@@ -10,7 +10,6 @@ interface ResolveLocalBbExecutableDirectoryOptions {
 }
 
 export interface PrepareRuntimeShellEnvOptions {
-  appsRootPath: string;
   bbExecutableDirectory: string;
   hostDaemonPort?: number;
   serverUrl: string;
@@ -85,7 +84,6 @@ export async function resolveLocalBbExecutableDirectory(
 }
 
 export interface PrepareWorkflowAgentShellEnvOptions {
-  appsRootPath: string;
   /** Directory the failing `bb` shim is materialized into (created if needed). */
   shimDirectoryPath: string;
   inheritedPath?: string;
@@ -124,9 +122,9 @@ async function materializeBbShim(directoryPath: string): Promise<void> {
  * every real bb (built CLI dir, dev shell, global install) without dropping
  * any toolchain directory, which stripping bb-containing directories would do
  * whenever a foreign `bb` (e.g. Babashka) shares a directory with node/git.
- * `BB_APPS_ROOT` is kept — harmless and useful. The per-thread vars
- * (`BB_ENVIRONMENT_ID`, `BB_PROJECT_ID`, `BB_THREAD_STORAGE`) are added by
- * the agent runtime, which also omits `BB_THREAD_ID` for workflow agents.
+ * Per-thread vars (`BB_ENVIRONMENT_ID`, `BB_PROJECT_ID`, `BB_THREAD_STORAGE`)
+ * are added by the agent runtime, which also omits `BB_THREAD_ID` for
+ * workflow agents.
  */
 export async function prepareWorkflowAgentShellEnv(
   options: PrepareWorkflowAgentShellEnvOptions,
@@ -137,7 +135,6 @@ export async function prepareWorkflowAgentShellEnv(
       options.shimDirectoryPath,
       options.inheritedPath ?? process.env.PATH,
     ),
-    BB_APPS_ROOT: options.appsRootPath,
   };
 }
 
@@ -149,7 +146,6 @@ export function prepareRuntimeShellEnv(
       options.bbExecutableDirectory,
       options.inheritedPath ?? process.env.PATH,
     ),
-    BB_APPS_ROOT: options.appsRootPath,
     BB_SERVER_URL: options.serverUrl,
   };
   assignIfDefined({

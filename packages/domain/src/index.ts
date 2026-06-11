@@ -81,16 +81,6 @@ export type {
   WorkspaceGitOperation,
 } from "./git-checkout.js";
 
-export {
-  APPLICATION_ID_MAX_LENGTH,
-  appDataPathSchema,
-  applicationIdSchema,
-  appSourceNameSchema,
-  deriveApplicationIdFromName,
-  deriveAppSourceNameFromOrigin,
-} from "./apps.js";
-export type { AppDataPath, ApplicationId, AppSourceName } from "./apps.js";
-
 export { threadDynamicContextFileStatusValues } from "./thread-dynamic-context.js";
 export type { ThreadDynamicContextFileStatus } from "./thread-dynamic-context.js";
 
@@ -693,10 +683,7 @@ export {
   ENVIRONMENT_CHANGE_KINDS,
   HOST_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
-  APP_CHANGE_KINDS,
   WORKFLOW_RUN_CHANGE_KINDS,
-  appChangedMessageSchema,
-  appChangeKindSchema,
   changedMessageLenientSchema,
   changedMessageSchema,
   clientMessageSchema,
@@ -724,7 +711,6 @@ export type {
   EnvironmentChangeKind,
   HostChangeKind,
   SystemChangeKind,
-  AppChangeKind,
   WorkflowRunChangeKind,
   SubscribeMessage,
   UnsubscribeMessage,
@@ -735,7 +721,6 @@ export type {
   EnvironmentChangedMessage,
   HostChangedMessage,
   SystemChangedMessage,
-  AppChangedMessage,
   WorkflowRunChangedMessage,
   ChangedMessage,
 } from "./change-kinds.js";

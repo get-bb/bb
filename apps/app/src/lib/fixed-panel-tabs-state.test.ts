@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
-  createAppFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createNewTabFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
@@ -32,10 +31,6 @@ function storageFileTabId(path: string): string {
 
 function hostFileTabId(path: string): string {
   return `host-file-preview:${encodeURIComponent(path)}`;
-}
-
-function appTabId(appId: string): string {
-  return `app:${encodeURIComponent(appId)}`;
 }
 
 function terminalTabId(terminalId: string): string {
@@ -100,25 +95,6 @@ describe("fixed panel tabs state storage", () => {
         storedValue,
       }),
     ).toEqual(restoredState);
-  });
-
-  it("round-trips app tabs", () => {
-    const appTab = createAppFixedPanelTab({ applicationId: "status" });
-    const state = makeFixedPanelTabsState({
-      secondary: {
-        tabs: [appTab],
-        activeTabId: appTabId("status"),
-        isOpen: true,
-      },
-    });
-
-    expect(
-      parseFixedPanelTabsState({
-        initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
-        now: NOW,
-        storedValue: serializeFixedPanelTabsState({ state }),
-      }),
-    ).toEqual(state);
   });
 
   it("normalizes legacy storage tabs without line numbers", () => {

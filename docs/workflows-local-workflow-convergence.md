@@ -320,11 +320,10 @@ keep-vs-converge decision — is resolved above.)
 2. **Dollar-cost accounting.** Token budgets are loose (usage arrives
    post-turn; overrun bound ≈ concurrency × per-agent output). Add pricing
    tables and a cost ledger? Where (domain vs config)?
-3. **Workflow packs via app sources.** Apps shipping a `workflows/` dir as a
-   fourth registry tier (reusing app-source sync/provenance) — post-v1
-   distribution story. Does the app-source trust boundary suffice for
-   executable workflow scripts, given the vm is hardening rather than
-   isolation?
+3. **Workflow packs.** External bundles shipping a `workflows/` dir as a
+   fourth registry tier — post-v1 distribution story. What trust boundary is
+   sufficient for executable workflow scripts, given the vm is hardening rather
+   than isolation?
 4. **Cross-host resume.** The server journal makes it possible, but worktree
    branches and preserved state are host-local. Allow resume on a different
    host with worktree agents degraded to re-run, or keep host-affinity for

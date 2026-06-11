@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
 import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
 import { Icon } from "@/components/ui/icon.js";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { isBusyThread, isUnreadDoneThread } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@/lib/utils";

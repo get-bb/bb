@@ -356,7 +356,7 @@ export async function runSetupScript(
   const outputChunks: string[] = [];
   const outputLineReader = createTerminalOutputLineReader();
   let outputIndex = 0;
-  let abortKillTimeout: NodeJS.Timeout | undefined;
+  let abortKillTimeout: ReturnType<typeof setTimeout> | undefined;
   let abortRequested = false;
   let timedOut = false;
 

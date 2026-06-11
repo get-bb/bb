@@ -43,14 +43,6 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Base error details are omitted unless a route has structured detail payloads.",
   "apiErrorSchema.retryable":
     "Error payloads may omit retryability when the server has no retry guidance.",
-  "appDataListQuerySchema.prefix":
-    "App data listing may omit prefix to list every value file under the app data root.",
-  "appManifestSchema.entry":
-    "App manifests may omit entry so the server can resolve index.html then index.md at the boundary.",
-  "appManifestSchema.icon":
-    "App manifests may omit icon so the server can resolve a logo file or the GridView fallback.",
-  "appManifestSchema.name":
-    "App manifests may omit name; the display label falls back to the slug applicationId when unset.",
   "createAutomationRequestSchema.action.threadRequest.environment.workspace.branch":
     "Unmanaged workspaces may omit branch when the daemon should not check out before starting the thread.",
   "createAutomationRequestSchema.action.threadRequest.environment.hostId":
@@ -671,132 +663,6 @@ describe("server-contract canonical schemas", () => {
     ).toThrow();
   });
 
-  it("validates app manifests, icon names, entries, and data broadcasts", () => {
-    const manifest = {
-      manifestVersion: 1,
-      id: "status",
-      name: "Status",
-      icon: "ListTodo",
-      entry: "index.html",
-      capabilities: ["data", "message"],
-    };
-
-    expect(contract.appManifestSchema.parse(manifest)).toEqual(manifest);
-    expect(
-      contract.appManifestSchema.parse({
-        ...manifest,
-        name: undefined,
-      }),
-    ).toEqual({
-      ...manifest,
-      name: "status",
-    });
-    expect(
-      contract.appManifestSchema.parse({
-        ...manifest,
-        name: "",
-      }),
-    ).toEqual({
-      ...manifest,
-      name: "status",
-    });
-    expect(
-      contract.appManifestSchema.safeParse({
-        ...manifest,
-        icon: "MissingIcon",
-      }).success,
-    ).toBe(false);
-    expect(
-      contract.appManifestSchema.safeParse({
-        ...manifest,
-        entry: "../index.html",
-      }).success,
-    ).toBe(false);
-    expect(
-      contract.appManifestSchema.safeParse({
-        ...manifest,
-        id: "Bad",
-      }).success,
-    ).toBe(false);
-    expect(
-      contract.appManifestSchema.safeParse({
-        ...manifest,
-        contributions: ["sidebar"],
-      }).success,
-    ).toBe(false);
-
-    const message = {
-      type: "app-data.changed",
-      applicationId: "status",
-      path: "state.json",
-      value: { workers: [] },
-      deleted: false,
-      version: "next-hash",
-    };
-    expect(contract.appDataBroadcastMessageSchema.parse(message)).toEqual(
-      message,
-    );
-    expect(contract.REALTIME_ENTITIES).toContain("app");
-    expect(contract.APP_CHANGE_KINDS).toEqual([
-      "apps-changed",
-      "content-changed",
-    ]);
-    expect(
-      contract.serverMessageSchema.parse({
-        type: "changed",
-        entity: "app",
-        changes: ["apps-changed"],
-      }),
-    ).toEqual({
-      type: "changed",
-      entity: "app",
-      changes: ["apps-changed"],
-    });
-    expect(
-      contract.serverMessageSchema.parse({
-        type: "changed",
-        entity: "app",
-        id: "review-board",
-        changes: ["content-changed"],
-      }),
-    ).toEqual({
-      type: "changed",
-      entity: "app",
-      id: "review-board",
-      changes: ["content-changed"],
-    });
-    expect(contract.serverMessageSchema.parse(message)).toEqual(message);
-    expect(
-      contract.appDataBroadcastMessageSchema.parse({
-        ...message,
-        value: null,
-        deleted: true,
-        version: null,
-      }),
-    ).toMatchObject({
-      deleted: true,
-      version: null,
-    });
-    expect(
-      contract.appDataBroadcastMessageSchema.parse({
-        type: "app-data.resync",
-        applicationId: "status",
-      }),
-    ).toEqual({
-      type: "app-data.resync",
-      applicationId: "status",
-    });
-    expect(
-      contract.serverMessageSchema.parse({
-        type: "app-data.resync",
-        applicationId: "status",
-      }),
-    ).toEqual({
-      type: "app-data.resync",
-      applicationId: "status",
-    });
-  });
-
   it("parses request contracts", () => {
     expect(
       createAutomationRequestSchema.parse({
@@ -1140,7 +1006,7 @@ describe("server-contract canonical schemas", () => {
       "automations-changed",
       "thread-schedules-changed",
     ]);
-    expect(SYSTEM_CHANGE_KINDS).toEqual(["config-changed", "apps-changed"]);
+    expect(SYSTEM_CHANGE_KINDS).toEqual(["config-changed"]);
   });
 
   it("keeps only intentional optional request fields", () => {
@@ -1445,8 +1311,6 @@ describe("server-contract clients", () => {
   it("keeps contract optional fields on an explicit allowlist", () => {
     const optionalFieldPaths = collectOptionalFieldPaths({
       apiErrorSchema: contract.apiErrorSchema,
-      appDataListQuerySchema: contract.appDataListQuerySchema,
-      appManifestSchema: contract.appManifestSchema,
       commitActionResponseSchema: contract.commitActionResponseSchema,
       createQueuedMessageRequestSchema:
         contract.createQueuedMessageRequestSchema,

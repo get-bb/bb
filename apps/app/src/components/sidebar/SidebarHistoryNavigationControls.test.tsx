@@ -172,8 +172,8 @@ describe("SidebarHistoryNavigationControls", () => {
     renderControls();
 
     navigateTo("/settings");
-    navigateTo("/apps/review-board", { replace: true });
-    expect(currentLocation()).toBe("/apps/review-board");
+    navigateTo("/threads/thr_review", { replace: true });
+    expect(currentLocation()).toBe("/threads/thr_review");
     expect(backButton()).toHaveProperty("disabled", false);
 
     // Back skips the replaced-away /settings (which no longer exists) to /.
@@ -183,7 +183,7 @@ describe("SidebarHistoryNavigationControls", () => {
     // Forward returns to the replaced slot, proving /settings was overwritten
     // rather than left behind as an extra entry.
     fireEvent.click(forwardButton());
-    expect(currentLocation()).toBe("/apps/review-board");
+    expect(currentLocation()).toBe("/threads/thr_review");
   });
 
   it("reconciles a native POP to a known entry", () => {

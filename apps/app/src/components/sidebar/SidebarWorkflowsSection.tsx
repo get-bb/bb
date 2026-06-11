@@ -30,9 +30,9 @@ import {
   useArchiveWorkflowRun,
   useDeleteWorkflowRun,
 } from "@/hooks/mutations/workflow-run-mutations";
-import { useAppRoute } from "@/hooks/useAppRoute";
+import { useRouteState } from "@/hooks/useRouteState";
 import { useDialogState } from "@/hooks/useDialogState";
-import { getWorkflowRunRoutePath } from "@/lib/app-route-paths";
+import { getWorkflowRunRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 import { wsManager } from "@/lib/ws";
 import {
@@ -192,7 +192,7 @@ const SidebarWorkflowRunRow = memo(function SidebarWorkflowRunRow({
 export const SidebarWorkflowsSection = memo(function SidebarWorkflowsSection({
   runs,
 }: SidebarWorkflowsSectionProps) {
-  const { workflowRunId: activeWorkflowRunId } = useAppRoute();
+  const { workflowRunId: activeWorkflowRunId } = useRouteState();
   const archiveRun = useArchiveWorkflowRun();
   const deleteRun = useDeleteWorkflowRun();
   const deleteDialog = useDialogState<WorkflowRunResponse>();

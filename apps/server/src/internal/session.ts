@@ -24,7 +24,6 @@ import {
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
 import { readAttachment } from "../services/projects/attachments.js";
 import { handleHostSessionOpened } from "./session-owner-side-effects.js";
-import { listTrackedApplicationDataTargets } from "../services/apps/tracked-application-data-targets.js";
 
 export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
   const { get, post } = typedRoutes<HostDaemonInternalSchema>(app, {
@@ -80,11 +79,6 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
         leaseTimeoutMs: LEASE_TIMEOUT_MS,
       });
 
-      const trackedApplicationDataTargets =
-        await listTrackedApplicationDataTargets({
-          dataDir: session.dataDir,
-        });
-
       await handleHostSessionOpened(deps, {
         activeThreads: payload.activeThreads,
         activeWorkflowRunIds: payload.activeWorkflowRunIds,
@@ -116,7 +110,6 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
           heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
           leaseTimeoutMs: LEASE_TIMEOUT_MS,
           trackedThreadTargets,
-          trackedApplicationDataTargets,
           retiredEnvironmentIds,
         },
         201,

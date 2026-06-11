@@ -5,7 +5,7 @@ import { AuthCallbackView } from "./views/AuthCallbackView";
 import { RootComposeRoute } from "./views/RootComposeView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { ProviderCliHealthToasts } from "./components/provider-cli/ProviderCliHealthToasts";
-import { AppRouteNavigationProvider } from "./components/ui/app-route-anchor";
+import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import {
   useDesktopUpdateAvailableToast,
@@ -14,7 +14,6 @@ import {
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
   APP_ROOT_ROUTE_PATH,
-  APP_SETTINGS_ROUTE_PATH,
   AUTOMATIONS_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
   DEVELOPMENT_REPLAY_ROUTE_PATH,
@@ -23,18 +22,18 @@ import {
   PROJECT_WORKFLOWS_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
-  STANDALONE_APP_ROUTE_PATH,
+  SETTINGS_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
   WORKFLOW_RUN_AGENT_ROUTE_PATH,
   WORKFLOW_RUN_ROUTE_PATH,
-} from "./lib/app-route-paths";
+} from "./lib/route-paths";
 
 const ThreadDetailRoute = lazy(
   () => import("./views/thread-detail/ThreadDetailRoute"),
 );
-const AppSettingsView = lazy(() =>
-  import("./views/AppSettingsView").then((m) => ({
-    default: m.AppSettingsView,
+const SettingsView = lazy(() =>
+  import("./views/SettingsView").then((m) => ({
+    default: m.SettingsView,
   })),
 );
 const AutomationsView = lazy(() =>
@@ -57,11 +56,6 @@ const InternalReplayListView = lazy(() =>
     default: m.InternalReplayListView,
   })),
 );
-const StandaloneAppView = lazy(() =>
-  import("./views/standalone-app/StandaloneAppView").then((m) => ({
-    default: m.StandaloneAppView,
-  })),
-);
 const WorkflowRunView = lazy(() =>
   import("./views/workflow-run/WorkflowRunView").then((m) => ({
     default: m.WorkflowRunView,
@@ -79,12 +73,8 @@ function AppRoutes() {
       <Suspense fallback={null}>
         <Routes>
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
-          <Route path={APP_SETTINGS_ROUTE_PATH} element={<AppSettingsView />} />
+          <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
           <Route path={AUTOMATIONS_ROUTE_PATH} element={<AutomationsView />} />
-          <Route
-            path={STANDALONE_APP_ROUTE_PATH}
-            element={<StandaloneAppView />}
-          />
           {import.meta.env.DEV ? (
             <Route
               path={DEVELOPMENT_REPLAY_ROUTE_PATH}
@@ -143,7 +133,7 @@ export function App() {
 
   return (
     <QuickCreateProjectProvider>
-      <AppRouteNavigationProvider>
+      <RouteNavigationProvider>
         <ProviderCliHealthToasts />
         <Routes>
           <Route
@@ -152,7 +142,7 @@ export function App() {
           />
           <Route path="*" element={<AppRoutes />} />
         </Routes>
-      </AppRouteNavigationProvider>
+      </RouteNavigationProvider>
     </QuickCreateProjectProvider>
   );
 }

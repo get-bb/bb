@@ -275,7 +275,6 @@ export async function createTestServer(
         heartbeatIntervalMs: options.heartbeatIntervalMs ?? 25,
         leaseTimeoutMs: options.leaseTimeoutMs ?? 1_000,
         trackedThreadTargets: options.trackedThreadTargets ?? [],
-        trackedApplicationDataTargets: [],
         retiredEnvironmentIds: [],
       },
       201,

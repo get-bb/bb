@@ -156,7 +156,6 @@ function resolveActiveFixedPanel({
     case "workspace-file-preview":
     case "host-file-preview":
     case "thread-storage-file-preview":
-    case "app":
     case "browser":
     case "terminal":
     case "new-tab":

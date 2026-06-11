@@ -16,18 +16,13 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type {
-  AppSummary,
-  ProjectResponse,
-  WorkflowRunResponse,
-} from "@bb/server-contract";
+import type { ProjectResponse, WorkflowRunResponse } from "@bb/server-contract";
 import {
   findLocalPathProjectSourceForHost,
   PERSONAL_PROJECT_ID,
   type ThreadListEntry,
 } from "@bb/domain";
-import { useAppRoute } from "@/hooks/useAppRoute";
-import { useApps } from "@/hooks/queries/thread-queries";
+import { useRouteState } from "@/hooks/useRouteState";
 import {
   useConnectionAwareQueryState,
   type ConnectionAwareQueryStatus,
@@ -45,7 +40,7 @@ import {
   useLocalPathExistence,
 } from "@/hooks/queries/host-path-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { getRootComposeRoutePath } from "@/lib/app-route-paths";
+import { getRootComposeRoutePath } from "@/lib/route-paths";
 import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
@@ -70,7 +65,6 @@ import {
   COARSE_POINTER_ROW_HEIGHT_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectThreadTree } from "./ProjectRow";
-import { SidebarAppsSection } from "./SidebarAppsSection";
 import { SidebarWorkflowsSection } from "./SidebarWorkflowsSection";
 import type { ProjectThreadListState } from "./ProjectRow";
 import {
@@ -224,8 +218,7 @@ function isSidebarSectionId(value: string): value is SidebarSectionId {
     value === "pinned" ||
     value === "projects" ||
     value === "threads" ||
-    value === "workflows" ||
-    value === "apps"
+    value === "workflows"
   );
 }
 
@@ -235,8 +228,7 @@ function isCollapsibleSidebarSectionId(
   return (
     value === "projects" ||
     value === "threads" ||
-    value === "workflows" ||
-    value === "apps"
+    value === "workflows"
   );
 }
 
@@ -269,7 +261,6 @@ const EMPTY_PROJECT_THREAD_LIST_STATE: ProjectThreadListState = {
   status: "loading",
 };
 
-const EMPTY_APPS: readonly AppSummary[] = [];
 const EMPTY_PROJECTS: readonly ProjectResponse[] = [];
 const EMPTY_WORKFLOW_RUNS: readonly WorkflowRunResponse[] = [];
 
@@ -619,8 +610,6 @@ function ProjectListComponent({
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const sidebarNavigationQuery = useSidebarNavigation();
   const sidebarNavigation = sidebarNavigationQuery.data;
-  const appsQuery = useApps();
-  const apps = appsQuery.data ?? EMPTY_APPS;
   const experiments = useExperiments();
   const recentWorkflowRunsQuery = useRecentWorkflowRuns({
     enabled: experiments.workflows,
@@ -647,7 +636,7 @@ function ProjectListComponent({
     isLoadingError: sidebarNavigationQuery.isLoadingError,
   });
   const { localDaemonHostId } = useHostDaemon();
-  const { threadId: selectedThreadId } = useAppRoute();
+  const { threadId: selectedThreadId } = useRouteState();
 
   const localSourceTargets = useMemo(() => {
     if (!localDaemonHostId || !projects) return [];
@@ -824,9 +813,6 @@ function ProjectListComponent({
     [threads],
   );
   const hasPinnedSection = pinnedSidebarState.rootNodes.length > 0;
-  // No apps → no section: the empty Apps list adds nothing, so it stays hidden
-  // (like the Pinned section) until at least one global app exists.
-  const hasAppsSection = apps.length > 0;
   // Same rule for Workflows — plus the experiment opt-in: hidden until the
   // user enables it in Settings and at least one recent run exists.
   const hasWorkflowsSection = experiments.workflows && workflowRuns.length > 0;
@@ -835,10 +821,9 @@ function ProjectListComponent({
       sidebarSectionOrder.filter((sectionId) => {
         if (sectionId === "pinned") return hasPinnedSection;
         if (sectionId === "workflows") return hasWorkflowsSection;
-        if (sectionId === "apps") return hasAppsSection;
         return true;
       }),
-    [hasAppsSection, hasPinnedSection, hasWorkflowsSection, sidebarSectionOrder],
+    [hasPinnedSection, hasWorkflowsSection, sidebarSectionOrder],
   );
   const threadsByProject = useMemo(() => {
     const grouped = new Map<string, ThreadListEntry[]>();
@@ -1033,7 +1018,6 @@ function ProjectListComponent({
     />
   );
   const workflowsSectionContent = <SidebarWorkflowsSection runs={workflowRuns} />;
-  const appsSectionContent = <SidebarAppsSection apps={apps} />;
   const projectsSectionActions = onNewProject ? (
     <ProjectListProjectsSectionActions
       onNewProject={onNewProject}
@@ -1131,24 +1115,7 @@ function ProjectListComponent({
                 >
                   {workflowsSectionContent}
                 </SortableSidebarSection>
-              ) : (
-                <SortableSidebarSection
-                  key={sectionId}
-                  id={sectionId}
-                  label="Apps"
-                  disabled={visibleSidebarSectionOrder.length < 2}
-                  collapseControl={{
-                    isCollapsed: collapsedSidebarSectionIds.has("apps"),
-                    onToggleCollapsed: () =>
-                      toggleSidebarSectionCollapsed("apps"),
-                  }}
-                  consumeClickSuppression={
-                    consumeSidebarSectionClickSuppression
-                  }
-                >
-                  {appsSectionContent}
-                </SortableSidebarSection>
-              ),
+              ) : null,
             )}
           </div>
         </SortableContext>

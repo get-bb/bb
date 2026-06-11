@@ -35,12 +35,6 @@ import {
 } from "./terminals/terminal-manager.js";
 import { createReplayCaptureService } from "@bb/replay-capture/writer";
 import { createServerClient } from "./server-client.js";
-import { AppDataChangeReporter } from "./app-data-change-reporter.js";
-import {
-  ensureAppDataRootPath,
-  ensureAppsRootPath,
-  listApplicationDataTargetsFromRoot,
-} from "./app-data-files.js";
 import {
   cleanupInjectedSkillStagingDirs,
   ensureDataDirSkillsRootPath,
@@ -129,8 +123,6 @@ export async function createHostDaemonApp(
       ? { env: { BB_THREAD_STORAGE: options.threadStorageRootPath } }
       : {},
   );
-  const appsRootPath = await ensureAppsRootPath(options.dataDir);
-  const appDataRootPath = await ensureAppDataRootPath(options.dataDir);
   const dataDirSkillsRootPath = await ensureDataDirSkillsRootPath(
     options.dataDir,
   );
@@ -178,18 +170,6 @@ export async function createHostDaemonApp(
       flushThreadEventsBeforeInteractiveRegistration,
     fetchFn: options.fetchFn,
   });
-
-  const appDataChangeReporter = new AppDataChangeReporter({
-    logger: options.logger,
-    postAppDataChange: (payload) => serverClient.postAppDataChange(payload),
-    postAppDataResync: (payload) => serverClient.postAppDataResync(payload),
-  });
-
-  async function refreshTrackedApplicationDataTargets(): Promise<void> {
-    const targets = await listApplicationDataTargetsFromRoot({ appsRootPath });
-    runtimeManager.replaceTrackedApplicationDataTargets(targets);
-    await appDataChangeReporter.replaceTrackedApplications({ targets });
-  }
 
   function buildInteractiveInterruptKey(
     request: PendingInteractiveInterruptRequest,
@@ -319,8 +299,6 @@ export async function createHostDaemonApp(
     hostWatcher: options.hostWatcher,
     logger: options.logger,
     shellEnv: options.runtimeShellEnv,
-    appsRootPath,
-    appDataRootPath,
     onCapture: (entry) => {
       replayCapture?.recordRuntimeCaptureEntry(entry);
     },
@@ -357,52 +335,13 @@ export async function createHostDaemonApp(
         change: "thread-storage-changed",
       });
     },
-    onApplicationStorageTargetsChanged: () => {
-      void refreshTrackedApplicationDataTargets()
-        .then(() => {
-          sendServerMessage({
-            type: "application-storage-changed",
-          });
-        })
-        .catch((error) => {
-          options.logger.warn(
-            {
-              appsRootPath,
-              ...runtimeErrorLogFields(error),
-            },
-            "Failed to refresh tracked app data targets",
-          );
-        });
-    },
-    onApplicationDataChanged: (change) => {
-      void appDataChangeReporter.observe(change);
-    },
-    onApplicationDataResync: (change) => {
-      void appDataChangeReporter.requestResync(change);
-    },
-    onApplicationContentChanged: ({ applicationId }) => {
-      sendServerMessage({
-        type: "application-content-changed",
-        applicationId,
-      });
-    },
     onInjectedSkillsChanged: (change) => {
       options.logger.debug(
         {
-          applicationId: change.applicationId,
           changedPaths: change.changedPaths,
           sourceType: change.sourceType,
         },
         "Injected skills changed; future runtime launches will rescan",
-      );
-    },
-    onApplicationStorageWatchError: ({ error }) => {
-      options.logger.warn(
-        {
-          rootPath: error.rootPath,
-          watchError: error.message,
-        },
-        "Application storage watch unavailable; retrying in background",
       );
     },
     onDataDirSkillsWatchError: ({ error }) => {
@@ -551,7 +490,6 @@ export async function createHostDaemonApp(
     dataDir: options.dataDir,
     logger: options.logger,
     workflowAgentShellEnv: await prepareWorkflowAgentShellEnv({
-      appsRootPath,
       shimDirectoryPath: join(options.dataDir, "workflow-agent-shim"),
     }),
     bridgeBundleDir: options.bridgeBundleDir,
@@ -675,12 +613,6 @@ export async function createHostDaemonApp(
       runtimeManager.replaceTrackedThreadStorageTargets(
         session.trackedThreadTargets,
       );
-      runtimeManager.replaceTrackedApplicationDataTargets(
-        session.trackedApplicationDataTargets,
-      );
-      void appDataChangeReporter.replaceTrackedApplications({
-        targets: session.trackedApplicationDataTargets,
-      });
       void eventSink.flush().catch((error) => {
         options.logger.warn(
           {

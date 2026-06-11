@@ -171,7 +171,7 @@ export function ThreadDetailSecondaryContent({
         36px rail in beside it as a plain flex sibling. This sidesteps the
         "fixed px in a percentage engine" problem the same way a layout swap
         would, but without unmounting the PanelGroup — so the secondary
-        panel's content (live app iframes, parsed diffs, scroll position) is
+        panel's content (live iframes, parsed diffs, scroll position) is
         never torn down and re-created when toggling collapse.
       */}
       <div className="flex h-full w-full min-w-0">

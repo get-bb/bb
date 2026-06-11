@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 import {
-  APP_CHANGE_KINDS,
   changedMessageLenientSchema,
   changedMessageSchema,
   ENVIRONMENT_CHANGE_KINDS,
@@ -78,12 +77,6 @@ const maximalChangedMessages: ChangedMessage[] = [
     type: "changed",
     entity: "system",
     changes: [...SYSTEM_CHANGE_KINDS],
-  },
-  {
-    type: "changed",
-    entity: "app",
-    id: "app_1",
-    changes: [...APP_CHANGE_KINDS],
   },
   {
     type: "changed",

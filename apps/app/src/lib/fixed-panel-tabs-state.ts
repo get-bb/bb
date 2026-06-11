@@ -114,13 +114,6 @@ const threadStorageFilePreviewFixedPanelTabSchema = z.preprocess(
     })
     .strict(),
 );
-const appFixedPanelTabSchema = z
-  .object({
-    applicationId: z.string().min(1),
-    id: z.string().min(1),
-    kind: z.literal("app"),
-  })
-  .strict();
 const browserFixedPanelTabSchema = z
   .object({
     id: z.string().min(1),
@@ -148,7 +141,6 @@ const secondaryFixedPanelTabSchema = z.union([
   workspaceFilePreviewFixedPanelTabSchema,
   hostFilePreviewFixedPanelTabSchema,
   threadStorageFilePreviewFixedPanelTabSchema,
-  appFixedPanelTabSchema,
   browserFixedPanelTabSchema,
   newTabFixedPanelTabSchema,
   terminalFixedPanelTabSchema,
@@ -229,12 +221,6 @@ export interface ThreadStorageFilePreviewFixedPanelTab {
   path: string;
 }
 
-export interface AppFixedPanelTab {
-  applicationId: string;
-  id: string;
-  kind: "app";
-}
-
 /**
  * A web browser tab hosted by a native Electron `WebContentsView` (desktop
  * only). `url` is the last-loaded page (empty string = the new-tab screen) and
@@ -267,7 +253,6 @@ export type SecondaryFixedPanelTab =
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
-  | AppFixedPanelTab
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | TerminalFixedPanelTab;
@@ -281,7 +266,6 @@ export type SecondaryFileFixedPanelTab =
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
-  | AppFixedPanelTab
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | TerminalFixedPanelTab;
@@ -304,28 +288,6 @@ export interface FixedPanelTabsState {
   secondary: FixedSecondaryPanelTabGroupState;
   bottom: FixedPanelTabGroupState;
   lastUsedAt: number;
-}
-
-interface GetActiveSecondaryAppIdArgs {
-  isSecondaryPanelOpen: boolean;
-  state: FixedPanelTabsState;
-}
-
-/**
- * The application id of the secondary panel's active tab when that tab is an
- * app and the panel is open, else null. Lets sidebar rows tell whether a
- * thread's panel is currently showing a given app without reaching into the
- * tab list shape themselves.
- */
-export function getActiveSecondaryAppId(
-  { isSecondaryPanelOpen, state }: GetActiveSecondaryAppIdArgs,
-): string | null {
-  const { activeTabId, tabs } = state.secondary;
-  if (!isSecondaryPanelOpen || activeTabId === null) {
-    return null;
-  }
-  const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  return activeTab?.kind === "app" ? activeTab.applicationId : null;
 }
 
 interface FixedPanelTabsStorageKeyArgs {
@@ -378,10 +340,6 @@ interface NormalizeFixedPanelTabGroupStateArgs {
 interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
   isPinned: boolean;
   tab: ThreadStorageFileTabState;
-}
-
-interface CreateAppFixedPanelTabArgs {
-  applicationId: string;
 }
 
 interface CreateBrowserFixedPanelTabArgs {
@@ -465,20 +423,10 @@ export function createThreadStorageFilePreviewFixedPanelTab({
   };
 }
 
-export function createAppFixedPanelTab({
-  applicationId,
-}: CreateAppFixedPanelTabArgs): AppFixedPanelTab {
-  return {
-    applicationId,
-    id: `app:${encodeURIComponent(applicationId)}`,
-    kind: "app",
-  };
-}
-
 /**
  * Browser tabs get a fresh unique id per instance — the URL is mutable (it
  * changes on every navigation), so it cannot serve as a stable identity the way
- * an application id or file path does.
+ * a file path does.
  */
 export function createBrowserFixedPanelTab({
   url,
@@ -574,7 +522,6 @@ function stripTransientFixedPanelTabForStorage(
       };
     case "thread-info":
     case "git-diff":
-    case "app":
     case "browser":
     case "new-tab":
     case "terminal":
@@ -840,8 +787,6 @@ export function areFixedPanelTabsEquivalent(
         }) &&
         a.path === b.path
       );
-    case "app":
-      return b.kind === "app" && a.applicationId === b.applicationId;
     case "browser":
       return b.kind === "browser" && a.url === b.url && a.title === b.title;
     case "thread-storage-file-preview":

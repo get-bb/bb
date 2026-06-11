@@ -8,12 +8,11 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import type { AppSummary, WorkspacePathEntry } from "@bb/server-contract";
+import type { WorkspacePathEntry } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { NewTabPage } from "./NewTabPage";
-import { CREATE_APP_PROMPT_TEMPLATE } from "./NewTabFileSearch";
 import {
   getThreadRecentItemsStorageKey,
   type ThreadRecentItem,
@@ -27,7 +26,6 @@ vi.mock("@/lib/api", async (importOriginal) => {
     ...actual,
     searchProjectPaths: vi.fn(),
     searchEnvironmentPaths: vi.fn(),
-    listApps: vi.fn(),
     listThreadStoragePaths: vi.fn(),
   };
 });
@@ -76,15 +74,6 @@ function makePathResponse(
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
-const REVIEW_BOARD_APP = {
-  applicationId: "review-board",
-  name: "Review Board",
-  entry: { path: "index.html", kind: "html" },
-  capabilities: ["data", "message"],
-  icon: { kind: "builtin", name: "ListTodo" },
-  source: null,
-} satisfies AppSummary;
-
 function seedRecentItems(threadId: string, items: ThreadRecentItem[]): void {
   window.localStorage.setItem(
     getThreadRecentItemsStorageKey({ threadId }),
@@ -93,7 +82,6 @@ function seedRecentItems(threadId: string, items: ThreadRecentItem[]): void {
 }
 
 function mockEmptySearchSources(): void {
-  vi.mocked(api.listApps).mockResolvedValue([]);
   vi.mocked(api.searchProjectPaths).mockResolvedValue(makePathResponse([]));
   vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(makePathResponse([]));
   vi.mocked(api.listThreadStoragePaths).mockResolvedValue({
@@ -130,7 +118,6 @@ afterEach(() => {
 
 describe("NewTabPage", () => {
   it("renders file search and selects a workspace result", async () => {
-    vi.mocked(api.listApps).mockResolvedValue([]);
     vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
       makePathResponse([
         {
@@ -142,13 +129,11 @@ describe("NewTabPage", () => {
     );
     const { onSelect } = renderNewTabPage({ projectId: "proj-1" });
 
-    expect(
-      screen.queryByRole("textbox", { name: "Search apps and files" }),
-    ).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByRole("option", { name: /Open file/u })).toBeNull();
     expect(screen.queryByRole("option", { name: /Open browser/u })).toBeNull();
     const input = screen.getByRole("combobox", {
-      name: "Search files and apps",
+      name: "Search files",
     });
     expect(document.activeElement).toBe(input);
     fireEvent.change(input, { target: { value: "app" } });
@@ -164,21 +149,7 @@ describe("NewTabPage", () => {
     });
   });
 
-  it("structures the create-app prompt with no placeholders and ends ready for the user", () => {
-    expect(CREATE_APP_PROMPT_TEMPLATE).not.toMatch(/\[NAME\]/u);
-    expect(CREATE_APP_PROMPT_TEMPLATE).not.toMatch(
-      /\[DESCRIBE WHAT IT SHOULD DO\]/u,
-    );
-    expect(CREATE_APP_PROMPT_TEMPLATE).toContain("bb guide app");
-    expect(CREATE_APP_PROMPT_TEMPLATE).toContain("window.bb.data");
-    expect(CREATE_APP_PROMPT_TEMPLATE).toContain("window.bb.message.send");
-    expect(CREATE_APP_PROMPT_TEMPLATE).toContain("Vite + React + TypeScript");
-    expect(CREATE_APP_PROMPT_TEMPLATE).toContain("pnpm build");
-    expect(CREATE_APP_PROMPT_TEMPLATE.endsWith("What I want:\n\n")).toBe(true);
-  });
-
   it("selects a thread-storage result with the keyboard", async () => {
-    vi.mocked(api.listApps).mockResolvedValue([]);
     vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
       makePathResponse([
         {
@@ -204,7 +175,7 @@ describe("NewTabPage", () => {
     });
 
     const input = screen.getByRole("combobox", {
-      name: "Search files and apps",
+      name: "Search files",
     });
     fireEvent.change(input, { target: { value: "status" } });
     await screen.findByText("Files");
@@ -217,63 +188,6 @@ describe("NewTabPage", () => {
     });
   });
 
-  it("searches apps with files and hides default sections while searching", async () => {
-    const threadId = "thr-search-apps";
-    vi.mocked(api.listApps).mockResolvedValue([REVIEW_BOARD_APP]);
-    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
-      makePathResponse([
-        {
-          kind: "file",
-          path: "src/review.ts",
-          score: 80,
-        },
-      ]),
-    );
-    vi.mocked(api.listThreadStoragePaths).mockResolvedValue({
-      ...makePathResponse([]),
-      storageRootPath: "/tmp/thread-storage",
-    });
-    seedRecentItems(threadId, [
-      {
-        source: "thread-storage",
-        path: "plans/recent-review.md",
-        openedAt: Date.now() - MINUTE_MS,
-      },
-    ]);
-    const { onSelect } = renderNewTabPage({
-      projectId: "proj-1",
-      currentThreadId: threadId,
-    });
-
-    expect(
-      await screen.findByRole("button", { name: /Review Board/u }),
-    ).toBeTruthy();
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Search files and apps" }),
-      {
-        target: { value: "review" },
-      },
-    );
-
-    const listbox = await screen.findByRole("listbox", {
-      name: "File and app search results",
-    });
-    expect(
-      await within(listbox).findByRole("group", { name: "Files" }),
-    ).toBeTruthy();
-    const appsGroup = within(listbox).getByRole("group", { name: "Apps" });
-    fireEvent.click(
-      within(appsGroup).getByRole("option", { name: /Review Board/u }),
-    );
-
-    expect(screen.queryByRole("group", { name: "Recent" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Create App..." })).toBeNull();
-    expect(onSelect).toHaveBeenCalledWith({
-      source: "app",
-      applicationId: "review-board",
-    });
-  });
-
   it("ends file-search loading in a projectless thread with no workspace", async () => {
     mockEmptySearchSources();
     renderNewTabPage({
@@ -283,7 +197,7 @@ describe("NewTabPage", () => {
     });
 
     fireEvent.change(
-      screen.getByRole("combobox", { name: "Search files and apps" }),
+      screen.getByRole("combobox", { name: "Search files" }),
       {
         target: { value: "missing" },
       },
@@ -293,7 +207,7 @@ describe("NewTabPage", () => {
       expect(api.listThreadStoragePaths).toHaveBeenCalled();
     });
     await waitFor(() => {
-      expect(screen.queryByText("Searching files and apps...")).toBeNull();
+      expect(screen.queryByText("Searching files...")).toBeNull();
     });
 
     // No project source and no environment ⇒ workspace is never queried.
@@ -311,14 +225,13 @@ describe("NewTabPage", () => {
     ).toBeTruthy();
     expect(api.searchProjectPaths).not.toHaveBeenCalled();
     expect(api.searchEnvironmentPaths).not.toHaveBeenCalled();
-    expect(api.listApps).not.toHaveBeenCalled();
     expect(api.listThreadStoragePaths).not.toHaveBeenCalled();
 
     // With no searchable source the combobox is disabled and advertises no
     // popup, so it never dangles aria-controls/activedescendant at an absent
     // listbox.
     const input = screen.getByRole("combobox", {
-      name: "Search files and apps",
+      name: "Search files",
     });
     expect(input).toHaveProperty("disabled", true);
     expect(input.getAttribute("aria-expanded")).toBe("false");
@@ -457,7 +370,7 @@ describe("NewTabPage recent section", () => {
     });
 
     fireEvent.change(
-      screen.getByRole("combobox", { name: "Search files and apps" }),
+      screen.getByRole("combobox", { name: "Search files" }),
       {
         target: { value: "does-not-exist" },
       },
@@ -484,7 +397,7 @@ describe("NewTabPage recent section", () => {
     });
 
     const input = screen.getByRole("combobox", {
-      name: "Search files and apps",
+      name: "Search files",
     });
     const recentOption = await screen.findByRole("option", {
       name: /swap-model\.md/u,

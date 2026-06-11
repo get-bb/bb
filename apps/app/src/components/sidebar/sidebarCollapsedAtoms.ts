@@ -12,20 +12,17 @@ export type SidebarSectionId =
   | "pinned"
   | "projects"
   | "threads"
-  | "workflows"
-  | "apps";
+  | "workflows";
 export type CollapsibleSidebarSectionId =
   | "projects"
   | "threads"
-  | "workflows"
-  | "apps";
+  | "workflows";
 
 export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly SidebarSectionId[] = [
   "pinned",
   "projects",
   "threads",
   "workflows",
-  "apps",
 ];
 
 export const collapsedProjectIdsAtom = atomWithStorage<string[]>(

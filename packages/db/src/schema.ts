@@ -164,6 +164,15 @@ export const projectWorkflowPolicies = sqliteTable("project_workflow_policies", 
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const systemExperiments = sqliteTable("system_experiments", {
+  id: text("id").primaryKey(),
+  workflows: integer("workflows", { mode: "boolean" }).notNull(),
+  claudeCodeMockCliTraffic: integer("claude_code_mock_cli_traffic", {
+    mode: "boolean",
+  }).notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const projectSources = sqliteTable(
   "project_sources",
   {
@@ -877,14 +886,3 @@ export const workflowRunEvents = sqliteTable(
     ),
   ],
 );
-
-/**
- * Server-persisted app settings, one JSON document per key (today:
- * `experiments`). Typed accessors in `data/app-settings.ts` parse values at
- * the boundary; nothing reads this table raw.
- */
-export const appSettings = sqliteTable("app_settings", {
-  key: text("key").primaryKey(),
-  value: text("value").notNull(),
-  updatedAt: integer("updated_at").notNull(),
-});

@@ -3,11 +3,8 @@ import { hc } from "hono/client";
 import {
   ENVIRONMENT_CHANGE_KINDS,
   hostTypeSchema,
-  jsonValueSchema,
   pendingInteractionCreateSchema,
   pendingInteractionStatusSchema,
-  appDataPathSchema,
-  applicationIdSchema,
   terminalColsSchema,
   terminalDataBase64Schema,
   terminalRowsSchema,
@@ -54,14 +51,6 @@ export const hostDaemonTrackedThreadTargetSchema = z.object({
 });
 export type HostDaemonTrackedThreadTarget = z.infer<
   typeof hostDaemonTrackedThreadTargetSchema
->;
-
-export const hostDaemonTrackedApplicationDataTargetSchema = z.object({
-  applicationId: applicationIdSchema,
-  appDataPath: z.string().min(1),
-});
-export type HostDaemonTrackedApplicationDataTarget = z.infer<
-  typeof hostDaemonTrackedApplicationDataTargetSchema
 >;
 
 export const hostDaemonSessionOpenRequestSchema = z.object({
@@ -136,9 +125,6 @@ export const hostDaemonSessionOpenResponseSchema = z
     heartbeatIntervalMs: z.number().int().positive(),
     leaseTimeoutMs: z.number().int().positive(),
     trackedThreadTargets: z.array(hostDaemonTrackedThreadTargetSchema),
-    trackedApplicationDataTargets: z.array(
-      hostDaemonTrackedApplicationDataTargetSchema,
-    ),
     retiredEnvironmentIds: z.array(z.string().min(1)).default([]),
   })
   .strict();
@@ -315,77 +301,6 @@ export const hostDaemonEnvironmentChangePayloadSchema = z.object({
 });
 export type HostDaemonEnvironmentChangePayload = z.infer<
   typeof hostDaemonEnvironmentChangePayloadSchema
->;
-
-const hostDaemonAppDataChangePayloadBaseSchema = z
-  .object({
-    applicationId: applicationIdSchema,
-    path: appDataPathSchema,
-    value: jsonValueSchema.nullable(),
-    deleted: z.boolean(),
-    version: z.string().min(1).nullable(),
-  })
-  .strict();
-type HostDaemonAppDataChangePayloadBase = z.infer<
-  typeof hostDaemonAppDataChangePayloadBaseSchema
->;
-
-function validateHostDaemonAppDataChangePayload(
-  payload: HostDaemonAppDataChangePayloadBase,
-  context: z.RefinementCtx,
-): void {
-  if (payload.deleted && payload.version !== null) {
-    context.addIssue({
-      code: "custom",
-      path: ["version"],
-      message: "version must be null for deleted app data changes",
-    });
-  }
-  if (!payload.deleted && payload.version === null) {
-    context.addIssue({
-      code: "custom",
-      path: ["version"],
-      message: "version is required for non-deleted app data changes",
-    });
-  }
-}
-
-export const hostDaemonAppDataChangePayloadSchema =
-  hostDaemonAppDataChangePayloadBaseSchema.superRefine(
-    validateHostDaemonAppDataChangePayload,
-  );
-export type HostDaemonAppDataChangePayload = z.infer<
-  typeof hostDaemonAppDataChangePayloadSchema
->;
-
-export const hostDaemonAppDataChangeRequestSchema = z
-  .object({
-    sessionId: z.string().min(1),
-    ...hostDaemonAppDataChangePayloadBaseSchema.shape,
-  })
-  .strict()
-  .superRefine(validateHostDaemonAppDataChangePayload);
-export type HostDaemonAppDataChangeRequest = z.infer<
-  typeof hostDaemonAppDataChangeRequestSchema
->;
-
-export const hostDaemonAppDataResyncPayloadSchema = z
-  .object({
-    applicationId: applicationIdSchema,
-  })
-  .strict();
-export type HostDaemonAppDataResyncPayload = z.infer<
-  typeof hostDaemonAppDataResyncPayloadSchema
->;
-
-export const hostDaemonAppDataResyncRequestSchema =
-  hostDaemonAppDataResyncPayloadSchema
-    .extend({
-      sessionId: z.string().min(1),
-    })
-    .strict();
-export type HostDaemonAppDataResyncRequest = z.infer<
-  typeof hostDaemonAppDataResyncRequestSchema
 >;
 
 export const hostDaemonSessionCloseReasonSchema = z.enum([
@@ -597,19 +512,6 @@ const hostDaemonEnvironmentChangeMessageSchema =
     })
     .strict();
 
-const hostDaemonApplicationStorageChangedMessageSchema = z
-  .object({
-    type: z.literal("application-storage-changed"),
-  })
-  .strict();
-
-const hostDaemonApplicationContentChangedMessageSchema = z
-  .object({
-    type: z.literal("application-content-changed"),
-    applicationId: applicationIdSchema,
-  })
-  .strict();
-
 const hostDaemonTerminalOpenedMessageSchema = z
   .object({
     type: z.literal("terminal.opened"),
@@ -663,8 +565,6 @@ const hostDaemonTerminalErrorMessageSchema = z
 export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonHeartbeatMessageSchema,
   hostDaemonEnvironmentChangeMessageSchema,
-  hostDaemonApplicationStorageChangedMessageSchema,
-  hostDaemonApplicationContentChangedMessageSchema,
   hostDaemonTerminalOpenedMessageSchema,
   hostDaemonTerminalOutputMessageSchema,
   hostDaemonTerminalReplayMessageSchema,
@@ -800,14 +700,6 @@ export type HostDaemonInternalSchema = {
       { query: HostDaemonWorkflowRunJournalQuery },
       HostDaemonWorkflowRunJournalResponse
     >;
-  };
-  "/session/app-data-change": {
-    /** Used by the daemon to report host-local app data file changes for server websocket fan-out. */
-    $post: Endpoint<{ json: HostDaemonAppDataChangeRequest }, { ok: true }>;
-  };
-  "/session/app-data-resync": {
-    /** Used by the daemon to request client-side app data resync after reconnect reconciliation. */
-    $post: Endpoint<{ json: HostDaemonAppDataResyncRequest }, { ok: true }>;
   };
   "/session/tool-call": {
     /** Used by the daemon to execute server-side tool calls requested by a provider. */

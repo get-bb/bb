@@ -67,7 +67,6 @@ async function writeInjectedSkillSource(
   );
   return {
     sourceType: "data-dir",
-    applicationId: null,
     name: "release-notes",
     description: "Use release-notes when command dispatch tests run.",
     sourceRootPath,

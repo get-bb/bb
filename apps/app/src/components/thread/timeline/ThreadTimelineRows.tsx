@@ -68,7 +68,7 @@ import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-l
 import {
   getThreadRoutePath,
   getWorkflowRunRoutePath,
-} from "@/lib/app-route-paths";
+} from "@/lib/route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
 import {
   allThreadQueryKeyPrefix,

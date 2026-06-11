@@ -144,7 +144,6 @@ describe("prepareRuntimeShellEnv", () => {
   it("prepends the configured bb executable directory to PATH", () => {
     expect(
       prepareRuntimeShellEnv({
-        appsRootPath: "/tmp/bb-data/apps",
         bbExecutableDirectory: "/tmp/bb-bin",
         hostDaemonPort: 3002,
         inheritedPath: "/usr/bin",
@@ -152,7 +151,6 @@ describe("prepareRuntimeShellEnv", () => {
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
-      BB_APPS_ROOT: "/tmp/bb-data/apps",
       BB_SERVER_URL: "http://127.0.0.1:3334",
       BB_HOST_DAEMON_PORT: "3002",
     });
@@ -163,14 +161,12 @@ describe("prepareRuntimeShellEnv", () => {
 
     expect(
       prepareRuntimeShellEnv({
-        appsRootPath: "/tmp/bb-data/apps",
         bbExecutableDirectory: "/tmp/bb-bin",
         hostDaemonPort: 3002,
         serverUrl: "http://127.0.0.1:3334",
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/local/bin:/usr/bin`,
-      BB_APPS_ROOT: "/tmp/bb-data/apps",
       BB_SERVER_URL: "http://127.0.0.1:3334",
       BB_HOST_DAEMON_PORT: "3002",
     });
@@ -179,14 +175,12 @@ describe("prepareRuntimeShellEnv", () => {
   it("omits the host daemon port when the local API is disabled", () => {
     expect(
       prepareRuntimeShellEnv({
-        appsRootPath: "/tmp/bb-data/apps",
         bbExecutableDirectory: "/tmp/bb-bin",
         inheritedPath: "/usr/bin",
         serverUrl: "http://127.0.0.1:3334",
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
-      BB_APPS_ROOT: "/tmp/bb-data/apps",
       BB_SERVER_URL: "http://127.0.0.1:3334",
     });
   });
@@ -204,14 +198,12 @@ describe("prepareWorkflowAgentShellEnv", () => {
     const inheritedPath = [toolchainDir, "/usr/bin"].join(delimiter);
 
     const env = await prepareWorkflowAgentShellEnv({
-      appsRootPath: "/tmp/bb-data/apps",
       shimDirectoryPath: shimDir,
       inheritedPath,
     });
 
     expect(env).toEqual({
       PATH: `${shimDir}${delimiter}${inheritedPath}`,
-      BB_APPS_ROOT: "/tmp/bb-data/apps",
     });
     // Both shim flavors are materialized (POSIX script + Windows bb.cmd).
     await expect(fs.stat(path.join(shimDir, "bb"))).resolves.toBeDefined();
@@ -224,12 +216,10 @@ describe("prepareWorkflowAgentShellEnv", () => {
 
     await expect(
       prepareWorkflowAgentShellEnv({
-        appsRootPath: "/tmp/bb-data/apps",
         shimDirectoryPath: shimDir,
       }),
     ).resolves.toEqual({
       PATH: `${shimDir}${delimiter}/usr/local/bin:/usr/bin`,
-      BB_APPS_ROOT: "/tmp/bb-data/apps",
     });
   });
 
@@ -246,7 +236,6 @@ describe("prepareWorkflowAgentShellEnv", () => {
       );
       const shimDir = path.join(await makeTempDir("bb-wf-shim-"), "shim");
       const env = await prepareWorkflowAgentShellEnv({
-        appsRootPath: "/tmp/bb-data/apps",
         shimDirectoryPath: shimDir,
         inheritedPath: [realBbDir, "/usr/bin", "/bin"].join(delimiter),
       });

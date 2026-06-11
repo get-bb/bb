@@ -4,7 +4,6 @@ import {
   type HostDaemonConnectionConfig,
 } from "@bb/config/host-daemon";
 import { DEFAULTS } from "@bb/config/defaults";
-import { resolveAppsRootPath } from "@bb/config/app-storage-paths";
 import type { HostType, ToolCallRequest, ToolCallResponse } from "@bb/domain";
 import { createHostWatcher, type HostWatcher } from "@bb/host-watcher";
 import { createLogger } from "@bb/logger";
@@ -156,7 +155,6 @@ export async function startHostDaemon(
       (await resolveLocalBbExecutableDirectory());
     const hostWatcher = options.hostWatcher ?? (await createHostWatcher());
     const runtimeShellEnv = prepareRuntimeShellEnv({
-      appsRootPath: resolveAppsRootPath(dataDir),
       bbExecutableDirectory,
       hostDaemonPort: localApiConfig?.port,
       serverUrl,

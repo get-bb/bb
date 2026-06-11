@@ -21,7 +21,7 @@ import {
   useUpdateThread,
 } from "@/hooks/mutations/thread-state-mutations";
 import { getThreadChildSummary } from "@/lib/api";
-import { useAppRoute } from "@/hooks/useAppRoute";
+import { useRouteState } from "@/hooks/useRouteState";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
   getMutationErrorMessage,
@@ -42,7 +42,7 @@ import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState"
 import {
   getRootComposeRoutePath,
   getThreadRoutePath,
-} from "@/lib/app-route-paths";
+} from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 
@@ -88,7 +88,7 @@ export function ThreadActionsProvider({
 }: ThreadActionsProviderProps) {
   const navigate = useNavigate();
   const setRootComposeProjectId = useSetRootComposeProjectId();
-  const { threadId: viewedThreadId } = useAppRoute();
+  const { threadId: viewedThreadId } = useRouteState();
   const archiveThreadAndChildrenMutation = useArchiveThreadAndChildren();
   const unarchiveThreadMutation = useUnarchiveThread();
   const markThreadRead = useMarkThreadRead();

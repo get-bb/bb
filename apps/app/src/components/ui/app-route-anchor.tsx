@@ -8,32 +8,32 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { resolveAppRouteHref } from "@/lib/app-route-paths";
+import { resolveRouteHref } from "@/lib/route-paths";
 
-export interface AppRouteNavigationProviderProps {
+export interface RouteNavigationProviderProps {
   children: ReactNode;
 }
 
-export interface AppRouteAnchorProps
+export interface RouteAnchorProps
   extends Omit<ComponentPropsWithoutRef<"a">, "href"> {
   href: string | undefined;
 }
 
-interface ShouldHandleAppRouteAnchorClickArgs {
+interface ShouldHandleRouteAnchorClickArgs {
   event: ReactMouseEvent<HTMLAnchorElement>;
 }
 
-type AppRouteNavigate = (path: string) => void;
+type RouteNavigate = (path: string) => void;
 
-const AppRouteNavigationContext = createContext<AppRouteNavigate | null>(null);
+const RouteNavigationContext = createContext<RouteNavigate | null>(null);
 
 function currentOrigin(): string | null {
   return typeof window === "undefined" ? null : window.location.origin;
 }
 
-function shouldHandleAppRouteAnchorClick({
+function shouldHandleRouteAnchorClick({
   event,
-}: ShouldHandleAppRouteAnchorClickArgs): boolean {
+}: ShouldHandleRouteAnchorClickArgs): boolean {
   if (
     event.defaultPrevented ||
     event.button !== 0 ||
@@ -49,11 +49,11 @@ function shouldHandleAppRouteAnchorClick({
   return target === null || target === "" || target === "_self";
 }
 
-export function AppRouteNavigationProvider({
+export function RouteNavigationProvider({
   children,
-}: AppRouteNavigationProviderProps) {
+}: RouteNavigationProviderProps) {
   const navigate = useNavigate();
-  const navigateAppRoute = useCallback<AppRouteNavigate>(
+  const navigateRoute = useCallback<RouteNavigate>(
     (path) => {
       navigate(path);
     },
@@ -61,49 +61,49 @@ export function AppRouteNavigationProvider({
   );
 
   return (
-    <AppRouteNavigationContext.Provider value={navigateAppRoute}>
+    <RouteNavigationContext.Provider value={navigateRoute}>
       {children}
-    </AppRouteNavigationContext.Provider>
+    </RouteNavigationContext.Provider>
   );
 }
 
-export function AppRouteAnchor({
+export function RouteAnchor({
   href,
   onClick,
   rel,
   target,
   ...anchorProps
-}: AppRouteAnchorProps) {
-  const navigateAppRoute = useContext(AppRouteNavigationContext);
-  const appRoute = useMemo(() => {
+}: RouteAnchorProps) {
+  const navigateRoute = useContext(RouteNavigationContext);
+  const route = useMemo(() => {
     const origin = currentOrigin();
     return origin === null || href === undefined
       ? null
-      : resolveAppRouteHref({ currentOrigin: origin, href });
+      : resolveRouteHref({ currentOrigin: origin, href });
   }, [href]);
   const handleClick = useCallback(
     (event: ReactMouseEvent<HTMLAnchorElement>): void => {
       onClick?.(event);
       if (
-        appRoute === null ||
-        navigateAppRoute === null ||
-        !shouldHandleAppRouteAnchorClick({ event })
+        route === null ||
+        navigateRoute === null ||
+        !shouldHandleRouteAnchorClick({ event })
       ) {
         return;
       }
 
       event.preventDefault();
-      navigateAppRoute(appRoute.path);
+      navigateRoute(route.path);
     },
-    [appRoute, navigateAppRoute, onClick],
+    [navigateRoute, onClick, route],
   );
 
   return (
     <a
       {...anchorProps}
       href={href}
-      rel={appRoute === null ? rel : undefined}
-      target={appRoute === null ? target : undefined}
+      rel={route === null ? rel : undefined}
+      target={route === null ? target : undefined}
       onClick={handleClick}
     />
   );

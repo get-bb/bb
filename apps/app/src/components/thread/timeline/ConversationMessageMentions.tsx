@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import { Icon } from "@/components/ui/icon.js";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 import {
   PROMPT_MENTION_PILL_CLASS,

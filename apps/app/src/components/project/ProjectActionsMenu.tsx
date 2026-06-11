@@ -23,7 +23,7 @@ import { usePathPickerHost } from "@/hooks/useLocalPathPicker";
 import {
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
-} from "@/lib/app-route-paths";
+} from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 import { useProjectActions } from "./ProjectActionsProvider";
 

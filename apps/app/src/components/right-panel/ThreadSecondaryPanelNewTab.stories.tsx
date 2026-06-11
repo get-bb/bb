@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type {
-  AppSummary,
   ThreadStoragePathListResponse,
   WorkspacePathEntry,
   WorkspacePathListResponse,
@@ -10,7 +9,6 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { WithDesktopBrowser } from "../../../.ladle/story-desktop";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
-  appsQueryKey,
   environmentPathsQueryKey,
   threadStoragePathsQueryKey,
 } from "@/hooks/queries/query-keys";
@@ -41,7 +39,7 @@ const PROJECT_ID = "proj_bb";
 const ENVIRONMENT_ID = "env_open_file_story";
 const STORY_SOURCE_LIMIT = 40;
 const BLANK_THREAD_ID = "thr_new_tab_blank_story";
-const APPS_THREAD_ID = "thr_new_tab_apps_story";
+const RECENTS_THREAD_ID = "thr_new_tab_recents_story";
 const LONG_RECENTS_THREAD_ID = "thr_new_tab_long_recents_story";
 const SEARCH_THREAD_ID = "thr_new_tab_search_story";
 const STORY_TERMINAL_ID = "term_new_tab_story";
@@ -96,84 +94,6 @@ const THREAD_STORAGE_PATH_RESULTS: WorkspacePathEntry[] = [
     name: "thread-summary.json",
     score: 83,
     positions: [10, 11, 12, 13, 14, 15],
-  },
-];
-
-const APPS_RESPONSE: AppSummary[] = [
-  {
-    applicationId: "story-review-board",
-    name: "Review Board",
-    entry: { path: "index.html", kind: "html" },
-    capabilities: ["data", "message"],
-    icon: { kind: "builtin", name: "ListTodo" },
-    source: null,
-  },
-];
-
-const APPS_ROW_APPS: AppSummary[] = [
-  {
-    applicationId: "app_status",
-    name: "Status",
-    entry: { path: "index.html", kind: "html" },
-    capabilities: ["data", "message"],
-    icon: { kind: "builtin", name: "ListTodo" },
-    source: null,
-  },
-  {
-    applicationId: "app_workspace_map",
-    name: "Workspace Map",
-    entry: { path: "index.html", kind: "html" },
-    capabilities: ["data"],
-    icon: { kind: "builtin", name: "GridView" },
-    source: null,
-  },
-  {
-    applicationId: "app_release_notes",
-    name: "Release Notes",
-    entry: { path: "index.html", kind: "html" },
-    capabilities: ["message"],
-    icon: { kind: "builtin", name: "File" },
-    source: null,
-  },
-  {
-    applicationId: "app_session_notes",
-    name: "Session Notes",
-    entry: { path: "index.html", kind: "html" },
-    capabilities: ["data", "message"],
-    icon: { kind: "builtin", name: "File" },
-    source: null,
-  },
-  {
-    applicationId: "app_error_dashboard",
-    name: "Error Dashboard",
-    entry: { path: "index.html", kind: "html" },
-    capabilities: ["data"],
-    icon: { kind: "builtin", name: "AlertCircle" },
-    source: null,
-  },
-  {
-    applicationId: "app_release_tracker",
-    name: "Release Tracker",
-    entry: { path: "index.html", kind: "html" },
-    capabilities: ["message"],
-    icon: { kind: "builtin", name: "GitBranch" },
-    source: null,
-  },
-  {
-    applicationId: "app_prompt_library",
-    name: "Prompt Library",
-    entry: { path: "index.html", kind: "html" },
-    capabilities: ["data", "message"],
-    icon: { kind: "builtin", name: "GridView" },
-    source: null,
-  },
-  {
-    applicationId: "app_qa_checklist",
-    name: "QA Checklist",
-    entry: { path: "index.html", kind: "html" },
-    capabilities: ["data"],
-    icon: { kind: "builtin", name: "ListTodo" },
-    source: null,
   },
 ];
 
@@ -278,7 +198,6 @@ interface PanelStageProps {
 }
 
 interface NewTabPanelStoryProps {
-  apps: readonly AppSummary[];
   currentThreadId: string;
   initialQuery: string;
   projectId: string | undefined;
@@ -315,14 +234,6 @@ function createStoryActiveTab(
   }
 
   const { selection } = outcome;
-  if (selection.source === "app") {
-    return {
-      applicationId: selection.applicationId,
-      id: `app:${selection.applicationId}`,
-      kind: "app",
-    };
-  }
-
   if (selection.source === "workspace") {
     return {
       environmentId: ENVIRONMENT_ID,
@@ -345,7 +256,6 @@ function createStoryActiveTab(
 }
 
 interface StoryQueryClientArgs {
-  apps: readonly AppSummary[];
   currentThreadId: string;
   initialQuery: string;
   threadStoragePaths: readonly WorkspacePathEntry[];
@@ -360,7 +270,6 @@ interface SeedThreadRecentItemsArgs {
 interface SeededNewTabPageProps {
   currentThreadId: string;
   initialQuery: string;
-  onCreateAppPromptPrefill: () => void;
   onOpenBrowser?: () => void;
   onSelect: (selection: FileSearchSelection) => void;
   onStartTerminal: () => void;
@@ -415,7 +324,6 @@ function seedThreadRecentItems({
 }
 
 function useStoryQueryClient({
-  apps,
   currentThreadId,
   initialQuery,
   threadStoragePaths,
@@ -445,7 +353,6 @@ function useStoryQueryClient({
       ),
       makeWorkspacePathResponse(workspacePaths),
     );
-    queryClient.setQueryData(appsQueryKey(), apps);
     queryClient.setQueryData(
       threadStoragePathsQueryKey(currentThreadId, {
         limit: STORY_SOURCE_LIMIT,
@@ -457,7 +364,6 @@ function useStoryQueryClient({
     );
     return queryClient;
   }, [
-    apps,
     currentThreadId,
     initialQuery,
     threadStoragePaths,
@@ -468,7 +374,6 @@ function useStoryQueryClient({
 function SeededNewTabPage({
   currentThreadId,
   initialQuery,
-  onCreateAppPromptPrefill,
   onOpenBrowser,
   onSelect,
   onStartTerminal,
@@ -486,7 +391,6 @@ function SeededNewTabPage({
       focusRequest={0}
       initialQuery={initialQuery}
       onSelect={onSelect}
-      onCreateAppPromptPrefill={onCreateAppPromptPrefill}
       onOpenBrowser={onOpenBrowser}
       onStartTerminal={onStartTerminal}
     />
@@ -494,7 +398,6 @@ function SeededNewTabPage({
 }
 
 function NewTabPanelStory({
-  apps,
   currentThreadId,
   initialQuery,
   projectId,
@@ -505,7 +408,6 @@ function NewTabPanelStory({
 }: NewTabPanelStoryProps) {
   const [outcome, setOutcome] = useState<NewTabStoryOutcome | null>(null);
   const queryClient = useStoryQueryClient({
-    apps,
     currentThreadId,
     initialQuery,
     threadStoragePaths,
@@ -562,22 +464,13 @@ function NewTabPanelStory({
     const { selection } = outcome;
     return [
       {
-        id:
-          selection.source === "app"
-            ? `app:${selection.applicationId}`
-            : `${selection.source}:${selection.path}`,
+        id: `${selection.source}:${selection.path}`,
         filename:
-          selection.source === "app"
-            ? selection.applicationId
-            : getFileNameFromPath({ path: selection.path }),
+          getFileNameFromPath({ path: selection.path }),
         isActive: true,
         leadingVisual: (
           <Icon
-            name={
-              selection.source === "app"
-                ? "AppWindow"
-                : resolveRightPanelFileVisual({ path: selection.path }).iconName
-            }
+            name={resolveRightPanelFileVisual({ path: selection.path }).iconName}
             className="size-3.5"
             aria-hidden
           />
@@ -596,7 +489,6 @@ function NewTabPanelStory({
           initialQuery={initialQuery}
           projectId={projectId}
           recentItems={recentItems}
-          onCreateAppPromptPrefill={noop}
           onOpenBrowser={showOpenBrowser ? handleOpenBrowser : undefined}
           onSelect={handleSelect}
           onStartTerminal={handleStartTerminal}
@@ -621,16 +513,12 @@ function NewTabPanelStory({
       <div className="flex min-h-full flex-col justify-center px-4 text-sm">
         <p className="font-medium text-foreground">
           Selected{" "}
-          {outcome.selection.source === "app"
-            ? "app"
-            : outcome.selection.source === "workspace"
+          {outcome.selection.source === "workspace"
               ? "workspace file"
               : "thread storage file"}
         </p>
         <p className="pt-1 font-mono text-xs text-muted-foreground">
-          {outcome.selection.source === "app"
-            ? outcome.selection.applicationId
-            : outcome.selection.path}
+          {outcome.selection.path}
         </p>
       </div>
     );
@@ -668,10 +556,9 @@ export function NewTab() {
       <StoryCard>
         <StoryRow
           label="default"
-          hint="stable launcher: empty Recent, Actions, and Apps/Create App"
+          hint="stable launcher: empty Recent and Actions"
         >
           <NewTabPanelStory
-            apps={[]}
             currentThreadId={BLANK_THREAD_ID}
             initialQuery=""
             projectId={PROJECT_ID}
@@ -682,12 +569,11 @@ export function NewTab() {
           />
         </StoryRow>
         <StoryRow
-          label="recents and apps"
-          hint="recent rows plus installed apps; Apps uses Show more when it grows"
+          label="recents"
+          hint="recent rows with browser and terminal actions"
         >
           <NewTabPanelStory
-            apps={APPS_ROW_APPS}
-            currentThreadId={APPS_THREAD_ID}
+            currentThreadId={RECENTS_THREAD_ID}
             initialQuery=""
             projectId={PROJECT_ID}
             recentItems={RECENT_ROW_ITEMS}
@@ -701,7 +587,6 @@ export function NewTab() {
           hint="fourteen recent entries; expand with Show 8 more"
         >
           <NewTabPanelStory
-            apps={[]}
             currentThreadId={LONG_RECENTS_THREAD_ID}
             initialQuery=""
             projectId={PROJECT_ID}
@@ -713,10 +598,9 @@ export function NewTab() {
         </StoryRow>
         <StoryRow
           label="search results"
-          hint="typed search shows only file and app results"
+          hint="typed search shows file results"
         >
           <NewTabPanelStory
-            apps={APPS_RESPONSE}
             currentThreadId={SEARCH_THREAD_ID}
             initialQuery="review"
             projectId={PROJECT_ID}

@@ -18,17 +18,12 @@ import {
 import { Icon } from "@/components/ui/icon.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Input } from "@/components/ui/input.js";
-import { Separator } from "@/components/ui/separator.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
-import { ResolvedAppIcon } from "./AppIcon";
 import {
   useFileSearchSuggestions,
-  type AppSearchSuggestion,
   type FilePathSearchSuggestion,
   type FileSearchSuggestion,
 } from "@/hooks/useFileSearchSuggestions";
-import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
-import { useApps } from "@/hooks/queries/thread-queries";
 import type { FileSearchSelection } from "./useThreadFileTabs";
 import {
   useThreadRecentItems,
@@ -41,9 +36,7 @@ import {
 } from "./rightPanelFileVisuals";
 import { cn } from "@/lib/utils";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
-import { isProjectlessProjectId } from "@/lib/app-route-paths";
 import { formatRelativeTime } from "@/lib/relative-time";
-import { isPromptDraftEmpty, type PromptDraftState } from "@/lib/prompt-draft";
 import {
   LAUNCHER_ACTION_ROW_BASE_CLASS,
   LAUNCHER_ROW_BASE_CLASS,
@@ -51,30 +44,6 @@ import {
   LauncherRowTrailing,
   LauncherSectionHeader,
 } from "./launcherRow";
-
-export const CREATE_APP_PROMPT_TEMPLATE = `You are creating a new global bb app.
-
-Apps system reference — run \`bb guide app\` for full detail. Layout:
-- <dataDir>/apps/<applicationId>/manifest.json — { manifestVersion: 1, id: applicationId, name?, icon | logo.svg, entry, capabilities: ["data"?, "message"?] }
-- <dataDir>/apps/<applicationId>/README.md — scaffold notes and build instructions
-- <dataDir>/apps/<applicationId>/public/index.html — prebuilt static web root served by bb; use flat relative asset refs
-- <dataDir>/apps/<applicationId>/data/state.json — empty seed state; app data can also use nested records such as todos/<id>
-- <dataDir>/apps/<applicationId>/skills/add-todos/SKILL.md — scaffold skill showing the Todo record shape
-- <dataDir>/apps/<applicationId>/source/ — editable Vite + React + TypeScript project; run \`pnpm install\` and \`pnpm build\` here after edits
-
-In the page, use the injected window.bb SDK: window.bb.data.read({ path }), window.bb.data.write({ path, value }), window.bb.data.delete({ path }), window.bb.data.list({ prefix }), window.bb.data.onChange({ prefix, callback }) for live state, and window.bb.message.send({ payload }) to send the thread a prompt.
-
-Scaffold with \`bb app new --name "Name"\` or \`bb app new --slug my-app\`; new apps open immediately from committed \`public/\`. Edit \`source/\`, rebuild to \`public/\`, and do not rely on a localhost dev server for the installed app. Inside an app-capable runtime, inspect \`bb app current --json\` and write directly to \`BB_APP_ROOT\` / \`BB_APP_DATA_PATH\`. The application id is the lowercase slug folder name; display names are optional labels, not identifiers.
-
-What I want:
-
-`;
-
-const CREATE_APP_PROMPT_DRAFT = {
-  text: CREATE_APP_PROMPT_TEMPLATE,
-  mentions: [],
-  attachments: [],
-} satisfies PromptDraftState;
 
 export interface NewTabFileSearchProps {
   projectId: string | undefined;
@@ -86,28 +55,14 @@ export interface NewTabFileSearchProps {
   onSelect: (selection: FileSearchSelection) => void;
 }
 
-export type CreateAppPromptPrefillHandler = () => void;
 export type OpenBrowserHandler = () => void;
 export type SearchActiveChangeHandler = (isSearchActive: boolean) => void;
 export type StartTerminalHandler = () => void;
 
 export interface NewTabActionsProps {
-  projectId: string | undefined;
-  currentThreadId: string;
-  onSelect: (selection: FileSearchSelection) => void;
-  onCreateAppPromptPrefill?: CreateAppPromptPrefillHandler;
   /** Desktop-only: open a new in-panel browser tab. Absent ⇒ no Browser entry. */
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
-}
-
-interface AppResultRowProps {
-  id: string;
-  suggestion: AppSearchSuggestion;
-  isActive: boolean;
-  variant?: LauncherTileVariant;
-  onActivate: () => void;
-  onSelect: (suggestion: AppSearchSuggestion) => void;
 }
 
 interface FileResultRowProps {
@@ -156,18 +111,11 @@ interface FileSearchSection {
 
 type LauncherKeyDownHandler = (event: KeyboardEvent<HTMLElement>) => void;
 type FileSearchSource = FileSearchSuggestion["source"];
-type FileSearchSectionKind = "actions" | "apps" | "files" | "recent";
+type FileSearchSectionKind = "actions" | "files" | "recent";
 type LauncherTileVariant = "result" | "action";
-
-interface GetAvailableFileSearchSourcesArgs {
-  projectId: string | undefined;
-  environmentId: string | null;
-  currentThreadId: string;
-}
 
 interface GroupFileSearchSectionsArgs {
   suggestions: readonly FileSearchSuggestion[];
-  availableSources: readonly FileSearchSource[];
   recentEntries: readonly FileSearchSectionEntry[];
 }
 
@@ -179,13 +127,6 @@ interface LauncherTileProps {
   onSelect: () => void;
   title?: string;
   children: ReactNode;
-}
-
-interface CreateAppTileProps {
-  id: string;
-  isActive: boolean;
-  onActivate: () => void;
-  onSelect: () => void;
 }
 
 interface OpenBrowserTileProps {
@@ -211,64 +152,29 @@ interface ShowMoreToggleProps {
 const FILE_SEARCH_LIMIT = 20;
 const FILE_SEARCH_SECTION_ORDER: readonly FileSearchSectionKind[] = [
   "files",
-  "apps",
   "recent",
   "actions",
 ];
 
 const FILE_SEARCH_SECTION_LABELS = {
   actions: "Actions",
-  apps: "Apps",
   files: "Files",
   recent: "Recent",
 } satisfies Record<FileSearchSectionKind, string>;
 
 const FILE_SEARCH_SOURCE_LABELS = {
-  app: "App",
   workspace: "Workspace",
   "thread-storage": "Thread storage",
 } satisfies Record<FileSearchSource, string>;
 
-const CREATE_APP_ENTRY_ID = "file-search-result-create-app";
 const OPEN_BROWSER_ENTRY_ID = "file-search-result-open-browser";
 const START_TERMINAL_ENTRY_ID = "file-search-result-start-terminal";
 
-const LAUNCHER_TILE_ICON_CLASS_DASHED = `flex shrink-0 items-center justify-center text-muted-foreground group-hover:text-foreground ${COARSE_POINTER_ICON_SIZE_CLASS}`;
-const NEW_TAB_ACTIONS_SEPARATOR_CLASS = "mx-2 my-2 w-auto bg-border-seam";
-
 const RECENT_ENTRY_ID_PREFIX = "file-search-result-recent";
-const NEW_TAB_APP_ROWS_VISIBLE_LIMIT = 6;
-
-function getAvailableFileSearchSources({
-  projectId,
-  environmentId,
-  currentThreadId,
-}: GetAvailableFileSearchSourcesArgs): readonly FileSearchSource[] {
-  const sources: FileSearchSource[] = [];
-  if (currentThreadId.length > 0) {
-    sources.push("app");
-  }
-  // The workspace is searchable via an existing thread's environment, or via a
-  // standard project's default source before any environment exists. Projectless
-  // (personal) threads have no project source, so without an environment there
-  // is no workspace to search. Mirrors the source selection in usePathSuggestions.
-  if (
-    Boolean(environmentId) ||
-    (projectId && !isProjectlessProjectId(projectId))
-  ) {
-    sources.push("workspace");
-  }
-  if (currentThreadId.length > 0) {
-    sources.push("thread-storage");
-  }
-  return sources;
-}
 
 function getFileSearchResultId(suggestion: FileSearchSuggestion): string {
-  const idSegment =
-    suggestion.entryKind === "app" ? suggestion.applicationId : suggestion.path;
   return `file-search-result-${suggestion.source}-${encodeURIComponent(
-    idSegment,
+    suggestion.path,
   )}`;
 }
 
@@ -282,24 +188,19 @@ function getFileSearchEntryId(entry: FileSearchSectionEntry): string {
 }
 
 function getFileSearchResultTitle(suggestion: FileSearchSuggestion): string {
-  if (suggestion.entryKind === "app") {
-    return `${FILE_SEARCH_SOURCE_LABELS.app}: ${suggestion.name}`;
-  }
   return `${FILE_SEARCH_SOURCE_LABELS[suggestion.source]}: ${suggestion.path}`;
 }
 
 function getFileSearchSectionKind(
   suggestion: FileSearchSuggestion,
 ): FileSearchSectionKind {
-  return suggestion.entryKind === "app" ? "apps" : "files";
+  return "files";
 }
 
 function groupFileSearchSections({
-  availableSources,
   recentEntries,
   suggestions,
 }: GroupFileSearchSectionsArgs): FileSearchSection[] {
-  const allowedSources = new Set<FileSearchSource>(availableSources);
   const sectionsByKind = new Map<FileSearchSectionKind, FileSearchSection>();
 
   const ensureSection = (
@@ -319,9 +220,6 @@ function groupFileSearchSections({
   };
 
   for (const suggestion of suggestions) {
-    if (!allowedSources.has(suggestion.source)) {
-      continue;
-    }
     ensureSection(getFileSearchSectionKind(suggestion)).items.push({
       entry: { kind: "suggestion", suggestion },
       index: 0,
@@ -411,70 +309,6 @@ function LauncherTile({
     >
       {children}
     </button>
-  );
-}
-
-function AppResultRow({
-  id,
-  suggestion,
-  isActive,
-  variant = "action",
-  onActivate,
-  onSelect,
-}: AppResultRowProps) {
-  const handleSelect = useCallback(() => {
-    onSelect(suggestion);
-  }, [onSelect, suggestion]);
-  return (
-    <LauncherTile
-      id={id}
-      isActive={isActive}
-      variant={variant}
-      onActivate={onActivate}
-      onSelect={handleSelect}
-      title={getFileSearchResultTitle(suggestion)}
-    >
-      <span className={LAUNCHER_ROW_ICON_CLASS}>
-        <ResolvedAppIcon
-          icon={suggestion.app.icon}
-          className={cn(
-            COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
-            "text-muted-foreground",
-          )}
-        />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-foreground">
-        {suggestion.name}
-      </span>
-    </LauncherTile>
-  );
-}
-
-function CreateAppTile({
-  id,
-  isActive,
-  onActivate,
-  onSelect,
-}: CreateAppTileProps) {
-  return (
-    <LauncherTile
-      id={id}
-      isActive={isActive}
-      variant="action"
-      onActivate={onActivate}
-      onSelect={onSelect}
-    >
-      <span className={LAUNCHER_TILE_ICON_CLASS_DASHED}>
-        <Icon
-          name="Plus"
-          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-          aria-hidden
-        />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-foreground">
-        Create App...
-      </span>
-    </LauncherTile>
   );
 }
 
@@ -687,7 +521,7 @@ export function NewTabFileSearch({
   );
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
-  const { suggestions, isLoading, appsError, fileSearchError, isDebouncing } =
+  const { suggestions, isLoading, fileSearchError, isDebouncing, isUnavailable } =
     useFileSearchSuggestions({
       projectId,
       query,
@@ -695,27 +529,8 @@ export function NewTabFileSearch({
       environmentId,
       currentThreadId,
     });
-  const availableSources = useMemo(
-    () =>
-      getAvailableFileSearchSources({
-        projectId,
-        environmentId,
-        currentThreadId,
-      }),
-    [currentThreadId, environmentId, projectId],
-  );
-  const fileSearchSources = useMemo(
-    () => availableSources.filter((source) => source !== "app"),
-    [availableSources],
-  );
   const searchSuggestions = useMemo(
-    () =>
-      hasQuery
-        ? suggestions
-        : suggestions.filter(
-            (suggestion): suggestion is FilePathSearchSuggestion =>
-              suggestion.entryKind === "file",
-          ),
+    () => (hasQuery ? suggestions : []),
     [hasQuery, suggestions],
   );
   // Collapsed to the visible cap by default. Recents are file/artifact entries,
@@ -738,17 +553,10 @@ export function NewTabFileSearch({
   const sections = useMemo(
     () =>
       groupFileSearchSections({
-        availableSources: hasQuery ? availableSources : fileSearchSources,
         recentEntries,
         suggestions: searchSuggestions,
       }),
-    [
-      availableSources,
-      fileSearchSources,
-      hasQuery,
-      recentEntries,
-      searchSuggestions,
-    ],
+    [recentEntries, searchSuggestions],
   );
   const navigableEntries = useMemo(
     () =>
@@ -806,13 +614,9 @@ export function NewTabFileSearch({
 
   const handleSuggestionSelect = useCallback(
     (suggestion: FileSearchSuggestion) => {
-      if (suggestion.entryKind === "file") {
-        handleFileSelect(suggestion);
-        return;
-      }
-      onSelect({ source: "app", applicationId: suggestion.applicationId });
+      handleFileSelect(suggestion);
     },
-    [handleFileSelect, onSelect],
+    [handleFileSelect],
   );
 
   const handleLauncherKeyDown = useCallback<LauncherKeyDownHandler>(
@@ -857,7 +661,7 @@ export function NewTabFileSearch({
   const activeEntryId = activeEntry
     ? getFileSearchEntryId(activeEntry)
     : undefined;
-  const isSearchDisabled = availableSources.length === 0;
+  const isSearchDisabled = isUnavailable;
   // The results listbox renders only when there is a searchable source and at
   // least one option. Gate the combobox relationship on that so
   // `aria-controls`/`aria-activedescendant` never point at an absent element.
@@ -880,16 +684,16 @@ export function NewTabFileSearch({
           onKeyDown={handleLauncherKeyDown}
           disabled={isSearchDisabled}
           // Combobox with a list autocomplete popup: one listbox holds the
-          // navigable Files/Apps/Recent options, and the highlighted row is the
+          // navigable Files/Recent options, and the highlighted row is the
           // combobox's active descendant within that controlled listbox.
           role="combobox"
-          aria-label="Search files and apps"
+          aria-label="Search files"
           aria-autocomplete="list"
           aria-expanded={hasListbox}
           aria-controls={hasListbox ? listboxId : undefined}
           aria-activedescendant={hasListbox ? activeEntryId : undefined}
           placeholder={
-            isSearchDisabled ? "No searchable source" : "Search files and apps"
+            isSearchDisabled ? "No searchable source" : "Search files"
           }
           className={cn(
             "h-8 pl-8 pr-8 focus-visible:ring-0 max-md:pointer-coarse:h-10",
@@ -906,7 +710,7 @@ export function NewTabFileSearch({
           />
         ) : null}
       </div>
-      {availableSources.length === 0 ? (
+      {isUnavailable ? (
         <FileSearchMessage
           iconName="FileQuestion"
           message="No searchable source is available."
@@ -915,7 +719,7 @@ export function NewTabFileSearch({
         <NewTabResults
           activeIndex={activeIndex}
           hasQuery={hasQuery}
-          searchError={fileSearchError || appsError}
+          searchError={fileSearchError}
           isLoading={isLoading}
           listboxId={listboxId}
           nowMs={nowMs}
@@ -943,53 +747,13 @@ export function NewTabFileSearch({
 }
 
 export function NewTabActions({
-  projectId,
-  currentThreadId,
-  onSelect,
-  onCreateAppPromptPrefill,
   onOpenBrowser,
   onStartTerminal,
 }: NewTabActionsProps) {
-  const [isAppsExpanded, setIsAppsExpanded] = useState(false);
-  const promptDraft = usePromptDraftStorage({
-    projectId,
-    threadId: currentThreadId.length > 0 ? currentThreadId : null,
-  });
-  const canSearchApps = currentThreadId.length > 0;
-  const apps = useApps({ enabled: canSearchApps });
-  const appSuggestions = useMemo<AppSearchSuggestion[]>(
-    () =>
-      (apps.data ?? []).map((app) => ({
-        source: "app",
-        entryKind: "app",
-        app,
-        applicationId: app.applicationId,
-        name: app.name,
-        score: 0,
-      })),
-    [apps.data],
-  );
-  const visibleAppSuggestions = useMemo(
-    () =>
-      isAppsExpanded
-        ? appSuggestions
-        : appSuggestions.slice(0, NEW_TAB_APP_ROWS_VISIBLE_LIMIT),
-    [appSuggestions, isAppsExpanded],
-  );
-  const canPrefillCreateAppPrompt =
-    promptDraft.storageKey !== null && currentThreadId.length > 0;
   const showOpenBrowserEntry =
     onOpenBrowser !== undefined &&
     isDesktopBrowserAvailable();
   const showStartTerminalEntry = onStartTerminal !== undefined;
-  const showCreateAppEntry = canPrefillCreateAppPrompt;
-
-  const handleAppSelect = useCallback(
-    (suggestion: AppSearchSuggestion) => {
-      onSelect({ source: "app", applicationId: suggestion.applicationId });
-    },
-    [onSelect],
-  );
 
   const handleOpenBrowser = useCallback(() => {
     onOpenBrowser?.();
@@ -999,135 +763,38 @@ export function NewTabActions({
     onStartTerminal?.();
   }, [onStartTerminal]);
 
-  const handleToggleAppsExpanded = useCallback(() => {
-    setIsAppsExpanded((current) => !current);
-  }, []);
-
-  const handleCreateAppPromptPrefill = useCallback(() => {
-    if (!canPrefillCreateAppPrompt) {
-      return;
-    }
-
-    const currentDraft = promptDraft.getCurrent();
-    if (
-      !isPromptDraftEmpty(currentDraft) &&
-      !window.confirm(
-        "Replace the current composer draft with a Create App prompt?",
-      )
-    ) {
-      return;
-    }
-
-    promptDraft.setDraft(CREATE_APP_PROMPT_DRAFT);
-    onCreateAppPromptPrefill?.();
-  }, [canPrefillCreateAppPrompt, onCreateAppPromptPrefill, promptDraft]);
-
-  const hasInstalledApps = appSuggestions.length > 0;
-  const showAppsToggle =
-    appSuggestions.length > NEW_TAB_APP_ROWS_VISIBLE_LIMIT;
-  const showAppsMoreCount = Math.max(
-    0,
-    appSuggestions.length - NEW_TAB_APP_ROWS_VISIBLE_LIMIT,
-  );
   const hasOpenActions = showOpenBrowserEntry || showStartTerminalEntry;
-  const hasAppActions =
-    hasInstalledApps || apps.isLoading || apps.isError || showCreateAppEntry;
 
-  if (!hasOpenActions && !hasAppActions) {
+  if (!hasOpenActions) {
     return null;
   }
 
   return (
     <div data-testid="new-tab-actions" className="flex min-w-0 flex-col">
-      {hasOpenActions ? (
-        <section>
-          <LauncherSectionHeader
-            label={FILE_SEARCH_SECTION_LABELS.actions}
-            className="pb-1"
-          />
-          <div className="flex flex-col gap-px">
-            {showOpenBrowserEntry ? (
-              <OpenBrowserTile
-                id={OPEN_BROWSER_ENTRY_ID}
-                isActive={false}
-                onActivate={() => undefined}
-                onSelect={handleOpenBrowser}
-              />
-            ) : null}
-            {showStartTerminalEntry ? (
-              <StartTerminalTile
-                id={START_TERMINAL_ENTRY_ID}
-                isActive={false}
-                onActivate={() => undefined}
-                onSelect={handleStartTerminal}
-              />
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
-      {hasOpenActions && hasAppActions ? (
-        <Separator
-          decorative={false}
-          className={NEW_TAB_ACTIONS_SEPARATOR_CLASS}
+      <section>
+        <LauncherSectionHeader
+          label={FILE_SEARCH_SECTION_LABELS.actions}
+          className="pb-1"
         />
-      ) : null}
-
-      {hasAppActions ? (
-        <section>
-          <LauncherSectionHeader
-            label={FILE_SEARCH_SECTION_LABELS.apps}
-            className="pb-1"
-          />
-          <div className="flex flex-col gap-px">
-            {visibleAppSuggestions.map((suggestion) => (
-              <AppResultRow
-                key={`app:${suggestion.applicationId}`}
-                id={getFileSearchResultId(suggestion)}
-                suggestion={suggestion}
-                isActive={false}
-                onActivate={() => undefined}
-                onSelect={handleAppSelect}
-              />
-            ))}
-            {canSearchApps && apps.isLoading && appSuggestions.length === 0 ? (
-              <p
-                className={cn(
-                  "px-2 py-1 text-muted-foreground",
-                  COARSE_POINTER_TEXT_SM_CLASS,
-                )}
-              >
-                Loading apps...
-              </p>
-            ) : null}
-            {canSearchApps && apps.isError ? (
-              <p
-                className={cn(
-                  "px-2 py-1 text-muted-foreground",
-                  COARSE_POINTER_TEXT_SM_CLASS,
-                )}
-              >
-                Couldn't load apps.
-              </p>
-            ) : null}
-            {showAppsToggle ? (
-              <ShowMoreToggle
-                isExpanded={isAppsExpanded}
-                onToggle={handleToggleAppsExpanded}
-                showMoreCount={showAppsMoreCount}
-              />
-            ) : null}
-            {showCreateAppEntry ? (
-              <CreateAppTile
-                id={CREATE_APP_ENTRY_ID}
-                isActive={false}
-                onActivate={() => undefined}
-                onSelect={handleCreateAppPromptPrefill}
-              />
-            ) : null}
-          </div>
-        </section>
-      ) : null}
+        <div className="flex flex-col gap-px">
+          {showOpenBrowserEntry ? (
+            <OpenBrowserTile
+              id={OPEN_BROWSER_ENTRY_ID}
+              isActive={false}
+              onActivate={() => undefined}
+              onSelect={handleOpenBrowser}
+            />
+          ) : null}
+          {showStartTerminalEntry ? (
+            <StartTerminalTile
+              id={START_TERMINAL_ENTRY_ID}
+              isActive={false}
+              onActivate={() => undefined}
+              onSelect={handleStartTerminal}
+            />
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }
@@ -1146,7 +813,7 @@ interface NewTabResultsProps {
   hasQuery: boolean;
   searchError: boolean;
   isLoading: boolean;
-  /** Id of the single combobox listbox that wraps the Files/Apps/Recent option groups. */
+  /** Id of the single combobox listbox that wraps the Files/Recent option groups. */
   listboxId: string;
   nowMs: number;
   onActivateIndex: (index: number) => void;
@@ -1169,14 +836,12 @@ function NewTabResults({
   recent,
   sections,
 }: NewTabResultsProps) {
-  const appsSection = sections.find((section) => section.kind === "apps");
   const filesSection = sections.find((section) => section.kind === "files");
   const recentSection = sections.find((section) => section.kind === "recent");
-  const showAppsSection = appsSection !== undefined;
   const showFilesSection = filesSection !== undefined;
   const showRecentSection =
     !hasQuery && (recentSection !== undefined || recent.emptyHintVisible);
-  const hasSearchResults = showFilesSection || showAppsSection;
+  const hasSearchResults = showFilesSection;
   const showLoading = isLoading && !hasSearchResults;
   const showError = searchError && !hasSearchResults && !showLoading;
   const showNoSearchResults =
@@ -1191,7 +856,7 @@ function NewTabResults({
   // message, the empty-recent card, and the show-more toggle are not options
   // and stay outside the listbox.
   const showListbox =
-    showFilesSection || showAppsSection || recentSection !== undefined;
+    showFilesSection || recentSection !== undefined;
 
   if (showEmptyMessage) {
     return (
@@ -1200,7 +865,7 @@ function NewTabResults({
         message={
           hasQuery
             ? "No results match your search."
-            : "Type to search files and apps."
+            : "Type to search files."
         }
       />
     );
@@ -1220,7 +885,7 @@ function NewTabResults({
             showError
               ? "Search failed."
               : showLoading
-                ? "Searching files and apps..."
+                ? "Searching files..."
                 : "No results match your search."
           }
         />
@@ -1230,7 +895,7 @@ function NewTabResults({
         <div
           id={listboxId}
           role="listbox"
-          aria-label="File and app search results"
+          aria-label="File search results"
         >
           {showFilesSection && filesSection ? (
             <section role="group" aria-label={FILE_SEARCH_SECTION_LABELS.files}>
@@ -1253,42 +918,6 @@ function NewTabResults({
                       id={getFileSearchEntryId(entry)}
                       suggestion={suggestion}
                       isActive={index === activeIndex}
-                      onActivate={() => onActivateIndex(index)}
-                      onSelect={onSuggestionSelect}
-                    />
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
-
-          {showAppsSection && appsSection ? (
-            <section
-              role="group"
-              aria-label={FILE_SEARCH_SECTION_LABELS.apps}
-              className={cn(showFilesSection && "mt-3")}
-            >
-              <LauncherSectionHeader
-                label={FILE_SEARCH_SECTION_LABELS.apps}
-                sticky
-                className={showFilesSection ? "pt-2" : undefined}
-              />
-              <div className="flex flex-col gap-px">
-                {appsSection.items.map(({ entry, index }) => {
-                  if (
-                    entry.kind !== "suggestion" ||
-                    entry.suggestion.entryKind !== "app"
-                  ) {
-                    return null;
-                  }
-                  const suggestion = entry.suggestion;
-                  return (
-                    <AppResultRow
-                      key={`app:${suggestion.applicationId}`}
-                      id={getFileSearchEntryId(entry)}
-                      suggestion={suggestion}
-                      isActive={index === activeIndex}
-                      variant="result"
                       onActivate={() => onActivateIndex(index)}
                       onSelect={onSuggestionSelect}
                     />

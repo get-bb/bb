@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
-import { useAppRouteHistoryNavigation } from "@/lib/app-route-history";
+import { useRouteStateHistoryNavigation } from "@/lib/app-route-history";
 
 interface SidebarHistoryNavigationControlsProps {
   /**
@@ -59,7 +59,7 @@ export function SidebarHistoryNavigationControls({
   className,
 }: SidebarHistoryNavigationControlsProps) {
   const { canGoBack, canGoForward, goBack, goForward } =
-    useAppRouteHistoryNavigation();
+    useRouteStateHistoryNavigation();
 
   const handleBack = useCallback(() => {
     if (!canGoBack) {

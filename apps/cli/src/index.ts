@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { registerAppCommands } from "./commands/app.js";
 import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerGuideCommand } from "./commands/guide.js";
 import { registerManagerCommands } from "./commands/manager.js";
@@ -65,7 +64,6 @@ registerStatusCommand(program, getUrl, getContext);
 registerProjectCommands(program, getUrl);
 registerProviderCommands(program, getUrl);
 registerManagerCommands(program, getUrl);
-registerAppCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
 registerWorkflowCommands(program, getUrl);
 registerReplayCommands(program, getUrl);

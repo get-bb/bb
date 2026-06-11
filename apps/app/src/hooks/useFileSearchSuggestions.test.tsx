@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
-import type { AppSummary, WorkspacePathEntry } from "@bb/server-contract";
+import type { WorkspacePathEntry } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -18,7 +18,6 @@ vi.mock("@/lib/api", async (importOriginal) => {
     ...actual,
     searchProjectPaths: vi.fn(),
     searchEnvironmentPaths: vi.fn(),
-    listApps: vi.fn(),
     listThreadStoragePaths: vi.fn(),
   };
 });
@@ -64,15 +63,6 @@ function isFilePathSearchSuggestion(
   return suggestion.entryKind === "file";
 }
 
-const APP: AppSummary = {
-  applicationId: "status",
-  name: "Review Board",
-  entry: { path: "index.html", kind: "html" },
-  capabilities: ["data", "message"],
-  icon: { kind: "builtin", name: "ListTodo" },
-  source: null,
-};
-
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -80,7 +70,6 @@ afterEach(() => {
 
 describe("useFileSearchSuggestions", () => {
   it("merges workspace and thread-storage file results", async () => {
-    vi.mocked(api.listApps).mockResolvedValue([]);
     vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
       makePathResponse([
         {
@@ -142,51 +131,6 @@ describe("useFileSearchSuggestions", () => {
         includeDirectories: false,
       },
       signal: expect.any(AbortSignal),
-    });
-  });
-
-  it("returns matching apps before files", async () => {
-    vi.mocked(api.listApps).mockResolvedValue([APP]);
-    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
-      makePathResponse([
-        {
-          kind: "file",
-          path: "notes/status.md",
-          score: 90,
-        },
-      ]),
-    );
-    vi.mocked(api.listThreadStoragePaths).mockResolvedValue({
-      ...makePathResponse([]),
-      storageRootPath: "/tmp/thread-storage",
-    });
-
-    const { wrapper } = createQueryClientTestHarness();
-    const { result } = renderHook(
-      () =>
-        useFileSearchSuggestions({
-          projectId: "proj-1",
-          query: "status",
-          environmentId: "env-1",
-          currentThreadId: "thr-storage",
-        }),
-      { wrapper },
-    );
-
-    await waitFor(() => {
-      expect(result.current.suggestions).toHaveLength(2);
-    });
-
-    expect(result.current.suggestions[0]).toMatchObject({
-      source: "app",
-      entryKind: "app",
-      applicationId: "status",
-      name: "Review Board",
-    });
-    expect(result.current.suggestions[1]).toMatchObject({
-      source: "workspace",
-      entryKind: "file",
-      path: "notes/status.md",
     });
   });
 

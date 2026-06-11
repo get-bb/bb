@@ -1,6 +1,5 @@
 import type {
   ChangedMessage,
-  ApplicationId,
   EnvironmentChangeKind,
   HostChangeKind,
   ProjectChangeKind,
@@ -19,7 +18,6 @@ import type {
 import {
   serverMessageSchema,
   terminalServerMessageSchema,
-  type AppDataBroadcastMessage,
   type TerminalServerMessage,
 } from "@bb/server-contract";
 
@@ -505,39 +503,6 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
-  notifyAppData(message: AppDataBroadcastMessage): void {
-    this.notifyClientsByKey(
-      subKey("app", `${message.applicationId}:data`),
-      JSON.stringify(serverMessageSchema.parse(message)),
-    );
-  }
-
-  /**
-   * List-level (id-less) app broadcast — some app was installed, updated, or
-   * removed. App-scoped changes go through `notifyAppContentChanged` instead.
-   */
-  notifyAppsChanged(): void {
-    this.notifyClients({
-      type: "changed",
-      entity: "app",
-      changes: ["apps-changed"],
-    });
-  }
-
-  /**
-   * App-scoped signal that an app's served `public/` content changed on disk.
-   * Carries the application id (unlike the list-level `apps-changed`
-   * broadcast) so clients can reload just that app's open surfaces.
-   */
-  notifyAppContentChanged(applicationId: ApplicationId): void {
-    this.notifyClients({
-      type: "changed",
-      entity: "app",
-      id: applicationId,
-      changes: ["content-changed"],
-    });
-  }
-
   notifyProject(projectId: string, changes: ProjectChangeKind[]): void {
     this.notifyClients({
       type: "changed",
@@ -696,14 +661,6 @@ export class NotificationHub implements DbNotifier {
       return;
     }
     const payload = JSON.stringify(parseResult.data);
-    this.notifyClientsByKeySet(sockets, payload);
-  }
-
-  private notifyClientsByKey(key: string, payload: string): void {
-    const sockets = this.clientSocketsByKey.get(key);
-    if (!sockets) {
-      return;
-    }
     this.notifyClientsByKeySet(sockets, payload);
   }
 

@@ -4,7 +4,7 @@ import {
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
 } from "./absolute-file-path";
-import { isAppRoutePath } from "./app-route-paths";
+import { isRoutePath } from "./route-paths";
 
 const THREAD_LOCAL_FILE_LINK_UNAVAILABLE_DESCRIPTION =
   "Thread file links are only available when the thread has an environment.";
@@ -117,7 +117,7 @@ function normalizeLocalFilePathWithinRoot(
 export function resolveThreadLocalFileLink(
   args: ResolveThreadLocalFileLinkArgs,
 ): ThreadLocalFileLinkResolution {
-  if (isAppRoutePath({ path: args.link.path })) {
+  if (isRoutePath({ path: args.link.path })) {
     return {
       kind: "app-route",
     };

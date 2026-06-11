@@ -243,13 +243,13 @@ rl.on("line", (line) => {
         threadStorageRootPath,
         shellEnv: {
           PATH: "/tmp/bb-bin:/usr/bin",
-          BB_APPS_ROOT: "/tmp/apps",
+          BB_TEST_ROOT: "/tmp/test-root",
           BB_HOST_DAEMON_PORT: "3002",
           BB_SERVER_URL: "http://127.0.0.1:3334",
         },
         workflowAgentShellEnv: {
           PATH: "/usr/bin",
-          BB_APPS_ROOT: "/tmp/apps",
+          BB_TEST_ROOT: "/tmp/test-root",
         },
         onEvent: () => undefined,
         onToolCall: async () => ({
@@ -280,7 +280,7 @@ rl.on("line", (line) => {
       // no-nesting guarantees for workflow agents.
       expect(threadStart.options?.envVars).toEqual({
         PATH: "/usr/bin",
-        BB_APPS_ROOT: "/tmp/apps",
+        BB_TEST_ROOT: "/tmp/test-root",
         BB_PROJECT_ID: "p1",
         BB_THREAD_STORAGE: join(threadStorageRootPath, "t1"),
         BB_ENVIRONMENT_ID: "env-1",

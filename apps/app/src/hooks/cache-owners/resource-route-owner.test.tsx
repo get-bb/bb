@@ -19,7 +19,7 @@ import { createAppQueryClient } from "@/lib/query-client";
 import {
   getLegacyProjectComposeRoutePath,
   getThreadRoutePath,
-} from "@/lib/app-route-paths";
+} from "@/lib/route-paths";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
 import {
   createBbDesktopApi,

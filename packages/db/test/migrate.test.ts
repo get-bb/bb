@@ -264,7 +264,7 @@ function dropPost0023Tables(db: DbConnection): void {
     "workflow_run_operations",
     "workflow_runs",
     "project_workflow_policies",
-    "app_settings",
+    "system_experiments",
   ]) {
     db.$client.prepare(`DROP TABLE IF EXISTS ${table}`).run();
   }
@@ -1596,7 +1596,6 @@ describe("migrate", () => {
       db.$client.prepare("DROP TABLE workflow_run_operations").run();
       db.$client.prepare("DROP TABLE workflow_runs").run();
       db.$client.prepare("DROP TABLE project_workflow_policies").run();
-      db.$client.prepare("DROP TABLE app_settings").run();
       db.$client.prepare("DELETE FROM projects WHERE kind = 'personal'").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN kind").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN sort_key").run();
@@ -2008,6 +2007,7 @@ describe("migrate", () => {
         .run("main-0001-hash", publishedTerminalSessionUserInputWhen);
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
+      dropPost0023Tables(db);
 
       expect(
         readIndexNames({ db, tableName: "host_daemon_sessions" }),

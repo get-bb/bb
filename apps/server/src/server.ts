@@ -11,7 +11,6 @@ import {
 import type { AppDeps, ServerAppDeps } from "./types.js";
 import { ApiError, errorToResponse } from "./errors.js";
 import { registerAutomationRoutes } from "./routes/automations.js";
-import { registerGlobalAppRoutes } from "./routes/apps.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
@@ -20,7 +19,6 @@ import { registerSystemRoutes } from "./routes/system.js";
 import { registerDevelopmentOnlyReplayRoutes } from "./routes/internal-replay.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
 import { registerWorkflowRunRoutes } from "./routes/workflow-runs.js";
-import { registerInternalAppDataChangeRoutes } from "./internal/app-data-changes.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -247,7 +245,6 @@ export function createApp(
     return next();
   });
   const publicApi = new Hono();
-  registerGlobalAppRoutes(publicApi, deps);
   registerProjectRoutes(publicApi, deps);
   registerAutomationRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
@@ -265,7 +262,6 @@ export function createApp(
   const internalApi = new Hono();
   registerInternalHostRoutes(internalApi, deps);
   registerInternalSessionRoutes(internalApi, deps);
-  registerInternalAppDataChangeRoutes(internalApi, deps);
   registerInternalEventRoutes(internalApi, deps);
   registerInternalToolCallRoutes(internalApi, deps);
   registerInternalInteractiveRequestRoutes(internalApi, deps);

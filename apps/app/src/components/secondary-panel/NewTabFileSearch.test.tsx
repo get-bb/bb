@@ -11,13 +11,12 @@ import {
 import { createStore, Provider } from "jotai";
 import { createElement, type ReactNode } from "react";
 import type {
-  AppSearchSuggestion,
   FilePathSearchSuggestion,
   FileSearchSuggestion,
   UseFileSearchSuggestionsArgs,
   UseFileSearchSuggestionsResult,
 } from "@/hooks/useFileSearchSuggestions";
-import type { AppSummary, BbDesktopInfo } from "@bb/server-contract";
+import type { BbDesktopInfo } from "@bb/server-contract";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   NewTabActions,
@@ -27,8 +26,6 @@ import {
 } from "./NewTabFileSearch";
 import { getThreadRecentItemsStorageKey } from "./threadRecentItems";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
-import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
-import type { PromptDraftState } from "@/lib/prompt-draft";
 
 interface ProviderWrapperProps {
   children: ReactNode;
@@ -43,48 +40,21 @@ interface RenderLauncherArgs {
 }
 
 interface RenderActionsArgs {
-  projectId?: string;
-  currentThreadId?: string;
-  onSelect?: NewTabActionsProps["onSelect"];
-  onCreateAppPromptPrefill?: NewTabActionsProps["onCreateAppPromptPrefill"];
   onOpenBrowser?: NewTabActionsProps["onOpenBrowser"];
   onStartTerminal?: NewTabActionsProps["onStartTerminal"];
 }
 
 type FileSearchMockState = UseFileSearchSuggestionsResult;
 
-interface AppsQueryMockState {
-  data: AppSummary[] | undefined;
-  isLoading: boolean;
-  isError: boolean;
-}
-
-interface PromptDraftMockState {
-  currentDraft: PromptDraftState;
-  setDrafts: PromptDraftState[];
-}
-
 const fileSearchMockState = vi.hoisted<FileSearchMockState>(() => ({
   suggestions: [],
   isLoading: false,
-  appsError: false,
   fileSearchError: false,
   isDebouncing: false,
   isUnavailable: false,
 }));
 
 const fileSearchMockArgs = vi.hoisted<UseFileSearchSuggestionsArgs[]>(() => []);
-
-const appsQueryMockState = vi.hoisted<AppsQueryMockState>(() => ({
-  data: [],
-  isLoading: false,
-  isError: false,
-}));
-
-const promptDraftMockState = vi.hoisted<PromptDraftMockState>(() => ({
-  currentDraft: { text: "", mentions: [], attachments: [] },
-  setDrafts: [],
-}));
 
 // The launcher's data sources are the only external boundary here; stub them so
 // the test focuses on the menu/search split and desktop Browser gating.
@@ -93,20 +63,6 @@ vi.mock("@/hooks/useFileSearchSuggestions", () => ({
     fileSearchMockArgs.push(args);
     return fileSearchMockState;
   },
-}));
-
-vi.mock("@/hooks/queries/thread-queries", () => ({
-  useApps: () => appsQueryMockState,
-}));
-
-vi.mock("@/hooks/usePromptDraftStorage", () => ({
-  usePromptDraftStorage: () => ({
-    storageKey: "draft-key",
-    getCurrent: () => promptDraftMockState.currentDraft,
-    setDraft: (draft: PromptDraftState) => {
-      promptDraftMockState.setDrafts.push(draft);
-    },
-  }),
 }));
 
 const DESKTOP_INFO: BbDesktopInfo = {
@@ -118,22 +74,6 @@ const DESKTOP_INFO: BbDesktopInfo = {
   updateDownloaded: false,
   version: "0.0.1",
 };
-
-const APP_SUGGESTION = {
-  source: "app",
-  entryKind: "app",
-  app: {
-    applicationId: "status",
-    name: "Review Board",
-    entry: { path: "index.html", kind: "html" },
-    capabilities: ["data", "message"],
-    icon: { kind: "builtin", name: "ListTodo" },
-    source: null,
-  },
-  applicationId: "status",
-  name: "Review Board",
-  score: 90,
-} satisfies AppSearchSuggestion;
 
 const FILE_SUGGESTION = {
   source: "workspace",
@@ -153,56 +93,13 @@ const REPORT_FILE_SUGGESTION = {
   positions: [],
 } satisfies FilePathSearchSuggestion;
 
-const DRAFT_WITH_ATTACHMENT = {
-  text: "Keep this draft",
-  mentions: [],
-  attachments: [
-    {
-      type: "localFile",
-      path: "/tmp/spec.md",
-      name: "spec.md",
-      sizeBytes: 42,
-      mimeType: "text/markdown",
-    },
-  ],
-} satisfies PromptDraftState;
-
-function makeAppSummary(index: number): AppSummary {
-  const applicationId = `app-${index}`;
-  return {
-    ...APP_SUGGESTION.app,
-    applicationId,
-    name: `App ${index}`,
-  } satisfies AppSummary;
-}
-
 function resetFileSearchMockState(): void {
   fileSearchMockState.suggestions = [];
   fileSearchMockState.isLoading = false;
-  fileSearchMockState.appsError = false;
   fileSearchMockState.fileSearchError = false;
   fileSearchMockState.isDebouncing = false;
   fileSearchMockState.isUnavailable = false;
   fileSearchMockArgs.length = 0;
-}
-
-function resetAppsQueryMockState(): void {
-  appsQueryMockState.data = [];
-  appsQueryMockState.isLoading = false;
-  appsQueryMockState.isError = false;
-}
-
-function resetPromptDraftMockState(): void {
-  promptDraftMockState.currentDraft = {
-    text: "",
-    mentions: [],
-    attachments: [],
-  };
-  promptDraftMockState.setDrafts = [];
-}
-
-function setAppSummaries(apps: readonly AppSummary[]): void {
-  appsQueryMockState.data = [...apps];
 }
 
 function setFileSearchSuggestions(
@@ -234,10 +131,6 @@ function renderActions(args: RenderActionsArgs = {}) {
     createElement(Provider, { store }, children);
   return render(
     createElement(NewTabActions, {
-      projectId: args.projectId ?? "proj_1",
-      currentThreadId: args.currentThreadId ?? "thr_1",
-      onSelect: args.onSelect ?? vi.fn(),
-      onCreateAppPromptPrefill: args.onCreateAppPromptPrefill,
       onOpenBrowser: args.onOpenBrowser,
       onStartTerminal: args.onStartTerminal,
     }),
@@ -250,172 +143,24 @@ afterEach(() => {
   delete window.bbDesktop;
   localStorage.clear();
   resetFileSearchMockState();
-  resetAppsQueryMockState();
-  resetPromptDraftMockState();
 });
 
 describe("NewTabActions", () => {
-  it("does not render the old persistent apps-and-files search input", () => {
+  it("does not render the old persistent search input", () => {
     renderActions();
 
-    expect(
-      screen.queryByRole("textbox", { name: "Search apps and files" }),
-    ).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  it("shows the Apps header when Create App is the only app-related row", () => {
-    renderActions();
-
-    expect(screen.getByRole("button", { name: "Create App..." })).toBeTruthy();
-    expect(screen.getByText("Apps")).toBeTruthy();
-  });
-
-  it("shows the Apps header when actual installed app rows are present", () => {
-    setAppSummaries([APP_SUGGESTION.app]);
-
-    renderActions();
-
-    expect(screen.getByText("Apps")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Review Board/u })).toBeTruthy();
-  });
-
-  it("shows Open browser in the Actions section on the desktop build", () => {
-    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
-
-    renderActions({ onOpenBrowser: vi.fn() });
-
-    expect(screen.getByRole("button", { name: /Open browser/u })).toBeTruthy();
-    expect(screen.getByText("Actions")).toBeTruthy();
-  });
-
-  it("orders action rows as Open browser, Start terminal, then Create App when no apps exist", () => {
+  it("orders action rows as Open browser, then Start terminal", () => {
     window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
 
     renderActions({ onOpenBrowser: vi.fn(), onStartTerminal: vi.fn() });
 
     expect(
       screen.getAllByRole("button").map((button) => button.textContent ?? ""),
-    ).toEqual(["Open browser", "Start terminal", "Create App..."]);
-    expect(screen.getByRole("separator")).toBeTruthy();
-    expect(screen.getByText("Apps")).toBeTruthy();
-  });
-
-  it("orders installed apps between the open actions and Create App, with a divider and Apps title", () => {
-    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
-    setAppSummaries([APP_SUGGESTION.app]);
-
-    renderActions({ onOpenBrowser: vi.fn(), onStartTerminal: vi.fn() });
-
-    // Open actions, the installed app rows, then Create App last.
-    expect(
-      screen.getAllByRole("button").map((button) => button.textContent ?? ""),
-    ).toEqual([
-      "Open browser",
-      "Start terminal",
-      expect.stringContaining("Review Board"),
-      "Create App...",
-    ]);
-
-    // Apps get their own divided, titled section after the open actions.
-    const divider = screen.getByRole("separator");
-    const appsTitle = screen.getByText("Apps");
-    expect(appsTitle.parentElement?.className).toContain(
-      CHROME_SECTION_LABEL_CLASS,
-    );
-    expect(divider.className).toContain("mx-2");
-    expect(divider.className).toContain("w-auto");
-    expect(divider.className).toContain("bg-border-seam");
-    const startTerminal = screen.getByRole("button", {
-      name: /Start terminal/u,
-    });
-    const appRow = screen.getByRole("button", { name: /Review Board/u });
-    const orderedAfter = (a: Element, b: Element) =>
-      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    // Divider follows Start terminal; the Apps title follows the divider; the
-    // app row follows the title.
-    expect(orderedAfter(startTerminal, divider)).toBe(true);
-    expect(orderedAfter(divider, appsTitle)).toBe(true);
-    expect(orderedAfter(appsTitle, appRow)).toBe(true);
-  });
-
-  it("caps installed apps behind show-more while keeping Create App last", () => {
-    setAppSummaries(
-      Array.from({ length: 8 }, (_value, index) => makeAppSummary(index + 1)),
-    );
-
-    renderActions();
-
-    const actions = screen.getByTestId("new-tab-actions");
-    expect(screen.getByRole("button", { name: /App 1/u })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /App 6/u })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /App 7/u })).toBeNull();
-    expect(screen.getByRole("button", { name: "Show 2 more" })).toBeTruthy();
-    expect(
-      within(actions).getAllByRole("button").at(-1)?.textContent,
-    ).toBe("Create App...");
-
-    fireEvent.click(screen.getByRole("button", { name: "Show 2 more" }));
-
-    expect(screen.getByRole("button", { name: /App 7/u })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /App 8/u })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Show less" })).toBeTruthy();
-    expect(
-      within(actions).getAllByRole("button").at(-1)?.textContent,
-    ).toBe("Create App...");
-  });
-
-  it("keeps Create App last while apps are loading", () => {
-    appsQueryMockState.isLoading = true;
-    appsQueryMockState.data = undefined;
-
-    renderActions();
-
-    const actions = screen.getByTestId("new-tab-actions");
-    const createApp = screen.getByRole("button", { name: "Create App..." });
-    const status = screen.getByText("Loading apps...");
-
-    // The loading notice renders above Create App, never after it, so Create
-    // App stays visually last in the loading state.
-    expect(
-      Boolean(
-        status.compareDocumentPosition(createApp) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBe(true);
-    expect(
-      Boolean(
-        createApp.compareDocumentPosition(status) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBe(false);
-    expect(within(actions).getAllByRole("button").at(-1)).toBe(createApp);
-  });
-
-  it("keeps Create App last when apps fail to load", () => {
-    appsQueryMockState.isError = true;
-    appsQueryMockState.data = undefined;
-
-    renderActions();
-
-    const actions = screen.getByTestId("new-tab-actions");
-    const createApp = screen.getByRole("button", { name: "Create App..." });
-    const status = screen.getByText("Couldn't load apps.");
-
-    // The error notice renders above Create App, never after it, so Create App
-    // stays visually last in the error state.
-    expect(
-      Boolean(
-        status.compareDocumentPosition(createApp) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBe(true);
-    expect(
-      Boolean(
-        createApp.compareDocumentPosition(status) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBe(false);
-    expect(within(actions).getAllByRole("button").at(-1)).toBe(createApp);
+    ).toEqual(["Open browser", "Start terminal"]);
+    expect(screen.queryByRole("separator")).toBeNull();
   });
 
   it("keeps page actions compact with native button semantics and non-ring focus", () => {
@@ -467,57 +212,16 @@ describe("NewTabActions", () => {
     expect(onStartTerminal).toHaveBeenCalledTimes(1);
   });
 
-  it("starts Create App directly", () => {
-    const onCreateAppPromptPrefill = vi.fn();
-    renderActions({ onCreateAppPromptPrefill });
-
-    fireEvent.click(screen.getByRole("button", { name: "Create App..." }));
-
-    expect(onCreateAppPromptPrefill).toHaveBeenCalledTimes(1);
-    expect(promptDraftMockState.setDrafts).toEqual([
-      {
-        text: expect.stringContaining("You are creating a new global bb app."),
-        mentions: [],
-        attachments: [],
-      },
-    ]);
-  });
-
-  it("leaves a non-empty composer draft unchanged when Create App replacement is canceled", () => {
-    promptDraftMockState.currentDraft = DRAFT_WITH_ATTACHMENT;
-    vi.spyOn(window, "confirm").mockReturnValue(false);
-    const onCreateAppPromptPrefill = vi.fn();
-
-    renderActions({ onCreateAppPromptPrefill });
-
-    fireEvent.click(screen.getByRole("button", { name: "Create App..." }));
-
-    expect(promptDraftMockState.setDrafts).toEqual([]);
-    expect(onCreateAppPromptPrefill).not.toHaveBeenCalled();
-  });
 });
 
 describe("NewTabFileSearch", () => {
-  it("includes app rows as search results while a query is active", () => {
-    setFileSearchSuggestions([APP_SUGGESTION, FILE_SUGGESTION]);
-
-    renderLauncher({ initialQuery: "review" });
-
-    expect(screen.getByRole("option", { name: /Review Board/u })).toBeTruthy();
-    expect(screen.getByRole("option", { name: /app\.ts/u })).toBeTruthy();
-    expect(screen.getByText("Apps")).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Back to new tab menu" }),
-    ).toBeNull();
-  });
-
   it("wires the search box to a single combobox listbox that holds the active option", () => {
     setFileSearchSuggestions([FILE_SUGGESTION]);
 
-    renderLauncher();
+    renderLauncher({ initialQuery: "app" });
 
     const input = screen.getByRole("combobox", {
-      name: "Search files and apps",
+      name: "Search files",
     });
     // Exactly one listbox: the combobox controls a single popup spanning the
     // Files and Recent groups, so its active descendant always resolves within
@@ -537,13 +241,13 @@ describe("NewTabFileSearch", () => {
     ).toBe(true);
   });
 
-  it("groups Files and Recent as labelled option groups inside the one listbox", () => {
+  it("groups Files as a labelled option group inside the one listbox", () => {
     setFileSearchSuggestions([FILE_SUGGESTION]);
 
-    renderLauncher();
+    renderLauncher({ initialQuery: "app" });
 
     const listbox = screen.getByRole("listbox", {
-      name: "File and app search results",
+      name: "File search results",
     });
     const filesGroup = within(listbox).getByRole("group", { name: "Files" });
     expect(
@@ -565,21 +269,31 @@ describe("NewTabFileSearch", () => {
     );
     setFileSearchSuggestions([REPORT_FILE_SUGGESTION]);
 
-    renderLauncher({ currentThreadId });
+    renderLauncher({ currentThreadId, initialQuery: "desktop" });
 
     const listbox = screen.getByRole("listbox", {
-      name: "File and app search results",
+      name: "File search results",
     });
     const filesGroup = within(listbox).getByRole("group", { name: "Files" });
-    const recentGroup = within(listbox).getByRole("group", { name: "Recent" });
     const fileRow = within(filesGroup).getByRole("option", {
-      name: /desktop-size\.html/u,
-    });
-    const recentRow = within(recentGroup).getByRole("option", {
       name: /desktop-size\.html/u,
     });
 
     expect(fileRow.querySelector("[data-icon='ChartColumn']")).not.toBeNull();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Search files" }), {
+      target: { value: "" },
+    });
+
+    const recentGroup = within(
+      screen.getByRole("listbox", {
+        name: "File search results",
+      }),
+    ).getByRole("group", { name: "Recent" });
+    const recentRow = within(recentGroup).getByRole("option", {
+      name: /desktop-size\.html/u,
+    });
+
     expect(recentRow.querySelector("[data-icon='ChartColumn']")).not.toBeNull();
     expect(within(recentRow).queryByText("Report")).toBeNull();
     expect(recentRow.textContent ?? "").not.toContain(String.fromCharCode(183));
@@ -588,7 +302,11 @@ describe("NewTabFileSearch", () => {
   it("surfaces workspace files for a projectless thread that has an environment", () => {
     setFileSearchSuggestions([FILE_SUGGESTION]);
 
-    renderLauncher({ projectId: PERSONAL_PROJECT_ID, environmentId: "env_1" });
+    renderLauncher({
+      projectId: PERSONAL_PROJECT_ID,
+      environmentId: "env_1",
+      initialQuery: "app",
+    });
 
     // The component forwards project and environment ids verbatim; the source
     // decision (search the environment workspace, not the personal "project")
@@ -598,16 +316,20 @@ describe("NewTabFileSearch", () => {
     expect(screen.getByRole("option", { name: /app\.ts/u })).toBeTruthy();
   });
 
-  it("hides workspace files for a projectless thread without an environment", () => {
+  it("forwards projectless threads without an environment to the suggestion hook", () => {
     setFileSearchSuggestions([FILE_SUGGESTION]);
 
-    renderLauncher({ projectId: PERSONAL_PROJECT_ID, environmentId: null });
+    renderLauncher({
+      projectId: PERSONAL_PROJECT_ID,
+      environmentId: null,
+      initialQuery: "app",
+    });
 
-    // No project source and no environment ⇒ no workspace to search, so
-    // workspace suggestions are filtered out of the results.
-    expect(screen.queryByRole("option", { name: /app\.ts/u })).toBeNull();
+    expect(fileSearchMockArgs.at(-1)?.projectId).toBe(PERSONAL_PROJECT_ID);
+    expect(fileSearchMockArgs.at(-1)?.environmentId).toBeNull();
+    expect(screen.getByRole("option", { name: /app\.ts/u })).toBeTruthy();
     expect(
-      screen.getByRole("combobox", { name: "Search files and apps" }),
+      screen.getByRole("combobox", { name: "Search files" }),
     ).toHaveProperty("disabled", false);
   });
 });

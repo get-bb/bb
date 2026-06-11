@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   NewTabActions,
   NewTabFileSearch,
-  type CreateAppPromptPrefillHandler,
   type NewTabFileSearchProps,
   type OpenBrowserHandler,
   type StartTerminalHandler,
@@ -14,7 +13,6 @@ type NewTabPageFileSearchProps = Omit<
 >;
 
 export interface NewTabPageProps extends NewTabPageFileSearchProps {
-  onCreateAppPromptPrefill?: CreateAppPromptPrefillHandler;
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
 }
@@ -29,7 +27,6 @@ export function NewTabPage({
   environmentId,
   focusRequest,
   initialQuery,
-  onCreateAppPromptPrefill,
   onOpenBrowser,
   onSelect,
   onStartTerminal,
@@ -52,10 +49,6 @@ export function NewTabPage({
       />
       {isSearchActive ? null : (
         <NewTabActions
-          projectId={projectId}
-          currentThreadId={currentThreadId}
-          onSelect={onSelect}
-          onCreateAppPromptPrefill={onCreateAppPromptPrefill}
           onOpenBrowser={onOpenBrowser}
           onStartTerminal={onStartTerminal}
         />

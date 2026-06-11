@@ -23,9 +23,6 @@ import type {
   ThreadStoragePathListResponse,
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
-  AppDetail,
-  AppSourceStatus,
-  AppSummary,
 } from "@bb/server-contract";
 import type { ThreadListFilters, FilePreview } from "@/lib/api";
 import type { PathListOptions } from "@/lib/path-list-options";
@@ -64,10 +61,6 @@ import {
   threadStorageFilesQueryKey,
   threadStoragePathsQueryKey,
   threadStorageFilePreviewQueryKey,
-  appMarkdownPreviewQueryKey,
-  appQueryKey,
-  appSourcesQueryKey,
-  appsQueryKey,
   threadHostFilePreviewQueryKey,
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
@@ -617,14 +610,6 @@ export function useThreadStorageFilePreview(
   });
 }
 
-/**
- * Apps rarely change within a session and are read from both the sidebar and
- * thread detail view. A shared default stale window lets navigation reuse a
- * recent fetch instead of refetching on detail mount; callers can still
- * override `staleTime` explicitly.
- */
-const APPS_STALE_TIME_MS = 30_000;
-
 export function useAutomationsOverview(options?: QueryOptions) {
   return useQuery<AutomationsOverviewResponse>({
     queryKey: automationsOverviewQueryKey(),
@@ -633,67 +618,6 @@ export function useAutomationsOverview(options?: QueryOptions) {
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,
     staleTime: options?.staleTime,
-  });
-}
-
-export function useApps(options?: QueryOptions) {
-  return useQuery<AppSummary[]>({
-    queryKey: appsQueryKey(),
-    queryFn: ({ signal }) => api.listApps(signal),
-    enabled: options?.enabled ?? true,
-    refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
-    staleTime: options?.staleTime ?? APPS_STALE_TIME_MS,
-  });
-}
-
-export function useAppSources(options?: QueryOptions) {
-  return useQuery<AppSourceStatus[]>({
-    queryKey: appSourcesQueryKey(),
-    queryFn: ({ signal }) => api.listAppSources(signal),
-    enabled: options?.enabled ?? true,
-    refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
-    staleTime: options?.staleTime ?? APPS_STALE_TIME_MS,
-  });
-}
-
-export function useApp(
-  applicationId: string | null | undefined,
-  options?: QueryOptions,
-) {
-  return useQuery<AppDetail>({
-    queryKey: appQueryKey(applicationId ?? ""),
-    queryFn: ({ signal }) => api.getApp(applicationId ?? "", signal),
-    enabled: (options?.enabled ?? true) && Boolean(applicationId),
-    refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
-    // `dataUpdatedAt` doubles as the app iframe's reload token (see
-    // AppViewer), so any refetch visibly reloads open app surfaces. Freshness
-    // is owned by the realtime cache registry — content-changed/apps-changed
-    // invalidations plus reconnect reconciliation — so the data never goes
-    // stale on its own.
-    staleTime: options?.staleTime ?? Infinity,
-  });
-}
-
-export function useAppMarkdownPreview(
-  applicationId: string | null | undefined,
-  entryPath: string | null | undefined,
-  options?: QueryOptions,
-) {
-  return useQuery<FilePreview>({
-    queryKey: appMarkdownPreviewQueryKey(applicationId ?? "", entryPath),
-    queryFn: ({ signal }) =>
-      api.getAppMarkdownPreview(applicationId ?? "", entryPath ?? "", signal),
-    enabled:
-      (options?.enabled ?? true) &&
-      Boolean(applicationId) &&
-      Boolean(entryPath),
-    refetchOnWindowFocus: false,
-    // Invalidation-owned like useApp above; mount refetches would re-render
-    // open markdown app surfaces for no reason.
-    staleTime: options?.staleTime ?? Infinity,
   });
 }
 

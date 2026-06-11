@@ -118,7 +118,7 @@ function installSidebarFetchRoutes({
         }),
     },
   ];
-  for (const pathname of ["/api/v1/apps", "/api/v1/workflow-runs"]) {
+  for (const pathname of ["/api/v1/workflow-runs"]) {
     if (!defaultedRoutes.some((route) => route.pathname === pathname)) {
       defaultedRoutes.push({ pathname, handler: () => jsonResponse([]) });
     }

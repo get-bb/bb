@@ -19,7 +19,7 @@ import {
 } from "@/hooks/queries/workflow-queries";
 import { useDialogState } from "@/hooks/useDialogState";
 import { HttpError } from "@/lib/api";
-import { getWorkflowRunRoutePath } from "@/lib/app-route-paths";
+import { getWorkflowRunRoutePath } from "@/lib/route-paths";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { wsManager } from "@/lib/ws";
 import {

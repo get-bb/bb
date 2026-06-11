@@ -130,17 +130,17 @@ afterEach(() => {
 });
 
 describe("FilePreview", () => {
-  it("delays the iframe loading indicator so fast app switches do not flash it", () => {
+  it("delays the iframe loading indicator so fast iframe switches do not flash it", () => {
     vi.useFakeTimers();
     const { container } = render(
       <FilePreview
-        path="Status"
+        path="Preview"
         headerMode="none"
         state={{
           kind: "iframe",
           sandbox: null,
-          title: "Review Board",
-          url: "/api/v1/apps/review-board/?targetThreadId=thr_1",
+          title: "Preview",
+          url: "/api/v1/threads/thr_1/host-files/content?path=preview.html",
         }}
       />,
     );
@@ -162,18 +162,18 @@ describe("FilePreview", () => {
     vi.useFakeTimers();
     const { container } = render(
       <FilePreview
-        path="Status"
+        path="Preview"
         headerMode="none"
         state={{
           kind: "iframe",
           sandbox: null,
-          title: "Review Board",
-          url: "/api/v1/apps/review-board/?targetThreadId=thr_1",
+          title: "Preview",
+          url: "/api/v1/threads/thr_1/host-files/content?path=preview.html",
         }}
       />,
     );
 
-    fireEvent.load(screen.getByTitle("Review Board"));
+    fireEvent.load(screen.getByTitle("Preview"));
     act(() => {
       vi.advanceTimersByTime(160);
     });

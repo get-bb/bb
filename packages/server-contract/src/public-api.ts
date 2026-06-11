@@ -24,17 +24,6 @@ import type {
 import type {
   Automation,
   AutomationsOverviewResponse,
-  AppDataListQuery,
-  AppDataListResponse,
-  AppDataReadResponse,
-  AppDataWriteRequest,
-  AddAppSourceRequest,
-  AppDetail,
-  AppMessageRequest,
-  AppSourceStatus,
-  AppSummary,
-  CreateAppRequest,
-  SyncAppSourceRequest,
   CreateAutomationRequest,
   CreateQueuedMessageRequest,
   CreateProjectRequest,
@@ -141,8 +130,6 @@ import type {
 import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
-type PathApplicationApp = { param: { applicationId: string } };
-type PathAppSourceName = { param: { name: string } };
 type PathWorkflowRunAgentIndex = { param: { id: string; index: string } };
 
 export type PublicApiSchema = {
@@ -159,86 +146,6 @@ export type PublicApiSchema = {
       PathId & { json: ReplayRunRequest },
       ReplayRunResponse,
       201
-    >;
-  };
-
-  // ─── Apps ────────────────────────────────────────────────────────────
-
-  "/apps": {
-    /** List global local-host apps by scanning valid manifests in the app root. */
-    $get: Endpoint<EmptyInput, AppSummary[]>;
-    /** Create one global local-host app with a slug applicationId, derived from name when omitted. */
-    $post: Endpoint<{ json: CreateAppRequest }, AppDetail, 201>;
-  };
-  "/apps/:applicationId": {
-    /** Resolve one global app manifest and canonical storage paths. */
-    $get: Endpoint<PathApplicationApp, AppDetail>;
-    /** Delete one global app folder, including assets and data. */
-    $delete: Endpoint<PathApplicationApp, { ok: true }>;
-  };
-  "/apps/:applicationId/data": {
-    /** List JSON value files at or below an app data prefix. */
-    $get: Endpoint<
-      PathApplicationApp & { query?: AppDataListQuery },
-      AppDataListResponse
-    >;
-  };
-  "/apps/:applicationId/data/*": {
-    /**
-     * Read, write, or delete one app data JSON file. The wildcard suffix is
-     * validated by the route because hono-typed-routes only types named params.
-     */
-    $get: Endpoint<PathApplicationApp, AppDataReadResponse>;
-    $put: Endpoint<
-      PathApplicationApp & { json: AppDataWriteRequest },
-      AppDataReadResponse
-    >;
-    $delete: Endpoint<PathApplicationApp, { ok: true }>;
-  };
-  "/apps/:applicationId/message": {
-    /** Send a message from a global app to an explicit thread target context. */
-    $post: Endpoint<
-      PathApplicationApp & { json: AppMessageRequest },
-      { ok: true },
-      202
-    >;
-  };
-  "/apps/:applicationId/detach": {
-    /**
-     * Detach a source-managed app into local management: removes the
-     * provenance marker so the owning source stops syncing it (it reports a
-     * conflict for the id from then on) and the app delete guard lifts.
-     */
-    $post: Endpoint<PathApplicationApp, { ok: true }>;
-  };
-
-  // ─── App Sources ─────────────────────────────────────────────────────
-
-  "/app-sources": {
-    $get: Endpoint<EmptyInput, AppSourceStatus[]>;
-    /**
-     * Register a git repo (or local path) of apps and run its first sync
-     * inline, so the response reports which apps were installed. A failed
-     * first sync still registers the source, with lastError set.
-     */
-    $post: Endpoint<{ json: AddAppSourceRequest }, AppSourceStatus, 201>;
-  };
-  "/app-sources/:name": {
-    /**
-     * Remove the source, its checkout, and its managed apps. App data stays
-     * in the app-data root and reattaches if the apps are reinstalled.
-     */
-    $delete: Endpoint<PathAppSourceName, { ok: true }>;
-  };
-  "/app-sources/:name/sync": {
-    /**
-     * Fetch the origin and reconcile installed apps. Coalesces with an
-     * in-flight sync; `force: true` re-materializes diverged apps,
-     * discarding local edits.
-     */
-    $post: Endpoint<
-      PathAppSourceName & { json: SyncAppSourceRequest },
-      AppSourceStatus
     >;
   };
 

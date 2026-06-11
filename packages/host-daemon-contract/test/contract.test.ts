@@ -431,6 +431,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
   "hostDaemonCommandSchema.disallowedTools":
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
+  "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
+    "thread runtime options may omit mock CLI traffic settings unless the server explicitly enables Claude traffic replay.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
 };
@@ -1383,55 +1385,31 @@ describe("host-daemon command schemas", () => {
     ).toEqual({ accepted: false });
   });
 
-  it("parses every injected skill source variant and pins applicationId rules", () => {
+  it("parses every injected skill source variant", () => {
     const base = {
-      name: "building-bb-apps",
-      description: "Use when building bb apps.",
-      sourceRootPath: "/srv/builtin-skills/building-bb-apps",
-      skillFilePath: "/srv/builtin-skills/building-bb-apps/SKILL.md",
+      name: "workflow-help",
+      description: "Use when building workflows.",
+      sourceRootPath: "/srv/builtin-skills/workflow-help",
+      skillFilePath: "/srv/builtin-skills/workflow-help/SKILL.md",
     };
 
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
         sourceType: "builtin",
-        applicationId: null,
       }),
-    ).toMatchObject({ sourceType: "builtin", applicationId: null });
+    ).toMatchObject({ sourceType: "builtin" });
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
         sourceType: "data-dir",
-        applicationId: null,
       }),
-    ).toMatchObject({ sourceType: "data-dir", applicationId: null });
-    expect(
-      hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
-        sourceType: "global-app",
-        applicationId: "tasks",
-      }),
-    ).toMatchObject({ sourceType: "global-app", applicationId: "tasks" });
+    ).toMatchObject({ sourceType: "data-dir" });
 
     expect(() =>
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
-        sourceType: "builtin",
-        applicationId: "tasks",
-      }),
-    ).toThrow();
-    expect(() =>
-      hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
-        sourceType: "global-app",
-        applicationId: null,
-      }),
-    ).toThrow();
-    expect(() =>
-      hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
         sourceType: "bundled",
-        applicationId: null,
       }),
     ).toThrow();
   });
@@ -2197,7 +2175,6 @@ describe("host-daemon session schemas", () => {
             threadId: "thr_123",
           },
         ],
-        trackedApplicationDataTargets: [],
       }),
     ).toMatchObject({
       sessionId: "session_123",
@@ -2365,77 +2342,6 @@ describe("host-daemon session schemas", () => {
       type: "environment-change",
       environmentId: "env_123",
       change: "thread-storage-changed",
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-storage-changed",
-      }),
-    ).toEqual({
-      type: "application-storage-changed",
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "status",
-      }),
-    ).toEqual({
-      type: "application-content-changed",
-      applicationId: "status",
-    });
-
-    expect(
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-        path: "state.json",
-        value: { workers: [] },
-        deleted: false,
-        version: "next-hash",
-      }),
-    ).toEqual({
-      sessionId: "session_123",
-      applicationId: "status",
-      path: "state.json",
-      value: { workers: [] },
-      deleted: false,
-      version: "next-hash",
-    });
-
-    expect(
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-        path: "state.json",
-        value: null,
-        deleted: true,
-        version: null,
-      }),
-    ).toMatchObject({
-      deleted: true,
-      version: null,
-    });
-
-    expect(() =>
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-        path: "state.json",
-        value: { workers: [] },
-        deleted: false,
-        version: null,
-      }),
-    ).toThrow();
-
-    expect(
-      contract.hostDaemonAppDataResyncRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-      }),
-    ).toEqual({
-      sessionId: "session_123",
-      applicationId: "status",
     });
 
     expect(
@@ -2650,27 +2556,6 @@ describe("host-daemon session schemas", () => {
       hostDaemonDaemonWsMessageSchema.parse({
         type: "heartbeat",
         bufferDepth: 0,
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "status",
-        path: "public/index.html",
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "Not A Slug",
       }),
     ).toThrow();
 
@@ -2910,12 +2795,6 @@ describe("host-daemon session schemas", () => {
     const client = createHostDaemonClient("http://localhost:3334", "secret");
 
     expect(client.session.open.$url().pathname).toBe("/internal/session/open");
-    expect(client.session["app-data-change"].$url().pathname).toBe(
-      "/internal/session/app-data-change",
-    );
-    expect(client.session["app-data-resync"].$url().pathname).toBe(
-      "/internal/session/app-data-resync",
-    );
     expect(client.session["workflow-run-events"].$url().pathname).toBe(
       "/internal/session/workflow-run-events",
     );

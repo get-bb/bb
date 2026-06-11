@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/disclosure.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Pill } from "@/components/ui/pill.js";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { WorkflowAgentChatPanel } from "./WorkflowAgentChatPanel";
 import { WorkflowRunAgentList } from "./WorkflowRunAgentList";
 

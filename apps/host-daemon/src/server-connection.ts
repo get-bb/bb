@@ -56,10 +56,6 @@ function recoverableMessageKey(
   switch (message.type) {
     case "environment-change":
       return `environment-change\u0000${message.environmentId}\u0000${message.change}`;
-    case "application-storage-changed":
-      return "application-storage-changed";
-    case "application-content-changed":
-      return `application-content-changed\u0000${message.applicationId}`;
     default:
       return null;
   }

@@ -190,6 +190,20 @@
       "when": 1781107791352,
       "tag": "0026_salty_aaron_stack",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1781213816184,
+      "tag": "0027_majestic_cable",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1781214774803,
+      "tag": "0028_clear_skullbuster",
+      "breakpoints": true
     }
   ]
 }

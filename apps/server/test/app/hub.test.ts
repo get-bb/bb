@@ -83,124 +83,6 @@ describe("NotificationHub", () => {
     expect(socket.messages).toHaveLength(0);
   });
 
-  it("subscribes clients and delivers app data broadcasts", () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-
-    hub.subscribe(socket, "app", "status:data");
-    hub.notifyAppData({
-      type: "app-data.changed",
-      applicationId: "status",
-      path: "state.json",
-      value: { workers: [] },
-      deleted: false,
-      version: "version-1",
-    });
-
-    expect(socket.messages).toHaveLength(1);
-    expect(JSON.parse(socket.messages[0])).toEqual({
-      type: "app-data.changed",
-      applicationId: "status",
-      path: "state.json",
-      value: { workers: [] },
-      deleted: false,
-      version: "version-1",
-    });
-  });
-
-  it("delivers app list changes to entity-wide app subscribers", () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-
-    hub.subscribe(socket, "app");
-    hub.notifyAppsChanged();
-
-    expect(socket.messages).toHaveLength(1);
-    expect(JSON.parse(socket.messages[0])).toEqual({
-      type: "changed",
-      entity: "app",
-      changes: ["apps-changed"],
-    });
-  });
-
-  it("delivers app content-changed broadcasts to entity-wide app subscribers", () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-
-    hub.subscribe(socket, "app");
-    hub.notifyAppContentChanged("some-app");
-
-    expect(socket.messages).toHaveLength(1);
-    expect(JSON.parse(socket.messages[0])).toEqual({
-      type: "changed",
-      entity: "app",
-      id: "some-app",
-      changes: ["content-changed"],
-    });
-  });
-
-  it("delivers app content-changed broadcasts to the matching app id only", () => {
-    const hub = new NotificationHub();
-    const idScopedSocket = createMockHubSocket();
-    const appDataSocket = createMockHubSocket();
-    const otherAppSocket = createMockHubSocket();
-
-    hub.subscribe(idScopedSocket, "app", "some-app");
-    hub.subscribe(appDataSocket, "app", "some-app:data");
-    hub.subscribe(otherAppSocket, "app", "other-app");
-    hub.notifyAppContentChanged("some-app");
-
-    expect(
-      idScopedSocket.messages.map((message) => JSON.parse(message)),
-    ).toEqual([
-      {
-        type: "changed",
-        entity: "app",
-        id: "some-app",
-        changes: ["content-changed"],
-      },
-    ]);
-    expect(appDataSocket.messages).toHaveLength(0);
-    expect(otherAppSocket.messages).toHaveLength(0);
-  });
-
-  it("does not deliver app data broadcasts to entity-wide app subscribers", () => {
-    const hub = new NotificationHub();
-    const entityWideSocket = createMockHubSocket();
-    const appDataSocket = createMockHubSocket();
-
-    hub.subscribe(entityWideSocket, "app");
-    hub.subscribe(appDataSocket, "app", "status:data");
-    hub.notifyAppData({
-      type: "app-data.changed",
-      applicationId: "status",
-      path: "state.json",
-      value: { workers: [] },
-      deleted: false,
-      version: "version-1",
-    });
-
-    expect(entityWideSocket.messages).toHaveLength(0);
-    expect(appDataSocket.messages).toHaveLength(1);
-  });
-
-  it("delivers app data resync broadcasts", () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-
-    hub.subscribe(socket, "app", "status:data");
-    hub.notifyAppData({
-      type: "app-data.resync",
-      applicationId: "status",
-    });
-
-    expect(socket.messages).toHaveLength(1);
-    expect(JSON.parse(socket.messages[0])).toEqual({
-      type: "app-data.resync",
-      applicationId: "status",
-    });
-  });
-
   it("cleans up subscriptions on client disconnect", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
@@ -452,13 +334,13 @@ describe("NotificationHub", () => {
     const socket = createMockHubSocket();
 
     hub.subscribe(socket, "system");
-    hub.notifySystem(["apps-changed"]);
+    hub.notifySystem(["config-changed"]);
 
     expect(socket.messages).toHaveLength(1);
     expect(JSON.parse(socket.messages[0])).toEqual({
       type: "changed",
       entity: "system",
-      changes: ["apps-changed"],
+      changes: ["config-changed"],
     });
   });
 

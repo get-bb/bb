@@ -7,6 +7,5 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["scripts", "src", "test", "tests", "fixtures", "stories"],
-  "exclude": ["src/services/threads/app-scaffold-template/source"]
+  "include": ["scripts", "src", "test", "tests", "fixtures", "stories"]
 }

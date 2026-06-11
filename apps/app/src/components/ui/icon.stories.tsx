@@ -71,7 +71,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   RotateCcw: "Retry button when fetching timeline turn details fails",
   Rows2: "Git diff toolbar “unified view”",
   Search: "Picker search inputs, file tree search, branch picker filter",
-  Settings: "App settings link in sidebar, project settings link in header",
+  Settings: "Settings link in sidebar, project settings link in header",
   Spinner: "All loading / pending states",
   Square: "Stop button while running, in-progress and pending todo glyphs",
   Trash2: "Delete queued message, remove project source, delete replay capture",

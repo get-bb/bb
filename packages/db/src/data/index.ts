@@ -185,7 +185,7 @@ export type {
   UpdateThreadScheduleInput,
 } from "./thread-schedules.js";
 
-export { getExperiments, setExperiments } from "./app-settings.js";
+export { getExperiments, setExperiments } from "./experiments.js";
 
 export {
   ALLOWED_WORKFLOW_RUN_STATUS_TRANSITIONS,

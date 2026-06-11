@@ -3,7 +3,7 @@ import { useDebounceValue } from "usehooks-ts";
 import { useEnvironmentPathSuggestions } from "./queries/environment-queries";
 import { useProjectPathSuggestions } from "./queries/project-queries";
 import { useThreadStoragePaths } from "./queries/thread-queries";
-import { isProjectlessProjectId } from "@/lib/app-route-paths";
+import { isProjectlessProjectId } from "@/lib/route-paths";
 import type { PathListOptions } from "@/lib/path-list-options";
 
 export const PATH_SUGGESTION_DEBOUNCE_MS = 120;

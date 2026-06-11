@@ -17,7 +17,7 @@ import { HttpError } from "@/lib/api";
 import {
   getWorkflowRunAgentRoutePath,
   getWorkflowRunRoutePath,
-} from "@/lib/app-route-paths";
+} from "@/lib/route-paths";
 import { wsManager } from "@/lib/ws";
 import { WorkflowAgentTimeline } from "./WorkflowAgentTimeline";
 import { WorkflowRunPage } from "./WorkflowRunPage";
