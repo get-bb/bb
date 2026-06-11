@@ -106,6 +106,20 @@ export function Overview() {
           />
         </SidebarStage>
       </StoryRow>
+      <StoryRow label="fork" hint="forked thread — leading fork glyph">
+        <SidebarStage>
+          <StoryThreadRow
+            projectId="proj_demo"
+            thread={makeThread({
+              childOrigin: "fork",
+              title: "Fork Context Summary",
+              titleFallback: "Fork Context Summary",
+            })}
+            isActive={false}
+            options={defaultOption}
+          />
+        </SidebarStage>
+      </StoryRow>
       <StoryRow
         label="active"
         hint="selected thread shows the sidebar-border background"

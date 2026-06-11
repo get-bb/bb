@@ -396,6 +396,13 @@ function ThreadRowComponent({
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        {thread.childOrigin === "fork" ? (
+          <Icon
+            name="Fork"
+            className="size-3.5 shrink-0 text-muted-foreground"
+            aria-label="Fork"
+          />
+        ) : null}
         <span className="min-w-0 truncate">{threadTitle}</span>
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
