@@ -20,9 +20,9 @@ import type {
 import type { AppSummary, BbDesktopInfo } from "@bb/server-contract";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
-  NewTabActionMenu,
+  NewTabActions,
   NewTabFileSearch,
-  type NewTabActionMenuProps,
+  type NewTabActionsProps,
   type NewTabFileSearchProps,
 } from "./NewTabFileSearch";
 import { getThreadRecentItemsStorageKey } from "./threadRecentItems";
@@ -41,16 +41,13 @@ interface RenderLauncherArgs {
   onSelect?: NewTabFileSearchProps["onSelect"];
 }
 
-interface RenderActionMenuArgs {
+interface RenderActionsArgs {
   projectId?: string;
-  environmentId?: string | null;
   currentThreadId?: string;
-  onSelect?: NewTabActionMenuProps["onSelect"];
-  onOpenFileSearch?: NewTabActionMenuProps["onOpenFileSearch"];
-  onCreateAppPromptPrefill?: NewTabActionMenuProps["onCreateAppPromptPrefill"];
-  onOpenBrowser?: NewTabActionMenuProps["onOpenBrowser"];
-  onStartTerminal?: NewTabActionMenuProps["onStartTerminal"];
-  onCloseMenu?: NewTabActionMenuProps["onCloseMenu"];
+  onSelect?: NewTabActionsProps["onSelect"];
+  onCreateAppPromptPrefill?: NewTabActionsProps["onCreateAppPromptPrefill"];
+  onOpenBrowser?: NewTabActionsProps["onOpenBrowser"];
+  onStartTerminal?: NewTabActionsProps["onStartTerminal"];
 }
 
 type FileSearchMockState = UseFileSearchSuggestionsResult;
@@ -169,6 +166,15 @@ const DRAFT_WITH_ATTACHMENT = {
   ],
 } satisfies PromptDraftState;
 
+function makeAppSummary(index: number): AppSummary {
+  const applicationId = `app-${index}`;
+  return {
+    ...APP_SUGGESTION.app,
+    applicationId,
+    name: `App ${index}`,
+  } satisfies AppSummary;
+}
+
 function resetFileSearchMockState(): void {
   fileSearchMockState.suggestions = [];
   fileSearchMockState.isLoading = false;
@@ -220,21 +226,18 @@ function renderLauncher(args: RenderLauncherArgs = {}) {
   );
 }
 
-function renderActionMenu(args: RenderActionMenuArgs = {}) {
+function renderActions(args: RenderActionsArgs = {}) {
   const store = createStore();
   const wrapper = ({ children }: ProviderWrapperProps) =>
     createElement(Provider, { store }, children);
   return render(
-    createElement(NewTabActionMenu, {
+    createElement(NewTabActions, {
       projectId: args.projectId ?? "proj_1",
-      environmentId: args.environmentId ?? null,
       currentThreadId: args.currentThreadId ?? "thr_1",
       onSelect: args.onSelect ?? vi.fn(),
-      onOpenFileSearch: args.onOpenFileSearch ?? vi.fn(),
       onCreateAppPromptPrefill: args.onCreateAppPromptPrefill,
       onOpenBrowser: args.onOpenBrowser,
       onStartTerminal: args.onStartTerminal,
-      onCloseMenu: args.onCloseMenu ?? vi.fn(),
     }),
     { wrapper },
   );
@@ -249,65 +252,62 @@ afterEach(() => {
   resetPromptDraftMockState();
 });
 
-describe("NewTabActionMenu", () => {
+describe("NewTabActions", () => {
   it("does not render the old persistent apps-and-files search input", () => {
-    renderActionMenu();
+    renderActions();
 
     expect(
       screen.queryByRole("textbox", { name: "Search apps and files" }),
     ).toBeNull();
   });
 
-  it("omits the Apps header when Create App is the only app-related row", () => {
-    renderActionMenu();
+  it("shows the Apps header when Create App is the only app-related row", () => {
+    renderActions();
 
     expect(screen.getByRole("button", { name: "Create App..." })).toBeTruthy();
-    expect(screen.queryByText("Apps")).toBeNull();
+    expect(screen.getByText("Apps")).toBeTruthy();
   });
 
   it("shows the Apps header when actual installed app rows are present", () => {
     setAppSummaries([APP_SUGGESTION.app]);
 
-    renderActionMenu();
+    renderActions();
 
     expect(screen.getByText("Apps")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Review Board/u })).toBeTruthy();
   });
 
-  it("shows Open browser as a headerless action row on the desktop build", () => {
+  it("shows Open browser in the Actions section on the desktop build", () => {
     window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
 
-    renderActionMenu({ onOpenBrowser: vi.fn() });
+    renderActions({ onOpenBrowser: vi.fn() });
 
     expect(screen.getByRole("button", { name: /Open browser/u })).toBeTruthy();
-    expect(screen.queryByText("Open")).toBeNull();
+    expect(screen.getByText("Actions")).toBeTruthy();
   });
 
-  it("orders action rows as Open file, Open browser, Start terminal, Create App with no Apps section when no apps exist", () => {
+  it("orders action rows as Open browser, Start terminal, then Create App when no apps exist", () => {
     window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
 
-    renderActionMenu({ onOpenBrowser: vi.fn(), onStartTerminal: vi.fn() });
+    renderActions({ onOpenBrowser: vi.fn(), onStartTerminal: vi.fn() });
 
     expect(
       screen.getAllByRole("button").map((button) => button.textContent ?? ""),
-    ).toEqual(["Open file", "Open browser", "Start terminal", "Create App..."]);
-    // No installed apps ⇒ no divider and no Apps title; Create App still trails.
-    expect(screen.queryByRole("separator")).toBeNull();
-    expect(screen.queryByText("Apps")).toBeNull();
+    ).toEqual(["Open browser", "Start terminal", "Create App..."]);
+    expect(screen.getByRole("separator")).toBeTruthy();
+    expect(screen.getByText("Apps")).toBeTruthy();
   });
 
   it("orders installed apps between the open actions and Create App, with a divider and Apps title", () => {
     window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
     setAppSummaries([APP_SUGGESTION.app]);
 
-    renderActionMenu({ onOpenBrowser: vi.fn(), onStartTerminal: vi.fn() });
+    renderActions({ onOpenBrowser: vi.fn(), onStartTerminal: vi.fn() });
 
-    // Open file, Open browser, Start terminal, the installed app rows, then
-    // Create App last.
+    // Open actions, the installed app rows, then Create App last.
     expect(
       screen.getAllByRole("button").map((button) => button.textContent ?? ""),
     ).toEqual([
-      "Open file",
       "Open browser",
       "Start terminal",
       expect.stringContaining("Review Board"),
@@ -336,13 +336,39 @@ describe("NewTabActionMenu", () => {
     expect(orderedAfter(appsTitle, appRow)).toBe(true);
   });
 
+  it("caps installed apps behind show-more while keeping Create App last", () => {
+    setAppSummaries(
+      Array.from({ length: 8 }, (_value, index) => makeAppSummary(index + 1)),
+    );
+
+    renderActions();
+
+    const actions = screen.getByTestId("new-tab-actions");
+    expect(screen.getByRole("button", { name: /App 1/u })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /App 6/u })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /App 7/u })).toBeNull();
+    expect(screen.getByRole("button", { name: "Show 2 more" })).toBeTruthy();
+    expect(
+      within(actions).getAllByRole("button").at(-1)?.textContent,
+    ).toBe("Create App...");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 2 more" }));
+
+    expect(screen.getByRole("button", { name: /App 7/u })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /App 8/u })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show less" })).toBeTruthy();
+    expect(
+      within(actions).getAllByRole("button").at(-1)?.textContent,
+    ).toBe("Create App...");
+  });
+
   it("keeps Create App last while apps are loading", () => {
     appsQueryMockState.isLoading = true;
     appsQueryMockState.data = undefined;
 
-    renderActionMenu();
+    renderActions();
 
-    const menu = screen.getByTestId("new-tab-action-menu");
+    const actions = screen.getByTestId("new-tab-actions");
     const createApp = screen.getByRole("button", { name: "Create App..." });
     const status = screen.getByText("Loading apps...");
 
@@ -360,16 +386,16 @@ describe("NewTabActionMenu", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(false);
-    expect(within(menu).getAllByRole("button").at(-1)).toBe(createApp);
+    expect(within(actions).getAllByRole("button").at(-1)).toBe(createApp);
   });
 
   it("keeps Create App last when apps fail to load", () => {
     appsQueryMockState.isError = true;
     appsQueryMockState.data = undefined;
 
-    renderActionMenu();
+    renderActions();
 
-    const menu = screen.getByTestId("new-tab-action-menu");
+    const actions = screen.getByTestId("new-tab-actions");
     const createApp = screen.getByRole("button", { name: "Create App..." });
     const status = screen.getByText("Couldn't load apps.");
 
@@ -387,85 +413,65 @@ describe("NewTabActionMenu", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(false);
-    expect(within(menu).getAllByRole("button").at(-1)).toBe(createApp);
+    expect(within(actions).getAllByRole("button").at(-1)).toBe(createApp);
   });
 
-  it("keeps menu actions compact with native button semantics and non-ring focus", () => {
+  it("keeps page actions compact with native button semantics and non-ring focus", () => {
     window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
 
-    renderActionMenu({ onOpenBrowser: vi.fn() });
+    renderActions({ onOpenBrowser: vi.fn() });
 
-    const menu = screen.getByTestId("new-tab-action-menu");
-    expect(within(menu).queryByText(/Describe an idea/u)).toBeNull();
-    expect(within(menu).queryByText(/Open a new web browser tab/u)).toBeNull();
+    const actions = screen.getByTestId("new-tab-actions");
+    expect(within(actions).queryByText(/Describe an idea/u)).toBeNull();
     expect(
-      within(menu).queryByText(/Search workspace and thread files/u),
+      within(actions).queryByText(/Open a new web browser tab/u),
     ).toBeNull();
-    expect(within(menu).queryAllByRole("option")).toHaveLength(0);
-    for (const button of within(menu).getAllByRole("button")) {
+    expect(
+      within(actions).queryByText(/Search workspace and thread files/u),
+    ).toBeNull();
+    expect(within(actions).queryAllByRole("option")).toHaveLength(0);
+    for (const button of within(actions).getAllByRole("button")) {
       expect(button.getAttribute("aria-selected")).toBeNull();
       expect(button.className).not.toContain("focus-visible:ring");
-      // No row carries the active/selected highlight at rest — opening the menu
-      // must not leave the first action looking hovered/selected by default —
-      // while the non-ring keyboard-focus cue stays in place.
+      // No row carries the active/selected highlight at rest; the non-ring
+      // keyboard-focus cue stays in place.
       expect(button.className).not.toContain("bg-state-active");
       expect(button.className).toContain("focus-visible:bg-state-hover");
     }
   });
 
   it("hides the Open browser entry on the web build", () => {
-    renderActionMenu({ onOpenBrowser: vi.fn() });
+    renderActions({ onOpenBrowser: vi.fn() });
 
     expect(screen.queryByText("Open browser")).toBeNull();
   });
 
-  it("closes the popout before opening file search", () => {
-    const calls: string[] = [];
-    renderActionMenu({
-      onCloseMenu: () => calls.push("close"),
-      onOpenFileSearch: () => calls.push("open-file"),
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /Open file/u }));
-
-    expect(calls).toEqual(["close", "open-file"]);
-  });
-
-  it("closes the popout before opening the browser", () => {
+  it("opens the browser directly", () => {
     window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
-    const calls: string[] = [];
-    renderActionMenu({
-      onCloseMenu: () => calls.push("close"),
-      onOpenBrowser: () => calls.push("open-browser"),
-    });
+    const onOpenBrowser = vi.fn();
+    renderActions({ onOpenBrowser });
 
     fireEvent.click(screen.getByRole("button", { name: /Open browser/u }));
 
-    expect(calls).toEqual(["close", "open-browser"]);
+    expect(onOpenBrowser).toHaveBeenCalledTimes(1);
   });
 
-  it("closes the popout before starting a terminal", () => {
-    const calls: string[] = [];
-    renderActionMenu({
-      onCloseMenu: () => calls.push("close"),
-      onStartTerminal: () => calls.push("start-terminal"),
-    });
+  it("starts a terminal directly", () => {
+    const onStartTerminal = vi.fn();
+    renderActions({ onStartTerminal });
 
     fireEvent.click(screen.getByRole("button", { name: /Start terminal/u }));
 
-    expect(calls).toEqual(["close", "start-terminal"]);
+    expect(onStartTerminal).toHaveBeenCalledTimes(1);
   });
 
-  it("closes the popout before starting Create App", () => {
-    const calls: string[] = [];
-    renderActionMenu({
-      onCloseMenu: () => calls.push("close"),
-      onCreateAppPromptPrefill: () => calls.push("create-app"),
-    });
+  it("starts Create App directly", () => {
+    const onCreateAppPromptPrefill = vi.fn();
+    renderActions({ onCreateAppPromptPrefill });
 
     fireEvent.click(screen.getByRole("button", { name: "Create App..." }));
 
-    expect(calls).toEqual(["close", "create-app"]);
+    expect(onCreateAppPromptPrefill).toHaveBeenCalledTimes(1);
     expect(promptDraftMockState.setDrafts).toEqual([
       {
         text: expect.stringContaining("You are creating a new global bb app."),
@@ -480,7 +486,7 @@ describe("NewTabActionMenu", () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     const onCreateAppPromptPrefill = vi.fn();
 
-    renderActionMenu({ onCreateAppPromptPrefill });
+    renderActions({ onCreateAppPromptPrefill });
 
     fireEvent.click(screen.getByRole("button", { name: "Create App..." }));
 

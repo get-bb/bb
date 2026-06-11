@@ -16,7 +16,6 @@ import {
 } from "@/hooks/queries/query-keys";
 import { ThreadSecondaryPanel } from "../secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelFileTab } from "../secondary-panel/ThreadSecondaryPanel";
-import { NewTabActionMenu } from "../secondary-panel/NewTabFileSearch";
 import { NewTabPage } from "../secondary-panel/NewTabPage";
 import type { FileSearchSelection } from "../secondary-panel/useThreadFileTabs";
 import { Icon } from "@/components/ui/icon.js";
@@ -41,11 +40,9 @@ export default {
 const PROJECT_ID = "proj_bb";
 const ENVIRONMENT_ID = "env_open_file_story";
 const STORY_SOURCE_LIMIT = 40;
-const BLANK_THREAD_ID = "";
+const BLANK_THREAD_ID = "thr_new_tab_blank_story";
 const APPS_THREAD_ID = "thr_new_tab_apps_story";
-const RECENTS_THREAD_ID = "thr_new_tab_recents_story";
 const SEARCH_THREAD_ID = "thr_new_tab_search_story";
-const OPEN_BROWSER_THREAD_ID = "thr_new_tab_browser_story";
 const STORY_TERMINAL_ID = "term_new_tab_story";
 
 const noop = () => {};
@@ -135,6 +132,46 @@ const APPS_ROW_APPS: AppSummary[] = [
     entry: { path: "index.html", kind: "html" },
     capabilities: ["message"],
     icon: { kind: "builtin", name: "File" },
+    source: null,
+  },
+  {
+    applicationId: "app_session_notes",
+    name: "Session Notes",
+    entry: { path: "index.html", kind: "html" },
+    capabilities: ["data", "message"],
+    icon: { kind: "builtin", name: "File" },
+    source: null,
+  },
+  {
+    applicationId: "app_error_dashboard",
+    name: "Error Dashboard",
+    entry: { path: "index.html", kind: "html" },
+    capabilities: ["data"],
+    icon: { kind: "builtin", name: "AlertCircle" },
+    source: null,
+  },
+  {
+    applicationId: "app_release_tracker",
+    name: "Release Tracker",
+    entry: { path: "index.html", kind: "html" },
+    capabilities: ["message"],
+    icon: { kind: "builtin", name: "GitBranch" },
+    source: null,
+  },
+  {
+    applicationId: "app_prompt_library",
+    name: "Prompt Library",
+    entry: { path: "index.html", kind: "html" },
+    capabilities: ["data", "message"],
+    icon: { kind: "builtin", name: "GridView" },
+    source: null,
+  },
+  {
+    applicationId: "app_qa_checklist",
+    name: "QA Checklist",
+    entry: { path: "index.html", kind: "html" },
+    capabilities: ["data"],
+    icon: { kind: "builtin", name: "ListTodo" },
     source: null,
   },
 ];
@@ -249,7 +286,10 @@ interface SeedThreadRecentItemsArgs {
 interface SeededNewTabPageProps {
   currentThreadId: string;
   initialQuery: string;
+  onCreateAppPromptPrefill: () => void;
+  onOpenBrowser?: () => void;
   onSelect: (selection: FileSearchSelection) => void;
+  onStartTerminal: () => void;
   projectId: string | undefined;
   recentItems: readonly ThreadRecentItem[];
 }
@@ -354,7 +394,10 @@ function useStoryQueryClient({
 function SeededNewTabPage({
   currentThreadId,
   initialQuery,
+  onCreateAppPromptPrefill,
+  onOpenBrowser,
   onSelect,
+  onStartTerminal,
   projectId,
   recentItems,
 }: SeededNewTabPageProps) {
@@ -369,6 +412,9 @@ function SeededNewTabPage({
       focusRequest={0}
       initialQuery={initialQuery}
       onSelect={onSelect}
+      onCreateAppPromptPrefill={onCreateAppPromptPrefill}
+      onOpenBrowser={onOpenBrowser}
+      onStartTerminal={onStartTerminal}
     />
   );
 }
@@ -400,7 +446,7 @@ function NewTabPanelStory({
   const handleStartTerminal = useCallback(() => {
     setOutcome({ kind: "terminal" });
   }, []);
-  const handleOpenFileSearch = useCallback(() => {
+  const handleOpenNewTab = useCallback(() => {
     setOutcome(null);
   }, []);
   const activeTab = createStoryActiveTab(outcome);
@@ -476,7 +522,10 @@ function NewTabPanelStory({
           initialQuery={initialQuery}
           projectId={projectId}
           recentItems={recentItems}
+          onCreateAppPromptPrefill={noop}
+          onOpenBrowser={showOpenBrowser ? handleOpenBrowser : undefined}
           onSelect={handleSelect}
+          onStartTerminal={handleStartTerminal}
         />
       </QueryClientProvider>
     ) : outcome.kind === "browser" ? (
@@ -491,7 +540,7 @@ function NewTabPanelStory({
       <div className="flex min-h-full flex-col justify-center bg-neutral-950 px-4 font-mono text-xs text-emerald-100">
         <p>$ bb terminal start</p>
         <p className="pt-1 text-emerald-300">
-          Terminal tab opened from the New tab menu.
+          Terminal tab opened from the New tab page.
         </p>
       </div>
     ) : (
@@ -526,21 +575,7 @@ function NewTabPanelStory({
         onCollapse={noop}
         onClose={noop}
         onFileTabReorder={noop}
-        renderNewTabMenu={({ closeMenu }) => (
-          <QueryClientProvider client={queryClient}>
-            <NewTabActionMenu
-              projectId={projectId}
-              environmentId={ENVIRONMENT_ID}
-              currentThreadId={currentThreadId}
-              onSelect={handleSelect}
-              onOpenFileSearch={handleOpenFileSearch}
-              onCreateAppPromptPrefill={noop}
-              onOpenBrowser={showOpenBrowser ? handleOpenBrowser : undefined}
-              onStartTerminal={handleStartTerminal}
-              onCloseMenu={closeMenu}
-            />
-          </QueryClientProvider>
-        )}
+        onOpenNewTab={handleOpenNewTab}
         onPanelChange={noop}
         onPanelFocus={noop}
         isConversationCollapsed={false}
@@ -555,72 +590,15 @@ function NewTabPanelStory({
 
 export function NewTab() {
   return (
-    <StoryCard>
-      <StoryRow
-        label="blank state"
-        hint="workspace-capable new tab before the user types"
-      >
-        <NewTabPanelStory
-          apps={[]}
-          currentThreadId={BLANK_THREAD_ID}
-          initialQuery=""
-          projectId={PROJECT_ID}
-          recentItems={[]}
-          showOpenBrowser={false}
-          threadStoragePaths={[]}
-          workspacePaths={[]}
-        />
-      </StoryRow>
-      <StoryRow label="apps" hint="apps and Create App in the panel + menu">
-        <NewTabPanelStory
-          apps={APPS_ROW_APPS}
-          currentThreadId={APPS_THREAD_ID}
-          initialQuery="s"
-          projectId={PROJECT_ID}
-          recentItems={[]}
-          showOpenBrowser={false}
-          threadStoragePaths={[]}
-          workspacePaths={[]}
-        />
-      </StoryRow>
-      <StoryRow
-        label="recents"
-        hint="recent file rows across plan, mockup, report, and source kinds"
-      >
-        <NewTabPanelStory
-          apps={[]}
-          currentThreadId={RECENTS_THREAD_ID}
-          initialQuery="story"
-          projectId={PROJECT_ID}
-          recentItems={RECENT_ROW_ITEMS}
-          showOpenBrowser={false}
-          threadStoragePaths={[]}
-          workspacePaths={[]}
-        />
-      </StoryRow>
-      <StoryRow
-        label="search results"
-        hint="active New tab seeded with workspace and thread-storage matches"
-      >
-        <NewTabPanelStory
-          apps={APPS_RESPONSE}
-          currentThreadId={SEARCH_THREAD_ID}
-          initialQuery="thread"
-          projectId={PROJECT_ID}
-          recentItems={[]}
-          showOpenBrowser={false}
-          threadStoragePaths={THREAD_STORAGE_PATH_RESULTS}
-          workspacePaths={WORKSPACE_PATH_RESULTS}
-        />
-      </StoryRow>
-      <StoryRow
-        label="open browser"
-        hint="desktop-only Open browser action in the right-panel menu; Start terminal is available beside it"
-      >
-        <WithDesktopBrowser>
+    <WithDesktopBrowser>
+      <StoryCard>
+        <StoryRow
+          label="default"
+          hint="stable launcher: empty Recent, Actions, and Apps/Create App"
+        >
           <NewTabPanelStory
             apps={[]}
-            currentThreadId={OPEN_BROWSER_THREAD_ID}
+            currentThreadId={BLANK_THREAD_ID}
             initialQuery=""
             projectId={PROJECT_ID}
             recentItems={[]}
@@ -628,8 +606,38 @@ export function NewTab() {
             threadStoragePaths={[]}
             workspacePaths={[]}
           />
-        </WithDesktopBrowser>
-      </StoryRow>
-    </StoryCard>
+        </StoryRow>
+        <StoryRow
+          label="recents and apps"
+          hint="recent rows plus installed apps; Apps uses Show more when it grows"
+        >
+          <NewTabPanelStory
+            apps={APPS_ROW_APPS}
+            currentThreadId={APPS_THREAD_ID}
+            initialQuery=""
+            projectId={PROJECT_ID}
+            recentItems={RECENT_ROW_ITEMS}
+            showOpenBrowser
+            threadStoragePaths={[]}
+            workspacePaths={[]}
+          />
+        </StoryRow>
+        <StoryRow
+          label="search results"
+          hint="file matches appear above Recent while Actions and Apps stay available"
+        >
+          <NewTabPanelStory
+            apps={APPS_RESPONSE}
+            currentThreadId={SEARCH_THREAD_ID}
+            initialQuery="thread"
+            projectId={PROJECT_ID}
+            recentItems={RECENT_ROW_ITEMS}
+            showOpenBrowser
+            threadStoragePaths={THREAD_STORAGE_PATH_RESULTS}
+            workspacePaths={WORKSPACE_PATH_RESULTS}
+          />
+        </StoryRow>
+      </StoryCard>
+    </WithDesktopBrowser>
   );
 }

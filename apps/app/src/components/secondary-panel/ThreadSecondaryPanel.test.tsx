@@ -14,7 +14,6 @@ import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
-  type NewTabMenuRenderer,
   type SecondaryPanelFileTab,
   ThreadSecondaryPanel,
 } from "./ThreadSecondaryPanel";
@@ -42,7 +41,7 @@ interface RenderPanelArgs {
   isConversationCollapsed?: boolean;
   onToggleConversationCollapse?: () => void;
   reserveLeftForDesktopTrafficLights?: boolean;
-  renderNewTabMenu?: NewTabMenuRenderer;
+  onOpenNewTab?: () => void;
   showGitDiffTab?: boolean;
 }
 
@@ -65,7 +64,6 @@ interface BuildActiveFileTabArgs {
 }
 
 const noop = () => {};
-const renderEmptyNewTabMenu: NewTabMenuRenderer = () => <div>New tab menu</div>;
 const IFRAME_DRAG_GUARD_OVERLAY_TESTID = "iframe-drag-guard-overlay";
 // The class that used to disable iframe pointer-events during resize — asserted
 // absent so the regression that broke wheel-scroll can't be reintroduced.
@@ -128,7 +126,7 @@ function renderPanel({
   isConversationCollapsed = false,
   onToggleConversationCollapse = noop,
   reserveLeftForDesktopTrafficLights = false,
-  renderNewTabMenu = renderEmptyNewTabMenu,
+  onOpenNewTab = noop,
   showGitDiffTab = false,
 }: RenderPanelArgs = {}) {
   const { wrapper } = createQueryClientTestHarness();
@@ -146,7 +144,7 @@ function renderPanel({
       onCollapse={noop}
       onClose={noop}
       onFileTabReorder={noop}
-      renderNewTabMenu={renderNewTabMenu}
+      onOpenNewTab={onOpenNewTab}
       onPanelChange={noop}
       onPanelFocus={noop}
       isConversationCollapsed={isConversationCollapsed}
@@ -217,7 +215,7 @@ describe("ThreadSecondaryPanel", () => {
         screen.getByRole("button", { name: "Show thread info panel" }),
       );
       expectNoDragRegionOnElementOrAncestor(
-        screen.getByRole("button", { name: "Open tab menu" }),
+        screen.getByRole("button", { name: "Open new tab" }),
       );
       expectNoDragRegionOnElementOrAncestor(
         screen.getByRole("button", { name: "Hide right panel" }),
@@ -247,7 +245,7 @@ describe("ThreadSecondaryPanel", () => {
     });
 
     const strip = screen.getByTestId("secondary-panel-tab-strip");
-    const newTab = screen.getByRole("button", { name: "Open tab menu" });
+    const newTab = screen.getByRole("button", { name: "Open new tab" });
 
     // Browser-style: the + sits right after the last tab. It is the strip's
     // immediate next sibling, and the strip is sized to its tabs (no flex-grow),
@@ -298,13 +296,14 @@ describe("ThreadSecondaryPanel", () => {
     ).toBe("true");
   });
 
-  it("opens the new-tab action popout from the plus button", () => {
-    renderPanel();
+  it("opens the new-tab page from the plus button", () => {
+    const onOpenNewTab = vi.fn();
+    renderPanel({ onOpenNewTab });
 
     const infoButton = screen.getByRole("button", {
       name: "Show thread info panel",
     });
-    const newTabButton = screen.getByRole("button", { name: "Open tab menu" });
+    const newTabButton = screen.getByRole("button", { name: "Open new tab" });
     expect(infoButton.className).toContain(
       CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
     );
@@ -330,61 +329,8 @@ describe("ThreadSecondaryPanel", () => {
 
     fireEvent.click(newTabButton);
 
-    const menu = screen.getByText("New tab menu");
-    const surface = menu.parentElement;
-
-    expect(menu).toBeTruthy();
-    expect(surface?.className).toContain("w-auto");
-    expect(surface?.className).toContain("min-w-40");
-    expect(surface?.className).toContain("focus-visible:ring-0");
-    expect(surface?.className).not.toContain("w-80");
-    expect(surface?.className).not.toContain("w-96");
-  });
-
-  it("does not land focus on the first popout action when the menu opens", () => {
-    renderPanel({
-      renderNewTabMenu: () => (
-        <div data-testid="new-tab-action-menu">
-          <button type="button">Open file</button>
-          <button type="button">Open browser</button>
-        </div>
-      ),
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Open tab menu" }));
-
-    // Opening the popout must not autofocus the first row: that paints it with
-    // the keyboard-focus highlight and makes Open file read as already
-    // selected/hovered at rest. Focus rests on the dialog container instead, so
-    // the first Tab still reaches Open file with the visible focus cue.
-    const openFile = screen.getByRole("button", { name: "Open file" });
-    expect(document.activeElement).not.toBe(openFile);
-    expect(document.activeElement).toBe(screen.getByRole("dialog"));
-  });
-
-  it("closes the new-tab action popout after a menu action", async () => {
-    const onOpenFile = vi.fn();
-    renderPanel({
-      renderNewTabMenu: ({ closeMenu }) => (
-        <button
-          type="button"
-          onClick={() => {
-            closeMenu();
-            onOpenFile();
-          }}
-        >
-          Open file
-        </button>
-      ),
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Open tab menu" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
-
-    expect(onOpenFile).toHaveBeenCalledTimes(1);
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "Open file" })).toBeNull();
-    });
+    expect(onOpenNewTab).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("uses the vertical seam token for the panel resize-handle hairline", () => {

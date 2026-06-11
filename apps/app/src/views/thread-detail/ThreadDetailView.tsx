@@ -102,7 +102,6 @@ import {
 import { AppTabContent } from "@/components/secondary-panel/AppTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
-import { NewTabActionMenu } from "@/components/secondary-panel/NewTabFileSearch";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
@@ -124,10 +123,7 @@ import {
 } from "@/components/secondary-panel/useThreadStorageBrowser";
 import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import type {
-  NewTabMenuRenderer,
-  SecondaryPanelFileTab,
-} from "@/components/secondary-panel/ThreadSecondaryPanel";
+import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
 import { useThreadReadTracking } from "./useThreadReadTracking";
@@ -740,10 +736,13 @@ export function ThreadDetailView() {
       thread?.environmentId,
     ],
   );
-  const handleOpenFileSearch = useCallback(() => {
+  const handleOpenNewTab = useCallback(() => {
     openNewTab();
     setNewTabFocusRequest((current) => current + 1);
   }, [openNewTab]);
+  const handleOpenBrowser = useCallback(() => {
+    openBrowserTab();
+  }, [openBrowserTab]);
   const handleCreateAppPromptPrefill = useCallback(() => {
     closeNewTab();
     closeSecondaryPanel();
@@ -761,6 +760,7 @@ export function ThreadDetailView() {
       },
       {
         onSuccess: (session) => {
+          closeNewTab();
           setPersistedSecondaryPanelOpen(true);
           setActiveFixedTerminal(session.id);
         },
@@ -768,6 +768,7 @@ export function ThreadDetailView() {
     );
   }, [
     canCreateTerminal,
+    closeNewTab,
     createTerminal,
     setActiveFixedTerminal,
     setPersistedSecondaryPanelOpen,
@@ -796,32 +797,6 @@ export function ThreadDetailView() {
       );
     },
     [closeTerminal, removeFixedTerminalTab, threadId],
-  );
-  const renderNewTabMenu = useCallback<NewTabMenuRenderer>(
-    ({ closeMenu }) => (
-      <NewTabActionMenu
-        projectId={projectId ?? undefined}
-        environmentId={thread?.environmentId ?? null}
-        currentThreadId={threadId ?? ""}
-        onSelect={selectFileSearchResult}
-        onOpenFileSearch={handleOpenFileSearch}
-        onCreateAppPromptPrefill={handleCreateAppPromptPrefill}
-        onOpenBrowser={() => openBrowserTab()}
-        onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
-        onCloseMenu={closeMenu}
-      />
-    ),
-    [
-      canCreateTerminal,
-      handleCreateAppPromptPrefill,
-      handleOpenFileSearch,
-      handleStartTerminal,
-      openBrowserTab,
-      projectId,
-      selectFileSearchResult,
-      thread?.environmentId,
-      threadId,
-    ],
   );
   const handleChangedFileClick = useCallback(
     (selection: WorkspaceChangedFileSelection) => {
@@ -1542,6 +1517,9 @@ export function ThreadDetailView() {
       currentThreadId={thread.id}
       focusRequest={newTabFocusRequest}
       onSelect={selectFileSearchResult}
+      onCreateAppPromptPrefill={handleCreateAppPromptPrefill}
+      onOpenBrowser={handleOpenBrowser}
+      onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
     />
   ) : activeAppId ? (
     <AppTabContent applicationId={activeAppId} threadId={thread.id} />
@@ -1661,7 +1639,7 @@ export function ThreadDetailView() {
           onCollapse: closeSecondaryPanel,
           onOpenFileInEditor: handleOpenFileInEditor,
           onFileTabReorder: reorderFileTab,
-          renderNewTabMenu,
+          onOpenNewTab: handleOpenNewTab,
           onOpenFilePreview: (relativePath: string) => {
             openWorkspaceFile({
               lineRange: null,

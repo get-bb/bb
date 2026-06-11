@@ -298,7 +298,7 @@ function buildSecondaryContentProps({
       onFileTabReorder: noop,
       onOpenFileInEditor: noopOpenFile,
       onOpenFilePreview: noopOpenFile,
-      renderNewTabMenu: () => <div>New tab menu</div>,
+      onOpenNewTab: noop,
       onPanelChange: noopSecondaryPanelChange,
       onPanelFocus: noop,
     },

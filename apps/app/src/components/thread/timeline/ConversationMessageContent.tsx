@@ -383,8 +383,10 @@ function AssistantConversationMessage({
         is omitted for a personal-only source with no host to base a worktree
         fork on. `disabled` greys both fork and side chat together when the
         thread is at the spawn-depth cap (both spawn a child thread, one guard).
+        Negative top margin pulls the hover row up into the gap the message
+        already reserves (matching main's copy-row spacing).
       */}
-      <div className="mt-1">
+      <div className="-mt-1">
         <MessageActionBar
           messageText={text}
           alignment="start"

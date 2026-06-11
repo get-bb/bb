@@ -13,12 +13,12 @@ import { cn } from "@/lib/utils";
 // surfaces rather than drifting in two parallel class bundles.
 const LAUNCHER_ROW_SHELL_CLASS = `group flex w-full min-w-0 items-center gap-1.5 rounded px-2 py-1.5 text-left transition-colors focus-visible:outline-none ${COARSE_POINTER_TEXT_SM_CLASS}`;
 export const LAUNCHER_ROW_BASE_CLASS = `${LAUNCHER_ROW_SHELL_CLASS} focus-visible:ring-1 focus-visible:ring-ring`;
-export const LAUNCHER_MENU_ROW_BASE_CLASS = `${LAUNCHER_ROW_SHELL_CLASS} focus-visible:bg-state-hover focus-visible:text-foreground`;
+export const LAUNCHER_ACTION_ROW_BASE_CLASS = `${LAUNCHER_ROW_SHELL_CLASS} focus-visible:bg-state-hover focus-visible:text-foreground`;
 export const LAUNCHER_ROW_ICON_CLASS = `flex shrink-0 items-center justify-center overflow-hidden text-muted-foreground ${COARSE_POINTER_ICON_SIZE_CLASS}`;
 
-// Section labels above launcher row groups (the + menu, file search, recents,
-// and the browser tab's recently-visited list). Mirrors the detail-card key
-// style rather than a loud uppercase, tracked header.
+// Section labels above launcher row groups (new-tab actions, file search,
+// recents, and the browser tab's recently-visited list). Mirrors the
+// detail-card key style rather than a loud uppercase, tracked header.
 const LAUNCHER_SECTION_LABEL_CLASS = CHROME_SECTION_LABEL_CLASS;
 
 interface LauncherRowTrailingProps {
