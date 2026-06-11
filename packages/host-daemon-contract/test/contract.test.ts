@@ -457,6 +457,8 @@ function terminalDataBase64(byteLength: number): string {
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
+  "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
+    "Optional for legacy command compatibility; the server fills the current app setting before dispatching new runtime work.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
   "hostDaemonOnlineRpcCommandSchema.query":
