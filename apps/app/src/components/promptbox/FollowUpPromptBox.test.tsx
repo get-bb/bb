@@ -193,7 +193,8 @@ describe("FollowUpPromptBox", () => {
     expect(
       screen.queryByRole("button", { name: "Permission mode" }),
     ).toBeNull();
-    expect(screen.getByText("Read only")).not.toBeNull();
+    // Rendered in both the full + compact label spans (CSS shows one per width).
+    expect(screen.getAllByText("Read only").length).toBeGreaterThan(0);
   });
 
   it("preserves ordinary Enter submit behavior", () => {

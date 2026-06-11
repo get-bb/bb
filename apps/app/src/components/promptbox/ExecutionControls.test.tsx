@@ -120,7 +120,8 @@ describe("ExecutionControls", () => {
         name: "Provider, model and reasoning",
       }),
     ).toBeNull();
-    expect(screen.getByText("GPT-5.5")).not.toBeNull();
+    // Rendered in both the full + compact label spans (CSS shows one per width).
+    expect(screen.getAllByText("GPT-5.5").length).toBeGreaterThan(0);
   });
 
   it("renders the selected provider load error when locked single-provider controls have no picker", () => {
