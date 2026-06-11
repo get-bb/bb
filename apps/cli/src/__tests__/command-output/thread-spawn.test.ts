@@ -39,6 +39,8 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        childOrigin: null,
         projectId: "proj-1",
         input: [{ type: "text", text: "hello", mentions: [] }],
         environment: {
@@ -69,6 +71,8 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        childOrigin: null,
         projectId: domain.PERSONAL_PROJECT_ID,
         input: [{ type: "text", text: "hello", mentions: [] }],
         environment: {
@@ -99,6 +103,8 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        childOrigin: null,
         projectId: "proj-env",
         input: [{ type: "text", text: "hello", mentions: [] }],
         environment: {
@@ -148,6 +154,8 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
         model: "gpt-5",
@@ -287,6 +295,8 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
         model: "gpt-5",
@@ -410,6 +420,8 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
         model: "gpt-5",
@@ -456,6 +468,8 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
         model: "gpt-5",
@@ -535,6 +549,8 @@ describe("bb thread spawn command output", () => {
     expect(post).toHaveBeenCalledWith({
       json: {
         origin: "cli",
+        startedOnBehalfOf: null,
+        childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
         model: "gpt-5",

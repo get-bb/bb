@@ -218,6 +218,8 @@ export function registerSpawnCommand(
             ...(serviceTier ? { serviceTier } : {}),
             ...(permissionMode ? { permissionMode } : {}),
             environment,
+            startedOnBehalfOf: null,
+            childOrigin: null,
             ...(parentThreadId ? { parentThreadId } : {}),
           });
         } catch (err: unknown) {

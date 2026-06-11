@@ -195,6 +195,8 @@ export async function createHostThread(
       projectId: options.projectId,
       providerId,
       title: options.title,
+      startedOnBehalfOf: null,
+      childOrigin: null,
     },
   });
   await expectStatus(response, 201, "create host thread");
@@ -222,6 +224,8 @@ export async function createReuseThread(
       projectId: options.projectId,
       providerId,
       title: options.title,
+      startedOnBehalfOf: null,
+      childOrigin: null,
     },
   });
   await expectStatus(response, 201, "create reuse thread");
