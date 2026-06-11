@@ -610,13 +610,14 @@ function EnvironmentThreadGroupHeader({
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const environmentName = representativeThread.environmentName;
   const branchName = representativeThread.environmentBranchName;
+  // The folder-git icon already signals "worktree", so the branch alone reads as
+  // the group label (no redundant "Worktree:" prefix); fall back to "Worktree"
+  // only when there's neither a name nor a branch to show.
   const headerTitle = environmentName
     ? branchName
       ? `${environmentName} (${branchName})`
       : environmentName
-    : branchName
-      ? `Worktree: ${branchName}`
-      : "Worktree";
+    : (branchName ?? "Worktree");
   const iconName = getEnvironmentWorkspaceLabelIconName(
     representativeThread.environmentWorkspaceDisplayKind,
   );

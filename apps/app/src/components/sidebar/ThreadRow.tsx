@@ -261,11 +261,13 @@ function ThreadTrailingIcon({
   environmentIconLabel,
 }: ThreadTrailingIconProps) {
   return environmentIcon ? (
-    <Icon
-      name={environmentIcon}
-      className={cn("text-muted-foreground", COARSE_POINTER_ICON_SIZE_CLASS)}
-      aria-label={environmentIconLabel ?? undefined}
-    />
+    <span className="inline-flex shrink-0" title={environmentIconLabel ?? undefined}>
+      <Icon
+        name={environmentIcon}
+        className={cn("text-muted-foreground", COARSE_POINTER_ICON_SIZE_CLASS)}
+        aria-label={environmentIconLabel ?? undefined}
+      />
+    </span>
   ) : null;
 }
 
@@ -397,11 +399,13 @@ function ThreadRowComponent({
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         {thread.childOrigin === "fork" ? (
-          <Icon
-            name="Fork"
-            className="size-3.5 shrink-0 text-muted-foreground"
-            aria-label="Fork"
-          />
+          <span className="inline-flex shrink-0" title="Forked thread">
+            <Icon
+              name="Fork"
+              className="size-3.5 text-muted-foreground"
+              aria-label="Forked thread"
+            />
+          </span>
         ) : null}
         <span className="min-w-0 truncate">{threadTitle}</span>
         {parentOptions && hasChildren ? (
