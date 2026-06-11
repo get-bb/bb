@@ -1072,8 +1072,13 @@ export function ThreadDetailView() {
     useMemo(() => {
       const list = childThreadSubsetQuery.data ?? [];
       const activeItems = list
-        .filter((entry) =>
-          isThreadDisplayStatusBannerActive(entry.runtime.displayStatus),
+        .filter(
+          (entry) =>
+            // Forks / side chats are user-driven branches opened directly, not
+            // delegated work the parent is waiting on — keep them out of the
+            // active-child banner count and drawer.
+            entry.childOrigin === null &&
+            isThreadDisplayStatusBannerActive(entry.runtime.displayStatus),
         )
         .map((entry) => ({
           id: entry.id,
