@@ -1,7 +1,29 @@
-import { atom } from "jotai";
+import { useCallback, useMemo } from "react";
+import { atom, useAtomValue } from "jotai";
+import { useAtomCallback } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import type { DiffFileEntry } from "@bb/server-contract";
+import type { GitDiffStats } from "../../git-diff/git-diff-parsing";
 import { GIT_DIFF_AUTO_COLLAPSE_FILE_THRESHOLD } from "./gitDiffPanelHelpers";
+
+/**
+ * Toolbar change summary derived from the diff tab's table of contents. The TOC
+ * already carries each file's `additions`/`deletions` (the same `--numstat` the
+ * daemon's `shortstat` summarizes), so summing them — rather than re-parsing the
+ * `shortstat` string — yields the exact insertion/deletion totals plus the file
+ * count with no patch text in hand.
+ */
+export function summarizeDiffFileEntries(
+  files: readonly DiffFileEntry[],
+): GitDiffStats {
+  let insertions = 0;
+  let deletions = 0;
+  for (const file of files) {
+    insertions += file.additions;
+    deletions += file.deletions;
+  }
+  return { filesCount: files.length, insertions, deletions };
+}
 
 /**
  * Per-card UI state held outside the virtualized rows so it survives the
@@ -18,8 +40,7 @@ export interface DiffFileCardUiState {
 }
 
 /**
- * Initial collapsed default for a card the store hasn't seen yet, mirroring the
- * pre-virtualization `shouldCollapseGitDiffFileByDefault` policy: many-file
+ * Initial collapsed default for a card the store hasn't seen yet: many-file
  * diffs (over {@link GIT_DIFF_AUTO_COLLAPSE_FILE_THRESHOLD}) and deleted files
  * open collapsed.
  */
@@ -70,6 +91,93 @@ export const diffFileCardStateAtomFamily = atomFamily(
 export type DiffFileCardStateAtom = ReturnType<
   typeof diffFileCardStateAtomFamily
 >;
+
+/**
+ * Resolve a card's current collapsed flag: the per-card atom value if the user
+ * has touched it, otherwise the initial default. The single source of truth for
+ * "is this file collapsed", shared by the rendered rows and the toolbar's
+ * collapse-all derivation so both agree even for virtualized-away cards.
+ */
+export function resolveCardCollapsed(
+  storedState: DiffFileCardUiState | null,
+  entry: DiffFileEntry,
+  fileCount: number,
+): boolean {
+  return (
+    storedState?.collapsed ??
+    resolveDiffFileCardInitialState({ entry, fileCount }).collapsed
+  );
+}
+
+export interface DiffFilesCollapseControls {
+  /** True when every current TOC file is collapsed (none are expanded). */
+  areAllCollapsed: boolean;
+  /** Collapse every file when any is expanded; otherwise expand every file. */
+  toggleAllCollapsed: () => void;
+  /** False when the TOC is empty (collapse-all has nothing to act on). */
+  hasFiles: boolean;
+}
+
+/**
+ * Toolbar-side collapse-all/expand-all bound to the per-card store. The
+ * `areAllCollapsed` flag is derived through a read-only atom that subscribes to
+ * every current TOC file's per-card atom (falling back to its initial default),
+ * so the toolbar icon updates live as individual cards collapse/expand.
+ * Toggling writes the new collapsed flag to every current path's atom, which
+ * collapses/expands the rendered cards even when most are virtualized out of the
+ * DOM — each row reads the same atom on (re)mount.
+ */
+export function useDiffFilesCollapseControls(
+  diffIdentity: string,
+  files: readonly DiffFileEntry[],
+): DiffFilesCollapseControls {
+  const areAllCollapsedAtom = useMemo(
+    () =>
+      atom((get) => {
+        if (files.length === 0) {
+          return false;
+        }
+        return files.every((entry) =>
+          resolveCardCollapsed(
+            get(diffFileCardStateAtomFamily({ diffIdentity, path: entry.path })),
+            entry,
+            files.length,
+          ),
+        );
+      }),
+    [diffIdentity, files],
+  );
+  const areAllCollapsed = useAtomValue(areAllCollapsedAtom);
+
+  const setAllCollapsed = useAtomCallback(
+    useCallback(
+      (get, set, collapsed: boolean) => {
+        for (const entry of files) {
+          const stateAtom = diffFileCardStateAtomFamily({
+            diffIdentity,
+            path: entry.path,
+          });
+          const current = get(stateAtom);
+          if (current?.collapsed === collapsed) {
+            continue;
+          }
+          set(stateAtom, { ...(current ?? {}), collapsed });
+        }
+      },
+      [diffIdentity, files],
+    ),
+  );
+
+  const toggleAllCollapsed = useCallback(() => {
+    setAllCollapsed(!areAllCollapsed);
+  }, [areAllCollapsed, setAllCollapsed]);
+
+  return {
+    areAllCollapsed,
+    toggleAllCollapsed,
+    hasFiles: files.length > 0,
+  };
+}
 
 /**
  * Drop every per-card UI atom whose key belongs to a now-stale diff identity.

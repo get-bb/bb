@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useAtomValue } from "jotai";
+import type { DiffFileEntry } from "@bb/server-contract";
 import { Icon } from "@/components/ui/icon.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
@@ -30,16 +31,19 @@ import type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
 import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
+import {
+  summarizeDiffFileEntries,
+  useDiffFilesCollapseControls,
+} from "./git-diff/diffFilesStore";
+import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
 import {
   type SecondaryPanelDraggingHandler,
   useSecondaryPanelResize,
 } from "./useSecondaryPanelResize";
-import {
-  gitDiffCollapsedFileKeysAtom,
-  threadSecondaryPanelResizingAtom,
-} from "./threadSecondaryPanelAtoms";
+import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
 import {
   GitDiffTabContent,
@@ -72,6 +76,9 @@ const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
 };
 const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS =
   `h-7 w-7 shrink-0 rounded-md p-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
+// Stable empty TOC reference so the collapse-controls hook's derived atom and
+// the stats memo are not rebuilt every render while the diff is loading/absent.
+const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
 
 export interface NewTabMenuRenderProps {
   closeMenu: () => void;
@@ -212,32 +219,56 @@ export function ThreadSecondaryPanel({
     gitDiffTarget,
     gitDiffSelectOptions,
     gitDiffSelectValue,
-    gitDiffStats,
-    hasParsedGitDiffFiles,
-    isGitDiffLoading,
     onGitDiffSelectionChange,
-    parsedGitDiffFileEntries,
-    threadGitDiff,
-    toggleAllGitDiffFilesCollapsed,
   } = useGitDiffPanelState({
     environmentId,
     isDiffPanelActive,
     defaultMergeBaseBranch,
   });
-  const collapsedGitDiffFileKeys = useAtomValue(gitDiffCollapsedFileKeysAtom);
+  // Share the diff tab's table of contents with the body: React Query dedupes
+  // this against GitDiffTabContent's own fetch (same key), so the toolbar reads
+  // the file list, stats, and merge-base ref without a second round-trip. The
+  // toolbar's stats + collapse-all derive from this TOC, not the (removed)
+  // whole-diff blob.
+  const { data: diffFilesResponse, isLoading: isDiffFilesLoading } =
+    useEnvironmentDiffFiles(environmentId ?? "", {
+      enabled:
+        isDiffPanelActive &&
+        Boolean(environmentId) &&
+        gitDiffTarget !== undefined,
+      target: gitDiffTarget,
+    });
+  const diffFiles = useMemo(
+    () =>
+      diffFilesResponse?.outcome === "available"
+        ? diffFilesResponse.files
+        : EMPTY_DIFF_FILES,
+    [diffFilesResponse],
+  );
+  const diffMergeBaseRef =
+    diffFilesResponse?.outcome === "available"
+      ? diffFilesResponse.mergeBaseRef
+      : null;
+  const diffIdentity = useMemo(
+    () =>
+      buildGitDiffIdentity({
+        environmentId,
+        mergeBaseRef: diffMergeBaseRef,
+        target: gitDiffTarget,
+      }),
+    [diffMergeBaseRef, environmentId, gitDiffTarget],
+  );
+  const gitDiffStats = useMemo(
+    () => summarizeDiffFileEntries(diffFiles),
+    [diffFiles],
+  );
+  const { areAllCollapsed, toggleAllCollapsed, hasFiles } =
+    useDiffFilesCollapseControls(diffIdentity, diffFiles);
   const isSecondaryPanelResizing = useAtomValue(
     threadSecondaryPanelResizingAtom,
   );
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const areAllGitDiffFilesCollapsed = useMemo(
-    () =>
-      hasParsedGitDiffFiles &&
-      parsedGitDiffFileEntries.every(({ key }) =>
-        collapsedGitDiffFileKeys.has(key),
-      ),
-    [collapsedGitDiffFileKeys, hasParsedGitDiffFiles, parsedGitDiffFileEntries],
-  );
   const preferredTheme = usePreferredTheme();
   const gitDiffViewOptions = useMemo(
     () => ({
@@ -386,11 +417,11 @@ export function ThreadSecondaryPanel({
             selectionValue={gitDiffSelectValue}
             selectionOptions={gitDiffSelectOptions}
             onSelectionChange={onGitDiffSelectionChange}
-            isSelectorDisabled={isGitDiffLoading || threadGitDiff === undefined}
+            isSelectorDisabled={isDiffFilesLoading || gitDiffTarget === undefined}
             stats={gitDiffStats}
-            areAllFilesCollapsed={areAllGitDiffFilesCollapsed}
-            isCollapseAllDisabled={!hasParsedGitDiffFiles || isGitDiffLoading}
-            onToggleAllCollapsed={toggleAllGitDiffFilesCollapsed}
+            areAllFilesCollapsed={areAllCollapsed}
+            isCollapseAllDisabled={!hasFiles || isDiffFilesLoading}
+            onToggleAllCollapsed={toggleAllCollapsed}
             displayMode={gitDiffDisplayMode}
             onDisplayModeChange={handleGitDiffDisplayModeChange}
           />

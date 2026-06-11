@@ -3,7 +3,6 @@ import type { ThreadWithRuntime } from "@bb/domain";
 import type {
   EnvironmentDiffBranchesResponse,
   EnvironmentDiffFilesResponse,
-  EnvironmentDiffResponse,
   EnvironmentStatusResponse,
   ProjectBranchesResponse,
   ThreadTimelineResponse,
@@ -11,7 +10,6 @@ import type {
 import {
   ENVIRONMENT_DIFF_FILES_QUERY_KEY,
   ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
-  ENVIRONMENT_GIT_DIFF_QUERY_KEY,
   ENVIRONMENT_WORK_STATUS_QUERY_KEY,
   PROJECT_SOURCE_BRANCHES_QUERY_KEY,
   THREAD_QUERY_KEY,
@@ -21,7 +19,6 @@ import {
 type ThreadScopedQueryKeyPrefix =
   | typeof THREAD_QUERY_KEY
   | typeof ENVIRONMENT_WORK_STATUS_QUERY_KEY
-  | typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY
   | typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY
   | typeof THREAD_TIMELINE_QUERY_KEY;
 
@@ -82,19 +79,6 @@ export function resolveEnvironmentWorkStatusPlaceholder(
     previousQueryKey,
     nextEnvironmentId,
     ENVIRONMENT_WORK_STATUS_QUERY_KEY,
-  );
-}
-
-export function resolveEnvironmentGitDiffPlaceholder(
-  previousData: EnvironmentDiffResponse | undefined,
-  previousQueryKey: QueryKey | undefined,
-  nextEnvironmentId: string,
-): EnvironmentDiffResponse | undefined {
-  return resolveThreadScopedPlaceholder(
-    previousData,
-    previousQueryKey,
-    nextEnvironmentId,
-    ENVIRONMENT_GIT_DIFF_QUERY_KEY,
   );
 }
 

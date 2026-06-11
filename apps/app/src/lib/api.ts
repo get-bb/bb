@@ -20,7 +20,6 @@ import type {
   EnvironmentActionResponse,
   EnvironmentDiffBranchesResponse,
   EnvironmentDiffQuery,
-  EnvironmentDiffResponse,
   EnvironmentDiffFilesResponse,
   EnvironmentDiffPatchResponse,
   EnvironmentDiffFileQuery,
@@ -1374,21 +1373,9 @@ function buildEnvironmentDiffTargetQuery(
   }
 }
 
-export async function getEnvironmentDiff(
-  id: string,
-  target: WorkspaceDiffTarget,
-): Promise<EnvironmentDiffResponse> {
-  return request<EnvironmentDiffResponse>(
-    apiClient.environments[":id"].diff.$get({
-      param: { id },
-      query: buildEnvironmentDiffTargetQuery(target),
-    }),
-  );
-}
-
 /**
  * Fetch the diff tab's table of contents (one {@link DiffFileEntry} per changed
- * file, no patch text). Same target query as {@link getEnvironmentDiff}.
+ * file, no patch text).
  */
 export async function getEnvironmentDiffFiles(
   id: string,

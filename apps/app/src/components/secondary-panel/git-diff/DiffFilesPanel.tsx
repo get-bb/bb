@@ -15,6 +15,7 @@ import { DiffFileCard } from "./DiffFileCard";
 import {
   diffFileCardStateAtomFamily,
   estimateCardHeight,
+  resolveCardCollapsed,
   resolveDiffFileCardInitialState,
 } from "./diffFilesStore";
 
@@ -187,9 +188,7 @@ function DiffFileRow({
     [diffIdentity, entry.path],
   );
   const [cardState, setCardState] = useAtom(stateAtom);
-  const collapsed =
-    cardState?.collapsed ??
-    resolveDiffFileCardInitialState({ entry, fileCount }).collapsed;
+  const collapsed = resolveCardCollapsed(cardState, entry, fileCount);
 
   const handleToggleCollapsed = useCallback(() => {
     setCardState((previous) => {

@@ -3,7 +3,6 @@ import type { Environment, WorkspaceDiffTarget } from "@bb/domain";
 import type {
   EnvironmentDiffBranchesResponse,
   EnvironmentDiffFilesResponse,
-  EnvironmentDiffResponse,
   EnvironmentStatusResponse,
 } from "@bb/server-contract";
 import type { FilePreview } from "@/lib/api";
@@ -13,7 +12,6 @@ import {
   environmentDiffFilesQueryKey,
   environmentDiffTargetKey,
   environmentFilePreviewQueryKey,
-  environmentGitDiffQueryKey,
   environmentMergeBaseBranchesQueryKey,
   environmentQueryKey,
   environmentWorkStatusQueryKey,
@@ -21,7 +19,6 @@ import {
 import {
   resolveEnvironmentDiffFilesPlaceholder,
   resolveEnvironmentMergeBaseBranchesPlaceholder,
-  resolveEnvironmentGitDiffPlaceholder,
   resolveEnvironmentWorkStatusPlaceholder,
 } from "./query-placeholders";
 import { requireEnabledQueryArg } from "./query-helpers";
@@ -40,10 +37,6 @@ interface BranchQueryOptions extends QueryOptions {
   selectedBranch?: string;
 }
 
-interface UseEnvironmentGitDiffOptions extends QueryOptions {
-  target?: WorkspaceDiffTarget;
-}
-
 interface UseEnvironmentDiffFilesOptions extends QueryOptions {
   target?: WorkspaceDiffTarget;
 }
@@ -51,7 +44,7 @@ interface UseEnvironmentDiffFilesOptions extends QueryOptions {
 const ENVIRONMENT_WORK_STATUS_STALE_MS = 10_000;
 const MERGE_BASE_BRANCHES_STALE_MS = 30_000;
 const MERGE_BASE_BRANCHES_LIMIT = 50;
-/** Shared staleness window for the environment diff TOC + git-diff queries. */
+/** Staleness window for the environment diff TOC query. */
 const ENVIRONMENT_DIFF_STALE_MS = 5_000;
 
 function requireEnvironmentId(
@@ -177,47 +170,10 @@ export function useEnvironmentFilePreview(
   });
 }
 
-export function useEnvironmentGitDiff(
-  environmentId: string,
-  options: UseEnvironmentGitDiffOptions,
-) {
-  const target = options.target;
-
-  return useQuery<EnvironmentDiffResponse>({
-    queryKey: environmentGitDiffQueryKey(
-      environmentId,
-      target?.type ?? null,
-      environmentDiffTargetKey(target),
-    ),
-    queryFn: () =>
-      api.getEnvironmentDiff(
-        environmentId,
-        requireEnabledQueryArg({
-          value: target,
-          hookName: "useEnvironmentGitDiff",
-          argName: "target",
-        }),
-      ),
-    enabled:
-      (options.enabled ?? true) &&
-      Boolean(environmentId) &&
-      target !== undefined,
-    placeholderData: (previousData, previousQuery) =>
-      resolveEnvironmentGitDiffPlaceholder(
-        previousData,
-        previousQuery?.queryKey,
-        environmentId,
-      ),
-    refetchOnWindowFocus: false,
-    staleTime: ENVIRONMENT_DIFF_STALE_MS,
-  });
-}
-
 /**
  * Loads the diff tab's table of contents (one {@link DiffFileEntry} per changed
  * file, no patch text). Patches for visible rows are fetched separately and on
- * demand by {@link useEnvironmentDiffPatches}. Mirrors {@link useEnvironmentGitDiff}'s
- * keying, staleness, and placeholder conventions.
+ * demand by {@link useEnvironmentDiffPatches}.
  */
 export function useEnvironmentDiffFiles(
   environmentId: string,

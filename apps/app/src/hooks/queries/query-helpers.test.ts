@@ -11,7 +11,6 @@ import {
 } from "@bb/test-helpers";
 import type {
   EnvironmentDiffBranchesResponse,
-  EnvironmentDiffResponse,
   EnvironmentStatusResponse,
   ProjectBranchesResponse,
   ThreadTimelineResponse,
@@ -28,7 +27,6 @@ import {
   threadsQueryKey,
 } from "./query-keys";
 import {
-  resolveEnvironmentGitDiffPlaceholder,
   resolveEnvironmentMergeBaseBranchesPlaceholder,
   resolveEnvironmentWorkStatusPlaceholder,
   resolveProjectSourceBranchesPlaceholder,
@@ -80,19 +78,6 @@ function makeStatusResponse(
       branch: { currentBranch: "feature", defaultBranch: "main" },
       mergeBase: makeWorkspaceMergeBase({ baseRef: "origin/main" }),
     }),
-  };
-}
-
-function makeGitDiffResponse(): EnvironmentDiffResponse {
-  return {
-    outcome: "available",
-    diff: {
-      diff: "diff --git a/file b/file",
-      truncated: false,
-      shortstat: " 1 file changed, 1 insertion(+)\n",
-      files: "M\tfile\n",
-      mergeBaseRef: null,
-    },
   };
 }
 
@@ -267,28 +252,6 @@ describe("resolveThreadTimelinePlaceholder", () => {
         previousTimeline,
         ["threadTimeline", "thread-1"],
         "thread-2",
-      ),
-    ).toBeUndefined();
-  });
-});
-
-describe("resolveEnvironmentGitDiffPlaceholder", () => {
-  it("reuses previous git diff data only for the same environment", () => {
-    const previousGitDiff = makeGitDiffResponse();
-
-    expect(
-      resolveEnvironmentGitDiffPlaceholder(
-        previousGitDiff,
-        ["environmentGitDiff", "env-1", "all", "main"],
-        "env-1",
-      ),
-    ).toBe(previousGitDiff);
-
-    expect(
-      resolveEnvironmentGitDiffPlaceholder(
-        previousGitDiff,
-        ["environmentGitDiff", "env-1", "all", "main"],
-        "env-2",
       ),
     ).toBeUndefined();
   });
@@ -470,17 +433,19 @@ describe("getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys", () => {
       environmentWorkStatusQueryKey("env-1", "main"),
       null,
     );
+    // The cached value is irrelevant here — the helper under test filters by
+    // query key alone — so seed a placeholder like the work-status rows above.
     queryClient.setQueryData(
       environmentGitDiffQueryKey("env-1", "commit", "abc123"),
-      makeGitDiffResponse(),
+      null,
     );
     queryClient.setQueryData(
       environmentGitDiffQueryKey("env-1", "all", "main"),
-      makeGitDiffResponse(),
+      null,
     );
     queryClient.setQueryData(
       environmentGitDiffQueryKey("env-2", "all", "main"),
-      makeGitDiffResponse(),
+      null,
     );
 
     const queryKeys =
