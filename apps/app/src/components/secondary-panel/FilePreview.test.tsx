@@ -181,7 +181,7 @@ describe("FilePreview", () => {
     expect(container.querySelector("[aria-busy]")).toBeNull();
   });
 
-  it("uses the quieter horizontal seam token for the file preview header divider", () => {
+  it("renders the file preview header flush with the body, with no divider seam", () => {
     const { container } = render(
       <FilePreview
         path="src/example.ts"
@@ -194,11 +194,11 @@ describe("FilePreview", () => {
       />,
     );
 
-    // The header is the panel chrome strip — its only `border-b` divider must
-    // use the quieter horizontal seam, matching the browser nav bar, not the
-    // generic `border-border`.
-    const header = container.querySelector(".border-b");
-    expect(header?.className).toContain("border-b border-border-seam");
+    // The header sits flush over the body (both `bg-surface-raised`): no
+    // `border-b` divider line, so the view runs seamlessly from the top — a
+    // scroll fade tinted from the body's own surface stands in when content
+    // scrolls under the sticky header.
+    expect(container.querySelector(".border-b")).toBeNull();
   });
 
   it("renders sanitized HTML in markdown file previews", () => {
