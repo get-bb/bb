@@ -43,6 +43,60 @@ export const permissionEscalationValues = ["ask", "deny"] as const;
 export const permissionEscalationSchema = z.enum(permissionEscalationValues);
 export type PermissionEscalation = z.infer<typeof permissionEscalationSchema>;
 
+export const DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT =
+  "https://api.anthropic.com";
+
+const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
+const CLAUDE_CODE_MOCK_CLI_TRAFFIC_TEST_HOSTNAME = "api.anthropic.com";
+
+function normalizeUrlHostname(value: string): string {
+  return value.toLowerCase().replace(/^\[(.*)\]$/u, "$1");
+}
+
+export function isClaudeCodeMockCliTrafficEndpoint(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const hostname = normalizeUrlHostname(url.hostname);
+  if (url.protocol === "http:" && LOOPBACK_HOSTNAMES.has(hostname)) {
+    return true;
+  }
+  return (
+    url.protocol === "https:" &&
+    hostname === CLAUDE_CODE_MOCK_CLI_TRAFFIC_TEST_HOSTNAME &&
+    url.port === "" &&
+    url.username === "" &&
+    url.password === ""
+  );
+}
+
+export const claudeCodeMockCliTrafficEndpointSchema = z
+  .string()
+  .url()
+  .refine(
+    isClaudeCodeMockCliTrafficEndpoint,
+    "Endpoint must be an http:// loopback URL or https://api.anthropic.com",
+  );
+
+export const claudeCodeMockCliTrafficConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    endpoint: claudeCodeMockCliTrafficEndpointSchema,
+  })
+  .strict();
+export type ClaudeCodeMockCliTrafficConfig = z.infer<
+  typeof claudeCodeMockCliTrafficConfigSchema
+>;
+
+export const DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG: ClaudeCodeMockCliTrafficConfig =
+  {
+    enabled: false,
+    endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+  };
+
 export const promptInputVisibilityValues = ["agent-only"] as const;
 export const promptInputVisibilitySchema = z.enum(promptInputVisibilityValues);
 
@@ -198,6 +252,9 @@ const runtimeThreadExecutionBaseOptionsSchema = z.object({
   model: z.string().min(1),
   serviceTier: serviceTierSchema,
   reasoningLevel: reasoningLevelSchema,
+  // Optional for legacy command compatibility; the server fills the current
+  // app setting before dispatching new runtime work.
+  claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema.optional(),
   /**
    * Server-owned product policy: whether the provider session may use the
    * Workflows feature. Filled explicitly at the server boundary (per-provider

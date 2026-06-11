@@ -26,6 +26,7 @@ import type {
   TimelineWebSearchWorkRow,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
+import { LOCAL_WORKFLOW_TASK_TYPE } from "@bb/domain";
 import type { ThreadTurnInitiator } from "@bb/domain";
 
 export interface RowBaseOverrideArgs {
@@ -159,6 +160,7 @@ export interface WorkflowRowArgs extends RowBaseOverrideArgs {
   status?: TimelineRowStatus;
   summary?: string | null;
   taskStatus?: TimelineWorkflowWorkRow["taskStatus"];
+  taskType?: string;
   turnId?: string | null;
   usage?: TimelineWorkflowWorkRow["usage"];
   workflow?: TimelineWorkflowWorkRow["workflow"];
@@ -749,6 +751,7 @@ export function workflowRow({
   status = "completed",
   summary = null,
   taskStatus = "completed",
+  taskType = LOCAL_WORKFLOW_TASK_TYPE,
   threadId,
   turnId,
   usage = null,
@@ -771,6 +774,7 @@ export function workflowRow({
     workKind: "workflow",
     status,
     itemId: itemId ?? id,
+    taskType,
     workflowName,
     description,
     taskStatus,

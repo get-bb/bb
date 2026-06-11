@@ -1,10 +1,12 @@
 import type { TimelineConversationTurnRequest } from "@bb/server-contract";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 
 interface TurnRequestLabelProps {
   turnRequest: TimelineConversationTurnRequest;
+  /** Leading glyph. Defaults to the steer corner-arrow. */
+  icon?: IconName;
 }
 
 /**
@@ -12,7 +14,10 @@ interface TurnRequestLabelProps {
  * Renders nothing for non-steer requests; pulses while a steer is still
  * pending. Callers own the surrounding toolbar row (alignment, copy button).
  */
-export function TurnRequestLabel({ turnRequest }: TurnRequestLabelProps) {
+export function TurnRequestLabel({
+  turnRequest,
+  icon = "CornerDownRight",
+}: TurnRequestLabelProps) {
   const label = turnRequestLabel(turnRequest);
   if (label === null) {
     return null;
@@ -26,10 +31,7 @@ export function TurnRequestLabel({ turnRequest }: TurnRequestLabelProps) {
         isPendingSteer && "animate-shine",
       )}
     >
-      <Icon
-        name="CornerDownRight"
-        className="mr-1 inline-block size-3 align-middle"
-      />
+      <Icon name={icon} className="mr-1 inline-block size-3 align-middle" />
       {label}
     </span>
   );

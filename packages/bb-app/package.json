@@ -35,6 +35,7 @@
     "app/dist",
     "dist",
     "!dist/*.map",
+    "host-daemon/builtins",
     "host-daemon/dist/bb",
     "host-daemon/dist/bb-claude-code-bridge.mjs",
     "host-daemon/dist/bb-pi-bridge.mjs",

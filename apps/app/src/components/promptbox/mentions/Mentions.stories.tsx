@@ -143,7 +143,11 @@ function makeResultsState(args: ResultsStateConfig): MentionMenuState {
 function Row({ state, selectedIndex = 0 }: RowConfig) {
   return (
     <PromptStage>
-      <MentionMenu state={state} selectedIndex={selectedIndex} onApply={noop} />
+      <MentionMenu
+        state={{ trigger: "mention", state }}
+        selectedIndex={selectedIndex}
+        onApply={noop}
+      />
     </PromptStage>
   );
 }

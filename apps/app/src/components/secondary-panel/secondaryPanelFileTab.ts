@@ -1,16 +1,24 @@
 import type { ReactNode } from "react";
-import type { WorkspaceFilePreviewStatusLabel } from "@/lib/file-preview";
+
+export interface SecondaryPanelTabReorderRequest {
+  activeTabId: string;
+  overTabId: string;
+}
+
+export type SecondaryPanelTabReorderHandler = (
+  request: SecondaryPanelTabReorderRequest,
+) => void;
 
 /**
- * A single file/app tab rendered in the secondary panel's scrolling tab strip.
+ * A single closable tab rendered in the right panel's scrolling tab strip.
  */
 export interface SecondaryPanelFileTab {
   id: string;
   filename: string;
   isActive: boolean;
   isPinned?: boolean;
-  leadingVisual?: ReactNode;
-  statusLabel: WorkspaceFilePreviewStatusLabel | null;
+  leadingVisual: ReactNode;
+  statusLabel: string | null;
   onSelect: () => void;
   onClose: () => void;
 }

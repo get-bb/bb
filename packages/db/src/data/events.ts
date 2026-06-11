@@ -623,6 +623,10 @@ export interface GetLatestThreadOutputEventRowArgs {
   threadId: string;
 }
 
+export interface GetLatestThreadSystemErrorEventRowArgs {
+  threadId: string;
+}
+
 export interface GetLatestThreadSequenceArgs {
   threadId: string;
 }
@@ -1239,6 +1243,23 @@ export function getLatestThreadOutputEventRow(
           AND COALESCE(json_extract(${events.data}, '$.item.text'), '') <> ''
         )
       )`,
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function getLatestThreadSystemErrorEventRow(
+  db: DbConnection,
+  args: GetLatestThreadSystemErrorEventRowArgs,
+): StoredEventRow | null {
+  return (
+    db
+      .select(storedEventRowFields)
+      .from(events)
+      .where(
+        and(eq(events.threadId, args.threadId), eq(events.type, "system/error")),
       )
       .orderBy(desc(events.sequence))
       .limit(1)

@@ -113,6 +113,29 @@ export function normalizeGitDiffPath(
   return trimmedPath && trimmedPath.length > 0 ? trimmedPath : undefined;
 }
 
+// Browser-renderable raster formats only. SVG is deliberately absent. SVG
+// diffs arrive as regular text hunks, which are more informative than a
+// rendered preview. TIFF/HEIC are absent because `<img>` can't render them
+// in every browser we support.
+const IMAGE_GIT_DIFF_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
+  "avif",
+  "bmp",
+  "gif",
+  "ico",
+  "jpeg",
+  "jpg",
+  "png",
+  "webp",
+]);
+
+export function isImageGitDiffFile(file: ParsedGitDiffFile): boolean {
+  const path = normalizeGitDiffPath(file.name) ?? file.name;
+  const extension = path.split(".").pop()?.toLowerCase();
+  return (
+    extension !== undefined && IMAGE_GIT_DIFF_FILE_EXTENSIONS.has(extension)
+  );
+}
+
 function getGitDiffPathAliases(path: string | undefined): string[] {
   const cleanPath = normalizeGitDiffPath(path);
   if (!cleanPath || cleanPath === "/dev/null") return [];

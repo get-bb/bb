@@ -4,9 +4,12 @@ import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
 } from "@bb/server-contract";
 import {
+  areFilePreviewLineRangesEqual,
   areEnvironmentFilePreviewSourcesEqual,
   type EnvironmentFilePreviewSource,
+  type FilePreviewLineRange,
   type HostFileTabState,
+  type ThreadStorageFileTabState,
   type WorkspaceFilePreviewStatusLabel,
   type WorkspaceFileTabState,
 } from "./file-preview";
@@ -19,6 +22,20 @@ export const FIXED_PANEL_TABS_IDLE_EXPIRY_MS = 14 * 24 * 60 * 60 * 1000;
 const THREAD_INFO_TAB_ID = "thread-info";
 const GIT_DIFF_TAB_ID = "git-diff";
 const NEW_TAB_TAB_ID = "new-tab";
+
+function stripLegacyLineNumberField(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return value;
+  }
+
+  const nextValue: Record<string, unknown> = {};
+  for (const [key, fieldValue] of Object.entries(value)) {
+    if (key !== "lineNumber") {
+      nextValue[key] = fieldValue;
+    }
+  }
+  return nextValue;
+}
 
 const environmentFilePreviewSourceSchema: z.ZodType<EnvironmentFilePreviewSource> =
   z.discriminatedUnion("kind", [
@@ -41,6 +58,13 @@ const environmentFilePreviewSourceSchema: z.ZodType<EnvironmentFilePreviewSource
   ]);
 const workspaceFilePreviewStatusLabelSchema: z.ZodType<WorkspaceFilePreviewStatusLabel | null> =
   z.literal("deleted").nullable();
+const filePreviewLineRangeSchema: z.ZodType<FilePreviewLineRange> = z
+  .object({
+    endLineNumber: z.number().int().positive(),
+    startLineNumber: z.number().int().positive(),
+  })
+  .strict()
+  .refine((range) => range.startLineNumber <= range.endLineNumber);
 const threadInfoFixedPanelTabSchema = z
   .object({
     id: z.literal(THREAD_INFO_TAB_ID),
@@ -53,33 +77,43 @@ const gitDiffFixedPanelTabSchema = z
     kind: z.literal("git-diff"),
   })
   .strict();
-const workspaceFilePreviewFixedPanelTabSchema = z
-  .object({
-    environmentId: z.string().min(1).nullable(),
-    id: z.string().min(1),
-    kind: z.literal("workspace-file-preview"),
-    lineNumber: z.number().int().positive().nullable(),
-    path: z.string().min(1),
-    source: environmentFilePreviewSourceSchema,
-    statusLabel: workspaceFilePreviewStatusLabelSchema,
-  })
-  .strict();
-const hostFilePreviewFixedPanelTabSchema = z
-  .object({
-    id: z.string().min(1),
-    kind: z.literal("host-file-preview"),
-    lineNumber: z.number().int().positive().nullable(),
-    path: z.string().min(1),
-  })
-  .strict();
-const threadStorageFilePreviewFixedPanelTabSchema = z
-  .object({
-    id: z.string().min(1),
-    isPinned: z.boolean(),
-    kind: z.literal("thread-storage-file-preview"),
-    path: z.string().min(1),
-  })
-  .strict();
+const workspaceFilePreviewFixedPanelTabSchema = z.preprocess(
+  stripLegacyLineNumberField,
+  z
+    .object({
+      environmentId: z.string().min(1).nullable(),
+      id: z.string().min(1),
+      kind: z.literal("workspace-file-preview"),
+      lineRange: filePreviewLineRangeSchema.nullable().default(null),
+      path: z.string().min(1),
+      source: environmentFilePreviewSourceSchema,
+      statusLabel: workspaceFilePreviewStatusLabelSchema,
+    })
+    .strict(),
+);
+const hostFilePreviewFixedPanelTabSchema = z.preprocess(
+  stripLegacyLineNumberField,
+  z
+    .object({
+      id: z.string().min(1),
+      kind: z.literal("host-file-preview"),
+      lineRange: filePreviewLineRangeSchema.nullable().default(null),
+      path: z.string().min(1),
+    })
+    .strict(),
+);
+const threadStorageFilePreviewFixedPanelTabSchema = z.preprocess(
+  stripLegacyLineNumberField,
+  z
+    .object({
+      id: z.string().min(1),
+      isPinned: z.boolean(),
+      kind: z.literal("thread-storage-file-preview"),
+      lineRange: filePreviewLineRangeSchema.nullable().default(null),
+      path: z.string().min(1),
+    })
+    .strict(),
+);
 const appFixedPanelTabSchema = z
   .object({
     applicationId: z.string().min(1),
@@ -108,7 +142,7 @@ const terminalFixedPanelTabSchema = z
     terminalId: z.string().min(1),
   })
   .strict();
-const secondaryFixedPanelTabSchema = z.discriminatedUnion("kind", [
+const secondaryFixedPanelTabSchema = z.union([
   threadInfoFixedPanelTabSchema,
   gitDiffFixedPanelTabSchema,
   workspaceFilePreviewFixedPanelTabSchema,
@@ -117,6 +151,7 @@ const secondaryFixedPanelTabSchema = z.discriminatedUnion("kind", [
   appFixedPanelTabSchema,
   browserFixedPanelTabSchema,
   newTabFixedPanelTabSchema,
+  terminalFixedPanelTabSchema,
 ]);
 const bottomFixedPanelTabSchema = z.discriminatedUnion("kind", [
   terminalFixedPanelTabSchema,
@@ -173,7 +208,7 @@ export interface WorkspaceFilePreviewFixedPanelTab {
   environmentId: string | null;
   id: string;
   kind: "workspace-file-preview";
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   path: string;
   source: EnvironmentFilePreviewSource;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
@@ -182,7 +217,7 @@ export interface WorkspaceFilePreviewFixedPanelTab {
 export interface HostFilePreviewFixedPanelTab {
   id: string;
   kind: "host-file-preview";
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   path: string;
 }
 
@@ -190,6 +225,7 @@ export interface ThreadStorageFilePreviewFixedPanelTab {
   id: string;
   isPinned: boolean;
   kind: "thread-storage-file-preview";
+  lineRange: FilePreviewLineRange | null;
   path: string;
 }
 
@@ -233,7 +269,8 @@ export type SecondaryFixedPanelTab =
   | ThreadStorageFilePreviewFixedPanelTab
   | AppFixedPanelTab
   | BrowserFixedPanelTab
-  | NewTabFixedPanelTab;
+  | NewTabFixedPanelTab
+  | TerminalFixedPanelTab;
 
 /**
  * The subset of secondary-panel tabs rendered as closable file tabs in the tab
@@ -246,7 +283,8 @@ export type SecondaryFileFixedPanelTab =
   | ThreadStorageFilePreviewFixedPanelTab
   | AppFixedPanelTab
   | BrowserFixedPanelTab
-  | NewTabFixedPanelTab;
+  | NewTabFixedPanelTab
+  | TerminalFixedPanelTab;
 
 export type BottomFixedPanelTab = TerminalFixedPanelTab;
 
@@ -328,6 +366,10 @@ interface NormalizeFixedPanelTabsStateArgs {
   state: FixedPanelTabsState;
 }
 
+interface StripTransientFixedPanelTabsStateForStorageArgs {
+  state: FixedPanelTabsState;
+}
+
 interface NormalizeFixedPanelTabGroupStateArgs {
   group: FixedPanelTabGroupState;
   region: FixedPanelRegion;
@@ -335,7 +377,7 @@ interface NormalizeFixedPanelTabGroupStateArgs {
 
 interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
   isPinned: boolean;
-  path: string;
+  tab: ThreadStorageFileTabState;
 }
 
 interface CreateAppFixedPanelTabArgs {
@@ -392,7 +434,7 @@ export function createWorkspaceFilePreviewFixedPanelTab({
     environmentId,
     id: buildFileTabId("workspace-file-preview", tab.path),
     kind: "workspace-file-preview",
-    lineNumber: tab.lineNumber,
+    lineRange: tab.lineRange,
     path: tab.path,
     source: tab.source,
     statusLabel: tab.statusLabel,
@@ -405,20 +447,21 @@ export function createHostFilePreviewFixedPanelTab(
   return {
     id: buildFileTabId("host-file-preview", tab.path),
     kind: "host-file-preview",
-    lineNumber: tab.lineNumber,
+    lineRange: tab.lineRange,
     path: tab.path,
   };
 }
 
 export function createThreadStorageFilePreviewFixedPanelTab({
   isPinned,
-  path,
+  tab,
 }: CreateThreadStorageFilePreviewFixedPanelTabArgs): ThreadStorageFilePreviewFixedPanelTab {
   return {
-    id: buildFileTabId("thread-storage-file-preview", path),
+    id: buildFileTabId("thread-storage-file-preview", tab.path),
     isPinned,
     kind: "thread-storage-file-preview",
-    path,
+    lineRange: tab.lineRange,
+    path: tab.path,
   };
 }
 
@@ -472,7 +515,7 @@ function isTabSupportedInRegion(
   if (region === "bottom") {
     return tab.kind === "terminal";
   }
-  return tab.kind !== "terminal";
+  return true;
 }
 
 function isTransientFixedPanelTab(tab: FixedPanelTab): boolean {
@@ -518,16 +561,81 @@ function normalizeFixedSecondaryPanelTabGroupState(
   };
 }
 
+function stripTransientFixedPanelTabForStorage(
+  tab: FixedPanelTab,
+): FixedPanelTab {
+  switch (tab.kind) {
+    case "workspace-file-preview":
+    case "host-file-preview":
+    case "thread-storage-file-preview":
+      return {
+        ...tab,
+        lineRange: null,
+      };
+    case "thread-info":
+    case "git-diff":
+    case "app":
+    case "browser":
+    case "new-tab":
+    case "terminal":
+      return tab;
+  }
+}
+
+function stripTransientFixedPanelTabsStateForStorage({
+  state,
+}: StripTransientFixedPanelTabsStateForStorageArgs): FixedPanelTabsState {
+  return {
+    ...state,
+    secondary: {
+      ...state.secondary,
+      tabs: state.secondary.tabs.map(stripTransientFixedPanelTabForStorage),
+    },
+    bottom: {
+      ...state.bottom,
+      tabs: state.bottom.tabs.map(stripTransientFixedPanelTabForStorage),
+    },
+  };
+}
+
 export function normalizeFixedPanelTabsState({
   state,
 }: NormalizeFixedPanelTabsStateArgs): FixedPanelTabsState {
+  const normalizedSecondary = normalizeFixedSecondaryPanelTabGroupState(
+    state.secondary,
+  );
+  const normalizedBottom = normalizeFixedPanelTabGroupState({
+    group: state.bottom,
+    region: "bottom",
+  });
+  const seenSecondaryTabIds = new Set(
+    normalizedSecondary.tabs.map((tab) => tab.id),
+  );
+  const migratedTerminalTabs = normalizedBottom.tabs.filter(
+    (tab) => !seenSecondaryTabIds.has(tab.id),
+  );
+  const secondaryTabs =
+    migratedTerminalTabs.length > 0
+      ? [...normalizedSecondary.tabs, ...migratedTerminalTabs]
+      : normalizedSecondary.tabs;
+  const activeTabId =
+    normalizedSecondary.activeTabId ??
+    (normalizedBottom.activeTabId !== null &&
+    secondaryTabs.some((tab) => tab.id === normalizedBottom.activeTabId)
+      ? normalizedBottom.activeTabId
+      : null);
+
   return {
     ...state,
-    secondary: normalizeFixedSecondaryPanelTabGroupState(state.secondary),
-    bottom: normalizeFixedPanelTabGroupState({
-      group: state.bottom,
-      region: "bottom",
-    }),
+    secondary: {
+      ...normalizedSecondary,
+      tabs: secondaryTabs,
+      activeTabId,
+    },
+    bottom: {
+      tabs: [],
+      activeTabId: null,
+    },
   };
 }
 
@@ -611,8 +719,10 @@ function parseFixedPanelTabsStateForStorage({
 
   const stateResult = fixedPanelTabsStateSchema.safeParse(parsedValue);
   if (stateResult.success) {
-    const normalizedState = normalizeFixedPanelTabsState({
-      state: stateResult.data,
+    const normalizedState = stripTransientFixedPanelTabsStateForStorage({
+      state: normalizeFixedPanelTabsState({
+        state: stateResult.data,
+      }),
     });
     if (isFixedPanelTabsStateExpired({ now, state: normalizedState })) {
       return {
@@ -635,14 +745,16 @@ function parseFixedPanelTabsStateForStorage({
       state: initialValue,
     };
   }
-  const normalizedState = normalizeFixedPanelTabsState({
-    state: {
-      ...legacyStateResult.data,
-      secondary: {
-        ...legacyStateResult.data.secondary,
-        isOpen: legacyStateResult.data.secondary.activeTabId !== null,
+  const normalizedState = stripTransientFixedPanelTabsStateForStorage({
+    state: normalizeFixedPanelTabsState({
+      state: {
+        ...legacyStateResult.data,
+        secondary: {
+          ...legacyStateResult.data.secondary,
+          isOpen: legacyStateResult.data.secondary.activeTabId !== null,
+        },
       },
-    },
+    }),
   });
   if (isFixedPanelTabsStateExpired({ now, state: normalizedState })) {
     return {
@@ -660,7 +772,11 @@ function parseFixedPanelTabsStateForStorage({
 export function serializeFixedPanelTabsState({
   state,
 }: SerializeFixedPanelTabsStateArgs): string {
-  return JSON.stringify(normalizeFixedPanelTabsState({ state }));
+  return JSON.stringify(
+    stripTransientFixedPanelTabsStateForStorage({
+      state: normalizeFixedPanelTabsState({ state }),
+    }),
+  );
 }
 
 export function pruneFixedPanelTabsStorage({
@@ -707,7 +823,10 @@ export function areFixedPanelTabsEquivalent(
       return (
         b.kind === "workspace-file-preview" &&
         a.environmentId === b.environmentId &&
-        a.lineNumber === b.lineNumber &&
+        areFilePreviewLineRangesEqual({
+          a: a.lineRange,
+          b: b.lineRange,
+        }) &&
         a.path === b.path &&
         areEnvironmentFilePreviewSourcesEqual(a.source, b.source) &&
         a.statusLabel === b.statusLabel
@@ -715,7 +834,10 @@ export function areFixedPanelTabsEquivalent(
     case "host-file-preview":
       return (
         b.kind === "host-file-preview" &&
-        a.lineNumber === b.lineNumber &&
+        areFilePreviewLineRangesEqual({
+          a: a.lineRange,
+          b: b.lineRange,
+        }) &&
         a.path === b.path
       );
     case "app":
@@ -726,6 +848,10 @@ export function areFixedPanelTabsEquivalent(
       return (
         b.kind === "thread-storage-file-preview" &&
         a.isPinned === b.isPinned &&
+        areFilePreviewLineRangesEqual({
+          a: a.lineRange,
+          b: b.lineRange,
+        }) &&
         a.path === b.path
       );
     case "terminal":

@@ -40,6 +40,11 @@ interface SonnerCustomToast {
   renderToast: (id: string | number) => ReactElement;
 }
 
+interface DeferredPromise<TValue> {
+  promise: Promise<TValue>;
+  resolve: (value: TValue) => void;
+}
+
 const sonnerToastState = vi.hoisted(() => {
   const invocations: SonnerCustomToast[] = [];
   return {
@@ -109,6 +114,19 @@ function makeSendMessage(): SendMessageMutationLike {
     isPending: false,
     mutateAsync: vi.fn(async () => undefined),
   };
+}
+
+function createDeferredPromise<TValue>(): DeferredPromise<TValue> {
+  let resolve!: (value: TValue) => void;
+  const promise = new Promise<TValue>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
+async function flushQueuedActionMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 function readToastProps(index: number): CapturedToastProps {
@@ -252,5 +270,108 @@ describe("useThreadGitActions", () => {
     expect(
       screen.queryByRole("button", { name: "Copy commit SHA 1234567" }),
     ).toBeNull();
+  });
+
+  it("queues git actions and runs them one at a time", async () => {
+    const commitResponse: CommitActionResponse = {
+      ok: true,
+      action: "commit",
+      message: "Committed",
+      commitSha: "abcdef1234567890",
+      commitSubject: "Queue first commit",
+    };
+    const squashMergeResponse: SquashMergeActionResponse = {
+      ok: true,
+      action: "squash_merge",
+      merged: true,
+      message: "Squash merged",
+      commitSha: "1234567890abcdef",
+      commitSubject: "Queue second squash merge",
+    };
+    const commitDeferred =
+      createDeferredPromise<EnvironmentActionResponse>();
+    const squashMergeDeferred =
+      createDeferredPromise<EnvironmentActionResponse>();
+    let requestCount = 0;
+    const mutateAsync: RequestEnvironmentActionMutationLike["mutateAsync"] =
+      vi.fn(() => {
+        requestCount += 1;
+        if (requestCount === 1) {
+          return commitDeferred.promise;
+        }
+        if (requestCount === 2) {
+          return squashMergeDeferred.promise;
+        }
+        throw new Error("Unexpected git action request.");
+      });
+    const requestEnvironmentAction: RequestEnvironmentActionMutationLike = {
+      isPending: false,
+      mutateAsync,
+    };
+    const sendMessage = makeSendMessage();
+    const { result } = renderHook(() =>
+      useThreadGitActions({
+        requestEnvironmentAction,
+        sendMessage,
+        thread: makeThread(),
+      }),
+    );
+    let commitActionPromise: Promise<void> = Promise.resolve();
+    let squashMergeActionPromise: Promise<void> = Promise.resolve();
+
+    await act(async () => {
+      commitActionPromise = result.current.handleCommitThread();
+      squashMergeActionPromise = result.current.handleSquashMergeThread({
+        mergeBaseBranch: "main",
+      });
+      await flushQueuedActionMicrotasks();
+    });
+
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    expect(mutateAsync).toHaveBeenNthCalledWith(1, {
+      id: "environment-1",
+      action: "commit",
+    });
+    expect(readToastProps(0)).toMatchObject({
+      tone: "loading",
+      title: "Creating commit",
+    });
+    expect(readToastProps(1)).toMatchObject({
+      tone: "loading",
+      title: "Squash merge queued",
+    });
+
+    await act(async () => {
+      commitDeferred.resolve(commitResponse);
+      await commitActionPromise;
+      await flushQueuedActionMicrotasks();
+    });
+
+    expect(mutateAsync).toHaveBeenCalledTimes(2);
+    expect(mutateAsync).toHaveBeenNthCalledWith(2, {
+      id: "environment-1",
+      action: "squash_merge",
+      options: {
+        mergeBaseBranch: "main",
+      },
+    });
+    expect(readToastProps(2)).toMatchObject({
+      tone: "success",
+      title: "Commit created",
+    });
+    expect(readToastProps(3)).toMatchObject({
+      tone: "loading",
+      title: "Squash merging",
+    });
+
+    await act(async () => {
+      squashMergeDeferred.resolve(squashMergeResponse);
+      await squashMergeActionPromise;
+    });
+
+    expect(readToastProps(4)).toMatchObject({
+      tone: "success",
+      title: "Squash merge completed",
+    });
   });
 });

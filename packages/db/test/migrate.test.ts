@@ -257,6 +257,19 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
     .run();
 }
 
+/** Tables created by migrations after 0023, dropped so migrate() re-applies. */
+function dropPost0023Tables(db: DbConnection): void {
+  for (const table of [
+    "workflow_run_events",
+    "workflow_run_operations",
+    "workflow_runs",
+    "project_workflow_policies",
+    "app_settings",
+  ]) {
+    db.$client.prepare(`DROP TABLE IF EXISTS ${table}`).run();
+  }
+}
+
 function restorePre0022ThreadTypeSchema(db: DbConnection): void {
   db.$client.exec(`
     ALTER TABLE project_execution_defaults
@@ -815,6 +828,7 @@ describe("migrate", () => {
           `,
         )
         .run(threadTypeRemovalMigrationWhen);
+      dropPost0023Tables(db);
 
       migrate(db);
 
@@ -1578,6 +1592,11 @@ describe("migrate", () => {
         )
         .run();
       db.$client.prepare("DROP TABLE thread_dynamic_context_file_states").run();
+      db.$client.prepare("DROP TABLE workflow_run_events").run();
+      db.$client.prepare("DROP TABLE workflow_run_operations").run();
+      db.$client.prepare("DROP TABLE workflow_runs").run();
+      db.$client.prepare("DROP TABLE project_workflow_policies").run();
+      db.$client.prepare("DROP TABLE app_settings").run();
       db.$client.prepare("DELETE FROM projects WHERE kind = 'personal'").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN kind").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN sort_key").run();
@@ -2255,6 +2274,7 @@ describe("migrate", () => {
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
       dropQueuedMessageSenderThreadIdColumn(db);
+      dropPost0023Tables(db);
       db.$client
         .prepare(
           `
@@ -2448,6 +2468,7 @@ describe("migrate", () => {
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
       dropQueuedMessageSenderThreadIdColumn(db);
+      dropPost0023Tables(db);
 
       migrate(db);
 

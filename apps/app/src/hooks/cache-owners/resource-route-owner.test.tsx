@@ -7,10 +7,8 @@ import type { ChangedMessage, ThreadWithRuntime } from "@bb/domain";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import type {
-  BbDesktopApi,
   BbDesktopBrowserApi,
   BbDesktopInfo,
-  BbDesktopInfoChangeHandler,
 } from "@bb/server-contract";
 import {
   registerBrowserView,
@@ -23,7 +21,10 @@ import {
   getThreadRoutePath,
 } from "@/lib/app-route-paths";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
-import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
+import {
+  createBbDesktopApi,
+  createNoopDesktopBrowserApi,
+} from "@/test/bb-desktop-test-utils";
 import { threadQueryKey } from "../queries/query-keys";
 import {
   useDeletedResourceRouteOwner,
@@ -100,24 +101,7 @@ function installRecordingDesktopBrowser(): RecordedBrowserCall[] {
       });
     },
   };
-  const desktop: BbDesktopApi = {
-    ...DESKTOP_INFO,
-    browser,
-    async checkForUpdates() {
-      return DESKTOP_INFO;
-    },
-    async getInfo() {
-      return DESKTOP_INFO;
-    },
-    async installUpdate() {
-      return undefined;
-    },
-    onChange(_listener: BbDesktopInfoChangeHandler) {
-      return () => undefined;
-    },
-    setTheme() {},
-  };
-  window.bbDesktop = desktop;
+  window.bbDesktop = createBbDesktopApi(DESKTOP_INFO, browser);
   return calls;
 }
 

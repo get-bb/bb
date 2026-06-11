@@ -20,7 +20,8 @@ import {
   STORY_WORKTREE_OPTIONS,
   makeAttachmentsConfig as makeAttachments,
   makeExecutionControlsProps,
-  makeMentionsConfig as makeMentions,
+  makeTypeaheadConfig as makeTypeahead,
+  makeHost,
 } from "../../../.ladle/story-fixtures";
 
 export default {
@@ -35,7 +36,8 @@ const baseEnvironment: NewThreadEnvironmentConfig = {
   value: `host:${HOST_IDS.local}:local`,
   onChange: noop,
   sources: STORY_PROJECT_SOURCES,
-  hostId: HOST_IDS.local,
+  host: makeHost({ id: HOST_IDS.local }),
+  isLocal: true,
 };
 
 const baseBranch: NewThreadBranchConfig = {
@@ -129,7 +131,7 @@ function DefaultRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.default"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
         modeConfig={baseModeConfig}
         project={baseProject}
@@ -155,7 +157,7 @@ function SubmittingRow() {
         disabled
         zenModeStorageKey="bb.story.new-thread.submitting"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
         modeConfig={baseModeConfig}
         project={baseProject}
@@ -179,7 +181,7 @@ function ClaudeProviderRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.claude"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
         modeConfig={baseModeConfig}
         project={baseProject}
@@ -217,7 +219,7 @@ function FullAccessRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.full-access"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
         modeConfig={{
           ...baseModeConfig,
@@ -244,7 +246,7 @@ function ProjectlessThreadRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.projectless"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
         modeConfig={baseModeConfig}
         project={{

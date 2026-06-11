@@ -18,6 +18,8 @@ import {
   gitBranchNameSchema,
   jsonObjectSchema,
   applicationIdSchema,
+  reasoningLevelSchema,
+  workflowSandboxSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_LIMIT_MAX,
@@ -29,7 +31,7 @@ import {
 } from "@bb/replay-capture/schema";
 import { z } from "zod";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 33 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 34 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -62,6 +64,8 @@ export const HOST_DAEMON_SETTLED_COMMAND_TYPES = [
   "environment.destroy",
   "workspace.commit",
   "workspace.squash_merge",
+  "workflow.start",
+  "workflow.cancel",
 ] as const;
 export const hostDaemonSettledCommandTypeSchema = z.enum(
   HOST_DAEMON_SETTLED_COMMAND_TYPES,
@@ -190,6 +194,17 @@ const hostDaemonThreadWorkspaceTargetSchema =
     workspaceContext: workspaceContextSchema,
   });
 
+/**
+ * Which kind of session a thread runs as (mirrors agent-runtime's
+ * `AgentRuntimeSessionKind`). Interactive bb threads use "thread";
+ * "workflowAgent" selects the restricted shell environment (no
+ * `BB_SERVER_URL`/`BB_HOST_DAEMON_PORT`/`BB_THREAD_ID`, bb shimmed off PATH)
+ * so workflow agents cannot reach the server or spawn nested bb work.
+ */
+export const agentSessionKindValues = ["thread", "workflowAgent"] as const;
+export const agentSessionKindSchema = z.enum(agentSessionKindValues);
+export type AgentSessionKind = z.infer<typeof agentSessionKindSchema>;
+
 export const threadStartCommandSchema = hostDaemonThreadTargetSchema
   .merge(hostDaemonThreadRuntimeContextSchema)
   .extend({
@@ -197,6 +212,11 @@ export const threadStartCommandSchema = hostDaemonThreadTargetSchema
     requestId: clientTurnRequestIdSchema,
     input: z.array(promptInputSchema).min(1),
     threadStoragePath: z.string().min(1).optional(),
+    /** Explicit per the no-hidden-defaults rule; the server fills "thread"
+     *  (workflow agent sessions are started daemon-internally, never via
+     *  thread.start). The daemon passes it through to the runtime's shell
+     *  environment selection. */
+    sessionKind: agentSessionKindSchema,
   })
   .strict();
 
@@ -423,6 +443,41 @@ const hostListPathsCommandSchema = z
     message: "At least one path kind must be included",
   });
 
+export const hostCommandSourceSchema = z.enum(["skill", "command"]);
+export type HostCommandSource = z.infer<typeof hostCommandSourceSchema>;
+
+export const hostCommandOriginSchema = z.enum(["project", "user"]);
+export type HostCommandOrigin = z.infer<typeof hostCommandOriginSchema>;
+
+/**
+ * A discovered provider skill or legacy slash command. The daemon returns the
+ * raw parsed records; server policy (filter/de-dup/sort/limit) is applied on
+ * top. Mirrors `@bb/server-contract`'s `ProviderCommand` shape (the contract
+ * packages intentionally define matching record shapes independently, like
+ * `hostPathEntrySchema` / `workspacePathEntrySchema`).
+ */
+export const hostProviderCommandSchema = z.object({
+  name: z.string(),
+  source: hostCommandSourceSchema,
+  origin: hostCommandOriginSchema,
+  description: z.string().nullable(),
+  argumentHint: z.string().nullable(),
+});
+export type HostProviderCommand = z.infer<typeof hostProviderCommandSchema>;
+
+/**
+ * List the provider's discoverable skills / legacy slash commands. The daemon
+ * resolves the user-home roots itself and scans the project roots under `cwd`
+ * when provided; `cwd: null` (unprovisioned thread) skips the project roots and
+ * returns only user-origin entries. Returns the full raw set — the server owns
+ * de-dup/sort/limit, so there is no `truncated` field here.
+ */
+const hostListCommandsCommandSchema = z.object({
+  type: z.literal("host.list_commands"),
+  providerId: z.string().min(1),
+  cwd: z.string().min(1).nullable(),
+});
+
 /**
  * List a bounded page of git branches at an absolute host path. Path-only
  * sibling of `host.list_files`. Does not require an environment row, does not
@@ -444,6 +499,69 @@ const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
 });
+
+/**
+ * Where a workflow definition was found on the host: the project tier
+ * (`.bb/workflows`, walking up from `rootPath` to the repo boundary), the user
+ * tier (`<dataDir>/workflows`), or the builtins shipped with bb. Shadowing is
+ * winners-only: project > user > builtin.
+ */
+export const workflowRegistryTierValues = [
+  "project",
+  "user",
+  "builtin",
+] as const;
+export const workflowRegistryTierSchema = z.enum(workflowRegistryTierValues);
+export type WorkflowRegistryTier = z.infer<typeof workflowRegistryTierSchema>;
+
+/**
+ * List workflow definitions visible from `rootPath` across the registry tiers.
+ * `rootPath` is required and server-resolved (the `host.read_file_relative`
+ * pattern) — the daemon never decides where to look. Does not require an
+ * environment row and does not provision anything.
+ */
+const workflowListCommandSchema = z
+  .object({
+    type: z.literal("workflow.list"),
+    rootPath: z.string().min(1),
+  })
+  .strict();
+
+/**
+ * Fetch one workflow's raw source by registry name, resolved against
+ * `rootPath` with the same tier shadowing as `workflow.list`. Returns raw
+ * data only — the server runs the shared meta parser and determinism lint
+ * itself (daemon-returns-raw-data rule).
+ */
+const workflowResolveCommandSchema = z
+  .object({
+    type: z.literal("workflow.resolve"),
+    rootPath: z.string().min(1),
+    name: z.string().min(1),
+  })
+  .strict();
+
+/**
+ * Prune an archived run's run dir (per-agent event logs, worktree checkouts,
+ * journal hot cache, pid/heartbeat records). The run manager refuses
+ * (`pruned: false`) while the run is demonstrably alive on the host — a live
+ * child handle or a fresh heartbeat — and the server's retention sweep
+ * retries on a later pass. Idempotent: a missing run dir reports
+ * `pruned: true`. Sent only for `retention = "archived"` runs; the durable
+ * `workflow_runs.runDirPrunedAt` marker (set on the `pruned: true` ack) is
+ * what the sweep converges on, so a lost result or offline host simply
+ * re-sends later.
+ */
+const workflowPruneCommandSchema = z
+  .object({
+    type: z.literal("workflow.prune"),
+    // wfr_-prefix shape validation (matching the server's
+    // requirePublicWorkflowRun guard): prune resolves the id into a recursive
+    // `rm` under the daemon's workflow-runs root, so a path-traversal id
+    // (`..`, separators) must be structurally impossible, not merely unsent.
+    runId: z.string().regex(/^wfr_[A-Za-z0-9_-]+$/u),
+  })
+  .strict();
 
 const provisionInitiatorSchema = z
   .object({
@@ -602,10 +720,127 @@ const workspaceDiffPatchCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   maxBytesPerFile: z.number().int().positive(),
 });
 
+/**
+ * Resolved run defaults snapshotted as explicit `workflow_runs` columns —
+ * filled once at the server boundary, explicit thereafter. The daemon maps
+ * them onto the runner's RunDefaults (renaming `providerId` → `provider` and
+ * adding `cwd` = the command's `workspacePath`).
+ */
+export const workflowRunDefaultsSchema = z
+  .object({
+    providerId: z.string().min(1),
+    /** null = no run-level model override; each provider uses its default model. */
+    model: z.string().min(1).nullable(),
+    effort: reasoningLevelSchema,
+    sandbox: workflowSandboxSchema,
+    concurrency: z.number().int().positive(),
+    /** Lifetime agent() call cap (runaway-loop backstop). */
+    maxAgents: z.number().int().positive(),
+    /** Max items per parallel()/pipeline() call. */
+    maxFanout: z.number().int().positive(),
+    /** Output-token ceiling for the run; null = no ceiling. */
+    budgetOutputTokens: z.number().int().positive().nullable(),
+  })
+  .strict();
+export type WorkflowRunDefaults = z.infer<typeof workflowRunDefaultsSchema>;
+
+/** The server-side source snapshot the run executes (workflow_runs.scriptSource/scriptHash). */
+const workflowScriptSchema = z
+  .object({
+    /** Workflow name from the meta literal; the daemon derives the runner's
+     *  stack-trace filename as `<name>.workflow.js`. */
+    name: z.string().min(1),
+    content: z.string().min(1),
+    /** sha256 of `content`. */
+    hash: z.string().min(1),
+  })
+  .strict();
+
+/**
+ * Typed `workflow.start` failure codes. Settled command results carry typed
+ * payloads only on success; failures travel as the generic
+ * `{ok: false, errorCode, errorMessage}` report, so these are the errorCode
+ * values the daemon handler reports and the server settle function switches
+ * on. `journal_fetch_failed` and `resume_preconditions_failed` apply only to
+ * `resume: true` starts.
+ */
+export const workflowStartErrorCodeValues = [
+  "script_invalid",
+  "journal_fetch_failed",
+  "resume_preconditions_failed",
+] as const;
+export const workflowStartErrorCodeSchema = z.enum(workflowStartErrorCodeValues);
+export type WorkflowStartErrorCode = z.infer<typeof workflowStartErrorCodeSchema>;
+
+/**
+ * Start (or resume) a workflow run. Acceptance-only ack: success means the
+ * runner child spawned and parsed the script — run completion arrives as a
+ * terminal run event over the workflow-run event spool, never as a command
+ * result, so the command lease never bounds run duration. Idempotent against
+ * durable redelivery (an already-active run acks without a second spawn).
+ * When `resume` is non-null the daemon rebuilds the runner journal from the
+ * server's journal route before spawning. The resume `nonce` is minted once
+ * per resume operation: the daemon records it in the run dir when it
+ * processes the resume, so a REDELIVERED resume command whose segment
+ * already settled (terminal record + matching nonce) acks without
+ * re-running, while a fresh resume (new nonce) legitimately clears a stale
+ * settle record from a prior segment.
+ */
+export const workflowStartCommandSchema = z
+  .object({
+    type: z.literal("workflow.start"),
+    runId: z.string().min(1),
+    projectId: z.string().min(1),
+    script: workflowScriptSchema,
+    /** Serialized launch args (workflow_runs.argsJson); null = launched without args. */
+    argsJson: z.string().min(1).nullable(),
+    seed: z.number().int().nonnegative(),
+    /** Resume-key scheme version stamped on the run row; the daemon rejects a
+     *  resume under a different scheme with `resume_preconditions_failed`. */
+    keyVersion: z.string().min(1),
+    /** The run's original creation time — the journal-seeded base for the
+     *  workflow's now(); stable across resume. */
+    baseTimeMs: z.number().int().nonnegative(),
+    defaults: workflowRunDefaultsSchema,
+    /** The run's sandbox ceiling: the launch snapshot
+     *  (workflow_runs.sandboxCeiling) clamped to the project's current
+     *  effective ceiling at command-queue time, so a revoked grant reaches
+     *  held starts and resumes. The executor enforces every per-call
+     *  `agent({sandbox})` spec against it — server-resolved, never trusted
+     *  to the script. Deliberately NOT part of `defaults`, which maps onto
+     *  the runner's script-visible RunDefaults. */
+    sandboxCeiling: workflowSandboxSchema,
+    /** The resolved checkout/cwd for non-worktree agents (workflow_runs.workspacePath). */
+    workspacePath: z.string().min(1),
+    /** Wall-clock ceiling on the whole run; null = unbounded (server-resolved policy). */
+    execTimeoutMs: z.number().int().positive().nullable(),
+    /** Null = fresh start. Non-null = resume, carrying the per-operation nonce
+     *  that scopes the daemon's settled-segment redelivery check. */
+    resume: z
+      .object({ nonce: z.string().min(1) })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
+/**
+ * Cancel a live workflow run: the daemon aborts the runner's AbortSignal and
+ * escalates to SIGTERM/SIGKILL if the child never settles. `accepted: false`
+ * means the daemon holds no live run for `runId` (already settled or never
+ * started here) — a no-op, safe under redelivery.
+ */
+export const workflowCancelCommandSchema = z
+  .object({
+    type: z.literal("workflow.cancel"),
+    runId: z.string().min(1),
+  })
+  .strict();
+
 export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES = [
   "development.replay",
   "host.list_files",
   "host.list_paths",
+  "host.list_commands",
   "host.list_branches",
   "host.file_metadata",
   "host.read_file",
@@ -613,6 +848,9 @@ export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES = [
   "provider.list",
   "provider.list_models",
   "environment.cleanup_preflight",
+  "workflow.list",
+  "workflow.prune",
+  "workflow.resolve",
   "workspace.status",
   "workspace.diff",
   "workspace.diffFiles",
@@ -674,6 +912,7 @@ export const hostDaemonOnlineRpcCommandSchema = z.union([
   developmentReplayCommandSchema,
   hostListFilesCommandSchema,
   hostListPathsCommandSchema,
+  hostListCommandsCommandSchema,
   hostListBranchesCommandSchema,
   hostFileMetadataCommandSchema,
   hostReadFileCommandSchema,
@@ -681,6 +920,9 @@ export const hostDaemonOnlineRpcCommandSchema = z.union([
   providerListCommandSchema,
   providerListModelsCommandSchema,
   environmentCleanupPreflightCommandSchema,
+  workflowListCommandSchema,
+  workflowPruneCommandSchema,
+  workflowResolveCommandSchema,
   workspaceStatusCommandSchema,
   workspaceDiffCommandSchema,
   workspaceDiffFilesCommandSchema,
@@ -697,6 +939,7 @@ export type HostDaemonOnlineRpcCommandType = z.infer<
 export const hostDaemonRetryableOnlineRpcCommandSchema = z.union([
   hostListFilesCommandSchema,
   hostListPathsCommandSchema,
+  hostListCommandsCommandSchema,
   hostListBranchesCommandSchema,
   hostFileMetadataCommandSchema,
   hostReadFileCommandSchema,
@@ -704,6 +947,8 @@ export const hostDaemonRetryableOnlineRpcCommandSchema = z.union([
   providerListCommandSchema,
   providerListModelsCommandSchema,
   environmentCleanupPreflightCommandSchema,
+  workflowListCommandSchema,
+  workflowResolveCommandSchema,
   workspaceStatusCommandSchema,
   workspaceDiffCommandSchema,
   workspaceDiffFilesCommandSchema,
@@ -747,6 +992,8 @@ const hostDaemonNonProvisionCommandSchema = z.discriminatedUnion("type", [
   environmentDestroyCommandSchema,
   workspaceCommitCommandSchema,
   workspaceSquashMergeCommandSchema,
+  workflowStartCommandSchema,
+  workflowCancelCommandSchema,
 ]);
 export const hostDaemonCommandSchema = z.union([
   hostDaemonNonProvisionCommandSchema,
@@ -798,6 +1045,11 @@ export function shouldFlushEventsBeforeReportingCommandResult(
     case "codex.voice.transcribe":
     case "workspace.commit":
     case "workspace.squash_merge":
+      return false;
+    // Workflow run events ride their own durable spool, not the thread event
+    // buffer — there is nothing to flush before reporting.
+    case "workflow.start":
+    case "workflow.cancel":
       return false;
   }
 }
@@ -946,6 +1198,12 @@ const pathListResultSchema = z.object({
   truncated: z.boolean(),
 });
 
+// No `truncated` here, unlike `pathListResultSchema`: the daemon returns the
+// full raw set across all roots and the server owns de-dup/sort/limit.
+const commandListResultSchema = z.object({
+  commands: z.array(hostProviderCommandSchema),
+});
+
 const providerListResultSchema = z.object({
   providers: z.array(providerInfoSchema),
 });
@@ -954,6 +1212,51 @@ const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
   selectedOnlyModels: z.array(availableModelSchema),
 });
+
+/**
+ * One listed workflow definition: the winners-only registry view plus the
+ * lightweight meta summary the daemon already parses during the scan. Full
+ * meta resolution happens server-side from `workflow.resolve` source.
+ */
+export const hostDaemonWorkflowListingSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().min(1),
+    /** Absent = the author declared no selection hint. */
+    whenToUse: z.string().min(1).optional(),
+    /**
+     * Meta-declared run defaults, passed through from the scan so launch
+     * surfaces (the Run dialog's override controls) can seed what the author
+     * declared. Absent = the meta declares no default and resolution falls
+     * through to server policy at launch.
+     */
+    defaultProvider: z.string().min(1).optional(),
+    defaultModel: z.string().min(1).optional(),
+    defaultSandbox: workflowSandboxSchema.optional(),
+    tier: workflowRegistryTierSchema,
+  })
+  .strict();
+export type HostDaemonWorkflowListing = z.infer<
+  typeof hostDaemonWorkflowListingSchema
+>;
+
+const workflowListResultSchema = z.object({
+  workflows: z.array(hostDaemonWorkflowListingSchema),
+});
+
+/** Raw source only — the server validates (meta parse + lint) itself. */
+const workflowResolveResultSchema = z.object({
+  name: z.string().min(1),
+  content: z.string().min(1),
+  sha256: z.string().min(1),
+});
+
+/** `pruned: false` = run still live on the host; the sweep retries later. */
+const workflowPruneResultSchema = z
+  .object({
+    pruned: z.boolean(),
+  })
+  .strict();
 
 export const hostDaemonCommandResultSchemaByType = {
   "thread.start": z.object({
@@ -994,6 +1297,15 @@ export const hostDaemonCommandResultSchemaByType = {
     merged: z.boolean(),
     commitSha: z.string().min(1),
     commitSubject: z.string().min(1),
+  }),
+  // Acceptance-only ack — the terminal run event, not a command result,
+  // settles the run. Typed failures travel as the generic error report with
+  // a `workflowStartErrorCodeValues` errorCode.
+  "workflow.start": z.object({
+    accepted: z.literal(true),
+  }),
+  "workflow.cancel": z.object({
+    accepted: z.boolean(),
   }),
 } as const satisfies Record<HostDaemonSettledCommandType, z.ZodTypeAny>;
 
@@ -1043,6 +1355,7 @@ export const hostDaemonOnlineRpcResultSchemaByType = {
   "development.replay": developmentReplayResultSchema,
   "host.list_files": fileListResultSchema,
   "host.list_paths": pathListResultSchema,
+  "host.list_commands": commandListResultSchema,
   "host.file_metadata": fileMetadataResultSchema,
   "host.list_branches": projectSourceCheckoutSchema,
   "host.read_file": fileReadResultSchema,
@@ -1050,6 +1363,9 @@ export const hostDaemonOnlineRpcResultSchemaByType = {
   "provider.list": providerListResultSchema,
   "provider.list_models": providerListModelsResultSchema,
   "environment.cleanup_preflight": environmentCleanupPreflightResultSchema,
+  "workflow.list": workflowListResultSchema,
+  "workflow.prune": workflowPruneResultSchema,
+  "workflow.resolve": workflowResolveResultSchema,
   "workspace.status": workspaceStatusResultSchema,
   "workspace.diff": workspaceDiffResultSchema,
   "workspace.diffFiles": workspaceDiffFilesResultSchema,

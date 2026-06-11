@@ -17,6 +17,7 @@ import {
 } from "@/lib/file-content-urls";
 import type {
   EnvironmentFilePreviewSource,
+  FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
 import { cn } from "@/lib/utils";
@@ -55,7 +56,7 @@ export interface WorkspaceFilePreviewTabContentProps {
   activePath: string;
   copyPath?: string | null;
   environmentId?: string | null;
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
   onOpenInEditor?: (path: string) => void;
   source: EnvironmentFilePreviewSource | null;
@@ -66,7 +67,7 @@ export interface WorkspaceFilePreviewTabContentProps {
 export interface HostFilePreviewTabContentProps {
   activePath: string;
   environmentId?: string | null;
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
   onOpenInEditor?: (path: string) => void;
   threadId: string;
@@ -75,6 +76,7 @@ export interface HostFilePreviewTabContentProps {
 export interface ThreadStorageFilePreviewTabContentProps {
   activePath: string;
   copyPath?: string | null;
+  lineRange: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
   onOpenInEditor?: (path: string) => void;
   threadId: string;
@@ -265,7 +267,7 @@ export function ThreadInfoTabContent({
   metadataContent,
 }: ThreadInfoTabContentProps) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-4 pb-3">
+    <div className="flex min-h-0 flex-1 flex-col pb-3">
       {metadataContent}
     </div>
   );
@@ -275,7 +277,7 @@ export function WorkspaceFilePreviewTabContent({
   activePath,
   copyPath = null,
   environmentId,
-  lineNumber,
+  lineRange,
   markdownLinkRouting,
   onOpenInEditor,
   source,
@@ -300,7 +302,7 @@ export function WorkspaceFilePreviewTabContent({
           : null
       }
       isLoading={isWorkspaceFilePreviewLoading}
-      lineNumber={lineNumber}
+      lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onOpenInEditor={onOpenInEditor}
       statusLabel={statusLabel}
@@ -311,7 +313,7 @@ export function WorkspaceFilePreviewTabContent({
 export function HostFilePreviewTabContent({
   activePath,
   environmentId,
-  lineNumber,
+  lineRange,
   markdownLinkRouting,
   onOpenInEditor,
   threadId,
@@ -329,7 +331,7 @@ export function HostFilePreviewTabContent({
       filePreview={hostFilePreview}
       htmlPreviewUrl={buildRawFilesystemHtmlContentUrl(threadId, activePath)}
       isLoading={isHostFilePreviewLoading}
-      lineNumber={lineNumber}
+      lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onOpenInEditor={onOpenInEditor}
       statusLabel={null}
@@ -340,6 +342,7 @@ export function HostFilePreviewTabContent({
 export function ThreadStorageFilePreviewTabContent({
   activePath,
   copyPath = null,
+  lineRange,
   markdownLinkRouting,
   onOpenInEditor,
   threadId,
@@ -357,6 +360,7 @@ export function ThreadStorageFilePreviewTabContent({
       error={threadStorageFilePreviewError}
       filePreview={threadStorageFilePreview}
       isLoading={isThreadStorageFilePreviewLoading}
+      lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onOpenInEditor={onOpenInEditor}
       threadId={threadId}

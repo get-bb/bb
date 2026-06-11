@@ -1,8 +1,4 @@
-import {
-  WebContentsView,
-  session,
-  type Session,
-} from "electron";
+import { WebContentsView, session, type Session } from "electron";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
@@ -25,8 +21,10 @@ import {
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
-  isBlockedBrowserRequestUrl,
+  isAllowedTrustedLocalTopLevelUrl,
+  localRequestOriginKey,
   resolveWindowOpenAction,
+  shouldBlockBrowserRequest,
 } from "./desktop-browser-policy.js";
 
 // At most this many popup → in-panel tabs may be spawned per view in a sliding
@@ -62,6 +60,10 @@ const ERR_ABORTED = -3;
 interface BrowserViewEntry {
   view: WebContentsView;
   lastErrorText: string | null;
+  pendingTrustedLocalTopLevelOriginKey: string | null;
+  currentMainFrameLocalOriginKey: string | null;
+  pendingMainFrameNavigationOriginKey: string | null;
+  pendingMainFrameNavigationInitiatorOriginKey: string | null;
   /**
    * The last renderer-measured panel rect. The renderer is the placement
    * authority — it re-measures and pushes whenever its layout actually moves
@@ -232,6 +234,149 @@ function setEntryDesiredBounds(args: SetEntryDesiredBoundsArgs): void {
   applyEntryDesiredBounds(args.entry, args.hostWindow);
 }
 
+function clearEntryLocalOriginState(entry: BrowserViewEntry): void {
+  entry.pendingTrustedLocalTopLevelOriginKey = null;
+  entry.currentMainFrameLocalOriginKey = null;
+  entry.pendingMainFrameNavigationOriginKey = null;
+  entry.pendingMainFrameNavigationInitiatorOriginKey = null;
+}
+
+function clearEntryPendingMainFrameNavigation(entry: BrowserViewEntry): void {
+  entry.pendingMainFrameNavigationOriginKey = null;
+  entry.pendingMainFrameNavigationInitiatorOriginKey = null;
+}
+
+function clearEntryPendingLocalNavigationState(entry: BrowserViewEntry): void {
+  entry.pendingTrustedLocalTopLevelOriginKey = null;
+  clearEntryPendingMainFrameNavigation(entry);
+}
+
+function prepareEntryForTrustedTopLevelLoad(
+  entry: BrowserViewEntry,
+  url: string,
+): boolean {
+  if (!isAllowedBrowserUrl(url)) {
+    return false;
+  }
+  if (isAllowedTrustedLocalTopLevelUrl(url)) {
+    clearEntryPendingMainFrameNavigation(entry);
+    entry.pendingTrustedLocalTopLevelOriginKey = localRequestOriginKey(url);
+    return true;
+  }
+  clearEntryPendingLocalNavigationState(entry);
+  return true;
+}
+
+function commitEntryMainFrameUrl(entry: BrowserViewEntry, url: string): void {
+  const committedOriginKey = localRequestOriginKey(url);
+  clearEntryPendingMainFrameNavigation(entry);
+  if (
+    committedOriginKey !== null &&
+    (committedOriginKey === entry.pendingTrustedLocalTopLevelOriginKey ||
+      committedOriginKey === entry.currentMainFrameLocalOriginKey)
+  ) {
+    entry.pendingTrustedLocalTopLevelOriginKey = null;
+    entry.currentMainFrameLocalOriginKey = committedOriginKey;
+    return;
+  }
+  clearEntryLocalOriginState(entry);
+}
+
+function clearBlockedLocalTopLevelLoad(
+  entry: BrowserViewEntry,
+  url: string,
+): void {
+  if (localRequestOriginKey(url) !== null) {
+    clearEntryPendingLocalNavigationState(entry);
+  }
+}
+
+function historyNavigationTargetUrl(
+  entry: BrowserViewEntry,
+  offset: number,
+): string | null {
+  const history = entry.view.webContents.navigationHistory;
+  const targetEntry = history.getEntryAtIndex(history.getActiveIndex() + offset);
+  return typeof targetEntry?.url === "string" ? targetEntry.url : null;
+}
+
+function prepareEntryForHistoryNavigation(
+  entry: BrowserViewEntry,
+  offset: number,
+): void {
+  const targetUrl = historyNavigationTargetUrl(entry, offset);
+  const targetOriginKey =
+    targetUrl === null ? null : localRequestOriginKey(targetUrl);
+  if (
+    targetOriginKey !== null &&
+    targetOriginKey === entry.currentMainFrameLocalOriginKey
+  ) {
+    clearEntryPendingMainFrameNavigation(entry);
+    entry.pendingTrustedLocalTopLevelOriginKey = targetOriginKey;
+    return;
+  }
+  clearEntryPendingLocalNavigationState(entry);
+}
+
+function shouldBlockEntryTopLevelRequest(
+  entry: BrowserViewEntry,
+  url: string,
+  mainFrameInitiatorOriginKey: string | null,
+): boolean {
+  if (!isAllowedBrowserUrl(url)) {
+    return true;
+  }
+  const webContentsId = entry.view.webContents.id;
+  return shouldBlockBrowserRequest({
+    url,
+    resourceType: "mainFrame",
+    isMainFrame: true,
+    targetWebContentsId: webContentsId,
+    entryWebContentsId: webContentsId,
+    pendingTrustedLocalTopLevelOriginKey:
+      entry.pendingTrustedLocalTopLevelOriginKey,
+    currentMainFrameLocalOriginKey: entry.currentMainFrameLocalOriginKey,
+    requestingFrameOriginKey: null,
+    mainFrameInitiatorOriginKey,
+  });
+}
+
+function requestingFrameOriginKey(origin: string | undefined): string | null {
+  return origin === undefined ? null : localRequestOriginKey(origin);
+}
+
+function rememberAllowedTopLevelNavigation(
+  entry: BrowserViewEntry,
+  url: string,
+  mainFrameInitiatorOriginKey: string | null,
+): void {
+  const targetOriginKey = localRequestOriginKey(url);
+  if (
+    targetOriginKey !== null &&
+    targetOriginKey !== entry.pendingTrustedLocalTopLevelOriginKey
+  ) {
+    entry.pendingMainFrameNavigationOriginKey = targetOriginKey;
+    entry.pendingMainFrameNavigationInitiatorOriginKey =
+      mainFrameInitiatorOriginKey;
+    return;
+  }
+  clearEntryPendingMainFrameNavigation(entry);
+}
+
+function pendingMainFrameInitiatorOriginKey(
+  entry: BrowserViewEntry,
+  url: string,
+): string | null {
+  const targetOriginKey = localRequestOriginKey(url);
+  if (
+    targetOriginKey === null ||
+    targetOriginKey !== entry.pendingMainFrameNavigationOriginKey
+  ) {
+    return null;
+  }
+  return entry.pendingMainFrameNavigationInitiatorOriginKey;
+}
+
 function buildBrowserState(
   tabId: string,
   entry: BrowserViewEntry,
@@ -245,7 +390,10 @@ function buildBrowserState(
   return {
     tabId,
     url: truncate(url, BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
-    title: title === null ? null : truncate(title, BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH),
+    title:
+      title === null
+        ? null
+        : truncate(title, BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH),
     isLoading: webContents.isLoadingMainFrame(),
     canGoBack: webContents.navigationHistory.canGoBack(),
     canGoForward: webContents.navigationHistory.canGoForward(),
@@ -261,6 +409,7 @@ export function createDesktopBrowserViewManager(
 ): DesktopBrowserViewManager {
   const partition = args.partition ?? BB_BROWSER_PARTITION;
   const entries = new Map<string, BrowserViewEntry>();
+  const entriesByWebContentsId = new Map<number, BrowserViewEntry>();
   // Host webContents ids with a native resize burst in flight: views of these
   // windows stay hidden regardless of renderer-declared visibility.
   const resizingHostIds = new Set<number>();
@@ -332,10 +481,39 @@ export function createDesktopBrowserViewManager(
     browserSession.on("will-download", (event) => {
       event.preventDefault();
     });
-    // Network firewall: localhost/loopback is allowed for local testing, but
-    // private LAN and mDNS targets are still cancelled before requests are sent.
+    // Network firewall: untrusted pages must not be able to reach bb's loopback
+    // services or the user's LAN. This fires for ALL resource types — top-level
+    // navigation, subresources, fetch/XHR, and WebSockets — so CORS-bypassing
+    // requests to 127.0.0.1 / private ranges are cancelled before they are sent.
     browserSession.webRequest.onBeforeRequest((details, callback) => {
-      callback({ cancel: isBlockedBrowserRequestUrl(details.url) });
+      const targetWebContentsId = details.webContentsId ?? null;
+      const entry =
+        targetWebContentsId === null
+          ? null
+          : (entriesByWebContentsId.get(targetWebContentsId) ?? null);
+      const liveEntry =
+        entry === null || entry.view.webContents.isDestroyed() ? null : entry;
+      const isMainFrameRequest = details.resourceType === "mainFrame";
+      callback({
+        cancel: shouldBlockBrowserRequest({
+          url: details.url,
+          resourceType: details.resourceType,
+          isMainFrame: isMainFrameRequest,
+          targetWebContentsId,
+          entryWebContentsId: liveEntry?.view.webContents.id ?? null,
+          pendingTrustedLocalTopLevelOriginKey:
+            liveEntry?.pendingTrustedLocalTopLevelOriginKey ?? null,
+          currentMainFrameLocalOriginKey:
+            liveEntry?.currentMainFrameLocalOriginKey ?? null,
+          requestingFrameOriginKey: requestingFrameOriginKey(
+            details.frame?.origin,
+          ),
+          mainFrameInitiatorOriginKey:
+            liveEntry === null || !isMainFrameRequest
+              ? null
+              : pendingMainFrameInitiatorOriginKey(liveEntry, details.url),
+        }),
+      });
     });
     hardenedSession = browserSession;
     return browserSession;
@@ -363,17 +541,66 @@ export function createDesktopBrowserViewManager(
   ): void {
     const webContents = entry.view.webContents;
 
-    webContents.on("will-navigate", (event, url) => {
-      if (!isAllowedBrowserUrl(url)) {
-        event.preventDefault();
+    webContents.on("will-frame-navigate", (event) => {
+      if (!event.isMainFrame) {
         return;
       }
+      const mainFrameInitiatorOriginKey = requestingFrameOriginKey(
+        event.initiator?.origin,
+      );
+      if (
+        shouldBlockEntryTopLevelRequest(
+          entry,
+          event.url,
+          mainFrameInitiatorOriginKey,
+        )
+      ) {
+        event.preventDefault();
+        clearBlockedLocalTopLevelLoad(entry, event.url);
+        return;
+      }
+      rememberAllowedTopLevelNavigation(
+        entry,
+        event.url,
+        mainFrameInitiatorOriginKey,
+      );
     });
-    webContents.on("will-redirect", (event, url) => {
-      if (!isAllowedBrowserUrl(url)) {
+    webContents.on("will-navigate", (event, url) => {
+      const mainFrameInitiatorOriginKey = requestingFrameOriginKey(
+        event.initiator?.origin,
+      );
+      if (
+        shouldBlockEntryTopLevelRequest(entry, url, mainFrameInitiatorOriginKey)
+      ) {
         event.preventDefault();
+        clearBlockedLocalTopLevelLoad(entry, url);
         return;
       }
+      rememberAllowedTopLevelNavigation(
+        entry,
+        url,
+        mainFrameInitiatorOriginKey,
+      );
+    });
+    webContents.on("will-redirect", (event, url, _isInPlace, isMainFrame) => {
+      if (!isMainFrame) {
+        return;
+      }
+      const mainFrameInitiatorOriginKey = requestingFrameOriginKey(
+        event.initiator?.origin,
+      );
+      if (
+        shouldBlockEntryTopLevelRequest(entry, url, mainFrameInitiatorOriginKey)
+      ) {
+        event.preventDefault();
+        clearBlockedLocalTopLevelLoad(entry, url);
+        return;
+      }
+      rememberAllowedTopLevelNavigation(
+        entry,
+        url,
+        mainFrameInitiatorOriginKey,
+      );
     });
 
     webContents.setWindowOpenHandler((details) => {
@@ -398,11 +625,17 @@ export function createDesktopBrowserViewManager(
     const refresh = () => pushState(hostWindow, tabId);
     webContents.on("did-start-loading", refresh);
     webContents.on("did-stop-loading", refresh);
-    webContents.on("did-navigate", () => {
+    webContents.on("did-navigate", (_event, url) => {
+      commitEntryMainFrameUrl(entry, url);
       entry.lastErrorText = null;
       refresh();
     });
-    webContents.on("did-navigate-in-page", refresh);
+    webContents.on("did-navigate-in-page", (_event, url, isMainFrame) => {
+      if (isMainFrame) {
+        commitEntryMainFrameUrl(entry, url);
+      }
+      refresh();
+    });
     webContents.on("did-start-navigation", () => {
       entry.lastErrorText = null;
       refresh();
@@ -413,12 +646,18 @@ export function createDesktopBrowserViewManager(
     // surface. The renderer shows a generic globe icon instead.
     webContents.on(
       "did-fail-load",
-      (_event, errorCode, errorDescription, _validatedURL, isMainFrame) => {
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
         if (!isMainFrame || errorCode === ERR_ABORTED) {
+          if (isMainFrame && errorCode === ERR_ABORTED) {
+            clearEntryPendingLocalNavigationState(entry);
+          }
           return;
         }
+        clearBlockedLocalTopLevelLoad(entry, validatedURL);
         entry.lastErrorText =
-          errorDescription.length > 0 ? errorDescription : "Failed to load page";
+          errorDescription.length > 0
+            ? errorDescription
+            : "Failed to load page";
         refresh();
       },
     );
@@ -441,6 +680,10 @@ export function createDesktopBrowserViewManager(
     const entry: BrowserViewEntry = {
       view,
       lastErrorText: null,
+      pendingTrustedLocalTopLevelOriginKey: null,
+      currentMainFrameLocalOriginKey: null,
+      pendingMainFrameNavigationOriginKey: null,
+      pendingMainFrameNavigationInitiatorOriginKey: null,
       desiredBounds: args.desiredBounds,
       popupTimestamps: [],
       visible: false,
@@ -448,19 +691,24 @@ export function createDesktopBrowserViewManager(
     wireWebContents(args.hostWindow, args.tabId, entry);
     args.hostWindow.contentView.addChildView(view);
     entries.set(browserViewKey(args.hostWindow, args.tabId), entry);
+    entriesByWebContentsId.set(view.webContents.id, entry);
     return entry;
   }
 
   function loadIfNeeded(entry: BrowserViewEntry, url: string): void {
-    if (url.length === 0 || !isAllowedBrowserUrl(url)) {
+    if (url.length === 0) {
       return;
     }
     if (entry.view.webContents.getURL() === url) {
       return;
     }
+    if (!prepareEntryForTrustedTopLevelLoad(entry, url)) {
+      return;
+    }
     entry.lastErrorText = null;
     entry.view.webContents.loadURL(url).catch(() => {
-      // Surfaced through `did-fail-load`; swallow the rejection.
+      clearEntryPendingLocalNavigationState(entry);
+      // Usually surfaced through `did-fail-load`; swallow the rejection.
     });
   }
 
@@ -473,6 +721,8 @@ export function createDesktopBrowserViewManager(
       return;
     }
     entries.delete(key);
+    entriesByWebContentsId.delete(entry.view.webContents.id);
+    clearEntryLocalOriginState(entry);
     if (!hostWindow.isDestroyed()) {
       hostWindow.contentView.removeChildView(entry.view);
     }
@@ -519,6 +769,7 @@ export function createDesktopBrowserViewManager(
     goBack({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoBack()) {
+          prepareEntryForHistoryNavigation(entry, -1);
           entry.view.webContents.navigationHistory.goBack();
         }
       });
@@ -526,17 +777,29 @@ export function createDesktopBrowserViewManager(
     goForward({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoForward()) {
+          prepareEntryForHistoryNavigation(entry, 1);
           entry.view.webContents.navigationHistory.goForward();
         }
       });
     },
     reload({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
+        const currentOriginKey = localRequestOriginKey(
+          entry.view.webContents.getURL(),
+        );
+        if (
+          currentOriginKey !== null &&
+          currentOriginKey === entry.currentMainFrameLocalOriginKey
+        ) {
+          clearEntryPendingMainFrameNavigation(entry);
+          entry.pendingTrustedLocalTopLevelOriginKey = currentOriginKey;
+        }
         entry.view.webContents.reload();
       });
     },
     stop({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
+        clearEntryPendingLocalNavigationState(entry);
         entry.view.webContents.stop();
       });
     },
@@ -594,6 +857,8 @@ export function createDesktopBrowserViewManager(
           continue;
         }
         entries.delete(key);
+        entriesByWebContentsId.delete(entry.view.webContents.id);
+        clearEntryLocalOriginState(entry);
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }
@@ -603,6 +868,8 @@ export function createDesktopBrowserViewManager(
       resizingHostIds.clear();
       for (const [key, entry] of [...entries.entries()]) {
         entries.delete(key);
+        entriesByWebContentsId.delete(entry.view.webContents.id);
+        clearEntryLocalOriginState(entry);
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }

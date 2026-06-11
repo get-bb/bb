@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { WorkspacePathEntry } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +14,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     searchProjectPaths: vi.fn(),
+    searchEnvironmentPaths: vi.fn(),
     listThreadStoragePaths: vi.fn(),
   };
 });
@@ -101,15 +103,65 @@ describe("usePathSuggestions", () => {
       projectId: "proj-1",
       query: "src",
       limit: 8,
-      environmentId: null,
       includeFiles: true,
       includeDirectories: false,
     });
+    expect(api.searchEnvironmentPaths).not.toHaveBeenCalled();
     expect(api.listThreadStoragePaths).not.toHaveBeenCalled();
   });
 
+  it("searches a projectless thread's workspace through its environment", async () => {
+    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
+      makePathResponse([{ kind: "file", path: "src/index.ts", score: 80 }]),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        usePathSuggestions({
+          projectId: PERSONAL_PROJECT_ID,
+          query: "src",
+          environmentId: "env-personal",
+          includeDirectories: false,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.suggestions).toHaveLength(1);
+    });
+
+    expect(api.searchEnvironmentPaths).toHaveBeenCalledWith({
+      environmentId: "env-personal",
+      query: "src",
+      // Default limit (8) oversampled across sources before client-side ranking.
+      limit: 16,
+      includeFiles: true,
+      includeDirectories: false,
+    });
+    // The personal "project" has no source path, so it is never queried.
+    expect(api.searchProjectPaths).not.toHaveBeenCalled();
+  });
+
+  it("does not search the personal project source when a projectless thread has no environment", () => {
+    const { wrapper } = createQueryClientTestHarness();
+    renderHook(
+      () =>
+        usePathSuggestions({
+          projectId: PERSONAL_PROJECT_ID,
+          query: "src",
+          environmentId: null,
+          includeDirectories: false,
+        }),
+      { wrapper },
+    );
+
+    expect(api.searchProjectPaths).not.toHaveBeenCalled();
+    expect(api.searchEnvironmentPaths).not.toHaveBeenCalled();
+  });
+
   it("merges workspace and thread-storage results deterministically", async () => {
-    vi.mocked(api.searchProjectPaths).mockResolvedValue(
+    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
       makePathResponse([
         {
           kind: "directory",
@@ -158,14 +210,16 @@ describe("usePathSuggestions", () => {
     expect(
       result.current.suggestions.map((suggestion) => suggestion.path),
     ).toEqual(["notes/status.md", "notes"]);
-    expect(api.searchProjectPaths).toHaveBeenCalledWith({
-      projectId: "proj-1",
+    // An environment id takes precedence: the workspace is searched through the
+    // environment, never the (here, standard) project's default source.
+    expect(api.searchEnvironmentPaths).toHaveBeenCalledWith({
+      environmentId: "env-1",
       query: "notes",
       limit: 4,
-      environmentId: "env-1",
       includeFiles: true,
       includeDirectories: true,
     });
+    expect(api.searchProjectPaths).not.toHaveBeenCalled();
     expect(api.listThreadStoragePaths).toHaveBeenCalledWith({
       id: "thr-storage",
       options: {
@@ -179,7 +233,7 @@ describe("usePathSuggestions", () => {
   });
 
   it("does not query thread storage without a current thread", async () => {
-    vi.mocked(api.searchProjectPaths).mockResolvedValue(
+    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
       makePathResponse([
         {
           kind: "file",
@@ -208,6 +262,38 @@ describe("usePathSuggestions", () => {
     expect(api.listThreadStoragePaths).not.toHaveBeenCalled();
   });
 
+  it("does not stay loading when only thread storage is searchable", async () => {
+    vi.mocked(api.listThreadStoragePaths).mockResolvedValue({
+      ...makePathResponse([]),
+      storageRootPath: "/tmp/thread-storage",
+    });
+
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        usePathSuggestions({
+          projectId: undefined,
+          query: "missing",
+          environmentId: null,
+          currentThreadId: "thr-storage",
+          includeDirectories: false,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(api.listThreadStoragePaths).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.isError).toBe(false);
+    expect(api.searchProjectPaths).not.toHaveBeenCalled();
+    expect(api.searchEnvironmentPaths).not.toHaveBeenCalled();
+  });
+
   it("does not query any source for an empty query", () => {
     const { wrapper } = createQueryClientTestHarness();
     renderHook(
@@ -223,11 +309,12 @@ describe("usePathSuggestions", () => {
     );
 
     expect(api.searchProjectPaths).not.toHaveBeenCalled();
+    expect(api.searchEnvironmentPaths).not.toHaveBeenCalled();
     expect(api.listThreadStoragePaths).not.toHaveBeenCalled();
   });
 
   it("reports no error once the query is cleared, even after a failed search", async () => {
-    vi.mocked(api.searchProjectPaths).mockRejectedValue(
+    vi.mocked(api.searchEnvironmentPaths).mockRejectedValue(
       new Error("search failed"),
     );
 

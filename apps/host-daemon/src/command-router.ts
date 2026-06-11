@@ -22,7 +22,7 @@ import {
   getErrorCode,
   type CommandDispatchOptions,
 } from "./command-dispatch.js";
-import { isExpectedCommandDispatchError } from "./command-dispatch-support.js";
+import { isExpectedOnlineRpcFailureError } from "./command-dispatch-support.js";
 import type { HostDaemonLogger } from "./logger.js";
 import {
   RuntimeManager,
@@ -105,6 +105,8 @@ export interface CommandRouterOptions {
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
   runtimeManager: RuntimeManager;
   terminalManager?: CommandDispatchOptions["terminalManager"];
+  workflowRunManager?: CommandDispatchOptions["workflowRunManager"];
+  fetchWorkflowRunJournal?: CommandDispatchOptions["fetchWorkflowRunJournal"];
   eventSink: CommandDispatchOptions["eventSink"];
   listModels?: CommandDispatchOptions["listModels"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
@@ -166,7 +168,7 @@ export class CommandRouter {
       });
     } catch (error) {
       const errorCode = getErrorCode(error);
-      if (!isExpectedCommandDispatchError(error)) {
+      if (!isExpectedOnlineRpcFailureError(error)) {
         this.logger.warn(
           {
             type: message.command.type,
@@ -308,6 +310,8 @@ export class CommandRouter {
       fetchProjectAttachment: this.options.fetchProjectAttachment,
       runtimeManager: this.options.runtimeManager,
       terminalManager: this.options.terminalManager,
+      workflowRunManager: this.options.workflowRunManager,
+      fetchWorkflowRunJournal: this.options.fetchWorkflowRunJournal,
       dataDir: this.options.dataDir,
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
@@ -505,9 +509,7 @@ export class CommandRouter {
     });
   }
 
-  private getFileWriteLaneKey(
-    command: HostDaemonCommand,
-  ): string | null {
+  private getFileWriteLaneKey(command: HostDaemonCommand): string | null {
     if (!this.isFileWriteLaneCommand(command)) {
       return null;
     }

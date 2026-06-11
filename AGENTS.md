@@ -110,7 +110,7 @@ pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-m
 - Durable async lifecycles belong to server-owned lifecycle modules. Routes may request lifecycle work, but only lifecycle owners may advance it, mark it in progress, handle command results, or reconcile it after reconnect.
 - Generic metadata update helpers must not accept lifecycle fields such as `status`, `stopRequestedAt`, `cleanupRequestedAt`, `cleanupMode`, or similar workflow state.
 - Model lifecycle intent and progress explicitly. Do not rely on a resource `status` field alone to represent requested work, queued work, and recovery state.
-- Every new async lifecycle must define how it handles lost daemon results, expired commands, reconnect reconciliation, and repeated requests.
+- Commands are live host RPCs that succeed, fail, or time out; there is no persisted command queue. Durability lives in intent persisted on resource rows, recovered by the periodic sweeps in `apps/server/src/services/system/periodic-sweeps.ts` (`durable-intent-retry` and `orphan-cleanup` categories). Every new async lifecycle must define how it handles lost results from failed or timed-out RPCs, reconnect reconciliation, and idempotent repeated requests.
 
 ## Server And Daemon Ownership
 

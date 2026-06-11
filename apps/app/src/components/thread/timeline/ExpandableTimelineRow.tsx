@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useState,
+  type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -42,12 +43,15 @@ export interface ExpandableTimelineRowProps {
   expandable?: boolean;
   horizontalPadding?: TimelineRowHorizontalPadding;
   leadingIcon?: IconName;
+  /** Extra classes on the header summary line only (not the expanded body). */
+  summaryClassName?: string;
   onTitleAction?: TimelineTitleActionResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
 }
 
 type ManualExpansionOverride = boolean | null;
 type CollapsedPreviewClickEvent = MouseEvent<HTMLDivElement>;
+type CollapsedPreviewFocusEvent = FocusEvent<HTMLDivElement>;
 type CollapsedPreviewKeyboardEvent = KeyboardEvent<HTMLDivElement>;
 
 interface InteractivePreviewTargetArgs {
@@ -83,6 +87,7 @@ function ExpandableTimelineRowComponent({
   onTitleAction,
   renderBody,
   resolveSegmentLinkHref,
+  summaryClassName,
   terminalAutoExpanded = false,
   title,
 }: ExpandableTimelineRowProps) {
@@ -90,6 +95,7 @@ function ExpandableTimelineRowComponent({
     useState<ManualExpansionOverride>(null);
   const [terminalAutoExpandedLatch, setTerminalAutoExpandedLatch] =
     useState(terminalAutoExpanded);
+  const [collapsedPreviewActive, setCollapsedPreviewActive] = useState(false);
   useEffect(() => {
     if (terminalAutoExpanded) {
       setTerminalAutoExpandedLatch(true);
@@ -99,6 +105,11 @@ function ExpandableTimelineRowComponent({
     expandable &&
     (manualExpansionOverride ??
       (autoExpanded || terminalAutoExpanded || terminalAutoExpandedLatch));
+  useEffect(() => {
+    if (isExpanded) {
+      setCollapsedPreviewActive(false);
+    }
+  }, [isExpanded]);
   const horizontalPaddingClass =
     timelineRowHorizontalPaddingClassName(horizontalPadding);
   const handleToggle = useCallback((): void => {
@@ -134,6 +145,18 @@ function ExpandableTimelineRowComponent({
     },
     [handleToggle],
   );
+  const handleCollapsedPreviewBlur = useCallback(
+    (event: CollapsedPreviewFocusEvent): void => {
+      if (
+        event.relatedTarget instanceof Node &&
+        event.currentTarget.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      setCollapsedPreviewActive(false);
+    },
+    [],
+  );
 
   return (
     <ExpandablePanel
@@ -156,6 +179,16 @@ function ExpandableTimelineRowComponent({
             tabIndex={expandable ? 0 : undefined}
             aria-expanded={expandable ? isExpanded : undefined}
             onClick={expandable ? handleCollapsedPreviewClick : undefined}
+            onMouseEnter={
+              expandable ? () => setCollapsedPreviewActive(true) : undefined
+            }
+            onMouseLeave={
+              expandable ? () => setCollapsedPreviewActive(false) : undefined
+            }
+            onFocus={
+              expandable ? () => setCollapsedPreviewActive(true) : undefined
+            }
+            onBlur={expandable ? handleCollapsedPreviewBlur : undefined}
             onKeyDown={
               expandable ? handleCollapsedPreviewKeyDown : undefined
             }
@@ -165,7 +198,12 @@ function ExpandableTimelineRowComponent({
         ) : null
       }
       summaryContent={
-        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+        <span
+          className={cn(
+            "inline-flex min-w-0 max-w-full items-center gap-1.5",
+            summaryClassName,
+          )}
+        >
           {leadingIcon ? (
             <Icon
               name={leadingIcon}
@@ -181,6 +219,9 @@ function ExpandableTimelineRowComponent({
         </span>
       }
       summaryContentClassName={TIMELINE_ROW_HEADER_CONTENT_CLASS_NAME}
+      forceHeaderChevronVisible={
+        expandable && !isExpanded && collapsedPreviewActive
+      }
       className={cn("w-full", className)}
       headerClassName={timelineRowHeaderClassName(horizontalPadding)}
       contentClassName={cn(horizontalPaddingClass, "pb-1 pt-0.5")}

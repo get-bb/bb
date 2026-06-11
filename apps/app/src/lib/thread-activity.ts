@@ -19,8 +19,9 @@ export function isBusyThread(thread: ThreadRuntimeShape): boolean {
  * A collapsed row renders these through its single trailing status glyph, using
  * the same priority as a leaf row (pending > working > unread): a child blocked
  * on the user shows the attention dot, else a working child spins, else an
- * unread child shows the unread dot. (Expanded rows show their own status, since
- * the children are then visible with their own glyphs.)
+ * unread child shows the unread dot. `unreadError` only colors that final unread
+ * state. Expanded rows show their own status, since the children are then
+ * visible with their own glyphs.
  */
 export interface CollapsedChildActivity {
   /** At least one child is blocked on the user (needs input). */
@@ -33,12 +34,15 @@ export interface CollapsedChildActivity {
    * and managed-subgroup rollups never set this.
    */
   unread: boolean;
+  /** At least one unread child has reached the terminal error state. */
+  unreadError: boolean;
 }
 
 export const NO_COLLAPSED_CHILD_ACTIVITY: CollapsedChildActivity = {
   pending: false,
   working: false,
   unread: false,
+  unreadError: false,
 };
 
 type ThreadActivityShape = ThreadStatusShape &
@@ -52,6 +56,7 @@ export function getCollapsedChildActivity(
   let pending = false;
   let working = false;
   let unread = false;
+  let unreadError = false;
   for (const thread of threads) {
     if (thread.hasPendingInteraction) {
       // Mirror leaf rows: a blocked thread reads as pending, not also working.
@@ -62,9 +67,12 @@ export function getCollapsedChildActivity(
       working = true;
     } else if (isUnreadDoneThread(thread)) {
       unread = true;
+      if (thread.status === "error") {
+        unreadError = true;
+      }
     }
   }
-  return { pending, working, unread };
+  return { pending, working, unread, unreadError };
 }
 
 export function isUnreadDoneThread(thread: ThreadStatusShape): boolean {

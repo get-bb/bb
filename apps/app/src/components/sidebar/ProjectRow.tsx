@@ -49,6 +49,7 @@ import {
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import type { CollapsedChildActivity } from "@/lib/thread-activity";
@@ -75,10 +76,9 @@ import {
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
-import {
-  type SidebarSortableDragBindings,
-} from "./sortableMotion";
-import type { ConsumeDragClickSuppression } from "./useDragClickSuppression";
+import { type SidebarSortableDragBindings } from "./sortableMotion";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
+import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 
 // Pin the project row plus this many parent levels (parent threads,
 // worktree group headers); rows deeper than the cap render non-sticky so a deep
@@ -208,7 +208,6 @@ interface EnvironmentThreadGroupHeaderProps {
   rowDepth: number;
   stickyLevel?: number;
   parentLineDepth?: number;
-  childCount: number;
   childActivity: CollapsedChildActivity;
   isCollapsed: boolean;
   archiveThreadsPending?: boolean;
@@ -600,7 +599,6 @@ function EnvironmentThreadGroupHeader({
   rowDepth,
   stickyLevel,
   parentLineDepth,
-  childCount,
   childActivity,
   isCollapsed,
   archiveThreadsPending = false,
@@ -630,7 +628,6 @@ function EnvironmentThreadGroupHeader({
     (childActivity.pending || childActivity.working || childActivity.unread);
   const className = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-    "group/env-row",
     // A pinned header is already a positioned (sticky) box for its absolute
     // children; adding `relative` (a utility-layer rule) would override the
     // component-layer `position: sticky` and silently un-stick it. Only the
@@ -650,15 +647,8 @@ function EnvironmentThreadGroupHeader({
       )}
       <button
         type="button"
-        aria-expanded={!isCollapsed}
-        aria-label={
-          isCollapsed
-            ? `Expand ${headerTitle} threads`
-            : `Collapse ${headerTitle} threads`
-        }
-        title={
-          isCollapsed ? "Expand worktree threads" : "Collapse worktree threads"
-        }
+        aria-hidden="true"
+        tabIndex={-1}
         onClick={() => {
           onToggleCollapsed(environmentId);
         }}
@@ -671,40 +661,30 @@ function EnvironmentThreadGroupHeader({
         )}
         aria-hidden="true"
       >
-        <span
-          className={cn(
-            "absolute inline-flex items-center justify-center opacity-100 transition-opacity duration-150 group-hover/env-row:opacity-0 group-has-[:focus-visible]/env-row:opacity-0",
-            COARSE_POINTER_ICON_SIZE_CLASS,
-          )}
-        >
-          <Icon
-            name={iconName}
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-            aria-hidden="true"
-          />
-        </span>
-        <span
-          className={cn(
-            "absolute inline-flex items-center justify-center opacity-0 transition-all duration-150 group-hover/env-row:opacity-100 group-has-[:focus-visible]/env-row:opacity-100",
-            COARSE_POINTER_ICON_SIZE_CLASS,
-            !isCollapsed && "rotate-90",
-          )}
-        >
-          <Icon
-            name="ChevronRight"
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-            aria-hidden="true"
-          />
-        </span>
+        <Icon
+          name={iconName}
+          className={COARSE_POINTER_ICON_SIZE_CLASS}
+          aria-hidden="true"
+        />
       </span>
-      <span className="pointer-events-none relative z-10 min-w-0 flex-1 truncate text-left">
-        <span>{environmentName ?? "Worktree"}</span>
-        {branchName ? (
-          <>
-            <span>{environmentName ? " · " : ": "}</span>
-            <span className="text-muted-foreground">{branchName}</span>
-          </>
-        ) : null}
+      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+        <span className="min-w-0 truncate">
+          <span>{environmentName ?? "Worktree"}</span>
+          {branchName ? (
+            <>
+              <span>{environmentName ? " · " : ": "}</span>
+              <span className="text-muted-foreground">{branchName}</span>
+            </>
+          ) : null}
+        </span>
+        <SidebarChildToggleChevron
+          isCollapsed={isCollapsed}
+          expandLabel={`Expand ${headerTitle} threads`}
+          collapseLabel={`Collapse ${headerTitle} threads`}
+          expandTitle="Expand worktree threads"
+          collapseTitle="Collapse worktree threads"
+          onToggle={() => onToggleCollapsed(environmentId)}
+        />
       </span>
       <span
         className={cn(
@@ -724,6 +704,7 @@ function EnvironmentThreadGroupHeader({
               hasPendingInteraction={childActivity.pending}
               isBusy={childActivity.working}
               showUnreadBadge={childActivity.unread}
+              unreadBadgeTone={childActivity.unreadError ? "error" : "default"}
             />
           </span>
         ) : null}
@@ -835,7 +816,6 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
             node: representativeNode,
           })}
           parentLineDepth={parentLineDepth}
-          childCount={stats.childCount}
           childActivity={stats.childActivity}
           isCollapsed={isCollapsed}
           archiveThreadsPending={archiveThreadsPending}
@@ -1174,7 +1154,7 @@ function ProjectRowComponent({
               "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
               isActive
                 ? "bg-sidebar-border text-sidebar-foreground"
-                : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
               projectDragBindings &&
                 !projectDragBindings.disabled &&
                 "select-none cursor-grab active:cursor-grabbing",
@@ -1185,17 +1165,8 @@ function ProjectRowComponent({
           >
             <button
               type="button"
-              aria-expanded={!isCollapsed}
-              aria-label={
-                isCollapsed
-                  ? `Expand ${project.name}`
-                  : `Collapse ${project.name}`
-              }
-              title={
-                isCollapsed
-                  ? "Expand project threads"
-                  : "Collapse project threads"
-              }
+              aria-hidden="true"
+              tabIndex={-1}
               onClick={handleProjectRowToggle}
               className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
             />
@@ -1206,41 +1177,21 @@ function ProjectRowComponent({
               )}
               aria-hidden
             >
-              <span
-                className={cn(
-                  "relative inline-flex items-center justify-center",
-                  COARSE_POINTER_ICON_SIZE_CLASS,
-                )}
-              >
-                <Icon
-                  name="ChevronRight"
-                  className={cn(
-                    "absolute opacity-0 transition-all duration-150 group-hover/project-row:opacity-100",
-                    COARSE_POINTER_ICON_SIZE_CLASS,
-                    !isCollapsed && "rotate-90",
-                  )}
-                />
-                {isCollapsed ? (
-                  <Icon
-                    name="Folder"
-                    className={cn(
-                      "absolute opacity-100 transition-opacity duration-150 group-hover/project-row:opacity-0",
-                      COARSE_POINTER_ICON_SIZE_CLASS,
-                    )}
-                  />
-                ) : (
-                  <Icon
-                    name="FolderOpen"
-                    className={cn(
-                      "absolute opacity-100 transition-opacity duration-150 group-hover/project-row:opacity-0",
-                      COARSE_POINTER_ICON_SIZE_CLASS,
-                    )}
-                  />
-                )}
-              </span>
+              <Icon
+                name={isCollapsed ? "Folder" : "FolderOpen"}
+                className={COARSE_POINTER_ICON_SIZE_CLASS}
+              />
             </span>
-            <span className="pointer-events-none relative z-10 min-w-0 flex-1 truncate text-left">
-              {project.name}
+            <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+              <span className="min-w-0 truncate">{project.name}</span>
+              <SidebarChildToggleChevron
+                isCollapsed={isCollapsed}
+                expandLabel={`Expand ${project.name}`}
+                collapseLabel={`Collapse ${project.name}`}
+                expandTitle="Expand project threads"
+                collapseTitle="Collapse project threads"
+                onToggle={handleProjectRowToggle}
+              />
             </span>
             {isLocalPathInvalid ? (
               <NavLink
@@ -1265,6 +1216,9 @@ function ProjectRowComponent({
             <span
               data-sidebar-hover-actions-open={
                 isActionsOpen ? "true" : undefined
+              }
+              data-sidebar-hover-actions-mobile={
+                SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
               }
               className={cn(
                 SIDEBAR_HOVER_ACTIONS_CLASS,

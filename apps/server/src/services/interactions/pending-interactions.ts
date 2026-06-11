@@ -22,9 +22,7 @@ import {
   type PendingInteractionResolution,
   type ThreadChangeMetadata,
 } from "@bb/domain";
-import type {
-  HostDaemonCommand,
-} from "@bb/host-daemon-contract";
+import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import type { CommandResultReportForType } from "../../internal/command-result-side-effects.js";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -617,7 +615,7 @@ export class PendingInteractionLifecycle {
           command,
           hostId: environment.hostId,
           timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-          onError: (error) => {
+          onError: ({ error }) => {
             this.deps.logger.warn(
               { err: error, interactionId: args.interaction.id },
               "Live interactive resolve command failed",

@@ -6,7 +6,10 @@ import type {
   ThreadQueuedMessage,
   WorkspaceStatus,
 } from "@bb/domain";
-import { formatEnvironmentDisplay } from "@bb/core-ui";
+import {
+  formatEnvironmentDisplay,
+  type EnvironmentDisplayHostContext,
+} from "@bb/core-ui";
 import type { ThreadContextWindowUsage } from "@bb/server-contract";
 import {
   FollowUpPromptBox,
@@ -14,9 +17,10 @@ import {
 } from "@/components/promptbox/FollowUpPromptBox";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
-import type {
-  AttachmentsConfig,
-  MentionsConfig,
+import {
+  INERT_TYPEAHEAD_COMMAND_CONFIG,
+  type AttachmentsConfig,
+  type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
@@ -75,17 +79,20 @@ const basePermission = {
 
 interface EnvironmentSummaryArgs {
   environment: Environment;
+  host: EnvironmentDisplayHostContext;
   branchName?: string;
   onCreateNewThreadInWorktree?: () => void;
 }
 
 function makeEnvironmentSummary({
   environment,
+  host,
   branchName,
   onCreateNewThreadInWorktree,
 }: EnvironmentSummaryArgs): ReactNode {
   const display = formatEnvironmentDisplay({
     environment,
+    host,
   });
   return (
     <ThreadEnvironmentSummary
@@ -100,6 +107,14 @@ function makeEnvironmentSummary({
   );
 }
 
+const localEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "local",
+};
+
+const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "remote",
+};
+
 const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   environment: makeEnvironment({
     managed: false,
@@ -107,6 +122,18 @@ const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     workspaceProvisionType: "unmanaged",
     status: "ready",
   }),
+  host: localEnvironmentDisplayHost,
+  branchName: "bb/promptbox-stories",
+});
+
+const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
+  environment: makeEnvironment({
+    managed: false,
+    isWorktree: false,
+    workspaceProvisionType: "unmanaged",
+    status: "ready",
+  }),
+  host: remoteEnvironmentDisplayHost,
   branchName: "bb/promptbox-stories",
 });
 
@@ -116,6 +143,7 @@ const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     workspaceProvisionType: "managed-worktree",
     status: "ready",
   }),
+  host: localEnvironmentDisplayHost,
   branchName: "bb/promptbox-stories",
   // Worktree threads expose a "new thread in this worktree" affordance —
   // production wires it to the new-thread route. The story just needs a
@@ -135,6 +163,7 @@ const provisioningEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     workspaceProvisionType: "managed-worktree",
     status: "ready",
   }),
+  host: localEnvironmentDisplayHost,
 });
 
 const usage: ThreadContextWindowUsage = {
@@ -147,11 +176,14 @@ const usage: ThreadContextWindowUsage = {
 // Mentions + attachments + history (mostly empty fixtures)
 // ---------------------------------------------------------------------------
 
-const mentionsBase: MentionsConfig = {
-  suggestions: [],
-  isLoading: false,
-  isError: false,
-  onQueryChange: noop,
+const typeaheadBase: TypeaheadConfig = {
+  mention: {
+    suggestions: [],
+    isLoading: false,
+    isError: false,
+    onQueryChange: noop,
+  },
+  command: INERT_TYPEAHEAD_COMMAND_CONFIG,
 };
 
 const attachmentsBase: AttachmentsConfig = {
@@ -226,6 +258,7 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
     gitSectionPending={false}
     parentThreadSection={null}
     childThreadsSection={null}
+    workflowsSection={null}
     expandedSection={null}
     onToggleSection={noop}
   />
@@ -272,6 +305,7 @@ const queuedMessagesElement: ReactNode = (
     sendDisabled={false}
     actionDisabled={false}
     processingMessageId={null}
+    processingAction={null}
     onSendImmediately={noop}
     onReorder={noop}
     onEdit={noop}
@@ -363,7 +397,7 @@ function Row({
         contextWindowUsage={contextWindowUsage}
         execution={baseExecution}
         permission={basePermission}
-        mentions={mentionsBase}
+        typeahead={typeaheadBase}
         zenModeResetKey={zenModeResetKey}
       />
     </PromptStage>
@@ -456,6 +490,12 @@ export function Overview() {
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={worktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow label="env: remote direct" hint="remote label + icon">
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={remoteEnvironmentSummary}
         />
       </StoryRow>
     </StoryCard>

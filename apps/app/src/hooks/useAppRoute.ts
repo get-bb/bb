@@ -8,12 +8,18 @@ export interface AppRouteState {
   threadId: string | undefined;
   /** ID of the global app in view (standalone app route only), else undefined. */
   applicationId: string | undefined;
+  /** ID of the workflow run in view (run page only), else undefined. */
+  workflowRunId: string | undefined;
   /** On the standalone app surface (`/apps/:applicationId`). */
   isAppView: boolean;
   /** On a thread detail URL. */
   isThreadView: boolean;
   /** On the project's archived threads list. */
   isArchivedView: boolean;
+  /** On the project's workflows tab. */
+  isWorkflowsView: boolean;
+  /** On the projectless workflow-run page (`/workflows/runs/:runId`). */
+  isWorkflowRunView: boolean;
   /** On the project settings page. */
   isSettingsView: boolean;
   /** On the app root ("/"). */
@@ -38,8 +44,16 @@ export function useAppRoute(): AppRouteState {
   );
   const projectlessThreadMatch = useMatch("/threads/:threadId/*");
   const projectArchivedMatch = useMatch("/projects/:projectId/archived");
+  const projectWorkflowsMatch = useMatch("/projects/:projectId/workflows");
   const projectSettingsMatch = useMatch("/projects/:projectId/settings");
   const appMatch = useMatch("/apps/:applicationId");
+  // The run page and its agent drill-in sub-route are the same logical view;
+  // both must resolve `workflowRunId` so the sidebar active state and the
+  // document title survive selecting an agent.
+  const workflowRunMatch = useMatch("/workflows/runs/:runId");
+  const workflowRunAgentMatch = useMatch(
+    "/workflows/runs/:runId/agents/:agentIndex",
+  );
   const isRootView = location.pathname === "/";
   const isUnsupportedPersonalProjectThread =
     projectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID;
@@ -61,11 +75,15 @@ export function useAppRoute(): AppRouteState {
     projectId,
     threadId,
     applicationId: appMatch?.params.applicationId,
+    workflowRunId:
+      workflowRunMatch?.params.runId ?? workflowRunAgentMatch?.params.runId,
     isAppView: Boolean(appMatch),
     isThreadView:
       Boolean(projectlessThreadMatch) ||
       (Boolean(projectThreadMatch) && !isUnsupportedPersonalProjectThread),
     isArchivedView: Boolean(projectArchivedMatch),
+    isWorkflowsView: Boolean(projectWorkflowsMatch),
+    isWorkflowRunView: Boolean(workflowRunMatch) || Boolean(workflowRunAgentMatch),
     isSettingsView: Boolean(projectSettingsMatch),
     isRootView,
     isProjectlessView: isRootView || projectlessThreadId !== undefined,

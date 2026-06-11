@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getBuiltInAgentProviderInfo,
+  getBuiltInAgentProviderServerCapabilities,
   listBuiltInAgentProviderInfos,
   PI_DEFAULT_MODEL_PER_PROVIDER,
   resolvePiDefaultModelId,
@@ -46,6 +47,27 @@ describe("agent provider catalog", () => {
         available: true,
       },
     ]);
+  });
+
+  it("declares the backend-only server capability facts per provider", () => {
+    expect(getBuiltInAgentProviderServerCapabilities("codex")).toEqual({
+      supportsWorkflows: false,
+      supportsExecutionOverride: false,
+      backsHostDaemonAiServices: true,
+      reasoningLevels: ["low", "medium", "high", "xhigh"],
+    });
+    expect(getBuiltInAgentProviderServerCapabilities("claude-code")).toEqual({
+      supportsWorkflows: true,
+      supportsExecutionOverride: true,
+      backsHostDaemonAiServices: false,
+      reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
+    });
+    expect(getBuiltInAgentProviderServerCapabilities("pi")).toEqual({
+      supportsWorkflows: false,
+      supportsExecutionOverride: false,
+      backsHostDaemonAiServices: false,
+      reasoningLevels: ["low", "medium", "high", "xhigh"],
+    });
   });
 
   it("returns cloned catalog entries", () => {

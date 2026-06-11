@@ -23,9 +23,15 @@ import {
   type Ref,
 } from "react";
 import type {
+  ActiveTrigger,
+  CommandMenuState,
   MentionMenuState,
+  ProviderCommandSuggestion,
   PromptMentionSuggestion,
+  TypeaheadMenuState,
+  TypeaheadTrigger,
 } from "@/components/promptbox/mentions/types";
+import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-trigger";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
@@ -34,6 +40,7 @@ import {
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
   COARSE_POINTER_TEXT_BASE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
+import { usePointerCoarse } from "@/components/ui/hooks/use-pointer-coarse.js";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
 import {
   arePromptDraftStatesEqual,
@@ -55,7 +62,7 @@ import {
   promptMentionResourceFromSuggestion,
   type PromptEditorValue,
 } from "./editor/prompt-editor-serialization";
-import { MentionMenu } from "./mentions/MentionMenu";
+import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 
 const PROMPTBOX_MIN_HEIGHT = 68;
@@ -127,14 +134,13 @@ export interface PromptBoxSubmissionConfig {
   isRunning?: boolean;
   onStop?: () => void;
   onModifierSubmit?: () => void;
-  /** When true, the submit button is enabled even when the textarea is
-   * empty and no attachments are present. Used by callers (e.g. the
-   * new-thread flow) where empty submission has a meaningful fallback
-   * server-side. */
-  allowEmptyInput?: boolean;
 }
 
-export interface MentionsConfig {
+/**
+ * The `@`-mention half of {@link TypeaheadConfig}. Unchanged from the prior
+ * `MentionsConfig` surface other than living under `typeahead.mention`.
+ */
+export interface TypeaheadMentionConfig {
   suggestions: readonly PromptMentionSuggestion[];
   isLoading: boolean;
   isError: boolean;
@@ -147,6 +153,50 @@ export interface MentionsConfig {
    */
   resolveLink?: PromptMentionLinkResolver;
 }
+
+/**
+ * The command-typeahead half of {@link TypeaheadConfig}. `trigger` is the
+ * provider's command char (`/` for Claude Code, `$` for Codex) or `null` when
+ * the provider has no command surface — in which case the composer never
+ * activates a command trigger and the rest of this config is inert.
+ *
+ * Hosts wire `suggestions` / `isLoading` / `isError` from
+ * `useCommandSuggestions`; `onQueryChange` feeds that hook the text typed
+ * after the trigger (`null` when no command trigger is active).
+ */
+export interface TypeaheadCommandConfig {
+  trigger: "/" | "$" | null;
+  suggestions: readonly ProviderCommandSuggestion[];
+  isLoading: boolean;
+  isError: boolean;
+  /** Called whenever the active command query changes; null when no command trigger is active. */
+  onQueryChange: (query: string | null) => void;
+}
+
+/**
+ * Generalized composer typeahead config covering both trigger kinds. `@`
+ * mentions are always available; commands are active only when
+ * `command.trigger` is non-null. Hosts supply both halves; the composer picks
+ * the active trigger from the caret and renders the matching data source.
+ */
+export interface TypeaheadConfig {
+  mention: TypeaheadMentionConfig;
+  command: TypeaheadCommandConfig;
+}
+
+/**
+ * Inert command half: no trigger, no suggestions, no-op query change. Hosts use
+ * it as `typeahead.command` until they wire real command data from
+ * `useCommandSuggestions`. With `trigger: null` the composer never activates a
+ * command trigger, so the rest of the fields are never read.
+ */
+export const INERT_TYPEAHEAD_COMMAND_CONFIG: TypeaheadCommandConfig = {
+  trigger: null,
+  suggestions: [],
+  isLoading: false,
+  isError: false,
+  onQueryChange: () => {},
+};
 
 export interface AttachmentsConfig {
   items?: PromptDraftAttachment[];
@@ -205,7 +255,6 @@ export interface PromptBoxInternalProps {
    * "Reusing existing worktree" banner when env mode is set to reuse. */
   header?: ReactNode;
   footerStart?: ReactNode;
-  autoFocus?: boolean;
   submission?: PromptBoxSubmissionConfig;
   /**
    * Minimum textarea height in pixels. Defaults to PROMPTBOX_MIN_HEIGHT.
@@ -214,9 +263,9 @@ export interface PromptBoxInternalProps {
    * the context banner stack) — total prompt-area height stays constant.
    */
   minHeight?: number;
-  mentions: MentionsConfig;
+  typeahead: TypeaheadConfig;
   /**
-   * Where the @-mention menu floats relative to the prompt box.
+   * Where the typeahead menu floats relative to the prompt box.
    * "top" floats it above (used by FollowUp where the prompt sits at the
    * bottom of the thread), "bottom" floats it below (used by NewThread
    * where the prompt sits at the top of the project view).
@@ -230,16 +279,10 @@ export interface PromptBoxInternalProps {
   promptBoxRef?: Ref<PromptBoxHandle>;
 }
 
-interface DismissedMentionRange {
+interface DismissedTriggerRange {
   start: number;
   end: number;
   hasLeftRange: boolean;
-}
-
-interface ActiveEditorMention {
-  query: string;
-  from: number;
-  to: number;
 }
 
 interface PromptEditorValueKey {
@@ -247,7 +290,7 @@ interface PromptEditorValueKey {
   mentions: readonly PromptTextMention[];
 }
 
-const EDITOR_MENTION_PATTERN = /(^|[\s([{])@([^\s@]*)$/u;
+const MENTION_TRIGGER: TypeaheadTrigger = { char: "@", kind: "mention" };
 
 interface PromptEditorSelectionRevealArgs {
   editor: Editor;
@@ -460,30 +503,6 @@ function promptEditorValueFromClipboardPaste(
   return promptEditorValueFromRichHtml(html).value;
 }
 
-function findActiveEditorMention(editor: Editor): ActiveEditorMention | null {
-  const selection = editor.state.selection;
-  if (!selection.empty) return null;
-
-  const textBeforeCursor = editor.state.doc.textBetween(
-    0,
-    selection.from,
-    "\n",
-    "\n",
-  );
-  const match = EDITOR_MENTION_PATTERN.exec(textBeforeCursor);
-  if (!match) return null;
-
-  const query = match[2] ?? "";
-  const from = selection.from - query.length - 1;
-  if (from < 0) return null;
-
-  return {
-    query,
-    from,
-    to: selection.from,
-  };
-}
-
 function revealPromptEditorSelection({
   editor,
   scrollContainer,
@@ -535,10 +554,9 @@ export function PromptBoxInternal({
   className,
   header,
   footerStart,
-  autoFocus = false,
   submission = {},
   minHeight = PROMPTBOX_MIN_HEIGHT,
-  mentions,
+  typeahead,
   mentionMenuPlacement,
   attachments: attachmentConfig = {},
   zenMode = {},
@@ -553,7 +571,6 @@ export function PromptBoxInternal({
     isRunning = false,
     onStop,
     onModifierSubmit,
-    allowEmptyInput = false,
   } = submission;
   const {
     suggestions: mentionSuggestions,
@@ -561,7 +578,14 @@ export function PromptBoxInternal({
     isError: mentionError,
     onQueryChange: onMentionQueryChange,
     resolveLink: mentionResolveLink,
-  } = mentions;
+  } = typeahead.mention;
+  const {
+    trigger: commandTriggerChar,
+    suggestions: commandSuggestions,
+    isLoading: commandLoading,
+    isError: commandError,
+    onQueryChange: onCommandQueryChange,
+  } = typeahead.command;
   const {
     items: attachments = [],
     isAttaching = false,
@@ -576,6 +600,11 @@ export function PromptBoxInternal({
     resetKey: zenModeResetKey,
     resetOnSubmit: resetZenModeOnSubmit = false,
   } = zenMode;
+  const isPointerCoarse = usePointerCoarse();
+  const canSubmitWithEnterKey = !isPointerCoarse;
+  const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
+  // Passive text autofocus opens the soft keyboard on coarse-pointer devices.
+  const shouldAvoidSoftKeyboardAutofocus = isPointerCoarse;
   const formRef = useRef<HTMLFormElement>(null);
   const heightAnimationFromRef = useRef<number | null>(null);
   const editorRef = useRef<Editor | null>(null);
@@ -587,16 +616,23 @@ export function PromptBoxInternal({
   const placeholderRef = useRef(placeholder);
   const skipEditorChangeRef = useRef(false);
   const editorValueKeyRef = useRef("");
-  const mentionKeyRef = useRef("");
+  const triggerKeyRef = useRef("");
   const handleEditorKeyDownRef = useRef<(event: KeyboardEvent) => boolean>(
     () => false,
   );
+  // The TipTap editor is created once; its `onUpdate`/`onSelectionUpdate`/click
+  // handlers close over the first `syncTriggerState`. `syncTriggerState`
+  // depends on the active trigger set, which changes when the thread's provider
+  // (command trigger) changes — so route those handlers through a ref kept
+  // pointed at the latest closure, mirroring `handleEditorKeyDownRef`.
+  const syncTriggerStateRef = useRef<(editor: Editor) => void>(() => {});
   const onAttachFilesRef = useRef(onAttachFiles);
-  const dismissedMentionRef = useRef<DismissedMentionRange | null>(null);
+  const dismissedTriggerRef = useRef<DismissedTriggerRange | null>(null);
   const isRestoringAppliedMentionRef = useRef(false);
-  const [activeMention, setActiveMention] =
-    useState<ActiveEditorMention | null>(null);
-  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
+  const [activeTrigger, setActiveTrigger] = useState<ActiveTrigger | null>(
+    null,
+  );
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(
     null,
   );
@@ -624,7 +660,7 @@ export function PromptBoxInternal({
     [resolvedZenModeStorageKey],
   );
   const [isZenMode, setIsZenMode] = useAtom(zenModeAtom);
-  const autoFocusScopeKey = history?.resetKey;
+  const focusScopeKey = history?.resetKey;
   const onChangeRef = useRef(onChange);
 
   useEffect(() => {
@@ -669,52 +705,89 @@ export function PromptBoxInternal({
     };
   }, []);
 
-  const syncMentionState = useCallback(
+  // Active trigger set: `@` is always watched; the provider's command trigger
+  // joins it when present. A thread is bound to one provider, so this is at
+  // most two entries with distinct lead chars — never any trigger ambiguity.
+  const triggers = useMemo<TypeaheadTrigger[]>(() => {
+    if (commandTriggerChar === null) {
+      return [MENTION_TRIGGER];
+    }
+    return [
+      MENTION_TRIGGER,
+      { char: commandTriggerChar, kind: "command" },
+    ];
+  }, [commandTriggerChar]);
+
+  // Fan the active query out to the matching data source and null the other,
+  // so switching from `@foo` to `/bar` (or vice versa) clears the stale query.
+  const dispatchTriggerQuery = useCallback(
+    (active: ActiveTrigger | null) => {
+      if (active?.kind === "mention") {
+        onMentionQueryChange(active.query);
+        onCommandQueryChange(null);
+        return;
+      }
+      if (active?.kind === "command") {
+        onCommandQueryChange(active.query);
+        onMentionQueryChange(null);
+        return;
+      }
+      onMentionQueryChange(null);
+      onCommandQueryChange(null);
+    },
+    [onCommandQueryChange, onMentionQueryChange],
+  );
+
+  const syncTriggerState = useCallback(
     (editor: Editor) => {
       const caretPosition = editor.state.selection.from;
-      const dismissedMention = dismissedMentionRef.current;
+      const dismissedTrigger = dismissedTriggerRef.current;
       const isRestoringAppliedMention =
-        isRestoringAppliedMentionRef.current && dismissedMention !== null;
+        isRestoringAppliedMentionRef.current && dismissedTrigger !== null;
 
-      if (dismissedMention && !isRestoringAppliedMention) {
+      if (dismissedTrigger && !isRestoringAppliedMention) {
         const isWithinDismissedRange =
-          caretPosition >= dismissedMention.start &&
-          caretPosition <= dismissedMention.end;
+          caretPosition >= dismissedTrigger.start &&
+          caretPosition <= dismissedTrigger.end;
 
         if (!isWithinDismissedRange) {
-          dismissedMentionRef.current = {
-            ...dismissedMention,
+          dismissedTriggerRef.current = {
+            ...dismissedTrigger,
             hasLeftRange: true,
           };
-        } else if (dismissedMention.hasLeftRange) {
-          dismissedMentionRef.current = null;
+        } else if (dismissedTrigger.hasLeftRange) {
+          dismissedTriggerRef.current = null;
         }
       }
 
-      const shouldSuppressMention = Boolean(
-        dismissedMentionRef.current &&
-        !dismissedMentionRef.current.hasLeftRange &&
+      const shouldSuppressTrigger = Boolean(
+        dismissedTriggerRef.current &&
+        !dismissedTriggerRef.current.hasLeftRange &&
         (isRestoringAppliedMention ||
-          (caretPosition >= dismissedMentionRef.current.start &&
-            caretPosition <= dismissedMentionRef.current.end)),
+          (caretPosition >= dismissedTriggerRef.current.start &&
+            caretPosition <= dismissedTriggerRef.current.end)),
       );
 
-      const nextMention = shouldSuppressMention
+      const nextTrigger = shouldSuppressTrigger
         ? null
-        : findActiveEditorMention(editor);
-      const nextKey = nextMention
-        ? `${nextMention.from}:${nextMention.to}:${nextMention.query}`
+        : findActiveTrigger(editor, triggers);
+      const nextKey = nextTrigger
+        ? `${nextTrigger.kind}:${nextTrigger.from}:${nextTrigger.to}:${nextTrigger.query}`
         : "";
-      if (nextKey !== mentionKeyRef.current) {
-        mentionKeyRef.current = nextKey;
-        setSelectedMentionIndex(0);
+      if (nextKey !== triggerKeyRef.current) {
+        triggerKeyRef.current = nextKey;
+        setSelectedIndex(0);
       }
-      setActiveMention(nextMention);
+      setActiveTrigger(nextTrigger);
 
-      onMentionQueryChange(nextMention ? nextMention.query : null);
+      dispatchTriggerQuery(nextTrigger);
     },
-    [onMentionQueryChange],
+    [dispatchTriggerQuery, triggers],
   );
+
+  useEffect(() => {
+    syncTriggerStateRef.current = syncTriggerState;
+  }, [syncTriggerState]);
 
   const editor = useEditor({
     extensions: [
@@ -753,28 +826,29 @@ export function PromptBoxInternal({
           "min-h-full whitespace-pre-wrap break-words outline-none",
           "placeholder:select-none placeholder:text-subtle-foreground",
         ),
-        enterkeyhint: "send",
+        enterkeyhint: editorEnterKeyHint,
         ...(id ? { id } : {}),
         role: "textbox",
       },
       handleDOMEvents: {
         blur: () => {
-          mentionKeyRef.current = "";
-          if (dismissedMentionRef.current) {
-            dismissedMentionRef.current = {
-              ...dismissedMentionRef.current,
+          triggerKeyRef.current = "";
+          if (dismissedTriggerRef.current) {
+            dismissedTriggerRef.current = {
+              ...dismissedTriggerRef.current,
               hasLeftRange: true,
             };
           }
-          setActiveMention(null);
+          setActiveTrigger(null);
           onMentionQueryChange(null);
+          onCommandQueryChange(null);
           return false;
         },
       },
       handleClick: () => {
         const currentEditor = editorRef.current;
         if (!currentEditor) return false;
-        syncMentionState(currentEditor);
+        syncTriggerStateRef.current(currentEditor);
         return false;
       },
       handleKeyDown: (_view, event) => {
@@ -818,7 +892,7 @@ export function PromptBoxInternal({
       });
     },
     onSelectionUpdate({ editor: updatedEditor }) {
-      syncMentionState(updatedEditor);
+      syncTriggerStateRef.current(updatedEditor);
       scheduleRevealEditorSelection();
     },
     onUpdate({ editor: updatedEditor }) {
@@ -826,7 +900,7 @@ export function PromptBoxInternal({
       const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
       editorValueKeyRef.current = promptEditorValueKey(nextValue);
       onChangeRef.current(nextValue.text, nextValue.mentions);
-      syncMentionState(updatedEditor);
+      syncTriggerStateRef.current(updatedEditor);
       scheduleRevealEditorSelection();
     },
   });
@@ -841,16 +915,22 @@ export function PromptBoxInternal({
 
     editor.view.dom.setAttribute("aria-label", placeholder);
     editor.view.dom.setAttribute("data-placeholder", placeholder);
+    editor.view.dom.setAttribute("enterkeyhint", editorEnterKeyHint);
     editor.view.dispatch(editor.state.tr);
-  }, [editor, placeholder]);
+  }, [editor, editorEnterKeyHint, placeholder]);
 
   useLayoutEffect(() => {
-    if (!autoFocus) return;
+    if (shouldAvoidSoftKeyboardAutofocus) return;
     if (!editor) return;
 
     editor.commands.focus("end");
     scheduleRevealEditorSelection();
-  }, [autoFocus, autoFocusScopeKey, editor, scheduleRevealEditorSelection]);
+  }, [
+    editor,
+    focusScopeKey,
+    scheduleRevealEditorSelection,
+    shouldAvoidSoftKeyboardAutofocus,
+  ]);
 
   useEffect(() => {
     mentionRangesRef.current = mentionRanges;
@@ -878,13 +958,13 @@ export function PromptBoxInternal({
     } finally {
       skipEditorChangeRef.current = false;
     }
-    syncMentionState(editor);
+    syncTriggerState(editor);
     scheduleRevealEditorSelection();
   }, [
     editor,
     mentionRanges,
     scheduleRevealEditorSelection,
-    syncMentionState,
+    syncTriggerState,
     value,
   ]);
 
@@ -988,53 +1068,112 @@ export function PromptBoxInternal({
   const trimmedValue = value.trim();
   const hasAttachments = attachments.length > 0;
   const hasSubmittableInput = trimmedValue.length > 0 || hasAttachments;
-  const showMentionMenu = activeMention !== null;
-  const activeMentionQuery = activeMention?.query.trim() ?? "";
+
+  const activeTriggerKind = activeTrigger?.kind ?? null;
+  // The suggestion list driving keyboard nav + Enter/Tab apply for whichever
+  // trigger is active. Empty when no trigger is open. Memoized so the keyboard
+  // handler's useCallback identity is stable across renders.
+  const activeSuggestions = useMemo<readonly TypeaheadSuggestion[]>(
+    () =>
+      activeTriggerKind === "command"
+        ? commandSuggestions
+        : activeTriggerKind === "mention"
+          ? mentionSuggestions
+          : [],
+    [activeTriggerKind, commandSuggestions, mentionSuggestions],
+  );
+
   const mentionMenuState: MentionMenuState =
-    activeMentionQuery.length === 0
+    (activeTrigger?.query.trim() ?? "").length === 0
       ? { kind: "hint" }
       : mentionLoading
         ? { kind: "loading" }
         : mentionError
           ? { kind: "error" }
-          : {
-              kind: "results",
-              suggestions: mentionSuggestions,
-            };
+          : { kind: "results", suggestions: mentionSuggestions };
+
+  const commandMenuState: CommandMenuState = commandLoading
+    ? { kind: "loading" }
+    : commandError
+      ? { kind: "error" }
+      : { kind: "results", suggestions: commandSuggestions };
+
+  // Loaded-empty suppression (§6): a command trigger with zero loaded results
+  // (not loading, not error) is literal text — never open the menu. Mention
+  // triggers always open (they have a hint / "no matches" state).
+  const isCommandTriggerLiteral =
+    activeTriggerKind === "command" &&
+    !commandLoading &&
+    !commandError &&
+    commandSuggestions.length === 0;
+  const showTypeaheadMenu = activeTrigger !== null && !isCommandTriggerLiteral;
+
+  const typeaheadMenuState: TypeaheadMenuState =
+    activeTriggerKind === "command"
+      ? { trigger: "command", state: commandMenuState }
+      : { trigger: "mention", state: mentionMenuState };
 
   useEffect(() => {
-    if (mentionSuggestions.length === 0) {
-      setSelectedMentionIndex(0);
+    if (activeSuggestions.length === 0) {
+      setSelectedIndex(0);
       return;
     }
-    if (selectedMentionIndex >= mentionSuggestions.length) {
-      setSelectedMentionIndex(0);
+    if (selectedIndex >= activeSuggestions.length) {
+      setSelectedIndex(0);
     }
-  }, [mentionSuggestions.length, selectedMentionIndex]);
+  }, [activeSuggestions.length, selectedIndex]);
 
-  const applyMention = useCallback(
+  // After applying any suggestion the editor content changed outside React's
+  // controlled flow; emit the controlled change, then re-focus, re-sync the
+  // trigger state, and reveal the caret on the next frame. Shared by the
+  // mention and command apply paths.
+  const finishApply = useCallback(
+    (appliedEditor: Editor) => {
+      const nextValue = promptEditorValueFromDoc(appliedEditor.state.doc);
+      editorValueKeyRef.current = promptEditorValueKey(nextValue);
+      onChangeRef.current(nextValue.text, nextValue.mentions);
+
+      requestAnimationFrame(() => {
+        const nextEditor = editorRef.current;
+        if (!nextEditor || nextEditor.isDestroyed) {
+          isRestoringAppliedMentionRef.current = false;
+          return;
+        }
+        nextEditor.commands.focus();
+        syncTriggerState(nextEditor);
+        scheduleRevealEditorSelection();
+        isRestoringAppliedMentionRef.current = false;
+      });
+    },
+    [scheduleRevealEditorSelection, syncTriggerState],
+  );
+
+  const applyMentionSuggestion = useCallback(
     (item: PromptMentionSuggestion) => {
       const currentEditor = editorRef.current;
-      if (!currentEditor || !activeMention) return;
+      if (!currentEditor || activeTrigger === null) return;
 
       const serializedText = `@${item.replacement.trim()}`;
       const resource = promptMentionResourceFromSuggestion(item);
       const followingText = currentEditor.state.doc.textBetween(
-        activeMention.to,
-        Math.min(activeMention.to + 1, currentEditor.state.doc.content.size),
+        activeTrigger.to,
+        Math.min(activeTrigger.to + 1, currentEditor.state.doc.content.size),
         "\n",
         "\n",
       );
       const trailingText = /^\s/u.test(followingText) ? "" : " ";
-      mentionKeyRef.current = "";
-      dismissedMentionRef.current = {
-        start: activeMention.from,
-        end: activeMention.from + 2,
+      triggerKeyRef.current = "";
+      // Mention dismissed-range basis is node width: trigger char + the 1-wide
+      // pill atom in the post-replacement doc (`from` → `from + 2`). Do not
+      // change — pill re-trigger suppression depends on it.
+      dismissedTriggerRef.current = {
+        start: activeTrigger.from,
+        end: activeTrigger.from + 2,
         hasLeftRange: false,
       };
       isRestoringAppliedMentionRef.current = true;
-      setActiveMention(null);
-      setSelectedMentionIndex(0);
+      setActiveTrigger(null);
+      setSelectedIndex(0);
       onMentionQueryChange(null);
 
       try {
@@ -1042,7 +1181,7 @@ export function PromptBoxInternal({
         currentEditor
           .chain()
           .focus()
-          .deleteRange({ from: activeMention.from, to: activeMention.to })
+          .deleteRange({ from: activeTrigger.from, to: activeTrigger.to })
           .insertContent([
             {
               type: "mention",
@@ -1057,28 +1196,58 @@ export function PromptBoxInternal({
       } finally {
         skipEditorChangeRef.current = false;
       }
-      const nextValue = promptEditorValueFromDoc(currentEditor.state.doc);
-      editorValueKeyRef.current = promptEditorValueKey(nextValue);
-      onChangeRef.current(nextValue.text, nextValue.mentions);
-
-      requestAnimationFrame(() => {
-        const nextEditor = editorRef.current;
-        if (!nextEditor || nextEditor.isDestroyed) {
-          isRestoringAppliedMentionRef.current = false;
-          return;
-        }
-        nextEditor.commands.focus();
-        syncMentionState(nextEditor);
-        scheduleRevealEditorSelection();
-        isRestoringAppliedMentionRef.current = false;
-      });
+      finishApply(currentEditor);
     },
-    [
-      activeMention,
-      onMentionQueryChange,
-      scheduleRevealEditorSelection,
-      syncMentionState,
-    ],
+    [activeTrigger, finishApply, onMentionQueryChange],
+  );
+
+  const applyCommandSuggestion = useCallback(
+    (item: ProviderCommandSuggestion) => {
+      const currentEditor = editorRef.current;
+      if (!currentEditor || activeTrigger === null) return;
+
+      // Commands insert the provider-native token as PLAIN TEXT (no pill):
+      // `<char><name> ` with a trailing space, caret after it.
+      const tokenText = `${activeTrigger.char}${item.name} `;
+      triggerKeyRef.current = "";
+      // Command dismissed-range is the typed token span (variable length), so an
+      // Escape after applying still suppresses re-trigger across the whole
+      // inserted token while the caret stays inside it.
+      dismissedTriggerRef.current = {
+        start: activeTrigger.from,
+        end: activeTrigger.from + tokenText.length,
+        hasLeftRange: false,
+      };
+      isRestoringAppliedMentionRef.current = true;
+      setActiveTrigger(null);
+      setSelectedIndex(0);
+      onCommandQueryChange(null);
+
+      try {
+        skipEditorChangeRef.current = true;
+        currentEditor
+          .chain()
+          .focus()
+          .deleteRange({ from: activeTrigger.from, to: activeTrigger.to })
+          .insertContent(tokenText)
+          .run();
+      } finally {
+        skipEditorChangeRef.current = false;
+      }
+      finishApply(currentEditor);
+    },
+    [activeTrigger, finishApply, onCommandQueryChange],
+  );
+
+  const applyTrigger = useCallback(
+    (item: TypeaheadSuggestion) => {
+      if (item.kind === "command") {
+        applyCommandSuggestion(item);
+        return;
+      }
+      applyMentionSuggestion(item);
+    },
+    [applyCommandSuggestion, applyMentionSuggestion],
   );
 
   const focusEnd = useCallback(() => {
@@ -1155,10 +1324,7 @@ export function PromptBoxInternal({
   const isVoiceBusy = isVoiceRecording || isVoiceProcessing;
   const showVoiceActionGroup = isVoiceRecording || isVoiceProcessing;
   const canSubmit =
-    (hasSubmittableInput || allowEmptyInput) &&
-    !isSubmitting &&
-    !submitDisabled &&
-    !isVoiceBusy;
+    hasSubmittableInput && !isSubmitting && !submitDisabled && !isVoiceBusy;
   const canModifierSubmit =
     onModifierSubmit !== undefined &&
     !isSubmitting &&
@@ -1219,11 +1385,11 @@ export function PromptBoxInternal({
         }
 
         currentEditor.commands.focus("end");
-        syncMentionState(currentEditor);
+        syncTriggerState(currentEditor);
         scheduleRevealEditorSelection();
       });
     },
-    [history, scheduleRevealEditorSelection, syncMentionState],
+    [history, scheduleRevealEditorSelection, syncTriggerState],
   );
 
   const toggleZenMode = useCallback(() => {
@@ -1296,58 +1462,58 @@ export function PromptBoxInternal({
         !hasArrowNavigationModifier &&
         hasCursorAtEnd &&
         (isPromptDraftEmpty(history.currentDraft) || hasSelectedHistoryEntry);
-      const canNavigateMentions =
-        showMentionMenu && !hasArrowNavigationModifier && !canNavigateHistory;
+      const canNavigateTypeahead =
+        showTypeaheadMenu && !hasArrowNavigationModifier && !canNavigateHistory;
 
-      if (showMentionMenu) {
+      if (showTypeaheadMenu) {
         if (
           event.key === "ArrowDown" &&
-          canNavigateMentions &&
-          mentionSuggestions.length > 0
+          canNavigateTypeahead &&
+          activeSuggestions.length > 0
         ) {
           event.preventDefault();
-          setSelectedMentionIndex(
-            (prev) => (prev + 1) % mentionSuggestions.length,
-          );
+          setSelectedIndex((prev) => (prev + 1) % activeSuggestions.length);
           return true;
         }
         if (
           event.key === "ArrowUp" &&
-          canNavigateMentions &&
-          mentionSuggestions.length > 0
+          canNavigateTypeahead &&
+          activeSuggestions.length > 0
         ) {
           event.preventDefault();
-          setSelectedMentionIndex(
+          setSelectedIndex(
             (prev) =>
-              (prev + mentionSuggestions.length - 1) %
-              mentionSuggestions.length,
+              (prev + activeSuggestions.length - 1) % activeSuggestions.length,
           );
           return true;
         }
         if (
           (event.key === "Enter" || event.key === "Tab") &&
-          mentionSuggestions.length > 0
+          activeSuggestions.length > 0
         ) {
           event.preventDefault();
           const selected =
-            mentionSuggestions[selectedMentionIndex] ?? mentionSuggestions[0];
+            activeSuggestions[selectedIndex] ?? activeSuggestions[0];
           if (selected) {
-            applyMention(selected);
+            applyTrigger(selected);
           }
           return true;
         }
         if (event.key === "Escape") {
           event.preventDefault();
-          mentionKeyRef.current = "";
-          if (activeMention) {
-            dismissedMentionRef.current = {
-              start: activeMention.from,
-              end: activeMention.to,
+          triggerKeyRef.current = "";
+          if (activeTrigger) {
+            // Escape dismisses the typed token span for both kinds — re-trigger
+            // stays suppressed while the caret remains inside `[from, to]`.
+            dismissedTriggerRef.current = {
+              start: activeTrigger.from,
+              end: activeTrigger.to,
               hasLeftRange: false,
             };
           }
-          setActiveMention(null);
+          setActiveTrigger(null);
           onMentionQueryChange(null);
+          onCommandQueryChange(null);
           return true;
         }
       }
@@ -1408,7 +1574,7 @@ export function PromptBoxInternal({
         return true;
       }
 
-      if (isZenMode) return false;
+      if (isZenMode || !canSubmitWithEnterKey) return false;
       const isSubmitKey = event.key === "Enter" && !event.shiftKey;
 
       if (!isSubmitKey) return false;
@@ -1418,17 +1584,19 @@ export function PromptBoxInternal({
     },
     [
       activeHistoryIndex,
-      activeMention,
+      activeSuggestions,
+      activeTrigger,
       applyHistoryDraft,
-      applyMention,
+      applyTrigger,
+      canSubmitWithEnterKey,
       history,
       isZenMode,
-      mentionSuggestions,
+      onCommandQueryChange,
       onMentionQueryChange,
       onModifierSubmit,
       resetHistorySession,
-      selectedMentionIndex,
-      showMentionMenu,
+      selectedIndex,
+      showTypeaheadMenu,
       submitModifierPrompt,
       submitPrompt,
       temporaryHistoryDraft,
@@ -1457,7 +1625,7 @@ export function PromptBoxInternal({
         emitAttachmentFiles(Array.from(event.dataTransfer.files));
       }}
       className={cn(
-        "relative w-full rounded-lg border border-border bg-background pb-2",
+        "relative w-full rounded-lg border border-border bg-background pb-2 shadow-lift",
         // Zen toggles only the *height* of the box; the inset padding stays
         // identical so the placeholder/text doesn't jump when toggling.
         // `flex flex-col` lets the editor's `flex-1` fill the dvh height.
@@ -1533,12 +1701,14 @@ export function PromptBoxInternal({
               editor={editor}
               className={cn(
                 "h-full min-h-full",
-                "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-relaxed [&_.ProseMirror]:outline-none",
+                "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-[1.7] [&_.ProseMirror]:outline-none",
                 "[&_.ProseMirror_p]:m-0",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-subtle-foreground",
+                "[&_.ProseMirror_p.is-editor-empty:first-child::before]:font-light",
+                "[&_.ProseMirror_p.is-editor-empty:first-child::before]:opacity-70",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
               )}
             />
@@ -1546,7 +1716,7 @@ export function PromptBoxInternal({
         </div>
       </div>
 
-      {showMentionMenu ? (
+      {showTypeaheadMenu ? (
         <div
           className={cn(
             // Zen mode: menu floats inside the form, anchored just above
@@ -1566,9 +1736,9 @@ export function PromptBoxInternal({
           )}
         >
           <MentionMenu
-            state={mentionMenuState}
-            selectedIndex={selectedMentionIndex}
-            onApply={applyMention}
+            state={typeaheadMenuState}
+            selectedIndex={selectedIndex}
+            onApply={applyTrigger}
           />
         </div>
       ) : null}

@@ -39,8 +39,16 @@ interface PanelToggleActionPresentation {
  *                          on its own).
  */
 const PANEL_TOGGLE_ACTION_PRESENTATION = {
-  "show-panel": { label: "Show panel", iconName: "PanelRight", isExpanded: false },
-  "expand-panel": { label: "Expand panel", iconName: "Maximize2", isExpanded: true },
+  "show-panel": {
+    label: "Show right panel",
+    iconName: "PanelRight",
+    isExpanded: false,
+  },
+  "expand-panel": {
+    label: "Expand right panel",
+    iconName: "Maximize2",
+    isExpanded: true,
+  },
   "restore-conversation": {
     label: "Restore conversation",
     iconName: "Minimize2",

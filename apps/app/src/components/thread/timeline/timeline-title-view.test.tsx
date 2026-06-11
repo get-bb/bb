@@ -25,6 +25,10 @@ interface LocationProbeProps {
   label: string;
 }
 
+function classTokens(element: HTMLElement): Set<string> {
+  return new Set(element.className.split(/\s+/).filter(Boolean));
+}
+
 function title({
   segments,
   decorations = [],
@@ -220,6 +224,20 @@ describe("TimelineTitleView", () => {
     expect(notDefaultPrevented).toBe(false);
     expect(screen.getByTestId("location").textContent).toBe(
       "/projects/proj_1/threads/thr_parent?panel=timeline#row",
+    );
+  });
+
+  it("renders emphasized tool titles at medium weight", () => {
+    render(
+      <TimelineTitleView
+        title={title({
+          segments: [seg("pnpm test", { em: true })],
+        })}
+      />,
+    );
+
+    expect(classTokens(screen.getByText("pnpm test")).has("font-medium")).toBe(
+      true,
     );
   });
 });

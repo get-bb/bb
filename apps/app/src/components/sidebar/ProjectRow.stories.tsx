@@ -346,12 +346,6 @@ const multipleProjects: StoryProjectRow[] = [
 export function Overview() {
   return (
     <StoryCard>
-      <StoryRow
-        label="loading threads"
-        hint="project header rendered, skeleton stands in for the thread list"
-      >
-        {singleProject({ threadListState: { status: "loading" } })}
-      </StoryRow>
       <StoryRow label="ready, no threads" hint='empty state: "No threads"'>
         {singleProject({
           threadListState: { status: "ready", threads: [] },
@@ -531,6 +525,30 @@ export function Overview() {
               {
                 ...sharedWorktreeThreadB,
                 environmentId: "env_collapsed_unread",
+              },
+            ],
+          },
+        })}
+      </StoryRow>
+      <StoryRow
+        label="collapsed worktree — unread error child"
+        hint="hidden child status=error and unread — worktree header shows the destructive unread dot"
+      >
+        {singleProject({
+          initialCollapsedEnvironmentIds: new Set(["env_collapsed_error"]),
+          threadListState: {
+            status: "ready",
+            threads: [
+              {
+                ...sharedWorktreeThreadA,
+                environmentId: "env_collapsed_error",
+                status: "error",
+                lastReadAt: 50,
+                latestAttentionAt: 200,
+              },
+              {
+                ...sharedWorktreeThreadB,
+                environmentId: "env_collapsed_error",
               },
             ],
           },

@@ -1,5 +1,6 @@
 import { getEnvironment, getThread, listEvents } from "@bb/db";
 import {
+  type ResolvedThreadExecutionOptions,
   systemThreadProvisioningEventDataSchema,
   threadSchema,
 } from "@bb/domain";
@@ -13,10 +14,19 @@ import {
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
-import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
+import {
+  seedHostSession,
+  seedProjectWithSource,
+  seedThread,
+} from "../helpers/seed.js";
 import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
 import { InferenceTimeoutError } from "../../src/services/ai/inference.js";
 import { runEnvironmentProvisioningSweep } from "../../src/services/system/periodic-sweeps.js";
+import { requestThreadStopForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
+import {
+  advanceThreadProvisioning,
+  requestThreadProvision,
+} from "../../src/services/threads/thread-provisioning.js";
 import { generateThreadMetadataWithOutcome } from "../../src/services/threads/title-generation.js";
 
 const piAiMocks = vi.hoisted(() => ({
@@ -55,6 +65,14 @@ function mockThreadMetadata(metadata: MockThreadMetadata): void {
   piAiMocks.getModel.mockReturnValue({ provider: "test" });
   piAiMocks.complete.mockResolvedValue(mockThreadMetadataCompletion(metadata));
 }
+
+const THREAD_START_EXECUTION = {
+  model: "gpt-5",
+  serviceTier: "default",
+  reasoningLevel: "medium",
+  permissionMode: "workspace-write",
+  source: "client/turn/requested",
+} satisfies ResolvedThreadExecutionOptions;
 
 describe("generated managed branch names", () => {
   beforeEach(() => {
@@ -218,6 +236,108 @@ describe("generated managed branch names", () => {
       expect(managedCommand.command.branchName).toBe(
         `bb/early-visible-provisioning-${thread.id}`,
       );
+    });
+  });
+
+  it("does not fail a stopped thread when metadata inference settles", async () => {
+    let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
+      throw new Error("Metadata inference was not started");
+    };
+    piAiMocks.getModel.mockReturnValue({ provider: "test" });
+    piAiMocks.complete.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMetadata = (metadata) => {
+            resolve(mockThreadMetadataCompletion(metadata));
+          };
+        }),
+    );
+
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-stop-during-metadata",
+      });
+      const { project, source } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/stop-during-metadata-project",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        status: "provisioning",
+        title: null,
+        titleFallback: "Stop during metadata inference",
+      });
+      const input = textInput("Stop during metadata inference before setup");
+      const context = requestThreadProvision(harness.deps, {
+        environmentIntent: {
+          type: "direct-managed",
+          hostId: host.id,
+          sourcePath: source.path,
+          baseBranch: { kind: "default" },
+          workspaceProvisionType: "managed-worktree",
+        },
+        execution: THREAD_START_EXECUTION,
+        input,
+        thread,
+        titleProvided: false,
+      });
+      const advance = advanceThreadProvisioning(harness.deps, {
+        context,
+        threadId: thread.id,
+      });
+
+      await vi.waitFor(() => {
+        expect(piAiMocks.complete).toHaveBeenCalledTimes(1);
+        expect(getThread(harness.db, thread.id)?.environmentId).toBeTruthy();
+      });
+
+      const preparingThread = getThread(harness.db, thread.id);
+      if (!preparingThread?.environmentId) {
+        throw new Error("Expected prepared thread to have an environment");
+      }
+      const environment = getEnvironment(
+        harness.db,
+        preparingThread.environmentId,
+      );
+      if (!environment) {
+        throw new Error("Expected prepared thread environment");
+      }
+
+      requestThreadStopForCurrentState(harness.deps, preparingThread, {
+        hostId: environment.hostId,
+        id: environment.id,
+      });
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        status: "idle",
+        stopRequestedAt: null,
+      });
+
+      resolveMetadata({
+        title: "Stopped Metadata Race",
+      });
+      await advance;
+
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        status: "idle",
+        stopRequestedAt: null,
+      });
+      const events = listEvents(harness.db, { threadId: thread.id });
+      expect(events.map((event) => event.type)).not.toContain("system/error");
+      const provisioningStatuses = events
+        .filter((event) => event.type === "system/thread-provisioning")
+        .map(
+          (event) =>
+            systemThreadProvisioningEventDataSchema.parse(JSON.parse(event.data))
+              .status,
+        );
+      expect(provisioningStatuses).toContain("cancelled");
+      expect(
+        listQueuedEnvironmentCommands(
+          harness,
+          "environment.provision",
+          environment.id,
+        ),
+      ).toEqual([]);
     });
   });
 

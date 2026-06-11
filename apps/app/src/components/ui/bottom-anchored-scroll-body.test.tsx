@@ -253,6 +253,33 @@ describe("BottomAnchoredScrollBody", () => {
     expect(getBottomState()).toBe("bottom");
   });
 
+  it("lets explicit bottom scroll override stale touch intent", () => {
+    const { scrollArea } = renderBody();
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 1_000,
+      clientHeight: 100,
+      scrollTop: 400,
+    });
+    fireEvent.touchStart(scrollArea);
+
+    fireEvent.click(screen.getByRole("button", { name: "Scroll to bottom" }));
+
+    expect(scrollArea.scrollTop).toBe(900);
+    expect(getBottomState()).toBe("bottom");
+
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 1_200,
+      clientHeight: 100,
+      scrollTop: 900,
+    });
+    fireEvent.scroll(scrollArea);
+    getResizeObserverInstance().trigger();
+    flushAnimationFrames(1);
+
+    expect(scrollArea.scrollTop).toBe(1_100);
+    expect(getBottomState()).toBe("bottom");
+  });
+
   it("keeps bottom state when scrolling an already visible element into view", () => {
     const { scrollArea } = renderBody();
     const target = screen.getByText("Scroll target");

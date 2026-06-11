@@ -51,11 +51,13 @@ import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-  SIDEBAR_UNREAD_DOT_CLASS,
+  SIDEBAR_UNREAD_DOT_CLASS_BY_TONE,
   getSidebarThreadRowPaddingLeft,
+  type SidebarUnreadDotTone,
 } from "./sidebarRowClasses";
-import type { ConsumeDragClickSuppression } from "./useDragClickSuppression";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
+import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -89,12 +91,6 @@ interface ThreadRowProps {
   options: ThreadRowOptions;
 }
 
-interface ThreadParentChevronProps {
-  isCollapsed: boolean;
-  onToggle: () => void;
-  threadTitle: string;
-}
-
 type ThreadRowClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 interface ThreadRowContainerArgs {
@@ -106,49 +102,11 @@ interface ThreadRowContainerArgs {
   style: CSSProperties;
 }
 
-// Toggles a parent thread's children. Mirrors the "Projects" section-label
-// chevron (trailing the title, ChevronRight that rotates 90° when expanded) but
-// stays visible at rest: unlike a labeled section, a thread row gives no other
-// cue that it has children to collapse.
-function ThreadParentChevron({
-  isCollapsed,
-  onToggle,
-  threadTitle,
-}: ThreadParentChevronProps) {
-  return (
-    <button
-      type="button"
-      aria-expanded={!isCollapsed}
-      aria-label={
-        isCollapsed
-          ? `Expand ${threadTitle} threads`
-          : `Collapse ${threadTitle} threads`
-      }
-      title={isCollapsed ? "Expand child threads" : "Collapse child threads"}
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onToggle();
-      }}
-      className="relative z-10 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover hover:text-foreground focus-visible:ring-2"
-    >
-      <Icon
-        name="ChevronRight"
-        className={cn(
-          "size-3 transition-transform duration-150",
-          !isCollapsed && "rotate-90",
-        )}
-        aria-hidden="true"
-      />
-    </button>
-  );
-}
-
 function ThreadDraftIndicator() {
   return (
     <Icon
       name="Edit"
-      className="pointer-events-none size-3.5 shrink-0 text-primary"
+      className="pointer-events-none size-3.5 shrink-0 text-muted-foreground"
       aria-hidden="true"
     />
   );
@@ -196,12 +154,18 @@ interface ThreadStatusGlyphProps {
   hasPendingInteraction: boolean;
   isBusy: boolean;
   showUnreadBadge: boolean;
+  unreadBadgeTone: SidebarUnreadDotTone;
+}
+
+interface ThreadUnreadBadgeLabelArgs {
+  tone: SidebarUnreadDotTone;
 }
 
 export function ThreadStatusGlyph({
   hasPendingInteraction,
   isBusy,
   showUnreadBadge,
+  unreadBadgeTone,
 }: ThreadStatusGlyphProps) {
   if (hasPendingInteraction) {
     return (
@@ -230,16 +194,25 @@ export function ThreadStatusGlyph({
   }
 
   if (showUnreadBadge) {
+    const label = getThreadUnreadBadgeLabel({ tone: unreadBadgeTone });
     return (
       <span
-        className={SIDEBAR_UNREAD_DOT_CLASS}
-        aria-label="Unread thread requires attention"
-        title="Unread thread requires attention"
+        className={SIDEBAR_UNREAD_DOT_CLASS_BY_TONE[unreadBadgeTone]}
+        aria-label={label}
+        title={label}
       />
     );
   }
 
   return null;
+}
+
+function getThreadUnreadBadgeLabel({
+  tone,
+}: ThreadUnreadBadgeLabelArgs): string {
+  return tone === "error"
+    ? "Unread thread encountered an error"
+    : "Unread thread requires attention";
 }
 
 interface ThreadTrailingIndicatorProps extends ThreadStatusGlyphProps {
@@ -253,18 +226,23 @@ function ThreadTrailingIndicator({
   hasPendingInteraction,
   isBusy,
   showUnreadBadge,
+  unreadBadgeTone,
 }: ThreadTrailingIndicatorProps) {
   const showStatusGlyph = hasPendingInteraction || isBusy || showUnreadBadge;
 
   if (showStatusGlyph) {
     return (
       <span
-        className={cn(SIDEBAR_ROW_GLYPH_SLOT_CLASS, COARSE_POINTER_GLYPH_BOX_CLASS)}
+        className={cn(
+          SIDEBAR_ROW_GLYPH_SLOT_CLASS,
+          COARSE_POINTER_GLYPH_BOX_CLASS,
+        )}
       >
         <ThreadStatusGlyph
           hasPendingInteraction={hasPendingInteraction}
           isBusy={isBusy}
           showUnreadBadge={showUnreadBadge}
+          unreadBadgeTone={unreadBadgeTone}
         />
       </span>
     );
@@ -330,6 +308,8 @@ function ThreadRowComponent({
   const hasPendingInteraction = thread.hasPendingInteraction;
   const threadIsBusy = isBusyThread(thread) && !hasPendingInteraction;
   const showUnreadBadge = !hasPendingInteraction && isUnreadDoneThread(thread);
+  const unreadBadgeTone: SidebarUnreadDotTone =
+    showUnreadBadge && thread.status === "error" ? "error" : "default";
   const threadTitle = getThreadDisplayTitle(thread);
   const parentOptions = options.kind === "parent" ? options : null;
   const isParentRow = parentOptions !== null;
@@ -341,8 +321,7 @@ function ThreadRowComponent({
   // A collapsed parent hides its descendants behind one glyph, so it must
   // surface its own status combined with the rolled-up child activity. Expanded
   // parents and leaves show only their own status.
-  const hasHiddenChildren =
-    isParentRow && isParentCollapsed && hasChildren;
+  const hasHiddenChildren = isParentRow && isParentCollapsed && hasChildren;
   const trailingHasPendingInteraction = hasHiddenChildren
     ? hasPendingInteraction || childActivity.pending
     : hasPendingInteraction;
@@ -352,6 +331,8 @@ function ThreadRowComponent({
   const trailingShowUnreadBadge = hasHiddenChildren
     ? showUnreadBadge || childActivity.unread
     : showUnreadBadge;
+  const trailingUnreadBadgeTone: SidebarUnreadDotTone =
+    hasHiddenChildren && childActivity.unreadError ? "error" : unreadBadgeTone;
   const linkLabel = hasComposerDraft
     ? `Open ${threadTitle} (unsubmitted draft)`
     : `Open ${threadTitle}`;
@@ -417,19 +398,20 @@ function ThreadRowComponent({
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="min-w-0 truncate">{threadTitle}</span>
         {parentOptions && hasChildren ? (
-          <ThreadParentChevron
+          <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}
-            onToggle={() => {
-              parentOptions.onToggleCollapsed(thread.id);
-            }}
-            threadTitle={threadTitle}
+            expandLabel={`Expand ${threadTitle} threads`}
+            collapseLabel={`Collapse ${threadTitle} threads`}
+            expandTitle="Expand child threads"
+            collapseTitle="Collapse child threads"
+            onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
           />
         ) : null}
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
       <span
         className={cn(
-          "flex shrink-0 items-center justify-end",
+          "flex shrink-0 items-center justify-end max-md:pointer-coarse:pointer-events-none",
           COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
         )}
       >
@@ -452,13 +434,14 @@ function ThreadRowComponent({
               hasPendingInteraction={trailingHasPendingInteraction}
               isBusy={trailingIsBusy}
               showUnreadBadge={trailingShowUnreadBadge}
+              unreadBadgeTone={trailingUnreadBadgeTone}
             />
           </span>
           <div
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(
               SIDEBAR_HOVER_ACTIONS_CLASS,
-              "absolute inset-0 z-10 flex items-center justify-end",
+              "absolute inset-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
             )}
           >
             <ThreadActionsMenu

@@ -4,14 +4,13 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { getDefaultStore } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
-  BbDesktopApi,
   BbDesktopBrowserApi,
   BbDesktopBrowserSnapshot,
   BbDesktopBrowserSnapshotHandler,
   BbDesktopBrowserViewBounds,
   BbDesktopInfo,
-  BbDesktopInfoChangeHandler,
 } from "@bb/server-contract";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
 import { BrowserTabDeck } from "./BrowserTabDeck";
@@ -115,24 +114,7 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
 }
 
 function installDesktopBrowserApi(browser: BbDesktopBrowserApi): void {
-  const desktop: BbDesktopApi = {
-    ...DESKTOP_INFO,
-    browser,
-    async checkForUpdates() {
-      return DESKTOP_INFO;
-    },
-    async getInfo() {
-      return DESKTOP_INFO;
-    },
-    async installUpdate() {
-      return undefined;
-    },
-    onChange(_listener: BbDesktopInfoChangeHandler) {
-      return () => undefined;
-    },
-    setTheme() {},
-  };
-  window.bbDesktop = desktop;
+  window.bbDesktop = createBbDesktopApi(DESKTOP_INFO, browser);
 }
 
 function browserTab(id: string, url: string): BrowserFixedPanelTab {

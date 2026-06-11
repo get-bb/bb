@@ -87,9 +87,7 @@ const apiErrorResponseSchema = z.object({
   message: z.string(),
 });
 
-export type HostEnrollKeyResponse = z.infer<
-  typeof hostEnrollKeyResponseSchema
->;
+export type HostEnrollKeyResponse = z.infer<typeof hostEnrollKeyResponseSchema>;
 export type ManagedConfigValues = BbAppManagedConfigValues;
 export type ManagedEnvConfig = BbAppManagedEnvConfig;
 export type ManagedEnvFile = BbAppManagedEnvFile;

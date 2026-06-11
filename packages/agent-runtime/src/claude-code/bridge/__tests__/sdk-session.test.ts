@@ -266,6 +266,30 @@ describe("SdkSession", () => {
     );
   });
 
+  it("forwards the structured output format to the SDK", () => {
+    const outputFormat = {
+      type: "json_schema" as const,
+      schema: {
+        type: "object",
+        properties: { answer: { type: "string" } },
+        required: ["answer"],
+      },
+    };
+    const session = new SdkSession(
+      { ...defaultOptions, outputFormat },
+      vi.fn(),
+      vi.fn(),
+    );
+
+    session.start();
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({ outputFormat }),
+      }),
+    );
+  });
+
   it("passes non-bypass permission modes through without the dangerous skip flag", () => {
     const onMessage = vi.fn();
     const onDone = vi.fn();

@@ -109,7 +109,7 @@ function BannerShell({
         </div>
       ) : null}
       {errorMessage ? (
-        <div className="mt-2 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1 text-xs text-destructive">
+        <div className="mt-2 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1 text-xs text-destructive-text">
           {errorMessage}
         </div>
       ) : null}

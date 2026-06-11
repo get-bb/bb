@@ -10,9 +10,11 @@ import type { WorkspaceFile } from "@bb/server-contract";
 
 const EMPTY_STORAGE_FILES: readonly WorkspaceFile[] = [];
 
+export type ThreadStoragePathSelectHandler = (path: string) => void;
+
 interface UseThreadStorageBrowserArgs {
   files: readonly WorkspaceFile[] | undefined;
-  onSelectPath: (path: string) => void;
+  onSelectPath: ThreadStoragePathSelectHandler;
   selectedPath: string | null;
 }
 

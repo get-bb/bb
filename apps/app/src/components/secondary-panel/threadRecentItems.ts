@@ -20,18 +20,10 @@ export const THREAD_RECENT_ITEMS_VISIBLE_LIMIT = 6;
  */
 export type RecentItemSource = "workspace" | "thread-storage";
 
-/** The visual file-type chip a recent item renders with. */
-export type RecentFileChip = "md" | "html" | "report" | "code";
-
 export interface ThreadRecentItem {
   source: RecentItemSource;
   path: string;
   openedAt: number;
-}
-
-export interface ResolvedRecentFileKind {
-  chip: RecentFileChip;
-  label: string;
 }
 
 interface RecordRecentItemArgs {
@@ -79,49 +71,6 @@ export function recordRecentItem({
     (item) => item.source !== source || item.path !== path,
   );
   return [{ source, path, openedAt }, ...withoutExisting].slice(0, limit);
-}
-
-export function getRecentItemName(path: string): string {
-  return path.slice(path.lastIndexOf("/") + 1) || path;
-}
-
-function getFileExtension(path: string): string {
-  const name = getRecentItemName(path);
-  const dotIndex = name.lastIndexOf(".");
-  return dotIndex <= 0 ? "" : name.slice(dotIndex + 1).toLowerCase();
-}
-
-function hasPathDirectorySegment(path: string, segment: string): boolean {
-  return path
-    .toLowerCase()
-    .split("/")
-    .slice(0, -1)
-    .includes(segment);
-}
-
-/**
- * Resolves a recent file's chip + label from its path. The chip follows the
- * artifact's kind rather than its bare extension: anything under `reports/`
- * reads as a Report (chart) whether it is `.md` or `.html`, plans render as
- * Plan/Mockup, and everything else falls back to Source code.
- */
-export function resolveRecentFileKind(path: string): ResolvedRecentFileKind {
-  const extension = getFileExtension(path);
-  const inReports = hasPathDirectorySegment(path, "reports");
-  const inPlans = hasPathDirectorySegment(path, "plans");
-  const isMarkdown = extension === "md" || extension === "markdown";
-  const isHtml = extension === "html" || extension === "htm";
-
-  if (inReports && (isMarkdown || isHtml)) {
-    return { chip: "report", label: "Report" };
-  }
-  if (isMarkdown) {
-    return { chip: "md", label: inPlans ? "Plan" : "Doc" };
-  }
-  if (isHtml) {
-    return { chip: "html", label: inPlans ? "Mockup" : "Preview" };
-  }
-  return { chip: "code", label: "Source" };
 }
 
 const recentItemsStorage = createLocalStorageSyncStorage<

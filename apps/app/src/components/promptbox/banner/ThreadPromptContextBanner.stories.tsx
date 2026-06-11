@@ -11,6 +11,7 @@ import {
   type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
+  type ThreadPromptWorkflowsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
   selectWorkspaceChangedFilesSection,
@@ -260,6 +261,23 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
   })),
 };
 
+const workflowsFixture: ThreadPromptWorkflowsSection = {
+  items: [
+    {
+      id: "wfr_demo_1",
+      name: "Repo-wide audit fanout",
+      agentProgress: "3/5 agents",
+      href: "/workflows/runs/wfr_demo_1",
+    },
+    {
+      id: "wfr_demo_2",
+      name: "Adversarial review",
+      agentProgress: null,
+      href: "/workflows/runs/wfr_demo_2",
+    },
+  ],
+};
+
 interface RowConfig {
   section?: WorkspaceChangedFilesSection;
   mergeBase?: ContextBannerMergeBaseConfig | null;
@@ -267,6 +285,7 @@ interface RowConfig {
   archived?: ThreadPromptArchivedSection | null;
   parentThread?: ThreadPromptParentThreadSection | null;
   childThreads?: ThreadPromptChildThreadsSection | null;
+  workflows?: ThreadPromptWorkflowsSection | null;
   initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
 }
 
@@ -277,6 +296,7 @@ function Row({
   archived = null,
   parentThread = null,
   childThreads = null,
+  workflows = null,
   initiallyExpandedSection = null,
 }: RowConfig) {
   const [expandedSection, setExpandedSection] = useState<
@@ -299,6 +319,7 @@ function Row({
         archivedSection={archived}
         parentThreadSection={parentThread}
         childThreadsSection={childThreads}
+        workflowsSection={workflows}
         expandedSection={expandedSection}
         onToggleSection={(next) =>
           setExpandedSection((previous) =>
@@ -375,6 +396,22 @@ export function Overview() {
           childThreads={childThreadsLargeFixture}
           mergeBase={null}
           initiallyExpandedSection="childThreads"
+        />
+      </StoryRow>
+      <StoryRow
+        label="active workflows (collapsed)"
+        hint="workflow icon + count; click to expand the run list"
+      >
+        <Row workflows={workflowsFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="active workflows (expanded)"
+        hint="each row links to the run page; agent progress when known"
+      >
+        <Row
+          workflows={workflowsFixture}
+          mergeBase={null}
+          initiallyExpandedSection="workflows"
         />
       </StoryRow>
       <StoryRow

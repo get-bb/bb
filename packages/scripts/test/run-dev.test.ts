@@ -96,6 +96,26 @@ describe("run-dev", () => {
     expect(env.BB_DEV_ENV_PORT).toBe(String(config.ports.devEnvPort));
   });
 
+  it("strips parent thread context from dev child processes", () => {
+    const config = resolveDevInstanceConfig({
+      homeDir: "/Users/tester",
+      repoRoot: "/Users/tester/src/bb",
+    });
+    const baseEnv: NodeJS.ProcessEnv = {
+      BB_ENVIRONMENT_ID: "env_parent",
+      BB_PROJECT_ID: "proj_parent",
+      BB_THREAD_ID: "thr_parent",
+      BB_THREAD_STORAGE: "/Users/tester/.bb/thread-storage/thr_parent",
+    };
+
+    const env = toDevProcessEnv({ baseEnv, config });
+
+    expect(env.BB_ENVIRONMENT_ID).toBeUndefined();
+    expect(env.BB_THREAD_ID).toBeUndefined();
+    expect(env.BB_THREAD_STORAGE).toBeUndefined();
+    expect(env.BB_PROJECT_ID).toBe("proj_parent");
+  });
+
   it("runs the same persistent dev tasks as pnpm dev", () => {
     expect(createDevTurboCommand()).toEqual({
       args: [

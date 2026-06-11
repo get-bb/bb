@@ -196,7 +196,29 @@ describe("MarkdownPreview", () => {
 
     expect(onOpenLocalFileLink).toHaveBeenCalledTimes(1);
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: 12,
+      lineRange: { startLineNumber: 12, endLineNumber: 12 },
+      path: "/workspace/src/app.ts",
+    });
+  });
+
+  it("routes local file link ranges through the handler", () => {
+    const onOpenLocalFileLink = vi.fn(() => true);
+    render(
+      <MarkdownPreview
+        content="[Open range](/workspace/src/app.ts#L12-L15)"
+        linkRouting={buildMarkdownLinkRouting({ onOpenLocalFileLink })}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "Open range" });
+    expect(link.getAttribute("href")).toBe(
+      "file:///workspace/src/app.ts#L12-L15",
+    );
+
+    fireEvent.click(link);
+
+    expect(onOpenLocalFileLink).toHaveBeenCalledWith({
+      lineRange: { startLineNumber: 12, endLineNumber: 15 },
       path: "/workspace/src/app.ts",
     });
   });
@@ -231,7 +253,7 @@ describe("MarkdownPreview", () => {
 
     expect(onOpenLocalFileLink).toHaveBeenCalledTimes(1);
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: 4,
+      lineRange: { startLineNumber: 4, endLineNumber: 4 },
       path: "/workspace/src/app.ts",
     });
   });
@@ -267,7 +289,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: [
         "/Users/brsbl/Moss/Notes/Agent Workspaces/bb Workspace/workstreams/",
         "moss-skills-distribution-discovery/",
@@ -295,7 +317,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: "/Users/me/My Notes/app.md",
     });
   });
@@ -317,7 +339,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: "/Users/me/My Notes/app.md",
     });
   });
@@ -345,7 +367,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: 7,
+      lineRange: { startLineNumber: 7, endLineNumber: 7 },
       path: "/storage/thr_1/current/branch-summary.md",
     });
   });
@@ -371,7 +393,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: "/intro.md",
     });
   });
@@ -416,15 +438,15 @@ describe("MarkdownPreview", () => {
 
     expect(onOpenLocalFileLink).toHaveBeenCalledTimes(3);
     expect(onOpenLocalFileLink).toHaveBeenNthCalledWith(1, {
-      lineNumber: 14,
+      lineRange: { startLineNumber: 14, endLineNumber: 14 },
       path: "/workspace/Cargo.lock",
     });
     expect(onOpenLocalFileLink).toHaveBeenNthCalledWith(2, {
-      lineNumber: 5,
+      lineRange: { startLineNumber: 5, endLineNumber: 5 },
       path: "/workspace/foo.md",
     });
     expect(onOpenLocalFileLink).toHaveBeenNthCalledWith(3, {
-      lineNumber: 5,
+      lineRange: { startLineNumber: 5, endLineNumber: 5 },
       path: "/workspace/foo",
     });
   });
@@ -450,7 +472,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: "/storage/thr_1/status.md",
     });
   });

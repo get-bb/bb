@@ -32,6 +32,26 @@ function validateId(value: string, source: string): string {
   return value;
 }
 
+/**
+ * Thread-id positions reject workflow ids outright: `wfr_*` runs have their
+ * own `bb workflow` commands, and `wfa_*` agent sessions are run-scoped
+ * provider sessions that are never addressable as threads (the CLI half of
+ * the server's `requireThread` prefix guard).
+ */
+function validateThreadId(value: string, source: string): string {
+  if (value.startsWith("wfr_")) {
+    throw new Error(
+      `Invalid thread ID from ${source}: "${value}" is a workflow run id. Use 'bb workflow show ${value}' (or wait/cancel/resume) instead.`,
+    );
+  }
+  if (value.startsWith("wfa_")) {
+    throw new Error(
+      `Invalid thread ID from ${source}: "${value}" is a workflow agent session id, not a thread. Inspect its run with 'bb workflow show <wfr_...>'.`,
+    );
+  }
+  return validateId(value, source);
+}
+
 function trimToUndefined(value?: string): string | undefined {
   if (value === undefined) return undefined;
   const normalized = value.trim();
@@ -54,9 +74,9 @@ export function resolveProjectId(flagValue?: string): string | undefined {
 
 export function resolveThreadId(flagValue?: string): string | undefined {
   const fromFlag = trimToUndefined(flagValue);
-  if (fromFlag) return validateId(fromFlag, "--thread flag");
+  if (fromFlag) return validateThreadId(fromFlag, "--thread flag");
   const fromEnv = trimToUndefined(process.env.BB_THREAD_ID);
-  if (fromEnv) return validateId(fromEnv, "BB_THREAD_ID");
+  if (fromEnv) return validateThreadId(fromEnv, "BB_THREAD_ID");
   return undefined;
 }
 
@@ -132,10 +152,10 @@ export function requireProjectIdWithLabel(flagValue?: string): ResolvedId {
 export function requireThreadIdWithLabel(positionalId?: string): ResolvedId {
   const fromArg = trimToUndefined(positionalId);
   if (fromArg)
-    return { id: validateId(fromArg, "<threadId> argument"), source: "arg" };
+    return { id: validateThreadId(fromArg, "<threadId> argument"), source: "arg" };
   const fromEnv = trimToUndefined(process.env.BB_THREAD_ID);
   if (fromEnv)
-    return { id: validateId(fromEnv, "BB_THREAD_ID"), source: "env" };
+    return { id: validateThreadId(fromEnv, "BB_THREAD_ID"), source: "env" };
   throw new Error(
     "Missing thread context. Pass <threadId> or set BB_THREAD_ID.",
   );
@@ -158,7 +178,7 @@ export function requireThreadIdWithLabelOrSelf(
   }
   if (positionalId) {
     return {
-      id: validateId(positionalId, "<threadId> argument"),
+      id: validateThreadId(positionalId, "<threadId> argument"),
       source: "arg",
     };
   }
@@ -171,7 +191,7 @@ export function requireThreadIdWithLabelOrSelf(
   }
   const fromEnv = trimToUndefined(process.env.BB_THREAD_ID);
   if (fromEnv) {
-    return { id: validateId(fromEnv, "BB_THREAD_ID"), source: "env" };
+    return { id: validateThreadId(fromEnv, "BB_THREAD_ID"), source: "env" };
   }
   throw new Error(
     "Missing thread context. Pass <threadId>, use --self, or set BB_THREAD_ID.",
@@ -200,7 +220,7 @@ export function requireThreadIdOrSelf(
     return envThreadId;
   }
   if (positionalId) {
-    return validateId(positionalId, "<threadId> argument");
+    return validateThreadId(positionalId, "<threadId> argument");
   }
   throw new Error(
     "Provide a thread ID or use --self to target the current thread.",

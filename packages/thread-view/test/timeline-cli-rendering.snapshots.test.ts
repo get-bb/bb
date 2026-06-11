@@ -1266,7 +1266,7 @@ describe("timeline CLI rendering snapshots", () => {
     expect(timeline.text).not.toContain("Reasoning");
     expect(timeline.text).toMatchInlineSnapshot(`
       "── Worked for (5ms) ────────────────────────────────────────
-        ── Ran tool: exec_command { cmd: sed -n '1,80p' packages/core-ui/src/i... }
+        ── Ran tool exec_command { cmd: sed -n '1,80p' packages/core-ui/src/i... }
 
       ── Assistant ───────────────────────────────────────────────
       The extension point is the timeline row builder."

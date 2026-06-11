@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@/components/ui/icon.js";
@@ -10,7 +10,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
+  useCloseMobileSidebar,
 } from "@/components/ui/sidebar.js";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
@@ -42,18 +42,9 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const navigate = useNavigate();
-  const { isCompactViewport, setOpenMobile } = useSidebar();
+  const closeOnMobile = useCloseMobileSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const isCompactViewportRef = useRef(isCompactViewport);
-  // Keep the ProjectList callback stable while reading the latest breakpoint.
-  isCompactViewportRef.current = isCompactViewport;
-
-  const closeOnMobile = useCallback(() => {
-    if (isCompactViewportRef.current) {
-      setOpenMobile(false);
-    }
-  }, [setOpenMobile]);
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -132,7 +123,7 @@ export function AppSidebar({
                 tooltip="App settings"
                 aria-label="App settings"
               >
-                <Link to="/settings">
+                <Link to="/settings" onClick={closeOnMobile}>
                   <Icon name="Settings" />
                 </Link>
               </SidebarMenuButton>

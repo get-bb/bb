@@ -16,6 +16,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover.js";
 import { Switch } from "@/components/ui/switch.js";
+import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens.js";
 import { cn } from "@/lib/utils";
 import { useSystemExecutionOptions } from "@/hooks/queries/system-queries";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
@@ -30,6 +31,23 @@ import {
   formatModelLoadErrorText,
   ModelLoadErrorMessage,
 } from "./model-load-error-message";
+
+interface ModelLabelParts {
+  base: string;
+  tag: string | null;
+}
+
+// Splits a trailing parenthetical off a model label (e.g. "Opus 4.8 (1M)" →
+// base "Opus 4.8", tag "1M") so the tag can render as a small, muted suffix
+// without the parentheses. Labels without a trailing "(…)" pass through
+// unchanged (tag null).
+function splitModelLabelTag(label: string): ModelLabelParts {
+  const match = label.match(/^(.*\S)\s*\(([^()]+)\)$/u);
+  if (!match) {
+    return { base: label, tag: null };
+  }
+  return { base: match[1], tag: match[2] };
+}
 
 interface ModelReasoningPickerProps {
   // Provider state
@@ -115,6 +133,8 @@ export function ModelReasoningPicker({
   const triggerModelLabel = hasSelectedModel
     ? stripModelBrandPrefix(selectedModelLabel, selectedProviderId)
     : "Select model";
+  const { base: triggerModelBase, tag: triggerModelTag } =
+    splitModelLabelTag(triggerModelLabel);
 
   const selectedReasoningOption = reasoningOptions.find(
     (r) => r.value === reasoningValue,
@@ -243,7 +263,12 @@ export function ModelReasoningPicker({
             ) : TriggerIcon ? (
               <TriggerIcon className="size-3.5 shrink-0" />
             ) : null}
-            <span className="min-w-0 truncate">{triggerModelLabel}</span>
+            <span className="min-w-0 truncate">{triggerModelBase}</span>
+            {triggerModelTag ? (
+              <span className="shrink-0 text-subtle-foreground">
+                {triggerModelTag}
+              </span>
+            ) : null}
             {triggerReasoningLabel ? (
               <span
                 className="shrink-0 text-subtle-foreground"
@@ -320,7 +345,7 @@ export function ModelReasoningPicker({
         {/* Model list */}
         <div
           className={cn(
-            "overflow-y-auto px-1 pb-1",
+            "overflow-y-auto p-1",
             !isCompactViewport &&
               "max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
           )}
@@ -416,11 +441,16 @@ export function ModelReasoningPicker({
 // `sticky top-0` keeps "Model" pinned to the top of its scrolling parent
 // (no-op for "Reasoning" — its parent doesn't scroll). `flex h-7 items-center`
 // pins to an integer height so the sticky label doesn't subpixel-shift during
-// scroll. Matches DropdownMenuLabel's `text-xs font-medium text-muted-foreground`
-// styling for consistency with the rest of the design system.
+// scroll. Uses `CHROME_SECTION_LABEL_CLASS` so these read like the sidebar's
+// Projects/Pinned/Threads section labels.
 function MenuSectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="sticky top-0 z-10 flex h-7 items-center bg-background px-2 text-xs font-medium text-muted-foreground">
+    <div
+      className={cn(
+        "sticky top-0 z-10 flex h-7 items-center bg-background px-2",
+        CHROME_SECTION_LABEL_CLASS,
+      )}
+    >
       {children}
     </div>
   );
@@ -436,6 +466,7 @@ function MenuRowButton({
   onClick: () => void;
 }) {
   const isCompactViewport = useIsCompactViewport();
+  const { base, tag } = splitModelLabelTag(label);
   return (
     <button
       type="button"
@@ -446,7 +477,10 @@ function MenuRowButton({
       )}
     >
       <span className="truncate" title={label}>
-        {label}
+        {base}
+        {tag ? (
+          <span className="ml-1.5 text-subtle-foreground">{tag}</span>
+        ) : null}
       </span>
       <Icon
         name="Check"

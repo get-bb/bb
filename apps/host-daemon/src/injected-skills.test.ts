@@ -1,10 +1,12 @@
 import {
+  access,
   lstat,
   mkdir,
   mkdtemp,
   readFile,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,6 +19,7 @@ import type {
 } from "@bb/agent-runtime";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import {
+  cleanupInjectedSkillStagingDirs,
   ensureDataDirSkillsRootPath,
   stageInjectedSkillSources,
 } from "./injected-skills.js";
@@ -377,5 +380,104 @@ describe("injected skill staging", () => {
         message: "Skipping injected skill during staging",
       }),
     ]);
+  });
+});
+
+describe("cleanupInjectedSkillStagingDirs", () => {
+  async function makeStagingRoot(): Promise<{
+    dataDir: string;
+    stagingRootPath: string;
+  }> {
+    const dataDir = await makeTempDir();
+    const stagingRootPath = path.join(dataDir, "runtime", "global-skills");
+    await mkdir(stagingRootPath, { recursive: true });
+    return { dataDir, stagingRootPath };
+  }
+
+  async function exists(targetPath: string): Promise<boolean> {
+    try {
+      await access(targetPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  it("keeps fresh .tmp- dirs that may belong to an in-flight staging", async () => {
+    const { dataDir, stagingRootPath } = await makeStagingRoot();
+    const inFlightTempPath = path.join(stagingRootPath, ".tmp-hash-123-456");
+    await mkdir(path.join(inFlightTempPath, "skills"), { recursive: true });
+
+    await cleanupInjectedSkillStagingDirs({ dataDir, keepCatalogHashes: [] });
+
+    expect(await exists(inFlightTempPath)).toBe(true);
+  });
+
+  it("removes stale .tmp- dirs left behind by crashed stagings", async () => {
+    const { dataDir, stagingRootPath } = await makeStagingRoot();
+    const staleTempPath = path.join(stagingRootPath, ".tmp-hash-789-101");
+    await mkdir(staleTempPath, { recursive: true });
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await utimes(staleTempPath, twoHoursAgo, twoHoursAgo);
+
+    await cleanupInjectedSkillStagingDirs({ dataDir, keepCatalogHashes: [] });
+
+    expect(await exists(staleTempPath)).toBe(false);
+  });
+
+  it("removes unkept catalog dirs while keeping kept ones", async () => {
+    const { dataDir, stagingRootPath } = await makeStagingRoot();
+    const keptPath = path.join(stagingRootPath, "hash-keep");
+    const unkeptPath = path.join(stagingRootPath, "hash-drop");
+    await mkdir(keptPath, { recursive: true });
+    await mkdir(unkeptPath, { recursive: true });
+
+    await cleanupInjectedSkillStagingDirs({
+      dataDir,
+      keepCatalogHashes: ["hash-keep"],
+    });
+
+    expect(await exists(keptPath)).toBe(true);
+    expect(await exists(unkeptPath)).toBe(false);
+  });
+});
+
+describe("concurrent staging", () => {
+  it("lets parallel stagings of the same catalog all succeed", async () => {
+    const dataDir = await makeTempDir();
+    const skillRootPath = await writeSkill({
+      rootPath: path.join(dataDir, "source-skills"),
+      name: "release-notes",
+    });
+    const source = createDataDirSource({
+      dataDir,
+      skillName: "release-notes",
+      skillRootPath,
+    });
+
+    const staged = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        stageInjectedSkillSources({
+          dataDir,
+          injectedSkillSources: [source],
+        }),
+      ),
+    );
+
+    const hashes = new Set(staged.map((result) => result.catalogHash));
+    expect(hashes.size).toBe(1);
+    const [catalogHash] = hashes;
+    await expect(
+      readFile(
+        path.join(
+          dataDir,
+          "runtime",
+          "global-skills",
+          catalogHash ?? "",
+          "catalog.json",
+        ),
+        "utf8",
+      ).then((content) => JSON.parse(content)),
+    ).resolves.toMatchObject({ catalogHash });
   });
 });

@@ -13,8 +13,10 @@ import {
   BB_APP_URL_ENV,
   BB_DEV_APP_PORT_ENV,
   BB_DEV_REPLAY_CAPTURE_ENV,
+  BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_DEV_REPLAY_CAPTURE,
+  DEFAULT_BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES,
 } from "./env-vars.js";
 import { assignIfDefined } from "./objects.js";
 import { loadHostDaemonPortValue } from "./ports.js";
@@ -28,6 +30,7 @@ export interface HostDaemonConnectionConfig {
   BB_DEV_REPLAY_CAPTURE: boolean;
   BB_HOST_DAEMON_PORT: number;
   BB_SERVER_URL: string;
+  BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES: number;
 }
 
 export interface HostDaemonConfig
@@ -96,6 +99,12 @@ export function loadHostDaemonConnectionConfig(
       env: loader.env,
       homeDir: loader.context.homeDir,
       mode: loader.mode,
+    }),
+    BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES,
+      definition: BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES_ENV,
+      env: loader.env,
     }),
   };
   const devAppPort = readOptionalEnvVar({

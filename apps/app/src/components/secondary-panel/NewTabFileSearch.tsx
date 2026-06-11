@@ -9,7 +9,13 @@ import {
   type ReactNode,
 } from "react";
 import { directoryFromPath } from "@bb/thread-view";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import {
+  COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+  COARSE_POINTER_ICON_SIZE_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@/components/ui/coarse-pointer-sizing.js";
+import { Icon } from "@/components/ui/icon.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Input } from "@/components/ui/input.js";
 import { Separator } from "@/components/ui/separator.js";
@@ -25,19 +31,21 @@ import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { useApps } from "@/hooks/queries/thread-queries";
 import type { FileSearchSelection } from "./useThreadFileTabs";
 import {
-  getRecentItemName,
-  resolveRecentFileKind,
   useThreadRecentItems,
   THREAD_RECENT_ITEMS_VISIBLE_LIMIT,
-  type RecentFileChip,
   type ThreadRecentItem,
 } from "./threadRecentItems";
+import {
+  getFileNameFromPath,
+  resolveRightPanelFileVisual,
+} from "./rightPanelFileVisuals";
 import { cn } from "@/lib/utils";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import { isProjectlessProjectId } from "@/lib/app-route-paths";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { isPromptDraftEmpty, type PromptDraftState } from "@/lib/prompt-draft";
 import {
-  LAUNCHER_MENU_ROW_BASE_CLASS,
+  LAUNCHER_ACTION_ROW_BASE_CLASS,
   LAUNCHER_ROW_BASE_CLASS,
   LAUNCHER_ROW_ICON_CLASS,
   LauncherRowTrailing,
@@ -74,24 +82,30 @@ export interface NewTabFileSearchProps {
   currentThreadId: string;
   focusRequest: number;
   initialQuery?: string;
+  onSearchActiveChange?: SearchActiveChangeHandler;
   onSelect: (selection: FileSearchSelection) => void;
 }
 
-export interface NewTabActionMenuProps {
+export type CreateAppPromptPrefillHandler = () => void;
+export type OpenBrowserHandler = () => void;
+export type SearchActiveChangeHandler = (isSearchActive: boolean) => void;
+export type StartTerminalHandler = () => void;
+
+export interface NewTabActionsProps {
   projectId: string | undefined;
   currentThreadId: string;
   onSelect: (selection: FileSearchSelection) => void;
-  onOpenFileSearch: () => void;
   onCreateAppPromptPrefill?: CreateAppPromptPrefillHandler;
   /** Desktop-only: open a new in-panel browser tab. Absent ⇒ no Browser entry. */
-  onOpenBrowser?: () => void;
-  onCloseMenu: () => void;
+  onOpenBrowser?: OpenBrowserHandler;
+  onStartTerminal?: StartTerminalHandler;
 }
 
 interface AppResultRowProps {
   id: string;
   suggestion: AppSearchSuggestion;
   isActive: boolean;
+  variant?: LauncherTileVariant;
   onActivate: () => void;
   onSelect: (suggestion: AppSearchSuggestion) => void;
 }
@@ -127,9 +141,6 @@ interface FileSearchMessageProps {
  */
 type FileSearchSectionEntry =
   | { kind: "suggestion"; suggestion: FileSearchSuggestion }
-  | { kind: "open-browser" }
-  | { kind: "open-file" }
-  | { kind: "create-app" }
   | { kind: "recent"; item: ThreadRecentItem };
 
 interface FileSearchSectionItem {
@@ -144,24 +155,19 @@ interface FileSearchSection {
 }
 
 type LauncherKeyDownHandler = (event: KeyboardEvent<HTMLElement>) => void;
-type CreateAppPromptPrefillHandler = () => void;
 type FileSearchSource = FileSearchSuggestion["source"];
 type FileSearchSectionKind = "actions" | "apps" | "files" | "recent";
-type CreateAppEntryPlacement = "actions" | "apps" | "none";
-type LauncherTileVariant = "result" | "menu";
+type LauncherTileVariant = "result" | "action";
 
 interface GetAvailableFileSearchSourcesArgs {
   projectId: string | undefined;
+  environmentId: string | null;
   currentThreadId: string;
 }
 
 interface GroupFileSearchSectionsArgs {
   suggestions: readonly FileSearchSuggestion[];
   availableSources: readonly FileSearchSource[];
-  includeOpenBrowserEntry: boolean;
-  includeOpenFileEntry: boolean;
-  includeCreateAppEntry: boolean;
-  createAppPlacement: CreateAppEntryPlacement;
   recentEntries: readonly FileSearchSectionEntry[];
 }
 
@@ -189,19 +195,25 @@ interface OpenBrowserTileProps {
   onSelect: () => void;
 }
 
-interface OpenFileTileProps {
+interface StartTerminalTileProps {
   id: string;
   isActive: boolean;
   onActivate: () => void;
   onSelect: () => void;
 }
 
+interface ShowMoreToggleProps {
+  isExpanded: boolean;
+  onToggle: () => void;
+  showMoreCount: number;
+}
+
 const FILE_SEARCH_LIMIT = 20;
 const FILE_SEARCH_SECTION_ORDER: readonly FileSearchSectionKind[] = [
-  "apps",
-  "actions",
   "files",
+  "apps",
   "recent",
+  "actions",
 ];
 
 const FILE_SEARCH_SECTION_LABELS = {
@@ -219,32 +231,31 @@ const FILE_SEARCH_SOURCE_LABELS = {
 
 const CREATE_APP_ENTRY_ID = "file-search-result-create-app";
 const OPEN_BROWSER_ENTRY_ID = "file-search-result-open-browser";
-const OPEN_FILE_ENTRY_ID = "file-search-result-open-file";
+const START_TERMINAL_ENTRY_ID = "file-search-result-start-terminal";
 
-const LAUNCHER_TILE_ICON_CLASS_DASHED =
-  "flex size-4 shrink-0 items-center justify-center text-muted-foreground group-hover:text-foreground";
-const NEW_TAB_ACTION_MENU_SEPARATOR_CLASS =
-  "mx-2 my-1.5 w-auto bg-border-seam";
+const LAUNCHER_TILE_ICON_CLASS_DASHED = `flex shrink-0 items-center justify-center text-muted-foreground group-hover:text-foreground ${COARSE_POINTER_ICON_SIZE_CLASS}`;
+const NEW_TAB_ACTIONS_SEPARATOR_CLASS = "mx-2 my-2 w-auto bg-border-seam";
 
-// File-type identity comes from the glyph alone so recent rows stay as compact
-// as file-search results without per-type row coloring.
-const RECENT_CHIP_ICON_NAME = {
-  md: "File",
-  html: "AppWindow",
-  report: "ChartColumn",
-  code: "Code",
-} satisfies Record<RecentFileChip, IconName>;
 const RECENT_ENTRY_ID_PREFIX = "file-search-result-recent";
+const NEW_TAB_APP_ROWS_VISIBLE_LIMIT = 6;
 
 function getAvailableFileSearchSources({
   projectId,
+  environmentId,
   currentThreadId,
 }: GetAvailableFileSearchSourcesArgs): readonly FileSearchSource[] {
   const sources: FileSearchSource[] = [];
   if (currentThreadId.length > 0) {
     sources.push("app");
   }
-  if (projectId) {
+  // The workspace is searchable via an existing thread's environment, or via a
+  // standard project's default source before any environment exists. Projectless
+  // (personal) threads have no project source, so without an environment there
+  // is no workspace to search. Mirrors the source selection in usePathSuggestions.
+  if (
+    Boolean(environmentId) ||
+    (projectId && !isProjectlessProjectId(projectId))
+  ) {
     sources.push("workspace");
   }
   if (currentThreadId.length > 0) {
@@ -262,15 +273,6 @@ function getFileSearchResultId(suggestion: FileSearchSuggestion): string {
 }
 
 function getFileSearchEntryId(entry: FileSearchSectionEntry): string {
-  if (entry.kind === "create-app") {
-    return CREATE_APP_ENTRY_ID;
-  }
-  if (entry.kind === "open-browser") {
-    return OPEN_BROWSER_ENTRY_ID;
-  }
-  if (entry.kind === "open-file") {
-    return OPEN_FILE_ENTRY_ID;
-  }
   if (entry.kind === "recent") {
     return `${RECENT_ENTRY_ID_PREFIX}-${entry.item.source}-${encodeURIComponent(
       entry.item.path,
@@ -294,10 +296,6 @@ function getFileSearchSectionKind(
 
 function groupFileSearchSections({
   availableSources,
-  includeOpenBrowserEntry,
-  includeOpenFileEntry,
-  includeCreateAppEntry,
-  createAppPlacement,
   recentEntries,
   suggestions,
 }: GroupFileSearchSectionsArgs): FileSearchSection[] {
@@ -330,30 +328,8 @@ function groupFileSearchSections({
     });
   }
 
-  if (includeCreateAppEntry && createAppPlacement !== "none") {
-    ensureSection(createAppPlacement).items.push({
-      entry: { kind: "create-app" },
-      index: 0,
-    });
-  }
-
-  if (includeOpenBrowserEntry) {
-    ensureSection("actions").items.push({
-      entry: { kind: "open-browser" },
-      index: 0,
-    });
-  }
-
-  if (includeOpenFileEntry) {
-    ensureSection("actions").items.push({
-      entry: { kind: "open-file" },
-      index: 0,
-    });
-  }
-
-  // Recent rows trail the Apps and Files sections so the unified index space
-  // reads top-down: launch an app, open a new surface, then jump back to a
-  // recently-opened file.
+  // Recent rows trail search matches so the unified index space reads top-down:
+  // open a matching result first, then jump back to a recently-opened file.
   for (const entry of recentEntries) {
     ensureSection("recent").items.push({ entry, index: 0 });
   }
@@ -387,9 +363,13 @@ function FileSearchMessage({
       <div className="flex max-w-64 items-center justify-center gap-1.5">
         <Icon
           name={iconName}
-          className={cn("size-4 shrink-0", iconClassName)}
+          className={cn(
+            COARSE_POINTER_ICON_SIZE_CLASS,
+            "shrink-0",
+            iconClassName,
+          )}
         />
-        <p>{message}</p>
+        <p className={COARSE_POINTER_TEXT_SM_CLASS}>{message}</p>
       </div>
     </EmptyStatePanel>
   );
@@ -397,8 +377,8 @@ function FileSearchMessage({
 
 /**
  * Shared button shell for launcher rows. File-search result rows use listbox
- * option semantics; rows in the + popout keep native button semantics because
- * the popout is a simple action list rather than a composite widget.
+ * option semantics; secondary new-tab actions keep native button semantics
+ * because they are separate commands rather than part of the file combobox.
  */
 function LauncherTile({
   id,
@@ -410,7 +390,9 @@ function LauncherTile({
   children,
 }: LauncherTileProps) {
   const baseClass =
-    variant === "menu" ? LAUNCHER_MENU_ROW_BASE_CLASS : LAUNCHER_ROW_BASE_CLASS;
+    variant === "action"
+      ? LAUNCHER_ACTION_ROW_BASE_CLASS
+      : LAUNCHER_ROW_BASE_CLASS;
 
   return (
     <button
@@ -436,6 +418,7 @@ function AppResultRow({
   id,
   suggestion,
   isActive,
+  variant = "action",
   onActivate,
   onSelect,
 }: AppResultRowProps) {
@@ -446,7 +429,7 @@ function AppResultRow({
     <LauncherTile
       id={id}
       isActive={isActive}
-      variant="menu"
+      variant={variant}
       onActivate={onActivate}
       onSelect={handleSelect}
       title={getFileSearchResultTitle(suggestion)}
@@ -454,7 +437,10 @@ function AppResultRow({
       <span className={LAUNCHER_ROW_ICON_CLASS}>
         <ResolvedAppIcon
           icon={suggestion.app.icon}
-          className="size-3.5 text-muted-foreground"
+          className={cn(
+            COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+            "text-muted-foreground",
+          )}
         />
       </span>
       <span className="min-w-0 flex-1 truncate text-foreground">
@@ -474,12 +460,16 @@ function CreateAppTile({
     <LauncherTile
       id={id}
       isActive={isActive}
-      variant="menu"
+      variant="action"
       onActivate={onActivate}
       onSelect={onSelect}
     >
       <span className={LAUNCHER_TILE_ICON_CLASS_DASHED}>
-        <Icon name="Plus" className="size-3.5" aria-hidden />
+        <Icon
+          name="Plus"
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+          aria-hidden
+        />
       </span>
       <span className="min-w-0 flex-1 truncate text-foreground">
         Create App...
@@ -498,12 +488,16 @@ function OpenBrowserTile({
     <LauncherTile
       id={id}
       isActive={isActive}
-      variant="menu"
+      variant="action"
       onActivate={onActivate}
       onSelect={onSelect}
     >
       <span className={LAUNCHER_ROW_ICON_CLASS}>
-        <Icon name="Globe" className="size-3.5" aria-hidden />
+        <Icon
+          name="Globe"
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+          aria-hidden
+        />
       </span>
       <span className="min-w-0 flex-1 truncate text-foreground">
         Open browser
@@ -512,24 +506,30 @@ function OpenBrowserTile({
   );
 }
 
-function OpenFileTile({
+function StartTerminalTile({
   id,
   isActive,
   onActivate,
   onSelect,
-}: OpenFileTileProps) {
+}: StartTerminalTileProps) {
   return (
     <LauncherTile
       id={id}
       isActive={isActive}
-      variant="menu"
+      variant="action"
       onActivate={onActivate}
       onSelect={onSelect}
     >
       <span className={LAUNCHER_ROW_ICON_CLASS}>
-        <Icon name="File" className="size-3.5" aria-hidden />
+        <Icon
+          name="Terminal"
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+          aria-hidden
+        />
       </span>
-      <span className="min-w-0 flex-1 truncate text-foreground">Open file</span>
+      <span className="min-w-0 flex-1 truncate text-foreground">
+        Start terminal
+      </span>
     </LauncherTile>
   );
 }
@@ -546,6 +546,7 @@ function FileResultRow({
   }, [onSelect, suggestion]);
   const directory = directoryFromPath(suggestion.path);
   const secondaryDirectory = directory || null;
+  const visual = resolveRightPanelFileVisual({ path: suggestion.path });
 
   return (
     <button
@@ -557,14 +558,18 @@ function FileResultRow({
       onMouseEnter={onActivate}
       title={getFileSearchResultTitle(suggestion)}
       className={cn(
-        "w-full scroll-mt-7 rounded px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "w-full scroll-mt-7 rounded px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        COARSE_POINTER_TEXT_SM_CLASS,
         isActive ? "bg-state-active" : "hover:bg-state-hover",
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5">
         <Icon
-          name="File"
-          className="size-3.5 shrink-0 text-muted-foreground"
+          name={visual.iconName}
+          className={cn(
+            COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+            "text-muted-foreground",
+          )}
           aria-hidden
         />
         <span className="truncate">{suggestion.name}</span>
@@ -581,8 +586,8 @@ function FileResultRow({
 /**
  * A recently-opened file row. It uses the compact launcher shell so recents sit
  * at roughly the same density as file-search results, with the file-kind glyph
- * and label carried inline. Reopening routes through the same `onSelect` path
- * as a file-search result.
+ * carried inline. Reopening routes through the same `onSelect` path as a
+ * file-search result.
  */
 function RecentResultRow({
   id,
@@ -595,8 +600,8 @@ function RecentResultRow({
   const handleSelect = useCallback(() => {
     onSelect(item);
   }, [item, onSelect]);
-  const { chip, label } = resolveRecentFileKind(item.path);
-  const name = getRecentItemName(item.path);
+  const visual = resolveRightPanelFileVisual({ path: item.path });
+  const name = getFileNameFromPath({ path: item.path });
   const directory = directoryFromPath(item.path);
   const relativeTime = formatRelativeTime({
     timestamp: item.openedAt,
@@ -609,36 +614,54 @@ function RecentResultRow({
       isActive={isActive}
       onActivate={onActivate}
       onSelect={handleSelect}
-      title={`${label}: ${item.path}`}
+      title={item.path}
     >
       <span className={LAUNCHER_ROW_ICON_CLASS}>
         <Icon
-          name={RECENT_CHIP_ICON_NAME[chip]}
-          className="size-3.5"
+          name={visual.iconName}
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
           aria-hidden
         />
       </span>
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="truncate text-foreground">{name}</span>
-        <span className="shrink-0 font-medium text-muted-foreground">
-          {label}
-        </span>
         {directory ? (
-          <>
-            <span
-              className="shrink-0 text-muted-foreground opacity-50"
-              aria-hidden
-            >
-              ·
-            </span>
-            <TruncateStart className="text-muted-foreground [flex-shrink:9999]">
-              {directory}
-            </TruncateStart>
-          </>
+          <TruncateStart className="text-muted-foreground [flex-shrink:9999]">
+            {directory}
+          </TruncateStart>
         ) : null}
       </span>
       <LauncherRowTrailing idle={relativeTime} isActive={isActive} />
     </LauncherTile>
+  );
+}
+
+function ShowMoreToggle({
+  isExpanded,
+  onToggle,
+  showMoreCount,
+}: ShowMoreToggleProps) {
+  return (
+    <button
+      type="button"
+      aria-expanded={isExpanded}
+      onClick={onToggle}
+      className={cn(
+        "ml-1.5 mt-0.5 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground",
+        COARSE_POINTER_TEXT_SM_CLASS,
+      )}
+    >
+      <Icon
+        name="ChevronDown"
+        className={cn(
+          COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+          "transition-transform",
+          isExpanded && "rotate-180",
+        )}
+        aria-hidden
+      />
+      <span>{isExpanded ? "Show less" : `Show ${showMoreCount} more`}</span>
+    </button>
   );
 }
 
@@ -648,6 +671,7 @@ export function NewTabFileSearch({
   currentThreadId,
   focusRequest,
   initialQuery = "",
+  onSearchActiveChange,
   onSelect,
 }: NewTabFileSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -663,7 +687,7 @@ export function NewTabFileSearch({
   );
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
-  const { suggestions, isLoading, fileSearchError, isDebouncing } =
+  const { suggestions, isLoading, appsError, fileSearchError, isDebouncing } =
     useFileSearchSuggestions({
       projectId,
       query,
@@ -675,25 +699,28 @@ export function NewTabFileSearch({
     () =>
       getAvailableFileSearchSources({
         projectId,
+        environmentId,
         currentThreadId,
       }),
-    [currentThreadId, projectId],
+    [currentThreadId, environmentId, projectId],
   );
   const fileSearchSources = useMemo(
     () => availableSources.filter((source) => source !== "app"),
     [availableSources],
   );
-  const fileSuggestions = useMemo(
+  const searchSuggestions = useMemo(
     () =>
-      suggestions.filter(
-        (suggestion): suggestion is FilePathSearchSuggestion =>
-          suggestion.entryKind === "file",
-      ),
-    [suggestions],
+      hasQuery
+        ? suggestions
+        : suggestions.filter(
+            (suggestion): suggestion is FilePathSearchSuggestion =>
+              suggestion.entryKind === "file",
+          ),
+    [hasQuery, suggestions],
   );
   // Collapsed to the visible cap by default. Recents are file/artifact entries,
-  // so this section is owned by the Open file/search surface rather than the +
-  // action menu.
+  // so this section is owned by the Open file/search surface rather than the
+  // secondary action rows on the new-tab page.
   const visibleRecentItems = useMemo(
     () =>
       isRecentExpanded
@@ -702,21 +729,26 @@ export function NewTabFileSearch({
     [isRecentExpanded, recentItems],
   );
   const recentEntries = useMemo<FileSearchSectionEntry[]>(
-    () => visibleRecentItems.map((item) => ({ kind: "recent", item })),
-    [visibleRecentItems],
+    () =>
+      hasQuery
+        ? []
+        : visibleRecentItems.map((item) => ({ kind: "recent", item })),
+    [hasQuery, visibleRecentItems],
   );
   const sections = useMemo(
     () =>
       groupFileSearchSections({
-        availableSources: fileSearchSources,
-        includeOpenBrowserEntry: false,
-        includeOpenFileEntry: false,
-        includeCreateAppEntry: false,
-        createAppPlacement: "none",
+        availableSources: hasQuery ? availableSources : fileSearchSources,
         recentEntries,
-        suggestions: fileSuggestions,
+        suggestions: searchSuggestions,
       }),
-    [fileSearchSources, fileSuggestions, recentEntries],
+    [
+      availableSources,
+      fileSearchSources,
+      hasQuery,
+      recentEntries,
+      searchSuggestions,
+    ],
   );
   const navigableEntries = useMemo(
     () =>
@@ -746,6 +778,14 @@ export function NewTabFileSearch({
     setActiveIndex(navigableEntries.length > 0 ? 0 : -1);
   }, [navigableEntries]);
 
+  const handleQueryChange = useCallback(
+    (nextQuery: string) => {
+      setQuery(nextQuery);
+      onSearchActiveChange?.(nextQuery.trim().length > 0);
+    },
+    [onSearchActiveChange],
+  );
+
   const handleFileSelect = useCallback(
     (suggestion: FilePathSearchSuggestion) => {
       onSelect({ source: suggestion.source, path: suggestion.path });
@@ -768,9 +808,11 @@ export function NewTabFileSearch({
     (suggestion: FileSearchSuggestion) => {
       if (suggestion.entryKind === "file") {
         handleFileSelect(suggestion);
+        return;
       }
+      onSelect({ source: "app", applicationId: suggestion.applicationId });
     },
-    [handleFileSelect],
+    [handleFileSelect, onSelect],
   );
 
   const handleLauncherKeyDown = useCallback<LauncherKeyDownHandler>(
@@ -815,61 +857,70 @@ export function NewTabFileSearch({
   const activeEntryId = activeEntry
     ? getFileSearchEntryId(activeEntry)
     : undefined;
-  const isSearchDisabled = fileSearchSources.length === 0;
+  const isSearchDisabled = availableSources.length === 0;
   // The results listbox renders only when there is a searchable source and at
   // least one option. Gate the combobox relationship on that so
   // `aria-controls`/`aria-activedescendant` never point at an absent element.
   const hasListbox = !isSearchDisabled && navigableEntries.length > 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       <div className="relative min-w-0">
         <Icon
           name="Search"
-          className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          className={cn(
+            "pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground",
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
         />
         <Input
           ref={inputRef}
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => handleQueryChange(event.target.value)}
           onKeyDown={handleLauncherKeyDown}
           disabled={isSearchDisabled}
           // Combobox with a list autocomplete popup: one listbox holds the
-          // navigable Files/Recent options, and the highlighted row is the
+          // navigable Files/Apps/Recent options, and the highlighted row is the
           // combobox's active descendant within that controlled listbox.
           role="combobox"
-          aria-label="Search files"
+          aria-label="Search files and apps"
           aria-autocomplete="list"
           aria-expanded={hasListbox}
           aria-controls={hasListbox ? listboxId : undefined}
           aria-activedescendant={hasListbox ? activeEntryId : undefined}
           placeholder={
-            isSearchDisabled ? "No searchable file source" : "Search files"
+            isSearchDisabled ? "No searchable source" : "Search files and apps"
           }
-          className="h-8 pl-8 pr-8 text-xs focus-visible:ring-0"
+          className={cn(
+            "h-8 pl-8 pr-8 focus-visible:ring-0 max-md:pointer-coarse:h-10",
+            COARSE_POINTER_TEXT_SM_CLASS,
+          )}
         />
         {isDebouncing ? (
           <Icon
             name="Spinner"
-            className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-muted-foreground"
+            className={cn(
+              "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground",
+              COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+            )}
           />
         ) : null}
       </div>
-      {fileSearchSources.length === 0 ? (
+      {availableSources.length === 0 ? (
         <FileSearchMessage
           iconName="FileQuestion"
-          message="No searchable file source is available."
+          message="No searchable source is available."
         />
       ) : (
         <NewTabResults
           activeIndex={activeIndex}
           hasQuery={hasQuery}
-          fileSearchError={fileSearchError}
+          searchError={fileSearchError || appsError}
           isLoading={isLoading}
           listboxId={listboxId}
           nowMs={nowMs}
           onActivateIndex={setActiveIndex}
-          onFileSelect={handleFileSelect}
+          onSuggestionSelect={handleSuggestionSelect}
           onRecentSelect={handleRecentSelect}
           recent={{
             count: recentItems.length,
@@ -879,8 +930,9 @@ export function NewTabFileSearch({
             ),
             isExpanded: isRecentExpanded,
             toggleVisible:
+              !hasQuery &&
               recentItems.length > THREAD_RECENT_ITEMS_VISIBLE_LIMIT,
-            emptyHintVisible: recentItems.length === 0,
+            emptyHintVisible: !hasQuery && recentItems.length === 0,
             onToggleExpanded: handleToggleRecentExpanded,
           }}
           sections={sections}
@@ -890,31 +942,19 @@ export function NewTabFileSearch({
   );
 }
 
-export function NewTabActionMenu({
+export function NewTabActions({
   projectId,
   currentThreadId,
   onSelect,
-  onOpenFileSearch,
   onCreateAppPromptPrefill,
   onOpenBrowser,
-  onCloseMenu,
-}: NewTabActionMenuProps) {
+  onStartTerminal,
+}: NewTabActionsProps) {
+  const [isAppsExpanded, setIsAppsExpanded] = useState(false);
   const promptDraft = usePromptDraftStorage({
     projectId,
     threadId: currentThreadId.length > 0 ? currentThreadId : null,
   });
-  const availableSources = useMemo(
-    () =>
-      getAvailableFileSearchSources({
-        projectId,
-        currentThreadId,
-      }),
-    [currentThreadId, projectId],
-  );
-  const fileSearchSources = useMemo(
-    () => availableSources.filter((source) => source !== "app"),
-    [availableSources],
-  );
   const canSearchApps = currentThreadId.length > 0;
   const apps = useApps({ enabled: canSearchApps });
   const appSuggestions = useMemo<AppSearchSuggestion[]>(
@@ -929,36 +969,41 @@ export function NewTabActionMenu({
       })),
     [apps.data],
   );
+  const visibleAppSuggestions = useMemo(
+    () =>
+      isAppsExpanded
+        ? appSuggestions
+        : appSuggestions.slice(0, NEW_TAB_APP_ROWS_VISIBLE_LIMIT),
+    [appSuggestions, isAppsExpanded],
+  );
   const canPrefillCreateAppPrompt =
     promptDraft.storageKey !== null && currentThreadId.length > 0;
-  const isMenuUnavailable = availableSources.length === 0;
   const showOpenBrowserEntry =
-    !isMenuUnavailable &&
     onOpenBrowser !== undefined &&
     isDesktopBrowserAvailable();
-  const showOpenFileEntry = !isMenuUnavailable && fileSearchSources.length > 0;
-  const showCreateAppEntry = !isMenuUnavailable && canPrefillCreateAppPrompt;
+  const showStartTerminalEntry = onStartTerminal !== undefined;
+  const showCreateAppEntry = canPrefillCreateAppPrompt;
 
   const handleAppSelect = useCallback(
     (suggestion: AppSearchSuggestion) => {
-      onCloseMenu();
       onSelect({ source: "app", applicationId: suggestion.applicationId });
     },
-    [onCloseMenu, onSelect],
+    [onSelect],
   );
 
-  const handleOpenFileSearch = useCallback(() => {
-    onCloseMenu();
-    onOpenFileSearch();
-  }, [onCloseMenu, onOpenFileSearch]);
-
   const handleOpenBrowser = useCallback(() => {
-    onCloseMenu();
     onOpenBrowser?.();
-  }, [onCloseMenu, onOpenBrowser]);
+  }, [onOpenBrowser]);
+
+  const handleStartTerminal = useCallback(() => {
+    onStartTerminal?.();
+  }, [onStartTerminal]);
+
+  const handleToggleAppsExpanded = useCallback(() => {
+    setIsAppsExpanded((current) => !current);
+  }, []);
 
   const handleCreateAppPromptPrefill = useCallback(() => {
-    onCloseMenu();
     if (!canPrefillCreateAppPrompt) {
       return;
     }
@@ -975,90 +1020,114 @@ export function NewTabActionMenu({
 
     promptDraft.setDraft(CREATE_APP_PROMPT_DRAFT);
     onCreateAppPromptPrefill?.();
-  }, [
-    canPrefillCreateAppPrompt,
-    onCloseMenu,
-    onCreateAppPromptPrefill,
-    promptDraft,
-  ]);
+  }, [canPrefillCreateAppPrompt, onCreateAppPromptPrefill, promptDraft]);
 
   const hasInstalledApps = appSuggestions.length > 0;
+  const showAppsToggle =
+    appSuggestions.length > NEW_TAB_APP_ROWS_VISIBLE_LIMIT;
+  const showAppsMoreCount = Math.max(
+    0,
+    appSuggestions.length - NEW_TAB_APP_ROWS_VISIBLE_LIMIT,
+  );
+  const hasOpenActions = showOpenBrowserEntry || showStartTerminalEntry;
+  const hasAppActions =
+    hasInstalledApps || apps.isLoading || apps.isError || showCreateAppEntry;
+
+  if (!hasOpenActions && !hasAppActions) {
+    return null;
+  }
 
   return (
-    <div data-testid="new-tab-action-menu" className="flex min-w-0 flex-col">
-      {/* Primary open actions lead the menu: Open file, then Open browser. */}
-      <div className="flex flex-col gap-px">
-        {showOpenFileEntry ? (
-          <OpenFileTile
-            id={OPEN_FILE_ENTRY_ID}
-            isActive={false}
-            onActivate={() => undefined}
-            onSelect={handleOpenFileSearch}
+    <div data-testid="new-tab-actions" className="flex min-w-0 flex-col">
+      {hasOpenActions ? (
+        <section>
+          <LauncherSectionHeader
+            label={FILE_SEARCH_SECTION_LABELS.actions}
+            className="pb-1"
           />
-        ) : null}
-        {showOpenBrowserEntry ? (
-          <OpenBrowserTile
-            id={OPEN_BROWSER_ENTRY_ID}
-            isActive={false}
-            onActivate={() => undefined}
-            onSelect={handleOpenBrowser}
-          />
-        ) : null}
-      </div>
+          <div className="flex flex-col gap-px">
+            {showOpenBrowserEntry ? (
+              <OpenBrowserTile
+                id={OPEN_BROWSER_ENTRY_ID}
+                isActive={false}
+                onActivate={() => undefined}
+                onSelect={handleOpenBrowser}
+              />
+            ) : null}
+            {showStartTerminalEntry ? (
+              <StartTerminalTile
+                id={START_TERMINAL_ENTRY_ID}
+                isActive={false}
+                onActivate={() => undefined}
+                onSelect={handleStartTerminal}
+              />
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
-      {/* Installed apps get their own divided, titled section, present only
-          when at least one app exists. With no apps there is no divider or
-          title and Create App simply trails the open actions below. */}
-      {hasInstalledApps ? (
-        <>
-          <Separator
-            // A real (non-decorative) separator marks the boundary between the
-            // open actions and the apps group, matching the app's menu divider
-            // convention. Keep it inset to the row/content rail on the left,
-            // and use the same subtle seam token as horizontal top-nav dividers.
-            decorative={false}
-            className={NEW_TAB_ACTION_MENU_SEPARATOR_CLASS}
-          />
+      {hasOpenActions && hasAppActions ? (
+        <Separator
+          decorative={false}
+          className={NEW_TAB_ACTIONS_SEPARATOR_CLASS}
+        />
+      ) : null}
+
+      {hasAppActions ? (
+        <section>
           <LauncherSectionHeader
             label={FILE_SEARCH_SECTION_LABELS.apps}
             className="pb-1"
           />
-        </>
+          <div className="flex flex-col gap-px">
+            {visibleAppSuggestions.map((suggestion) => (
+              <AppResultRow
+                key={`app:${suggestion.applicationId}`}
+                id={getFileSearchResultId(suggestion)}
+                suggestion={suggestion}
+                isActive={false}
+                onActivate={() => undefined}
+                onSelect={handleAppSelect}
+              />
+            ))}
+            {canSearchApps && apps.isLoading && appSuggestions.length === 0 ? (
+              <p
+                className={cn(
+                  "px-2 py-1 text-muted-foreground",
+                  COARSE_POINTER_TEXT_SM_CLASS,
+                )}
+              >
+                Loading apps...
+              </p>
+            ) : null}
+            {canSearchApps && apps.isError ? (
+              <p
+                className={cn(
+                  "px-2 py-1 text-muted-foreground",
+                  COARSE_POINTER_TEXT_SM_CLASS,
+                )}
+              >
+                Couldn't load apps.
+              </p>
+            ) : null}
+            {showAppsToggle ? (
+              <ShowMoreToggle
+                isExpanded={isAppsExpanded}
+                onToggle={handleToggleAppsExpanded}
+                showMoreCount={showAppsMoreCount}
+              />
+            ) : null}
+            {showCreateAppEntry ? (
+              <CreateAppTile
+                id={CREATE_APP_ENTRY_ID}
+                isActive={false}
+                onActivate={() => undefined}
+                onSelect={handleCreateAppPromptPrefill}
+              />
+            ) : null}
+          </div>
+        </section>
       ) : null}
-
-      {/* Apps list, then any app-load status, then Create App. Create App is
-          always the final row, so the Loading/Couldn't-load notice sits above
-          it in every app state rather than trailing it. */}
-      <div className="flex flex-col gap-px">
-        {appSuggestions.map((suggestion) => (
-          <AppResultRow
-            key={`app:${suggestion.applicationId}`}
-            id={getFileSearchResultId(suggestion)}
-            suggestion={suggestion}
-            isActive={false}
-            onActivate={() => undefined}
-            onSelect={handleAppSelect}
-          />
-        ))}
-        {canSearchApps && apps.isLoading && appSuggestions.length === 0 ? (
-          <p className="px-2 py-1 text-xs text-muted-foreground">
-            Loading apps...
-          </p>
-        ) : null}
-        {canSearchApps && apps.isError ? (
-          <p className="px-2 py-1 text-xs text-muted-foreground">
-            Couldn't load apps.
-          </p>
-        ) : null}
-        {showCreateAppEntry ? (
-          <CreateAppTile
-            id={CREATE_APP_ENTRY_ID}
-            isActive={false}
-            onActivate={() => undefined}
-            onSelect={handleCreateAppPromptPrefill}
-          />
-        ) : null}
-      </div>
     </div>
   );
 }
@@ -1075,13 +1144,13 @@ interface NewTabRecentState {
 interface NewTabResultsProps {
   activeIndex: number;
   hasQuery: boolean;
-  fileSearchError: boolean;
+  searchError: boolean;
   isLoading: boolean;
-  /** Id of the single combobox listbox that wraps the Files/Recent option groups. */
+  /** Id of the single combobox listbox that wraps the Files/Apps/Recent option groups. */
   listboxId: string;
   nowMs: number;
   onActivateIndex: (index: number) => void;
-  onFileSelect: (suggestion: FilePathSearchSuggestion) => void;
+  onSuggestionSelect: (suggestion: FileSearchSuggestion) => void;
   onRecentSelect: (item: ThreadRecentItem) => void;
   recent: NewTabRecentState;
   sections: readonly FileSearchSection[];
@@ -1090,58 +1159,79 @@ interface NewTabResultsProps {
 function NewTabResults({
   activeIndex,
   hasQuery,
-  fileSearchError,
+  searchError,
   isLoading,
   listboxId,
   nowMs,
   onActivateIndex,
-  onFileSelect,
+  onSuggestionSelect,
   onRecentSelect,
   recent,
   sections,
 }: NewTabResultsProps) {
+  const appsSection = sections.find((section) => section.kind === "apps");
   const filesSection = sections.find((section) => section.kind === "files");
   const recentSection = sections.find((section) => section.kind === "recent");
+  const showAppsSection = appsSection !== undefined;
   const showFilesSection = filesSection !== undefined;
   const showRecentSection =
-    recentSection !== undefined || recent.emptyHintVisible;
-  const hasSectionsAbove = showFilesSection;
-  const showLoading = isLoading && !showFilesSection;
-  const showError = fileSearchError && !showFilesSection && !showLoading;
-  const showFileSearchMessage = showLoading || showError;
-  const hasRecentSectionPredecessor = hasSectionsAbove || showFileSearchMessage;
+    !hasQuery && (recentSection !== undefined || recent.emptyHintVisible);
+  const hasSearchResults = showFilesSection || showAppsSection;
+  const showLoading = isLoading && !hasSearchResults;
+  const showError = searchError && !hasSearchResults && !showLoading;
+  const showNoSearchResults =
+    hasQuery && !hasSearchResults && !showLoading && !showError;
+  const showSearchMessage = showLoading || showError || showNoSearchResults;
+  const hasRecentSectionPredecessor = hasSearchResults || showSearchMessage;
   const showEmptyMessage =
-    !showFilesSection && !showRecentSection && !showLoading && !showError;
+    !hasSearchResults && !showRecentSection && !showLoading && !showError;
   // The combobox popup is a single listbox spanning both groups, so the active
   // descendant the input points at always resolves inside one controlled
   // element. It renders only when a group has option rows; the loading/error
   // message, the empty-recent card, and the show-more toggle are not options
   // and stay outside the listbox.
-  const showListbox = showFilesSection || recentSection !== undefined;
+  const showListbox =
+    showFilesSection || showAppsSection || recentSection !== undefined;
 
   if (showEmptyMessage) {
     return (
       <FileSearchMessage
         iconName={hasQuery ? "FileQuestion" : "File"}
-        message={hasQuery ? "No files match." : "Type to search files."}
+        message={
+          hasQuery
+            ? "No results match your search."
+            : "Type to search files and apps."
+        }
       />
     );
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto pb-1">
-      {/* The loading/error message stands in for the Files group while no file
-          rows exist, so it leads the results just as that group would. */}
-      {showFileSearchMessage ? (
+    <div className="pb-1">
+      {/* The loading/error message stands in for search results while no result
+          rows exist, so it leads the results just as a result group would. */}
+      {showSearchMessage ? (
         <FileSearchMessage
-          iconName={showError ? "AlertCircle" : "Spinner"}
+          iconName={
+            showError ? "AlertCircle" : showLoading ? "Spinner" : "FileQuestion"
+          }
           iconClassName={showLoading ? "animate-spin" : undefined}
-          message={showError ? "File search failed." : "Searching files..."}
+          message={
+            showError
+              ? "Search failed."
+              : showLoading
+                ? "Searching files and apps..."
+                : "No results match your search."
+          }
         />
       ) : null}
 
       {showListbox ? (
-        <div id={listboxId} role="listbox" aria-label="File search results">
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label="File and app search results"
+        >
           {showFilesSection && filesSection ? (
             <section role="group" aria-label={FILE_SEARCH_SECTION_LABELS.files}>
               <LauncherSectionHeader
@@ -1164,7 +1254,43 @@ function NewTabResults({
                       suggestion={suggestion}
                       isActive={index === activeIndex}
                       onActivate={() => onActivateIndex(index)}
-                      onSelect={onFileSelect}
+                      onSelect={onSuggestionSelect}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          {showAppsSection && appsSection ? (
+            <section
+              role="group"
+              aria-label={FILE_SEARCH_SECTION_LABELS.apps}
+              className={cn(showFilesSection && "mt-3")}
+            >
+              <LauncherSectionHeader
+                label={FILE_SEARCH_SECTION_LABELS.apps}
+                sticky
+                className={showFilesSection ? "pt-2" : undefined}
+              />
+              <div className="flex flex-col gap-px">
+                {appsSection.items.map(({ entry, index }) => {
+                  if (
+                    entry.kind !== "suggestion" ||
+                    entry.suggestion.entryKind !== "app"
+                  ) {
+                    return null;
+                  }
+                  const suggestion = entry.suggestion;
+                  return (
+                    <AppResultRow
+                      key={`app:${suggestion.applicationId}`}
+                      id={getFileSearchEntryId(entry)}
+                      suggestion={suggestion}
+                      isActive={index === activeIndex}
+                      variant="result"
+                      onActivate={() => onActivateIndex(index)}
+                      onSelect={onSuggestionSelect}
                     />
                   );
                 })}
@@ -1210,42 +1336,26 @@ function NewTabResults({
       {recent.emptyHintVisible && recentSection === undefined ? (
         // Empty Recent zero-state. It is a framed dashed placeholder card, not a
         // selectable option, so it sits outside the listbox. This belongs to the
-        // Open file / search surface only; the browser new-tab and root + menu
-        // stay card-less.
+        // Open file / search surface only; the browser new-tab and secondary
+        // action rows stay card-less.
         <section className={cn(hasRecentSectionPredecessor && "mt-3")}>
           <LauncherSectionHeader
             label={FILE_SEARCH_SECTION_LABELS.recent}
             sticky
             className={hasRecentSectionPredecessor ? "pt-2" : undefined}
           />
-          <EmptyStatePanel className="py-4 text-xs">
-            Nothing referenced yet — plans, mockups, and files you open will show
-            up here.
+          <EmptyStatePanel className={cn("py-4", COARSE_POINTER_TEXT_SM_CLASS)}>
+            Plans, mockups, and files you open will show up here.
           </EmptyStatePanel>
         </section>
       ) : null}
 
       {recent.toggleVisible ? (
-        <button
-          type="button"
-          aria-expanded={recent.isExpanded}
-          onClick={recent.onToggleExpanded}
-          className="ml-1.5 mt-0.5 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-        >
-          <Icon
-            name="ChevronDown"
-            className={cn(
-              "size-3.5 transition-transform",
-              recent.isExpanded && "rotate-180",
-            )}
-            aria-hidden
-          />
-          <span>
-            {recent.isExpanded
-              ? "Show less"
-              : `Show ${recent.showMoreCount} more`}
-          </span>
-        </button>
+        <ShowMoreToggle
+          isExpanded={recent.isExpanded}
+          onToggle={recent.onToggleExpanded}
+          showMoreCount={recent.showMoreCount}
+        />
       ) : null}
     </div>
   );

@@ -1,5 +1,6 @@
 import {
   getBuiltInAgentProviderInfo,
+  getBuiltInAgentProviderServerCapabilities,
   isAgentProviderId,
 } from "@bb/agent-providers";
 import type {
@@ -21,16 +22,25 @@ export const DEFAULT_REASONING_LEVEL: ReasoningLevel = "medium";
 
 /**
  * Whether provider sessions get the Workflows feature (dynamic multi-agent
- * orchestration). Server-owned product policy: enabled for claude-code — the
- * Workflow tool's own opt-in rules govern when the model actually uses it —
- * and meaningless for providers without the concept. Host-level user/org
- * disables still win inside the CLI.
+ * orchestration). Server-owned product policy that reads the provider's
+ * `supportsWorkflows` capability fact: the Workflow tool's own opt-in rules
+ * govern when the model actually uses it, and the feature is meaningless for
+ * providers without the concept. Host-level user/org disables still win inside
+ * the CLI.
+ *
+ * Deliberately kept enabled alongside bb workflow runs — the convergence
+ * decision, rationale, and re-evaluation triggers are recorded in
+ * docs/workflows-local-workflow-convergence.md (M7 convergence memo). Note
+ * the ultracode coupling documented there before changing this policy.
  */
 export function resolveWorkflowsEnabledPolicy(providerId: string): boolean {
-  return providerId === "claude-code";
+  if (!isAgentProviderId(providerId)) {
+    return false;
+  }
+  return getBuiltInAgentProviderServerCapabilities(providerId)
+    .supportsWorkflows;
 }
 const DEFAULT_PERMISSION_MODE: PermissionMode = "full";
-const MANAGED_CHILD_PERMISSION_MODE: PermissionMode = "workspace-write";
 const PRODUCT_DEFAULT_PROVIDER_ID = "codex";
 const PRODUCT_DEFAULT_MODEL = "gpt-5.5";
 
@@ -50,13 +60,13 @@ export interface IsManagedChildThreadArgs {
 }
 
 export interface ResolveThreadDefaultPermissionModeArgs {
-  parentThread?: ParentThread | null;
-  thread: Pick<Thread, "parentThreadId" | "projectId" | "providerId">;
+  thread: Pick<Thread, "providerId">;
 }
 
 export interface ResolveThreadExecutionPermissionModeArgs {
   lastExecutionPermissionMode?: PermissionMode;
   parentThread?: ParentThread | null;
+  parentThreadExecutionPermissionMode?: PermissionMode;
   projectExecutionPermissionMode?: PermissionMode;
   requestedPermissionMode?: PermissionMode;
   thread: Pick<Thread, "parentThreadId" | "projectId" | "providerId">;
@@ -226,13 +236,6 @@ export function resolveCreateThreadEnvironment(
 export function resolveThreadDefaultPermissionMode(
   args: ResolveThreadDefaultPermissionModeArgs,
 ): PermissionMode {
-  if (isManagedChildThread(args)) {
-    return resolveSupportedPermissionMode({
-      providerId: args.thread.providerId,
-      preferredPermissionMode: MANAGED_CHILD_PERMISSION_MODE,
-    });
-  }
-
   return resolveSupportedPermissionMode({
     providerId: args.thread.providerId,
     preferredPermissionMode: DEFAULT_PERMISSION_MODE,
@@ -249,13 +252,18 @@ export function resolveThreadExecutionPermissionMode(
     return args.lastExecutionPermissionMode;
   }
 
-  const defaultPermissionMode = resolveThreadDefaultPermissionMode({
-    parentThread: args.parentThread,
-    thread: args.thread,
-  });
-  if (isManagedChildThread(args)) {
-    return defaultPermissionMode;
+  if (
+    isManagedChildThread(args) &&
+    args.parentThreadExecutionPermissionMode !== undefined
+  ) {
+    return resolveSupportedPermissionMode({
+      providerId: args.thread.providerId,
+      preferredPermissionMode: args.parentThreadExecutionPermissionMode,
+    });
   }
 
+  const defaultPermissionMode = resolveThreadDefaultPermissionMode({
+    thread: args.thread,
+  });
   return args.projectExecutionPermissionMode ?? defaultPermissionMode;
 }

@@ -7,77 +7,45 @@ import {
   useSetFixedSecondaryPanelTab,
 } from "@/lib/fixed-panel-tabs";
 import type {
-  FixedPanelTab,
   FixedPanelTabsState,
+  SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel } from "@/lib/thread-secondary-panel";
 
 type ThreadSecondaryPanelThreadId = string | null | undefined;
-type ActiveFixedPanelTab = FixedPanelTab | null;
-type ActiveThreadSecondaryPanel = ThreadSecondaryPanel | null;
+type ActiveFixedSecondaryTab = SecondaryFixedPanelTab | null;
 
-type NullableSecondaryPanelSetter = (panel: ActiveThreadSecondaryPanel) => void;
+type NullableSecondaryPanelSetter = (
+  panel: ThreadSecondaryPanel | null,
+) => void;
 
 interface GetActiveFixedSecondaryTabArgs {
   fixedPanelTabsState: FixedPanelTabsState;
 }
 
-interface GetSelectedThreadSecondaryPanelArgs {
-  activeFixedSecondaryTab: ActiveFixedPanelTab;
-}
-
-interface GetActiveThreadSecondaryPanelArgs {
+interface GetOpenFixedSecondaryTabArgs {
+  activeFixedSecondaryTab: ActiveFixedSecondaryTab;
   isSecondaryPanelOpen: boolean;
-  selectedSecondaryPanel: ActiveThreadSecondaryPanel;
 }
 
 export function getActiveFixedSecondaryTab({
   fixedPanelTabsState,
-}: GetActiveFixedSecondaryTabArgs): ActiveFixedPanelTab {
+}: GetActiveFixedSecondaryTabArgs): ActiveFixedSecondaryTab {
   const activeTabId = fixedPanelTabsState.secondary.activeTabId;
   if (activeTabId === null) {
     return null;
   }
-  return (
+  const activeTab =
     fixedPanelTabsState.secondary.tabs.find((tab) => tab.id === activeTabId) ??
-    null
-  );
+    null;
+  return activeTab;
 }
 
-function getSecondaryPanelForFixedTab(
-  tab: ActiveFixedPanelTab,
-): ActiveThreadSecondaryPanel {
-  if (tab === null) {
-    return null;
-  }
-  switch (tab.kind) {
-    case "thread-info":
-      return "thread-info";
-    case "git-diff":
-      return "git-diff";
-    case "workspace-file-preview":
-    case "host-file-preview":
-    case "thread-storage-file-preview":
-    case "app":
-    case "browser":
-    case "new-tab":
-      return "thread-info";
-    case "terminal":
-      return null;
-  }
-}
-
-export function getSelectedThreadSecondaryPanel({
+export function getOpenFixedSecondaryTab({
   activeFixedSecondaryTab,
-}: GetSelectedThreadSecondaryPanelArgs): ActiveThreadSecondaryPanel {
-  return getSecondaryPanelForFixedTab(activeFixedSecondaryTab);
-}
-
-export function getActiveThreadSecondaryPanel({
   isSecondaryPanelOpen,
-  selectedSecondaryPanel,
-}: GetActiveThreadSecondaryPanelArgs): ActiveThreadSecondaryPanel {
-  return isSecondaryPanelOpen ? selectedSecondaryPanel : null;
+}: GetOpenFixedSecondaryTabArgs): ActiveFixedSecondaryTab {
+  return isSecondaryPanelOpen ? activeFixedSecondaryTab : null;
 }
 
 export function useSetThreadSecondaryPanelSelection(

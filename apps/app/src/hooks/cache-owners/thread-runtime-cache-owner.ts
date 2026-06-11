@@ -504,10 +504,14 @@ export async function beginReorderQueuedMessageTransaction({
   request,
 }: ReorderQueuedMessageTransactionArgs): Promise<ReorderQueuedMessageTransaction> {
   const queryKey = threadQueuedMessagesQueryKey(request.id);
-  await queryClient.cancelQueries({ queryKey });
   const previousQueuedMessages =
     queryClient.getQueryData<ThreadQueuedMessageListResponse>(queryKey);
 
+  // Apply the optimistic reorder synchronously — before awaiting cancelQueries
+  // — so the list re-renders in its new order within the same tick as the drop.
+  // If this write lands a microtask late (after the await), dnd-kit has already
+  // animated the dragged row back to its original slot, producing a visible
+  // snap-back before it settles into place.
   queryClient.setQueryData<ThreadQueuedMessageListResponse>(
     queryKey,
     (currentQueuedMessages) =>
@@ -518,6 +522,8 @@ export async function beginReorderQueuedMessageTransaction({
           })
         : currentQueuedMessages,
   );
+
+  await queryClient.cancelQueries({ queryKey });
 
   return { previousQueuedMessages };
 }

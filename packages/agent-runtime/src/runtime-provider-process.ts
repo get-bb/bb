@@ -68,14 +68,6 @@ export interface ShutdownRuntimeProviderArgs {
   timeoutMs?: number;
 }
 
-export interface ProviderShutdownExpectedArgs {
-  providerId: string;
-}
-
-export interface ClearProviderShutdownExpectedArgs {
-  providerId: string;
-}
-
 interface CleanupFailedStartupArgs {
   providerId: string;
   providerProcess: RuntimeProviderProcess;
@@ -125,13 +117,13 @@ export class RuntimeProviderProcessManager {
   }
 
   async ensureProvider(args: EnsureRuntimeProviderArgs): Promise<void> {
-    if (this.processes.has(args.providerId)) return;
-
     const existing = this.providerStarting.get(args.providerId);
     if (existing) {
       await existing;
       return;
     }
+
+    if (this.processes.has(args.providerId)) return;
 
     const startPromise = (async () => {
       const adapter = this.getAdapter(args.providerId);
@@ -193,7 +185,9 @@ export class RuntimeProviderProcessManager {
     try {
       await startPromise;
     } finally {
-      this.providerStarting.delete(args.providerId);
+      if (this.providerStarting.get(args.providerId) === startPromise) {
+        this.providerStarting.delete(args.providerId);
+      }
     }
   }
 
@@ -226,25 +220,6 @@ export class RuntimeProviderProcessManager {
       providerProcess,
       timeoutMs: args.timeoutMs,
     });
-  }
-
-  markProviderShutdownExpected(args: ProviderShutdownExpectedArgs): boolean {
-    const providerProcess = this.processes.get(args.providerId);
-    if (!providerProcess || hasChildProcessExited(providerProcess.child)) {
-      return false;
-    }
-    providerProcess.expectedShutdownExpectations += 1;
-    return true;
-  }
-
-  clearProviderShutdownExpected(args: ClearProviderShutdownExpectedArgs): void {
-    const providerProcess = this.processes.get(args.providerId);
-    if (!providerProcess) {
-      return;
-    }
-    if (providerProcess.expectedShutdownExpectations > 0) {
-      providerProcess.expectedShutdownExpectations -= 1;
-    }
   }
 
   async shutdown(): Promise<void> {
@@ -539,8 +514,7 @@ function formatProviderStderr(stderrChunks: readonly string[]): string | null {
 function consumeExpectedProviderProcessShutdown(
   providerProcess: RuntimeProviderProcess,
 ): boolean {
-  // One process exit consumes all outstanding expected-shutdown requests,
-  // including overlapping restart-provider stops.
+  // One process exit consumes all outstanding explicit shutdown requests.
   const expected = providerProcess.expectedShutdownExpectations > 0;
   providerProcess.expectedShutdownExpectations = 0;
   return expected;

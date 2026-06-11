@@ -8,6 +8,11 @@ import {
   allEnvironmentQueryKeyPrefix,
   allEnvironmentWorkStatusQueryKeyPrefix,
   allHostQueryKeyPrefix,
+  allWorkflowRunAgentEventsQueryKeyPrefix,
+  allWorkflowRunEventsQueryKeyPrefix,
+  allWorkflowRunQueryKeyPrefix,
+  allWorkflowRunsQueryKeyPrefix,
+  allWorkflowsQueryKeyPrefix,
   allProjectPathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
   allThreadDefaultExecutionOptionsQueryKeyPrefix,
@@ -27,6 +32,7 @@ import {
   projectsQueryKey,
   replayCapturesQueryKey,
   sidebarNavigationQueryKey,
+  systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
   threadPromptHistoryQueryKeyPrefix,
@@ -81,23 +87,12 @@ export function refetchErroredRealtimeQueriesOnInitialConnect({
   });
 }
 
-export function invalidateHostAvailabilityQueries({
-  queryClient,
-}: QueryClientArg): void {
-  queryClient.invalidateQueries({ queryKey: hostsQueryKey() });
-  queryClient.invalidateQueries({ queryKey: allHostQueryKeyPrefix() });
-}
-
-export function invalidateHostChangeDependentQueries({
-  queryClient,
-}: QueryClientArg): void {
-  invalidateHostAvailabilityQueries({ queryClient });
-  queryClient.invalidateQueries({ queryKey: projectsQueryKey() });
-  queryClient.invalidateQueries({ queryKey: sidebarNavigationQueryKey() });
-  queryClient.invalidateQueries({ queryKey: systemProvidersQueryKey() });
-  queryClient.invalidateQueries({
-    queryKey: allSystemExecutionOptionsQueryKeyPrefix(),
-  });
+/**
+ * Refresh `/system/config` after an experiments write: the server broadcast
+ * covers other windows, this gives the writing window an immediate re-gate.
+ */
+export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
+  queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
 }
 
 export function invalidateReplayCaptures({
@@ -139,5 +134,14 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     localPathExistenceQueryKeyPrefix(),
     systemProvidersQueryKey(),
     allSystemExecutionOptionsQueryKeyPrefix(),
+    // Workflow runs are realtime-fed: messages emitted while the socket was
+    // down are lost, and a run that reached terminal during the gap emits
+    // nothing afterward — without this, a focused run page or Workflows tab
+    // renders the run frozen at its pre-disconnect state indefinitely.
+    allWorkflowRunQueryKeyPrefix(),
+    allWorkflowRunsQueryKeyPrefix(),
+    allWorkflowRunEventsQueryKeyPrefix(),
+    allWorkflowRunAgentEventsQueryKeyPrefix(),
+    allWorkflowsQueryKeyPrefix(),
   ];
 }

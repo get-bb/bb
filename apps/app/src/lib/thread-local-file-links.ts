@@ -1,4 +1,5 @@
 import type { ThreadTimelineLocalFileLink } from "@/components/thread/timeline";
+import type { FilePreviewLineRange } from "./file-preview";
 import {
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
@@ -18,19 +19,19 @@ export interface ResolveThreadLocalFileLinkArgs {
 }
 
 export interface ThreadWorkspaceFileLinkOpenRequest {
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   path: string;
   relativePath: string;
   workspaceRootPath: string;
 }
 
 export interface ThreadHostFileLinkOpenRequest {
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   path: string;
 }
 
 export interface ThreadStorageFileLinkOpenRequest {
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   path: string;
   relativePath: string;
   threadStorageRootPath: string;
@@ -142,7 +143,7 @@ export function resolveThreadLocalFileLink(
     return {
       kind: "open-workspace-path",
       request: {
-        lineNumber: args.link.lineNumber,
+        lineRange: args.link.lineRange,
         path: openRequest.path,
         relativePath: openRequest.relativePath,
         workspaceRootPath: openRequest.rootPath,
@@ -162,7 +163,7 @@ export function resolveThreadLocalFileLink(
     return {
       kind: "open-thread-storage-path",
       request: {
-        lineNumber: args.link.lineNumber,
+        lineRange: args.link.lineRange,
         path: storageOpenRequest.path,
         relativePath: storageOpenRequest.relativePath,
         threadStorageRootPath: storageOpenRequest.rootPath,
@@ -180,7 +181,7 @@ export function resolveThreadLocalFileLink(
   return {
     kind: "open-host-path",
     request: {
-      lineNumber: args.link.lineNumber,
+      lineRange: args.link.lineRange,
       path: normalizedPath,
     },
   };

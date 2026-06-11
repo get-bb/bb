@@ -3,13 +3,18 @@
 import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BbDesktopApi, BbDesktopInfo } from "@bb/server-contract";
+import type { BbDesktopInfo } from "@bb/server-contract";
 import { MACOS_WINDOW_NO_DRAG_CLASS } from "@/lib/bb-desktop";
-import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 
+const viewportState = vi.hoisted(() => ({
+  isCompactViewport: false,
+}));
+
 vi.mock("@/components/ui/hooks/use-compact-viewport.js", () => ({
-  useIsCompactViewport: () => false,
+  useIsCompactViewport: () => viewportState.isCompactViewport,
 }));
 
 vi.mock("@/components/ui/sidebar.js", () => ({
@@ -19,23 +24,28 @@ vi.mock("@/components/ui/sidebar.js", () => ({
 
 interface RenderHeaderOverrides {
   actionsMenu?: ReactNode;
+  activeTerminalCount?: number;
   isSecondaryPanelOpen?: boolean;
+  onOpenThreadGitAction?: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel?: () => void;
+  threadHeaderGitActions?: TestThreadHeaderGitAction[];
+}
+
+interface TestThreadHeaderGitAction {
+  label: string;
+  target: ThreadGitActionDialogTarget;
 }
 
 function renderHeader(overrides: RenderHeaderOverrides = {}) {
   const noop = () => {};
   const props = {
     actionsMenu: overrides.actionsMenu ?? null,
-    activeTerminalCount: 0,
+    activeTerminalCount: overrides.activeTerminalCount ?? 0,
     isChildThread: false,
     isSecondaryPanelOpen: overrides.isSecondaryPanelOpen ?? false,
-    isTerminalPanelOpen: false,
-    isThreadGitActionPending: false,
-    onOpenThreadGitAction: noop,
+    onOpenThreadGitAction: overrides.onOpenThreadGitAction ?? noop,
     onToggleSecondaryPanel: overrides.onToggleSecondaryPanel ?? noop,
-    onToggleTerminalPanel: noop,
-    threadHeaderGitActions: [],
+    threadHeaderGitActions: overrides.threadHeaderGitActions ?? [],
     threadTitle: "Test thread",
   };
   return render(<ThreadDetailHeader {...props} />);
@@ -51,28 +61,12 @@ function installMacosDesktopChrome(): void {
     updateDownloaded: false,
     version: "0.0.1",
   };
-  const desktop: BbDesktopApi = {
-    ...info,
-    browser: createNoopDesktopBrowserApi(),
-    async checkForUpdates() {
-      return info;
-    },
-    async getInfo() {
-      return info;
-    },
-    async installUpdate() {
-      return undefined;
-    },
-    onChange() {
-      return () => undefined;
-    },
-    setTheme() {},
-  };
-  window.bbDesktop = desktop;
+  window.bbDesktop = createBbDesktopApi(info);
 }
 
 afterEach(() => {
   cleanup();
+  viewportState.isCompactViewport = false;
   delete window.bbDesktop;
 });
 
@@ -103,33 +97,75 @@ describe("ThreadDetailHeader actions menu drag region", () => {
   });
 });
 
+describe("ThreadDetailHeader git actions", () => {
+  it("keeps git action buttons clickable so actions can queue", () => {
+    const onOpenThreadGitAction = vi.fn();
+    renderHeader({
+      onOpenThreadGitAction,
+      threadHeaderGitActions: [
+        { label: "Commit", target: { kind: "commit" } },
+        { label: "Squash merge", target: { kind: "squash_merge" } },
+      ],
+    });
+
+    const commitButton = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Commit",
+    });
+    const moreActionsButton = screen.getByRole<HTMLButtonElement>("button", {
+      name: "More actions",
+    });
+
+    expect(commitButton.disabled).toBe(false);
+    expect(moreActionsButton.disabled).toBe(false);
+
+    fireEvent.click(commitButton);
+    expect(onOpenThreadGitAction).toHaveBeenCalledWith({ kind: "commit" });
+  });
+});
+
 describe("ThreadDetailHeader panel toggle", () => {
-  it("opens the secondary panel from the closed state", () => {
+  it("toggles the right panel from the closed state", () => {
     const onToggleSecondaryPanel = vi.fn();
     renderHeader({
       isSecondaryPanelOpen: false,
       onToggleSecondaryPanel,
     });
 
-    const button = screen.getByRole("button", { name: "Show panel" });
-    expect(button.getAttribute("aria-expanded")).toBe("false");
-    // Closed state renders the recognizable panel icon, not a chevron, so it
-    // reads as "open the right side panel".
+    const button = screen.getByRole("button", { name: "Show right panel" });
+    expect(button.getAttribute("aria-pressed")).toBe("false");
     expect(button.querySelector("[data-icon='PanelRight']")).not.toBeNull();
 
     fireEvent.click(button);
     expect(onToggleSecondaryPanel).toHaveBeenCalledTimes(1);
   });
 
-  it("drops the panel toggle from the conversation header once the panel is open", () => {
-    // Open state moves the expand/collapse-conversation toggle into the panel
-    // header, so the conversation header no longer carries a panel affordance.
-    renderHeader({ isSecondaryPanelOpen: true });
+  it("uses the drawer icon on compact viewports", () => {
+    viewportState.isCompactViewport = true;
+    renderHeader({ isSecondaryPanelOpen: false });
 
-    expect(screen.queryByRole("button", { name: "Show panel" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Expand panel" })).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Restore conversation" }),
-    ).toBeNull();
+    const button = screen.getByRole("button", { name: "Show right panel" });
+    expect(button.querySelector("[data-icon='PanelBottom']")).not.toBeNull();
+    expect(button.querySelector("[data-icon='PanelRight']")).toBeNull();
+  });
+
+  it("toggles the right panel from the open state", () => {
+    const onToggleSecondaryPanel = vi.fn();
+    renderHeader({
+      isSecondaryPanelOpen: true,
+      onToggleSecondaryPanel,
+    });
+
+    const button = screen.getByRole("button", { name: "Hide right panel" });
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(button);
+    expect(onToggleSecondaryPanel).toHaveBeenCalledTimes(1);
+  });
+
+  it("badges the right panel button when terminals are active", () => {
+    renderHeader({ activeTerminalCount: 12 });
+
+    const button = screen.getByRole("button", { name: "Show right panel" });
+    expect(button.textContent).toContain("9+");
   });
 });

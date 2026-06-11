@@ -8,13 +8,23 @@ const COLLAPSED_ENVIRONMENTS_STORAGE_KEY = "bb.sidebar.collapsedEnvironments";
 const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = "bb.sidebar.collapsedSections";
 const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
 
-export type SidebarSectionId = "pinned" | "projects" | "threads" | "apps";
-export type CollapsibleSidebarSectionId = "projects" | "threads" | "apps";
+export type SidebarSectionId =
+  | "pinned"
+  | "projects"
+  | "threads"
+  | "workflows"
+  | "apps";
+export type CollapsibleSidebarSectionId =
+  | "projects"
+  | "threads"
+  | "workflows"
+  | "apps";
 
 export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly SidebarSectionId[] = [
   "pinned",
   "projects",
   "threads",
+  "workflows",
   "apps",
 ];
 

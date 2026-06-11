@@ -5,9 +5,10 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
-import type { WorkspacePathEntry } from "@bb/server-contract";
+import type { AppSummary, WorkspacePathEntry } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -25,6 +26,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     searchProjectPaths: vi.fn(),
+    searchEnvironmentPaths: vi.fn(),
     listApps: vi.fn(),
     listThreadStoragePaths: vi.fn(),
   };
@@ -44,6 +46,7 @@ interface PathListFixtureResponse {
 
 interface RenderNewTabPageArgs {
   projectId?: string;
+  environmentId?: string | null;
   currentThreadId?: string;
   onSelect?: (selection: FileSearchSelection) => void;
 }
@@ -73,6 +76,14 @@ function makePathResponse(
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
+const REVIEW_BOARD_APP = {
+  applicationId: "review-board",
+  name: "Review Board",
+  entry: { path: "index.html", kind: "html" },
+  capabilities: ["data", "message"],
+  icon: { kind: "builtin", name: "ListTodo" },
+  source: null,
+} satisfies AppSummary;
 
 function seedRecentItems(threadId: string, items: ThreadRecentItem[]): void {
   window.localStorage.setItem(
@@ -84,6 +95,7 @@ function seedRecentItems(threadId: string, items: ThreadRecentItem[]): void {
 function mockEmptySearchSources(): void {
   vi.mocked(api.listApps).mockResolvedValue([]);
   vi.mocked(api.searchProjectPaths).mockResolvedValue(makePathResponse([]));
+  vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(makePathResponse([]));
   vi.mocked(api.listThreadStoragePaths).mockResolvedValue({
     ...makePathResponse([]),
     storageRootPath: "/tmp/thread-storage",
@@ -99,7 +111,7 @@ function renderNewTabPage(args: RenderNewTabPageArgs = {}) {
     ...render(
       <NewTabPage
         projectId={args.projectId}
-        environmentId="env-1"
+        environmentId={args.environmentId === undefined ? "env-1" : args.environmentId}
         currentThreadId={args.currentThreadId ?? "thr-standard"}
         focusRequest={0}
         onSelect={onSelect}
@@ -119,7 +131,7 @@ afterEach(() => {
 describe("NewTabPage", () => {
   it("renders file search and selects a workspace result", async () => {
     vi.mocked(api.listApps).mockResolvedValue([]);
-    vi.mocked(api.searchProjectPaths).mockResolvedValue(
+    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
       makePathResponse([
         {
           kind: "file",
@@ -136,7 +148,7 @@ describe("NewTabPage", () => {
     expect(screen.queryByRole("option", { name: /Open file/u })).toBeNull();
     expect(screen.queryByRole("option", { name: /Open browser/u })).toBeNull();
     const input = screen.getByRole("combobox", {
-      name: "Search files",
+      name: "Search files and apps",
     });
     expect(document.activeElement).toBe(input);
     fireEvent.change(input, { target: { value: "app" } });
@@ -167,7 +179,7 @@ describe("NewTabPage", () => {
 
   it("selects a thread-storage result with the keyboard", async () => {
     vi.mocked(api.listApps).mockResolvedValue([]);
-    vi.mocked(api.searchProjectPaths).mockResolvedValue(
+    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
       makePathResponse([
         {
           kind: "file",
@@ -192,7 +204,7 @@ describe("NewTabPage", () => {
     });
 
     const input = screen.getByRole("combobox", {
-      name: "Search files",
+      name: "Search files and apps",
     });
     fireEvent.change(input, { target: { value: "status" } });
     await screen.findByText("Files");
@@ -205,20 +217,109 @@ describe("NewTabPage", () => {
     });
   });
 
-  it("renders an unavailable state without querying", () => {
-    renderNewTabPage({ currentThreadId: "" });
+  it("searches apps with files and hides default sections while searching", async () => {
+    const threadId = "thr-search-apps";
+    vi.mocked(api.listApps).mockResolvedValue([REVIEW_BOARD_APP]);
+    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
+      makePathResponse([
+        {
+          kind: "file",
+          path: "src/review.ts",
+          score: 80,
+        },
+      ]),
+    );
+    vi.mocked(api.listThreadStoragePaths).mockResolvedValue({
+      ...makePathResponse([]),
+      storageRootPath: "/tmp/thread-storage",
+    });
+    seedRecentItems(threadId, [
+      {
+        source: "thread-storage",
+        path: "plans/recent-review.md",
+        openedAt: Date.now() - MINUTE_MS,
+      },
+    ]);
+    const { onSelect } = renderNewTabPage({
+      projectId: "proj-1",
+      currentThreadId: threadId,
+    });
 
     expect(
-      screen.getByText("No searchable file source is available."),
+      await screen.findByRole("button", { name: /Review Board/u }),
+    ).toBeTruthy();
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Search files and apps" }),
+      {
+        target: { value: "review" },
+      },
+    );
+
+    const listbox = await screen.findByRole("listbox", {
+      name: "File and app search results",
+    });
+    expect(
+      await within(listbox).findByRole("group", { name: "Files" }),
+    ).toBeTruthy();
+    const appsGroup = within(listbox).getByRole("group", { name: "Apps" });
+    fireEvent.click(
+      within(appsGroup).getByRole("option", { name: /Review Board/u }),
+    );
+
+    expect(screen.queryByRole("group", { name: "Recent" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Create App..." })).toBeNull();
+    expect(onSelect).toHaveBeenCalledWith({
+      source: "app",
+      applicationId: "review-board",
+    });
+  });
+
+  it("ends file-search loading in a projectless thread with no workspace", async () => {
+    mockEmptySearchSources();
+    renderNewTabPage({
+      projectId: undefined,
+      environmentId: null,
+      currentThreadId: "thr-projectless-search",
+    });
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Search files and apps" }),
+      {
+        target: { value: "missing" },
+      },
+    );
+
+    await waitFor(() => {
+      expect(api.listThreadStoragePaths).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Searching files and apps...")).toBeNull();
+    });
+
+    // No project source and no environment ⇒ workspace is never queried.
+    expect(api.searchProjectPaths).not.toHaveBeenCalled();
+    expect(api.searchEnvironmentPaths).not.toHaveBeenCalled();
+    expect(screen.queryByText("Search failed.")).toBeNull();
+    expect(screen.getByText("No results match your search.")).toBeTruthy();
+  });
+
+  it("renders an unavailable state without querying", () => {
+    renderNewTabPage({ currentThreadId: "", environmentId: null });
+
+    expect(
+      screen.getByText("No searchable source is available."),
     ).toBeTruthy();
     expect(api.searchProjectPaths).not.toHaveBeenCalled();
+    expect(api.searchEnvironmentPaths).not.toHaveBeenCalled();
     expect(api.listApps).not.toHaveBeenCalled();
     expect(api.listThreadStoragePaths).not.toHaveBeenCalled();
 
     // With no searchable source the combobox is disabled and advertises no
     // popup, so it never dangles aria-controls/activedescendant at an absent
     // listbox.
-    const input = screen.getByRole("combobox", { name: "Search files" });
+    const input = screen.getByRole("combobox", {
+      name: "Search files and apps",
+    });
     expect(input).toHaveProperty("disabled", true);
     expect(input.getAttribute("aria-expanded")).toBe("false");
     expect(input.getAttribute("aria-controls")).toBeNull();
@@ -228,7 +329,7 @@ describe("NewTabPage", () => {
 });
 
 describe("NewTabPage recent section", () => {
-  it("lists recent items newest-first with type chips and relative timestamps", async () => {
+  it("lists recent items newest-first with relative timestamps", async () => {
     mockEmptySearchSources();
     const threadId = "thr-recent-render";
     const now = Date.now();
@@ -237,6 +338,11 @@ describe("NewTabPage recent section", () => {
         source: "thread-storage",
         path: "plans/swap-model.md",
         openedAt: now - 2 * MINUTE_MS,
+      },
+      {
+        source: "thread-storage",
+        path: "README.md",
+        openedAt: now - 5 * MINUTE_MS,
       },
       {
         source: "thread-storage",
@@ -260,17 +366,24 @@ describe("NewTabPage recent section", () => {
     const recentOptions = within(recentGroup).getAllByRole("option");
     expect(recentOptions.map((option) => option.textContent ?? "")).toEqual([
       expect.stringContaining("swap-model.md"),
+      expect.stringContaining("README.md"),
       expect.stringContaining("sidebar-mockup.html"),
       expect.stringContaining("NewTabFileSearch.tsx"),
     ]);
 
-    // Chip labels follow the artifact kind, not just the extension.
-    expect(within(recentGroup).getByText("Plan")).toBeTruthy();
-    expect(within(recentGroup).getByText("Mockup")).toBeTruthy();
-    expect(within(recentGroup).getByText("Source")).toBeTruthy();
+    // Recent rows keep the icon and path context, but do not render visual-kind
+    // labels or the old separator glyphs inline.
+    expect(within(recentGroup).queryByText("Plan")).toBeNull();
+    expect(within(recentGroup).queryByText("Doc")).toBeNull();
+    expect(within(recentGroup).queryByText("Mockup")).toBeNull();
+    expect(within(recentGroup).queryByText("Source")).toBeNull();
+    for (const option of recentOptions) {
+      expect(option.textContent ?? "").not.toContain(String.fromCharCode(183));
+    }
 
     // Right-aligned relative timestamps.
     expect(within(recentGroup).getByText("2m ago")).toBeTruthy();
+    expect(within(recentGroup).getByText("5m ago")).toBeTruthy();
     expect(within(recentGroup).getByText("1h ago")).toBeTruthy();
     expect(within(recentGroup).getByText("Yesterday")).toBeTruthy();
   });
@@ -328,6 +441,33 @@ describe("NewTabPage recent section", () => {
     ).toBeNull();
   });
 
+  it("hides Recent while a search has no matches", async () => {
+    mockEmptySearchSources();
+    const threadId = "thr-recent-no-search-results";
+    seedRecentItems(threadId, [
+      {
+        source: "thread-storage",
+        path: "plans/swap-model.md",
+        openedAt: Date.now() - 2 * MINUTE_MS,
+      },
+    ]);
+    renderNewTabPage({
+      projectId: "proj-1",
+      currentThreadId: threadId,
+    });
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Search files and apps" }),
+      {
+        target: { value: "does-not-exist" },
+      },
+    );
+
+    expect(await screen.findByText("No results match your search.")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Recent" })).toBeNull();
+    expect(screen.queryByRole("option", { name: /swap-model\.md/u })).toBeNull();
+  });
+
   it("reaches a recent row via keyboard navigation", async () => {
     mockEmptySearchSources();
     const threadId = "thr-recent-keys";
@@ -343,7 +483,9 @@ describe("NewTabPage recent section", () => {
       currentThreadId: threadId,
     });
 
-    const input = screen.getByRole("combobox", { name: "Search files" });
+    const input = screen.getByRole("combobox", {
+      name: "Search files and apps",
+    });
     const recentOption = await screen.findByRole("option", {
       name: /swap-model\.md/u,
     });
@@ -361,7 +503,9 @@ describe("NewTabPage recent section", () => {
       currentThreadId: "thr-recent-empty",
     });
 
-    const hint = await screen.findByText(/Nothing referenced yet/u);
+    const hint = await screen.findByText(
+      "Plans, mockups, and files you open will show up here.",
+    );
     expect(hint.className).toContain("border-dashed");
     // The deprecated raised fill stays gone so the card never clashes on white.
     expect(hint.className).not.toContain("bg-surface-raised");

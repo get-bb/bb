@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  recordRecentItem,
-  resolveRecentFileKind,
-  type ThreadRecentItem,
-} from "./threadRecentItems";
+import { recordRecentItem, type ThreadRecentItem } from "./threadRecentItems";
 
 describe("recordRecentItem", () => {
   it("prepends a newly opened item so the list reads newest-first", () => {
@@ -66,41 +62,5 @@ describe("recordRecentItem", () => {
       limit: 3,
     });
     expect(next.map((item) => item.path)).toEqual(["d", "a", "b"]);
-  });
-});
-
-describe("resolveRecentFileKind", () => {
-  it("labels markdown plans and html mockups under plans/", () => {
-    expect(resolveRecentFileKind("plans/swap-model.md")).toEqual({
-      chip: "md",
-      label: "Plan",
-    });
-    expect(resolveRecentFileKind("plans/sidebar-mockup.html")).toEqual({
-      chip: "html",
-      label: "Mockup",
-    });
-  });
-
-  it("reads anything under reports/ as a Report regardless of extension", () => {
-    expect(resolveRecentFileKind("reports/architecture.md")).toEqual({
-      chip: "report",
-      label: "Report",
-    });
-    expect(resolveRecentFileKind("reports/desktop-size.html")).toEqual({
-      chip: "report",
-      label: "Report",
-    });
-  });
-
-  it("treats source files as code and bare markdown as a doc", () => {
-    expect(
-      resolveRecentFileKind(
-        "apps/app/src/components/secondary-panel/NewTabFileSearch.tsx",
-      ),
-    ).toEqual({ chip: "code", label: "Source" });
-    expect(resolveRecentFileKind("README.md")).toEqual({
-      chip: "md",
-      label: "Doc",
-    });
   });
 });

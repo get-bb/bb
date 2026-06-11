@@ -256,12 +256,19 @@ function UserConversationMessage({
   const mutePrefixLength = computeMutedPrefixLength(initiator, text);
   const messageText = text.trim();
   const requestLabel = turnRequestLabel(turnRequest);
-  const showToolbar = requestLabel !== null || messageText.length > 0;
 
   return (
     <div className="w-full">
-      <div className="ml-auto w-fit max-w-[80%]">
-        <div className="rounded-md bg-surface-selected p-2 text-sm leading-relaxed text-foreground">
+      <div className="group ml-auto w-fit max-w-[80%]">
+        {requestLabel ? (
+          <div className="mb-1 flex justify-end">
+            <TurnRequestLabel
+              turnRequest={turnRequest}
+              icon="ArrowTurnForward"
+            />
+          </div>
+        ) : null}
+        <div className="rounded-md bg-surface-recessed p-2 text-sm leading-relaxed text-foreground">
           {messageText ? (
             <CollapsibleMessageText
               mentions={mentions}
@@ -279,12 +286,13 @@ function UserConversationMessage({
             projectId={projectId}
           />
         </div>
-        {showToolbar ? (
-          <div className="mt-1 flex items-center justify-end gap-2">
-            <TurnRequestLabel turnRequest={turnRequest} />
-            {messageText ? (
-              <CopyButton text={text} label="Copy message" />
-            ) : null}
+        {messageText ? (
+          <div className="mt-1 flex justify-end">
+            <CopyButton
+              text={text}
+              label="Copy message"
+              className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            />
           </div>
         ) : null}
       </div>
@@ -319,8 +327,10 @@ function AssistantConversationMessage({
     return routing;
   }, [onOpenLink, onOpenLocalFileLink]);
 
+  const messageText = text.trim();
+
   return (
-    <div className="group w-full px-2 text-sm leading-relaxed">
+    <div className="group w-full px-2 text-sm font-normal leading-relaxed">
       <MarkdownPreview content={text} linkRouting={linkRouting} />
       <ConversationAttachments
         filePaths={attachmentItems.filePaths}
@@ -328,6 +338,18 @@ function AssistantConversationMessage({
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
       />
+      {messageText ? (
+        // Pull the hover action row up to reclaim the gap below the message
+        // rather than stacking on top of it, so the copy button (and future
+        // icon buttons in this row) sit in space the message already reserves.
+        <div className="-mt-1 flex justify-start">
+          <CopyButton
+            text={text}
+            label="Copy message"
+            className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

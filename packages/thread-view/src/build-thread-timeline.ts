@@ -632,6 +632,7 @@ function convertMessage(
           workKind: "workflow",
           status: message.status,
           itemId: message.itemId,
+          taskType: message.taskType,
           workflowName: message.workflowName,
           description: message.description,
           taskStatus: message.taskStatus,

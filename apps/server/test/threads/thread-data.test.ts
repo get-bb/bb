@@ -8,7 +8,12 @@ import {
   noopNotifier,
   upsertHost,
 } from "@bb/db";
-import { parseStoredEvent } from "../../src/services/threads/thread-data.js";
+import { threadScope } from "@bb/domain";
+import {
+  getLastThreadCommandFailureOutput,
+  parseStoredEvent,
+} from "../../src/services/threads/thread-data.js";
+import { appendSystemErrorEventInTransaction } from "../../src/services/threads/thread-events.js";
 
 function setup() {
   const db = createConnection(":memory:");
@@ -107,6 +112,41 @@ describe("thread data stored event parsing", () => {
       }
 
       expect(() => parseStoredEvent(row)).toThrow(/not valid JSON/);
+    } finally {
+      db.$client.close();
+    }
+  });
+
+  it("returns the latest command failure system error message and detail", () => {
+    const { db, thread } = setup();
+
+    try {
+      db.transaction((tx) => {
+        appendSystemErrorEventInTransaction(
+          { db: tx, hub: noopNotifier },
+          {
+            code: "thread_command_failed",
+            detail: "first detail",
+            message: "First error",
+            scope: threadScope(),
+            threadId: thread.id,
+          },
+        );
+        appendSystemErrorEventInTransaction(
+          { db: tx, hub: noopNotifier },
+          {
+            code: "thread_command_failed",
+            detail: "latest detail",
+            message: "Latest error",
+            scope: threadScope(),
+            threadId: thread.id,
+          },
+        );
+      });
+
+      expect(getLastThreadCommandFailureOutput(db, thread.id)).toBe(
+        "Latest error\n\nlatest detail",
+      );
     } finally {
       db.$client.close();
     }

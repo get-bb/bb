@@ -209,6 +209,9 @@ function createDesktopApiStub(initialInfo: BbDesktopInfo): DesktopApiStub {
     setTheme() {
       // no-op
     },
+    openExternalUrl() {
+      // no-op
+    },
   };
   return {
     api,

@@ -20,6 +20,9 @@ export async function fetchEnvironmentInfo(args: {
     return {
       display: formatEnvironmentDisplay({
         environment: env,
+        host: {
+          locality: "local",
+        },
       }),
       hostId: env.hostId,
     };

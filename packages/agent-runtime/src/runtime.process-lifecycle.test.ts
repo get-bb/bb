@@ -1,4 +1,10 @@
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdtempSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -77,6 +83,14 @@ describe("createAgentRuntime process lifecycle", () => {
     };
   }
 
+  function readLogLines(logPath: string): string[] {
+    if (!existsSync(logPath)) {
+      return [];
+    }
+    const content = readFileSync(logPath, "utf8").trim();
+    return content.length > 0 ? content.split("\n") : [];
+  }
+
   it("handles JSON-RPC error responses from provider", async () => {
     const events: ThreadEvent[] = [];
     const runtime = createAgentRuntimeWithAdapters({
@@ -90,6 +104,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.startThread({
+      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -124,6 +139,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime2.startThread({
+      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -195,6 +211,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.startThread({
+      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -347,6 +364,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.startThread({
+      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -499,6 +517,7 @@ describe("createAgentRuntime process lifecycle", () => {
     try {
       await expect(
         runtime.startThread({
+          sessionKind: "thread",
           environmentId: "env-1",
           threadId: "t1",
           projectId: "p1",
@@ -509,6 +528,7 @@ describe("createAgentRuntime process lifecycle", () => {
       expect(runtime.listRunningProviders()).not.toContain("codex");
 
       await runtime.startThread({
+        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t2",
         projectId: "p1",
@@ -523,6 +543,101 @@ describe("createAgentRuntime process lifecycle", () => {
         "spawn:2",
         "configure:2",
         "thread-start:2:t2",
+      ]);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("waits for startup skill configuration before reusing a spawned process", async () => {
+    const logPath = join(tmpDir, "delayed-startup-log.txt");
+    const delayedStartupScript = join(tmpDir, "delayed-startup.cjs");
+    writeFileSync(
+      delayedStartupScript,
+      `const fs = require("fs");
+      const readline = require("readline");
+      const logPath = process.argv[2];
+      let skillsConfigured = false;
+      function log(line) {
+        fs.appendFileSync(logPath, line + "\\n");
+      }
+      function send(id, result) {
+        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\\n");
+      }
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on("line", (line) => {
+        const msg = JSON.parse(line);
+        if (msg.method === "initialize") {
+          log("initialize");
+          setTimeout(() => send(msg.id, {}), 50);
+          return;
+        }
+        if (msg.method === "skills/configure") {
+          skillsConfigured = true;
+          log("configure");
+          send(msg.id, {});
+          return;
+        }
+        if (msg.method === "thread/start") {
+          const threadId = msg.params?.threadId ?? "";
+          const providerThreadId = "provider-thread";
+          log("thread-start:" + threadId + ":configured=" + String(skillsConfigured));
+          send(msg.id, { providerThreadId });
+          process.stdout.write(JSON.stringify({
+            jsonrpc: "2.0",
+            method: "thread/identity",
+            params: { threadId, providerThreadId }
+          }) + "\\n");
+        }
+      });`,
+    );
+    const baseAdapter = createFakeAdapter(scriptPath);
+    const adapter: ProviderAdapter = {
+      ...baseAdapter,
+      process: {
+        command: "node",
+        args: [delayedStartupScript, logPath],
+      },
+    };
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      skillRoots: [
+        {
+          id: "bb-cli",
+          providerId: "codex",
+          skillDirectoryRootPath: join(tmpDir, "skill-root"),
+        },
+      ],
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => adapter,
+    });
+
+    try {
+      const startup = runtime.ensureProvider({ providerId: "codex" });
+      await waitForRuntimeState({
+        label: "delayed provider initialize request",
+        predicate: () => readLogLines(logPath).includes("initialize"),
+      });
+
+      const started = runtime.startThread({
+        sessionKind: "thread",
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+
+      await Promise.all([startup, started]);
+
+      expect(readLogLines(logPath)).toEqual([
+        "initialize",
+        "configure",
+        "thread-start:t1:configured=true",
       ]);
     } finally {
       await runtime.shutdown();
@@ -567,6 +682,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.startThread({
+      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -625,6 +741,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.startThread({
+      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",

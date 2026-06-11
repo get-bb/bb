@@ -1,16 +1,19 @@
 import { extractErrorMessage, toRecord } from "@bb/core-ui";
 import type {
   Environment,
+  Experiments,
+  Host,
   PendingInteraction,
-  Project,
   ProjectExecutionDefaults,
   ProjectSource,
   ResolvedThreadExecutionOptions,
+  ThreadEventRow,
   ThreadQueuedMessage,
   WorkspaceDiffTarget,
 } from "@bb/domain";
 import type {
   AutomationsOverviewResponse,
+  CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
   CreateQueuedMessageRequest,
@@ -81,6 +84,12 @@ import type {
   AppDetail,
   AppSourceStatus,
   AppSummary,
+  CreateWorkflowRunRequest,
+  WorkflowListResponse,
+  WorkflowRunEventsResponse,
+  WorkflowRunListQuery,
+  WorkflowRunListResponse,
+  WorkflowRunResponse,
 } from "@bb/server-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
 import {
@@ -489,15 +498,15 @@ export async function deleteReplayCapture(id: string): Promise<void> {
 
 export async function createProject(
   req: CreateProjectRequest,
-): Promise<Project> {
-  return request<Project>(apiClient.projects.$post({ json: req }));
+): Promise<ProjectResponse> {
+  return request<ProjectResponse>(apiClient.projects.$post({ json: req }));
 }
 
 export async function updateProject(
   id: string,
   req: UpdateProjectRequest,
-): Promise<Project> {
-  return request<Project>(
+): Promise<ProjectResponse> {
+  return request<ProjectResponse>(
     apiClient.projects[":id"].$patch({ param: { id }, json: req }),
   );
 }
@@ -594,7 +603,14 @@ interface SearchProjectPathsArgs {
   projectId: string;
   query: string;
   limit: number;
-  environmentId: string | null;
+  includeFiles: boolean;
+  includeDirectories: boolean;
+}
+
+interface SearchEnvironmentPathsArgs {
+  environmentId: string;
+  query: string;
+  limit: number;
   includeFiles: boolean;
   includeDirectories: boolean;
 }
@@ -605,6 +621,11 @@ function toPathListIncludeQueryValue(
   return value ? "true" : "false";
 }
 
+/**
+ * Search the project's default source path. Used by the new-thread compose box
+ * before any environment exists; once a thread has an environment, workspace
+ * path search goes through {@link searchEnvironmentPaths}.
+ */
 export async function searchProjectPaths(
   args: SearchProjectPathsArgs,
 ): Promise<WorkspacePathListResponse> {
@@ -614,11 +635,66 @@ export async function searchProjectPaths(
       query: {
         query: args.query,
         limit: String(args.limit),
-        environmentId: args.environmentId ?? "",
+        // The project-source listing has no environment to scope to; the shared
+        // query schema still carries the field, so send the empty string (=
+        // null) to select the default source.
+        environmentId: "",
         includeFiles: toPathListIncludeQueryValue(args.includeFiles),
         includeDirectories: toPathListIncludeQueryValue(
           args.includeDirectories,
         ),
+      },
+    }),
+  );
+}
+
+/** Search the workspace of an existing thread's environment (project-agnostic). */
+export async function searchEnvironmentPaths(
+  args: SearchEnvironmentPathsArgs,
+): Promise<WorkspacePathListResponse> {
+  return request<WorkspacePathListResponse>(
+    apiClient.environments[":id"].paths.$get({
+      param: { id: args.environmentId },
+      query: {
+        query: args.query,
+        limit: String(args.limit),
+        includeFiles: toPathListIncludeQueryValue(args.includeFiles),
+        includeDirectories: toPathListIncludeQueryValue(
+          args.includeDirectories,
+        ),
+      },
+    }),
+  );
+}
+
+interface ListProjectCommandsArgs {
+  projectId: string;
+  providerId: string;
+  environmentId: string | null;
+  query: string;
+  limit: number;
+}
+
+/**
+ * List the provider skills/slash-commands discoverable for a project, scoped by
+ * provider + environment, for the in-composer command typeahead (`/` Claude
+ * Code, `$` Codex). Serves both the existing-thread follow-up composer and the
+ * new-thread composer. Mirrors {@link searchProjectPaths}: the typed Hono
+ * client resolves the route from `@bb/server-contract`'s public-api schema, so
+ * this types against the committed `CommandListResponse` contract with no cast,
+ * and encodes a null `environmentId` as the empty string on the wire.
+ */
+export async function listProjectCommands(
+  args: ListProjectCommandsArgs,
+): Promise<CommandListResponse> {
+  return request<CommandListResponse>(
+    apiClient.projects[":id"].commands.$get({
+      param: { id: args.projectId },
+      query: {
+        provider: args.providerId,
+        environmentId: args.environmentId ?? "",
+        ...(args.query.length > 0 ? { query: args.query } : {}),
+        limit: String(args.limit),
       },
     }),
   );
@@ -881,7 +957,9 @@ export async function listAppSources(
 export async function addAppSource(
   req: AddAppSourceRequest,
 ): Promise<AppSourceStatus> {
-  return request<AppSourceStatus>(apiClient["app-sources"].$post({ json: req }));
+  return request<AppSourceStatus>(
+    apiClient["app-sources"].$post({ json: req }),
+  );
 }
 
 export async function syncAppSource(
@@ -1173,6 +1251,15 @@ export async function markThreadUnread(id: string): Promise<ThreadResponse> {
   );
 }
 
+export async function getHost(
+  id: string,
+  signal?: AbortSignal,
+): Promise<Host> {
+  return request<Host>(
+    apiClient.hosts[":id"].$get({ param: { id } }, requestOptions(signal)),
+  );
+}
+
 export async function getEnvironment(
   id: string,
   signal?: AbortSignal,
@@ -1437,4 +1524,111 @@ export async function getSystemVersion(): Promise<SystemVersionResponse> {
 
 export async function getSystemConfig(): Promise<SystemConfigResponse> {
   return request<SystemConfigResponse>(apiClient.system.config.$get());
+}
+
+export async function listHosts(): Promise<Host[]> {
+  return request<Host[]>(apiClient.hosts.$get());
+}
+
+/**
+ * Replace the user's opt-in experiments (full object — no partial updates).
+ * The server broadcasts system `config-changed`, so other windows re-read
+ * `/system/config` and re-gate their surfaces.
+ */
+export async function updateExperiments(
+  experiments: Experiments,
+): Promise<Experiments> {
+  return request<Experiments>(
+    apiClient.settings.experiments.$put({ json: experiments }),
+  );
+}
+
+interface GetWorkflowRunAgentEventsArgs {
+  /** Journal-stable 1-based display index (snapshot `agent.index`). */
+  agentIndex: number;
+  runId: string;
+}
+
+/**
+ * Workflow definitions across the registry tiers (project > user > builtin)
+ * from the project's default source root. Requires the source host online —
+ * 502 `host_unavailable` otherwise; 409 when the project has no default
+ * source. (The route accepts an explicit `hostId` for CLI/SDK callers; the
+ * SPA lists the default source only — host choice is launch-time-only.)
+ */
+export async function listWorkflows(
+  projectId: string,
+): Promise<WorkflowListResponse> {
+  return request<WorkflowListResponse>(
+    apiClient.workflows.$get({ query: { projectId } }),
+  );
+}
+
+export async function listWorkflowRuns(
+  query: WorkflowRunListQuery,
+): Promise<WorkflowRunListResponse> {
+  return request<WorkflowRunListResponse>(
+    apiClient["workflow-runs"].$get({ query }),
+  );
+}
+
+export async function createWorkflowRun(
+  req: CreateWorkflowRunRequest,
+): Promise<WorkflowRunResponse> {
+  return request<WorkflowRunResponse>(
+    apiClient["workflow-runs"].$post({ json: req }),
+  );
+}
+
+export async function getWorkflowRun(id: string): Promise<WorkflowRunResponse> {
+  return request<WorkflowRunResponse>(
+    apiClient["workflow-runs"][":id"].$get({ param: { id } }),
+  );
+}
+
+export async function getWorkflowRunEvents(
+  id: string,
+): Promise<WorkflowRunEventsResponse> {
+  return request<WorkflowRunEventsResponse>(
+    apiClient["workflow-runs"][":id"].events.$get({ param: { id } }),
+  );
+}
+
+/**
+ * Per-agent provider-event log, proxied from the run's host. 404 when the log
+ * does not exist (agent not started or run dir pruned); 502 `host_unavailable`
+ * when the daemon is offline — both surface as `HttpError`s for the drill-in
+ * UI to render as distinct non-error states.
+ */
+export async function getWorkflowRunAgentEvents({
+  agentIndex,
+  runId,
+}: GetWorkflowRunAgentEventsArgs): Promise<ThreadEventRow[]> {
+  return request<ThreadEventRow[]>(
+    apiClient["workflow-runs"][":id"].agents[":index"].events.$get({
+      param: { id: runId, index: String(agentIndex) },
+    }),
+  );
+}
+
+export async function cancelWorkflowRun(id: string): Promise<void> {
+  await requestVoid(
+    apiClient["workflow-runs"][":id"].cancel.$post({ param: { id } }),
+  );
+}
+
+export async function resumeWorkflowRun(id: string): Promise<void> {
+  await requestVoid(
+    apiClient["workflow-runs"][":id"].resume.$post({ param: { id } }),
+  );
+}
+
+export async function archiveWorkflowRun(id: string): Promise<void> {
+  await requestVoid(
+    apiClient["workflow-runs"][":id"].archive.$post({ param: { id } }),
+  );
+}
+
+export async function deleteWorkflowRun(id: string): Promise<void> {
+  await requestVoid(apiClient["workflow-runs"][":id"].$delete({ param: { id } }));
 }

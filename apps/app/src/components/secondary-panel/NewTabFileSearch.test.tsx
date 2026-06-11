@@ -14,20 +14,19 @@ import type {
   AppSearchSuggestion,
   FilePathSearchSuggestion,
   FileSearchSuggestion,
+  UseFileSearchSuggestionsArgs,
   UseFileSearchSuggestionsResult,
 } from "@/hooks/useFileSearchSuggestions";
-import type {
-  AppSummary,
-  BbDesktopApi,
-  BbDesktopInfo,
-} from "@bb/server-contract";
+import type { AppSummary, BbDesktopInfo } from "@bb/server-contract";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
-  NewTabActionMenu,
+  NewTabActions,
   NewTabFileSearch,
-  type NewTabActionMenuProps,
+  type NewTabActionsProps,
   type NewTabFileSearchProps,
 } from "./NewTabFileSearch";
-import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
+import { getThreadRecentItemsStorageKey } from "./threadRecentItems";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
@@ -37,18 +36,19 @@ interface ProviderWrapperProps {
 
 interface RenderLauncherArgs {
   projectId?: string;
+  environmentId?: string | null;
   currentThreadId?: string;
+  initialQuery?: string;
   onSelect?: NewTabFileSearchProps["onSelect"];
 }
 
-interface RenderActionMenuArgs {
+interface RenderActionsArgs {
   projectId?: string;
   currentThreadId?: string;
-  onSelect?: NewTabActionMenuProps["onSelect"];
-  onOpenFileSearch?: NewTabActionMenuProps["onOpenFileSearch"];
-  onCreateAppPromptPrefill?: NewTabActionMenuProps["onCreateAppPromptPrefill"];
-  onOpenBrowser?: NewTabActionMenuProps["onOpenBrowser"];
-  onCloseMenu?: NewTabActionMenuProps["onCloseMenu"];
+  onSelect?: NewTabActionsProps["onSelect"];
+  onCreateAppPromptPrefill?: NewTabActionsProps["onCreateAppPromptPrefill"];
+  onOpenBrowser?: NewTabActionsProps["onOpenBrowser"];
+  onStartTerminal?: NewTabActionsProps["onStartTerminal"];
 }
 
 type FileSearchMockState = UseFileSearchSuggestionsResult;
@@ -73,6 +73,8 @@ const fileSearchMockState = vi.hoisted<FileSearchMockState>(() => ({
   isUnavailable: false,
 }));
 
+const fileSearchMockArgs = vi.hoisted<UseFileSearchSuggestionsArgs[]>(() => []);
+
 const appsQueryMockState = vi.hoisted<AppsQueryMockState>(() => ({
   data: [],
   isLoading: false,
@@ -87,7 +89,10 @@ const promptDraftMockState = vi.hoisted<PromptDraftMockState>(() => ({
 // The launcher's data sources are the only external boundary here; stub them so
 // the test focuses on the menu/search split and desktop Browser gating.
 vi.mock("@/hooks/useFileSearchSuggestions", () => ({
-  useFileSearchSuggestions: () => fileSearchMockState,
+  useFileSearchSuggestions: (args: UseFileSearchSuggestionsArgs) => {
+    fileSearchMockArgs.push(args);
+    return fileSearchMockState;
+  },
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
@@ -139,6 +144,15 @@ const FILE_SUGGESTION = {
   positions: [],
 } satisfies FilePathSearchSuggestion;
 
+const REPORT_FILE_SUGGESTION = {
+  source: "workspace",
+  entryKind: "file",
+  path: "reports/desktop-size.html",
+  name: "desktop-size.html",
+  score: 80,
+  positions: [],
+} satisfies FilePathSearchSuggestion;
+
 const DRAFT_WITH_ATTACHMENT = {
   text: "Keep this draft",
   mentions: [],
@@ -153,6 +167,15 @@ const DRAFT_WITH_ATTACHMENT = {
   ],
 } satisfies PromptDraftState;
 
+function makeAppSummary(index: number): AppSummary {
+  const applicationId = `app-${index}`;
+  return {
+    ...APP_SUGGESTION.app,
+    applicationId,
+    name: `App ${index}`,
+  } satisfies AppSummary;
+}
+
 function resetFileSearchMockState(): void {
   fileSearchMockState.suggestions = [];
   fileSearchMockState.isLoading = false;
@@ -160,6 +183,7 @@ function resetFileSearchMockState(): void {
   fileSearchMockState.fileSearchError = false;
   fileSearchMockState.isDebouncing = false;
   fileSearchMockState.isUnavailable = false;
+  fileSearchMockArgs.length = 0;
 }
 
 function resetAppsQueryMockState(): void {
@@ -187,28 +211,6 @@ function setFileSearchSuggestions(
   fileSearchMockState.suggestions = [...suggestions];
 }
 
-function createDesktopApiStub(): BbDesktopApi {
-  return {
-    ...DESKTOP_INFO,
-    browser: createNoopDesktopBrowserApi(),
-    async checkForUpdates() {
-      return DESKTOP_INFO;
-    },
-    async getInfo() {
-      return DESKTOP_INFO;
-    },
-    async installUpdate() {
-      return undefined;
-    },
-    onChange() {
-      return () => undefined;
-    },
-    setTheme() {
-      // no-op
-    },
-  };
-}
-
 function renderLauncher(args: RenderLauncherArgs = {}) {
   const store = createStore();
   const wrapper = ({ children }: ProviderWrapperProps) =>
@@ -216,28 +218,28 @@ function renderLauncher(args: RenderLauncherArgs = {}) {
   return render(
     createElement(NewTabFileSearch, {
       projectId: args.projectId ?? "proj_1",
-      environmentId: null,
+      environmentId: args.environmentId ?? null,
       currentThreadId: args.currentThreadId ?? "thr_1",
       focusRequest: 0,
+      initialQuery: args.initialQuery,
       onSelect: args.onSelect ?? vi.fn(),
     }),
     { wrapper },
   );
 }
 
-function renderActionMenu(args: RenderActionMenuArgs = {}) {
+function renderActions(args: RenderActionsArgs = {}) {
   const store = createStore();
   const wrapper = ({ children }: ProviderWrapperProps) =>
     createElement(Provider, { store }, children);
   return render(
-    createElement(NewTabActionMenu, {
+    createElement(NewTabActions, {
       projectId: args.projectId ?? "proj_1",
       currentThreadId: args.currentThreadId ?? "thr_1",
       onSelect: args.onSelect ?? vi.fn(),
-      onOpenFileSearch: args.onOpenFileSearch ?? vi.fn(),
       onCreateAppPromptPrefill: args.onCreateAppPromptPrefill,
       onOpenBrowser: args.onOpenBrowser,
-      onCloseMenu: args.onCloseMenu ?? vi.fn(),
+      onStartTerminal: args.onStartTerminal,
     }),
     { wrapper },
   );
@@ -246,75 +248,75 @@ function renderActionMenu(args: RenderActionMenuArgs = {}) {
 afterEach(() => {
   cleanup();
   delete window.bbDesktop;
+  localStorage.clear();
   resetFileSearchMockState();
   resetAppsQueryMockState();
   resetPromptDraftMockState();
 });
 
-describe("NewTabActionMenu", () => {
+describe("NewTabActions", () => {
   it("does not render the old persistent apps-and-files search input", () => {
-    renderActionMenu();
+    renderActions();
 
     expect(
       screen.queryByRole("textbox", { name: "Search apps and files" }),
     ).toBeNull();
   });
 
-  it("omits the Apps header when Create App is the only app-related row", () => {
-    renderActionMenu();
+  it("shows the Apps header when Create App is the only app-related row", () => {
+    renderActions();
 
     expect(screen.getByRole("button", { name: "Create App..." })).toBeTruthy();
-    expect(screen.queryByText("Apps")).toBeNull();
+    expect(screen.getByText("Apps")).toBeTruthy();
   });
 
   it("shows the Apps header when actual installed app rows are present", () => {
     setAppSummaries([APP_SUGGESTION.app]);
 
-    renderActionMenu();
+    renderActions();
 
     expect(screen.getByText("Apps")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Review Board/u })).toBeTruthy();
   });
 
-  it("shows Open browser as a headerless action row on the desktop build", () => {
-    window.bbDesktop = createDesktopApiStub();
+  it("shows Open browser in the Actions section on the desktop build", () => {
+    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
 
-    renderActionMenu({ onOpenBrowser: vi.fn() });
+    renderActions({ onOpenBrowser: vi.fn() });
 
     expect(screen.getByRole("button", { name: /Open browser/u })).toBeTruthy();
-    expect(screen.queryByText("Open")).toBeNull();
+    expect(screen.getByText("Actions")).toBeTruthy();
   });
 
-  it("orders action rows as Open file, Open browser, Create App with no Apps section when no apps exist", () => {
-    window.bbDesktop = createDesktopApiStub();
+  it("orders action rows as Open browser, Start terminal, then Create App when no apps exist", () => {
+    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
 
-    renderActionMenu({ onOpenBrowser: vi.fn() });
+    renderActions({ onOpenBrowser: vi.fn(), onStartTerminal: vi.fn() });
 
     expect(
       screen.getAllByRole("button").map((button) => button.textContent ?? ""),
-    ).toEqual(["Open file", "Open browser", "Create App..."]);
-    // No installed apps ⇒ no divider and no Apps title; Create App still trails.
-    expect(screen.queryByRole("separator")).toBeNull();
-    expect(screen.queryByText("Apps")).toBeNull();
+    ).toEqual(["Open browser", "Start terminal", "Create App..."]);
+    expect(screen.getByRole("separator")).toBeTruthy();
+    expect(screen.getByText("Apps")).toBeTruthy();
   });
 
   it("orders installed apps between the open actions and Create App, with a divider and Apps title", () => {
-    window.bbDesktop = createDesktopApiStub();
+    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
     setAppSummaries([APP_SUGGESTION.app]);
 
-    renderActionMenu({ onOpenBrowser: vi.fn() });
+    renderActions({ onOpenBrowser: vi.fn(), onStartTerminal: vi.fn() });
 
-    // Open file, Open browser, the installed app rows, then Create App last.
+    // Open actions, the installed app rows, then Create App last.
     expect(
       screen.getAllByRole("button").map((button) => button.textContent ?? ""),
     ).toEqual([
-      "Open file",
       "Open browser",
+      "Start terminal",
       expect.stringContaining("Review Board"),
       "Create App...",
     ]);
 
-    // Apps get their own divided, titled section after Open browser.
+    // Apps get their own divided, titled section after the open actions.
     const divider = screen.getByRole("separator");
     const appsTitle = screen.getByText("Apps");
     expect(appsTitle.parentElement?.className).toContain(
@@ -323,26 +325,52 @@ describe("NewTabActionMenu", () => {
     expect(divider.className).toContain("mx-2");
     expect(divider.className).toContain("w-auto");
     expect(divider.className).toContain("bg-border-seam");
-    const openBrowser = screen.getByRole("button", { name: /Open browser/u });
+    const startTerminal = screen.getByRole("button", {
+      name: /Start terminal/u,
+    });
     const appRow = screen.getByRole("button", { name: /Review Board/u });
     const orderedAfter = (a: Element, b: Element) =>
-      Boolean(
-        a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING,
-      );
-    // Divider follows Open browser; the Apps title follows the divider; the app
-    // row follows the title.
-    expect(orderedAfter(openBrowser, divider)).toBe(true);
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    // Divider follows Start terminal; the Apps title follows the divider; the
+    // app row follows the title.
+    expect(orderedAfter(startTerminal, divider)).toBe(true);
     expect(orderedAfter(divider, appsTitle)).toBe(true);
     expect(orderedAfter(appsTitle, appRow)).toBe(true);
+  });
+
+  it("caps installed apps behind show-more while keeping Create App last", () => {
+    setAppSummaries(
+      Array.from({ length: 8 }, (_value, index) => makeAppSummary(index + 1)),
+    );
+
+    renderActions();
+
+    const actions = screen.getByTestId("new-tab-actions");
+    expect(screen.getByRole("button", { name: /App 1/u })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /App 6/u })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /App 7/u })).toBeNull();
+    expect(screen.getByRole("button", { name: "Show 2 more" })).toBeTruthy();
+    expect(
+      within(actions).getAllByRole("button").at(-1)?.textContent,
+    ).toBe("Create App...");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 2 more" }));
+
+    expect(screen.getByRole("button", { name: /App 7/u })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /App 8/u })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show less" })).toBeTruthy();
+    expect(
+      within(actions).getAllByRole("button").at(-1)?.textContent,
+    ).toBe("Create App...");
   });
 
   it("keeps Create App last while apps are loading", () => {
     appsQueryMockState.isLoading = true;
     appsQueryMockState.data = undefined;
 
-    renderActionMenu();
+    renderActions();
 
-    const menu = screen.getByTestId("new-tab-action-menu");
+    const actions = screen.getByTestId("new-tab-actions");
     const createApp = screen.getByRole("button", { name: "Create App..." });
     const status = screen.getByText("Loading apps...");
 
@@ -351,25 +379,25 @@ describe("NewTabActionMenu", () => {
     expect(
       Boolean(
         status.compareDocumentPosition(createApp) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
     expect(
       Boolean(
         createApp.compareDocumentPosition(status) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(false);
-    expect(within(menu).getAllByRole("button").at(-1)).toBe(createApp);
+    expect(within(actions).getAllByRole("button").at(-1)).toBe(createApp);
   });
 
   it("keeps Create App last when apps fail to load", () => {
     appsQueryMockState.isError = true;
     appsQueryMockState.data = undefined;
 
-    renderActionMenu();
+    renderActions();
 
-    const menu = screen.getByTestId("new-tab-action-menu");
+    const actions = screen.getByTestId("new-tab-actions");
     const createApp = screen.getByRole("button", { name: "Create App..." });
     const status = screen.getByText("Couldn't load apps.");
 
@@ -378,82 +406,74 @@ describe("NewTabActionMenu", () => {
     expect(
       Boolean(
         status.compareDocumentPosition(createApp) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
     expect(
       Boolean(
         createApp.compareDocumentPosition(status) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(false);
-    expect(within(menu).getAllByRole("button").at(-1)).toBe(createApp);
+    expect(within(actions).getAllByRole("button").at(-1)).toBe(createApp);
   });
 
-  it("keeps menu actions compact with native button semantics and non-ring focus", () => {
-    window.bbDesktop = createDesktopApiStub();
+  it("keeps page actions compact with native button semantics and non-ring focus", () => {
+    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
 
-    renderActionMenu({ onOpenBrowser: vi.fn() });
+    renderActions({ onOpenBrowser: vi.fn() });
 
-    const menu = screen.getByTestId("new-tab-action-menu");
-    expect(within(menu).queryByText(/Describe an idea/u)).toBeNull();
-    expect(within(menu).queryByText(/Open a new web browser tab/u)).toBeNull();
+    const actions = screen.getByTestId("new-tab-actions");
+    expect(within(actions).queryByText(/Describe an idea/u)).toBeNull();
     expect(
-      within(menu).queryByText(/Search workspace and thread files/u),
+      within(actions).queryByText(/Open a new web browser tab/u),
     ).toBeNull();
-    expect(within(menu).queryAllByRole("option")).toHaveLength(0);
-    for (const button of within(menu).getAllByRole("button")) {
+    expect(
+      within(actions).queryByText(/Search workspace and thread files/u),
+    ).toBeNull();
+    expect(within(actions).queryAllByRole("option")).toHaveLength(0);
+    for (const button of within(actions).getAllByRole("button")) {
       expect(button.getAttribute("aria-selected")).toBeNull();
       expect(button.className).not.toContain("focus-visible:ring");
-      // No row carries the active/selected highlight at rest — opening the menu
-      // must not leave the first action looking hovered/selected by default —
-      // while the non-ring keyboard-focus cue stays in place.
+      // No row carries the active/selected highlight at rest; the non-ring
+      // keyboard-focus cue stays in place.
       expect(button.className).not.toContain("bg-state-active");
       expect(button.className).toContain("focus-visible:bg-state-hover");
     }
   });
 
   it("hides the Open browser entry on the web build", () => {
-    renderActionMenu({ onOpenBrowser: vi.fn() });
+    renderActions({ onOpenBrowser: vi.fn() });
 
     expect(screen.queryByText("Open browser")).toBeNull();
   });
 
-  it("closes the popout before opening file search", () => {
-    const calls: string[] = [];
-    renderActionMenu({
-      onCloseMenu: () => calls.push("close"),
-      onOpenFileSearch: () => calls.push("open-file"),
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /Open file/u }));
-
-    expect(calls).toEqual(["close", "open-file"]);
-  });
-
-  it("closes the popout before opening the browser", () => {
-    window.bbDesktop = createDesktopApiStub();
-    const calls: string[] = [];
-    renderActionMenu({
-      onCloseMenu: () => calls.push("close"),
-      onOpenBrowser: () => calls.push("open-browser"),
-    });
+  it("opens the browser directly", () => {
+    window.bbDesktop = createBbDesktopApi(DESKTOP_INFO);
+    const onOpenBrowser = vi.fn();
+    renderActions({ onOpenBrowser });
 
     fireEvent.click(screen.getByRole("button", { name: /Open browser/u }));
 
-    expect(calls).toEqual(["close", "open-browser"]);
+    expect(onOpenBrowser).toHaveBeenCalledTimes(1);
   });
 
-  it("closes the popout before starting Create App", () => {
-    const calls: string[] = [];
-    renderActionMenu({
-      onCloseMenu: () => calls.push("close"),
-      onCreateAppPromptPrefill: () => calls.push("create-app"),
-    });
+  it("starts a terminal directly", () => {
+    const onStartTerminal = vi.fn();
+    renderActions({ onStartTerminal });
+
+    fireEvent.click(screen.getByRole("button", { name: /Start terminal/u }));
+
+    expect(onStartTerminal).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts Create App directly", () => {
+    const onCreateAppPromptPrefill = vi.fn();
+    renderActions({ onCreateAppPromptPrefill });
 
     fireEvent.click(screen.getByRole("button", { name: "Create App..." }));
 
-    expect(calls).toEqual(["close", "create-app"]);
+    expect(onCreateAppPromptPrefill).toHaveBeenCalledTimes(1);
     expect(promptDraftMockState.setDrafts).toEqual([
       {
         text: expect.stringContaining("You are creating a new global bb app."),
@@ -468,7 +488,7 @@ describe("NewTabActionMenu", () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     const onCreateAppPromptPrefill = vi.fn();
 
-    renderActionMenu({ onCreateAppPromptPrefill });
+    renderActions({ onCreateAppPromptPrefill });
 
     fireEvent.click(screen.getByRole("button", { name: "Create App..." }));
 
@@ -478,14 +498,14 @@ describe("NewTabActionMenu", () => {
 });
 
 describe("NewTabFileSearch", () => {
-  it("keeps app rows out of file search", () => {
+  it("includes app rows as search results while a query is active", () => {
     setFileSearchSuggestions([APP_SUGGESTION, FILE_SUGGESTION]);
 
-    renderLauncher();
+    renderLauncher({ initialQuery: "review" });
 
-    expect(screen.queryByRole("option", { name: /Review Board/u })).toBeNull();
+    expect(screen.getByRole("option", { name: /Review Board/u })).toBeTruthy();
     expect(screen.getByRole("option", { name: /app\.ts/u })).toBeTruthy();
-    expect(screen.queryByText("Apps")).toBeNull();
+    expect(screen.getByText("Apps")).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: "Back to new tab menu" }),
     ).toBeNull();
@@ -496,7 +516,9 @@ describe("NewTabFileSearch", () => {
 
     renderLauncher();
 
-    const input = screen.getByRole("combobox", { name: "Search files" });
+    const input = screen.getByRole("combobox", {
+      name: "Search files and apps",
+    });
     // Exactly one listbox: the combobox controls a single popup spanning the
     // Files and Recent groups, so its active descendant always resolves within
     // the one controlled element rather than a detached or ambiguous listbox.
@@ -521,9 +543,71 @@ describe("NewTabFileSearch", () => {
     renderLauncher();
 
     const listbox = screen.getByRole("listbox", {
-      name: "File search results",
+      name: "File and app search results",
     });
     const filesGroup = within(listbox).getByRole("group", { name: "Files" });
-    expect(within(filesGroup).getByRole("option", { name: /app\.ts/u })).toBeTruthy();
+    expect(
+      within(filesGroup).getByRole("option", { name: /app\.ts/u }),
+    ).toBeTruthy();
+  });
+
+  it("uses the same path visual for file results and recent rows", () => {
+    const currentThreadId = "thr_icon_consistency";
+    localStorage.setItem(
+      getThreadRecentItemsStorageKey({ threadId: currentThreadId }),
+      JSON.stringify([
+        {
+          source: "thread-storage",
+          path: REPORT_FILE_SUGGESTION.path,
+          openedAt: 1,
+        },
+      ]),
+    );
+    setFileSearchSuggestions([REPORT_FILE_SUGGESTION]);
+
+    renderLauncher({ currentThreadId });
+
+    const listbox = screen.getByRole("listbox", {
+      name: "File and app search results",
+    });
+    const filesGroup = within(listbox).getByRole("group", { name: "Files" });
+    const recentGroup = within(listbox).getByRole("group", { name: "Recent" });
+    const fileRow = within(filesGroup).getByRole("option", {
+      name: /desktop-size\.html/u,
+    });
+    const recentRow = within(recentGroup).getByRole("option", {
+      name: /desktop-size\.html/u,
+    });
+
+    expect(fileRow.querySelector("[data-icon='ChartColumn']")).not.toBeNull();
+    expect(recentRow.querySelector("[data-icon='ChartColumn']")).not.toBeNull();
+    expect(within(recentRow).queryByText("Report")).toBeNull();
+    expect(recentRow.textContent ?? "").not.toContain(String.fromCharCode(183));
+  });
+
+  it("surfaces workspace files for a projectless thread that has an environment", () => {
+    setFileSearchSuggestions([FILE_SUGGESTION]);
+
+    renderLauncher({ projectId: PERSONAL_PROJECT_ID, environmentId: "env_1" });
+
+    // The component forwards project and environment ids verbatim; the source
+    // decision (search the environment workspace, not the personal "project")
+    // lives in usePathSuggestions.
+    expect(fileSearchMockArgs.at(-1)?.projectId).toBe(PERSONAL_PROJECT_ID);
+    expect(fileSearchMockArgs.at(-1)?.environmentId).toBe("env_1");
+    expect(screen.getByRole("option", { name: /app\.ts/u })).toBeTruthy();
+  });
+
+  it("hides workspace files for a projectless thread without an environment", () => {
+    setFileSearchSuggestions([FILE_SUGGESTION]);
+
+    renderLauncher({ projectId: PERSONAL_PROJECT_ID, environmentId: null });
+
+    // No project source and no environment ⇒ no workspace to search, so
+    // workspace suggestions are filtered out of the results.
+    expect(screen.queryByRole("option", { name: /app\.ts/u })).toBeNull();
+    expect(
+      screen.getByRole("combobox", { name: "Search files and apps" }),
+    ).toHaveProperty("disabled", false);
   });
 });

@@ -8,6 +8,7 @@ import {
   threadSchedules,
 } from "@bb/db";
 import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
+import { renderTemplate } from "@bb/templates";
 import { describe, expect, it } from "vitest";
 import { sweepDueThreadSchedules } from "../../src/services/scheduling/thread-schedule-sweep.js";
 import { appendClientTurnEvent } from "../../src/services/threads/thread-events.js";
@@ -34,6 +35,20 @@ interface SeedRunnableThreadArgs {
   projectId: string;
   status?: "active" | "idle";
   turnId?: string;
+}
+
+interface ExpectedScheduleInputArgs {
+  prompt: string;
+  scheduleId: string;
+}
+
+function expectedScheduleInput(args: ExpectedScheduleInputArgs) {
+  return textInput(
+    renderTemplate("systemMessageThreadScheduleDue", {
+      prompt: args.prompt,
+      scheduleId: args.scheduleId,
+    }),
+  );
 }
 
 function seedRunnableThread(args: SeedRunnableThreadArgs) {
@@ -169,12 +184,10 @@ describe("thread schedule sweep", () => {
       await sweepPromise;
 
       expect(queuedTurnSubmit.command).toMatchObject({
-        input: [
-          {
-            type: "text",
-            text: "Run the daily recap if there is useful progress.",
-          },
-        ],
+        input: expectedScheduleInput({
+          prompt: "Run the daily recap if there is useful progress.",
+          scheduleId: schedule.id,
+        }),
         target: { mode: "start" },
       });
       expect(
@@ -221,12 +234,10 @@ describe("thread schedule sweep", () => {
       );
       expect(requestData).toMatchObject({
         initiator: "system",
-        input: [
-          {
-            type: "text",
-            text: "Run the daily recap if there is useful progress.",
-          },
-        ],
+        input: expectedScheduleInput({
+          prompt: "Run the daily recap if there is useful progress.",
+          scheduleId: schedule.id,
+        }),
         target: { kind: "new-turn" },
       });
     });
@@ -253,7 +264,7 @@ describe("thread schedule sweep", () => {
         turnId: "turn-active-schedule",
       });
       const now = Date.now();
-      createThreadSchedule(harness.db, harness.hub, {
+      const schedule = createThreadSchedule(harness.db, harness.hub, {
         projectId: project.id,
         threadId: thread.id,
         name: "active-check",
@@ -273,7 +284,10 @@ describe("thread schedule sweep", () => {
       await sweepPromise;
 
       expect(queuedTurnSubmit.command).toMatchObject({
-        input: textInput("Check active work."),
+        input: expectedScheduleInput({
+          prompt: "Check active work.",
+          scheduleId: schedule.id,
+        }),
         target: {
           mode: "auto",
           expectedTurnId: "turn-active-schedule",

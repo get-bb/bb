@@ -444,6 +444,71 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
+  it("adopts late-arriving initial values for new-thread scope with empty storage", async () => {
+    // Regression: on a fresh load with no localStorage, RootComposeView fetches
+    // the project's default execution options asynchronously. Before the fix,
+    // the picker would display the system-wide first-provider/default-model
+    // (e.g. Codex / gpt-5.5) while the server fell back to the project's
+    // stored provider on submit, producing a thread created with the wrong
+    // provider. The picker must now reflect the project default once it
+    // resolves so the visible selection matches what the server will use,
+    // and so a user pick is marked "explicit" against the right baseline.
+    const projectId = "project-late-initial";
+
+    mockExecutionOptions({
+      providers: [
+        createTestSystemProvider({
+          id: "codex",
+        }),
+        createTestSystemProvider({
+          id: "claude-code",
+          displayName: "Claude Code",
+        }),
+      ],
+      models: [
+        makeModel({
+          id: "claude-fable-5",
+          model: "claude-fable-5",
+          displayName: "Claude Fable 5",
+        }),
+      ],
+    });
+
+    interface LateInitialProps {
+      initialProviderId?: string;
+      initialModel?: string;
+    }
+    const initialProps: LateInitialProps = {
+      initialProviderId: undefined,
+      initialModel: undefined,
+    };
+    const { wrapper } = createQueryClientTestHarness();
+    const { result, rerender } = renderHook(
+      ({ initialProviderId, initialModel }: LateInitialProps) =>
+        useThreadCreationOptions({
+          projectId,
+          scope: "new-thread",
+          initialProviderId,
+          initialModel,
+        }),
+      { initialProps, wrapper },
+    );
+
+    rerender({
+      initialProviderId: "claude-code",
+      initialModel: "claude-fable-5",
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe("claude-code");
+      expect(result.current.selectedModel).toBe("claude-fable-5");
+    });
+    // Untouched fields seeded from late-arriving defaults are not "client
+    // preferences" — the user hasn't expressed a preference and the values
+    // aren't persisted. The server will resolve the same defaults on submit.
+    expect(result.current.executionInputSources).toEqual({});
+  });
+
   it("preserves touched thread selections until the reset key changes", async () => {
     mockExecutionOptions({
       providers: [

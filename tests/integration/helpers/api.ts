@@ -104,7 +104,7 @@ interface ResolveThreadInteractionArgs {
   threadId: string;
 }
 
-async function expectStatus(
+export async function expectStatus(
   response: Response,
   expectedStatus: number,
   label: string,

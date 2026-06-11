@@ -7,6 +7,7 @@ import {
   environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
   environmentMergeBaseBranchesQueryKeyPrefix,
+  environmentPathsQueryKeyPrefix,
   environmentWorkStatusQueryKeyPrefix,
   systemExecutionOptionsEnvironmentQueryKeyPrefix,
   threadComposerBootstrapEnvironmentQueryKeyPrefix,
@@ -37,6 +38,9 @@ export function removeEnvironmentScopedQueries({
   removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
   queryClient.removeQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),
+  });
+  queryClient.removeQueries({
+    queryKey: environmentPathsQueryKeyPrefix(environmentId),
   });
   queryClient.removeQueries({
     queryKey: environmentMergeBaseBranchesQueryKeyPrefix(environmentId),

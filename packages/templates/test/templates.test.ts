@@ -35,7 +35,7 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("hooks/pre-commit exited with status 1");
   });
 
-  it("renders agent thread messages with inline reply guidance", () => {
+  it("renders agent thread messages without inline reply guidance", () => {
     const rendered = renderTemplate("agentThreadMessage", {
       senderThreadId: "thr_sender",
       messageText: "Please check the failing test.",
@@ -43,7 +43,7 @@ describe("@bb/templates", () => {
 
     expect(rendered).toBe(
       [
-        '[bb message from thread:thr_sender; reply with `bb thread tell thr_sender "<your response>"`]',
+        "[bb message from thread:thr_sender]",
         "",
         "Please check the failing test.",
       ].join("\n"),
@@ -63,6 +63,65 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("main");
     expect(rendered).toContain("nothing to commit");
   });
+
+
+  it("renders workflow run system messages in block form with the [bb system] prefix", () => {
+    // The bodies are pinned exactly: the integration suites' wording markers
+    // ("was paused", "completed. Fetch the result", "was cancelled") and the
+    // manager-instructions claim that these arrive `[bb system]`-prefixed
+    // both ride this rendering.
+    expect(
+      renderTemplate("systemMessageWorkflowRunPaused", {
+        runId: "wfr_test",
+        workflowName: "deep-research",
+        reason: "host daemon unavailable",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "Workflow run wfr_test (deep-research) was paused: host daemon unavailable. The completed prefix is preserved — resume it from the run page or with `bb workflow resume wfr_test`.",
+      ].join("\n"),
+    );
+    expect(
+      renderTemplate("systemMessageWorkflowRunCompleted", {
+        runId: "wfr_test",
+        workflowName: "deep-research",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "Workflow run wfr_test (deep-research) completed. Fetch the result with `bb workflow show wfr_test`.",
+      ].join("\n"),
+    );
+    expect(
+      renderTemplate("systemMessageWorkflowRunFailed", {
+        runId: "wfr_test",
+        workflowName: "deep-research",
+        failureSuffix: ": script_invalid",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "Workflow run wfr_test (deep-research) failed: script_invalid.",
+      ].join("\n"),
+    );
+    expect(
+      renderTemplate("systemMessageWorkflowRunCancelled", {
+        runId: "wfr_test",
+        workflowName: "deep-research",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "Workflow run wfr_test (deep-research) was cancelled.",
+      ].join("\n"),
+    );
+  });
+
 
   it("renders bbGuideApp", () => {
     const templates = listTemplates();
@@ -110,9 +169,23 @@ describe("@bb/templates", () => {
   it("renders standardAgentAppendInstructions without user-question guidance", () => {
     const rendered = renderTemplate("standardAgentAppendInstructions", {});
 
-    expect(rendered).toContain("You are a coding agent");
+    expect(rendered).toContain("You are working inside bb");
+    expect(rendered).toContain("agentic IDE");
     expect(rendered).not.toContain(
       "Ask the user a blocking question only when",
+    );
+  });
+
+  it("renders due thread schedule messages with schedule system chrome", () => {
+    const rendered = renderTemplate("systemMessageThreadScheduleDue", {
+      prompt: "Run the daily recap.",
+      scheduleId: "tsched_daily",
+    });
+
+    expect(rendered).toBe(
+      ["[bb schedule due:tsched_daily]", "", "Run the daily recap."].join(
+        "\n",
+      ),
     );
   });
 

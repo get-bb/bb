@@ -9,6 +9,7 @@ import { registerProviderCommands } from "./commands/provider.js";
 import { registerReplayCommands } from "./commands/replay.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerThreadCommands } from "./commands/thread/index.js";
+import { registerWorkflowCommands } from "./commands/workflow/index.js";
 import {
   createCliRuntimeContext,
   resolveContextSnapshot,
@@ -66,6 +67,7 @@ registerProviderCommands(program, getUrl);
 registerManagerCommands(program, getUrl);
 registerAppCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
+registerWorkflowCommands(program, getUrl);
 registerReplayCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
 registerGuideCommand(program);

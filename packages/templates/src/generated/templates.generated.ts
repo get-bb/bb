@@ -4,13 +4,13 @@
 export const templateDefinitions = [
   {
     "id": "agentThreadMessage",
-    "body": "[bb message from thread:{{senderThreadId}}; reply with `bb thread tell {{senderThreadId}} \"<your response>\"`]\n\n{{messageText}}",
+    "body": "[bb message from thread:{{senderThreadId}}]\n\n{{messageText}}",
     "fileName": "agent-thread-message.md",
     "kind": "prompt",
     "title": "Agent Thread Message",
     "summary": "Wraps a bb CLI message from one agent thread to another.",
-    "intent": "Tell the receiving agent which thread sent the message and how to reply.",
-    "editingNotes": "Keep the response command in the prefix so standard agent instructions do not need special cross-thread message guidance.",
+    "intent": "Tell the receiving agent which thread sent the message without prompting an unnecessary reply.",
+    "editingNotes": "Keep only sender identity in the prefix; reply instructions cause agents to acknowledge messages that do not need responses.",
     "variables": {
       "senderThreadId": "The thread ID that sent the message.",
       "messageText": "The original message text sent by the agent."
@@ -84,7 +84,7 @@ export const templateDefinitions = [
   },
   {
     "id": "bbGuideThreads",
-    "body": "Thread commands\n\nEvery command supports --json for machine-readable output.\n\nSpawning:\n\n  bb thread spawn --prompt \"...\" [options]\n\n    --prompt <prompt>              Initial prompt (required)\n    --title <title>                Thread title\n    --project <id>                 Project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>           Parent thread (defaults to BB_THREAD_ID)\n    --provider <id>                Provider override\n    --model <model>                Model override\n    --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)\n    --environment <id-or-path>     Attach to an existing environment (ID or workspace path)\n    --new-environment <kind>       Create a new environment (worktree)\n    --service-tier <tier>          Service tier: fast, default\n    --permission-mode <mode>       Permission mode: full, workspace-write, or readonly\n    --no-context-parent-thread     Do not default parent thread to BB_THREAD_ID\n\n  When --provider and --model are omitted, the project's remembered defaults apply.\n  When --parent-thread is omitted inside a thread, BB_THREAD_ID is used automatically.\n\nListing:\n\n  bb thread list                           List threads\n    --project <id>                         Filter by project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>                   Filter by parent thread\n    --archived                             Show only archived threads\n\nInspecting:\n\n  bb thread show [id]                      Show thread details (defaults to BB_THREAD_ID)\n    --self                                 Target current thread\n    --work-status                          Include git working-tree status\n    --git-diff                             Include git diff\n    --diff-target <type>                   Diff scope: uncommitted, branch_committed, all, commit\n    --diff-sha <sha>                       Commit SHA (for --diff-target commit)\n    --diff-merge-base <branch>             Override merge-base branch for diff\n    --merge-base-branches                  List available merge-base branches\n\n  bb thread log [id]                       Show thread event log\n    --self                                 Target current thread\n    --format <format>                      Output format: json, minimal, verbose\n    --limit <count>                        Limit entries\n    --after-seq <seq>                      Paginate after sequence number\n\n  bb thread output <id>                    Get the final output of a thread\n\n  bb thread wait [id]                      Wait for a thread status or event\n    --status <status>                      Wait for this status\n    --event <type>                         Wait for this event type\n    --timeout <seconds>                    Timeout\n    --poll-interval <ms>                   Polling interval in milliseconds\n\nMessaging:\n\n  bb thread tell <id> <message>            Send a follow-up message\n    --mode <mode>                          Message mode: queue (default), steer, or auto\n    --model <model>                        Model override for this turn\n    --reasoning-level <level>              Reasoning level override\n\n  bb thread stop [id]                      Stop an active or provisioning thread\n    --self                                 Stop current thread\n\nOwnership:\n\n  bb thread update [id]                    Update thread metadata\n    --self                                 Target current thread\n    --title <title>                        Set title\n    --parent-thread <id>                   Assign to a parent thread\n    --clear-parent-thread                  Remove parent assignment\n\nLifecycle:\n\n  bb thread archive [id]                   Archive a thread\n    --self                                 Archive current thread\n\n  bb thread unarchive [id]                 Unarchive a thread\n    --self                                 Unarchive current thread\n\n  bb thread delete <id>                    Delete permanently\n    --yes                                  Skip confirmation\n\nRead-only commands infer the thread from BB_THREAD_ID.\nMutating commands require an explicit ID or --self.",
+    "body": "Thread commands\n\nEvery command supports --json for machine-readable output.\n\nSpawning:\n\n  bb thread spawn --prompt \"...\" [options]\n\n    --prompt <prompt>              Initial prompt (required)\n    --title <title>                Thread title\n    --project <id>                 Project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>           Parent thread (defaults to BB_THREAD_ID)\n    --provider <id>                Provider override\n    --model <model>                Model override\n    --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)\n    --environment <id-or-path>     Attach to an existing environment (ID or workspace path)\n    --new-environment <kind>       Create a new environment (worktree)\n    --service-tier <tier>          Service tier: fast, default\n    --permission-mode <mode>       Permission mode: full, workspace-write, or readonly\n    --no-context-parent-thread     Do not default parent thread to BB_THREAD_ID\n\n  Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.\n  When --parent-thread is omitted inside a thread, BB_THREAD_ID is used automatically.\n\nListing:\n\n  bb thread list                           List threads\n    --project <id>                         Filter by project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>                   Filter by parent thread\n    --archived                             Show only archived threads\n\nInspecting:\n\n  bb thread show [id]                      Show thread details (defaults to BB_THREAD_ID)\n    --self                                 Target current thread\n    --work-status                          Include git working-tree status\n    --git-diff                             Include git diff\n    --diff-target <type>                   Diff scope: uncommitted, branch_committed, all, commit\n    --diff-sha <sha>                       Commit SHA (for --diff-target commit)\n    --diff-merge-base <branch>             Override merge-base branch for diff\n    --merge-base-branches                  List available merge-base branches\n\n  bb thread log [id]                       Show thread event log\n    --self                                 Target current thread\n    --format <format>                      Output format: json, minimal, verbose\n    --limit <count>                        Limit entries\n    --after-seq <seq>                      Paginate after sequence number\n\n  bb thread output [id]                    Get the final output of a thread (defaults to BB_THREAD_ID)\n    --self                                 Target current thread\n\n  bb thread wait [id]                      Wait for a thread status or event (defaults to --status idle)\n    --status <status>                      Wait for this status\n    --event <type>                         Wait for this event type\n    --timeout <seconds>                    Timeout\n    --poll-interval <ms>                   Polling interval in milliseconds\n\nMessaging:\n\n  bb thread tell <id> <message>            Send a follow-up message\n    --mode <mode>                          Message mode: queue (default), steer, or auto\n    --model <model>                        Model override for this turn\n    --reasoning-level <level>              Reasoning level override\n\n  bb thread stop [id]                      Stop an active or provisioning thread\n    --self                                 Stop current thread\n\nOwnership:\n\n  bb thread update [id]                    Update thread metadata\n    --self                                 Target current thread\n    --title <title>                        Set title\n    --parent-thread <id>                   Assign to a parent thread\n    --clear-parent-thread                  Remove parent assignment\n\nLifecycle:\n\n  bb thread archive [id]                   Archive a thread\n    --self                                 Archive current thread\n\n  bb thread unarchive [id]                 Unarchive a thread\n    --self                                 Unarchive current thread\n\n  bb thread delete <id>                    Delete permanently\n    --yes                                  Skip confirmation\n\nRead-only commands infer the thread from BB_THREAD_ID.\nMutating commands require an explicit ID or --self.",
     "fileName": "bb-guide-threads.md",
     "kind": "instruction",
     "title": "bb Guide — Threads",
@@ -124,23 +124,23 @@ export const templateDefinitions = [
   },
   {
     "id": "standardAgentAppendInstructions",
-    "body": "You are a coding agent working on a project thread inside bb, an agent orchestration tool.\n\nIf you need to inspect bb context, message another thread, spawn or coordinate work, or manage scheduled follow-ups, use the `bb` CLI.",
+    "body": "You are working inside bb, an agentic IDE that you can use via the `bb` CLI. If you need to orchestrate work across bb (create/inspect/message threads), or the user instructs you to use bb, you may use the `bb` CLI.",
     "fileName": "standard-agent-append-instructions.md",
     "kind": "instruction",
     "title": "Standard Agent Append Instructions",
     "summary": "bb instructions appended to provider-backed coding-thread system prompts.",
-    "intent": "Keep the agent oriented inside bb without replacing provider-owned base instructions.",
-    "editingNotes": "Preserve concise coding-agent framing and keep this compatible with instructionMode append.",
+    "intent": "Let the agent know bb is available without causing unnecessary orchestration.",
+    "editingNotes": "Preserve concise bb framing and keep this compatible with instructionMode append.",
     "variables": {}
   },
   {
     "id": "systemMessageChildThreadNeedsAttention",
-    "body": "[bb system]\n\n{{threadMention}} needs attention.\nThe thread is blocked on a pending interaction. Inspect it and decide whether to ask the user, redirect the child thread, or take another coordination action.",
+    "body": "[bb system]\n\n{{threadMention}} needs attention.\nIt is blocked on a pending interaction. Inspect the thread and decide if you can answer or resolve the question from existing context. If not, ask the user for the missing decision. If the worker is stuck on the wrong assumption, send it a clarifying instruction.",
     "fileName": "system-message-child-thread-needs-attention.md",
     "kind": "prompt",
     "title": "Child Thread Needs Attention",
     "summary": "Notifies a parent thread that one of its child threads is blocked on a pending interaction.",
-    "intent": "Prompt the parent thread to inspect the blocker and decide whether to involve the user or redirect the work.",
+    "intent": "Prompt the parent thread to inspect the blocker and either resolve it from context, ask the user, or clarify the worker's assumption.",
     "editingNotes": "Keep this focused on parent-thread triage; do not imply the parent can approve or reject on the user's behalf.",
     "variables": {
       "threadMention": "Serialized thread mention token, e.g. '@thread:thr_abc123'."
@@ -161,12 +161,12 @@ export const templateDefinitions = [
   },
   {
     "id": "systemMessageThreadOwnershipAssigned",
-    "body": "[bb system]\n\n{{threadMention}} is now assigned to you as a child thread.\nInspect it and decide whether to monitor it, message the user, or send a follow-up.",
+    "body": "[bb system]\n\n{{threadMention}} was assigned to you.",
     "fileName": "system-message-thread-ownership-assigned.md",
     "kind": "prompt",
     "title": "Thread Ownership Assigned",
     "summary": "Notifies a parent thread that a child thread is now assigned to it.",
-    "intent": "Let the new parent know it owns a thread so it can begin coordinating it.",
+    "intent": "Let the new parent know a thread is now assigned to it.",
     "editingNotes": "Keep the thread mention first in the visible body so collapsed previews show the affected thread.",
     "variables": {
       "threadMention": "Serialized thread mention token, e.g. '@thread:thr_abc123'."
@@ -174,15 +174,87 @@ export const templateDefinitions = [
   },
   {
     "id": "systemMessageThreadOwnershipRemoved",
-    "body": "[bb system]\n\n{{threadMention}} is no longer assigned to you.\nStop treating it as one of your active child threads unless it is assigned back later.",
+    "body": "[bb system]\n\n{{threadMention}} was unassigned from you.",
     "fileName": "system-message-thread-ownership-removed.md",
     "kind": "prompt",
     "title": "Thread Ownership Removed",
     "summary": "Notifies a parent thread that a child thread is no longer assigned to it.",
-    "intent": "Let the previous parent know a thread moved away so it can update its internal tracking.",
+    "intent": "Let the previous parent know a thread is no longer assigned to it.",
     "editingNotes": "Keep the thread mention first in the visible body so collapsed previews show the affected thread.",
     "variables": {
       "threadMention": "Serialized thread mention token, e.g. '@thread:thr_abc123'."
+    }
+  },
+  {
+    "id": "systemMessageThreadScheduleDue",
+    "body": "[bb schedule due:{{scheduleId}}]\n\n{{prompt}}",
+    "fileName": "system-message-thread-schedule-due.md",
+    "kind": "prompt",
+    "title": "Thread Schedule Due",
+    "summary": "Wraps a due thread schedule prompt in bb system chrome.",
+    "intent": "Make system-initiated schedule wakeups explicit without changing the schedule author's prompt.",
+    "editingNotes": "Keep the schedule prompt body verbatim after the prefix.",
+    "variables": {
+      "scheduleId": "The due thread schedule ID.",
+      "prompt": "The schedule prompt text."
+    }
+  },
+  {
+    "id": "systemMessageWorkflowRunCancelled",
+    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) was cancelled.",
+    "fileName": "system-message-workflow-run-cancelled.md",
+    "kind": "prompt",
+    "title": "Workflow Run Cancelled",
+    "summary": "Notifies a manager that a workflow run anchored to its thread was cancelled.",
+    "intent": "Inform the manager so it can update the user; cancelled runs are never revived.",
+    "editingNotes": "Deliberately terse — cancellation is usually user-initiated, so the manager needs the fact, not instructions.",
+    "variables": {
+      "runId": "The cancelled workflow run's ID.",
+      "workflowName": "The run's workflow name."
+    }
+  },
+  {
+    "id": "systemMessageWorkflowRunCompleted",
+    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) completed. Fetch the result with `bb workflow show {{runId}}`.",
+    "fileName": "system-message-workflow-run-completed.md",
+    "kind": "prompt",
+    "title": "Workflow Run Completed",
+    "summary": "Notifies a manager that a workflow run anchored to its thread completed.",
+    "intent": "Wake the manager to fetch the structured result and report to the user.",
+    "editingNotes": "Keep the single `bb workflow show` instruction — it is the message's own fetch step, not polling.",
+    "variables": {
+      "runId": "The completed workflow run's ID.",
+      "workflowName": "The run's workflow name."
+    }
+  },
+  {
+    "id": "systemMessageWorkflowRunFailed",
+    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) failed{{failureSuffix}}.",
+    "fileName": "system-message-workflow-run-failed.md",
+    "kind": "prompt",
+    "title": "Workflow Run Failed",
+    "summary": "Notifies a manager that a workflow run anchored to its thread failed.",
+    "intent": "Wake the manager to inspect the failure and decide next steps.",
+    "editingNotes": "The failure suffix is pre-formatted by the caller (': <reason>' or empty) because a reason is not always recorded.",
+    "variables": {
+      "runId": "The failed workflow run's ID.",
+      "workflowName": "The run's workflow name.",
+      "failureSuffix": "Formatted failure suffix like ': script_invalid', or empty string when no reason was recorded."
+    }
+  },
+  {
+    "id": "systemMessageWorkflowRunPaused",
+    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) was paused: {{reason}}. The completed prefix is preserved — resume it from the run page or with `bb workflow resume {{runId}}`.",
+    "fileName": "system-message-workflow-run-paused.md",
+    "kind": "prompt",
+    "title": "Workflow Run Paused",
+    "summary": "Notifies a manager that a workflow run anchored to its thread was interrupted and is resumable.",
+    "intent": "Informational paused signal, distinct from the single terminal settlement message; the run resumes only on explicit request, never automatically.",
+    "editingNotes": "Keep the resume command and the \"completed prefix is preserved\" clause so managers know resuming replays finished agents free instead of re-billing them.",
+    "variables": {
+      "runId": "The interrupted workflow run's ID.",
+      "workflowName": "The run's workflow name.",
+      "reason": "Why the run was interrupted (the recorded failure reason, or a host-unavailable default)."
     }
   },
   {
@@ -262,6 +334,28 @@ export interface TemplateVariables {
   };
   systemMessageThreadOwnershipRemoved: {
     threadMention: string;
+  };
+  systemMessageThreadScheduleDue: {
+    scheduleId: string;
+    prompt: string;
+  };
+  systemMessageWorkflowRunCancelled: {
+    runId: string;
+    workflowName: string;
+  };
+  systemMessageWorkflowRunCompleted: {
+    runId: string;
+    workflowName: string;
+  };
+  systemMessageWorkflowRunFailed: {
+    runId: string;
+    workflowName: string;
+    failureSuffix?: string;
+  };
+  systemMessageWorkflowRunPaused: {
+    runId: string;
+    workflowName: string;
+    reason: string;
   };
   threadOperationCommitFailureFollowUp: {
     errorMessage?: string;

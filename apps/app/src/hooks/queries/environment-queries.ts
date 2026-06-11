@@ -4,6 +4,7 @@ import type {
   EnvironmentDiffBranchesResponse,
   EnvironmentDiffFilesResponse,
   EnvironmentStatusResponse,
+  WorkspacePathListResponse,
 } from "@bb/server-contract";
 import type { FilePreview } from "@/lib/api";
 import type { EnvironmentFilePreviewSource } from "@/lib/file-preview";
@@ -13,6 +14,7 @@ import {
   environmentDiffTargetKey,
   environmentFilePreviewQueryKey,
   environmentMergeBaseBranchesQueryKey,
+  environmentPathsQueryKey,
   environmentQueryKey,
   environmentWorkStatusQueryKey,
 } from "./query-keys";
@@ -167,6 +169,58 @@ export function useEnvironmentFilePreview(
       Boolean(path) &&
       source !== null,
     refetchOnWindowFocus: false,
+  });
+}
+
+interface UseEnvironmentPathSuggestionsArgs {
+  environmentId: string | null | undefined;
+  query: string | null;
+  limit?: number;
+  includeFiles: boolean;
+  includeDirectories: boolean;
+}
+
+/**
+ * Search a thread environment's workspace for path suggestions. Project-agnostic
+ * — the canonical workspace path search once a thread has an environment, used
+ * for both file mentions and the new-tab file picker.
+ */
+export function useEnvironmentPathSuggestions(
+  args: UseEnvironmentPathSuggestionsArgs,
+) {
+  const {
+    environmentId,
+    query,
+    limit = 8,
+    includeFiles,
+    includeDirectories,
+  } = args;
+  const trimmedQuery = query?.trim() ?? "";
+
+  return useQuery<WorkspacePathListResponse>({
+    queryKey: environmentPathsQueryKey(
+      environmentId ?? undefined,
+      trimmedQuery,
+      limit,
+      includeFiles,
+      includeDirectories,
+    ),
+    queryFn: () =>
+      api.searchEnvironmentPaths({
+        environmentId: requireEnvironmentId(
+          environmentId,
+          "useEnvironmentPathSuggestions",
+        ),
+        query: trimmedQuery,
+        limit,
+        includeFiles,
+        includeDirectories,
+      }),
+    enabled: Boolean(environmentId) && trimmedQuery.length > 0,
+    staleTime: 15_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
   });
 }
 

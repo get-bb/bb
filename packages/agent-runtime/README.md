@@ -159,6 +159,29 @@ Consumer (host-daemon, server)
 
 The runtime never interprets provider-specific wire content. Each adapter owns its translation between the runtime's `AdapterCommand` and the provider's JSON-RPC format.
 
+### The two sanctioned adapter shapes
+
+A new provider picks one of two shapes; both are deliberate, and they are
+not meant to converge on a shared bridge skeleton (evaluated 2026-06: the
+genuinely shared plumbing between the claude-code and pi bridges is ~470
+lines whose extraction would cost more than it deletes):
+
+1. **In-process protocol adapter** (codex). The provider ships its own
+   long-running JSON-RPC server (`codex app-server`); the adapter spawns it
+   directly and translates its protocol. No bridge code. Pick this when the
+   provider exposes a stable wire protocol.
+2. **Bridge-process adapter** (claude-code, pi). The provider ships an SDK
+   library; a small Node bridge process under `<provider>/bridge/` hosts the
+   SDK and exposes the same JSON-RPC surface to the runtime. Pick this when
+   the provider only offers an SDK. Each bridge owns its SDK's quirks
+   (claude-code: interactive permissions, stale-resume recovery; pi:
+   steer-with-images, context-window reporting) — keep those per-provider
+   rather than growing a generic skeleton with one-provider knobs.
+
+Shared event-translation mechanics (turn/item id registries, error-category
+mapping, unhandled-event envelopes, command-output normalization) live in
+`src/shared/` and are consumed by all adapters.
+
 ## Dependencies
 
 - `@bb/domain` — shared types (ThreadEvent, ProviderThreadEvent, PromptInput, ToolCallRequest, etc.)

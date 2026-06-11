@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import {
   afterEach,
   beforeEach,
@@ -12,11 +13,26 @@ import {
 } from "vitest";
 import {
   type SecondaryPanelFileTab,
-  SecondaryPanelTabStrip,
+  SecondaryPanelTabStrip as BaseSecondaryPanelTabStrip,
 } from "./SecondaryPanelTabStrip";
-import { TAB_PILL_CLOSE_BUTTON_CLASS } from "@/components/ui/tab-pill";
+import type { SecondaryPanelTabReorderHandler } from "./secondaryPanelFileTab";
+import {
+  TAB_PILL_AFFORDANCE_ICON_CLASS,
+  TAB_PILL_CLOSE_BUTTON_CLASS,
+} from "@/components/ui/tab-pill";
+import { Icon } from "@/components/ui/icon";
 
 const noop = () => {};
+const noopReorder: SecondaryPanelTabReorderHandler = () => {};
+
+type TestSecondaryPanelTabStripProps = Omit<
+  ComponentProps<typeof BaseSecondaryPanelTabStrip>,
+  "onReorderTab"
+>;
+
+function SecondaryPanelTabStrip(props: TestSecondaryPanelTabStripProps) {
+  return <BaseSecondaryPanelTabStrip {...props} onReorderTab={noopReorder} />;
+}
 
 interface BuildTabArgs {
   id: string;
@@ -34,6 +50,7 @@ function buildTab({
     filename,
     isActive,
     isPinned: false,
+    leadingVisual: <Icon name="Code" className="size-3.5" aria-hidden />,
     statusLabel: null,
     onSelect: noop,
     onClose: noop,
@@ -128,7 +145,7 @@ afterEach(() => {
 });
 
 describe("SecondaryPanelTabStrip", () => {
-  it("only reveals tab close buttons while the tab is hovered or focused", () => {
+  it("renders a leading icon and swaps it for close while hovered, focused, or on mobile touch", () => {
     render(
       <SecondaryPanelTabStrip
         fileTabs={[buildTab({ id: "a", filename: "a.ts", isActive: true })]}
@@ -137,17 +154,61 @@ describe("SecondaryPanelTabStrip", () => {
     );
 
     const closeButton = screen.getByRole("button", { name: "Close a.ts" });
+    const leadingIcon = document.querySelector('[data-icon="Code"]');
 
+    expect(leadingIcon).not.toBeNull();
+    expect(leadingIcon?.parentElement?.className).toContain(
+      "group-hover/tab-pill:opacity-0",
+    );
+    expect(leadingIcon?.parentElement?.className).toContain(
+      "group-has-[[data-tab-pill-close]:focus-visible]/tab-pill:opacity-0",
+    );
+    expect(leadingIcon?.parentElement?.className).toContain(
+      "max-md:pointer-coarse:opacity-0",
+    );
     expect(closeButton.parentElement?.className).toContain("group/tab-pill");
+    expect(closeButton.hasAttribute("data-tab-pill-close")).toBe(true);
     expect(closeButton.className).toContain(TAB_PILL_CLOSE_BUTTON_CLASS);
     expect(closeButton.className).toContain("opacity-0");
+    expect(closeButton.className).toContain("pointer-events-none");
     expect(closeButton.className).toContain(
-      "group-hover/tab-pill:opacity-100",
+      "group-hover/tab-pill:pointer-events-auto",
+    );
+    expect(closeButton.className).toContain("group-hover/tab-pill:opacity-100");
+    expect(closeButton.className).toContain("focus-visible:opacity-100");
+    expect(closeButton.className).toContain(
+      "max-md:pointer-coarse:pointer-events-auto",
     );
     expect(closeButton.className).toContain(
-      "group-focus-within/tab-pill:opacity-100",
+      "max-md:pointer-coarse:opacity-100",
     );
+    expect(closeButton.className).toContain("max-md:pointer-coarse:size-5");
     expect(closeButton.className).not.toContain("opacity-70");
+    expect(
+      closeButton.querySelector("[data-icon='X']")?.getAttribute("class"),
+    ).toContain(TAB_PILL_AFFORDANCE_ICON_CLASS);
+  });
+
+  it("keeps the leading icon visible for non-closable pinned tabs", () => {
+    render(
+      <SecondaryPanelTabStrip
+        fileTabs={[
+          {
+            ...buildTab({ id: "a", filename: "a.ts", isActive: true }),
+            isPinned: true,
+          },
+        ]}
+        usesDesktopChrome={false}
+      />,
+    );
+
+    const leadingIcon = document.querySelector('[data-icon="Code"]');
+
+    expect(screen.queryByRole("button", { name: "Close a.ts" })).toBeNull();
+    expect(leadingIcon).not.toBeNull();
+    expect(leadingIcon?.parentElement?.className).not.toContain(
+      "group-hover/tab-pill:opacity-0",
+    );
   });
 
   it("hides both scroll chevrons when every tab fits", () => {
@@ -249,7 +310,7 @@ describe("SecondaryPanelTabStrip", () => {
     expect(rightChevron.getAttribute("tabindex")).toBe("-1");
   });
 
-  it("gives both chevrons a solid surface fill so tabs don't bleed through", () => {
+  it("gives both chevrons opaque fills so tabs don't bleed through", () => {
     render(
       <SecondaryPanelTabStrip
         fileTabs={[
@@ -263,19 +324,23 @@ describe("SecondaryPanelTabStrip", () => {
 
     simulateOverflow({ scrollLeft: 250, scrollWidth: 800, clientWidth: 300 });
 
-    // The chevrons overlap the edge tabs, so they must paint an opaque panel
-    // surface (`bg-background`) rather than the ghost variant's transparent
-    // default — otherwise the tab label beneath shows through.
-    expect(
-      screen
-        .getByRole("button", { name: "Scroll tabs left" })
-        .classList.contains("bg-background"),
-    ).toBe(true);
-    expect(
-      screen
-        .getByRole("button", { name: "Scroll tabs right" })
-        .classList.contains("bg-background"),
-    ).toBe(true);
+    const leftChevron = screen.getByRole("button", {
+      name: "Scroll tabs left",
+    });
+    const rightChevron = screen.getByRole("button", {
+      name: "Scroll tabs right",
+    });
+
+    for (const chevron of [leftChevron, rightChevron]) {
+      // The chevrons overlap the edge tabs, so both resting and hover/focus
+      // states must paint opaque surfaces rather than translucent state fills.
+      expect(chevron.classList.contains("bg-background")).toBe(true);
+      expect(chevron.classList.contains("hover:bg-muted")).toBe(true);
+      expect(chevron.classList.contains("focus-visible:bg-muted")).toBe(true);
+      expect(chevron.classList.contains("rounded-md")).toBe(true);
+      expect(chevron.classList.contains("rounded-none")).toBe(false);
+      expect(chevron.classList.contains("hover:bg-state-active")).toBe(false);
+    }
   });
 
   it("shows only the left chevron at the end of an overflowing strip", () => {

@@ -27,20 +27,40 @@ export interface WindowOpenDecision {
  * the renderer can open it as a new in-panel browser tab.
  */
 export function resolveWindowOpenAction(url: string): WindowOpenDecision {
-  return { openTabUrl: isAllowedBrowserUrl(url) ? url : null };
+  return { openTabUrl: isAllowedPublicBrowserPopupUrl(url) ? url : null };
 }
 
-// --- Local / LAN request firewall ---
+// --- Loopback / LAN request firewall ---
 //
-// The in-app browser is meant to test local sites, so localhost / loopback
-// hosts are allowed. Private LAN and mDNS hosts remain blocked at the network
-// layer (see the `session.webRequest` wiring in desktop-browser-view).
+// Untrusted browsed pages must never be able to reach bb's own loopback
+// services (server `/ws`, host-daemon local API) or other hosts on the user's
+// LAN. CORS only filters responses; it does not stop the request from being
+// sent and acted on. So we block at the network layer (see the
+// `session.webRequest` wiring in desktop-browser-view) using these predicates,
+// which classify the request's URL host as loopback / link-local / private.
 //
 // Residual: this classifies the URL host, not the DNS-resolved address, so a
 // public name that resolves to a private IP (DNS rebinding) is not caught here.
 // That is a deeper, separate mitigation and out of scope for v1.
 
-const NETWORK_REQUEST_PROTOCOLS = new Set(["http:", "https:", "ws:", "wss:"]);
+export interface ShouldBlockBrowserRequestArgs {
+  url: string;
+  resourceType: string;
+  isMainFrame: boolean;
+  targetWebContentsId: number | null;
+  entryWebContentsId: number | null;
+  pendingTrustedLocalTopLevelOriginKey: string | null;
+  currentMainFrameLocalOriginKey: string | null;
+  requestingFrameOriginKey: string | null;
+  mainFrameInitiatorOriginKey: string | null;
+}
+
+interface ParsedBrowserRequestUrl {
+  protocol: string;
+  host: string;
+  originHost: string;
+  port: string;
+}
 
 function parseIpv4Octets(host: string): number[] | null {
   const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
@@ -53,34 +73,24 @@ function parseIpv4Octets(host: string): number[] | null {
   return octets.some((octet) => octet > 255) ? null : octets;
 }
 
-function normalizeRequestHost(rawHost: string): string | null {
-  let host = rawHost.trim().toLowerCase();
-  if (host.length === 0) {
-    return null;
-  }
-  if (host.startsWith("[") && host.endsWith("]")) {
-    host = host.slice(1, -1);
-  }
-  const zoneIndex = host.indexOf("%");
-  if (zoneIndex !== -1) {
-    host = host.slice(0, zoneIndex);
-  }
-  return host;
+function isLoopbackIpv4(octets: readonly number[]): boolean {
+  return octets[0] === 127; // 127.0.0.0/8 loopback
 }
 
-function isLocalIpv4(octets: readonly number[]): boolean {
-  const [a] = octets;
-  return a === 0 || a === 127;
-}
-
-function isBlockedIpv4(octets: readonly number[]): boolean {
+function isPrivateIpv4(octets: readonly number[]): boolean {
   const [a, b] = octets;
-  if (isLocalIpv4(octets)) return true; // 0.0.0.0/8, 127.0.0.0/8
+  if (a === 0) return true; // 0.0.0.0/8 "this host"
   if (a === 10) return true; // 10.0.0.0/8 private
   if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private
   if (a === 192 && b === 168) return true; // 192.168.0.0/16 private
   if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local
   if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+  if (a === 192 && b === 0 && octets[2] === 0) return true; // 192.0.0.0/24
+  if (a === 192 && b === 0 && octets[2] === 2) return true; // TEST-NET-1
+  if (a === 198 && b === 18) return true; // 198.18.0.0/15 benchmarking
+  if (a === 198 && b === 19) return true; // 198.18.0.0/15 benchmarking
+  if (a === 198 && b === 51 && octets[2] === 100) return true; // TEST-NET-2
+  if (a === 203 && b === 0 && octets[2] === 113) return true; // TEST-NET-3
   if (a >= 224) return true; // multicast / reserved / broadcast
   return false;
 }
@@ -133,114 +143,288 @@ function expandIpv6(host: string): number[] | null {
   return hextets;
 }
 
-function ipv4TailFromIpv6(hextets: readonly number[]): number[] | null {
-  const firstFiveZero = hextets.slice(0, 5).every((value) => value === 0);
-  if (!firstFiveZero || (hextets[5] !== 0xffff && hextets[5] !== 0)) {
-    return null;
-  }
-  return [
-    hextets[6] >> 8,
-    hextets[6] & 0xff,
-    hextets[7] >> 8,
-    hextets[7] & 0xff,
-  ];
-}
-
-function isLocalIpv6(hextets: readonly number[]): boolean {
-  const leadingZeros = hextets.slice(0, 7).every((value) => value === 0);
-  if (leadingZeros && hextets[7] === 1) return true; // ::1 loopback
-  if (hextets.every((value) => value === 0)) return true; // :: unspecified
-  const ipv4Tail = ipv4TailFromIpv6(hextets);
-  return ipv4Tail !== null && isLocalIpv4(ipv4Tail);
-}
-
-function isLocalIpv6Literal(host: string): boolean {
-  const hextets = expandIpv6(host);
-  return hextets !== null && isLocalIpv6(hextets);
-}
-
-function isBlockedIpv6Literal(host: string): boolean {
+function isLoopbackIpv6Literal(host: string): boolean {
   const hextets = expandIpv6(host);
   if (hextets === null) {
-    return true; // unparseable IPv6 literal → block to be safe
+    return false;
   }
-  if (isLocalIpv6(hextets)) return true;
+  const leadingZeros = hextets.slice(0, 7).every((value) => value === 0);
+  return leadingZeros && hextets[7] === 1; // ::1 loopback
+}
+
+function isPrivateIpv6Literal(host: string): boolean {
+  const hextets = expandIpv6(host);
+  if (hextets === null) {
+    return true; // unparseable IPv6 literal -> block to be safe
+  }
+  if (hextets.every((value) => value === 0)) return true; // :: unspecified
+  if (isLoopbackIpv6Literal(host)) return false; // ::1 is handled as loopback
   if ((hextets[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
   if ((hextets[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
+  if ((hextets[0] & 0xff00) === 0xff00) return true; // ff00::/8 multicast
+  if (hextets[0] === 0x2001 && hextets[1] === 0x0db8) return true; // docs
   // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d).
-  const ipv4Tail = ipv4TailFromIpv6(hextets);
-  if (ipv4Tail !== null) {
-    return isBlockedIpv4(ipv4Tail);
+  const firstFiveZero = hextets.slice(0, 5).every((value) => value === 0);
+  if (firstFiveZero && (hextets[5] === 0xffff || hextets[5] === 0)) {
+    const mappedOctets = [
+      hextets[6] >> 8,
+      hextets[6] & 0xff,
+      hextets[7] >> 8,
+      hextets[7] & 0xff,
+    ];
+    return isLoopbackIpv4(mappedOctets) || isPrivateIpv4(mappedOctets);
   }
   return false;
 }
 
-/**
- * Whether a request host names the user's own machine. The in-app browser is
- * intended for local testing, so these hosts are not blocked by the request
- * firewall.
- */
-export function isLocalBrowserRequestHost(rawHost: string): boolean {
-  const host = normalizeRequestHost(rawHost);
-  if (host === null) {
-    return false;
+function normalizeBrowserRequestHost(rawHost: string): string | null {
+  let host = rawHost.trim().toLowerCase();
+  if (host.length === 0) {
+    return null;
   }
-  if (host === "localhost" || host.endsWith(".localhost")) {
-    return true;
+  if (host.startsWith("[") && host.endsWith("]")) {
+    host = host.slice(1, -1);
   }
-  const ipv4 = parseIpv4Octets(host);
-  if (ipv4 !== null) {
-    return isLocalIpv4(ipv4);
+  const zoneIndex = host.indexOf("%");
+  if (zoneIndex !== -1) {
+    host = host.slice(0, zoneIndex);
   }
-  if (host.includes(":")) {
-    return isLocalIpv6Literal(host);
+  while (host.endsWith(".") && host.length > 1) {
+    host = host.slice(0, -1);
   }
-  return false;
+  return host.length === 0 ? null : host;
 }
 
-/**
- * Whether a request host (URL hostname, no port) must be blocked because it
- * targets link-local, private/LAN, or mDNS `.local` space. Localhost,
- * loopback, public names, and public addresses return false. Exported for unit
- * testing.
- */
-export function isBlockedBrowserRequestHost(rawHost: string): boolean {
-  const host = normalizeRequestHost(rawHost);
-  if (host === null) {
-    return true;
+function normalizeBrowserOriginHost(rawHost: string): string | null {
+  let host = rawHost.trim().toLowerCase();
+  if (host.length === 0) {
+    return null;
   }
-  if (isLocalBrowserRequestHost(host)) {
-    return false;
+  if (host.startsWith("[") && host.endsWith("]")) {
+    host = host.slice(1, -1);
   }
-  if (host === "local" || host.endsWith(".local")) {
-    return true;
+  const zoneIndex = host.indexOf("%");
+  if (zoneIndex !== -1) {
+    host = host.slice(0, zoneIndex);
   }
-  const ipv4 = parseIpv4Octets(host);
-  if (ipv4 !== null) {
-    return isBlockedIpv4(ipv4);
-  }
-  if (host.includes(":")) {
-    return isBlockedIpv6Literal(host);
-  }
-  return false;
+  return host.length === 0 ? null : host;
 }
 
-/**
- * Whether a network request URL must be blocked. Only `http(s)`/`ws(s)` carry a
- * remote host worth guarding; `data:`/`blob:`/`about:` have none and are
- * allowed (`webSecurity` guards `file:`). Exported for unit testing.
- */
-export function isBlockedBrowserRequestUrl(url: string): boolean {
+function isLocalhostName(host: string): boolean {
+  return host === "localhost" || host.endsWith(".localhost");
+}
+
+function isMdnsName(host: string): boolean {
+  return host === "local" || host.endsWith(".local");
+}
+
+function parseBrowserRequestUrl(url: string): ParsedBrowserRequestUrl | null {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
+    return null;
+  }
+  const host = normalizeBrowserRequestHost(parsed.hostname);
+  const originHost = normalizeBrowserOriginHost(parsed.hostname);
+  if (host === null || originHost === null) {
+    return null;
+  }
+  return { protocol: parsed.protocol, host, originHost, port: parsed.port };
+}
+
+function isGuardedRequestProtocol(protocol: string): boolean {
+  return (
+    protocol === "http:" ||
+    protocol === "https:" ||
+    protocol === "ws:" ||
+    protocol === "wss:"
+  );
+}
+
+function requestUrlTargetsLoopbackOrPrivate(url: string): boolean {
+  const parsed = parseBrowserRequestUrl(url);
+  if (parsed === null || !isGuardedRequestProtocol(parsed.protocol)) {
     return false;
   }
-  if (!NETWORK_REQUEST_PROTOCOLS.has(parsed.protocol)) {
+  return (
+    isLoopbackBrowserRequestHost(parsed.host) ||
+    isPrivateBrowserRequestHost(parsed.host)
+  );
+}
+
+function browserRequestHasEntryAttribution(
+  args: ShouldBlockBrowserRequestArgs,
+): boolean {
+  return (
+    args.targetWebContentsId !== null &&
+    args.entryWebContentsId !== null &&
+    args.targetWebContentsId === args.entryWebContentsId
+  );
+}
+
+function localRequestProtocolClass(protocol: string): string | null {
+  if (protocol === "http:" || protocol === "ws:") {
+    return "local";
+  }
+  if (protocol === "https:" || protocol === "wss:") {
+    return "secure-local";
+  }
+  return null;
+}
+
+function isAllowedPublicBrowserPopupUrl(url: string): boolean {
+  const parsed = parseBrowserRequestUrl(url);
+  return (
+    parsed !== null &&
+    (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+    !isLoopbackBrowserRequestHost(parsed.host) &&
+    !isPrivateBrowserRequestHost(parsed.host)
+  );
+}
+
+/**
+ * Whether a request host (URL hostname, no port) is a loopback host that may be
+ * allowed only through explicit trusted browser-chrome navigation.
+ */
+export function isLoopbackBrowserRequestHost(rawHost: string): boolean {
+  const host = normalizeBrowserRequestHost(rawHost);
+  if (host === null) {
     return false;
   }
-  return isBlockedBrowserRequestHost(parsed.hostname);
+  if (isLocalhostName(host)) {
+    return true;
+  }
+  const ipv4 = parseIpv4Octets(host);
+  if (ipv4 !== null) {
+    return isLoopbackIpv4(ipv4);
+  }
+  return host.includes(":") && isLoopbackIpv6Literal(host);
+}
+
+/**
+ * Whether a request host targets private/LAN, link-local, mDNS, CGNAT,
+ * multicast/reserved, unspecified, or otherwise ambiguous local address space.
+ * Loopback hosts are intentionally classified separately.
+ */
+export function isPrivateBrowserRequestHost(rawHost: string): boolean {
+  const host = normalizeBrowserRequestHost(rawHost);
+  if (host === null) {
+    return true;
+  }
+  if (isLocalhostName(host)) {
+    return false;
+  }
+  if (isMdnsName(host)) {
+    return true;
+  }
+  const ipv4 = parseIpv4Octets(host);
+  if (ipv4 !== null) {
+    return !isLoopbackIpv4(ipv4) && isPrivateIpv4(ipv4);
+  }
+  if (host.includes(":")) {
+    return isPrivateIpv6Literal(host);
+  }
+  return false;
+}
+
+/**
+ * Whether a request host (URL hostname, no port) must be blocked by the legacy
+ * coarse firewall because it targets loopback, private/LAN, or related local
+ * address space. Public names and addresses return false.
+ */
+export function isBlockedBrowserRequestHost(rawHost: string): boolean {
+  return (
+    isLoopbackBrowserRequestHost(rawHost) ||
+    isPrivateBrowserRequestHost(rawHost)
+  );
+}
+
+/**
+ * Returns the comparable local origin key for loopback `http(s)`/`ws(s)` URLs.
+ * `http` and `ws` share one transport class; `https` and `wss` share another.
+ */
+export function localRequestOriginKey(url: string): string | null {
+  const parsed = parseBrowserRequestUrl(url);
+  if (parsed === null || !isLoopbackBrowserRequestHost(parsed.host)) {
+    return null;
+  }
+  const protocolClass = localRequestProtocolClass(parsed.protocol);
+  if (protocolClass === null) {
+    return null;
+  }
+  return `${protocolClass}|${parsed.originHost}|${parsed.port}`;
+}
+
+/**
+ * Trusted top-level local navigations may only target loopback `http(s)` URLs.
+ */
+export function isAllowedTrustedLocalTopLevelUrl(url: string): boolean {
+  const parsed = parseBrowserRequestUrl(url);
+  return (
+    parsed !== null &&
+    (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+    isLoopbackBrowserRequestHost(parsed.host)
+  );
+}
+
+/**
+ * Whether a network request URL must be blocked by the current coarse
+ * loopback/LAN firewall. Only `http(s)`/`ws(s)` carry a remote host worth
+ * guarding; `data:`/`blob:`/`about:` have none and are allowed (`webSecurity`
+ * guards `file:`). Exported for unit testing and current native wiring.
+ */
+export function isBlockedBrowserRequestUrl(url: string): boolean {
+  return requestUrlTargetsLoopbackOrPrivate(url);
+}
+
+/**
+ * Pure same-origin loopback/private request decision. The caller is responsible
+ * for resolving Electron's `webContentsId` to exactly one live browser entry
+ * before passing the entry id and local-origin state here.
+ */
+export function shouldBlockBrowserRequest(
+  args: ShouldBlockBrowserRequestArgs,
+): boolean {
+  const parsed = parseBrowserRequestUrl(args.url);
+  if (parsed === null || !isGuardedRequestProtocol(parsed.protocol)) {
+    return false;
+  }
+  if (isPrivateBrowserRequestHost(parsed.host)) {
+    return true;
+  }
+  if (!isLoopbackBrowserRequestHost(parsed.host)) {
+    return false;
+  }
+  if (!browserRequestHasEntryAttribution(args)) {
+    return true;
+  }
+  const targetOriginKey = localRequestOriginKey(args.url);
+  if (targetOriginKey === null) {
+    return true;
+  }
+  const isMainFrameRequest =
+    args.isMainFrame || args.resourceType === "mainFrame";
+  if (isMainFrameRequest) {
+    if (!isAllowedTrustedLocalTopLevelUrl(args.url)) {
+      return true;
+    }
+    if (targetOriginKey === args.pendingTrustedLocalTopLevelOriginKey) {
+      return false;
+    }
+    return (
+      targetOriginKey !== args.currentMainFrameLocalOriginKey ||
+      args.mainFrameInitiatorOriginKey !== args.currentMainFrameLocalOriginKey
+    );
+  }
+  if (
+    args.currentMainFrameLocalOriginKey === null ||
+    args.requestingFrameOriginKey === null ||
+    args.requestingFrameOriginKey !== args.currentMainFrameLocalOriginKey
+  ) {
+    return true;
+  }
+  return targetOriginKey !== args.currentMainFrameLocalOriginKey;
 }
 
 // --- Popup-tab rate limiting ---

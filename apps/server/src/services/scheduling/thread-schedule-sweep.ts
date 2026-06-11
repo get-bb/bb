@@ -21,6 +21,7 @@ import type {
   HostDaemonCommand,
   TurnSubmitTarget,
 } from "@bb/host-daemon-contract";
+import { renderTemplate } from "@bb/templates";
 import type { AppDeps } from "../../types.js";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
 import {
@@ -136,7 +137,10 @@ function buildThreadScheduleInput(schedule: ThreadScheduleRow): PromptInput[] {
   return [
     {
       type: "text",
-      text: schedule.prompt,
+      text: renderTemplate("systemMessageThreadScheduleDue", {
+        prompt: schedule.prompt,
+        scheduleId: schedule.id,
+      }),
       mentions: [],
     },
   ];
@@ -627,7 +631,7 @@ async function runDueThreadSchedule(
     command: transactionResult.command,
     hostId: preparation.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+    onError: ({ error }) => {
       deps.logger.warn(
         {
           err: error,

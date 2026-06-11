@@ -29,10 +29,24 @@ export interface RunLiveHostCommandArgs<
   timeoutMs: number;
 }
 
+interface LiveHostCommandErrorHandlerArgs<
+  TType extends HostDaemonSettledCommandType,
+> {
+  command: Extract<HostDaemonCommand, { type: TType }>;
+  error: Error;
+  execution: HostDaemonCommandExecutionRecord;
+  hostId: string;
+}
+
+type LiveHostCommandErrorHandler<TType extends HostDaemonSettledCommandType> = (
+  args: LiveHostCommandErrorHandlerArgs<TType>,
+) => void;
+
 export interface StartLiveHostCommandArgs<
   TType extends HostDaemonSettledCommandType,
 > extends RunLiveHostCommandArgs<TType> {
-  onError?: (error: Error) => void;
+  onError?: LiveHostCommandErrorHandler<TType>;
+  onExpectedError?: LiveHostCommandErrorHandler<TType>;
 }
 
 type LiveHostCommandResultReportForType<
@@ -67,11 +81,57 @@ interface BuildLiveHostCommandFailureReportArgs<
   execution: HostDaemonCommandExecutionRecord;
 }
 
+export interface ExpectedLiveHostCommandErrorLogFields {
+  errorCode: string;
+  errorMessage: string;
+  errorStatus: number;
+}
+
+interface LiveHostCommandBaseLogFields {
+  commandType: HostDaemonSettledCommandType;
+  environmentId?: string;
+  executionId: string;
+  hostId: string;
+  threadId?: string;
+}
+
+const EXPECTED_LIVE_HOST_COMMAND_ERROR_CODES = new Set(["provision_cancelled"]);
+
 function commandFailureCode(error: Error): string {
   if (error instanceof ApiError) {
     return error.body.code;
   }
   return "live_command_failed";
+}
+
+function liveHostCommandBaseLogFields<
+  TType extends HostDaemonSettledCommandType,
+>(args: LiveHostCommandErrorHandlerArgs<TType>): LiveHostCommandBaseLogFields {
+  return {
+    commandType: args.command.type,
+    ...("environmentId" in args.command
+      ? { environmentId: args.command.environmentId }
+      : {}),
+    executionId: args.execution.id,
+    hostId: args.hostId,
+    ...("threadId" in args.command ? { threadId: args.command.threadId } : {}),
+  };
+}
+
+export function expectedLiveHostCommandErrorLogFields(
+  error: Error,
+): ExpectedLiveHostCommandErrorLogFields | null {
+  if (
+    !(error instanceof ApiError) ||
+    !EXPECTED_LIVE_HOST_COMMAND_ERROR_CODES.has(error.body.code)
+  ) {
+    return null;
+  }
+  return {
+    errorCode: error.body.code,
+    errorMessage: error.body.message,
+    errorStatus: error.status,
+  };
 }
 
 function buildLiveHostCommandFailureReport<
@@ -205,9 +265,30 @@ export function startLiveHostCommand<
   deps: CommandResultSideEffectsDeps,
   args: StartLiveHostCommandArgs<TType>,
 ): void {
-  void runLiveHostCommand(deps, args).catch((error) => {
+  const execution =
+    args.execution ?? createLiveHostCommandExecution(args.hostId);
+  void runLiveHostCommand(deps, { ...args, execution }).catch((error) => {
     const normalized =
       error instanceof Error ? error : new Error(String(error));
-    args.onError?.(normalized);
+    const handlerArgs: LiveHostCommandErrorHandlerArgs<TType> = {
+      command: args.command,
+      error: normalized,
+      execution,
+      hostId: args.hostId,
+    };
+    const expectedErrorFields =
+      expectedLiveHostCommandErrorLogFields(normalized);
+    if (expectedErrorFields !== null) {
+      deps.logger.debug(
+        {
+          ...liveHostCommandBaseLogFields(handlerArgs),
+          ...expectedErrorFields,
+        },
+        "Expected live host command failure",
+      );
+      args.onExpectedError?.(handlerArgs);
+      return;
+    }
+    args.onError?.(handlerArgs);
   });
 }

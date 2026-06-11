@@ -14,6 +14,7 @@ import {
   useLocalProviderCliStatus,
   useSystemConfig,
 } from "@/hooks/queries/system-queries";
+import { isLoopbackOrigin } from "@/lib/system-config-atoms";
 import {
   ProviderCliInstallLogDialog,
   type ProviderCliInstallLogDialogState,
@@ -59,9 +60,7 @@ type ProviderCliTitlePhase = "progress" | "success" | "failure" | "log";
 
 type ProviderCliTitleTemplate = (displayName: string) => string;
 
-type StartProviderCliInstall = (
-  issue: ProviderCliActionableToastIssue,
-) => void;
+type StartProviderCliInstall = (issue: ProviderCliActionableToastIssue) => void;
 
 interface GetProviderCliTitleParams {
   issue: ProviderCliActionableToastIssue;
@@ -255,7 +254,11 @@ function showProviderCliInstallFailureToast({
 
 export function ProviderCliHealthToasts() {
   const systemConfig = useSystemConfig();
-  const daemonPort = systemConfig.data?.hostDaemonPort ?? null;
+  // Only probe the loopback-bound daemon when the page is itself a loopback
+  // origin; from a remote/Tailscale origin the request is always CORS-blocked.
+  const daemonPort = isLoopbackOrigin()
+    ? (systemConfig.data?.hostDaemonPort ?? null)
+    : null;
   const providerCliStatus = useLocalProviderCliStatus({
     daemonPort,
     enabled: daemonPort !== null,
@@ -263,9 +266,7 @@ export function ProviderCliHealthToasts() {
   const refetchProviderCliStatus = providerCliStatus.refetch;
   const dismissedFingerprintsRef = useRef<Set<string>>(new Set());
   const shownFingerprintsRef = useRef<Set<string>>(new Set());
-  const activeIssuesRef = useRef<Map<string, ProviderCliToastIssue>>(
-    new Map(),
-  );
+  const activeIssuesRef = useRef<Map<string, ProviderCliToastIssue>>(new Map());
   const runningProviderRef = useRef<ProviderCliKey | null>(null);
   const [logDialogState, setLogDialogState] =
     useState<ProviderCliInstallLogDialogState | null>(null);
@@ -410,10 +411,7 @@ export function ProviderCliHealthToasts() {
     const currentIssues = providerCliEntries(data)
       .map(buildProviderCliIssue)
       .filter(isProviderCliToastIssue);
-    const currentIssuesByFingerprint = new Map<
-      string,
-      ProviderCliToastIssue
-    >();
+    const currentIssuesByFingerprint = new Map<string, ProviderCliToastIssue>();
 
     for (const issue of currentIssues) {
       currentIssuesByFingerprint.set(issue.fingerprint, issue);

@@ -21,6 +21,11 @@ import {
   reconcileDaemonReportedThreads,
 } from "../services/threads/thread-lifecycle.js";
 import { settleDanglingBackgroundTasks } from "../services/threads/background-task-reconciliation.js";
+import { WORKFLOW_RUN_HOST_SESSION_EXPIRED_REASON } from "../services/workflows/workflow-run-lifecycle.js";
+import {
+  interruptAbandonedWorkflowRuns,
+  reconcileDaemonReportedWorkflowRuns,
+} from "../services/workflows/workflow-run-reconciliation.js";
 
 const DAEMON_RESTARTED_PENDING_INTERACTION_REASON =
   "Host daemon restarted while awaiting user interaction; retry the thread to continue";
@@ -34,13 +39,23 @@ type DaemonSocketClosedDeps = Pick<
   AppDeps,
   "db" | "hub" | "logger" | "pendingInteractions" | "terminalSessions"
 >;
-type ExpiredHostSessionLeaseDeps = Pick<
+// Lease expiry interrupts abandoned workflow runs, which needs the full
+// lifecycle dep set (manager paused messages); the disconnect-grace path
+// keeps the narrow set because workflows deliberately take no action there.
+type ExpiredHostSessionLeaseDeps = LoggedPendingInteractionWorkSessionDeps;
+type DaemonDisconnectGraceDeps = Pick<
   AppDeps,
   "db" | "hub" | "logger" | "pendingInteractions"
 >;
 
 export interface HandleHostSessionOpenedArgs {
   activeThreads: HostDaemonActiveThread[];
+  /**
+   * Heartbeat-verified live workflow run ids reported by the daemon (a run is
+   * reported iff a live runner handle exists or its run-dir heartbeat is
+   * fresh) — the reconnect-reconciliation input.
+   */
+  activeWorkflowRunIds: readonly string[];
   hostId: string;
   openedSession: HostDaemonSessionRow;
   /**
@@ -116,6 +131,15 @@ export async function handleHostSessionOpened(
     activeThreadIds: args.activeThreads.map((thread) => thread.threadId),
     hostId: args.hostId,
   });
+  // Unconditional (not gated on the instanceId discriminator): the daemon's
+  // activeWorkflowRunIds is heartbeat-verified, so reported runs are
+  // demonstrably alive on same-instance reconnects (sleep/blip) and across
+  // restarts alike, while unreported running runs must be interrupted either
+  // way.
+  await reconcileDaemonReportedWorkflowRuns(deps, {
+    activeWorkflowRunIds: args.activeWorkflowRunIds,
+    hostId: args.hostId,
+  });
 }
 
 export function handleDaemonSocketClosed(
@@ -182,13 +206,22 @@ export function handleExpiredHostSessionLeases(
       // background tasks; mirror the pending-interaction reconciliation here
       // so lost workflows do not dangle as running forever.
       settleDanglingBackgroundTasks(deps, { hostId });
+      // The settle-as-interrupted backstop for workflow runs: the lease
+      // lapsed with no replacement session, so the daemon is demonstrably
+      // gone. Runs become `interrupted` (resumable; revived if the daemon
+      // returns reporting them alive) and their anchor items get the paused
+      // snapshot — never a completed row.
+      interruptAbandonedWorkflowRuns(deps, {
+        hostId,
+        reason: WORKFLOW_RUN_HOST_SESSION_EXPIRED_REASON,
+      });
     }
     notifyHostThreadRuntimeStatusChanged(deps, hostId);
   }
 }
 
 function completeDaemonDisconnectGrace(
-  deps: ExpiredHostSessionLeaseDeps,
+  deps: DaemonDisconnectGraceDeps,
   args: CompleteDaemonDisconnectGraceArgs,
 ): void {
   if (getActiveSession(deps.db, args.hostId)) {
@@ -202,7 +235,10 @@ function completeDaemonDisconnectGrace(
   // Same policy as pending interactions: after the grace window the daemon is
   // treated as gone, so its background tasks are settled. If the daemon was
   // alive-but-partitioned, its later real progress/completed events supersede
-  // the settle row (latest state row per item wins).
+  // the settle row (latest state row per item wins). Workflow runs
+  // deliberately take NO action here: connection loss alone does not prove
+  // active runs are gone — they stay `running` until session-open
+  // reconciliation or the lease-expiry backstop interrupts them.
   settleDanglingBackgroundTasks(deps, { hostId: args.hostId });
   notifyHostThreadRuntimeStatusChanged(deps, args.hostId);
 }

@@ -2,6 +2,8 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { POINTER_COARSE_QUERY } from "@/components/ui/hooks/use-pointer-coarse";
+import { restoreMatchMedia, setupMatchMedia } from "@/test/helpers/match-media";
 import {
   FollowUpPromptBox,
   type FollowUpPromptBoxProps,
@@ -49,11 +51,20 @@ function makeFollowUpPromptBoxProps(): FollowUpPromptBoxProps {
       onChange: vi.fn(),
       supported: false,
     },
-    mentions: {
-      suggestions: [],
-      isLoading: false,
-      isError: false,
-      onQueryChange: vi.fn(),
+    typeahead: {
+      mention: {
+        suggestions: [],
+        isLoading: false,
+        isError: false,
+        onQueryChange: vi.fn(),
+      },
+      command: {
+        trigger: null,
+        suggestions: [],
+        isLoading: false,
+        isError: false,
+        onQueryChange: vi.fn(),
+      },
     },
     zenModeResetKey: "thread-1",
   };
@@ -61,9 +72,39 @@ function makeFollowUpPromptBoxProps(): FollowUpPromptBoxProps {
 
 afterEach(() => {
   cleanup();
+  restoreMatchMedia();
 });
 
+function setupCoarsePointerViewport(): void {
+  setupMatchMedia({
+    matchesByQuery: new Map([[POINTER_COARSE_QUERY, true]]),
+  });
+}
+
+function waitForAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
 describe("FollowUpPromptBox", () => {
+  it("does not autofocus the prompt editor on coarse pointer devices", async () => {
+    setupCoarsePointerViewport();
+    const props = makeFollowUpPromptBoxProps();
+    props.composer = {
+      ...props.composer,
+      promptPlaceholder: "Ask for follow-up changes",
+      submitMode: { kind: "ready" },
+    };
+
+    render(<FollowUpPromptBox {...props} />);
+
+    const editor = screen.getByRole("textbox");
+    await waitForAnimationFrame();
+
+    expect(document.activeElement).not.toBe(editor);
+  });
+
   it("uses modifier submit with Cmd+Enter without invoking the normal submit", () => {
     const props = makeFollowUpPromptBoxProps();
     const onModifierSubmit = vi.fn();

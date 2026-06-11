@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type {
   ProjectExecutionDefaults,
   PermissionMode,
@@ -10,6 +10,10 @@ import { projectExecutionDefaults } from "../schema.js";
 
 export interface GetProjectExecutionDefaultsArgs {
   projectId: string;
+}
+
+export interface ListProjectExecutionDefaultsByProjectIdsArgs {
+  projectIds: readonly string[];
 }
 
 export interface UpsertProjectExecutionDefaultsArgs extends GetProjectExecutionDefaultsArgs {
@@ -38,6 +42,35 @@ export function getProjectExecutionDefaults(
     .get();
 
   return row ?? null;
+}
+
+export function listProjectExecutionDefaultsByProjectIds(
+  db: DbConnection,
+  args: ListProjectExecutionDefaultsByProjectIdsArgs,
+): Map<string, ProjectExecutionDefaults> {
+  const byProjectId = new Map<string, ProjectExecutionDefaults>();
+  if (args.projectIds.length === 0) {
+    return byProjectId;
+  }
+
+  const rows = db
+    .select({
+      projectId: projectExecutionDefaults.projectId,
+      providerId: projectExecutionDefaults.providerId,
+      model: projectExecutionDefaults.model,
+      reasoningLevel: projectExecutionDefaults.reasoningLevel,
+      permissionMode: projectExecutionDefaults.permissionMode,
+      serviceTier: projectExecutionDefaults.serviceTier,
+    })
+    .from(projectExecutionDefaults)
+    .where(inArray(projectExecutionDefaults.projectId, [...args.projectIds]))
+    .all();
+
+  for (const row of rows) {
+    const { projectId, ...defaults } = row;
+    byProjectId.set(projectId, defaults);
+  }
+  return byProjectId;
 }
 
 export function upsertProjectExecutionDefaults(

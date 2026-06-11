@@ -6,7 +6,7 @@ import {
   threads,
 } from "@bb/db";
 import { systemThreadProvisioningEventDataSchema } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
   dispatchManagedEnvironmentReprovision,
@@ -416,6 +416,80 @@ describe("environment reprovisioning", () => {
     });
   });
 
+  it("logs expected live provision cancellation without a warning", async () => {
+    await withTestHarness(async (harness) => {
+      const logger = {
+        debug: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+      };
+      harness.deps.logger = logger;
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-provision-cancel-log",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/provision-cancel-log-project",
+      });
+
+      const thread = await createThreadFromRequest(harness.deps, {
+        automationId: null,
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: {
+            type: "managed-worktree",
+            baseBranch: { kind: "default" },
+          },
+        },
+        input: textInput("cancelled provisioning log"),
+        origin: "cli",
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const provisionCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.initiator?.threadId === thread.id,
+      );
+      if (provisionCommand.command.type !== "environment.provision") {
+        throw new Error("Expected environment provision command");
+      }
+      const initiator = provisionCommand.command.initiator;
+      if (!initiator) {
+        throw new Error("Expected environment provision initiator");
+      }
+
+      await reportQueuedCommandError(harness, provisionCommand, {
+        errorCode: "provision_cancelled",
+        errorMessage: "Workspace provisioning was cancelled",
+      });
+
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.objectContaining({
+          commandType: "environment.provision",
+          environmentId: provisionCommand.command.environmentId,
+          errorCode: "provision_cancelled",
+          errorMessage: "Workspace provisioning was cancelled",
+          errorStatus: 502,
+          executionId: expect.stringMatching(/^rpc_/),
+          hostId: host.id,
+          initiatorThreadId: thread.id,
+          provisioningId: initiator.provisioningId,
+        }),
+        "Live environment provisioning cancelled",
+      );
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: provisionCommand.command.environmentId,
+        }),
+        "Live environment provision command failed",
+      );
+    });
+  });
+
   it("cancels shared provisioning after the last stopped waiter and handles stale provision failure", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -532,9 +606,7 @@ describe("environment reprovisioning", () => {
       });
       for (const threadId of [firstThread.id, secondThread.id]) {
         const events = listEvents(harness.db, { threadId });
-        expect(events.map((event) => event.type)).not.toContain(
-          "system/error",
-        );
+        expect(events.map((event) => event.type)).not.toContain("system/error");
         const provisioningStatuses = events
           .filter((event) => event.type === "system/thread-provisioning")
           .map(

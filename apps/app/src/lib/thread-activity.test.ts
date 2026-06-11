@@ -5,7 +5,9 @@ import {
   isUnreadDoneThread,
 } from "./thread-activity";
 
-type ChildActivityInput = Parameters<typeof getCollapsedChildActivity>[0][number];
+type ChildActivityInput = Parameters<
+  typeof getCollapsedChildActivity
+>[0][number];
 
 function makeChild(
   overrides: Partial<ChildActivityInput> = {},
@@ -27,6 +29,11 @@ const busyChild = makeChild({
 });
 const pendingChild = makeChild({ hasPendingInteraction: true });
 const unreadChild = makeChild({ latestAttentionAt: 20, lastReadAt: 10 });
+const unreadErrorChild = makeChild({
+  status: "error",
+  latestAttentionAt: 20,
+  lastReadAt: 10,
+});
 
 describe("thread-activity", () => {
   it("exposes shared running/unread helpers", () => {
@@ -95,11 +102,13 @@ describe("thread-activity", () => {
         pending: false,
         working: false,
         unread: false,
+        unreadError: false,
       });
       expect(getCollapsedChildActivity([makeChild(), makeChild()])).toEqual({
         pending: false,
         working: false,
         unread: false,
+        unreadError: false,
       });
     });
 
@@ -108,23 +117,50 @@ describe("thread-activity", () => {
         pending: false,
         working: true,
         unread: false,
+        unreadError: false,
       });
       expect(getCollapsedChildActivity([pendingChild])).toEqual({
         pending: true,
         working: false,
         unread: false,
+        unreadError: false,
       });
       expect(getCollapsedChildActivity([unreadChild])).toEqual({
         pending: false,
         working: false,
         unread: true,
+        unreadError: false,
+      });
+      expect(getCollapsedChildActivity([unreadErrorChild])).toEqual({
+        pending: false,
+        working: false,
+        unread: true,
+        unreadError: true,
       });
     });
 
     it("flags pending and working independently when both are present", () => {
       expect(
         getCollapsedChildActivity([unreadChild, busyChild, pendingChild]),
-      ).toEqual({ pending: true, working: true, unread: true });
+      ).toEqual({
+        pending: true,
+        working: true,
+        unread: true,
+        unreadError: false,
+      });
+      expect(
+        getCollapsedChildActivity([
+          unreadErrorChild,
+          unreadChild,
+          busyChild,
+          pendingChild,
+        ]),
+      ).toEqual({
+        pending: true,
+        working: true,
+        unread: true,
+        unreadError: true,
+      });
     });
 
     it("reads a blocked child as pending only, never also working", () => {
@@ -137,6 +173,7 @@ describe("thread-activity", () => {
         pending: true,
         working: false,
         unread: false,
+        unreadError: false,
       });
     });
 
@@ -146,7 +183,10 @@ describe("thread-activity", () => {
         lastReadAt: 10,
         parentThreadId: "manager-1",
       });
-      expect(getCollapsedChildActivity([unreadButParented]).unread).toBe(false);
+      expect(getCollapsedChildActivity([unreadButParented])).toMatchObject({
+        unread: false,
+        unreadError: false,
+      });
     });
   });
 });

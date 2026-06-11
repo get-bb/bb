@@ -16,9 +16,11 @@ import type {
   ReplayTurnRequestInput,
 } from "@bb/replay-capture/writer";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
+import type { WorkflowJournalEntry } from "@bb/workflow-runtime";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
 import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { TerminalManager } from "./terminals/terminal-manager.js";
+import type { WorkflowRunManager } from "./workflow-run-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
 
 type DispatchCommand = HostDaemonCommand | HostDaemonOnlineRpcCommand;
@@ -44,11 +46,25 @@ export const noopEventSink: EventSink = {
   flush: async () => undefined,
 };
 
+export interface FetchWorkflowRunJournalArgs {
+  runId: string;
+}
+
 export interface CommandDispatchOptions {
   dataDir: string;
   fetchProjectAttachment: FetchProjectAttachment;
   runtimeManager: RuntimeManager;
   terminalManager?: Pick<TerminalManager, "closeEnvironmentTerminals">;
+  /** Absent only in embeddings that never receive workflow.* commands (tests). */
+  workflowRunManager?: Pick<
+    WorkflowRunManager,
+    "startRun" | "cancelRun" | "pruneRunDir"
+  >;
+  /** Fetches the server-authoritative resume journal (daemon→server internal
+   *  route); absent only alongside an absent workflowRunManager. */
+  fetchWorkflowRunJournal?: (
+    args: FetchWorkflowRunJournalArgs,
+  ) => Promise<WorkflowJournalEntry[]>;
   eventSink: EventSink;
   listModels?: (args: { providerId: string }) => Promise<{
     models: AvailableModel[];
@@ -87,6 +103,15 @@ export function isExpectedCommandDispatchError(
   error: unknown,
 ): error is ExpectedCommandDispatchError {
   return error instanceof ExpectedCommandDispatchError;
+}
+
+const EXPECTED_ONLINE_RPC_FAILURE_CODES = new Set(["provision_cancelled"]);
+
+export function isExpectedOnlineRpcFailureError(error: unknown): boolean {
+  return (
+    isExpectedCommandDispatchError(error) ||
+    EXPECTED_ONLINE_RPC_FAILURE_CODES.has(getErrorCode(error))
+  );
 }
 
 const MISSING_EXECUTABLE_PATTERN = /\bENOENT\b/;

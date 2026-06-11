@@ -7,7 +7,11 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { JsonValue, PermissionEscalation } from "@bb/domain";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  type JsonValue,
+  type PermissionEscalation,
+} from "@bb/domain";
 
 const { queryMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
@@ -90,8 +94,10 @@ interface ControlledClaudeQuery {
 
 interface ClaudeQueryCallOptions {
   canUseTool?: CanUseTool;
+  env?: Record<string, string | undefined>;
   resume?: string;
   sessionId?: string;
+  settingSources?: string[];
 }
 
 interface ClaudeQueryCall {
@@ -406,6 +412,7 @@ function createBridgeUserQuestionInput(): ClaudeUserQuestionInput {
 async function startBridgeThread(args: StartBridgeThreadArgs): Promise<void> {
   args.bridge.sendRequest(1, "thread/start", {
     workflowsEnabled: false,
+    claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
     baseInstructions: "test",
     cwd: "/tmp/worktree",
     instructionMode: "append",
@@ -993,6 +1000,33 @@ describe("bridge", () => {
       ),
     ).resolves.toEqual({ continue: true });
 
+    // StructuredOutput is the SDK structured-response channel: it must pass
+    // the readonly policy in both ask and deny escalation modes, or sessions
+    // without an approver (workflow agents) wedge on structured output.
+    for (const hookUnderTest of [
+      askHook,
+      denyOptions.hooks?.PreToolUse?.[0]?.hooks[0],
+    ]) {
+      if (!hookUnderTest) {
+        throw new Error("Expected readonly PreToolUse hook");
+      }
+      await expect(
+        hookUnderTest(
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: "StructuredOutput",
+            tool_input: { ok: true },
+            tool_use_id: "tool-structured",
+            session_id: "session-1",
+            transcript_path: "/tmp/transcript.jsonl",
+            cwd: "/tmp/worktree",
+          },
+          "tool-structured",
+          { signal: new AbortController().signal },
+        ),
+      ).resolves.toEqual({ continue: true });
+    }
+
     const preToolUseHook = denyOptions.hooks?.PreToolUse?.[0]?.hooks[0];
     if (!preToolUseHook) {
       throw new Error("Expected readonly PreToolUse hook");
@@ -1143,6 +1177,7 @@ describe("bridge", () => {
         const toolUseID = `tool-readonly-policy-${testCase.id}`;
         bridge.sendRequest(startRequestId, "thread/start", {
           workflowsEnabled: false,
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           baseInstructions: "test",
           cwd: "/tmp/worktree",
           instructionMode: "append",
@@ -1493,6 +1528,7 @@ describe("bridge", () => {
     try {
       bridge.sendRequest(1, "thread/start", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1502,12 +1538,12 @@ describe("bridge", () => {
       });
       await bridge.waitForResponse(1);
 
-      const queryOptions = getLatestQueryOptions() as ClaudeQueryCallOptions & {
-        env?: Record<string, string | undefined>;
-        settingSources?: string[];
-      };
+      const queryOptions = getLatestQueryOptions();
       expect(queryOptions.env?.HOME).toBe("/Users/test-bb");
-      expect(queryOptions.env?.CLAUDE_AGENT_SDK_CLIENT_APP).toBe("bb/1.0.0");
+      // Sessions report as the Claude CLI entrypoint (renders `sdk-cli` on the
+      // wire), with no `client-app/...` user-agent segment.
+      expect(queryOptions.env?.CLAUDE_CODE_ENTRYPOINT).toBe("cli");
+      expect(queryOptions.env?.CLAUDE_AGENT_SDK_CLIENT_APP).toBeUndefined();
       expect(queryOptions.settingSources).toEqual(["user", "project", "local"]);
 
       bridge.sendRequest(2, "thread/stop", {
@@ -1526,6 +1562,54 @@ describe("bridge", () => {
     }
   });
 
+  it("routes enabled mock CLI traffic through a loopback proxy", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: {
+          enabled: true,
+          endpoint: "http://127.0.0.1:18950",
+        },
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        threadId: "thread-mock-cli-traffic",
+      });
+      await bridge.waitForResponse(1);
+
+      const queryOptions = getLatestQueryOptions();
+      expect(queryOptions.env?.ANTHROPIC_BASE_URL).toMatch(
+        /^http:\/\/127\.0\.0\.1:\d+$/u,
+      );
+      expect(queryOptions.env?.ANTHROPIC_BASE_URL).not.toBe(
+        "http://127.0.0.1:18950",
+      );
+      expect(queryOptions.env?.NO_PROXY).toContain("127.0.0.1");
+      expect(queryOptions.env?.NO_PROXY).toContain("localhost");
+      expect(queryOptions.env?.no_proxy).toContain("127.0.0.1");
+      expect(queryOptions.env?.no_proxy).toContain("localhost");
+
+      bridge.sendRequest(2, "thread/stop", {
+        threadId: "thread-mock-cli-traffic",
+      });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(2);
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("passes thread/start max reasoningLevel through to Claude SDK effort and thinking display", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -1538,6 +1622,7 @@ describe("bridge", () => {
     try {
       bridge.sendRequest(1, "thread/start", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1571,6 +1656,54 @@ describe("bridge", () => {
     }
   });
 
+  it("passes thread/start json_schema output format through to Claude SDK options", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const outputFormat = {
+      type: "json_schema",
+      schema: {
+        type: "object",
+        properties: { answer: { type: "string" } },
+        required: ["answer"],
+      },
+    };
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        outputFormat,
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        threadId: "thread-output-format",
+      });
+      await bridge.waitForResponse(1);
+
+      expect(queryMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({ outputFormat }),
+        }),
+      );
+
+      bridge.sendRequest(2, "thread/stop", {
+        threadId: "thread-output-format",
+      });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(2);
+    } finally {
+      bridge.restore();
+    }
+  });
+
   it("passes thread/start additional workspace-write roots to Claude SDK options", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -1583,6 +1716,7 @@ describe("bridge", () => {
     try {
       bridge.sendRequest(1, "thread/start", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         additionalWorkspaceWriteRoots: [
           "/repo/.git/worktrees/bb13",
           "/repo/.git/objects",
@@ -1635,6 +1769,7 @@ describe("bridge", () => {
     try {
       bridge.sendRequest(1, "thread/resume", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         additionalWorkspaceWriteRoots: [
           "/repo/.git/worktrees/bb13",
           "/repo/.git/objects",
@@ -1691,6 +1826,7 @@ describe("bridge", () => {
       const inputText = "Reply READY";
       bridge.sendRequest(1, "thread/resume", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1776,6 +1912,7 @@ describe("bridge", () => {
       const staleErrorText = `No conversation found with session ID: ${staleProviderThreadId}`;
       bridge.sendRequest(1, "thread/resume", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1833,6 +1970,7 @@ describe("bridge", () => {
       const differentErrorText = `No conversation found with session ID: ${differentProviderThreadId}`;
       bridge.sendRequest(1, "thread/resume", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1888,6 +2026,7 @@ describe("bridge", () => {
       const staleProviderThreadId = "stale-provider-thread-retry-cap";
       bridge.sendRequest(1, "thread/resume", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -1959,6 +2098,7 @@ describe("bridge", () => {
       const staleErrorText = `No conversation found with session ID: ${staleProviderThreadId}`;
       bridge.sendRequest(1, "thread/resume", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -2022,6 +2162,7 @@ describe("bridge", () => {
       const staleProviderThreadId = "stale-provider-thread-stop-replacement";
       bridge.sendRequest(1, "thread/resume", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -2067,6 +2208,7 @@ describe("bridge", () => {
 
       bridge.sendRequest(4, "thread/resume", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -2105,6 +2247,7 @@ describe("bridge", () => {
     try {
       bridge.sendRequest(1, "thread/start", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -2146,6 +2289,7 @@ describe("bridge", () => {
     try {
       bridge.sendRequest(11, "thread/start", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",
@@ -2161,6 +2305,7 @@ describe("bridge", () => {
       await bridge.flushWork();
       bridge.sendRequest(13, "thread/start", {
         workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         baseInstructions: "test",
         cwd: "/tmp/worktree",
         instructionMode: "append",

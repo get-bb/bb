@@ -181,10 +181,10 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
         expect(parentRuntimeCommand.dynamicToolNames).toEqual([]);
         expect(childRuntimeCommand.dynamicToolNames).toEqual([]);
         expect(parentRuntimeCommand.instructions).toContain(
-          "If you need to inspect bb context, message another thread",
+          "If you need to orchestrate work across bb",
         );
         expect(childRuntimeCommand.instructions).toContain(
-          "If you need to inspect bb context, message another thread",
+          "If you need to orchestrate work across bb",
         );
         expect(parentRuntimeCommand.instructions).not.toContain("manager");
         expect(childRuntimeCommand.instructions).not.toContain("manager");

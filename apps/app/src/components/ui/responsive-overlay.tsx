@@ -3,6 +3,7 @@ import { Slot } from "@radix-ui/react-slot";
 
 import { Drawer, DrawerContent, DrawerTitle } from "./drawer.js";
 import {
+  blurActiveKeyboardInputBeforeOverlayOpen,
   getOverlayTriggerClassName,
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
@@ -89,6 +90,9 @@ export const MobileTrigger = React.forwardRef<
     const handleClick: React.MouseEventHandler<HTMLButtonElement> = (e) => {
       onClick?.(e);
       if (!e.defaultPrevented) {
+        if (!open) {
+          blurActiveKeyboardInputBeforeOverlayOpen();
+        }
         onOpenChange(!open);
       }
     };

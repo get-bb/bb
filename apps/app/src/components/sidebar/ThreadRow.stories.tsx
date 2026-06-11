@@ -175,6 +175,23 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
+        label="unread error"
+        hint="status=error and unread — far-right reserved slot shows the destructive unread dot"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId="proj_demo"
+            thread={makeThread({
+              status: "error",
+              lastReadAt: 50,
+              latestAttentionAt: 200,
+            })}
+            isActive={false}
+            options={defaultOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
         label="draft"
         hint="unsubmitted follow-up draft — pencil sits beside the title while the trailing slot stays available"
       >

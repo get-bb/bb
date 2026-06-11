@@ -12,6 +12,8 @@ import type { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadWithRuntime } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
+import { BB_WORKFLOW_TASK_TYPE } from "@bb/domain";
+import type { WorkflowProgressSnapshot } from "@bb/domain";
 import {
   commandRow,
   conversationRow,
@@ -20,6 +22,7 @@ import {
   imageViewRow,
   systemRow,
   turnRow,
+  workflowRow,
 } from "@/test/fixtures/thread-timeline-rows";
 import {
   ThreadTimelineRows,
@@ -784,6 +787,267 @@ describe("ThreadTimelineRows", () => {
     expect(
       screen.queryByRole("button", { name: /^Edited 2 files\b/u }),
     ).toBeNull();
+  });
+
+  describe("workflow rows", () => {
+    const PUBLIC_HAIKU_MODEL = "claude-haiku-4-5-20251001";
+
+    const settledTreeSnapshot: WorkflowProgressSnapshot = {
+      phases: [{ index: 1, title: "Scan" }],
+      agents: [
+        {
+          index: 1,
+          label: "alpha",
+          state: "done",
+          model: PUBLIC_HAIKU_MODEL,
+          attempt: 1,
+          cached: false,
+          lastProgressAt: 1_000,
+          phaseIndex: 1,
+          tokens: 8_886,
+          durationMs: 1_358,
+        },
+        {
+          index: 2,
+          label: "bravo",
+          state: "done",
+          model: PUBLIC_HAIKU_MODEL,
+          attempt: 1,
+          cached: false,
+          lastProgressAt: 1_100,
+          phaseIndex: 1,
+          tokens: 4_200,
+          durationMs: 2_000,
+        },
+      ],
+    };
+
+    const liveTreeSnapshot: WorkflowProgressSnapshot = {
+      phases: settledTreeSnapshot.phases,
+      agents: [
+        settledTreeSnapshot.agents[0]!,
+        {
+          index: 2,
+          label: "bravo",
+          state: "running",
+          model: PUBLIC_HAIKU_MODEL,
+          attempt: 1,
+          cached: false,
+          lastProgressAt: 1_100,
+          phaseIndex: 1,
+        },
+      ],
+    };
+
+    it("renders the local workflow agent tree without a run-page link", () => {
+      const view = renderTimelineRows({
+        timelineRows: [
+          workflowRow({
+            workflow: settledTreeSnapshot,
+            workflowName: "fixture-mini",
+          }),
+        ],
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /Ran workflow:\s+fixture-mini/u }),
+      );
+
+      // The shared agent tree renders the phase header, progress, and stats.
+      expect(screen.getByText("Scan")).toBeTruthy();
+      expect(screen.getByText("2/2")).toBeTruthy();
+      expect(screen.getByText("alpha")).toBeTruthy();
+      expect(screen.getByText("haiku · 8.9k tok · 1s")).toBeTruthy();
+      // Provider-native local workflows have no run page: the title must
+      // not render any anchor.
+      expect(view.container.querySelector("a")).toBeNull();
+    });
+
+    it("links the bb workflow run title to the run page deep link", () => {
+      renderTimelineRows({
+        overrides: { threadRuntimeDisplayStatus: "active" },
+        timelineRows: [
+          workflowRow({
+            itemId: "wfr_run123",
+            status: "pending",
+            taskStatus: "running",
+            taskType: BB_WORKFLOW_TASK_TYPE,
+            workflow: liveTreeSnapshot,
+            workflowName: "release-checks",
+          }),
+        ],
+      });
+
+      const link = screen.getByRole("link", { name: "release-checks" });
+      expect(link.getAttribute("href")).toBe("/workflows/runs/wfr_run123");
+    });
+
+    it("keeps local workflow titles plain even when itemId looks like a run id", () => {
+      // The deep link is gated on taskType, not on the itemId shape.
+      renderTimelineRows({
+        timelineRows: [
+          workflowRow({
+            itemId: "wfr_run123",
+            workflow: settledTreeSnapshot,
+            workflowName: "fixture-mini",
+          }),
+        ],
+      });
+
+      expect(screen.queryByRole("link")).toBeNull();
+    });
+
+    it("renders paused bb workflow runs distinctly with paused (not stopped) agents", () => {
+      const view = renderTimelineRows({
+        timelineRows: [
+          workflowRow({
+            itemId: "wfr_run123",
+            status: "pending",
+            taskStatus: "paused",
+            taskType: BB_WORKFLOW_TASK_TYPE,
+            workflow: liveTreeSnapshot,
+            workflowName: "release-checks",
+          }),
+        ],
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /Paused workflow/u }),
+      );
+
+      expect(screen.getByText("haiku · paused")).toBeTruthy();
+      expect(view.container.textContent ?? "").not.toContain("stopped");
+    });
+
+    it("renders leftover agents of an interrupted workflow as stopped", () => {
+      renderTimelineRows({
+        timelineRows: [
+          workflowRow({
+            status: "interrupted",
+            taskStatus: "stopped",
+            workflow: liveTreeSnapshot,
+            workflowName: "fixture-mini",
+          }),
+        ],
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /Interrupted workflow/u }),
+      );
+
+      expect(screen.getByText("haiku · stopped")).toBeTruthy();
+    });
+
+    it("re-renders the expanded body when only agent.cached flips (render signature)", () => {
+      // Resume flips `cached` on journal-replayed agents without moving any
+      // other signature field — the `agent.cached` entry in
+      // timelineRowSignatures.ts exists precisely so memoized rows do not
+      // render stale. Deleting that entry must fail this test.
+      const view = renderTimelineRows({
+        timelineRows: [
+          workflowRow({
+            itemId: "wfr_run123",
+            status: "pending",
+            taskStatus: "running",
+            taskType: BB_WORKFLOW_TASK_TYPE,
+            workflow: liveTreeSnapshot,
+            workflowName: "release-checks",
+          }),
+        ],
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /Running workflow/u }),
+      );
+      expect(screen.queryByText(/cached/u)).toBeNull();
+
+      const cachedSnapshot: WorkflowProgressSnapshot = {
+        phases: liveTreeSnapshot.phases,
+        agents: [
+          { ...liveTreeSnapshot.agents[0]!, cached: true },
+          liveTreeSnapshot.agents[1]!,
+        ],
+      };
+      rerenderTimelineRows({
+        view,
+        timelineRows: [
+          workflowRow({
+            itemId: "wfr_run123",
+            status: "pending",
+            taskStatus: "running",
+            taskType: BB_WORKFLOW_TASK_TYPE,
+            workflow: cachedSnapshot,
+            workflowName: "release-checks",
+          }),
+        ],
+      });
+
+      expect(screen.getByText("haiku · 8.9k tok · 1s · cached")).toBeTruthy();
+    });
+
+    it("re-renders the expanded body when only taskStatus flips to paused (render signature)", () => {
+      // Pause keeps item status "pending" (a paused run is resumable), so
+      // taskStatus is the ONLY signature field that moves — the
+      // `row.taskStatus` entry in timelineRowSignatures.ts exists so the
+      // expanded tree re-renders paused. Deleting that entry must fail this
+      // test.
+      const view = renderTimelineRows({
+        timelineRows: [
+          workflowRow({
+            itemId: "wfr_run123",
+            status: "pending",
+            taskStatus: "running",
+            taskType: BB_WORKFLOW_TASK_TYPE,
+            workflow: liveTreeSnapshot,
+            workflowName: "release-checks",
+          }),
+        ],
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /Running workflow/u }),
+      );
+      expect(screen.queryByText(/paused/u)).toBeNull();
+
+      rerenderTimelineRows({
+        view,
+        timelineRows: [
+          workflowRow({
+            itemId: "wfr_run123",
+            status: "pending",
+            taskStatus: "paused",
+            taskType: BB_WORKFLOW_TASK_TYPE,
+            workflow: liveTreeSnapshot,
+            workflowName: "release-checks",
+          }),
+        ],
+      });
+
+      expect(
+        screen.getByRole("button", { name: /Paused workflow/u }),
+      ).toBeTruthy();
+      expect(screen.getByText("haiku · paused")).toBeTruthy();
+    });
+
+    it("falls back to the terminal summary when no progress snapshot exists", () => {
+      const view = renderTimelineRows({
+        timelineRows: [
+          workflowRow({
+            summary: "Dynamic workflow completed without progress records",
+            workflow: null,
+            workflowName: "fixture-mini",
+          }),
+        ],
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /Ran workflow/u }),
+      );
+
+      expect(view.container.textContent ?? "").toContain(
+        "Dynamic workflow completed without progress records",
+      );
+    });
   });
 
   it("keeps expanded system details pinned to bottom on streaming updates unless the user scrolls up", () => {

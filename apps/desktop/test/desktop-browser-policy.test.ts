@@ -8,11 +8,24 @@ import {
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
+  isAllowedTrustedLocalTopLevelUrl,
   isBlockedBrowserRequestHost,
   isBlockedBrowserRequestUrl,
-  isLocalBrowserRequestHost,
+  isLoopbackBrowserRequestHost,
+  isPrivateBrowserRequestHost,
+  localRequestOriginKey,
   resolveWindowOpenAction,
+  shouldBlockBrowserRequest,
+  type ShouldBlockBrowserRequestArgs,
 } from "../src/desktop-browser-policy.js";
+
+function requireLocalOriginKey(url: string): string {
+  const key = localRequestOriginKey(url);
+  if (key === null) {
+    throw new Error(`Expected local origin key for ${url}`);
+  }
+  return key;
+}
 
 describe("isAllowedBrowserUrl", () => {
   it("allows http and https", () => {
@@ -44,6 +57,19 @@ describe("resolveWindowOpenAction", () => {
     expect(resolveWindowOpenAction("javascript:alert(1)")).toEqual({
       openTabUrl: null,
     });
+  });
+
+  it("denies loopback and private popups (no new tab)", () => {
+    for (const url of [
+      "http://localhost:5173/",
+      "https://app.localhost/path",
+      "http://127.0.0.1:38886/",
+      "http://[::1]:5173/",
+      "http://192.168.1.1/",
+      "http://printer.local/",
+    ]) {
+      expect(resolveWindowOpenAction(url)).toEqual({ openTabUrl: null });
+    }
   });
 });
 
@@ -134,24 +160,39 @@ describe("browser IPC payload schemas", () => {
   });
 });
 
-describe("isBlockedBrowserRequestHost (loopback / LAN firewall)", () => {
-  it("allows localhost and loopback hosts", () => {
+describe("browser request host classification", () => {
+  it("detects only loopback hosts with localhost names and literals", () => {
     for (const host of [
       "127.0.0.1",
       "127.1.2.3",
-      "0.0.0.0",
       "localhost",
+      "localhost.",
       "app.localhost",
+      "deep.app.localhost",
       "::1",
       "[::1]",
+    ]) {
+      expect(isLoopbackBrowserRequestHost(host)).toBe(true);
+    }
+
+    for (const host of [
+      "0.0.0.0",
+      "10.0.0.1",
+      "192.168.1.1",
+      "printer.local",
+      "example.com",
+      "8.8.8.8",
+      "::",
+      "fe80::1",
       "::ffff:127.0.0.1",
     ]) {
-      expect(isBlockedBrowserRequestHost(host)).toBe(false);
+      expect(isLoopbackBrowserRequestHost(host)).toBe(false);
     }
   });
 
-  it("blocks private, link-local, CGNAT, and mDNS hosts", () => {
+  it("detects private, LAN, link-local, mDNS, CGNAT, reserved, and unspecified hosts", () => {
     for (const host of [
+      "0.0.0.0",
       "10.0.0.5",
       "172.16.0.1",
       "172.31.255.255",
@@ -159,16 +200,56 @@ describe("isBlockedBrowserRequestHost (loopback / LAN firewall)", () => {
       "169.254.10.10",
       "100.64.0.1",
       "printer.local",
+      "224.0.0.1",
+      "240.0.0.1",
+      "255.255.255.255",
+      "192.0.0.1",
+      "192.0.2.1",
+      "198.18.0.1",
+      "198.51.100.1",
+      "203.0.113.1",
+      "::",
       "fe80::1",
       "fc00::1",
       "fd12:3456::1",
+      "ff02::1",
+      "2001:db8::1",
       "::ffff:10.0.0.1",
+      "::ffff:127.0.0.1",
     ]) {
-      expect(isBlockedBrowserRequestHost(host)).toBe(true);
+      expect(isPrivateBrowserRequestHost(host)).toBe(true);
+    }
+
+    for (const host of [
+      "localhost",
+      "app.localhost",
+      "127.0.0.1",
+      "::1",
+      "example.com",
+      "8.8.8.8",
+      "172.32.0.1",
+      "11.0.0.1",
+      "100.63.0.1",
+      "2606:4700:4700::1111",
+    ]) {
+      expect(isPrivateBrowserRequestHost(host)).toBe(false);
     }
   });
 
-  it("allows public hosts and addresses", () => {
+  it("combines loopback and private classification for the coarse firewall", () => {
+    for (const host of [
+      "127.0.0.1",
+      "localhost",
+      "app.localhost",
+      "::1",
+      "::ffff:127.0.0.1",
+      "10.0.0.5",
+      "192.168.1.1",
+      "printer.local",
+    ]) {
+      expect(isBlockedBrowserRequestHost(host)).toBe(true);
+    }
+
     for (const host of [
       "example.com",
       "github.com",
@@ -184,46 +265,15 @@ describe("isBlockedBrowserRequestHost (loopback / LAN firewall)", () => {
   });
 });
 
-describe("isLocalBrowserRequestHost", () => {
-  it("recognizes loopback and localhost names", () => {
-    for (const host of [
-      "localhost",
-      "app.localhost",
-      "127.0.0.1",
-      "127.1.2.3",
-      "0.0.0.0",
-      "::1",
-      "[::1]",
-      "::ffff:127.0.0.1",
-    ]) {
-      expect(isLocalBrowserRequestHost(host)).toBe(true);
-    }
-  });
-
-  it("does not treat LAN and public hosts as localhost", () => {
-    for (const host of [
-      "example.com",
-      "10.0.0.5",
-      "192.168.1.1",
-      "printer.local",
-      "fc00::1",
-    ]) {
-      expect(isLocalBrowserRequestHost(host)).toBe(false);
-    }
-  });
-});
-
 describe("isBlockedBrowserRequestUrl", () => {
-  it("allows requests to localhost and loopback over http(s)/ws(s)", () => {
-    expect(isBlockedBrowserRequestUrl("http://127.0.0.1:38886/")).toBe(false);
-    expect(isBlockedBrowserRequestUrl("https://127.0.0.1/x")).toBe(false);
-    expect(isBlockedBrowserRequestUrl("ws://localhost:38886/ws")).toBe(false);
-    expect(isBlockedBrowserRequestUrl("http://[::1]/")).toBe(false);
-  });
-
-  it("blocks requests to private LAN over http(s)/ws(s)", () => {
+  it("blocks requests to loopback/LAN over http(s)/ws(s)", () => {
+    expect(isBlockedBrowserRequestUrl("http://127.0.0.1:38886/")).toBe(true);
+    expect(isBlockedBrowserRequestUrl("https://127.0.0.1/x")).toBe(true);
+    expect(isBlockedBrowserRequestUrl("http://0.0.0.0:38886/")).toBe(true);
+    expect(isBlockedBrowserRequestUrl("https://0.0.0.0/")).toBe(true);
+    expect(isBlockedBrowserRequestUrl("ws://localhost:38886/ws")).toBe(true);
     expect(isBlockedBrowserRequestUrl("wss://10.0.0.5/socket")).toBe(true);
-    expect(isBlockedBrowserRequestUrl("http://192.168.1.1/")).toBe(true);
+    expect(isBlockedBrowserRequestUrl("http://[::1]/")).toBe(true);
   });
 
   it("allows requests to public hosts and non-network schemes", () => {
@@ -233,6 +283,286 @@ describe("isBlockedBrowserRequestUrl", () => {
       isBlockedBrowserRequestUrl("data:image/png;base64,iVBORw0KGgo="),
     ).toBe(false);
     expect(isBlockedBrowserRequestUrl("about:blank")).toBe(false);
+  });
+});
+
+describe("localRequestOriginKey", () => {
+  it("returns comparable same-transport keys for loopback http(s) and ws(s)", () => {
+    expect(localRequestOriginKey("http://localhost:5173/path")).toBe(
+      localRequestOriginKey("ws://localhost:5173/socket"),
+    );
+    expect(localRequestOriginKey("https://localhost/")).toBe(
+      localRequestOriginKey("wss://localhost/updates"),
+    );
+    expect(localRequestOriginKey("http://localhost:80/")).toBe(
+      localRequestOriginKey("ws://localhost/"),
+    );
+  });
+
+  it("keeps scheme class, host, and port in the local origin key", () => {
+    expect(localRequestOriginKey("http://localhost:5173/")).not.toBe(
+      localRequestOriginKey("https://localhost:5173/"),
+    );
+    expect(localRequestOriginKey("http://localhost:5173/")).not.toBe(
+      localRequestOriginKey("http://localhost:38886/"),
+    );
+    expect(localRequestOriginKey("http://localhost:5173/")).not.toBe(
+      localRequestOriginKey("http://127.0.0.1:5173/"),
+    );
+    expect(localRequestOriginKey("http://localhost.:5173/")).not.toBe(
+      localRequestOriginKey("http://localhost:5173/"),
+    );
+    expect(localRequestOriginKey("http://app.localhost.:5173/")).not.toBe(
+      localRequestOriginKey("http://app.localhost:5173/"),
+    );
+  });
+
+  it("returns null for public, private, and unsupported URLs", () => {
+    expect(localRequestOriginKey("https://example.com/")).toBeNull();
+    expect(localRequestOriginKey("http://0.0.0.0:5173/")).toBeNull();
+    expect(localRequestOriginKey("http://192.168.1.1/")).toBeNull();
+    expect(localRequestOriginKey("file:///etc/passwd")).toBeNull();
+  });
+});
+
+describe("isAllowedTrustedLocalTopLevelUrl", () => {
+  it("allows only loopback http(s) top-level URLs", () => {
+    expect(isAllowedTrustedLocalTopLevelUrl("http://localhost:5173/")).toBe(
+      true,
+    );
+    expect(isAllowedTrustedLocalTopLevelUrl("https://app.localhost/")).toBe(
+      true,
+    );
+    expect(isAllowedTrustedLocalTopLevelUrl("http://127.0.0.1:3000/")).toBe(
+      true,
+    );
+    expect(isAllowedTrustedLocalTopLevelUrl("http://[::1]:5173/")).toBe(true);
+
+    expect(isAllowedTrustedLocalTopLevelUrl("ws://localhost:5173/ws")).toBe(
+      false,
+    );
+    expect(isAllowedTrustedLocalTopLevelUrl("https://example.com/")).toBe(
+      false,
+    );
+    expect(isAllowedTrustedLocalTopLevelUrl("http://0.0.0.0:5173/")).toBe(
+      false,
+    );
+    expect(isAllowedTrustedLocalTopLevelUrl("http://192.168.1.1/")).toBe(false);
+  });
+});
+
+describe("shouldBlockBrowserRequest", () => {
+  const localhost3000 = requireLocalOriginKey("http://localhost:3000/");
+  const localhost5173 = requireLocalOriginKey("http://localhost:5173/");
+  const localhostSecure3000 = requireLocalOriginKey("https://localhost:3000/");
+  const loopbackIpv4 = requireLocalOriginKey("http://127.0.0.1:3000/");
+
+  const baseRequest: ShouldBlockBrowserRequestArgs = {
+    url: "http://localhost:3000/",
+    resourceType: "mainFrame",
+    isMainFrame: true,
+    targetWebContentsId: 1,
+    entryWebContentsId: 1,
+    pendingTrustedLocalTopLevelOriginKey: null,
+    currentMainFrameLocalOriginKey: null,
+    requestingFrameOriginKey: null,
+    mainFrameInitiatorOriginKey: null,
+  };
+
+  it("allows public requests regardless of local attribution fields", () => {
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseRequest,
+        url: "https://example.com/app.js",
+        resourceType: "script",
+        isMainFrame: false,
+        targetWebContentsId: null,
+        entryWebContentsId: null,
+        pendingTrustedLocalTopLevelOriginKey: localhost3000,
+        currentMainFrameLocalOriginKey: localhost3000,
+        requestingFrameOriginKey: null,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseRequest,
+        url: "wss://example.com/socket",
+        resourceType: "webSocket",
+        isMainFrame: false,
+        targetWebContentsId: 2,
+        entryWebContentsId: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("blocks explicit 0.0.0.0 firewall targets", () => {
+    for (const url of ["http://0.0.0.0:38886/", "https://0.0.0.0/"]) {
+      expect(shouldBlockBrowserRequest({ ...baseRequest, url })).toBe(true);
+    }
+  });
+
+  it("allows trusted pending loopback main-frame requests without an initiator", () => {
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseRequest,
+        pendingTrustedLocalTopLevelOriginKey: localhost3000,
+      }),
+    ).toBe(false);
+  });
+
+  it("allows current same-origin loopback main-frame requests only from a matching local initiator", () => {
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseRequest,
+        isMainFrame: false,
+        resourceType: "mainFrame",
+        currentMainFrameLocalOriginKey: localhost3000,
+        mainFrameInitiatorOriginKey: localhost3000,
+      }),
+    ).toBe(false);
+
+    for (const mainFrameInitiatorOriginKey of [
+      null,
+      localRequestOriginKey("https://example.com/"),
+      localhost5173,
+      localhostSecure3000,
+    ]) {
+      expect(
+        shouldBlockBrowserRequest({
+          ...baseRequest,
+          currentMainFrameLocalOriginKey: localhost3000,
+          mainFrameInitiatorOriginKey,
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it("blocks unapproved loopback requests", () => {
+    for (const resourceType of [
+      "mainFrame",
+      "subFrame",
+      "script",
+      "xhr",
+      "image",
+      "webSocket",
+    ]) {
+      expect(
+        shouldBlockBrowserRequest({
+          ...baseRequest,
+          resourceType,
+          isMainFrame: resourceType === "mainFrame",
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it("allows same-origin loopback subresources and WebSockets from the committed local frame", () => {
+    for (const request of [
+      { url: "http://localhost:3000/app.js", resourceType: "script" },
+      { url: "ws://localhost:3000/socket", resourceType: "webSocket" },
+    ]) {
+      expect(
+        shouldBlockBrowserRequest({
+          ...baseRequest,
+          url: request.url,
+          resourceType: request.resourceType,
+          isMainFrame: false,
+          currentMainFrameLocalOriginKey: localhost3000,
+          requestingFrameOriginKey: localhost3000,
+        }),
+      ).toBe(false);
+    }
+  });
+
+  it("isolates local approval by attributed webContents id", () => {
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseRequest,
+        pendingTrustedLocalTopLevelOriginKey: localhost3000,
+        targetWebContentsId: 2,
+        entryWebContentsId: 1,
+      }),
+    ).toBe(true);
+  });
+
+  it("blocks local requests with missing or mismatched attribution", () => {
+    for (const request of [
+      { targetWebContentsId: null, entryWebContentsId: 1 },
+      { targetWebContentsId: 1, entryWebContentsId: null },
+      { targetWebContentsId: 2, entryWebContentsId: 1 },
+    ]) {
+      expect(
+        shouldBlockBrowserRequest({
+          ...baseRequest,
+          targetWebContentsId: request.targetWebContentsId,
+          entryWebContentsId: request.entryWebContentsId,
+          pendingTrustedLocalTopLevelOriginKey: localhost3000,
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it("blocks non-main-frame local requests with missing, public, or mismatched requesting frame origin", () => {
+    for (const requestingFrameOriginKey of [
+      null,
+      localRequestOriginKey("https://example.com/"),
+      localhost5173,
+      localhostSecure3000,
+    ]) {
+      expect(
+        shouldBlockBrowserRequest({
+          ...baseRequest,
+          url: "http://localhost:3000/app.js",
+          resourceType: "script",
+          isMainFrame: false,
+          currentMainFrameLocalOriginKey: localhost3000,
+          requestingFrameOriginKey,
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it("blocks cross-origin loopback requests from a committed local page", () => {
+    for (const url of [
+      "http://localhost:5173/api",
+      "http://127.0.0.1:3000/api",
+      "https://localhost:3000/api",
+      "http://localhost.:3000/api",
+    ]) {
+      expect(
+        shouldBlockBrowserRequest({
+          ...baseRequest,
+          url,
+          resourceType: "xhr",
+          isMainFrame: false,
+          currentMainFrameLocalOriginKey: localhost3000,
+          requestingFrameOriginKey: localhost3000,
+        }),
+      ).toBe(true);
+    }
+
+    expect(loopbackIpv4).not.toBe(localhost3000);
+  });
+
+  it("blocks private requests even when attribution and frame origin are present", () => {
+    for (const url of [
+      "http://192.168.1.1/",
+      "http://printer.local/",
+      "http://100.64.0.1/",
+      "http://[fe80::1]/",
+    ]) {
+      expect(
+        shouldBlockBrowserRequest({
+          ...baseRequest,
+          url,
+          resourceType: "image",
+          isMainFrame: false,
+          currentMainFrameLocalOriginKey: localhost3000,
+          requestingFrameOriginKey: localhost3000,
+        }),
+      ).toBe(true);
+    }
   });
 });
 

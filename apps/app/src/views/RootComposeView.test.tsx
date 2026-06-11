@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from "@testing-library/react";
 import {
@@ -17,6 +18,7 @@ import {
 } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  defaultExperiments,
   PERSONAL_PROJECT_ID,
   type Host,
   type ProjectSource,
@@ -24,15 +26,22 @@ import {
   type ThreadWithRuntime,
 } from "@bb/domain";
 import type {
+  ProjectResponse,
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
 } from "@bb/server-contract";
+import { createProjectRequestSchema } from "@bb/server-contract";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
 import { getThreadRoutePath } from "@/lib/app-route-paths";
-import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
+import { NAVIGATE_TO_THREAD_AFTER_CREATE_STORAGE_KEY } from "@/lib/root-compose-create-preference";
+import {
+  QuickCreateProjectProvider,
+  useQuickCreateProjectController,
+} from "@/hooks/useQuickCreateProject";
+import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import { RootComposeRoute } from "./RootComposeView";
 
 type ThreadOverrides = Partial<ThreadWithRuntime>;
@@ -42,9 +51,12 @@ type ProjectWithThreadsOverrides = Partial<ProjectWithThreadsResponse>;
 vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({
     localHostId: "host_local",
+    localDaemonHostId: "host_local",
     hasDaemon: true,
     supportsNativeFolderPicker: false,
     platform: null,
+    isLocalDaemonHost: (hostId: string | null | undefined) =>
+      hostId === "host_local",
     pickFolder: null,
   }),
 }));
@@ -53,12 +65,14 @@ const STANDARD_PROJECT_ID = "proj_standard";
 
 interface RootComposeFetchRoutesOptions {
   createThreadShouldFail?: boolean;
+  createdProject?: ProjectWithThreadsResponse;
   createdThread?: ThreadWithRuntime;
   sidebarNavigation?: SidebarBootstrapResponse;
   threads?: readonly ThreadListEntry[];
 }
 
 interface RootComposeFetchRequests {
+  createProject: Request[];
   createThread: Request[];
 }
 
@@ -116,6 +130,7 @@ const systemExecutionOptions = {
 } satisfies SystemExecutionOptionsResponse;
 
 const systemConfig = {
+  experiments: defaultExperiments,
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
   voiceTranscriptionEnabled: false,
@@ -150,15 +165,27 @@ function RootComposeWithFocusButton() {
   );
 }
 
-function ThreadRouteWithReturnToCompose() {
-  const navigate = useNavigate();
+function RootComposeWithQuickCreateDialog() {
   return (
     <>
-      <LocationCapture />
-      <button type="button" onClick={() => navigate("/")}>
-        New thread
-      </button>
+      <RootComposeWithLocation />
+      <QuickCreateProjectDialogHost />
     </>
+  );
+}
+
+function QuickCreateProjectDialogHost() {
+  const quickCreateProject = useQuickCreateProjectController();
+
+  return (
+    <ProjectPathDialog
+      target={quickCreateProject.projectPathDialog.target}
+      pending={quickCreateProject.isCreating}
+      platform={quickCreateProject.platform}
+      hostName={quickCreateProject.hostName}
+      onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
+      onSubmit={quickCreateProject.submitProjectPath}
+    />
   );
 }
 
@@ -210,11 +237,26 @@ function makeThreadListEntry(
   };
 }
 
+function makeThreadListEntryFromThread(
+  thread: ThreadWithRuntime,
+): ThreadListEntry {
+  return {
+    ...thread,
+    pinSortKey: null,
+    hasPendingInteraction: false,
+    environmentHostId: null,
+    environmentName: null,
+    environmentBranchName: null,
+    environmentWorkspaceDisplayKind: "other",
+  };
+}
+
 function makeProjectWithThreadsResponse(
   overrides: ProjectWithThreadsOverrides = {},
 ): ProjectWithThreadsResponse {
   return {
     createdAt: 1,
+    defaultExecutionOptions: null,
     id: PERSONAL_PROJECT_ID,
     kind: "personal",
     name: "Personal",
@@ -244,6 +286,40 @@ function makeStandardProjectWithThreadsResponse(): ProjectWithThreadsResponse {
   });
 }
 
+function makeCreatedProjectWithThreadsResponse(): ProjectWithThreadsResponse {
+  return makeProjectWithThreadsResponse({
+    id: "proj_created",
+    kind: "standard",
+    name: "demo",
+    sources: [
+      {
+        id: "src_created",
+        projectId: "proj_created",
+        type: "local_path",
+        hostId: "host_local",
+        path: "/srv/repos/demo",
+        isDefault: true,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ],
+    threads: [],
+  });
+}
+
+function toProjectResponse(
+  project: ProjectWithThreadsResponse,
+): ProjectResponse {
+  return {
+    createdAt: project.createdAt,
+    id: project.id,
+    kind: project.kind,
+    name: project.name,
+    sources: project.sources,
+    updatedAt: project.updatedAt,
+  };
+}
+
 function seedRootComposeDraft(text: string): void {
   seedProjectRootComposeDraft(PERSONAL_PROJECT_ID, text);
 }
@@ -259,21 +335,40 @@ function seedProjectRootComposeDraft(projectId: string, text: string): void {
   );
 }
 
+function seedNavigateToThreadAfterCreatePreference(enabled: boolean): void {
+  window.localStorage.setItem(
+    NAVIGATE_TO_THREAD_AFTER_CREATE_STORAGE_KEY,
+    JSON.stringify(enabled),
+  );
+}
+
 function isEnabledButton(element: HTMLElement): boolean {
   return element instanceof HTMLButtonElement && !element.disabled;
+}
+
+function requireRequest(request: Request | undefined): Request {
+  if (!request) {
+    throw new Error("Expected request to exist.");
+  }
+  return request;
 }
 
 function installRootComposeFetchRoutes(
   options: RootComposeFetchRoutesOptions = {},
 ): RootComposeFetchRequests {
   const requests: RootComposeFetchRequests = {
+    createProject: [],
     createThread: [],
   };
-  const sidebarNavigation =
+  let sidebarNavigation =
     options.sidebarNavigation ?? buildSidebarNavigationResponse();
+  let threads = [...(options.threads ?? [])];
+  const createdProject =
+    options.createdProject ?? makeCreatedProjectWithThreadsResponse();
   const projectIds = [
     sidebarNavigation.personalProject.id,
     ...sidebarNavigation.projects.map((project) => project.id),
+    createdProject.id,
   ];
   installFetchRoutes([
     {
@@ -283,6 +378,18 @@ function installRootComposeFetchRoutes(
     {
       pathname: "/api/v1/projects",
       handler: () => jsonResponse(sidebarNavigation.projects),
+    },
+    {
+      method: "POST",
+      pathname: "/api/v1/projects",
+      handler: (request) => {
+        requests.createProject.push(request);
+        sidebarNavigation = {
+          ...sidebarNavigation,
+          projects: [...sidebarNavigation.projects, createdProject],
+        };
+        return jsonResponse(toProjectResponse(createdProject), { status: 201 });
+      },
     },
     ...projectIds.flatMap((projectId) => [
       {
@@ -315,9 +422,7 @@ function installRootComposeFetchRoutes(
         const url = new URL(request.url);
         const projectId = url.searchParams.get("projectId");
         return jsonResponse(
-          (options.threads ?? []).filter(
-            (thread) => thread.projectId === projectId,
-          ),
+          threads.filter((thread) => thread.projectId === projectId),
         );
       },
     },
@@ -329,7 +434,9 @@ function installRootComposeFetchRoutes(
         if (options.createThreadShouldFail) {
           return jsonResponse({ error: "create failed" }, { status: 500 });
         }
-        return jsonResponse(options.createdThread ?? makeThread(), {
+        const thread = options.createdThread ?? makeThread();
+        threads = [makeThreadListEntryFromThread(thread), ...threads];
+        return jsonResponse(thread, {
           status: 201,
         });
       },
@@ -371,13 +478,10 @@ function renderRootComposeRoute(
           <QuickCreateProjectProvider>
             <Routes>
               <Route path="/" element={rootRouteElement} />
-              <Route
-                path="/threads/:threadId"
-                element={<ThreadRouteWithReturnToCompose />}
-              />
+              <Route path="/threads/:threadId" element={<LocationCapture />} />
               <Route
                 path="/projects/:projectId/threads/:threadId"
-                element={<ThreadRouteWithReturnToCompose />}
+                element={<LocationCapture />}
               />
             </Routes>
           </QuickCreateProjectProvider>
@@ -414,9 +518,68 @@ describe("RootComposeRoute", () => {
     );
   });
 
-  it("navigates to a successfully created new thread", async () => {
+  it("stays on root compose after creating a thread by default", async () => {
+    const requests = installRootComposeFetchRoutes();
+    seedRootComposeDraft("Open a debugging thread");
+    renderRootComposeRoute();
+
+    await screen.findByRole("textbox");
+    const submitButton = screen.getByTitle("Submit (Enter)");
+    await waitFor(() => {
+      expect(isEnabledButton(submitButton)).toBe(true);
+    });
+
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(requests.createThread).toHaveLength(1);
+    });
+    expect(screen.getByTestId("pathname").textContent).toBe("/");
+  });
+
+  it("shows the created thread in mobile recents when staying on root compose", async () => {
+    const thread = makeThread({
+      id: "thr_mobile_recent",
+      title: "Mobile feedback thread",
+      titleFallback: "Mobile feedback thread",
+      createdAt: 100,
+      latestAttentionAt: 100,
+      runtime: {
+        displayStatus: "created",
+        hostReconnectGraceExpiresAt: null,
+      },
+      status: "created",
+      updatedAt: 100,
+    });
+    installRootComposeFetchRoutes({ createdThread: thread });
+    seedRootComposeDraft("Open a mobile feedback thread");
+    renderRootComposeRoute();
+
+    await screen.findByRole("textbox");
+    const submitButton = screen.getByTitle("Submit (Enter)");
+    await waitFor(() => {
+      expect(isEnabledButton(submitButton)).toBe(true);
+    });
+
+    fireEvent.click(submitButton);
+
+    const recents = await screen.findByRole("region", { name: "Recent" });
+    const link = within(recents).getByRole("link", {
+      name: "Open Mobile feedback thread",
+    });
+    expect(link.getAttribute("href")).toBe(
+      getThreadRoutePath({
+        projectId: thread.projectId,
+        threadId: thread.id,
+      }),
+    );
+    expect(within(recents).getByText("Personal")).toBeTruthy();
+  });
+
+  it("navigates to a created thread when the navigate-on-create preference is on", async () => {
     const thread = makeThread({ id: "thr_new_thread" });
     installRootComposeFetchRoutes({ createdThread: thread });
+    seedNavigateToThreadAfterCreatePreference(true);
     seedRootComposeDraft("Open a debugging thread");
     renderRootComposeRoute();
 
@@ -459,7 +622,54 @@ describe("RootComposeRoute", () => {
     });
   });
 
-  it("does not keep reuse-environment selection after creating a thread", async () => {
+  it("selects a project created from the new-thread project picker", async () => {
+    const requests = installRootComposeFetchRoutes();
+    renderRootComposeRoute({
+      rootRouteElement: <RootComposeWithQuickCreateDialog />,
+    });
+
+    await screen.findByRole("textbox");
+    expect(
+      screen.getByRole("button", { name: "Project" }).textContent,
+    ).toContain("Work in a project");
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Project" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "New project" }),
+    );
+    fireEvent.change(await screen.findByLabelText("Project path"), {
+      target: { value: "/srv/repos/demo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add project" }));
+
+    await waitFor(() => {
+      expect(requests.createProject).toHaveLength(1);
+    });
+    const createProjectBody = createProjectRequestSchema.parse(
+      await requireRequest(requests.createProject[0]).json(),
+    );
+    expect(createProjectBody).toEqual({
+      name: "demo",
+      source: {
+        hostId: "host_local",
+        path: "/srv/repos/demo",
+        type: "local_path",
+      },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Project" }).textContent,
+      ).toContain("demo");
+    });
+    expect(window.localStorage.getItem("bb.root-compose.project-id")).toBe(
+      "proj_created",
+    );
+  });
+
+  it("clears the reuse-environment selection after creating a thread", async () => {
     const standardProject = makeStandardProjectWithThreadsResponse();
     const createdThread = makeThread({
       id: "thr_standard_created",
@@ -486,56 +696,33 @@ describe("RootComposeRoute", () => {
     });
 
     await screen.findByRole("button", { name: "Stop reusing worktree" });
-    const firstSubmitButton = screen.getByTitle("Submit (Enter)");
+    const submitButton = screen.getByTitle("Submit (Enter)");
     await waitFor(() => {
-      expect(isEnabledButton(firstSubmitButton)).toBe(true);
+      expect(isEnabledButton(submitButton)).toBe(true);
     });
 
-    fireEvent.click(firstSubmitButton);
+    fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByTestId("pathname").textContent).toBe(
-        getThreadRoutePath({
-          projectId: STANDARD_PROJECT_ID,
-          threadId: createdThread.id,
-        }),
-      );
+      expect(requests.createThread).toHaveLength(1);
     });
-    expect(requests.createThread).toHaveLength(1);
-    const firstCreateBody = await requests.createThread[0]?.json();
-    expect(firstCreateBody.environment).toEqual({
+    const createBody = await requests.createThread[0]?.json();
+    expect(createBody.environment).toEqual({
       type: "reuse",
       environmentId: "env_reuse",
     });
-
-    seedProjectRootComposeDraft(
-      STANDARD_PROJECT_ID,
-      "Start a regular new thread",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "New thread" }));
-
-    await screen.findByRole("textbox");
-    const secondSubmitButton = screen.getByTitle("Submit (Enter)");
     await waitFor(() => {
-      expect(isEnabledButton(secondSubmitButton)).toBe(true);
-    });
-
-    fireEvent.click(secondSubmitButton);
-
-    await waitFor(() => {
-      expect(requests.createThread).toHaveLength(2);
-    });
-    const secondCreateBody = await requests.createThread[1]?.json();
-    expect(secondCreateBody.environment).toMatchObject({
-      type: "host",
-      hostId: "host_local",
+      expect(
+        screen.queryByRole("button", { name: "Stop reusing worktree" }),
+      ).toBeNull();
     });
   });
 
-  it("does not navigate when new thread creation fails", async () => {
+  it("does not navigate when creation fails and the navigate-on-create preference is on", async () => {
     const requests = installRootComposeFetchRoutes({
       createThreadShouldFail: true,
     });
+    seedNavigateToThreadAfterCreatePreference(true);
     seedRootComposeDraft("Open a debugging thread");
     renderRootComposeRoute();
 

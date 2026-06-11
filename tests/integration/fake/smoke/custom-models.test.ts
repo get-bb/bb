@@ -38,9 +38,12 @@ describe.sequential("custom provider models integration", () => {
         defaultReasoningEffort: "medium",
         isDefault: false,
       });
-      // The provider-reported catalog stays first; its default remains marked
-      // even if the provider catalog does not sort the default row first.
-      expect(models.some((model) => model.isDefault)).toBe(true);
+      // The provider-reported default stays marked even if the provider
+      // catalog does not sort the default row first; custom models append at
+      // the end and never become the default.
+      const defaultModel = models.find((model) => model.isDefault);
+      expect(defaultModel).toBeDefined();
+      expect(defaultModel?.model).not.toBe("claude-example-preview[1m]");
       expect(models[models.length - 1]?.model).toBe(
         "claude-example-preview[1m]",
       );

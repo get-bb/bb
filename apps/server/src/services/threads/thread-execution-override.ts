@@ -1,4 +1,9 @@
 import {
+  getBuiltInAgentProviderServerCapabilities,
+  isAgentProviderId,
+  listBuiltInAgentProviderInfos,
+} from "@bb/agent-providers";
+import {
   getProjectExecutionDefaults,
   getThreadExecutionOverride,
   setThreadExecutionOverride,
@@ -17,12 +22,27 @@ import { getLastExecutionOptions } from "./thread-events.js";
 import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
 /**
- * Provider whitelist for in-place execution overrides in v1. Only `claude-code`
- * is verified to apply a changed model on `thread/resume` while preserving
- * context. Codex/pi in-place swap is a follow-up (needs a capability flag and a
- * live resume-with-changed-model test); cross-provider changes require respawn.
+ * Whether the thread's provider applies an in-place execution override on
+ * `thread/resume` while preserving context. Reads the provider's
+ * `supportsExecutionOverride` capability fact from the catalog; cross-provider
+ * changes always require respawning the thread.
  */
-const OVERRIDE_SUPPORTED_PROVIDER = "claude-code";
+function providerSupportsExecutionOverride(providerId: string): boolean {
+  if (!isAgentProviderId(providerId)) {
+    return false;
+  }
+  return getBuiltInAgentProviderServerCapabilities(providerId)
+    .supportsExecutionOverride;
+}
+
+function listExecutionOverrideProviderIds(): string[] {
+  return listBuiltInAgentProviderInfos()
+    .filter((info) =>
+      getBuiltInAgentProviderServerCapabilities(info.id)
+        .supportsExecutionOverride,
+    )
+    .map((info) => info.id);
+}
 
 /**
  * Presence-sensitive patch for the thread execution override. A field that is
@@ -142,11 +162,11 @@ export async function applyThreadExecutionOverride(
 ): Promise<void> {
   const { thread, patch } = args;
 
-  if (thread.providerId !== OVERRIDE_SUPPORTED_PROVIDER) {
+  if (!providerSupportsExecutionOverride(thread.providerId)) {
     throw new ApiError(
       400,
       "invalid_request",
-      `Changing the model or reasoning level of a running thread is only supported for ${OVERRIDE_SUPPORTED_PROVIDER} threads (this thread uses ${thread.providerId}). Cross-provider changes require respawning the thread.`,
+      `Changing the model or reasoning level of a running thread is only supported for ${listExecutionOverrideProviderIds().join(", ")} threads (this thread uses ${thread.providerId}). Cross-provider changes require respawning the thread.`,
     );
   }
 

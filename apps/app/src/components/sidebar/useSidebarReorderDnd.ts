@@ -16,7 +16,7 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import {
   useDragClickSuppression,
   type ConsumeDragClickSuppression,
-} from "./useDragClickSuppression";
+} from "@/components/ui/use-drag-click-suppression";
 
 /**
  * Sidebar reorder lists mix uneven row heights — a tall expanded parent next

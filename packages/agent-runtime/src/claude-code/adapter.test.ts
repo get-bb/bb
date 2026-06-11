@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { threadScope, turnScope } from "@bb/domain";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  threadScope,
+  turnScope,
+} from "@bb/domain";
 import type {
   PendingInteractionResolution,
   UserQuestionPendingInteractionPayload,
@@ -37,12 +41,14 @@ function loadFixture(name: string): Record<string, unknown> {
 }
 
 const fullProviderExecutionContext = {
+  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "full",
   permissionEscalation: null,
   workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
 
 const workspaceWriteProviderExecutionContext = {
+  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "workspace-write",
   permissionEscalation: "deny",
   workflowsEnabled: false,
@@ -301,6 +307,43 @@ describe("claude-code provider adapter", () => {
       permissionEscalation: null,
       cwd: "/tmp/worktree",
     });
+    expect(cmd?.params).not.toHaveProperty("outputFormat");
+  });
+
+  it("buildCommand thread/start maps the output schema to the bridge json_schema output format", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const outputSchema = {
+      type: "object",
+      properties: { answer: { type: "string" } },
+      required: ["answer"],
+    };
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/start",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-1",
+      input: [{ type: "text", text: "hello", mentions: [] }],
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+      outputSchema,
+    });
+    expect(cmd?.params).toMatchObject({
+      outputFormat: { type: "json_schema", schema: outputSchema },
+    });
+  });
+
+  it("buildCommand turn/start rejects per-turn output schemas", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    expect(() =>
+      adapter.buildCommandPlan({
+        type: "turn/start",
+        clientRequestId: "creq_2222222298",
+        threadId: "bb-thread-1",
+        providerThreadId: "claude-session-1",
+        input: [{ type: "text", text: "extract", mentions: [] }],
+        options: fullProviderExecutionContext,
+        outputSchema: { type: "object" },
+      }),
+    ).toThrow(/structured output is session-level/);
   });
 
   it("buildCommand passes workflowsEnabled through explicitly on thread/start and thread/resume", () => {
@@ -416,6 +459,7 @@ describe("claude-code provider adapter", () => {
       input: [promptTextInput({ text: "hello" })],
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "ask",
@@ -445,6 +489,7 @@ describe("claude-code provider adapter", () => {
       input: [promptTextInput({ text: "hello" })],
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionEscalation: "ask",
         model: "claude-opus-4-7",
@@ -541,6 +586,7 @@ describe("claude-code provider adapter", () => {
       input: [promptTextInput({ text: "hello" })],
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "deny",
@@ -561,6 +607,7 @@ describe("claude-code provider adapter", () => {
       input: [promptTextInput({ text: "hello" })],
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionEscalation: null,
@@ -606,6 +653,7 @@ describe("claude-code provider adapter", () => {
       providerThreadId: "claude-session-1",
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionEscalation: "deny",
         permissionMode: "readonly",
@@ -671,6 +719,7 @@ describe("claude-code provider adapter", () => {
       providerThreadId: "claude-session-readonly",
       instructionMode: "append",
       options: {
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
         workflowsEnabled: false,
         permissionMode: "readonly",
         permissionEscalation: "ask",
@@ -2120,6 +2169,29 @@ describe("claude-code provider adapter", () => {
     expect(events).toMatchObject([]);
   });
 
+  it("translateEvent ignores primary rate limit rejections when overage is allowed", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "rate_limit_event",
+          rate_limit_info: {
+            status: "rejected",
+            rateLimitType: "five_hour",
+            resetsAt: 1781120400,
+            overageStatus: "allowed",
+          },
+        },
+      },
+    });
+
+    expect(events).toEqual([]);
+  });
+
   it("translateEvent ignores task-updated system events from the SDK envelope", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
@@ -2162,6 +2234,36 @@ describe("claude-code provider adapter", () => {
     });
 
     expect(events).toMatchObject([]);
+  });
+
+  it("translateEvent ignores async hook lifecycle system events from the SDK envelope", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    for (const subtype of [
+      "hook_started",
+      "hook_progress",
+      "hook_response",
+      "commands_changed",
+      "permission_denied",
+    ] as const) {
+      const events = adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "sdk/message",
+        params: {
+          threadId: "claude-thread-1",
+          message: {
+            type: "system",
+            subtype,
+            hook_name: "SessionStart:startup",
+            hook_event: "SessionStart",
+            uuid: "message-1",
+            session_id: "session-1",
+          },
+        },
+      });
+
+      expect(events).toMatchObject([]);
+    }
   });
 
   it("translateEvent maps thread identity envelopes", () => {
@@ -2305,6 +2407,60 @@ describe("claude-code provider adapter", () => {
           providerCode: null,
           httpStatusCode: 529,
         },
+      }),
+    );
+  });
+
+  it("translateEvent surfaces result structured_output as a final agent message", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "assistant",
+          message: {
+            id: "assistant-1",
+            content: [],
+          },
+        },
+      },
+    });
+
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "claude-thread-1",
+        message: {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          structured_output: { ok: true, count: 2 },
+          usage: {},
+          modelUsage: {},
+        },
+      },
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "agentMessage",
+          id: "claude-structured-output-turn-1",
+          text: JSON.stringify({ ok: true, count: 2 }),
+        },
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
       }),
     );
   });

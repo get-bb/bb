@@ -57,6 +57,9 @@ export interface ServerConnectionOptions {
   getActiveThreads?: () =>
     | HostDaemonActiveThread[]
     | Promise<HostDaemonActiveThread[]>;
+  /** Heartbeat-backed live run ids, recomputed per (re)connect for the M3
+   *  reconnect reconciliation (async: the manager stats run-dir heartbeats). */
+  getActiveWorkflowRunIds?: () => string[] | Promise<string[]>;
   getLoadedEnvironments?: () =>
     | HostDaemonLoadedEnvironment[]
     | Promise<HostDaemonLoadedEnvironment[]>;

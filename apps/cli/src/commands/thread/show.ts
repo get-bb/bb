@@ -52,6 +52,7 @@ interface ThreadLogCommandOptions {
 
 interface ThreadOutputCommandOptions {
   json?: boolean;
+  self?: boolean;
 }
 
 interface ThreadStatusPayload {
@@ -401,13 +402,16 @@ export function registerShowCommand(
     );
 
   parent
-    .command("output <id>")
-    .description("Get the final output of a thread")
+    .command("output [id]")
+    .description("Get the final output of a thread (defaults to BB_THREAD_ID)")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (id: string, opts: ThreadOutputCommandOptions) => {
+      action(async (id: string | undefined, opts: ThreadOutputCommandOptions) => {
+        const resolved = requireThreadIdWithLabelOrSelf(id, opts);
+        printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
         const sdk = createCliBbSdk(getUrl());
-        const result = await sdk.threads.output({ threadId: id });
+        const result = await sdk.threads.output({ threadId: resolved.id });
         if (outputJson(opts, result)) return;
         if (result.output) {
           console.log(result.output);

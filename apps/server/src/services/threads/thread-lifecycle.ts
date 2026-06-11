@@ -139,9 +139,14 @@ export interface PrepareReadyThreadTurnDispatchInTransactionArgs {
 const threadStartRequestDeduper = createAsyncDeduper<string, void>();
 const activeThreadStartRpcThreadIds = new Set<string>();
 const activeThreadStartGeneratedTitleSyncThreadIds = new Set<string>();
+const activeThreadStopRpcThreadIds = new Set<string>();
 
 export function hasLiveThreadStartInFlight(threadId: string): boolean {
   return activeThreadStartRpcThreadIds.has(threadId);
+}
+
+export function hasLiveThreadStopInFlight(threadId: string): boolean {
+  return activeThreadStopRpcThreadIds.has(threadId);
 }
 
 interface CompleteThreadStartArgs {
@@ -1023,23 +1028,28 @@ export function requestThreadStop(
 
   const currentThread = getThread(deps.db, args.threadId);
   if (
-    currentThread?.stopRequestedAt !== null &&
-    args.stopRequestedAt !== null
+    !currentThread ||
+    currentThread.stopRequestedAt === null ||
+    hasLiveThreadStopInFlight(args.threadId)
   ) {
     return;
   }
 
-  startLiveHostCommand(deps, {
+  activeThreadStopRpcThreadIds.add(args.threadId);
+  void runLiveHostCommand(deps, {
     command: buildThreadStopCommand(args),
     hostId: args.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+  })
+    .catch((error) => {
       deps.logger.warn(
         { err: error, threadId: args.threadId },
         "Live thread stop command failed",
       );
-    },
-  });
+    })
+    .finally(() => {
+      activeThreadStopRpcThreadIds.delete(args.threadId);
+    });
 }
 
 function requestPreStartThreadStop(
@@ -1120,7 +1130,7 @@ function requestPreStartThreadStop(
       },
       hostId: result.cancelHostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-      onError: (error) => {
+      onError: ({ error }) => {
         deps.logger.warn(
           {
             err: error,

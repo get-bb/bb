@@ -1,13 +1,16 @@
 import { Icon } from "@/components/ui/icon.js";
+import { COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
 const TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS = "max-w-[180px]";
 const TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS =
-  "inline-flex size-4 shrink-0 items-center justify-center rounded transition-opacity hover:bg-muted-foreground/15 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none";
-export const TAB_PILL_AFFORDANCE_ICON_CLASS = "size-3";
-export const TAB_PILL_CLOSE_BUTTON_CLASS =
-  `mr-1 ml-0.5 ${TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS} opacity-0 hover:opacity-100 focus-visible:opacity-100 group-hover/tab-pill:opacity-100 group-focus-within/tab-pill:opacity-100 disabled:opacity-30`;
+  "inline-flex size-4 shrink-0 items-center justify-center rounded transition-opacity hover:bg-muted-foreground/15 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none max-md:pointer-coarse:size-5";
+export const TAB_PILL_AFFORDANCE_ICON_CLASS =
+  "size-3.5 max-md:pointer-coarse:size-5";
+export const TAB_PILL_CLOSE_BUTTON_CLASS = `pointer-events-none absolute left-2 top-1/2 z-10 -translate-y-1/2 bg-inherit ${TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS} opacity-0 hover:opacity-100 group-hover/tab-pill:pointer-events-auto group-hover/tab-pill:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:opacity-30 max-md:pointer-coarse:pointer-events-auto max-md:pointer-coarse:opacity-100`;
+const TAB_PILL_LEADING_VISUAL_CLASS =
+  "mr-1.5 inline-flex size-4 shrink-0 items-center justify-center transition-opacity [&_svg]:size-3.5 max-md:pointer-coarse:size-5 max-md:pointer-coarse:[&_svg]:size-5";
 
 export interface TabPillCloseAction {
   onClose: () => void;
@@ -18,7 +21,7 @@ export interface TabPillCloseAction {
 
 export interface TabPillProps {
   label: string;
-  leadingVisual?: ReactNode;
+  leadingVisual: ReactNode;
   secondaryLabel?: string | null;
   /** Extra classes for the label text (e.g. `line-through` for a done tab). */
   labelClassName?: string;
@@ -40,11 +43,11 @@ export function TabPill({
   labelMaxWidthClass = TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS,
   closeAction,
 }: TabPillProps) {
-  const isClosable = closeAction !== null;
   return (
     <div
       className={cn(
-        "group/tab-pill inline-flex h-7 shrink-0 items-center rounded-md text-xs transition-colors",
+        "group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md transition-colors",
+        COARSE_POINTER_TEXT_SM_CLASS,
         isActive
           ? "bg-muted text-foreground"
           : "text-muted-foreground hover:bg-state-hover",
@@ -55,16 +58,18 @@ export function TabPill({
         onClick={onSelect}
         aria-pressed={isActive}
         title={title}
-        className={cn(
-          "flex h-full min-w-0 items-center rounded-l-md pl-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-          isClosable ? "pr-1" : "rounded-r-md pr-2",
-        )}
+        className="flex h-full min-w-0 items-center rounded-md pl-2 pr-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
-        {leadingVisual ? (
-          <span className="mr-1.5 inline-flex shrink-0 items-center">
-            {leadingVisual}
-          </span>
-        ) : null}
+        <span
+          className={cn(
+            TAB_PILL_LEADING_VISUAL_CLASS,
+            closeAction
+              ? "group-hover/tab-pill:opacity-0 group-has-[[data-tab-pill-close]:focus-visible]/tab-pill:opacity-0 max-md:pointer-coarse:opacity-0"
+              : null,
+          )}
+        >
+          {leadingVisual}
+        </span>
         <span className={cn("truncate", labelMaxWidthClass, labelClassName)}>
           {label}
         </span>
@@ -77,10 +82,13 @@ export function TabPill({
       {closeAction ? (
         <button
           type="button"
+          onMouseDown={(event) => event.stopPropagation()}
+          onTouchStart={(event) => event.stopPropagation()}
           onClick={closeAction.onClose}
           disabled={closeAction.isClosing}
           aria-label={closeAction.closeLabel}
           title={closeAction.closeTooltip}
+          data-tab-pill-close
           className={TAB_PILL_CLOSE_BUTTON_CLASS}
         >
           {closeAction.isClosing ? (

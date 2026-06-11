@@ -6,12 +6,14 @@ import {
   deleteProjectSource,
   getProjectSourceByHost,
   getProjectSourceForProject,
+  listProjectExecutionDefaultsByProjectIds,
   listPublicProjects,
   listProjectSourcesByProjectIds,
   listThreadsWithPendingInteractionStateForProjects,
   reorderProject,
   updateProject,
   updateProjectSource,
+  upsertProjectWorkflowPolicy,
   type ReorderProjectResult,
 } from "@bb/db";
 import {
@@ -19,6 +21,7 @@ import {
   createProjectSourceRequestSchema,
   projectAttachmentContentQuerySchema,
   projectBranchesQuerySchema,
+  projectCommandsQuerySchema,
   projectDefaultExecutionOptionsQuerySchema,
   projectFilesQuerySchema,
   projectPathsQuerySchema,
@@ -29,6 +32,7 @@ import {
   typedRoutes,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
+  updateProjectWorkflowPolicyRequestSchema,
   type ProjectListIncludeOption,
   type ProjectListQuery,
   type ProjectResponse,
@@ -58,10 +62,18 @@ import {
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
+  buildCommandListResponse,
+  providerHasCommandSurface,
+  resolveCommandWorkspace,
+  PROVIDER_COMMAND_DEFAULT_LIMIT,
+  PROVIDER_COMMAND_LIMIT_MAX,
+} from "../services/threads/provider-command-typeahead.js";
+import {
   beginProjectDeletion,
   requestProjectDeletionAdvance,
 } from "../services/projects/project-deletion.js";
 import { listProjectPromptHistory } from "../services/prompt-history.js";
+import { getEffectiveProjectWorkflowPolicy } from "../services/workflows/workflow-run-policy.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import {
   normalizeBranchQuery,
@@ -191,10 +203,15 @@ function buildProjectsWithThreadsResponseFromRows(
     }
     threadsByProjectId.set(thread.projectId, [thread]);
   }
+  const defaultsByProjectId = listProjectExecutionDefaultsByProjectIds(
+    deps.db,
+    { projectIds },
+  );
 
   return projects.map((project) => ({
     ...project,
     threads: threadsByProjectId.get(project.id) ?? [],
+    defaultExecutionOptions: defaultsByProjectId.get(project.id) ?? null,
   }));
 }
 
@@ -306,7 +323,7 @@ function resolveProjectSourcePath(
 }
 
 export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
-  const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, patch, put, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
 
@@ -506,6 +523,30 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ ok: true });
   });
 
+  get("/projects/:id/workflow-policy", (context) => {
+    requirePublicProject(deps.db, context.req.param("id"));
+    return context.json(
+      getEffectiveProjectWorkflowPolicy(deps.db, context.req.param("id")),
+    );
+  });
+
+  put(
+    "/projects/:id/workflow-policy",
+    updateProjectWorkflowPolicyRequestSchema,
+    (context, payload) => {
+      const projectId = context.req.param("id");
+      requirePublicProject(deps.db, projectId);
+      upsertProjectWorkflowPolicy(deps.db, {
+        projectId,
+        sandboxCeiling: payload.sandboxCeiling,
+        defaultBudgetOutputTokens: payload.defaultBudgetOutputTokens,
+      });
+      return context.json(
+        getEffectiveProjectWorkflowPolicy(deps.db, projectId),
+      );
+    },
+  );
+
   get(
     "/projects/:id/files",
     projectFilesQuerySchema,
@@ -549,13 +590,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
       const limit = parseFileListLimit(query.limit);
 
-      const target =
-        query.environmentId !== null
-          ? resolveEnvironmentPath(deps, {
-              projectId,
-              environmentId: query.environmentId,
-            })
-          : resolveProjectSourcePath(deps, { projectId, hostId: null });
+      // Project-source listing only: used by the new-thread compose box before
+      // any environment exists. Once a thread has an environment, workspace
+      // path search goes through `GET /environments/:id/paths` instead.
+      const target = resolveProjectSourcePath(deps, { projectId, hostId: null });
       const inclusion = parsePathKindInclusion({
         includeFiles: query.includeFiles,
         includeDirectories: query.includeDirectories,
@@ -573,6 +611,48 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return context.json({ paths: result.paths, truncated: result.truncated });
+    },
+  );
+
+  get(
+    "/projects/:id/commands",
+    projectCommandsQuerySchema,
+    async (context, query) => {
+      const projectId = context.req.param("id");
+      requirePublicStandardProject(deps.db, projectId);
+
+      // Providers without a command surface (pi, anything unknown) have no
+      // typeahead entries, so skip the daemon roundtrip entirely.
+      if (!providerHasCommandSurface(query.provider)) {
+        return context.json({ commands: [], truncated: false });
+      }
+
+      const limit = parseBoundedPositiveOptionalInteger({
+        defaultValue: PROVIDER_COMMAND_DEFAULT_LIMIT,
+        max: PROVIDER_COMMAND_LIMIT_MAX,
+        name: "limit",
+        value: query.limit,
+      });
+      const workspace = resolveCommandWorkspace(deps, {
+        environmentId: query.environmentId,
+        projectId,
+      });
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: workspace.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_commands",
+          providerId: query.provider,
+          cwd: workspace.cwd,
+        },
+      });
+      return context.json(
+        buildCommandListResponse({
+          commands: result.commands,
+          limit,
+          query: query.query,
+        }),
+      );
     },
   );
 

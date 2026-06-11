@@ -1,8 +1,18 @@
 import { useRef } from "react";
 import { useResizeObserver } from "usehooks-ts";
 import { Button } from "@/components/ui/button.js";
-import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.js";
+import {
+  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+  COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@/components/ui/coarse-pointer-sizing.js";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
   formatChangeSummary,
@@ -51,7 +61,8 @@ function GitDiffSelector({
           size="sm"
           disabled={disabled}
           className={cn(
-            "h-8 w-full min-w-0 justify-between gap-2 rounded-lg border border-border bg-transparent px-2.5 text-xs font-normal",
+            "h-8 w-full min-w-0 justify-between gap-2 rounded-lg border border-border bg-transparent px-2.5 font-normal max-md:pointer-coarse:h-10",
+            COARSE_POINTER_TEXT_SM_CLASS,
             disabled && "opacity-60",
           )}
         >
@@ -63,7 +74,13 @@ function GitDiffSelector({
             ) : null}
             <span className="truncate">{selectedLabel}</span>
           </span>
-          <Icon name="ChevronDown" className="size-3.5 shrink-0 text-muted-foreground" />
+          <Icon
+            name="ChevronDown"
+            className={cn(
+              COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+              "text-muted-foreground",
+            )}
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -97,7 +114,8 @@ function GitDiffSelector({
               ) : null}
               <span className="truncate">{option.label}</span>
             </span>
-            <Icon name="Check"
+            <Icon
+              name="Check"
               className={cn(
                 COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
                 option.value === value ? "opacity-100" : "opacity-0",
@@ -148,7 +166,7 @@ export function GitDiffToolbar({
   });
 
   return (
-    <div ref={rootRef} className="px-4 pb-3">
+    <div ref={rootRef} className="px-4 pb-3 pt-3">
       <div className="flex min-w-0 items-center gap-3">
         <div className="min-w-0 flex-1">
           <GitDiffSelector
@@ -160,7 +178,10 @@ export function GitDiffToolbar({
           />
         </div>
         <span
-          className="min-w-0 shrink truncate text-xs text-muted-foreground"
+          className={cn(
+            "min-w-0 shrink truncate text-muted-foreground",
+            COARSE_POINTER_TEXT_SM_CLASS,
+          )}
           title={formatChangeSummary(stats)}
         >
           {renderChangeSummary(stats)}
@@ -170,7 +191,10 @@ export function GitDiffToolbar({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 w-7 rounded-md p-0 text-muted-foreground"
+            className={cn(
+              COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+              "text-muted-foreground",
+            )}
             onClick={onToggleAllCollapsed}
             disabled={isCollapseAllDisabled}
             aria-label={
@@ -181,9 +205,9 @@ export function GitDiffToolbar({
             }
           >
             {areAllFilesCollapsed ? (
-              <Icon name="ChevronsDown" className="size-3.5" />
+              <Icon name="ChevronsDown" />
             ) : (
-              <Icon name="ChevronsUp" className="size-3.5" />
+              <Icon name="ChevronsUp" />
             )}
           </Button>
           <div
@@ -195,25 +219,31 @@ export function GitDiffToolbar({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 w-7 rounded-md p-0 text-muted-foreground"
+              className={cn(
+                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                "text-muted-foreground",
+              )}
               onClick={() => onDisplayModeChange("unified")}
               aria-label="Stacked diff view"
               aria-pressed={displayMode === "unified"}
               title="Stacked diff view"
             >
-              <Icon name="Rows2" className="size-3.5" />
+              <Icon name="Rows2" />
             </Button>
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 w-7 rounded-md p-0 text-muted-foreground"
+              className={cn(
+                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                "text-muted-foreground",
+              )}
               onClick={() => onDisplayModeChange("split")}
               aria-label="Split diff view"
               aria-pressed={displayMode === "split"}
               title="Split diff view"
             >
-              <Icon name="Columns2" className="size-3.5" />
+              <Icon name="Columns2" />
             </Button>
           </div>
         </div>
