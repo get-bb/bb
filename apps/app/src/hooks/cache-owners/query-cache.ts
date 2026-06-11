@@ -14,6 +14,8 @@ import {
   ARCHIVED_THREADS_LIST_KIND,
   ENVIRONMENT_GIT_DIFF_QUERY_KEY,
   ENVIRONMENT_WORK_STATUS_QUERY_KEY,
+  environmentDiffFilesQueryKeyPrefix,
+  environmentDiffPatchQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
   environmentGitDiffQueryKey,
   environmentGitDiffQueryKeyPrefix,
@@ -318,6 +320,8 @@ export function getEnvironmentWorkspaceStateInvalidationQueryKeys({
   return [
     environmentWorkStatusQueryKeyPrefix(environmentId),
     environmentGitDiffQueryKeyPrefix(environmentId),
+    environmentDiffFilesQueryKeyPrefix(environmentId),
+    environmentDiffPatchQueryKeyPrefix(environmentId),
     environmentFilePreviewQueryKeyPrefix(environmentId),
   ];
 }

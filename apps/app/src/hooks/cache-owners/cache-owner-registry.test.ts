@@ -119,6 +119,8 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "EnvironmentWorkStatusQueryKey",
     "THREADS_QUERY_KEY",
     "ThreadListQueryFilters",
+    "environmentDiffFilesQueryKeyPrefix",
+    "environmentDiffPatchQueryKeyPrefix",
     "environmentFilePreviewQueryKeyPrefix",
     "environmentGitDiffQueryKey",
     "environmentGitDiffQueryKeyPrefix",

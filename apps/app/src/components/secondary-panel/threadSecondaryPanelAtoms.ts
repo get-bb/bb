@@ -171,7 +171,7 @@ export function getThreadConversationCollapsedAtom(
 /** User-selected merge-base branch override. Read by prompt banner + diff panel + git-action dialog. */
 export const selectedMergeBaseBranchAtom = atom<string | undefined>(undefined);
 
-/** Set by openDiffFile (prompt banner), consumed by useGitDiffPanelState to scroll to file. */
+/** Set by openDiffFile (prompt banner), consumed by useGitDiffPanelState to reset the diff to all-changes so the opened file is in the slice. */
 export const pendingGitDiffScrollPathAtom = atom<string | null>(null);
 
 /** Set by openCommitDiff (info tab Commits row), consumed by useGitDiffPanelState to scope the diff to a commit. */

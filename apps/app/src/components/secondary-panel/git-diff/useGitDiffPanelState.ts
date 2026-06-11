@@ -27,8 +27,8 @@ interface UseGitDiffPanelStateParams {
  * parsing, virtualization, and collapse state themselves; this hook holds none
  * of that. It reacts to the info-tab / prompt-banner intents
  * (`pendingGitDiffCommitSha` to scope to a commit, `pendingGitDiffScrollPath` to
- * reset back to all-changes so an opened file is reachable) and resets a stale
- * commit selection when the workspace's commit list changes.
+ * reset the diff to all-changes so the opened file is in the slice) and resets a
+ * stale commit selection when the workspace's commit list changes.
  */
 export function useGitDiffPanelState({
   environmentId,
@@ -80,14 +80,18 @@ export function useGitDiffPanelState({
     setPendingGitDiffCommitSha(null);
   }, [environmentId, setPendingGitDiffCommitSha]);
 
-  // --- Reset to all-changes when a scroll-to-file intent arrives (openDiffFile)
-  // so the opened file is part of the current diff slice. ---
+  // --- Reset the diff to all-changes when an open-file intent arrives
+  // (openDiffFile) so the opened file is in the slice. Clear the atom after
+  // consuming it so re-opening the same path re-triggers the reset — jotai
+  // primitive atoms bail on Object.is equality, so without this a repeat write
+  // of the same path is a no-op and the effect would not re-fire. ---
 
   useEffect(() => {
     if (pendingGitDiffScrollPath) {
       setSelectedGitDiffCommitSha(null);
+      setPendingGitDiffScrollPath(null);
     }
-  }, [pendingGitDiffScrollPath]);
+  }, [pendingGitDiffScrollPath, setPendingGitDiffScrollPath]);
 
   // --- Apply the commit selection requested from the info tab (openCommitDiff) ---
 
