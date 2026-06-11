@@ -105,6 +105,29 @@ describe("FollowUpPromptBox", () => {
     expect(document.activeElement).not.toBe(editor);
   });
 
+  it("focuses the caret at the end when focusEndKey changes (e.g. edit message), even on coarse pointers", async () => {
+    setupCoarsePointerViewport();
+    const props = makeFollowUpPromptBoxProps();
+    props.composer = {
+      ...props.composer,
+      promptPlaceholder: "Ask for follow-up changes",
+      submitMode: { kind: "ready" },
+    };
+    props.focusEndKey = 0;
+
+    const { rerender } = render(<FollowUpPromptBox {...props} />);
+    const editor = screen.getByRole("textbox");
+    await waitForAnimationFrame();
+    // Coarse pointer suppresses the passive mount autofocus.
+    expect(document.activeElement).not.toBe(editor);
+
+    // Editing a queued message bumps focusEndKey — a deliberate action — so the
+    // caret focuses even though the passive autofocus is suppressed here.
+    rerender(<FollowUpPromptBox {...props} focusEndKey={1} />);
+    await waitForAnimationFrame();
+    expect(document.activeElement).toBe(editor);
+  });
+
   it("uses modifier submit with Cmd+Enter without invoking the normal submit", () => {
     const props = makeFollowUpPromptBoxProps();
     const onModifierSubmit = vi.fn();

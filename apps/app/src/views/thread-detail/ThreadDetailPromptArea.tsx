@@ -571,6 +571,7 @@ export function ThreadDetailPromptArea({
     [sendQueuedMessageById],
   );
 
+  const [editFocusNonce, setEditFocusNonce] = useState(0);
   const handleEditQueuedMessage = useCallback(
     (messageId: string) => {
       const queuedMessage = queuedMessagesByIdRef.current.get(messageId);
@@ -588,6 +589,9 @@ export function ThreadDetailPromptArea({
           const restoredDraft = queuedInputToDraft(queuedMessage.content);
           promptDraft.setDraft(restoredDraft);
           setAttachmentError(null);
+          // Focus the composer caret at the end so the restored draft is ready
+          // to keep typing (FollowUpPromptBox `focusEndKey`).
+          setEditFocusNonce((nonce) => nonce + 1);
         })
         .catch((nextError) => {
           appToast.error(
@@ -922,6 +926,7 @@ export function ThreadDetailPromptArea({
       stack={promptStack}
       composer={composerConfig}
       zenModeResetKey={thread.id}
+      focusEndKey={editFocusNonce}
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
       execution={executionConfig}

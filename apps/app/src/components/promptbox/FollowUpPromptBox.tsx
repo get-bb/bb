@@ -156,6 +156,11 @@ export interface FollowUpPromptBoxProps {
   typeahead: TypeaheadConfig;
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
+  /**
+   * Changing this refocuses the composer caret to the end — e.g. after editing a
+   * queued message restores its text into the draft.
+   */
+  focusEndKey?: string | number;
 }
 
 export const FollowUpPromptBox = memo(function FollowUpPromptBox({
@@ -170,6 +175,7 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
   readOnly,
   typeahead,
   zenModeResetKey,
+  focusEndKey,
 }: FollowUpPromptBoxProps) {
   const submitMode = composer.submitMode;
   const canQueueFollowUp = submitMode.kind === "queue";
@@ -274,6 +280,7 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
           onChange={composer.onChangeMessage}
           onSubmit={composer.onSubmit}
           history={composer.history}
+          focusEndKey={focusEndKey}
           placeholder={composer.promptPlaceholder}
           mentionMenuPlacement="top"
           submission={{

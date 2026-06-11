@@ -277,6 +277,13 @@ export interface PromptBoxInternalProps {
   /** When omitted, the mic button is hidden. Wrappers wire this via usePromptVoice. */
   voice?: PromptVoiceConfig;
   promptBoxRef?: Ref<PromptBoxHandle>;
+  /**
+   * Changing this re-focuses the editor caret to the end. Used by explicit
+   * draft-restore actions (e.g. editing a queued message) so the user can type
+   * immediately. Unlike the scope autofocus it fires even on coarse pointers,
+   * since it follows a deliberate click.
+   */
+  focusEndKey?: string | number;
 }
 
 interface DismissedTriggerRange {
@@ -563,6 +570,7 @@ export function PromptBoxInternal({
   history,
   voice,
   promptBoxRef,
+  focusEndKey,
 }: PromptBoxInternalProps) {
   const {
     isSubmitting = false,
@@ -931,6 +939,20 @@ export function PromptBoxInternal({
     scheduleRevealEditorSelection,
     shouldAvoidSoftKeyboardAutofocus,
   ]);
+
+  // An explicit draft-restore action (e.g. editing a queued message) bumps
+  // `focusEndKey` so the caret lands at the end of the restored text and the
+  // user can type immediately. This follows a deliberate click, so unlike the
+  // scope autofocus above it is not gated by the coarse-pointer keyboard guard.
+  const lastFocusEndKeyRef = useRef(focusEndKey);
+  useLayoutEffect(() => {
+    if (focusEndKey === undefined) return;
+    if (focusEndKey === lastFocusEndKeyRef.current) return;
+    if (!editor) return;
+    lastFocusEndKeyRef.current = focusEndKey;
+    editor.commands.focus("end");
+    scheduleRevealEditorSelection();
+  }, [editor, focusEndKey, scheduleRevealEditorSelection]);
 
   useEffect(() => {
     mentionRangesRef.current = mentionRanges;
