@@ -22,6 +22,7 @@ out
 # production
 /build
 /apps/app/build/
+/packages/bb-app/host-daemon/
 /apps/desktop/release/
 /apps/desktop/.electron-builder.generated.json
 
