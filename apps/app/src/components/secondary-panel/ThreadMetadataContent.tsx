@@ -572,14 +572,11 @@ export function GitStatusRow({
     workspaceUnavailable,
     workspaceDeleted: isWorkspaceDeleted,
   });
-  // Dirty reads as the timeline error color; a clean tree reads green. Other
-  // states (Untracked / Ahead / Behind / Diverged) stay neutral.
+  // Dirty reads as the timeline error color — the one actionable state. Every
+  // other status, including a clean "Up to date" tree, stays neutral: the
+  // expected state shouldn't spend color drawing the eye.
   const labelClass =
-    display.label === "Dirty"
-      ? "text-destructive"
-      : display.label === "Clean" || display.label === "Up to date"
-        ? "text-success"
-        : "text-foreground";
+    display.label === "Dirty" ? "text-destructive" : "text-foreground";
 
   return (
     <DetailRow
