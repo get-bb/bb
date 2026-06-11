@@ -538,6 +538,104 @@ describe("Workspace.diffPatch", () => {
     expect(patches[0]?.patch).toMatch(/rename to /);
   });
 
+  it("splits a multi-file page including a space-in-path file from one combined diff", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "my file.txt", "alpha\nbeta\ngamma\n");
+    await write(repoPath, "normal.txt", "one\ntwo\nthree\n");
+    await write(repoPath, "untouched.txt", "stable\n");
+    await commitAll(repoPath, "base");
+
+    await write(repoPath, "my file.txt", "alpha\nBETA\ngamma\ndelta\n");
+    await write(repoPath, "normal.txt", "one\nTWO\nthree\nfour\n");
+
+    const workspace = new Workspace(repoPath);
+    const expectedSpace = await fullDiffSectionFor(
+      workspace,
+      UNCOMMITTED,
+      "my file.txt",
+    );
+    const expectedNormal = await fullDiffSectionFor(
+      workspace,
+      UNCOMMITTED,
+      "normal.txt",
+    );
+
+    // Both files come back from a SINGLE combined `git diff` invocation; the
+    // space-in-path file must not bleed into or steal the normal file's patch.
+    const patches = await workspace.diffPatch({
+      target: UNCOMMITTED,
+      paths: ["my file.txt", "normal.txt"],
+      maxBytesPerFile: BIG_BUDGET,
+    });
+
+    expect(patches.map((entry) => entry.path)).toEqual([
+      "my file.txt",
+      "normal.txt",
+    ]);
+    expect(patches.find((p) => p.path === "my file.txt")?.patch).toBe(
+      expectedSpace,
+    );
+    expect(patches.find((p) => p.path === "normal.txt")?.patch).toBe(
+      expectedNormal,
+    );
+    expect(expectedSpace.length).toBeGreaterThan(0);
+    expect(expectedNormal.length).toBeGreaterThan(0);
+    // No cross-contamination between the two sections of the combined patch.
+    expect(patches.find((p) => p.path === "my file.txt")?.patch).not.toContain(
+      "normal.txt",
+    );
+    expect(patches.find((p) => p.path === "normal.txt")?.patch).not.toContain(
+      "my file.txt",
+    );
+  });
+
+  it("splits a multi-file page containing a rename alongside a plain edit", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "before.txt", "alpha\nbeta\ngamma\ndelta\nepsilon\n");
+    await write(repoPath, "edit.txt", "keep\n");
+    await commitAll(repoPath, "base");
+
+    await runGit(["mv", "before.txt", "after.txt"], { cwd: repoPath });
+    await write(
+      repoPath,
+      "after.txt",
+      "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\n",
+    );
+    await write(repoPath, "edit.txt", "keep\nmore\n");
+    await commitAll(repoPath, "rename with edit plus a plain edit");
+
+    const target: WorkspaceDiffTarget = { type: "commit", sha: "HEAD" };
+    const workspace = new Workspace(repoPath);
+
+    const expectedRename = await fullDiffSectionFor(
+      workspace,
+      target,
+      "after.txt",
+    );
+    const expectedEdit = await fullDiffSectionFor(workspace, target, "edit.txt");
+
+    const patches = await workspace.diffPatch({
+      target,
+      paths: ["after.txt", "edit.txt"],
+      maxBytesPerFile: BIG_BUDGET,
+    });
+
+    // Renamed file keyed by its NEW path, byte-equal to the full-diff slice.
+    expect(patches.find((p) => p.path === "after.txt")?.patch).toBe(
+      expectedRename,
+    );
+    expect(patches.find((p) => p.path === "edit.txt")?.patch).toBe(
+      expectedEdit,
+    );
+    // Rename framing survives the combined split (not an add+delete pair).
+    expect(patches.find((p) => p.path === "after.txt")?.patch).toMatch(
+      /rename from before\.txt/,
+    );
+    expect(patches.find((p) => p.path === "after.txt")?.patch).toMatch(
+      /rename to after\.txt/,
+    );
+  });
+
   it("returns a non-empty patch for a path with non-ASCII characters", async () => {
     const repoPath = await initRepo();
     await write(repoPath, "café.txt", "un\ndeux\ntrois\n");

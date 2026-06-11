@@ -722,9 +722,9 @@ export class Workspace {
    * Patch text for a requested subset of paths, byte-bounded per file. Paths are
    * partitioned into tracked vs. untracked using the SAME `ls-files` computation
    * that builds the TOC (the caller-supplied origin is not trusted): tracked
-   * paths go through the target-scoped `git diff` (rename detection preserved by
-   * passing both old and new paths for renamed entries), and untracked paths use
-   * the `--no-index` form, without which an untracked file produces no patch.
+   * paths are fetched in ONE combined `git diff` per page (see
+   * `readTrackedPatchByPathCombined`), and untracked paths use the `--no-index`
+   * form, without which an untracked file produces no patch.
    */
   async diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]> {
     await ensureGitRepo(this.path);
@@ -738,7 +738,7 @@ export class Workspace {
 
     const trackedPatchByPath =
       trackedPaths.length > 0
-        ? await this.readTrackedPatchByPath({
+        ? await this.readTrackedPatchByPathCombined({
             target: args.target,
             paths: trackedPaths,
           })
@@ -1491,17 +1491,56 @@ export class Workspace {
   }
 
   /**
-   * Computes the per-file tracked patch for the requested paths, keyed by the
-   * requested (new) file path. Each file gets its OWN target-scoped `git diff`
-   * invocation whose pathspec is exactly that file — plus its rename/copy source
-   * when one exists, so git's `-M` rename detection still pairs them and the
-   * patch keeps its `a/old → b/new` framing. Keying by the requested path
-   * directly (rather than parsing the `diff --git` header) is unambiguous for
-   * every path, including paths that contain spaces — which git does not quote
-   * and which a header-token split would mangle. Pages are bounded
-   * (≤ DIFF_PATCH_MAX_PATHS_PER_REQUEST), so per-file invocations are fine.
+   * Computes the tracked patch for the requested paths in ONE combined `git
+   * diff` per page, keyed by the requested (new) file path. Two invocations run
+   * for the page: a `--name-status -z` list (the authoritative per-file order
+   * plus the raw, unquoted paths — including spaces) and the combined patch
+   * text. The patch is split into per-file sections at each `diff --git `
+   * boundary and ZIPPED positionally with the name-status entries — both are
+   * git-sorted by the same pathspec, so section[i] belongs to entry[i]. We key
+   * by the entry's new path (NOT by parsing the `diff --git` header, which git
+   * does not quote for spaces and a token split would mangle); renames carry
+   * old+new and are keyed by new. If the section and entry counts ever disagree
+   * we fall back to per-file fetch so correctness never regresses.
    */
-  private async readTrackedPatchByPath(
+  private async readTrackedPatchByPathCombined(
+    args: ReadTrackedPatchByPathArgs,
+  ): Promise<Map<string, string>> {
+    const combined = await this.readCombinedTrackedDiff(
+      args.target,
+      args.paths,
+    );
+    if (combined === null) {
+      return new Map();
+    }
+
+    const entries = parseNameStatusSourceEntries(combined.nameStatus);
+    const sections = splitPatchIntoSections(combined.patch);
+
+    if (sections.length !== entries.length) {
+      // The positional zip is only valid when the two git outputs agree
+      // file-for-file. Any mismatch (an unexpected split boundary, a name-status
+      // entry with no section, etc.) breaks the keying invariant, so fall back
+      // to the unambiguous per-file fetch rather than risk mis-keying a patch.
+      return this.readTrackedPatchByPathPerFile(args);
+    }
+
+    const patchByPath = new Map<string, string>();
+    for (let index = 0; index < entries.length; index += 1) {
+      // Key by the entry's new path — the path the client requested.
+      patchByPath.set(entries[index].path, sections[index]);
+    }
+    return patchByPath;
+  }
+
+  /**
+   * Per-file fallback for `readTrackedPatchByPathCombined`: one target-scoped
+   * `git diff` per requested path (plus its rename/copy source so `-M` pairs
+   * them), keyed by the requested path. Unambiguous for every path because the
+   * key is the requested path, not a header-parsed one — used only when the
+   * combined split's section/entry counts disagree.
+   */
+  private async readTrackedPatchByPathPerFile(
     args: ReadTrackedPatchByPathArgs,
   ): Promise<Map<string, string>> {
     const stats = await this.readDiffStatArtifacts(args.target);
@@ -1529,6 +1568,102 @@ export class Workspace {
     );
 
     return new Map(entries);
+  }
+
+  /**
+   * Runs the combined git invocations for a page of tracked paths. A scoped
+   * `git diff -- <new path>` cannot pair a rename: with only the new path in the
+   * pathspec, `-M` never sees the source and renders the rename as a pure
+   * addition. So we first read the FULL-target name-status (one cheap, patchless
+   * invocation that sees every file and therefore detects renames), collect the
+   * rename/copy SOURCE paths for the requested files, and add them to the
+   * pathspec. Then the page's `--name-status -z` and patch (PATCH ONLY — no
+   * numstat/shortstat) both run scoped to `[...requested, ...renameSources]`, so
+   * each rename is paired `a/old → b/new` and both outputs are git-sorted by the
+   * same pathspec — letting the caller zip section[i] with entry[i]. Returns
+   * `null` when the target resolves to no diff (e.g. a branch target whose merge
+   * base cannot be found), matching the stat/artifact readers.
+   */
+  private async readCombinedTrackedDiff(
+    target: WorkspaceDiffTarget,
+    paths: string[],
+  ): Promise<{ nameStatus: string; patch: string } | null> {
+    const range = await this.resolveTrackedDiffRange(target);
+    if (range === null) {
+      return null;
+    }
+
+    const fullNameStatus = await runGit(
+      [...range.baseArgs, "--name-status", "-z", "-M", ...range.rangeArgs],
+      { cwd: this.path },
+    );
+    const requested = new Set(paths);
+    const renameSources = parseNameStatusSourceEntries(fullNameStatus.stdout)
+      .filter((entry) => requested.has(entry.path))
+      .map((entry) => entry.previousPath)
+      .filter(
+        (previousPath): previousPath is string =>
+          previousPath !== null && !requested.has(previousPath),
+      );
+    const pagePathspec = [...paths, ...renameSources];
+
+    const [nameStatus, patch] = await Promise.all([
+      runGit(
+        withDiffPathspec(
+          [...range.baseArgs, "--name-status", "-z", "-M", ...range.rangeArgs],
+          pagePathspec,
+        ),
+        { cwd: this.path },
+      ),
+      runGit(
+        withDiffPathspec(
+          [...range.baseArgs, "--binary", "-M", ...range.rangeArgs],
+          pagePathspec,
+        ),
+        { cwd: this.path },
+      ),
+    ]);
+
+    return { nameStatus: nameStatus.stdout, patch: patch.stdout };
+  }
+
+  /**
+   * Resolves the git argv prefix (`diff`/`show` plus `--no-ext-diff`) and the
+   * range/sha args for a diff target's TRACKED side. Returns `null` for branch
+   * targets whose merge base cannot be resolved — those surface as no diff.
+   */
+  private async resolveTrackedDiffRange(
+    target: WorkspaceDiffTarget,
+  ): Promise<{ baseArgs: string[]; rangeArgs: string[] } | null> {
+    const diffBase = ["diff", "--no-ext-diff"];
+    switch (target.type) {
+      case "uncommitted":
+        return { baseArgs: diffBase, rangeArgs: ["HEAD"] };
+      case "branch_committed":
+      case "all": {
+        const mergeBaseRef = await readMergeBaseRef(
+          this.path,
+          target.mergeBaseBranch,
+        );
+        if (!mergeBaseRef) {
+          return null;
+        }
+        const rangeArgs =
+          target.type === "branch_committed"
+            ? [`${mergeBaseRef}..HEAD`]
+            : [mergeBaseRef];
+        return { baseArgs: diffBase, rangeArgs };
+      }
+      case "commit":
+        return {
+          baseArgs: ["show", "--format=", "--no-ext-diff"],
+          rangeArgs: [target.sha],
+        };
+      default: {
+        const _exhaustive: never = target;
+        return _exhaustive;
+      }
+    }
   }
 
   private async readDiffArtifacts(
@@ -1852,6 +1987,62 @@ function joinDiffArtifactLines(parts: string[]): string {
 function joinDiffArtifactOutput(parts: string[]): string {
   const combined = joinDiffArtifactLines(parts);
   return combined.length > 0 ? `${combined}\n` : "";
+}
+
+const DIFF_SECTION_HEADER = "diff --git ";
+
+/**
+ * Splits a combined `git diff` into one entry per changed file, cutting at each
+ * `diff --git ` header line. Every changed file — including binary
+ * ("Binary files … differ"), pure-rename, and mode-only sections — is exactly
+ * one section, so the result is ordered identically to git's per-file output
+ * and can be positionally zipped with the `--name-status -z` entries. We do NOT
+ * derive the path from the header (git does not quote spaces there); the caller
+ * keys each section by the corresponding name-status entry's path. Each section
+ * is normalized to end in a single trailing newline, matching the byte framing
+ * of a single-file `git diff` invocation.
+ */
+function splitPatchIntoSections(combinedPatch: string): string[] {
+  if (combinedPatch.length === 0) {
+    return [];
+  }
+  const lines = combinedPatch.split("\n");
+  const sections: string[][] = [];
+  let current: string[] | null = null;
+  for (const line of lines) {
+    if (line.startsWith(DIFF_SECTION_HEADER)) {
+      if (current !== null) {
+        sections.push(current);
+      }
+      current = [line];
+      continue;
+    }
+    if (current !== null) {
+      current.push(line);
+    }
+  }
+  if (current !== null) {
+    sections.push(current);
+  }
+  return sections.map((sectionLines) => formatPatchSection(sectionLines));
+}
+
+/**
+ * Joins a section's lines back into patch text with a single trailing newline,
+ * dropping the trailing empty lines that the `\n` split produces at a section
+ * boundary (or at the end of the combined output). This matches the framing of
+ * a standalone single-file `git diff`, so a combined-split section is
+ * byte-equal to the per-file patch for the same file.
+ */
+function formatPatchSection(lines: string[]): string {
+  let end = lines.length;
+  while (end > 0 && lines[end - 1] === "") {
+    end -= 1;
+  }
+  if (end === 0) {
+    return "";
+  }
+  return `${lines.slice(0, end).join("\n")}\n`;
 }
 
 const NAME_STATUS_LETTERS = new Set(["A", "M", "D", "R", "C", "T"]);
