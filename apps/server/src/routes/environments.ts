@@ -167,6 +167,25 @@ function resolveDiffFileRef(
   }
 }
 
+/** Shared `not_applicable` body for the diff routes on non-git environments. */
+const NON_GIT_DIFF_NOT_APPLICABLE = {
+  outcome: "not_applicable",
+  reason: "non_git_environment",
+  message: "Workspace diff is not available for non-git environments",
+} as const;
+
+/**
+ * Resolve the workspace command target for a diff route, or `null` when the
+ * environment is non-git (callers return {@link NON_GIT_DIFF_NOT_APPLICABLE}).
+ */
+function resolveGitDiffWorkspaceTarget(deps: AppDeps, environmentId: string) {
+  const environment = requireReadyEnvironment(deps.db, environmentId);
+  if (!environment.isGitRepo) {
+    return null;
+  }
+  return requireWorkspaceCommandTarget(environment);
+}
+
 export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
   const { get, patch, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -301,18 +320,13 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     "/environments/:id/diff/files",
     environmentDiffQuerySchema,
     async (context, query) => {
-      const environment = requireReadyEnvironment(
-        deps.db,
+      const target = resolveGitDiffWorkspaceTarget(
+        deps,
         context.req.param("id"),
       );
-      if (!environment.isGitRepo) {
-        return context.json({
-          outcome: "not_applicable",
-          reason: "non_git_environment",
-          message: "Workspace diff is not available for non-git environments",
-        });
+      if (target === null) {
+        return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
       }
-      const target = requireWorkspaceCommandTarget(environment);
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId: target.hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
@@ -349,18 +363,13 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     "/environments/:id/diff/patch",
     environmentDiffPatchRequestSchema,
     async (context, payload) => {
-      const environment = requireReadyEnvironment(
-        deps.db,
+      const target = resolveGitDiffWorkspaceTarget(
+        deps,
         context.req.param("id"),
       );
-      if (!environment.isGitRepo) {
-        return context.json({
-          outcome: "not_applicable",
-          reason: "non_git_environment",
-          message: "Workspace diff is not available for non-git environments",
-        });
+      if (target === null) {
+        return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
       }
-      const target = requireWorkspaceCommandTarget(environment);
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId: target.hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,

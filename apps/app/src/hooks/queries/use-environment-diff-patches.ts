@@ -146,12 +146,15 @@ export function useEnvironmentDiffPatches(
   // reschedule the callback on every state change).
   const pendingPathsRef = useRef<PendingPaths>({ visible: [], overscan: [] });
   const targetIdentityRef = useRef(targetIdentity);
-  const identityRef = useRef(identity);
   const inFlightRef = useRef(inFlight);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  identityRef.current = identity;
-  inFlightRef.current = inFlight;
+  // Mirror in-flight state into a ref from an effect — never during render, which
+  // is unsafe under concurrent rendering — so the debounced settle tick can dedupe
+  // against the latest committed state without taking it as a dependency.
+  useEffect(() => {
+    inFlightRef.current = inFlight;
+  }, [inFlight]);
 
   // Reset all observed loading/error state and drop any pending settle tick when
   // the target changes; cached patches for the new target are re-read lazily.
@@ -178,7 +181,6 @@ export function useEnvironmentDiffPatches(
       if (!environmentId || target === undefined) {
         return;
       }
-      const pageIdentity = identityRef.current;
       try {
         const response = await api.getEnvironmentDiffPatches(environmentId, {
           target,
@@ -188,15 +190,23 @@ export function useEnvironmentDiffPatches(
         if (targetIdentityRef.current !== generationTarget) {
           return;
         }
-        const pageError = patchPageError(response);
         if (response.outcome === "available") {
+          const returnedPaths = new Set<string>();
           for (const entry of response.patches) {
-            writeDiffPatchEntry({ queryClient, identity: pageIdentity, entry });
+            writeDiffPatchEntry({ queryClient, identity, entry });
+            returnedPaths.add(entry.path);
           }
+          // Any requested path the server omitted (e.g. it left the TOC after the
+          // list fetch) is settled to a terminal error, not left idle — otherwise
+          // it would be re-requested on every scroll tick.
+          setInFlight((previous) =>
+            settlePage({ previous, paths, returnedPaths }),
+          );
+        } else {
+          setInFlight((previous) =>
+            settlePage({ previous, paths, error: patchPageError(response) }),
+          );
         }
-        setInFlight((previous) =>
-          settlePage({ previous, paths, error: pageError }),
-        );
       } catch (caught) {
         if (targetIdentityRef.current !== generationTarget) {
           return;
@@ -208,7 +218,7 @@ export function useEnvironmentDiffPatches(
         );
       }
     },
-    [environmentId, target, queryClient],
+    [environmentId, target, identity, queryClient],
   );
 
   const dispatchPending = useCallback(() => {
@@ -216,15 +226,15 @@ export function useEnvironmentDiffPatches(
     if (!environmentId || target === undefined) {
       return;
     }
-    const generationTarget = targetIdentityRef.current;
-    const pageIdentity = identityRef.current;
+    // Bail if a newer target became active before this debounced tick ran, so a
+    // stale dispatch never marks paths loading under the current target.
+    if (targetIdentityRef.current !== targetIdentity) {
+      return;
+    }
     const ordered = dedupeOrderedPaths(pendingPathsRef.current);
 
     const toFetch = ordered.filter((path) => {
-      if (
-        readDiffPatchEntry({ queryClient, identity: pageIdentity, path }) !==
-        undefined
-      ) {
+      if (readDiffPatchEntry({ queryClient, identity, path }) !== undefined) {
         return false;
       }
       if (inFlightRef.current.loading.has(path)) {
@@ -243,9 +253,16 @@ export function useEnvironmentDiffPatches(
     setInFlight((previous) => markLoading(previous, toFetch));
 
     for (const page of chunkPaths(toFetch)) {
-      void fetchPage(page, generationTarget);
+      void fetchPage(page, targetIdentity);
     }
-  }, [environmentId, target, queryClient, fetchPage]);
+  }, [
+    environmentId,
+    target,
+    targetIdentity,
+    identity,
+    queryClient,
+    fetchPage,
+  ]);
 
   const requestPaths = useCallback(
     (args: RequestDiffPatchPathsArgs) => {
@@ -312,19 +329,37 @@ function markLoading(
   return { loading, errors };
 }
 
+/**
+ * Stamped on a path the server omitted from an `available` response — e.g. it
+ * left the diff's table of contents between the list fetch and this request.
+ * Marking it terminal (rather than leaving it idle) stops a re-request loop; a
+ * TOC refresh drops the row entirely.
+ */
+const MISSING_PATCH_MESSAGE = "No diff was available for this file.";
+
 interface SettlePageArgs {
   previous: InFlightState;
   paths: string[];
-  error: string | undefined;
+  /** Page-level error: a thrown request, or a non-`available` outcome. */
+  error?: string;
+  /** For an `available` page: the paths the server actually returned. */
+  returnedPaths?: ReadonlySet<string>;
 }
 
-function settlePage({ previous, paths, error }: SettlePageArgs): InFlightState {
+function settlePage({
+  previous,
+  paths,
+  error,
+  returnedPaths,
+}: SettlePageArgs): InFlightState {
   const loading = new Set(previous.loading);
   const errors = new Map(previous.errors);
   for (const path of paths) {
     loading.delete(path);
     if (error !== undefined) {
       errors.set(path, error);
+    } else if (returnedPaths !== undefined && !returnedPaths.has(path)) {
+      errors.set(path, MISSING_PATCH_MESSAGE);
     } else {
       errors.delete(path);
     }
