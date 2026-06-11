@@ -325,7 +325,12 @@ export function WorkspacePathRow({
   if (!display) return null;
 
   return (
-    <DetailRow label={display.rowLabel} valueClassName="min-w-0">
+    <DetailRow
+      label={
+        <DetailRowIconLabel icon="Folder">{display.rowLabel}</DetailRowIconLabel>
+      }
+      valueClassName="min-w-0"
+    >
       <CopyableInlineLabel
         text={environment.path}
         label={display.copyLabel}

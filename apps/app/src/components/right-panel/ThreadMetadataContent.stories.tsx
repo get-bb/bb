@@ -27,9 +27,16 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="standard"
-        hint="canonical state — parent selector + host + env + branch + merge base + clean git status"
+        hint="canonical state — parent + env + worktree path + branch + merge base + pull request + clean git status"
       >
-        {render({})}
+        {render({
+          pullRequest: {
+            number: 128,
+            title: "Show the branch's GitHub pull request in the Info tab",
+            state: "open",
+            url: "https://github.com/acme/bb/pull/128",
+          },
+        })}
       </StoryRow>
       <StoryRow
         label="standard, child thread"
