@@ -75,13 +75,13 @@ export function SettingsWithControl({
         description ? "sm:items-start" : "sm:items-center",
       )}
     >
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold">{label}</p>
         {description ? (
           <p className="text-xs text-muted-foreground">{description}</p>
         ) : null}
       </div>
-      <div className="sm:flex sm:min-w-[320px] sm:justify-end">{children}</div>
+      <div className="shrink-0 sm:flex sm:justify-end">{children}</div>
     </div>
   );
 }

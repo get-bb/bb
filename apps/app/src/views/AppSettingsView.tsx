@@ -497,7 +497,7 @@ export function ExperimentsSettingsSection({
     >
       <SettingsWithControl
         label={WORKFLOWS_EXPERIMENT_LABEL}
-        description="Multi-agent workflow runs: adds the Workflows sidebar section, project workflows page, and teaches agents the bb workflow CLI."
+        description="Enable multi-agent workflows and the Workflows sidebar."
       >
         <Switch
           checked={workflowsEnabled}
@@ -509,7 +509,7 @@ export function ExperimentsSettingsSection({
 
       <SettingsWithControl
         label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
-        description="Route Claude Code API requests through the local proxy using CLI-shaped traffic to https://api.anthropic.com."
+        description="Proxy Claude Code requests as CLI traffic to api.anthropic.com."
       >
         <Switch
           checked={claudeCodeMockCliTrafficEnabled}
