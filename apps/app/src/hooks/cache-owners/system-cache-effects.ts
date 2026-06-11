@@ -39,6 +39,7 @@ import {
   threadsQueryKey,
 } from "../queries/query-keys";
 import type { QueryClientArg } from "../cache-effect-types";
+import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
 import {
   invalidateQueryKeys,
   refetchFailedActiveQueryKeys,
@@ -73,6 +74,11 @@ export function invalidateRealtimeQueriesAfterServerReconnect({
   // stale and never refetches or evicts, so a reconnect must remove it. The
   // diff TOC refetch (invalidated above) then drives the panel to re-request
   // and repopulate the visible patches.
+  //
+  // Bump every environment's eviction generation synchronously so a patch fetch
+  // that was in flight across the reconnect drops its now-stale write instead
+  // of re-seeding the just-cleared cache.
+  bumpAllDiffPatchEvictionGenerations();
   queryClient.removeQueries({
     queryKey: allEnvironmentDiffPatchQueryKeyPrefix(),
   });

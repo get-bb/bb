@@ -5,6 +5,7 @@ import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
+import { bumpDiffPatchEvictionGeneration } from "./environment-diff-patch-cache-owner";
 import type {
   SidebarBootstrapResponse,
   ThreadTimelineResponse,
@@ -341,11 +342,18 @@ export function getEnvironmentWorkspaceStateInvalidationQueryKeys({
  * so it must be removed — not invalidated — for a content-only file edit to
  * surface fresh patches: eviction makes `readDiffPatchEntry` return undefined,
  * which the panel re-requests once the TOC refetch fires.
+ *
+ * The eviction generation is bumped synchronously here, before the async TOC
+ * refetch fires. A patch fetch that started before this eviction observes the
+ * stale generation when it resolves and drops its (pre-edit) write rather than
+ * re-seeding the just-cleared cache — otherwise a fetch in flight at edit time
+ * could leave a stale patch that nothing re-requests.
  */
 export function removeEnvironmentDiffPatchQueries({
   environmentId,
   queryClient,
 }: EnvironmentDiffPatchRemovalParams): void {
+  bumpDiffPatchEvictionGeneration(environmentId);
   queryClient.removeQueries({
     queryKey: environmentDiffPatchQueryKeyPrefix(environmentId),
   });

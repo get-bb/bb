@@ -10,6 +10,7 @@ import * as api from "@/lib/api";
 import { extractErrorMessage } from "@bb/core-ui";
 import {
   type PatchQueryIdentity,
+  getDiffPatchEvictionGeneration,
   readDiffPatchEntry,
   writeDiffPatchEntry,
 } from "../cache-owners/environment-diff-patch-cache-owner";
@@ -194,6 +195,14 @@ export function useEnvironmentDiffPatches(
       if (!environmentId || target === undefined) {
         return;
       }
+      // Snapshot the environment's eviction generation at fetch start. If the
+      // patch cache is evicted (a content edit, ref move, or reconnect) while
+      // this request is in flight, the generation advances and the resolved
+      // response is dropped — re-seeding the just-cleared cache here would leave
+      // a pre-edit patch that nothing re-requests. Clearing the paths from
+      // `loading` without caching lets the panel's already-re-fired
+      // `requestPaths` dispatch re-fetch them fresh.
+      const evictionGeneration = getDiffPatchEvictionGeneration(environmentId);
       try {
         const response = await api.getEnvironmentDiffPatches(environmentId, {
           target,
@@ -201,6 +210,14 @@ export function useEnvironmentDiffPatches(
         });
         // Drop the response if the target changed while it was in flight.
         if (targetIdentityRef.current !== generationTarget) {
+          return;
+        }
+        // Drop the response if the patch cache was evicted while it was in
+        // flight, releasing its paths so the panel re-requests them.
+        if (
+          getDiffPatchEvictionGeneration(environmentId) !== evictionGeneration
+        ) {
+          setInFlight((previous) => clearLoading(previous, paths));
           return;
         }
         if (response.outcome === "available") {
@@ -222,6 +239,14 @@ export function useEnvironmentDiffPatches(
         }
       } catch (caught) {
         if (targetIdentityRef.current !== generationTarget) {
+          return;
+        }
+        // An eviction mid-flight supersedes a failure: release the paths so the
+        // panel re-requests them rather than stamping a stale error.
+        if (
+          getDiffPatchEvictionGeneration(environmentId) !== evictionGeneration
+        ) {
+          setInFlight((previous) => clearLoading(previous, paths));
           return;
         }
         const message =
@@ -426,4 +451,23 @@ function clearError(previous: InFlightState, path: string): InFlightState {
   const errors = new Map(previous.errors);
   errors.delete(path);
   return { loading: previous.loading, errors };
+}
+
+/**
+ * Release paths from `loading` without caching or erroring them — used when a
+ * mid-flight eviction supersedes a fetch, so the panel's re-fired `requestPaths`
+ * dispatch re-fetches them fresh (a still-`loading` path is skipped).
+ */
+function clearLoading(
+  previous: InFlightState,
+  paths: string[],
+): InFlightState {
+  if (!paths.some((path) => previous.loading.has(path))) {
+    return previous;
+  }
+  const loading = new Set(previous.loading);
+  for (const path of paths) {
+    loading.delete(path);
+  }
+  return { loading, errors: previous.errors };
 }

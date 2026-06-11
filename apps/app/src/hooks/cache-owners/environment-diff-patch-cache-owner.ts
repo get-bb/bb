@@ -13,6 +13,42 @@ export interface PatchQueryIdentity {
   targetKey: string | null;
 }
 
+/**
+ * Per-environment eviction counter, bumped synchronously every time an
+ * environment's patch cache is evicted (see
+ * {@link bumpDiffPatchEvictionGeneration}). A patch fetch captures this counter
+ * when it starts; if it no longer matches when the response lands, an eviction
+ * happened mid-flight and the fetch must drop its (now stale) write instead of
+ * re-seeding the just-cleared cache. The counter increments at eviction time —
+ * before the async TOC refetch that re-triggers a fresh request — so the guard
+ * holds even when a stale fetch resolves first.
+ */
+const diffPatchEvictionGenerations = new Map<string, number>();
+
+/** Current eviction generation for an environment (0 if never evicted). */
+export function getDiffPatchEvictionGeneration(environmentId: string): number {
+  return diffPatchEvictionGenerations.get(environmentId) ?? 0;
+}
+
+/** Increment an environment's eviction generation; call when its patches are evicted. */
+export function bumpDiffPatchEvictionGeneration(environmentId: string): void {
+  diffPatchEvictionGenerations.set(
+    environmentId,
+    getDiffPatchEvictionGeneration(environmentId) + 1,
+  );
+}
+
+/**
+ * Bump every tracked environment's eviction generation; call when the patch
+ * cache is evicted for all environments at once (e.g. server reconnect), so a
+ * fetch in flight under any environment drops its now-stale write.
+ */
+export function bumpAllDiffPatchEvictionGenerations(): void {
+  for (const environmentId of diffPatchEvictionGenerations.keys()) {
+    bumpDiffPatchEvictionGeneration(environmentId);
+  }
+}
+
 interface ReadDiffPatchEntryArgs {
   queryClient: QueryClient;
   identity: PatchQueryIdentity;
