@@ -337,11 +337,6 @@ function FilePreviewHeader({
   viewMode,
   onViewModeChange,
 }: FilePreviewHeaderProps) {
-  // The fade is `absolute top-full`, just below the bar: it masks the body as it
-  // scrolls under the sticky header. It fades from `surface-raised` (the body's
-  // own tone) so the header sits flush — no seam line — with the body when not
-  // scrolled. `absolute` keeps it out of flow so the body's `pt-4` controls the
-  // initial gap, not this strip.
   return (
     // The wrapper carries an opaque `bg-background` base so the translucent
     // `bg-surface-recessed` tint on the bar composites to a solid tone — without
@@ -420,10 +415,6 @@ function FilePreviewHeader({
           </div>
         ) : null}
       </div>
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-full h-4 bg-gradient-to-b from-surface-raised to-transparent"
-      />
     </div>
   );
 }

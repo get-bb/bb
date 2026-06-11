@@ -10,6 +10,7 @@ import * as api from "@/lib/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { removeEnvironmentDiffPatchQueries } from "../cache-owners/query-cache";
+import { bumpAllDiffPatchEvictionGenerations } from "../cache-owners/environment-diff-patch-cache-owner";
 import { environmentDiffPatchQueryKey } from "./query-keys";
 import { useEnvironmentDiffPatches } from "./use-environment-diff-patches";
 
@@ -130,6 +131,82 @@ describe("useEnvironmentDiffPatches", () => {
     expect(queryClient.getQueryData<DiffPatchEntry>(patchKey())).toEqual(
       freshPatch,
     );
+  });
+
+  it("drops a fetch resolving after an all-environment (reconnect) eviction, even for a never-individually-evicted env", async () => {
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+
+    // A distinct env that is ONLY ever fetched here — never individually evicted
+    // — so it is absent from the per-env eviction map. Reusing the shared
+    // ENVIRONMENT_ID would let an earlier per-env eviction add it to the map and
+    // mask the all-env (reconnect) gap this test guards.
+    const RECONNECT_ENV = "env-reconnect-only";
+    const reconnectKey = environmentDiffPatchQueryKey(
+      RECONNECT_ENV,
+      "all",
+      "main",
+      PATH,
+    );
+
+    const stalePatch: DiffPatchEntry = {
+      path: PATH,
+      patch: "diff --git a/file.ts b/file.ts\n+stale\n",
+      truncated: false,
+    };
+    const freshPatch: DiffPatchEntry = {
+      path: PATH,
+      patch: "diff --git a/file.ts b/file.ts\n+fresh\n",
+      truncated: false,
+    };
+
+    const firstFetch = deferred<EnvironmentDiffPatchResponse>();
+    vi.mocked(api.getEnvironmentDiffPatches)
+      .mockReturnValueOnce(firstFetch.promise)
+      .mockResolvedValueOnce(availableResponse(freshPatch));
+
+    const { result } = renderHook(
+      () => useEnvironmentDiffPatches(RECONNECT_ENV, { target: TARGET }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.requestPaths({ visible: [PATH], overscan: [] });
+    });
+    await waitFor(() => {
+      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(result.current.getPatchState(PATH).status).toBe("loading");
+    });
+
+    // Server reconnect evicts EVERY environment's patch cache via the shared
+    // generation bump. This env is never individually evicted, so it is absent
+    // from the per-env map — the bump must still reach it.
+    act(() => {
+      bumpAllDiffPatchEvictionGenerations();
+    });
+
+    await act(async () => {
+      firstFetch.resolve(availableResponse(stalePatch));
+      await firstFetch.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current.getPatchState(PATH).status).toBe("idle");
+    });
+    expect(queryClient.getQueryData(reconnectKey)).toBeUndefined();
+
+    act(() => {
+      result.current.requestPaths({ visible: [PATH], overscan: [] });
+    });
+    await waitFor(() => {
+      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      const state = result.current.getPatchState(PATH);
+      expect(state.status).toBe("loaded");
+      expect(state.patch).toBe(freshPatch.patch);
+    });
   });
 
   it("caches a patch fetch that resolves with no intervening eviction", async () => {

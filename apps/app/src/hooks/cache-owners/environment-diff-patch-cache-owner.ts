@@ -25,28 +25,39 @@ export interface PatchQueryIdentity {
  */
 const diffPatchEvictionGenerations = new Map<string, number>();
 
+/**
+ * Advanced by {@link bumpAllDiffPatchEvictionGenerations} for an
+ * all-environment eviction (e.g. server reconnect). Folded into every
+ * environment's generation below so that environments never individually
+ * evicted — and thus absent from the per-env map — still observe the bump.
+ */
+let allEnvironmentsEvictionGeneration = 0;
+
 /** Current eviction generation for an environment (0 if never evicted). */
 export function getDiffPatchEvictionGeneration(environmentId: string): number {
-  return diffPatchEvictionGenerations.get(environmentId) ?? 0;
+  return (
+    (diffPatchEvictionGenerations.get(environmentId) ?? 0) +
+    allEnvironmentsEvictionGeneration
+  );
 }
 
 /** Increment an environment's eviction generation; call when its patches are evicted. */
 export function bumpDiffPatchEvictionGeneration(environmentId: string): void {
   diffPatchEvictionGenerations.set(
     environmentId,
-    getDiffPatchEvictionGeneration(environmentId) + 1,
+    (diffPatchEvictionGenerations.get(environmentId) ?? 0) + 1,
   );
 }
 
 /**
- * Bump every tracked environment's eviction generation; call when the patch
- * cache is evicted for all environments at once (e.g. server reconnect), so a
- * fetch in flight under any environment drops its now-stale write.
+ * Bump EVERY environment's eviction generation — including ones never
+ * individually evicted — by advancing a shared counter folded into
+ * {@link getDiffPatchEvictionGeneration}. Call when the patch cache is evicted
+ * for all environments at once (e.g. server reconnect), so a fetch in flight
+ * under any environment drops its now-stale write.
  */
 export function bumpAllDiffPatchEvictionGenerations(): void {
-  for (const environmentId of diffPatchEvictionGenerations.keys()) {
-    bumpDiffPatchEvictionGeneration(environmentId);
-  }
+  allEnvironmentsEvictionGeneration += 1;
 }
 
 interface ReadDiffPatchEntryArgs {
