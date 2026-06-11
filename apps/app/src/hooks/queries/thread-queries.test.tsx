@@ -5,6 +5,7 @@ import type { Environment, Host, ThreadWithRuntime } from "@bb/domain";
 import type {
   ThreadComposerBootstrapResponse,
   ThreadListResponse,
+  ThreadSearchResponse,
   TimelineTurnSummaryDetailsResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
@@ -27,6 +28,9 @@ import {
   useThreadQueuedMessages,
   useThreadPendingInteractions,
   useThreadPromptHistory,
+  useThreadSearch,
+  THREAD_SEARCH_DEBOUNCE_MS,
+  THREAD_SEARCH_LIMIT_PER_GROUP,
 } from "./thread-queries";
 import {
   hostsQueryKey,
@@ -39,6 +43,7 @@ import {
   threadPromptHistoryQueryKey,
   threadListQueryKey,
   threadQueryKey,
+  threadSearchQueryKey,
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "./query-keys";
@@ -52,6 +57,11 @@ interface TurnSummaryDetailsHookProps {
   sourceSeqStart: number;
   threadId: string;
   turnId: string;
+}
+
+interface ThreadSearchHookProps {
+  active: boolean;
+  query: string;
 }
 
 type ThreadListEntryFixture = ThreadListResponse[number];
@@ -151,6 +161,72 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+});
+
+describe("thread search query hook", () => {
+  it("debounces searchable input and disables stale searches after the live query becomes too short", async () => {
+    const searchResponse: ThreadSearchResponse = {
+      active: { total: 0, results: [] },
+      archived: { total: 0, results: [] },
+    };
+    const requestUrls: URL[] = [];
+    installFetchRoutes([
+      {
+        pathname: "/api/v1/threads/search",
+        handler: (request) => {
+          requestUrls.push(new URL(request.url));
+          return jsonResponse(searchResponse);
+        },
+      },
+    ]);
+    const { queryClient, wrapper } = createWrapper();
+
+    const { rerender, result } = renderHook(
+      (props: ThreadSearchHookProps) => useThreadSearch(props),
+      {
+        initialProps: { active: true, query: "n" },
+        wrapper,
+      },
+    );
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, THREAD_SEARCH_DEBOUNCE_MS + 10),
+    );
+    expect(requestUrls).toHaveLength(0);
+    expect(result.current.hasSearchableQuery).toBe(false);
+
+    rerender({ active: true, query: "needle" });
+    await waitFor(() => {
+      expect(result.current.data).toEqual(searchResponse);
+    });
+    expect(requestUrls).toHaveLength(1);
+    expect(requestUrls[0]?.searchParams.get("query")).toBe("needle");
+    expect(requestUrls[0]?.searchParams.get("limitPerGroup")).toBe(
+      String(THREAD_SEARCH_LIMIT_PER_GROUP),
+    );
+    expect(
+      queryClient.getQueryData(
+        threadSearchQueryKey({
+          limitPerGroup: THREAD_SEARCH_LIMIT_PER_GROUP,
+          query: "needle",
+        }),
+      ),
+    ).toEqual(searchResponse);
+
+    rerender({ active: true, query: "n" });
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: threadSearchQueryKey({
+          limitPerGroup: THREAD_SEARCH_LIMIT_PER_GROUP,
+          query: "needle",
+        }),
+      });
+    });
+    await new Promise((resolve) =>
+      setTimeout(resolve, THREAD_SEARCH_DEBOUNCE_MS + 10),
+    );
+    expect(requestUrls).toHaveLength(1);
+  });
 });
 
 describe("thread query bootstraps", () => {

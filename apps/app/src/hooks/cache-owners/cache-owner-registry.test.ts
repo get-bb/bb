@@ -65,6 +65,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadPromptHistoryQueryKey",
     "threadPromptHistoryQueryKeyPrefix",
     "threadQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadQueuedMessagesQueryKey",
     "threadTimelineQueryKeyPrefix",
     "threadTimelineTurnSummaryDetailsQueryKeyPrefix",
@@ -96,6 +97,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadDefaultExecutionOptionsQueryKey",
     "threadPromptHistoryQueryKey",
     "threadQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadQueuedMessagesQueryKey",
     "threadStorageFilePreviewQueryKeyPrefix",
     "threadStorageFilesForThreadQueryKeyPrefix",
@@ -150,6 +152,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "systemConfigQueryKey",
     "systemProvidersQueryKey",
     "threadQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadStorageFilePreviewQueryKeyPrefix",
     "threadStorageFilesForThreadQueryKeyPrefix",
     "threadStoragePathsForThreadQueryKeyPrefix",
@@ -193,6 +196,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "systemExecutionOptionsQueryKey",
     "systemProvidersQueryKey",
     "threadPromptHistoryQueryKeyPrefix",
+    "threadSearchQueryKeyPrefix",
     "threadsQueryKey",
     "allWorkflowRunAgentEventsQueryKeyPrefix",
     "allWorkflowRunEventsQueryKeyPrefix",
@@ -217,6 +221,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   "hooks/cache-owners/thread-list-cache-owner.ts": [
     "sidebarNavigationQueryKey",
     "threadQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadsQueryKey",
   ],
   "hooks/cache-owners/thread-runtime-cache-owner.ts": [
@@ -233,6 +238,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "projectsQueryKey",
     "sidebarNavigationQueryKey",
     "threadQueryKey",
+    "threadSearchQueryKeyPrefix",
     "threadsQueryKey",
   ],
   "hooks/cache-owners/workflow-run-cache-owner.ts": [
