@@ -31,7 +31,7 @@ INSERT INTO `thread_search_segments` (
   `updated_at`
 )
 SELECT
-  `threads`.`id` || ':title',
+  `threads`.`id` || ':title:title',
   `threads`.`id`,
   'title',
   'title',
@@ -54,7 +54,7 @@ INSERT INTO `thread_search_segments` (
   `updated_at`
 )
 SELECT
-  `threads`.`id` || ':title_fallback',
+  `threads`.`id` || ':title_fallback:title_fallback',
   `threads`.`id`,
   'title_fallback',
   'title_fallback',

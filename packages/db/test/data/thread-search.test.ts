@@ -21,6 +21,7 @@ import {
   createThread,
   deleteThread,
   searchThreadsWithPendingInteractionState,
+  updateThread,
 } from "../../src/data/threads.js";
 
 interface SetupResult {
@@ -177,6 +178,17 @@ describe("thread search data", () => {
       });
       expect(secretResults.active.total).toBe(0);
       expect(secretResults.archived.total).toBe(0);
+
+      updateThread(db, noopNotifier, thread.id, {
+        title: "titleupdatebackfill",
+      });
+      const titleUpdateResults = searchThreadsWithPendingInteractionState(db, {
+        query: "titleupdatebackfill",
+        limitPerGroup: 20,
+      });
+      expect(
+        titleUpdateResults.active.results.map((result) => result.thread.id),
+      ).toEqual([thread.id]);
     } finally {
       closeConnection(db);
     }
