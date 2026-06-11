@@ -24,6 +24,7 @@ import type {
   TerminalSessionStatus,
   ThreadDynamicContextFileStatus,
   ThreadScheduleKind,
+  ThreadSearchSourceKind,
   ThreadEventItemType,
   ThreadEventScopeKind,
   ThreadEventType,
@@ -153,16 +154,19 @@ export const projectExecutionDefaults = sqliteTable(
  * Unlike `project_execution_defaults` (implicitly-remembered last selection)
  * this is an explicit, user-edited contract surface.
  */
-export const projectWorkflowPolicies = sqliteTable("project_workflow_policies", {
-  projectId: text("project_id")
-    .primaryKey()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  sandboxCeiling: text("sandbox_ceiling").$type<WorkflowSandbox>().notNull(),
-  /** Null = no project budget default; launches without an override run unbounded. */
-  defaultBudgetOutputTokens: integer("default_budget_output_tokens"),
-  createdAt: integer("created_at").notNull(),
-  updatedAt: integer("updated_at").notNull(),
-});
+export const projectWorkflowPolicies = sqliteTable(
+  "project_workflow_policies",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    sandboxCeiling: text("sandbox_ceiling").$type<WorkflowSandbox>().notNull(),
+    /** Null = no project budget default; launches without an override run unbounded. */
+    defaultBudgetOutputTokens: integer("default_budget_output_tokens"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+);
 
 export const projectSources = sqliteTable(
   "project_sources",
@@ -343,6 +347,30 @@ export const threads = sqliteTable(
     index("threads_active_maintenance_idx")
       .on(table.status)
       .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+export const threadSearchSegments = sqliteTable(
+  "thread_search_segments",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    sourceKind: text("source_kind").$type<ThreadSearchSourceKind>().notNull(),
+    sourceKey: text("source_key").notNull(),
+    sourceSeq: integer("source_seq"),
+    text: text("text").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("thread_search_segments_source_idx").on(
+      table.threadId,
+      table.sourceKind,
+      table.sourceKey,
+    ),
+    index("thread_search_segments_thread_idx").on(table.threadId),
   ],
 );
 

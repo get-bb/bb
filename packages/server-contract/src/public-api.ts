@@ -101,6 +101,8 @@ import type {
   ThreadGetQuery,
   ThreadListQuery,
   ThreadListResponse,
+  ThreadSearchQuery,
+  ThreadSearchResponse,
   ThreadPendingInteractionsResponse,
   ThreadResponse,
   ThreadSchedule,
@@ -525,6 +527,10 @@ export type PublicApiSchema = {
      */
     $post: Endpoint<{ json: CreateThreadRequest }, ThreadResponse, 201>;
   };
+  "/threads/search": {
+    /** Search active and archived thread titles and indexed conversation content. */
+    $get: Endpoint<{ query: ThreadSearchQuery }, ThreadSearchResponse>;
+  };
   "/threads/:id": {
     $get: Endpoint<
       PathId & { query?: ThreadGetQuery },
@@ -809,7 +815,11 @@ export type PublicApiSchema = {
      * inherit the anchor thread environment's `{hostId, workspacePath}`;
      * unanchored launches resolve the project's default source.
      */
-    $post: Endpoint<{ json: CreateWorkflowRunRequest }, WorkflowRunResponse, 201>;
+    $post: Endpoint<
+      { json: CreateWorkflowRunRequest },
+      WorkflowRunResponse,
+      201
+    >;
   };
   "/workflow-runs/:id": {
     $get: Endpoint<PathId, WorkflowRunResponse>;

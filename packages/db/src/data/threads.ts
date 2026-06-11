@@ -15,16 +15,21 @@ import type {
   EnvironmentWorkspaceDisplayKind,
   ReasoningLevel,
   ThreadChangeKind,
+  ThreadSearchSourceKind,
   ThreadStatus,
   WorkspaceProvisionType,
 } from "@bb/domain";
-import { resolveEnvironmentWorkspaceDisplayKind } from "@bb/domain";
+import {
+  resolveEnvironmentWorkspaceDisplayKind,
+  threadSearchSourceKindSchema,
+} from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import {
   environments,
   pendingInteractions,
+  threadSearchSegments,
   threads,
 } from "../schema.js";
 import { createThreadId } from "../ids.js";
@@ -33,6 +38,89 @@ import {
 } from "./order-keys.js";
 
 type ThreadWriteConnection = DbConnection | DbTransaction;
+
+export const THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT = 20;
+export const THREAD_SEARCH_LIMIT_PER_GROUP_MAX = 50;
+
+const THREAD_SEARCH_MATCHES_PER_THREAD = 3;
+const THREAD_SEARCH_QUERY_TOKEN_PATTERN = /[\p{L}\p{N}_]+/gu;
+const THREAD_SEARCH_HIGHLIGHT_RANGE_LIMIT = 8;
+
+export interface ThreadSearchHighlightRange {
+  start: number;
+  end: number;
+}
+
+export interface ThreadSearchMatch {
+  sourceKind: ThreadSearchSourceKind;
+  text: string;
+  highlightRanges: ThreadSearchHighlightRange[];
+}
+
+export interface ThreadSearchResult {
+  thread: ThreadWithPendingInteractionState;
+  matches: ThreadSearchMatch[];
+}
+
+export interface ThreadSearchResultGroup {
+  total: number;
+  results: ThreadSearchResult[];
+}
+
+export interface ThreadSearchResults {
+  active: ThreadSearchResultGroup;
+  archived: ThreadSearchResultGroup;
+}
+
+export interface SearchThreadsWithPendingInteractionStateArgs {
+  query: string;
+  limitPerGroup: number;
+}
+
+export interface UpsertThreadTitleSearchSegmentsArgs {
+  threadId: string;
+  title: string | null;
+  titleFallback: string | null;
+  updatedAt?: number;
+}
+
+export interface UpsertThreadSearchSegmentInput {
+  threadId: string;
+  sourceKind: ThreadSearchSourceKind;
+  sourceKey: string;
+  sourceSeq: number | null;
+  text: string;
+}
+
+export interface UpsertThreadSearchSegmentsArgs {
+  segments: readonly UpsertThreadSearchSegmentInput[];
+  updatedAt?: number;
+}
+
+interface UpsertThreadSearchSegmentArgs extends UpsertThreadSearchSegmentInput {
+  id: string;
+  updatedAt: number;
+}
+
+interface ListThreadSearchMatchRowsArgs {
+  archived: boolean;
+  limitPerGroup: number;
+  matchQuery: string;
+}
+
+interface ThreadSearchMatchRow {
+  sourceKind: string;
+  sourceSeq: number | null;
+  text: string;
+  threadId: string;
+  threadOrder: number;
+  total: number;
+}
+
+interface HydrateThreadSearchGroupArgs {
+  rows: readonly ThreadSearchMatchRow[];
+  tokens: readonly string[];
+}
 
 /**
  * Allowed thread status transitions.
@@ -45,6 +133,94 @@ export const ALLOWED_TRANSITIONS: Record<ThreadStatus, ThreadStatus[]> = {
   active: ["idle", "error"],
   error: ["provisioning", "active", "idle"],
 };
+
+function buildThreadSearchSegmentId(args: {
+  threadId: string;
+  sourceKind: ThreadSearchSourceKind;
+  sourceKey: string;
+}): string {
+  return `${args.threadId}:${args.sourceKind}:${args.sourceKey}`;
+}
+
+function deleteThreadSearchSegmentById(
+  db: ThreadWriteConnection,
+  id: string,
+): void {
+  db.delete(threadSearchSegments).where(eq(threadSearchSegments.id, id)).run();
+}
+
+function upsertThreadSearchSegment(
+  db: ThreadWriteConnection,
+  args: UpsertThreadSearchSegmentArgs,
+): void {
+  const searchableText = args.text.trim();
+  if (searchableText.length === 0) {
+    deleteThreadSearchSegmentById(db, args.id);
+    return;
+  }
+
+  db.insert(threadSearchSegments)
+    .values({
+      id: args.id,
+      threadId: args.threadId,
+      sourceKind: args.sourceKind,
+      sourceKey: args.sourceKey,
+      sourceSeq: args.sourceSeq,
+      text: searchableText,
+      createdAt: args.updatedAt,
+      updatedAt: args.updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: threadSearchSegments.id,
+      set: {
+        sourceKind: args.sourceKind,
+        sourceKey: args.sourceKey,
+        sourceSeq: args.sourceSeq,
+        text: searchableText,
+        updatedAt: args.updatedAt,
+      },
+    })
+    .run();
+}
+
+export function upsertThreadSearchSegments(
+  db: ThreadWriteConnection,
+  args: UpsertThreadSearchSegmentsArgs,
+): void {
+  const updatedAt = args.updatedAt ?? Date.now();
+  for (const segment of args.segments) {
+    upsertThreadSearchSegment(db, {
+      ...segment,
+      id: buildThreadSearchSegmentId(segment),
+      updatedAt,
+    });
+  }
+}
+
+export function upsertThreadTitleSearchSegments(
+  db: ThreadWriteConnection,
+  args: UpsertThreadTitleSearchSegmentsArgs,
+): void {
+  upsertThreadSearchSegments(db, {
+    updatedAt: args.updatedAt,
+    segments: [
+      {
+        threadId: args.threadId,
+        sourceKind: "title",
+        sourceKey: "title",
+        sourceSeq: null,
+        text: args.title ?? "",
+      },
+      {
+        threadId: args.threadId,
+        sourceKind: "title_fallback",
+        sourceKey: "title_fallback",
+        sourceSeq: null,
+        text: args.titleFallback ?? "",
+      },
+    ],
+  });
+}
 
 export interface CreateThreadInput {
   automationId?: string | null;
@@ -64,25 +240,37 @@ export function createThread(
 ) {
   const now = Date.now();
   const id = createThreadId();
-  const thread = db
-    .insert(threads)
-    .values({
-      id,
-      projectId: input.projectId,
-      environmentId: input.environmentId ?? null,
-      automationId: input.automationId ?? null,
-      providerId: input.providerId,
-      title: input.title ?? null,
-      titleFallback: input.titleFallback ?? null,
-      status: input.status ?? "created",
-      parentThreadId: input.parentThreadId ?? null,
-      lastReadAt: now,
-      latestAttentionAt: now,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning()
-    .get();
+  const thread = db.transaction(
+    (tx) => {
+      const createdThread = tx
+        .insert(threads)
+        .values({
+          id,
+          projectId: input.projectId,
+          environmentId: input.environmentId ?? null,
+          automationId: input.automationId ?? null,
+          providerId: input.providerId,
+          title: input.title ?? null,
+          titleFallback: input.titleFallback ?? null,
+          status: input.status ?? "created",
+          parentThreadId: input.parentThreadId ?? null,
+          lastReadAt: now,
+          latestAttentionAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+        .get();
+      upsertThreadTitleSearchSegments(tx, {
+        threadId: createdThread.id,
+        title: createdThread.title,
+        titleFallback: createdThread.titleFallback,
+        updatedAt: now,
+      });
+      return createdThread;
+    },
+    { behavior: "immediate" },
+  );
   notifier.notifyThread(id, ["thread-created"], {
     projectId: input.projectId,
   });
@@ -515,6 +703,233 @@ function toThreadWithPendingInteractionState(
       },
     }),
     hasPendingInteraction: pendingInteractionCount > 0,
+  };
+}
+
+function listThreadSearchQueryTokens(query: string): string[] {
+  const tokens: string[] = [];
+  for (const match of query.matchAll(THREAD_SEARCH_QUERY_TOKEN_PATTERN)) {
+    const token = match[0].trim();
+    if (token.length > 0) {
+      tokens.push(token);
+    }
+  }
+  return tokens;
+}
+
+function buildThreadSearchMatchQuery(tokens: readonly string[]): string | null {
+  if (tokens.length === 0) {
+    return null;
+  }
+  return tokens
+    .map((token) => `"${token.replaceAll('"', '""')}"*`)
+    .join(" ");
+}
+
+function mergeHighlightRanges(
+  ranges: readonly ThreadSearchHighlightRange[],
+): ThreadSearchHighlightRange[] {
+  const merged: ThreadSearchHighlightRange[] = [];
+  for (const range of ranges) {
+    const previous = merged.at(-1);
+    if (previous === undefined || range.start > previous.end) {
+      merged.push({ ...range });
+      continue;
+    }
+    previous.end = Math.max(previous.end, range.end);
+  }
+  return merged.slice(0, THREAD_SEARCH_HIGHLIGHT_RANGE_LIMIT);
+}
+
+function findHighlightRanges(args: {
+  text: string;
+  tokens: readonly string[];
+}): ThreadSearchHighlightRange[] {
+  const ranges: ThreadSearchHighlightRange[] = [];
+  const lowerText = args.text.toLocaleLowerCase();
+  const uniqueTokens = [
+    ...new Set(args.tokens.map((token) => token.toLocaleLowerCase())),
+  ];
+
+  for (const token of uniqueTokens) {
+    let offset = 0;
+    while (offset < lowerText.length) {
+      const start = lowerText.indexOf(token, offset);
+      if (start === -1) {
+        break;
+      }
+      ranges.push({ start, end: start + token.length });
+      offset = start + token.length;
+    }
+  }
+
+  return mergeHighlightRanges(
+    ranges.sort((left, right) => left.start - right.start || left.end - right.end),
+  );
+}
+
+function listThreadSearchMatchRows(
+  db: DbConnection,
+  args: ListThreadSearchMatchRowsArgs,
+): ThreadSearchMatchRow[] {
+  const archiveFilter = args.archived
+    ? sql`t.archived_at IS NOT NULL`
+    : sql`t.archived_at IS NULL`;
+
+  return db.all<ThreadSearchMatchRow>(sql`
+    WITH matched_segments AS (
+      SELECT
+        s.thread_id AS threadId,
+        s.source_kind AS sourceKind,
+        s.source_seq AS sourceSeq,
+        s.text AS text,
+        s.id AS segmentId,
+        t.updated_at AS threadUpdatedAt,
+        thread_search_segments_fts.rank AS segmentRank
+      FROM thread_search_segments_fts
+      JOIN thread_search_segments AS s ON s.id = thread_search_segments_fts.id
+      JOIN threads AS t ON t.id = s.thread_id
+      WHERE thread_search_segments_fts MATCH ${args.matchQuery}
+        AND t.deleted_at IS NULL
+        AND ${archiveFilter}
+    ),
+    ranked_threads AS (
+      SELECT
+        threadId,
+        MIN(segmentRank) AS bestRank,
+        MAX(threadUpdatedAt) AS threadUpdatedAt
+      FROM matched_segments
+      GROUP BY threadId
+    ),
+    limited_threads AS (
+      SELECT
+        threadId,
+        bestRank,
+        threadUpdatedAt,
+        COUNT(*) OVER () AS total,
+        ROW_NUMBER() OVER (
+          ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
+        ) AS threadOrder
+      FROM ranked_threads
+      ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
+      LIMIT ${args.limitPerGroup}
+    ),
+    ranked_thread_segments AS (
+      SELECT
+        limited_threads.total AS total,
+        limited_threads.threadOrder AS threadOrder,
+        matched_segments.threadId AS threadId,
+        matched_segments.sourceKind AS sourceKind,
+        matched_segments.sourceSeq AS sourceSeq,
+        matched_segments.text AS text,
+        ROW_NUMBER() OVER (
+          PARTITION BY matched_segments.threadId
+          ORDER BY
+            matched_segments.segmentRank ASC,
+            COALESCE(matched_segments.sourceSeq, -1) ASC,
+            matched_segments.segmentId ASC
+        ) AS segmentOrder
+      FROM matched_segments
+      JOIN limited_threads ON limited_threads.threadId = matched_segments.threadId
+    )
+    SELECT
+      sourceKind,
+      sourceSeq,
+      text,
+      threadId,
+      threadOrder,
+      total
+    FROM ranked_thread_segments
+    WHERE segmentOrder <= ${THREAD_SEARCH_MATCHES_PER_THREAD}
+    ORDER BY threadOrder ASC, segmentOrder ASC
+  `);
+}
+
+function hydrateThreadSearchGroup(
+  db: DbConnection,
+  args: HydrateThreadSearchGroupArgs,
+): ThreadSearchResultGroup {
+  const firstRow = args.rows[0];
+  if (firstRow === undefined) {
+    return { total: 0, results: [] };
+  }
+
+  const threadIds: string[] = [];
+  const seenThreadIds = new Set<string>();
+  const matchesByThreadId = new Map<string, ThreadSearchMatch[]>();
+  for (const row of args.rows) {
+    if (!seenThreadIds.has(row.threadId)) {
+      seenThreadIds.add(row.threadId);
+      threadIds.push(row.threadId);
+    }
+    const matches = matchesByThreadId.get(row.threadId) ?? [];
+    matches.push({
+      sourceKind: threadSearchSourceKindSchema.parse(row.sourceKind),
+      text: row.text,
+      highlightRanges: findHighlightRanges({
+        text: row.text,
+        tokens: args.tokens,
+      }),
+    });
+    matchesByThreadId.set(row.threadId, matches);
+  }
+
+  const threadsById = new Map(
+    threadWithPendingInteractionBaseQuery(db)
+      .where(and(inArray(threads.id, threadIds), isNull(threads.deletedAt)))
+      .groupBy(threads.id)
+      .all()
+      .map(toThreadWithPendingInteractionState)
+      .map((thread) => [thread.id, thread]),
+  );
+
+  const results: ThreadSearchResult[] = [];
+  for (const threadId of threadIds) {
+    const thread = threadsById.get(threadId);
+    const matches = matchesByThreadId.get(threadId);
+    if (thread === undefined || matches === undefined) {
+      continue;
+    }
+    results.push({ thread, matches });
+  }
+
+  return { total: firstRow.total, results };
+}
+
+export function searchThreadsWithPendingInteractionState(
+  db: DbConnection,
+  args: SearchThreadsWithPendingInteractionStateArgs,
+): ThreadSearchResults {
+  const tokens = listThreadSearchQueryTokens(args.query);
+  const matchQuery = buildThreadSearchMatchQuery(tokens);
+  if (matchQuery === null) {
+    return {
+      active: { total: 0, results: [] },
+      archived: { total: 0, results: [] },
+    };
+  }
+  const limitPerGroup = Math.min(
+    Math.max(args.limitPerGroup, 1),
+    THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
+  );
+
+  return {
+    active: hydrateThreadSearchGroup(db, {
+      tokens,
+      rows: listThreadSearchMatchRows(db, {
+        archived: false,
+        limitPerGroup,
+        matchQuery,
+      }),
+    }),
+    archived: hydrateThreadSearchGroup(db, {
+      tokens,
+      rows: listThreadSearchMatchRows(db, {
+        archived: true,
+        limitPerGroup,
+        matchQuery,
+      }),
+    }),
   };
 }
 
@@ -1010,6 +1425,14 @@ export function updateThread(
     .where(eq(threads.id, id))
     .returning()
     .get();
+  if (updated && "title" in input) {
+    upsertThreadTitleSearchSegments(db, {
+      threadId: updated.id,
+      title: updated.title,
+      titleFallback: updated.titleFallback,
+      updatedAt: now,
+    });
+  }
   if (updated && changes.length > 0) {
     notifier.notifyThread(id, changes, {
       projectId: existing.projectId,

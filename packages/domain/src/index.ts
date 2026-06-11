@@ -95,6 +95,12 @@ export { threadDynamicContextFileStatusValues } from "./thread-dynamic-context.j
 export type { ThreadDynamicContextFileStatus } from "./thread-dynamic-context.js";
 
 export {
+  threadSearchSourceKindSchema,
+  threadSearchSourceKindValues,
+} from "./thread-search.js";
+export type { ThreadSearchSourceKind } from "./thread-search.js";
+
+export {
   TERMINAL_COLS_MAX,
   TERMINAL_DATA_MAX_BASE64_LENGTH,
   TERMINAL_DATA_MAX_BYTES,
