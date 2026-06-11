@@ -5,6 +5,7 @@ import {
   type HostDaemonInternalSchema,
 } from "@bb/host-daemon-contract";
 import { getThread, hasStoredTurnStarted } from "@bb/db";
+import { isAgentDelegatedChildThread } from "../services/threads/thread-parent.js";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
@@ -24,7 +25,9 @@ function requestChildThreadNeedsAttentionNotification(
   args: RequestChildThreadNeedsAttentionNotificationArgs,
 ): void {
   const childThread = getThread(deps.db, args.childThreadId);
-  if (!childThread?.parentThreadId) {
+  // Forks / side chats are user-initiated branches the user interacts with
+  // directly, so a needs-attention prompt must not notify their parent.
+  if (!childThread || !isAgentDelegatedChildThread(childThread)) {
     return;
   }
   const parentThreadId = childThread.parentThreadId;

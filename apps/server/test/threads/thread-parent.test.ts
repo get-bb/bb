@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
   assertValidParentThread,
+  isAgentDelegatedChildThread,
   MAX_THREAD_HIERARCHY_DEPTH,
 } from "../../src/services/threads/thread-parent.js";
 
@@ -230,5 +231,40 @@ describe("thread parent validation", () => {
       reason: "too_deep",
       subject: "parent",
     });
+  });
+});
+
+describe("isAgentDelegatedChildThread", () => {
+  it("is true for a child with a parent and no childOrigin (agent-delegated)", () => {
+    expect(
+      isAgentDelegatedChildThread({
+        parentThreadId: "thr_parent",
+        childOrigin: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("is false for a fork (user-initiated branch)", () => {
+    expect(
+      isAgentDelegatedChildThread({
+        parentThreadId: "thr_source",
+        childOrigin: "fork",
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for a side chat (user-initiated branch)", () => {
+    expect(
+      isAgentDelegatedChildThread({
+        parentThreadId: "thr_main",
+        childOrigin: "side-chat",
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for a root thread with no parent", () => {
+    expect(
+      isAgentDelegatedChildThread({ parentThreadId: null, childOrigin: null }),
+    ).toBe(false);
   });
 });

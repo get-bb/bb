@@ -91,6 +91,7 @@ import { createAsyncDeduper } from "../lib/async-deduper.js";
 import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
+import { isAgentDelegatedChildThread } from "./thread-parent.js";
 import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
@@ -657,7 +658,9 @@ function settleThreadCommandFailure(
     scope: getThreadFailureCommandErrorScope(args.command),
   });
   tryTransitionInTransaction(args.deps.db, args.deps.hub, thread.id, "error");
-  if (thread.parentThreadId !== null) {
+  // Forks / side chats are user-initiated branches, not agent-delegated
+  // sub-tasks, so a failed turn must not notify their parent thread either.
+  if (isAgentDelegatedChildThread(thread)) {
     const parentThreadId = thread.parentThreadId;
     postCommitActions.push({
       name: "Child thread command failure notification",
