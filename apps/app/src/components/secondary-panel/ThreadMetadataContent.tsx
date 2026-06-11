@@ -377,7 +377,7 @@ const PULL_REQUEST_STATE_DISPLAY: Record<
 > = {
   open: { label: "Open", dotClass: "bg-success" },
   draft: { label: "Draft", dotClass: "bg-muted-foreground" },
-  merged: { label: "Merged", dotClass: "bg-primary" },
+  merged: { label: "Merged", dotClass: "bg-pr-merged" },
   closed: { label: "Closed", dotClass: "bg-destructive" },
 };
 
