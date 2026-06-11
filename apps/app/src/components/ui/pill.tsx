@@ -24,7 +24,7 @@ export function Pill({ variant, className, children }: PillProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded border px-2 py-0.5 text-xs leading-none",
+        "inline-flex items-center rounded border px-2 py-0.5 text-xs",
         PILL_VARIANT_CLASS[variant],
         className,
       )}
