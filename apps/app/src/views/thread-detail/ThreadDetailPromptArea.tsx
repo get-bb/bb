@@ -194,6 +194,28 @@ export function ThreadDetailPromptArea({
   }, [queuedMessages]);
   const queuedMessagesRef = useRef<readonly ThreadQueuedMessage[]>([]);
   queuedMessagesRef.current = queuedMessages;
+  const [processingQueuedMessage, setProcessingQueuedMessage] = useState<{
+    id: string;
+    action: QueuedMessageProcessingAction;
+  } | null>(null);
+
+  // A steered ("send now") queued message keeps its "Sending..." label until it
+  // leaves the queue — i.e. the steer has been accepted and surfaces in the
+  // timeline — rather than clearing the moment the send request resolves, which
+  // would briefly flash the row back to its normal state. So the send handler
+  // does not clear on success; instead we drop the displayed processing state
+  // once its message is gone from the queue (derived, no effect — also keeps a
+  // stale state from disabling reordering on the remaining rows).
+  const displayedProcessingQueuedMessage = useMemo(
+    () =>
+      processingQueuedMessage &&
+      queuedMessages.some(
+        (message) => message.id === processingQueuedMessage.id,
+      )
+        ? processingQueuedMessage
+        : null,
+    [processingQueuedMessage, queuedMessages],
+  );
   const { data: promptHistoryEntries = [] } = useThreadPromptHistory(
     composerQueryThreadId,
     {
@@ -229,10 +251,6 @@ export function ThreadDetailPromptArea({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
-  const [processingQueuedMessage, setProcessingQueuedMessage] = useState<{
-    id: string;
-    action: QueuedMessageProcessingAction;
-  } | null>(null);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
   const promptHistoryDrafts = useMemo(
@@ -460,6 +478,11 @@ export function ThreadDetailPromptArea({
           }),
         );
         setAttachmentError(null);
+        // Keep the "Sending..." label until the message actually leaves the
+        // queue (steered into the timeline) — handled by the effect below —
+        // instead of clearing the moment the request resolves, which would
+        // flash the row back to its normal state before the realtime queue
+        // update removes it.
       } catch (nextError) {
         appToast.error(
           getMutationErrorMessage({
@@ -468,7 +491,6 @@ export function ThreadDetailPromptArea({
             lifecycleOperation: "send_queued_message",
           }),
         );
-      } finally {
         setProcessingQueuedMessage((current) =>
           current?.id === messageId ? null : current,
         );
@@ -850,8 +872,8 @@ export function ThreadDetailPromptArea({
             isQueueMutationPending
           }
           actionDisabled={isQueueMutationPending}
-          processingMessageId={processingQueuedMessage?.id ?? null}
-          processingAction={processingQueuedMessage?.action ?? null}
+          processingMessageId={displayedProcessingQueuedMessage?.id ?? null}
+          processingAction={displayedProcessingQueuedMessage?.action ?? null}
           onSendImmediately={handleSendQueuedImmediately}
           onReorder={handleReorderQueuedMessage}
           onEdit={handleEditQueuedMessage}
@@ -875,7 +897,7 @@ export function ThreadDetailPromptArea({
       childThreadsSection,
       workflowsSection,
       pendingTodos,
-      processingQueuedMessage,
+      displayedProcessingQueuedMessage,
       queuedMessages,
       submitMode.kind,
       thread.archivedAt,

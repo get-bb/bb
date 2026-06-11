@@ -265,7 +265,7 @@ export function ModelReasoningPicker({
             ) : null}
             <span className="min-w-0 truncate">{triggerModelBase}</span>
             {triggerModelTag ? (
-              <span className="shrink-0 text-2xs text-subtle-foreground">
+              <span className="shrink-0 text-subtle-foreground">
                 {triggerModelTag}
               </span>
             ) : null}
