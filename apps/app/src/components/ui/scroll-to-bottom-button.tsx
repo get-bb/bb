@@ -26,7 +26,7 @@ export function ScrollToBottomButton({
           // affordance (the icon supplies the circle); the idle state keeps the
           // round scrim button + arrow.
           active
-            ? "text-foreground"
+            ? "text-muted-foreground"
             : "rounded-full border border-border bg-surface-scrim backdrop-blur-md hover:bg-state-hover",
           visible
             ? "translate-y-0 opacity-100"
