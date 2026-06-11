@@ -37,8 +37,9 @@ import {
   appSourcesQueryKey,
   allThreadQueryKeyPrefix,
   allThreadTerminalsQueryKeyPrefix,
+  environmentDiffFilesQueryKeyPrefix,
+  environmentDiffPatchQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
-  environmentGitDiffQueryKeyPrefix,
   environmentWorkStatusQueryKeyPrefix,
   hostsQueryKey,
   sidebarNavigationQueryKey,
@@ -592,7 +593,10 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),
   });
   queryClient.invalidateQueries({
-    queryKey: environmentGitDiffQueryKeyPrefix(environmentId),
+    queryKey: environmentDiffFilesQueryKeyPrefix(environmentId),
+  });
+  queryClient.invalidateQueries({
+    queryKey: environmentDiffPatchQueryKeyPrefix(environmentId),
   });
 }
 

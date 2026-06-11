@@ -12,12 +12,10 @@ import type {
 } from "@bb/server-contract";
 import {
   ARCHIVED_THREADS_LIST_KIND,
-  ENVIRONMENT_GIT_DIFF_QUERY_KEY,
   ENVIRONMENT_WORK_STATUS_QUERY_KEY,
   environmentDiffFilesQueryKeyPrefix,
   environmentDiffPatchQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
-  environmentGitDiffQueryKey,
   environmentGitDiffQueryKeyPrefix,
   environmentMergeBaseBranchesQueryKeyPrefix,
   environmentQueryKey,
@@ -28,7 +26,6 @@ import {
   threadQueryKey,
   threadsQueryKey,
   threadTimelineQueryKeyPrefix,
-  type EnvironmentGitDiffQueryKey,
   type EnvironmentWorkStatusQueryKey,
   type ArchivedThreadsListFilters,
   type ThreadListQueryFilters,
@@ -353,28 +350,6 @@ function isMergeBaseEnvironmentWorkStatusQueryKey(
   );
 }
 
-function isEnvironmentGitDiffQueryKeyForEnvironment(
-  queryKey: QueryKey,
-  environmentId: string,
-): queryKey is EnvironmentGitDiffQueryKey {
-  return (
-    queryKey[0] === ENVIRONMENT_GIT_DIFF_QUERY_KEY &&
-    queryKey[1] === environmentId &&
-    (typeof queryKey[2] === "string" || queryKey[2] === null) &&
-    (typeof queryKey[3] === "string" || queryKey[3] === null)
-  );
-}
-
-function isRefDerivedEnvironmentGitDiffQueryKey(
-  queryKey: QueryKey,
-  environmentId: string,
-): queryKey is EnvironmentGitDiffQueryKey {
-  return (
-    isEnvironmentGitDiffQueryKeyForEnvironment(queryKey, environmentId) &&
-    (queryKey[2] === "all" || queryKey[2] === "branch_committed")
-  );
-}
-
 export function getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
   queryClient: QueryClient,
   { environmentId }: EnvironmentInvalidationParams,
@@ -389,15 +364,13 @@ export function getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
     }
   }
 
-  for (const [queryKey] of queryClient.getQueriesData({
-    queryKey: environmentGitDiffQueryKeyPrefix(environmentId),
-  })) {
-    if (isRefDerivedEnvironmentGitDiffQueryKey(queryKey, environmentId)) {
-      queryKeys.push(
-        environmentGitDiffQueryKey(environmentId, queryKey[2], queryKey[3]),
-      );
-    }
-  }
+  // A moved merge base affects the ref-derived (`all`/`branch_committed`) diff
+  // targets, so invalidate the diff TOC + patch caches by prefix. Mirrors the
+  // bulk workspace-state path; the per-target keys are not enumerated here.
+  queryKeys.push(
+    environmentDiffFilesQueryKeyPrefix(environmentId),
+    environmentDiffPatchQueryKeyPrefix(environmentId),
+  );
 
   return queryKeys;
 }

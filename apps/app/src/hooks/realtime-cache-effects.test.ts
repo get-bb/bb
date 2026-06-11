@@ -13,7 +13,8 @@ import {
   appMarkdownPreviewQueryKey,
   appQueryKey,
   appsQueryKey,
-  environmentGitDiffQueryKey,
+  environmentDiffFilesQueryKey,
+  environmentDiffPatchQueryKey,
   environmentWorkStatusQueryKey,
   localPathExistenceQueryKey,
   projectPathsQueryKey,
@@ -530,30 +531,53 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refetches active git diff queries for work-status changes", async () => {
+  it("refetches active diff TOC, patch, and work-status queries for work-status changes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const gitDiffKey = environmentGitDiffQueryKey("env-1", "all", "main");
+    const diffFilesKey = environmentDiffFilesQueryKey("env-1", "all", "main");
+    const diffPatchKey = environmentDiffPatchQueryKey(
+      "env-1",
+      "all",
+      "main",
+      "file.ts",
+    );
     const workStatusKey = environmentWorkStatusQueryKey("env-1", "main");
-    queryClient.setQueryData(gitDiffKey, {
-      diff: "diff --git a/file.ts b/file.ts\n",
-      files: "M\tfile.ts\n",
-      mergeBaseRef: "base-ref",
+    queryClient.setQueryData(diffFilesKey, {
+      outcome: "available",
+      files: [],
       shortstat: "1 file changed",
-      truncated: false,
+      mergeBaseRef: "base-ref",
+    });
+    queryClient.setQueryData(diffPatchKey, {
+      outcome: "available",
+      patches: [
+        {
+          path: "file.ts",
+          patch: "diff --git a/file.ts b/file.ts\n",
+          truncated: false,
+        },
+      ],
     });
     queryClient.setQueryData(workStatusKey, null);
-    const gitDiffQueryFn = vi.fn(async () => ({
-      diff: "",
-      files: "",
-      mergeBaseRef: "base-ref",
+    const diffFilesQueryFn = vi.fn(async () => ({
+      outcome: "available" as const,
+      files: [],
       shortstat: "",
-      truncated: false,
+      mergeBaseRef: "base-ref",
+    }));
+    const diffPatchQueryFn = vi.fn(async () => ({
+      outcome: "available" as const,
+      patches: [],
     }));
     const workStatusQueryFn = vi.fn(async () => null);
-    const gitDiffObserver = new QueryObserver(queryClient, {
-      queryKey: gitDiffKey,
-      queryFn: gitDiffQueryFn,
+    const diffFilesObserver = new QueryObserver(queryClient, {
+      queryKey: diffFilesKey,
+      queryFn: diffFilesQueryFn,
+      staleTime: Infinity,
+    });
+    const diffPatchObserver = new QueryObserver(queryClient, {
+      queryKey: diffPatchKey,
+      queryFn: diffPatchQueryFn,
       staleTime: Infinity,
     });
     const workStatusObserver = new QueryObserver(queryClient, {
@@ -561,9 +585,11 @@ describe("createRealtimeCacheEffects", () => {
       queryFn: workStatusQueryFn,
       staleTime: Infinity,
     });
-    const unsubscribeGitDiff = gitDiffObserver.subscribe(() => {});
+    const unsubscribeDiffFiles = diffFilesObserver.subscribe(() => {});
+    const unsubscribeDiffPatch = diffPatchObserver.subscribe(() => {});
     const unsubscribeWorkStatus = workStatusObserver.subscribe(() => {});
-    gitDiffQueryFn.mockClear();
+    diffFilesQueryFn.mockClear();
+    diffPatchQueryFn.mockClear();
     workStatusQueryFn.mockClear();
 
     effects.handleChanged({
@@ -574,10 +600,12 @@ describe("createRealtimeCacheEffects", () => {
     });
     await vi.advanceTimersByTimeAsync(250);
 
-    expect(gitDiffQueryFn).toHaveBeenCalledTimes(1);
+    expect(diffFilesQueryFn).toHaveBeenCalledTimes(1);
+    expect(diffPatchQueryFn).toHaveBeenCalledTimes(1);
     expect(workStatusQueryFn).toHaveBeenCalledTimes(1);
 
-    unsubscribeGitDiff();
+    unsubscribeDiffFiles();
+    unsubscribeDiffPatch();
     unsubscribeWorkStatus();
     effects.dispose();
   });

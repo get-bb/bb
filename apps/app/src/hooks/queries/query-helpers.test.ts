@@ -21,7 +21,8 @@ import {
   optimisticallyInsertThread,
 } from "../cache-owners/query-cache";
 import {
-  environmentGitDiffQueryKey,
+  environmentDiffFilesQueryKeyPrefix,
+  environmentDiffPatchQueryKeyPrefix,
   environmentWorkStatusQueryKey,
   threadListQueryKey,
   threadsQueryKey,
@@ -424,7 +425,7 @@ describe("getEnvironmentWorkspaceStateInvalidationQueryKeys", () => {
 });
 
 describe("getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys", () => {
-  it("targets only merge-base-dependent work status and branch-based diff queries", () => {
+  it("targets only merge-base-dependent work status and the diff TOC/patch caches", () => {
     const { queryClient } = createQueryClientTestHarness();
 
     queryClient.setQueryData(
@@ -435,18 +436,8 @@ describe("getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys", () => {
       environmentWorkStatusQueryKey("env-1", "main"),
       null,
     );
-    // The cached value is irrelevant here — the helper under test filters by
-    // query key alone — so seed a placeholder like the work-status rows above.
     queryClient.setQueryData(
-      environmentGitDiffQueryKey("env-1", "commit", "abc123"),
-      null,
-    );
-    queryClient.setQueryData(
-      environmentGitDiffQueryKey("env-1", "all", "main"),
-      null,
-    );
-    queryClient.setQueryData(
-      environmentGitDiffQueryKey("env-2", "all", "main"),
+      environmentWorkStatusQueryKey("env-2", "main"),
       null,
     );
 
@@ -455,21 +446,20 @@ describe("getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys", () => {
         environmentId: "env-1",
       });
 
-    expect(queryKeys).toHaveLength(2);
+    // Only the merge-base-scoped work status for env-1, plus the diff TOC and
+    // patch caches (invalidated by prefix — a moved merge base affects every
+    // ref-derived diff target).
+    expect(queryKeys).toHaveLength(3);
     expect(queryKeys).toContainEqual(
       environmentWorkStatusQueryKey("env-1", "main"),
     );
-    expect(queryKeys).toContainEqual(
-      environmentGitDiffQueryKey("env-1", "all", "main"),
-    );
+    expect(queryKeys).toContainEqual(environmentDiffFilesQueryKeyPrefix("env-1"));
+    expect(queryKeys).toContainEqual(environmentDiffPatchQueryKeyPrefix("env-1"));
     expect(queryKeys).not.toContainEqual(
       environmentWorkStatusQueryKey("env-1", null),
     );
     expect(queryKeys).not.toContainEqual(
-      environmentGitDiffQueryKey("env-1", "commit", "abc123"),
-    );
-    expect(queryKeys).not.toContainEqual(
-      environmentGitDiffQueryKey("env-2", "all", "main"),
+      environmentWorkStatusQueryKey("env-2", "main"),
     );
   });
 });
