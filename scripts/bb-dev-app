@@ -279,14 +279,14 @@ wait_for_log_pattern() {
 start_dev_server() {
   log "Starting dev server session ${DEV_SESSION}"
   rm -f "${DEV_LOG}"
-  screen -dmS "${DEV_SESSION}" /bin/zsh -lc "cd ${(q)REPO_ROOT} && export PATH=${(q)PATH} && exec pnpm dev > ${(q)DEV_LOG} 2>&1"
+  screen -dmS "${DEV_SESSION}" /bin/zsh -lc "cd ${(q)REPO_ROOT} && export PATH=${(q)PATH} && unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE && exec pnpm dev > ${(q)DEV_LOG} 2>&1"
   wait_for_log_pattern "${DEV_LOG}" "Host daemon started" "dev server" 90
 }
 
 start_desktop() {
   log "Starting desktop session ${DESKTOP_SESSION}"
   rm -f "${DESKTOP_LOG}"
-  screen -dmS "${DESKTOP_SESSION}" /bin/zsh -lc "cd ${(q)REPO_ROOT} && export PATH=${(q)PATH} && exec pnpm exec turbo run dev --filter=@bb/desktop > ${(q)DESKTOP_LOG} 2>&1"
+  screen -dmS "${DESKTOP_SESSION}" /bin/zsh -lc "cd ${(q)REPO_ROOT} && export PATH=${(q)PATH} && unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE && exec pnpm exec turbo run dev --filter=@bb/desktop > ${(q)DESKTOP_LOG} 2>&1"
   wait_for_log_pattern "${DESKTOP_LOG}" "@bb/desktop: app http://localhost:${BB_DEV_APP_PORT}" "desktop app" 120
 }
 
@@ -334,6 +334,8 @@ export BB_SERVER_URL=${BB_SERVER_URL}
 export BB_HOST_DAEMON_PORT=${BB_HOST_DAEMON_PORT}
 export BB_PROJECT_ID=proj_personal
 unset BB_THREAD_ID
+unset BB_ENVIRONMENT_ID
+unset BB_THREAD_STORAGE
 EOF
 }
 
