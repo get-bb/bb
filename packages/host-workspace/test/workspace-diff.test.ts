@@ -292,6 +292,45 @@ describe("Workspace.diffPatch", () => {
     expect(patches[0]?.patch).not.toContain("beta.txt");
   });
 
+  it("returns a tracked binary patch byte-equal to git diff --binary in a multi-file page", async () => {
+    const repoPath = await initRepo();
+    await writeBytes(
+      repoPath,
+      "logo.png",
+      Buffer.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+    );
+    await write(repoPath, "alpha.txt", "1\n2\n3\n");
+    await commitAll(repoPath, "base");
+
+    await writeBytes(
+      repoPath,
+      "logo.png",
+      Buffer.from([9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 11, 12, 13]),
+    );
+    await write(repoPath, "alpha.txt", "1\nTWO\n3\n");
+
+    const workspace = new Workspace(repoPath);
+    // A binary section from the combined-split must be byte-equal to the
+    // standalone `git diff --binary` — including the `GIT binary patch` block's
+    // terminating blank line, which an earlier strip dropped.
+    const perFileBinary = await runGit(
+      ["diff", "--no-ext-diff", "--binary", "-M", "HEAD", "--", "logo.png"],
+      { cwd: repoPath },
+    );
+    const patches = await workspace.diffPatch({
+      target: UNCOMMITTED,
+      paths: ["logo.png", "alpha.txt"],
+      maxBytesPerFile: BIG_BUDGET,
+    });
+
+    const binary = patches.find((patch) => patch.path === "logo.png");
+    expect(binary?.patch).toContain("GIT binary patch");
+    expect(binary?.patch).toBe(perFileBinary.stdout);
+    expect(binary?.patch.endsWith("\n\n")).toBe(true);
+    // The combined page must not bleed the sibling text file into this section.
+    expect(binary?.patch).not.toContain("alpha.txt");
+  });
+
   it("preserves rename detection in a path-subset patch", async () => {
     const repoPath = await initRepo();
     await write(

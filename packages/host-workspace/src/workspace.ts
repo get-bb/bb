@@ -2028,11 +2028,14 @@ function splitPatchIntoSections(combinedPatch: string): string[] {
 }
 
 /**
- * Joins a section's lines back into patch text with a single trailing newline,
- * dropping the trailing empty lines that the `\n` split produces at a section
- * boundary (or at the end of the combined output). This matches the framing of
- * a standalone single-file `git diff`, so a combined-split section is
- * byte-equal to the per-file patch for the same file.
+ * Joins a section's lines back into patch text, dropping the trailing empty
+ * lines the `\n` split produces at a section boundary (or end of output), so a
+ * combined-split section is byte-equal to the per-file `git diff` for that file.
+ *
+ * A text diff ends with a single newline after its last content line. A
+ * `GIT binary patch` literal block, however, is terminated by a blank line that
+ * is part of git's per-file framing — so for a binary section we re-add that
+ * terminator (the strip above removes it along with the boundary artifact).
  */
 function formatPatchSection(lines: string[]): string {
   let end = lines.length;
@@ -2042,7 +2045,9 @@ function formatPatchSection(lines: string[]): string {
   if (end === 0) {
     return "";
   }
-  return `${lines.slice(0, end).join("\n")}\n`;
+  const body = lines.slice(0, end);
+  const isBinary = body.some((line) => line === "GIT binary patch");
+  return `${body.join("\n")}\n${isBinary ? "\n" : ""}`;
 }
 
 const NAME_STATUS_LETTERS = new Set(["A", "M", "D", "R", "C", "T"]);
