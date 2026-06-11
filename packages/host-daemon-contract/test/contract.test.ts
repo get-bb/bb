@@ -431,6 +431,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
   "hostDaemonCommandSchema.disallowedTools":
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
+  "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
+    "thread execution options omit Claude Code mock CLI traffic unless the caller explicitly enables mock endpoint routing.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
 };
