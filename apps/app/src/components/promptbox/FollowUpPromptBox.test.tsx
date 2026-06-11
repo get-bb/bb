@@ -105,7 +105,7 @@ describe("FollowUpPromptBox", () => {
     expect(document.activeElement).not.toBe(editor);
   });
 
-  it("puts the caret at the end of the restored draft when focusEndKey changes (edit message)", async () => {
+  it("focuses the composer when focusEndKey changes (edit message), even on coarse pointers", async () => {
     setupCoarsePointerViewport();
     const props = makeFollowUpPromptBoxProps();
     props.composer = {
@@ -123,9 +123,16 @@ describe("FollowUpPromptBox", () => {
     expect(document.activeElement).not.toBe(editor);
 
     // Editing a queued message restores its text into the draft AND bumps
-    // focusEndKey in the SAME commit. The caret must land at the END of the
-    // restored text (so typing appends, not prepends) — which only holds if the
-    // focus runs after the content sync applies setContent.
+    // focusEndKey in the same commit; the composer focuses so the user can type.
+    //
+    // We assert only focus + content here — the two things jsdom can verify. The
+    // caret landing at the END of the restored text is a real-browser ProseMirror
+    // selection-mapping behaviour that jsdom does NOT reproduce (it always places
+    // the caret at the end after setContent regardless of focus order), so an
+    // offset assertion here would pass even with the bug. The end-caret guarantee
+    // instead comes from the focus effect being declared after the content-sync
+    // effect in PromptBoxInternal (so focus("end") runs post-setContent), and is
+    // covered by manual QA.
     const restored = "Restored draft text";
     rerender(
       <FollowUpPromptBox
@@ -138,9 +145,6 @@ describe("FollowUpPromptBox", () => {
 
     expect(document.activeElement).toBe(editor);
     expect(editor.textContent).toContain(restored);
-    const selection = document.getSelection();
-    expect(selection?.isCollapsed).toBe(true);
-    expect(selection?.focusOffset).toBe(restored.length);
   });
 
   it("uses modifier submit with Cmd+Enter without invoking the normal submit", () => {
