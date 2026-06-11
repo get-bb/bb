@@ -231,8 +231,6 @@ interface SectionToggleButtonProps {
   hideLabelInCompact?: boolean;
   isExpanded: boolean;
   onToggle: () => void;
-  /** Hide the trailing chevron (e.g. when the whole row is the click target). */
-  hideChevron?: boolean;
 }
 
 function SectionToggleButton({
@@ -244,7 +242,6 @@ function SectionToggleButton({
   hideLabelInCompact = true,
   isExpanded,
   onToggle,
-  hideChevron = false,
 }: SectionToggleButtonProps) {
   return (
     <button
@@ -275,16 +272,14 @@ function SectionToggleButton({
           {label}
         </span>
       ) : null}
-      {hideChevron ? null : (
-        <Icon
-          name="ChevronDown"
-          className={cn(
-            "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
-            isExpanded && "rotate-180",
-          )}
-          aria-hidden="true"
-        />
-      )}
+      <Icon
+        name="ChevronDown"
+        className={cn(
+          "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
+          isExpanded && "rotate-180",
+        )}
+        aria-hidden="true"
+      />
     </button>
   );
 }

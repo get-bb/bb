@@ -249,7 +249,7 @@ function renderDecoration(
           key={index}
           className={cn(
             "shrink-0 whitespace-pre",
-            isError ? "text-destructive" : decorationToneClass(tone),
+            isError ? "text-destructive-text" : decorationToneClass(tone),
           )}
         >
           {text}

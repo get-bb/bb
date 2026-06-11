@@ -85,7 +85,42 @@ vi.mock("@pierre/diffs/react", async () => {
     },
   );
 
-  return { CodeView };
+  // FilePreview's code view now renders `<File file={...} selectedLines={...} />`
+  // (single file; `selectedLines` is a `{ start, end }` range, not CodeView's
+  // `{ id, range }`). Mirror CodeView's line markup so line-scroll/selection
+  // assertions still hold.
+  const PierreFileMock = function File({
+    file,
+    selectedLines = null,
+  }: {
+    file: { name: string; contents: string };
+    selectedLines?: { start: number; end: number } | null;
+  }) {
+    return React.createElement(
+      "div",
+      { "data-testid": "mock-pierre-file" },
+      file.contents.split("\n").map((line, index) => {
+        const lineNumber = index + 1;
+        const selected =
+          selectedLines !== null &&
+          lineNumber >= selectedLines.start &&
+          lineNumber <= selectedLines.end;
+
+        return React.createElement(
+          "div",
+          {
+            "data-line": lineNumber,
+            "data-line-index": String(index),
+            "data-selected-line": selected ? "single" : undefined,
+            key: lineNumber,
+          },
+          line,
+        );
+      }),
+    );
+  };
+
+  return { CodeView, File: PierreFileMock };
 });
 
 afterEach(() => {

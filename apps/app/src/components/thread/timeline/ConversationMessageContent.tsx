@@ -9,7 +9,6 @@ import type {
 } from "@bb/server-contract";
 import type { PromptTextMention } from "@bb/domain";
 import { CopyButton } from "../../ui/copy-button.js";
-import { Icon } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
 import { MarkdownPreview } from "../../ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -36,6 +35,7 @@ import {
 } from "./ConversationMessageMentions.js";
 import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
+import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
@@ -256,26 +256,16 @@ function UserConversationMessage({
   const mutePrefixLength = computeMutedPrefixLength(initiator, text);
   const messageText = text.trim();
   const requestLabel = turnRequestLabel(turnRequest);
-  const isPendingSteer =
-    turnRequest.kind === "steer" && turnRequest.status === "pending";
 
   return (
     <div className="w-full">
       <div className="group ml-auto w-fit max-w-[80%]">
         {requestLabel ? (
           <div className="mb-1 flex justify-end">
-            <span
-              className={cn(
-                "shrink-0 whitespace-nowrap text-xs leading-none text-muted-foreground",
-                isPendingSteer && "animate-shine",
-              )}
-            >
-              <Icon
-                name="ArrowTurnForward"
-                className="mr-1 inline-block size-3 align-middle"
-              />
-              {requestLabel}
-            </span>
+            <TurnRequestLabel
+              turnRequest={turnRequest}
+              icon="ArrowTurnForward"
+            />
           </div>
         ) : null}
         <div className="rounded-md bg-surface-recessed p-2 text-sm leading-relaxed text-foreground">
@@ -337,6 +327,8 @@ function AssistantConversationMessage({
     return routing;
   }, [onOpenLink, onOpenLocalFileLink]);
 
+  const messageText = text.trim();
+
   return (
     <div className="group w-full px-2 text-sm font-normal leading-relaxed">
       <MarkdownPreview content={text} linkRouting={linkRouting} />
@@ -346,13 +338,15 @@ function AssistantConversationMessage({
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
       />
-      <div className="mt-1 flex justify-start">
-        <CopyButton
-          text={text}
-          label="Copy message"
-          className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-        />
-      </div>
+      {messageText ? (
+        <div className="mt-1 flex justify-start">
+          <CopyButton
+            text={text}
+            label="Copy message"
+            className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

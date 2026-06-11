@@ -590,12 +590,14 @@ function FilePreviewCode({ file, lineRange }: FilePreviewCodeProps) {
   useEffect(() => {
     const cleanupContainer = containerRef.current;
     let animationFrame: number | null = null;
-    let retryTimer: number | null = null;
     let attempts = 0;
 
+    // Retry on the next frame (the target line may not be in the DOM yet). One
+    // rAF channel only: `scrollToLine` overwrites `animationFrame` on each
+    // reschedule, so at most one callback is ever pending and cleanup cancels
+    // it — no doubling or leaked stale callbacks marking the wrong line.
     function scheduleRetry() {
       animationFrame = window.requestAnimationFrame(scrollToLine);
-      retryTimer = window.setTimeout(scrollToLine, 16);
     }
 
     function scrollToLine() {
@@ -629,9 +631,6 @@ function FilePreviewCode({ file, lineRange }: FilePreviewCodeProps) {
       }
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
-      }
-      if (retryTimer !== null) {
-        window.clearTimeout(retryTimer);
       }
     };
   }, [file.contents, file.name, targetLineNumber]);
