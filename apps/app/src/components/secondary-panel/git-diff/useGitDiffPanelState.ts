@@ -34,6 +34,7 @@ import {
 } from "../../git-diff/git-diff-parsing";
 import { type GitDiffSelectionOption } from "../ThreadSecondaryPanel";
 import {
+  buildGitDiffIdentity,
   buildGitDiffParsePlan,
   buildGitDiffSelectionOptions,
   buildGitDiffTarget,
@@ -90,12 +91,6 @@ interface UseGitDiffPanelStateParams {
   environmentId?: string;
   isDiffPanelActive: boolean;
   defaultMergeBaseBranch?: string;
-}
-
-interface GitDiffIdentityParams {
-  environmentId?: string;
-  mergeBaseRef: string | null;
-  target: WorkspaceDiffTarget | undefined;
 }
 
 interface GitDiffRequestIdentityParams {
@@ -556,6 +551,7 @@ export function useGitDiffPanelState({
   return {
     currentGitDiff,
     gitDiffError,
+    gitDiffTarget,
     gitDiffUnavailableMessage,
     gitDiffSelectOptions,
     gitDiffSelectValue,
@@ -573,40 +569,6 @@ export function useGitDiffPanelState({
     toggleAllGitDiffFilesCollapsed,
     toggleGitDiffFileCollapsed,
   };
-}
-
-function buildGitDiffIdentity({
-  environmentId,
-  mergeBaseRef,
-  target,
-}: GitDiffIdentityParams): string {
-  const environmentKey = environmentId ?? "none";
-  if (!target) return `${environmentKey}:none`;
-
-  switch (target.type) {
-    case "uncommitted":
-      return `${environmentKey}:uncommitted`;
-    case "branch_committed":
-      return [
-        environmentKey,
-        "branch_committed",
-        target.mergeBaseBranch,
-        mergeBaseRef ?? "pending",
-      ].join(":");
-    case "all":
-      return [
-        environmentKey,
-        "all",
-        target.mergeBaseBranch,
-        mergeBaseRef ?? "pending",
-      ].join(":");
-    case "commit":
-      return `${environmentKey}:commit:${target.sha}`;
-    default: {
-      const _exhaustive: never = target;
-      return _exhaustive;
-    }
-  }
 }
 
 function buildGitDiffRequestIdentity({

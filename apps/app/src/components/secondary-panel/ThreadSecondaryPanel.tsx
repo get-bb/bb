@@ -38,7 +38,6 @@ import {
 } from "./useSecondaryPanelResize";
 import {
   gitDiffCollapsedFileKeysAtom,
-  gitDiffLoadingFileKeysAtom,
   threadSecondaryPanelResizingAtom,
 } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
@@ -210,31 +209,22 @@ export function ThreadSecondaryPanel({
       : rawActivePanel;
   const isDiffPanelActive = activePanel === "git-diff";
   const {
-    currentGitDiff,
-    gitDiffError,
-    gitDiffUnavailableMessage,
+    gitDiffTarget,
     gitDiffSelectOptions,
     gitDiffSelectValue,
     gitDiffStats,
     hasParsedGitDiffFiles,
     isGitDiffLoading,
-    isParsingGitDiffFiles,
-    isPreparingGitDiff,
     onGitDiffSelectionChange,
-    onRequestFileContents,
     parsedGitDiffFileEntries,
-    queuedGitDiffFileRenderKeys,
-    setGitDiffFileRef,
     threadGitDiff,
     toggleAllGitDiffFilesCollapsed,
-    toggleGitDiffFileCollapsed,
   } = useGitDiffPanelState({
     environmentId,
     isDiffPanelActive,
     defaultMergeBaseBranch,
   });
   const collapsedGitDiffFileKeys = useAtomValue(gitDiffCollapsedFileKeysAtom);
-  const loadingGitDiffFileKeys = useAtomValue(gitDiffLoadingFileKeysAtom);
   const isSecondaryPanelResizing = useAtomValue(
     threadSecondaryPanelResizingAtom,
   );
@@ -424,28 +414,12 @@ export function ThreadSecondaryPanel({
           </div>
         ) : isDiffPanelActive ? (
           <GitDiffTabContent
-            collapsedGitDiffFileKeys={collapsedGitDiffFileKeys}
-            currentGitDiff={currentGitDiff}
-            gitDiffError={
-              gitDiffError instanceof Error
-                ? gitDiffError
-                : gitDiffError
-                  ? new Error("Failed to load git diff")
-                  : null
-            }
-            gitDiffUnavailableMessage={gitDiffUnavailableMessage}
+            environmentId={environmentId}
+            target={gitDiffTarget}
+            isDiffPanelActive={isDiffPanelActive}
             gitDiffViewOptions={gitDiffViewOptions}
-            isParsingGitDiffFiles={isParsingGitDiffFiles}
-            isPreparingGitDiff={isPreparingGitDiff}
-            loadingGitDiffFileKeys={loadingGitDiffFileKeys}
             onOpenFileInEditor={onOpenFileInEditor}
             onOpenFilePreview={onOpenFilePreview}
-            onRequestFileContents={onRequestFileContents}
-            parsedGitDiffFileEntries={parsedGitDiffFileEntries}
-            queuedGitDiffFileRenderKeys={queuedGitDiffFileRenderKeys}
-            setGitDiffFileRef={setGitDiffFileRef}
-            threadGitDiff={threadGitDiff}
-            toggleGitDiffFileCollapsed={toggleGitDiffFileCollapsed}
             workspaceRootPath={workspaceRootPath}
           />
         ) : (

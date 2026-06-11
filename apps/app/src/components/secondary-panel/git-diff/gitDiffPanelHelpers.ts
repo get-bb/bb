@@ -1,4 +1,4 @@
-import type { WorkspaceCommitSummary } from "@bb/domain";
+import type { WorkspaceCommitSummary, WorkspaceDiffTarget } from "@bb/domain";
 import {
   getGitDiffFileChangeKind,
   getGitDiffParseKey,
@@ -6,6 +6,52 @@ import {
   type ParsedGitDiffFileEntry,
 } from "../../git-diff/git-diff-parsing";
 import type { GitDiffSelectionOption } from "../ThreadSecondaryPanel";
+
+export interface GitDiffIdentityParams {
+  environmentId?: string;
+  mergeBaseRef: string | null;
+  target: WorkspaceDiffTarget | undefined;
+}
+
+/**
+ * Single string identity for the active (environment, target, resolved
+ * merge-base) diff slice. Used to scope per-file UI state and patch caches so a
+ * target/environment switch yields a fresh slice rather than leaking a previous
+ * diff's collapse choices onto an unrelated file at the same path.
+ */
+export function buildGitDiffIdentity({
+  environmentId,
+  mergeBaseRef,
+  target,
+}: GitDiffIdentityParams): string {
+  const environmentKey = environmentId ?? "none";
+  if (!target) return `${environmentKey}:none`;
+
+  switch (target.type) {
+    case "uncommitted":
+      return `${environmentKey}:uncommitted`;
+    case "branch_committed":
+      return [
+        environmentKey,
+        "branch_committed",
+        target.mergeBaseBranch,
+        mergeBaseRef ?? "pending",
+      ].join(":");
+    case "all":
+      return [
+        environmentKey,
+        "all",
+        target.mergeBaseBranch,
+        mergeBaseRef ?? "pending",
+      ].join(":");
+    case "commit":
+      return `${environmentKey}:commit:${target.sha}`;
+    default: {
+      const _exhaustive: never = target;
+      return _exhaustive;
+    }
+  }
+}
 
 export const GIT_DIFF_PARSE_BATCH_THRESHOLD = 24;
 export const GIT_DIFF_AUTO_COLLAPSE_FILE_THRESHOLD = 10;

@@ -40,10 +40,14 @@ export interface UseEnvironmentDiffPatchesArgs {
   target?: WorkspaceDiffTarget;
 }
 
+export type RequestDiffPatchPaths = (args: RequestDiffPatchPathsArgs) => void;
+export type GetDiffPatchState = (path: string) => DiffPatchState;
+export type RetryDiffPatchPath = (path: string) => void;
+
 export interface UseEnvironmentDiffPatchesResult {
-  requestPaths(args: RequestDiffPatchPathsArgs): void;
-  getPatchState(path: string): DiffPatchState;
-  retry(path: string): void;
+  requestPaths: RequestDiffPatchPaths;
+  getPatchState: GetDiffPatchState;
+  retry: RetryDiffPatchPath;
 }
 
 const IDLE_STATE: DiffPatchState = { status: "idle" };
