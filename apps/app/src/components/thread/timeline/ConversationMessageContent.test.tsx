@@ -347,6 +347,7 @@ describe("ConversationMessageContent", () => {
                     case "thread":
                       return `/projects/proj_123/threads/${link.threadId}`;
                   }
+                  return null;
                 }}
                 senderThreadId="thr_sender123"
                 senderThreadTitle="Frontend thread"
