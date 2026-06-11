@@ -18,7 +18,7 @@ export function Overview() {
       <div className="flex flex-col items-center gap-3">
         <ScrollToBottomButton visible active onClick={noop} />
         <span className="text-xs text-muted-foreground">
-          Active — shimmering download-circle
+          Active — shimmering arrow
         </span>
       </div>
       <div className="flex flex-col items-center gap-3">
