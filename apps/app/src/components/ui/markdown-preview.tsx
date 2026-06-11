@@ -555,6 +555,67 @@ function useMarkdownContentWidthVariable() {
   return contentRef;
 }
 
+const FRONTMATTER_PATTERN = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+
+/**
+ * Splits a leading YAML frontmatter block (`---` … `---` at the very start of
+ * the document) from the markdown body. Without this, react-markdown renders
+ * the fences as two thematic breaks with the raw YAML as a paragraph between
+ * them. Returns the inner frontmatter text (or null) and the remaining body.
+ */
+function splitMarkdownFrontmatter(markdown: string): {
+  frontmatter: string | null;
+  body: string;
+} {
+  const match = FRONTMATTER_PATTERN.exec(markdown);
+  if (match === null) {
+    return { frontmatter: null, body: markdown };
+  }
+  return { frontmatter: match[1], body: markdown.slice(match[0].length) };
+}
+
+/**
+ * Renders frontmatter subtly: a muted, small key/value list set off by a thin
+ * left rule, so it reads as document metadata instead of competing with the
+ * body. Flat `key: value` lines get an aligned key; anything else (nested keys,
+ * list items) is shown verbatim but still muted.
+ */
+function MarkdownFrontmatter({ source }: { source: string }) {
+  const lines = source.split("\n").filter((line) => line.trim().length > 0);
+  if (lines.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mb-3 space-y-0.5 border-l-2 border-border pl-3 text-xs leading-relaxed text-muted-foreground">
+      {lines.map((line, index) => {
+        const separator = line.indexOf(":");
+        if (separator > 0 && !/^[\s-]/.test(line)) {
+          const key = line.slice(0, separator).trim();
+          const value = line.slice(separator + 1).trim();
+          return (
+            <div key={index} className="flex gap-2">
+              <span className="shrink-0 font-medium text-muted-foreground/70">
+                {key}
+              </span>
+              {value.length > 0 ? (
+                <span className="min-w-0 break-words">{value}</span>
+              ) : null}
+            </div>
+          );
+        }
+        return (
+          <div
+            key={index}
+            className="whitespace-pre-wrap break-words text-muted-foreground/80"
+          >
+            {line}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function MarkdownPreviewComponent({
   allowHtml = false,
   className,
@@ -575,6 +636,10 @@ function MarkdownPreviewComponent({
         ? normalizeLocalFileMarkdownLinks(content)
         : content,
     [content, normalizeLocalFileLinks],
+  );
+  const { frontmatter, body } = useMemo(
+    () => splitMarkdownFrontmatter(markdownContent),
+    [markdownContent],
   );
   const markdownComponents = useMemo(
     () =>
@@ -605,13 +670,16 @@ function MarkdownPreviewComponent({
           className,
         )}
       >
+        {frontmatter !== null ? (
+          <MarkdownFrontmatter source={frontmatter} />
+        ) : null}
         <ReactMarkdown
           rehypePlugins={allowHtml ? MARKDOWN_HTML_REHYPE_PLUGINS : undefined}
           remarkPlugins={[remarkGfm]}
           components={markdownComponents}
           urlTransform={resolvedUrlTransform}
         >
-          {markdownContent}
+          {body}
         </ReactMarkdown>
       </div>
 
