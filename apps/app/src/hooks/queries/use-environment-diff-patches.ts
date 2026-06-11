@@ -43,11 +43,13 @@ export interface UseEnvironmentDiffPatchesArgs {
 export type RequestDiffPatchPaths = (args: RequestDiffPatchPathsArgs) => void;
 export type GetDiffPatchState = (path: string) => DiffPatchState;
 export type RetryDiffPatchPath = (path: string) => void;
+export type LoadDiffPatchPath = (path: string) => void;
 
 export interface UseEnvironmentDiffPatchesResult {
   requestPaths: RequestDiffPatchPaths;
   getPatchState: GetDiffPatchState;
   retry: RetryDiffPatchPath;
+  loadPath: LoadDiffPatchPath;
 }
 
 const IDLE_STATE: DiffPatchState = { status: "idle" };
@@ -285,14 +287,44 @@ export function useEnvironmentDiffPatches(
     [dispatchPending],
   );
 
-  const retry = useCallback(
+  // Fetch a single path immediately, bypassing the debounced shared
+  // `pendingPathsRef`. A scroll-driven `requestPaths` can replace that ref (and
+  // reset its timer) between an `on_demand`/retry click and the debounced
+  // dispatch, dropping the click; going direct sidesteps that race entirely.
+  const loadPathNow = useCallback(
     (path: string) => {
       const generationTarget = targetIdentityRef.current;
-      setInFlight((previous) => clearError(previous, path));
       setInFlight((previous) => markLoading(previous, [path]));
       void fetchPage([path], generationTarget);
     },
     [fetchPage],
+  );
+
+  const retry = useCallback(
+    (path: string) => {
+      setInFlight((previous) => clearError(previous, path));
+      loadPathNow(path);
+    },
+    [loadPathNow],
+  );
+
+  // The `on_demand` "Load diff" CTA: fetch this one path now, but never disturb
+  // a patch that is already loaded, in flight, or errored (an error clears only
+  // via `retry`).
+  const loadPath = useCallback(
+    (path: string) => {
+      if (readDiffPatchEntry({ queryClient, identity, path }) !== undefined) {
+        return;
+      }
+      if (
+        inFlightRef.current.loading.has(path) ||
+        inFlightRef.current.errors.has(path)
+      ) {
+        return;
+      }
+      loadPathNow(path);
+    },
+    [queryClient, identity, loadPathNow],
   );
 
   const getPatchState = useCallback(
@@ -317,7 +349,7 @@ export function useEnvironmentDiffPatches(
     [queryClient, identity, inFlight],
   );
 
-  return { requestPaths, getPatchState, retry };
+  return { requestPaths, getPatchState, retry, loadPath };
 }
 
 function markLoading(

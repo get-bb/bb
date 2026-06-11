@@ -6,7 +6,7 @@ import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { RequestDiffFileContents } from "@/components/git-diff/GitDiffCardBody";
 import {
   type DiffPatchState,
-  type RequestDiffPatchPaths,
+  type LoadDiffPatchPath,
   type RetryDiffPatchPath,
   useEnvironmentDiffPatches,
 } from "@/hooks/queries/use-environment-diff-patches";
@@ -54,10 +54,8 @@ export function DiffFilesPanel({
   onRequestFileContents,
 }: DiffFilesPanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const { requestPaths, getPatchState, retry } = useEnvironmentDiffPatches(
-    environmentId,
-    { target },
-  );
+  const { requestPaths, getPatchState, retry, loadPath } =
+    useEnvironmentDiffPatches(environmentId, { target });
 
   const virtualizer = useVirtualizer({
     count: files.length,
@@ -66,6 +64,11 @@ export function DiffFilesPanel({
       const entry = files[index];
       return entry ? estimateCardHeight(entry) + DIFF_FILES_GAP_PX : 0;
     },
+    // Key the measurement cache by the stable per-row path (the same identity
+    // used as the React key) rather than by index, so measured heights don't
+    // bleed across diff-target switches where the same index holds a different
+    // file.
+    getItemKey: (index) => files[index]?.path ?? index,
     overscan: DIFF_FILES_OVERSCAN,
   });
 
@@ -135,7 +138,7 @@ export function DiffFilesPanel({
                 diffViewOptions={diffViewOptions}
                 filePathRoot={filePathRoot}
                 patchState={getPatchState(entry.path)}
-                requestPaths={requestPaths}
+                loadPath={loadPath}
                 retry={retry}
                 onOpenFileInEditor={onOpenFileInEditor}
                 onOpenFilePreview={onOpenFilePreview}
@@ -159,7 +162,7 @@ interface DiffFileRowProps {
   diffViewOptions: Record<string, string | boolean | number>;
   filePathRoot?: string | null;
   patchState: DiffPatchState;
-  requestPaths: RequestDiffPatchPaths;
+  loadPath: LoadDiffPatchPath;
   retry: RetryDiffPatchPath;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
@@ -173,7 +176,7 @@ function DiffFileRow({
   diffViewOptions,
   filePathRoot,
   patchState,
-  requestPaths,
+  loadPath,
   retry,
   onOpenFileInEditor,
   onOpenFilePreview,
@@ -197,8 +200,8 @@ function DiffFileRow({
   }, [entry, fileCount, setCardState]);
 
   const handleLoadPatch = useCallback(() => {
-    requestPaths({ visible: [entry.path], overscan: [] });
-  }, [entry.path, requestPaths]);
+    loadPath(entry.path);
+  }, [entry.path, loadPath]);
 
   const handleRetry = useCallback(() => {
     retry(entry.path);

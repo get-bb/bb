@@ -148,4 +148,17 @@ describe("DiffFileCard", () => {
     expect(screen.queryByTestId("diff-view")).toBeNull();
     expect(container.querySelector(".animate-pulse")).toBeTruthy();
   });
+
+  it("shows a terminal notice (not a skeleton) when a loaded patch yields no renderable file", () => {
+    const onOpenFilePreview = vi.fn();
+    const { container } = renderCard({
+      patchState: { status: "loaded", patch: "", truncated: false },
+      onOpenFilePreview,
+    });
+    expect(screen.getByText("No renderable diff for this file.")).toBeTruthy();
+    expect(container.querySelector(".animate-pulse")).toBeNull();
+    expect(screen.queryByTestId("diff-view")).toBeNull();
+    fireEvent.click(getLinkByText(container, "Open file"));
+    expect(onOpenFilePreview).toHaveBeenCalledWith("src/file.ts");
+  });
 });

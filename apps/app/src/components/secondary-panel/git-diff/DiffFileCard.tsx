@@ -71,7 +71,9 @@ export interface DiffFileCardProps {
  *
  * - `auto`: render the parsed patch once it arrives (reusing
  *   {@link GitDiffCardBody}); a `truncated` patch shows a "Show full diff"
- *   affordance; while the patch loads it shows a skeleton.
+ *   affordance; a loaded patch that parses to no renderable file (empty / pure
+ *   rename / mode-only) shows a terminal "No renderable diff" notice; while the
+ *   patch loads it shows a skeleton.
  * - `on_demand`: header + stat + a "Load diff" button that triggers the fetch.
  * - `too_large`: header + a "too large" notice + a link to open the file.
  *
@@ -261,6 +263,27 @@ function DiffFileCardBody({
   }
 
   if (parsedFile === null) {
+    // A `loaded` patch that parses to no renderable file (empty patch / parse
+    // error — common for pure renames and mode-only changes) is terminal: show
+    // a notice with the same open-file affordance the `too_large` tier uses,
+    // never a skeleton that would spin forever. The skeleton is reserved for the
+    // genuinely-not-yet-loaded states below.
+    if (patchState.status === "loaded") {
+      return (
+        <div className={DIFF_FILE_CARD_NOTICE_CLASS}>
+          <span>No renderable diff for this file.</span>
+          {onOpenFilePreview ? (
+            <FilePathLink
+              path={entry.path}
+              displayName="Open file"
+              onClick={() => onOpenFilePreview(entry.path)}
+              className="text-xs underline underline-offset-4"
+            />
+          ) : null}
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-1.5 px-3 py-3">
         <Skeleton className="h-3 w-full rounded-sm" />
