@@ -335,10 +335,10 @@ export function ThreadSecondaryPanel({
           data-testid="thread-secondary-panel-top-chrome"
           className={cn(
             CHROME_ROW_CLASS,
-            // Border on the h-12 row itself (border-box, inside the 48px) so the
-            // bottom edge aligns 1:1 with the chat header's border rather than
-            // sitting 1px lower on an auto-height wrapper.
-            "min-w-0 justify-between gap-2 border-b border-border-seam-vertical px-4",
+            // No bottom border: the top nav sits flush over the panel body so
+            // each view's background (info, diff, new-tab, terminal) runs
+            // straight up to the top with no seam.
+            "min-w-0 justify-between gap-2 px-4",
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             reserveLeftForDesktopTrafficLights &&
               MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
