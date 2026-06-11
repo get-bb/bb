@@ -495,29 +495,31 @@ export function ExperimentsSettingsSection({
       title="Experiments"
       description="Early features that are off by default. Opt in to try them."
     >
-      <SettingsWithControl
-        label={WORKFLOWS_EXPERIMENT_LABEL}
-        description="Enable multi-agent workflows and the Workflows sidebar."
-      >
-        <Switch
-          checked={workflowsEnabled}
-          disabled={disabled}
-          onCheckedChange={onWorkflowsEnabledChange}
-          aria-label={WORKFLOWS_EXPERIMENT_LABEL}
-        />
-      </SettingsWithControl>
+      <div className="space-y-4">
+        <SettingsWithControl
+          label={WORKFLOWS_EXPERIMENT_LABEL}
+          description="Enable multi-agent workflows and the Workflows sidebar."
+        >
+          <Switch
+            checked={workflowsEnabled}
+            disabled={disabled}
+            onCheckedChange={onWorkflowsEnabledChange}
+            aria-label={WORKFLOWS_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
 
-      <SettingsWithControl
-        label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
-        description="Proxy Claude Code requests as CLI traffic to api.anthropic.com."
-      >
-        <Switch
-          checked={claudeCodeMockCliTrafficEnabled}
-          disabled={disabled}
-          onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
-          aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
-        />
-      </SettingsWithControl>
+        <SettingsWithControl
+          label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+          description="Proxy Claude Code requests as CLI traffic to api.anthropic.com."
+        >
+          <Switch
+            checked={claudeCodeMockCliTrafficEnabled}
+            disabled={disabled}
+            onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
+            aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+      </div>
     </SettingsSection>
   );
 }
