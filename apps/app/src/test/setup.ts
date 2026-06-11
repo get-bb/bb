@@ -11,6 +11,18 @@
  * without polyfills they throw in every test that indirectly renders such a
  * component.
  */
+
+// `@pierre/diffs` (and similar browser-oriented deps) read `navigator.userAgent`
+// at module load. Node < 21 has no global `navigator`, so node-environment tests
+// that transitively import them crash on load. Provide a minimal stub when one
+// isn't already present (jsdom/browser envs supply a real navigator).
+if (typeof globalThis.navigator === "undefined") {
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { userAgent: "node" },
+  });
+}
+
 if (typeof window !== "undefined" && typeof jsdom !== "undefined") {
   /**
    * Node 26 defines global storage accessors. Vitest keeps existing globals

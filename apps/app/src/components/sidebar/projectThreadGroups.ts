@@ -225,8 +225,14 @@ function isRootThread(
 }
 
 export function buildProjectThreadGroups(
-  projectThreads: readonly ThreadListEntry[],
+  allProjectThreads: readonly ThreadListEntry[],
 ): ProjectThreadItem[] {
+  // Side chats live in the right-panel tab, not the sidebar tree — drop them up
+  // front so they neither nest under a parent (nor inflate its rolled-up stats)
+  // nor resurface as orphan roots in the cycle-recovery pass below.
+  const projectThreads = allProjectThreads.filter(
+    (thread) => thread.childOrigin !== "side-chat",
+  );
   const projectThreadIds = new Set(
     projectThreads.map((thread) => thread.id),
   );
@@ -235,9 +241,6 @@ export function buildProjectThreadGroups(
   for (const thread of projectThreads) {
     if (thread.parentThreadId === null) continue;
     if (!projectThreadIds.has(thread.parentThreadId)) continue;
-    // Side chats live in the right-panel tab, not the sidebar tree — keep them
-    // out of the parent's nesting (and out of its rolled-up stats).
-    if (thread.childOrigin === "side-chat") continue;
 
     const children = childrenByParentId.get(thread.parentThreadId);
     if (children) {

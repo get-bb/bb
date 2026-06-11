@@ -136,6 +136,31 @@ describe("buildProjectThreadGroups", () => {
     expect(findNode(rootItems, "manager-grandchild")?.depth).toBe(3);
   });
 
+  it("excludes side-chat children from the tree but keeps forks nested", () => {
+    const items = buildProjectThreadGroups([
+      createThread({ id: "thr_parent", createdAt: 10 }),
+      createThread({
+        id: "thr_fork",
+        parentThreadId: "thr_parent",
+        childOrigin: "fork",
+        createdAt: 20,
+      }),
+      createThread({
+        id: "thr_sidechat",
+        parentThreadId: "thr_parent",
+        childOrigin: "side-chat",
+        createdAt: 30,
+      }),
+    ]);
+
+    // The fork nests under its parent; the side chat (panel-only) never appears
+    // in the sidebar tree.
+    expect(summarizeItems(items)).toEqual([
+      { id: "thr_parent", children: ["thr_fork"] },
+    ]);
+    expect(findNode(items, "thr_sidechat")).toBeNull();
+  });
+
   it("keeps orphaned children as project roots", () => {
     const rootItems = buildProjectThreadGroups([
       createThread({
