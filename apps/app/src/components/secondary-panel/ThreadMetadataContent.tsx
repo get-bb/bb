@@ -390,15 +390,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
   return (
     <DetailRow
-      label={
-        <span className="flex items-center gap-1.5">
-          <Icon
-            name="GitMerge"
-            className="size-3.5 shrink-0 text-muted-foreground"
-          />
-          Pull request
-        </span>
-      }
+      label={<DetailRowIconLabel icon="GitMerge">Pull request</DetailRowIconLabel>}
       valueClassName="min-w-0"
     >
       <a

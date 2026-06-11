@@ -11,6 +11,7 @@ import type {
   ClientTurnRequestId,
   AvailableModel,
   DynamicTool,
+  GitHostPullRequest,
   PromptInput,
 } from "@bb/domain";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
@@ -45,6 +46,7 @@ interface FakeWorkspaceState {
   lastCommitMessage: string | undefined;
   lastDiffTarget: FakeWorkspaceDiffTarget | undefined;
   listedModelsProviderId: string | undefined;
+  pullRequest: GitHostPullRequest | null;
   resetCount: number;
   statusReads: number;
 }
@@ -99,6 +101,7 @@ export function createFakeWorkspace(pathname: string) {
     resetCount: 0,
     destroyed: false,
     listedModelsProviderId: undefined,
+    pullRequest: null,
   };
   const workspace: FakeHostWorkspace = {
     path: pathname,
@@ -161,7 +164,7 @@ export function createFakeWorkspace(pathname: string) {
       };
     },
     async getPullRequest() {
-      return null;
+      return state.pullRequest;
     },
     async listBranches() {
       return ["main"];
