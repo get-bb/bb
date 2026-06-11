@@ -70,28 +70,30 @@ const basePermission: ExecutionPermissionConfig = {
   supported: true,
 };
 
-// Locked footer (side chat): the side chat inherits its parent thread's
-// provider/model and is always read-only, so the model and permission render as
-// static labels rather than interactive pickers. Omit `model.onChange` (and the
-// reasoning config) so the model is locked, and omit `permission.onChange` so
-// the permission is locked.
-const lockedExecution = makeExecutionControlsProps({
+// Read-only footer (side chat): the side chat inherits its parent thread's
+// provider/model and is always read-only. It renders the SAME model/reasoning
+// and permission pickers the main thread does — just disabled via the
+// FollowUpPromptBox `readOnly` flag — so labels and positions match exactly.
+// The configs carry real onChange handlers (they never fire while disabled).
+const readOnlyExecution = makeExecutionControlsProps({
   provider: {
+    options: STORY_PROVIDER_OPTIONS,
     selectedId: "codex",
+    onChange: noop,
     hasMultiple: false,
   },
   model: {
     active: { model: "gpt-5.5" },
     selected: "gpt-5.5",
     options: STORY_CODEX_MODELS,
+    onChange: noop,
   },
-  reasoning: undefined,
-  serviceTier: undefined,
 });
 
-const lockedPermission: ExecutionPermissionConfig = {
+const readOnlyPermission: ExecutionPermissionConfig = {
   value: "readonly",
   options: permissionModeOptions,
+  onChange: noop,
   supported: true,
 };
 
@@ -359,10 +361,12 @@ interface RowConfig {
   contextWindowUsage?: ThreadContextWindowUsage | null;
   stack?: ReactNode | null;
   zenModeResetKey?: string;
-  /** Defaults to the editable execution controls; override to show locked (read-only) model/provider. */
+  /** Defaults to the editable execution controls; override to show the read-only model/provider config. */
   execution?: ExecutionControlsProps;
-  /** Defaults to the editable permission picker; override to show a locked (read-only) permission label. */
+  /** Defaults to the editable permission picker; override to show the read-only permission config. */
   permission?: RowPermission;
+  /** Render the footer pickers disabled (side chat). The same controls, non-interactive. */
+  readOnly?: boolean;
 }
 
 type ComposerCoreRuntimeStatus = Parameters<
@@ -392,6 +396,7 @@ function Row({
   zenModeResetKey = "thr_demo",
   execution = baseExecution,
   permission = basePermission,
+  readOnly = false,
 }: RowConfig) {
   const [message, setMessage] = useState(initialMessage);
   const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
@@ -435,6 +440,7 @@ function Row({
         contextWindowUsage={contextWindowUsage}
         execution={execution}
         permission={permission}
+        readOnly={readOnly}
         typeahead={typeaheadBase}
         zenModeResetKey={zenModeResetKey}
       />
@@ -537,13 +543,14 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="locked footer (side chat)"
-        hint="inherits parent provider/model; always read-only — model & permission render as static labels"
+        label="read-only footer (side chat)"
+        hint="inherits parent provider/model; always read-only — same model & permission pickers as the main thread, just disabled"
       >
         <Row
           submitMode={{ kind: "ready" }}
-          execution={lockedExecution}
-          permission={lockedPermission}
+          execution={readOnlyExecution}
+          permission={readOnlyPermission}
+          readOnly
         />
       </StoryRow>
     </StoryCard>

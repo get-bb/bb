@@ -23,8 +23,7 @@ export interface ExecutionModelConfig {
   selected: string;
   options: readonly PickerOption<string>[];
   loadError?: SystemExecutionOptionsModelLoadError | null;
-  /** Omit to render the model as a locked, read-only label (used by surfaces that inherit a parent thread's model, e.g. side chats). */
-  onChange?: (value: string) => void;
+  onChange: (value: string) => void;
 }
 
 export interface ExecutionServiceTierConfig {
@@ -43,8 +42,7 @@ export interface ExecutionReasoningConfig {
 export interface ExecutionPermissionConfig {
   value?: PermissionMode;
   options: readonly PickerOption<PermissionMode>[];
-  /** Omit to render the permission as a locked, read-only label (used by surfaces with a fixed permission mode, e.g. always-readonly side chats). */
-  onChange?: (value: PermissionMode) => void;
+  onChange: (value: PermissionMode) => void;
   supported: boolean;
 }
 
@@ -52,8 +50,13 @@ export interface ExecutionControlsProps {
   provider: ExecutionProviderConfig;
   model: ExecutionModelConfig;
   serviceTier?: ExecutionServiceTierConfig;
-  /** Required for interactive (editable-model) surfaces. Omit on locked surfaces (model.onChange undefined), where the reasoning picker never renders. */
-  reasoning?: ExecutionReasoningConfig;
+  reasoning: ExecutionReasoningConfig;
+  /**
+   * Render the model/reasoning picker as a non-interactive, dimmed label
+   * (read-only surfaces, e.g. the side chat inheriting the parent thread's
+   * model). The same picker renders, just disabled.
+   */
+  disabled?: boolean;
 }
 
 export const ExecutionControls = memo(function ExecutionControls({
@@ -61,6 +64,7 @@ export const ExecutionControls = memo(function ExecutionControls({
   model,
   serviceTier,
   reasoning,
+  disabled,
 }: ExecutionControlsProps) {
   const handleServiceTierChange = serviceTier?.onChange ?? (() => {});
   const isProviderLocked = provider.onChange === undefined;
@@ -79,29 +83,20 @@ export const ExecutionControls = memo(function ExecutionControls({
     provider.displayName &&
     model.options.length === 0;
 
-  // A locked model (no onChange) inherits its value from elsewhere (e.g. a side
-  // chat inheriting the parent thread's model). Render it as a static label
-  // instead of the interactive picker, mirroring the locked-provider treatment.
-  const onModelChange = model.onChange;
-  const lockedModelValue = model.active?.model ?? model.selected;
-  const showReadOnlyModel =
-    onModelChange === undefined && lockedModelValue.length > 0;
-
+  // A disabled picker still renders (showing the inherited model) even though
+  // its provider can't be switched — the side chat lists a single model option
+  // for the inherited model so the picker has something to display.
   const canSwitchProviders = Boolean(
     provider.hasMultiple &&
     provider.onChange &&
     provider.options &&
     provider.options.length > 1,
   );
-  const showModelPicker =
-    onModelChange !== undefined &&
-    (model.options.length > 0 || canSwitchProviders);
+  const showModelPicker = model.options.length > 0 || canSwitchProviders;
   const selectedProviderModelLoadError =
     model.loadError?.providerId === selectedProviderId ? model.loadError : null;
   const showModelLoadError =
-    !showModelPicker &&
-    !showReadOnlyModel &&
-    selectedProviderModelLoadError !== null;
+    !showModelPicker && selectedProviderModelLoadError !== null;
 
   return (
     <>
@@ -113,15 +108,7 @@ export const ExecutionControls = memo(function ExecutionControls({
           muted
         />
       ) : null}
-      {showReadOnlyModel ? (
-        <OptionDisplay
-          label="Model"
-          value={formatModelLabel(lockedModelValue)}
-          compactValue={formatModelLabel(lockedModelValue)}
-          muted
-        />
-      ) : null}
-      {showModelPicker && reasoning ? (
+      {showModelPicker ? (
         <ModelReasoningPicker
           providerOptions={provider.options ?? []}
           selectedProviderId={selectedProviderId}
@@ -130,7 +117,7 @@ export const ExecutionControls = memo(function ExecutionControls({
           modelValue={model.active?.model ?? model.selected}
           modelOptions={model.options}
           modelLoadError={model.loadError}
-          onModelChange={onModelChange}
+          onModelChange={model.onChange}
           formatModelLabel={formatModelLabel}
           reasoningValue={reasoning.value}
           reasoningOptions={reasoning.options}
@@ -142,6 +129,7 @@ export const ExecutionControls = memo(function ExecutionControls({
           showFastModeToggle={serviceTier?.supported ?? false}
           serviceTierSupportByProvider={serviceTier?.supportByProvider}
           muted
+          disabled={disabled}
         />
       ) : null}
       {showModelLoadError ? (

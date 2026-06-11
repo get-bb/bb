@@ -1,9 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import type {
-  Environment,
-  PermissionMode,
-  PromptTextMention,
-} from "@bb/domain";
+import type { Environment, PromptTextMention } from "@bb/domain";
 import type { Thread } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import {
@@ -25,7 +21,7 @@ import type {
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
-import type { PickerOption } from "@/components/pickers/OptionPicker";
+import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
@@ -78,19 +74,6 @@ const SIDE_CHAT_ATTACHMENTS: AttachmentsConfig = {
   items: [],
   isAttaching: false,
   error: null,
-};
-
-// Side chats inherit the parent thread's provider/model and are always
-// read-only, so the footer pickers render as static labels. The permission
-// options list is needed only to map "readonly" → its display label.
-const SIDE_CHAT_PERMISSION_OPTIONS: readonly PickerOption<PermissionMode>[] = [
-  { value: "readonly", label: "Read only" },
-];
-
-const SIDE_CHAT_PERMISSION: ExecutionPermissionConfig = {
-  value: "readonly",
-  options: SIDE_CHAT_PERMISSION_OPTIONS,
-  supported: true,
 };
 
 export interface SetSideChatThreadId {
@@ -208,6 +191,23 @@ export function SideChatTabContent({
   );
   const childThreadQuery = useThread(childThreadId ?? "", {
     enabled: childThreadId !== null,
+  });
+  // Build the SAME execution + permission configs the main thread builds (see
+  // ThreadDetailPromptArea), seeded from the parent thread's resolved options
+  // and its environment's provider/model catalog. The side chat renders these
+  // through the identical pickers, just disabled (read-only) — so the model and
+  // permission labels match the main thread exactly. Permission is pinned to
+  // "readonly": a side chat never writes to the workspace.
+  const defaultExecutionOptions = executionOptionsQuery.data;
+  const threadCreationOptions = useThreadCreationOptions({
+    scope: "component-local",
+    environmentId: sourceThread.environmentId ?? undefined,
+    resetKey: sourceThread.id,
+    initialProviderId: sourceThread.providerId,
+    initialModel: defaultExecutionOptions?.model,
+    initialServiceTier: defaultExecutionOptions?.serviceTier,
+    initialReasoningLevel: defaultExecutionOptions?.reasoningLevel,
+    initialPermissionMode: "readonly",
   });
   // Synchronous guard against a double create: `tab.threadId` only flips to the
   // new id after the async create resolves and the panel state propagates, so a
@@ -366,23 +366,95 @@ export function SideChatTabContent({
     ],
   );
 
-  // Provider + model are inherited from the parent thread and render as static,
-  // read-only labels: provider/model `onChange` omitted, reasoning omitted
-  // (the reasoning picker only renders on editable surfaces).
-  const executionConfig = useMemo<ExecutionControlsProps>(() => {
-    const model = executionOptionsQuery.data?.model ?? "";
-    return {
+  // Built the same shape as the main thread's executionConfig (see
+  // ThreadDetailPromptArea). The pickers are rendered disabled via the
+  // FollowUpPromptBox `readOnly` flag, so the `onChange` setters never fire —
+  // but wiring the hook's real setters keeps the config identical to the main
+  // thread rather than inventing parallel no-op plumbing.
+  const {
+    selectedProviderId,
+    providerOptions,
+    hasMultipleProviders,
+    selectedProviderDisplayName,
+    selectedModel,
+    setSelectedModel,
+    serviceTier,
+    setServiceTier,
+    reasoningLevel,
+    setReasoningLevel,
+    permissionMode,
+    setPermissionMode,
+    activeModel,
+    modelOptions,
+    modelLoadError,
+    reasoningOptions,
+    permissionModeOptions,
+    supportsPermissionModeSelection,
+    supportsServiceTier,
+    serviceTierSupportByProvider,
+  } = threadCreationOptions;
+
+  const executionConfig = useMemo<ExecutionControlsProps>(
+    () => ({
       provider: {
-        selectedId: sourceThread.providerId,
-        hasMultiple: false,
+        options: providerOptions,
+        selectedId: selectedProviderId,
+        hasMultiple: hasMultipleProviders,
+        displayName: selectedProviderDisplayName,
       },
       model: {
-        active: model ? { model } : null,
-        selected: model,
-        options: [],
+        active: activeModel,
+        selected: selectedModel,
+        options: modelOptions,
+        loadError: modelLoadError,
+        onChange: setSelectedModel,
       },
-    };
-  }, [executionOptionsQuery.data?.model, sourceThread.providerId]);
+      serviceTier: {
+        value: serviceTier,
+        onChange: setServiceTier,
+        supported: supportsServiceTier,
+        supportByProvider: serviceTierSupportByProvider,
+      },
+      reasoning: {
+        value: reasoningLevel,
+        options: reasoningOptions,
+        onChange: setReasoningLevel,
+      },
+    }),
+    [
+      activeModel,
+      hasMultipleProviders,
+      modelLoadError,
+      modelOptions,
+      providerOptions,
+      reasoningLevel,
+      reasoningOptions,
+      selectedModel,
+      selectedProviderDisplayName,
+      selectedProviderId,
+      serviceTier,
+      serviceTierSupportByProvider,
+      setReasoningLevel,
+      setSelectedModel,
+      setServiceTier,
+      supportsServiceTier,
+    ],
+  );
+
+  const permissionConfig = useMemo<ExecutionPermissionConfig>(
+    () => ({
+      value: permissionMode,
+      options: permissionModeOptions,
+      onChange: setPermissionMode,
+      supported: supportsPermissionModeSelection,
+    }),
+    [
+      permissionMode,
+      permissionModeOptions,
+      setPermissionMode,
+      supportsPermissionModeSelection,
+    ],
+  );
 
   const environmentSummary = useMemo(() => {
     if (sourceEnvironment === null) {
@@ -445,7 +517,8 @@ export function SideChatTabContent({
           environmentSummary={environmentSummary}
           contextWindowUsage={null}
           execution={executionConfig}
-          permission={SIDE_CHAT_PERMISSION}
+          permission={permissionConfig}
+          readOnly
           typeahead={SIDE_CHAT_TYPEAHEAD}
           zenModeResetKey={childThreadId ?? tab.id}
         />

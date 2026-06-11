@@ -85,6 +85,13 @@ interface ModelReasoningPickerProps {
   defaultOpen?: boolean;
   /** Whether the popover blocks page interaction. Defaults to true. */
   modal?: boolean;
+  /**
+   * Render the trigger as a non-interactive, dimmed label showing the same
+   * model/reasoning summary — the popover never opens. Used by read-only
+   * surfaces (e.g. the side chat) so they render the identical control as their
+   * interactive counterpart, just disabled.
+   */
+  disabled?: boolean;
 }
 
 export function ModelReasoningPicker({
@@ -108,6 +115,7 @@ export function ModelReasoningPicker({
   muted,
   defaultOpen = false,
   modal = true,
+  disabled,
 }: ModelReasoningPickerProps) {
   const isCompactViewport = useIsCompactViewport();
   const [open, setOpen] = useState(defaultOpen);
@@ -238,52 +246,66 @@ export function ModelReasoningPicker({
     showSelectedFastMode ? " (Fast mode)" : "",
   ].join("");
 
+  // The trigger renders identically whether interactive or disabled — the only
+  // difference is the `disabled` button state and a dropped chevron — so the
+  // disabled read-only surface (e.g. the side chat) shows the same model label
+  // in the same position as its editable counterpart.
+  const trigger = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      aria-label="Provider, model and reasoning"
+      title={triggerTitle}
+      disabled={disabled}
+      className={cn(
+        OPTION_BASE_CLASS_NAME,
+        OPTION_INTERACTIVE_CLASS_NAME,
+        muted && OPTION_MUTED_CLASS_NAME,
+        disabled && "cursor-default disabled:opacity-100",
+        className,
+      )}
+    >
+      <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
+        {showSelectedFastMode ? (
+          <Icon
+            name="Zap"
+            className="size-3.5 shrink-0 fill-current text-subtle-foreground"
+          />
+        ) : TriggerIcon ? (
+          <TriggerIcon className="size-3.5 shrink-0" />
+        ) : null}
+        <span className="min-w-0 truncate">{triggerModelBase}</span>
+        {triggerModelTag ? (
+          <span className="shrink-0 text-subtle-foreground">
+            {triggerModelTag}
+          </span>
+        ) : null}
+        {triggerReasoningLabel ? (
+          <span
+            className="shrink-0 text-subtle-foreground"
+            data-promptbox-hide-compact=""
+          >
+            {triggerReasoningLabel}
+          </span>
+        ) : null}
+      </span>
+      {disabled ? null : (
+        <Icon
+          name="ChevronDown"
+          className="size-3.5 shrink-0 text-muted-foreground"
+        />
+      )}
+    </Button>
+  );
+
+  if (disabled) {
+    return trigger;
+  }
+
   return (
     <Popover open={open} onOpenChange={handleOpenChange} modal={modal}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label="Provider, model and reasoning"
-          title={triggerTitle}
-          className={cn(
-            OPTION_BASE_CLASS_NAME,
-            OPTION_INTERACTIVE_CLASS_NAME,
-            muted && OPTION_MUTED_CLASS_NAME,
-            className,
-          )}
-        >
-          <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>
-            {showSelectedFastMode ? (
-              <Icon
-                name="Zap"
-                className="size-3.5 shrink-0 fill-current text-subtle-foreground"
-              />
-            ) : TriggerIcon ? (
-              <TriggerIcon className="size-3.5 shrink-0" />
-            ) : null}
-            <span className="min-w-0 truncate">{triggerModelBase}</span>
-            {triggerModelTag ? (
-              <span className="shrink-0 text-subtle-foreground">
-                {triggerModelTag}
-              </span>
-            ) : null}
-            {triggerReasoningLabel ? (
-              <span
-                className="shrink-0 text-subtle-foreground"
-                data-promptbox-hide-compact=""
-              >
-                {triggerReasoningLabel}
-              </span>
-            ) : null}
-          </span>
-          <Icon
-            name="ChevronDown"
-            className="size-3.5 shrink-0 text-muted-foreground"
-          />
-        </Button>
-      </PopoverTrigger>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
         align="start"
         mobileTitle="Model"

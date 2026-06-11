@@ -178,23 +178,32 @@ describe("FollowUpPromptBox", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("renders the permission as a static label when onChange is omitted", () => {
+  it("renders a disabled permission picker showing the locked mode when readOnly", () => {
     const props = makeFollowUpPromptBoxProps();
+    const onChange = vi.fn();
+    props.readOnly = true;
     props.permission = {
       value: "readonly",
-      options: [{ value: "readonly", label: "Read only" }],
+      options: [
+        { value: "full", label: "Full Access" },
+        { value: "workspace-write", label: "Workspace Write" },
+        { value: "readonly", label: "Readonly" },
+      ],
+      onChange,
       supported: true,
     };
 
     render(<FollowUpPromptBox {...props} />);
 
-    // No interactive permission picker (the picker is a button labeled
-    // "Permission mode"); instead a static "Permission" label is shown.
-    expect(
-      screen.queryByRole("button", { name: "Permission mode" }),
-    ).toBeNull();
-    // Rendered in both the full + compact label spans (CSS shows one per width).
-    expect(screen.getAllByText("Read only").length).toBeGreaterThan(0);
+    // The SAME permission picker the main thread renders, but disabled: the
+    // button is present, non-interactive, and shows the compact "Read" label —
+    // identical to the interactive picker's label.
+    const picker = screen.getByRole("button", { name: "Permission mode" });
+    expect(picker.hasAttribute("disabled")).toBe(true);
+    expect(screen.getAllByText("Read").length).toBeGreaterThan(0);
+
+    fireEvent.click(picker);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("preserves ordinary Enter submit behavior", () => {

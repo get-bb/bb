@@ -18,7 +18,6 @@ import {
 } from "@/components/promptbox/PromptBoxInternal";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
 import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
-import { OptionDisplay } from "@/components/pickers/OptionPicker";
 import {
   ExecutionControls,
   type ExecutionControlsProps,
@@ -147,6 +146,13 @@ export interface FollowUpPromptBoxProps {
   execution: ExecutionControlsProps;
   /** Permission mode picker rendered in the bottom row. */
   permission: ExecutionPermissionConfig;
+  /**
+   * Render the footer controls (model/reasoning + permission pickers) as
+   * non-interactive, dimmed labels. Used by the side chat, which inherits the
+   * parent thread's model and is always read-only: it renders the SAME pickers
+   * as the main thread, just disabled. The composer text input stays editable.
+   */
+  readOnly?: boolean;
   typeahead: TypeaheadConfig;
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
@@ -161,6 +167,7 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
   contextWindowUsage,
   execution,
   permission,
+  readOnly,
   typeahead,
   zenModeResetKey,
 }: FollowUpPromptBoxProps) {
@@ -180,45 +187,31 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
     ? composer.onModifierSubmit
     : undefined;
   const footerStart = useMemo(
-    () => <ExecutionControls {...execution} />,
-    [execution],
+    () => <ExecutionControls {...execution} disabled={readOnly} />,
+    [execution, readOnly],
   );
-  // A locked permission (no onChange) is fixed by the surface — e.g. a side
-  // chat that is always read-only — so render it as a static label instead of
-  // the interactive picker, mirroring the locked model/provider treatment.
-  const permissionControl = useMemo(() => {
-    if (permission.onChange !== undefined) {
-      return (
-        <PermissionModePicker
-          value={permission.value}
-          options={permission.options}
-          onChange={permission.onChange}
-          supported={permission.supported}
-          className="h-6"
-        />
-      );
-    }
-    if (!permission.supported || permission.value === undefined) {
-      return null;
-    }
-    const selectedLabel =
-      permission.options.find((option) => option.value === permission.value)
-        ?.label ?? permission.value;
-    return (
-      <OptionDisplay
-        label="Permission"
-        value={selectedLabel}
-        compactValue={selectedLabel}
+  // The side chat renders the SAME permission picker as the main thread, just
+  // disabled (read-only) — identical label and position. No static-label
+  // special-casing: `readOnly` flows to the picker's `disabled`.
+  const permissionControl = useMemo(
+    () => (
+      <PermissionModePicker
+        value={permission.value}
+        options={permission.options}
+        onChange={permission.onChange}
+        supported={permission.supported}
+        disabled={readOnly}
         className="h-6"
-        muted
       />
-    );
-  }, [
-    permission.onChange,
-    permission.options,
-    permission.supported,
-    permission.value,
-  ]);
+    ),
+    [
+      permission.onChange,
+      permission.options,
+      permission.supported,
+      permission.value,
+      readOnly,
+    ],
+  );
   const stackRef = useRef<HTMLDivElement>(null);
   const [stackHeight, setStackHeight] = useState(0);
   // Measure the stack synchronously after every render. useLayoutEffect runs
@@ -249,10 +242,18 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const elasticTextareaMinHeight = Math.max(
-    FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT,
-    FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT - stackHeight,
-  );
+  // The elastic pre-size keeps the prompt area's total height constant as the
+  // stack (context banner + queued messages) mounts/unmounts so the timeline
+  // doesn't shift. A composer with no stack (the side chat) has nothing to
+  // compensate for, so it uses the plain default height — matching the main
+  // thread composer's input box instead of rendering a banner-height taller.
+  const elasticTextareaMinHeight =
+    stack === null
+      ? FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT
+      : Math.max(
+          FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT,
+          FOLLOW_UP_PROMPT_BOX_ELASTIC_TARGET_HEIGHT - stackHeight,
+        );
 
   return (
     <>
