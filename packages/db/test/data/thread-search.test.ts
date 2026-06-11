@@ -22,6 +22,7 @@ import {
   deleteThread,
   searchThreadsWithPendingInteractionState,
   updateThread,
+  upsertThreadSearchSegments,
 } from "../../src/data/threads.js";
 
 interface SetupResult {
@@ -47,16 +48,23 @@ function closeConnection(db: ReturnType<typeof createConnection>): void {
   db.$client.close();
 }
 
-function runMigrationFile(db: ReturnType<typeof createConnection>): void {
-  const migrationSql = readFileSync(
-    resolve(__dirname, "../../drizzle/0027_thread_search.sql"),
-    "utf-8",
-  );
-  for (const statement of migrationSql
-    .split("--> statement-breakpoint")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)) {
-    db.$client.exec(statement);
+function runThreadSearchMigrationFiles(
+  db: ReturnType<typeof createConnection>,
+): void {
+  for (const migrationFile of [
+    "0027_thread_search.sql",
+    "0028_thread_search_rowid_fts.sql",
+  ]) {
+    const migrationSql = readFileSync(
+      resolve(__dirname, "../../drizzle", migrationFile),
+      "utf-8",
+    );
+    for (const statement of migrationSql
+      .split("--> statement-breakpoint")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)) {
+      db.$client.exec(statement);
+    }
   }
 }
 
@@ -154,7 +162,7 @@ describe("thread search data", () => {
         },
       ]);
 
-      runMigrationFile(db);
+      runThreadSearchMigrationFiles(db);
 
       for (const query of [
         "titlebackfill",
@@ -277,6 +285,49 @@ describe("thread search data", () => {
         });
         expect(results.active.total).toBe(0);
         expect(results.archived.total).toBe(0);
+      }
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("caps hydrated snippets for broad matches across limited threads", () => {
+    const { db, project } = setup();
+    try {
+      const threadIndexesById = new Map<string, number>();
+      for (let threadIndex = 0; threadIndex < 5; threadIndex += 1) {
+        const thread = createThread(db, noopNotifier, {
+          projectId: project.id,
+          providerId: "codex",
+          title: `Broad match thread ${threadIndex}`,
+        });
+        threadIndexesById.set(thread.id, threadIndex);
+        upsertThreadSearchSegments(db, {
+          segments: Array.from({ length: 100 }, (_, segmentIndex) => ({
+            threadId: thread.id,
+            sourceKind: "user_message",
+            sourceKey: `event:${segmentIndex}`,
+            sourceSeq: segmentIndex,
+            text: `broadmatchneedle thread ${threadIndex} segment ${segmentIndex}`,
+          })),
+        });
+      }
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "broadmatchneedle",
+        limitPerGroup: 3,
+      });
+
+      expect(results.active.total).toBe(5);
+      expect(results.active.results).toHaveLength(3);
+      for (const result of results.active.results) {
+        const threadIndex = threadIndexesById.get(result.thread.id);
+        expect(threadIndex).toBeDefined();
+        expect(result.matches.map((match) => match.text)).toEqual([
+          `broadmatchneedle thread ${threadIndex} segment 0`,
+          `broadmatchneedle thread ${threadIndex} segment 1`,
+          `broadmatchneedle thread ${threadIndex} segment 2`,
+        ]);
       }
     } finally {
       closeConnection(db);

@@ -213,6 +213,10 @@ const eventProducerColumnsMigrationWhen = 1780692763264;
 const terminalSessionRuntimeStateHonestyWhen = 1780718665310;
 const hostDaemonSessionObservabilityMigrationWhen = 1780719536955;
 const threadTypeRemovalMigrationWhen = 1780973302146;
+const threadSearchMigrationWhen = 1781180232427;
+const threadSearchRowidFtsMigrationWhen = 1781185602620;
+const rowidThreadSearchMigrationHash =
+  "025358fe89253aec7f5bd970dc3eb88d0e834f0d58fb9d75329a5d39899340f4";
 const queuedMessageSortKeyMigrationPath = resolve(
   __dirname,
   "..",
@@ -259,6 +263,14 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
+  db.$client.exec(`
+    DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
+    DROP TRIGGER IF EXISTS thread_search_segments_after_delete;
+    DROP TRIGGER IF EXISTS thread_search_segments_after_insert;
+    DROP TABLE IF EXISTS thread_search_segments_fts;
+    DROP TABLE IF EXISTS thread_search_segments;
+  `);
+
   for (const table of [
     "workflow_run_events",
     "workflow_run_operations",
@@ -694,6 +706,48 @@ describe("migrate", () => {
           )
           .run(),
       ).toThrow();
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("applies rowid thread search rebuild after the branch-local 0027 hash", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      replaceAppliedMigrationHash({
+        db,
+        createdAt: threadSearchMigrationWhen,
+        hash: rowidThreadSearchMigrationHash,
+      });
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
+        )
+        .run(threadSearchRowidFtsMigrationWhen);
+
+      expect(() => migrate(db)).not.toThrow();
+
+      expect(
+        db.$client
+          .prepare<[], TableInfoRow>(
+            "PRAGMA table_info(thread_search_segments_fts)",
+          )
+          .all()
+          .map((row) => row.name),
+      ).toEqual(["text"]);
+      expect(
+        db.$client
+          .prepare<[number], MigrationCountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM __drizzle_migrations
+              WHERE created_at = ?
+            `,
+          )
+          .get(threadSearchRowidFtsMigrationWhen),
+      ).toEqual({ count: 1 });
     } finally {
       closeConnection(db);
     }
@@ -1592,11 +1646,7 @@ describe("migrate", () => {
         )
         .run();
       db.$client.prepare("DROP TABLE thread_dynamic_context_file_states").run();
-      db.$client.prepare("DROP TABLE workflow_run_events").run();
-      db.$client.prepare("DROP TABLE workflow_run_operations").run();
-      db.$client.prepare("DROP TABLE workflow_runs").run();
-      db.$client.prepare("DROP TABLE project_workflow_policies").run();
-      db.$client.prepare("DROP TABLE app_settings").run();
+      dropPost0023Tables(db);
       db.$client.prepare("DELETE FROM projects WHERE kind = 'personal'").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN kind").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN sort_key").run();

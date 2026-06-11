@@ -109,12 +109,32 @@ interface ListThreadSearchMatchRowsArgs {
 }
 
 interface ThreadSearchMatchRow {
+  segmentOrder: number;
   sourceKind: string;
   sourceSeq: number | null;
   text: string;
   threadId: string;
   threadOrder: number;
   total: number;
+}
+
+interface ThreadSearchLimitedThreadRow {
+  threadId: string;
+  threadOrder: number;
+  total: number;
+}
+
+interface ThreadSearchSegmentMatchRow {
+  segmentOrder: number;
+  sourceKind: string;
+  sourceSeq: number | null;
+  text: string;
+  threadId: string;
+}
+
+interface ListThreadSearchSegmentMatchRowsArgs {
+  matchQuery: string;
+  threadIds: readonly string[];
 }
 
 interface HydrateThreadSearchGroupArgs {
@@ -768,81 +788,115 @@ function findHighlightRanges(args: {
   );
 }
 
-function listThreadSearchMatchRows(
+function listThreadSearchLimitedThreadRows(
   db: DbConnection,
   args: ListThreadSearchMatchRowsArgs,
-): ThreadSearchMatchRow[] {
+): ThreadSearchLimitedThreadRow[] {
   const archiveFilter = args.archived
     ? sql`t.archived_at IS NOT NULL`
     : sql`t.archived_at IS NULL`;
 
-  return db.all<ThreadSearchMatchRow>(sql`
-    WITH matched_segments AS (
+  return db.all<ThreadSearchLimitedThreadRow>(sql`
+    WITH ranked_threads AS (
       SELECT
         s.thread_id AS threadId,
-        s.source_kind AS sourceKind,
-        s.source_seq AS sourceSeq,
-        s.text AS text,
-        s.id AS segmentId,
-        t.updated_at AS threadUpdatedAt,
-        thread_search_segments_fts.rank AS segmentRank
+        MIN(thread_search_segments_fts.rank) AS bestRank,
+        MAX(t.updated_at) AS threadUpdatedAt
       FROM thread_search_segments_fts
       JOIN thread_search_segments AS s ON s.rowid = thread_search_segments_fts.rowid
       JOIN threads AS t ON t.id = s.thread_id
       WHERE thread_search_segments_fts MATCH ${args.matchQuery}
         AND t.deleted_at IS NULL
         AND ${archiveFilter}
-    ),
-    ranked_threads AS (
-      SELECT
-        threadId,
-        MIN(segmentRank) AS bestRank,
-        MAX(threadUpdatedAt) AS threadUpdatedAt
-      FROM matched_segments
       GROUP BY threadId
-    ),
-    limited_threads AS (
-      SELECT
-        threadId,
-        bestRank,
-        threadUpdatedAt,
-        COUNT(*) OVER () AS total,
-        ROW_NUMBER() OVER (
-          ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
-        ) AS threadOrder
-      FROM ranked_threads
-      ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
-      LIMIT ${args.limitPerGroup}
-    ),
-    ranked_thread_segments AS (
-      SELECT
-        limited_threads.total AS total,
-        limited_threads.threadOrder AS threadOrder,
-        matched_segments.threadId AS threadId,
-        matched_segments.sourceKind AS sourceKind,
-        matched_segments.sourceSeq AS sourceSeq,
-        matched_segments.text AS text,
-        ROW_NUMBER() OVER (
-          PARTITION BY matched_segments.threadId
-          ORDER BY
-            matched_segments.segmentRank ASC,
-            COALESCE(matched_segments.sourceSeq, -1) ASC,
-            matched_segments.segmentId ASC
-        ) AS segmentOrder
-      FROM matched_segments
-      JOIN limited_threads ON limited_threads.threadId = matched_segments.threadId
     )
     SELECT
+      threadId,
+      ROW_NUMBER() OVER (
+        ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
+      ) AS threadOrder,
+      COUNT(*) OVER () AS total
+    FROM ranked_threads
+    ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
+    LIMIT ${args.limitPerGroup}
+  `);
+}
+
+function listThreadSearchSegmentMatchRows(
+  db: DbConnection,
+  args: ListThreadSearchSegmentMatchRowsArgs,
+): ThreadSearchSegmentMatchRow[] {
+  if (args.threadIds.length === 0) {
+    return [];
+  }
+
+  return db.all<ThreadSearchSegmentMatchRow>(sql`
+    WITH ranked_thread_segments AS (
+      SELECT
+        ROW_NUMBER() OVER (
+          PARTITION BY thread_search_segments.thread_id
+          ORDER BY
+            thread_search_segments_fts.rank ASC,
+            COALESCE(thread_search_segments.source_seq, -1) ASC,
+            thread_search_segments.id ASC
+        ) AS segmentOrder,
+        thread_search_segments.source_kind AS sourceKind,
+        thread_search_segments.source_seq AS sourceSeq,
+        thread_search_segments.text AS text,
+        thread_search_segments.thread_id AS threadId
+      FROM thread_search_segments_fts
+      JOIN thread_search_segments
+        ON thread_search_segments.rowid = thread_search_segments_fts.rowid
+      WHERE thread_search_segments_fts MATCH ${args.matchQuery}
+        AND ${inArray(threadSearchSegments.threadId, [...args.threadIds])}
+    )
+    SELECT
+      segmentOrder,
       sourceKind,
       sourceSeq,
       text,
-      threadId,
-      threadOrder,
-      total
+      threadId
     FROM ranked_thread_segments
     WHERE segmentOrder <= ${THREAD_SEARCH_MATCHES_PER_THREAD}
-    ORDER BY threadOrder ASC, segmentOrder ASC
   `);
+}
+
+function listThreadSearchMatchRows(
+  db: DbConnection,
+  args: ListThreadSearchMatchRowsArgs,
+): ThreadSearchMatchRow[] {
+  const limitedThreadRows = listThreadSearchLimitedThreadRows(db, args);
+  const limitedThreadRowsById = new Map(
+    limitedThreadRows.map((row) => [row.threadId, row]),
+  );
+  const segmentRows = listThreadSearchSegmentMatchRows(db, {
+    matchQuery: args.matchQuery,
+    threadIds: limitedThreadRows.map((row) => row.threadId),
+  });
+
+  return segmentRows
+    .map((segmentRow) => {
+      const limitedThreadRow = limitedThreadRowsById.get(segmentRow.threadId);
+      if (limitedThreadRow === undefined) {
+        throw new Error("Thread search segment row is outside limited threads");
+      }
+      return {
+        segmentOrder: segmentRow.segmentOrder,
+        sourceKind: segmentRow.sourceKind,
+        sourceSeq: segmentRow.sourceSeq,
+        text: segmentRow.text,
+        threadId: segmentRow.threadId,
+        threadOrder: limitedThreadRow.threadOrder,
+        total: limitedThreadRow.total,
+      };
+    })
+    .sort((left, right) => {
+      const threadOrderDifference = left.threadOrder - right.threadOrder;
+      if (threadOrderDifference !== 0) {
+        return threadOrderDifference;
+      }
+      return left.segmentOrder - right.segmentOrder;
+    });
 }
 
 function hydrateThreadSearchGroup(
