@@ -26,7 +26,7 @@ export function ScrollToBottomButton({
           // affordance (the icon supplies the circle); the idle state keeps the
           // round scrim button + arrow.
           active
-            ? "text-muted-foreground"
+            ? "text-foreground"
             : "rounded-full border border-border bg-surface-scrim backdrop-blur-md hover:bg-state-hover",
           visible
             ? "translate-y-0 opacity-100"
@@ -36,7 +36,11 @@ export function ScrollToBottomButton({
         type="button"
       >
         {active ? (
-          <Icon name="DownloadCircle" className="size-7 animate-shine-icon" />
+          <Icon
+            name="DownloadCircle"
+            className="size-7 animate-shine-icon"
+            strokeWidth={1.2}
+          />
         ) : (
           <Icon name="ArrowDown" className="size-4" />
         )}

@@ -177,6 +177,8 @@ export const ICON_NAMES = Object.keys(ICON_MAP) as readonly IconName[];
 export interface IconProps {
   name: IconName;
   className?: string;
+  /** Override the hugeicons default stroke thickness (e.g. 1 for a thinner line). */
+  strokeWidth?: number;
   "aria-hidden"?: boolean | "true" | "false";
   "aria-label"?: string;
 }
@@ -184,6 +186,7 @@ export interface IconProps {
 export function Icon({
   name,
   className,
+  strokeWidth,
   "aria-hidden": ariaHidden,
   "aria-label": ariaLabel,
 }: IconProps) {
@@ -191,6 +194,7 @@ export function Icon({
     <HugeiconsIcon
       icon={ICON_MAP[name]}
       className={cn(className)}
+      strokeWidth={strokeWidth}
       aria-hidden={ariaHidden}
       aria-label={ariaLabel}
       data-icon={name}
