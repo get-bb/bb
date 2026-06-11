@@ -21,6 +21,7 @@ out
 
 # production
 /build
+/apps/app/build/
 /apps/desktop/release/
 /apps/desktop/.electron-builder.generated.json
 
@@ -58,6 +59,9 @@ output.txt
 # codex, claude code
 .claude/settings.local.json
 .codex
+.otto/
+
+# ottonomous
 .otto/
 
 # turborepo
