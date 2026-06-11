@@ -28,7 +28,9 @@ interface ThreadHeaderGitAction {
 interface ThreadDetailHeaderProps {
   actionsMenu: ReactNode;
   activeTerminalCount: number;
-  isChildThread: boolean;
+  /** Pill shown beside the title for child threads: "fork" for forks, "child"
+   * for any other child, null for a root thread (no pill). */
+  childPillLabel: "child" | "fork" | null;
   isSecondaryPanelOpen: boolean;
   onOpenThreadGitAction: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel: () => void;
@@ -40,7 +42,7 @@ interface ThreadDetailHeaderProps {
 export function ThreadDetailHeader({
   actionsMenu,
   activeTerminalCount,
-  isChildThread,
+  childPillLabel,
   isSecondaryPanelOpen,
   onOpenThreadGitAction,
   onToggleSecondaryPanel,
@@ -60,7 +62,9 @@ export function ThreadDetailHeader({
   const center = (
     <>
       <p className="min-w-0 truncate text-sm font-semibold">{threadTitle}</p>
-      {isChildThread ? <Pill variant="outline">child</Pill> : null}
+      {childPillLabel ? (
+        <Pill variant="outline">{childPillLabel}</Pill>
+      ) : null}
       {/*
         The header's center slot sits inside the macOS title-bar drag region
         (AppPageHeader only exempts the actions slot), so the interactive

@@ -25,6 +25,7 @@ vi.mock("@/components/ui/sidebar.js", () => ({
 interface RenderHeaderOverrides {
   actionsMenu?: ReactNode;
   activeTerminalCount?: number;
+  childPillLabel?: "child" | "fork" | null;
   isSecondaryPanelOpen?: boolean;
   onOpenThreadGitAction?: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel?: () => void;
@@ -41,7 +42,7 @@ function renderHeader(overrides: RenderHeaderOverrides = {}) {
   const props = {
     actionsMenu: overrides.actionsMenu ?? null,
     activeTerminalCount: overrides.activeTerminalCount ?? 0,
-    isChildThread: false,
+    childPillLabel: overrides.childPillLabel ?? null,
     isSecondaryPanelOpen: overrides.isSecondaryPanelOpen ?? false,
     onOpenThreadGitAction: overrides.onOpenThreadGitAction ?? noop,
     onToggleSecondaryPanel: overrides.onToggleSecondaryPanel ?? noop,
@@ -68,6 +69,25 @@ afterEach(() => {
   cleanup();
   viewportState.isCompactViewport = false;
   delete window.bbDesktop;
+});
+
+describe("ThreadDetailHeader child pill", () => {
+  it("renders a 'fork' pill for a fork thread", () => {
+    renderHeader({ childPillLabel: "fork" });
+    expect(screen.getByText("fork")).toBeTruthy();
+    expect(screen.queryByText("child")).toBeNull();
+  });
+
+  it("renders a 'child' pill for a non-fork child thread", () => {
+    renderHeader({ childPillLabel: "child" });
+    expect(screen.getByText("child")).toBeTruthy();
+  });
+
+  it("renders no pill for a root thread", () => {
+    renderHeader({ childPillLabel: null });
+    expect(screen.queryByText("fork")).toBeNull();
+    expect(screen.queryByText("child")).toBeNull();
+  });
 });
 
 describe("ThreadDetailHeader actions menu drag region", () => {

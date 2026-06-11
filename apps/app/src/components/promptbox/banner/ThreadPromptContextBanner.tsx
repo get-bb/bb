@@ -48,6 +48,11 @@ export interface ThreadPromptGitSection {
 export interface ThreadPromptParentThreadSection {
   parentThreadTitle: string;
   href: string;
+  /**
+   * How the current thread relates to the linked thread: a fork renders
+   * "Forked from …", any other child renders "Parent …".
+   */
+  relationship: "parent" | "fork";
 }
 
 /**
@@ -352,16 +357,28 @@ function TodoBody({
   );
 }
 
+function parentSectionAriaLabel(
+  section: ThreadPromptParentThreadSection,
+): string {
+  return section.relationship === "fork"
+    ? `Forked from ${section.parentThreadTitle}`
+    : `Parent thread ${section.parentThreadTitle}`;
+}
+
 function ParentThreadBody({
   parentThreadTitle,
   href,
+  relationship,
 }: {
   parentThreadTitle: string;
   href: string;
+  relationship: ThreadPromptParentThreadSection["relationship"];
 }) {
   return (
     <div className="px-3 pb-2 pt-1.5 text-xs leading-relaxed text-muted-foreground">
-      This thread is a child of{" "}
+      {relationship === "fork"
+        ? "This thread was forked from "
+        : "This thread is a child of "}
       <NavLink
         to={href}
         className="text-foreground/90 underline-offset-2 hover:underline"
@@ -493,7 +510,7 @@ export function ThreadPromptContextBanner({
             <SectionToggleButton
               id={SECTION_IDS.parentThread.toggle}
               controlsId={SECTION_IDS.parentThread.body}
-              ariaLabel={`Parent thread ${parentThreadSection.parentThreadTitle}`}
+              ariaLabel={parentSectionAriaLabel(parentThreadSection)}
               icon={
                 <Icon
                   name="UserRound"
@@ -536,6 +553,7 @@ export function ThreadPromptContextBanner({
             <ParentThreadBody
               parentThreadTitle={parentThreadSection.parentThreadTitle}
               href={parentThreadSection.href}
+              relationship={parentThreadSection.relationship}
             />
           </AnimatedBody>
         ) : null}
@@ -619,7 +637,7 @@ export function ThreadPromptContextBanner({
         {showParentThread && parentThreadSection && isParentThreadOnly ? (
           <div
             className="flex min-w-0 items-center gap-1.5 px-1 py-0.5"
-            title={`Parent thread ${parentThreadSection.parentThreadTitle}`}
+            title={parentSectionAriaLabel(parentThreadSection)}
           >
             <Icon
               name="UserRound"
@@ -627,7 +645,9 @@ export function ThreadPromptContextBanner({
               aria-hidden="true"
             />
             <span className="min-w-0 truncate">
-              Parent{" "}
+              {parentThreadSection.relationship === "fork"
+                ? "Forked from"
+                : "Parent"}{" "}
               <NavLink
                 to={parentThreadSection.href}
                 className="text-foreground/90 underline underline-offset-2"
@@ -641,7 +661,7 @@ export function ThreadPromptContextBanner({
           <SectionToggleButton
             id={SECTION_IDS.parentThread.toggle}
             controlsId={SECTION_IDS.parentThread.body}
-            ariaLabel={`Parent thread ${parentThreadSection.parentThreadTitle}`}
+            ariaLabel={parentSectionAriaLabel(parentThreadSection)}
             icon={
               <Icon
                 name="UserRound"
@@ -771,6 +791,7 @@ export function ThreadPromptContextBanner({
           <ParentThreadBody
             parentThreadTitle={parentThreadSection.parentThreadTitle}
             href={parentThreadSection.href}
+            relationship={parentThreadSection.relationship}
           />
         </AnimatedBody>
       ) : null}

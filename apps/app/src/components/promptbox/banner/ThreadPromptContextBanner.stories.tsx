@@ -226,6 +226,13 @@ const pendingTodosFixture: ThreadTimelinePendingTodos = {
 const parentThreadFixture: ThreadPromptParentThreadSection = {
   parentThreadTitle: "Parent thread",
   href: "/projects/proj-1/threads/thr_parent_demo",
+  relationship: "parent",
+};
+
+const forkedFromFixture: ThreadPromptParentThreadSection = {
+  parentThreadTitle: "Investigate flaky test",
+  href: "/projects/proj-1/threads/thr_source_demo",
+  relationship: "fork",
 };
 
 const childThreadsFixture: ThreadPromptChildThreadsSection = {
@@ -371,6 +378,12 @@ export function Overview() {
         hint="inline parent link"
       >
         <Row parentThread={parentThreadFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="forked thread (alone)"
+        hint={'renders "Forked from …" instead of "Parent …"'}
+      >
+        <Row parentThread={forkedFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
         label="parent thread with active children (collapsed)"

@@ -64,6 +64,7 @@ const gitSectionWithMergeBase: ThreadPromptGitSection = {
 const parentThreadSection: ThreadPromptContextBannerProps["parentThreadSection"] = {
   parentThreadTitle: "Parent thread",
   href: "/projects/proj_1/threads/thr_parent",
+  relationship: "parent",
 };
 
 const workflowsSection: ThreadPromptWorkflowsSection = {

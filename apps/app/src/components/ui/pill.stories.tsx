@@ -39,6 +39,14 @@ export function Overview() {
           </Pill>
         </StoryRow>
       </StoryCard>
+      <StoryCard>
+        <StoryRow label="child" hint="non-fork child thread">
+          <Pill variant="outline">child</Pill>
+        </StoryRow>
+        <StoryRow label="fork" hint="forked thread">
+          <Pill variant="outline">fork</Pill>
+        </StoryRow>
+      </StoryCard>
     </>
   );
 }

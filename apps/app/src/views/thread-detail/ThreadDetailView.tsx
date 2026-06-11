@@ -1047,12 +1047,17 @@ export function ThreadDetailView() {
         projectId: thread.projectId,
         threadId: thread.parentThreadId,
       });
+      // A fork links back as "Forked from …"; any other child renders the
+      // generic "Parent …". The banner supplies the verb, so the title here is
+      // just the linked thread's name (or an id fallback while it loads).
+      const relationship = thread.childOrigin === "fork" ? "fork" : "parent";
       if (parentThread === undefined) {
         // Parent record not yet loaded — show id-based fallback so the user
         // doesn't get a flicker of "no parent" before resolution.
         return {
-          parentThreadTitle: `Parent ${thread.parentThreadId.slice(0, 8)}`,
+          parentThreadTitle: thread.parentThreadId.slice(0, 8),
           href,
+          relationship,
         };
       }
       // Plan ownership invariants: silently exclude dirty references rather
@@ -1067,8 +1072,14 @@ export function ThreadDetailView() {
       return {
         parentThreadTitle: getThreadDisplayTitle(parentThread),
         href,
+        relationship,
       };
-    }, [parentThread, thread?.parentThreadId, thread?.projectId]);
+    }, [
+      parentThread,
+      thread?.childOrigin,
+      thread?.parentThreadId,
+      thread?.projectId,
+    ]);
   const childThreadsSection: ThreadPromptChildThreadsSection | null =
     useMemo(() => {
       const list = childThreadSubsetQuery.data ?? [];
@@ -1379,7 +1390,13 @@ export function ThreadDetailView() {
   const timelineHeader = (
     <ThreadDetailHeader
       actionsMenu={threadActionsMenu}
-      isChildThread={Boolean(parentThreadId)}
+      childPillLabel={
+        parentThreadId
+          ? thread?.childOrigin === "fork"
+            ? "fork"
+            : "child"
+          : null
+      }
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       activeTerminalCount={activeTerminalCount}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
