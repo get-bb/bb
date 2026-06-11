@@ -97,6 +97,11 @@ export interface ConversationMessageContentAssistantProps
    */
   onSideChat?: () => void;
   /**
+   * Hand this agent message back to the main thread. Supplied only inside a side
+   * chat; omitted on the main timeline (a main message has no main thread).
+   */
+  onSendToMain?: () => void;
+  /**
    * Greys the Fork + Side-chat buttons when the thread is at the spawn-depth cap
    * — both spawn a child thread off the active thread, so they share one guard.
    */
@@ -133,6 +138,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   attachmentItems: ConversationAttachmentItems;
   onFork?: () => void;
   onSideChat?: () => void;
+  onSendToMain?: () => void;
   forkDisabled?: boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -342,6 +348,7 @@ function AssistantConversationMessage({
   attachmentItems,
   onFork,
   onSideChat,
+  onSendToMain,
   forkDisabled,
   onOpenLink,
   onOpenLocalFileLink,
@@ -392,6 +399,7 @@ function AssistantConversationMessage({
           alignment="start"
           onFork={onFork}
           onSideChat={onSideChat}
+          onSendToMain={onSendToMain}
           disabled={forkDisabled}
         />
       </div>
@@ -443,6 +451,7 @@ export function ConversationMessageContent(
       id={props.id}
       onFork={props.onFork}
       onSideChat={props.onSideChat}
+      onSendToMain={props.onSendToMain}
       forkDisabled={props.forkDisabled}
       onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}

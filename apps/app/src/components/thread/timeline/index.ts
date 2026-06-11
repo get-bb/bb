@@ -19,6 +19,8 @@ export type {
   ThreadTimelineForkMessageTarget,
   ThreadTimelineSideChatMessageHandler,
   ThreadTimelineSideChatMessageTarget,
+  ThreadTimelineSendToMainMessageHandler,
+  ThreadTimelineSendToMainMessageTarget,
   ThreadTimelineLinkHandler,
   ThreadTimelineImageViewSrcResolver,
   ThreadTimelineImageViewSrcTarget,

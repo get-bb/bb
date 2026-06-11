@@ -41,6 +41,21 @@ export type ThreadTimelineSideChatMessageHandler = (
   target: ThreadTimelineSideChatMessageTarget,
 ) => void;
 
+export interface ThreadTimelineSendToMainMessageTarget {
+  /** Visible text of the side-chat agent message to hand back to the main thread. */
+  messageText: string;
+}
+
+/**
+ * Hand a specific side-chat agent message back to the main thread. Supplied only
+ * by the side-chat timeline host; the per-message action bar invokes it with the
+ * row's text. Absent on the main timeline — a main-thread message has no "main
+ * thread" to send to.
+ */
+export type ThreadTimelineSendToMainMessageHandler = (
+  target: ThreadTimelineSendToMainMessageTarget,
+) => void;
+
 export type ThreadTimelineUnreadDividerPlacement =
   | {
       kind: "after-cutoff";

@@ -13,6 +13,12 @@ interface MessageActionBarProps {
   alignment: "start" | "end";
   onFork?: () => void;
   onSideChat?: () => void;
+  /**
+   * Hand this message back to the main thread. Supplied only inside a side chat
+   * (the main timeline has no main thread to send to). Not gated by `disabled`,
+   * which only greys the child-spawning fork/side-chat actions.
+   */
+  onSendToMain?: () => void;
   disabled?: boolean;
 }
 
@@ -39,10 +45,11 @@ export function MessageActionBar({
   alignment,
   onFork,
   onSideChat,
+  onSendToMain,
   disabled,
 }: MessageActionBarProps) {
   const hasCopy = messageText.length > 0;
-  if (!hasCopy && !onFork && !onSideChat) {
+  if (!hasCopy && !onFork && !onSideChat && !onSendToMain) {
     return null;
   }
 
@@ -98,6 +105,21 @@ export function MessageActionBar({
               </button>
             </TooltipTrigger>
             <TooltipContent>Open side chat</TooltipContent>
+          </Tooltip>
+        ) : null}
+        {onSendToMain ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
+                onClick={onSendToMain}
+                aria-label="Send to main thread"
+              >
+                <Icon name="ArrowUpRight" className="size-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Send to main thread</TooltipContent>
           </Tooltip>
         ) : null}
       </div>

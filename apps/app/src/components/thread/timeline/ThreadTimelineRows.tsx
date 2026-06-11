@@ -41,6 +41,7 @@ import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js"
 import type {
   ThreadTimelineForkMessageHandler,
   ThreadTimelineSideChatMessageHandler,
+  ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineImageViewSrcResolver,
@@ -111,6 +112,8 @@ export interface ThreadTimelineRowsProps {
   onForkMessage?: ThreadTimelineForkMessageHandler;
   /** Open a side chat anchored on a specific agent message. */
   onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
+  /** Hand a specific side-chat agent message back to the main thread. */
+  onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
@@ -144,6 +147,7 @@ interface TimelineRendererStaticContextValue {
   getViewRows: GetTimelineViewRows;
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
   onSideChatMessage: ThreadTimelineSideChatMessageHandler | undefined;
+  onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
   threadChildOrigin: ThreadChildOrigin | null;
   onOpenLink: ThreadTimelineLinkHandler | undefined;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler | undefined;
@@ -702,6 +706,7 @@ function ConversationRow({ row }: ConversationRowProps) {
     canSpawnChild,
     onForkMessage,
     onSideChatMessage,
+    onSendToMainMessage,
     threadChildOrigin,
     onOpenLink,
     onOpenLocalFileLink,
@@ -751,12 +756,19 @@ function ConversationRow({ row }: ConversationRowProps) {
     onSideChatMessage === undefined
       ? undefined
       : () => onSideChatMessage({ messageText: row.text });
+  // Side chats supply this so each agent message can be handed back to the main
+  // thread; omitted on the main timeline, which keeps the action out of the bar.
+  const onSendToMain =
+    onSendToMainMessage === undefined
+      ? undefined
+      : () => onSendToMainMessage({ messageText: row.text });
   return (
     <ConversationMessageContent
       attachments={row.attachments}
       id={row.id}
       onFork={onFork}
       onSideChat={onSideChat}
+      onSendToMain={onSendToMain}
       forkDisabled={!canSpawnChild}
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
@@ -1445,6 +1457,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       getViewRows,
       onForkMessage: props.onForkMessage,
       onSideChatMessage: props.onSideChatMessage,
+      onSendToMainMessage: props.onSendToMainMessage,
       threadChildOrigin: props.threadChildOrigin ?? null,
       onOpenLink: props.onOpenLink,
       onOpenLocalFileLink: props.onOpenLocalFileLink,
@@ -1463,6 +1476,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       getViewRows,
       props.onForkMessage,
       props.onSideChatMessage,
+      props.onSendToMainMessage,
       props.threadChildOrigin,
       props.onOpenLink,
       props.onOpenLocalFileLink,

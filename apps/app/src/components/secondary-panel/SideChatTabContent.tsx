@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Environment, PromptTextMention } from "@bb/domain";
 import type { Thread } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
@@ -7,11 +7,12 @@ import {
   PromptBoxInternal,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import { Button } from "@/components/ui/button.js";
-import { Icon } from "@/components/ui/icon.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
-import { ThreadTimelineRows } from "@/components/thread/timeline";
+import {
+  ThreadTimelineRows,
+  type ThreadTimelineSendToMainMessageHandler,
+} from "@/components/thread/timeline";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import {
   useThread,
@@ -107,15 +108,25 @@ function SideChatComposer({
 
 interface SideChatConversationProps {
   threadId: string;
+  /**
+   * Hand a side-chat agent message back to the main thread (the per-message
+   * "send to main" action). Undefined while the side chat is mid-turn, which
+   * keeps the action out of the bar until the reply is final.
+   */
+  onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
 }
 
 /**
  * The created side chat's own conversation. Reuses the canonical
  * `ThreadTimelineRows` renderer (no fork/side-chat actions — a side chat does
- * not spawn further children in v1). Live updates flow through the global thread
- * realtime subscription into the timeline query cache.
+ * not spawn further children in v1); each agent reply gets a "send to main
+ * thread" action via `onSendToMainMessage`. Live updates flow through the global
+ * thread realtime subscription into the timeline query cache.
  */
-function SideChatConversation({ threadId }: SideChatConversationProps) {
+function SideChatConversation({
+  threadId,
+  onSendToMainMessage,
+}: SideChatConversationProps) {
   const preferredTheme = usePreferredTheme();
   const threadQuery = useThread(threadId);
   const timelineQuery = useThreadTimeline(threadId);
@@ -160,6 +171,7 @@ function SideChatConversation({ threadId }: SideChatConversationProps) {
       timelineRows={[...rows]}
       threadId={threadId}
       threadRuntimeDisplayStatus={displayStatus}
+      onSendToMainMessage={onSendToMainMessage}
       workspaceRootPath={undefined}
     />
   );
@@ -169,9 +181,10 @@ function SideChatConversation({ threadId }: SideChatConversationProps) {
  * Hosts a message-anchored side chat: the child thread's conversation above a
  * focused composer. The child thread is created lazily on the user's first
  * submit (`tab.threadId === null`); later submits send follow-up turns. Once a
- * thread exists, a "Send to main thread" action posts the side chat's latest
- * result back into the main thread (rendered there as "Message from {side chat}")
- * via the existing cross-thread send transport (`senderThreadId`).
+ * thread exists, each side-chat agent reply carries a per-message "send to main
+ * thread" action that posts that reply into the main thread (rendered there as
+ * "Message from {side chat}") via the existing cross-thread send transport
+ * (`senderThreadId`).
  */
 export function SideChatTabContent({
   tab,
@@ -186,9 +199,6 @@ export function SideChatTabContent({
   const executionOptionsQuery = useThreadDefaultExecutionOptions(
     sourceThread.id,
   );
-  const childTimelineQuery = useThreadTimeline(childThreadId ?? "", {
-    enabled: childThreadId !== null,
-  });
   const childThreadQuery = useThread(childThreadId ?? "", {
     enabled: childThreadId !== null,
   });
@@ -265,58 +275,28 @@ export function SideChatTabContent({
     ],
   );
 
-  // The last assistant message in the side chat is the result to hand back.
-  const lastAssistantText = useMemo(() => {
-    const rows = childTimelineQuery.data?.rows ?? [];
-    let result: string | null = null;
-    const visit = (row: TimelineRow): void => {
-      if (
-        row.kind === "conversation" &&
-        row.role === "assistant" &&
-        row.text.trim().length > 0
-      ) {
-        result = row.text.trim();
-        return;
-      }
-      if (row.kind === "turn" && row.children !== null) {
-        for (const child of row.children) {
-          visit(child);
-        }
-      }
-    };
-    for (const row of rows) {
-      visit(row);
-    }
-    return result;
-  }, [childTimelineQuery.data?.rows]);
-
-  // Only hand a result back once the side chat is idle, so a mid-stream partial
-  // can't be posted into the main thread (lastAssistantText reflects the live
-  // partial while a turn is in flight).
+  // A side chat hands results back to the main thread per agent message (the
+  // "send to main thread" action under each reply) via the cross-thread
+  // `senderThreadId` transport. Gate on idle so a mid-stream partial can't be
+  // posted while a turn is in flight, and on the mutation so a click can't
+  // double-send.
   const childIsIdle =
     childThreadQuery.data?.runtime.displayStatus === "idle";
-  const canSendBack =
-    childThreadId !== null &&
-    lastAssistantText !== null &&
-    childIsIdle &&
-    !sendThreadMessage.isPending;
-
-  const handleSendToMainThread = useCallback(() => {
-    if (childThreadId === null || lastAssistantText === null) {
-      return;
-    }
-    sendThreadMessage.mutate({
-      id: sourceThread.id,
-      input: [{ type: "text", text: lastAssistantText, mentions: [] }],
-      mode: "auto",
-      senderThreadId: childThreadId,
-    });
-  }, [
-    childThreadId,
-    lastAssistantText,
-    sendThreadMessage,
-    sourceThread.id,
-  ]);
+  const canSendToMain = childIsIdle && !sendThreadMessage.isPending;
+  const sendMessageToMain = useCallback<ThreadTimelineSendToMainMessageHandler>(
+    (target) => {
+      if (childThreadId === null) {
+        return;
+      }
+      sendThreadMessage.mutate({
+        id: sourceThread.id,
+        input: [{ type: "text", text: target.messageText, mentions: [] }],
+        mode: "auto",
+        senderThreadId: childThreadId,
+      });
+    },
+    [childThreadId, sendThreadMessage, sourceThread.id],
+  );
 
   const isCreating = createThread.isPending;
   const composerPlaceholder =
@@ -332,7 +312,10 @@ export function SideChatTabContent({
             Ask a question to start a side chat grounded in this conversation.
           </EmptyStatePanel>
         ) : (
-          <SideChatConversation threadId={childThreadId} />
+          <SideChatConversation
+            threadId={childThreadId}
+            onSendToMainMessage={canSendToMain ? sendMessageToMain : undefined}
+          />
         )}
       </div>
       <div className="border-t border-border px-2 pb-2 pt-2">
@@ -341,19 +324,6 @@ export function SideChatTabContent({
           submitDisabled={isCreating}
           onSubmitText={handleSubmitText}
         />
-        <div className="mt-1 flex justify-end">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            disabled={!canSendBack}
-            onClick={handleSendToMainThread}
-            title="Send the latest result to the main thread"
-          >
-            <Icon name="SideChat" className="size-3.5" />
-            Send to main thread
-          </Button>
-        </div>
       </div>
     </div>
   );
