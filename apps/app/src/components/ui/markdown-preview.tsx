@@ -586,27 +586,25 @@ function MarkdownFrontmatter({ source }: { source: string }) {
     return null;
   }
   return (
-    <div className="mb-3 space-y-0.5 border-l-2 border-border pl-3 text-xs leading-relaxed text-muted-foreground">
+    <div className="mb-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 border-l-2 border-border pl-3 text-xs leading-relaxed text-muted-foreground">
       {lines.map((line, index) => {
         const separator = line.indexOf(":");
         if (separator > 0 && !/^[\s-]/.test(line)) {
           const key = line.slice(0, separator).trim();
           const value = line.slice(separator + 1).trim();
+          // `contents` lets the key/value spans participate in the parent grid,
+          // so every value lines up in a single column regardless of key width.
           return (
-            <div key={index} className="flex gap-2">
-              <span className="shrink-0 font-medium text-muted-foreground/70">
-                {key}
-              </span>
-              {value.length > 0 ? (
-                <span className="min-w-0 break-words">{value}</span>
-              ) : null}
+            <div key={index} className="contents">
+              <span className="font-medium text-muted-foreground/70">{key}</span>
+              <span className="min-w-0 break-words">{value}</span>
             </div>
           );
         }
         return (
           <div
             key={index}
-            className="whitespace-pre-wrap break-words text-muted-foreground/80"
+            className="col-span-2 whitespace-pre-wrap break-words text-muted-foreground/80"
           >
             {line}
           </div>
