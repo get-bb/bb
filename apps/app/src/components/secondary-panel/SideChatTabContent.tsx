@@ -1,12 +1,32 @@
-import { useCallback, useRef, useState } from "react";
-import type { Environment, PromptTextMention } from "@bb/domain";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type {
+  Environment,
+  PermissionMode,
+  PromptTextMention,
+} from "@bb/domain";
 import type { Thread } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import {
+  formatEnvironmentDisplay,
+  type EnvironmentDisplayHostContext,
+} from "@bb/core-ui";
+import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
-  PromptBoxInternal,
+  type AttachmentsConfig,
+  type HistoryConfig,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
+import {
+  FollowUpPromptBox,
+  type FollowUpComposerProps,
+} from "@/components/promptbox/FollowUpPromptBox";
+import type {
+  ExecutionControlsProps,
+  ExecutionPermissionConfig,
+} from "@/components/promptbox/ExecutionControls";
+import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import type { PickerOption } from "@/components/pickers/OptionPicker";
+import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import {
@@ -14,6 +34,7 @@ import {
   type ThreadTimelineSendToMainMessageHandler,
 } from "@/components/thread/timeline";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
   useThread,
   useThreadDefaultExecutionOptions,
@@ -28,6 +49,8 @@ import { buildSideChatCreateRequest } from "@/lib/side-chat-create-request";
 import { HttpError } from "@/lib/api";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 
+const noop = () => {};
+
 // Side chats are conversation-only in v1 (no @-mentions / file reach, no command
 // typeahead), so the composer is wired with an inert typeahead config rather
 // than the thread mention-search stack. Keeping it explicit (not dead config)
@@ -37,9 +60,31 @@ const SIDE_CHAT_TYPEAHEAD: TypeaheadConfig = {
     suggestions: [],
     isLoading: false,
     isError: false,
-    onQueryChange: () => {},
+    onQueryChange: noop,
   },
   command: INERT_TYPEAHEAD_COMMAND_CONFIG,
+};
+
+// Side chats are conversation-only: no @-mentions, no file attachments. The
+// composer requires an attachments config, so wire an inert one (no items, no
+// upload affordance) — mirroring SIDE_CHAT_TYPEAHEAD's intentional v1 scope.
+const SIDE_CHAT_ATTACHMENTS: AttachmentsConfig = {
+  items: [],
+  isAttaching: false,
+  error: null,
+};
+
+// Side chats inherit the parent thread's provider/model and are always
+// read-only, so the footer pickers render as static labels. The permission
+// options list is needed only to map "readonly" → its display label.
+const SIDE_CHAT_PERMISSION_OPTIONS: readonly PickerOption<PermissionMode>[] = [
+  { value: "readonly", label: "Read only" },
+];
+
+const SIDE_CHAT_PERMISSION: ExecutionPermissionConfig = {
+  value: "readonly",
+  options: SIDE_CHAT_PERMISSION_OPTIONS,
+  supported: true,
 };
 
 export interface SetSideChatThreadId {
@@ -58,52 +103,6 @@ export interface SideChatTabContentProps {
   /** The main thread's timeline rows, snapshotted into the first turn. */
   sourceTimelineRows: readonly TimelineRow[];
   onSetThreadId: SetSideChatThreadId;
-}
-
-interface SideChatComposerProps {
-  placeholder: string;
-  submitDisabled: boolean;
-  onSubmitText: (text: string) => void;
-}
-
-function SideChatComposer({
-  placeholder,
-  submitDisabled,
-  onSubmitText,
-}: SideChatComposerProps) {
-  const [value, setValue] = useState("");
-  const [mentionRanges, setMentionRanges] = useState<
-    readonly PromptTextMention[]
-  >([]);
-  const handleChange = useCallback(
-    (nextValue: string, nextMentions: PromptTextMention[]) => {
-      setValue(nextValue);
-      setMentionRanges(nextMentions);
-    },
-    [],
-  );
-  const handleSubmit = useCallback(() => {
-    const trimmed = value.trim();
-    if (trimmed.length === 0) {
-      return;
-    }
-    onSubmitText(trimmed);
-    setValue("");
-    setMentionRanges([]);
-  }, [onSubmitText, value]);
-
-  return (
-    <PromptBoxInternal
-      value={value}
-      mentionRanges={mentionRanges}
-      onChange={handleChange}
-      onSubmit={handleSubmit}
-      placeholder={placeholder}
-      typeahead={SIDE_CHAT_TYPEAHEAD}
-      mentionMenuPlacement="top"
-      submission={{ disabled: submitDisabled }}
-    />
-  );
 }
 
 interface SideChatConversationProps {
@@ -131,8 +130,7 @@ function SideChatConversation({
   const threadQuery = useThread(threadId);
   const timelineQuery = useThreadTimeline(threadId);
   const rows = timelineQuery.data?.rows ?? [];
-  const displayStatus =
-    threadQuery.data?.runtime.displayStatus ?? "idle";
+  const displayStatus = threadQuery.data?.runtime.displayStatus ?? "idle";
 
   // A persisted side-chat tab can outlive its child thread (the thread was
   // deleted). The thread query then 404s — show an explicit terminal empty
@@ -178,13 +176,15 @@ function SideChatConversation({
 }
 
 /**
- * Hosts a message-anchored side chat: the child thread's conversation above a
- * focused composer. The child thread is created lazily on the user's first
- * submit (`tab.threadId === null`); later submits send follow-up turns. Once a
- * thread exists, each side-chat agent reply carries a per-message "send to main
- * thread" action that posts that reply into the main thread (rendered there as
- * "Message from {side chat}") via the existing cross-thread send transport
- * (`senderThreadId`).
+ * Hosts a message-anchored side chat: the child thread's conversation above the
+ * shared `FollowUpPromptBox` composer (the same component the main thread uses)
+ * with its footer in read-only mode — the side chat inherits the parent's
+ * provider/model and is always read-only. The child thread is created lazily on
+ * the user's first submit (`tab.threadId === null`); later submits send
+ * follow-up turns. Once a thread exists, each side-chat agent reply carries a
+ * per-message "send to main thread" action that posts that reply into the main
+ * thread (rendered there as "Message from {side chat}") via the existing
+ * cross-thread send transport (`senderThreadId`).
  */
 export function SideChatTabContent({
   tab,
@@ -196,6 +196,7 @@ export function SideChatTabContent({
   const childThreadId = tab.threadId;
   const createThread = useCreateThread();
   const sendThreadMessage = useSendThreadMessage();
+  const { isLocalDaemonHost } = useHostDaemon();
   const executionOptionsQuery = useThreadDefaultExecutionOptions(
     sourceThread.id,
   );
@@ -208,7 +209,17 @@ export function SideChatTabContent({
   // (`createThread.isPending` lags a synchronous re-submit.) Cleared on settle.
   const createInFlightRef = useRef(false);
 
-  const handleSubmitText = useCallback(
+  const [message, setMessage] = useState("");
+  const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+  const handleChangeMessage = useCallback(
+    (nextValue: string, nextMentions: PromptTextMention[]) => {
+      setMessage(nextValue);
+      setMentionRanges(nextMentions);
+    },
+    [],
+  );
+
+  const submitText = useCallback(
     (text: string) => {
       if (childThreadId !== null) {
         sendThreadMessage.mutate({
@@ -277,13 +288,22 @@ export function SideChatTabContent({
     ],
   );
 
+  const handleSubmit = useCallback(() => {
+    const trimmed = message.trim();
+    if (trimmed.length === 0) {
+      return;
+    }
+    submitText(trimmed);
+    setMessage("");
+    setMentionRanges([]);
+  }, [message, submitText]);
+
   // A side chat hands results back to the main thread per agent message (the
   // "send to main thread" action under each reply) via the cross-thread
   // `senderThreadId` transport. Gate on idle so a mid-stream partial can't be
   // posted while a turn is in flight, and on the mutation so a click can't
   // double-send.
-  const childIsIdle =
-    childThreadQuery.data?.runtime.displayStatus === "idle";
+  const childIsIdle = childThreadQuery.data?.runtime.displayStatus === "idle";
   const canSendToMain = childIsIdle && !sendThreadMessage.isPending;
   const sendMessageToMain = useCallback<ThreadTimelineSendToMainMessageHandler>(
     (target) => {
@@ -306,6 +326,85 @@ export function SideChatTabContent({
       ? "Ask a question about this conversation…"
       : "Reply in the side chat…";
 
+  const composerConfig = useMemo<FollowUpComposerProps>(
+    () => ({
+      // Side chats have no prompt-history surface in v1. A draft-only history
+      // config (current draft, no entries, no-op select) satisfies the required
+      // shape without inventing a feature the composer never exercises.
+      history: {
+        currentDraft: { text: message, mentions: mentionRanges, attachments: [] },
+        entries: [],
+        onSelectEntry: noop,
+      } satisfies HistoryConfig,
+      isFollowUpSubmitting: isCreating || sendThreadMessage.isPending,
+      message,
+      mentionRanges,
+      onChangeMessage: handleChangeMessage,
+      onModifierSubmit: noop,
+      onSubmit: handleSubmit,
+      promptPlaceholder: composerPlaceholder,
+      canModifierSubmit: false,
+      submitMode: { kind: "ready" },
+      threadRuntimeDisplayStatus:
+        childThreadQuery.data?.runtime.displayStatus ?? "idle",
+    }),
+    [
+      childThreadQuery.data?.runtime.displayStatus,
+      composerPlaceholder,
+      handleChangeMessage,
+      handleSubmit,
+      isCreating,
+      mentionRanges,
+      message,
+      sendThreadMessage.isPending,
+    ],
+  );
+
+  // Provider + model are inherited from the parent thread and render as static,
+  // read-only labels: provider/model `onChange` omitted, reasoning omitted
+  // (the reasoning picker only renders on editable surfaces).
+  const executionConfig = useMemo<ExecutionControlsProps>(() => {
+    const model = executionOptionsQuery.data?.model ?? "";
+    return {
+      provider: {
+        selectedId: sourceThread.providerId,
+        hasMultiple: false,
+      },
+      model: {
+        active: model ? { model } : null,
+        selected: model,
+        options: [],
+      },
+    };
+  }, [executionOptionsQuery.data?.model, sourceThread.providerId]);
+
+  const environmentSummary = useMemo(() => {
+    if (sourceEnvironment === null) {
+      // Personal-project side chats inherit the parent's local workspace with no
+      // discrete environment row; the main thread renders "Working locally".
+      return <ThreadEnvironmentSummary environmentLabel="Working locally" />;
+    }
+    const host: EnvironmentDisplayHostContext = {
+      locality: isLocalDaemonHost(sourceEnvironment.hostId)
+        ? "local"
+        : "remote",
+    };
+    const display = formatEnvironmentDisplay({
+      environment: sourceEnvironment,
+      host,
+    });
+    return (
+      <ThreadEnvironmentSummary
+        environmentLabel={display.modeLabel}
+        environmentCompactLabel={display.compactModeLabel}
+        environmentIcon={getEnvironmentWorkspaceLabelIconName(
+          display.workspaceDisplayKind,
+        )}
+        environmentBranchName={sourceEnvironment.branchName ?? undefined}
+      />
+    );
+  }, [isLocalDaemonHost, sourceEnvironment]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3">
@@ -321,10 +420,16 @@ export function SideChatTabContent({
         )}
       </div>
       <div className="border-t border-border px-2 pb-2 pt-2">
-        <SideChatComposer
-          placeholder={composerPlaceholder}
-          submitDisabled={isCreating}
-          onSubmitText={handleSubmitText}
+        <FollowUpPromptBox
+          attachments={SIDE_CHAT_ATTACHMENTS}
+          stack={null}
+          composer={composerConfig}
+          environmentSummary={environmentSummary}
+          contextWindowUsage={null}
+          execution={executionConfig}
+          permission={SIDE_CHAT_PERMISSION}
+          typeahead={SIDE_CHAT_TYPEAHEAD}
+          zenModeResetKey={childThreadId ?? tab.id}
         />
       </div>
     </div>

@@ -256,12 +256,14 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <PermissionModePicker
-            value={modeConfig.permission.value}
-            options={modeConfig.permission.options}
-            onChange={modeConfig.permission.onChange}
-            supported={modeConfig.permission.supported}
-          />
+          {modeConfig.permission.onChange ? (
+            <PermissionModePicker
+              value={modeConfig.permission.value}
+              options={modeConfig.permission.options}
+              onChange={modeConfig.permission.onChange}
+              supported={modeConfig.permission.supported}
+            />
+          ) : null}
         </div>
       </div>
     </div>

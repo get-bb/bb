@@ -95,6 +95,34 @@ describe("ExecutionControls", () => {
     expect(link.getAttribute("href")).toBe(CODEX_CLI_URL);
   });
 
+  it("renders the model as a static label when onChange is omitted (locked model)", () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    render(
+      <ExecutionControls
+        provider={{
+          selectedId: "codex",
+          hasMultiple: false,
+        }}
+        model={{
+          active: { model: "gpt-5.5" },
+          selected: "gpt-5.5",
+          options: [],
+        }}
+      />,
+      { wrapper },
+    );
+
+    // No interactive model/reasoning picker; the inherited model renders as a
+    // read-only, formatted label.
+    expect(
+      screen.queryByRole("button", {
+        name: "Provider, model and reasoning",
+      }),
+    ).toBeNull();
+    expect(screen.getByText("GPT-5.5")).not.toBeNull();
+  });
+
   it("renders the selected provider load error when locked single-provider controls have no picker", () => {
     const loadError: SystemExecutionOptionsModelLoadError = {
       providerId: "codex",

@@ -178,6 +178,24 @@ describe("FollowUpPromptBox", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("renders the permission as a static label when onChange is omitted", () => {
+    const props = makeFollowUpPromptBoxProps();
+    props.permission = {
+      value: "readonly",
+      options: [{ value: "readonly", label: "Read only" }],
+      supported: true,
+    };
+
+    render(<FollowUpPromptBox {...props} />);
+
+    // No interactive permission picker (the picker is a button labeled
+    // "Permission mode"); instead a static "Permission" label is shown.
+    expect(
+      screen.queryByRole("button", { name: "Permission mode" }),
+    ).toBeNull();
+    expect(screen.getByText("Read only")).not.toBeNull();
+  });
+
   it("preserves ordinary Enter submit behavior", () => {
     const props = makeFollowUpPromptBoxProps();
     const onModifierSubmit = vi.fn();

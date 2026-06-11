@@ -18,6 +18,7 @@ import {
 } from "@/components/promptbox/PromptBoxInternal";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
 import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
+import { OptionDisplay } from "@/components/pickers/OptionPicker";
 import {
   ExecutionControls,
   type ExecutionControlsProps,
@@ -182,6 +183,41 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
     () => <ExecutionControls {...execution} />,
     [execution],
   );
+  // A locked permission (no onChange) is fixed by the surface — e.g. a side
+  // chat that is always read-only — so render it as a static label instead of
+  // the interactive picker, mirroring the locked model/provider treatment.
+  const permissionControl = useMemo(() => {
+    if (permission.onChange !== undefined) {
+      return (
+        <PermissionModePicker
+          value={permission.value}
+          options={permission.options}
+          onChange={permission.onChange}
+          supported={permission.supported}
+          className="h-6"
+        />
+      );
+    }
+    if (!permission.supported || permission.value === undefined) {
+      return null;
+    }
+    const selectedLabel =
+      permission.options.find((option) => option.value === permission.value)
+        ?.label ?? permission.value;
+    return (
+      <OptionDisplay
+        label="Permission"
+        value={selectedLabel}
+        className="h-6"
+        muted
+      />
+    );
+  }, [
+    permission.onChange,
+    permission.options,
+    permission.supported,
+    permission.value,
+  ]);
   const stackRef = useRef<HTMLDivElement>(null);
   const [stackHeight, setStackHeight] = useState(0);
   // Measure the stack synchronously after every render. useLayoutEffect runs
@@ -265,13 +301,7 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
             {environmentSummary}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <PermissionModePicker
-              value={permission.value}
-              options={permission.options}
-              onChange={permission.onChange}
-              supported={permission.supported}
-              className="h-6"
-            />
+            {permissionControl}
             {contextWindowUsage ? (
               <ThreadContextWindowIndicator usage={contextWindowUsage} />
             ) : null}

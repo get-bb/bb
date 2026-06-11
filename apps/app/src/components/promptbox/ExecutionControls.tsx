@@ -23,7 +23,8 @@ export interface ExecutionModelConfig {
   selected: string;
   options: readonly PickerOption<string>[];
   loadError?: SystemExecutionOptionsModelLoadError | null;
-  onChange: (value: string) => void;
+  /** Omit to render the model as a locked, read-only label (used by surfaces that inherit a parent thread's model, e.g. side chats). */
+  onChange?: (value: string) => void;
 }
 
 export interface ExecutionServiceTierConfig {
@@ -42,7 +43,8 @@ export interface ExecutionReasoningConfig {
 export interface ExecutionPermissionConfig {
   value?: PermissionMode;
   options: readonly PickerOption<PermissionMode>[];
-  onChange: (value: PermissionMode) => void;
+  /** Omit to render the permission as a locked, read-only label (used by surfaces with a fixed permission mode, e.g. always-readonly side chats). */
+  onChange?: (value: PermissionMode) => void;
   supported: boolean;
 }
 
@@ -50,7 +52,8 @@ export interface ExecutionControlsProps {
   provider: ExecutionProviderConfig;
   model: ExecutionModelConfig;
   serviceTier?: ExecutionServiceTierConfig;
-  reasoning: ExecutionReasoningConfig;
+  /** Required for interactive (editable-model) surfaces. Omit on locked surfaces (model.onChange undefined), where the reasoning picker never renders. */
+  reasoning?: ExecutionReasoningConfig;
 }
 
 export const ExecutionControls = memo(function ExecutionControls({
@@ -76,17 +79,29 @@ export const ExecutionControls = memo(function ExecutionControls({
     provider.displayName &&
     model.options.length === 0;
 
+  // A locked model (no onChange) inherits its value from elsewhere (e.g. a side
+  // chat inheriting the parent thread's model). Render it as a static label
+  // instead of the interactive picker, mirroring the locked-provider treatment.
+  const onModelChange = model.onChange;
+  const lockedModelValue = model.active?.model ?? model.selected;
+  const showReadOnlyModel =
+    onModelChange === undefined && lockedModelValue.length > 0;
+
   const canSwitchProviders = Boolean(
     provider.hasMultiple &&
     provider.onChange &&
     provider.options &&
     provider.options.length > 1,
   );
-  const showModelPicker = model.options.length > 0 || canSwitchProviders;
+  const showModelPicker =
+    onModelChange !== undefined &&
+    (model.options.length > 0 || canSwitchProviders);
   const selectedProviderModelLoadError =
     model.loadError?.providerId === selectedProviderId ? model.loadError : null;
   const showModelLoadError =
-    !showModelPicker && selectedProviderModelLoadError !== null;
+    !showModelPicker &&
+    !showReadOnlyModel &&
+    selectedProviderModelLoadError !== null;
 
   return (
     <>
@@ -98,7 +113,14 @@ export const ExecutionControls = memo(function ExecutionControls({
           muted
         />
       ) : null}
-      {showModelPicker ? (
+      {showReadOnlyModel ? (
+        <OptionDisplay
+          label="Model"
+          value={formatModelLabel(lockedModelValue)}
+          muted
+        />
+      ) : null}
+      {showModelPicker && reasoning ? (
         <ModelReasoningPicker
           providerOptions={provider.options ?? []}
           selectedProviderId={selectedProviderId}
@@ -107,7 +129,7 @@ export const ExecutionControls = memo(function ExecutionControls({
           modelValue={model.active?.model ?? model.selected}
           modelOptions={model.options}
           modelLoadError={model.loadError}
-          onModelChange={model.onChange}
+          onModelChange={onModelChange}
           formatModelLabel={formatModelLabel}
           reasoningValue={reasoning.value}
           reasoningOptions={reasoning.options}

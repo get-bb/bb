@@ -31,8 +31,13 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeEnvironment,
   makeExecutionControlsProps,
+  STORY_CODEX_MODELS,
   STORY_PROVIDER_OPTIONS,
 } from "../../../.ladle/story-fixtures";
+import type {
+  ExecutionControlsProps,
+  ExecutionPermissionConfig,
+} from "@/components/promptbox/ExecutionControls";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",
@@ -58,10 +63,35 @@ const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
   { value: "readonly", label: "Readonly" },
 ];
 
-const basePermission = {
-  value: "workspace-write" as PermissionMode,
+const basePermission: ExecutionPermissionConfig = {
+  value: "workspace-write",
   options: permissionModeOptions,
   onChange: noop,
+  supported: true,
+};
+
+// Locked footer (side chat): the side chat inherits its parent thread's
+// provider/model and is always read-only, so the model and permission render as
+// static labels rather than interactive pickers. Omit `model.onChange` (and the
+// reasoning config) so the model is locked, and omit `permission.onChange` so
+// the permission is locked.
+const lockedExecution = makeExecutionControlsProps({
+  provider: {
+    selectedId: "codex",
+    hasMultiple: false,
+  },
+  model: {
+    active: { model: "gpt-5.5" },
+    selected: "gpt-5.5",
+    options: STORY_CODEX_MODELS,
+  },
+  reasoning: undefined,
+  serviceTier: undefined,
+});
+
+const lockedPermission: ExecutionPermissionConfig = {
+  value: "readonly",
+  options: permissionModeOptions,
   supported: true,
 };
 
@@ -317,6 +347,8 @@ const queuedMessagesElement: ReactNode = (
 // Per-row component
 // ---------------------------------------------------------------------------
 
+type RowPermission = Parameters<typeof FollowUpPromptBox>[0]["permission"];
+
 interface RowConfig {
   initialMessage?: string;
   submitMode: FollowUpSubmitMode;
@@ -327,6 +359,10 @@ interface RowConfig {
   contextWindowUsage?: ThreadContextWindowUsage | null;
   stack?: ReactNode | null;
   zenModeResetKey?: string;
+  /** Defaults to the editable execution controls; override to show locked (read-only) model/provider. */
+  execution?: ExecutionControlsProps;
+  /** Defaults to the editable permission picker; override to show a locked (read-only) permission label. */
+  permission?: RowPermission;
 }
 
 type ComposerCoreRuntimeStatus = Parameters<
@@ -354,6 +390,8 @@ function Row({
   contextWindowUsage = null,
   stack = null,
   zenModeResetKey = "thr_demo",
+  execution = baseExecution,
+  permission = basePermission,
 }: RowConfig) {
   const [message, setMessage] = useState(initialMessage);
   const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
@@ -395,8 +433,8 @@ function Row({
         }}
         environmentSummary={environmentSummary}
         contextWindowUsage={contextWindowUsage}
-        execution={baseExecution}
-        permission={basePermission}
+        execution={execution}
+        permission={permission}
         typeahead={typeaheadBase}
         zenModeResetKey={zenModeResetKey}
       />
@@ -496,6 +534,16 @@ export function Overview() {
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={remoteEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="locked footer (side chat)"
+        hint="inherits parent provider/model; always read-only — model & permission render as static labels"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={lockedExecution}
+          permission={lockedPermission}
         />
       </StoryRow>
     </StoryCard>
