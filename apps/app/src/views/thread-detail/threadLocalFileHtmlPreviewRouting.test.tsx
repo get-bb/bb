@@ -16,6 +16,7 @@ import {
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
 import type { ThreadTimelineLocalFileLink } from "@/components/thread/timeline";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
+import type { FilePreviewLineRange } from "@/lib/file-preview";
 import { resolveThreadLocalFileLink } from "@/lib/thread-local-file-links";
 import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -28,12 +29,13 @@ interface MarkdownHtmlPreviewHarnessProps {
 
 interface HostOpenedFile {
   kind: "host";
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   path: string;
 }
 
 interface ThreadStorageOpenedFile {
   kind: "thread-storage";
+  lineRange: FilePreviewLineRange | null;
   path: string;
 }
 
@@ -85,7 +87,7 @@ function MarkdownHtmlPreviewHarness({
       if (resolution.kind === "open-host-path") {
         setOpenedFile({
           kind: "host",
-          lineNumber: resolution.request.lineNumber,
+          lineRange: resolution.request.lineRange,
           path: resolution.request.path,
         });
         return true;
@@ -94,6 +96,7 @@ function MarkdownHtmlPreviewHarness({
       if (resolution.kind === "open-thread-storage-path") {
         setOpenedFile({
           kind: "thread-storage",
+          lineRange: resolution.request.lineRange,
           path: resolution.request.relativePath,
         });
         return true;
@@ -121,13 +124,14 @@ function MarkdownHtmlPreviewHarness({
         <HostFilePreviewTabContent
           activePath={openedFile.path}
           environmentId={ENVIRONMENT_ID}
-          lineNumber={openedFile.lineNumber}
+          lineRange={openedFile.lineRange}
           threadId={THREAD_ID}
         />
       ) : null}
       {openedFile?.kind === "thread-storage" ? (
         <ThreadStorageFilePreviewTabContent
           activePath={openedFile.path}
+          lineRange={openedFile.lineRange}
           threadId={THREAD_ID}
         />
       ) : null}
@@ -162,6 +166,7 @@ function PanelClosedThreadStorageMarkdownLinkHarness({
       if (resolution.kind === "open-thread-storage-path") {
         setOpenedFile({
           kind: "thread-storage",
+          lineRange: resolution.request.lineRange,
           path: resolution.request.relativePath,
         });
         return true;
@@ -170,7 +175,7 @@ function PanelClosedThreadStorageMarkdownLinkHarness({
       if (resolution.kind === "open-host-path") {
         setOpenedFile({
           kind: "host",
-          lineNumber: resolution.request.lineNumber,
+          lineRange: resolution.request.lineRange,
           path: resolution.request.path,
         });
         return true;
@@ -226,13 +231,14 @@ function PanelClosedThreadStorageMarkdownLinkHarness({
         <HostFilePreviewTabContent
           activePath={openedFile.path}
           environmentId={ENVIRONMENT_ID}
-          lineNumber={openedFile.lineNumber}
+          lineRange={openedFile.lineRange}
           threadId={THREAD_ID}
         />
       ) : null}
       {openedFile?.kind === "thread-storage" ? (
         <ThreadStorageFilePreviewTabContent
           activePath={openedFile.path}
+          lineRange={openedFile.lineRange}
           threadId={THREAD_ID}
         />
       ) : null}

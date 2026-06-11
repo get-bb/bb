@@ -59,16 +59,79 @@ export type EnvironmentFilePreviewSource =
 
 export type WorkspaceFilePreviewStatusLabel = "deleted";
 
+export interface FilePreviewLineRange {
+  endLineNumber: number;
+  startLineNumber: number;
+}
+
+export interface CreateFilePreviewLineRangeArgs {
+  endLineNumber: number;
+  startLineNumber: number;
+}
+
+export interface AreFilePreviewLineRangesEqualArgs {
+  a: FilePreviewLineRange | null;
+  b: FilePreviewLineRange | null;
+}
+
+export interface GetFilePreviewLineRangeStartArgs {
+  lineRange: FilePreviewLineRange | null;
+}
+
 export interface WorkspaceFileTabState {
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   path: string;
   source: EnvironmentFilePreviewSource;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
 }
 
 export interface HostFileTabState {
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   path: string;
+}
+
+export interface ThreadStorageFileTabState {
+  lineRange: FilePreviewLineRange | null;
+  path: string;
+}
+
+export function createFilePreviewLineRange({
+  endLineNumber,
+  startLineNumber,
+}: CreateFilePreviewLineRangeArgs): FilePreviewLineRange | null {
+  if (
+    !Number.isSafeInteger(startLineNumber) ||
+    !Number.isSafeInteger(endLineNumber) ||
+    startLineNumber <= 0 ||
+    endLineNumber <= 0 ||
+    startLineNumber > endLineNumber
+  ) {
+    return null;
+  }
+
+  return {
+    endLineNumber,
+    startLineNumber,
+  };
+}
+
+export function areFilePreviewLineRangesEqual({
+  a,
+  b,
+}: AreFilePreviewLineRangesEqualArgs): boolean {
+  if (a === null || b === null) {
+    return a === b;
+  }
+  return (
+    a.startLineNumber === b.startLineNumber &&
+    a.endLineNumber === b.endLineNumber
+  );
+}
+
+export function getFilePreviewLineRangeStart({
+  lineRange,
+}: GetFilePreviewLineRangeStartArgs): number | null {
+  return lineRange?.startLineNumber ?? null;
 }
 
 export function areEnvironmentFilePreviewSourcesEqual(

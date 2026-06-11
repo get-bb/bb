@@ -152,7 +152,7 @@ describe("ThreadStorageFilePreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: "/storage/thr_1/plan.md",
     });
   });

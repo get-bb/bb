@@ -28,6 +28,9 @@ export const COARSE_POINTER_CHECK_SLOT_CLASS =
 export const COARSE_POINTER_HEADER_ICON_BUTTON_CLASS =
   "h-7 w-7 rounded-md p-0 [&_svg]:size-4 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5";
 
+export const COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS =
+  "h-7 w-7 rounded-md p-0 [&_svg]:size-3.5 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5";
+
 export const COARSE_POINTER_CHILD_ICON_BUTTON_CLASS =
   "h-8 w-8 justify-center p-0 [&>svg]:size-4 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&>svg]:size-5";
 

@@ -197,6 +197,9 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
             className={cn(
               "grid gap-4 overflow-y-auto px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]",
               className,
+              // The drawer spans the full viewport width; ignore any desktop
+              // max-width override a caller passes so content fills the drawer.
+              "max-w-none",
             )}
             {...domProps}
           >
@@ -238,10 +241,7 @@ const DialogHeader = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn(
-      "flex flex-col space-y-1.5 text-center sm:text-left",
-      className,
-    )}
+    className={cn("flex flex-col space-y-1.5 text-left", className)}
     {...props}
   />
 );
@@ -276,7 +276,7 @@ const DialogTitle = React.forwardRef<
     <Comp
       ref={ref}
       className={cn(
-        "text-lg font-semibold leading-none tracking-tight",
+        "text-base font-semibold leading-none tracking-tight",
         className,
       )}
       {...props}

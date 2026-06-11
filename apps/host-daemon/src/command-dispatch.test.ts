@@ -307,6 +307,7 @@ describe("dispatchCommand", () => {
     });
     const command: CommandOf<"thread.start"> = {
       type: "thread.start",
+      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "thread-1",
       workspaceContext: {

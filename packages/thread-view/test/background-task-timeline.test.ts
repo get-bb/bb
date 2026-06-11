@@ -191,6 +191,9 @@ describe("background task timeline projection", () => {
       workKind: "workflow",
       status: "completed",
       taskStatus: "completed",
+      // taskType is carried from the item onto the row: renderers gate the
+      // bb_workflow run-page deep link on it.
+      taskType: "local_workflow",
       workflowName: "fixture-mini",
       summary: "Dynamic workflow completed",
       usage: { totalTokens: 26674, toolUses: 0, durationMs: 3277 },

@@ -1,5 +1,11 @@
 import { count, eq } from "drizzle-orm";
-import { events, hostDaemonSessions, threads, type DbConnection } from "@bb/db";
+import {
+  events,
+  hostDaemonSessions,
+  threads,
+  workflowRuns,
+  type DbConnection,
+} from "@bb/db";
 
 export interface StoredTurnEventRow {
   sequence: number;
@@ -38,4 +44,8 @@ export function readSessionRow(
 
 export function countStoredThreads(db: DbConnection): number {
   return db.select({ count: count() }).from(threads).get()?.count ?? 0;
+}
+
+export function countStoredWorkflowRuns(db: DbConnection): number {
+  return db.select({ count: count() }).from(workflowRuns).get()?.count ?? 0;
 }

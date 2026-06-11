@@ -298,12 +298,19 @@ function UserConversationMessage({
   const mutePrefixLength = computeMutedPrefixLength(initiator, text);
   const messageText = text.trim();
   const requestLabel = turnRequestLabel(turnRequest);
-  const showToolbar = requestLabel !== null || messageText.length > 0;
 
   return (
     <div className="w-full">
       <div className="group/message ml-auto w-fit max-w-[80%]">
-        <div className="rounded-md bg-surface-selected p-2 text-sm leading-relaxed text-foreground">
+        {requestLabel ? (
+          <div className="mb-1 flex justify-end">
+            <TurnRequestLabel
+              turnRequest={turnRequest}
+              icon="ArrowTurnForward"
+            />
+          </div>
+        ) : null}
+        <div className="rounded-md bg-surface-recessed p-2 text-sm leading-relaxed text-foreground">
           {messageText ? (
             <CollapsibleMessageText
               mentions={mentions}
@@ -321,9 +328,8 @@ function UserConversationMessage({
             projectId={projectId}
           />
         </div>
-        {showToolbar ? (
-          <div className="mt-1 flex items-center justify-end gap-2">
-            <TurnRequestLabel turnRequest={turnRequest} />
+        {messageText ? (
+          <div className="mt-1 flex justify-end">
             <MessageActionBar messageText={messageText} alignment="end" />
           </div>
         ) : null}
@@ -363,7 +369,7 @@ function AssistantConversationMessage({
   }, [onOpenLink, onOpenLocalFileLink]);
 
   return (
-    <div className="group/message w-full px-2 text-sm leading-relaxed">
+    <div className="group/message w-full px-2 text-sm font-normal leading-relaxed">
       <MarkdownPreview content={text} linkRouting={linkRouting} />
       <ConversationAttachments
         filePaths={attachmentItems.filePaths}

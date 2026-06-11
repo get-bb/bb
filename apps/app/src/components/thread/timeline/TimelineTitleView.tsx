@@ -10,6 +10,7 @@ import {
   type TimelineTitleDecoration,
   type TimelineTitleLink,
   type TimelineTitleSegment,
+  type TimelineTitleSegmentAccent,
   type TimelineTitleTone,
 } from "@bb/thread-view";
 import { cn } from "@/lib/utils";
@@ -45,11 +46,32 @@ export interface TimelineTitleViewProps {
 function emToneClass(tone: TimelineTitleTone): string {
   switch (tone) {
     case "default":
-      return "font-semibold text-foreground";
+      // Emphasized work-row targets (command/query/URL/name) sit at medium and
+      // dimmed — the non-file machinery recedes. File paths take the `file`
+      // accent instead (see accentToneClass) and stay at full strength.
+      return "font-medium text-foreground opacity-70";
     case "summary":
       return "text-subtle-foreground";
     default:
       return assertNever(tone);
+  }
+}
+
+function accentToneClass(
+  accent: TimelineTitleSegmentAccent,
+  em: boolean,
+): string {
+  switch (accent) {
+    case "muted":
+      return "text-muted-foreground";
+    case "subtle":
+      return "text-subtle-foreground";
+    case "file":
+      // File-path segments are emphasized targets tinted with the file accent;
+      // keep the medium weight so they read as the row's anchor.
+      return em ? "font-medium text-file-accent" : "text-file-accent";
+    default:
+      return assertNever(accent);
   }
 }
 
@@ -87,7 +109,12 @@ function renderSegment(
   const widthClass = segment.truncate
     ? "min-w-0 truncate whitespace-pre"
     : "shrink-0 whitespace-pre";
-  const toneClass = segment.em ? emToneClass(tone) : plainToneClass(tone);
+  const toneClass =
+    segment.accent !== undefined
+      ? accentToneClass(segment.accent, segment.em)
+      : segment.em
+        ? emToneClass(tone)
+        : plainToneClass(tone);
   const baseClass = cn(
     widthClass,
     toneClass,
@@ -211,16 +238,18 @@ function renderDecoration(
     case "summary-status": {
       const text = formatTimelineDecorationText(decoration);
       if (text.length === 0) return null;
-      // Only an emphasized error status (a system error row, whose whole reason
-      // for existing is the failure) carries the destructive color. A work
-      // row's "(error)" tag stays a muted annotation next to its content.
-      const emphasized = decoration.kind === "status" && decoration.emphasis;
+      // An error status reads in red — both a single row's "(error)" tag and a
+      // rolled-up summary's "(N errors)" count — using the deeper `destructive`
+      // token. Non-error statuses (denied, interrupted) stay a muted annotation.
+      const isError =
+        (decoration.kind === "status" && decoration.status === "error") ||
+        (decoration.kind === "summary-status" && decoration.errorCount > 0);
       return (
         <span
           key={index}
           className={cn(
             "shrink-0 whitespace-pre",
-            emphasized ? "text-destructive" : decorationToneClass(tone),
+            isError ? "text-destructive-text" : decorationToneClass(tone),
           )}
         >
           {text}

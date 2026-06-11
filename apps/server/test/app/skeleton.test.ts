@@ -66,6 +66,7 @@ describe("server skeleton", () => {
           dataDir: "/tmp/host-data",
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          activeWorkflowRunIds: [],
         }),
       });
 

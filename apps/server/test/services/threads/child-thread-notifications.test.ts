@@ -28,19 +28,26 @@ describe("child thread notifications", () => {
             id: "thr_child",
             title: "Fix checkout flow",
           }),
+          terminalOutput: "Stopped after writing the checkout summary.",
           turnStatus: "interrupted",
         },
       ],
     });
 
-    expect(message).toContain("@thread:thr_child was interrupted.");
-    expect(message).not.toContain("Multiple child threads updated:");
     expect(message).toContain(
-      "If it was stopped manually by the user, treat that as intentional; do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
+      [
+        "@thread:thr_child was interrupted:",
+        "",
+        "Stopped after writing the checkout summary.",
+      ].join("\n"),
+    );
+    expect(message).not.toContain("Managed thread updates:");
+    expect(message).toContain(
+      "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
     );
   });
 
-  it("renders multiple child outcomes with a plural first line", () => {
+  it("renders multiple child outcomes with excerpt sections", () => {
     const message = renderChildThreadTurnStatusBatchMessage({
       items: [
         {
@@ -48,6 +55,7 @@ describe("child thread notifications", () => {
             id: "thr_child_one",
             title: "Fix checkout flow",
           }),
+          terminalOutput: "Checkout flow is fixed.",
           turnStatus: "completed",
         },
         {
@@ -55,6 +63,7 @@ describe("child thread notifications", () => {
             id: "thr_child_two",
             title: "Patch deploy script",
           }),
+          terminalOutput: "Deploy script failed on preflight.",
           turnStatus: "failed",
         },
       ],
@@ -64,9 +73,15 @@ describe("child thread notifications", () => {
       [
         "[bb system]",
         "",
-        "Multiple child threads updated:",
-        "- @thread:thr_child_one completed.",
-        "- @thread:thr_child_two failed.",
+        "Managed thread updates:",
+        "",
+        "@thread:thr_child_one completed:",
+        "",
+        "Checkout flow is fixed.",
+        "",
+        "@thread:thr_child_two failed:",
+        "",
+        "Deploy script failed on preflight.",
       ].join("\n"),
     );
   });
@@ -79,6 +94,7 @@ describe("child thread notifications", () => {
             id: "thr_child_one",
             title: "Fix checkout flow",
           }),
+          terminalOutput: "Checkout flow is fixed.",
           turnStatus: "completed",
         },
         {
@@ -86,6 +102,7 @@ describe("child thread notifications", () => {
             id: "thr_child_two",
             title: null,
           }),
+          terminalOutput: "Deploy script failed.",
           turnStatus: "failed",
         },
       ],
@@ -123,7 +140,7 @@ describe("child thread notifications", () => {
       ],
     });
     expect(textInput.text).toContain("@thread:thr_child_two");
-    expect(textInput.text).toContain("Multiple child threads updated:");
+    expect(textInput.text).toContain("Managed thread updates:");
     expect(
       textInput.mentions.map((mention) =>
         textInput.text.slice(mention.start, mention.end),
@@ -140,6 +157,7 @@ describe("child thread notifications", () => {
             id: "thr_child_one",
             title: `Title mentions ${nestedToken}`,
           }),
+          terminalOutput: "Checkout flow is fixed.",
           turnStatus: "completed",
         },
         {
@@ -147,6 +165,7 @@ describe("child thread notifications", () => {
             id: "thr_child_two",
             title: "Second thread",
           }),
+          terminalOutput: "Deploy script failed.",
           turnStatus: "failed",
         },
       ],
@@ -169,6 +188,27 @@ describe("child thread notifications", () => {
         textInput.text.slice(mention.start, mention.end),
       ),
     ).toEqual(["@thread:thr_child_one", nestedToken]);
+  });
+
+  it("renders terminal output fallbacks for missing child output", () => {
+    const message = renderChildThreadTurnStatusBatchMessage({
+      items: [
+        {
+          childThread: testThread({
+            id: "thr_child",
+            title: "Patch deploy script",
+          }),
+          terminalOutput: null,
+          turnStatus: "failed",
+        },
+      ],
+    });
+
+    expect(message).toContain(
+      ["@thread:thr_child failed:", "", "No failure output was recorded."].join(
+        "\n",
+      ),
+    );
   });
 
   it("builds mention ranges for needs-attention thread references", () => {
@@ -198,5 +238,8 @@ describe("child thread notifications", () => {
         },
       },
     ]);
+    expect(textInput.text).toContain(
+      "Inspect the thread and decide if you can answer or resolve the question from existing context.",
+    );
   });
 });

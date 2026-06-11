@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
-  allSystemExecutionOptionsQueryKeyPrefix,
   sidebarNavigationQueryKey,
   systemExecutionOptionsQueryKey,
   threadDefaultExecutionOptionsQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
   threadQueuedMessagesQueryKey,
+  workflowRunAgentEventsQueryKey,
+  workflowRunEventsQueryKey,
+  workflowRunQueryKey,
+  workflowRunsQueryKey,
+  workflowsQueryKey,
 } from "./queries/query-keys";
-import {
-  invalidateHostChangeDependentQueries,
-  invalidateRealtimeQueriesAfterServerReconnect,
-} from "./cache-owners/system-cache-effects";
+import { invalidateRealtimeQueriesAfterServerReconnect } from "./cache-owners/system-cache-effects";
 
 function createCacheEffectQueryClient() {
   return createAppQueryClient({
@@ -94,29 +95,34 @@ describe("system cache effects", () => {
     );
   });
 
-  it("invalidates all execution options after host changes", () => {
+  it("invalidates workflow caches after reconnect", () => {
+    // Workflow runs are realtime-fed: a run reaching terminal while the
+    // socket was down emits nothing afterward, so reconnect invalidation is
+    // the only recovery path for an already-mounted run page or Workflows
+    // tab — without it the run renders frozen at `running` indefinitely.
     const queryClient = createCacheEffectQueryClient();
-    const executionOptionsKey = scopedSystemExecutionOptionsKey({
-      environmentId: "env-1",
+    const runDetailKey = workflowRunQueryKey("wfr_1");
+    const runsListKey = workflowRunsQueryKey("project-1");
+    const runEventsKey = workflowRunEventsQueryKey("wfr_1");
+    const agentEventsKey = workflowRunAgentEventsQueryKey({
+      agentIndex: 1,
+      runId: "wfr_1",
     });
-    const sidebarNavigationKey = sidebarNavigationQueryKey();
-    queryClient.setQueryData(executionOptionsKey, EMPTY_EXECUTION_OPTIONS);
-    queryClient.setQueryData(sidebarNavigationKey, {
-      projects: [],
-      personalProject: { threads: [] },
-    });
+    const workflowsKey = workflowsQueryKey("project-1");
+    queryClient.setQueryData(runDetailKey, {});
+    queryClient.setQueryData(runsListKey, []);
+    queryClient.setQueryData(runEventsKey, []);
+    queryClient.setQueryData(agentEventsKey, []);
+    queryClient.setQueryData(workflowsKey, []);
 
-    invalidateHostChangeDependentQueries({ queryClient });
+    invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
 
-    expect(
-      queryClient.getQueryState(allSystemExecutionOptionsQueryKeyPrefix())
-        ?.isInvalidated,
-    ).toBeUndefined();
-    expect(queryClient.getQueryState(executionOptionsKey)?.isInvalidated).toBe(
+    expect(queryClient.getQueryState(runDetailKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(runsListKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(runEventsKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(agentEventsKey)?.isInvalidated).toBe(
       true,
     );
-    expect(queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated).toBe(
-      true,
-    );
+    expect(queryClient.getQueryState(workflowsKey)?.isInvalidated).toBe(true);
   });
 });

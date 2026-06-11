@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useEnvironmentMergeBaseBranches } from "../../../hooks/queries/environment-queries";
+import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import {
   pendingGitDiffCommitShaAtom,
@@ -13,7 +14,7 @@ type ThreadSecondaryPanelSetter = (
 ) => void;
 
 interface UseGitDiffPanelParams {
-  activeSecondaryPanel: ThreadSecondaryPanelTab | null;
+  activeSecondaryTab: SecondaryFixedPanelTab | null;
   clearActiveFileTabs: () => void;
   defaultMergeBaseBranch?: string;
   environmentId?: string;
@@ -22,7 +23,7 @@ interface UseGitDiffPanelParams {
 }
 
 export function useGitDiffPanel({
-  activeSecondaryPanel,
+  activeSecondaryTab,
   clearActiveFileTabs,
   defaultMergeBaseBranch,
   environmentId,
@@ -46,7 +47,8 @@ export function useGitDiffPanel({
     // panel is visible; initial thread load can use the persisted/default base.
     enabled:
       Boolean(environmentId) &&
-      (mergeBaseBranchOptionsEnabled || activeSecondaryPanel === "git-diff"),
+      (mergeBaseBranchOptionsEnabled ||
+        activeSecondaryTab?.kind === "git-diff"),
     query: mergeBaseBranchSearchQuery,
     selectedBranch: requestedMergeBaseBranch,
   });

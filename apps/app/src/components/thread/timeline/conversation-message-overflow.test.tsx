@@ -1,77 +1,20 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
 } from "./conversation-message-overflow";
-
-type ElementScrollMetricName = "clientHeight" | "scrollHeight";
+import {
+  installDriveableResizeObserver,
+  installElementOverflowMetrics,
+  restoreElementOverflowMetrics,
+} from "./conversation-message-overflow.test-utils";
 
 interface OverflowHarnessProps {
   text: string;
-}
-
-interface ElementScrollMetricDescriptors {
-  clientHeight: PropertyDescriptor | undefined;
-  scrollHeight: PropertyDescriptor | undefined;
-}
-
-interface ElementScrollMetrics {
-  clientHeight: number;
-  scrollHeight: number;
-}
-
-function restoreElementScrollMetric(
-  name: ElementScrollMetricName,
-  descriptor: PropertyDescriptor | undefined,
-): void {
-  if (descriptor) {
-    Object.defineProperty(HTMLElement.prototype, name, descriptor);
-    return;
-  }
-  delete HTMLElement.prototype[name];
-}
-
-function installElementScrollMetrics({
-  clientHeight,
-  scrollHeight,
-}: ElementScrollMetrics): ElementScrollMetricDescriptors {
-  const descriptors: ElementScrollMetricDescriptors = {
-    clientHeight: Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "clientHeight",
-    ),
-    scrollHeight: Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "scrollHeight",
-    ),
-  };
-
-  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
-    configurable: true,
-    get() {
-      return clientHeight;
-    },
-  });
-  Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
-    configurable: true,
-    get() {
-      return scrollHeight;
-    },
-  });
-
-  return descriptors;
-}
-
-function restoreElementScrollMetrics({
-  clientHeight,
-  scrollHeight,
-}: ElementScrollMetricDescriptors): void {
-  restoreElementScrollMetric("clientHeight", clientHeight);
-  restoreElementScrollMetric("scrollHeight", scrollHeight);
 }
 
 function OverflowHarness({ text }: OverflowHarnessProps) {
@@ -86,7 +29,7 @@ function OverflowHarness({ text }: OverflowHarnessProps) {
 
   return (
     <div>
-      <div ref={textRef}>{text}</div>
+      {expanded ? null : <div ref={textRef}>{text}</div>}
       {showToggle ? (
         <ConversationMessageOverflowToggle
           expanded={expanded}
@@ -104,9 +47,11 @@ afterEach(() => {
 
 describe("conversation message overflow", () => {
   it("shows the overflow toggle after measurement and switches labels when expanded", () => {
-    const descriptors = installElementScrollMetrics({
+    const descriptors = installElementOverflowMetrics({
       clientHeight: 20,
       scrollHeight: 100,
+      clientWidth: 100,
+      scrollWidth: 100,
     });
 
     try {
@@ -126,7 +71,71 @@ describe("conversation message overflow", () => {
         screen.getByRole("button", { name: "Show more" }),
       ).toBeTruthy();
     } finally {
-      restoreElementScrollMetrics(descriptors);
+      restoreElementOverflowMetrics(descriptors);
     }
   });
+
+  it("detects horizontal overflow", () => {
+    const descriptors = installElementOverflowMetrics({
+      clientHeight: 20,
+      scrollHeight: 20,
+      clientWidth: 100,
+      scrollWidth: 200,
+    });
+
+    try {
+      render(<OverflowHarness text="A long single-line message" />);
+
+      expect(
+        screen.getByRole("button", { name: "Show more" }),
+      ).toBeTruthy();
+    } finally {
+      restoreElementOverflowMetrics(descriptors);
+    }
+  });
+
+  it(
+    // Regression: an expanding row unmounts its collapsed preview, and a
+    // detached node reports scroll/client = 0. Before the isConnected guard,
+    // the ResizeObserver callback would flip measurement to "fits" and the
+    // caller's `expandable` flag would collapse to false mid-click — the row
+    // would visibly bounce back to collapsed and lose its toggle button.
+    "ignores ResizeObserver callbacks fired against a now-detached element",
+    () => {
+      const descriptors = installElementOverflowMetrics({
+        clientHeight: 20,
+        scrollHeight: 20,
+        clientWidth: 100,
+        scrollWidth: 200,
+      });
+      const resizeObserver = installDriveableResizeObserver();
+
+      try {
+        render(<OverflowHarness text="A long single-line message" />);
+
+        // Initial measurement: overflowing → Show more button visible.
+        fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+        // Harness conditionally unmounts the ref'd div on expand, mimicking
+        // how `ExpandableTimelineRow` swaps the collapsed preview for the
+        // expanded body. The original observed node is now detached.
+        expect(
+          screen.queryByRole("button", { name: "Show less" }),
+        ).toBeTruthy();
+
+        // Simulate the browser firing the observer once more for the detached
+        // node. The guard must drop this measurement on the floor — otherwise
+        // the toggle disappears and the user loses the way to collapse.
+        act(() => {
+          resizeObserver.triggerAll();
+        });
+
+        expect(
+          screen.getByRole("button", { name: "Show less" }),
+        ).toBeTruthy();
+      } finally {
+        resizeObserver.restore();
+        restoreElementOverflowMetrics(descriptors);
+      }
+    },
+  );
 });

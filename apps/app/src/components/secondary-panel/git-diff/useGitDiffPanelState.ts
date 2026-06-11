@@ -176,12 +176,19 @@ export function useGitDiffPanelState({
     fetchedGitDiffResponse?.outcome === "available"
       ? fetchedGitDiffResponse.diff
       : undefined;
+  const localGitDiffUnavailableMessage =
+    isDiffPanelActive && !environmentId
+      ? "This thread does not have a workspace to diff."
+      : isDiffPanelActive && gitDiffTarget === undefined
+        ? "No merge base branch is configured for this workspace."
+        : null;
   const gitDiffUnavailableMessage =
-    fetchedGitDiffResponse?.outcome === "unavailable"
+    localGitDiffUnavailableMessage ??
+    (fetchedGitDiffResponse?.outcome === "unavailable"
       ? fetchedGitDiffResponse.failure.message
       : fetchedGitDiffResponse?.outcome === "not_applicable"
         ? fetchedGitDiffResponse.message
-        : null;
+        : null);
   const workspaceStatus =
     gitDiffWorkspaceStatus?.outcome === "available"
       ? gitDiffWorkspaceStatus.workspace
@@ -253,7 +260,10 @@ export function useGitDiffPanelState({
     isParsingGitDiffFiles,
   });
   const isAwaitingPrerequisites =
-    isDiffPanelActive && Boolean(environmentId) && gitDiffTarget === undefined;
+    isDiffPanelActive &&
+    Boolean(environmentId) &&
+    gitDiffTarget === undefined &&
+    localGitDiffUnavailableMessage === null;
   const gitDiffPreparationState = resolveGitDiffPreparationState({
     currentGitDiff,
     isAwaitingPrerequisites,

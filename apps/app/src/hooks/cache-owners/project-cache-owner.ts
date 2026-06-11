@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type {
   ProjectResponse,
+  ProjectWithThreadsResponse,
   ReorderProjectRequest,
   SidebarBootstrapResponse,
 } from "@bb/server-contract";
@@ -30,6 +31,11 @@ interface RollbackReorderProjectTransactionArgs {
 
 interface ApplyReorderProjectResultArgs {
   projects: readonly ProjectResponse[];
+  queryClient: QueryClient;
+}
+
+interface ApplyProjectCreateResultArgs {
+  project: ProjectResponse;
   queryClient: QueryClient;
 }
 
@@ -95,6 +101,71 @@ function removeProjectFromSidebarNavigation(
     ...currentNavigation,
     projects: currentNavigation.projects.filter(
       (project) => project.id !== projectId,
+    ),
+  };
+}
+
+function projectToSidebarProject(
+  project: ProjectResponse,
+): ProjectWithThreadsResponse {
+  return {
+    ...project,
+    threads: [],
+    defaultExecutionOptions: null,
+  };
+}
+
+function applyProjectToProjectList(
+  currentProjects: readonly ProjectResponse[],
+  project: ProjectResponse,
+): ProjectResponse[] {
+  if (
+    !currentProjects.some((currentProject) => currentProject.id === project.id)
+  ) {
+    return [...currentProjects, project];
+  }
+
+  return currentProjects.map((currentProject) =>
+    currentProject.id === project.id ? project : currentProject,
+  );
+}
+
+function applyProjectToSidebarNavigation(
+  currentNavigation: SidebarBootstrapResponse,
+  project: ProjectResponse,
+): SidebarBootstrapResponse {
+  if (currentNavigation.personalProject.id === project.id) {
+    return {
+      ...currentNavigation,
+      personalProject: {
+        ...currentNavigation.personalProject,
+        ...project,
+      },
+    };
+  }
+
+  const existingProject = currentNavigation.projects.find(
+    (currentProject) => currentProject.id === project.id,
+  );
+  if (!existingProject) {
+    return {
+      ...currentNavigation,
+      projects: [
+        ...currentNavigation.projects,
+        projectToSidebarProject(project),
+      ],
+    };
+  }
+
+  return {
+    ...currentNavigation,
+    projects: currentNavigation.projects.map((currentProject) =>
+      currentProject.id === project.id
+        ? {
+            ...currentProject,
+            ...project,
+          }
+        : currentProject,
     ),
   };
 }
@@ -181,6 +252,26 @@ export function applyReorderProjectResult({
     (currentNavigation) =>
       currentNavigation
         ? applyProjectOrderToSidebarNavigation(currentNavigation, projects)
+        : currentNavigation,
+  );
+}
+
+export function applyProjectCreateResult({
+  project,
+  queryClient,
+}: ApplyProjectCreateResultArgs): void {
+  queryClient.setQueryData<ProjectResponse[]>(
+    projectsQueryKey(),
+    (currentProjects) =>
+      currentProjects
+        ? applyProjectToProjectList(currentProjects, project)
+        : [project],
+  );
+  queryClient.setQueryData<SidebarBootstrapResponse>(
+    sidebarNavigationQueryKey(),
+    (currentNavigation) =>
+      currentNavigation
+        ? applyProjectToSidebarNavigation(currentNavigation, project)
         : currentNavigation,
   );
 }

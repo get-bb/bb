@@ -15,9 +15,11 @@ import type { PickerOption } from "../src/components/pickers/OptionPicker";
 import type { ProjectSelectorOption } from "../src/components/pickers/ProjectSelector";
 import type { ReuseThreadOption } from "../src/components/pickers/WorktreePicker";
 import type { ExecutionControlsProps } from "../src/components/promptbox/ExecutionControls";
-import type {
-  AttachmentsConfig,
-  MentionsConfig,
+import {
+  INERT_TYPEAHEAD_COMMAND_CONFIG,
+  type AttachmentsConfig,
+  type TypeaheadConfig,
+  type TypeaheadMentionConfig,
 } from "../src/components/promptbox/PromptBoxInternal";
 
 const noop = () => {};
@@ -61,16 +63,17 @@ export const BRANCH_NAMES = {
 // shapes — share them here so the inert defaults stay consistent.
 // ---------------------------------------------------------------------------
 
-export function makeMentionsConfig(
-  overrides: Partial<MentionsConfig> = {},
-): MentionsConfig {
-  const base: MentionsConfig = {
+export function makeTypeaheadConfig(
+  mentionOverrides: Partial<TypeaheadMentionConfig> = {},
+): TypeaheadConfig {
+  const mention: TypeaheadMentionConfig = {
     suggestions: [],
     isLoading: false,
     isError: false,
     onQueryChange: noop,
+    ...mentionOverrides,
   };
-  return { ...base, ...overrides };
+  return { mention, command: INERT_TYPEAHEAD_COMMAND_CONFIG };
 }
 
 export function makeAttachmentsConfig(

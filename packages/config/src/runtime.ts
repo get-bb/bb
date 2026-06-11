@@ -84,6 +84,11 @@ const DEV_APP_PORT_BASE = 11_000;
 const DEV_SERVER_PORT_BASE = 19_000;
 const DEV_HOST_DAEMON_PORT_BASE = 27_000;
 const DEV_ENV_PORT_BASE = 43_000;
+const DEV_PROCESS_STRIPPED_ENV_KEYS: readonly string[] = [
+  "BB_ENVIRONMENT_ID",
+  "BB_THREAD_ID",
+  "BB_THREAD_STORAGE",
+];
 
 function createRepoRootHash(repoRootPath: string): string {
   return createHash("sha256").update(repoRootPath).digest("hex");
@@ -264,8 +269,12 @@ export function resolvePortFromEnv(args: ResolvePortFromEnvArgs): number {
 }
 
 export function toDevProcessEnv(args: DevProcessEnvArgs): NodeJS.ProcessEnv {
+  const env = { ...args.baseEnv };
+  for (const key of DEV_PROCESS_STRIPPED_ENV_KEYS) {
+    delete env[key];
+  }
   return {
-    ...args.baseEnv,
+    ...env,
     BB_DATA_DIR: args.config.dataDir,
     BB_DEV_APP_PORT: String(args.config.ports.appPort),
     BB_DEV_ENV_PORT: String(args.config.ports.devEnvPort),

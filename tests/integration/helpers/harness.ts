@@ -9,6 +9,7 @@ import {
   createFakeAdapter,
   type ProviderAdapterFactory,
 } from "@bb/agent-runtime/test";
+import { DEFAULTS } from "@bb/config/defaults";
 import type { DbConnection } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
 import {
@@ -20,9 +21,11 @@ import {
   type HostDaemonApp,
 } from "@bb/host-daemon/test";
 import { createHostDaemonClient } from "@bb/host-daemon-contract";
-import { createHostWatcher } from "@bb/host-watcher";
 import { initDb } from "../../../apps/server/src/db.js";
-import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
+import {
+  createLifecycleDedupers,
+  type LifecycleDedupers,
+} from "../../../apps/server/src/lifecycle-dedupers.js";
 import { createApp } from "../../../apps/server/src/server.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
@@ -34,6 +37,7 @@ import { createAppVersionService } from "../../../apps/server/src/services/syste
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { TerminalSessionLifecycle } from "../../../apps/server/src/services/terminals/terminal-session-lifecycle.js";
 import type {
+  AppDeps,
   ServerLogger,
   ServerRuntimeConfig,
 } from "../../../apps/server/src/types.js";
@@ -69,7 +73,19 @@ export interface RunningTestServer {
   close(): Promise<void>;
   config: ServerRuntimeConfig;
   db: DbConnection;
+  /**
+   * The exact dependency bundle the running server app was built with, so
+   * tests can drive server-internal entry points (lifecycle `request*`
+   * functions, `runPeriodicSweeps`) against the same instances the routes use.
+   */
+  deps: AppDeps;
   hub: NotificationHub;
+  /**
+   * The server app's own deduper registry, exposed so tests driving lifecycle
+   * `request*`/sweep functions directly share the instance the server's
+   * command-result settlement uses (per-instance dedupe must not split-brain).
+   */
+  lifecycleDedupers: LifecycleDedupers;
   machineAuth: Awaited<ReturnType<typeof createMachineAuthService>>;
 }
 
@@ -95,6 +111,13 @@ export interface IntegrationHarness {
 
 export interface CreateHarnessOptions {
   adapterFactory?: ProviderAdapterFactory;
+  /**
+   * Replaces the daemon's HTTP transport to the server (the
+   * `createHostDaemonApp` `fetchFn` seam), letting tests observe or shape the
+   * daemon's internal HTTP traffic — e.g. timing the workflow-run-event
+   * ingress posts — without touching production code.
+   */
+  daemonFetchFn?: typeof fetch;
 }
 
 export type WithHarnessCallback<T> = (
@@ -234,6 +257,8 @@ async function startIntegrationServer(
     serverPort: 0,
     threadStorageRootPath,
     transcriptionModel: "test/mock-transcription",
+    workflowMaxConcurrentRunsPerHost:
+      DEFAULTS.workflowMaxConcurrentRunsPerHost,
     isDevelopment: false,
   };
   const machineAuth = await createMachineAuthService({
@@ -262,9 +287,7 @@ async function startIntegrationServer(
     config,
     logger: testLogger,
   });
-  const { app, injectWebSocket } = createApp({
-    appVersion,
-    bbAppManagedConfig,
+  const deps: AppDeps = {
     config,
     db,
     hub,
@@ -273,6 +296,11 @@ async function startIntegrationServer(
     machineAuth,
     pendingInteractions,
     terminalSessions,
+  };
+  const { app, injectWebSocket } = createApp({
+    ...deps,
+    appVersion,
+    bbAppManagedConfig,
   });
 
   let addressInfo: ListeningAddress | null = null;
@@ -304,7 +332,9 @@ async function startIntegrationServer(
     baseUrl,
     config,
     db,
+    deps,
     hub,
+    lifecycleDedupers,
     machineAuth,
     async close(): Promise<void> {
       await new Promise<void>((resolve, reject) => {
@@ -339,7 +369,6 @@ async function startHarnessDaemon(
     // restarts stay attached to the same host.
     await persistHostId({ dataDir, hostId: identity.hostId });
     const adapterFactory = resolveAdapterFactory(options);
-    const hostWatcher = await createHostWatcher();
     const daemonApp = await createHostDaemonApp({
       createRuntime: adapterFactory
         ? (runtimeOptions) =>
@@ -349,14 +378,18 @@ async function startHarnessDaemon(
             })
         : undefined,
       dataDir,
+      ...(options.daemonFetchFn !== undefined
+        ? { fetchFn: options.daemonFetchFn }
+        : {}),
       hostKey,
       hostId: identity.hostId,
       hostName: identity.hostName,
       hostType: "persistent",
-      hostWatcher,
       instanceId: randomUUID(),
       localApiConfig: null,
       logger: testLogger,
+      maxLiveWorkflowProviderProcesses:
+        DEFAULTS.workflowMaxLiveProviderProcesses,
       releaseLock,
       serverUrl: server.baseUrl,
       threadStorageRootPath,
@@ -485,6 +518,18 @@ export async function createIntegrationHarness(
       .catch(() => undefined);
     await currentResources.daemonApp.eventSink
       .dispose()
+      .catch(() => undefined);
+    // Emulate a kill -9 for workflow runs: dispose the durable run-event spool
+    // FIRST so the manager teardown's synthetic terminal events are dropped (a
+    // crashed daemon emits nothing new), then kill the runner children and
+    // clear their pid/heartbeat records. Rows already in the spool file
+    // survive on disk and are flushed by the next daemon instance, exactly
+    // like a real crash.
+    await currentResources.daemonApp.workflowEventBuffer
+      .dispose()
+      .catch(() => undefined);
+    await currentResources.daemonApp.workflowRunManager
+      .shutdown()
       .catch(() => undefined);
     await currentResources.releaseLock().catch(() => undefined);
   }

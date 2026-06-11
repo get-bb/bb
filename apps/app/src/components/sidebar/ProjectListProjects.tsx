@@ -16,7 +16,7 @@ import { ProjectRow } from "./ProjectRow";
 import type { ProjectRowProps, ProjectThreadListState } from "./ProjectRow";
 import { useSidebarSortable } from "./sortableMotion";
 import type { SidebarReorderDndContextProps } from "./useSidebarReorderDnd";
-import type { ConsumeDragClickSuppression } from "./useDragClickSuppression";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 
 /**
  * Per-project data the list renders, with the lifecycle/query lookups already

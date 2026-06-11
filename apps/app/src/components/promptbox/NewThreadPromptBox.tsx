@@ -16,8 +16,8 @@ import {
   PromptBoxInternal,
   type AttachmentsConfig,
   type HistoryConfig,
-  type MentionsConfig,
   type PromptBoxHandle,
+  type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
 import {
@@ -38,7 +38,6 @@ import {
   type ProjectSelectorCreateProjectConfig,
   type ProjectSelectorOption,
 } from "@/components/pickers/ProjectSelector";
-import { useShouldAvoidSoftKeyboardAutofocus } from "@/components/ui/hooks/use-soft-keyboard-autofocus";
 import {
   WorktreePicker,
   type ReuseThreadOption,
@@ -136,7 +135,7 @@ export interface NewThreadPromptBoxUIProps {
   zenModeStorageKey: string;
 
   history: HistoryConfig;
-  mentions: MentionsConfig;
+  typeahead: TypeaheadConfig;
   attachments: AttachmentsConfig;
 
   /** Thread environment, branch/worktree, permission, and optional header config. */
@@ -181,7 +180,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   disabled,
   zenModeStorageKey,
   history,
-  mentions,
+  typeahead,
   attachments,
   modeConfig,
   project,
@@ -201,8 +200,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
     }),
     [],
   );
-  const shouldAvoidSoftKeyboardAutofocus =
-    useShouldAvoidSoftKeyboardAutofocus();
   const voice = usePromptVoice(promptBoxRef);
   const isProjectlessPrompt = project?.value === null;
   const placeholder = getNewThreadPromptPlaceholder(isProjectlessPrompt);
@@ -215,9 +212,8 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
         mentionRanges={mentionRanges}
         onChange={onChange}
         onSubmit={onSubmit}
-        autoFocus={!shouldAvoidSoftKeyboardAutofocus}
         history={history}
-        mentions={mentions}
+        typeahead={typeahead}
         mentionMenuPlacement="bottom"
         attachments={attachments}
         voice={voice}
@@ -225,7 +221,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           isSubmitting,
           disabled,
           title: isSubmitting ? "Submitting..." : "Submit (Enter)",
-          allowEmptyInput: false,
         }}
         zenMode={{
           layout: "root-compose",

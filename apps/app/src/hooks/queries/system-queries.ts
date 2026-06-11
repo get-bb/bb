@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { defaultExperiments, type Experiments } from "@bb/domain";
 import type {
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
@@ -50,6 +51,16 @@ export function useSystemConfig(options?: QueryOptions) {
     enabled: options?.enabled ?? true,
     staleTime: 60_000,
   });
+}
+
+/**
+ * The user's opt-in experiments from `/system/config`. Falls back to
+ * `defaultExperiments` (everything off) while loading or on error, so gated
+ * surfaces fail closed.
+ */
+export function useExperiments(): Experiments {
+  const systemConfigQuery = useSystemConfig();
+  return systemConfigQuery.data?.experiments ?? defaultExperiments;
 }
 
 const SYSTEM_VERSION_STALE_TIME_MS = 60 * 60 * 1000;

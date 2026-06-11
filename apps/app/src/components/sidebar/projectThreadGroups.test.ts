@@ -152,10 +152,7 @@ describe("buildProjectThreadGroups", () => {
       }),
     ]);
 
-    expect(summarizeItems(rootItems)).toEqual([
-      "orphan-child",
-      "root-thread",
-    ]);
+    expect(summarizeItems(rootItems)).toEqual(["orphan-child", "root-thread"]);
   });
 
   it("cuts cycles without duplicating or dropping every cycle member", () => {
@@ -313,11 +310,21 @@ describe("buildProjectThreadGroups", () => {
     ]);
 
     expect(findNode(rootItems, "parent")?.stats).toEqual({
-      childActivity: { pending: true, working: true, unread: false },
+      childActivity: {
+        pending: true,
+        working: true,
+        unread: false,
+        unreadError: false,
+      },
       childCount: 3,
     });
     expect(findNode(rootItems, "quiet-child")?.stats).toEqual({
-      childActivity: { pending: true, working: true, unread: false },
+      childActivity: {
+        pending: true,
+        working: true,
+        unread: false,
+        unreadError: false,
+      },
       childCount: 2,
     });
   });

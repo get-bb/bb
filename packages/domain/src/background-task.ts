@@ -5,8 +5,26 @@ import { z } from "zod";
  * (subagents, background shells, monitors) share the same event family but are
  * not materialized as backgroundTask items yet — foreground subagents are
  * already rendered via delegation rows.
+ *
+ * Deliberately kept alongside bb workflow runs (BB_WORKFLOW_TASK_TYPE): the
+ * convergence decision (keep both paths) is recorded in
+ * docs/workflows-local-workflow-convergence.md.
  */
 export const LOCAL_WORKFLOW_TASK_TYPE = "local_workflow";
+
+/**
+ * Task-type discriminant for bb workflow runs anchored to a thread. The
+ * anchor item's `id` is the `wfr_` run id (the run-page deep link rides the
+ * existing id field). Items of this type are owned end-to-end by the server
+ * workflow lifecycle module: generic settle backstops
+ * (settleDanglingBackgroundTasks) must skip them, because a paused workflow
+ * item is resumable (`isSettledBackgroundTaskStatus("paused")` is false) and a
+ * completed row is terminal forever.
+ *
+ * Coexists with the provider-native LOCAL_WORKFLOW_TASK_TYPE path by decision:
+ * see docs/workflows-local-workflow-convergence.md.
+ */
+export const BB_WORKFLOW_TASK_TYPE = "bb_workflow";
 
 /**
  * Provider-reported task lifecycle status: the union of the SDK's

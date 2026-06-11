@@ -7,7 +7,7 @@ describe("resolveThreadLocalFileLink", () => {
       resolveThreadLocalFileLink({
         hostFileLinksAvailable: true,
         link: {
-          lineNumber: null,
+          lineRange: null,
           path: "/projects/proj_gyz9przugq/threads/thr_rq7r4uv8zg",
         },
         threadStorageRootPath: null,
@@ -23,7 +23,7 @@ describe("resolveThreadLocalFileLink", () => {
       resolveThreadLocalFileLink({
         hostFileLinksAvailable: true,
         link: {
-          lineNumber: null,
+          lineRange: null,
           path: "/Users/me/project/src/file.ts",
         },
         threadStorageRootPath: null,
@@ -32,7 +32,7 @@ describe("resolveThreadLocalFileLink", () => {
     ).toEqual({
       kind: "open-host-path",
       request: {
-        lineNumber: null,
+        lineRange: null,
         path: "/Users/me/project/src/file.ts",
       },
     });
@@ -43,7 +43,7 @@ describe("resolveThreadLocalFileLink", () => {
       resolveThreadLocalFileLink({
         hostFileLinksAvailable: false,
         link: {
-          lineNumber: 12,
+          lineRange: { startLineNumber: 12, endLineNumber: 14 },
           path: "/Users/me/.ssh/id_rsa",
         },
         threadStorageRootPath: null,
@@ -61,7 +61,7 @@ describe("resolveThreadLocalFileLink", () => {
       resolveThreadLocalFileLink({
         hostFileLinksAvailable: true,
         link: {
-          lineNumber: 12,
+          lineRange: { startLineNumber: 12, endLineNumber: 14 },
           path: "/Users/me/.ssh/id_rsa",
         },
         threadStorageRootPath: null,
@@ -70,7 +70,7 @@ describe("resolveThreadLocalFileLink", () => {
     ).toEqual({
       kind: "open-host-path",
       request: {
-        lineNumber: 12,
+        lineRange: { startLineNumber: 12, endLineNumber: 14 },
         path: "/Users/me/.ssh/id_rsa",
       },
     });
@@ -81,7 +81,7 @@ describe("resolveThreadLocalFileLink", () => {
       resolveThreadLocalFileLink({
         hostFileLinksAvailable: true,
         link: {
-          lineNumber: 12,
+          lineRange: { startLineNumber: 12, endLineNumber: 14 },
           path: "/Users/me/project/src/../src/file.ts",
         },
         threadStorageRootPath: null,
@@ -90,7 +90,7 @@ describe("resolveThreadLocalFileLink", () => {
     ).toEqual({
       kind: "open-workspace-path",
       request: {
-        lineNumber: 12,
+        lineRange: { startLineNumber: 12, endLineNumber: 14 },
         path: "/Users/me/project/src/file.ts",
         relativePath: "src/file.ts",
         workspaceRootPath: "/Users/me/project",
@@ -103,7 +103,7 @@ describe("resolveThreadLocalFileLink", () => {
       resolveThreadLocalFileLink({
         hostFileLinksAvailable: true,
         link: {
-          lineNumber: 7,
+          lineRange: { startLineNumber: 7, endLineNumber: 7 },
           path: "apps/app/src/main.tsx",
         },
         threadStorageRootPath: null,
@@ -120,7 +120,7 @@ describe("resolveThreadLocalFileLink", () => {
       resolveThreadLocalFileLink({
         hostFileLinksAvailable: true,
         link: {
-          lineNumber: null,
+          lineRange: null,
           path: "/projects/my-repo/src/file.ts",
         },
         threadStorageRootPath: null,
@@ -129,7 +129,7 @@ describe("resolveThreadLocalFileLink", () => {
     ).toEqual({
       kind: "open-workspace-path",
       request: {
-        lineNumber: null,
+        lineRange: null,
         path: "/projects/my-repo/src/file.ts",
         relativePath: "src/file.ts",
         workspaceRootPath: "/projects/my-repo",
@@ -142,7 +142,7 @@ describe("resolveThreadLocalFileLink", () => {
       resolveThreadLocalFileLink({
         hostFileLinksAvailable: true,
         link: {
-          lineNumber: 4,
+          lineRange: { startLineNumber: 4, endLineNumber: 6 },
           path: "/Users/me/.bb/thread-storage/thr_one/reports/preview.html",
         },
         threadStorageRootPath: "/Users/me/.bb/thread-storage/thr_one",
@@ -151,7 +151,7 @@ describe("resolveThreadLocalFileLink", () => {
     ).toEqual({
       kind: "open-thread-storage-path",
       request: {
-        lineNumber: 4,
+        lineRange: { startLineNumber: 4, endLineNumber: 6 },
         path: "/Users/me/.bb/thread-storage/thr_one/reports/preview.html",
         relativePath: "reports/preview.html",
         threadStorageRootPath: "/Users/me/.bb/thread-storage/thr_one",

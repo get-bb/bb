@@ -1,3 +1,37 @@
+/**
+ * Declarative map from realtime change kinds to the query state they dirty.
+ *
+ * This module IS the "change kind → query keys" table. The realtime protocol
+ * delivers coarse `ChangedMessage`s (entity + change kinds + optional metadata);
+ * each `REALTIME_*_CHANGE_REGISTRY` entry lists the dirty handlers that turn one
+ * change kind into the precise set of queries to invalidate. New change kinds
+ * are added here, in one place, and the `satisfies *Registry` constraints force
+ * every kind to be mapped (verified by `realtime-cache-effects.test.ts`).
+ *
+ * Why this isn't a flat `invalidateQueries(prefix)` table:
+ * - Scoping uses notification metadata, not just the change kind. Thread changes
+ *   carry `projectId`, `eventTypes`, and `hasPendingInteraction` so we invalidate
+ *   only the affected project's lists, only refresh prompt history when an
+ *   appended batch actually contained a turn request, and patch the sidebar
+ *   pending-interaction badge from metadata instead of refetching.
+ * - Some handlers do surgical `setQueryData` rather than invalidation
+ *   (`patchThreadListPendingInteractionState`) or mark queries stale without an
+ *   active refetch (`mark*Stale` for read-state changes), which a uniform
+ *   invalidate-by-prefix table cannot express.
+ * - Some handlers enumerate the live cache to find the exact keys to touch
+ *   (cached thread lists for an environment, ref-derived diff/work-status keys),
+ *   avoiding broad prefix invalidation of unrelated queries.
+ * - The `flush` priority ("immediate" for `status-changed`, "debounced" for the
+ *   rest) is consumed by `realtime-cache-effects.ts`, which batches thread
+ *   invalidations to absorb the event storm of an active agent turn while still
+ *   flushing status changes instantly so controls/banners react without lag.
+ *
+ * Handlers run through `executeRealtimeDirtyHandlers`; a handler returns query
+ * keys to invalidate, or performs its own cache write and returns `void`. Raw
+ * cache writes live exclusively in `cache-owners/` (enforced by
+ * `cache-owner-registry.test.ts`), so this registry and the per-owner helpers
+ * are the single sanctioned path between the realtime protocol and query state.
+ */
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
   AppChangeKind,
@@ -8,6 +42,7 @@ import type {
   ThreadChangeKind,
   ThreadEventType,
   ThreadWithRuntime,
+  WorkflowRunChangeKind,
 } from "@bb/domain";
 import {
   getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys,
@@ -42,6 +77,7 @@ import {
   environmentWorkStatusQueryKeyPrefix,
   hostsQueryKey,
   sidebarNavigationQueryKey,
+  systemConfigQueryKey,
   systemProvidersQueryKey,
   threadQueryKey,
   threadTerminalsQueryKey,
@@ -49,6 +85,13 @@ import {
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
+  allWorkflowRunAgentEventsQueryKeyPrefix,
+  allWorkflowRunEventsQueryKeyPrefix,
+  allWorkflowRunQueryKeyPrefix,
+  allWorkflowRunsQueryKeyPrefix,
+  workflowRunAgentEventsQueryKeyPrefix,
+  workflowRunEventsQueryKey,
+  workflowRunQueryKey,
 } from "../queries/query-keys";
 import {
   getProjectListInvalidationQueryKeys,
@@ -281,7 +324,11 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
 
 export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   "config-changed": {
-    dirty: [dirtySystemProviderQueries, dirtySystemExecutionOptionQueries],
+    dirty: [
+      dirtySystemConfigQueries, // Experiments gate UI surfaces; other windows re-read after a settings write.
+      dirtySystemProviderQueries,
+      dirtySystemExecutionOptionQueries,
+    ],
   },
   "apps-changed": {
     dirty: [dirtyAppListQueries],
@@ -296,6 +343,27 @@ export const REALTIME_APP_CHANGE_REGISTRY = {
     dirty: [dirtyAppContentQueries], // Served public/ files changed; reload just that app's open surfaces.
   },
 } satisfies AppChangeRegistry;
+
+/**
+ * Workflow-run changes arrive per ingested daemon batch (the hub does not
+ * throttle them), so the dispatcher accumulates per-run kinds and flushes on
+ * the shared debounce window — a 30-agent fan-out must not thrash react-query.
+ */
+export const REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY = {
+  "run-updated": {
+    dirty: [
+      dirtyWorkflowRunDetailQueries, // Run page header renders status/usage/result.
+      dirtyWorkflowRunListQueries, // Run lists render status badges per run.
+    ],
+  },
+  "events-appended": {
+    dirty: [
+      dirtyWorkflowRunDetailQueries, // progressSnapshot folds per batch; the agent tree reads it from the run row.
+      dirtyWorkflowRunEventsQueries, // Run event stream appends.
+      dirtyWorkflowRunAgentEventsQueries, // Per-agent drill-in timelines refetch their logs.
+    ],
+  },
+} satisfies WorkflowRunChangeRegistry;
 
 export type ThreadChangeFlushPriority = "debounced" | "immediate";
 
@@ -323,6 +391,10 @@ export type HostRealtimeDirtyContext = RealtimeDirtyContext;
 
 export interface AppRealtimeDirtyContext extends RealtimeDirtyContext {
   applicationId: string | undefined;
+}
+
+export interface WorkflowRunRealtimeDirtyContext extends RealtimeDirtyContext {
+  workflowRunId: string | undefined;
 }
 
 export type RealtimeDirtyHandler<Context extends RealtimeDirtyContext> = (
@@ -378,6 +450,15 @@ export interface AppChangeRule {
 }
 
 export type AppChangeRegistry = Record<AppChangeKind, AppChangeRule>;
+
+export interface WorkflowRunChangeRule {
+  dirty: readonly RealtimeDirtyHandler<WorkflowRunRealtimeDirtyContext>[];
+}
+
+export type WorkflowRunChangeRegistry = Record<
+  WorkflowRunChangeKind,
+  WorkflowRunChangeRule
+>;
 
 export function executeRealtimeDirtyHandlers<
   Context extends RealtimeDirtyContext,
@@ -673,6 +754,10 @@ function dirtyHostAvailabilityQueries(): QueryKey[] {
   return [hostsQueryKey(), allHostQueryKeyPrefix()];
 }
 
+function dirtySystemConfigQueries(): QueryKey[] {
+  return [systemConfigQueryKey()];
+}
+
 function dirtySystemProviderQueries(): QueryKey[] {
   return [systemProvidersQueryKey()];
 }
@@ -690,6 +775,35 @@ function dirtyAppListQueries(): QueryKey[] {
     // per-app states) moves together with the app list.
     appSourcesQueryKey(),
   ];
+}
+
+function dirtyWorkflowRunDetailQueries({
+  workflowRunId,
+}: WorkflowRunRealtimeDirtyContext): QueryKey[] {
+  return workflowRunId
+    ? [workflowRunQueryKey(workflowRunId)]
+    : [allWorkflowRunQueryKeyPrefix()];
+}
+
+function dirtyWorkflowRunListQueries(): QueryKey[] {
+  // The change message carries no projectId, so all cached run lists go stale.
+  return [allWorkflowRunsQueryKeyPrefix()];
+}
+
+function dirtyWorkflowRunEventsQueries({
+  workflowRunId,
+}: WorkflowRunRealtimeDirtyContext): QueryKey[] {
+  return workflowRunId
+    ? [workflowRunEventsQueryKey(workflowRunId)]
+    : [allWorkflowRunEventsQueryKeyPrefix()];
+}
+
+function dirtyWorkflowRunAgentEventsQueries({
+  workflowRunId,
+}: WorkflowRunRealtimeDirtyContext): QueryKey[] {
+  return workflowRunId
+    ? [workflowRunAgentEventsQueryKeyPrefix(workflowRunId)]
+    : [allWorkflowRunAgentEventsQueryKeyPrefix()];
 }
 
 function dirtyAppContentQueries(context: AppRealtimeDirtyContext): QueryKey[] {

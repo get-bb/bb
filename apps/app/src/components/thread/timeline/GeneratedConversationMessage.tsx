@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useRef } from "react";
 import type { TimelineUserConversationRow } from "@bb/server-contract";
 import type { PromptTextMention, ThreadChildOrigin } from "@bb/domain";
 import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
@@ -19,6 +19,7 @@ import type { TimelineTitleLinkResolver } from "./TimelineTitleView.js";
 import type { ThreadTimelineLocalFileLinkHandler } from "./types.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
+import { useOverflowMeasurement } from "./conversation-message-overflow.js";
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
@@ -217,21 +218,39 @@ export const GeneratedConversationMessage = memo(
       attachmentItems.filePaths.length > 0 ||
       attachmentItems.imageItems.length > 0 ||
       requestLabel !== null;
-    const expandable =
-      hasExpandedOnlyContent || messageText.length > 0;
     const collapsedPreviewLine = messageText.split(/\r\n|\r|\n/u, 1)[0] ?? "";
+    const hasAdditionalBodyLines =
+      collapsedPreviewLine.length < messageText.length;
+    const collapsedPreviewTextRef = useRef<HTMLParagraphElement>(null);
+    const collapsedPreviewOverflowMeasurement = useOverflowMeasurement({
+      elementRef: collapsedPreviewTextRef,
+      enabled: messageText.length > 0,
+      measurementKey: messageText,
+    });
+    const expandable =
+      hasExpandedOnlyContent ||
+      hasAdditionalBodyLines ||
+      collapsedPreviewOverflowMeasurement === "overflowing";
     const collapsedPreviewBody = clipMentionTextToVisibleRange({
       mentions: messageMentions,
       rangeStart: 0,
       text: collapsedPreviewLine,
     });
     const collapsedPreview = collapsedPreviewBody.text ? (
-      <div className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}>
-        <p className="line-clamp-1 break-words pl-2 text-sm leading-relaxed text-foreground">
+      <div
+        className={`${NESTED_TIMELINE_GROUP_LINE_CLASS_NAME} max-w-full min-w-0`}
+      >
+        <p
+          ref={collapsedPreviewTextRef}
+          className="min-w-0 truncate pl-2 text-sm leading-relaxed text-foreground"
+        >
           {renderMentionTextSegments({
             mentions: collapsedPreviewBody.mentions,
             text: collapsedPreviewBody.text,
           })}
+          {expandable ? (
+            <span className="text-muted-foreground">...</span>
+          ) : null}
         </p>
       </div>
     ) : null;

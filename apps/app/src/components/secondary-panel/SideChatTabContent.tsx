@@ -3,8 +3,9 @@ import type { Environment, PromptTextMention } from "@bb/domain";
 import type { Thread } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import {
+  INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
-  type MentionsConfig,
+  type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
@@ -26,15 +27,18 @@ import { buildSideChatCreateRequest } from "@/lib/side-chat-create-request";
 import { HttpError } from "@/lib/api";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 
-// Side chats are conversation-only in v1 (no @-mentions / file reach), so the
-// composer is wired with an inert mentions config rather than the thread
-// mention-search stack. Keeping it explicit (not dead config) documents the
-// intentional v1 scope.
-const SIDE_CHAT_MENTIONS: MentionsConfig = {
-  suggestions: [],
-  isLoading: false,
-  isError: false,
-  onQueryChange: () => {},
+// Side chats are conversation-only in v1 (no @-mentions / file reach, no command
+// typeahead), so the composer is wired with an inert typeahead config rather
+// than the thread mention-search stack. Keeping it explicit (not dead config)
+// documents the intentional v1 scope.
+const SIDE_CHAT_TYPEAHEAD: TypeaheadConfig = {
+  mention: {
+    suggestions: [],
+    isLoading: false,
+    isError: false,
+    onQueryChange: () => {},
+  },
+  command: INERT_TYPEAHEAD_COMMAND_CONFIG,
 };
 
 export interface SetSideChatThreadId {
@@ -94,9 +98,8 @@ function SideChatComposer({
       onChange={handleChange}
       onSubmit={handleSubmit}
       placeholder={placeholder}
-      mentions={SIDE_CHAT_MENTIONS}
+      typeahead={SIDE_CHAT_TYPEAHEAD}
       mentionMenuPlacement="top"
-      autoFocus
       submission={{ disabled: submitDisabled }}
     />
   );

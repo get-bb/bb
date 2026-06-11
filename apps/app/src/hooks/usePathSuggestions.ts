@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { useDebounceValue } from "usehooks-ts";
+import { useEnvironmentPathSuggestions } from "./queries/environment-queries";
 import { useProjectPathSuggestions } from "./queries/project-queries";
 import { useThreadStoragePaths } from "./queries/thread-queries";
+import { isProjectlessProjectId } from "@/lib/app-route-paths";
 import type { PathListOptions } from "@/lib/path-list-options";
 
 export const PATH_SUGGESTION_DEBOUNCE_MS = 120;
@@ -11,6 +13,8 @@ const SOURCE_OVERSAMPLE_MULTIPLIER = 2;
 
 export type PathSuggestionSource = "workspace" | "thread-storage";
 export type PathSuggestionEntryKind = "file" | "directory";
+
+type WorkspaceSource = "environment" | "project" | "none";
 
 export interface PathSuggestion {
   source: PathSuggestionSource;
@@ -88,7 +92,20 @@ export function usePathSuggestions(
   const hasQuery = trimmedQuery.length > 0;
   const debouncedTrimmedQuery = debouncedQuery?.trim() ?? "";
   const isDebouncing = hasQuery && trimmedQuery !== debouncedTrimmedQuery;
+  const hasDebouncedQuery = debouncedTrimmedQuery.length > 0;
+  // The workspace source for an existing thread is its environment; the
+  // project's default source is only used by the new-thread compose box before
+  // an environment exists. Projectless (personal) threads have no project
+  // source, so without an environment there is no workspace to search.
+  const workspaceSource: WorkspaceSource = args.environmentId
+    ? "environment"
+    : args.projectId && !isProjectlessProjectId(args.projectId)
+      ? "project"
+      : "none";
+  const includeWorkspace = workspaceSource !== "none";
   const includeThreadStorage = Boolean(args.currentThreadId);
+  const isWorkspaceQueryEnabled = includeWorkspace && hasDebouncedQuery;
+  const isThreadStorageQueryEnabled = includeThreadStorage && hasDebouncedQuery;
 
   const threadStorageOptions = useMemo<PathListOptions>(
     () => ({
@@ -100,14 +117,25 @@ export function usePathSuggestions(
     [args.includeDirectories, debouncedQuery, oversampleLimit],
   );
 
-  const workspaceQuery = useProjectPathSuggestions({
-    projectId: args.projectId,
+  const projectWorkspaceQuery = useProjectPathSuggestions({
+    projectId: workspaceSource === "project" ? args.projectId : undefined,
     query: debouncedQuery,
     limit: oversampleLimit,
-    environmentId: args.environmentId,
     includeFiles: true,
     includeDirectories: args.includeDirectories,
   });
+  const environmentWorkspaceQuery = useEnvironmentPathSuggestions({
+    environmentId:
+      workspaceSource === "environment" ? args.environmentId : undefined,
+    query: debouncedQuery,
+    limit: oversampleLimit,
+    includeFiles: true,
+    includeDirectories: args.includeDirectories,
+  });
+  const workspaceQuery =
+    workspaceSource === "environment"
+      ? environmentWorkspaceQuery
+      : projectWorkspaceQuery;
   const threadStorageQuery = useThreadStoragePaths(
     args.currentThreadId ?? "",
     threadStorageOptions,
@@ -115,7 +143,7 @@ export function usePathSuggestions(
       // Match the workspace query: only search once there is a (debounced)
       // query. Without this an empty input still fires a storage request whose
       // results we discard, and whose failure surfaces as a spurious error.
-      enabled: includeThreadStorage && debouncedTrimmedQuery.length > 0,
+      enabled: isThreadStorageQueryEnabled,
     },
   );
 
@@ -125,27 +153,31 @@ export function usePathSuggestions(
     }
 
     const rankedSuggestions: RankedPathSuggestion[] = [];
-    for (const pathEntry of workspaceQuery.data?.paths ?? []) {
-      rankedSuggestions.push({
-        source: "workspace",
-        sourceRank: getSourceRank("workspace"),
-        entryKind: pathEntry.kind,
-        path: pathEntry.path,
-        name: pathEntry.name,
-        score: pathEntry.score,
-        positions: pathEntry.positions,
-      });
+    if (includeWorkspace) {
+      for (const pathEntry of workspaceQuery.data?.paths ?? []) {
+        rankedSuggestions.push({
+          source: "workspace",
+          sourceRank: getSourceRank("workspace"),
+          entryKind: pathEntry.kind,
+          path: pathEntry.path,
+          name: pathEntry.name,
+          score: pathEntry.score,
+          positions: pathEntry.positions,
+        });
+      }
     }
-    for (const pathEntry of threadStorageQuery.data?.paths ?? []) {
-      rankedSuggestions.push({
-        source: "thread-storage",
-        sourceRank: getSourceRank("thread-storage"),
-        entryKind: pathEntry.kind,
-        path: pathEntry.path,
-        name: pathEntry.name,
-        score: pathEntry.score,
-        positions: pathEntry.positions,
-      });
+    if (includeThreadStorage) {
+      for (const pathEntry of threadStorageQuery.data?.paths ?? []) {
+        rankedSuggestions.push({
+          source: "thread-storage",
+          sourceRank: getSourceRank("thread-storage"),
+          entryKind: pathEntry.kind,
+          path: pathEntry.path,
+          name: pathEntry.name,
+          score: pathEntry.score,
+          positions: pathEntry.positions,
+        });
+      }
     }
 
     return rankedSuggestions
@@ -154,25 +186,27 @@ export function usePathSuggestions(
       .map(toPathSuggestion);
   }, [
     hasQuery,
+    includeThreadStorage,
+    includeWorkspace,
     limit,
     threadStorageQuery.data?.paths,
     workspaceQuery.data?.paths,
   ]);
 
   const isFetching =
-    workspaceQuery.isFetching ||
-    (includeThreadStorage && threadStorageQuery.isFetching);
+    (isWorkspaceQueryEnabled && workspaceQuery.isFetching) ||
+    (isThreadStorageQueryEnabled && threadStorageQuery.isFetching);
   const isPending =
-    workspaceQuery.isPending ||
-    (includeThreadStorage && threadStorageQuery.isPending);
+    (isWorkspaceQueryEnabled && workspaceQuery.isPending) ||
+    (isThreadStorageQueryEnabled && threadStorageQuery.isPending);
   const isLoading =
     hasQuery &&
     suggestions.length === 0 &&
     (isDebouncing || isPending || isFetching);
   const isError =
     hasQuery &&
-    (workspaceQuery.isError ||
-      (includeThreadStorage && threadStorageQuery.isError));
+    ((isWorkspaceQueryEnabled && workspaceQuery.isError) ||
+      (isThreadStorageQueryEnabled && threadStorageQuery.isError));
 
   return {
     suggestions,

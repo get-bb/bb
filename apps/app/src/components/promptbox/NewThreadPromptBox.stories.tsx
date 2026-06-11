@@ -20,8 +20,8 @@ import {
   STORY_WORKTREE_OPTIONS,
   makeAttachmentsConfig as makeAttachments,
   makeExecutionControlsProps,
+  makeTypeaheadConfig as makeTypeahead,
   makeHost,
-  makeMentionsConfig as makeMentions,
 } from "../../../.ladle/story-fixtures";
 
 export default {
@@ -131,7 +131,7 @@ function DefaultRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.default"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
         modeConfig={baseModeConfig}
         project={baseProject}
@@ -157,7 +157,7 @@ function SubmittingRow() {
         disabled
         zenModeStorageKey="bb.story.new-thread.submitting"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
         modeConfig={baseModeConfig}
         project={baseProject}
@@ -181,7 +181,7 @@ function ClaudeProviderRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.claude"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
         modeConfig={baseModeConfig}
         project={baseProject}
@@ -219,7 +219,7 @@ function FullAccessRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.full-access"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
         modeConfig={{
           ...baseModeConfig,
@@ -246,7 +246,7 @@ function ProjectlessThreadRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.projectless"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
         modeConfig={baseModeConfig}
         project={{

@@ -10,6 +10,7 @@ import {
   environmentDiffBranchesQuerySchema,
   environmentDiffFileQuerySchema,
   environmentDiffQuerySchema,
+  environmentPathsQuerySchema,
   environmentStatusQuerySchema,
   updateEnvironmentRequestSchema,
   typedRoutes,
@@ -37,6 +38,8 @@ import {
   normalizeBranchQuery,
   parseBranchListLimit,
 } from "./branch-list-query.js";
+import { parseFileListLimit } from "./file-list-query.js";
+import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import { requireWorkspaceCommandTarget } from "../services/environments/workspace-command-target.js";
 import {
   requireAvailableWorkspaceDiff,
@@ -358,6 +361,46 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
         remoteBranchesTruncated: result.remoteBranchesTruncated,
         selectedBranch: result.selectedBranch,
       });
+    },
+  );
+
+  get(
+    "/environments/:id/paths",
+    environmentPathsQuerySchema,
+    async (context, query) => {
+      const environment = requireReadyEnvironment(
+        deps.db,
+        context.req.param("id"),
+      );
+      const limit = parseFileListLimit(query.limit);
+      const inclusion = parsePathKindInclusion({
+        includeFiles: query.includeFiles,
+        includeDirectories: query.includeDirectories,
+      });
+
+      try {
+        const result = await callHostRetryableOnlineRpc(deps, {
+          hostId: environment.hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "host.list_paths",
+            path: environment.path,
+            ...(query.query ? { query: query.query } : {}),
+            limit,
+            includeFiles: inclusion.includeFiles,
+            includeDirectories: inclusion.includeDirectories,
+          },
+        });
+        return context.json({
+          paths: result.paths,
+          truncated: result.truncated,
+        });
+      } catch (error) {
+        if (error instanceof ApiError && error.body.code === "ENOENT") {
+          return context.json({ paths: [], truncated: false });
+        }
+        throw error;
+      }
     },
   );
 

@@ -308,7 +308,12 @@ export async function getGitCommonDir(cwd: string): Promise<string> {
       `git rev-parse --git-common-dir returned no path for ${cwd}`,
     );
   }
-  return path.resolve(cwd, commonDir);
+  // realpath, not just resolve: the worktree metadata lock keys on this path,
+  // and symlinked locations (macOS /tmp → /private/tmp, /var → /private/var)
+  // otherwise split source-repo-cwd commands (relative `.git` resolved via the
+  // symlinked cwd) and worktree-cwd commands (git reports the real-path form)
+  // into two disjoint lock domains — the M7-soak-diagnosed config.lock race.
+  return fs.realpath(path.resolve(cwd, commonDir));
 }
 
 /**
@@ -663,7 +668,12 @@ export async function getWorkspaceGitOperation(
 
   const [gitDir, status] = await Promise.all([
     getAbsoluteGitDir(cwd),
-    runGit(["status", "--porcelain=v1", "--untracked-files=all"], { cwd }),
+    // --no-optional-locks: status must not take index.lock, or background
+    // polling races concurrent commits in the same checkout.
+    runGit(
+      ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all"],
+      { cwd },
+    ),
   ]);
   const hasConflicts = hasPorcelainConflict(
     parsePorcelainEntries(status.stdout),
@@ -1003,7 +1013,7 @@ export async function listRemoteBranches(cwd: string): Promise<string[]> {
 export async function hasUncommittedChanges(cwd: string): Promise<boolean> {
   await ensureGitRepo(cwd);
   const status = await runGit(
-    ["status", "--porcelain=v1", "--untracked-files=all"],
+    ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all"],
     { cwd },
   );
   return status.stdout.trim().length > 0;

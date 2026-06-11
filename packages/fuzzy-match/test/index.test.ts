@@ -117,6 +117,33 @@ describe("fuzzyMatchPaths", () => {
     ]);
   });
 
+  it("ranks files under a matching directory before the slash is typed", () => {
+    const paths = [
+      "packages/db/test/query-plans.test.ts",
+      "packages/replay-capture/src/playback.ts",
+      "packages/agent-runtime/src/codex/generated/codex-app-server/schema/v2/TurnPlanStep.ts",
+      "apps/server/src/services/threads/thread-execution-plan.ts",
+      "plans/askuserquestion-option-preview.md",
+      "plans/background-command-support.md",
+      "plans/environment-branch-display.md",
+    ];
+
+    for (const query of ["pl", "pla", "plan", "plans"]) {
+      const matches = fuzzyMatchPaths({
+        items: paths,
+        query,
+        getPath: (path) => path,
+        limit: 3,
+      });
+
+      expect(matches.map((match) => match.item.startsWith("plans/"))).toEqual([
+        true,
+        true,
+        true,
+      ]);
+    }
+  });
+
   it("scores exact directory-prefix matches above unrelated slash fuzzy matches", () => {
     const exactPrefixMatch = fuzzyMatchPaths({
       items: ["plans/code-quality-follow-ups.md"],
@@ -153,7 +180,7 @@ describe("fuzzyMatchPaths", () => {
     ]);
   });
 
-  it("fuzzy matches typoed directory segments in order", () => {
+  it("does not treat slash-separated path segments as typo-corrected terms", () => {
     const matches = fuzzyMatchPaths({
       items: [
         "packages/generated/unification.ts",
@@ -165,22 +192,9 @@ describe("fuzzyMatchPaths", () => {
       limit: 8,
     });
 
-    expect(matches[0].item).toBe("plans/timeline-bundle-unification.md");
-  });
-
-  it("fuzzy matches transposed directory segment typos", () => {
-    const matches = fuzzyMatchPaths({
-      items: [
-        "packages/generated/unification.ts",
-        "plans/timeline-bundle-unification.md",
-        "docs/plans-unification.md",
-      ],
-      query: "plnas/uni",
-      getPath: (path) => path,
-      limit: 8,
-    });
-
-    expect(matches[0].item).toBe("plans/timeline-bundle-unification.md");
+    expect(matches.map((match) => match.item)).not.toContain(
+      "plans/timeline-bundle-unification.md",
+    );
   });
 
   it("boosts basename matches for the final path segment", () => {
@@ -226,7 +240,7 @@ describe("fuzzyMatchPaths", () => {
     expect(matches[0].positions).toEqual([0, 1, 2, 3, 8, 9, 10, 11]);
   });
 
-  it("does not fabricate highlight positions for typo segment matches", () => {
+  it("does not return slash segment matches that require typo correction", () => {
     const matches = fuzzyMatchPaths({
       items: ["plans-foo-bar/file.ts"],
       query: "plnas/file",
@@ -234,8 +248,7 @@ describe("fuzzyMatchPaths", () => {
       limit: 10,
     });
 
-    expect(matches[0].item).toBe("plans-foo-bar/file.ts");
-    expect(matches[0].positions).toEqual([14, 15, 16, 17]);
+    expect(matches).toEqual([]);
   });
 
   it("returns no matches for slash-only queries", () => {

@@ -9,6 +9,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   AlertCircle: "Dialog warning state",
   AlertTriangle: "“Project folder not found” indicator on sidebar project rows",
   AlignLeft: "Mobile/coarse-pointer sidebar toggle",
+  AppWindow: "Right-panel app fallback and HTML/mockup file visual",
   Archive: "“Archived threads” header link, archived-thread banner",
   ArchiveRestore: "Unarchive button on archived threads",
   ArrowDown: "Scroll-to-bottom button when conversation is scrolled up",
@@ -17,6 +18,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   AudioLines: "Voice recording indicator (pulsing) and idle wave",
   Check:
     "Selected item in pickers/menus, CopyButton confirmation, completed todo",
+  ChartColumn: "Right-panel report file visual",
   ChevronDown:
     "Picker/dropdown trigger, section toggle headers, child-thread indent glyph",
   ChevronLeft: "Image lightbox previous",
@@ -27,10 +29,11 @@ const USAGE: Partial<Record<IconName, string>> = {
   ChevronsUp: "Git diff toolbar expand-all",
   Circle: "Radio item indicator in menus",
   CircleCheck: "Auth callback success state",
-  CircleDashed:
-    "Thread row busy spinner, child-thread busy section indicator",
+  CircleDashed: "Thread row busy spinner, child-thread busy section indicator",
   CircleX: "Auth callback failure state",
-  Clock: "Automations nav button in sidebar, automation rows in Automations view",
+  Clock:
+    "Automations nav button in sidebar, automation rows in Automations view",
+  Code: "Right-panel source file visual",
   Columns2: "Git diff toolbar “split view”",
   Container: "Container icon",
   Copy: "CopyButton, metadata-value copy buttons",
@@ -39,7 +42,8 @@ const USAGE: Partial<Record<IconName, string>> = {
     "Queued message indicator, steer/edit request label marker in conversation",
   Edit: "Rename project, edit queued message, edit project source",
   ExternalLink: "FilePathLink external indicator",
-  FileDiff: "Secondary panel diff tab, thread changes banner section",
+  File: "Right-panel markdown/doc file visual, Open file action",
+  FileDiff: "Right panel diff tab, thread changes banner section",
   FileQuestion: "FilePreview empty state (passed via local iconName variable)",
   FileX2: "FilePreview missing-file state (passed via local iconName variable)",
   Folder: "EmptyState “no projects”, sidebar project row when collapsed",
@@ -48,7 +52,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   GitBranch:
     "Worktree environment icon (resolved via environment-workspace helpers)",
   GitMerge: "Branch name display, branch picker selected/option glyph",
-  Info: "Secondary panel “thread info” tab, replay list info banner",
+  Info: "Right panel “thread info” tab, replay list info banner",
   Laptop: "Persistent host icon (resolved via getHostIconName)",
   ListTodo: "Todo section header in prompt context banner",
   Maximize2: "Enter zen mode (prompt expand)",
@@ -57,10 +61,11 @@ const USAGE: Partial<Record<IconName, string>> = {
   Minimize2: "Exit zen mode (prompt collapse)",
   MoreHorizontal:
     "Triple-dot actions menu trigger (project list, projects, threads, project sources, hosts)",
-  PanelBottom: "Toggle secondary panel as bottom drawer (compact viewport)",
+  NewTab: "Right-panel New tab tab",
+  PanelBottom: "Available built-in app icon",
   PanelLeft: "Sidebar toggle (desktop / fine pointer)",
   PanelRight:
-    "Toggle secondary panel (desktop / non-drawer; resolved via togglePanelIconName)",
+    "Toggle right panel (desktop / non-drawer; resolved via togglePanelIconName)",
   Paperclip: "Attach files button",
   Plus: "New host button, new terminal button, “new branch” option in branch picker",
   RotateCcw: "Retry button when fetching timeline turn details fails",
@@ -70,8 +75,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   Spinner: "All loading / pending states",
   Square: "Stop button while running, in-progress and pending todo glyphs",
   Trash2: "Delete queued message, remove project source, delete replay capture",
-  UserRound:
-    "Parent-thread indicator in sidebar and prompt banner",
+  UserRound: "Parent-thread indicator in sidebar and prompt banner",
   UserRoundPlus: "unused legacy parent-action icon",
   X: "Close dialogs/drawers, clear search input, remove attachment, close metadata panel",
   Zap: "Fast-mode indicator in model picker trigger, Fast-mode toggle row",

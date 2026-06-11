@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 // Keeps prompt mention pills aligned with surrounding text. The icon in React
 // render paths opts back into vertical centering with `self-center`.
 export const PROMPT_MENTION_PILL_CLASS = cn(
-  "inline-flex max-w-full items-baseline gap-1.5 rounded-full border border-surface-selected-border px-1.5 py-0 text-xs leading-4 text-foreground",
+  "inline-flex max-w-full items-baseline gap-1.5 rounded-full border border-surface-selected-border px-1.5 py-0.5 text-xs leading-4 text-foreground",
   "align-baseline",
 );
 

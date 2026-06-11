@@ -18,6 +18,6 @@ export function getDiffWorkerPoolSize(): number {
 export function createDiffWorker(): Worker {
   return new Worker(
     new URL("@pierre/diffs/worker/worker-portable.js", import.meta.url),
-    { name: "pierre-diffs-worker" },
+    { name: "pierre-diffs-worker", type: "module" },
   );
 }

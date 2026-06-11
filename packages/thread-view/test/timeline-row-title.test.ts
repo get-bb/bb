@@ -443,7 +443,7 @@ describe("buildTimelineRowTitle", () => {
     );
 
     expect(title.plain).toBe(
-      "Ran tool: LookupTool { query: select:TodoWrite } (3s, interrupted)",
+      "Ran tool LookupTool { query: select:TodoWrite } (3s, interrupted)",
     );
     expect(title.decorations).toEqual([
       { kind: "status", status: "interrupted", durationMs: 3_000, emphasis: false },

@@ -531,6 +531,30 @@ export function Overview() {
         })}
       </StoryRow>
       <StoryRow
+        label="collapsed worktree — unread error child"
+        hint="hidden child status=error and unread — worktree header shows the destructive unread dot"
+      >
+        {singleProject({
+          initialCollapsedEnvironmentIds: new Set(["env_collapsed_error"]),
+          threadListState: {
+            status: "ready",
+            threads: [
+              {
+                ...sharedWorktreeThreadA,
+                environmentId: "env_collapsed_error",
+                status: "error",
+                lastReadAt: 50,
+                latestAttentionAt: 200,
+              },
+              {
+                ...sharedWorktreeThreadB,
+                environmentId: "env_collapsed_error",
+              },
+            ],
+          },
+        })}
+      </StoryRow>
+      <StoryRow
         label="multiple projects"
         hint="four projects stacked — active project at the top with a root thread, parent group, and busy/pending threads; another collapsed with a long truncated name; one with two idle threads; an empty one at the bottom"
       >

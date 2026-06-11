@@ -12,6 +12,7 @@ import {
   ensureNodePtySpawnHelpersExecutableInPackage,
   resolveNodePtySpawnHelperPaths,
   TerminalManager,
+  type ResolveTerminalShell,
   type SpawnTerminalPtyArgs,
   type TerminalPtyAdapter,
   type TerminalPtyDisposable,
@@ -45,6 +46,22 @@ interface WaitForOutputArgs {
   text: string;
 }
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+type TerminalMessageObserver = (message: HostDaemonDaemonWsMessage) => void;
+
+interface CreateHarnessOptions {
+  onSendMessage: TerminalMessageObserver;
+  resolveShell: ResolveTerminalShell;
+}
+
+interface CreateHarnessWithShellArgs {
+  resolveShell: ResolveTerminalShell;
+}
+
 type SteerTurnResult = Awaited<ReturnType<AgentRuntime["steerTurn"]>>;
 
 async function makeTempDir(prefix: string): Promise<string> {
@@ -56,6 +73,19 @@ async function makeTempDir(prefix: string): Promise<string> {
 async function writeEmptyFile(filePath: string): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, "");
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolveDeferred: (value: T) => void = () => {
+    throw new Error("Deferred resolver was not set");
+  };
+  const promise = new Promise<T>((resolve) => {
+    resolveDeferred = resolve;
+  });
+  return {
+    promise,
+    resolve: resolveDeferred,
+  };
 }
 
 function createFakeLogger(): HostDaemonLogger {
@@ -81,6 +111,8 @@ class FakeTerminalPty implements TerminalPtyProcess {
   readonly writeCalls: (Buffer | string)[];
   private readonly dataListeners: ((data: string) => void)[];
   private readonly exitListeners: ((event: TerminalPtyExit) => void)[];
+  private readonly registeredDataListeners: ((data: string) => void)[];
+  private readonly registeredExitListeners: ((event: TerminalPtyExit) => void)[];
 
   constructor() {
     this.killCalls = [];
@@ -88,6 +120,8 @@ class FakeTerminalPty implements TerminalPtyProcess {
     this.writeCalls = [];
     this.dataListeners = [];
     this.exitListeners = [];
+    this.registeredDataListeners = [];
+    this.registeredExitListeners = [];
   }
 
   kill(signal?: string): void {
@@ -96,6 +130,7 @@ class FakeTerminalPty implements TerminalPtyProcess {
 
   onData(listener: (data: string) => void): TerminalPtyDisposable {
     this.dataListeners.push(listener);
+    this.registeredDataListeners.push(listener);
     return {
       dispose: () => {
         const index = this.dataListeners.indexOf(listener);
@@ -108,6 +143,7 @@ class FakeTerminalPty implements TerminalPtyProcess {
 
   onExit(listener: (event: TerminalPtyExit) => void): TerminalPtyDisposable {
     this.exitListeners.push(listener);
+    this.registeredExitListeners.push(listener);
     return {
       dispose: () => {
         const index = this.exitListeners.indexOf(listener);
@@ -134,6 +170,18 @@ class FakeTerminalPty implements TerminalPtyProcess {
 
   emitExit(exitCode: number): void {
     for (const listener of [...this.exitListeners]) {
+      listener({ exitCode });
+    }
+  }
+
+  emitStaleData(data: string): void {
+    for (const listener of [...this.registeredDataListeners]) {
+      listener(data);
+    }
+  }
+
+  emitStaleExit(exitCode: number): void {
+    for (const listener of [...this.registeredExitListeners]) {
       listener({ exitCode });
     }
   }
@@ -217,6 +265,23 @@ function createFakeWorkspace(path: string): HostWorkspace {
 }
 
 function createHarness(): TerminalManagerHarness {
+  return createHarnessWithShell({
+    resolveShell: async () => "/bin/zsh",
+  });
+}
+
+function createHarnessWithShell(
+  args: CreateHarnessWithShellArgs,
+): TerminalManagerHarness {
+  return createHarnessWithOptions({
+    onSendMessage: () => undefined,
+    resolveShell: args.resolveShell,
+  });
+}
+
+function createHarnessWithOptions(
+  args: CreateHarnessOptions,
+): TerminalManagerHarness {
   const adapter = new FakeTerminalPtyAdapter();
   const messages: HostDaemonDaemonWsMessage[] = [];
   const runtime = createFakeRuntime();
@@ -231,10 +296,11 @@ function createHarness(): TerminalManagerHarness {
   const manager = new TerminalManager({
     logger: createFakeLogger(),
     ptyAdapter: adapter,
-    resolveShell: async () => "/bin/zsh",
+    resolveShell: args.resolveShell,
     runtimeManager,
     sendMessage: (message) => {
       messages.push(message);
+      args.onSendMessage(message);
       return true;
     },
   });
@@ -333,6 +399,307 @@ describe("TerminalManager", () => {
     );
     await expect(harness.runtimeManager.evictIdleEnvironments()).resolves.toEqual(
       [],
+    );
+  });
+
+  it("closes a terminal after an in-progress open finishes", async () => {
+    const shell = createDeferred<string>();
+    let resolveShellCalls = 0;
+    const harness = createHarnessWithShell({
+      resolveShell: () => {
+        resolveShellCalls += 1;
+        return shell.promise;
+      },
+    });
+
+    const openPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      environmentId: "env-1",
+      workspaceContext: {
+        workspacePath: "/tmp/terminal-workspace",
+        workspaceProvisionType: "unmanaged",
+      },
+      cols: 100,
+      rows: 30,
+    });
+    await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
+
+    const closePromise = harness.manager.handleMessage({
+      type: "terminal.close",
+      terminalId: "term-1",
+      reason: "user",
+    });
+
+    expect(harness.adapter.spawned).toHaveLength(0);
+    shell.resolve("/bin/zsh");
+    await Promise.all([openPromise, closePromise]);
+
+    const pty = harness.adapter.spawned[0]?.pty;
+    if (!pty) {
+      throw new Error("Expected terminal PTY to spawn");
+    }
+    expect(harness.adapter.spawned).toHaveLength(1);
+    expect(pty.killCalls).toEqual([null]);
+
+    pty.emitExit(0);
+    await vi.waitFor(() =>
+      expect(
+        harness.messages.filter(
+          (message) => message.type === "terminal.exited",
+        ),
+      ).toEqual([
+        {
+          type: "terminal.exited",
+          terminalId: "term-1",
+          exitCode: 0,
+          closeReason: "user",
+        },
+      ]),
+    );
+  });
+
+  it("closes environment terminals after in-progress opens finish", async () => {
+    const shell = createDeferred<string>();
+    let resolveShellCalls = 0;
+    const harness = createHarnessWithShell({
+      resolveShell: () => {
+        resolveShellCalls += 1;
+        return shell.promise;
+      },
+    });
+
+    const openPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      environmentId: "env-1",
+      workspaceContext: {
+        workspacePath: "/tmp/terminal-workspace",
+        workspaceProvisionType: "unmanaged",
+      },
+      cols: 100,
+      rows: 30,
+    });
+    await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
+
+    const closePromise = harness.manager.closeEnvironmentTerminals({
+      environmentId: "env-1",
+      reason: "environment-destroyed",
+    });
+    shell.resolve("/bin/zsh");
+    await Promise.all([openPromise, closePromise]);
+
+    const pty = harness.adapter.spawned[0]?.pty;
+    if (!pty) {
+      throw new Error("Expected terminal PTY to spawn");
+    }
+    await vi.waitFor(() => expect(pty.killCalls).toEqual([null]));
+
+    pty.emitExit(0);
+    await vi.waitFor(() =>
+      expect(
+        harness.messages.filter(
+          (message) => message.type === "terminal.exited",
+        ),
+      ).toEqual([
+        {
+          type: "terminal.exited",
+          terminalId: "term-1",
+          exitCode: 0,
+          closeReason: "environment-destroyed",
+        },
+      ]),
+    );
+  });
+
+  it("shuts down terminals after in-progress opens finish", async () => {
+    const shell = createDeferred<string>();
+    let resolveShellCalls = 0;
+    const harness = createHarnessWithShell({
+      resolveShell: () => {
+        resolveShellCalls += 1;
+        return shell.promise;
+      },
+    });
+
+    const openPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      environmentId: "env-1",
+      workspaceContext: {
+        workspacePath: "/tmp/terminal-workspace",
+        workspaceProvisionType: "unmanaged",
+      },
+      cols: 100,
+      rows: 30,
+    });
+    await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
+
+    const shutdownPromise = harness.manager.shutdownAll();
+    shell.resolve("/bin/zsh");
+    await Promise.all([openPromise, shutdownPromise]);
+
+    const pty = harness.adapter.spawned[0]?.pty;
+    if (!pty) {
+      throw new Error("Expected terminal PTY to spawn");
+    }
+    expect(pty.killCalls).toEqual([null]);
+    expect(
+      harness.messages.filter((message) => message.type === "terminal.exited"),
+    ).toEqual([
+      {
+        type: "terminal.exited",
+        terminalId: "term-1",
+        exitCode: null,
+        closeReason: "daemon-disconnect",
+      },
+    ]);
+  });
+
+  it("rejects duplicate opens queued behind an in-progress open", async () => {
+    const shell = createDeferred<string>();
+    let resolveShellCalls = 0;
+    const harness = createHarnessWithShell({
+      resolveShell: () => {
+        resolveShellCalls += 1;
+        return shell.promise;
+      },
+    });
+
+    const firstOpenPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      environmentId: "env-1",
+      workspaceContext: {
+        workspacePath: "/tmp/terminal-workspace",
+        workspaceProvisionType: "unmanaged",
+      },
+      cols: 100,
+      rows: 30,
+    });
+    await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
+
+    const secondOpenPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-2",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      environmentId: "env-1",
+      workspaceContext: {
+        workspacePath: "/tmp/terminal-workspace",
+        workspaceProvisionType: "unmanaged",
+      },
+      cols: 100,
+      rows: 30,
+    });
+
+    shell.resolve("/bin/zsh");
+    await Promise.all([firstOpenPromise, secondOpenPromise]);
+
+    expect(harness.adapter.spawned).toHaveLength(1);
+    expect(resolveShellCalls).toBe(1);
+    expect(harness.messages).toContainEqual({
+      type: "terminal.error",
+      requestId: "open-2",
+      terminalId: "term-1",
+      code: "terminal_exists",
+      message: "Terminal session is already open",
+    });
+  });
+
+  it("serializes PTY exits behind already queued terminal messages", async () => {
+    const shell = createDeferred<string>();
+    let resolveShellCalls = 0;
+    let exitOnOpened = false;
+    let harness: TerminalManagerHarness | null = null;
+    harness = createHarnessWithOptions({
+      onSendMessage: (message) => {
+        if (!exitOnOpened || message.type !== "terminal.opened") {
+          return;
+        }
+        const currentHarness = harness;
+        const pty = currentHarness?.adapter.spawned[0]?.pty;
+        if (!pty) {
+          throw new Error("Expected terminal PTY to spawn");
+        }
+        pty.emitExit(0);
+      },
+      resolveShell: () => {
+        resolveShellCalls += 1;
+        return shell.promise;
+      },
+    });
+
+    const firstOpenPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      environmentId: "env-1",
+      workspaceContext: {
+        workspacePath: "/tmp/terminal-workspace",
+        workspaceProvisionType: "unmanaged",
+      },
+      cols: 100,
+      rows: 30,
+    });
+    await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
+
+    const secondOpenPromise = harness.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-2",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      environmentId: "env-1",
+      workspaceContext: {
+        workspacePath: "/tmp/terminal-workspace",
+        workspaceProvisionType: "unmanaged",
+      },
+      cols: 100,
+      rows: 30,
+    });
+
+    exitOnOpened = true;
+    shell.resolve("/bin/zsh");
+    await Promise.all([firstOpenPromise, secondOpenPromise]);
+
+    expect(harness.adapter.spawned).toHaveLength(1);
+    await vi.waitFor(() =>
+      expect(
+        harness.messages.filter(
+          (message) =>
+            message.type === "terminal.opened" ||
+            message.type === "terminal.error" ||
+            message.type === "terminal.exited",
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          type: "terminal.opened",
+          requestId: "open-1",
+          terminalId: "term-1",
+        }),
+        {
+          type: "terminal.error",
+          requestId: "open-2",
+          terminalId: "term-1",
+          code: "terminal_exists",
+          message: "Terminal session is already open",
+        },
+        {
+          type: "terminal.exited",
+          terminalId: "term-1",
+          exitCode: 0,
+          closeReason: "process-exit",
+        },
+      ]),
     );
   });
 
@@ -608,6 +975,45 @@ describe("TerminalManager", () => {
     pty.emitExit(0);
 
     expect(pty.killCalls).toEqual([null]);
+    expect(
+      harness.messages.filter((message) => message.type === "terminal.exited"),
+    ).toEqual([
+      {
+        type: "terminal.exited",
+        terminalId: "term-1",
+        exitCode: null,
+        closeReason: "daemon-disconnect",
+      },
+    ]);
+  });
+
+  it("ignores stale output and exits from a replaced PTY", async () => {
+    const harness = createHarness();
+    const oldPty = await openTerminal(harness);
+
+    await harness.manager.shutdownAll();
+    await openTerminal(harness);
+    const newPty = harness.adapter.spawned[1]?.pty;
+    if (!newPty) {
+      throw new Error("Expected replacement terminal PTY to spawn");
+    }
+
+    oldPty.emitStaleData("stale-output\n");
+    oldPty.emitStaleExit(7);
+    newPty.emitData("current-output\n");
+    await harness.manager.handleMessage({
+      type: "terminal.input",
+      terminalId: "term-1",
+      dataBase64: Buffer.from("pwd\n", "utf8").toString("base64"),
+    });
+
+    expect(newPty.writeCalls).toEqual(["pwd\n"]);
+    expect(collectTerminalOutput(harness.messages)).toContain(
+      "current-output\n",
+    );
+    expect(collectTerminalOutput(harness.messages)).not.toContain(
+      "stale-output\n",
+    );
     expect(
       harness.messages.filter((message) => message.type === "terminal.exited"),
     ).toEqual([

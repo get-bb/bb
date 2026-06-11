@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   resolveEnvironmentMergeBaseBranch,
   type Environment,
-  type GitBranchRefClassification,
   type Thread,
   type WorkspaceStatus,
 } from "@bb/domain";
 import { appToast } from "@/components/ui/app-toast";
-import { getMergeBaseBranchCandidateGroups } from "@/components/pickers/BranchPicker";
 import {
   describeLifecycleError,
   parseLifecycleError,
@@ -18,9 +16,6 @@ import { useUpdateEnvironment } from "../../../hooks/mutations/environment-mutat
 
 interface UseEnvironmentMergeBaseParams {
   environment?: Environment;
-  mergeBaseBranchRef?: GitBranchRefClassification | null;
-  mergeBaseBranchOptions?: readonly string[];
-  mergeBaseRemoteBranchOptions?: readonly string[];
   selectedMergeBaseBranch?: string;
   setSelectedMergeBaseBranch: (branch: string | undefined) => void;
   thread?: Thread;
@@ -136,9 +131,6 @@ function showMergeBaseLifecycleToast(
 
 export function useEnvironmentMergeBase({
   environment,
-  mergeBaseBranchRef,
-  mergeBaseBranchOptions,
-  mergeBaseRemoteBranchOptions,
   selectedMergeBaseBranch,
   setSelectedMergeBaseBranch,
   thread,
@@ -185,34 +177,12 @@ export function useEnvironmentMergeBase({
     effectiveMergeBaseBranch || workspaceStatus?.branch.defaultBranch,
   );
   const mergeBaseBranch = effectiveMergeBaseBranch;
-  const mergeBaseCandidateGroups = useMemo(
-    () =>
-      getMergeBaseBranchCandidateGroups({
-        mergeBaseBranch,
-        mergeBaseBranchRef,
-        mergeBaseBranchOptions,
-        remoteMergeBaseBranchOptions: mergeBaseRemoteBranchOptions,
-      }),
-    [
-      mergeBaseBranch,
-      mergeBaseBranchOptions,
-      mergeBaseBranchRef,
-      mergeBaseRemoteBranchOptions,
-    ],
-  );
-  const mergeBaseCandidates = mergeBaseCandidateGroups.options;
-  const remoteMergeBaseCandidates = mergeBaseCandidateGroups.remoteOptions;
   const isOnDefaultBranch =
     workspaceStatus?.branch.currentBranch != null &&
     workspaceStatus.branch.currentBranch ===
       workspaceStatus.branch.defaultBranch;
   const showMergeBase =
     showBranchComparisonUi && Boolean(mergeBaseBranch) && !isOnDefaultBranch;
-  const canSelectMergeBase = Boolean(
-    showMergeBase &&
-    mergeBaseBranch &&
-    (mergeBaseCandidates.length > 0 || remoteMergeBaseCandidates.length > 0),
-  );
 
   const handleMergeBaseBranchChange: MergeBaseBranchChangeHandler = useCallback(
     (branch) => {
@@ -281,13 +251,10 @@ export function useEnvironmentMergeBase({
   );
 
   return {
-    canSelectMergeBase,
     effectiveMergeBaseBranch,
     handleMergeBaseBranchChange,
     showBranchComparisonUi,
     showMergeBase,
     mergeBaseBranch,
-    mergeBaseCandidates,
-    mergeBaseRemoteBranchOptions: remoteMergeBaseCandidates,
   };
 }

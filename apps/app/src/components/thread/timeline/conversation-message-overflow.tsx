@@ -55,8 +55,15 @@ export function useOverflowMeasurement({
     }
 
     const measure = () => {
+      // ResizeObserver still fires after the observed node detaches (e.g. when
+      // an expandable row swaps the collapsed preview for the expanded body).
+      // A detached node reports scroll/client size 0, which would flip the
+      // measurement to "fits" and unexpand the row mid-click. Treat detached
+      // nodes as "no new information" — the last connected measurement stands.
+      if (!element.isConnected) return;
       setMeasurement(
-        element.scrollHeight > element.clientHeight + 1
+        element.scrollHeight > element.clientHeight + 1 ||
+          element.scrollWidth > element.clientWidth + 1
           ? "overflowing"
           : "fits",
       );

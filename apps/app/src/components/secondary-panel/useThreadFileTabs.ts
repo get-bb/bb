@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useSetAtom } from "jotai";
+import { arrayMove } from "@dnd-kit/sortable";
 import {
   useFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
@@ -25,12 +26,18 @@ import {
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import {
+  areFilePreviewLineRangesEqual,
   areEnvironmentFilePreviewSourcesEqual,
   type HostFileTabState,
+  type ThreadStorageFileTabState,
   type WorkspaceFileTabState,
 } from "@/lib/file-preview";
 import { getThreadSecondaryPanelOpenAtom } from "./threadSecondaryPanelAtoms";
 import { useRecordThreadRecentItem } from "./threadRecentItems";
+import type {
+  SecondaryPanelTabReorderHandler,
+  SecondaryPanelTabReorderRequest,
+} from "./secondaryPanelFileTab";
 
 interface AppTabDescriptor {
   applicationId: string;
@@ -52,6 +59,11 @@ interface SetSecondaryTabsArgs {
 
 interface ReplaceNewTabArgs {
   nextTab: FixedPanelTab;
+  state: FixedPanelTabsState;
+}
+
+interface ReorderSecondaryFileTabStateArgs
+  extends SecondaryPanelTabReorderRequest {
   state: FixedPanelTabsState;
 }
 
@@ -158,6 +170,23 @@ function findSideChatTab(
   return null;
 }
 
+function isSecondaryFileTab(tab: FixedPanelTab): tab is SecondaryFileFixedPanelTab {
+  switch (tab.kind) {
+    case "workspace-file-preview":
+    case "host-file-preview":
+    case "thread-storage-file-preview":
+    case "app":
+    case "browser":
+    case "terminal":
+    case "new-tab":
+    case "side-chat":
+      return true;
+    case "thread-info":
+    case "git-diff":
+      return false;
+  }
+}
+
 function getActiveSecondaryTab(
   state: FixedPanelTabsState,
 ): FixedPanelTab | null {
@@ -215,6 +244,31 @@ function removeSecondaryTab(
 ): readonly FixedPanelTab[] {
   const nextTabs = tabs.filter((tab) => tab.id !== tabId);
   return nextTabs.length === tabs.length ? tabs : nextTabs;
+}
+
+function reorderSecondaryFileTabInState({
+  activeTabId,
+  overTabId,
+  state,
+}: ReorderSecondaryFileTabStateArgs): FixedPanelTabsState {
+  if (activeTabId === overTabId) {
+    return state;
+  }
+  const activeIndex = state.secondary.tabs.findIndex(
+    (tab) => tab.id === activeTabId && isSecondaryFileTab(tab),
+  );
+  const overIndex = state.secondary.tabs.findIndex(
+    (tab) => tab.id === overTabId && isSecondaryFileTab(tab),
+  );
+  if (activeIndex === -1 || overIndex === -1) {
+    return state;
+  }
+  return setSecondaryTabs({
+    activeTabId: state.secondary.activeTabId,
+    isOpen: state.secondary.isOpen,
+    state,
+    tabs: arrayMove([...state.secondary.tabs], activeIndex, overIndex),
+  });
 }
 
 function removeWorkspaceTabsForOtherEnvironments(
@@ -293,10 +347,12 @@ function activateTabInState(
   });
 }
 
-function createStorageTab(path: string): ThreadStorageFilePreviewFixedPanelTab {
+function createStorageTab(
+  tab: ThreadStorageFileTabState,
+): ThreadStorageFilePreviewFixedPanelTab {
   return createThreadStorageFilePreviewFixedPanelTab({
     isPinned: false,
-    path,
+    tab,
   });
 }
 
@@ -419,8 +475,8 @@ interface BuildOrderedSecondaryFileTabsArgs {
 
 /**
  * Flattens the secondary panel's tabs into the closable file-tab strip, in the
- * order the user opened them. Workspace, host, storage, app, browser, and new
- * tabs keep their insertion order regardless of type.
+ * order the user opened them. Workspace, host, storage, app, browser,
+ * terminal, and new tabs keep their insertion order regardless of type.
  */
 function buildOrderedSecondaryFileTabs({
   tabs,
@@ -440,6 +496,7 @@ function buildOrderedSecondaryFileTabs({
       case "host-file-preview":
       case "app":
       case "browser":
+      case "terminal":
       case "new-tab":
       case "side-chat":
         displayable.push(tab);
@@ -449,50 +506,10 @@ function buildOrderedSecondaryFileTabs({
         break;
       case "thread-info":
       case "git-diff":
-      case "terminal":
         break;
     }
   }
   return displayable;
-}
-
-/**
- * Opens (or re-activates) an app tab in a thread's secondary panel and reveals
- * the panel. Keyed by `threadId`, so callers outside the active thread detail
- * view — e.g. the sidebar app-icon cluster — can drive the same panel state the
- * detail view reads. This is the canonical open-app-tab path; `useThreadFileTabs`
- * exposes it as `openApp`.
- */
-export function useOpenThreadAppTab(
-  threadId: string | null | undefined,
-): (applicationId: string) => void {
-  const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
-  const setThreadSecondaryPanelOpen = useSetAtom(
-    getThreadSecondaryPanelOpenAtom(threadId),
-  );
-  return useCallback(
-    (applicationId: string) => {
-      const nextTab = createAppTab(applicationId);
-      setThreadSecondaryPanelOpen(true);
-      updateFixedPanelTabsState((state) => {
-        const tabs = upsertSecondaryTab(state.secondary.tabs, nextTab);
-        if (
-          tabs === state.secondary.tabs &&
-          state.secondary.activeTabId === nextTab.id &&
-          state.secondary.isOpen
-        ) {
-          return state;
-        }
-        return setSecondaryTabs({
-          activeTabId: nextTab.id,
-          isOpen: true,
-          state,
-          tabs,
-        });
-      });
-    },
-    [setThreadSecondaryPanelOpen, updateFixedPanelTabsState],
-  );
 }
 
 export function useThreadFileTabs({
@@ -580,7 +597,7 @@ export function useThreadFileTabs({
   }, [applicationIds, isThreadResolved, updateFixedPanelTabsState]);
 
   const openWorkspaceFile = useCallback(
-    ({ lineNumber, path, source, statusLabel }: WorkspaceFileTabState) => {
+    ({ lineRange, path, source, statusLabel }: WorkspaceFileTabState) => {
       if (resolvedEnvironmentId === undefined) return;
       setThreadSecondaryPanelOpen(true);
       // Only working-tree opens are recorded as recent: a recent row reopens the
@@ -592,7 +609,7 @@ export function useThreadFileTabs({
       const nextTab = createWorkspaceFilePreviewFixedPanelTab({
         environmentId: resolvedEnvironmentId,
         tab: {
-          lineNumber,
+          lineRange,
           path,
           source,
           statusLabel,
@@ -604,7 +621,10 @@ export function useThreadFileTabs({
         if (
           existingTab &&
           existingTab.environmentId === resolvedEnvironmentId &&
-          existingTab.lineNumber === lineNumber &&
+          areFilePreviewLineRangesEqual({
+            a: existingTab.lineRange,
+            b: lineRange,
+          }) &&
           areEnvironmentFilePreviewSourcesEqual(existingTab.source, source) &&
           existingTab.statusLabel === statusLabel &&
           state.secondary.activeTabId === nextTab.id &&
@@ -658,14 +678,19 @@ export function useThreadFileTabs({
   );
 
   const openStorageFile = useCallback(
-    (path: string) => {
+    ({ lineRange, path }: ThreadStorageFileTabState) => {
       setThreadSecondaryPanelOpen(true);
       recordRecentItem({ source: "thread-storage", path });
-      const nextTab = createStorageTab(path);
+      const nextTab = createStorageTab({ lineRange, path });
       updateFixedPanelTabsState((state) => {
+        const existingTab = findStorageFileTab(state.secondary.tabs, path);
         const tabs = upsertSecondaryTab(state.secondary.tabs, nextTab);
         if (
-          tabs === state.secondary.tabs &&
+          existingTab &&
+          areFilePreviewLineRangesEqual({
+            a: existingTab.lineRange,
+            b: lineRange,
+          }) &&
           state.secondary.activeTabId === nextTab.id &&
           state.secondary.isOpen
         ) {
@@ -687,11 +712,11 @@ export function useThreadFileTabs({
   );
 
   const openHostFile = useCallback(
-    ({ lineNumber, path }: HostFileTabState) => {
+    ({ lineRange, path }: HostFileTabState) => {
       if (!threadId) return;
       setThreadSecondaryPanelOpen(true);
       const nextTab = createHostFilePreviewFixedPanelTab({
-        lineNumber,
+        lineRange,
         path,
       });
       updateFixedPanelTabsState((state) => {
@@ -699,7 +724,10 @@ export function useThreadFileTabs({
         const tabs = upsertSecondaryTab(state.secondary.tabs, nextTab);
         if (
           existingTab &&
-          existingTab.lineNumber === lineNumber &&
+          areFilePreviewLineRangesEqual({
+            a: existingTab.lineRange,
+            b: lineRange,
+          }) &&
           state.secondary.activeTabId === nextTab.id &&
           state.secondary.isOpen
         ) {
@@ -741,8 +769,6 @@ export function useThreadFileTabs({
       updateFixedPanelTabsState,
     ],
   );
-
-  const openApp = useOpenThreadAppTab(threadId);
 
   const closeAppTab = useCallback(
     (applicationId: string) => {
@@ -1040,7 +1066,7 @@ export function useThreadFileTabs({
         const nextTab = createWorkspaceFilePreviewFixedPanelTab({
           environmentId: resolvedEnvironmentId,
           tab: {
-            lineNumber: null,
+            lineRange: null,
             path: selection.path,
             source: { kind: "working-tree" },
             statusLabel: null,
@@ -1052,7 +1078,10 @@ export function useThreadFileTabs({
 
       setThreadSecondaryPanelOpen(true);
       recordRecentItem({ source: "thread-storage", path: selection.path });
-      const nextTab = createStorageTab(selection.path);
+      const nextTab = createStorageTab({
+        lineRange: null,
+        path: selection.path,
+      });
       updateFixedPanelTabsState((state) => replaceNewTab({ nextTab, state }));
     },
     [
@@ -1072,7 +1101,9 @@ export function useThreadFileTabs({
           activeTab.kind !== "host-file-preview" &&
           activeTab.kind !== "thread-storage-file-preview" &&
           activeTab.kind !== "app" &&
-          activeTab.kind !== "browser")
+          activeTab.kind !== "browser" &&
+          activeTab.kind !== "terminal" &&
+          activeTab.kind !== "new-tab")
       ) {
         return state;
       }
@@ -1084,6 +1115,15 @@ export function useThreadFileTabs({
       });
     });
   }, [updateFixedPanelTabsState]);
+
+  const reorderFileTab = useCallback<SecondaryPanelTabReorderHandler>(
+    (request) => {
+      updateFixedPanelTabsState((state) =>
+        reorderSecondaryFileTabInState({ ...request, state }),
+      );
+    },
+    [updateFixedPanelTabsState],
+  );
 
   const activeTab = getActiveSecondaryTab(fixedPanelTabsState);
   const orderedSecondaryFileTabs = buildOrderedSecondaryFileTabs({
@@ -1133,10 +1173,11 @@ export function useThreadFileTabs({
     activateWorkspaceFileTab,
     activeAppId: activeAppTab?.applicationId ?? null,
     activeBrowserTab,
-    activeHostFileLineNumber: activeHostFileTab?.lineNumber ?? null,
+    activeHostFileLineRange: activeHostFileTab?.lineRange ?? null,
     activeHostFilePath: activeHostFileTab?.path ?? null,
+    activeStorageFileLineRange: activeStorageFileTab?.lineRange ?? null,
     activeStorageFilePath: activeStorageFileTab?.path ?? null,
-    activeWorkspaceFileLineNumber: activeWorkspaceFileTab?.lineNumber ?? null,
+    activeWorkspaceFileLineRange: activeWorkspaceFileTab?.lineRange ?? null,
     activeWorkspaceFilePath: activeWorkspaceFileTab?.path ?? null,
     activeWorkspaceFileSource: activeWorkspaceFileTab?.source ?? null,
     activeWorkspaceFileStatusLabel: activeWorkspaceFileTab?.statusLabel ?? null,
@@ -1151,15 +1192,14 @@ export function useThreadFileTabs({
     closeSideChatTab,
     closeStorageFileTab,
     closeWorkspaceFileTab,
-    hasNewTab: findNewTab(fixedPanelTabsState.secondary.tabs) !== null,
     isNewTabActive: activeNewTab !== null,
     openBrowserTab,
     openNewTab,
-    openApp,
     openHostFile,
     openSideChat,
     openStorageFile,
     openWorkspaceFile,
+    reorderFileTab,
     selectFileSearchResult,
     setSideChatThreadId,
     sideChatTabs,

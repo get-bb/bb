@@ -103,7 +103,7 @@ export function clipMentionTextToVisibleRange({
 function mentionPillClassName(interactive: boolean): string {
   return cn(
     PROMPT_MENTION_PILL_CLASS,
-    "bg-surface-raised",
+    "bg-surface-raised/50 no-underline hover:no-underline",
     interactive && "hover:bg-state-hover",
   );
 }

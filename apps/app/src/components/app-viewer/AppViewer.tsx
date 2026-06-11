@@ -160,7 +160,7 @@ export function AppViewer({ applicationId, targetThreadId }: AppViewerProps) {
       headerMode={APP_HEADER_MODE}
       state={{
         kind: "ready",
-        lineNumber: null,
+        lineRange: null,
         showMarkdownModeToggle: false,
         markdownUrlTransform,
         file: {

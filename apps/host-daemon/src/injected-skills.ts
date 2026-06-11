@@ -7,6 +7,7 @@ import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 
 const STAGING_ROOT_SEGMENTS = ["runtime", "global-skills"] as const;
+const STALE_TEMP_STAGING_DIR_AGE_MS = 60 * 60 * 1000;
 const SKILL_FILE_NAME = "SKILL.md";
 const SKILL_NAME_PATTERN =
   /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
@@ -544,11 +545,28 @@ export async function cleanupInjectedSkillStagingDirs(
   const logger = args.logger ?? createNoopLogger();
   await Promise.all(
     entries.map(async (entry) => {
-      if (!entry.isDirectory() || entry.name.startsWith(".tmp-")) {
-        await fs.rm(path.join(stagingRootPath, entry.name), {
-          recursive: true,
-          force: true,
-        });
+      const entryPath = path.join(stagingRootPath, entry.name);
+      if (entry.name.startsWith(".tmp-")) {
+        // Temp dirs belong to in-flight writeStageRoot runs that may be
+        // racing this cleanup from a concurrent thread start; reap only
+        // stale leftovers from crashed stagings.
+        let mtimeMs: number;
+        try {
+          mtimeMs = (await fs.stat(entryPath)).mtimeMs;
+        } catch (error) {
+          if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+            return;
+          }
+          throw error;
+        }
+        if (Date.now() - mtimeMs < STALE_TEMP_STAGING_DIR_AGE_MS) {
+          return;
+        }
+        await fs.rm(entryPath, { recursive: true, force: true });
+        return;
+      }
+      if (!entry.isDirectory()) {
+        await fs.rm(entryPath, { recursive: true, force: true });
         return;
       }
       if (keep.has(entry.name)) {
@@ -561,7 +579,7 @@ export async function cleanupInjectedSkillStagingDirs(
         },
         "Removing unused injected skill staging directory",
       );
-      await fs.rm(path.join(stagingRootPath, entry.name), {
+      await fs.rm(entryPath, {
         recursive: true,
         force: true,
       });

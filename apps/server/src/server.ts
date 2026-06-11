@@ -19,12 +19,14 @@ import { registerProjectRoutes } from "./routes/projects.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerDevelopmentOnlyReplayRoutes } from "./routes/internal-replay.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
+import { registerWorkflowRunRoutes } from "./routes/workflow-runs.js";
 import { registerInternalAppDataChangeRoutes } from "./internal/app-data-changes.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
 import { registerInternalSessionRoutes } from "./internal/session.js";
 import { registerInternalToolCallRoutes } from "./internal/tool-calls.js";
+import { registerInternalWorkflowRunRoutes } from "./internal/workflow-runs.js";
 import {
   setAuthenticatedDaemon,
   verifyAuthenticatedDaemon,
@@ -252,6 +254,7 @@ export function createApp(
   registerHostRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
+  registerWorkflowRunRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps);
   registerDevelopmentOnlyReplayRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
@@ -266,6 +269,7 @@ export function createApp(
   registerInternalEventRoutes(internalApi, deps);
   registerInternalToolCallRoutes(internalApi, deps);
   registerInternalInteractiveRequestRoutes(internalApi, deps);
+  registerInternalWorkflowRunRoutes(internalApi, deps);
   app.route("/internal", internalApi);
 
   app.get(

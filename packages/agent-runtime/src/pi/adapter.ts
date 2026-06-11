@@ -1244,6 +1244,11 @@ export function createPiProviderAdapter(
             reason: "Pi skill paths are configured per session",
           };
         case "thread/start": {
+          if (command.outputSchema !== undefined) {
+            throw new Error(
+              `Provider "${providerInfo.id}" does not support output schemas; structured output is extracted via a schema-in-prompt turn.`,
+            );
+          }
           finishOpenProviderTurn({
             registry: turnState,
             threadId: command.threadId,
@@ -1321,6 +1326,11 @@ export function createPiProviderAdapter(
           };
         }
         case "turn/start":
+          if (command.outputSchema !== undefined) {
+            throw new Error(
+              `Provider "${providerInfo.id}" does not support output schemas; structured output is extracted via a schema-in-prompt turn.`,
+            );
+          }
           return {
             kind: "request",
             method: "turn/start",

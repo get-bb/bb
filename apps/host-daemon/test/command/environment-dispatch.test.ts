@@ -11,6 +11,15 @@ import {
 } from "../../src/command-dispatch.js";
 import type { EventSinkInput } from "../../src/event-sink.js";
 import {
+  TerminalManager,
+  type ResolveTerminalShell,
+  type SpawnTerminalPtyArgs,
+  type TerminalPtyAdapter,
+  type TerminalPtyDisposable,
+  type TerminalPtyExit,
+  type TerminalPtyProcess,
+} from "../../src/terminals/terminal-manager.js";
+import {
   cleanupTempDirs,
   createFakeRuntime,
   createFakeWorkspace,
@@ -20,7 +29,131 @@ import {
 } from "./dispatch-helpers.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 
+interface Deferred<TValue> {
+  promise: Promise<TValue>;
+  resolve: (value: TValue | PromiseLike<TValue>) => void;
+  reject: (reason?: Error) => void;
+}
+
+interface ResizeCall {
+  cols: number;
+  rows: number;
+}
+
+interface SpawnedTerminal {
+  args: SpawnTerminalPtyArgs;
+  pty: FakeTerminalPty;
+}
+
+interface CreateTerminalManagerArgs {
+  manager: RuntimeManager;
+  resolveShell: ResolveTerminalShell;
+}
+
+interface TerminalManagerFixture {
+  adapter: FakeTerminalPtyAdapter;
+  manager: TerminalManager;
+}
+
+type TerminalDataListener = (data: string) => void;
+type TerminalExitListener = (event: TerminalPtyExit) => void;
+
 afterEach(cleanupTempDirs);
+
+function createDeferred<TValue>(): Deferred<TValue> {
+  let resolve!: Deferred<TValue>["resolve"];
+  let reject!: Deferred<TValue>["reject"];
+  const promise = new Promise<TValue>((innerResolve, innerReject) => {
+    resolve = innerResolve;
+    reject = innerReject;
+  });
+  return { promise, reject, resolve };
+}
+
+class FakeTerminalPty implements TerminalPtyProcess {
+  readonly killCalls: (string | null)[];
+  readonly resizeCalls: ResizeCall[];
+  readonly writeCalls: (Buffer | string)[];
+  private readonly dataListeners: TerminalDataListener[];
+  private readonly exitListeners: TerminalExitListener[];
+
+  constructor() {
+    this.killCalls = [];
+    this.resizeCalls = [];
+    this.writeCalls = [];
+    this.dataListeners = [];
+    this.exitListeners = [];
+  }
+
+  kill(signal?: string): void {
+    this.killCalls.push(signal ?? null);
+  }
+
+  onData(listener: TerminalDataListener): TerminalPtyDisposable {
+    this.dataListeners.push(listener);
+    return {
+      dispose: () => {
+        const index = this.dataListeners.indexOf(listener);
+        if (index >= 0) {
+          this.dataListeners.splice(index, 1);
+        }
+      },
+    };
+  }
+
+  onExit(listener: TerminalExitListener): TerminalPtyDisposable {
+    this.exitListeners.push(listener);
+    return {
+      dispose: () => {
+        const index = this.exitListeners.indexOf(listener);
+        if (index >= 0) {
+          this.exitListeners.splice(index, 1);
+        }
+      },
+    };
+  }
+
+  resize(cols: number, rows: number): void {
+    this.resizeCalls.push({ cols, rows });
+  }
+
+  write(data: Buffer | string): void {
+    this.writeCalls.push(data);
+  }
+}
+
+class FakeTerminalPtyAdapter implements TerminalPtyAdapter {
+  readonly spawned: SpawnedTerminal[];
+
+  constructor() {
+    this.spawned = [];
+  }
+
+  spawn(args: SpawnTerminalPtyArgs): TerminalPtyProcess {
+    const pty = new FakeTerminalPty();
+    this.spawned.push({ args, pty });
+    return pty;
+  }
+}
+
+function createTerminalManager(
+  args: CreateTerminalManagerArgs,
+): TerminalManagerFixture {
+  const adapter = new FakeTerminalPtyAdapter();
+  const manager = new TerminalManager({
+    logger: {
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    },
+    ptyAdapter: adapter,
+    resolveShell: args.resolveShell,
+    runtimeManager: args.manager,
+    sendMessage: () => true,
+  });
+  return { adapter, manager };
+}
 
 describe("environment command dispatch", () => {
   it("covers environment.provision in unmanaged mode", async () => {
@@ -542,7 +675,7 @@ describe("environment command dispatch", () => {
 
   it("covers environment.destroy", async () => {
     const harness = createHarness();
-    const closeEnvironmentTerminals = vi.fn();
+    const closeEnvironmentTerminals = vi.fn(async () => undefined);
     await harness.manager.ensureEnvironment({
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
@@ -564,12 +697,123 @@ describe("environment command dispatch", () => {
     );
 
     expect(result).toEqual({});
-    expect(closeEnvironmentTerminals).toHaveBeenCalledWith(
-      "env-1",
-      "environment-destroyed",
-    );
+    expect(closeEnvironmentTerminals).toHaveBeenCalledWith({
+      environmentId: "env-1",
+      reason: "environment-destroyed",
+    });
     expect(harness.runtimeState.shutdownCount).toBe(1);
     expect(harness.workspaceState.destroyed).toBe(true);
+  });
+
+  it("waits for terminal closes before destroying an environment", async () => {
+    const harness = createHarness();
+    const terminalClose = createDeferred<void>();
+    const closeEnvironmentTerminals = vi.fn(() => terminalClose.promise);
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    let destroyResolved = false;
+    const destroyPromise = dispatchCommand(
+      {
+        type: "environment.destroy",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/env-1",
+          workspaceProvisionType: "managed-worktree",
+        },
+      },
+      makeDispatchOptions({
+        runtimeManager: harness.manager,
+        terminalManager: { closeEnvironmentTerminals },
+      }),
+    ).then((result) => {
+      destroyResolved = true;
+      return result;
+    });
+
+    await vi.waitFor(() =>
+      expect(closeEnvironmentTerminals).toHaveBeenCalledWith({
+        environmentId: "env-1",
+        reason: "environment-destroyed",
+      }),
+    );
+    expect(destroyResolved).toBe(false);
+    expect(harness.runtimeState.shutdownCount).toBe(0);
+    expect(harness.workspaceState.destroyed).toBe(false);
+
+    terminalClose.resolve(undefined);
+    await expect(destroyPromise).resolves.toEqual({});
+    expect(destroyResolved).toBe(true);
+    expect(harness.runtimeState.shutdownCount).toBe(1);
+    expect(harness.workspaceState.destroyed).toBe(true);
+  });
+
+  it("waits for in-progress terminal opens to close before destroying an environment", async () => {
+    const harness = createHarness();
+    const shell = createDeferred<string>();
+    let resolveShellCalls = 0;
+    const terminalFixture = createTerminalManager({
+      manager: harness.manager,
+      resolveShell: () => {
+        resolveShellCalls += 1;
+        return shell.promise;
+      },
+    });
+    const dispatchOptions = makeDispatchOptions({
+      runtimeManager: harness.manager,
+      terminalManager: terminalFixture.manager,
+    });
+
+    const openPromise = terminalFixture.manager.handleMessage({
+      type: "terminal.open",
+      requestId: "open-1",
+      terminalId: "term-1",
+      threadId: "thr-1",
+      environmentId: "env-1",
+      workspaceContext: {
+        workspacePath: "/tmp/env-1",
+        workspaceProvisionType: "managed-worktree",
+      },
+      cols: 100,
+      rows: 30,
+    });
+    await vi.waitFor(() => expect(resolveShellCalls).toBe(1));
+
+    let destroyResolved = false;
+    const destroyPromise = dispatchCommand(
+      {
+        type: "environment.destroy",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/env-1",
+          workspaceProvisionType: "managed-worktree",
+        },
+      },
+      dispatchOptions,
+    ).then((result) => {
+      destroyResolved = true;
+      return result;
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(destroyResolved).toBe(false);
+    expect(harness.runtimeState.shutdownCount).toBe(0);
+    expect(harness.workspaceState.destroyed).toBe(false);
+
+    shell.resolve("/bin/zsh");
+    await Promise.all([openPromise, destroyPromise]);
+
+    const pty = terminalFixture.adapter.spawned[0]?.pty;
+    if (!pty) {
+      throw new Error("Expected terminal PTY to spawn");
+    }
+    expect(pty.killCalls).toEqual([null]);
+    expect(harness.runtimeState.shutdownCount).toBe(1);
+    expect(harness.workspaceState.destroyed).toBe(true);
+    expect(destroyResolved).toBe(true);
   });
 
   it("destroys a managed environment after daemon restart (not in memory)", async () => {

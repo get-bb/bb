@@ -162,7 +162,7 @@ describe("user message parsing", () => {
 
   it("populates initiator, senderThreadId, and turnRequest for agent-initiated messages", () => {
     const factory = createTimelineEventFactory({ threadId: "thread-1" });
-    const agentText = "[bb message from thread:thr_sender; reply with …]\n\nHi";
+    const agentText = "[bb message from thread:thr_sender]\n\nHi";
     const row = factory.clientTurnRequested({
       initiator: "agent",
       senderThreadId: SENDER_THREAD_ID,
@@ -208,7 +208,7 @@ describe("user message parsing", () => {
   it("preserves mentions for system-initiated messages", () => {
     const factory = createTimelineEventFactory({ threadId: "thread-1" });
     const mentionText = "@thread:thr_child";
-    const text = `[bb system]\n\n${mentionText} needs attention.\nThe thread is blocked on a pending interaction.`;
+    const text = `[bb system]\n\n${mentionText} needs attention.\nIt is blocked on a pending interaction. Inspect the thread and decide if you can answer or resolve the question from existing context.`;
     const mentionStart = "[bb system]\n\n".length;
     const mention: PromptTextMention = {
       start: mentionStart,

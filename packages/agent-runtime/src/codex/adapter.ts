@@ -32,6 +32,7 @@ import type { DynamicToolSpec } from "./generated/codex-app-server/schema/v2/Dyn
 import type { SandboxMode as CodexSandboxMode } from "./generated/codex-app-server/schema/v2/SandboxMode.js";
 import type { ThreadResumeParams } from "./generated/codex-app-server/schema/v2/ThreadResumeParams.js";
 import type { ThreadStartParams } from "./generated/codex-app-server/schema/v2/ThreadStartParams.js";
+import type { TurnStartParams } from "./generated/codex-app-server/schema/v2/TurnStartParams.js";
 import type { UserInput as CodexUserInput } from "./generated/codex-app-server/schema/v2/UserInput.js";
 import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskForApproval.js";
 import { parseModelsResponse } from "./models.js";
@@ -1319,10 +1320,8 @@ export function createCodexProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
-    // The Codex app-server accepts new turns after turn/interrupt, but the
-    // next turn can sit idle for ~30s while the interrupted session drains.
-    // Restarting forces the next command through thread/resume on a fresh
-    // app-server process.
+    // One Codex app-server process is shared by all loaded threads in an
+    // environment, so thread stops must remain turn-scoped.
     process: {
       command: opts?.processCommand ?? "codex",
       args: opts?.processArgs ?? ["app-server"],
@@ -1358,6 +1357,11 @@ export function createCodexProviderAdapter(
           };
         }
         case "thread/start": {
+          if (command.outputSchema !== undefined) {
+            throw new Error(
+              `Provider "${providerInfo.id}" does not support session-level output schemas; pass outputSchema on turn/start instead.`,
+            );
+          }
           const dynamicTools = toCodexDynamicTools(command.dynamicTools);
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
           const params: ThreadStartParams = {
@@ -1413,17 +1417,21 @@ export function createCodexProviderAdapter(
             gitWritableRoots: writableRoots,
             options: command.options,
           });
+          const params: TurnStartParams = {
+            threadId: command.providerThreadId,
+            input: toCodexUserInput(command.input),
+            approvalPolicy: permissionSettings.approvalPolicy,
+            sandboxPolicy: permissionSettings.sandboxPolicy,
+            model: command.options?.model ?? undefined,
+            serviceTier: toCodexServiceTier(command.options?.serviceTier),
+            ...(command.outputSchema !== undefined
+              ? { outputSchema: command.outputSchema }
+              : {}),
+          };
           return {
             kind: "request",
             method: "turn/start",
-            params: {
-              threadId: command.providerThreadId,
-              input: toCodexUserInput(command.input),
-              approvalPolicy: permissionSettings.approvalPolicy,
-              sandboxPolicy: permissionSettings.sandboxPolicy,
-              model: command.options?.model ?? undefined,
-              serviceTier: toCodexServiceTier(command.options?.serviceTier),
-            },
+            params,
           };
         }
         case "turn/steer":
@@ -1477,7 +1485,6 @@ export function createCodexProviderAdapter(
           return {
             kind: "request",
             method: "turn/interrupt",
-            processEffect: "restart-provider",
             params: {
               threadId: command.providerThreadId,
               turnId: command.activeTurnId,

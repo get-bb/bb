@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { threadScope } from "@bb/domain";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  threadScope,
+} from "@bb/domain";
 import type {
   ThreadEvent,
   ThreadEventBackgroundTaskItem,
@@ -340,6 +343,7 @@ describe("claude-code background task translation", () => {
         cwd: "/tmp/bb-fixture/workspace",
         providerThreadId: "claude-session-1",
         options: {
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionEscalation: null,
@@ -368,6 +372,7 @@ describe("claude-code background task translation", () => {
         cwd: "/tmp/bb-fixture/workspace",
         providerThreadId: "claude-session-1",
         options: {
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionEscalation: null,
@@ -407,6 +412,7 @@ describe("claude-code background task translation", () => {
         cwd: "/tmp/bb-fixture/workspace",
         providerThreadId: "claude-session-1",
         options: {
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionEscalation: null,

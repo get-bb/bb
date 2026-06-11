@@ -16,16 +16,21 @@ import {
   type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
+  type ThreadPromptWorkflowsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
 } from "@/components/workspace/workspace-change-summary";
-import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
+import {
+  QueuedMessagesList,
+  type QueuedMessageProcessingAction,
+} from "@/components/promptbox/banner/QueuedMessagesList";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
+import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import {
@@ -109,6 +114,8 @@ interface ThreadDetailPromptAreaProps {
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
   childThreadsSection: ThreadPromptChildThreadsSection | null;
+  /** Actively running workflow runs anchored to this thread. Null when none. */
+  workflowsSection: ThreadPromptWorkflowsSection | null;
   sendMessage: SendMessageMutationLike;
   thread: ThreadWithRuntime;
 }
@@ -142,6 +149,7 @@ export function ThreadDetailPromptArea({
   pendingTodos,
   parentThreadSection,
   childThreadsSection,
+  workflowsSection,
   sendMessage,
   thread,
 }: ThreadDetailPromptAreaProps) {
@@ -186,6 +194,28 @@ export function ThreadDetailPromptArea({
   }, [queuedMessages]);
   const queuedMessagesRef = useRef<readonly ThreadQueuedMessage[]>([]);
   queuedMessagesRef.current = queuedMessages;
+  const [processingQueuedMessage, setProcessingQueuedMessage] = useState<{
+    id: string;
+    action: QueuedMessageProcessingAction;
+  } | null>(null);
+
+  // A steered ("send now") queued message keeps its "Sending..." label until it
+  // leaves the queue — i.e. the steer has been accepted and surfaces in the
+  // timeline — rather than clearing the moment the send request resolves, which
+  // would briefly flash the row back to its normal state. So the send handler
+  // does not clear on success; instead we drop the displayed processing state
+  // once its message is gone from the queue (derived, no effect — also keeps a
+  // stale state from disabling reordering on the remaining rows).
+  const displayedProcessingQueuedMessage = useMemo(
+    () =>
+      processingQueuedMessage &&
+      queuedMessages.some(
+        (message) => message.id === processingQueuedMessage.id,
+      )
+        ? processingQueuedMessage
+        : null,
+    [processingQueuedMessage, queuedMessages],
+  );
   const { data: promptHistoryEntries = [] } = useThreadPromptHistory(
     composerQueryThreadId,
     {
@@ -207,12 +237,20 @@ export function ThreadDetailPromptArea({
     currentThreadId: thread.id,
     environmentId: thread.environmentId ?? null,
   });
+  // Mirrors the @-mention query plumbing above: the composer feeds the text
+  // typed after the command trigger into `commandQuery`, which drives the hook.
+  // Called unconditionally (hooks rules); inert when the provider has no
+  // command trigger.
+  const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const commandSuggestions = useCommandSuggestions({
+    projectId: thread.projectId,
+    providerId: thread.providerId,
+    environmentId: thread.environmentId,
+    query: commandQuery,
+  });
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
-  const [processingQueuedMessageId, setProcessingQueuedMessageId] = useState<
-    string | null
-  >(null);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
   const promptHistoryDrafts = useMemo(
@@ -431,7 +469,7 @@ export function ThreadDetailPromptArea({
         return;
       }
 
-      setProcessingQueuedMessageId(messageId);
+      setProcessingQueuedMessage({ id: messageId, action: "send" });
       try {
         await sendQueuedMessage.mutateAsync(
           buildSendQueuedMessageByIdRequest({
@@ -440,6 +478,11 @@ export function ThreadDetailPromptArea({
           }),
         );
         setAttachmentError(null);
+        // Keep the "Sending..." label until the message actually leaves the
+        // queue (steered into the timeline) — handled by the effect below —
+        // instead of clearing the moment the request resolves, which would
+        // flash the row back to its normal state before the realtime queue
+        // update removes it.
       } catch (nextError) {
         appToast.error(
           getMutationErrorMessage({
@@ -448,9 +491,8 @@ export function ThreadDetailPromptArea({
             lifecycleOperation: "send_queued_message",
           }),
         );
-      } finally {
-        setProcessingQueuedMessageId((currentMessageId) =>
-          currentMessageId === messageId ? null : currentMessageId,
+        setProcessingQueuedMessage((current) =>
+          current?.id === messageId ? null : current,
         );
       }
     },
@@ -536,7 +578,7 @@ export function ThreadDetailPromptArea({
         return;
       }
 
-      setProcessingQueuedMessageId(messageId);
+      setProcessingQueuedMessage({ id: messageId, action: "edit" });
       void deleteQueuedMessage
         .mutateAsync({
           id: thread.id,
@@ -556,8 +598,8 @@ export function ThreadDetailPromptArea({
           );
         })
         .finally(() => {
-          setProcessingQueuedMessageId((currentMessageId) =>
-            currentMessageId === messageId ? null : currentMessageId,
+          setProcessingQueuedMessage((current) =>
+            current?.id === messageId ? null : current,
           );
         });
     },
@@ -566,7 +608,7 @@ export function ThreadDetailPromptArea({
 
   const handleDeleteQueuedMessage = useCallback(
     (messageId: string) => {
-      setProcessingQueuedMessageId(messageId);
+      setProcessingQueuedMessage({ id: messageId, action: "delete" });
       void deleteQueuedMessage
         .mutateAsync({
           id: thread.id,
@@ -581,8 +623,8 @@ export function ThreadDetailPromptArea({
           );
         })
         .finally(() => {
-          setProcessingQueuedMessageId((currentMessageId) =>
-            currentMessageId === messageId ? null : currentMessageId,
+          setProcessingQueuedMessage((current) =>
+            current?.id === messageId ? null : current,
           );
         });
     },
@@ -745,13 +787,22 @@ export function ThreadDetailPromptArea({
     ],
   );
 
-  const mentionsConfig = useMemo(
+  const typeaheadConfig = useMemo(
     () => ({
-      suggestions: promptMentions.suggestions,
-      isLoading: promptMentions.isLoading,
-      isError: promptMentions.isError,
-      onQueryChange: promptMentions.setQuery,
-      resolveLink: resolveMentionLink,
+      mention: {
+        suggestions: promptMentions.suggestions,
+        isLoading: promptMentions.isLoading,
+        isError: promptMentions.isError,
+        onQueryChange: promptMentions.setQuery,
+        resolveLink: resolveMentionLink,
+      },
+      command: {
+        trigger: commandSuggestions.trigger,
+        suggestions: commandSuggestions.suggestions,
+        isLoading: commandSuggestions.isLoading,
+        isError: commandSuggestions.isError,
+        onQueryChange: setCommandQuery,
+      },
     }),
     [
       promptMentions.isError,
@@ -759,6 +810,10 @@ export function ThreadDetailPromptArea({
       promptMentions.setQuery,
       promptMentions.suggestions,
       resolveMentionLink,
+      commandSuggestions.isError,
+      commandSuggestions.isLoading,
+      commandSuggestions.suggestions,
+      commandSuggestions.trigger,
     ],
   );
 
@@ -793,6 +848,7 @@ export function ThreadDetailPromptArea({
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
+          workflowsSection={workflowsSection}
           gitSection={
             workspaceChangedFilesSection
               ? {
@@ -816,7 +872,8 @@ export function ThreadDetailPromptArea({
             isQueueMutationPending
           }
           actionDisabled={isQueueMutationPending}
-          processingMessageId={processingQueuedMessageId}
+          processingMessageId={displayedProcessingQueuedMessage?.id ?? null}
+          processingAction={displayedProcessingQueuedMessage?.action ?? null}
           onSendImmediately={handleSendQueuedImmediately}
           onReorder={handleReorderQueuedMessage}
           onEdit={handleEditQueuedMessage}
@@ -838,8 +895,9 @@ export function ThreadDetailPromptArea({
       isQueueMutationPending,
       parentThreadSection,
       childThreadsSection,
+      workflowsSection,
       pendingTodos,
-      processingQueuedMessageId,
+      displayedProcessingQueuedMessage,
       queuedMessages,
       submitMode.kind,
       thread.archivedAt,
@@ -868,7 +926,7 @@ export function ThreadDetailPromptArea({
       contextWindowUsage={contextWindowUsage ?? null}
       execution={executionConfig}
       permission={permissionConfig}
-      mentions={mentionsConfig}
+      typeahead={typeaheadConfig}
     />
   );
 }

@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useAtomValue, useSetAtom } from "jotai";
 import type { TerminalSession } from "@bb/server-contract";
+import { getThreadSecondaryPanelOpenAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   useCloseThreadTerminal,
   useCreateThreadTerminal,
@@ -7,18 +9,14 @@ import {
   useThreadTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
 import {
-  useActiveFixedBottomTerminalId,
-  useRemoveFixedBottomTerminalTab,
-  useSetFixedBottomTerminalActiveTerminal,
+  useActiveFixedRightTerminalId,
+  useRemoveFixedRightTerminalTab,
+  useSetFixedRightTerminalActiveTerminal,
 } from "@/lib/fixed-panel-tabs";
-import {
-  useSetThreadTerminalPanelOpen,
-  useThreadTerminalPanelState,
-} from "@/lib/thread-terminal-panel";
 import { normalizeTerminalTitle } from "./thread-terminal-title";
 
-const DEFAULT_TERMINAL_COLS = 100;
-const DEFAULT_TERMINAL_ROWS = 30;
+export const DEFAULT_TERMINAL_COLS = 100;
+export const DEFAULT_TERMINAL_ROWS = 30;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 const TERMINAL_TITLE_RENAME_DEBOUNCE_MS = 250;
 
@@ -93,22 +91,24 @@ export function useThreadTerminalController({
   canCreateTerminal,
   threadId,
 }: ThreadTerminalControllerArgs): ThreadTerminalController {
-  const panelState = useThreadTerminalPanelState(threadId);
-  const setPanelOpen = useSetThreadTerminalPanelOpen(threadId);
-  const activeFixedTerminalId = useActiveFixedBottomTerminalId(threadId);
+  const isRightPanelOpen = useAtomValue(
+    getThreadSecondaryPanelOpenAtom(threadId),
+  );
+  const setRightPanelOpen = useSetAtom(
+    getThreadSecondaryPanelOpenAtom(threadId),
+  );
+  const activeFixedTerminalId = useActiveFixedRightTerminalId(threadId);
   const setActiveFixedTerminal =
-    useSetFixedBottomTerminalActiveTerminal(threadId);
-  const removeFixedTerminalTab = useRemoveFixedBottomTerminalTab(threadId);
+    useSetFixedRightTerminalActiveTerminal(threadId);
+  const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(threadId);
   const dirtyTerminalIdsRef = useRef<Set<string>>(new Set());
   const closingCleanTerminalIdsRef = useRef<Set<string>>(new Set());
-  const wasPanelOpenRef = useRef(panelState.isOpen);
   const latestRequestedTitleRenameRef =
     useRef<TerminalTitleRenameRequest | null>(null);
   const pendingTitleRenameTimeoutRef =
     useRef<TerminalTitleRenameTimeout | null>(null);
-  const [shouldAutoStartOnOpen, setShouldAutoStartOnOpen] = useState(false);
   const terminalsQuery = useThreadTerminals(threadId, {
-    enabled: panelState.isOpen,
+    enabled: isRightPanelOpen,
   });
   const createTerminal = useCreateThreadTerminal();
   const closeTerminal = useCloseThreadTerminal();
@@ -126,11 +126,7 @@ export function useThreadTerminalController({
     visibleSessions.find((session) => session.id === activeTerminalId) ?? null;
 
   useEffect(() => {
-    if (
-      !panelState.isOpen ||
-      terminalsQuery.isLoading ||
-      terminalsQuery.error
-    ) {
+    if (!isRightPanelOpen || terminalsQuery.isLoading || terminalsQuery.error) {
       return;
     }
     if (activeFixedTerminalId === activeTerminalId) {
@@ -140,24 +136,11 @@ export function useThreadTerminalController({
   }, [
     activeFixedTerminalId,
     activeTerminalId,
-    panelState.isOpen,
+    isRightPanelOpen,
     setActiveFixedTerminal,
     terminalsQuery.error,
     terminalsQuery.isLoading,
   ]);
-
-  useEffect(() => {
-    const wasPanelOpen = wasPanelOpenRef.current;
-    wasPanelOpenRef.current = panelState.isOpen;
-
-    if (!panelState.isOpen) {
-      setShouldAutoStartOnOpen(false);
-      return;
-    }
-    if (!wasPanelOpen) {
-      setShouldAutoStartOnOpen(true);
-    }
-  }, [panelState.isOpen]);
 
   useEffect(() => {
     return () => {
@@ -180,42 +163,21 @@ export function useThreadTerminalController({
       },
       {
         onSuccess: (session) => {
+          setRightPanelOpen(true);
           setActiveFixedTerminal(session.id);
         },
       },
     );
-  }, [canCreateTerminal, createTerminal, setActiveFixedTerminal, threadId]);
-
-  useEffect(() => {
-    if (!shouldAutoStartOnOpen) {
-      return;
-    }
-    if (!panelState.isOpen || !canCreateTerminal || terminalsQuery.error) {
-      setShouldAutoStartOnOpen(false);
-      return;
-    }
-    if (createTerminal.isPending || terminalsQuery.isLoading) {
-      return;
-    }
-    if (visibleSessions.length > 0) {
-      setShouldAutoStartOnOpen(false);
-      return;
-    }
-    setShouldAutoStartOnOpen(false);
-    startTerminal();
   }, [
     canCreateTerminal,
-    createTerminal.isPending,
-    panelState.isOpen,
-    shouldAutoStartOnOpen,
-    startTerminal,
-    terminalsQuery.error,
-    terminalsQuery.isLoading,
-    visibleSessions.length,
+    createTerminal,
+    setActiveFixedTerminal,
+    setRightPanelOpen,
+    threadId,
   ]);
 
   useEffect(() => {
-    if (panelState.isOpen) {
+    if (isRightPanelOpen) {
       return;
     }
     for (const session of visibleSessions) {
@@ -245,7 +207,7 @@ export function useThreadTerminalController({
     }
   }, [
     closeTerminal,
-    panelState.isOpen,
+    isRightPanelOpen,
     removeFixedTerminalTab,
     threadId,
     visibleSessions,
@@ -258,9 +220,9 @@ export function useThreadTerminalController({
   const handleSelectTerminal = useCallback(
     (terminalId: string) => {
       setActiveFixedTerminal(terminalId);
-      setPanelOpen(true);
+      setRightPanelOpen(true);
     },
-    [setActiveFixedTerminal, setPanelOpen],
+    [setActiveFixedTerminal, setRightPanelOpen],
   );
 
   const handleCloseTerminal = useCallback(
@@ -341,12 +303,10 @@ export function useThreadTerminalController({
     );
 
   const handleClosePanel = useCallback(() => {
-    setPanelOpen(false);
-  }, [setPanelOpen]);
+    setRightPanelOpen(false);
+  }, [setRightPanelOpen]);
 
-  const terminalIsStarting =
-    createTerminal.isPending ||
-    (canCreateTerminal && panelState.isOpen && shouldAutoStartOnOpen);
+  const terminalIsStarting = createTerminal.isPending;
 
   const emptyTerminalMessage = terminalIsStarting
     ? "Starting terminal..."
@@ -383,7 +343,7 @@ export function useThreadTerminalController({
     handleSelectTerminal,
     hasTerminalQueryError: terminalsQuery.error !== null,
     isCreateTerminalPending: createTerminal.isPending,
-    isPanelOpen: panelState.isOpen,
+    isPanelOpen: isRightPanelOpen,
     isTerminalQueryLoading: terminalsQuery.isLoading,
     showTerminalPlaceholders,
     terminalBodyMessage,

@@ -13,6 +13,7 @@ import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@/components/ui/button.js";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import { COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import {
   Popover,
   PopoverContent,
@@ -26,7 +27,10 @@ import {
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
-import type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
+import type {
+  SecondaryPanelFileTab,
+  SecondaryPanelTabReorderHandler,
+} from "./secondaryPanelFileTab";
 import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
 import { usePreferredTheme } from "@/hooks/useTheme";
@@ -55,6 +59,7 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
+import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
@@ -71,8 +76,7 @@ const PANEL_SCROLL_SLOT_CLASS =
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
   pointerEvents: "auto",
 };
-const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS =
-  `h-7 w-7 shrink-0 rounded-md p-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
+const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 
 export interface NewTabMenuRenderProps {
   closeMenu: () => void;
@@ -80,14 +84,20 @@ export interface NewTabMenuRenderProps {
 
 export type NewTabMenuRenderer = (props: NewTabMenuRenderProps) => ReactNode;
 
+interface ResolveActiveFixedPanelArgs {
+  activeTab: SecondaryFixedPanelTab | null;
+  canUseGitUi: boolean;
+}
+
 export interface ThreadSecondaryPanelProps {
-  activePanel: ThreadSecondaryPanelTab | null;
+  activeTab: SecondaryFixedPanelTab | null;
   canUseGitUi: boolean;
   defaultMergeBaseBranch?: string;
   environmentId?: string;
   metadataContent: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
   fileTabContent?: ReactNode;
+  onFileTabReorder: SecondaryPanelTabReorderHandler;
   /**
    * The persistent browser-tab deck. Rendered in the content region and kept
    * mounted across tab switches so each browser tab's native view (and page)
@@ -154,14 +164,40 @@ export interface ThreadSecondaryPanelProps {
   renderAsDrawer: boolean;
 }
 
+function resolveActiveFixedPanel({
+  activeTab,
+  canUseGitUi,
+}: ResolveActiveFixedPanelArgs): ThreadSecondaryPanelTab | null {
+  if (activeTab === null) {
+    return null;
+  }
+
+  switch (activeTab.kind) {
+    case "thread-info":
+      return "thread-info";
+    case "git-diff":
+      return canUseGitUi ? "git-diff" : "thread-info";
+    case "workspace-file-preview":
+    case "host-file-preview":
+    case "thread-storage-file-preview":
+    case "app":
+    case "browser":
+    case "terminal":
+    case "new-tab":
+    case "side-chat":
+      return null;
+  }
+}
+
 export function ThreadSecondaryPanel({
-  activePanel: rawActivePanel,
+  activeTab,
   canUseGitUi,
   defaultMergeBaseBranch,
   environmentId,
   metadataContent,
   fileTabs,
   fileTabContent,
+  onFileTabReorder,
   browserDeck,
   isBrowserTabActive = false,
   sideChatDeck,
@@ -183,6 +219,8 @@ export function ThreadSecondaryPanel({
 }: ThreadSecondaryPanelProps) {
   const activeFileTab = fileTabs?.find((tab) => tab.isActive);
   const hasActiveFileTab = activeFileTab !== undefined;
+  const isTerminalTabActive =
+    activeTab?.kind === "terminal" && hasActiveFileTab;
   const togglePanelIconName = renderAsDrawer ? "X" : "PanelRight";
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
@@ -218,11 +256,10 @@ export function ThreadSecondaryPanel({
       },
       [handleResizeDragging, handleSecondaryPanelResizeStart],
     );
-  const activePanel =
-    !canUseGitUi && rawActivePanel === "git-diff"
-      ? "thread-info"
-      : rawActivePanel;
-  const isDiffPanelActive = activePanel === "git-diff";
+  const activeFixedPanel =
+    resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
+  const isDiffPanelActive = activeFixedPanel === "git-diff";
+  const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
   const {
     currentGitDiff,
     gitDiffError,
@@ -304,7 +341,10 @@ export function ThreadSecondaryPanel({
           data-testid="thread-secondary-panel-top-chrome"
           className={cn(
             CHROME_ROW_CLASS,
-            "min-w-0 justify-between gap-2 px-4",
+            // Border on the h-12 row itself (border-box, inside the 48px) so the
+            // bottom edge aligns 1:1 with the chat header's border rather than
+            // sitting 1px lower on an auto-height wrapper.
+            "min-w-0 justify-between gap-2 border-b border-border-seam-vertical px-4",
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             reserveLeftForDesktopTrafficLights &&
               MACOS_TRAFFIC_LIGHT_RESERVE_CLASS,
@@ -318,7 +358,7 @@ export function ThreadSecondaryPanel({
             // semantics describe this compact row of view controls without
             // claiming the unimplemented tab contract.
             role="toolbar"
-            aria-label="Secondary panel views"
+            aria-label="Right panel views"
           >
             <Button
               type="button"
@@ -330,12 +370,14 @@ export function ThreadSecondaryPanel({
               )}
               onClick={() => onPanelChange("thread-info")}
               aria-label="Show thread info panel"
-              aria-pressed={activePanel === "thread-info" && !hasActiveFileTab}
+              aria-pressed={
+                activeFixedPanel === "thread-info" && !hasActiveFileTab
+              }
               title="Info"
             >
               <Icon name="Info" />
             </Button>
-            {showGitDiffTab !== false ? (
+            {shouldShowGitDiffTab ? (
               <Button
                 type="button"
                 variant="ghost"
@@ -355,6 +397,7 @@ export function ThreadSecondaryPanel({
             {fileTabs && fileTabs.length > 0 ? (
               <SecondaryPanelTabStrip
                 fileTabs={fileTabs}
+                onReorderTab={onFileTabReorder}
                 usesDesktopChrome={usesDesktopChrome}
               />
             ) : null}
@@ -370,7 +413,8 @@ export function ThreadSecondaryPanel({
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "h-7 w-7 shrink-0 rounded-md p-0",
+                  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                  "shrink-0",
                   usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
                 )}
                 onClick={conversationCollapseControl.onClick}
@@ -386,20 +430,15 @@ export function ThreadSecondaryPanel({
               variant="ghost"
               size="icon"
               className={cn(
-                "h-7 w-7 shrink-0 rounded-md p-0",
+                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                "shrink-0",
                 usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
               )}
               onClick={onClose}
               aria-label={
-                renderAsDrawer
-                  ? "Close secondary panel"
-                  : "Hide secondary panel"
+                renderAsDrawer ? "Close right panel" : "Hide right panel"
               }
-              title={
-                renderAsDrawer
-                  ? "Close secondary panel"
-                  : "Hide secondary panel"
-              }
+              title={renderAsDrawer ? "Close right panel" : "Hide right panel"}
             >
               <Icon name={togglePanelIconName} />
             </Button>
@@ -430,7 +469,16 @@ export function ThreadSecondaryPanel({
         {browserDeck}
         {sideChatDeck}
         {isBrowserTabActive || isSideChatTabActive ? null : hasActiveFileTab ? (
-          <div className={cn(PANEL_SCROLL_SLOT_CLASS, "pb-3")}>
+          <div
+            className={
+              isTerminalTabActive
+                ? "min-h-0 flex-1 overflow-hidden"
+                : cn(PANEL_SCROLL_SLOT_CLASS, "pb-3")
+            }
+            data-file-preview-scroll-container={
+              isTerminalTabActive ? undefined : ""
+            }
+          >
             {fileTabContent ?? (
               <EmptyStatePanel className="mx-4 rounded-lg">
                 No file preview content provided.
@@ -605,7 +653,7 @@ function SecondaryPanelResizeHandle({
           : "pointer-events-none w-0 opacity-0",
         isResizing && "bg-accent/20",
       )}
-      aria-label="Resize thread and secondary panels"
+      aria-label="Resize thread and right panel"
     >
       <span
         className={cn(

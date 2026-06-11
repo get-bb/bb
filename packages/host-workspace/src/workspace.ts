@@ -455,8 +455,16 @@ export class Workspace {
       defaultBranch,
       mergeBaseData,
     ] = await Promise.all([
+      // --no-optional-locks: this runs on the watcher polling cadence and
+      // must not take index.lock under a concurrent commit.
       runGit(
-        ["status", "--porcelain=v1", "--branch", "--untracked-files=all"],
+        [
+          "--no-optional-locks",
+          "status",
+          "--porcelain=v1",
+          "--branch",
+          "--untracked-files=all",
+        ],
         { cwd: this.path, timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
       ),
       readHeadNumstat(this.path, WORKSPACE_STATUS_GIT_TIMEOUT_MS),

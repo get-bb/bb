@@ -39,6 +39,7 @@ function createNotifierSpy(): DbNotifier {
     notifyEnvironment: vi.fn(),
     notifyHost: vi.fn(),
     notifySystem: vi.fn(),
+    notifyWorkflowRun: vi.fn(),
   };
 }
 

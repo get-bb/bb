@@ -1,5 +1,7 @@
 import { COARSE_POINTER_DOT_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 
+export type SidebarUnreadDotTone = "default" | "error";
+
 export const SIDEBAR_ROW_BASE_CLASS =
   "flex w-full items-center gap-2 rounded-md pr-0 text-sm transition-colors";
 
@@ -13,11 +15,20 @@ export const SIDEBAR_ROW_GLYPH_SLOT_CLASS =
   "inline-flex shrink-0 items-center justify-center text-subtle-foreground";
 
 /**
- * The unread "attention" dot shared by a leaf thread row and a collapsed
- * worktree header. Inner styling only — call sites own wrapper, positioning,
- * fade, and the aria-label.
+ * The unread dot shared by a leaf thread row and a collapsed worktree header.
+ * Inner styling only — call sites own wrapper, positioning, fade, and the
+ * aria-label.
  */
-export const SIDEBAR_UNREAD_DOT_CLASS = `rounded-full bg-foreground ${COARSE_POINTER_DOT_SIZE_CLASS}`;
+export const SIDEBAR_UNREAD_DOT_CLASS_BY_TONE: Record<
+  SidebarUnreadDotTone,
+  string
+> = {
+  default: `rounded-full bg-foreground ${COARSE_POINTER_DOT_SIZE_CLASS}`,
+  error: `rounded-full bg-destructive ${COARSE_POINTER_DOT_SIZE_CLASS}`,
+};
+
+export const SIDEBAR_UNREAD_DOT_CLASS =
+  SIDEBAR_UNREAD_DOT_CLASS_BY_TONE.default;
 
 const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 8;
 const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 24;

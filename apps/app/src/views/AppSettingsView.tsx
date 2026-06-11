@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { defaultExperiments } from "@bb/domain";
 import type {
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
@@ -26,6 +27,8 @@ import {
   type ThemePreference,
 } from "@/hooks/useTheme";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { useUpdateExperiments } from "@/hooks/mutations/settings-mutations";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import {
@@ -65,7 +68,6 @@ interface LocalOpenTargetPreferenceDefinition {
 
 interface LocalOpenTargetPreferenceControlProps {
   definition: LocalOpenTargetPreferenceDefinition;
-  hasDaemon: boolean;
   onTargetChange: (targetId: WorkspaceOpenTargetId) => void;
   preferredTargetId: StoredWorkspaceOpenTargetPreference;
   targets: WorkspaceOpenTarget[];
@@ -105,6 +107,15 @@ export interface GeneralSettingsSectionProps {
   onThemePreferenceChange: (themePreference: ThemePreference) => void;
   openLinksInAppBrowser: boolean;
   themePreference: ThemePreference;
+}
+
+export interface ExperimentsSettingsSectionProps {
+  /** True while the config query hasn't loaded or a toggle write is in flight. */
+  disabled: boolean;
+  claudeCodeMockCliTrafficEnabled: boolean;
+  onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
+  onWorkflowsEnabledChange: (enabled: boolean) => void;
+  workflowsEnabled: boolean;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -183,7 +194,10 @@ export function FaviconColorSettingsControl({
                 {FAVICON_COLOR_LABELS[faviconColor]}
               </span>
             </span>
-            <Icon name="ChevronDown" className="size-3.5 text-muted-foreground" />
+            <Icon
+              name="ChevronDown"
+              className="size-3.5 text-muted-foreground"
+            />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
@@ -222,12 +236,8 @@ const FILE_TARGET_PREFERENCE: LocalOpenTargetPreferenceDefinition = {
   label: "File default",
 };
 
-const LOCAL_OPEN_TARGET_DISCONNECTED_MENU_MESSAGE =
-  "This default can be changed when the local host daemon is available.";
-
 function LocalOpenTargetPreferenceControl({
   definition,
-  hasDaemon,
   onTargetChange,
   preferredTargetId,
   targets,
@@ -251,11 +261,8 @@ function LocalOpenTargetPreferenceControl({
       }),
     [definition.capability, preferredTargetId, targets],
   );
-  const unavailableMessage = !hasDaemon
-    ? LOCAL_OPEN_TARGET_DISCONNECTED_MENU_MESSAGE
-    : compatibleTargets.length === 0
-      ? definition.emptyDescription
-      : null;
+  const unavailableMessage =
+    compatibleTargets.length === 0 ? definition.emptyDescription : null;
   const selectedTargetId = resolvedTarget?.id ?? preferredTargetId;
   const buttonLabel =
     resolvedTarget?.label ??
@@ -332,19 +339,21 @@ export function LocalOpenTargetSettingsSection({
   onFileTargetChange,
   targets,
 }: LocalOpenTargetSettingsSectionProps) {
+  if (!hasDaemon) {
+    return null;
+  }
+
   return (
     <SettingsSection title="File Preferences">
       <div className="space-y-4">
         <LocalOpenTargetPreferenceControl
           definition={DIRECTORY_TARGET_PREFERENCE}
-          hasDaemon={hasDaemon}
           onTargetChange={onDirectoryTargetChange}
           preferredTargetId={directoryTargetId}
           targets={targets}
         />
         <LocalOpenTargetPreferenceControl
           definition={FILE_TARGET_PREFERENCE}
-          hasDaemon={hasDaemon}
           onTargetChange={onFileTargetChange}
           preferredTargetId={fileTargetId}
           targets={targets}
@@ -465,8 +474,53 @@ export function GeneralSettingsSection({
   );
 }
 
+const WORKFLOWS_EXPERIMENT_LABEL = "Workflows";
+const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
+
+export function ExperimentsSettingsSection({
+  claudeCodeMockCliTrafficEnabled,
+  disabled,
+  onClaudeCodeMockCliTrafficEnabledChange,
+  onWorkflowsEnabledChange,
+  workflowsEnabled,
+}: ExperimentsSettingsSectionProps) {
+  return (
+    <SettingsSection
+      title="Experiments"
+      description="Early features that are off by default. Opt in to try them."
+    >
+      <div className="space-y-4">
+        <SettingsWithControl
+          label={WORKFLOWS_EXPERIMENT_LABEL}
+          description="Enable multi-agent workflows and the Workflows sidebar."
+        >
+          <Switch
+            checked={workflowsEnabled}
+            disabled={disabled}
+            onCheckedChange={onWorkflowsEnabledChange}
+            aria-label={WORKFLOWS_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+          description="Proxy Claude Code requests as CLI traffic to api.anthropic.com."
+        >
+          <Switch
+            checked={claudeCodeMockCliTrafficEnabled}
+            disabled={disabled}
+            onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
+            aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+      </div>
+    </SettingsSection>
+  );
+}
+
 export function AppSettingsView() {
   const themePreference = useThemePreference();
+  const systemConfigQuery = useSystemConfig();
   const [faviconColor, setFaviconColor] = useFaviconColorPreference();
   const { hasDaemon } = useHostDaemon();
   const { workspaceOpenTargets } = useWorkspaceOpenTargets({
@@ -482,6 +536,8 @@ export function AppSettingsView() {
   // The in-app browser only exists on desktop; hide the toggle entirely on web,
   // where it would have no effect.
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
+  const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
+  const updateExperimentsMutation = useUpdateExperiments();
 
   return (
     <PageShell contentClassName="pt-4 md:pt-5">
@@ -505,6 +561,29 @@ export function AppSettingsView() {
           onDirectoryTargetChange={setDirectoryTargetId}
           onFileTargetChange={setFileTargetId}
           targets={workspaceOpenTargets}
+        />
+
+        <ExperimentsSettingsSection
+          claudeCodeMockCliTrafficEnabled={
+            experiments.claudeCodeMockCliTraffic
+          }
+          disabled={
+            systemConfigQuery.data === undefined ||
+            updateExperimentsMutation.isPending
+          }
+          onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
+            updateExperimentsMutation.mutate({
+              ...experiments,
+              claudeCodeMockCliTraffic: enabled,
+            })
+          }
+          onWorkflowsEnabledChange={(enabled) =>
+            updateExperimentsMutation.mutate({
+              ...experiments,
+              workflows: enabled,
+            })
+          }
+          workflowsEnabled={experiments.workflows}
         />
 
         <AppSourcesSection />

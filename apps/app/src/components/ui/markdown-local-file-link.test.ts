@@ -23,7 +23,7 @@ describe("parseLocalFileHref", () => {
       }),
     ).toEqual({
       path: "/workspace/src/app.ts",
-      lineNumber: null,
+      lineRange: null,
     });
     expect(
       parseLocalFileHref({
@@ -32,7 +32,7 @@ describe("parseLocalFileHref", () => {
       }),
     ).toEqual({
       path: "/workspace/src/app.ts",
-      lineNumber: 12,
+      lineRange: { startLineNumber: 12, endLineNumber: 12 },
     });
     expect(
       parseLocalFileHref({
@@ -41,7 +41,25 @@ describe("parseLocalFileHref", () => {
       }),
     ).toEqual({
       path: "/workspace/src/app.ts",
-      lineNumber: 12,
+      lineRange: { startLineNumber: 12, endLineNumber: 12 },
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: "/workspace/src/app.ts#L12-L15",
+      }),
+    ).toEqual({
+      path: "/workspace/src/app.ts",
+      lineRange: { startLineNumber: 12, endLineNumber: 15 },
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: "/workspace/src/app.ts#L12C3-L15C8",
+      }),
+    ).toEqual({
+      path: "/workspace/src/app.ts",
+      lineRange: { startLineNumber: 12, endLineNumber: 15 },
     });
     expect(
       parseLocalFileHref({
@@ -50,7 +68,16 @@ describe("parseLocalFileHref", () => {
       }),
     ).toEqual({
       path: "/workspace/src/app.ts",
-      lineNumber: 12,
+      lineRange: { startLineNumber: 12, endLineNumber: 12 },
+    });
+    expect(
+      parseLocalFileHref({
+        absoluteLinks: TRUSTED_HOST_ABSOLUTE_LINKS,
+        href: "/workspace/src/app.ts:12-15",
+      }),
+    ).toEqual({
+      path: "/workspace/src/app.ts",
+      lineRange: { startLineNumber: 12, endLineNumber: 15 },
     });
     expect(
       parseLocalFileHref({
@@ -59,7 +86,7 @@ describe("parseLocalFileHref", () => {
       }),
     ).toEqual({
       path: "/workspace/src/file-url.ts",
-      lineNumber: 4,
+      lineRange: { startLineNumber: 4, endLineNumber: 4 },
     });
     expect(
       parseLocalFileHref({
@@ -68,7 +95,7 @@ describe("parseLocalFileHref", () => {
       }),
     ).toEqual({
       path: "/work space/app.ts",
-      lineNumber: 3,
+      lineRange: { startLineNumber: 3, endLineNumber: 3 },
     });
   });
 
@@ -79,7 +106,7 @@ describe("parseLocalFileHref", () => {
         href: "/workspace/src/../README",
       }),
     ).toEqual({
-      lineNumber: null,
+      lineRange: null,
       path: "/workspace/README",
     });
     expect(
@@ -88,7 +115,7 @@ describe("parseLocalFileHref", () => {
         href: "file:///workspace/src/../README",
       }),
     ).toEqual({
-      lineNumber: null,
+      lineRange: null,
       path: "/workspace/README",
     });
     expect(
@@ -115,6 +142,8 @@ describe("parseLocalFileHref", () => {
       "//workspace/app.ts",
       "/workspace/app.ts:0",
       "/workspace/app.ts#L0",
+      "/workspace/app.ts#L10-L9",
+      "/workspace/app.ts:10-9",
       "/work%00space/file.ts",
       "/workspace/no-extension",
     ]) {
@@ -135,7 +164,7 @@ describe("parseLocalFileHref", () => {
       }),
     ).toEqual({
       path: "/workspace/app.ts",
-      lineNumber: null,
+      lineRange: null,
     });
     for (const href of [
       "/workspace/with#hash/app.ts:12",
@@ -156,40 +185,58 @@ describe("buildLocalFileAnchorHref", () => {
   it("rewrites absolute file-like paths while leaving non-file hrefs alone", () => {
     expect(
       buildLocalFileAnchorHref(
-        { path: "apps/app/main.tsx", lineNumber: 4 },
+        {
+          path: "apps/app/main.tsx",
+          lineRange: { startLineNumber: 4, endLineNumber: 4 },
+        },
         "apps/app/main.tsx:4",
       ),
     ).toBe("apps/app/main.tsx:4");
     expect(
       buildLocalFileAnchorHref(
-        { path: "/workspace/src/app.ts", lineNumber: 12 },
+        {
+          path: "/workspace/src/app.ts",
+          lineRange: { startLineNumber: 12, endLineNumber: 12 },
+        },
         "/workspace/src/app.ts:12",
       ),
     ).toBe("file:///workspace/src/app.ts#L12");
     expect(
       buildLocalFileAnchorHref(
-        { path: "/workspace/README.md", lineNumber: null },
+        { path: "/workspace/README.md", lineRange: null },
         "/workspace/README.md",
       ),
     ).toBe("file:///workspace/README.md");
     expect(
       buildLocalFileAnchorHref(
-        { path: "/workspace/README.md", lineNumber: null },
+        { path: "/workspace/README.md", lineRange: null },
         "/workspace/README.md#intro",
       ),
     ).toBe("file:///workspace/README.md");
     expect(
       buildLocalFileAnchorHref(
-        { path: "/work space/app.ts", lineNumber: 3 },
+        {
+          path: "/work space/app.ts",
+          lineRange: { startLineNumber: 3, endLineNumber: 3 },
+        },
         "/work space/app.ts:3",
       ),
     ).toBe("file:///work%20space/app.ts#L3");
+    expect(
+      buildLocalFileAnchorHref(
+        {
+          path: "/work space/app.ts",
+          lineRange: { startLineNumber: 3, endLineNumber: 5 },
+        },
+        "/work space/app.ts#L3-L5",
+      ),
+    ).toBe("file:///work%20space/app.ts#L3-L5");
   });
 
   it("rewrites parsed extensionless file URLs consistently with click handling", () => {
     expect(
       buildLocalFileAnchorHref(
-        { path: "/workspace/no-extension", lineNumber: null },
+        { path: "/workspace/no-extension", lineRange: null },
         "file:///workspace/no-extension",
       ),
     ).toBe("file:///workspace/no-extension");

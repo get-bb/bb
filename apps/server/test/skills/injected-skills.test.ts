@@ -1,9 +1,16 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { agentProviderIdSchema } from "@bb/agent-providers";
 import { resolveApplicationPath } from "@bb/config/app-storage-paths";
-import { applicationIdSchema, type ApplicationId } from "@bb/domain";
+import {
+  applicationIdSchema,
+  reasoningLevelValues,
+  workflowSandboxValues,
+  type ApplicationId,
+} from "@bb/domain";
 import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
 import { resolveInjectedSkillSources } from "../../src/services/skills/injected-skills.js";
 import type { ServerLogger } from "../../src/types.js";
@@ -400,11 +407,59 @@ describe("injected skill source discovery", () => {
     const builtinNames = sources.map((source) => source.name);
     expect(builtinNames).toContain("building-bb-apps");
     expect(builtinNames).toContain("bb-cli");
+    expect(builtinNames).toContain("bb-workflows");
     for (const source of sources) {
       expect(source.sourceType).toBe("builtin");
       expect(source.applicationId).toBeNull();
       expect(source.description.trim().length).toBeGreaterThan(0);
     }
     expect(warnings).toEqual([]);
+  });
+});
+
+describe("bb-workflows built-in skill", () => {
+  const skillRootPath = path.join(
+    resolveBuiltinSkillsRootPath(),
+    "bb-workflows",
+  );
+
+  it("ships ambient.d.ts identical to the @bb/workflow-runtime copy", async () => {
+    // The daemon stages the whole skill directory, so the copy beside SKILL.md
+    // is what workflow authors receive. The package file is the source of
+    // truth (itself pinned against src/dsl-types.ts by a workflow-runtime
+    // test); a drifted copy would teach authors stale typings.
+    const stagedCopy = await readFile(
+      path.join(skillRootPath, "ambient.d.ts"),
+      "utf8",
+    );
+    const canonical = await readFile(
+      fileURLToPath(
+        new URL(
+          "../../../../packages/workflow-runtime/ambient.d.ts",
+          import.meta.url,
+        ),
+      ),
+      "utf8",
+    );
+    expect(stagedCopy).toBe(canonical);
+  });
+
+  it("documents every live provider, effort, and sandbox value", async () => {
+    // The skill prose inlines these unions; a catalog or domain enum change
+    // must update the skill in the same commit or it teaches values that no
+    // longer exist (and omits ones that do).
+    const skill = await readFile(path.join(skillRootPath, "SKILL.md"), "utf8");
+    for (const providerId of agentProviderIdSchema.options) {
+      // Quoted union form (the skill's `provider?: "codex" | …` line): the
+      // bare id would be vacuous for "pi", which is a substring of
+      // "pipeline" and would keep this green with the provider undocumented.
+      expect(skill).toContain(`"${providerId}"`);
+    }
+    for (const effort of reasoningLevelValues) {
+      expect(skill).toContain(`"${effort}"`);
+    }
+    for (const sandbox of workflowSandboxValues) {
+      expect(skill).toContain(`"${sandbox}"`);
+    }
   });
 });

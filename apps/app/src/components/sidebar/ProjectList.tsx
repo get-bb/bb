@@ -16,7 +16,11 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type { AppSummary, ProjectResponse } from "@bb/server-contract";
+import type {
+  AppSummary,
+  ProjectResponse,
+  WorkflowRunResponse,
+} from "@bb/server-contract";
 import {
   findLocalPathProjectSourceForHost,
   PERSONAL_PROJECT_ID,
@@ -32,6 +36,8 @@ import {
   stripProjectThreads,
   useSidebarNavigation,
 } from "@/hooks/queries/project-queries";
+import { useExperiments } from "@/hooks/queries/system-queries";
+import { useRecentWorkflowRuns } from "@/hooks/queries/workflow-queries";
 import { useReorderProject } from "@/hooks/mutations/project-mutations";
 import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
 import {
@@ -65,6 +71,7 @@ import {
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectThreadTree } from "./ProjectRow";
 import { SidebarAppsSection } from "./SidebarAppsSection";
+import { SidebarWorkflowsSection } from "./SidebarWorkflowsSection";
 import type { ProjectThreadListState } from "./ProjectRow";
 import {
   ProjectListProjects,
@@ -100,7 +107,7 @@ import {
   type SidebarSortableDragBindings,
 } from "./sortableMotion";
 import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
-import type { ConsumeDragClickSuppression } from "./useDragClickSuppression";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import {
   useNeighborReorderSortable,
   type UseNeighborReorderSortableArgs,
@@ -217,6 +224,7 @@ function isSidebarSectionId(value: string): value is SidebarSectionId {
     value === "pinned" ||
     value === "projects" ||
     value === "threads" ||
+    value === "workflows" ||
     value === "apps"
   );
 }
@@ -224,7 +232,12 @@ function isSidebarSectionId(value: string): value is SidebarSectionId {
 function isCollapsibleSidebarSectionId(
   value: string,
 ): value is CollapsibleSidebarSectionId {
-  return value === "projects" || value === "threads" || value === "apps";
+  return (
+    value === "projects" ||
+    value === "threads" ||
+    value === "workflows" ||
+    value === "apps"
+  );
 }
 
 function normalizeSidebarSectionOrder(
@@ -258,6 +271,7 @@ const EMPTY_PROJECT_THREAD_LIST_STATE: ProjectThreadListState = {
 
 const EMPTY_APPS: readonly AppSummary[] = [];
 const EMPTY_PROJECTS: readonly ProjectResponse[] = [];
+const EMPTY_WORKFLOW_RUNS: readonly WorkflowRunResponse[] = [];
 
 function getProjectId(project: ProjectResponse): string {
   return project.id;
@@ -607,6 +621,11 @@ function ProjectListComponent({
   const sidebarNavigation = sidebarNavigationQuery.data;
   const appsQuery = useApps();
   const apps = appsQuery.data ?? EMPTY_APPS;
+  const experiments = useExperiments();
+  const recentWorkflowRunsQuery = useRecentWorkflowRuns({
+    enabled: experiments.workflows,
+  });
+  const workflowRuns = recentWorkflowRunsQuery.data ?? EMPTY_WORKFLOW_RUNS;
   const projects = useMemo(
     () => sidebarNavigation?.projects.map(stripProjectThreads),
     [sidebarNavigation],
@@ -808,14 +827,18 @@ function ProjectListComponent({
   // No apps → no section: the empty Apps list adds nothing, so it stays hidden
   // (like the Pinned section) until at least one global app exists.
   const hasAppsSection = apps.length > 0;
+  // Same rule for Workflows — plus the experiment opt-in: hidden until the
+  // user enables it in Settings and at least one recent run exists.
+  const hasWorkflowsSection = experiments.workflows && workflowRuns.length > 0;
   const visibleSidebarSectionOrder = useMemo(
     () =>
       sidebarSectionOrder.filter((sectionId) => {
         if (sectionId === "pinned") return hasPinnedSection;
+        if (sectionId === "workflows") return hasWorkflowsSection;
         if (sectionId === "apps") return hasAppsSection;
         return true;
       }),
-    [hasAppsSection, hasPinnedSection, sidebarSectionOrder],
+    [hasAppsSection, hasPinnedSection, hasWorkflowsSection, sidebarSectionOrder],
   );
   const threadsByProject = useMemo(() => {
     const grouped = new Map<string, ThreadListEntry[]>();
@@ -1009,6 +1032,7 @@ function ProjectListComponent({
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
     />
   );
+  const workflowsSectionContent = <SidebarWorkflowsSection runs={workflowRuns} />;
   const appsSectionContent = <SidebarAppsSection apps={apps} />;
   const projectsSectionActions = onNewProject ? (
     <ProjectListProjectsSectionActions
@@ -1089,6 +1113,23 @@ function ProjectListComponent({
                   }
                 >
                   {threadsSectionContent}
+                </SortableSidebarSection>
+              ) : sectionId === "workflows" ? (
+                <SortableSidebarSection
+                  key={sectionId}
+                  id={sectionId}
+                  label="Workflows"
+                  disabled={visibleSidebarSectionOrder.length < 2}
+                  collapseControl={{
+                    isCollapsed: collapsedSidebarSectionIds.has("workflows"),
+                    onToggleCollapsed: () =>
+                      toggleSidebarSectionCollapsed("workflows"),
+                  }}
+                  consumeClickSuppression={
+                    consumeSidebarSectionClickSuppression
+                  }
+                >
+                  {workflowsSectionContent}
                 </SortableSidebarSection>
               ) : (
                 <SortableSidebarSection

@@ -10,6 +10,7 @@ import { createBbRealtimeClient } from "./realtime-client.js";
 import type { BbRealtime } from "./realtime-types.js";
 import { createStatusArea } from "./areas/status.js";
 import { createThreadsArea } from "./areas/threads.js";
+import { createWorkflowsArea } from "./areas/workflows.js";
 
 export interface CreateBbSdkArgs {
   context?: BbSdkContext;
@@ -30,6 +31,7 @@ export interface BbSdk extends BbRealtime {
   replay: ReturnType<typeof createReplayArea>;
   status: ReturnType<typeof createStatusArea>;
   threads: ReturnType<typeof createThreadsArea>;
+  workflows: ReturnType<typeof createWorkflowsArea>;
 }
 
 export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
@@ -65,5 +67,6 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
     replay: createReplayArea(sdkContext),
     status: createStatusArea(sdkContext),
     threads: createThreadsArea(sdkContext),
+    workflows: createWorkflowsArea(sdkContext),
   };
 }

@@ -43,7 +43,7 @@ export interface ProjectSelectorProps {
    * project id (the trigger has no empty state).
    */
   allowNoProject?: boolean;
-  /** When provided and there are no projects, adds a "New project" action. */
+  /** When provided, adds a "New project" action. */
   createProject?: ProjectSelectorCreateProjectConfig;
   className?: string;
   /** Render with the menu open on mount. Story-only escape hatch. */
@@ -68,8 +68,9 @@ export function ProjectSelector({
   // first project so it's never blank.
   const fallback = !allowNoProject && !selected ? projects[0] : null;
   const triggerLabel = selected?.name ?? fallback?.name ?? "Work in a project";
+  const compactTriggerLabel = selected?.name ?? fallback?.name ?? "No project";
   const triggerIcon = selected || fallback ? "Folder" : "FolderPlus";
-  const createProjectAction = projects.length === 0 ? createProject : undefined;
+  const createProjectAction = createProject;
   const createProjectLabel = createProjectAction?.isCreating
     ? "Creating..."
     : "New project";
@@ -84,7 +85,7 @@ export function ProjectSelector({
           aria-label="Project"
           // Matches OptionPicker's "<label>: <value>" tooltip convention.
           title={`Project: ${triggerLabel}`}
-          data-promptbox-icon-only-control=""
+          data-promptbox-project-control=""
           className={cn(
             OPTION_BASE_CLASS_NAME,
             OPTION_INTERACTIVE_CLASS_NAME,
@@ -100,6 +101,9 @@ export function ProjectSelector({
             />
             <span className="min-w-0 truncate" data-promptbox-full-label="">
               {triggerLabel}
+            </span>
+            <span className="min-w-0 truncate" data-promptbox-compact-label="">
+              {compactTriggerLabel}
             </span>
           </span>
           <Icon
@@ -132,6 +136,9 @@ export function ProjectSelector({
             />
           </DropdownMenuItem>
         ))}
+        {createProjectAction && projects.length > 0 ? (
+          <DropdownMenuSeparator />
+        ) : null}
         {createProjectAction ? (
           <DropdownMenuItem
             disabled={createProjectAction.disabled}

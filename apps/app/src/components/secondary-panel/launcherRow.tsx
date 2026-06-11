@@ -1,4 +1,8 @@
 import type { ReactNode } from "react";
+import {
+  COARSE_POINTER_ICON_SIZE_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
 import { cn } from "@/lib/utils";
@@ -7,12 +11,10 @@ import { cn } from "@/lib/utils";
 // results in the New tab page and the browser tab's recently-visited list — so
 // density, hover, and the trailing open-affordance stay identical across both
 // surfaces rather than drifting in two parallel class bundles.
-const LAUNCHER_ROW_SHELL_CLASS =
-  "group flex w-full min-w-0 items-center gap-1.5 rounded px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-none";
+const LAUNCHER_ROW_SHELL_CLASS = `group flex w-full min-w-0 items-center gap-1.5 rounded px-2 py-1.5 text-left transition-colors focus-visible:outline-none ${COARSE_POINTER_TEXT_SM_CLASS}`;
 export const LAUNCHER_ROW_BASE_CLASS = `${LAUNCHER_ROW_SHELL_CLASS} focus-visible:ring-1 focus-visible:ring-ring`;
 export const LAUNCHER_MENU_ROW_BASE_CLASS = `${LAUNCHER_ROW_SHELL_CLASS} focus-visible:bg-state-hover focus-visible:text-foreground`;
-export const LAUNCHER_ROW_ICON_CLASS =
-  "flex size-4 shrink-0 items-center justify-center overflow-hidden text-muted-foreground";
+export const LAUNCHER_ROW_ICON_CLASS = `flex shrink-0 items-center justify-center overflow-hidden text-muted-foreground ${COARSE_POINTER_ICON_SIZE_CLASS}`;
 
 // Section labels above launcher row groups (the + menu, file search, recents,
 // and the browser tab's recently-visited list). Mirrors the detail-card key
@@ -41,7 +43,7 @@ export function LauncherRowTrailing({
     <span className="ml-auto flex shrink-0 items-center justify-end">
       <span
         className={cn(
-          "whitespace-nowrap text-xs text-muted-foreground",
+          `whitespace-nowrap text-muted-foreground ${COARSE_POINTER_TEXT_SM_CLASS}`,
           isActive ? "hidden" : "group-hover:hidden",
         )}
       >
@@ -49,12 +51,16 @@ export function LauncherRowTrailing({
       </span>
       <span
         className={cn(
-          "items-center gap-1 text-xs text-subtle-foreground",
+          `items-center gap-1 text-subtle-foreground ${COARSE_POINTER_TEXT_SM_CLASS}`,
           isActive ? "flex" : "hidden group-hover:flex",
         )}
         aria-hidden
       >
-        <Icon name="ArrowUpRight" className="size-3" aria-hidden />
+        <Icon
+          name="ArrowUpRight"
+          className="size-3 max-md:pointer-coarse:size-4"
+          aria-hidden
+        />
         open
       </span>
     </span>
@@ -100,7 +106,12 @@ export function LauncherSectionHeader({
     >
       <span>{label}</span>
       {count !== undefined ? (
-        <span className="font-mono text-xs text-muted-foreground opacity-80">
+        <span
+          className={cn(
+            "font-mono text-muted-foreground opacity-80",
+            COARSE_POINTER_TEXT_SM_CLASS,
+          )}
+        >
           {count}
         </span>
       ) : null}

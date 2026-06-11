@@ -8,6 +8,7 @@ import type {
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import {
+  applyProjectCreateResult,
   applyProjectDeleteResult,
   applyReorderProjectResult,
   beginReorderProjectTransaction,
@@ -58,7 +59,8 @@ export function useCreateProject() {
       errorMessage: "Failed to create project.",
     },
     mutationFn: (request: CreateProjectRequest) => api.createProject(request),
-    onSuccess: () => {
+    onSuccess: (project) => {
+      applyProjectCreateResult({ project, queryClient });
       invalidateProjectListQueries({ queryClient });
     },
   });

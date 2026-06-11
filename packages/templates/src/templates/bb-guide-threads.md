@@ -26,7 +26,7 @@ Spawning:
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
     --no-context-parent-thread     Do not default parent thread to BB_THREAD_ID
 
-  When --provider and --model are omitted, the project's remembered defaults apply.
+  Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.
   When --parent-thread is omitted inside a thread, BB_THREAD_ID is used automatically.
 
 Listing:
@@ -53,9 +53,10 @@ Inspecting:
     --limit <count>                        Limit entries
     --after-seq <seq>                      Paginate after sequence number
 
-  bb thread output <id>                    Get the final output of a thread
+  bb thread output [id]                    Get the final output of a thread (defaults to BB_THREAD_ID)
+    --self                                 Target current thread
 
-  bb thread wait [id]                      Wait for a thread status or event
+  bb thread wait [id]                      Wait for a thread status or event (defaults to --status idle)
     --status <status>                      Wait for this status
     --event <type>                         Wait for this event type
     --timeout <seconds>                    Timeout

@@ -42,9 +42,9 @@ export interface CreateWorkspaceArgs {
   /** Name of the new branch to create on the workspace. */
   branchName: string;
   /**
-   * Branch to base the new branch on (start point for git worktree add / git
-   * checkout). Pass `null` to use the source's default branch (resolved by
-   * the daemon).
+   * Branch or commit to base the new branch on (start point for git worktree
+   * add / git checkout). Pass `null` to use the source's default branch
+   * (resolved by the daemon).
    */
   baseBranch: string | null;
   /** Setup script timeout in ms. Controlled by the server. */

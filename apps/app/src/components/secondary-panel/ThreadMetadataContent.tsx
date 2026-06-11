@@ -18,9 +18,19 @@ import {
 } from "@bb/core-ui";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button.js";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import {
+  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+  COARSE_POINTER_ICON_SIZE_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@/components/ui/coarse-pointer-sizing.js";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
-import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
+import {
+  DetailCard,
+  DetailRow,
+  DetailRowIconLabel,
+} from "@/components/ui/detail-card.js";
+import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens.js";
 import {
   formatCronCadence,
   formatScheduleStatusLabel,
@@ -33,7 +43,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 import {
   BranchPicker,
   getMergeBaseBranchCandidateGroups,
@@ -93,12 +103,7 @@ export function ParentSelectorRow({
         parentThreadDisplayName,
         parentThreadId,
       }),
-    [
-      parentThreads,
-      parentThreadDisplayName,
-      parentThreadId,
-      thread.id,
-    ],
+    [parentThreads, parentThreadDisplayName, parentThreadId, thread.id],
   );
   const parentSelectorValue = parentThreadId ?? "none";
   const selectedParentOptionLabel = parentSelectorOptions.find(
@@ -110,12 +115,23 @@ export function ParentSelectorRow({
   }
 
   return (
-    <DetailRow label="Parent" valueClassName="min-w-0">
+    <DetailRow
+      label={<DetailRowIconLabel icon="UserRound">Parent</DetailRowIconLabel>}
+      valueClassName="min-w-0"
+    >
       {parentThreadId ? (
-        <div className="inline-flex max-w-full min-w-0 items-center gap-1 text-xs text-foreground">
+        <div
+          className={cn(
+            "inline-flex max-w-full min-w-0 items-center gap-1 text-foreground",
+            COARSE_POINTER_TEXT_SM_CLASS,
+          )}
+        >
           <Link
             to={getThreadRoutePath({ projectId, threadId: parentThreadId })}
-            className="min-w-0 truncate text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
+            className={cn(
+              "min-w-0 truncate text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
           >
             {selectedParentOptionLabel ?? "Parent thread"}
           </Link>
@@ -123,7 +139,7 @@ export function ParentSelectorRow({
             type="button"
             variant="ghost"
             size="icon"
-            className="size-3.5 shrink-0 rounded-full p-0 text-muted-foreground hover:bg-transparent hover:text-foreground [&_svg]:size-3"
+            className="size-3.5 shrink-0 rounded-full p-0 text-muted-foreground hover:bg-transparent hover:text-foreground [&_svg]:size-3 max-md:pointer-coarse:h-9 max-md:pointer-coarse:w-9 max-md:pointer-coarse:[&_svg]:size-5"
             disabled={updateThreadPending}
             onClick={() => {
               onAssignParent(null);
@@ -145,14 +161,25 @@ export function ParentSelectorRow({
                   ? -1
                   : 0
               }
-              className="inline-flex w-fit max-w-full min-w-0 items-center gap-1 rounded-md px-0 text-xs leading-tight text-foreground outline-none ring-sidebar-ring transition-colors hover:text-foreground focus-visible:ring-2"
+              className={cn(
+                "-mx-1 inline-flex h-5 w-fit max-w-full min-w-0 items-center gap-1 rounded-sm px-1 leading-tight text-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover data-[state=open]:bg-state-hover focus-visible:ring-2",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
             >
-              <span className="min-w-0 truncate text-xs text-foreground">
+              <span
+                className={cn(
+                  "min-w-0 truncate text-foreground",
+                  COARSE_POINTER_TEXT_SM_CLASS,
+                )}
+              >
                 {selectedParentOptionLabel ?? "None"}
               </span>
               <Icon
                 name="ChevronDown"
-                className="size-3.5 shrink-0 text-muted-foreground"
+                className={cn(
+                  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+                  "text-muted-foreground",
+                )}
               />
             </div>
           </DropdownMenuTrigger>
@@ -162,9 +189,7 @@ export function ParentSelectorRow({
               <DropdownMenuItem
                 key={option.value}
                 onSelect={() => {
-                  onAssignParent(
-                    option.value === "none" ? null : option.value,
-                  );
+                  onAssignParent(option.value === "none" ? null : option.value);
                 }}
                 className="flex items-center justify-between gap-3"
               >
@@ -236,6 +261,18 @@ export interface EnvironmentRowProps {
   environmentDisplayHost: EnvironmentDisplayHostContext;
 }
 
+// Reflect the actual environment: a managed (cloud) worktree, a local git
+// worktree, or working directly in the local checkout.
+function environmentRowIcon(environment: Environment): IconName {
+  if (environment.workspaceProvisionType === "managed-worktree") {
+    return "Container";
+  }
+  if (environment.isWorktree) {
+    return "FolderOpen";
+  }
+  return "Laptop";
+}
+
 export function EnvironmentRow({
   thread,
   environment,
@@ -252,7 +289,14 @@ export function EnvironmentRow({
   });
   const showCreateThreadButton = isWorktreeEnvironment(environment);
   return (
-    <DetailRow label="Environment" valueClassName="min-w-0">
+    <DetailRow
+      label={
+        <DetailRowIconLabel icon={environmentRowIcon(environment)}>
+          Environment
+        </DetailRowIconLabel>
+      }
+      valueClassName="min-w-0"
+    >
       <span className="flex min-w-0 items-center gap-1">
         <span className="min-w-0 truncate">{display.modeLabel}</span>
         {showCreateThreadButton ? (
@@ -344,7 +388,10 @@ export function BranchRow({ thread, workspaceStatus }: BranchRowProps) {
   const branchName = workspaceStatus?.branch.currentBranch ?? null;
   if (!branchName) return null;
   return (
-    <DetailRow label="Branch" valueClassName="min-w-0 truncate">
+    <DetailRow
+      label={<DetailRowIconLabel icon="GitBranch">Branch</DetailRowIconLabel>}
+      valueClassName="min-w-0 truncate"
+    >
       <CopyableInlineLabel
         text={branchName}
         label="Copy branch name"
@@ -429,7 +476,12 @@ export function MergeBaseRow({
   );
 
   return (
-    <DetailRow label="Merge base" valueClassName="min-w-0 truncate">
+    <DetailRow
+      label={
+        <DetailRowIconLabel icon="GitMerge">Merge base</DetailRowIconLabel>
+      }
+      valueClassName="min-w-0"
+    >
       {canSelectMergeBase && mergeBaseBranch ? (
         <BranchPicker
           value={mergeBaseBranch}
@@ -494,15 +546,25 @@ export function GitStatusRow({
     workspaceUnavailable,
     workspaceDeleted: isWorkspaceDeleted,
   });
+  // Dirty reads as the timeline error color; a clean tree reads green. Other
+  // states (Untracked / Ahead / Behind / Diverged) stay neutral.
   const labelClass =
-    workspaceStatus?.workingTree.state === "untracked"
-      ? "text-muted-foreground"
-      : "text-foreground";
+    display.label === "Dirty"
+      ? "text-destructive"
+      : display.label === "Clean" || display.label === "Up to date"
+        ? "text-success"
+        : "text-foreground";
 
   return (
-    <DetailRow label="Git status" align="start" valueClassName="min-w-0">
+    <DetailRow
+      label={
+        <DetailRowIconLabel icon="FileDiff">Git status</DetailRowIconLabel>
+      }
+      align="start"
+      valueClassName="min-w-0"
+    >
       <div
-        className="flex min-w-0 items-baseline gap-2 whitespace-nowrap"
+        className="flex min-w-0 items-end gap-2 whitespace-nowrap"
         title={`${display.label} ${display.summary}`}
       >
         <span className={cn("shrink-0 font-medium", labelClass)}>
@@ -530,10 +592,7 @@ export function ArchivedRow({ thread }: ArchivedRowProps) {
   if (thread.archivedAt == null) return null;
   return (
     <DetailRow label="Archived" valueClassName="min-w-0 truncate">
-      <ThreadUnarchiveButton
-        isPending={isPending}
-        onUnarchive={onUnarchive}
-      />
+      <ThreadUnarchiveButton isPending={isPending} onUnarchive={onUnarchive} />
     </DetailRow>
   );
 }
@@ -546,7 +605,12 @@ export function ThreadSchedulesRow({ schedules }: ThreadSchedulesRowProps) {
   if (schedules.length === 0) return null;
 
   return (
-    <DetailRow label="Schedules" align="start" valueClassName="min-w-0">
+    <DetailRow
+      label="Schedules"
+      align="start"
+      className="mt-3"
+      valueClassName="min-w-0"
+    >
       <TruncatedList
         items={schedules}
         getKey={(schedule) => schedule.id}
@@ -592,10 +656,12 @@ function ThreadCommitListItem({
 }: ThreadCommitListItemProps) {
   const detail = (
     <div className="flex min-w-0 items-baseline justify-between gap-2">
-      <span className="min-w-0 truncate text-foreground underline-offset-2 group-hover:underline">
+      <span className="min-w-0 truncate text-readback-foreground underline-offset-2 group-hover:underline">
         {commit.subject}
       </span>
-      <span className="shrink-0 text-muted-foreground">{commit.shortSha}</span>
+      <span className="shrink-0 font-mono text-subtle-foreground">
+        {commit.shortSha}
+      </span>
     </div>
   );
   if (!onCommitClick) {
@@ -620,15 +686,29 @@ export function ThreadCommitsRow({
   const commits = selectWorkspaceAheadCommits(workspaceStatus);
   if (commits.length === 0) return null;
   return (
-    <DetailRow label="Commits" orientation="vertical" valueClassName="min-w-0">
-      <TruncatedList
-        items={commits}
-        getKey={(commit) => commit.sha}
-        renderItem={(commit) => (
-          <ThreadCommitListItem commit={commit} onCommitClick={onCommitClick} />
-        )}
-      />
-    </DetailRow>
+    <>
+      {/* Divider separating the key/value metadata above from the Commits
+          section. Lives inside this row so it only renders when there are
+          commits to show. */}
+      <div className="mb-1 mt-3 border-t border-border" aria-hidden />
+      <DetailRow
+        label="Commits"
+        orientation="vertical"
+        labelClassName={CHROME_SECTION_LABEL_CLASS}
+        valueClassName="min-w-0"
+      >
+        <TruncatedList
+          items={commits}
+          getKey={(commit) => commit.sha}
+          renderItem={(commit) => (
+            <ThreadCommitListItem
+              commit={commit}
+              onCommitClick={onCommitClick}
+            />
+          )}
+        />
+      </DetailRow>
+    </>
   );
 }
 
@@ -647,8 +727,9 @@ export function ChangedFilesRow({
     <ChangedFilesDetailRow
       sections={selectWorkspaceChangedFilesSections(workspaceStatus)}
       onFileClick={onChangedFileClick}
-      rowValueClassName="min-h-0 flex-1"
-      listClassName="h-full"
+      labelClassName={CHROME_SECTION_LABEL_CLASS}
+      rowClassName="mt-3"
+      limit={5}
     />
   );
 }
@@ -675,7 +756,7 @@ export function ThreadStorageRow({
   return (
     <DetailRow
       orientation="vertical"
-      className="min-h-32 flex-1"
+      className="mt-3 min-h-32 flex-1"
       valueClassName="min-h-0 flex-1 overflow-hidden"
       labelClassName="flex items-center justify-between gap-2"
       label={
@@ -686,11 +767,14 @@ export function ThreadStorageRow({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-5 w-5 shrink-0 rounded-md p-0 text-muted-foreground"
+              className={cn(
+                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                "shrink-0 text-muted-foreground",
+              )}
               aria-label="Search files"
               onClick={openSearch}
             >
-              <Icon name="Search" className="size-3.5" />
+              <Icon name="Search" />
             </Button>
           )}
         </>
@@ -812,7 +896,7 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
   return (
     <DetailCard
       appearance="flat"
-      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+      className="min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto bg-surface-raised px-4 py-3"
     >
       {children}
     </DetailCard>

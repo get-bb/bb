@@ -5,7 +5,7 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
-import type { PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
+import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import {
   encodeHostValue,
   encodeReuseValue,
@@ -24,6 +24,7 @@ import {
   stripProjectThreads,
 } from "@/hooks/queries/project-queries";
 import { useThreads } from "@/hooks/queries/thread-queries";
+import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
@@ -51,6 +52,7 @@ import {
 } from "./root-compose-branch-ui";
 import { resolveRootComposeThreadEnvironment } from "./root-compose-thread-environment";
 import { useScopedBranchSelection } from "./root-compose-branch-selection";
+import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-2";
@@ -199,6 +201,9 @@ export function RootComposeView() {
     setRootComposeProjectId(projectId);
   }, [projectId, projects, rootComposeProjectId, setRootComposeProjectId]);
   const createThread = useCreateThread();
+  const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
+    null,
+  );
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const primaryHostId = usePrimaryHost()?.id ?? null;
@@ -464,6 +469,20 @@ export function RootComposeView() {
       [],
     [projects],
   );
+  const mobileRecentProjectNamesById = useMemo(() => {
+    const namesById = new Map<string, string>();
+    const navigation = sidebarNavigationQuery.data;
+    if (!navigation) return namesById;
+
+    namesById.set(
+      navigation.personalProject.id,
+      navigation.personalProject.name,
+    );
+    for (const project of navigation.projects) {
+      namesById.set(project.id, project.name);
+    }
+    return namesById;
+  }, [sidebarNavigationQuery.data]);
 
   const selectedThreadModel = activeModel?.model ?? selectedModel;
   const handleProjectChange = useCallback<ProjectSelectionChangeHandler>(
@@ -547,6 +566,7 @@ export function RootComposeView() {
         executionInputSources,
         environment: selectedEnvironment,
       });
+      setLastCreatedThreadId(thread.id);
       clearReuseEnvironment();
       promptDraft.clearIfCurrentMatches(submittedDraft);
       if (navigateToThreadAfterCreate) {
@@ -619,13 +639,38 @@ export function RootComposeView() {
         : null,
     [navigate, projectId],
   );
-  const mentionsConfig = useMemo(
+  // Mirrors the @-mention plumbing: the composer feeds the text typed after the
+  // command trigger into `commandQuery`, which drives the project+provider-
+  // scoped command typeahead. When the picker reuses an existing environment,
+  // scope discovery to that environment's workspace; otherwise fall back to the
+  // project's default source (null).
+  const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const reuseEnvironmentId =
+    parsedEnvironment?.type === "reuse"
+      ? parsedEnvironment.environmentId
+      : null;
+  const commandSuggestions = useCommandSuggestions({
+    projectId: isProjectless ? undefined : projectId,
+    providerId: selectedProviderId,
+    environmentId: reuseEnvironmentId,
+    query: commandQuery,
+  });
+  const typeaheadConfig = useMemo(
     () => ({
-      suggestions: promptMentions.suggestions,
-      isLoading: promptMentions.isLoading,
-      isError: promptMentions.isError,
-      onQueryChange: promptMentions.setQuery,
-      resolveLink: resolveMentionLink,
+      mention: {
+        suggestions: promptMentions.suggestions,
+        isLoading: promptMentions.isLoading,
+        isError: promptMentions.isError,
+        onQueryChange: promptMentions.setQuery,
+        resolveLink: resolveMentionLink,
+      },
+      command: {
+        trigger: commandSuggestions.trigger,
+        suggestions: commandSuggestions.suggestions,
+        isLoading: commandSuggestions.isLoading,
+        isError: commandSuggestions.isError,
+        onQueryChange: setCommandQuery,
+      },
     }),
     [
       promptMentions.isError,
@@ -633,6 +678,10 @@ export function RootComposeView() {
       promptMentions.setQuery,
       promptMentions.suggestions,
       resolveMentionLink,
+      commandSuggestions.isError,
+      commandSuggestions.isLoading,
+      commandSuggestions.suggestions,
+      commandSuggestions.trigger,
     ],
   );
   const attachmentsConfig = useMemo(
@@ -863,7 +912,7 @@ export function RootComposeView() {
         disabled={isSubmitDisabled}
         zenModeStorageKey={rootComposeZenModeStorageKey}
         history={historyConfig}
-        mentions={mentionsConfig}
+        typeahead={typeaheadConfig}
         attachments={attachmentsConfig}
         modeConfig={{
           environment: environmentConfig,
@@ -885,6 +934,12 @@ export function RootComposeView() {
           },
         }}
         execution={executionConfig}
+      />
+      <RootComposeMobileRecents
+        highlightedThreadId={lastCreatedThreadId}
+        projectNamesById={mobileRecentProjectNamesById}
+        showCreatingRow={createThread.isPending}
+        threads={threadsQuery.data ?? []}
       />
     </PageShell>
   );

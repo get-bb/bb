@@ -14,14 +14,21 @@ import type {
   BbDesktopBrowserViewBounds,
 } from "@bb/server-contract";
 import { clampBbDesktopBrowserViewBounds } from "@bb/server-contract";
+import {
+  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+  COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
-import { getDesktopBrowserApi } from "@/lib/bb-desktop";
+import { getBbDesktopInfo, getDesktopBrowserApi } from "@/lib/bb-desktop";
+import { cn } from "@/lib/utils";
 import {
   getBrowserUrlSecurity,
   resolveBrowserAddressInput,
 } from "@/lib/browser-url";
 import { useBrowserHistory } from "@/lib/browser-history";
 import { BROWSER_VIEW_BOUNDS_SYNC_EVENT } from "@/lib/browser-view-bounds-sync";
+import { useIsBrowserDimmingModalOpen } from "@/hooks/useBrowserDimmingModal";
 import { BrowserNewTabScreen } from "./BrowserNewTabScreen";
 import {
   registerBrowserView,
@@ -62,10 +69,11 @@ interface BrowserChromeProps {
   onBack: () => void;
   onForward: () => void;
   onReloadOrStop: () => void;
+  onOpenExternal: () => void;
 }
 
 interface NavButtonProps {
-  icon: "ChevronLeft" | "ChevronRight" | "RotateCcw" | "X";
+  icon: "ChevronLeft" | "ChevronRight" | "RotateCcw" | "X" | "ExternalLink";
   label: string;
   disabled?: boolean;
   onClick: () => void;
@@ -145,9 +153,12 @@ function NavButton({ icon, label, disabled, onClick }: NavButtonProps) {
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="flex size-7 shrink-0 items-center justify-center rounded-md text-foreground transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+      className={cn(
+        "flex shrink-0 items-center justify-center text-foreground transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
+        COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+      )}
     >
-      <Icon name={icon} className="size-4" aria-hidden />
+      <Icon name={icon} aria-hidden />
     </button>
   );
 }
@@ -164,6 +175,7 @@ function BrowserChrome({
   onBack,
   onForward,
   onReloadOrStop,
+  onOpenExternal,
 }: BrowserChromeProps) {
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
@@ -192,23 +204,32 @@ function BrowserChrome({
         onClick={onReloadOrStop}
       />
       <form onSubmit={onSubmit} className="min-w-0 flex-1">
-        <div className="flex h-8 items-center gap-2 rounded-full border border-border bg-background px-3">
+        <div className="flex h-8 items-center gap-2 rounded-full border border-border bg-background px-3 max-md:pointer-coarse:h-10">
           {security === "secure" ? (
             <Icon
               name="Lock"
-              className="size-3.5 shrink-0 text-success"
+              className={cn(
+                COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+                "text-success",
+              )}
               aria-label="Secure connection"
             />
           ) : security === "insecure" ? (
             <Icon
               name="AlertTriangle"
-              className="size-3.5 shrink-0 text-warning"
+              className={cn(
+                COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+                "text-warning",
+              )}
               aria-label="Connection not secure"
             />
           ) : (
             <Icon
               name="Search"
-              className="size-3.5 shrink-0 text-muted-foreground"
+              className={cn(
+                COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+                "text-muted-foreground",
+              )}
               aria-hidden
             />
           )}
@@ -222,10 +243,19 @@ function BrowserChrome({
             aria-label="Address and search bar"
             autoComplete="off"
             spellCheck={false}
-            className="min-w-0 flex-1 bg-transparent font-mono text-xs text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground"
+            className={cn(
+              "min-w-0 flex-1 bg-transparent font-mono text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
           />
         </div>
       </form>
+      <NavButton
+        icon="ExternalLink"
+        label="Open in external browser"
+        disabled={currentUrl.length === 0}
+        onClick={onOpenExternal}
+      />
       {isLoading ? (
         <span className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
           <span className="block h-full w-1/3 animate-pulse bg-ring" />
@@ -244,7 +274,12 @@ function BrowserUnavailable() {
       <div className="text-sm font-medium text-foreground">
         Browser tabs need the desktop app
       </div>
-      <p className="max-w-xs text-xs text-muted-foreground">
+      <p
+        className={cn(
+          "max-w-xs text-muted-foreground",
+          COARSE_POINTER_TEXT_SM_CLASS,
+        )}
+      >
         The in-app web browser runs in the bb desktop app. Open this thread
         there to browse the web.
       </p>
@@ -298,6 +333,11 @@ export function BrowserTabContent({
   isActiveRef.current = isActive;
 
   const hasPage = currentUrl.length > 0;
+  // A blocking modal (e.g. the git-action dialog) dims the panel with a DOM
+  // backdrop the native browser overlay cannot sit behind. While one is open,
+  // hide the view and fall back to the DOM new-tab screen so the backdrop dims
+  // the whole panel.
+  const isBrowserDimmingModalOpen = useIsBrowserDimmingModalOpen();
   const lastSentBoundsRef = useRef<BbDesktopBrowserViewBounds | null>(null);
 
   const readBounds = useCallback(() => {
@@ -456,7 +496,10 @@ export function BrowserTabContent({
       return;
     }
 
-    window.addEventListener(BROWSER_VIEW_BOUNDS_SYNC_EVENT, syncBoundsIfChanged);
+    window.addEventListener(
+      BROWSER_VIEW_BOUNDS_SYNC_EVENT,
+      syncBoundsIfChanged,
+    );
     window.addEventListener("resize", syncBoundsIfChanged);
 
     return () => {
@@ -475,7 +518,7 @@ export function BrowserTabContent({
   // hidden, so deactivation never reloads it. (Collapse/expand of the panel
   // toggles `isActive`, which hides the view outright rather than chasing a
   // CSS transition the overlay cannot clip to.)
-  const isViewVisible = isActive && hasPage;
+  const isViewVisible = isActive && hasPage && !isBrowserDimmingModalOpen;
   // A layout effect (pre-paint) declares visibility so showing/hiding lands in
   // the same frame as the DOM tab swap — no flash. Ordering across tabs (hide
   // the previously-visible view BEFORE showing this one) and bounds-before-show
@@ -546,14 +589,20 @@ export function BrowserTabContent({
         onBack={() => desktopBrowser.goBack(tabId)}
         onForward={() => desktopBrowser.goForward(tabId)}
         onReloadOrStop={handleReloadOrStop}
+        onOpenExternal={() => getBbDesktopInfo()?.openExternalUrl(currentUrl)}
       />
       {state?.errorText != null && hasPage ? (
-        <div className="border-b border-border bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        <div
+          className={cn(
+            "border-b border-border bg-destructive/10 px-3 py-2 text-destructive",
+            COARSE_POINTER_TEXT_SM_CLASS,
+          )}
+        >
           {state.errorText}
         </div>
       ) : null}
       <div ref={contentRef} className="relative min-h-0 flex-1">
-        {hasPage ? null : (
+        {hasPage && !isBrowserDimmingModalOpen ? null : (
           <BrowserNewTabScreen
             onNavigateInput={navigateToInput}
             recent={recent}

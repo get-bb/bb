@@ -33,7 +33,10 @@ import {
   saveThreadProvisionContext,
   type ThreadProvisioningDeps,
 } from "./thread-provisioning-environment.js";
-import { forgetActiveThreadProvisionContext } from "./thread-provisioning-active-context.js";
+import {
+  forgetActiveThreadProvisionContext,
+  getActiveThreadProvisionContext,
+} from "./thread-provisioning-active-context.js";
 import { tryTransition } from "./thread-transitions.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
@@ -65,6 +68,11 @@ interface AdvanceThreadProvisioningArgs {
   threadId: string;
 }
 
+interface CurrentProvisioningFailureThreadArgs {
+  context: ThreadProvisionContext;
+  threadId: string;
+}
+
 interface RecordThreadProvisionWorkspaceReadyArgs {
   entries: ProvisioningTranscriptEntry[];
   environmentId: string;
@@ -80,6 +88,37 @@ interface EnvironmentPayloadThreadArgs {
   context: ThreadProvisionProvisionableContext;
   environment: Environment;
   thread: Thread;
+}
+
+type CurrentProvisioningFailureThreadDeps = Pick<AppDeps, "db">;
+
+function getCurrentProvisioningFailureThread(
+  deps: CurrentProvisioningFailureThreadDeps,
+  args: CurrentProvisioningFailureThreadArgs,
+): Thread | null {
+  const currentThread = getThread(deps.db, args.threadId);
+  if (!currentThread || currentThread.deletedAt !== null) {
+    forgetActiveThreadProvisionContext(args.threadId);
+    return null;
+  }
+  if (
+    currentThread.status !== "provisioning" ||
+    currentThread.archivedAt !== null ||
+    currentThread.stopRequestedAt !== null
+  ) {
+    forgetActiveThreadProvisionContext(args.threadId);
+    return null;
+  }
+
+  const activeContext = getActiveThreadProvisionContext(args.threadId);
+  if (
+    activeContext &&
+    activeContext.state.provisioningId !== args.context.state.provisioningId
+  ) {
+    return null;
+  }
+
+  return currentThread;
 }
 
 async function startThreadIfEnvironmentReady(
@@ -305,10 +344,18 @@ async function advanceThreadProvisioningOnce(
       thread: ready.thread,
     });
   } catch (error) {
+    const failureThread = getCurrentProvisioningFailureThread(deps, {
+      context,
+      threadId: thread.id,
+    });
+    if (!failureThread) {
+      return;
+    }
     const detail = error instanceof Error ? error.message : String(error);
     failThreadProvisioning(deps, {
-      thread,
-      environmentId: attachedEnvironmentIdForContext(context),
+      thread: failureThread,
+      environmentId:
+        attachedEnvironmentIdForContext(context) ?? failureThread.environmentId,
       detail,
     });
   }
@@ -322,4 +369,3 @@ export async function advanceThreadProvisioning(
     advanceThreadProvisioningOnce(deps, args),
   );
 }
-

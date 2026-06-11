@@ -4,6 +4,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type {
   SidebarBootstrapResponse,
   ThreadListResponse,
+  WorkspacePathEntry,
 } from "@bb/server-contract";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +21,7 @@ interface TestWrapperProps {
 type ThreadListEntryFixture = ThreadListResponse[number];
 type ThreadListEntryFixtureOverrides = Partial<ThreadListEntryFixture>;
 type SidebarProjectFixture = SidebarBootstrapResponse["projects"][number];
+type WorkspacePathEntryFixtureOverrides = Partial<WorkspacePathEntry>;
 
 interface ProjectFixtureOptions {
   id: string;
@@ -89,6 +91,19 @@ function makeSidebarBootstrapResponse(
       name: "Personal",
     }),
     projects: [...projects],
+  };
+}
+
+function makeWorkspacePathEntry(
+  overrides: WorkspacePathEntryFixtureOverrides = {},
+): WorkspacePathEntry {
+  return {
+    kind: "file",
+    path: "plans/background-command-support.md",
+    name: "background-command-support.md",
+    score: 1_000,
+    positions: [0, 1, 2, 3],
+    ...overrides,
   };
 }
 
@@ -270,6 +285,84 @@ describe("usePromptMentions", () => {
       );
     }
     expect(firstSuggestion.threadId).toBe("thr_current_project_shared");
+  });
+
+  it("keeps path matches when thread matches fill their source cap", async () => {
+    const projectId = "proj_code";
+    const threads: ThreadListResponse = Array.from({ length: 10 }, (_, index) =>
+      makeThreadListEntry({
+        id: `thr_plan_${index}`,
+        projectId,
+        title: `Plan thread ${index}`,
+        titleFallback: `Plan thread ${index}`,
+      }),
+    );
+    installFetchRoutes([
+      {
+        pathname: "/api/v1/threads",
+        handler: (request) => {
+          const url = new URL(request.url);
+          expect(url.searchParams.get("archived")).toBe("false");
+          expect(url.searchParams.get("limit")).toBe(
+            String(THREAD_MENTION_CANDIDATE_LIMIT),
+          );
+          expect(url.searchParams.has("projectId")).toBe(false);
+          return jsonResponse(threads);
+        },
+      },
+      {
+        pathname: `/api/v1/projects/${projectId}/paths`,
+        handler: (request) => {
+          const url = new URL(request.url);
+          expect(url.searchParams.get("query")).toBe("plan");
+          return jsonResponse({
+            paths: [makeWorkspacePathEntry()],
+            truncated: false,
+          });
+        },
+      },
+      {
+        pathname: "/api/v1/sidebar-bootstrap",
+        handler: () =>
+          jsonResponse(
+            makeSidebarBootstrapResponse([
+              makeProjectFixture({ id: projectId, name: "Code" }),
+            ]),
+          ),
+      },
+    ]);
+    const { wrapper } = createWrapper();
+
+    const { result } = renderHook(
+      () =>
+        usePromptMentions(projectId, {
+          environmentId: null,
+        }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.setQuery("plan");
+    });
+
+    await waitFor(() => {
+      expect(
+        result.current.suggestions.some(
+          (suggestion) =>
+            suggestion.kind === "path" &&
+            suggestion.path === "plans/background-command-support.md",
+        ),
+      ).toBe(true);
+    });
+
+    const threadSuggestions = result.current.suggestions.filter(
+      (suggestion) => suggestion.kind === "thread",
+    );
+    const pathSuggestions = result.current.suggestions.filter(
+      (suggestion) => suggestion.kind === "path",
+    );
+    expect(threadSuggestions).toHaveLength(8);
+    expect(pathSuggestions).toHaveLength(1);
   });
 
   it("uses cached thread lists as placeholder candidates while the capped global request is pending", async () => {

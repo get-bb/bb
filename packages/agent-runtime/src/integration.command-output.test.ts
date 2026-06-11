@@ -39,6 +39,7 @@ for (const providerId of providers) {
         });
 
         await ctx.runtime.startThread({
+          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",

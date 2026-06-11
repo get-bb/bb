@@ -237,22 +237,20 @@ describe("resolveCreateThreadEnvironment", () => {
 });
 
 describe("resolveThreadDefaultPermissionMode", () => {
-  it("keeps the preferred child default for non-agent providers", () => {
+  it("uses the full permission default for non-agent providers", () => {
     expect(
       resolveThreadDefaultPermissionMode({
-        parentThread: makeParentThread(),
         thread: makeThread({
           parentThreadId: "thr-parent-1",
           providerId: "custom-provider",
         }),
       }),
-    ).toBe("workspace-write");
+    ).toBe("full");
   });
 
-  it("falls back to full for Pi child threads because Pi does not support workspace-write", () => {
+  it("uses full for Pi threads", () => {
     expect(
       resolveThreadDefaultPermissionMode({
-        parentThread: makeParentThread(),
         thread: makeThread({
           parentThreadId: "thr-parent-1",
           providerId: "pi",
@@ -261,12 +259,9 @@ describe("resolveThreadDefaultPermissionMode", () => {
     ).toBe("full");
   });
 
-  it("treats invalid parent references as root-thread defaults", () => {
+  it("uses full for Codex threads", () => {
     expect(
       resolveThreadDefaultPermissionMode({
-        parentThread: makeParentThread({
-          projectId: "proj-2",
-        }),
         thread: makeThread({
           parentThreadId: "thr-other-project-parent-1",
           providerId: "codex",
@@ -298,7 +293,21 @@ describe("resolveThreadExecutionPermissionMode", () => {
     ).toBe("readonly");
   });
 
-  it("ignores project permission defaults for child threads", () => {
+  it("inherits live parent execution permission before project defaults", () => {
+    expect(
+      resolveThreadExecutionPermissionMode({
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "readonly",
+        projectExecutionPermissionMode: "full",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "codex",
+        }),
+      }),
+    ).toBe("readonly");
+  });
+
+  it("uses project permission defaults for child threads without parent execution history", () => {
     expect(
       resolveThreadExecutionPermissionMode({
         parentThread: makeParentThread(),
@@ -308,7 +317,21 @@ describe("resolveThreadExecutionPermissionMode", () => {
           providerId: "codex",
         }),
       }),
-    ).toBe("workspace-write");
+    ).toBe("full");
+  });
+
+  it("reconciles inherited parent permission to the child provider's supported modes", () => {
+    expect(
+      resolveThreadExecutionPermissionMode({
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "workspace-write",
+        projectExecutionPermissionMode: "readonly",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "pi",
+        }),
+      }),
+    ).toBe("full");
   });
 
   it("uses root-thread defaults when the parent reference is not live", () => {

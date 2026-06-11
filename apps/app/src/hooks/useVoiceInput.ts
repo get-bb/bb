@@ -101,6 +101,9 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   const promptContextRef = useRef<string | undefined>(undefined);
   const shouldTranscribeRef = useRef(true);
   const transcriptionAbortRef = useRef<AbortController | null>(null);
+  const wakeLockSentinelRef = useRef<WakeLockSentinel | null>(null);
+  const wakeLockRequestRef = useRef<Promise<void> | null>(null);
+  const shouldHoldWakeLockRef = useRef(false);
 
   const [state, setState] = useState<VoiceInputState>("idle");
   const [isSupported, setIsSupported] = useState(false);
@@ -115,6 +118,66 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
     if (!stream) return;
     stream.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+  }, []);
+
+  const requestRecordingWakeLock = useCallback(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof navigator === "undefined" ||
+      typeof document === "undefined" ||
+      !("wakeLock" in navigator) ||
+      window.isSecureContext === false ||
+      document.visibilityState !== "visible"
+    ) {
+      return;
+    }
+
+    const wakeLock = navigator.wakeLock;
+    if (!wakeLock) {
+      return;
+    }
+
+    const currentSentinel = wakeLockSentinelRef.current;
+    if (currentSentinel && !currentSentinel.released) {
+      return;
+    }
+    if (wakeLockRequestRef.current) {
+      return;
+    }
+
+    wakeLockRequestRef.current = wakeLock
+      .request("screen")
+      .then((sentinel) => {
+        if (!shouldHoldWakeLockRef.current) {
+          if (!sentinel.released) {
+            void sentinel.release().catch(() => {});
+          }
+          return;
+        }
+
+        wakeLockSentinelRef.current = sentinel;
+        sentinel.addEventListener("release", () => {
+          if (wakeLockSentinelRef.current === sentinel) {
+            wakeLockSentinelRef.current = null;
+          }
+        });
+      })
+      .catch(() => {})
+      .finally(() => {
+        wakeLockRequestRef.current = null;
+      });
+  }, []);
+
+  const releaseRecordingWakeLock = useCallback(() => {
+    shouldHoldWakeLockRef.current = false;
+
+    const sentinel = wakeLockSentinelRef.current;
+    wakeLockSentinelRef.current = null;
+    if (!sentinel || sentinel.released) {
+      return;
+    }
+
+    void sentinel.release().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -144,13 +207,34 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       startedAtMsRef.current = null;
       promptContextRef.current = undefined;
       shouldTranscribeRef.current = true;
+      releaseRecordingWakeLock();
       if (transcriptionAbortRef.current) {
         transcriptionAbortRef.current.abort();
         transcriptionAbortRef.current = null;
       }
       stopMediaStream();
     };
-  }, [stopMediaStream]);
+  }, [releaseRecordingWakeLock, stopMediaStream]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState === "visible" &&
+        shouldHoldWakeLockRef.current
+      ) {
+        requestRecordingWakeLock();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [requestRecordingWakeLock]);
 
   const start = useCallback(async () => {
     if (!isSupported) {
@@ -168,6 +252,8 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       startedAtMsRef.current = Date.now();
       promptContextRef.current = options.getPromptContext?.();
       shouldTranscribeRef.current = true;
+      shouldHoldWakeLockRef.current = true;
+      requestRecordingWakeLock();
 
       const preferredMimeType = resolvePreferredAudioMimeType();
       const recorder = preferredMimeType
@@ -190,6 +276,7 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       };
 
       recorder.onstop = async () => {
+        releaseRecordingWakeLock();
         stopMediaStream();
 
         if (!shouldTranscribeRef.current) {
@@ -263,9 +350,18 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
       promptContextRef.current = undefined;
       shouldTranscribeRef.current = true;
       transcriptionAbortRef.current = null;
+      releaseRecordingWakeLock();
       showError(resolveRecordingErrorMessage(error));
     }
-  }, [isSupported, options, showError, state, stopMediaStream]);
+  }, [
+    isSupported,
+    options,
+    releaseRecordingWakeLock,
+    requestRecordingWakeLock,
+    showError,
+    state,
+    stopMediaStream,
+  ]);
 
   const stop = useCallback(() => {
     if (state !== "recording") {

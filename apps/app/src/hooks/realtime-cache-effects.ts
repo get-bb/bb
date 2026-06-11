@@ -7,6 +7,7 @@ import {
   type ThreadEventType,
   type ThreadChangeMetadata,
   type ThreadChangeKind,
+  type WorkflowRunChangeKind,
 } from "@bb/domain";
 import {
   invalidateRealtimeQueriesAfterServerReconnect,
@@ -22,6 +23,7 @@ import {
   REALTIME_PROJECT_CHANGE_REGISTRY,
   REALTIME_SYSTEM_CHANGE_REGISTRY,
   REALTIME_THREAD_CHANGE_REGISTRY,
+  REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY,
   shouldFlushThreadChangesImmediately,
 } from "./cache-owners/realtime-cache-registry";
 
@@ -197,6 +199,76 @@ function recordThreadChange(
   }
 }
 
+interface WorkflowRunChangeState {
+  changedRunKinds: Map<string, Set<WorkflowRunChangeKind>>;
+  globalChangeKinds: Set<WorkflowRunChangeKind>;
+}
+
+function createWorkflowRunChangeState(): WorkflowRunChangeState {
+  return {
+    changedRunKinds: new Map<string, Set<WorkflowRunChangeKind>>(),
+    globalChangeKinds: new Set<WorkflowRunChangeKind>(),
+  };
+}
+
+function resetWorkflowRunChangeState(state: WorkflowRunChangeState): void {
+  state.changedRunKinds.clear();
+  state.globalChangeKinds.clear();
+}
+
+/**
+ * Workflow-run change notifications fire per ingested daemon batch with no
+ * server-side throttle, so a wide fan-out can deliver many messages per
+ * second. Changes accumulate per run and flush on the shared debounce window.
+ */
+function recordWorkflowRunChange(
+  state: WorkflowRunChangeState,
+  message: ChangedMessage,
+): void {
+  if (message.entity !== "workflow-run") {
+    return;
+  }
+
+  if (message.id) {
+    let entry = state.changedRunKinds.get(message.id);
+    if (!entry) {
+      entry = new Set<WorkflowRunChangeKind>();
+      state.changedRunKinds.set(message.id, entry);
+    }
+    for (const change of message.changes) {
+      entry.add(change);
+    }
+    return;
+  }
+
+  for (const change of message.changes) {
+    state.globalChangeKinds.add(change);
+  }
+}
+
+function flushWorkflowRunInvalidations(
+  queryClient: QueryClient,
+  state: WorkflowRunChangeState,
+): void {
+  for (const changeKind of state.globalChangeKinds) {
+    executeRealtimeDirtyHandlers({
+      context: { queryClient, workflowRunId: undefined },
+      handlers: REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY[changeKind].dirty,
+    });
+  }
+
+  for (const [workflowRunId, changeKinds] of state.changedRunKinds) {
+    for (const changeKind of changeKinds) {
+      executeRealtimeDirtyHandlers({
+        context: { queryClient, workflowRunId },
+        handlers: REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY[changeKind].dirty,
+      });
+    }
+  }
+
+  resetWorkflowRunChangeState(state);
+}
+
 function invalidateRealtimeEnvironmentChange({
   changeKinds,
   environmentId,
@@ -224,6 +296,13 @@ export function createRealtimeCacheEffects({
     maxWaitMs: INVALIDATION_MAX_WAIT_MS,
     onFlush: () => flushThreadInvalidations(queryClient, threadChangeState),
   });
+  const workflowRunChangeState = createWorkflowRunChangeState();
+  const workflowRunInvalidationScheduler = createDebouncedCallbackScheduler({
+    debounceMs: INVALIDATION_DEBOUNCE_MS,
+    maxWaitMs: INVALIDATION_MAX_WAIT_MS,
+    onFlush: () =>
+      flushWorkflowRunInvalidations(queryClient, workflowRunChangeState),
+  });
   const environmentInvalidator = createBufferedEnvironmentInvalidator({
     debounceMs: ENVIRONMENT_INVALIDATION_DEBOUNCE_MS,
     flushChangedEnvironmentIds: (changedEnvironments) => {
@@ -241,8 +320,10 @@ export function createRealtimeCacheEffects({
   return {
     dispose: () => {
       invalidationScheduler.dispose();
+      workflowRunInvalidationScheduler.dispose();
       environmentInvalidator.dispose();
       resetThreadChangeState(threadChangeState);
+      resetWorkflowRunChangeState(workflowRunChangeState);
     },
     handleChanged: (message) => {
       switch (message.entity) {
@@ -296,6 +377,10 @@ export function createRealtimeCacheEffects({
               handlers: REALTIME_APP_CHANGE_REGISTRY[changeKind].dirty,
             });
           }
+          break;
+        case "workflow-run":
+          recordWorkflowRunChange(workflowRunChangeState, message);
+          workflowRunInvalidationScheduler.schedule();
           break;
         default:
           assertNever(message);

@@ -320,6 +320,8 @@ export function BottomAnchoredScrollBody({
 
   const scrollToBottom = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
+    userScrollIntentUntilRef.current = 0;
+    pointerScrollIntentRef.current = false;
     shouldStickToBottomRef.current = true;
     setIsAtBottom(true);
     if (scrollArea) {

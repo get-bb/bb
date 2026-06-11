@@ -4,6 +4,7 @@ import type {
   AgentRuntimeSkillRoot,
 } from "./types.js";
 import type { ProviderExecutionContext } from "./provider-adapter.js";
+import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import { resolveAdapterPermissionPolicy } from "./shared/permission-policy.js";
 
 interface AssertProviderSupportsExecutionOptionsArgs {
@@ -51,11 +52,19 @@ export function assertProviderSupportsExecutionOptions(
 export function sameExecutionSettings(
   args: SameExecutionSettingsArgs,
 ): boolean {
+  const leftMockCliTraffic =
+    args.left.claudeCodeMockCliTraffic ??
+    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
+  const rightMockCliTraffic =
+    args.right.claudeCodeMockCliTraffic ??
+    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
   return (
     args.left.model === args.right.model &&
     args.left.serviceTier === args.right.serviceTier &&
     args.left.reasoningLevel === args.right.reasoningLevel &&
     args.left.workflowsEnabled === args.right.workflowsEnabled &&
+    leftMockCliTraffic.enabled === rightMockCliTraffic.enabled &&
+    leftMockCliTraffic.endpoint === rightMockCliTraffic.endpoint &&
     args.left.permissionMode === args.right.permissionMode &&
     args.left.permissionEscalation === args.right.permissionEscalation
   );
@@ -69,6 +78,9 @@ export function toProviderExecutionContext(
     model: args.execOpts.model,
     serviceTier: args.execOpts.serviceTier,
     reasoningLevel: args.execOpts.reasoningLevel,
+    claudeCodeMockCliTraffic:
+      args.execOpts.claudeCodeMockCliTraffic ??
+      DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
     workflowsEnabled: args.execOpts.workflowsEnabled,
     ...permissionPolicy,
     instructions: args.instructions,
