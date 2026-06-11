@@ -2350,6 +2350,11 @@ export type SystemConfigReloadResponse = z.infer<
 
 export const environmentWorkspaceNotApplicableReasonSchema = z.enum([
   "non_git_environment",
+  /**
+   * The diff's table of contents exceeded `DIFF_FILES_MAX_COUNT` entries, so
+   * the server declines to enumerate it rather than returning an unbounded list.
+   */
+  "too_many_files",
 ]);
 export type EnvironmentWorkspaceNotApplicableReason = z.infer<
   typeof environmentWorkspaceNotApplicableReasonSchema

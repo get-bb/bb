@@ -9,6 +9,7 @@ import {
   environmentActionRequestSchema,
   environmentDiffBranchesQuerySchema,
   environmentDiffFileQuerySchema,
+  environmentDiffPatchRequestSchema,
   environmentDiffQuerySchema,
   environmentStatusQuerySchema,
   updateEnvironmentRequestSchema,
@@ -21,6 +22,8 @@ import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import {
   COMMAND_TIMEOUT_MS,
+  DIFF_FILE_PATCH_MAX_BYTES,
+  DIFF_FILES_MAX_COUNT,
   WORKSPACE_DIFF_MAX_DIFF_BYTES,
   WORKSPACE_DIFF_MAX_FILE_LIST_BYTES,
 } from "../constants.js";
@@ -42,6 +45,7 @@ import {
   requireAvailableWorkspaceDiff,
   requireAvailableWorkspaceStatus,
 } from "../services/environments/workspace-rpc-results.js";
+import { rawDiffFileStatToEntry } from "./diff-tiering.js";
 
 const COMMIT_FALLBACK_MESSAGE = "bb: automated commit";
 const SQUASH_MERGE_FALLBACK_MESSAGE = "bb: squash merge";
@@ -289,6 +293,95 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       return context.json({
         outcome: "available",
         diff: result.diff,
+      });
+    },
+  );
+
+  get(
+    "/environments/:id/diff/files",
+    environmentDiffQuerySchema,
+    async (context, query) => {
+      const environment = requireReadyEnvironment(
+        deps.db,
+        context.req.param("id"),
+      );
+      if (!environment.isGitRepo) {
+        return context.json({
+          outcome: "not_applicable",
+          reason: "non_git_environment",
+          message: "Workspace diff is not available for non-git environments",
+        });
+      }
+      const target = requireWorkspaceCommandTarget(environment);
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: target.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "workspace.diffFiles",
+          environmentId: target.environmentId,
+          workspaceContext: target.workspaceContext,
+          target: toWorkspaceDiffTarget(query),
+        },
+      });
+      if (result.outcome === "unavailable") {
+        return context.json({
+          outcome: "unavailable",
+          failure: result.failure,
+        });
+      }
+      if (result.files.length > DIFF_FILES_MAX_COUNT) {
+        return context.json({
+          outcome: "not_applicable",
+          reason: "too_many_files",
+          message: `This diff changes more than ${DIFF_FILES_MAX_COUNT} files; it is too large to display.`,
+        });
+      }
+      return context.json({
+        outcome: "available",
+        files: result.files.map(rawDiffFileStatToEntry),
+        shortstat: result.shortstat,
+        mergeBaseRef: result.mergeBaseRef,
+      });
+    },
+  );
+
+  post(
+    "/environments/:id/diff/patch",
+    environmentDiffPatchRequestSchema,
+    async (context, payload) => {
+      const environment = requireReadyEnvironment(
+        deps.db,
+        context.req.param("id"),
+      );
+      if (!environment.isGitRepo) {
+        return context.json({
+          outcome: "not_applicable",
+          reason: "non_git_environment",
+          message: "Workspace diff is not available for non-git environments",
+        });
+      }
+      const target = requireWorkspaceCommandTarget(environment);
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: target.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "workspace.diffPatch",
+          environmentId: target.environmentId,
+          workspaceContext: target.workspaceContext,
+          target: payload.target,
+          paths: payload.paths,
+          maxBytesPerFile: DIFF_FILE_PATCH_MAX_BYTES,
+        },
+      });
+      if (result.outcome === "unavailable") {
+        return context.json({
+          outcome: "unavailable",
+          failure: result.failure,
+        });
+      }
+      return context.json({
+        outcome: "available",
+        patches: result.patches,
       });
     },
   );

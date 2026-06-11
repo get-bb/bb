@@ -19,7 +19,10 @@ import type {
   EnvironmentActionRequest,
   EnvironmentActionResponse,
   EnvironmentDiffBranchesResponse,
+  EnvironmentDiffQuery,
   EnvironmentDiffResponse,
+  EnvironmentDiffFilesResponse,
+  EnvironmentDiffPatchResponse,
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
   EnvironmentStatusResponse,
@@ -1339,40 +1342,84 @@ export async function getEnvironmentDiffFile(
   );
 }
 
+/**
+ * Encode a {@link WorkspaceDiffTarget} into the flat query shape shared by the
+ * `/diff`, `/diff/files`, and (inside its JSON body) `/diff/patch` routes.
+ */
+function buildEnvironmentDiffTargetQuery(
+  target: WorkspaceDiffTarget,
+): EnvironmentDiffQuery {
+  switch (target.type) {
+    case "uncommitted":
+      return { target: "uncommitted" };
+    case "branch_committed":
+      return {
+        target: "branch_committed",
+        mergeBaseBranch: target.mergeBaseBranch,
+      };
+    case "all":
+      return {
+        target: "all",
+        mergeBaseBranch: target.mergeBaseBranch,
+      };
+    case "commit":
+      return {
+        target: "commit",
+        sha: target.sha,
+      };
+    default: {
+      const _exhaustive: never = target;
+      return _exhaustive;
+    }
+  }
+}
+
 export async function getEnvironmentDiff(
   id: string,
   target: WorkspaceDiffTarget,
 ): Promise<EnvironmentDiffResponse> {
-  const query = (() => {
-    switch (target.type) {
-      case "uncommitted":
-        return { target: "uncommitted" as const };
-      case "branch_committed":
-        return {
-          target: "branch_committed" as const,
-          mergeBaseBranch: target.mergeBaseBranch,
-        };
-      case "all":
-        return {
-          target: "all" as const,
-          mergeBaseBranch: target.mergeBaseBranch,
-        };
-      case "commit":
-        return {
-          target: "commit" as const,
-          sha: target.sha,
-        };
-      default: {
-        const _exhaustive: never = target;
-        return _exhaustive;
-      }
-    }
-  })();
-
   return request<EnvironmentDiffResponse>(
     apiClient.environments[":id"].diff.$get({
       param: { id },
-      query,
+      query: buildEnvironmentDiffTargetQuery(target),
+    }),
+  );
+}
+
+/**
+ * Fetch the diff tab's table of contents (one {@link DiffFileEntry} per changed
+ * file, no patch text). Same target query as {@link getEnvironmentDiff}.
+ */
+export async function getEnvironmentDiffFiles(
+  id: string,
+  target: WorkspaceDiffTarget,
+): Promise<EnvironmentDiffFilesResponse> {
+  return request<EnvironmentDiffFilesResponse>(
+    apiClient.environments[":id"].diff.files.$get({
+      param: { id },
+      query: buildEnvironmentDiffTargetQuery(target),
+    }),
+  );
+}
+
+interface GetEnvironmentDiffPatchesArgs {
+  target: WorkspaceDiffTarget;
+  paths: string[];
+}
+
+/**
+ * Fetch unified patch text for a subset of changed files. POST (not GET)
+ * because the repeated `paths` array cannot survive flat query parsing; the
+ * server re-derives each file's rename/copy pairing from its own TOC.
+ */
+export async function getEnvironmentDiffPatches(
+  id: string,
+  { target, paths }: GetEnvironmentDiffPatchesArgs,
+): Promise<EnvironmentDiffPatchResponse> {
+  return request<EnvironmentDiffPatchResponse>(
+    apiClient.environments[":id"].diff.patch.$post({
+      param: { id },
+      json: { target, paths },
     }),
   );
 }

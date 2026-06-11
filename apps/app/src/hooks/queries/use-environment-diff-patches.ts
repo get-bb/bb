@@ -1,0 +1,342 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import type { WorkspaceDiffTarget } from "@bb/domain";
+import {
+  DIFF_PATCH_MAX_PATHS_PER_REQUEST,
+  type EnvironmentDiffPatchResponse,
+} from "@bb/server-contract";
+import * as api from "@/lib/api";
+import { extractErrorMessage } from "@bb/core-ui";
+import {
+  type PatchQueryIdentity,
+  readDiffPatchEntry,
+  writeDiffPatchEntry,
+} from "../cache-owners/environment-diff-patch-cache-owner";
+import { environmentDiffTargetKey } from "./query-keys";
+
+/** Debounce window for coalescing scroll-driven patch requests. */
+const PATCH_REQUEST_DEBOUNCE_MS = 80;
+
+export type DiffPatchStatus = "idle" | "loading" | "loaded" | "error";
+
+export interface DiffPatchState {
+  status: DiffPatchStatus;
+  patch?: string;
+  truncated?: boolean;
+  error?: string;
+}
+
+/**
+ * The visible + overscan `auto` paths the virtualized list wants patches for.
+ * `visible` rows are fetched before `overscan` so on-screen content settles
+ * first; a path present in both is treated as visible.
+ */
+export interface RequestDiffPatchPathsArgs {
+  visible: string[];
+  overscan: string[];
+}
+
+export interface UseEnvironmentDiffPatchesArgs {
+  target?: WorkspaceDiffTarget;
+}
+
+export interface UseEnvironmentDiffPatchesResult {
+  requestPaths(args: RequestDiffPatchPathsArgs): void;
+  getPatchState(path: string): DiffPatchState;
+  retry(path: string): void;
+}
+
+const IDLE_STATE: DiffPatchState = { status: "idle" };
+
+interface PendingPaths {
+  visible: string[];
+  overscan: string[];
+}
+
+/** In-flight / errored tracking for the active target, keyed by path. */
+interface InFlightState {
+  loading: ReadonlySet<string>;
+  errors: ReadonlyMap<string, string>;
+}
+
+const EMPTY_IN_FLIGHT: InFlightState = {
+  loading: new Set(),
+  errors: new Map(),
+};
+
+function dedupeOrderedPaths(args: PendingPaths): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const path of [...args.visible, ...args.overscan]) {
+    if (seen.has(path)) {
+      continue;
+    }
+    seen.add(path);
+    ordered.push(path);
+  }
+  return ordered;
+}
+
+function chunkPaths(paths: string[]): string[][] {
+  const pages: string[][] = [];
+  for (
+    let index = 0;
+    index < paths.length;
+    index += DIFF_PATCH_MAX_PATHS_PER_REQUEST
+  ) {
+    pages.push(paths.slice(index, index + DIFF_PATCH_MAX_PATHS_PER_REQUEST));
+  }
+  return pages;
+}
+
+function patchPageError(
+  response: EnvironmentDiffPatchResponse,
+): string | undefined {
+  switch (response.outcome) {
+    case "available":
+      return undefined;
+    case "not_applicable":
+      return response.message;
+    case "unavailable":
+      return response.failure.message;
+    default: {
+      const _exhaustive: never = response;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Drives the diff tab's per-file patch loading. The virtualized list reports
+ * which `auto` paths are visible + within overscan; this hook coalesces those
+ * reports, fetches the not-yet-loaded ones in viewport-first pages of at most
+ * {@link DIFF_PATCH_MAX_PATHS_PER_REQUEST}, and caches each file's patch under a
+ * per-(target, path) React Query key so re-scrolling never refetches.
+ *
+ * Each fetched page is keyed to the active diff target; responses for a target
+ * that has since changed are dropped, and switching target resets observed
+ * loading/error state. A failed page (network error, or a daemon
+ * `unavailable` / `not_applicable` outcome) marks only its paths as a
+ * retryable error rather than throwing — call {@link UseEnvironmentDiffPatchesResult.retry}
+ * to re-request a single path.
+ */
+export function useEnvironmentDiffPatches(
+  environmentId: string,
+  { target }: UseEnvironmentDiffPatchesArgs,
+): UseEnvironmentDiffPatchesResult {
+  const queryClient = useQueryClient();
+
+  const targetType = target?.type ?? null;
+  const targetKey = environmentDiffTargetKey(target);
+  // Single string identity for the active target; changes here invalidate every
+  // in-flight request and reset observed loading/error state.
+  const targetIdentity = `${targetType ?? "none"}:${targetKey ?? ""}`;
+
+  const identity = useMemo<PatchQueryIdentity>(
+    () => ({ environmentId, targetType, targetKey }),
+    [environmentId, targetType, targetKey],
+  );
+
+  const [inFlight, setInFlight] = useState<InFlightState>(EMPTY_IN_FLIGHT);
+
+  // Latest reported paths and the active target identity are held in refs so the
+  // debounced settle tick reads current values without re-subscribing on every
+  // scroll report. `inFlightRef` mirrors the in-flight state so the settle tick
+  // can dedupe against it without taking it as a dependency (which would
+  // reschedule the callback on every state change).
+  const pendingPathsRef = useRef<PendingPaths>({ visible: [], overscan: [] });
+  const targetIdentityRef = useRef(targetIdentity);
+  const identityRef = useRef(identity);
+  const inFlightRef = useRef(inFlight);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  identityRef.current = identity;
+  inFlightRef.current = inFlight;
+
+  // Reset all observed loading/error state and drop any pending settle tick when
+  // the target changes; cached patches for the new target are re-read lazily.
+  useEffect(() => {
+    targetIdentityRef.current = targetIdentity;
+    pendingPathsRef.current = { visible: [], overscan: [] };
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    setInFlight(EMPTY_IN_FLIGHT);
+  }, [targetIdentity]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const fetchPage = useCallback(
+    async (paths: string[], generationTarget: string) => {
+      if (!environmentId || target === undefined) {
+        return;
+      }
+      const pageIdentity = identityRef.current;
+      try {
+        const response = await api.getEnvironmentDiffPatches(environmentId, {
+          target,
+          paths,
+        });
+        // Drop the response if the target changed while it was in flight.
+        if (targetIdentityRef.current !== generationTarget) {
+          return;
+        }
+        const pageError = patchPageError(response);
+        if (response.outcome === "available") {
+          for (const entry of response.patches) {
+            writeDiffPatchEntry({ queryClient, identity: pageIdentity, entry });
+          }
+        }
+        setInFlight((previous) =>
+          settlePage({ previous, paths, error: pageError }),
+        );
+      } catch (caught) {
+        if (targetIdentityRef.current !== generationTarget) {
+          return;
+        }
+        const message =
+          extractErrorMessage(caught) ?? "Failed to load file diff";
+        setInFlight((previous) =>
+          settlePage({ previous, paths, error: message }),
+        );
+      }
+    },
+    [environmentId, target, queryClient],
+  );
+
+  const dispatchPending = useCallback(() => {
+    debounceTimerRef.current = null;
+    if (!environmentId || target === undefined) {
+      return;
+    }
+    const generationTarget = targetIdentityRef.current;
+    const pageIdentity = identityRef.current;
+    const ordered = dedupeOrderedPaths(pendingPathsRef.current);
+
+    const toFetch = ordered.filter((path) => {
+      if (
+        readDiffPatchEntry({ queryClient, identity: pageIdentity, path }) !==
+        undefined
+      ) {
+        return false;
+      }
+      if (inFlightRef.current.loading.has(path)) {
+        return false;
+      }
+      if (inFlightRef.current.errors.has(path)) {
+        return false;
+      }
+      return true;
+    });
+
+    if (toFetch.length === 0) {
+      return;
+    }
+
+    setInFlight((previous) => markLoading(previous, toFetch));
+
+    for (const page of chunkPaths(toFetch)) {
+      void fetchPage(page, generationTarget);
+    }
+  }, [environmentId, target, queryClient, fetchPage]);
+
+  const requestPaths = useCallback(
+    (args: RequestDiffPatchPathsArgs) => {
+      pendingPathsRef.current = {
+        visible: args.visible,
+        overscan: args.overscan,
+      };
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = setTimeout(
+        dispatchPending,
+        PATCH_REQUEST_DEBOUNCE_MS,
+      );
+    },
+    [dispatchPending],
+  );
+
+  const retry = useCallback(
+    (path: string) => {
+      const generationTarget = targetIdentityRef.current;
+      setInFlight((previous) => clearError(previous, path));
+      setInFlight((previous) => markLoading(previous, [path]));
+      void fetchPage([path], generationTarget);
+    },
+    [fetchPage],
+  );
+
+  const getPatchState = useCallback(
+    (path: string): DiffPatchState => {
+      const cached = readDiffPatchEntry({ queryClient, identity, path });
+      if (cached !== undefined) {
+        return {
+          status: "loaded",
+          patch: cached.patch,
+          truncated: cached.truncated,
+        };
+      }
+      const error = inFlight.errors.get(path);
+      if (error !== undefined) {
+        return { status: "error", error };
+      }
+      if (inFlight.loading.has(path)) {
+        return { status: "loading" };
+      }
+      return IDLE_STATE;
+    },
+    [queryClient, identity, inFlight],
+  );
+
+  return { requestPaths, getPatchState, retry };
+}
+
+function markLoading(
+  previous: InFlightState,
+  paths: string[],
+): InFlightState {
+  const loading = new Set(previous.loading);
+  const errors = new Map(previous.errors);
+  for (const path of paths) {
+    loading.add(path);
+    errors.delete(path);
+  }
+  return { loading, errors };
+}
+
+interface SettlePageArgs {
+  previous: InFlightState;
+  paths: string[];
+  error: string | undefined;
+}
+
+function settlePage({ previous, paths, error }: SettlePageArgs): InFlightState {
+  const loading = new Set(previous.loading);
+  const errors = new Map(previous.errors);
+  for (const path of paths) {
+    loading.delete(path);
+    if (error !== undefined) {
+      errors.set(path, error);
+    } else {
+      errors.delete(path);
+    }
+  }
+  return { loading, errors };
+}
+
+function clearError(previous: InFlightState, path: string): InFlightState {
+  if (!previous.errors.has(path)) {
+    return previous;
+  }
+  const errors = new Map(previous.errors);
+  errors.delete(path);
+  return { loading: previous.loading, errors };
+}

@@ -84,6 +84,9 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "systemExecutionOptionsEnvironmentQueryKeyPrefix",
     "threadComposerBootstrapEnvironmentQueryKeyPrefix",
   ],
+  "hooks/cache-owners/environment-diff-patch-cache-owner.ts": [
+    "environmentDiffPatchQueryKey",
+  ],
   "hooks/cache-owners/environment-workspace-cache-owner.ts": [
     "environmentQueryKey",
   ],
