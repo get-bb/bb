@@ -23,7 +23,7 @@ export function isTimelineUngroupableMessage(
     return !isTimelineSummaryGroupableSteerMessage(message);
   }
   if (message.kind === "assistant-text") {
-    return message.isManagerUserMessage === true;
+    return message.isLegacyUserMessage === true;
   }
   return message.kind === "debug/raw-event";
 }

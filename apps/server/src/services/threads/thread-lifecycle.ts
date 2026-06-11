@@ -90,7 +90,7 @@ import {
 import { createAsyncDeduper } from "../lib/async-deduper.js";
 import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
-import { queueManagedThreadTurnNotificationBestEffort } from "./managed-thread-notifications.js";
+import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
 import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
@@ -139,9 +139,14 @@ export interface PrepareReadyThreadTurnDispatchInTransactionArgs {
 const threadStartRequestDeduper = createAsyncDeduper<string, void>();
 const activeThreadStartRpcThreadIds = new Set<string>();
 const activeThreadStartGeneratedTitleSyncThreadIds = new Set<string>();
+const activeThreadStopRpcThreadIds = new Set<string>();
 
 export function hasLiveThreadStartInFlight(threadId: string): boolean {
   return activeThreadStartRpcThreadIds.has(threadId);
+}
+
+export function hasLiveThreadStopInFlight(threadId: string): boolean {
+  return activeThreadStopRpcThreadIds.has(threadId);
 }
 
 interface CompleteThreadStartArgs {
@@ -658,17 +663,16 @@ function settleThreadCommandFailure(
   });
   tryTransitionInTransaction(args.deps.db, args.deps.hub, thread.id, "error");
   if (thread.parentThreadId !== null) {
-    const managerThreadId = thread.parentThreadId;
+    const parentThreadId = thread.parentThreadId;
     postCommitActions.push({
-      name: "Managed thread command failure notification",
+      name: "Child thread command failure notification",
       context: {
         threadId: thread.id,
       },
       run: (deps) =>
-        queueManagedThreadTurnNotificationBestEffort(deps, {
-          managedThreadId: thread.id,
-          managerThreadId,
-          title: thread.title,
+        queueChildThreadTurnNotificationBestEffort(deps, {
+          childThread: thread,
+          parentThreadId,
           turnStatus: "failed",
         }),
     });
@@ -1024,23 +1028,28 @@ export function requestThreadStop(
 
   const currentThread = getThread(deps.db, args.threadId);
   if (
-    currentThread?.stopRequestedAt !== null &&
-    args.stopRequestedAt !== null
+    !currentThread ||
+    currentThread.stopRequestedAt === null ||
+    hasLiveThreadStopInFlight(args.threadId)
   ) {
     return;
   }
 
-  startLiveHostCommand(deps, {
+  activeThreadStopRpcThreadIds.add(args.threadId);
+  void runLiveHostCommand(deps, {
     command: buildThreadStopCommand(args),
     hostId: args.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: (error) => {
+  })
+    .catch((error) => {
       deps.logger.warn(
         { err: error, threadId: args.threadId },
         "Live thread stop command failed",
       );
-    },
-  });
+    })
+    .finally(() => {
+      activeThreadStopRpcThreadIds.delete(args.threadId);
+    });
 }
 
 function requestPreStartThreadStop(
@@ -1121,7 +1130,7 @@ function requestPreStartThreadStop(
       },
       hostId: result.cancelHostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-      onError: (error) => {
+      onError: ({ error }) => {
         deps.logger.warn(
           {
             err: error,
@@ -1192,20 +1201,6 @@ export function requestActiveRuntimeThreadStopIfNeeded(
     stopRequestedAt: thread.stopRequestedAt,
     threadId: thread.id,
   });
-}
-
-export function interruptActiveTurnForThread(
-  deps: Pick<AppDeps, "db" | "hub">,
-  args: InterruptActiveTurnForThreadArgs,
-): boolean {
-  return deps.db.transaction(
-    (tx) =>
-      interruptActiveTurnForThreadInTransaction(
-        { db: tx, hub: deps.hub },
-        args,
-      ),
-    { behavior: "immediate" },
-  );
 }
 
 function interruptActiveTurnForThreadInTransaction(

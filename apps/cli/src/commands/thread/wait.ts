@@ -37,7 +37,9 @@ export function registerWaitCommand(
 ): void {
   parent
     .command("wait [id]")
-    .description("Wait for a thread status or event (defaults to BB_THREAD_ID)")
+    .description(
+      "Wait for a thread status or event (defaults to BB_THREAD_ID and --status idle)",
+    )
     .option("--status <status>", "Wait until the thread reaches this status")
     .option(
       "--event <type>",
@@ -130,22 +132,23 @@ function parseThreadWaitTarget(
 ): ThreadWaitTarget {
   const hasStatus = Boolean(opts.status);
   const hasEvent = Boolean(opts.event);
-  if (hasStatus === hasEvent) {
+  if (hasStatus && hasEvent) {
     throw new CliExitError(
-      "Provide exactly one of --status or --event.",
+      "Provide only one of --status or --event.",
       THREAD_WAIT_EXIT_CODE_INVALID_REQUEST,
     );
   }
 
-  if (opts.status) {
-    const parsed = threadStatusSchema.safeParse(opts.status);
-    if (!parsed.success) {
-      throw new CliExitError(
-        `Invalid thread status '${opts.status}'. Expected one of ${threadStatusValues.join(", ")}.`,
-        THREAD_WAIT_EXIT_CODE_INVALID_REQUEST,
-      );
+  if (!hasEvent) {
+    const status = opts.status ?? "idle";
+    const parsed = threadStatusSchema.safeParse(status);
+    if (parsed.success) {
+      return { kind: "status", status: parsed.data };
     }
-    return { kind: "status", status: parsed.data };
+    throw new CliExitError(
+      `Invalid thread status '${status}'. Expected one of ${threadStatusValues.join(", ")}.`,
+      THREAD_WAIT_EXIT_CODE_INVALID_REQUEST,
+    );
   }
 
   return {

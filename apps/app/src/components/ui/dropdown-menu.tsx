@@ -12,6 +12,7 @@ import {
   stripRadixContentProps,
 } from "./responsive-overlay.js";
 import {
+  blurActiveKeyboardInputBeforeOverlayOpen,
   getOverlayTriggerClassName,
   isLastInputKeyboard,
   preventOverlayTriggerSelection,
@@ -102,7 +103,12 @@ const DropdownMenuTrigger = React.forwardRef<
       ref={ref}
       asChild={asChild}
       className={getOverlayTriggerClassName(className)}
-      onMouseDown={preventOverlayTriggerSelection}
+      onMouseDown={(event) => {
+        if (!open) {
+          blurActiveKeyboardInputBeforeOverlayOpen();
+        }
+        preventOverlayTriggerSelection(event);
+      }}
       {...props}
     >
       {children}

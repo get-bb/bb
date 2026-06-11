@@ -124,7 +124,9 @@ export const parentThreadInvalidReasonSchema = z.enum([
   "archived",
   "deleted",
   "wrong_project",
-  "not_a_manager",
+  "self",
+  "cycle",
+  "too_deep",
 ]);
 export type ParentThreadInvalidReason = z.infer<
   typeof parentThreadInvalidReasonSchema

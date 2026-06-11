@@ -65,7 +65,7 @@ const childOption: ThreadRowOptions = {
   isCompact: true,
   isEnvGrouped: false,
 };
-function managerOption(
+function parentOption(
   overrides: Partial<Extract<ThreadRowOptions, { kind: "parent" }>> = {},
 ): ThreadRowOptions {
   return {
@@ -81,11 +81,10 @@ function managerOption(
   };
 }
 
-const managerThread = makeThread({
-  id: "thr_manager",
-  type: "manager",
-  title: "Codex Manager",
-  titleFallback: "Codex Manager",
+const parentThread = makeThread({
+  id: "thr_parent",
+  title: "Codex Parent",
+  titleFallback: "Codex Parent",
 });
 
 const childThread = makeThread({
@@ -167,6 +166,23 @@ export function Overview() {
           <StoryThreadRow
             projectId="proj_demo"
             thread={makeThread({
+              lastReadAt: 50,
+              latestAttentionAt: 200,
+            })}
+            isActive={false}
+            options={defaultOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="unread error"
+        hint="status=error and unread — far-right reserved slot shows the destructive unread dot"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId="proj_demo"
+            thread={makeThread({
+              status: "error",
               lastReadAt: 50,
               latestAttentionAt: 200,
             })}
@@ -287,28 +303,28 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="manager, no children"
+        label="parent, no children"
         hint="leading user icon, no chevron"
       >
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
-            thread={managerThread}
+            thread={parentThread}
             isActive={false}
-            options={managerOption({ childCount: 0 })}
+            options={parentOption({ childCount: 0 })}
           />
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="manager, expanded with child"
-        hint="manager row above its child — user icon swaps to a rotated chevron on hover, child text aligns with the manager title"
+        label="parent, expanded with child"
+        hint="parent row above its child — user icon swaps to a rotated chevron on hover, child text aligns with the parent title"
       >
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
-            thread={managerThread}
+            thread={parentThread}
             isActive={false}
-            options={managerOption({
+            options={parentOption({
               isCollapsed: false,
               childCount: 4,
             })}
@@ -322,15 +338,15 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="manager, collapsed"
-        hint="chevron points right (default) for a collapsed manager with hidden children"
+        label="parent, collapsed"
+        hint="chevron points right (default) for a collapsed parent with child rows"
       >
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
-            thread={managerThread}
+            thread={parentThread}
             isActive={false}
-            options={managerOption({
+            options={parentOption({
               isCollapsed: true,
               childCount: 4,
             })}
@@ -338,15 +354,15 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="manager, collapsed — child working"
+        label="parent, collapsed — child working"
         hint="trailing slot shows the busy spinner when a hidden child is working"
       >
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
-            thread={managerThread}
+            thread={parentThread}
             isActive={false}
-            options={managerOption({
+            options={parentOption({
               isCollapsed: true,
               childCount: 4,
               childActivity: childActivity({ working: true }),
@@ -355,15 +371,15 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="manager, collapsed — child needs input"
+        label="parent, collapsed — child needs input"
         hint="trailing slot shows the attention dot when a hidden child is blocked on the user"
       >
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
-            thread={managerThread}
+            thread={parentThread}
             isActive={false}
-            options={managerOption({
+            options={parentOption({
               isCollapsed: true,
               childCount: 4,
               childActivity: childActivity({ pending: true }),
@@ -372,15 +388,15 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="manager, collapsed — needs input + working"
+        label="parent, collapsed — needs input + working"
         hint="attention wins priority: the trailing slot shows the attention dot, not the spinner"
       >
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
-            thread={managerThread}
+            thread={parentThread}
             isActive={false}
-            options={managerOption({
+            options={parentOption({
               isCollapsed: true,
               childCount: 4,
               childActivity: childActivity({
@@ -392,7 +408,7 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="managed child, busy"
+        label="child, busy"
         hint="far-right reserved slot shows the busy spinner"
       >
         <SidebarStage>
@@ -412,7 +428,7 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="managed child, pending"
+        label="child, pending"
         hint="far-right reserved slot shows the attention dot"
       >
         <SidebarStage>

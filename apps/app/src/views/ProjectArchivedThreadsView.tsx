@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
+import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
@@ -19,18 +20,16 @@ interface FilterOption {
 
 const FILTER_OPTIONS: readonly FilterOption[] = [
   { value: "all", label: "All" },
-  { value: "manager", label: "Managers" },
-  { value: "managed", label: "Managed" },
-  { value: "unmanaged", label: "Unmanaged" },
+  { value: "root", label: "Root" },
+  { value: "child", label: "Children" },
 ];
 
-type ArchivedThreadPillLabel = "managed" | "manager";
+type ArchivedThreadPillLabel = "child";
 
 function getArchivedThreadPillLabel(
   thread: ThreadListEntry,
 ): ArchivedThreadPillLabel | null {
-  if (thread.type === "manager") return "manager";
-  if (thread.parentThreadId !== null) return "managed";
+  if (thread.parentThreadId !== null) return "child";
   return null;
 }
 
@@ -101,9 +100,9 @@ export function ProjectArchivedThreadsView() {
               Loading archived threads…
             </p>
           ) : showEmptyState ? (
-            <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+            <EmptyStatePanel className="py-4 text-left">
               No archived threads yet.
-            </p>
+            </EmptyStatePanel>
           ) : (
             <div className="space-y-1">
               {archivedThreads.map((thread) => {
@@ -139,7 +138,6 @@ export function ProjectArchivedThreadsView() {
                       onUnarchive={() => {
                         unarchiveThread.mutate({ id: thread.id });
                       }}
-                      threadType={thread.type}
                       className="hover:bg-accent-foreground/15"
                     />
                   </div>

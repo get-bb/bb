@@ -1,7 +1,10 @@
 export { formatThreadTimelineText } from "./format-timeline-text.js";
 export type { ThreadTimelineTextFormat } from "./format-timeline-text.js";
 export { assertNever } from "./assert-never.js";
-export { fileNameFromPath } from "./timeline-path-display.js";
+export {
+  directoryFromPath,
+  fileNameFromPath,
+} from "./timeline-path-display.js";
 export {
   buildTimelineActivityIntentTitles,
   buildTimelineRowTitle,
@@ -12,6 +15,21 @@ export {
 } from "./timeline-row-title.js";
 export { hasTimelineExplorationIntent } from "./timeline-activity-intents.js";
 export {
+  deriveWorkflowAgentDisplayState,
+  workflowRunDisplayState,
+} from "./workflow-display-state.js";
+export type {
+  WorkflowAgentDisplayState,
+  WorkflowRunDisplayState,
+} from "./workflow-display-state.js";
+export {
+  getWorkflowAgentProgressCounts,
+  getWorkflowRunIdFromRow,
+  isWorkflowRowActivelyRunning,
+} from "./workflow-run-rows.js";
+export type { WorkflowAgentProgressCounts } from "./workflow-run-rows.js";
+export {
+  capitalize,
   durationToCompactString,
   formatDiffCount,
   formatDiffStatsText,
@@ -24,6 +42,7 @@ export type {
   TimelineTitleDecoration,
   TimelineTitleLink,
   TimelineTitleSegment,
+  TimelineTitleSegmentAccent,
   TimelineTitleTone,
 } from "./timeline-row-title.js";
 export { THREAD_TIMELINE_EXCLUDED_EVENT_TYPES } from "./timeline-noise-events.js";
@@ -45,7 +64,6 @@ export type {
   AcceptedClientRequest,
   AcceptedClientRequestContext,
 } from "./accepted-client-request-context.js";
-export type { SystemClientRequestVisibility } from "./event-projection-message.js";
 export {
   buildTimelineViewRows,
   buildTimelineWorkSummaryLabel,

@@ -2,9 +2,13 @@ import {
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
 } from "@/lib/absolute-file-path";
+import {
+  createFilePreviewLineRange,
+  type FilePreviewLineRange,
+} from "@/lib/file-preview";
 
 export interface MarkdownPreviewLocalFileLink {
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   /**
    * Absolute local path. Callers own workspace containment checks so
    * MarkdownPreview can stay reusable.
@@ -47,13 +51,18 @@ export interface MarkdownRelativeLocalFileLinkRouting {
 }
 
 interface LocalFileHrefParts {
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   path: string;
 }
 
 interface LocalFilePathValidationArgs {
   requireLikelyFileBasename: boolean;
   path: string;
+}
+
+interface ParseLineRangeArgs {
+  endValue: string | undefined;
+  startValue: string;
 }
 
 export interface ResolveRelativeLocalFileHrefArgs
@@ -89,16 +98,40 @@ function parsePositiveInteger(value: string): number | null {
     : null;
 }
 
+function parseLineRange({
+  endValue,
+  startValue,
+}: ParseLineRangeArgs): FilePreviewLineRange | null {
+  const startLineNumber = parsePositiveInteger(startValue);
+  if (startLineNumber === null) {
+    return null;
+  }
+  const endLineNumber =
+    endValue === undefined ? startLineNumber : parsePositiveInteger(endValue);
+  if (endLineNumber === null) {
+    return null;
+  }
+  return createFilePreviewLineRange({
+    endLineNumber,
+    startLineNumber,
+  });
+}
+
 function parseLineSuffix(value: string): LocalFileHrefParts | null {
-  const hashLineMatch = value.match(/#L([0-9]+)$/u);
+  const hashLineMatch = value.match(
+    /#L([0-9]+)(?:C[0-9]+)?(?:-L?([0-9]+)(?:C[0-9]+)?)?$/u,
+  );
   if (hashLineMatch) {
-    const lineNumber = parsePositiveInteger(hashLineMatch[1] ?? "");
-    if (lineNumber === null) {
+    const lineRange = parseLineRange({
+      endValue: hashLineMatch[2],
+      startValue: hashLineMatch[1] ?? "",
+    });
+    if (lineRange === null) {
       return null;
     }
 
     return {
-      lineNumber,
+      lineRange,
       path: value.slice(0, hashLineMatch.index),
     };
   }
@@ -115,39 +148,61 @@ function parseLineSuffix(value: string): LocalFileHrefParts | null {
     }
 
     return {
-      lineNumber: null,
+      lineRange: null,
       path: value.slice(0, hashIndex),
+    };
+  }
+
+  const colonLineRangeMatch = value.match(/:([0-9]+)-([0-9]+)$/u);
+  if (colonLineRangeMatch) {
+    const lineRange = parseLineRange({
+      endValue: colonLineRangeMatch[2],
+      startValue: colonLineRangeMatch[1] ?? "",
+    });
+    if (lineRange === null) {
+      return null;
+    }
+
+    return {
+      lineRange,
+      path: value.slice(0, colonLineRangeMatch.index),
     };
   }
 
   const colonLineColumnMatch = value.match(/:([0-9]+):[0-9]+$/u);
   if (colonLineColumnMatch) {
-    const lineNumber = parsePositiveInteger(colonLineColumnMatch[1] ?? "");
-    if (lineNumber === null) {
+    const lineRange = parseLineRange({
+      endValue: undefined,
+      startValue: colonLineColumnMatch[1] ?? "",
+    });
+    if (lineRange === null) {
       return null;
     }
 
     return {
-      lineNumber,
+      lineRange,
       path: value.slice(0, colonLineColumnMatch.index),
     };
   }
 
   const colonLineMatch = value.match(/:([0-9]+)$/u);
   if (colonLineMatch) {
-    const lineNumber = parsePositiveInteger(colonLineMatch[1] ?? "");
-    if (lineNumber === null) {
+    const lineRange = parseLineRange({
+      endValue: undefined,
+      startValue: colonLineMatch[1] ?? "",
+    });
+    if (lineRange === null) {
       return null;
     }
 
     return {
-      lineNumber,
+      lineRange,
       path: value.slice(0, colonLineMatch.index),
     };
   }
 
   return {
-    lineNumber: null,
+    lineRange: null,
     path: value,
   };
 }
@@ -350,6 +405,18 @@ function encodeFileUrlPath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
+function buildLineRangeAnchorFragment(
+  lineRange: FilePreviewLineRange | null,
+): string {
+  if (lineRange === null) {
+    return "";
+  }
+  if (lineRange.startLineNumber === lineRange.endLineNumber) {
+    return `#L${lineRange.startLineNumber}`;
+  }
+  return `#L${lineRange.startLineNumber}-L${lineRange.endLineNumber}`;
+}
+
 export function buildLocalFileAnchorHref(
   link: MarkdownPreviewLocalFileLink | null,
   originalHref: string | undefined,
@@ -358,7 +425,7 @@ export function buildLocalFileAnchorHref(
     return originalHref;
   }
 
-  return `file://${encodeFileUrlPath(link.path)}${
-    link.lineNumber !== null ? `#L${link.lineNumber}` : ""
-  }`;
+  return `file://${encodeFileUrlPath(link.path)}${buildLineRangeAnchorFragment(
+    link.lineRange,
+  )}`;
 }

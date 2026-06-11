@@ -317,18 +317,18 @@ const fileChangeTimelineService: TimelineRow = fileChangeRow({
 +  toViewProjectionEntries,
    toViewProjection,
 @@ -256,2 +257,23 @@
-     thread.type === "manager" && !options.showAllManagerEvents;
+     thread.parentThreadId !== null && !options.showAllParentEvents;
 +  const contextWindowUsageRows = listContextWindowUsageRows(db, {
 +    threadId: thread.id,
 +  });
 +
-+  if (isDefaultManagerView) {
++  if (isDefaultParentView) {
 +    return {
-+      rows: buildManagerConversationRows(
++      rows: buildParentConversationRows(
 +        toViewMessages(decodedEvents, {
-+          includeInternalSystemMessages: options.showAllManagerEvents,
++          includeInternalSystemMessages: options.showAllParentEvents,
 +          threadStatus: thread.status,
-+          threadType: thread.type,
++          parentThreadId: thread.parentThreadId,
 +        }),
 +      ),
 +      activeThinking: null,
@@ -546,7 +546,7 @@ const explorationBundleRows: TimelineRow[] = [
 ];
 
 // ---- Tools bundle ---------------------------------------------------------
-// Non-exploration `tool` rows (TodoWrite / message_user / ToolSearch) bundle
+// Non-exploration `tool` rows (TodoWrite / notify_user / ToolSearch) bundle
 // under "tools". Real tool names + arg shapes pulled from threads in the DB.
 
 function plainToolRow(args: PlainToolRowArgs): TimelineRow {
@@ -586,11 +586,11 @@ const toolsBundleRows: TimelineRow[] = [
   plainToolRow({
     id: "call_msg_user_1",
     seq: 35210,
-    toolName: "message_user",
+    toolName: "notify_user",
     toolArgs: {
       text: "Refactor in flight — moving the assistant stream projection into thread-view.",
     },
-    output: "Message delivered",
+    output: "Notification delivered",
   }),
   plainToolRow({
     id: "call_toolsearch_1",
@@ -755,7 +755,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="tools"
-        hint="non-exploration tool rows (TodoWrite, message_user, ToolSearch)"
+        hint="non-exploration tool rows (TodoWrite, notify_user, ToolSearch)"
       >
         <TimelineStage>
           <ThreadTimelineRows

@@ -623,6 +623,10 @@ export interface GetLatestThreadOutputEventRowArgs {
   threadId: string;
 }
 
+export interface GetLatestThreadSystemErrorEventRowArgs {
+  threadId: string;
+}
+
 export interface GetLatestThreadSequenceArgs {
   threadId: string;
 }
@@ -1035,14 +1039,6 @@ export interface StandardTimelineSegmentAnchorRow {
   sequence: number;
 }
 
-/**
- * Which `client/turn/requested` turns count as timeline segment anchors:
- * - `all`: every turn, including system client requests
- * - `non-system`: turns not initiated by the system
- * - `user`: user-initiated turns only
- */
-export type TimelineSegmentAnchorAudience = "all" | "non-system" | "user";
-
 function timelineSegmentAnchorSelection() {
   return {
     rowId: sql<string>`${events.threadId} || ':user-seed:' || ${events.sequence}`,
@@ -1050,27 +1046,10 @@ function timelineSegmentAnchorSelection() {
   };
 }
 
-function timelineSegmentAnchorInitiatorCondition(
-  audience: TimelineSegmentAnchorAudience,
-): SQL {
-  switch (audience) {
-    case "all":
-      return sql`1 = 1`;
-    case "non-system":
-      return sql`COALESCE(json_extract(${events.data}, '$.initiator'), 'user') <> 'system'`;
-    case "user":
-      return sql`COALESCE(json_extract(${events.data}, '$.initiator'), 'user') = 'user'`;
-  }
-}
-
-function timelineSegmentAnchorConditions(
-  threadId: string,
-  audience: TimelineSegmentAnchorAudience,
-): SQL | undefined {
+function timelineSegmentAnchorConditions(threadId: string): SQL | undefined {
   return and(
     eq(events.threadId, threadId),
     eq(events.type, "client/turn/requested"),
-    timelineSegmentAnchorInitiatorCondition(audience),
     sql`(
       COALESCE(json_extract(${events.data}, '$.target.kind'), 'new-turn')
         IN ('thread-start', 'new-turn')
@@ -1094,7 +1073,6 @@ function timelineSegmentAnchorConditions(
 
 export interface ListTimelineSegmentAnchorsDescendingArgs {
   threadId: string;
-  audience: TimelineSegmentAnchorAudience;
   /** Restrict to anchors strictly before this sequence (exclusive). */
   beforeSequence?: number;
   limit: number;
@@ -1109,10 +1087,7 @@ export function listTimelineSegmentAnchorsDescending(
   db: DbConnection,
   args: ListTimelineSegmentAnchorsDescendingArgs,
 ): StandardTimelineSegmentAnchorRow[] {
-  const conditions = timelineSegmentAnchorConditions(
-    args.threadId,
-    args.audience,
-  );
+  const conditions = timelineSegmentAnchorConditions(args.threadId);
   const where =
     args.beforeSequence === undefined
       ? conditions
@@ -1128,7 +1103,6 @@ export function listTimelineSegmentAnchorsDescending(
 
 export interface TimelineSegmentAnchorLookupArgs {
   threadId: string;
-  audience: TimelineSegmentAnchorAudience;
   sequence: number;
 }
 
@@ -1142,7 +1116,7 @@ export function findTimelineSegmentAnchorSequenceAfter(
     .from(events)
     .where(
       and(
-        timelineSegmentAnchorConditions(args.threadId, args.audience),
+        timelineSegmentAnchorConditions(args.threadId),
         gt(events.sequence, args.sequence),
       ),
     )
@@ -1162,7 +1136,7 @@ export function getTimelineSegmentAnchorAtSequence(
     .from(events)
     .where(
       and(
-        timelineSegmentAnchorConditions(args.threadId, args.audience),
+        timelineSegmentAnchorConditions(args.threadId),
         eq(events.sequence, args.sequence),
       ),
     )
@@ -1269,6 +1243,23 @@ export function getLatestThreadOutputEventRow(
           AND COALESCE(json_extract(${events.data}, '$.item.text'), '') <> ''
         )
       )`,
+      )
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function getLatestThreadSystemErrorEventRow(
+  db: DbConnection,
+  args: GetLatestThreadSystemErrorEventRowArgs,
+): StoredEventRow | null {
+  return (
+    db
+      .select(storedEventRowFields)
+      .from(events)
+      .where(
+        and(eq(events.threadId, args.threadId), eq(events.type, "system/error")),
       )
       .orderBy(desc(events.sequence))
       .limit(1)

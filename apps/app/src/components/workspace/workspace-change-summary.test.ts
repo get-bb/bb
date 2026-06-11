@@ -1,4 +1,7 @@
-import type { WorkspaceFileStatus } from "@bb/domain";
+import type {
+  WorkspaceCommitSummary,
+  WorkspaceFileStatus,
+} from "@bb/domain";
 import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
@@ -8,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatChangeSummary,
   formatWorkspaceFileStatus,
+  selectWorkspaceAheadCommits,
   selectWorkspaceChangedFilesSection,
   selectWorkspaceChangedFilesSections,
 } from "./workspace-change-summary";
@@ -20,6 +24,16 @@ function makeWorkspaceFileStatus(
     status,
     insertions: null,
     deletions: null,
+  };
+}
+
+function makeCommit(shortSha: string): WorkspaceCommitSummary {
+  return {
+    sha: `${shortSha}0000000000000000000000000000000000`,
+    shortSha,
+    subject: `subject ${shortSha}`,
+    authorName: "Ada",
+    authoredAt: 1_700_000_000_000,
   };
 }
 
@@ -181,5 +195,29 @@ describe("workspace-change-summary", () => {
 
     expect(sections[0]?.kind).toBe("uncommitted");
     expect(section?.kind).toBe("uncommitted");
+  });
+
+  it("selectWorkspaceAheadCommits returns [] when there is no merge base", () => {
+    expect(
+      selectWorkspaceAheadCommits(makeWorkspaceStatus({ mergeBase: null })),
+    ).toEqual([]);
+    expect(selectWorkspaceAheadCommits(undefined)).toEqual([]);
+  });
+
+  it("selectWorkspaceAheadCommits returns ahead commits newest first", () => {
+    const commits = selectWorkspaceAheadCommits(
+      makeWorkspaceStatus({
+        mergeBase: makeWorkspaceMergeBase({
+          aheadCount: 2,
+          // Daemon returns oldest-first (git log --reverse).
+          commits: [makeCommit("aaa1111"), makeCommit("bbb2222")],
+        }),
+      }),
+    );
+
+    expect(commits.map((commit) => commit.shortSha)).toEqual([
+      "bbb2222",
+      "aaa1111",
+    ]);
   });
 });

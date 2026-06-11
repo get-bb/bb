@@ -73,7 +73,7 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
             });
           }}
         >
-          <Icon name="GitMerge" className="size-3.5 shrink-0" />
+          <Icon name="GitBranch" className="size-3.5 shrink-0" />
           <span className="truncate">{environmentBranchName}</span>
         </button>
       ) : null}

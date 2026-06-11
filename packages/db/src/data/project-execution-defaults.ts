@@ -1,17 +1,19 @@
-import { and, eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type {
   ProjectExecutionDefaults,
   PermissionMode,
   ReasoningLevel,
   ServiceTier,
-  ThreadType,
 } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import { projectExecutionDefaults } from "../schema.js";
 
 export interface GetProjectExecutionDefaultsArgs {
   projectId: string;
-  threadType: ThreadType;
+}
+
+export interface ListProjectExecutionDefaultsByProjectIdsArgs {
+  projectIds: readonly string[];
 }
 
 export interface UpsertProjectExecutionDefaultsArgs extends GetProjectExecutionDefaultsArgs {
@@ -36,15 +38,39 @@ export function getProjectExecutionDefaults(
       serviceTier: projectExecutionDefaults.serviceTier,
     })
     .from(projectExecutionDefaults)
-    .where(
-      and(
-        eq(projectExecutionDefaults.projectId, args.projectId),
-        eq(projectExecutionDefaults.threadType, args.threadType),
-      ),
-    )
+    .where(eq(projectExecutionDefaults.projectId, args.projectId))
     .get();
 
   return row ?? null;
+}
+
+export function listProjectExecutionDefaultsByProjectIds(
+  db: DbConnection,
+  args: ListProjectExecutionDefaultsByProjectIdsArgs,
+): Map<string, ProjectExecutionDefaults> {
+  const byProjectId = new Map<string, ProjectExecutionDefaults>();
+  if (args.projectIds.length === 0) {
+    return byProjectId;
+  }
+
+  const rows = db
+    .select({
+      projectId: projectExecutionDefaults.projectId,
+      providerId: projectExecutionDefaults.providerId,
+      model: projectExecutionDefaults.model,
+      reasoningLevel: projectExecutionDefaults.reasoningLevel,
+      permissionMode: projectExecutionDefaults.permissionMode,
+      serviceTier: projectExecutionDefaults.serviceTier,
+    })
+    .from(projectExecutionDefaults)
+    .where(inArray(projectExecutionDefaults.projectId, [...args.projectIds]))
+    .all();
+
+  for (const row of rows) {
+    const { projectId, ...defaults } = row;
+    byProjectId.set(projectId, defaults);
+  }
+  return byProjectId;
 }
 
 export function upsertProjectExecutionDefaults(
@@ -57,7 +83,6 @@ export function upsertProjectExecutionDefaults(
     .values({
       projectId: args.projectId,
       providerId: args.providerId,
-      threadType: args.threadType,
       model: args.model,
       reasoningLevel: args.reasoningLevel,
       permissionMode: args.permissionMode,
@@ -65,10 +90,7 @@ export function upsertProjectExecutionDefaults(
       updatedAt,
     })
     .onConflictDoUpdate({
-      target: [
-        projectExecutionDefaults.projectId,
-        projectExecutionDefaults.threadType,
-      ],
+      target: [projectExecutionDefaults.projectId],
       set: {
         providerId: args.providerId,
         model: args.model,

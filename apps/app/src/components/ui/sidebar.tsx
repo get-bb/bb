@@ -62,6 +62,17 @@ function useIsSidebarShowing() {
   return isCompactViewport ? openMobile : state === "expanded";
 }
 
+/**
+ * Stable callback that closes the mobile sidebar drawer. Every navigation
+ * triggered from inside the sidebar must call this so the destination view is
+ * revealed on compact viewports; on wider viewports the drawer state is
+ * already closed and the call is a no-op.
+ */
+function useCloseMobileSidebar() {
+  const { setOpenMobile } = useSidebar();
+  return React.useCallback(() => setOpenMobile(false), [setOpenMobile]);
+}
+
 const SidebarProvider = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
@@ -537,7 +548,7 @@ interface SidebarStickyGroupProps extends React.ComponentProps<"div"> {
  * collapsible body. CSS `position: sticky` only pushes a header out of the way
  * of the next one when each header is constrained by its own containing block —
  * sticky siblings that share a containing block pin at the same offset and
- * overlap instead. Every nesting level (section/label, project, manager,
+ * overlap instead. Every nesting level (section/label, project, parent thread,
  * worktree) wraps its header + body in one of these so the shove-out behavior
  * is structural, not per-tier boilerplate that a new tier can forget.
  *
@@ -865,6 +876,7 @@ export {
   SidebarStickyStack,
   SidebarStickyTier,
   SidebarTrigger,
+  useCloseMobileSidebar,
   useIsSidebarShowing,
   useSidebar,
 };

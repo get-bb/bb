@@ -6,7 +6,6 @@ export default {
 };
 
 const variants: readonly PillVariant[] = [
-  "default",
   "secondary",
   "destructive",
   "outline",
@@ -14,7 +13,6 @@ const variants: readonly PillVariant[] = [
 ];
 
 const VARIANT_CONTENT: Record<PillVariant, string> = {
-  default: "v1.2",
   secondary: "managed",
   destructive: "Failed",
   outline: "manager",

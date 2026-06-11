@@ -10,11 +10,10 @@ export default {
 const noop = () => {};
 
 const standardThread = makeThread();
-const managerThread = makeThread({
-  id: "thr_manager",
-  type: "manager",
-  title: "Frontend Manager",
-  titleFallback: "Frontend Manager",
+const parentThread = makeThread({
+  id: "thr_parent",
+  title: "Frontend Parent",
+  titleFallback: "Frontend Parent",
 });
 
 export function Thread() {
@@ -47,7 +46,7 @@ export function Thread() {
   );
 }
 
-export function Manager() {
+export function Parent() {
   return (
     <StoryCard>
       <StoryRow
@@ -56,7 +55,7 @@ export function Manager() {
       >
         <DialogStage>
           <ThreadDeleteDialogContent
-            target={{ thread: managerThread }}
+            target={{ thread: parentThread }}
             pending={false}
             onOpenChange={noop}
             onDelete={noop}
@@ -64,14 +63,14 @@ export function Manager() {
         </DialogStage>
       </StoryRow>
       <StoryRow
-        label="assigned children"
-        hint="N child threads will lose their manager"
+        label="child threads"
+        hint="N child threads require delete confirmation"
       >
         <DialogStage>
           <ThreadDeleteDialogContent
             target={{
-              thread: managerThread,
-              assignedChildCount: 3,
+              thread: parentThread,
+              childThreadCount: 3,
             }}
             pending={false}
             onOpenChange={noop}
@@ -80,14 +79,14 @@ export function Manager() {
         </DialogStage>
       </StoryRow>
       <StoryRow
-        label="single assigned child"
+        label="single child"
         hint="same confirmation language with one child"
       >
         <DialogStage>
           <ThreadDeleteDialogContent
             target={{
-              thread: managerThread,
-              assignedChildCount: 1,
+              thread: parentThread,
+              childThreadCount: 1,
             }}
             pending={false}
             onOpenChange={noop}

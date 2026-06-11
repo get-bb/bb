@@ -35,7 +35,7 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("hooks/pre-commit exited with status 1");
   });
 
-  it("renders agent thread messages with inline reply guidance", () => {
+  it("renders agent thread messages without inline reply guidance", () => {
     const rendered = renderTemplate("agentThreadMessage", {
       senderThreadId: "thr_sender",
       messageText: "Please check the failing test.",
@@ -43,7 +43,7 @@ describe("@bb/templates", () => {
 
     expect(rendered).toBe(
       [
-        '[bb message from thread:thr_sender; reply with `bb thread tell thr_sender "<your response>"`]',
+        "[bb message from thread:thr_sender]",
         "",
         "Please check the failing test.",
       ].join("\n"),
@@ -64,123 +64,64 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("nothing to commit");
   });
 
-  it("renders managerAgentInstructions with variables", () => {
-    const rendered = renderTemplate("managerAgentInstructions", {
-      localTimezone: "America/Los_Angeles",
-      managerDataDir: "/tmp/bb-data",
-      managerThreadId: "test-thread-123",
-      threadStoragePath: "/tmp/test-thread-storage",
-      projectId: "test-project-id",
-      projectName: "Test Project",
-      projectRootPath: "/tmp/test-project",
-    });
 
-    // Core structure
-    expect(rendered).toContain(
-      "You are a manager in a project inside bb, a futuristic IDE",
-    );
-    expect(rendered).toContain("agents collaborate to complete tasks");
-    expect(rendered).toContain("Delegate substantive work by default");
-    expect(rendered).toContain(
-      "Keep the user informed in this thread",
-    );
-    expect(rendered).toContain("Worker messages, orchestration notes");
-    expect(rendered).toContain(
-      "ask directly and state the decision or action needed",
-    );
-    expect(rendered).not.toContain("mcp__bb-bridge__message_user");
-    expect(rendered).not.toContain("message_user");
-    expect(rendered).toContain("bb thread spawn");
-    expect(rendered).toContain("Simple delegation");
-    expect(rendered).toContain("Apps are global within the local data dir");
-    expect(rendered).toContain("bb guide app");
-    expect(rendered).toContain("bb guide schedules");
-    expect(rendered).not.toContain("Structure `ASYNC.md`");
-    expect(rendered).toContain("bb thread schedule");
-    expect(rendered).not.toContain("--background: oklch(0.9551 0 0);");
-    expect(rendered).not.toContain("starter/no-preferences content");
-    expect(rendered).not.toContain("/Users/sawyerhood/.bb/thread-storage");
-
-    // Variables rendered
-    expect(rendered).toContain("test-thread-123");
-    expect(rendered).toContain("Test Project");
-    expect(rendered).toContain("America/Los_Angeles");
-    expect(rendered).toContain("/tmp/bb-data");
-    expect(rendered).toContain("/tmp/test-thread-storage");
-    expect(rendered).not.toContain("PREFERENCES.md contents");
-  });
-
-  it("renders manager preferences system messages", () => {
-    const current = renderTemplate("systemMessageManagerPreferencesCurrent", {
-      fence: "````",
-      preferencesContent: "# Preferences\n\n```md\nnested\n```",
-    });
-    expect(current).toContain("[bb system]");
-    expect(current).toContain("Current PREFERENCES.md contents:");
-    expect(current).toContain("````md");
-    expect(current).toContain("```md\nnested\n```");
-
-    const updated = renderTemplate("systemMessageManagerPreferencesUpdated", {
-      fence: "```",
-      preferencesContent: "- concise updates\n",
-    });
-    expect(updated).toContain("PREFERENCES.md has been updated. New contents:");
-    expect(updated).toContain("- concise updates");
-
+  it("renders workflow run system messages in block form with the [bb system] prefix", () => {
+    // The bodies are pinned exactly: the integration suites' wording markers
+    // ("was paused", "completed. Fetch the result", "was cancelled") and the
+    // manager-instructions claim that these arrive `[bb system]`-prefixed
+    // both ride this rendering.
     expect(
-      renderTemplate("systemMessageManagerPreferencesRemoved", {}),
-    ).toContain("PREFERENCES.md was removed.");
-    expect(
-      renderTemplate("systemMessageManagerPreferencesWarning", {
-        reason: "The file is larger than the 256 KiB inline limit.",
+      renderTemplate("systemMessageWorkflowRunPaused", {
+        runId: "wfr_test",
+        workflowName: "deep-research",
+        reason: "host daemon unavailable",
       }),
-    ).toContain("The file is larger than the 256 KiB inline limit.");
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "Workflow run wfr_test (deep-research) was paused: host daemon unavailable. The completed prefix is preserved — resume it from the run page or with `bb workflow resume wfr_test`.",
+      ].join("\n"),
+    );
+    expect(
+      renderTemplate("systemMessageWorkflowRunCompleted", {
+        runId: "wfr_test",
+        workflowName: "deep-research",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "Workflow run wfr_test (deep-research) completed. Fetch the result with `bb workflow show wfr_test`.",
+      ].join("\n"),
+    );
+    expect(
+      renderTemplate("systemMessageWorkflowRunFailed", {
+        runId: "wfr_test",
+        workflowName: "deep-research",
+        failureSuffix: ": script_invalid",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "Workflow run wfr_test (deep-research) failed: script_invalid.",
+      ].join("\n"),
+    );
+    expect(
+      renderTemplate("systemMessageWorkflowRunCancelled", {
+        runId: "wfr_test",
+        workflowName: "deep-research",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "Workflow run wfr_test (deep-research) was cancelled.",
+      ].join("\n"),
+    );
   });
 
-  it("renders systemMessageManagerWelcome with first-boot guidance", () => {
-    const rendered = renderTemplate("systemMessageManagerWelcome", {});
-
-    expect(rendered).toContain("[bb system]");
-    expect(rendered).toContain("Welcome. You just came online inside bb.");
-    expect(rendered).toContain("First, inspect `PREFERENCES.md`");
-    expect(rendered).toContain("Do not interrogate. Do not sound like a");
-    expect(rendered).toContain("starter/no-preferences");
-    expect(rendered).toContain(
-      "Use this thread to communicate with the user.",
-    );
-    expect(rendered).not.toContain("mcp__bb-bridge__message_user");
-    expect(rendered).not.toContain("message_user");
-    expect(rendered).toContain("name, vibe, or other identity details");
-    expect(rendered).toContain("may already exist from user");
-    expect(rendered).toContain("Preserve any seeded structure");
-
-    // Anchors the two opening asks: scope + landing mode.
-    expect(rendered).toContain(
-      "Your first user-facing message must anchor two things up front",
-    );
-    expect(rendered).toContain("- Manage an individual feature or workstream.");
-    expect(rendered).toContain("- Manage all coding agents across this repo.");
-    expect(rendered).toContain(
-      "- Manage a specific process (code review, async triage, releases, ...).",
-    );
-    expect(rendered).toContain("**Landing changes**");
-    expect(rendered).toContain(
-      "open a PR per worker, or merge into a local branch",
-    );
-  });
-
-  it("renders systemMessageManagerAsyncMdMigrationReminder", () => {
-    const rendered = renderTemplate(
-      "systemMessageManagerAsyncMdMigrationReminder",
-      {},
-    );
-
-    expect(rendered).toContain("[bb system]");
-    expect(rendered).toContain("`ASYNC.md` is deprecated");
-    expect(rendered).toContain("bb thread schedule create");
-    expect(rendered).toContain("bb guide schedules");
-    expect(rendered).toContain("delete or rename `ASYNC.md`");
-  });
 
   it("renders bbGuideApp", () => {
     const templates = listTemplates();
@@ -225,12 +166,26 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("The cron month field must stay `*`.");
   });
 
-  it("renders standardAgentInstructions without user-question guidance", () => {
-    const rendered = renderTemplate("standardAgentInstructions", {});
+  it("renders standardAgentAppendInstructions without user-question guidance", () => {
+    const rendered = renderTemplate("standardAgentAppendInstructions", {});
 
-    expect(rendered).toContain("You are a coding agent");
+    expect(rendered).toContain("You are working inside bb");
+    expect(rendered).toContain("agentic IDE");
     expect(rendered).not.toContain(
       "Ask the user a blocking question only when",
+    );
+  });
+
+  it("renders due thread schedule messages with schedule system chrome", () => {
+    const rendered = renderTemplate("systemMessageThreadScheduleDue", {
+      prompt: "Run the daily recap.",
+      scheduleId: "tsched_daily",
+    });
+
+    expect(rendered).toBe(
+      ["[bb schedule due:tsched_daily]", "", "Run the daily recap."].join(
+        "\n",
+      ),
     );
   });
 

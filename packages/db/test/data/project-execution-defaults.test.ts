@@ -34,7 +34,6 @@ describe("project-execution-defaults", () => {
     expect(
       getProjectExecutionDefaults(db, {
         projectId: project.id,
-        threadType: "standard",
       }),
     ).toBeNull();
   });
@@ -45,7 +44,6 @@ describe("project-execution-defaults", () => {
     upsertProjectExecutionDefaults(db, {
       projectId: project.id,
       providerId: "codex",
-      threadType: "standard",
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "full",
@@ -55,7 +53,6 @@ describe("project-execution-defaults", () => {
     expect(
       getProjectExecutionDefaults(db, {
         projectId: project.id,
-        threadType: "standard",
       }),
     ).toEqual({
       providerId: "codex",
@@ -72,7 +69,6 @@ describe("project-execution-defaults", () => {
     upsertProjectExecutionDefaults(db, {
       projectId: project.id,
       providerId: "codex",
-      threadType: "standard",
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "full",
@@ -81,7 +77,6 @@ describe("project-execution-defaults", () => {
     upsertProjectExecutionDefaults(db, {
       projectId: project.id,
       providerId: "codex",
-      threadType: "standard",
       model: "gpt-5-mini",
       reasoningLevel: "high",
       permissionMode: "workspace-write",
@@ -91,7 +86,6 @@ describe("project-execution-defaults", () => {
     expect(
       getProjectExecutionDefaults(db, {
         projectId: project.id,
-        threadType: "standard",
       }),
     ).toEqual({
       providerId: "codex",
@@ -102,13 +96,12 @@ describe("project-execution-defaults", () => {
     });
   });
 
-  it("keeps defaults isolated by thread type and replaces the remembered provider choice", () => {
+  it("replaces the remembered provider choice for the project", () => {
     const { db, project } = setup();
 
     upsertProjectExecutionDefaults(db, {
       projectId: project.id,
       providerId: "codex",
-      threadType: "standard",
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "full",
@@ -116,17 +109,7 @@ describe("project-execution-defaults", () => {
     });
     upsertProjectExecutionDefaults(db, {
       projectId: project.id,
-      providerId: "codex",
-      threadType: "manager",
-      model: "gpt-5-mini",
-      reasoningLevel: "high",
-      permissionMode: "workspace-write",
-      serviceTier: "fast",
-    });
-    upsertProjectExecutionDefaults(db, {
-      projectId: project.id,
       providerId: "claude-code",
-      threadType: "standard",
       model: "claude-opus-4-1",
       reasoningLevel: "high",
       permissionMode: "workspace-write",
@@ -136,20 +119,10 @@ describe("project-execution-defaults", () => {
     expect(
       getProjectExecutionDefaults(db, {
         projectId: project.id,
-        threadType: "standard",
       }),
     ).toMatchObject({
       providerId: "claude-code",
       model: "claude-opus-4-1",
-    });
-    expect(
-      getProjectExecutionDefaults(db, {
-        projectId: project.id,
-        threadType: "manager",
-      }),
-    ).toMatchObject({
-      providerId: "codex",
-      model: "gpt-5-mini",
     });
   });
 
@@ -159,7 +132,6 @@ describe("project-execution-defaults", () => {
     upsertProjectExecutionDefaults(db, {
       projectId: project.id,
       providerId: "codex",
-      threadType: "standard",
       model: "gpt-5",
       reasoningLevel: "medium",
       permissionMode: "full",
@@ -170,7 +142,6 @@ describe("project-execution-defaults", () => {
     expect(
       getProjectExecutionDefaults(db, {
         projectId: project.id,
-        threadType: "standard",
       }),
     ).toBeNull();
   });

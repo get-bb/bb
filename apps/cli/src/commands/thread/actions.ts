@@ -13,10 +13,7 @@ import {
   prependErrorContext,
   requireThreadIdOrSelf,
 } from "../helpers.js";
-import {
-  resolveExplicitIdFlag,
-  resolveThreadId,
-} from "../../context-env.js";
+import { resolveExplicitIdFlag, resolveThreadId } from "../../context-env.js";
 import {
   parsePermissionMode,
   parseServiceTier,
@@ -49,7 +46,7 @@ interface ThreadPinCommandOptions {
 }
 
 interface ThreadDeleteCommandOptions {
-  confirmAssignedChildThreads?: boolean;
+  confirmChildThreads?: boolean;
   yes?: boolean;
   json?: boolean;
 }
@@ -68,16 +65,23 @@ interface ThreadStopCommandOptions {
   json?: boolean;
 }
 
+type ThreadTellDeliveryMode = "auto" | "queue" | "steer";
+
 interface PostThreadMessageArgs {
   getUrl: () => string;
   threadId: string;
   message: string;
-  mode: "auto" | "steer";
+  mode: ThreadTellDeliveryMode;
   model?: string;
   permissionMode?: PermissionMode;
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
   senderThreadId?: string;
+}
+
+interface PostThreadMessageResult {
+  ok: true;
+  mode: ThreadTellDeliveryMode;
 }
 
 interface ThreadUpdateBody {
@@ -97,8 +101,8 @@ export function registerActionsCommands(
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .option("--title <title>", "Set the thread title")
-    .option("--parent-thread <id>", "Set the managing parent thread id")
-    .option("--clear-parent-thread", "Clear the managing parent thread id")
+    .option("--parent-thread <id>", "Set the parent thread id")
+    .option("--clear-parent-thread", "Clear the parent thread id")
     .option(
       "--model <model>",
       "Set the sticky model applied on the thread's next turn",
@@ -159,8 +163,8 @@ export function registerActionsCommands(
           if (opts.parentThread || opts.clearParentThread) {
             console.log(
               thread.parentThreadId
-                ? `Managed by ${thread.parentThreadId}`
-                : "No managing parent thread",
+                ? `Parent: ${thread.parentThreadId}`
+                : "No parent thread",
             );
           }
           if (opts.model) {
@@ -249,8 +253,8 @@ export function registerActionsCommands(
     .description("Delete a thread permanently")
     .option("--yes", "Skip the confirmation prompt")
     .option(
-      "--confirm-assigned-child-threads",
-      "Confirm deleting a manager with assigned child threads",
+      "--confirm-child-threads",
+      "Confirm deleting a thread with child threads",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -271,8 +275,7 @@ export function registerActionsCommands(
 
           await sdk.threads.delete({
             threadId: id,
-            managerChildThreadsConfirmed:
-              opts.confirmAssignedChildThreads === true,
+            childThreadsConfirmed: opts.confirmChildThreads === true,
           });
         } catch (err: unknown) {
           throw prependErrorContext(`Failed to delete thread ${id}`, err);
@@ -293,7 +296,7 @@ export function registerActionsCommands(
       "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
-    .option("--mode <mode>", "Message mode (e.g. steer)")
+    .option("--mode <mode>", "Message mode: queue, steer, or auto")
     .action(
       action(
         async (id: string, message: string, opts: ThreadTellCommandOptions) => {
@@ -336,23 +339,26 @@ export function registerActionsCommands(
 
 async function postThreadMessage(
   args: PostThreadMessageArgs,
-): Promise<{ ok: boolean; mode?: "steer" }> {
+): Promise<PostThreadMessageResult> {
   const sdk = createCliBbSdk(args.getUrl());
-  const response = await sdk.threads.send({
+  await sdk.threads.send({
     threadId: args.threadId,
     input: [{ type: "text", text: args.message, mentions: [] }],
-    mode: args.mode,
+    mode:
+      args.mode === "steer"
+        ? "steer-if-active"
+        : args.mode === "auto"
+          ? "auto"
+          : "queue-if-active",
     ...(args.model ? { model: args.model } : {}),
     ...(args.permissionMode ? { permissionMode: args.permissionMode } : {}),
     ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
     ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
     ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
   });
-  if (args.mode === "steer") {
-    return { ...response, mode: "steer" };
-  }
   return {
-    ...response,
+    ok: true,
+    mode: args.mode,
   };
 }
 
@@ -364,12 +370,17 @@ function resolveSenderThreadId(targetThreadId: string): string | undefined {
   return senderThreadId;
 }
 
-function resolveThreadMessageMode(value: string | undefined): "auto" | "steer" {
-  if (value === undefined) return "auto";
+function resolveThreadMessageMode(
+  value: string | undefined,
+): ThreadTellDeliveryMode {
+  if (value === undefined) return "queue";
   const normalized = value.trim().toLowerCase();
   if (normalized === "steer") return "steer";
+  if (normalized === "steer-if-active") return "steer";
+  if (normalized === "queue") return "queue";
+  if (normalized === "queue-if-active") return "queue";
   if (normalized === "auto") return "auto";
   throw new Error(
-    `Invalid message mode '${value}'. Expected 'auto' or 'steer'.`,
+    `Invalid message mode '${value}'. Expected 'queue', 'steer', or 'auto'.`,
   );
 }

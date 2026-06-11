@@ -14,7 +14,6 @@ import {
   createTestDaemonEventEnvelope,
   internalAuthHeaders,
 } from "../helpers/commands.js";
-import { MESSAGE_USER_MIGRATION_RESULT_TEXT } from "../../src/internal/tool-calls.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEvent,
@@ -24,7 +23,7 @@ import {
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
-import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
+import { withTestHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 
 async function postEventBatch(args: {
@@ -425,10 +424,9 @@ describe("internal event and tool-call routes", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const managerThread = seedThread(harness.deps, {
+      const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        type: "manager",
       });
 
       const response = await harness.app.request(
@@ -438,8 +436,8 @@ describe("internal event and tool-call routes", () => {
           headers: internalAuthHeaders(harness),
           body: JSON.stringify({
             sessionId: session.id,
-            threadId: managerThread.id,
-            providerThreadId: "provider-manager-unsupported-tool",
+            threadId: thread.id,
+            providerThreadId: "provider-unsupported-tool",
             turnId: "turn-1",
             callId: "call-1",
             tool: "spawn_thread",
@@ -458,13 +456,13 @@ describe("internal event and tool-call routes", () => {
       const childThreads = harness.db
         .select()
         .from(threads)
-        .where(eq(threads.parentThreadId, managerThread.id))
+        .where(eq(threads.parentThreadId, thread.id))
         .all();
       expect(childThreads).toHaveLength(0);
     });
   });
 
-  it("rejects message_user tool calls before the turn start is stored", async () => {
+  it("rejects message_user tool calls as unsupported", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -474,10 +472,9 @@ describe("internal event and tool-call routes", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const managerThread = seedThread(harness.deps, {
+      const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        type: "manager",
       });
 
       const response = await harness.app.request(
@@ -487,8 +484,8 @@ describe("internal event and tool-call routes", () => {
           headers: internalAuthHeaders(harness),
           body: JSON.stringify({
             sessionId: session.id,
-            threadId: managerThread.id,
-            providerThreadId: "provider-manager-missing-turn",
+            threadId: thread.id,
+            providerThreadId: "provider-message-user",
             turnId: "turn-missing",
             callId: "call-missing-turn",
             tool: "message_user",
@@ -499,15 +496,18 @@ describe("internal event and tool-call routes", () => {
         },
       );
 
-      expect(response.status).toBe(409);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "invalid_request",
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        success: false,
+        contentItems: [
+          { type: "inputText", text: "Unsupported tool: message_user" },
+        ],
       });
       expect(
         harness.db
           .select()
           .from(events)
-          .where(eq(events.threadId, managerThread.id))
+          .where(eq(events.threadId, thread.id))
           .all(),
       ).toHaveLength(0);
     });
@@ -523,10 +523,9 @@ describe("internal event and tool-call routes", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const managerThread = seedThread(harness.deps, {
+      const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        type: "manager",
       });
 
       const response = await harness.app.request(
@@ -536,8 +535,8 @@ describe("internal event and tool-call routes", () => {
           headers: internalAuthHeaders(harness),
           body: JSON.stringify({
             sessionId: session.id,
-            threadId: managerThread.id,
-            providerThreadId: "provider-manager-empty-turn",
+            threadId: thread.id,
+            providerThreadId: "provider-empty-turn",
             turnId: "",
             callId: "call-empty-turn",
             tool: "message_user",
@@ -556,17 +555,14 @@ describe("internal event and tool-call routes", () => {
         harness.db
           .select()
           .from(events)
-          .where(eq(events.threadId, managerThread.id))
+          .where(eq(events.threadId, thread.id))
           .all(),
       ).toHaveLength(0);
     });
   });
 
-  it("accepts message_user tool calls after the turn start is stored", async () => {
-    const harness = await createTestAppHarness();
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(1_000);
+  it("still rejects message_user after the turn start is stored", async () => {
+    await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -575,24 +571,22 @@ describe("internal event and tool-call routes", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const managerThread = seedThread(harness.deps, {
+      const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        type: "manager",
       });
       seedEvent(harness.deps, {
-        threadId: managerThread.id,
+        threadId: thread.id,
         environmentId: environment.id,
-        providerThreadId: "provider-manager-message-user",
+        providerThreadId: "provider-message-user",
         sequence: 1,
         type: "turn/started",
         scope: turnScope("turn-2"),
         data: {
-          providerThreadId: "provider-manager-message-user",
+          providerThreadId: "provider-message-user",
         },
       });
 
-      vi.setSystemTime(2_000);
       const response = await harness.app.request(
         "/internal/session/tool-call",
         {
@@ -600,8 +594,8 @@ describe("internal event and tool-call routes", () => {
           headers: internalAuthHeaders(harness),
           body: JSON.stringify({
             sessionId: session.id,
-            threadId: managerThread.id,
-            providerThreadId: "provider-manager-message-user",
+            threadId: thread.id,
+            providerThreadId: "provider-message-user",
             turnId: "turn-2",
             callId: "call-2",
             tool: "message_user",
@@ -614,29 +608,18 @@ describe("internal event and tool-call routes", () => {
 
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({
-        success: true,
+        success: false,
         contentItems: [
-          { type: "inputText", text: MESSAGE_USER_MIGRATION_RESULT_TEXT },
+          { type: "inputText", text: "Unsupported tool: message_user" },
         ],
       });
       const storedEvents = harness.db
         .select()
         .from(events)
-        .where(eq(events.threadId, managerThread.id))
+        .where(eq(events.threadId, thread.id))
         .orderBy(events.sequence)
         .all();
-      expect(storedEvents).toHaveLength(2);
-      expect(storedEvents[1]?.type).toBe("system/manager/user_message");
-      const updatedManagerThread = harness.db
-        .select()
-        .from(threads)
-        .where(eq(threads.id, managerThread.id))
-        .get();
-      expect(updatedManagerThread?.lastReadAt).toBe(1_000);
-      expect(updatedManagerThread?.latestAttentionAt).toBe(2_000);
-    } finally {
-      vi.useRealTimers();
-      await harness.cleanup();
-    }
+      expect(storedEvents).toHaveLength(1);
+    });
   });
 });

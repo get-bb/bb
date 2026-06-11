@@ -1,6 +1,6 @@
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import type { ChildProcess, ExecFileException } from "node:child_process";
-import { closeSync, openSync, writeSync } from "node:fs";
+import { closeSync, openSync } from "node:fs";
 import fs from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -34,7 +34,7 @@ type EnvironmentMap = Record<string, string>;
 // pair must not inherit it: BB_THREAD_STORAGE in particular points at the parent
 // thread's own storage subdirectory, which the daemon would otherwise adopt as
 // its storage root and diverge from the server's data-dir-derived path, breaking
-// manager thread.start with "Thread storage path escapes the storage root".
+// thread.start with "Thread storage path escapes the storage root".
 const STANDALONE_THREAD_CONTEXT_ENV = [
   "BB_THREAD_ID",
   "BB_ENVIRONMENT_ID",
@@ -91,19 +91,6 @@ interface SpawnLoggedProcessOptions {
   cwd: string;
   env: NodeJS.ProcessEnv;
   logPath: string;
-}
-
-interface StartQuickTunnelArgs {
-  env?: NodeJS.ProcessEnv;
-  logPath: string;
-  maxAttempts?: number;
-  port: number;
-  timeoutMs?: number;
-}
-
-interface StartQuickTunnelResult {
-  process: ChildProcess;
-  publicUrl: string;
 }
 
 interface StartQaServerArgs {
@@ -509,133 +496,6 @@ export function spawnLoggedProcess(
   } finally {
     closeSync(logFd);
   }
-}
-
-function extractQuickTunnelUrl(text: string): string | null {
-  const match = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/iu);
-  return match?.[0] ?? null;
-}
-
-export async function startQuickTunnel(
-  args: StartQuickTunnelArgs,
-): Promise<StartQuickTunnelResult> {
-  const originUrl = buildLocalServerUrl(args.port);
-  const maxAttempts = args.maxAttempts ?? 3;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const logFd = openSync(args.logPath, "a");
-    let closed = false;
-    let child: ChildProcess | null = null;
-
-    const closeLogFd = () => {
-      if (closed) {
-        return;
-      }
-      closed = true;
-      closeSync(logFd);
-    };
-
-    writeSync(
-      logFd,
-      `\n--- quick tunnel attempt ${attempt}/${maxAttempts} ---\n`,
-    );
-
-    try {
-      child = spawn(
-        "cloudflared",
-        [
-          "tunnel",
-          "--no-autoupdate",
-          "--url",
-          originUrl,
-          "--metrics",
-          "127.0.0.1:0",
-        ],
-        {
-          cwd: repoRoot,
-          env: {
-            ...process.env,
-            ...(args.env ?? {}),
-          },
-          stdio: ["ignore", "pipe", "pipe"],
-        },
-      );
-      child.unref();
-      const tunnelProcess = child;
-
-      let discoveredUrl: string | null = null;
-
-      const handleOutput = (chunk: Buffer): void => {
-        writeSync(logFd, chunk);
-        if (discoveredUrl) {
-          return;
-        }
-        const nextUrl = extractQuickTunnelUrl(String(chunk));
-        if (nextUrl) {
-          discoveredUrl = nextUrl;
-        }
-      };
-
-      tunnelProcess.stdout?.on("data", handleOutput);
-      tunnelProcess.stderr?.on("data", handleOutput);
-      tunnelProcess.once("exit", closeLogFd);
-
-      tunnelProcess.once("error", (error) => {
-        writeSync(logFd, `${String(error)}\n`);
-      });
-
-      try {
-        const publicUrl = await waitFor(
-          async () => {
-            if (discoveredUrl) {
-              return discoveredUrl;
-            }
-            if (tunnelProcess.exitCode !== null) {
-              throw new Error(
-                `cloudflared exited with code ${tunnelProcess.exitCode}`,
-              );
-            }
-            if (tunnelProcess.killed) {
-              throw new Error(
-                "cloudflared was killed before producing a public URL",
-              );
-            }
-            return null;
-          },
-          {
-            timeoutMs: args.timeoutMs ?? 20_000,
-            description: "cloudflared quick tunnel URL",
-          },
-        );
-
-        return {
-          process: tunnelProcess,
-          publicUrl,
-        };
-      } catch (error) {
-        await killProcess(child.pid).catch(() => undefined);
-        closeLogFd();
-        if (attempt === maxAttempts) {
-          throw new Error(
-            `Failed to start quick tunnel for ${originUrl}. See ${args.logPath} for details.`,
-            { cause: error instanceof Error ? error : undefined },
-          );
-        }
-      }
-    } catch (error) {
-      await killProcess(child?.pid).catch(() => undefined);
-      closeLogFd();
-      if (attempt === maxAttempts) {
-        throw error;
-      }
-    }
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 1_000 * attempt);
-    });
-  }
-
-  throw new Error(`Failed to start quick tunnel for ${originUrl}`);
 }
 
 async function isServerReady(serverUrl: string): Promise<boolean> {

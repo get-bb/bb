@@ -205,9 +205,6 @@ export const claudeUserQuestionOptionSchema = z.object({
   description: z.string().min(1),
   preview: z.string().optional(),
 });
-export type ClaudeUserQuestionOption = z.infer<
-  typeof claudeUserQuestionOptionSchema
->;
 
 export const claudeUserQuestionSchema = z.object({
   question: z.string().min(1),

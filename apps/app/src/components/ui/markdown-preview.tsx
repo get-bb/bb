@@ -22,6 +22,7 @@ import remarkGfm from "remark-gfm";
 import { ImageLightbox } from "./image-lightbox.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "./icon.js";
+import { AppRouteAnchor } from "./app-route-anchor.js";
 import { normalizeLocalFileMarkdownLinks } from "./markdown-local-file-link-normalize.js";
 import {
   buildLocalFileAnchorHref,
@@ -33,6 +34,7 @@ import type {
   MarkdownLocalFileLinkRouting,
 } from "./markdown-link-routing.js";
 import { usePreferredTheme, type Theme } from "@/hooks/useTheme";
+import { resolveAppRouteHref } from "@/lib/app-route-paths";
 import { cn } from "@/lib/utils";
 
 export interface MarkdownPreviewProps {
@@ -48,6 +50,10 @@ export interface MarkdownPreviewProps {
 interface MarkdownAnchorProps
   extends ComponentPropsWithoutRef<"a">, ExtraProps {
   linkRouting?: MarkdownLinkRouting;
+}
+
+interface IsMarkdownAppRouteHrefArgs {
+  href: string | undefined;
 }
 
 interface BuildMarkdownComponentsArgs {
@@ -114,6 +120,21 @@ const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
   rehypeSanitize,
 ];
 
+function isMarkdownAppRouteHref({
+  href,
+}: IsMarkdownAppRouteHrefArgs): boolean {
+  if (!href || typeof window === "undefined") {
+    return false;
+  }
+
+  return (
+    resolveAppRouteHref({
+      currentOrigin: window.location.origin,
+      href,
+    }) !== null
+  );
+}
+
 function buildLocalFileAwareUrlTransform({
   fallbackUrlTransform,
   localFileRouting,
@@ -158,18 +179,24 @@ function MarkdownAnchor({
 }: MarkdownAnchorProps) {
   const localFileRouting = linkRouting?.localFile;
   const onOpenLocalFileLink = localFileRouting?.onOpenLink;
-  const localFileLink = localFileRouting
-    ? parseLocalFileHref({
-        absoluteLinks: localFileRouting.absoluteLinks,
-        href,
-      })
-    : null;
+  const isAppRouteHref = isMarkdownAppRouteHref({ href });
+  const localFileLink =
+    !isAppRouteHref && localFileRouting
+      ? parseLocalFileHref({
+          absoluteLinks: localFileRouting.absoluteLinks,
+          href,
+        })
+      : null;
   const anchorHref = buildLocalFileAnchorHref(localFileLink, href);
   const handleAnchorClick = (event: MarkdownAnchorEvent) => {
     if (localFileLink && onOpenLocalFileLink) {
       if (onOpenLocalFileLink(localFileLink)) {
         event.preventDefault();
       }
+      return;
+    }
+
+    if (isAppRouteHref) {
       return;
     }
 
@@ -181,7 +208,7 @@ function MarkdownAnchor({
   };
 
   return (
-    <a
+    <AppRouteAnchor
       {...anchorProps}
       href={anchorHref}
       className={cn(
@@ -200,7 +227,7 @@ function MarkdownAnchor({
           className="size-3 shrink-0 self-center text-subtle-foreground"
         />
       ) : null}
-    </a>
+    </AppRouteAnchor>
   );
 }
 
@@ -238,7 +265,7 @@ function MarkdownCode({
   }
   return (
     <code
-      className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
+      className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs"
       {...props}
     >
       {children}

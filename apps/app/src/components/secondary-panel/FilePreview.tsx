@@ -6,18 +6,25 @@ import {
   useState,
 } from "react";
 import { File as PierreFile } from "@pierre/diffs/react";
+import type { FileOptions } from "@pierre/diffs/react";
 import type { SelectedLineRange, SupportedLanguages } from "@pierre/diffs";
 import type { UrlTransform } from "react-markdown";
 import { Button } from "@/components/ui/button.js";
+import { COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { CopyButton } from "@/components/ui/copy-button.js";
 import { Icon } from "@/components/ui/icon.js";
+import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
-import type { WorkspaceFilePreviewStatusLabel } from "@/lib/file-preview";
+import type {
+  FilePreviewLineRange,
+  WorkspaceFilePreviewStatusLabel,
+} from "@/lib/file-preview";
+import { cn } from "@/lib/utils";
 
 export interface FilePreviewFile {
   name: string;
@@ -44,12 +51,12 @@ export type FilePreviewState =
       kind: "html";
       file: FilePreviewFile;
       iframe: IframeFilePreviewTarget;
-      lineNumber: number | null;
+      lineRange: FilePreviewLineRange | null;
     }
   | {
       kind: "ready";
       file: FilePreviewFile;
-      lineNumber: number | null;
+      lineRange: FilePreviewLineRange | null;
       showMarkdownModeToggle: boolean;
       markdownUrlTransform?: UrlTransform;
     };
@@ -99,7 +106,7 @@ interface FilePreviewMessageProps {
 
 interface FilePreviewCodeProps {
   file: FilePreviewFile;
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
 }
 
 type FilePreviewViewMode = "preview" | "source";
@@ -166,6 +173,30 @@ function getRawToggleTitle(kind: FilePreviewToggleKind): string {
   return kind === "html" ? "HTML source" : "Markdown source";
 }
 
+function getFilePreviewLineRange(
+  state: FilePreviewState,
+): FilePreviewLineRange | null {
+  if (state.kind === "html" || state.kind === "ready") {
+    return state.lineRange;
+  }
+  return null;
+}
+
+function usesCodeViewLayout(
+  state: FilePreviewState,
+  viewMode: FilePreviewViewMode,
+): boolean {
+  if (state.kind === "html") {
+    return viewMode === "source";
+  }
+
+  if (state.kind !== "ready") {
+    return false;
+  }
+
+  return !isMarkdownFile(state.file.name) || viewMode === "source";
+}
+
 export function FilePreview({
   state,
   path,
@@ -176,25 +207,42 @@ export function FilePreview({
   statusLabel = null,
 }: FilePreviewProps) {
   const toggleKind = getFilePreviewToggleKind(state);
-  const [viewMode, setViewMode] = useState<FilePreviewViewMode>("preview");
+  const filePreviewLineRange = getFilePreviewLineRange(state);
+  const [viewMode, setViewMode] = useState<FilePreviewViewMode>(
+    filePreviewLineRange === null ? "preview" : "source",
+  );
   // Each new file opens in rendered preview by default; the user re-toggles per
   // file rather than carrying their last choice across unrelated files.
   useEffect(() => {
-    setViewMode("preview");
-  }, [path]);
+    setViewMode(filePreviewLineRange === null ? "preview" : "source");
+  }, [filePreviewLineRange, path]);
 
   const usesIframeLayout =
     state.kind === "iframe" ||
     (state.kind === "html" && viewMode === "preview");
+  const bodyViewMode: FilePreviewViewMode =
+    toggleKind === null ? "preview" : viewMode;
+  const usesFullHeightLayout =
+    usesIframeLayout || usesCodeViewLayout(state, bodyViewMode);
+  // The markdown preview renders on a raised "paper" surface that should fill
+  // the panel to the bottom even for short documents. `min-h-full` (vs the
+  // iframe layout's `h-full min-h-0`) keeps the column growable, so long
+  // documents still scroll the outer panel rather than an inner box.
+  const usesMarkdownPreviewLayout =
+    state.kind === "ready" &&
+    isMarkdownFile(state.file.name) &&
+    bodyViewMode === "preview";
 
   // Establish a `@container/page` scope so MarkdownPreview's `100cqw`-based
   // table breakout sizes against this panel, not the viewport.
   return (
     <div
       className={
-        usesIframeLayout
+        usesFullHeightLayout
           ? "@container/page flex h-full min-h-0 flex-col"
-          : "@container/page"
+          : usesMarkdownPreviewLayout
+            ? "@container/page flex min-h-full flex-col"
+            : "@container/page"
       }
       style={FILE_PREVIEW_WRAPPER_STYLE}
     >
@@ -212,7 +260,7 @@ export function FilePreview({
       <FilePreviewBody
         state={state}
         path={path}
-        viewMode={toggleKind === null ? "preview" : viewMode}
+        viewMode={bodyViewMode}
         markdownLinkRouting={markdownLinkRouting}
       />
     </div>
@@ -264,7 +312,7 @@ function FilePreviewBody({
         />
       );
     }
-    return <FilePreviewCode file={state.file} lineNumber={state.lineNumber} />;
+    return <FilePreviewCode file={state.file} lineRange={state.lineRange} />;
   }
   if (isMarkdownFile(state.file.name) && viewMode === "preview") {
     return (
@@ -276,7 +324,7 @@ function FilePreviewBody({
     );
   }
   return (
-    <FilePreviewCode file={state.file} lineNumber={state.lineNumber ?? null} />
+    <FilePreviewCode file={state.file} lineRange={state.lineRange ?? null} />
   );
 }
 
@@ -294,17 +342,32 @@ function FilePreviewHeader({
   // in the sticky element so it pins with the header, but `absolute` keeps it
   // out of flow so the body's `pt-4` controls the initial gap, not this strip.
   return (
-    <div className="sticky top-0 z-10">
-      <div className="flex h-9 items-center gap-2 border-b border-border-seam bg-background px-4">
-        <div className="flex min-w-0 items-center gap-1">
+    // The wrapper carries an opaque `bg-background` base so the translucent
+    // `bg-surface-recessed` tint on the bar composites to a solid tone — without
+    // it, body content scrolling under the sticky header would bleed through.
+    <div className="sticky top-0 z-10 bg-background">
+      <div className="flex h-9 items-center gap-2 border-b border-border-seam bg-surface-raised px-4">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Icon
+            name="File"
+            className="size-3.5 shrink-0 text-subtle-foreground"
+          />
           <TruncateStart
-            className="min-w-0 font-mono text-xs font-medium leading-5 text-foreground"
+            className={cn(
+              "min-w-0 font-mono font-medium leading-5 text-file-accent",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
             title={path}
           >
             {path}
           </TruncateStart>
           {statusLabel === null ? null : (
-            <span className="shrink-0 text-xs leading-5 text-muted-foreground">
+            <span
+              className={cn(
+                "shrink-0 leading-5 text-muted-foreground",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
+            >
               ({statusLabel})
             </span>
           )}
@@ -316,15 +379,7 @@ function FilePreviewHeader({
             />
           )}
           {onOpenInEditor ? (
-            <button
-              type="button"
-              onClick={() => onOpenInEditor(path)}
-              aria-label="Open in editor"
-              title="Open in editor"
-              className="inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <Icon name="ExternalLink" aria-hidden className="size-3" />
-            </button>
+            <OpenInEditorButton onClick={() => onOpenInEditor(path)} />
           ) : null}
         </div>
         {toggleKind !== null ? (
@@ -337,7 +392,10 @@ function FilePreviewHeader({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-5 rounded-sm px-2 text-xs text-muted-foreground"
+              className={cn(
+                "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-9",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
               onClick={() => onViewModeChange("preview")}
               aria-pressed={viewMode === "preview"}
               title="Rendered preview"
@@ -348,7 +406,10 @@ function FilePreviewHeader({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-5 rounded-sm px-2 text-xs text-muted-foreground"
+              className={cn(
+                "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-9",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
               onClick={() => onViewModeChange("source")}
               aria-pressed={viewMode === "source"}
               title={getRawToggleTitle(toggleKind)}
@@ -372,7 +433,11 @@ function MarkdownFilePreview({
   markdownLinkRouting,
 }: MarkdownFilePreviewProps) {
   return (
-    <div className="px-4 pt-4">
+    // Render the markdown document on a faint "paper" wash so the rendered
+    // viewer reads as a distinct surface from the white chat — one tonal step
+    // lighter than the recessed header (matching the raised-body / recessed-
+    // header pairing used elsewhere in this panel).
+    <div className="flex-1 bg-surface-raised px-4 py-4">
       <MarkdownPreview
         allowHtml
         content={file.contents}
@@ -498,38 +563,41 @@ function FilePreviewMessage({ message, role }: FilePreviewMessageProps) {
   );
 }
 
-function FilePreviewCode({ file, lineNumber }: FilePreviewCodeProps) {
+function FilePreviewCode({ file, lineRange }: FilePreviewCodeProps) {
   const preferredTheme = usePreferredTheme();
   const containerRef = useRef<HTMLDivElement>(null);
-  const options = useMemo(
+  const options = useMemo<FileOptions<undefined>>(
     () => ({
       themeType: preferredTheme,
-      overflow: "scroll" as const,
+      overflow: "scroll",
       disableFileHeader: true,
-      enableLineSelection: lineNumber !== null,
+      enableLineSelection: lineRange !== null,
     }),
-    [lineNumber, preferredTheme],
+    [lineRange, preferredTheme],
   );
   const selectedLines = useMemo<SelectedLineRange | null>(
     () =>
-      lineNumber === null
+      lineRange === null
         ? null
         : {
-            start: lineNumber,
-            end: lineNumber,
+            start: lineRange.startLineNumber,
+            end: lineRange.endLineNumber,
           },
-    [lineNumber],
+    [lineRange],
   );
+  const targetLineNumber = selectedLines?.start ?? null;
 
   useEffect(() => {
     const cleanupContainer = containerRef.current;
     let animationFrame: number | null = null;
-    let retryTimer: number | null = null;
     let attempts = 0;
 
+    // Retry on the next frame (the target line may not be in the DOM yet). One
+    // rAF channel only: `scrollToLine` overwrites `animationFrame` on each
+    // reschedule, so at most one callback is ever pending and cleanup cancels
+    // it — no doubling or leaked stale callbacks marking the wrong line.
     function scheduleRetry() {
       animationFrame = window.requestAnimationFrame(scrollToLine);
-      retryTimer = window.setTimeout(scrollToLine, 16);
     }
 
     function scrollToLine() {
@@ -537,11 +605,11 @@ function FilePreviewCode({ file, lineNumber }: FilePreviewCodeProps) {
       if (!container) return;
       clearPreviewTargetLine(container);
       clearPreviewTargetLine(container.ownerDocument.body);
-      if (lineNumber === null) return;
+      if (targetLineNumber === null) return;
 
       const line =
-        findPreviewTargetLine(container, lineNumber) ??
-        findPreviewTargetLine(container.ownerDocument.body, lineNumber);
+        findPreviewTargetLine(container, targetLineNumber) ??
+        findPreviewTargetLine(container.ownerDocument.body, targetLineNumber);
       if (line) {
         line.setAttribute("data-file-preview-target-line", "");
         line.setAttribute("data-selected-line", "single");
@@ -564,17 +632,15 @@ function FilePreviewCode({ file, lineNumber }: FilePreviewCodeProps) {
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
       }
-      if (retryTimer !== null) {
-        window.clearTimeout(retryTimer);
-      }
     };
-  }, [file.contents, file.name, lineNumber]);
+  }, [file.contents, file.name, targetLineNumber]);
 
   return (
     <div
       ref={containerRef}
+      className="min-h-0 flex-1"
       style={FILE_PREVIEW_VIEW_STYLE}
-      data-file-preview-line-number={lineNumber ?? undefined}
+      data-file-preview-line-number={targetLineNumber ?? undefined}
     >
       <PierreFile file={file} options={options} selectedLines={selectedLines} />
     </div>

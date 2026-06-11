@@ -4,16 +4,10 @@ import {
   type HostDaemonInternalSchema,
 } from "@bb/host-daemon-contract";
 import type { Hono } from "hono";
-import { messageUserToolArgumentsSchema, turnScope } from "@bb/domain";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
-import { parseValue } from "../services/lib/validation.js";
-import { appendThreadEvent } from "../services/threads/thread-events.js";
 import { requireThreadEnvironment } from "../services/lib/entity-lookup.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
-
-export const MESSAGE_USER_MIGRATION_RESULT_TEXT =
-  "Message delivered. Migration note: do not call message_user for future user-facing updates. Send normal manager messages instead; users now see all manager messages. You do not need to resend the message you just sent.";
 
 export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
   const { post } = typedRoutes<HostDaemonInternalSchema>(app, {
@@ -36,31 +30,6 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
           "invalid_request",
           "Thread does not belong to the session host",
         );
-      }
-
-      if (payload.tool === "message_user") {
-        const args = parseValue(
-          payload.arguments ?? {},
-          messageUserToolArgumentsSchema,
-        );
-
-        appendThreadEvent(deps, {
-          threadId: payload.threadId,
-          scope: turnScope(payload.turnId),
-          type: "system/manager/user_message",
-          data: {
-            text: args.text,
-            toolCallId: payload.callId,
-            turnId: payload.turnId,
-          },
-        });
-
-        return context.json({
-          success: true,
-          contentItems: [
-            { type: "inputText", text: MESSAGE_USER_MIGRATION_RESULT_TEXT },
-          ],
-        });
       }
 
       return context.json({

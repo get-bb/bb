@@ -38,10 +38,15 @@ describe.sequential("custom provider models integration", () => {
         defaultReasoningEffort: "medium",
         isDefault: false,
       });
-      // The provider-reported catalog stays first (its default untouched);
-      // custom models append at the end.
-      expect(models[0]?.isDefault).toBe(true);
-      expect(models[models.length - 1]?.model).toBe("claude-example-preview[1m]");
+      // The provider-reported default stays marked even if the provider
+      // catalog does not sort the default row first; custom models append at
+      // the end and never become the default.
+      const defaultModel = models.find((model) => model.isDefault);
+      expect(defaultModel).toBeDefined();
+      expect(defaultModel?.model).not.toBe("claude-example-preview[1m]");
+      expect(models[models.length - 1]?.model).toBe(
+        "claude-example-preview[1m]",
+      );
     }));
 
   it("rejects custom models with an unknown provider on reload", () =>

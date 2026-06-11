@@ -24,7 +24,7 @@ export function QuestionWorkRowBody({ row }: QuestionWorkRowBodyProps) {
     return null;
   }
   return (
-    <div className="space-y-2 text-xs leading-snug">
+    <div className="space-y-3 text-xs leading-snug">
       {row.questions.map((question) => (
         <AnsweredQuestionRow
           key={question.id}
@@ -48,7 +48,11 @@ function AnsweredQuestionRow({ question, answer }: AnsweredQuestionRowProps) {
 
   return (
     <div>
-      <div className="text-muted-foreground">{question.prompt}</div>
+      {/* Differentiate by bb's foreground tiers (color), not weight: the prompt
+          recedes to subtle-foreground while the answer is full foreground. The
+          two-tier gap (vs muted) is what keeps them distinguishable in dark
+          mode, where foreground and muted-foreground nearly coincide. */}
+      <div className="text-subtle-foreground">{question.prompt}</div>
       {hasContent ? (
         <div className="mt-0.5 text-foreground">
           {selectedLabels.length > 0 ? (
@@ -59,7 +63,7 @@ function AnsweredQuestionRow({ question, answer }: AnsweredQuestionRowProps) {
           ) : null}
         </div>
       ) : (
-        <div className="mt-0.5 text-muted-foreground">No answer</div>
+        <div className="mt-0.5 text-subtle-foreground">No answer</div>
       )}
     </div>
   );

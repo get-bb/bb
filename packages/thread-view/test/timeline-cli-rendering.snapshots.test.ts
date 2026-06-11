@@ -20,7 +20,6 @@ function renderIdleTimeline(events: TimelineFixtureEvent[]) {
   return renderTimelineFixture({
     events,
     projectionOptions: {
-      systemClientRequestVisibility: "hidden",
       threadStatus: "idle",
       turnMessageDetail: "summary",
     },
@@ -31,7 +30,6 @@ function renderActiveTimeline(events: TimelineFixtureEvent[]) {
   return renderTimelineFixture({
     events,
     projectionOptions: {
-      systemClientRequestVisibility: "hidden",
       threadStatus: "active",
       turnMessageDetail: "summary",
     },
@@ -43,7 +41,6 @@ function renderPrefixSnapshots(events: TimelineFixtureEvent[]) {
     const timeline = renderTimelineFixture({
       events: events.slice(0, prefixLength),
       projectionOptions: {
-        systemClientRequestVisibility: "hidden",
         threadStatus: prefixLength === events.length ? "idle" : "active",
         turnMessageDetail: "summary",
       },
@@ -798,7 +795,6 @@ describe("timeline CLI rendering snapshots", () => {
         }),
       ],
       projectionOptions: {
-        systemClientRequestVisibility: "hidden",
         threadStatus: "error",
         turnMessageDetail: "summary",
       },
@@ -944,7 +940,6 @@ describe("timeline CLI rendering snapshots", () => {
       ],
       includeNestedRows: false,
       projectionOptions: {
-        systemClientRequestVisibility: "hidden",
         threadStatus: "idle",
         turnMessageDetail: "summary",
       },
@@ -1271,7 +1266,7 @@ describe("timeline CLI rendering snapshots", () => {
     expect(timeline.text).not.toContain("Reasoning");
     expect(timeline.text).toMatchInlineSnapshot(`
       "── Worked for (5ms) ────────────────────────────────────────
-        ── Ran tool: exec_command { cmd: sed -n '1,80p' packages/core-ui/src/i... }
+        ── Ran tool exec_command { cmd: sed -n '1,80p' packages/core-ui/src/i... }
 
       ── Assistant ───────────────────────────────────────────────
       The extension point is the timeline row builder."
@@ -1554,9 +1549,9 @@ describe("timeline CLI rendering snapshots", () => {
     `);
   });
 
-  it("shows manager thread assistant text and user-message tool output in the regular timeline", () => {
+  it("shows legacy visible system assistant text and user-message tool output in the regular timeline", () => {
     const event = createTimelineEventFactory({
-      threadId: "manager-thread-1",
+      threadId: "legacy-thread-1",
       turnId: "turn-1",
     });
     const timeline = renderTimelineFixture({
@@ -1564,14 +1559,12 @@ describe("timeline CLI rendering snapshots", () => {
         event.turnStarted(),
         event.assistantCompleted({
           itemId: "assistant-1",
-          text: "internal manager chatter",
+          text: "internal system chatter",
         }),
-        event.managerUserMessage({ text: "Visible manager update" }),
+        event.legacyUserMessage({ text: "Visible legacy update" }),
       ],
       projectionOptions: {
-        systemClientRequestVisibility: "hidden",
         threadStatus: "idle",
-        threadType: "manager",
         turnMessageDetail: "summary",
       },
     });
@@ -1582,10 +1575,10 @@ describe("timeline CLI rendering snapshots", () => {
     ]);
     expect(timeline.text).toMatchInlineSnapshot(`
       "── Assistant ───────────────────────────────────────────────
-      internal manager chatter
+      internal system chatter
 
       ── Assistant ───────────────────────────────────────────────
-      Visible manager update"
+      Visible legacy update"
     `);
   });
 

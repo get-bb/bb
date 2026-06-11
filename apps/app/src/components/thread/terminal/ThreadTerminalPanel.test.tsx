@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { useSetAtom } from "jotai";
 import type {
   CloseThreadTerminalRequest,
   CreateThreadTerminalRequest,
@@ -17,20 +18,12 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
-  createEmptyFixedPanelTabsState,
   createTerminalFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
   parseFixedPanelTabsState,
-  serializeFixedPanelTabsState,
   type FixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
-import { useSetThreadTerminalPanelOpen } from "@/lib/thread-terminal-panel";
-import {
-  DEFAULT_TERMINAL_PANEL_HEIGHT_PERCENT,
-  THREAD_TERMINAL_PANEL_STATE_STORAGE_VERSION,
-  getThreadTerminalPanelStateStorageKey,
-  type ThreadTerminalPanelState,
-} from "@/lib/thread-terminal-panel-state";
+import { getThreadSecondaryPanelOpenAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ThreadTerminalPanel } from "./ThreadTerminalPanel";
 
@@ -80,17 +73,9 @@ interface RenderPanelArgs {
   canCreateTerminal?: boolean;
 }
 
-interface LegacyThreadTerminalPanelState extends ThreadTerminalPanelState {
-  activeTerminalId: string | null;
-}
-
-interface WriteFixedBottomTerminalTabsStateArgs {
+interface WriteLegacyBottomTerminalTabsStateArgs {
   activeTerminalId: string;
   terminalIds: readonly string[];
-}
-
-interface WriteLegacyThreadTerminalPanelStateArgs {
-  activeTerminalId: string | null;
 }
 
 let serverSessions: TerminalSession[] = [];
@@ -131,42 +116,32 @@ function readFixedPanelTabsState(): FixedPanelTabsState {
   });
 }
 
-function writeLegacyThreadTerminalPanelState({
-  activeTerminalId,
-}: WriteLegacyThreadTerminalPanelStateArgs): void {
-  const state: LegacyThreadTerminalPanelState = {
-    version: THREAD_TERMINAL_PANEL_STATE_STORAGE_VERSION,
-    isOpen: true,
-    activeTerminalId,
-    panelHeightPercent: DEFAULT_TERMINAL_PANEL_HEIGHT_PERCENT,
-    lastUsedAt: Date.now(),
-  };
-  window.localStorage.setItem(
-    getThreadTerminalPanelStateStorageKey({ threadId: THREAD_ID }),
-    JSON.stringify(state),
-  );
-}
-
-function writeFixedBottomTerminalTabsState({
+function writeLegacyBottomTerminalTabsState({
   activeTerminalId,
   terminalIds,
-}: WriteFixedBottomTerminalTabsStateArgs): void {
+}: WriteLegacyBottomTerminalTabsStateArgs): void {
   const terminalTabs = terminalIds.map((terminalId) =>
     createTerminalFixedPanelTab({ terminalId }),
   );
   const activeTabId = createTerminalFixedPanelTab({
     terminalId: activeTerminalId,
   }).id;
-  const state = createEmptyFixedPanelTabsState({
+  const state: FixedPanelTabsState = {
+    version: EMPTY_FIXED_PANEL_TABS_STATE.version,
+    secondary: {
+      tabs: [],
+      activeTabId: null,
+      isOpen: false,
+    },
     bottom: {
       tabs: terminalTabs,
       activeTabId,
     },
     lastUsedAt: Date.now(),
-  });
+  };
   window.localStorage.setItem(
     getFixedPanelTabsStateStorageKey({ threadId: THREAD_ID }),
-    serializeFixedPanelTabsState({ state }),
+    JSON.stringify(state),
   );
 }
 
@@ -245,14 +220,14 @@ async function renameTerminal(
 function TestTerminalPanelHarness({
   canCreateTerminal = true,
 }: TestTerminalPanelHarnessProps) {
-  const setPanelOpen = useSetThreadTerminalPanelOpen(THREAD_ID);
+  const setPanelOpen = useSetAtom(getThreadSecondaryPanelOpenAtom(THREAD_ID));
   return (
     <>
       <button type="button" onClick={() => setPanelOpen(true)}>
-        Show panel
+        Show right panel
       </button>
       <button type="button" onClick={() => setPanelOpen(false)}>
-        Hide panel
+        Hide right panel
       </button>
       <ThreadTerminalPanel
         canCreateTerminal={canCreateTerminal}
@@ -288,19 +263,19 @@ afterEach(() => {
 });
 
 describe("ThreadTerminalPanel", () => {
-  it("starts a terminal when the open panel has no visible sessions", async () => {
+  it("does not start a terminal just because the right panel opens", async () => {
     renderPanel();
 
-    fireEvent.click(screen.getByText("Show panel"));
+    fireEvent.click(screen.getByText("Show right panel"));
 
     await waitFor(() => {
-      expect(apiMocks.createThreadTerminal).toHaveBeenCalledTimes(1);
+      expect(apiMocks.listThreadTerminals).toHaveBeenCalledTimes(1);
     });
-    expect(screen.queryByText("Start terminal")).toBeNull();
-    expect(await screen.findByText("Terminal 1")).toBeTruthy();
+    expect(apiMocks.createThreadTerminal).not.toHaveBeenCalled();
+    expect(screen.getByText("No terminals")).toBeTruthy();
   });
 
-  it("uses fixed bottom tabs instead of legacy panel storage for the active terminal", async () => {
+  it("migrates legacy bottom terminal tabs into the active right panel terminal", async () => {
     serverSessions = [
       makeTerminalSession({ id: "term_1", title: "Terminal 1" }),
       makeTerminalSession({
@@ -310,28 +285,30 @@ describe("ThreadTerminalPanel", () => {
         updatedAt: 2,
       }),
     ];
-    writeLegacyThreadTerminalPanelState({ activeTerminalId: "term_1" });
-    writeFixedBottomTerminalTabsState({
+    writeLegacyBottomTerminalTabsState({
       activeTerminalId: "term_2",
       terminalIds: ["term_1", "term_2"],
     });
 
     renderPanel();
+    fireEvent.click(screen.getByText("Show right panel"));
 
     expect(await screen.findByText("Input term_2")).toBeTruthy();
     expect(screen.queryByText("Input term_1")).toBeNull();
-    expect(
-      screen.getByTitle("Terminal 2 (running)").getAttribute("aria-pressed"),
-    ).toBe("true");
+    expect(readFixedPanelTabsState().secondary.activeTabId).toBe(
+      terminalTabId("term_2"),
+    );
+    expect(readFixedPanelTabsState().bottom.activeTabId).toBeNull();
   });
 
-  it("closes an unused panel-created terminal when the panel is hidden", async () => {
+  it("closes an unused clean terminal when the right panel is hidden", async () => {
+    serverSessions = [makeTerminalSession()];
     renderPanel();
 
-    fireEvent.click(screen.getByText("Show panel"));
-    expect(await screen.findByText("Terminal 1")).toBeTruthy();
+    fireEvent.click(screen.getByText("Show right panel"));
+    expect(await screen.findByText("Input term_1")).toBeTruthy();
 
-    fireEvent.click(screen.getByText("Hide panel"));
+    fireEvent.click(screen.getByText("Hide right panel"));
 
     await waitFor(() => {
       expect(apiMocks.closeThreadTerminal).toHaveBeenCalledWith(
@@ -345,18 +322,19 @@ describe("ThreadTerminalPanel", () => {
     });
   });
 
-  it("removes the fixed bottom tab when a clean terminal auto-closes", async () => {
+  it("removes the fixed right panel tab when a clean terminal auto-closes", async () => {
+    serverSessions = [makeTerminalSession()];
     renderPanel();
 
-    fireEvent.click(screen.getByText("Show panel"));
-    expect(await screen.findByText("Terminal 1")).toBeTruthy();
+    fireEvent.click(screen.getByText("Show right panel"));
+    expect(await screen.findByText("Input term_1")).toBeTruthy();
     await waitFor(() => {
-      expect(readFixedPanelTabsState().bottom.activeTabId).toBe(
+      expect(readFixedPanelTabsState().secondary.activeTabId).toBe(
         terminalTabId("term_1"),
       );
     });
 
-    fireEvent.click(screen.getByText("Hide panel"));
+    fireEvent.click(screen.getByText("Hide right panel"));
 
     await waitFor(() => {
       expect(apiMocks.closeThreadTerminal).toHaveBeenCalledWith(
@@ -369,32 +347,34 @@ describe("ThreadTerminalPanel", () => {
       );
     });
     await waitFor(() => {
-      expect(readFixedPanelTabsState().bottom.tabs).toEqual([]);
+      expect(readFixedPanelTabsState().secondary.tabs).toEqual([]);
     });
-    expect(readFixedPanelTabsState().bottom.activeTabId).toBeNull();
+    expect(readFixedPanelTabsState().secondary.activeTabId).toBeNull();
   });
 
-  it("keeps a panel-created terminal after user input", async () => {
+  it("keeps a terminal after user input when the right panel is hidden", async () => {
+    serverSessions = [makeTerminalSession()];
     renderPanel();
 
-    fireEvent.click(screen.getByText("Show panel"));
+    fireEvent.click(screen.getByText("Show right panel"));
     fireEvent.click(await screen.findByText("Input term_1"));
-    fireEvent.click(screen.getByText("Hide panel"));
+    fireEvent.click(screen.getByText("Hide right panel"));
 
     expect(apiMocks.closeThreadTerminal).not.toHaveBeenCalled();
   });
 
-  it("closes a clean terminal when the panel is hidden after remount", async () => {
+  it("closes a clean terminal when the right panel is hidden after remount", async () => {
+    serverSessions = [makeTerminalSession()];
     const mounted = renderPanel();
 
-    fireEvent.click(screen.getByText("Show panel"));
-    expect(await screen.findByText("Terminal 1")).toBeTruthy();
+    fireEvent.click(screen.getByText("Show right panel"));
+    expect(await screen.findByText("Input term_1")).toBeTruthy();
 
     mounted.unmount();
     renderPanel();
-    expect(await screen.findByText("Terminal 1")).toBeTruthy();
+    expect(await screen.findByText("Input term_1")).toBeTruthy();
 
-    fireEvent.click(screen.getByText("Hide panel"));
+    fireEvent.click(screen.getByText("Hide right panel"));
 
     await waitFor(() => {
       expect(apiMocks.closeThreadTerminal).toHaveBeenCalledWith(
@@ -406,32 +386,6 @@ describe("ThreadTerminalPanel", () => {
         },
       );
     });
-  });
-
-  it("allows closing the last tab without starting a replacement", async () => {
-    serverSessions = [makeTerminalSession()];
-    renderPanel();
-
-    fireEvent.click(screen.getByText("Show panel"));
-    expect(await screen.findByText("Terminal 1")).toBeTruthy();
-
-    fireEvent.click(screen.getByLabelText("Close Terminal 1"));
-
-    await waitFor(() => {
-      expect(apiMocks.closeThreadTerminal).toHaveBeenCalledWith(
-        THREAD_ID,
-        "term_1",
-        {
-          mode: "force",
-          reason: "user",
-        },
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByText("Terminal 1")).toBeNull();
-    });
-    expect(apiMocks.createThreadTerminal).not.toHaveBeenCalled();
-    expect(screen.getAllByText("No terminals")).toHaveLength(1);
   });
 
   it("explains disconnected terminals and starts a replacement", async () => {
@@ -442,7 +396,7 @@ describe("ThreadTerminalPanel", () => {
     ];
     renderPanel();
 
-    fireEvent.click(screen.getByText("Show panel"));
+    fireEvent.click(screen.getByText("Show right panel"));
 
     expect(await screen.findByText("Terminal disconnected")).toBeTruthy();
     expect(screen.queryByText("This session can't reconnect.")).toBeNull();
@@ -452,15 +406,15 @@ describe("ThreadTerminalPanel", () => {
     await waitFor(() => {
       expect(apiMocks.createThreadTerminal).toHaveBeenCalledTimes(1);
     });
-    expect(await screen.findByText("Terminal 2")).toBeTruthy();
+    expect(await screen.findByText("Input term_2")).toBeTruthy();
   });
 
-  it("renames the active tab from a terminal title escape", async () => {
+  it("renames the active terminal from a terminal title escape", async () => {
     serverSessions = [makeTerminalSession()];
     renderPanel();
 
-    fireEvent.click(screen.getByText("Show panel"));
-    expect(await screen.findByText("Terminal 1")).toBeTruthy();
+    fireEvent.click(screen.getByText("Show right panel"));
+    expect(await screen.findByText("Input term_1")).toBeTruthy();
 
     fireEvent.click(screen.getByText("Title term_1"));
 
@@ -473,6 +427,5 @@ describe("ThreadTerminalPanel", () => {
         },
       );
     });
-    expect(await screen.findByText("Edited title")).toBeTruthy();
   });
 });

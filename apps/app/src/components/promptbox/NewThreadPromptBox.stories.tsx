@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { PermissionMode, PromptTextMention } from "@bb/domain";
 import {
   NewThreadPromptBoxUI,
@@ -7,7 +7,6 @@ import {
   type NewThreadModeConfig,
   type NewThreadProjectConfig,
   type NewThreadWorktreeConfig,
-  type ThreadCreationMode,
 } from "@/components/promptbox/NewThreadPromptBox";
 import type { HistoryConfig } from "@/components/promptbox/PromptBoxInternal";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
@@ -21,7 +20,8 @@ import {
   STORY_WORKTREE_OPTIONS,
   makeAttachmentsConfig as makeAttachments,
   makeExecutionControlsProps,
-  makeMentionsConfig as makeMentions,
+  makeTypeaheadConfig as makeTypeahead,
+  makeHost,
 } from "../../../.ladle/story-fixtures";
 
 export default {
@@ -36,7 +36,8 @@ const baseEnvironment: NewThreadEnvironmentConfig = {
   value: `host:${HOST_IDS.local}:local`,
   onChange: noop,
   sources: STORY_PROJECT_SOURCES,
-  hostId: HOST_IDS.local,
+  host: makeHost({ id: HOST_IDS.local }),
+  isLocal: true,
 };
 
 const baseBranch: NewThreadBranchConfig = {
@@ -98,32 +99,12 @@ function useControlledValue(initial: string) {
   return { value, mentionRanges, onChange };
 }
 
-interface ControlledMode {
-  modeConfig: NewThreadModeConfig;
-  onModeChange: (next: ThreadCreationMode) => void;
-}
-
-function useControlledMode(
-  initial: ThreadCreationMode = "thread",
-): ControlledMode {
-  const [current, setCurrent] = useState<ThreadCreationMode>(initial);
-  const modeConfig = useMemo<NewThreadModeConfig>(
-    () =>
-      current === "manager"
-        ? {
-            mode: "manager",
-          }
-        : {
-            mode: "thread",
-            environment: baseEnvironment,
-            branch: baseBranch,
-            worktree: baseWorktree,
-            permission: basePermission,
-          },
-    [current],
-  );
-  return { modeConfig, onModeChange: setCurrent };
-}
+const baseModeConfig: NewThreadModeConfig = {
+  environment: baseEnvironment,
+  branch: baseBranch,
+  worktree: baseWorktree,
+  permission: basePermission,
+};
 
 // Match production: RootComposeView wraps the prompt area in PageShell which
 // caps content at 760px. Without this constraint the env-permission strip's
@@ -137,7 +118,6 @@ function PromptStage({ children }: PromptStageProps) {
 }
 
 function DefaultRow() {
-  const { modeConfig, onModeChange } = useControlledMode();
   const { value, mentionRanges, onChange } = useControlledValue("");
   return (
     <PromptStage>
@@ -151,10 +131,9 @@ function DefaultRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.default"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
-        modeConfig={modeConfig}
-        onModeChange={onModeChange}
+        modeConfig={baseModeConfig}
         project={baseProject}
         execution={baseExecution}
       />
@@ -163,7 +142,6 @@ function DefaultRow() {
 }
 
 function SubmittingRow() {
-  const { modeConfig, onModeChange } = useControlledMode();
   const { value, mentionRanges, onChange } = useControlledValue(
     "Investigate the timeline pagination flicker.",
   );
@@ -179,10 +157,9 @@ function SubmittingRow() {
         disabled
         zenModeStorageKey="bb.story.new-thread.submitting"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
-        modeConfig={modeConfig}
-        onModeChange={onModeChange}
+        modeConfig={baseModeConfig}
         project={baseProject}
         execution={baseExecution}
       />
@@ -191,7 +168,6 @@ function SubmittingRow() {
 }
 
 function ClaudeProviderRow() {
-  const { modeConfig, onModeChange } = useControlledMode();
   const { value, mentionRanges, onChange } = useControlledValue("");
   return (
     <PromptStage>
@@ -205,10 +181,9 @@ function ClaudeProviderRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.claude"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
-        modeConfig={modeConfig}
-        onModeChange={onModeChange}
+        modeConfig={baseModeConfig}
         project={baseProject}
         execution={{
           ...baseExecution,
@@ -231,20 +206,7 @@ function ClaudeProviderRow() {
 }
 
 function FullAccessRow() {
-  const [current, setCurrent] = useState<ThreadCreationMode>("thread");
   const { value, mentionRanges, onChange } = useControlledValue("");
-  const modeConfig: NewThreadModeConfig =
-    current === "manager"
-      ? {
-          mode: "manager",
-        }
-      : {
-          mode: "thread",
-          environment: baseEnvironment,
-          branch: baseBranch,
-          worktree: baseWorktree,
-          permission: { ...basePermission, value: "full" },
-        };
   return (
     <PromptStage>
       <NewThreadPromptBoxUI
@@ -257,10 +219,12 @@ function FullAccessRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.full-access"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
-        modeConfig={modeConfig}
-        onModeChange={setCurrent}
+        modeConfig={{
+          ...baseModeConfig,
+          permission: { ...basePermission, value: "full" },
+        }}
         project={baseProject}
         execution={baseExecution}
       />
@@ -282,16 +246,9 @@ function ProjectlessThreadRow() {
         disabled={false}
         zenModeStorageKey="bb.story.new-thread.projectless"
         history={baseHistory}
-        mentions={makeMentions()}
+        typeahead={makeTypeahead()}
         attachments={makeAttachments()}
-        modeConfig={{
-          mode: "thread",
-          environment: baseEnvironment,
-          branch: baseBranch,
-          worktree: baseWorktree,
-          permission: basePermission,
-        }}
-        onModeChange={noop}
+        modeConfig={baseModeConfig}
         project={{
           ...baseProject,
           value: null,

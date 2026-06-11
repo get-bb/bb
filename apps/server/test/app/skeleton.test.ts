@@ -8,7 +8,7 @@ import {
   hosts,
   type DbConnection,
 } from "@bb/db";
-import { PERSONAL_PROJECT_ID, threadTypeValues } from "@bb/domain";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
@@ -66,6 +66,7 @@ describe("server skeleton", () => {
           dataDir: "/tmp/host-data",
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          activeWorkflowRunIds: [],
         }),
       });
 
@@ -181,20 +182,17 @@ describe("server skeleton", () => {
         name: "Personal",
       });
 
-      for (const threadType of threadTypeValues) {
-        expect(
-          getProjectExecutionDefaults(db, {
-            projectId: PERSONAL_PROJECT_ID,
-            threadType,
-          }),
-        ).toMatchObject({
-          model: expect.any(String),
-          permissionMode: expect.any(String),
-          providerId: expect.any(String),
-          reasoningLevel: expect.any(String),
-          serviceTier: expect.any(String),
-        });
-      }
+      expect(
+        getProjectExecutionDefaults(db, {
+          projectId: PERSONAL_PROJECT_ID,
+        }),
+      ).toMatchObject({
+        model: expect.any(String),
+        permissionMode: expect.any(String),
+        providerId: expect.any(String),
+        reasoningLevel: expect.any(String),
+        serviceTier: expect.any(String),
+      });
     } finally {
       db.$client.close();
     }

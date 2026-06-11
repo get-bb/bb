@@ -25,13 +25,6 @@ export const eventProjectionMessageStatusValues = [
 export type EventProjectionMessageStatus =
   (typeof eventProjectionMessageStatusValues)[number];
 
-export const systemClientRequestVisibilityValues = [
-  "hidden",
-  "visible",
-] as const;
-export type SystemClientRequestVisibility =
-  (typeof systemClientRequestVisibilityValues)[number];
-
 export const eventProjectionApprovalLifecycleStatusValues = [
   "waiting_for_approval",
   "denied",
@@ -108,8 +101,8 @@ export interface EventProjectionAssistantTextMessage extends EventProjectionMess
   kind: "assistant-text";
   text: string;
   status: Extract<EventProjectionMessageStatus, "streaming" | "completed">;
-  /** True when this message was delivered via the manager's `message_user` tool. */
-  isManagerUserMessage?: boolean;
+  /** True when this message came from a legacy persisted user-visible system event. */
+  isLegacyUserMessage?: boolean;
 }
 
 export type EventProjectionToolParsedIntent =
@@ -365,6 +358,13 @@ export interface EventProjectionDelegationMessage
 export interface EventProjectionWorkflowMessage extends EventProjectionMessageBase {
   kind: "workflow";
   itemId: string;
+  /**
+   * Raw task-type discriminant from the item (`bb_workflow` for server-owned
+   * workflow runs whose `itemId` is the `wfr_` run id, `local_workflow` for
+   * provider-native dynamic workflows). Renderers gate run-page deep links on
+   * it.
+   */
+  taskType: string;
   workflowName: string | null;
   description: string;
   status: Extract<
@@ -418,7 +418,5 @@ export type EventProjectionMessage =
 export interface BuildEventProjectionMessagesOptions {
   includeDebugRawEvents?: boolean;
   includeProviderUnhandledOperations?: boolean;
-  systemClientRequestVisibility: SystemClientRequestVisibility;
   threadStatus?: Thread["status"];
-  threadType?: Thread["type"];
 }

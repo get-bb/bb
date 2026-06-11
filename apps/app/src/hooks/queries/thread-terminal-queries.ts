@@ -12,6 +12,7 @@ import {
   applyThreadTerminalSessionUpsert,
 } from "../cache-owners/terminal-cache-owner";
 import { threadTerminalsQueryKey } from "./query-keys";
+import { requireEnabledQueryArg } from "./query-helpers";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -34,20 +35,16 @@ interface CloseThreadTerminalMutationRequest {
   threadId: string;
 }
 
-function requireThreadId(id: string, hookName: string): string {
-  if (!id) {
-    throw new Error(`${hookName}: thread id is required when query is enabled`);
-  }
-
-  return id;
-}
-
 export function useThreadTerminals(id: string, options?: QueryOptions) {
   return useQuery<ThreadTerminalListResponse>({
     queryKey: threadTerminalsQueryKey(id),
     queryFn: ({ signal }) =>
       api.listThreadTerminals(
-        requireThreadId(id, "useThreadTerminals"),
+        requireEnabledQueryArg({
+          value: id,
+          hookName: "useThreadTerminals",
+          argName: "thread id",
+        }),
         signal,
       ),
     enabled: (options?.enabled ?? true) && Boolean(id),

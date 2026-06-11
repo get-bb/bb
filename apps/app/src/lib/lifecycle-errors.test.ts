@@ -484,8 +484,8 @@ const descriptionCases: DescriptionCase[] = [
       },
     },
     expected: {
-      title: "Parent manager unavailable",
-      body: "That manager no longer exists.",
+      title: "Parent thread unavailable",
+      body: "That parent thread no longer exists.",
       severity: "error",
     },
   },
@@ -500,8 +500,8 @@ const descriptionCases: DescriptionCase[] = [
       },
     },
     expected: {
-      title: "Parent manager unavailable",
-      body: "Unarchive the manager first or choose another manager.",
+      title: "Parent thread unavailable",
+      body: "Unarchive the parent thread first or choose another parent.",
       severity: "warning",
     },
   },
@@ -516,8 +516,8 @@ const descriptionCases: DescriptionCase[] = [
       },
     },
     expected: {
-      title: "Parent manager unavailable",
-      body: "That manager was deleted.",
+      title: "Parent thread unavailable",
+      body: "That parent thread was deleted.",
       severity: "error",
     },
   },
@@ -532,24 +532,56 @@ const descriptionCases: DescriptionCase[] = [
       },
     },
     expected: {
-      title: "Parent manager unavailable",
-      body: "Choose a manager from this project.",
+      title: "Parent thread unavailable",
+      body: "Choose a parent thread from this project.",
       severity: "error",
     },
   },
   {
-    name: "parent_thread_invalid not a manager",
+    name: "parent_thread_invalid self",
     body: {
       code: "parent_thread_invalid",
       message: "Parent thread is invalid",
       details: {
-        reason: "not_a_manager",
+        reason: "self",
         subject: "parent",
       },
     },
     expected: {
-      title: "Parent manager unavailable",
-      body: "Choose a manager thread.",
+      title: "Parent thread unavailable",
+      body: "A thread cannot be its own parent.",
+      severity: "error",
+    },
+  },
+  {
+    name: "parent_thread_invalid cycle",
+    body: {
+      code: "parent_thread_invalid",
+      message: "Parent thread is invalid",
+      details: {
+        reason: "cycle",
+        subject: "parent",
+      },
+    },
+    expected: {
+      title: "Parent thread unavailable",
+      body: "Choose a thread that is not a child of this thread.",
+      severity: "error",
+    },
+  },
+  {
+    name: "parent_thread_invalid too deep",
+    body: {
+      code: "parent_thread_invalid",
+      message: "Parent thread is invalid",
+      details: {
+        reason: "too_deep",
+        subject: "parent",
+      },
+    },
+    expected: {
+      title: "Parent thread unavailable",
+      body: "Thread nesting is limited to 4 levels.",
       severity: "error",
     },
   },

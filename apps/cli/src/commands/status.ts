@@ -18,14 +18,13 @@ interface StatusPayload {
   project: { id: string; name: string } | null;
   thread: {
     id: string;
-    type: string;
     status: string;
     title: string | null;
     pinnedAt: number | null;
     parentThreadId: string | null;
     environment: ThreadEnvironmentInfo | null;
   } | null;
-  managedThreads: Array<{
+  childThreads: Array<{
     id: string;
     status: string;
     title: string | null;
@@ -56,7 +55,7 @@ export function registerStatusCommand(
         const payload: StatusPayload = {
           project: null,
           thread: null,
-          managedThreads: null,
+          childThreads: null,
           pendingTodos: null,
         };
 
@@ -90,7 +89,6 @@ export function registerStatusCommand(
             payload.pendingTodos = status.pendingTodos;
             payload.thread = {
               id: status.thread.id,
-              type: status.thread.type,
               status: status.thread.status,
               title: status.thread.title ?? null,
               pinnedAt: status.thread.pinnedAt,
@@ -99,8 +97,8 @@ export function registerStatusCommand(
             };
             serverAvailable = true;
 
-            if (status.managedThreads) {
-              payload.managedThreads = status.managedThreads.map((thread) => ({
+            if (status.childThreads) {
+              payload.childThreads = status.childThreads.map((thread) => ({
                 id: thread.id,
                 status: thread.status,
                 title: thread.title ?? null,
@@ -127,7 +125,6 @@ export function registerStatusCommand(
 
         if (serverAvailable && payload.thread) {
           console.log(`Thread: ${payload.thread.id}`);
-          console.log(`  Type: ${payload.thread.type}`);
           console.log(`  Status: ${payload.thread.status}`);
           if (payload.thread.title) {
             console.log(`  Title: ${payload.thread.title}`);
@@ -144,10 +141,10 @@ export function registerStatusCommand(
             printEnvironmentInfo(payload.thread.environment);
           }
 
-          if (payload.managedThreads && payload.managedThreads.length > 0) {
+          if (payload.childThreads && payload.childThreads.length > 0) {
             console.log("");
-            console.log(`Managed threads: ${payload.managedThreads.length}`);
-            for (const mt of payload.managedThreads) {
+            console.log(`Child threads: ${payload.childThreads.length}`);
+            for (const mt of payload.childThreads) {
               const title = mt.title ? `"${mt.title}"` : "";
               console.log(`  ${mt.id}  ${mt.status}  ${title}`);
             }

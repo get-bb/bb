@@ -1,7 +1,4 @@
-import type {
-  HostWatcher,
-  CreateHostWatcherArgs,
-} from "./host-watcher-types.js";
+import type { HostWatcher } from "./host-watcher-types.js";
 import { createParcelHostWatcher } from "./parcel-host-watcher.js";
 
 export type {
@@ -26,8 +23,6 @@ export type {
   WorkspaceStatusWatchChangeKind,
 } from "./watch-status-types.js";
 
-export async function createHostWatcher(
-  _args: CreateHostWatcherArgs,
-): Promise<HostWatcher | undefined> {
+export async function createHostWatcher(): Promise<HostWatcher | undefined> {
   return createParcelHostWatcher();
 }

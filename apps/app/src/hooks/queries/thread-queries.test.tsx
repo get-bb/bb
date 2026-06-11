@@ -79,7 +79,6 @@ function makeThread(): ThreadWithRuntime {
     stopRequestedAt: null,
     title: "Thread title",
     titleFallback: "Thread title",
-    type: "standard",
     updatedAt: 10,
   };
 }
@@ -982,28 +981,27 @@ describe("thread query bootstraps", () => {
 describe("project thread subset query", () => {
   it("derives from the cached active project thread list without fetching a targeted list", async () => {
     const fetchMock = installFetchRoutes([]);
-    const manager = makeThreadListEntry({
-      id: "manager-1",
-      type: "manager",
+    const parent = makeThreadListEntry({
+      id: "parent-1",
     });
     const child = makeThreadListEntry({
       id: "child-1",
-      parentThreadId: "manager-1",
+      parentThreadId: "parent-1",
     });
     const otherChild = makeThreadListEntry({
       id: "child-2",
-      parentThreadId: "manager-2",
+      parentThreadId: "parent-2",
     });
     const { queryClient, wrapper } = createWrapper();
     queryClient.setQueryData<ThreadListResponse>(
       threadListQueryKey({ archived: false, projectId: "project-1" }),
-      [manager, child, otherChild],
+      [parent, child, otherChild],
     );
 
     const { result } = renderHook(
       () =>
         useProjectThreadSubset({
-          filters: { parentThreadId: "manager-1" },
+          filters: { parentThreadId: "parent-1" },
           projectId: "project-1",
         }),
       { wrapper },
@@ -1016,9 +1014,9 @@ describe("project thread subset query", () => {
   });
 
   it("falls back to the targeted list when the active project thread list is not cached", async () => {
-    const manager = makeThreadListEntry({
-      id: "manager-1",
-      type: "manager",
+    const parent = makeThreadListEntry({
+      id: "parent-1",
+      parentThreadId: null,
     });
     const requestUrlRef: { current: URL | null } = { current: null };
     installFetchRoutes([
@@ -1026,7 +1024,7 @@ describe("project thread subset query", () => {
         pathname: "/api/v1/threads",
         handler: (request) => {
           requestUrlRef.current = new URL(request.url);
-          return jsonResponse([manager]);
+          return jsonResponse([parent]);
         },
       },
     ]);
@@ -1035,20 +1033,20 @@ describe("project thread subset query", () => {
     const { result } = renderHook(
       () =>
         useProjectThreadSubset({
-          filters: { type: "manager" },
+          filters: { hasParent: false },
           projectId: "project-1",
         }),
       { wrapper },
     );
 
     await waitFor(() => {
-      expect(result.current.data).toEqual([manager]);
+      expect(result.current.data).toEqual([parent]);
     });
     expect(requestUrlRef.current?.searchParams.get("projectId")).toBe(
       "project-1",
     );
     expect(requestUrlRef.current?.searchParams.get("archived")).toBe("false");
-    expect(requestUrlRef.current?.searchParams.get("type")).toBe("manager");
+    expect(requestUrlRef.current?.searchParams.get("hasParent")).toBe("false");
   });
 });
 

@@ -23,7 +23,7 @@ export function App() {
     <main className="app-shell">
       <Header
         appId={appId}
-        onNotifyManager={todos.notifyManager}
+        onSendStatusUpdate={todos.sendStatusUpdate}
         operationStatus={todos.operationStatus}
       />
 

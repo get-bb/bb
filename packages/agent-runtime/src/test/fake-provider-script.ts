@@ -160,10 +160,7 @@ function parseTurnPlan(inputText: string): TurnPlan {
   };
 }
 
-function buildToolArguments(toolName: string): JsonRecord {
-  if (toolName === "message_user") {
-    return { text: "Fake provider message" };
-  }
+function buildToolArguments(_toolName: string): JsonRecord {
   return {};
 }
 

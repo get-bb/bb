@@ -57,7 +57,6 @@ function renderIdleTimeline(events: ThreadEventRow[]) {
   return renderTimelineFixture({
     events,
     projectionOptions: {
-      systemClientRequestVisibility: "hidden",
       threadStatus: "idle",
       turnMessageDetail: "full",
     },

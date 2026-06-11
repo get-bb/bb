@@ -12,7 +12,7 @@ describe("provider-tool-call-contract", () => {
         threadId: "thr_123",
         turnId: "turn-1",
         callId: "call-1",
-        tool: "message_user",
+        tool: "notify_user",
         arguments: { text: "hello" },
       }),
     ).toEqual({
@@ -21,7 +21,7 @@ describe("provider-tool-call-contract", () => {
       providerThreadId: "provider-abc",
       turnId: "turn-1",
       callId: "call-1",
-      tool: "message_user",
+      tool: "notify_user",
       arguments: { text: "hello" },
     });
   });
@@ -32,7 +32,7 @@ describe("provider-tool-call-contract", () => {
         providerThreadId: "provider-abc",
         turnId: "turn-1",
         callId: "call-1",
-        tool: "message_user",
+        tool: "notify_user",
         arguments: { text: "hello" },
       }),
     ).toEqual({
@@ -40,7 +40,7 @@ describe("provider-tool-call-contract", () => {
       providerThreadId: "provider-abc",
       turnId: "turn-1",
       callId: "call-1",
-      tool: "message_user",
+      tool: "notify_user",
       arguments: { text: "hello" },
     });
   });
@@ -51,7 +51,7 @@ describe("provider-tool-call-contract", () => {
         providerThreadId: "provider-abc",
         turnId: null,
         callId: "call-1",
-        tool: "message_user",
+        tool: "notify_user",
         arguments: { text: "hello" },
       }),
     ).toEqual({
@@ -59,7 +59,7 @@ describe("provider-tool-call-contract", () => {
       providerThreadId: "provider-abc",
       turnId: null,
       callId: "call-1",
-      tool: "message_user",
+      tool: "notify_user",
       arguments: { text: "hello" },
     });
   });
@@ -70,7 +70,7 @@ describe("provider-tool-call-contract", () => {
         providerThreadId: "provider-abc",
         turnId: "",
         callId: "call-1",
-        tool: "message_user",
+        tool: "notify_user",
         arguments: { text: "hello" },
       }),
     ).toBeNull();
@@ -79,7 +79,7 @@ describe("provider-tool-call-contract", () => {
       decodeNormalizedProviderToolCallRequest("req-5", "item/tool/call", {
         providerThreadId: "provider-abc",
         callId: "call-1",
-        tool: "message_user",
+        tool: "notify_user",
         arguments: { text: "hello" },
       }),
     ).toBeNull();
@@ -91,7 +91,7 @@ describe("provider-tool-call-contract", () => {
         threadId: "provider-abc",
         turnId: "turn-1",
         callId: "call-1",
-        tool: "message_user",
+        tool: "notify_user",
         arguments: { text: "hello" },
       }),
     ).toEqual({
@@ -99,7 +99,7 @@ describe("provider-tool-call-contract", () => {
       providerThreadId: "provider-abc",
       turnId: "turn-1",
       callId: "call-1",
-      tool: "message_user",
+      tool: "notify_user",
       arguments: { text: "hello" },
     });
   });

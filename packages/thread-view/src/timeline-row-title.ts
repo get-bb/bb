@@ -1,4 +1,3 @@
-import { isSettledWorkflowAgentState } from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineApprovalStatus,
@@ -6,7 +5,7 @@ import type {
   TimelineFileChange,
   TimelineFileChangeWorkRow,
   TimelineImageViewWorkRow,
-  TimelineManagerAssignmentSystemRow,
+  TimelineParentChangeSystemRow,
   TimelineRowStatus,
   TimelineToolWorkRow,
   TimelineWebFetchWorkRow,
@@ -33,6 +32,10 @@ import {
 } from "./timeline-activity-intents.js";
 import { fileNameFromPath } from "./timeline-path-display.js";
 import {
+  getWorkflowAgentProgressCounts,
+  getWorkflowRunIdFromRow,
+} from "./workflow-run-rows.js";
+import {
   buildTimelineWorkSummaryLabelParts,
   type ThreadTimelineViewRow,
   type TimelineWorkSummaryRow,
@@ -54,13 +57,22 @@ export type TimelineStatusDecorationStatus =
  * navigation (the App) can wrap the segment in a link; CLI renderers ignore
  * the link and render the segment text directly.
  */
-export type TimelineTitleLink = { kind: "thread"; threadId: string };
+export type TimelineTitleLink =
+  | { kind: "thread"; threadId: string }
+  | { kind: "workflow-run"; runId: string };
 
 /**
  * One slice of the title's text. Renderers walk the segment list and apply
  * `em`/`shimmer`/`truncate` per slice. There is no implicit "prefix vs content"
  * positional meaning — segment order is the only positional cue.
  */
+/**
+ * Optional per-segment color intent. App renderers map this to a token; CLI /
+ * plain renderers ignore it. `muted`/`subtle` step a segment down the neutral
+ * text ramp (lighter); `file` tints file-path segments with the file accent.
+ */
+export type TimelineTitleSegmentAccent = "muted" | "subtle" | "file";
+
 export interface TimelineTitleSegment {
   text: string;
   /** Optional plain-text override for CLI rendering. Defaults to `text`. */
@@ -68,6 +80,7 @@ export interface TimelineTitleSegment {
   em: boolean;
   shimmer: boolean;
   truncate: boolean;
+  accent?: TimelineTitleSegmentAccent;
   /**
    * Optional navigation target. App renderers wrap the segment in a link;
    * CLI/plain renderers ignore this field.
@@ -145,6 +158,8 @@ export interface BuildTimelineRowTitleOptions {
 export interface TimelineActivityIntentTitle {
   id: string;
   title: TimelineTitle;
+  /** The exploration kind, so renderers can pick a per-intent leading glyph. */
+  intentType: "read" | "list_files" | "search";
 }
 
 interface BuildTimelineActivityIntentTitleArgs {
@@ -189,6 +204,7 @@ interface SegmentOptions {
   truncate?: boolean;
   plainText?: string;
   link?: TimelineTitleLink;
+  accent?: TimelineTitleSegmentAccent;
 }
 
 // Titles are always rendered on a single line — both in the App (segments
@@ -211,6 +227,7 @@ function segment(text: string, opts: SegmentOptions = {}): TimelineTitleSegment 
       ? { plainText: collapseTitleNewlines(opts.plainText) }
       : {}),
     ...(opts.link !== undefined ? { link: opts.link } : {}),
+    ...(opts.accent !== undefined ? { accent: opts.accent } : {}),
   };
 }
 
@@ -252,7 +269,9 @@ function completedTurnDurationDecoration(
     kind: "duration",
     startedAt,
     completedAt,
-    em: true,
+    // A completed turn is a recap — the duration renders muted (not emphasized
+    // foreground) so the "Worked for …" header sits a step quieter.
+    em: false,
   };
 }
 
@@ -436,7 +455,7 @@ function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
     case "completed":
       return makeTitle({
         segments: [
-          segment(isCommand ? "Ran" : "Ran tool:"),
+          segment(isCommand ? "Ran" : "Ran tool"),
           segment(content, { em: true, truncate: true }),
         ],
         decorations: filterNull([durationDecoration(row.startedAt, row.completedAt)]),
@@ -444,7 +463,7 @@ function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
     case "error":
       return makeTitle({
         segments: [
-          segment(isCommand ? "Ran" : "Ran tool:"),
+          segment(isCommand ? "Ran" : "Ran tool"),
           segment(content, { em: true, truncate: true }),
         ],
         decorations: [statusDecoration("error", row.completedAt !== null ? row.completedAt - row.startedAt : null)],
@@ -452,7 +471,7 @@ function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
     case "interrupted":
       return makeTitle({
         segments: [
-          segment(isCommand ? "Ran" : "Ran tool:"),
+          segment(isCommand ? "Ran" : "Ran tool"),
           segment(content, { em: true, truncate: true }),
         ],
         decorations: [statusDecoration("interrupted", row.completedAt !== null ? row.completedAt - row.startedAt : null)],
@@ -572,6 +591,7 @@ function mapFileChangeTitle(row: TimelineFileChangeWorkRow): TimelineTitle {
     em: true,
     truncate: true,
     plainText: fullPath,
+    accent: "file",
   });
 
   switch (status) {
@@ -812,22 +832,35 @@ function workflowVerbForStatus(status: TimelineRowStatus): {
 function formatWorkflowAgentProgress(
   row: TimelineViewWorkflowWorkRow,
 ): string | null {
-  const agents = row.workflow?.agents ?? [];
-  if (agents.length === 0) {
+  const counts = getWorkflowAgentProgressCounts(row.workflow);
+  if (counts === null) {
     return null;
   }
-  const done = agents.filter((agent) =>
-    isSettledWorkflowAgentState(agent.state),
-  ).length;
-  return `(${done}/${agents.length} agents)`;
+  return `(${counts.settled}/${counts.total} agents)`;
 }
 
 function mapWorkflowTitle(row: TimelineViewWorkflowWorkRow): TimelineTitle {
-  const verb = workflowVerbForStatus(row.status);
+  // A paused run is resumable, not running: its item status stays "pending"
+  // by design (backgroundTaskItemStatus), so the verb must branch on
+  // taskStatus to render paused distinctly from both running and stopped.
+  const verb =
+    row.taskStatus === "paused"
+      ? { text: "Paused workflow:", shimmer: false }
+      : workflowVerbForStatus(row.status);
   const name = row.workflowName ?? row.description;
+  // bb workflow runs anchor their `wfr_` run id in itemId; the run page
+  // deep link rides it. Provider-native local_workflow rows have no run
+  // page and stay plain.
+  const runId = getWorkflowRunIdFromRow(row);
   const segments: TimelineTitleSegment[] = [
     segment(verb.text, { shimmer: verb.shimmer }),
-    segment(name, { em: true, truncate: true }),
+    segment(name, {
+      em: true,
+      truncate: true,
+      ...(runId !== null
+        ? { link: { kind: "workflow-run", runId } }
+        : {}),
+    }),
   ];
   const agentProgress = formatWorkflowAgentProgress(row);
   if (agentProgress) {
@@ -1110,10 +1143,16 @@ function mapWorkSummaryTitle(
       tone: "summary",
     });
   }
-  // Bundle summaryStyle: the rest always carries em — bundles are content
-  // recaps and should read emphasized regardless of frontier state. Shimmer
-  // is the active-latest tell on the verb.
-  const verbSegment = segment(verb, { shimmer: isActive });
+  // Bundle summaryStyle: a settled recap (e.g. "Explored 3 files") recedes two
+  // steps down the ramp so it reads as background; an active-latest bundle keeps
+  // full contrast + shimmer as the frontier tell.
+  const settledAccent: TimelineTitleSegmentAccent | undefined = isActive
+    ? undefined
+    : "subtle";
+  const verbSegment = segment(verb, {
+    shimmer: isActive,
+    accent: settledAccent,
+  });
   if (rest.length === 0) {
     return makeTitle({
       segments: [{ ...verbSegment, truncate: true }],
@@ -1121,7 +1160,10 @@ function mapWorkSummaryTitle(
     });
   }
   return makeTitle({
-    segments: [verbSegment, segment(rest, { em: true, truncate: true })],
+    segments: [
+      verbSegment,
+      segment(rest, { em: true, truncate: true, accent: settledAccent }),
+    ],
     decorations,
   });
 }
@@ -1135,14 +1177,20 @@ function mapTurnTitle(row: TimelineViewTurnRow): TimelineTitle {
     !isPending && row.completedAt !== null && durationDeco !== null;
   if (hasCapturedDuration) {
     // Completed turn with a visible captured duration: "Worked for (8m 14s)".
+    // The whole header sits one step down the ramp — it's a recap, not active
+    // work — so the verb is subtle and the duration renders muted (see
+    // completedTurnDurationDecoration: em=false).
     return makeTitle({
-      segments: [segment("Worked for", { shimmer: false })],
+      segments: [segment("Worked for", { shimmer: false, accent: "subtle" })],
       decorations: [durationDeco],
     });
   }
   return makeTitle({
     segments: [
-      segment(isPending ? "Working" : "Worked", { shimmer: isPending }),
+      segment(isPending ? "Working" : "Worked", {
+        shimmer: isPending,
+        accent: isPending ? undefined : "subtle",
+      }),
     ],
     // Pending rows still emit the decoration so the App's `LiveDurationText`
     // can tick locally; CLI formatters return "" for pending and
@@ -1151,7 +1199,7 @@ function mapTurnTitle(row: TimelineViewTurnRow): TimelineTitle {
   });
 }
 
-function managerLinkSegment(
+function parentLinkSegment(
   threadId: string | null,
   title: string | null,
 ): TimelineTitleSegment | null {
@@ -1165,16 +1213,16 @@ function managerLinkSegment(
   });
 }
 
-interface ManagerAssignmentVerbs {
+interface ParentChangeVerbs {
   assign: string;
   release: string;
   transferFrom: string;
   transferTo: string;
 }
 
-function managerAssignmentVerbs(
+function parentChangeVerbs(
   status: TimelineRowStatus,
-): ManagerAssignmentVerbs {
+): ParentChangeVerbs {
   switch (status) {
     case "completed":
     case "error":
@@ -1199,20 +1247,20 @@ function managerAssignmentVerbs(
   }
 }
 
-function mapManagerAssignmentSystemTitle(
-  row: TimelineManagerAssignmentSystemRow,
+function mapParentChangeSystemTitle(
+  row: TimelineParentChangeSystemRow,
 ): TimelineTitle {
-  const assignment = row.managerAssignment;
-  const linkPrev = managerLinkSegment(
-    assignment.previousManagerThreadId,
-    assignment.previousManagerThreadTitle,
+  const assignment = row.parentChange;
+  const linkPrev = parentLinkSegment(
+    assignment.previousParentThreadId,
+    assignment.previousParentThreadTitle,
   );
-  const linkNext = managerLinkSegment(
-    assignment.nextManagerThreadId,
-    assignment.nextManagerThreadTitle,
+  const linkNext = parentLinkSegment(
+    assignment.nextParentThreadId,
+    assignment.nextParentThreadTitle,
   );
   const shimmer = row.status === "pending";
-  const verbs = managerAssignmentVerbs(row.status);
+  const verbs = parentChangeVerbs(row.status);
 
   const segments: TimelineTitleSegment[] = (() => {
     switch (assignment.action) {
@@ -1256,9 +1304,9 @@ function mapSystemTitle(row: TimelineSystemViewRow): TimelineTitle {
   const hasError = row.systemKind === "error" || row.status === "error";
   if (
     row.systemKind === "operation" &&
-    row.operationKind === "manager-assignment"
+    row.operationKind === "parent-change"
   ) {
-    return mapManagerAssignmentSystemTitle(row);
+    return mapParentChangeSystemTitle(row);
   }
   const isCompaction =
     row.systemKind === "operation" && row.operationKind === "compaction";
@@ -1357,6 +1405,7 @@ export function buildTimelineActivityIntentTitles(
     }
     titles.push({
       id: `${row.id}:activity-intent:${index}`,
+      intentType: intent.type,
       title: mapTimelineActivityIntentTitle({
         intent,
         pending: row.status === "pending",

@@ -4,13 +4,13 @@
 export const templateDefinitions = [
   {
     "id": "agentThreadMessage",
-    "body": "[bb message from thread:{{senderThreadId}}; reply with `bb thread tell {{senderThreadId}} \"<your response>\"`]\n\n{{messageText}}",
+    "body": "[bb message from thread:{{senderThreadId}}]\n\n{{messageText}}",
     "fileName": "agent-thread-message.md",
     "kind": "prompt",
     "title": "Agent Thread Message",
     "summary": "Wraps a bb CLI message from one agent thread to another.",
-    "intent": "Tell the receiving agent which thread sent the message and how to reply.",
-    "editingNotes": "Keep the response command in the prefix so standard agent instructions do not need special cross-thread message guidance.",
+    "intent": "Tell the receiving agent which thread sent the message without prompting an unnecessary reply.",
+    "editingNotes": "Keep only sender identity in the prefix; reply instructions cause agents to acknowledge messages that do not need responses.",
     "variables": {
       "senderThreadId": "The thread ID that sent the message.",
       "messageText": "The original message text sent by the agent."
@@ -18,7 +18,7 @@ export const templateDefinitions = [
   },
   {
     "id": "bbGuideApp",
-    "body": "Apps\n\nApps are global within the local host data directory. They are the supported\nway to build dashboards, control panels, and other interactive surfaces that\ncan open inside a thread panel.\n\nImportant: bb serves each app's committed `public/` directory as a static web\nroot at `/api/v1/apps/<applicationId>/`. New apps created with `bb app new`\nstart as a Vite + React + TypeScript Todo app with an editable `source/`\nproject and a prebuilt `public/` output, so they render immediately.\n\nEdit scaffolded apps in `source/`, then rebuild to `public/`. A Vite dev server\nis useful while editing, but bb serves only `public/`; do not rely on a running\nlocalhost server for the installed app.\n\nStorage layout:\n\n```text\n<dataDir>/\n  apps/\n    review-board/\n      manifest.json\n      README.md\n      public/\n        index.html\n        index-abc.js\n        index-def.css\n      skills/\n        add-todos/\n          SKILL.md\n      source/\n        package.json\n        vite.config.ts\n        src/\n  app-data/\n    review-board/\n      state.json\n```\n\nEach app is rooted at `<dataDir>/apps/<applicationId>/`. The manifest lives at\n`manifest.json` and browser files live under `public/`. Only `public/` is\nserved as static web content. `source/` and `skills/` are local app files for\nediting and agent workflows; they are not served as browser content.\n\nDurable JSON state lives outside the app folder at\n`<dataDir>/app-data/<applicationId>/`, so app code and runtime data have\nindependent lifecycles. The data dir is created lazily on first write.\n\nThe app exists only when the local filesystem contains a valid manifest at\n`<dataDir>/apps/<applicationId>/manifest.json`. `manifest.id` is the canonical\napplication id: it must be a lowercase path-safe slug such as `status` or\n`review-board`, globally unique inside the data dir, and equal to the\ncontaining folder name. `manifest.name` is an optional human display name only.\nWhen it is absent or empty, bb displays the slug. Display names are not\nidentifiers and may repeat.\n\nManifest:\n\n```json\n{\n  \"manifestVersion\": 1,\n  \"id\": \"review-board\",\n  \"name\": \"Review Board\",\n  \"icon\": \"ListTodo\",\n  \"entry\": \"index.html\",\n  \"capabilities\": [\"data\", \"message\"]\n}\n```\n\n`entry` is relative to `public/`. HTML entries load in an app iframe and receive\nthe prototype `window.bb` SDK; Markdown entries render as static documents and\ndo not receive `window.bb`. `capabilities` is retained as manifest metadata, but\nthe Phase 1 SDK prototype does not gate browser helpers by capability.\n\nThe served app entry URL is `/api/v1/apps/<applicationId>/`; bb serves\n`public/` transparently from that same URL root. Browser files in `public/`\ntherefore resolve by normal browser URL rules with no `<base>` injection and no\nserve-time URL rewriting:\n`public/index-abc.js` maps to `/api/v1/apps/<applicationId>/index-abc.js`, and\n`public/assets/index-def.css` maps to\n`/api/v1/apps/<applicationId>/assets/index-def.css`.\n\nFor Vite builds, set a relative base and build directly into `public/`:\n\n```ts\nimport { defineConfig } from \"vite\";\nimport react from \"@vitejs/plugin-react\";\nimport tailwindcss from \"@tailwindcss/vite\";\n\nexport default defineConfig({\n  plugins: [react(), tailwindcss()],\n  base: \"./\",\n  build: {\n    outDir: \"../public\",\n    assetsDir: \"\",\n    emptyOutDir: true,\n  },\n});\n```\n\nDo not use Vite's default root-absolute base (`\"/\"`). Refs such as\n`/assets/index-abc.js` resolve against the bb server root, not the app route, so\nthey will not load inside a mounted app.\n\nTo edit a scaffolded app:\n\n```bash\ncd \"$BB_APP_ROOT/source\"\npnpm install\npnpm build\n```\n\n`pnpm build` writes `../public/index.html` and flat relative assets beside it.\nCommit or keep those `public/` files in the app directory so the app opens\nwithout a build step at runtime.\n\nThe icon is optional and uses a built-in icon name. Icon resolution order is:\n\n1. `manifest.icon`, when present, as a built-in icon.\n2. A custom top-level `logo.svg`, `logo.png`, `logo.jpg`, or `logo.jpeg` in the\n   app root, up to 1 MB.\n3. The built-in `GridView` fallback.\n\nCLI:\n\n```bash\nbb app list\nbb app new --name \"Review Board\"\nbb app new --slug status\nbb app show review-board\nbb app data list review-board\nbb app data read review-board state.json\nbb app data write review-board state.json --file ./state.json\nbb app message review-board --target-thread thr_123 --json '\"Please review the current blockers.\"'\nbb app delete review-board --yes\n```\n\n`--json` is available for scripts. Commands accept application ids only, never\ndisplay names. There is no host selector in v1; apps are local-host only.\n\nApp sources install apps from a git repo (or local path) and update them with\nmanual syncs. Every top-level repo directory with a valid `manifest.json` is\nan app. Updates never run in the background, local edits mark an app\n`modified` and are never overwritten without `--force`, and app data always\nsurvives updates and removal. Only add repos you trust — their apps serve\nbrowser code and inject agent skills.\n\n```bash\nbb app source add https://github.com/you/my-bb-apps.git\nbb app source list\nbb app source sync my-bb-apps\nbb app source detach pomodoro        # app becomes permanently local\nbb app source remove my-bb-apps --yes\n```\n\nInside an app-capable runtime, inspect the current app context:\n\n```bash\nbb app current --json\n```\n\nOutside a current-app runtime, this returns `current_app_unavailable`.\n\nRuntime paths:\n\n```bash\necho \"$BB_APPS_ROOT\"          # <dataDir>/apps\necho \"$BB_APP_ID\"             # current application id, when available\necho \"$BB_APP_ROOT\"           # <dataDir>/apps/<applicationId>, when available\necho \"$BB_APP_DATA_PATH\"      # <dataDir>/app-data/<applicationId>, when available\n```\n\nAgent writes:\n\nWhen a runtime has `BB_APP_ROOT`, edit the app directly in that canonical\nfolder. Write app data through the app data API or with a temp file in the same\ndirectory and then `mv` into place. Same-directory rename is atomic on macOS and\nLinux, and bb broadcasts the committed app-data change.\n\n```bash\ndir=\"$BB_APP_DATA_PATH\"\nmkdir -p \"$dir\"\ntmp=$(mktemp \"$dir/.state.XXXXXX\")\nprintf '%s\\n' '{\"tasks\":[],\"updatedAt\":\"2026-06-02T00:00:00Z\"}' > \"$tmp\" &&\n  mv \"$tmp\" \"$dir/state.json\"\n```\n\nThe default Todo scaffold also installs `skills/add-todos/SKILL.md`. Its todo\nrecords live at `todos/<id>` and have this shape:\n\n```json\n{\n  \"id\": \"todo_20260603_review_notes\",\n  \"title\": \"Review notes from the manager\",\n  \"done\": false,\n  \"createdAt\": \"2026-06-03T20:00:00.000Z\",\n  \"updatedAt\": \"2026-06-03T20:00:00.000Z\"\n}\n```\n\nWrite one from an agent or script with:\n\n```bash\nprintf '%s\\n' '{\"id\":\"todo_20260603_review_notes\",\"title\":\"Review notes from the manager\",\"done\":false,\"createdAt\":\"2026-06-03T20:00:00.000Z\",\"updatedAt\":\"2026-06-03T20:00:00.000Z\"}' |\n  bb app data write review-board todos/todo_20260603_review_notes --stdin\n```\n\nData paths are relative to the app's data directory. They must not start or\nend with `/`, must not contain backslashes, dot-prefixed segments, `.` or `..`,\nand may be nested up to eight path segments. Each segment may use letters,\nnumbers, dots, underscores, and hyphens.\n\nBrowser API:\n\n```ts\nwindow.bb.applicationId\nwindow.bb.appId\nawait window.bb.data.read({ path: \"state.json\" })\nawait window.bb.data.write({ path: \"state.json\", value: { tasks: [] } })\nawait window.bb.data.delete({ path: \"state.json\" })\nconst entries = await window.bb.data.list({ prefix: \"\" })\nconst unsubscribe = window.bb.data.onChange({ prefix: \"\", callback(event) {\n  console.log(event.path, event.value, event.deleted)\n}})\nawait window.bb.message.send({ payload: \"Please review the current blockers.\" })\n```\n\n`window.bb.data` reads and writes JSON values. `onChange({ prefix, callback })`\nmatches a single data file when `prefix` equals that path and matches a subtree\nwhen the changed path is below `prefix + \"/\"`; `\"\"` matches all app data.\nRegistering a listener immediately replays existing matching data, and bb\nreplays again after reconnects or app-data resync hints. Later filesystem\nwrites, browser writes, and deletes are delivered after that replay.\n\n`window.bb.message.send({ payload })` sends a normal follow-up message to the\nthread context that opened the app. Non-iframe callers must provide a target\nthread through the message API or CLI; without a target, bb returns\n`message_target_required`. App data remains global. Only message delivery is\ncontextual.\n\nMinimal app-data pattern:\n\n```ts\nconst entries = await window.bb.data.list({ prefix: \"todos\" });\n\nconst unsubscribe = window.bb.data.onChange({\n  prefix: \"todos\",\n  callback(event) {\n    console.log(event.path, event.value, event.deleted);\n  },\n});\n\nawait window.bb.data.write({\n  path: \"todos/todo_20260603_review_notes\",\n  value: {\n    id: \"todo_20260603_review_notes\",\n    title: \"Review notes from the manager\",\n    done: false,\n    createdAt: \"2026-06-03T20:00:00.000Z\",\n    updatedAt: \"2026-06-03T20:00:00.000Z\",\n  },\n});\n```\n\nStyling:\n\nMake app UI quiet, dense, and consistent with bb unless the user asks for a\ndifferent direction. Use Tailwind for layout utilities if helpful, and use the\nbb-style tokens below for colors, fonts, borders, radius, and shadows. Apps\nrender in iframes, so external resources such as Google Fonts, Tailwind CDN,\nremote images, and stylesheets load normally.\n\n```html\n<script src=\"https://cdn.tailwindcss.com\"></script>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n:root {\n  color-scheme: light;\n  --background: oklch(1 0 0);\n  --foreground: oklch(0.3211 0 0);\n  --card: oklch(0.985 0 0);\n  --muted: oklch(0.93 0 0);\n  --muted-foreground: oklch(0.44 0 0);\n  --border: oklch(0.905 0 0);\n  --accent: oklch(0.945 0 0);\n  --success: oklch(0.7 0.15 155);\n  --warning: oklch(0.7 0.16 50);\n  --destructive: oklch(0.45 0.19 25.8625);\n  --radius: 0.5rem;\n  --font-sans: \"Inter\", ui-sans-serif, system-ui, sans-serif;\n  --font-mono: \"Fira Code\", ui-monospace, SFMono-Regular, monospace;\n}\n@media (prefers-color-scheme: dark) {\n  :root {\n    color-scheme: dark;\n    --background: oklch(0.195 0 0);\n    --foreground: oklch(0.8853 0 0);\n    --card: oklch(0.2435 0 0);\n    --muted: oklch(0.285 0 0);\n    --muted-foreground: oklch(0.78 0 0);\n    --border: oklch(0.329 0 0);\n    --accent: oklch(0.285 0 0);\n  }\n}\nbody {\n  margin: 0;\n  background: var(--background);\n  color: var(--foreground);\n  font-family: var(--font-sans);\n  font-size: 13px;\n}\n.panel {\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  background: var(--card);\n}\n</style>\n```\n\nKeep one canonical app for each concept. Use additional apps only when they are\ndistinct tools or dashboards.\n\nRelated guides:\n\n  bb guide overview\n  bb guide managers\n  bb guide schedules",
+    "body": "Apps\n\nApps are global within the local host data directory. They are the supported\nway to build dashboards, control panels, and other interactive surfaces that\ncan open inside a thread panel.\n\nImportant: bb serves each app's committed `public/` directory as a static web\nroot at `/api/v1/apps/<applicationId>/`. New apps created with `bb app new`\nstart as a Vite + React + TypeScript Todo app with an editable `source/`\nproject and a prebuilt `public/` output, so they render immediately.\n\nEdit scaffolded apps in `source/`, then rebuild to `public/`. A Vite dev server\nis useful while editing, but bb serves only `public/`; do not rely on a running\nlocalhost server for the installed app.\n\nStorage layout:\n\n```text\n<dataDir>/\n  apps/\n    review-board/\n      manifest.json\n      README.md\n      public/\n        index.html\n        index-abc.js\n        index-def.css\n      skills/\n        add-todos/\n          SKILL.md\n      source/\n        package.json\n        vite.config.ts\n        src/\n  app-data/\n    review-board/\n      state.json\n```\n\nEach app is rooted at `<dataDir>/apps/<applicationId>/`. The manifest lives at\n`manifest.json` and browser files live under `public/`. Only `public/` is\nserved as static web content. `source/` and `skills/` are local app files for\nediting and agent workflows; they are not served as browser content.\n\nDurable JSON state lives outside the app folder at\n`<dataDir>/app-data/<applicationId>/`, so app code and runtime data have\nindependent lifecycles. The data dir is created lazily on first write.\n\nThe app exists only when the local filesystem contains a valid manifest at\n`<dataDir>/apps/<applicationId>/manifest.json`. `manifest.id` is the canonical\napplication id: it must be a lowercase path-safe slug such as `status` or\n`review-board`, globally unique inside the data dir, and equal to the\ncontaining folder name. `manifest.name` is an optional human display name only.\nWhen it is absent or empty, bb displays the slug. Display names are not\nidentifiers and may repeat.\n\nManifest:\n\n```json\n{\n  \"manifestVersion\": 1,\n  \"id\": \"review-board\",\n  \"name\": \"Review Board\",\n  \"icon\": \"ListTodo\",\n  \"entry\": \"index.html\",\n  \"capabilities\": [\"data\", \"message\"]\n}\n```\n\n`entry` is relative to `public/`. HTML entries load in an app iframe and receive\nthe prototype `window.bb` SDK; Markdown entries render as static documents and\ndo not receive `window.bb`. `capabilities` is retained as manifest metadata, but\nthe Phase 1 SDK prototype does not gate browser helpers by capability.\n\nThe served app entry URL is `/api/v1/apps/<applicationId>/`; bb serves\n`public/` transparently from that same URL root. Browser files in `public/`\ntherefore resolve by normal browser URL rules with no `<base>` injection and no\nserve-time URL rewriting:\n`public/index-abc.js` maps to `/api/v1/apps/<applicationId>/index-abc.js`, and\n`public/assets/index-def.css` maps to\n`/api/v1/apps/<applicationId>/assets/index-def.css`.\n\nFor Vite builds, set a relative base and build directly into `public/`:\n\n```ts\nimport { defineConfig } from \"vite\";\nimport react from \"@vitejs/plugin-react\";\nimport tailwindcss from \"@tailwindcss/vite\";\n\nexport default defineConfig({\n  plugins: [react(), tailwindcss()],\n  base: \"./\",\n  build: {\n    outDir: \"../public\",\n    assetsDir: \"\",\n    emptyOutDir: true,\n  },\n});\n```\n\nDo not use Vite's default root-absolute base (`\"/\"`). Refs such as\n`/assets/index-abc.js` resolve against the bb server root, not the app route, so\nthey will not load inside a mounted app.\n\nTo edit a scaffolded app:\n\n```bash\ncd \"$BB_APP_ROOT/source\"\npnpm install\npnpm build\n```\n\n`pnpm build` writes `../public/index.html` and flat relative assets beside it.\nCommit or keep those `public/` files in the app directory so the app opens\nwithout a build step at runtime.\n\nThe icon is optional and uses a built-in icon name. Icon resolution order is:\n\n1. `manifest.icon`, when present, as a built-in icon.\n2. A custom top-level `logo.svg`, `logo.png`, `logo.jpg`, or `logo.jpeg` in the\n   app root, up to 1 MB.\n3. The built-in `GridView` fallback.\n\nCLI:\n\n```bash\nbb app list\nbb app new --name \"Review Board\"\nbb app new --slug status\nbb app show review-board\nbb app data list review-board\nbb app data read review-board state.json\nbb app data write review-board state.json --file ./state.json\nbb app message review-board --target-thread thr_123 --json '\"Please review the current blockers.\"'\nbb app delete review-board --yes\n```\n\n`--json` is available for scripts. Commands accept application ids only, never\ndisplay names. There is no host selector in v1; apps are local-host only.\n\nApp sources install apps from a git repo (or local path) and update them with\nmanual syncs. Every top-level repo directory with a valid `manifest.json` is\nan app. Updates never run in the background, local edits mark an app\n`modified` and are never overwritten without `--force`, and app data always\nsurvives updates and removal. Only add repos you trust — their apps serve\nbrowser code and inject agent skills.\n\n```bash\nbb app source add https://github.com/you/my-bb-apps.git\nbb app source list\nbb app source sync my-bb-apps\nbb app source detach pomodoro        # app becomes permanently local\nbb app source remove my-bb-apps --yes\n```\n\nInside an app-capable runtime, inspect the current app context:\n\n```bash\nbb app current --json\n```\n\nOutside a current-app runtime, this returns `current_app_unavailable`.\n\nRuntime paths:\n\n```bash\necho \"$BB_APPS_ROOT\"          # <dataDir>/apps\necho \"$BB_APP_ID\"             # current application id, when available\necho \"$BB_APP_ROOT\"           # <dataDir>/apps/<applicationId>, when available\necho \"$BB_APP_DATA_PATH\"      # <dataDir>/app-data/<applicationId>, when available\n```\n\nAgent writes:\n\nWhen a runtime has `BB_APP_ROOT`, edit the app directly in that canonical\nfolder. Write app data through the app data API or with a temp file in the same\ndirectory and then `mv` into place. Same-directory rename is atomic on macOS and\nLinux, and bb broadcasts the committed app-data change.\n\n```bash\ndir=\"$BB_APP_DATA_PATH\"\nmkdir -p \"$dir\"\ntmp=$(mktemp \"$dir/.state.XXXXXX\")\nprintf '%s\\n' '{\"tasks\":[],\"updatedAt\":\"2026-06-02T00:00:00Z\"}' > \"$tmp\" &&\n  mv \"$tmp\" \"$dir/state.json\"\n```\n\nThe default Todo scaffold also installs `skills/add-todos/SKILL.md`. Its todo\nrecords live at `todos/<id>` and have this shape:\n\n```json\n{\n  \"id\": \"todo_20260603_review_notes\",\n  \"title\": \"Review release notes\",\n  \"done\": false,\n  \"createdAt\": \"2026-06-03T20:00:00.000Z\",\n  \"updatedAt\": \"2026-06-03T20:00:00.000Z\"\n}\n```\n\nWrite one from an agent or script with:\n\n```bash\nprintf '%s\\n' '{\"id\":\"todo_20260603_review_notes\",\"title\":\"Review release notes\",\"done\":false,\"createdAt\":\"2026-06-03T20:00:00.000Z\",\"updatedAt\":\"2026-06-03T20:00:00.000Z\"}' |\n  bb app data write review-board todos/todo_20260603_review_notes --stdin\n```\n\nData paths are relative to the app's data directory. They must not start or\nend with `/`, must not contain backslashes, dot-prefixed segments, `.` or `..`,\nand may be nested up to eight path segments. Each segment may use letters,\nnumbers, dots, underscores, and hyphens.\n\nBrowser API:\n\n```ts\nwindow.bb.applicationId\nwindow.bb.appId\nawait window.bb.data.read({ path: \"state.json\" })\nawait window.bb.data.write({ path: \"state.json\", value: { tasks: [] } })\nawait window.bb.data.delete({ path: \"state.json\" })\nconst entries = await window.bb.data.list({ prefix: \"\" })\nconst unsubscribe = window.bb.data.onChange({ prefix: \"\", callback(event) {\n  console.log(event.path, event.value, event.deleted)\n}})\nawait window.bb.message.send({ payload: \"Please review the current blockers.\" })\n```\n\n`window.bb.data` reads and writes JSON values. `onChange({ prefix, callback })`\nmatches a single data file when `prefix` equals that path and matches a subtree\nwhen the changed path is below `prefix + \"/\"`; `\"\"` matches all app data.\nRegistering a listener immediately replays existing matching data, and bb\nreplays again after reconnects or app-data resync hints. Later filesystem\nwrites, browser writes, and deletes are delivered after that replay.\n\n`window.bb.message.send({ payload })` sends a normal follow-up message to the\nthread context that opened the app. Non-iframe callers must provide a target\nthread through the message API or CLI; without a target, bb returns\n`message_target_required`. App data remains global. Only message delivery is\ncontextual.\n\nMinimal app-data pattern:\n\n```ts\nconst entries = await window.bb.data.list({ prefix: \"todos\" });\n\nconst unsubscribe = window.bb.data.onChange({\n  prefix: \"todos\",\n  callback(event) {\n    console.log(event.path, event.value, event.deleted);\n  },\n});\n\nawait window.bb.data.write({\n  path: \"todos/todo_20260603_review_notes\",\n  value: {\n    id: \"todo_20260603_review_notes\",\n    title: \"Review release notes\",\n    done: false,\n    createdAt: \"2026-06-03T20:00:00.000Z\",\n    updatedAt: \"2026-06-03T20:00:00.000Z\",\n  },\n});\n```\n\nStyling:\n\nMake app UI quiet, dense, and consistent with bb unless the user asks for a\ndifferent direction. Use Tailwind for layout utilities if helpful, and use the\nbb-style tokens below for colors, fonts, borders, radius, and shadows. Apps\nrender in iframes, so external resources such as Google Fonts, Tailwind CDN,\nremote images, and stylesheets load normally.\n\n```html\n<script src=\"https://cdn.tailwindcss.com\"></script>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap\" rel=\"stylesheet\">\n<style>\n:root {\n  color-scheme: light;\n  --background: oklch(1 0 0);\n  --foreground: oklch(0.3211 0 0);\n  --card: oklch(0.985 0 0);\n  --muted: oklch(0.93 0 0);\n  --muted-foreground: oklch(0.44 0 0);\n  --border: oklch(0.905 0 0);\n  --accent: oklch(0.945 0 0);\n  --success: oklch(0.7 0.15 155);\n  --warning: oklch(0.7 0.16 50);\n  --destructive: oklch(0.45 0.19 25.8625);\n  --radius: 0.5rem;\n  --font-sans: \"Inter\", ui-sans-serif, system-ui, sans-serif;\n  --font-mono: \"Fira Code\", ui-monospace, SFMono-Regular, monospace;\n}\n@media (prefers-color-scheme: dark) {\n  :root {\n    color-scheme: dark;\n    --background: oklch(0.195 0 0);\n    --foreground: oklch(0.8853 0 0);\n    --card: oklch(0.2435 0 0);\n    --muted: oklch(0.285 0 0);\n    --muted-foreground: oklch(0.78 0 0);\n    --border: oklch(0.329 0 0);\n    --accent: oklch(0.285 0 0);\n  }\n}\nbody {\n  margin: 0;\n  background: var(--background);\n  color: var(--foreground);\n  font-family: var(--font-sans);\n  font-size: 13px;\n}\n.panel {\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  background: var(--card);\n}\n</style>\n```\n\nKeep one canonical app for each concept. Use additional apps only when they are\ndistinct tools or dashboards.\n\nRelated guides:\n\n  bb guide overview\n  bb guide schedules",
     "fileName": "bb-guide-app.md",
     "kind": "instruction",
     "title": "bb Guide - Apps",
@@ -39,19 +39,8 @@ export const templateDefinitions = [
     "variables": {}
   },
   {
-    "id": "bbGuideManagers",
-    "body": "Manager commands\n\nManagers are long-running threads that coordinate work across other threads.\nUse bb thread commands for most manager interactions.\n\n  bb manager hire [projectId]             Hire a new manager\n    --project <id>                        Project ID (defaults to BB_PROJECT_ID)\n    --name <name>                         Manager name\n    --provider <id>                       Provider override\n    --model <model>                       Model override\n    --reasoning-level <level>             Reasoning level: low, medium, high, xhigh, max (provider-dependent)\n    --permission-mode <mode>              Permission mode: full, workspace-write, or readonly\n    --json                                Print machine-readable JSON output\n\n  When --provider and --model are omitted, the project's remembered manager defaults apply first.\n  If there are no remembered manager defaults, the server manager policy is used.\n\n  bb manager list [projectId]             List managers for a project\n    --project <id>                        Project ID (defaults to BB_PROJECT_ID)\n    --json                                Print machine-readable JSON output\n\n  bb manager status <id>                  Show manager status and managed threads\n    --json                                Print machine-readable JSON output\n\n  bb manager delete <id>                  Delete a manager permanently\n    --yes                                 Skip the confirmation prompt\n    --json                                Print machine-readable JSON output\n\nCommon manager interactions via thread commands:\n\n  bb thread list --parent-thread <manager-id>    List managed threads\n  bb thread tell <manager-id> \"message\"          Message a manager\n  bb thread log <manager-id>                     Show manager log\n\nManager thread logs use the regular thread timeline. `--format verbose`\nexpands returned timeline details.",
-    "fileName": "bb-guide-managers.md",
-    "kind": "instruction",
-    "title": "bb Guide — Managers",
-    "summary": "Command reference for hiring and managing project managers.",
-    "intent": "Provide complete manager command documentation for agents.",
-    "editingNotes": "Keep flags accurate against the CLI implementation.",
-    "variables": {}
-  },
-  {
     "id": "bbGuideOverview",
-    "body": "bb is an agent orchestration tool for managing multiple agents.\n\nCore concepts:\n\n- Project — maps to a repository. All threads belong to a project.\n- Thread — a single agent conversation. The fundamental unit of work.\n- Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.\n- Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.\n\nThread types:\n\n- standard — does coding, research, debugging, or other tasks.\n- manager — coordinates work across other threads and communicates with the user directly in the manager thread.\n\nThreads can have a parent-child relationship. The parent manages the child and receives lifecycle notifications when it completes, fails, or is interrupted. Threads without a parent are managed by the user.\n\nContext variables set automatically inside a thread environment:\n\n- BB_PROJECT_ID — current project\n- BB_THREAD_ID — current thread\n- BB_ENVIRONMENT_ID — current environment\n\nRun `bb status` to see your current context (resolved project and thread IDs).\n\nAll commands support --json for machine-readable output.\n\nRun `bb guide <chapter>` for command details:\n\n  threads        Spawning, inspecting, messaging, and managing threads\n  environments   Environment operations, commits, and merges\n  managers       Hiring and managing project managers\n  app            Global apps, app data, browser APIs, and styling\n  providers      Discovering providers and models\n  projects       Project CRUD and sources\n  styling        Alias for app\n  schedules      Managing recurring thread schedules\n  async          Alias for schedules",
+    "body": "bb is an agent orchestration tool for managing multiple agents.\n\nCore concepts:\n\n- Project — maps to a repository. All threads belong to a project.\n- Thread — a single agent conversation. The fundamental unit of work.\n- Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.\n- Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.\n\nThreads can have a parent-child relationship. The parent coordinates the child and receives lifecycle notifications when it completes, fails, or is interrupted. Threads without a parent are managed directly by the user.\n\nContext variables set automatically inside a thread environment:\n\n- BB_PROJECT_ID — current project\n- BB_THREAD_ID — current thread\n- BB_ENVIRONMENT_ID — current environment\n\nRun `bb status` to see your current context (resolved project and thread IDs).\n\nAll commands support --json for machine-readable output.\n\nRun `bb guide <chapter>` for command details:\n\n  threads        Spawning, inspecting, messaging, and managing threads\n  environments   Environment operations, commits, and merges\n  app            Global apps, app data, browser APIs, and styling\n  providers      Discovering providers and models\n  projects       Project CRUD and sources\n  styling        Alias for app\n  schedules      Managing recurring thread schedules\n  async          Alias for schedules",
     "fileName": "bb-guide-overview.md",
     "kind": "instruction",
     "title": "bb Guide Overview",
@@ -95,7 +84,7 @@ export const templateDefinitions = [
   },
   {
     "id": "bbGuideThreads",
-    "body": "Thread commands\n\nEvery command supports --json for machine-readable output.\n\nSpawning:\n\n  bb thread spawn --prompt \"...\" [options]\n\n    --prompt <prompt>              Initial prompt (required)\n    --title <title>                Thread title\n    --project <id>                 Project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>           Parent thread (defaults to BB_THREAD_ID)\n    --provider <id>                Provider override\n    --model <model>                Model override\n    --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)\n    --environment <id-or-path>     Attach to an existing environment (ID or workspace path)\n    --new-environment <kind>       Create a new environment (worktree)\n    --service-tier <tier>          Service tier: fast, default\n    --permission-mode <mode>       Permission mode: full, workspace-write, or readonly\n    --no-context-parent-thread     Do not default parent thread to BB_THREAD_ID\n\n  When --provider and --model are omitted, the project's remembered defaults apply.\n  When --parent-thread is omitted inside a thread, BB_THREAD_ID is used automatically.\n\nListing:\n\n  bb thread list                           List threads\n    --project <id>                         Filter by project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>                   Filter by parent/manager\n    --archived                             Show only archived threads\n\nInspecting:\n\n  bb thread show [id]                      Show thread details (defaults to BB_THREAD_ID)\n    --self                                 Target current thread\n    --work-status                          Include git working-tree status\n    --git-diff                             Include git diff\n    --diff-target <type>                   Diff scope: uncommitted, branch_committed, all, commit\n    --diff-sha <sha>                       Commit SHA (for --diff-target commit)\n    --diff-merge-base <branch>             Override merge-base branch for diff\n    --merge-base-branches                  List available merge-base branches\n\n  bb thread log [id]                       Show thread event log\n    --self                                 Target current thread\n    --format <format>                      Output format: json, minimal, verbose\n    --limit <count>                        Limit entries\n    --after-seq <seq>                      Paginate after sequence number\n\n  bb thread output <id>                    Get the final output of a thread\n\n  bb thread wait [id]                      Wait for a thread status or event\n    --status <status>                      Wait for this status\n    --event <type>                         Wait for this event type\n    --timeout <seconds>                    Timeout\n    --poll-interval <ms>                   Polling interval in milliseconds\n\nMessaging:\n\n  bb thread tell <id> <message>            Send a follow-up message\n    --mode <mode>                          Message mode (e.g., steer)\n    --model <model>                        Model override for this turn\n    --reasoning-level <level>              Reasoning level override\n\n  bb thread stop [id]                      Stop an active or provisioning thread\n    --self                                 Stop current thread\n\nOwnership:\n\n  bb thread update [id]                    Update thread metadata\n    --self                                 Target current thread\n    --title <title>                        Set title\n    --parent-thread <id>                   Assign to a parent/manager\n    --clear-parent-thread                  Remove parent assignment\n\nLifecycle:\n\n  bb thread archive [id]                   Archive a thread\n    --self                                 Archive current thread\n\n  bb thread unarchive [id]                 Unarchive a thread\n    --self                                 Unarchive current thread\n\n  bb thread delete <id>                    Delete permanently\n    --yes                                  Skip confirmation\n\nRead-only commands infer the thread from BB_THREAD_ID.\nMutating commands require an explicit ID or --self.",
+    "body": "Thread commands\n\nEvery command supports --json for machine-readable output.\n\nSpawning:\n\n  bb thread spawn --prompt \"...\" [options]\n\n    --prompt <prompt>              Initial prompt (required)\n    --title <title>                Thread title\n    --project <id>                 Project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>           Parent thread (defaults to BB_THREAD_ID)\n    --provider <id>                Provider override\n    --model <model>                Model override\n    --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)\n    --environment <id-or-path>     Attach to an existing environment (ID or workspace path)\n    --new-environment <kind>       Create a new environment (worktree)\n    --service-tier <tier>          Service tier: fast, default\n    --permission-mode <mode>       Permission mode: full, workspace-write, or readonly\n    --no-context-parent-thread     Do not default parent thread to BB_THREAD_ID\n\n  Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.\n  When --parent-thread is omitted inside a thread, BB_THREAD_ID is used automatically.\n\nListing:\n\n  bb thread list                           List threads\n    --project <id>                         Filter by project (defaults to BB_PROJECT_ID)\n    --parent-thread <id>                   Filter by parent thread\n    --archived                             Show only archived threads\n\nInspecting:\n\n  bb thread show [id]                      Show thread details (defaults to BB_THREAD_ID)\n    --self                                 Target current thread\n    --work-status                          Include git working-tree status\n    --git-diff                             Include git diff\n    --diff-target <type>                   Diff scope: uncommitted, branch_committed, all, commit\n    --diff-sha <sha>                       Commit SHA (for --diff-target commit)\n    --diff-merge-base <branch>             Override merge-base branch for diff\n    --merge-base-branches                  List available merge-base branches\n\n  bb thread log [id]                       Show thread event log\n    --self                                 Target current thread\n    --format <format>                      Output format: json, minimal, verbose\n    --limit <count>                        Limit entries\n    --after-seq <seq>                      Paginate after sequence number\n\n  bb thread output [id]                    Get the final output of a thread (defaults to BB_THREAD_ID)\n    --self                                 Target current thread\n\n  bb thread wait [id]                      Wait for a thread status or event (defaults to --status idle)\n    --status <status>                      Wait for this status\n    --event <type>                         Wait for this event type\n    --timeout <seconds>                    Timeout\n    --poll-interval <ms>                   Polling interval in milliseconds\n\nMessaging:\n\n  bb thread tell <id> <message>            Send a follow-up message\n    --mode <mode>                          Message mode: queue (default), steer, or auto\n    --model <model>                        Model override for this turn\n    --reasoning-level <level>              Reasoning level override\n\n  bb thread stop [id]                      Stop an active or provisioning thread\n    --self                                 Stop current thread\n\nOwnership:\n\n  bb thread update [id]                    Update thread metadata\n    --self                                 Target current thread\n    --title <title>                        Set title\n    --parent-thread <id>                   Assign to a parent thread\n    --clear-parent-thread                  Remove parent assignment\n\nLifecycle:\n\n  bb thread archive [id]                   Archive a thread\n    --self                                 Archive current thread\n\n  bb thread unarchive [id]                 Unarchive a thread\n    --self                                 Unarchive current thread\n\n  bb thread delete <id>                    Delete permanently\n    --yes                                  Skip confirmation\n\nRead-only commands infer the thread from BB_THREAD_ID.\nMutating commands require an explicit ID or --self.",
     "fileName": "bb-guide-threads.md",
     "kind": "instruction",
     "title": "bb Guide — Threads",
@@ -134,195 +123,138 @@ export const templateDefinitions = [
     }
   },
   {
-    "id": "managerAgentInstructions",
-    "body": "You are a manager in a project inside bb, a futuristic IDE where agents collaborate to complete tasks and you (the manager) have full control over the environment. You should be helpful, friendly, and proactive.\n\nYour job is to coordinate work across child threads, keep the user informed, and keep the system moving. Delegate substantive work by default. Use the manager thread for lightweight coordination, quick scoping, routing decisions, and final review.\n\nThe user will most likely be doing coding work. You should keep them updated on the changes, but not overload them with too much information. You are a middle manager reporting updates to your supervisor (the user) and delegating work to your team (child threads).\n\n## The BB System\n\nbb is the IDE that you live in. It is a UI and runtime for agents and you will primarily interact with it through the `bb` CLI.\n\n`bb` has three core primitives:\n\n- An **environment** is a workspace: the project checkout or an isolated git worktree.\n- A **thread** is a single agent conversation attached to an environment. Threads are the fundamental unit of work.\n- A **project** maps to a repository. All threads and environments belong to a project.\n\nThese connect in a chain: a project has environments, and environments have threads. Multiple threads can share one environment (useful for multi-thread collaboration like code-then-review). Each thread is either **standard** (does the work) or **manager** (coordinates the work). You are a manager.\n\nThe default operating model is to spawn worker threads each in its own isolated worktree. This gives file-level isolation between workers and lets you directly access their worktree paths for inspection.\n\nThreads can have a parent-child relationship. A parent thread manages the child. When a child thread completes, bb notifies the parent. Threads without a parent are managed directly by the user.\n\nAs a manager, you use the `bb` CLI to spawn worker threads, inspect their progress, and manage them directly. Run `bb guide` for the system overview and `bb guide <chapter>` for detailed command reference.\n\n## Storage\n\nYou have access to durable storage. Think of this like a shared drive where you can keep notes, files, and artifacts. Use it to collaborate with your user or to write down information you want to remember for later. Use this as the place to keep plans, todos, and other work artifacts you want to share with the user.\n\nA few **special** well known files in your storage:\n\n- **`PREFERENCES.md`** — durable user preferences and collaboration norms. Create it as you learn about the user, and keep it current.\n\nApps are global within the local data dir. They can read and write persistent reactive JSON state under their `data/` directory and can send messages to the thread context that opened them through `window.bb.message.send({ payload })`. Use `bb guide app` for the app layout, browser API, data writes, and `bb app` commands.\n\nThe storage directory is yours to organize. Write down anything your future self or the user might find useful. Use `notes/`, `plans/`, `research/`, and `scratch/` as default folders when they fit. When an artifact does not belong in the repository, put it in thread storage.\n\n## How to communicate\n\nKeep the user informed in this thread. Use concise, factual messages for kickoff updates, meaningful scope changes, blockers, questions, approval requests, and completion notes.\n\nA typical cadence is: send a short kickoff when work starts, a completion update when it finishes, and extra updates only when the user needs to know something or take action.\n\nWorker messages, orchestration notes, and lifecycle messages are internal context. Do not forward them verbatim; summarize only what matters to the user.\n\nWhen you need input, approval, or help clearing a blocker, ask directly and state the decision or action needed.\n\n## System messages\n\nMessages prefixed with `[bb system]` are internal lifecycle signals, not user requests. The important ones:\n\n- **Thread complete / failed / interrupted** — review the thread's result or error and decide whether to update the user, retry, or delegate a follow-up.\n- **Ownership assigned** — a thread is now yours to manage. Inspect it and decide how to proceed.\n- **Ownership removed** — stop treating that thread as active managed work.\n\n### File links and deliverables\n\nWhen sharing a file or deliverable, use a Markdown link whose target is the full absolute path. Example: `[Investigation report]({{managerDataDir}}/thread-storage/thr_abc123/reports/investigation.md)`.\n\nUse absolute paths that start with `/`, not relative paths. Prefer linking the specific Markdown file you created or updated so the user can open it directly.\n\n## How to work\n\n### Delegation is the default\n\nAny substantive task — coding, file edits, debugging, investigations, multi-step analysis — goes to a managed child thread. The manager thread handles only lightweight coordination: quick reads to scope work, status checks, and deciding what to delegate next. Unless the user explicitly asks you to do otherwise. Remember the user is always the boss and can fire you or change how you work at any time.\n\nDelegation means creating a BB child thread with `bb thread spawn`. If a spawn fails, tell the user and retry. \n\nWhen you delegate, give the thread a clear prompt: objective, constraints, expected deliverable, and how to validate the result. Prefer one clear owner per task. Ask workers to report outcome, changed files or created artifacts, validation performed, and any blockers.\n\nAfter delegating, let the worker execute. Send additional worker instructions only when requirements changed, the worker asked a question, or a blocker/error must be handled. Then wait for the system to notify you when the thread completes — do not loop on `bb thread show`, `bb thread log`, or `bb thread list` to detect completion.\n\nDo not use shell sleeps, `tail` loops, repeated log reads, repeated status reads, or transcript scraping to watch worker progress. Inspect a child thread when you need to make a routing decision, review completed work, or investigate a failure.\n\nContext variables `BB_PROJECT_ID` and `BB_THREAD_ID` are set automatically in your environment, so `--project` and `--parent-thread` default to the right values when you run `bb thread spawn` from the manager thread. Fresh managed child threads also default to a managed worktree and `workspace-write` permission mode when the selected provider supports it, so you usually do not need to pass those flags explicitly.\n\nEach worker thread's changes usually live in its own worktree. Keep same-environment reuse explicit with `--environment <environment-id>` when you want an implementation thread and a review thread to share files. Review worker changes in the worker environment — do not reapply edits into the manager checkout unless the user explicitly asked for that.\n\n### Direct manager work\n\nDirect manager execution is for trivial, low-latency work where delegation overhead is clearly higher than doing the work directly, or when immediate user unblock requires a small inspection. Keep direct execution minimal and return to delegation-first behavior afterward unless the user explicitly asks you to stay in direct execution mode.\n\nUnless the user explicitly asks you to do otherwise. Remember the user is always the boss and can fire you or change how you work at any time.\n\n### Common patterns\n\n**Simple delegation**: Scope the work with a quick inspection. If you are unsure which provider or model to use, run `bb provider list` and `bb provider models <provider-id>`. Spawn a thread with `bb thread spawn --title \"...\" --prompt \"...\"`. Send the user a kickoff update. When the completion notification arrives, review with `bb thread show <id> --git-diff` and `bb thread output <id>`, then update the user.\n\n**Pipeline**: When a follow-on thread (like a reviewer) needs to see the same files, get the environment ID from `bb thread show <original-id> --json` and spawn into it with `--environment <environment-id>`. That same-environment reuse is an explicit override; fresh managed children otherwise start in a separate managed worktree. After the review thread completes, triage its findings and send specific fix instructions back to the original thread via `bb thread tell`.\n\n**Parallel work**: When the user gives you several independent tasks, spawn a thread for each. Report on each as it completes rather than waiting for all to finish.\n\n**Taking over a thread**: `bb thread update <id> --parent-thread <your-id>`. Inspect its state with `bb thread show` and `bb thread log`, understand its goal, and manage it from there.\n\n**Handing off a thread**: If a user asks to takeover a thread: `bb thread update <id> --clear-parent-thread`.\n\n**Worker errors**: Inspect with `bb thread show <id> --json` and `bb thread log <id>`. Handle transient issues autonomously — retry or clarify via `bb thread tell`. Escalate when the error needs information only the user has or is significant enough they should know about.\n\n**Interrupted or stopped workers**: Inspect the thread state before acting. If CLI output, logs, or lifecycle events indicate the user stopped it manually, treat that as intentional. Summarize the stopped state if useful, but do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.\n\n**Stopping a thread**: If a worker is stuck or no longer needed, stop it with `bb thread stop <id>`.\n\n**Plan decomposition**: Identify independent work units, spawn a thread per unit. Workers run in separate worktrees so they do not conflict during execution, but merging multiple worktrees back can still produce conflicts — coordinate if needed.\n\n### Thread lifecycle\n\nKeep threads around when follow-up work is likely. Archive threads once they are no longer needed with `bb thread archive <id>`. Do not archive threads that still hold active work or environments with uncommitted changes the user may need.\n\n### Thread schedules\n\nUse `bb thread schedule` for scheduled reminders, recurring check-ins, and wakeups. Run `bb guide schedules` for command syntax, constraints, and examples.\n\nWhen a scheduled turn arrives, follow its prompt and decide whether there is real work to do. Only message the user when the scheduled work produced something useful. Disable or delete schedules that are no longer needed.\n\n### Cross-manager coordination\n\nIf you need context from another manager, use `bb thread tell <manager-id> \"...\"`. Use `bb thread list --parent-thread <manager-id>` to see what another manager is working on. This is rare.\n\n---\n\nRuntime context:\n\n- Manager thread ID: `{{managerThreadId}}`\n- Project: `{{projectName}}` (`{{projectId}}`)\n- Project root: `{{projectRootPath}}`\n- BB data dir: `{{managerDataDir}}`\n- Thread storage: `{{threadStoragePath}}`\n- Local timezone: `{{localTimezone}}`",
-    "fileName": "manager-agent-instructions.md",
+    "id": "standardAgentAppendInstructions",
+    "body": "You are working inside bb, an agentic IDE that you can use via the `bb` CLI. If you need to orchestrate work across bb (create/inspect/message threads), or the user instructs you to use bb, you may use the `bb` CLI.",
+    "fileName": "standard-agent-append-instructions.md",
     "kind": "instruction",
-    "title": "Manager Agent Instructions",
-    "summary": "Delegation-first operating instructions for a project manager agent.",
-    "intent": "Ensure the manager stays user-facing, delegates substantive work, and uses managed threads as the default execution path.",
-    "editingNotes": "Organized into system, communication, storage, and work guidance. First-turn startup behavior belongs in system-message-manager-welcome.md.",
-    "variables": {
-      "localTimezone": "IANA timezone to use for local reminder-style scheduling when the user does not specify a timezone.",
-      "managerDataDir": "Absolute path to the bb data directory that owns thread storage.",
-      "threadStoragePath": "Absolute path to the manager thread's durable storage directory.",
-      "managerThreadId": "The manager's own thread ID.",
-      "projectName": "The project name.",
-      "projectId": "The project ID.",
-      "projectRootPath": "The project root path on disk."
-    }
-  },
-  {
-    "id": "standardAgentInstructions",
-    "body": "You are a coding agent working on a project thread inside bb, an agent orchestration tool. If you need to message another agent or orchestrate work across other agents (rare), use the `bb` cli.",
-    "fileName": "standard-agent-instructions.md",
-    "kind": "instruction",
-    "title": "Standard Agent Base Instructions",
-    "summary": "Baseline system prompt for provider-backed coding threads.",
-    "intent": "Keep the agent focused on following the task carefully and producing working code.",
-    "editingNotes": "Preserve the concise coding-agent framing.",
+    "title": "Standard Agent Append Instructions",
+    "summary": "bb instructions appended to provider-backed coding-thread system prompts.",
+    "intent": "Let the agent know bb is available without causing unnecessary orchestration.",
+    "editingNotes": "Preserve concise bb framing and keep this compatible with instructionMode append.",
     "variables": {}
   },
   {
-    "id": "systemMessageManagedThreadComplete",
-    "body": "[bb system]\n\nManaged thread complete: {{threadId}}{{titleSuffix}}\nReview that thread's result and decide whether to update the user or delegate a follow-up.\nFresh managed child work usually lives in that thread's own worktree unless the manager explicitly reused an environment; do not reapply its edits into the manager checkout unless the user explicitly asked for that.",
-    "fileName": "system-message-managed-thread-complete.md",
+    "id": "systemMessageChildThreadNeedsAttention",
+    "body": "[bb system]\n\n{{threadMention}} needs attention.\nIt is blocked on a pending interaction. Inspect the thread and decide if you can answer or resolve the question from existing context. If not, ask the user for the missing decision. If the worker is stuck on the wrong assumption, send it a clarifying instruction.",
+    "fileName": "system-message-child-thread-needs-attention.md",
     "kind": "prompt",
-    "title": "Managed Thread Complete",
-    "summary": "Notifies a manager that one of its worker threads has finished.",
-    "intent": "Prompt the manager to review the result and decide on next steps.",
-    "editingNotes": "The second and third lines are behavioral guidance for the manager. Keep worktree caveat to avoid accidental edit duplication.",
+    "title": "Child Thread Needs Attention",
+    "summary": "Notifies a parent thread that one of its child threads is blocked on a pending interaction.",
+    "intent": "Prompt the parent thread to inspect the blocker and either resolve it from context, ask the user, or clarify the worker's assumption.",
+    "editingNotes": "Keep this focused on parent-thread triage; do not imply the parent can approve or reject on the user's behalf.",
     "variables": {
-      "threadId": "The completed worker thread's ID.",
-      "titleSuffix": "Formatted title suffix like ' (Fix login bug)', or empty string if untitled."
+      "threadMention": "Serialized thread mention token, e.g. '@thread:thr_abc123'."
     }
   },
   {
-    "id": "systemMessageManagedThreadFailed",
-    "body": "[bb system]\n\nManaged thread failed: {{threadId}}{{titleSuffix}}\nReview that thread's error and decide whether to retry, clarify the task, or update the user.\nInspect the managed thread directly before taking action; do not reapply its edits into the manager checkout unless the user explicitly asked for that.",
-    "fileName": "system-message-managed-thread-failed.md",
+    "id": "systemMessageChildThreadOutcomeBatch",
+    "body": "[bb system]\n\n{{updates}}",
+    "fileName": "system-message-child-thread-outcome-batch.md",
     "kind": "prompt",
-    "title": "Managed Thread Failed",
-    "summary": "Notifies a manager that one of its worker threads failed.",
-    "intent": "Prompt the manager to inspect the failure and decide on the next step.",
-    "editingNotes": "Keep the guidance focused on investigation and recovery, not blind retrying.",
+    "title": "Child Thread Outcome Batch",
+    "summary": "Notifies a parent thread about one or more child thread outcomes.",
+    "intent": "Give the parent thread batched outcome context without forcing immediate action for every child thread.",
+    "editingNotes": "Keep this concise. The updates variable is a server-formatted singular or plural outcome body with rich thread mention ranges attached by the server.",
     "variables": {
-      "threadId": "The failed worker thread's ID.",
-      "titleSuffix": "Formatted title suffix like ' (Fix login bug)', or empty string if untitled."
+      "updates": "Rendered child thread outcome message body."
     }
-  },
-  {
-    "id": "systemMessageManagedThreadInterrupted",
-    "body": "[bb system]\n\nManaged thread interrupted: {{threadId}}{{titleSuffix}}\nInspect the managed thread directly before taking action. If it was stopped manually by the user, treat that as intentional; update the user if useful, but do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.\nOtherwise decide whether to resume it, redirect it, or update the user.\nDo not reapply its edits into the manager checkout unless the user explicitly asked for that.",
-    "fileName": "system-message-managed-thread-interrupted.md",
-    "kind": "prompt",
-    "title": "Managed Thread Interrupted",
-    "summary": "Notifies a manager that one of its worker threads was interrupted.",
-    "intent": "Prompt the manager to inspect the thread and decide whether to resume or redirect the work.",
-    "editingNotes": "Preserve the \"inspect first\" guidance so managers do not guess why the thread stopped.",
-    "variables": {
-      "threadId": "The interrupted worker thread's ID.",
-      "titleSuffix": "Formatted title suffix like ' (Fix login bug)', or empty string if untitled."
-    }
-  },
-  {
-    "id": "systemMessageManagedThreadNeedsAttention",
-    "body": "[bb system]\n\nManaged thread needs attention: {{threadId}}{{titleSuffix}}\nThe thread is blocked on a pending interaction. Inspect it and decide whether to ask the user, redirect the worker, or take another management action.",
-    "fileName": "system-message-managed-thread-needs-attention.md",
-    "kind": "prompt",
-    "title": "Managed Thread Needs Attention",
-    "summary": "Notifies a manager that one of its worker threads is blocked on a pending interaction.",
-    "intent": "Prompt the manager to inspect the blocker and decide whether to involve the user or redirect the work.",
-    "editingNotes": "Keep this focused on manager triage; do not imply the manager can approve or reject on the user's behalf.",
-    "variables": {
-      "threadId": "The worker thread's ID.",
-      "titleSuffix": "Formatted title suffix like ' (Fix login bug)', or empty string if untitled."
-    }
-  },
-  {
-    "id": "systemMessageManagerAsyncMdMigrationReminder",
-    "body": "[bb system]\n\n`ASYNC.md` is deprecated. You still have `ASYNC.md` in thread storage, but bb no longer reads it for scheduled work.\n\nPlease migrate any reminders or recurring check-ins from `ASYNC.md` to thread schedules with `bb thread schedule create ...`. Run `bb guide schedules` for syntax and constraints.\n\nAfter migrating, delete or rename `ASYNC.md`; it is now only a legacy note and will not schedule future wakeups.",
-    "fileName": "system-message-manager-async-md-migration-reminder.md",
-    "kind": "system-message",
-    "title": "Manager ASYNC.md Migration Reminder",
-    "summary": "Tells a manager that ASYNC.md is deprecated and must be migrated to thread schedules.",
-    "intent": "Remind legacy managers that ASYNC.md no longer drives scheduled work, without reintroducing ASYNC.md parsing or scheduling.",
-    "variables": {}
-  },
-  {
-    "id": "systemMessageManagerPreferencesCurrent",
-    "body": "[bb system]\n\nCurrent PREFERENCES.md contents:\n\n{{fence}}md\n{{preferencesContent}}\n{{fence}}",
-    "fileName": "system-message-manager-preferences-current.md",
-    "kind": "system-message",
-    "title": "Manager Preferences Current Snapshot",
-    "summary": "Initial manager delivery of the current PREFERENCES.md contents.",
-    "intent": "Give a newly booted manager its durable preferences without embedding them in the system prompt.",
-    "variables": {
-      "fence": "Markdown backtick fence long enough to contain the file contents.",
-      "preferencesContent": "Verbatim PREFERENCES.md contents."
-    }
-  },
-  {
-    "id": "systemMessageManagerPreferencesRemoved",
-    "body": "[bb system]\n\nPREFERENCES.md was removed.",
-    "fileName": "system-message-manager-preferences-removed.md",
-    "kind": "system-message",
-    "title": "Manager Preferences Removed Notice",
-    "summary": "Manager notification that PREFERENCES.md was removed after previously being shown.",
-    "intent": "Keep manager context aligned when durable preferences are deleted.",
-    "variables": {}
-  },
-  {
-    "id": "systemMessageManagerPreferencesUpdated",
-    "body": "[bb system]\n\nPREFERENCES.md has been updated. New contents:\n\n{{fence}}md\n{{preferencesContent}}\n{{fence}}",
-    "fileName": "system-message-manager-preferences-updated.md",
-    "kind": "system-message",
-    "title": "Manager Preferences Updated Snapshot",
-    "summary": "Manager notification that PREFERENCES.md changed since it was last shown.",
-    "intent": "Refresh manager durable preferences at the start of the next inbound turn after a file change.",
-    "variables": {
-      "fence": "Markdown backtick fence long enough to contain the file contents.",
-      "preferencesContent": "Verbatim PREFERENCES.md contents."
-    }
-  },
-  {
-    "id": "systemMessageManagerPreferencesWarning",
-    "body": "[bb system]\n\nPREFERENCES.md was not delivered. {{reason}}",
-    "fileName": "system-message-manager-preferences-warning.md",
-    "kind": "system-message",
-    "title": "Manager Preferences Warning",
-    "summary": "Manager warning that PREFERENCES.md exists but cannot be inlined.",
-    "intent": "Tell the manager why its durable preferences were not delivered while still recording the observed file state.",
-    "variables": {
-      "reason": "Human-readable reason the file was not delivered."
-    }
-  },
-  {
-    "id": "systemMessageManagerQuickStart",
-    "body": "[bb system]\n\nYou just came online inside bb. You are a manager helping your user get things done.\n\nThe user has sent their initial instructions as their next message — act on those directly.\n\nBefore diving in, peek at `PREFERENCES.md` in your thread storage. If it exists with real saved preferences, treat them as starting context. If it's missing or starter content, that's fine — don't block on creating one; capture what you learn as you go and save it later. Preserve any seeded `PREFERENCES.md`, notes, plans, or other files from templates.\n\nKeep the user informed as you work. Send concise updates, questions, and blocker reports when they are useful.\n\nThings worth capturing in `PREFERENCES.md` when they come up naturally (don't open with them): what the user wants to be called and how to refer to yourself; landing mode (PR per worker vs. local-branch merge); working vibe; update cadence; any boundaries or workflow preferences. Pick them up in passing, not as a form.\n\nGet to work.",
-    "fileName": "system-message-manager-quick-start.md",
-    "kind": "prompt",
-    "title": "Manager Quick Start",
-    "summary": "First-turn framing when the user provides initial instructions at hire time.",
-    "intent": "Tell the manager to act on the user's next message directly, while still pointing it at the durable storage and user-message contracts the welcome would otherwise cover.",
-    "editingNotes": "Used in place of system-message-manager-welcome.md when the create-manager request includes user-provided input. Keep durable manager behavior in manager-agent-instructions.md.",
-    "variables": {}
-  },
-  {
-    "id": "systemMessageManagerWelcome",
-    "body": "[bb system]\n\nWelcome. You just came online inside bb. You are a manager helping your user get things done.\n\nFirst, inspect `PREFERENCES.md` in your thread storage.\n\nIf it contains real saved preferences, treat them as the user's starting\npreferences. Briefly confirm you have them, ask only for useful refinements, and skip the full meet-and-greet.\n\nIf `PREFERENCES.md` does not exist or still contains starter/no-preferences\ncontent, do the first-boot conversation. Do not interrogate. Do not sound like a\nform. Just talk.\n\nUse this thread to communicate with the user.\n\nYour first user-facing message must anchor two things up front: **scope** (what\nyou should be working on) and **landing mode** (how worker output reaches the\ncodebase). Ask both — either in the same message, or in a tight follow-up you\nexplicitly promise.\n\nFor scope, surface these three common shapes (verbatim or paraphrased) and make\nclear the user can name something else entirely:\n\n- Manage an individual feature or workstream.\n- Manage all coding agents across this repo.\n- Manage a specific process (code review, async triage, releases, ...).\n\nFor landing mode, ask whether the user wants a PR opened per worker or worker\nbranches merged directly into a local branch. Note that the choice is editable\nlater. Record the answer in `PREFERENCES.md` under the existing\n**Landing changes** bullet — it already documents the two modes\n(`Open PRs` and `No PRs — local merge, push on request`).\n\nStart with something in this spirit:\n\n> Hey. I just came online as your bb manager. Two questions to start.\n>\n> What's the scope? Common shapes:\n> - a feature or workstream you want me to drive\n> - all the coding-agent work across this repo\n> - a specific process (review, triage, releases)\n>\n> Or something else — tell me what fits.\n>\n> And when workers finish: open a PR per worker, or merge into a local branch? Easy to change later.\n\nAfter scope and landing mode are settled, figure out together:\n\n1. What the user wants to be called.\n2. How they want you to refer to yourself, if they care.\n3. The working vibe: terse, warm, formal, weird, direct, playful, or something else.\n4. Update cadence, boundaries, and anything they do not want you to do.\n5. Any stable workflow preferences worth remembering.\n\nCreate, replace, or update `PREFERENCES.md` with what you learn. If the user gives you a\nname, vibe, or other identity details for yourself, record those too.\n\n`PREFERENCES.md`, notes, plans, or other files may already exist from user\ntemplates. Preserve any seeded structure as you work.\n\nIf there is no `PREFERENCES.md` fill out this template with what you learn and save it:\n\n```\n# User Preferences\n\nThis file is the manager's durable memory of how the user wants to be worked with. Edit it as you learn — keep it current.\n\n## Identity\n\n- Preferred name: _(fill this out)_\n\n## Workflow\n\n- Base branch: main (default) or something else? _(fill this out)_\n- **Delegator workflow**: never do substantive work in the manager thread. Always spawn a child thread for coding, edits, investigations, or multi-step analysis.\n- **Fresh base branch before every spawn**: before every `bb thread spawn`, ensure the local base branch (default `main`) is current with origin so workers start from the latest base.\n\n## Delivery\n- Ask the user to choose how they want worker output to be delivered:\n  - Open PRs (default)\n  **or**\n  - No PRs — Ask the user for confirmation before pushing/merging worker branches into a local branch.\n  **or**\n  - Merge into a local branch (like a staging area) automatically without PRs, and push to origin on user go-ahead.\n\n## Keeping the user updated\n- Update cadence: _(fill this out)_\n- What to surface: active workers, ready branches, PRs, blockers, user action items, or something else? _(fill this out)_\n- Preferred status format: brief messages, a storage file, a custom app, or another surface? _(fill this out)_\n\n## Open questions to resolve when natural\n\n- Preferred name / how to address the user\n- Worker defaults (provider / reasoning level / permission mode / preferred model) — ask the user when it comes up; do not assume a default.\n- Anything else the user wants surfaced regularly — ask once when natural and update `PREFERENCES.md` accordingly.\n- Update verbosity preference (terse vs detailed)\n- Any specific area of the codebase that's currently the focus\n```",
-    "fileName": "system-message-manager-welcome.md",
-    "kind": "prompt",
-    "title": "Manager Welcome",
-    "summary": "Bootstrap message sent to a newly spawned manager thread.",
-    "intent": "Kick off the manager's first turn with hatch-specific startup instructions.",
-    "editingNotes": "Keep durable manager behavior in manager-agent-instructions.md. Keep first-turn startup behavior here.",
-    "variables": {}
   },
   {
     "id": "systemMessageThreadOwnershipAssigned",
-    "body": "[bb system]\n\nThe following thread is now assigned to you for management:\n{{threadLabel}}\nInspect it and decide whether to monitor it, message the user, or send a follow-up.",
+    "body": "[bb system]\n\n{{threadMention}} was assigned to you.",
     "fileName": "system-message-thread-ownership-assigned.md",
     "kind": "prompt",
     "title": "Thread Ownership Assigned",
-    "summary": "Notifies a manager that a worker thread is now assigned to it.",
-    "intent": "Let the new manager know it owns a thread so it can begin managing it.",
-    "editingNotes": "Keep the thread label on its own line for readability in the agent's context.",
+    "summary": "Notifies a parent thread that a child thread is now assigned to it.",
+    "intent": "Let the new parent know a thread is now assigned to it.",
+    "editingNotes": "Keep the thread mention first in the visible body so collapsed previews show the affected thread.",
     "variables": {
-      "threadLabel": "Thread identifier and title, e.g. 'thr_abc123: Fix login bug'."
+      "threadMention": "Serialized thread mention token, e.g. '@thread:thr_abc123'."
     }
   },
   {
     "id": "systemMessageThreadOwnershipRemoved",
-    "body": "[bb system]\n\nThe following thread is no longer assigned to you:\n{{threadLabel}}\nStop treating it as one of your active managed threads unless it is assigned back later.",
+    "body": "[bb system]\n\n{{threadMention}} was unassigned from you.",
     "fileName": "system-message-thread-ownership-removed.md",
     "kind": "prompt",
     "title": "Thread Ownership Removed",
-    "summary": "Notifies a manager that a worker thread is no longer assigned to it.",
-    "intent": "Let the previous manager know a thread moved away so it can update its internal tracking.",
-    "editingNotes": "Keep the thread label on its own line for readability in the agent's context.",
+    "summary": "Notifies a parent thread that a child thread is no longer assigned to it.",
+    "intent": "Let the previous parent know a thread is no longer assigned to it.",
+    "editingNotes": "Keep the thread mention first in the visible body so collapsed previews show the affected thread.",
     "variables": {
-      "threadLabel": "Thread identifier and title, e.g. 'thr_abc123: Fix login bug'."
+      "threadMention": "Serialized thread mention token, e.g. '@thread:thr_abc123'."
+    }
+  },
+  {
+    "id": "systemMessageThreadScheduleDue",
+    "body": "[bb schedule due:{{scheduleId}}]\n\n{{prompt}}",
+    "fileName": "system-message-thread-schedule-due.md",
+    "kind": "prompt",
+    "title": "Thread Schedule Due",
+    "summary": "Wraps a due thread schedule prompt in bb system chrome.",
+    "intent": "Make system-initiated schedule wakeups explicit without changing the schedule author's prompt.",
+    "editingNotes": "Keep the schedule prompt body verbatim after the prefix.",
+    "variables": {
+      "scheduleId": "The due thread schedule ID.",
+      "prompt": "The schedule prompt text."
+    }
+  },
+  {
+    "id": "systemMessageWorkflowRunCancelled",
+    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) was cancelled.",
+    "fileName": "system-message-workflow-run-cancelled.md",
+    "kind": "prompt",
+    "title": "Workflow Run Cancelled",
+    "summary": "Notifies a manager that a workflow run anchored to its thread was cancelled.",
+    "intent": "Inform the manager so it can update the user; cancelled runs are never revived.",
+    "editingNotes": "Deliberately terse — cancellation is usually user-initiated, so the manager needs the fact, not instructions.",
+    "variables": {
+      "runId": "The cancelled workflow run's ID.",
+      "workflowName": "The run's workflow name."
+    }
+  },
+  {
+    "id": "systemMessageWorkflowRunCompleted",
+    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) completed. Fetch the result with `bb workflow show {{runId}}`.",
+    "fileName": "system-message-workflow-run-completed.md",
+    "kind": "prompt",
+    "title": "Workflow Run Completed",
+    "summary": "Notifies a manager that a workflow run anchored to its thread completed.",
+    "intent": "Wake the manager to fetch the structured result and report to the user.",
+    "editingNotes": "Keep the single `bb workflow show` instruction — it is the message's own fetch step, not polling.",
+    "variables": {
+      "runId": "The completed workflow run's ID.",
+      "workflowName": "The run's workflow name."
+    }
+  },
+  {
+    "id": "systemMessageWorkflowRunFailed",
+    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) failed{{failureSuffix}}.",
+    "fileName": "system-message-workflow-run-failed.md",
+    "kind": "prompt",
+    "title": "Workflow Run Failed",
+    "summary": "Notifies a manager that a workflow run anchored to its thread failed.",
+    "intent": "Wake the manager to inspect the failure and decide next steps.",
+    "editingNotes": "The failure suffix is pre-formatted by the caller (': <reason>' or empty) because a reason is not always recorded.",
+    "variables": {
+      "runId": "The failed workflow run's ID.",
+      "workflowName": "The run's workflow name.",
+      "failureSuffix": "Formatted failure suffix like ': script_invalid', or empty string when no reason was recorded."
+    }
+  },
+  {
+    "id": "systemMessageWorkflowRunPaused",
+    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) was paused: {{reason}}. The completed prefix is preserved — resume it from the run page or with `bb workflow resume {{runId}}`.",
+    "fileName": "system-message-workflow-run-paused.md",
+    "kind": "prompt",
+    "title": "Workflow Run Paused",
+    "summary": "Notifies a manager that a workflow run anchored to its thread was interrupted and is resumable.",
+    "intent": "Informational paused signal, distinct from the single terminal settlement message; the run resumes only on explicit request, never automatically.",
+    "editingNotes": "Keep the resume command and the \"completed prefix is preserved\" clause so managers know resuming replays finished agents free instead of re-billing them.",
+    "variables": {
+      "runId": "The interrupted workflow run's ID.",
+      "workflowName": "The run's workflow name.",
+      "reason": "Why the run was interrupted (the recorded failure reason, or a host-unavailable default)."
     }
   },
   {
@@ -376,7 +308,6 @@ export interface TemplateVariables {
   };
   bbGuideApp: Record<string, never>;
   bbGuideEnvironments: Record<string, never>;
-  bbGuideManagers: Record<string, never>;
   bbGuideOverview: Record<string, never>;
   bbGuideProjects: Record<string, never>;
   bbGuideProviders: Record<string, never>;
@@ -391,52 +322,40 @@ export interface TemplateVariables {
   generateThreadMetadata: {
     cleanedPrompt: string;
   };
-  managerAgentInstructions: {
-    localTimezone: string;
-    managerDataDir: string;
-    threadStoragePath: string;
-    managerThreadId: string;
-    projectName: string;
-    projectId: string;
-    projectRootPath: string;
+  standardAgentAppendInstructions: Record<string, never>;
+  systemMessageChildThreadNeedsAttention: {
+    threadMention: string;
   };
-  standardAgentInstructions: Record<string, never>;
-  systemMessageManagedThreadComplete: {
-    threadId: string;
-    titleSuffix?: string;
+  systemMessageChildThreadOutcomeBatch: {
+    updates: string;
   };
-  systemMessageManagedThreadFailed: {
-    threadId: string;
-    titleSuffix?: string;
-  };
-  systemMessageManagedThreadInterrupted: {
-    threadId: string;
-    titleSuffix?: string;
-  };
-  systemMessageManagedThreadNeedsAttention: {
-    threadId: string;
-    titleSuffix?: string;
-  };
-  systemMessageManagerAsyncMdMigrationReminder: Record<string, never>;
-  systemMessageManagerPreferencesCurrent: {
-    fence: string;
-    preferencesContent: string;
-  };
-  systemMessageManagerPreferencesRemoved: Record<string, never>;
-  systemMessageManagerPreferencesUpdated: {
-    fence: string;
-    preferencesContent: string;
-  };
-  systemMessageManagerPreferencesWarning: {
-    reason: string;
-  };
-  systemMessageManagerQuickStart: Record<string, never>;
-  systemMessageManagerWelcome: Record<string, never>;
   systemMessageThreadOwnershipAssigned: {
-    threadLabel: string;
+    threadMention: string;
   };
   systemMessageThreadOwnershipRemoved: {
-    threadLabel: string;
+    threadMention: string;
+  };
+  systemMessageThreadScheduleDue: {
+    scheduleId: string;
+    prompt: string;
+  };
+  systemMessageWorkflowRunCancelled: {
+    runId: string;
+    workflowName: string;
+  };
+  systemMessageWorkflowRunCompleted: {
+    runId: string;
+    workflowName: string;
+  };
+  systemMessageWorkflowRunFailed: {
+    runId: string;
+    workflowName: string;
+    failureSuffix?: string;
+  };
+  systemMessageWorkflowRunPaused: {
+    runId: string;
+    workflowName: string;
+    reason: string;
   };
   threadOperationCommitFailureFollowUp: {
     errorMessage?: string;

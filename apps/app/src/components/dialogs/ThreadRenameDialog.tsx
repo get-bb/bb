@@ -1,15 +1,14 @@
-import type { ThreadType } from "@bb/domain";
+import { capitalize } from "@bb/thread-view";
 import { useId, useState, type FormEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button.js";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
-import { threadTypeLabel } from "@/lib/thread-title";
+import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 
 export interface ThreadRenameDialogTarget {
   id: string;
   currentTitle: string;
-  threadType?: ThreadType;
 }
 
 interface ThreadRenameDialogProps {
@@ -58,26 +57,20 @@ export function ThreadRenameDialogContent({
 }: ThreadRenameDialogContentProps) {
   const inputId = useId();
   const [nextTitle, setNextTitle] = useState(target.currentTitle);
-  const [validationMessage, setValidationMessage] = useState<string | null>(
-    null,
-  );
+  const label = "thread";
+  const { validationMessage, validate, clearMessage } = useNameValidation({
+    emptyMessage: `${capitalize(label)} name cannot be empty.`,
+  });
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
 
-    const trimmedTitle = nextTitle.trim();
-    if (!trimmedTitle) {
-      setValidationMessage(
-        `${label.charAt(0).toUpperCase() + label.slice(1)} name cannot be empty.`,
-      );
-      return;
-    }
+    const trimmedTitle = validate(nextTitle);
+    if (trimmedTitle === null) return;
 
     onRename(target.id, trimmedTitle);
   };
-
-  const label = threadTypeLabel(target.threadType ?? "standard");
 
   return (
     <>
@@ -92,7 +85,7 @@ export function ThreadRenameDialogContent({
           <Input
             ref={inputRef}
             id={inputId}
-            aria-label={`${label.charAt(0).toUpperCase() + label.slice(1)} name`}
+            aria-label={`${capitalize(label)} name`}
             value={nextTitle}
             autoCapitalize="sentences"
             autoCorrect="off"
@@ -100,9 +93,7 @@ export function ThreadRenameDialogContent({
             disabled={pending}
             onChange={(event) => {
               setNextTitle(event.target.value);
-              if (validationMessage) {
-                setValidationMessage(null);
-              }
+              clearMessage();
             }}
           />
           {validationMessage ? (

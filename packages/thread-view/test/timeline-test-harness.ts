@@ -1,4 +1,3 @@
-import { expect } from "vitest";
 import {
   encodeClientTurnRequestIdNumber,
   threadScope,
@@ -51,10 +50,6 @@ export interface RenderedTimelineFixture {
   rows: TimelineRow[];
   text: string;
   turnRows: Extract<TimelineRow, { kind: "turn" }>[];
-}
-
-export interface RenderTimelinePrefixesArgs extends RenderTimelineFixtureArgs {
-  startAt?: number;
 }
 
 export interface TimelineEventFactoryDefaults {
@@ -243,7 +238,7 @@ interface PermissionGrantLifecycleArgs extends DefaultTurnEventOptions {
   toolName?: string;
 }
 
-interface ManagerUserMessageArgs extends EventFactoryRowOptions {
+interface LegacyUserMessageArgs extends EventFactoryRowOptions {
   text: string;
   turnId?: string;
 }
@@ -300,8 +295,8 @@ export interface TimelineEventFactory {
   inputAccepted(
     args: InputAcceptedArgs,
   ): ThreadEventRowOfType<"turn/input/accepted">;
-  managerUserMessage(
-    args: ManagerUserMessageArgs,
+  legacyUserMessage(
+    args: LegacyUserMessageArgs,
   ): ThreadEventRowOfType<"system/manager/user_message">;
   permissionGrantLifecycle(
     args?: PermissionGrantLifecycleArgs,
@@ -394,19 +389,6 @@ export function flattenEventProjectionMessages(
 
 export function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
-}
-
-export function assertMonotonicSourceSeq(
-  messages: EventProjectionMessage[],
-): void {
-  for (let i = 1; i < messages.length; i += 1) {
-    const prev = messages[i - 1];
-    const next = messages[i];
-    expect(prev).toBeDefined();
-    expect(next).toBeDefined();
-    if (!prev || !next) continue;
-    expect(next.sourceSeqStart).toBeGreaterThanOrEqual(prev.sourceSeqStart);
-  }
 }
 
 function withExplicitApprovalStatus(row: ThreadEventRow): ThreadEventRow {
@@ -740,9 +722,9 @@ export function createTimelineEventFactory(
         },
       };
     },
-    managerUserMessage(args) {
+    legacyUserMessage(args) {
       const base = {
-        ...nextRowBase("manager-user-message", args),
+        ...nextRowBase("legacy-user-message", args),
         scope: turnScope(args.turnId ?? defaultTurnId()),
       };
       return {
@@ -1085,8 +1067,6 @@ export function renderTimelineFixture(
     includeProviderUnhandledOperations:
       args.projectionOptions.includeProviderUnhandledOperations ?? false,
     isLatestPage: true,
-    systemClientRequestVisibility:
-      args.projectionOptions.systemClientRequestVisibility,
     threadStatus: args.projectionOptions.threadStatus ?? "idle",
     workspaceRoot: null,
   };
@@ -1120,23 +1100,6 @@ export function renderTimelineFixture(
     text,
     turnRows,
   };
-}
-
-export function renderTimelinePrefixes(
-  args: RenderTimelinePrefixesArgs,
-): RenderedTimelineFixture[] {
-  const startAt = args.startAt ?? 1;
-  return args.events
-    .map((_, index) => index + 1)
-    .filter((prefixLength) => prefixLength >= startAt)
-    .map((prefixLength) =>
-      renderTimelineFixture({
-        events: args.events.slice(0, prefixLength),
-        includeNestedRows: args.includeNestedRows,
-        projectionOptions: args.projectionOptions,
-        verbose: args.verbose,
-      }),
-    );
 }
 
 export function messageKinds(

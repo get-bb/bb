@@ -1,35 +1,22 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { PromptInput, ReasoningLevel, ServiceTier } from "@bb/domain";
 import type {
-  CreateManagerExecutionInputSources,
   CreateProjectRequest,
-  ManagerEnvironmentArgs,
   ProjectResponse,
-  ReorderManagerThreadRequest,
   ReorderProjectRequest,
-  ThreadListResponse,
   UpdateProjectRequest,
   UploadedPromptAttachment,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import {
+  applyProjectCreateResult,
   applyProjectDeleteResult,
   applyReorderProjectResult,
   beginReorderProjectTransaction,
   rollbackReorderProjectTransaction,
   type ReorderProjectTransaction,
 } from "../cache-owners/project-cache-owner";
-import { applyThreadRuntimeResult } from "../cache-owners/thread-detail-cache-owner";
-import {
-  applyReorderProjectManagerResult,
-  beginReorderProjectManagerTransaction,
-  insertCreatedThreadIntoCachedLists,
-  rollbackReorderProjectManagerTransaction,
-  type ReorderProjectManagerTransaction,
-} from "../cache-owners/thread-list-cache-owner";
 import {
   invalidateProjectListQueries,
-  invalidateProjectManagerHireQueries,
   invalidateProjectSourceQueries,
   invalidateProjectUpdateQueries,
 } from "../cache-owners/mutation-cache-effects";
@@ -46,21 +33,10 @@ interface UpdateLocalProjectSourceRequest {
   path: string;
 }
 
-export interface HireProjectManagerRequest {
+interface DeleteLocalProjectSourceRequest {
   projectId: string;
-  name?: string;
-  providerId?: string;
-  model?: string;
-  serviceTier?: ServiceTier;
-  reasoningLevel?: ReasoningLevel;
-  executionInputSources?: CreateManagerExecutionInputSources;
-  environment: ManagerEnvironmentArgs;
-  /** Optional user-provided first message; when empty the server uses
-   * its welcome-message template instead. */
-  input?: PromptInput[];
+  sourceId: string;
 }
-
-const HIRE_PROJECT_MANAGER_MUTATION_KEY = ["hireProjectManager"] as const;
 
 interface UpdateProjectMutationRequest extends UpdateProjectRequest {
   id: string;
@@ -68,11 +44,6 @@ interface UpdateProjectMutationRequest extends UpdateProjectRequest {
 
 interface ReorderProjectMutationRequest extends ReorderProjectRequest {
   projectId: string;
-}
-
-interface ReorderProjectManagerMutationRequest extends ReorderManagerThreadRequest {
-  projectId: string;
-  threadId: string;
 }
 
 interface UploadPromptAttachmentRequest {
@@ -88,49 +59,9 @@ export function useCreateProject() {
       errorMessage: "Failed to create project.",
     },
     mutationFn: (request: CreateProjectRequest) => api.createProject(request),
-    onSuccess: () => {
+    onSuccess: (project) => {
+      applyProjectCreateResult({ project, queryClient });
       invalidateProjectListQueries({ queryClient });
-    },
-  });
-}
-
-export function useHireProjectManager() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationKey: HIRE_PROJECT_MANAGER_MUTATION_KEY,
-    meta: {
-      errorMessage: "Failed to hire manager.",
-      showErrorToast: false,
-    },
-    mutationFn: ({
-      projectId,
-      name,
-      providerId,
-      model,
-      serviceTier,
-      reasoningLevel,
-      executionInputSources,
-      environment,
-      input,
-    }: HireProjectManagerRequest) =>
-      api.hireProjectManager(projectId, {
-        name,
-        ...(providerId ? { providerId } : {}),
-        ...(model ? { model } : {}),
-        ...(serviceTier ? { serviceTier } : {}),
-        ...(reasoningLevel ? { reasoningLevel } : {}),
-        ...(executionInputSources ? { executionInputSources } : {}),
-        environment,
-        ...(input && input.length > 0 ? { input } : {}),
-      }),
-    onSuccess: (thread, variables) => {
-      applyThreadRuntimeResult({ queryClient, thread });
-      insertCreatedThreadIntoCachedLists({ queryClient, thread });
-      invalidateProjectManagerHireQueries({
-        projectId: variables.projectId,
-        queryClient,
-      });
     },
   });
 }
@@ -184,46 +115,6 @@ export function useReorderProject() {
   });
 }
 
-export function useReorderProjectManager() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to reorder manager.",
-      showErrorToast: false,
-    },
-    mutationFn: ({
-      projectId,
-      threadId,
-      previousThreadId,
-      nextThreadId,
-    }: ReorderProjectManagerMutationRequest): Promise<ThreadListResponse> =>
-      api.reorderProjectManager(projectId, threadId, {
-        previousThreadId,
-        nextThreadId,
-      }),
-    onMutate: (variables): ReorderProjectManagerTransaction =>
-      beginReorderProjectManagerTransaction({
-        queryClient,
-        request: variables,
-      }),
-    onError: (_error, variables, context) => {
-      rollbackReorderProjectManagerTransaction({
-        queryClient,
-        request: variables,
-        transaction: context,
-      });
-    },
-    onSuccess: (threads, variables) => {
-      applyReorderProjectManagerResult({
-        projectId: variables.projectId,
-        queryClient,
-        threads,
-      });
-    },
-  });
-}
-
 export function useDeleteProject() {
   const queryClient = useQueryClient();
 
@@ -272,6 +163,24 @@ export function useUpdateLocalProjectSource() {
         type: "local_path",
         path,
       }),
+    onSuccess: (_data, variables) => {
+      invalidateProjectSourceQueries({
+        projectId: variables.projectId,
+        queryClient,
+      });
+    },
+  });
+}
+
+export function useDeleteLocalProjectSource() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to remove source.",
+    },
+    mutationFn: ({ projectId, sourceId }: DeleteLocalProjectSourceRequest) =>
+      api.removeProjectSource(projectId, sourceId),
     onSuccess: (_data, variables) => {
       invalidateProjectSourceQueries({
         projectId: variables.projectId,

@@ -9,7 +9,6 @@ import type {
   SidebarBootstrapResponse,
   ThreadTimelineResponse,
   TimelineRow,
-  TimelineUserConversationRow,
 } from "@bb/server-contract";
 import {
   ARCHIVED_THREADS_LIST_KIND,
@@ -56,6 +55,11 @@ export interface ProjectThreadListInvalidationParams {
 }
 
 export interface CachedGlobalThreadListInvalidationParams {
+  queryClient: QueryClient;
+}
+
+export interface RootOrderThreadListInvalidationParams {
+  projectId?: string;
   queryClient: QueryClient;
 }
 
@@ -123,14 +127,6 @@ function isThreadListQueryFilters(
     return false;
   }
   if (
-    "type" in candidate &&
-    candidate.type !== undefined &&
-    candidate.type !== "manager" &&
-    candidate.type !== "standard"
-  ) {
-    return false;
-  }
-  if (
     "limit" in candidate &&
     candidate.limit !== undefined &&
     typeof candidate.limit !== "number"
@@ -158,9 +154,8 @@ function isArchivedThreadsListFilters(
   if (
     !("kind" in candidate) ||
     (candidate.kind !== "all" &&
-      candidate.kind !== "manager" &&
-      candidate.kind !== "managed" &&
-      candidate.kind !== "unmanaged")
+      candidate.kind !== "root" &&
+      candidate.kind !== "child")
   ) {
     return false;
   }
@@ -211,6 +206,25 @@ export function getCachedGlobalThreadListInvalidationQueryKeys({
     if (filters !== undefined && filters.projectId === undefined) {
       queryKeys.push(queryKey);
     }
+  }
+  return queryKeys;
+}
+
+export function getCachedRootOrderThreadListInvalidationQueryKeys({
+  projectId,
+  queryClient,
+}: RootOrderThreadListInvalidationParams): QueryKey[] {
+  const queryKeys: QueryKey[] = [];
+  for (const [queryKey] of queryClient.getQueriesData({
+    queryKey: threadsQueryKey(),
+  })) {
+    const filters = getThreadListFiltersFromQueryKey(queryKey);
+    if (filters === undefined) continue;
+    if (filters.projectId !== projectId) continue;
+    if (filters.archived) continue;
+    if (filters.parentThreadId !== undefined) continue;
+    if (filters.hasParent === true) continue;
+    queryKeys.push(queryKey);
   }
   return queryKeys;
 }
@@ -448,7 +462,10 @@ function threadMatchesListFilters(
   if (filters?.projectId && thread.projectId !== filters.projectId) {
     return false;
   }
-  if (filters?.type && thread.type !== filters.type) {
+  if (
+    filters?.hasParent !== undefined &&
+    (thread.parentThreadId !== null) !== filters.hasParent
+  ) {
     return false;
   }
   if (
@@ -500,7 +517,6 @@ export function optimisticallyInsertThread(
 }
 
 const updateEveryTimelineQuery: TimelineRowsUpdatePredicate = () => true;
-const updateNoTimelineQueries: TimelineRowsUpdatePredicate = () => false;
 
 function updateCachedTimelineRows({
   queryClient,
@@ -532,42 +548,14 @@ function updateCachedTimelineRows({
   }
 }
 
-function isPendingSteerRow(
-  row: TimelineRow,
-): row is TimelineUserConversationRow {
-  return (
-    row.kind === "conversation" &&
-    row.role === "user" &&
-    row.turnRequest.kind === "steer" &&
-    row.turnRequest.status === "pending"
-  );
-}
-
-function buildPendingSteerTimelineQueryPredicate(
-  thread: ThreadWithRuntime | undefined,
-): TimelineRowsUpdatePredicate {
-  if (!thread) {
-    return updateNoTimelineQueries;
-  }
-  if (thread.type !== "manager") {
-    return updateEveryTimelineQuery;
-  }
-  return updateEveryTimelineQuery;
-}
-
 export function insertOptimisticTimelineRow(
   queryClient: QueryClient,
   threadId: string,
   row: TimelineRow,
 ): void {
-  const shouldUpdate = isPendingSteerRow(row)
-    ? buildPendingSteerTimelineQueryPredicate(
-        queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId)),
-      )
-    : updateEveryTimelineQuery;
   updateCachedTimelineRows({
     queryClient,
-    shouldUpdate,
+    shouldUpdate: updateEveryTimelineQuery,
     threadId,
     updater: (rows) => [...rows, row],
   });

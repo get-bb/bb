@@ -16,7 +16,6 @@ import { Icon } from "@/components/ui/icon.js";
 import { Button } from "@/components/ui/button.js";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { cn } from "@/lib/utils";
-import { threadTypeLabel } from "@/lib/thread-title";
 import { isThreadRead } from "@/lib/thread-read-state";
 import { useThreadActions } from "./ThreadActionsProvider";
 
@@ -28,7 +27,6 @@ interface ThreadActionsMenuBaseProps {
    * to true.
    */
   canDelete?: boolean;
-  showManagerArchiveAll?: boolean;
 }
 
 interface ThreadActionsMenuProps extends ThreadActionsMenuBaseProps {
@@ -79,23 +77,19 @@ function ThreadActionMenuItem({
 function ThreadActionsMenuItems({
   thread,
   canDelete = true,
-  showManagerArchiveAll = false,
   surface,
 }: ThreadActionsMenuItemsProps) {
   const {
-    archiveAllAssigned,
+    archiveThreadAndChildren,
     requestRename,
     requestDelete,
-    toggleArchive,
     togglePin,
     toggleRead,
+    unarchiveThread,
   } = useThreadActions();
   const isRead = isThreadRead(thread);
   const isArchived = thread.archivedAt != null;
   const isPinned = thread.pinnedAt !== null;
-  const isManager = thread.type === "manager";
-  const archiveLabel = isManager ? "Archive Manager" : "Archive";
-  const canArchiveAll = isManager && !isArchived && showManagerArchiveAll;
 
   return (
     <>
@@ -137,24 +131,15 @@ function ThreadActionsMenuItems({
           if (surface === "dropdown") {
             event.preventDefault();
           }
-          toggleArchive(thread);
+          if (isArchived) {
+            unarchiveThread(thread);
+            return;
+          }
+          archiveThreadAndChildren(thread);
         }}
       >
-        {isArchived ? "Unarchive" : archiveLabel}
+        {isArchived ? "Unarchive" : "Archive"}
       </ThreadActionMenuItem>
-      {canArchiveAll ? (
-        <ThreadActionMenuItem
-          surface={surface}
-          onSelect={(event) => {
-            if (surface === "dropdown") {
-              event.preventDefault();
-            }
-            archiveAllAssigned(thread);
-          }}
-        >
-          Archive All
-        </ThreadActionMenuItem>
-      ) : null}
       {canDelete ? (
         <ThreadActionMenuItem
           surface={surface}
@@ -175,14 +160,10 @@ function ThreadActionsMenuItems({
 export function ThreadActionsMenu({
   thread,
   canDelete = true,
-  showManagerArchiveAll,
   onOpenChange,
   triggerClassName,
   align = "end",
 }: ThreadActionsMenuProps) {
-  const label = threadTypeLabel(thread.type);
-  const capitalizedLabel = label.charAt(0).toUpperCase() + label.slice(1);
-
   return (
     <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
@@ -191,8 +172,8 @@ export function ThreadActionsMenu({
           variant="ghost"
           size="icon"
           className={cn("rounded-md p-0", triggerClassName)}
-          aria-label={`${capitalizedLabel} actions`}
-          title={`${capitalizedLabel} actions`}
+          aria-label="Thread actions"
+          title="Thread actions"
           onClick={(event) => {
             event.stopPropagation();
           }}
@@ -207,7 +188,6 @@ export function ThreadActionsMenu({
         <ThreadActionsMenuItems
           thread={thread}
           canDelete={canDelete}
-          showManagerArchiveAll={showManagerArchiveAll}
           surface="dropdown"
         />
       </DropdownMenuContent>
@@ -219,23 +199,18 @@ export function ThreadActionsContextMenu({
   children,
   thread,
   canDelete = true,
-  showManagerArchiveAll,
   onOpenChange,
 }: ThreadActionsContextMenuProps) {
-  const label = threadTypeLabel(thread.type);
-  const capitalizedLabel = label.charAt(0).toUpperCase() + label.slice(1);
-
   return (
     <ContextMenu onOpenChange={onOpenChange}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent
-        aria-label={`${capitalizedLabel} actions`}
+        aria-label="Thread actions"
         className="w-44"
       >
         <ThreadActionsMenuItems
           thread={thread}
           canDelete={canDelete}
-          showManagerArchiveAll={showManagerArchiveAll}
           surface="context"
         />
       </ContextMenuContent>

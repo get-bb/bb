@@ -36,13 +36,6 @@ import {
   dispatchTurnDuringReprovision,
   requireReadyThreadEnvironment,
 } from "./thread-turn-dispatch.js";
-import {
-  prependManagerPreferencesSystemMessageIfChanged,
-  recordManagerDynamicFileDelivery,
-  recordManagerDynamicFileDeliveryInTransaction,
-  type ManagerDynamicFileDeliveryStateUpdate,
-  withManagerPreferencesDeliveryLock,
-} from "./manager-dynamic-file-delivery.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { resolveThreadRuntimeState } from "./thread-runtime-display.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
@@ -71,12 +64,12 @@ export interface SendThreadMessageArgs {
   trigger: SendThreadMessageTrigger;
 }
 
-interface ResolveMessageSenderArgs {
+export interface ResolveMessageSenderArgs {
   senderThreadId?: string;
   targetThread: Thread;
 }
 
-interface FormatAgentThreadInputArgs {
+export interface FormatAgentThreadInputArgs {
   input: PromptInput[];
   senderThreadId: string;
 }
@@ -119,7 +112,6 @@ interface AppendAndQueueSendThreadMessageArgs {
   queueInTransaction: SendThreadMessageQueueRequest;
   requestId: ClientTurnRequestId;
   senderThreadId: string | null;
-  stateUpdate: ManagerDynamicFileDeliveryStateUpdate | null;
   target: TurnRequestTarget;
   thread: Thread;
 }
@@ -170,7 +162,7 @@ function resolveSendMode(
     }
     return "start";
   }
-  if (requestedMode === "steer") {
+  if (requestedMode === "steer" || requestedMode === "steer-if-active") {
     if (thread.status === "active") {
       return "steer";
     }
@@ -182,6 +174,16 @@ function resolveSendMode(
       threadNotWritableReasonForStatus(thread.status),
       "Thread is not active",
     );
+  }
+  if (requestedMode === "queue-if-active") {
+    if (thread.status === "active") {
+      throwThreadNotWritable(
+        thread,
+        "already_active",
+        "Thread is already active",
+      );
+    }
+    return "start";
   }
   if (thread.status === "active") {
     return "auto";
@@ -212,7 +214,7 @@ function ensureRuntimeCanAcceptActiveSend(
   );
 }
 
-function resolveMessageSenderThreadId(
+export function resolveMessageSenderThreadId(
   deps: Pick<AppDeps, "db">,
   args: ResolveMessageSenderArgs,
 ): string | null {
@@ -240,7 +242,7 @@ function buildAgentThreadMessageText(
   });
 }
 
-function formatAgentThreadInput(
+export function formatAgentThreadInput(
   args: FormatAgentThreadInputArgs,
 ): PromptInput[] {
   const firstTextIndex = args.input.findIndex((item) => item.type === "text");
@@ -280,7 +282,6 @@ function appendAndQueueSendThreadMessageInTransaction({
   queueInTransaction,
   requestId,
   senderThreadId,
-  stateUpdate,
   target,
   thread,
 }: AppendAndQueueSendThreadMessageArgs): AppendAndQueueSendThreadMessageResult {
@@ -320,7 +321,6 @@ function appendAndQueueSendThreadMessageInTransaction({
         tx,
       });
       threadBecameActive = queueResult.threadBecameActive;
-      recordManagerDynamicFileDeliveryInTransaction(tx, stateUpdate);
       return appended;
     },
     { behavior: "immediate" },
@@ -380,131 +380,39 @@ export async function sendThreadMessage(
     initiator,
   });
 
-  await withManagerPreferencesDeliveryLock({ thread }, async () => {
-    const preparedInput = await prependManagerPreferencesSystemMessageIfChanged(
+  if (
+    await dispatchTurnDuringReprovision({
       deps,
-      {
-        hostId: environment.hostId,
-        input,
-        thread,
-      },
-    );
-
-    if (
-      await dispatchTurnDuringReprovision({
-        deps,
-        environment,
-        execution,
-        initiator,
-        input: preparedInput.input,
-        senderThreadId,
-        thread,
-      })
-    ) {
-      recordManagerDynamicFileDelivery(deps, preparedInput.stateUpdate);
-      return;
-    }
-    const readyEnvironment = requireReadyThreadEnvironment(environment);
-    let target: TurnRequestTarget;
-    if (mode === "start") {
-      target = { kind: "new-turn" };
-    } else {
-      target = {
-        kind: mode,
-        expectedTurnId: expectedSteerTurnId,
-      };
-    }
-
-    const requestId = createClientTurnRequestId();
-
-    if (mode === "start") {
-      const command = await prepareReadyThreadTurnCommand(deps, {
-        thread,
-        input: preparedInput.input,
-        requestId,
-        execution,
-        permissionEscalation,
-        environment: {
-          id: readyEnvironment.id,
-          hostId: readyEnvironment.hostId,
-          cleanupRequestedAt: readyEnvironment.cleanupRequestedAt,
-          path: readyEnvironment.path,
-          status: readyEnvironment.status,
-          workspaceProvisionType: readyEnvironment.workspaceProvisionType,
-        },
-        projectId: thread.projectId,
-        providerId: thread.providerId,
-        syncGeneratedTitle: false,
-      });
-      const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
-        beforeAppendInTransaction: () => {
-          ensureThreadCanStartRequest(thread);
-        },
-        db: deps.db,
-        environmentId: thread.environmentId,
-        execution,
-        initiator,
-        input: preparedInput.input,
-        queueInTransaction: ({ tx }) => {
-          const dispatchKind = prepareReadyThreadTurnDispatchInTransaction(tx, {
-            command,
-            thread,
-          });
-          const currentThread = getThread(tx, thread.id);
-          if (
-            dispatchKind === "turn.submit" ||
-            currentThread?.status === "error"
-          ) {
-            transitionThreadStatusInTransaction(tx, {
-              id: thread.id,
-              newStatus: "active",
-            });
-            return { threadBecameActive: true };
-          }
-          return { threadBecameActive: false };
-        },
-        requestId,
-        senderThreadId,
-        stateUpdate: preparedInput.stateUpdate,
-        target,
-        thread,
-      });
-      deps.hub.notifyThread(
-        thread.id,
-        queuedRequest.request.notificationChanges,
-        queuedRequest.request.notificationMetadata,
-      );
-      startLiveHostCommand(deps, {
-        command: command.command,
-        hostId: readyEnvironment.hostId,
-        timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-        onError: (error) => {
-          deps.logger.warn(
-            { err: error, threadId: thread.id },
-            "Live ready turn command failed",
-          );
-        },
-      });
-      if (queuedRequest.threadBecameActive) {
-        deps.hub.notifyThread(thread.id, ["status-changed"], {
-          projectId: thread.projectId,
-        });
-      }
-      return;
-    }
-
-    await ensureHostSessionReadyForWork(deps, {
-      hostId: readyEnvironment.hostId,
-    });
-    const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
+      environment,
+      execution,
+      initiator,
+      input,
+      senderThreadId,
       thread,
-      input: preparedInput.input,
+    })
+  ) {
+    return;
+  }
+  const readyEnvironment = requireReadyThreadEnvironment(environment);
+  let target: TurnRequestTarget;
+  if (mode === "start") {
+    target = { kind: "new-turn" };
+  } else {
+    target = {
+      kind: mode,
+      expectedTurnId: expectedSteerTurnId,
+    };
+  }
+
+  const requestId = createClientTurnRequestId();
+
+  if (mode === "start") {
+    const command = await prepareReadyThreadTurnCommand(deps, {
+      thread,
+      input,
+      requestId,
       execution,
       permissionEscalation,
-      target: {
-        mode,
-        expectedTurnId: expectedSteerTurnId,
-      },
       environment: {
         id: readyEnvironment.id,
         hostId: readyEnvironment.hostId,
@@ -513,23 +421,39 @@ export async function sendThreadMessage(
         status: readyEnvironment.status,
         workspaceProvisionType: readyEnvironment.workspaceProvisionType,
       },
-    });
-    const command = addRequestIdToTurnSubmitCommandPayload({
-      preparedCommand,
-      requestId,
+      projectId: thread.projectId,
+      providerId: thread.providerId,
+      syncGeneratedTitle: false,
     });
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
+      beforeAppendInTransaction: () => {
+        ensureThreadCanStartRequest(thread);
+      },
       db: deps.db,
       environmentId: thread.environmentId,
       execution,
       initiator,
-      input: preparedInput.input,
-      queueInTransaction: () => {
+      input,
+      queueInTransaction: ({ tx }) => {
+        const dispatchKind = prepareReadyThreadTurnDispatchInTransaction(tx, {
+          command,
+          thread,
+        });
+        const currentThread = getThread(tx, thread.id);
+        if (
+          dispatchKind === "turn.submit" ||
+          currentThread?.status === "error"
+        ) {
+          transitionThreadStatusInTransaction(tx, {
+            id: thread.id,
+            newStatus: "active",
+          });
+          return { threadBecameActive: true };
+        }
         return { threadBecameActive: false };
       },
       requestId,
       senderThreadId,
-      stateUpdate: preparedInput.stateUpdate,
       target,
       thread,
     });
@@ -539,15 +463,77 @@ export async function sendThreadMessage(
       queuedRequest.request.notificationMetadata,
     );
     startLiveHostCommand(deps, {
-      command,
+      command: command.command,
       hostId: readyEnvironment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-      onError: (error) => {
+      onError: ({ error }) => {
         deps.logger.warn(
           { err: error, threadId: thread.id },
-          "Live turn submit command failed",
+          "Live ready turn command failed",
         );
       },
     });
+    if (queuedRequest.threadBecameActive) {
+      deps.hub.notifyThread(thread.id, ["status-changed"], {
+        projectId: thread.projectId,
+      });
+    }
+    return;
+  }
+
+  await ensureHostSessionReadyForWork(deps, {
+    hostId: readyEnvironment.hostId,
+  });
+  const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
+    thread,
+    input,
+    execution,
+    permissionEscalation,
+    target: {
+      mode,
+      expectedTurnId: expectedSteerTurnId,
+    },
+    environment: {
+      id: readyEnvironment.id,
+      hostId: readyEnvironment.hostId,
+      cleanupRequestedAt: readyEnvironment.cleanupRequestedAt,
+      path: readyEnvironment.path,
+      status: readyEnvironment.status,
+      workspaceProvisionType: readyEnvironment.workspaceProvisionType,
+    },
+  });
+  const command = addRequestIdToTurnSubmitCommandPayload({
+    preparedCommand,
+    requestId,
+  });
+  const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
+    db: deps.db,
+    environmentId: thread.environmentId,
+    execution,
+    initiator,
+    input,
+    queueInTransaction: () => {
+      return { threadBecameActive: false };
+    },
+    requestId,
+    senderThreadId,
+    target,
+    thread,
+  });
+  deps.hub.notifyThread(
+    thread.id,
+    queuedRequest.request.notificationChanges,
+    queuedRequest.request.notificationMetadata,
+  );
+  startLiveHostCommand(deps, {
+    command,
+    hostId: readyEnvironment.hostId,
+    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    onError: ({ error }) => {
+      deps.logger.warn(
+        { err: error, threadId: thread.id },
+        "Live turn submit command failed",
+      );
+    },
   });
 }

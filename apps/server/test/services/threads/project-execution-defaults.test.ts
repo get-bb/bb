@@ -32,7 +32,6 @@ describe("project execution defaults persistence", () => {
       upsertProjectExecutionDefaults(harness.db, {
         projectId: project.id,
         providerId: "codex",
-        threadType: "standard",
         model: "gpt-5-mini",
         reasoningLevel: "medium",
         permissionMode: "full",
@@ -50,7 +49,6 @@ describe("project execution defaults persistence", () => {
         reasoningLevel: "high",
         permissionMode: "workspace-write",
         serviceTier: "fast",
-        type: "standard",
         input: textInput("Reuse one-off"),
         environment: { type: "reuse", environmentId: environment.id },
       });
@@ -58,7 +56,6 @@ describe("project execution defaults persistence", () => {
       expect(
         getProjectExecutionDefaults(harness.db, {
           projectId: project.id,
-          threadType: "standard",
         }),
       ).toEqual({
         providerId: "codex",
@@ -82,7 +79,6 @@ describe("project execution defaults persistence", () => {
       upsertProjectExecutionDefaults(harness.db, {
         projectId: project.id,
         providerId: "codex",
-        threadType: "standard",
         model: "gpt-5-mini",
         reasoningLevel: "medium",
         permissionMode: "full",
@@ -98,7 +94,6 @@ describe("project execution defaults persistence", () => {
         reasoningLevel: "high",
         permissionMode: "workspace-write",
         serviceTier: "fast",
-        type: "standard",
         input: textInput("Set new defaults"),
         environment: {
           type: "host",
@@ -113,7 +108,6 @@ describe("project execution defaults persistence", () => {
       expect(
         getProjectExecutionDefaults(harness.db, {
           projectId: project.id,
-          threadType: "standard",
         }),
       ).toEqual({
         providerId: "codex",

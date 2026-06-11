@@ -19,7 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
-import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { usePathPickerHost } from "@/hooks/useLocalPathPicker";
 import {
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
@@ -95,12 +95,12 @@ function ProjectActionsMenuItems({
   surface,
 }: ProjectActionsMenuItemsProps) {
   const navigate = useNavigate();
-  const { localDaemonHostId } = useHostDaemon();
+  const { hostId: pickerHostId } = usePathPickerHost();
   const { requestRename, requestDelete, requestAddLocalPath } =
     useProjectActions();
   const showAddLocalPath =
-    localDaemonHostId != null &&
-    !findLocalPathProjectSourceForHost(project.sources, localDaemonHostId);
+    pickerHostId != null &&
+    !findLocalPathProjectSourceForHost(project.sources, pickerHostId);
 
   return (
     <>

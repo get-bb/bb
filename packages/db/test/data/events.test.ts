@@ -729,7 +729,7 @@ describe("events", () => {
     ).toEqual([2, 3]);
   });
 
-  it("lists bounded timeline segment anchors with SQL-visible request rules", () => {
+  it("lists bounded timeline segment anchors with request shape rules", () => {
     const { db, thread } = setup();
 
     insertEvents(db, noopNotifier, [
@@ -857,7 +857,6 @@ describe("events", () => {
 
     expect(
       listTimelineSegmentAnchorsDescending(db, {
-        audience: "non-system",
         limit: 8,
         threadId: thread.id,
       }),
@@ -868,36 +867,20 @@ describe("events", () => {
       { rowId: `${thread.id}:user-seed:8`, sequence: 8 },
       { rowId: `${thread.id}:user-seed:7`, sequence: 7 },
       { rowId: `${thread.id}:user-seed:4`, sequence: 4 },
+      { rowId: `${thread.id}:user-seed:2`, sequence: 2 },
       { rowId: `${thread.id}:user-seed:1`, sequence: 1 },
     ]);
-
-    expect(
-      listTimelineSegmentAnchorsDescending(db, {
-        audience: "all",
-        limit: 9,
-        threadId: thread.id,
-      }).map((row) => row.sequence),
-    ).toEqual([11, 10, 9, 8, 7, 4, 2, 1]);
-    expect(
-      listTimelineSegmentAnchorsDescending(db, {
-        audience: "user",
-        limit: 7,
-        threadId: thread.id,
-      }).map((row) => row.sequence),
-    ).toEqual([10, 9, 8, 7, 4, 1]);
 
     // The timeline pagination helpers select only the requested page of
     // anchors, so latest/older page resolution never enumerates a whole thread.
     expect(
       listTimelineSegmentAnchorsDescending(db, {
-        audience: "non-system",
         limit: 3,
         threadId: thread.id,
       }).map((row) => row.sequence),
     ).toEqual([11, 10, 9]);
     expect(
       listTimelineSegmentAnchorsDescending(db, {
-        audience: "non-system",
         beforeSequence: 8,
         limit: 3,
         threadId: thread.id,
@@ -905,48 +888,34 @@ describe("events", () => {
     ).toEqual([
       { rowId: `${thread.id}:user-seed:7`, sequence: 7 },
       { rowId: `${thread.id}:user-seed:4`, sequence: 4 },
-      { rowId: `${thread.id}:user-seed:1`, sequence: 1 },
+      { rowId: `${thread.id}:user-seed:2`, sequence: 2 },
     ]);
     expect(
       getTimelineSegmentAnchorAtSequence(db, {
-        audience: "non-system",
         sequence: 7,
         threadId: thread.id,
       }),
     ).toEqual({ rowId: `${thread.id}:user-seed:7`, sequence: 7 });
-    // Sequence 2 is a system-initiated turn: an anchor for "all" but not
-    // "non-system" — the audience filter must be honored.
     expect(
       getTimelineSegmentAnchorAtSequence(db, {
-        audience: "non-system",
-        sequence: 2,
-        threadId: thread.id,
-      }),
-    ).toBeUndefined();
-    expect(
-      getTimelineSegmentAnchorAtSequence(db, {
-        audience: "all",
         sequence: 2,
         threadId: thread.id,
       }),
     ).toEqual({ rowId: `${thread.id}:user-seed:2`, sequence: 2 });
     expect(
       findTimelineSegmentAnchorSequenceAfter(db, {
-        audience: "non-system",
         sequence: 7,
         threadId: thread.id,
       }),
     ).toBe(8);
     expect(
       findTimelineSegmentAnchorSequenceAfter(db, {
-        audience: "non-system",
         sequence: 10,
         threadId: thread.id,
       }),
     ).toBe(11);
     expect(
       findTimelineSegmentAnchorSequenceAfter(db, {
-        audience: "non-system",
         sequence: 11,
         threadId: thread.id,
       }),
@@ -2886,6 +2855,7 @@ describe("events", () => {
       notifyHost: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
+      notifyWorkflowRun: vi.fn(),
     };
 
     insertEvents(db, spy, [

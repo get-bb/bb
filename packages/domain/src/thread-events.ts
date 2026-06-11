@@ -18,6 +18,8 @@ export const systemEventTypeValues = [
   "client/turn/requested",
   "client/turn/start",
   "system/error",
+  // Legacy persisted user-visible system event from a removed runtime path.
+  // Retained for read/decode/render compatibility only.
   "system/manager/user_message",
   "system/thread/interrupted",
   "system/operation",
@@ -261,13 +263,13 @@ export type SystemThreadProvisioningEventData = z.infer<
   typeof systemThreadProvisioningEventDataSchema
 >;
 
-export const systemManagerUserMessageEventDataSchema = z.object({
+export const systemLegacyUserMessageEventDataSchema = z.object({
   text: z.string(),
   toolCallId: z.string().optional(),
   turnId: z.string().optional(),
 });
-export type SystemManagerUserMessageEventData = z.infer<
-  typeof systemManagerUserMessageEventDataSchema
+export type SystemLegacyUserMessageEventData = z.infer<
+  typeof systemLegacyUserMessageEventDataSchema
 >;
 
 export const turnLifecycleEventDataSchema = z.object({
@@ -302,7 +304,7 @@ export type ThreadEventDataByType = {
   "client/turn/requested": TurnRequestEventData;
   "client/turn/start": ClientTurnLifecycleEventData;
   "system/error": SystemErrorEventData;
-  "system/manager/user_message": SystemManagerUserMessageEventData;
+  "system/manager/user_message": SystemLegacyUserMessageEventData;
   "system/thread/interrupted": SystemThreadInterruptedEventData;
   "system/operation": SystemOperationEventData;
   "system/permissionGrant/lifecycle": SystemPermissionGrantLifecycleEventData;

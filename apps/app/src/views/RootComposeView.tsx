@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import {
-  findLocalPathProjectSourceForHost,
-  PERSONAL_PROJECT_ID,
-  type ThreadListEntry,
-} from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
-  type ThreadCreationMode,
 } from "@/components/promptbox/NewThreadPromptBox";
-import type { PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
+import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import {
   encodeHostValue,
   encodeReuseValue,
@@ -20,20 +15,17 @@ import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
-import {
-  useHireProjectManager,
-  useUploadPromptAttachment,
-} from "@/hooks/mutations/project-mutations";
+import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   useProjectPromptHistory,
-  useProjectDefaultExecutionOptions,
   useProjectSourceBranches,
   useSidebarNavigation,
   stripProjectThreads,
 } from "@/hooks/queries/project-queries";
 import { useThreads } from "@/hooks/queries/thread-queries";
-import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
+import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -43,6 +35,7 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { promptDraftToInput } from "@/lib/prompt-draft";
+import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   getThreadRoutePath,
@@ -50,7 +43,6 @@ import {
   isProjectlessProjectId,
 } from "@/lib/app-route-paths";
 import {
-  useRootComposeMode,
   useRootComposeProjectId,
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
@@ -60,6 +52,7 @@ import {
 } from "./root-compose-branch-ui";
 import { resolveRootComposeThreadEnvironment } from "./root-compose-thread-environment";
 import { useScopedBranchSelection } from "./root-compose-branch-selection";
+import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-2";
@@ -80,12 +73,6 @@ function readReuseEnvironmentIdFromLocationState(
     .reuseEnvironmentId;
   if (typeof candidate === "string" && candidate.length > 0) return candidate;
   return null;
-}
-
-function readModeFromLocationState(state: unknown): ThreadCreationMode | null {
-  if (!state || typeof state !== "object") return null;
-  const candidate = (state as { mode?: unknown }).mode;
-  return candidate === "manager" || candidate === "thread" ? candidate : null;
 }
 
 function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
@@ -214,13 +201,16 @@ export function RootComposeView() {
     setRootComposeProjectId(projectId);
   }, [projectId, projects, rootComposeProjectId, setRootComposeProjectId]);
   const createThread = useCreateThread();
-  const hireProjectManager = useHireProjectManager();
-  const { localHostId } = useHostDaemon();
+  const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
+    null,
+  );
+  const [navigateToThreadAfterCreate] =
+    useNavigateToThreadAfterCreatePreference();
+  const primaryHostId = usePrimaryHost()?.id ?? null;
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({ projectId, threadId: null });
   const { data: projectPromptHistory = [] } =
     useProjectPromptHistory(projectId);
-  const [mode, setMode] = useRootComposeMode();
   const promptMentions = usePromptMentions(
     isProjectless ? undefined : projectId,
     {
@@ -258,33 +248,26 @@ export function RootComposeView() {
     () => currentProject?.sources ?? [],
     [currentProject?.sources],
   );
-  const managerDefaultExecutionOptionsQuery = useProjectDefaultExecutionOptions(
-    {
-      projectId,
-      threadType: "manager",
-    },
-    {
-      enabled: mode === "manager" && currentProject !== undefined,
-    },
-  );
-  const managerDefaultExecutionOptions =
-    managerDefaultExecutionOptionsQuery.data ?? undefined;
-  const standardCreationOptions = useThreadCreationOptions({
+  // Seed the picker with the project's stored execution defaults so the
+  // visible default matches what the server will use when the user submits
+  // without touching anything. Without this, the picker would show the
+  // system-wide first-provider/default-model (e.g. Codex / GPT-5.5) while
+  // the server falls back to the project's stored provider (e.g. Claude
+  // Code) — see resolveRequestedCreateExecutionValue, which discards
+  // submitted values that the client hasn't claimed in `executionInputSources`.
+  // Values ride along with the sidebar bootstrap so there's no extra
+  // round-trip per visit.
+  const projectDefaultExecutionOptions =
+    currentProject?.defaultExecutionOptions ?? null;
+  const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
     projectId,
+    initialProviderId: projectDefaultExecutionOptions?.providerId,
+    initialModel: projectDefaultExecutionOptions?.model,
+    initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
+    initialReasoningLevel: projectDefaultExecutionOptions?.reasoningLevel,
+    initialPermissionMode: projectDefaultExecutionOptions?.permissionMode,
   });
-  const managerCreationOptions = useThreadCreationOptions({
-    enabled: mode === "manager",
-    initialModel: managerDefaultExecutionOptions?.model,
-    initialProviderId: managerDefaultExecutionOptions?.providerId,
-    initialReasoningLevel: managerDefaultExecutionOptions?.reasoningLevel,
-    initialServiceTier: managerDefaultExecutionOptions?.serviceTier,
-    projectId,
-    resetKey: projectId,
-    scope: "new-manager",
-  });
-  const creationOptions =
-    mode === "manager" ? managerCreationOptions : standardCreationOptions;
   const {
     selectedProviderId,
     setSelectedProviderId,
@@ -310,39 +293,25 @@ export function RootComposeView() {
     supportsServiceTier,
     serviceTierSupportByProvider,
   } = creationOptions;
-  const standardExecutionInputSources =
-    standardCreationOptions.executionInputSources;
-  const managerExecutionInputSources =
-    managerCreationOptions.executionInputSources;
+  const executionInputSources = creationOptions.executionInputSources;
 
-  // Seed transient picker state from navigation state:
-  // `reuseEnvironmentId` (the "+" affordance on a worktree) seeds the env
-  // picker into reuse mode for that env, and `mode` seeds the mode picker.
-  // Both are single-use — clear location.state after applying so a refresh
-  // starts from persisted root-compose selection.
+  // Seed transient picker state from navigation state: `reuseEnvironmentId`
+  // (the "+" affordance on a worktree) seeds the env picker into reuse mode
+  // for that env. This is single-use — clear location.state after applying so
+  // a refresh starts from persisted root-compose selection.
   useEffect(() => {
     const reuseEnvironmentId = readReuseEnvironmentIdFromLocationState(
       location.state,
     );
-    const seededMode = readModeFromLocationState(location.state);
-    if (reuseEnvironmentId === null && seededMode === null) return;
+    if (reuseEnvironmentId === null) return;
     if (reuseEnvironmentId !== null) {
       setEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
-    }
-    if (seededMode !== null) {
-      setMode(seededMode);
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
       state: null,
     });
-  }, [
-    location.search,
-    location.state,
-    navigate,
-    setEnvironmentSelectionValue,
-    setMode,
-  ]);
+  }, [location.search, location.state, navigate, setEnvironmentSelectionValue]);
 
   // Worktree picker options come from the project's unarchived threads.
   // Threads on managed or unmanaged worktrees with a non-null environmentId
@@ -356,35 +325,25 @@ export function RootComposeView() {
     [threadsQuery.data],
   );
 
-  const effectiveManagerHostId = useMemo(() => {
-    if (!localHostId) return "";
-    if (isProjectless) return localHostId;
-    const localSource = findLocalPathProjectSourceForHost(
-      projectSources,
-      localHostId,
-    );
-    return localSource ? localHostId : "";
-  }, [isProjectless, localHostId, projectSources]);
-
   // Projectless threads choose a host directly, not an environment mode. Keep
   // the underlying persisted value host-shaped for the create-thread contract,
   // but discard reuse/worktree mode when resolving the effective value.
   const effectiveEnvironmentValue = useMemo(() => {
     const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
     if (isProjectless) {
-      return localHostId ? encodeHostValue(localHostId, "local") : "";
+      return primaryHostId ? encodeHostValue(primaryHostId, "local") : "";
     }
     if (parsedSelection?.type === "reuse") {
       return environmentSelectionValue;
     }
-    if (localHostId) {
+    if (primaryHostId) {
       return encodeHostValue(
-        localHostId,
+        primaryHostId,
         parsedSelection?.type === "host" ? parsedSelection.mode : "local",
       );
     }
     return "";
-  }, [environmentSelectionValue, isProjectless, localHostId]);
+  }, [environmentSelectionValue, isProjectless, primaryHostId]);
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(effectiveEnvironmentValue),
     [effectiveEnvironmentValue],
@@ -510,6 +469,20 @@ export function RootComposeView() {
       [],
     [projects],
   );
+  const mobileRecentProjectNamesById = useMemo(() => {
+    const namesById = new Map<string, string>();
+    const navigation = sidebarNavigationQuery.data;
+    if (!navigation) return namesById;
+
+    namesById.set(
+      navigation.personalProject.id,
+      navigation.personalProject.name,
+    );
+    for (const project of navigation.projects) {
+      namesById.set(project.id, project.name);
+    }
+    return namesById;
+  }, [sidebarNavigationQuery.data]);
 
   const selectedThreadModel = activeModel?.model ?? selectedModel;
   const handleProjectChange = useCallback<ProjectSelectionChangeHandler>(
@@ -573,41 +546,6 @@ export function RootComposeView() {
 
     setAttachmentError(null);
 
-    if (mode === "manager") {
-      // Managers don't require a prompt — submitting with empty text just
-      // falls back to the server's welcome-message template. Managers run on
-      // the local host when the project has a local source.
-      if (
-        hireProjectManager.isPending ||
-        managerDefaultExecutionOptionsQuery.isLoading ||
-        !effectiveManagerHostId
-      ) {
-        return;
-      }
-      try {
-        const thread = await hireProjectManager.mutateAsync({
-          projectId,
-          providerId: selectedProviderId,
-          model: selectedThreadModel,
-          ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
-          reasoningLevel,
-          executionInputSources: managerExecutionInputSources,
-          environment: { type: "host", hostId: effectiveManagerHostId },
-          ...(submittedInput.length > 0 ? { input: submittedInput } : {}),
-        });
-        promptDraft.clearIfCurrentMatches(submittedDraft);
-        navigate(
-          getThreadRoutePath({
-            projectId: thread.projectId,
-            threadId: thread.id,
-          }),
-        );
-      } catch {
-        // Global mutation error handling already surfaced the failure.
-      }
-      return;
-    }
-
     if (
       submittedInput.length === 0 ||
       createThread.isPending ||
@@ -625,29 +563,29 @@ export function RootComposeView() {
         ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
         reasoningLevel,
         permissionMode,
-        executionInputSources: standardExecutionInputSources,
+        executionInputSources,
         environment: selectedEnvironment,
       });
+      setLastCreatedThreadId(thread.id);
       clearReuseEnvironment();
       promptDraft.clearIfCurrentMatches(submittedDraft);
-      navigate(
-        getThreadRoutePath({
-          projectId: thread.projectId,
-          threadId: thread.id,
-        }),
-      );
+      if (navigateToThreadAfterCreate) {
+        navigate(
+          getThreadRoutePath({
+            projectId: thread.projectId,
+            threadId: thread.id,
+          }),
+        );
+      }
     } catch {
       // Global mutation error handling already surfaced the failure.
     }
   }, [
     clearReuseEnvironment,
     createThread,
-    effectiveManagerHostId,
-    hireProjectManager,
-    managerExecutionInputSources,
-    managerDefaultExecutionOptionsQuery.isLoading,
-    mode,
+    executionInputSources,
     navigate,
+    navigateToThreadAfterCreate,
     permissionMode,
     projectId,
     promptDraft,
@@ -656,27 +594,18 @@ export function RootComposeView() {
     selectedProviderId,
     selectedThreadModel,
     serviceTier,
-    standardExecutionInputSources,
     supportsServiceTier,
   ]);
 
-  // Manager-mode submission relaxes the prompt-required and env-resolution
-  // checks (managers don't take a prompt or a worktree-shaped env). Both
-  // modes still require provider + model and a project; manager mode also
-  // needs an eligible host resolved.
   const isSubmitDisabled =
     !selectedProviderId ||
     !selectedThreadModel ||
-    (mode === "manager"
-      ? hireProjectManager.isPending ||
-        managerDefaultExecutionOptionsQuery.isLoading ||
-        !effectiveManagerHostId
-      : createThread.isPending ||
-        promptInput.length === 0 ||
-        !selectedEnvironment ||
-        (branchEnvironmentMode === "local" &&
-          selectedBranch !== null &&
-          branchUiState.mutationBlocker !== null));
+    createThread.isPending ||
+    promptInput.length === 0 ||
+    !selectedEnvironment ||
+    (branchEnvironmentMode === "local" &&
+      selectedBranch !== null &&
+      branchUiState.mutationBlocker !== null);
 
   const currentPromptDraft = useMemo(
     () => ({
@@ -710,13 +639,38 @@ export function RootComposeView() {
         : null,
     [navigate, projectId],
   );
-  const mentionsConfig = useMemo(
+  // Mirrors the @-mention plumbing: the composer feeds the text typed after the
+  // command trigger into `commandQuery`, which drives the project+provider-
+  // scoped command typeahead. When the picker reuses an existing environment,
+  // scope discovery to that environment's workspace; otherwise fall back to the
+  // project's default source (null).
+  const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const reuseEnvironmentId =
+    parsedEnvironment?.type === "reuse"
+      ? parsedEnvironment.environmentId
+      : null;
+  const commandSuggestions = useCommandSuggestions({
+    projectId: isProjectless ? undefined : projectId,
+    providerId: selectedProviderId,
+    environmentId: reuseEnvironmentId,
+    query: commandQuery,
+  });
+  const typeaheadConfig = useMemo(
     () => ({
-      suggestions: promptMentions.suggestions,
-      isLoading: promptMentions.isLoading,
-      isError: promptMentions.isError,
-      onQueryChange: promptMentions.setQuery,
-      resolveLink: resolveMentionLink,
+      mention: {
+        suggestions: promptMentions.suggestions,
+        isLoading: promptMentions.isLoading,
+        isError: promptMentions.isError,
+        onQueryChange: promptMentions.setQuery,
+        resolveLink: resolveMentionLink,
+      },
+      command: {
+        trigger: commandSuggestions.trigger,
+        suggestions: commandSuggestions.suggestions,
+        isLoading: commandSuggestions.isLoading,
+        isError: commandSuggestions.isError,
+        onQueryChange: setCommandQuery,
+      },
     }),
     [
       promptMentions.isError,
@@ -724,6 +678,10 @@ export function RootComposeView() {
       promptMentions.setQuery,
       promptMentions.suggestions,
       resolveMentionLink,
+      commandSuggestions.isError,
+      commandSuggestions.isLoading,
+      commandSuggestions.suggestions,
+      commandSuggestions.trigger,
     ],
   );
   const attachmentsConfig = useMemo(
@@ -894,8 +852,7 @@ export function RootComposeView() {
     return (
       <div className="flex">
         {/* `-ml-1.5` shifts the pill 6px left so its GitBranch icon column
-            lines up with the mode-selector icon above the card (mode
-            selector has `px-1` on its trigger; the pill has `px-2.5`). */}
+            lines up with the prompt controls below the card. */}
         <button
           type="button"
           onClick={clearReuseEnvironment}
@@ -951,31 +908,19 @@ export function RootComposeView() {
         mentionRanges={promptDraft.mentions}
         onChange={promptDraft.setTextAndMentions}
         onSubmit={submitPrompt}
-        isSubmitting={
-          mode === "manager"
-            ? hireProjectManager.isPending
-            : createThread.isPending
-        }
+        isSubmitting={createThread.isPending}
         disabled={isSubmitDisabled}
         zenModeStorageKey={rootComposeZenModeStorageKey}
         history={historyConfig}
-        mentions={mentionsConfig}
+        typeahead={typeaheadConfig}
         attachments={attachmentsConfig}
-        modeConfig={
-          mode === "manager"
-            ? {
-                mode: "manager",
-              }
-            : {
-                mode: "thread",
-                environment: environmentConfig,
-                branch: branchConfig,
-                worktree: worktreeConfig,
-                permission: permissionConfig,
-                header: reuseHeader,
-              }
-        }
-        onModeChange={setMode}
+        modeConfig={{
+          environment: environmentConfig,
+          branch: branchConfig,
+          worktree: worktreeConfig,
+          permission: permissionConfig,
+          header: reuseHeader,
+        }}
         project={{
           projects: projectOptions,
           value: isProjectless ? null : projectId,
@@ -989,6 +934,12 @@ export function RootComposeView() {
           },
         }}
         execution={executionConfig}
+      />
+      <RootComposeMobileRecents
+        highlightedThreadId={lastCreatedThreadId}
+        projectNamesById={mobileRecentProjectNamesById}
+        showCreatingRow={createThread.isPending}
+        threads={threadsQuery.data ?? []}
       />
     </PageShell>
   );

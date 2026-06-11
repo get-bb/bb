@@ -107,7 +107,7 @@ afterEach(() => {
 });
 
 describe("useThreadUnreadDividerState", () => {
-  it("re-arms when a mounted read standard thread gets a new attention epoch", async () => {
+  it("re-arms when a mounted read thread gets a new attention epoch", async () => {
     const readThread: UnreadDividerThreadState = {
       id: "thread-1",
       lastReadAt: 1_000,
@@ -470,6 +470,8 @@ describe("useThreadUnreadDividerState", () => {
   });
 
   it("places the divider above an agent-initiated user row", async () => {
+    const agentHandoffText =
+      "Agent handoff with enough additional detail to render the generated message row as an expandable button in jsdom.";
     const unreadThread: UnreadDividerThreadState = {
       id: "thread-1",
       lastReadAt: 1_500,
@@ -486,7 +488,7 @@ describe("useThreadUnreadDividerState", () => {
         initiator: "agent",
         role: "user",
         sourceSeqStart: 2_000,
-        text: "Agent handoff",
+        text: agentHandoffText,
         turnRequest: { kind: "message", status: "accepted" },
       }),
     ];
@@ -503,24 +505,24 @@ describe("useThreadUnreadDividerState", () => {
     });
     expectElementBefore(
       divider,
-      screen.getByRole("button", { name: /Message from Agent/u }),
+      screen.getByTitle("Message from Agent"),
     );
   });
 
-  it("places the divider for manager threads", async () => {
-    const unreadManagerThread: UnreadDividerThreadState = {
+  it("places the divider for parent threads", async () => {
+    const unreadParentThread: UnreadDividerThreadState = {
       id: "thread-1",
       lastReadAt: 1_000,
       latestAttentionAt: 2_000,
     };
     render(
       <ThreadUnreadTimelineHarness
-        thread={unreadManagerThread}
+        thread={unreadParentThread}
         timelineRows={[
           conversationRow({
-            id: "new-manager-row",
+            id: "new-parent-row",
             sourceSeqStart: 2_000,
-            text: "Manager timeline row",
+            text: "Parent timeline row",
           }),
         ]}
       />,
@@ -529,6 +531,6 @@ describe("useThreadUnreadDividerState", () => {
     const divider = await screen.findByRole("separator", {
       name: "New messages",
     });
-    expectElementBefore(divider, screen.getByText("Manager timeline row"));
+    expectElementBefore(divider, screen.getByText("Parent timeline row"));
   });
 });

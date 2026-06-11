@@ -13,7 +13,7 @@ function TimelineStage({ children }: { children: React.ReactNode }) {
 
 const baseProps = {
   // projectId enables the thread-link resolver in `ThreadTimelineRows`, so
-  // manager-assignment titles render as `<a>` links to the manager thread.
+  // parent-change titles render as `<a>` links to the parent thread.
   projectId: "proj_gyz9przugq",
   threadRuntimeDisplayStatus: "idle" as const,
   workspaceRootPath: undefined,
@@ -222,11 +222,11 @@ const deprecationNotice: TimelineRow = systemRow({
 });
 
 // system/operation with operation="ownership_change", action="assign". The
-// projector routes this to the manager-assignment row variant, which
-// requires `status` and a `managerAssignment` object. Real event from
-// thr_wxmxksux4w (assigned to manager thr_bj3p5vk9py "Manager").
-const managerAssignmentAssign: TimelineRow = systemRow({
-  id: "thr_wxmxksux4w:op:manager-assignment:evt_vvidja2pjg",
+// projector routes this to the parent-change row variant, which
+// requires `status` and a `parentChange` object. Real event from
+// thr_wxmxksux4w (assigned to parent thr_bj3p5vk9py "Parent").
+const parentChangeAssign: TimelineRow = systemRow({
+  id: "thr_wxmxksux4w:op:parent-change:evt_vvidja2pjg",
   threadId: "thr_wxmxksux4w",
   turnId: null,
   sourceSeqStart: 14,
@@ -234,25 +234,25 @@ const managerAssignmentAssign: TimelineRow = systemRow({
   startedAt: 1777680600000,
   createdAt: 1777680600000,
   systemKind: "operation",
-  operationKind: "manager-assignment",
-  title: "Thread assigned to manager",
+  operationKind: "parent-change",
+  title: "Thread assigned to parent",
   detail: null,
   status: "completed",
   completedAt: 1777680600000,
-  managerAssignment: {
+  parentChange: {
     action: "assign",
-    previousManagerThreadId: null,
-    previousManagerThreadTitle: null,
-    nextManagerThreadId: "thr_bj3p5vk9py",
-    nextManagerThreadTitle: "Manager",
+    previousParentThreadId: null,
+    previousParentThreadTitle: null,
+    nextParentThreadId: "thr_bj3p5vk9py",
+    nextParentThreadTitle: "Parent",
   },
 });
 
-// Manager-assignment release. Construct a plausible row using the same
-// schema; ownership_change action="release" titles via the manager-assignment
-// title builder. The manager link points back to the previous parent thread.
-const managerAssignmentRelease: TimelineRow = systemRow({
-  id: "thr_wxmxksux4w:op:manager-assignment:release",
+// Parent-change release. Construct a plausible row using the same schema;
+// ownership_change action="release" titles via the parent-change title
+// builder. The link points back to the previous parent thread.
+const parentChangeRelease: TimelineRow = systemRow({
+  id: "thr_wxmxksux4w:op:parent-change:release",
   threadId: "thr_wxmxksux4w",
   turnId: null,
   sourceSeqStart: 9_412,
@@ -260,23 +260,23 @@ const managerAssignmentRelease: TimelineRow = systemRow({
   startedAt: 1777724900000,
   createdAt: 1777724900000,
   systemKind: "operation",
-  operationKind: "manager-assignment",
-  title: "Thread released from manager",
+  operationKind: "parent-change",
+  title: "Thread released from parent",
   detail: null,
   status: "completed",
   completedAt: 1777724900000,
-  managerAssignment: {
+  parentChange: {
     action: "release",
-    previousManagerThreadId: "thr_bj3p5vk9py",
-    previousManagerThreadTitle: "Manager",
-    nextManagerThreadId: null,
-    nextManagerThreadTitle: null,
+    previousParentThreadId: "thr_bj3p5vk9py",
+    previousParentThreadTitle: "Parent",
+    nextParentThreadId: null,
+    nextParentThreadTitle: null,
   },
 });
 
-// Manager-assignment transfer between two real manager threads.
-const managerAssignmentTransfer: TimelineRow = systemRow({
-  id: "thr_wxmxksux4w:op:manager-assignment:transfer",
+// Parent-change transfer between two real parent threads.
+const parentChangeTransfer: TimelineRow = systemRow({
+  id: "thr_wxmxksux4w:op:parent-change:transfer",
   threadId: "thr_wxmxksux4w",
   turnId: null,
   sourceSeqStart: 11_004,
@@ -284,17 +284,17 @@ const managerAssignmentTransfer: TimelineRow = systemRow({
   startedAt: 1777800100000,
   createdAt: 1777800100000,
   systemKind: "operation",
-  operationKind: "manager-assignment",
-  title: "Thread transferred to new manager",
+  operationKind: "parent-change",
+  title: "Thread transferred to new parent",
   detail: null,
   status: "completed",
   completedAt: 1777800100000,
-  managerAssignment: {
+  parentChange: {
     action: "transfer",
-    previousManagerThreadId: "thr_bj3p5vk9py",
-    previousManagerThreadTitle: "Manager",
-    nextManagerThreadId: "thr_mdg94kvcz8",
-    nextManagerThreadTitle: "Frontend Manager",
+    previousParentThreadId: "thr_bj3p5vk9py",
+    previousParentThreadTitle: "Parent",
+    nextParentThreadId: "thr_mdg94kvcz8",
+    nextParentThreadTitle: "Frontend Parent",
   },
 });
 
@@ -458,35 +458,35 @@ export function Operations() {
         </TimelineStage>
       </StoryRow>
       <StoryRow
-        label="manager-assignment — assign"
+        label="parent-change — assign"
         hint="ownership_change, action=assign, status=completed"
       >
         <TimelineStage>
           <ThreadTimelineRows
             {...baseProps}
-            timelineRows={[managerAssignmentAssign]}
+            timelineRows={[parentChangeAssign]}
           />
         </TimelineStage>
       </StoryRow>
       <StoryRow
-        label="manager-assignment — release"
+        label="parent-change — release"
         hint="ownership_change, action=release"
       >
         <TimelineStage>
           <ThreadTimelineRows
             {...baseProps}
-            timelineRows={[managerAssignmentRelease]}
+            timelineRows={[parentChangeRelease]}
           />
         </TimelineStage>
       </StoryRow>
       <StoryRow
-        label="manager-assignment — transfer"
+        label="parent-change — transfer"
         hint="ownership_change, action=transfer"
       >
         <TimelineStage>
           <ThreadTimelineRows
             {...baseProps}
-            timelineRows={[managerAssignmentTransfer]}
+            timelineRows={[parentChangeTransfer]}
           />
         </TimelineStage>
       </StoryRow>

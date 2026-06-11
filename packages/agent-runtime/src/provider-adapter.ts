@@ -3,9 +3,11 @@ import type {
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
+  JsonObject,
   PendingInteractionPayload,
   PendingInteractionResolution,
   PromptInput,
+  ClaudeCodeMockCliTrafficConfig,
   ProviderCapabilities,
   ReasoningLevel,
   RuntimePermissionPolicy,
@@ -39,13 +41,10 @@ export type ProviderAdapterFactory = (
   options: ProviderAdapterFactoryOptions,
 ) => ProviderAdapter;
 
-export type ProviderCommandProcessEffect = "restart-provider";
-
 export interface ProviderRequestCommandPlan {
   kind: "request";
   method: string;
   params?: object;
-  processEffect?: ProviderCommandProcessEffect;
 }
 
 export interface ProviderNoopCommandPlan {
@@ -104,6 +103,7 @@ export type ProviderExecutionContext = {
   model?: string;
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
+  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   /**
    * Server-owned workflows policy. Filled explicitly at the server boundary
    * and passed through required end-to-end; providers without the concept
@@ -131,6 +131,12 @@ export type AdapterCommand =
       dynamicTools?: DynamicTool[];
       disallowedTools?: readonly string[];
       instructionMode: InstructionMode;
+      /**
+       * JSON Schema for session-level structured output. Only claude-code
+       * supports it (the SDK fixes `outputFormat` at query creation); other
+       * adapters throw when it is set so the field is never silently ignored.
+       */
+      outputSchema?: JsonObject;
     }
   | {
       type: "thread/resume";
@@ -149,6 +155,12 @@ export type AdapterCommand =
       input: PromptInput[];
       clientRequestId: ClientTurnRequestId;
       options: ProviderExecutionContext;
+      /**
+       * JSON Schema constraining this turn's final assistant message. Only
+       * codex supports it (app-server `turn/start.outputSchema`); other
+       * adapters throw when it is set so the field is never silently ignored.
+       */
+      outputSchema?: JsonObject;
     }
   | {
       type: "turn/steer";

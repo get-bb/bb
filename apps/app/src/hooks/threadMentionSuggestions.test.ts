@@ -6,7 +6,6 @@ interface ThreadFixtureOptions {
   id: string;
   parentThreadId?: string | null;
   projectId?: string;
-  type: Thread["type"];
   title: string | null;
   titleFallback?: string | null;
 }
@@ -26,7 +25,6 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     environmentId: "env-1",
     automationId: null,
     providerId: "openai",
-    type: options.type,
     title: options.title,
     titleFallback: options.titleFallback ?? null,
     status: "idle",
@@ -63,17 +61,14 @@ describe("buildThreadMentionSuggestions", () => {
     const threads = [
       makeThread({
         id: "thr_research",
-        type: "standard",
         title: "Research notes",
       }),
       makeThread({
         id: "thr_prompt",
-        type: "manager",
         title: "Prompt mention improvements",
       }),
       makeThread({
         id: "thr_release",
-        type: "standard",
         title: "Release checklist",
       }),
     ];
@@ -90,12 +85,10 @@ describe("buildThreadMentionSuggestions", () => {
     const threads = [
       makeThread({
         id: "thr_alpha",
-        type: "manager",
         title: "Design review",
       }),
       makeThread({
         id: "thr_beta",
-        type: "standard",
         title: "Implementation plan",
       }),
     ];
@@ -112,12 +105,10 @@ describe("buildThreadMentionSuggestions", () => {
     const threads = [
       makeThread({
         id: "thr_current",
-        type: "manager",
         title: "Prompt mention improvements",
       }),
       makeThread({
         id: "thr_other",
-        type: "manager",
         title: "Prompt mention rollout",
       }),
     ];
@@ -131,16 +122,14 @@ describe("buildThreadMentionSuggestions", () => {
     ).toEqual(["thr_other"]);
   });
 
-  it("returns managers and standard threads with deterministic ties", () => {
+  it("returns threads with deterministic ties", () => {
     const threads = [
       makeThread({
-        id: "thr_standard",
-        type: "standard",
+        id: "thr_later",
         title: "Shared context",
       }),
       makeThread({
-        id: "thr_manager",
-        type: "manager",
+        id: "thr_earlier",
         title: "Shared context",
       }),
     ];
@@ -150,38 +139,33 @@ describe("buildThreadMentionSuggestions", () => {
         threads,
         query: "shared",
       }),
-    ).toEqual(["thr_manager", "thr_standard"]);
+    ).toEqual(["thr_earlier", "thr_later"]);
   });
 
-  it("ranks directly related, same-manager, and same-project thread matches together", () => {
+  it("ranks directly related, same-parent, and same-project thread matches together", () => {
     const threads = [
       makeThread({
         id: "thr_current",
-        parentThreadId: "thr_manager",
+        parentThreadId: "thr_parent",
         title: "Shared context",
-        type: "standard",
       }),
       makeThread({
-        id: "thr_other_project_manager",
+        id: "thr_other_project_parent",
         projectId: "proj-2",
         title: "Shared context",
-        type: "manager",
       }),
       makeThread({
         id: "thr_same_project",
         title: "Shared context",
-        type: "standard",
       }),
       makeThread({
         id: "thr_sibling",
-        parentThreadId: "thr_manager",
+        parentThreadId: "thr_parent",
         title: "Shared context",
-        type: "standard",
       }),
       makeThread({
-        id: "thr_manager",
+        id: "thr_parent",
         title: "Shared context",
-        type: "manager",
       }),
     ];
 
@@ -193,36 +177,32 @@ describe("buildThreadMentionSuggestions", () => {
         currentThreadId: "thr_current",
       }),
     ).toEqual([
-      "thr_manager",
+      "thr_parent",
       "thr_sibling",
       "thr_same_project",
-      "thr_other_project_manager",
+      "thr_other_project_parent",
     ]);
   });
 
-  it("ranks children of the current manager as directly managed", () => {
+  it("ranks children of the current parent as directly related", () => {
     const threads = [
       makeThread({
-        id: "thr_manager",
+        id: "thr_parent",
         title: "Shared context",
-        type: "manager",
       }),
       makeThread({
-        id: "thr_same_project_manager",
+        id: "thr_same_project_parent",
         title: "Shared context",
-        type: "manager",
       }),
       makeThread({
         id: "thr_child",
-        parentThreadId: "thr_manager",
+        parentThreadId: "thr_parent",
         title: "Shared context",
-        type: "standard",
       }),
       makeThread({
-        id: "thr_other_project_manager",
+        id: "thr_other_project_parent",
         projectId: "proj-2",
         title: "Shared context",
-        type: "manager",
       }),
     ];
 
@@ -231,12 +211,12 @@ describe("buildThreadMentionSuggestions", () => {
         threads,
         query: "shared",
         currentProjectId: "proj-1",
-        currentThreadId: "thr_manager",
+        currentThreadId: "thr_parent",
       }),
     ).toEqual([
       "thr_child",
-      "thr_same_project_manager",
-      "thr_other_project_manager",
+      "thr_same_project_parent",
+      "thr_other_project_parent",
     ]);
   });
 
@@ -247,13 +227,11 @@ describe("buildThreadMentionSuggestions", () => {
           id: "thr_current_project",
           projectId: "proj-1",
           title: "Shared context",
-          type: "standard",
         }),
         makeThread({
           id: "thr_other_project",
           projectId: "proj-2",
           title: "Shared context",
-          type: "standard",
         }),
       ],
       query: "shared",
@@ -292,13 +270,11 @@ describe("buildThreadMentionSuggestions", () => {
           id: "thr_first_project",
           projectId: "proj-1",
           title: "Shared context",
-          type: "standard",
         }),
         makeThread({
           id: "thr_second_project",
           projectId: "proj-2",
           title: "Shared context",
-          type: "standard",
         }),
       ],
       query: "shared",

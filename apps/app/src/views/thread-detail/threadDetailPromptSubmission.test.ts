@@ -27,7 +27,7 @@ describe("threadDetailPromptSubmission", () => {
       request: {
         id: "thread-1",
         input: textInput,
-        mode: "steer",
+        mode: "steer-if-active",
       },
     });
   });
@@ -76,7 +76,7 @@ describe("threadDetailPromptSubmission", () => {
     ).toEqual({
       id: "thread-1",
       input: textInput,
-      mode: "auto",
+      mode: "queue-if-active",
       model: "gpt-5",
       permissionMode: "full",
       reasoningLevel: "medium",
@@ -95,7 +95,7 @@ describe("threadDetailPromptSubmission", () => {
     ).toEqual({
       id: "thread-1",
       input: textInput,
-      mode: "auto",
+      mode: "queue-if-active",
     });
   });
 

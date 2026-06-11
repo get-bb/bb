@@ -14,11 +14,16 @@ import {
 
 type PolicyTestThread = Pick<
   Thread,
-  "parentThreadId" | "projectId" | "providerId" | "type"
+  "parentThreadId" | "projectId" | "providerId"
 >;
 type PolicyTestParentThread = Pick<
   Thread,
-  "archivedAt" | "deletedAt" | "environmentId" | "id" | "projectId" | "type"
+  | "archivedAt"
+  | "deletedAt"
+  | "environmentId"
+  | "id"
+  | "parentThreadId"
+  | "projectId"
 >;
 
 function makeThread(
@@ -28,7 +33,6 @@ function makeThread(
     parentThreadId: null,
     projectId: "proj-1",
     providerId: "codex",
-    type: "standard",
     ...overrides,
   };
 }
@@ -46,16 +50,16 @@ function makeDefaults(
   };
 }
 
-function makeManagerParentThread(
+function makeParentThread(
   overrides: Partial<PolicyTestParentThread> = {},
 ): PolicyTestParentThread {
   return {
     archivedAt: null,
     deletedAt: null,
-    environmentId: "env-manager-1",
-    id: "thr-manager-1",
+    environmentId: "env-parent-1",
+    id: "thr-parent-1",
+    parentThreadId: null,
     projectId: "proj-1",
-    type: "manager",
     ...overrides,
   };
 }
@@ -69,18 +73,17 @@ describe("resolveWorkflowsEnabledPolicy", () => {
 });
 
 describe("resolveCreateThreadExecutionDefaults", () => {
-  it("uses the server-owned Codex manager defaults when a manager omits provider and stored defaults", () => {
+  it("uses the server-owned Codex defaults when provider and stored defaults are omitted", () => {
     expect(
       resolveCreateThreadExecutionDefaults({
         storedDefaults: null,
-        threadType: "manager",
       }),
     ).toEqual({
       providerId: "codex",
       executionDefaults: {
         providerId: "codex",
         model: "gpt-5.5",
-        reasoningLevel: "xhigh",
+        reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
       },
@@ -95,7 +98,6 @@ describe("resolveCreateThreadExecutionDefaults", () => {
           providerId: "codex",
           model: "gpt-5.5",
         }),
-        threadType: "manager",
       }),
     ).toEqual({
       providerId: "pi",
@@ -103,7 +105,7 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     });
   });
 
-  it("reuses matching stored defaults for standard threads", () => {
+  it("reuses matching stored defaults", () => {
     const storedDefaults = makeDefaults({
       model: "gpt-5.1",
       permissionMode: "readonly",
@@ -112,7 +114,6 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     expect(
       resolveCreateThreadExecutionDefaults({
         storedDefaults,
-        threadType: "standard",
       }),
     ).toEqual({
       providerId: "codex",
@@ -122,17 +123,16 @@ describe("resolveCreateThreadExecutionDefaults", () => {
 });
 
 describe("resolveCreateThreadEnvironment", () => {
-  it("defaults implicit manager-child host environments to managed worktrees", () => {
+  it("defaults implicit child host environments to managed worktrees", () => {
     expect(
       resolveCreateThreadEnvironment({
-        parentThread: makeManagerParentThread(),
+        parentThread: makeParentThread(),
         projectId: "proj-1",
         requestedEnvironment: {
           type: "host",
           hostId: "host-1",
           workspace: { type: "unmanaged", path: null },
         },
-        threadType: "standard",
       }),
     ).toEqual({
       type: "host",
@@ -141,16 +141,15 @@ describe("resolveCreateThreadEnvironment", () => {
     });
   });
 
-  it("keeps explicit same-environment reuse for manager children", () => {
+  it("keeps explicit same-environment reuse for child threads", () => {
     expect(
       resolveCreateThreadEnvironment({
-        parentThread: makeManagerParentThread(),
+        parentThread: makeParentThread(),
         projectId: "proj-1",
         requestedEnvironment: {
           type: "reuse",
           environmentId: "env-1",
         },
-        threadType: "standard",
       }),
     ).toEqual({
       type: "reuse",
@@ -158,11 +157,11 @@ describe("resolveCreateThreadEnvironment", () => {
     });
   });
 
-  it("defaults personal manager children to the manager environment", () => {
+  it("defaults personal child threads to the parent environment", () => {
     expect(
       resolveCreateThreadEnvironment({
-        parentThread: makeManagerParentThread({
-          environmentId: "env-personal-manager",
+        parentThread: makeParentThread({
+          environmentId: "env-personal-parent",
           projectId: PERSONAL_PROJECT_ID,
         }),
         projectId: PERSONAL_PROJECT_ID,
@@ -170,28 +169,14 @@ describe("resolveCreateThreadEnvironment", () => {
           type: "host",
           workspace: { type: "personal" },
         },
-        threadType: "standard",
       }),
     ).toEqual({
       type: "reuse",
-      environmentId: "env-personal-manager",
+      environmentId: "env-personal-parent",
     });
   });
 
   it.each([
-    {
-      args: {
-        parentThread: makeManagerParentThread(),
-        projectId: "proj-1",
-        requestedEnvironment: {
-          type: "host" as const,
-          hostId: "host-1",
-          workspace: { type: "unmanaged" as const, path: null },
-        },
-        threadType: "manager" as const,
-      },
-      name: "non-standard thread types",
-    },
     {
       args: {
         parentThread: null,
@@ -201,14 +186,13 @@ describe("resolveCreateThreadEnvironment", () => {
           hostId: "host-1",
           workspace: { type: "unmanaged" as const, path: null },
         },
-        threadType: "standard" as const,
       },
       name: "requests without a parent thread",
     },
     {
       args: {
-        parentThread: makeManagerParentThread({
-          type: "standard",
+        parentThread: makeParentThread({
+          deletedAt: 1,
         }),
         projectId: "proj-1",
         requestedEnvironment: {
@@ -216,13 +200,12 @@ describe("resolveCreateThreadEnvironment", () => {
           hostId: "host-1",
           workspace: { type: "unmanaged" as const, path: null },
         },
-        threadType: "standard" as const,
       },
-      name: "non-manager parents",
+      name: "deleted parents",
     },
     {
       args: {
-        parentThread: makeManagerParentThread({
+        parentThread: makeParentThread({
           projectId: "proj-2",
         }),
         projectId: "proj-1",
@@ -231,20 +214,18 @@ describe("resolveCreateThreadEnvironment", () => {
           hostId: "host-1",
           workspace: { type: "unmanaged" as const, path: null },
         },
-        threadType: "standard" as const,
       },
       name: "parents from another project",
     },
     {
       args: {
-        parentThread: makeManagerParentThread(),
+        parentThread: makeParentThread(),
         projectId: "proj-1",
         requestedEnvironment: {
           type: "host" as const,
           hostId: "host-1",
           workspace: { type: "unmanaged" as const, path: "/tmp/existing" },
         },
-        threadType: "standard" as const,
       },
       name: "explicit unmanaged paths",
     },
@@ -256,38 +237,33 @@ describe("resolveCreateThreadEnvironment", () => {
 });
 
 describe("resolveThreadDefaultPermissionMode", () => {
-  it("keeps the preferred managed-child default for non-agent providers", () => {
+  it("uses the full permission default for non-agent providers", () => {
     expect(
       resolveThreadDefaultPermissionMode({
-        parentThread: makeManagerParentThread(),
         thread: makeThread({
-          parentThreadId: "thr-manager-1",
+          parentThreadId: "thr-parent-1",
           providerId: "custom-provider",
         }),
       }),
-    ).toBe("workspace-write");
+    ).toBe("full");
   });
 
-  it("falls back to full for Pi managed-child threads because Pi does not support workspace-write", () => {
+  it("uses full for Pi threads", () => {
     expect(
       resolveThreadDefaultPermissionMode({
-        parentThread: makeManagerParentThread(),
         thread: makeThread({
-          parentThreadId: "thr-manager-1",
+          parentThreadId: "thr-parent-1",
           providerId: "pi",
         }),
       }),
     ).toBe("full");
   });
 
-  it("treats invalid parent references as root-thread defaults", () => {
+  it("uses full for Codex threads", () => {
     expect(
       resolveThreadDefaultPermissionMode({
-        parentThread: makeManagerParentThread({
-          type: "standard",
-        }),
         thread: makeThread({
-          parentThreadId: "thr-non-manager-1",
+          parentThreadId: "thr-other-project-parent-1",
           providerId: "codex",
         }),
       }),
@@ -317,28 +293,56 @@ describe("resolveThreadExecutionPermissionMode", () => {
     ).toBe("readonly");
   });
 
-  it("ignores project permission defaults for managed child threads", () => {
+  it("inherits live parent execution permission before project defaults", () => {
     expect(
       resolveThreadExecutionPermissionMode({
-        parentThread: makeManagerParentThread(),
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "readonly",
         projectExecutionPermissionMode: "full",
         thread: makeThread({
-          parentThreadId: "thr-manager-1",
+          parentThreadId: "thr-parent-1",
           providerId: "codex",
         }),
       }),
-    ).toBe("workspace-write");
+    ).toBe("readonly");
   });
 
-  it("uses root-thread defaults when the parent reference is not a live manager", () => {
+  it("uses project permission defaults for child threads without parent execution history", () => {
     expect(
       resolveThreadExecutionPermissionMode({
-        parentThread: makeManagerParentThread({
+        parentThread: makeParentThread(),
+        projectExecutionPermissionMode: "full",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "codex",
+        }),
+      }),
+    ).toBe("full");
+  });
+
+  it("reconciles inherited parent permission to the child provider's supported modes", () => {
+    expect(
+      resolveThreadExecutionPermissionMode({
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "workspace-write",
+        projectExecutionPermissionMode: "readonly",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "pi",
+        }),
+      }),
+    ).toBe("full");
+  });
+
+  it("uses root-thread defaults when the parent reference is not live", () => {
+    expect(
+      resolveThreadExecutionPermissionMode({
+        parentThread: makeParentThread({
           deletedAt: Date.now(),
         }),
         projectExecutionPermissionMode: "readonly",
         thread: makeThread({
-          parentThreadId: "thr-deleted-manager-1",
+          parentThreadId: "thr-deleted-parent-1",
           providerId: "codex",
         }),
       }),

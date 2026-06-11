@@ -4,7 +4,6 @@ import {
   buildThreadTimelineTurnDetailsFromEvents,
   compactThreadTimelineSummaryEvents,
   type AcceptedClientRequestContext,
-  type SystemClientRequestVisibility,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
 import type { ClientTurnRequestId, Thread } from "@bb/domain";
@@ -30,7 +29,6 @@ import {
 import type {
   DbConnection,
   StoredEventRow,
-  TimelineSegmentAnchorAudience,
 } from "@bb/db";
 import { ApiError } from "../../errors.js";
 import { parseStoredEvent } from "./thread-data.js";
@@ -151,11 +149,6 @@ export interface ThreadTimelineBuildProfile {
   stageTimings: ThreadTimelineBuildProfileStageTiming[];
 }
 
-export interface ProfileThreadTimelineResult {
-  profile: ThreadTimelineBuildProfile;
-  response: ThreadTimelineResponse;
-}
-
 interface BuildThreadTimelineInternalResult {
   profile: ThreadTimelineBuildProfile | null;
   response: ThreadTimelineResponse;
@@ -211,12 +204,6 @@ interface SplitFutureSteerAcceptedContextRowsArgs {
 interface SplitFutureSteerAcceptedContextRowsResult {
   contextRows: StoredEventRow[];
   rows: StoredEventRow[];
-}
-
-function resolveSystemClientRequestVisibility(
-  thread: Thread,
-): SystemClientRequestVisibility {
-  return thread.type === "manager" ? "visible" : "hidden";
 }
 
 export function toThreadEventWithMeta(
@@ -558,7 +545,6 @@ function ensureTimelineWindowBackgroundTaskStateRows(
 }
 
 interface ResolveTimelineSegmentWindowArgs {
-  audience: TimelineSegmentAnchorAudience;
   page: ThreadTimelinePageRequest;
   threadId: string;
 }
@@ -580,7 +566,7 @@ function resolveTimelineSegmentWindow(
   db: DbConnection,
   args: ResolveTimelineSegmentWindowArgs,
 ): ResolvedTimelineSegmentWindow {
-  const { audience, page, threadId } = args;
+  const { page, threadId } = args;
   const noAnchors: ResolvedTimelineSegmentWindow = {
     beforeSequence: undefined,
     hasAnchors: false,
@@ -590,13 +576,11 @@ function resolveTimelineSegmentWindow(
   if (page.kind === "older") {
     const cursor = page.beforeCursor;
     const cursorAnchor = getTimelineSegmentAnchorAtSequence(db, {
-      audience,
       sequence: cursor.anchorSeq,
       threadId,
     });
     if (!cursorAnchor || cursorAnchor.rowId !== cursor.anchorId) {
       const anyAnchor = listTimelineSegmentAnchorsDescending(db, {
-        audience,
         limit: 1,
         threadId,
       });
@@ -610,14 +594,12 @@ function resolveTimelineSegmentWindow(
       );
     }
     const precedingAnchors = listTimelineSegmentAnchorsDescending(db, {
-      audience,
       beforeSequence: cursor.anchorSeq,
       limit: page.segmentLimit + 1,
       threadId,
     });
     return {
       beforeSequence: findTimelineSegmentAnchorSequenceAfter(db, {
-        audience,
         sequence: cursor.anchorSeq,
         threadId,
       }),
@@ -629,7 +611,6 @@ function resolveTimelineSegmentWindow(
   }
 
   const newestAnchors = listTimelineSegmentAnchorsDescending(db, {
-    audience,
     limit: page.segmentLimit + 1,
     threadId,
   });
@@ -647,11 +628,8 @@ function selectStandardTimelineEventRows(
   db: DbConnection,
   thread: Thread,
   page: ThreadTimelinePageRequest,
-  systemClientRequestVisibility: SystemClientRequestVisibility,
 ): TimelineEventRowSelection {
   const window = resolveTimelineSegmentWindow(db, {
-    audience:
-      systemClientRequestVisibility === "visible" ? "all" : "non-system",
     page,
     threadId: thread.id,
   });
@@ -707,14 +685,8 @@ function selectTimelineEventRows(
   db: DbConnection,
   thread: Thread,
   options: BuildThreadTimelineOptions,
-  systemClientRequestVisibility: SystemClientRequestVisibility,
 ): TimelineEventRowSelection {
-  return selectStandardTimelineEventRows(
-    db,
-    thread,
-    options.page,
-    systemClientRequestVisibility,
-  );
+  return selectStandardTimelineEventRows(db, thread, options.page);
 }
 
 function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
@@ -798,18 +770,10 @@ function buildThreadTimelineInternal(
     : null;
   const includeNestedRows = options.includeNestedRows ?? false;
   const includeProviderUnhandledOperations = options.isDevelopment;
-  const systemClientRequestVisibility =
-    resolveSystemClientRequestVisibility(thread);
   const eventSelection = measureThreadTimelineStage(
     profile,
     "event-query",
-    () =>
-      selectTimelineEventRows(
-        db,
-        thread,
-        options,
-        systemClientRequestVisibility,
-      ),
+    () => selectTimelineEventRows(db, thread, options),
   );
   const rawEventRows = eventSelection.rows;
   if (profile) {
@@ -863,7 +827,6 @@ function buildThreadTimelineInternal(
     includeDebugRawEvents: false,
     includeProviderUnhandledOperations,
     isLatestPage: options.page.kind === "latest",
-    systemClientRequestVisibility,
     threadStatus: thread.status,
     workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
   };
@@ -943,24 +906,6 @@ export function buildThreadTimeline(
     ...options,
     includeProfile: false,
   }).response;
-}
-
-export function profileThreadTimeline(
-  db: DbConnection,
-  thread: Thread,
-  options: BuildThreadTimelineOptions,
-): ProfileThreadTimelineResult {
-  const result = buildThreadTimelineInternal(db, thread, {
-    ...options,
-    includeProfile: true,
-  });
-  if (result.profile === null) {
-    throw new Error("Timeline profile was not captured");
-  }
-  return {
-    profile: result.profile,
-    response: result.response,
-  };
 }
 
 export function buildTimelineTurnSummaryDetails(
@@ -1055,8 +1000,6 @@ export function buildTimelineTurnSummaryDetails(
       `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} cannot resolve turn/started for ${options.turnId}`,
     );
   }
-  const systemClientRequestVisibility =
-    resolveSystemClientRequestVisibility(thread);
   const sourceRange = resolveTurnSummaryDetailsSourceRange({
     exactEventRows: exactEventRowsForRequestedTurn.rows,
     fallbackRange: {
@@ -1072,7 +1015,6 @@ export function buildTimelineTurnSummaryDetails(
     ),
     options: {
       includeProviderUnhandledOperations,
-      systemClientRequestVisibility,
       sourceSeqEnd: sourceRange.sourceSeqEnd,
       sourceSeqStart: sourceRange.sourceSeqStart,
       threadStatus: thread.status,

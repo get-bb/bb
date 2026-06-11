@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   systemErrorEventDataSchema,
   systemPermissionGrantLifecycleEventDataSchema,
-  systemManagerUserMessageEventDataSchema,
+  systemLegacyUserMessageEventDataSchema,
   systemOperationEventDataSchema,
   systemProviderTurnWatchdogEventDataSchema,
   systemThreadProvisioningEventDataSchema,
@@ -580,7 +580,7 @@ const unscopedSystemEventSchema = z.union([
       type: z.literal("system/manager/user_message"),
       threadId: z.string(),
     })
-    .merge(systemManagerUserMessageEventDataSchema),
+    .merge(systemLegacyUserMessageEventDataSchema),
   z
     .object({
       type: z.literal("system/thread/interrupted"),

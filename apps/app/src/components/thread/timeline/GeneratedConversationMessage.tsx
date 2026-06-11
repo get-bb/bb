@@ -2,23 +2,24 @@ import { memo, useCallback, useMemo, useRef } from "react";
 import type { TimelineUserConversationRow } from "@bb/server-contract";
 import type { PromptTextMention } from "@bb/domain";
 import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { type IconName } from "@/components/ui/icon.js";
 import {
   ConversationAttachments,
   type ConversationAttachmentItems,
 } from "./ConversationAttachments.js";
 import { computeMutedPrefixLength } from "./compute-muted-prefix-length.js";
 import {
+  clipMentionTextToVisibleRange,
   renderMentionTextSegments,
   shiftMentionsToTextRange,
 } from "./ConversationMessageMentions.js";
-import { useLineOverflowMeasurement } from "./conversation-message-overflow.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import type { TimelineTitleLinkResolver } from "./TimelineTitleView.js";
 import type { ThreadTimelineLocalFileLinkHandler } from "./types.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
-import { cn } from "@/lib/utils";
+import { TurnRequestLabel } from "./TurnRequestLabel.js";
+import { useOverflowMeasurement } from "./conversation-message-overflow.js";
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
@@ -59,8 +60,6 @@ interface GeneratedConversationTitleArgs {
   sourceThreadId: string | null;
 }
 
-const GENERATED_CONVERSATION_TRUSTED_FIT_PREVIEW_LENGTH = 80;
-
 export function generatedConversationBodySlice({
   initiator,
   text,
@@ -77,13 +76,6 @@ export function generatedConversationBodySlice({
     startOffset: prefixLength + trimStartLength,
     text: textAfterPrefix.slice(trimStartLength),
   };
-}
-
-export function generatedConversationBodyText({
-  initiator,
-  text,
-}: GeneratedConversationBodyTextArgs): string {
-  return generatedConversationBodySlice({ initiator, text }).text;
 }
 
 function timelineTitleSegment({
@@ -198,10 +190,7 @@ export const GeneratedConversationMessage = memo(
         }),
       [mentions, messageText.length, trimStartLength],
     );
-    const previewMeasurementRef = useRef<HTMLParagraphElement>(null);
     const requestLabel = turnRequestLabel(turnRequest);
-    const isPendingSteer =
-      turnRequest.kind === "steer" && turnRequest.status === "pending";
     const title = useMemo(
       () =>
         generatedConversationTitle({
@@ -216,37 +205,39 @@ export const GeneratedConversationMessage = memo(
       attachmentItems.filePaths.length > 0 ||
       attachmentItems.imageItems.length > 0 ||
       requestLabel !== null;
-    const previewOverflowMeasurement = useLineOverflowMeasurement({
-      elementRef: previewMeasurementRef,
+    const collapsedPreviewLine = messageText.split(/\r\n|\r|\n/u, 1)[0] ?? "";
+    const hasAdditionalBodyLines =
+      collapsedPreviewLine.length < messageText.length;
+    const collapsedPreviewTextRef = useRef<HTMLParagraphElement>(null);
+    const collapsedPreviewOverflowMeasurement = useOverflowMeasurement({
+      elementRef: collapsedPreviewTextRef,
       enabled: messageText.length > 0,
       measurementKey: messageText,
-      visibleLineCount: 1,
     });
-    const previewIsShortEnoughToTrustFit =
-      messageText.length <=
-        GENERATED_CONVERSATION_TRUSTED_FIT_PREVIEW_LENGTH;
     const expandable =
       hasExpandedOnlyContent ||
-      (messageText.length > 0 &&
-        (!previewIsShortEnoughToTrustFit ||
-          previewOverflowMeasurement !== "fits"));
-    const collapsedPreview = messageText ? (
-      <div className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}>
+      hasAdditionalBodyLines ||
+      collapsedPreviewOverflowMeasurement === "overflowing";
+    const collapsedPreviewBody = clipMentionTextToVisibleRange({
+      mentions: messageMentions,
+      rangeStart: 0,
+      text: collapsedPreviewLine,
+    });
+    const collapsedPreview = collapsedPreviewBody.text ? (
+      <div
+        className={`${NESTED_TIMELINE_GROUP_LINE_CLASS_NAME} max-w-full min-w-0`}
+      >
         <p
-          ref={previewMeasurementRef}
-          aria-hidden
-          className="invisible h-0 overflow-hidden break-words pl-2 text-sm leading-relaxed text-foreground"
+          ref={collapsedPreviewTextRef}
+          className="min-w-0 truncate pl-2 text-sm leading-relaxed text-foreground"
         >
           {renderMentionTextSegments({
-            mentions: messageMentions,
-            text: messageText,
+            mentions: collapsedPreviewBody.mentions,
+            text: collapsedPreviewBody.text,
           })}
-        </p>
-        <p className="line-clamp-1 break-words pl-2 text-sm leading-relaxed text-foreground">
-          {renderMentionTextSegments({
-            mentions: messageMentions,
-            text: messageText,
-          })}
+          {expandable ? (
+            <span className="text-muted-foreground">...</span>
+          ) : null}
         </p>
       </div>
     ) : null;
@@ -275,18 +266,7 @@ export const GeneratedConversationMessage = memo(
             />
             {requestLabel ? (
               <div className="mt-1 flex items-center justify-start gap-2">
-                <span
-                  className={cn(
-                    "shrink-0 whitespace-nowrap text-xs leading-none text-muted-foreground",
-                    isPendingSteer && "animate-shine",
-                  )}
-                >
-                  <Icon
-                    name="CornerDownRight"
-                    className="mr-1 inline-block size-3 align-middle"
-                  />
-                  {requestLabel}
-                </span>
+                <TurnRequestLabel turnRequest={turnRequest} />
               </div>
             ) : null}
           </div>
@@ -301,7 +281,7 @@ export const GeneratedConversationMessage = memo(
         projectId,
         sourceKind,
         requestLabel,
-        isPendingSteer,
+        turnRequest,
       ],
     );
 

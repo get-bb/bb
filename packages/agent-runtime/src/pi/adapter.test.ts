@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { threadScope, turnScope } from "@bb/domain";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  threadScope,
+  turnScope,
+} from "@bb/domain";
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import { createPiProviderAdapter } from "./adapter.js";
 import { buildPiAvailableModels } from "./model-list.js";
@@ -19,6 +23,7 @@ function loadFixture(name: string): AgentSessionEvent {
 }
 
 const fullProviderExecutionContext = {
+  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   permissionMode: "full",
   permissionEscalation: null,
   workflowsEnabled: false,
@@ -523,6 +528,32 @@ describe("pi provider adapter", () => {
       method: "turn/start",
       params: { threadId: "pi-1" },
     });
+  });
+
+  it("buildCommand rejects output schemas on thread/start and turn/start", () => {
+    const adapter = createPiProviderAdapter();
+    expect(() =>
+      adapter.buildCommandPlan({
+        type: "thread/start",
+        cwd: "/tmp/worktree",
+        threadId: "t1",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        instructionMode: "append",
+        options: fullProviderExecutionContext,
+        outputSchema: { type: "object" },
+      }),
+    ).toThrow(/does not support output schemas/);
+    expect(() =>
+      adapter.buildCommandPlan({
+        type: "turn/start",
+        clientRequestId: "creq_222222228d",
+        threadId: "t1",
+        providerThreadId: "pi-1",
+        input: [{ type: "text", text: "extract", mentions: [] }],
+        options: fullProviderExecutionContext,
+        outputSchema: { type: "object" },
+      }),
+    ).toThrow(/does not support output schemas/);
   });
 
   it("buildCommand turn/steer includes expectedTurnId", () => {

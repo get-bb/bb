@@ -6,8 +6,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { ThreadSecondaryPanel } from "@/lib/thread-secondary-panel";
 import {
   useThreadSecondaryPanelVisibility,
+  type ThreadSecondaryPanelCommitDiffOpenHandler,
   type ThreadSecondaryPanelDiffFileOpenHandler,
+  type ThreadSecondaryPanelHostFileOpenHandler,
   type ThreadSecondaryPanelOpenHandler,
+  type ThreadSecondaryPanelStorageFileOpenHandler,
+  type ThreadSecondaryPanelWorkspaceFileOpenHandler,
 } from "./useThreadSecondaryPanelVisibility";
 
 interface VisibilityHarnessProps {
@@ -50,10 +54,33 @@ function useVisibilityHarness({
       setIsPersistedOpen(true);
     }),
   );
+  const [openPersistedCommitDiff] = useState(() =>
+    vi.fn<ThreadSecondaryPanelCommitDiffOpenHandler>(() => {
+      setActivePanel("git-diff");
+      setIsPersistedOpen(true);
+    }),
+  );
   const [togglePersistedPanel] = useState(() =>
     vi.fn(() => {
       setIsPersistedOpen((current) => !current);
       setActivePanel((current) => current ?? "thread-info");
+    }),
+  );
+  // File opens flip the persisted panel open without selecting a panel enum;
+  // tabs are tracked separately from the thread-info/git-diff panels.
+  const [openPersistedWorkspaceFile] = useState(() =>
+    vi.fn<ThreadSecondaryPanelWorkspaceFileOpenHandler>(() => {
+      setIsPersistedOpen(true);
+    }),
+  );
+  const [openPersistedStorageFile] = useState(() =>
+    vi.fn<ThreadSecondaryPanelStorageFileOpenHandler>(() => {
+      setIsPersistedOpen(true);
+    }),
+  );
+  const [openPersistedHostFile] = useState(() =>
+    vi.fn<ThreadSecondaryPanelHostFileOpenHandler>(() => {
+      setIsPersistedOpen(true);
     }),
   );
 
@@ -61,9 +88,13 @@ function useVisibilityHarness({
     closePersistedPanel,
     isPersistedOpen,
     isCompactViewport,
+    openPersistedCommitDiff,
     openPersistedDiffFile,
     openPersistedDiffPanel,
+    openPersistedHostFile,
     openPersistedPanel,
+    openPersistedStorageFile,
+    openPersistedWorkspaceFile,
     threadId,
     togglePersistedPanel,
   });
@@ -72,9 +103,11 @@ function useVisibilityHarness({
     activePanel,
     closePersistedPanel,
     isPersistedOpen,
+    openPersistedCommitDiff,
     openPersistedDiffFile,
     openPersistedDiffPanel,
     openPersistedPanel,
+    openPersistedWorkspaceFile,
     togglePersistedPanel,
     visibility,
   };
@@ -177,6 +210,53 @@ describe("useThreadSecondaryPanelVisibility", () => {
     expect(result.current.isPersistedOpen).toBe(true);
     expect(result.current.openPersistedDiffFile).toHaveBeenCalledWith(
       "src/app.ts",
+    );
+  });
+
+  it("reveals the compact drawer when a workspace file opens into the panel", () => {
+    const props: VisibilityHarnessProps = {
+      isCompactViewport: true,
+      threadId: "thr-one",
+    };
+    const { result } = renderHook(() => useVisibilityHarness(props));
+
+    act(() => {
+      result.current.visibility.openWorkspaceFile({
+        lineRange: null,
+        path: "src/app.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      });
+    });
+
+    expect(result.current.visibility.isOpen).toBe(true);
+    expect(result.current.isPersistedOpen).toBe(true);
+    expect(result.current.openPersistedWorkspaceFile).toHaveBeenCalledWith({
+      lineRange: null,
+      path: "src/app.ts",
+      source: { kind: "working-tree" },
+      statusLabel: null,
+    });
+    expect(result.current.openPersistedPanel).not.toHaveBeenCalled();
+    expect(result.current.togglePersistedPanel).not.toHaveBeenCalled();
+  });
+
+  it("persists compact commit diff opens and reveals the drawer", () => {
+    const props: VisibilityHarnessProps = {
+      isCompactViewport: true,
+      threadId: "thr-one",
+    };
+    const { result } = renderHook(() => useVisibilityHarness(props));
+
+    act(() => {
+      result.current.visibility.openCommitDiff("abc123");
+    });
+
+    expect(result.current.visibility.isOpen).toBe(true);
+    expect(result.current.activePanel).toBe("git-diff");
+    expect(result.current.isPersistedOpen).toBe(true);
+    expect(result.current.openPersistedCommitDiff).toHaveBeenCalledWith(
+      "abc123",
     );
   });
 

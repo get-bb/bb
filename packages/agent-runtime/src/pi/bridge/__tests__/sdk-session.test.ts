@@ -390,15 +390,15 @@ describe("PiSdkSession", () => {
     mockGetActiveToolNames
       .mockReturnValueOnce(["read", "bash"])
       .mockReturnValueOnce(["read", "bash"])
-      .mockReturnValueOnce(["read", "bash", "message_user"]);
+      .mockReturnValueOnce(["read", "bash", "notify_user"]);
 
     const session = new PiSdkSession(
       {
         cwd: "/tmp/project",
         customTools: [
           {
-            name: "message_user",
-            label: "message_user",
+            name: "notify_user",
+            label: "notify_user",
             description: "Send a message to the user",
             parameters: {} as ToolDefinition["parameters"],
             execute: vi.fn(async () => ({
@@ -420,12 +420,12 @@ describe("PiSdkSession", () => {
     expect(mockSetActiveToolsByName).toHaveBeenNthCalledWith(1, [
       "read",
       "bash",
-      "message_user",
+      "notify_user",
     ]);
     expect(mockSetActiveToolsByName).toHaveBeenNthCalledWith(2, [
       "read",
       "bash",
-      "message_user",
+      "notify_user",
     ]);
   });
 

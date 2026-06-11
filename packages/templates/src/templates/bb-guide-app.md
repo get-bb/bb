@@ -198,7 +198,7 @@ records live at `todos/<id>` and have this shape:
 ```json
 {
   "id": "todo_20260603_review_notes",
-  "title": "Review notes from the manager",
+  "title": "Review release notes",
   "done": false,
   "createdAt": "2026-06-03T20:00:00.000Z",
   "updatedAt": "2026-06-03T20:00:00.000Z"
@@ -208,7 +208,7 @@ records live at `todos/<id>` and have this shape:
 Write one from an agent or script with:
 
 ```bash
-printf '%s\n' '{"id":"todo_20260603_review_notes","title":"Review notes from the manager","done":false,"createdAt":"2026-06-03T20:00:00.000Z","updatedAt":"2026-06-03T20:00:00.000Z"}' |
+printf '%s\n' '{"id":"todo_20260603_review_notes","title":"Review release notes","done":false,"createdAt":"2026-06-03T20:00:00.000Z","updatedAt":"2026-06-03T20:00:00.000Z"}' |
   bb app data write review-board todos/todo_20260603_review_notes --stdin
 ```
 
@@ -261,7 +261,7 @@ await window.bb.data.write({
   path: "todos/todo_20260603_review_notes",
   value: {
     id: "todo_20260603_review_notes",
-    title: "Review notes from the manager",
+    title: "Review release notes",
     done: false,
     createdAt: "2026-06-03T20:00:00.000Z",
     updatedAt: "2026-06-03T20:00:00.000Z",
@@ -332,5 +332,4 @@ distinct tools or dashboards.
 Related guides:
 
   bb guide overview
-  bb guide managers
   bb guide schedules

@@ -231,17 +231,6 @@ function collectProjectionMessageContexts(
   return contexts;
 }
 
-function collectFlatMessageContexts(
-  messages: EventProjectionMessage[],
-): SemanticMessageContext[] {
-  return messages.map((message, index) => ({
-    kind: "projected-message",
-    entryIndex: index,
-    message,
-    messageIndex: index,
-  }));
-}
-
 function isSameTurnEntry(
   left: SemanticMessageContext,
   right: SemanticMessageContext,
@@ -288,12 +277,6 @@ class SemanticProjectionBuilder {
 
   buildRootProjection(): EventProjection {
     return this.buildRootTurnProjection(this.rootContexts);
-  }
-
-  buildRootMessages(): EventProjectionMessage[] {
-    return this.rootContexts.map((context) =>
-      this.toSemanticMessage(context.message),
-    );
   }
 
   private buildRootTurnProjection(
@@ -386,13 +369,4 @@ export function normalizeEventProjection(
     ...normalizedProjection,
     state: projection.state,
   };
-}
-
-export function normalizeEventProjectionMessages(
-  messages: EventProjectionMessage[],
-): EventProjectionMessage[] {
-  const orderedMessages = sortEventProjectionMessagesBySource(messages);
-  return new SemanticProjectionBuilder(
-    collectFlatMessageContexts(orderedMessages),
-  ).buildRootMessages();
 }

@@ -67,6 +67,19 @@ interface MigratedThreadSortKeyRow {
   sortKey: string | null;
 }
 
+interface MigratedManagerCleanupDefaultRow {
+  model: string;
+  permissionMode: string;
+  providerId: string;
+  reasoningLevel: string;
+  serviceTier: string;
+}
+
+interface MigratedManagerCleanupThreadRow {
+  id: string;
+  parentThreadId: string | null;
+}
+
 interface MigratedThreadScheduleRow {
   createdAt: number;
   cron: string;
@@ -199,6 +212,7 @@ const operationStateBackfillMigrationWhen = 1780687798957;
 const eventProducerColumnsMigrationWhen = 1780692763264;
 const terminalSessionRuntimeStateHonestyWhen = 1780718665310;
 const hostDaemonSessionObservabilityMigrationWhen = 1780719536955;
+const threadTypeRemovalMigrationWhen = 1780973302146;
 const queuedMessageSortKeyMigrationPath = resolve(
   __dirname,
   "..",
@@ -235,6 +249,42 @@ function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
   db.$client
     .prepare("ALTER TABLE environments DROP COLUMN destroy_attempt_id")
     .run();
+}
+
+function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
+  db.$client
+    .prepare("ALTER TABLE queued_thread_messages DROP COLUMN sender_thread_id")
+    .run();
+}
+
+/** Tables created by migrations after 0023, dropped so migrate() re-applies. */
+function dropPost0023Tables(db: DbConnection): void {
+  for (const table of [
+    "workflow_run_events",
+    "workflow_run_operations",
+    "workflow_runs",
+    "project_workflow_policies",
+    "app_settings",
+  ]) {
+    db.$client.prepare(`DROP TABLE IF EXISTS ${table}`).run();
+  }
+}
+
+function restorePre0022ThreadTypeSchema(db: DbConnection): void {
+  db.$client.exec(`
+    ALTER TABLE project_execution_defaults
+      ADD COLUMN thread_type text DEFAULT 'standard' NOT NULL;
+    DROP INDEX project_execution_defaults_project_idx;
+    CREATE UNIQUE INDEX project_execution_defaults_project_thread_type_idx
+      ON project_execution_defaults (project_id, thread_type);
+    CREATE INDEX project_execution_defaults_project_idx
+      ON project_execution_defaults (project_id);
+
+    ALTER TABLE threads ADD COLUMN type text DEFAULT 'standard' NOT NULL;
+    ALTER TABLE threads ADD COLUMN sort_key text;
+    CREATE INDEX threads_project_type_sort_idx
+      ON threads (project_id, type, sort_key, id);
+  `);
 }
 
 function readIndexNames(args: ReadIndexNamesArgs): string[] {
@@ -644,6 +694,218 @@ describe("migrate", () => {
           )
           .run(),
       ).toThrow();
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("removes manager thread type schema while preserving existing threads and schedules", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      restorePre0022ThreadTypeSchema(db);
+      db.$client.exec(`
+        INSERT INTO projects (id, name, created_at, updated_at)
+        VALUES ('proj_manager_cleanup', 'Manager cleanup', 1000, 1000);
+
+        INSERT INTO threads (
+          id,
+          project_id,
+          provider_id,
+          type,
+          sort_key,
+          title,
+          status,
+          latest_attention_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'thr_former_manager',
+          'proj_manager_cleanup',
+          'codex',
+          'manager',
+          '0000000000000001',
+          'Former manager',
+          'idle',
+          2000,
+          2000,
+          2000
+        );
+
+        INSERT INTO threads (
+          id,
+          project_id,
+          provider_id,
+          type,
+          parent_thread_id,
+          title,
+          status,
+          latest_attention_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'thr_former_child',
+          'proj_manager_cleanup',
+          'codex',
+          'standard',
+          'thr_former_manager',
+          'Former child',
+          'idle',
+          3000,
+          3000,
+          3000
+        );
+
+        INSERT INTO project_execution_defaults (
+          project_id,
+          provider_id,
+          thread_type,
+          model,
+          service_tier,
+          reasoning_level,
+          permission_mode,
+          updated_at
+        )
+        VALUES
+          (
+            'proj_manager_cleanup',
+            'codex',
+            'standard',
+            'gpt-5',
+            'default',
+            'medium',
+            'full',
+            4000
+          ),
+          (
+            'proj_manager_cleanup',
+            'codex',
+            'manager',
+            'gpt-5.5',
+            'default',
+            'xhigh',
+            'full',
+            5000
+          );
+
+        INSERT INTO thread_schedules (
+          id,
+          project_id,
+          thread_id,
+          name,
+          enabled,
+          kind,
+          cron,
+          timezone,
+          prompt,
+          next_fire_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'tsched_former_manager',
+          'proj_manager_cleanup',
+          'thr_former_manager',
+          'Former manager schedule',
+          1,
+          'cron',
+          '0 9 * * *',
+          'UTC',
+          'Continue scheduled work.',
+          6000,
+          6000,
+          6000
+        );
+      `);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          `
+            DELETE FROM __drizzle_migrations
+            WHERE created_at >= ?
+          `,
+        )
+        .run(threadTypeRemovalMigrationWhen);
+      dropPost0023Tables(db);
+
+      migrate(db);
+
+      const threadColumns = db.$client
+        .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+        .all()
+        .map((row) => row.name);
+      expect(threadColumns).not.toContain("type");
+      expect(threadColumns).not.toContain("sort_key");
+
+      const defaultsColumns = db.$client
+        .prepare<[], TableInfoRow>(
+          "PRAGMA table_info(project_execution_defaults)",
+        )
+        .all()
+        .map((row) => row.name);
+      expect(defaultsColumns).not.toContain("thread_type");
+
+      expect(
+        db.$client
+          .prepare<[], MigratedManagerCleanupThreadRow>(
+            `
+              SELECT id, parent_thread_id AS parentThreadId
+              FROM threads
+              WHERE id IN ('thr_former_manager', 'thr_former_child')
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ).toEqual([
+        {
+          id: "thr_former_child",
+          parentThreadId: "thr_former_manager",
+        },
+        {
+          id: "thr_former_manager",
+          parentThreadId: null,
+        },
+      ]);
+
+      expect(
+        db.$client
+          .prepare<[], MigratedManagerCleanupDefaultRow>(
+            `
+              SELECT
+                provider_id AS providerId,
+                model,
+                service_tier AS serviceTier,
+                reasoning_level AS reasoningLevel,
+                permission_mode AS permissionMode
+              FROM project_execution_defaults
+              WHERE project_id = 'proj_manager_cleanup'
+            `,
+          )
+          .get(),
+      ).toEqual({
+        providerId: "codex",
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+      });
+
+      expect(
+        db.$client
+          .prepare<[], Pick<MigratedThreadScheduleRow, "id" | "threadId">>(
+            `
+              SELECT id, thread_id AS threadId
+              FROM thread_schedules
+              WHERE id = 'tsched_former_manager'
+            `,
+          )
+          .get(),
+      ).toEqual({
+        id: "tsched_former_manager",
+        threadId: "thr_former_manager",
+      });
     } finally {
       closeConnection(db);
     }
@@ -1292,6 +1554,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      restorePre0022ThreadTypeSchema(db);
       addPre0017TerminalRuntimeColumns(db);
 
       db.$client
@@ -1329,6 +1592,11 @@ describe("migrate", () => {
         )
         .run();
       db.$client.prepare("DROP TABLE thread_dynamic_context_file_states").run();
+      db.$client.prepare("DROP TABLE workflow_run_events").run();
+      db.$client.prepare("DROP TABLE workflow_run_operations").run();
+      db.$client.prepare("DROP TABLE workflow_runs").run();
+      db.$client.prepare("DROP TABLE project_workflow_policies").run();
+      db.$client.prepare("DROP TABLE app_settings").run();
       db.$client.prepare("DELETE FROM projects WHERE kind = 'personal'").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN kind").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN sort_key").run();
@@ -1912,6 +2180,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      restorePre0022ThreadTypeSchema(db);
       addPre0017TerminalRuntimeColumns(db);
 
       db.$client.prepare("DROP TABLE thread_schedules").run();
@@ -2004,6 +2273,8 @@ describe("migrate", () => {
         .run(threadSchedulesMigrationWhen);
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
+      dropQueuedMessageSenderThreadIdColumn(db);
+      dropPost0023Tables(db);
       db.$client
         .prepare(
           `
@@ -2179,6 +2450,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      restorePre0022ThreadTypeSchema(db);
       seedPre0017TerminalSessionMigration({ db });
       db.$client
         .prepare(
@@ -2195,6 +2467,8 @@ describe("migrate", () => {
         .run(terminalSessionRuntimeStateHonestyWhen);
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
+      dropQueuedMessageSenderThreadIdColumn(db);
+      dropPost0023Tables(db);
 
       migrate(db);
 

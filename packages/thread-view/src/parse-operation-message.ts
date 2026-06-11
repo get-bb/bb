@@ -124,11 +124,11 @@ function ownershipChangeOperationTitle(
       const action = meta.metadata?.action;
       switch (action) {
         case "assign":
-          return "Thread assigned to manager";
+          return "Thread assigned to parent";
         case "release":
-          return "Thread released from manager";
+          return "Thread released from parent";
         case "transfer":
-          return "Thread transferred to new manager";
+          return "Thread transferred to new parent";
         case undefined:
           return "Ownership change completed";
         default:

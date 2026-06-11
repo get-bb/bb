@@ -106,9 +106,8 @@ describe("prompt draft helpers", () => {
   it("keeps visible mention ranges when trailing trim clips mention whitespace", () => {
     const resource: PromptMentionResource = {
       kind: "thread",
-      threadId: "thr_manager",
-      threadType: "manager",
-      label: "Prompt UX manager",
+      threadId: "thr_parent",
+      label: "Prompt UX thread",
     };
     const text = "  Ask @manager   ";
     const token = "@manager";

@@ -181,6 +181,7 @@ export function ProjectActionsProvider({
         target={addLocalSourcePicker.projectPathDialog.target}
         pending={addLocalSource.isPending}
         platform={addLocalSourcePicker.platform}
+        hostName={addLocalSourcePicker.hostName}
         onOpenChange={addLocalSourcePicker.projectPathDialog.onOpenChange}
         onSubmit={addLocalSourcePicker.submitProjectPath}
       />

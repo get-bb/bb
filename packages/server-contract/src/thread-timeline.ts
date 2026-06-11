@@ -132,7 +132,7 @@ export type TimelineConversationRow = z.infer<
 export const timelineSystemOperationKindValues = [
   "generic",
   "compaction",
-  "manager-assignment",
+  "parent-change",
   "thread-provisioning",
   "thread-interrupted",
   "provider-unhandled",
@@ -155,24 +155,24 @@ const timelineGenericSystemOperationKindSchema = z.enum([
   "deprecation",
 ] as const);
 
-export const timelineManagerAssignmentActionValues = [
+export const timelineParentChangeActionValues = [
   "assign",
   "release",
   "transfer",
 ] as const;
-export const timelineManagerAssignmentActionSchema = z.enum(
-  timelineManagerAssignmentActionValues,
+export const timelineParentChangeActionSchema = z.enum(
+  timelineParentChangeActionValues,
 );
 
-export const timelineManagerAssignmentSchema = z.object({
-  action: timelineManagerAssignmentActionSchema,
-  previousManagerThreadId: z.string().nullable(),
-  previousManagerThreadTitle: z.string().nullable(),
-  nextManagerThreadId: z.string().nullable(),
-  nextManagerThreadTitle: z.string().nullable(),
+export const timelineParentChangeSchema = z.object({
+  action: timelineParentChangeActionSchema,
+  previousParentThreadId: z.string().nullable(),
+  previousParentThreadTitle: z.string().nullable(),
+  nextParentThreadId: z.string().nullable(),
+  nextParentThreadTitle: z.string().nullable(),
 });
-export type TimelineManagerAssignment = z.infer<
-  typeof timelineManagerAssignmentSchema
+export type TimelineParentChange = z.infer<
+  typeof timelineParentChangeSchema
 >;
 
 const timelineSystemRowBaseSchema = timelineRowBaseSchema.extend({
@@ -197,23 +197,23 @@ export const timelineGenericOperationSystemRowSchema =
     completedAt: z.number().nullable(),
   });
 
-export const timelineManagerAssignmentSystemRowSchema =
+export const timelineParentChangeSystemRowSchema =
   timelineSystemRowBaseSchema.extend({
     systemKind: z.literal("operation"),
-    operationKind: z.literal("manager-assignment"),
+    operationKind: z.literal("parent-change"),
     status: timelineRowStatusSchema,
-    managerAssignment: timelineManagerAssignmentSchema,
+    parentChange: timelineParentChangeSchema,
     completedAt: z.number().nullable(),
   });
-export type TimelineManagerAssignmentSystemRow = z.infer<
-  typeof timelineManagerAssignmentSystemRowSchema
+export type TimelineParentChangeSystemRow = z.infer<
+  typeof timelineParentChangeSystemRowSchema
 >;
 
 export const timelineOperationSystemRowSchema = z.discriminatedUnion(
   "operationKind",
   [
     timelineGenericOperationSystemRowSchema,
-    timelineManagerAssignmentSystemRowSchema,
+    timelineParentChangeSystemRowSchema,
   ],
 );
 
@@ -431,6 +431,13 @@ export const timelineDelegationWorkRowSchema: z.ZodType<TimelineDelegationWorkRo
 export const timelineWorkflowWorkRowSchema = timelineWorkRowBaseSchema.extend({
   workKind: z.literal("workflow"),
   itemId: z.string(),
+  /**
+   * Raw task-type discriminant from the anchor item. `bb_workflow` marks a
+   * server-owned workflow run whose `itemId` is the `wfr_` run id — renderers
+   * deep-link those rows to `/workflows/runs/<itemId>`; `local_workflow` is
+   * the provider-native dynamic-workflow path (no run page).
+   */
+  taskType: z.string(),
   workflowName: z.string().nullable(),
   description: z.string(),
   taskStatus: backgroundTaskStatusSchema,

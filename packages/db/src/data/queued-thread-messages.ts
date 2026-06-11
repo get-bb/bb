@@ -16,6 +16,7 @@ import {
 export interface CreateQueuedThreadMessageInput {
   threadId: string;
   content: PromptInput[];
+  senderThreadId?: string | null;
   model: string;
   reasoningLevel: string;
   permissionMode: PermissionMode;
@@ -203,6 +204,7 @@ export function createQueuedThreadMessage(
           id,
           threadId: input.threadId,
           content: JSON.stringify(input.content),
+          senderThreadId: input.senderThreadId ?? null,
           model: input.model,
           reasoningLevel: input.reasoningLevel,
           permissionMode: input.permissionMode,

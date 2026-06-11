@@ -184,9 +184,6 @@ function expectSdkSurfaceParity(args: SdkSurfaceParityArgs) {
   expect(Object.keys(args.actual.hosts).sort()).toEqual(
     Object.keys(args.reference.hosts).sort(),
   );
-  expect(Object.keys(args.actual.managers).sort()).toEqual(
-    Object.keys(args.reference.managers).sort(),
-  );
   expect(Object.keys(args.actual.message).sort()).toEqual(
     Object.keys(args.reference.message).sort(),
   );
@@ -235,13 +232,12 @@ describe("app client script", () => {
       if (url.includes("/api/v1/projects/proj_1")) {
         return jsonResponse({ id: "proj_1", name: "Project" });
       }
-      if (url.includes("/api/v1/threads/mgr_1")) {
+      if (url.includes("/api/v1/threads/thr_1")) {
         return jsonResponse({
-          id: "mgr_1",
+          id: "thr_1",
           projectId: "proj_1",
-          type: "manager",
           status: "idle",
-          title: "Manager",
+          title: "Parent",
           parentThreadId: null,
           pinnedAt: null,
           environmentId: null,
@@ -284,12 +280,13 @@ describe("app client script", () => {
         project: { id: "proj_1", name: "Project" },
       },
     );
-    await expect(
-      bb.managers.status({ managerId: "mgr_1" }),
-    ).resolves.toMatchObject({
-      manager: { id: "mgr_1", type: "manager" },
-      managedThreads: [],
+    await expect(bb.threads.get({ threadId: "thr_1" })).resolves.toMatchObject({
+      id: "thr_1",
+      title: "Parent",
     });
+    await expect(
+      bb.threads.list({ projectId: "proj_1", parentThreadId: "thr_1" }),
+    ).resolves.toEqual([]);
     await expect(
       bb.projects.sources.add({
         projectId: "proj_1",
@@ -319,7 +316,7 @@ describe("app client script", () => {
     expect(calledUrls.some((url) => url.includes("/api/v1/projects/proj_1"))).toBe(
       true,
     );
-    expect(calledUrls.some((url) => url.includes("/api/v1/threads/mgr_1"))).toBe(
+    expect(calledUrls.some((url) => url.includes("/api/v1/threads/thr_1"))).toBe(
       true,
     );
     expect(

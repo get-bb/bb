@@ -13,7 +13,7 @@ import type {
   ThreadContextWindowUsage,
   TimelineFileChangeWorkRow,
   TimelineImageViewWorkRow,
-  TimelineManagerAssignment,
+  TimelineParentChange,
   TimelineQuestionWorkRow,
   TimelineRow,
   TimelineSystemRow,
@@ -133,7 +133,7 @@ type BuildTimelineRowsThreadStatus = "active" | "idle";
 
 interface OwnershipOperationCase {
   action: OwnershipChangeOperationAction;
-  managerAssignmentAction: TimelineManagerAssignment["action"];
+  parentChangeAction: TimelineParentChange["action"];
   message: string;
   nextParentThreadId: string | null;
   nextParentThreadTitle: string | null;
@@ -144,30 +144,30 @@ interface OwnershipOperationCase {
 const ownershipOperationCases: OwnershipOperationCase[] = [
   {
     action: "assign",
-    managerAssignmentAction: "assign",
-    message: "Thread assigned to manager",
-    nextParentThreadId: "thr-manager",
-    nextParentThreadTitle: "Manager",
+    parentChangeAction: "assign",
+    message: "Thread assigned to parent",
+    nextParentThreadId: "thr-parent",
+    nextParentThreadTitle: "Parent",
     previousParentThreadId: null,
     previousParentThreadTitle: null,
   },
   {
     action: "release",
-    managerAssignmentAction: "release",
-    message: "Thread released from manager",
+    parentChangeAction: "release",
+    message: "Thread released from parent",
     nextParentThreadId: null,
     nextParentThreadTitle: null,
-    previousParentThreadId: "thr-manager",
-    previousParentThreadTitle: "Manager",
+    previousParentThreadId: "thr-parent",
+    previousParentThreadTitle: "Parent",
   },
   {
     action: "transfer",
-    managerAssignmentAction: "transfer",
-    message: "Thread transferred to new manager",
-    nextParentThreadId: "thr-manager-next",
-    nextParentThreadTitle: "Next Manager",
-    previousParentThreadId: "thr-manager-previous",
-    previousParentThreadTitle: "Previous Manager",
+    parentChangeAction: "transfer",
+    message: "Thread transferred to new parent",
+    nextParentThreadId: "thr-parent-next",
+    nextParentThreadTitle: "Next Parent",
+    previousParentThreadId: "thr-parent-previous",
+    previousParentThreadTitle: "Previous Parent",
   },
 ];
 
@@ -529,7 +529,6 @@ function buildContextWindowUsage(
       includeNestedRows: false,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
-      systemClientRequestVisibility: "hidden",
       threadStatus: "idle",
       turnMessageDetail: "summary",
       workspaceRoot: null,
@@ -551,7 +550,6 @@ function buildTimelineRows(
       includeNestedRows: true,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
-      systemClientRequestVisibility: "hidden",
       threadStatus,
       turnMessageDetail: "full",
       workspaceRoot,
@@ -574,7 +572,6 @@ function buildTimelineRowsWithAcceptedContext(
       includeNestedRows: true,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
-      systemClientRequestVisibility: "hidden",
       threadStatus: "idle",
       turnMessageDetail: "full",
       workspaceRoot: null,
@@ -1024,7 +1021,7 @@ describe("buildThreadTimelineFromEvents", () => {
     "does not duplicate $action ownership operation titles as row detail",
     ({
       action,
-      managerAssignmentAction,
+      parentChangeAction,
       message,
       nextParentThreadId,
       nextParentThreadTitle,
@@ -1048,14 +1045,14 @@ describe("buildThreadTimelineFromEvents", () => {
       expect(collectSystemRows(rows)).toEqual([
         expect.objectContaining({
           detail: null,
-          managerAssignment: {
-            action: managerAssignmentAction,
-            previousManagerThreadId: previousParentThreadId,
-            previousManagerThreadTitle: previousParentThreadTitle,
-            nextManagerThreadId: nextParentThreadId,
-            nextManagerThreadTitle: nextParentThreadTitle,
+          parentChange: {
+            action: parentChangeAction,
+            previousParentThreadId: previousParentThreadId,
+            previousParentThreadTitle: previousParentThreadTitle,
+            nextParentThreadId: nextParentThreadId,
+            nextParentThreadTitle: nextParentThreadTitle,
           },
-          operationKind: "manager-assignment",
+          operationKind: "parent-change",
           systemKind: "operation",
           title: message,
         }),
@@ -1242,8 +1239,8 @@ describe("buildThreadTimelineFromEvents", () => {
         message: "Thread ownership updated by migration",
         metadata: {
           action: "migrate",
-          nextParentThreadId: "thr-manager",
-          nextParentThreadTitle: "Manager",
+          nextParentThreadId: "thr-parent",
+          nextParentThreadTitle: "Parent",
           previousParentThreadId: null,
           previousParentThreadTitle: null,
         },
@@ -1259,7 +1256,7 @@ describe("buildThreadTimelineFromEvents", () => {
         title: "Ownership change completed",
       }),
     ]);
-    expect(collectSystemRows(rows)[0]).not.toHaveProperty("managerAssignment");
+    expect(collectSystemRows(rows)[0]).not.toHaveProperty("parentChange");
   });
 
   it.each([
@@ -1278,7 +1275,7 @@ describe("buildThreadTimelineFromEvents", () => {
     operationStatus: "failed" | "running";
     threadStatus: BuildTimelineRowsThreadStatus;
   }>)(
-    "keeps manager assignment typing for $operationStatus operation status",
+    "keeps parent change typing for $operationStatus operation status",
     ({ expectedRowStatus, operationStatus, threadStatus }) => {
       const rows = buildTimelineRows(
         [
@@ -1286,8 +1283,8 @@ describe("buildThreadTimelineFromEvents", () => {
             message: `Ownership change ${operationStatus}`,
             metadata: {
               action: "assign",
-              nextParentThreadId: "thr-manager",
-              nextParentThreadTitle: "Manager",
+              nextParentThreadId: "thr-parent",
+              nextParentThreadTitle: "Parent",
               previousParentThreadId: null,
               previousParentThreadTitle: null,
             },
@@ -1300,14 +1297,14 @@ describe("buildThreadTimelineFromEvents", () => {
 
       expect(collectSystemRows(rows)).toEqual([
         expect.objectContaining({
-          managerAssignment: {
+          parentChange: {
             action: "assign",
-            previousManagerThreadId: null,
-            previousManagerThreadTitle: null,
-            nextManagerThreadId: "thr-manager",
-            nextManagerThreadTitle: "Manager",
+            previousParentThreadId: null,
+            previousParentThreadTitle: null,
+            nextParentThreadId: "thr-parent",
+            nextParentThreadTitle: "Parent",
           },
-          operationKind: "manager-assignment",
+          operationKind: "parent-change",
           status: expectedRowStatus,
           systemKind: "operation",
         }),

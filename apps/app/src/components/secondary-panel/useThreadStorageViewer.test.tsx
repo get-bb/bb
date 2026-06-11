@@ -59,7 +59,6 @@ describe("useThreadStorageViewer", () => {
         useThreadStorageViewer({
           activePath: null,
           threadId: "thread-1",
-          threadType: "manager",
         }),
       { wrapper },
     );
@@ -91,7 +90,6 @@ describe("useThreadStorageViewer", () => {
         useThreadStorageViewer({
           activePath: "docs/beta.txt",
           threadId: "thread-1",
-          threadType: "manager",
         }),
       { wrapper },
     );
@@ -109,7 +107,7 @@ describe("useThreadStorageViewer", () => {
     );
   });
 
-  it("disables storage queries for standard threads", async () => {
+  it("disables storage queries without a thread id", async () => {
     vi.mocked(api.listThreadStorageFiles).mockResolvedValue(
       makeStorageFiles(["docs/alpha.txt"]),
     );
@@ -119,8 +117,6 @@ describe("useThreadStorageViewer", () => {
       () =>
         useThreadStorageViewer({
           activePath: "docs/alpha.txt",
-          threadId: "thread-1",
-          threadType: "standard",
         }),
       { wrapper },
     );
@@ -131,7 +127,7 @@ describe("useThreadStorageViewer", () => {
     expect(api.getThreadStorageFilePreview).not.toHaveBeenCalled();
   });
 
-  it("honors explicit query gates for manager threads", async () => {
+  it("honors explicit query gates", async () => {
     vi.mocked(api.listThreadStorageFiles).mockResolvedValue(
       makeStorageFiles(["docs/alpha.txt"]),
     );
@@ -147,7 +143,6 @@ describe("useThreadStorageViewer", () => {
           fileListEnabled: false,
           filePreviewEnabled: false,
           threadId: "thread-1",
-          threadType: "manager",
         }),
       { wrapper },
     );
@@ -168,7 +163,6 @@ describe("useThreadStorageViewer", () => {
         useThreadStorageViewer({
           activePath: null,
           threadId: "thread-1",
-          threadType: "manager",
         }),
       { wrapper },
     );

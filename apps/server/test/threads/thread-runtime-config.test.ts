@@ -1,8 +1,15 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { markThreadDeleted, setThreadExecutionOverride } from "@bb/db";
-import { encodeClientTurnRequestIdNumber } from "@bb/domain";
+import {
+  markThreadDeleted,
+  setExperiments,
+  setThreadExecutionOverride,
+} from "@bb/db";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+  encodeClientTurnRequestIdNumber,
+} from "@bb/domain";
 import {
   resolvePermissionEscalation,
   resolveExecutionOptions,
@@ -14,13 +21,10 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness } from "../helpers/test-app.js";
-
-function resolveLocalTimezone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-}
 
 interface WriteRuntimeSkillArgs {
   name: string;
@@ -51,28 +55,28 @@ describe("thread runtime config", () => {
     {
       childProviderId: "codex",
       expectedPermissionMode: "full",
-      managerProviderId: null,
+      parentProviderId: null,
       name: "defaults root-thread execution permission mode to full",
       requestedModel: "gpt-5",
     },
     {
       childProviderId: "codex",
-      expectedPermissionMode: "workspace-write",
-      managerProviderId: "codex",
-      name: "defaults managed child execution permission mode to workspace-write when supported",
+      expectedPermissionMode: "full",
+      parentProviderId: "codex",
+      name: "defaults child execution permission mode to full without parent history or project defaults",
       requestedModel: "gpt-5",
     },
     {
       childProviderId: "pi",
       expectedPermissionMode: "full",
-      managerProviderId: "pi",
-      name: "falls back to full for managed child execution when the provider does not support workspace-write",
+      parentProviderId: "pi",
+      name: "defaults Pi child execution permission mode to full",
       requestedModel: "openai-codex/gpt-5.4",
     },
-  ])("$name", async ({ childProviderId, expectedPermissionMode, managerProviderId, requestedModel }) => {
+  ])("$name", async ({ childProviderId, expectedPermissionMode, parentProviderId, requestedModel }) => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
-        id: `host-runtime-${childProviderId}-${managerProviderId ?? "root"}`,
+        id: `host-runtime-${childProviderId}-${parentProviderId ?? "root"}`,
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -81,19 +85,18 @@ describe("thread runtime config", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const managerThread =
-        managerProviderId === null
+      const parentThread =
+        parentProviderId === null
           ? null
           : seedThread(harness.deps, {
               projectId: project.id,
               environmentId: environment.id,
-              type: "manager",
-              providerId: managerProviderId,
+              providerId: parentProviderId,
             });
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        parentThreadId: managerThread?.id ?? null,
+        parentThreadId: parentThread?.id ?? null,
         providerId: childProviderId,
       });
 
@@ -109,7 +112,7 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("ignores standard project permission defaults for managed child execution", async () => {
+  it("uses project permission defaults for child threads without parent execution history", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-runtime-managed-child-project-default-permission-mode",
@@ -121,15 +124,14 @@ describe("thread runtime config", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const managerThread = seedThread(harness.deps, {
+      const parentThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        type: "manager",
       });
       const childThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        parentThreadId: managerThread.id,
+        parentThreadId: parentThread.id,
         providerId: "codex",
       });
 
@@ -139,7 +141,55 @@ describe("thread runtime config", () => {
           providerId: "codex",
           model: "gpt-5",
           reasoningLevel: "medium",
-          permissionMode: "full",
+          permissionMode: "readonly",
+          serviceTier: "default",
+        },
+        requestedExecution: {
+          model: "gpt-5",
+          source: "client/turn/requested",
+        },
+      });
+
+      expect(execution.permissionMode).toBe("readonly");
+    });
+  });
+
+  it("inherits live parent execution permission before project defaults", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-child-parent-execution-permission-mode",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      seedThreadRuntimeState(harness.deps, {
+        threadId: parentThread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-parent-permission-mode",
+        permissionMode: "workspace-write",
+      });
+      const childThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        parentThreadId: parentThread.id,
+        providerId: "codex",
+      });
+
+      const execution = await resolveExecutionOptions(harness.deps, {
+        threadId: childThread.id,
+        projectDefaults: {
+          providerId: "codex",
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          permissionMode: "readonly",
           serviceTier: "default",
         },
         requestedExecution: {
@@ -164,18 +214,17 @@ describe("thread runtime config", () => {
         hostId: host.id,
         projectId: project.id,
       });
-      const deletedManager = seedThread(harness.deps, {
+      const deletedParent = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        type: "manager",
       });
       markThreadDeleted(harness.db, harness.hub, {
-        threadId: deletedManager.id,
+        threadId: deletedParent.id,
       });
       const childThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        parentThreadId: deletedManager.id,
+        parentThreadId: deletedParent.id,
         providerId: "codex",
       });
 
@@ -358,6 +407,128 @@ describe("thread runtime config", () => {
     });
   });
 
+  it("gates the bb-workflows skill on the workflows experiment", async () => {
+    await withTestHarness(async (harness) => {
+      const workflowsSkillRootPath = await writeRuntimeSkill({
+        name: "bb-workflows",
+        rootPath: harness.config.builtinSkillsRootPath,
+      });
+      await writeRuntimeSkill({
+        name: "building-bb-apps",
+        rootPath: harness.config.builtinSkillsRootPath,
+      });
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-workflows-experiment",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      const execution = await resolveExecutionOptions(harness.deps, {
+        threadId: thread.id,
+        requestedExecution: {
+          model: "gpt-5",
+          source: "client/turn/requested",
+        },
+      });
+      const buildCommand = (requestValue: number) =>
+        buildThreadStartCommand(harness.deps, {
+          environment,
+          execution,
+          permissionEscalation: "ask",
+          input: textInput("hello"),
+          projectId: project.id,
+          providerId: "codex",
+          requestId: encodeClientTurnRequestIdNumber({ value: requestValue }),
+          syncGeneratedTitle: false,
+          thread,
+        });
+
+      // Experiments default to off: the bb-workflows skill never ships.
+      const gated = await buildCommand(1);
+      expect(gated.injectedSkillSources.map((skill) => skill.name)).toEqual([
+        "building-bb-apps",
+      ]);
+
+      setExperiments(harness.db, {
+        claudeCodeMockCliTraffic: false,
+        workflows: true,
+      });
+      const enabled = await buildCommand(2);
+      expect(enabled.injectedSkillSources.map((skill) => skill.name)).toEqual([
+        "bb-workflows",
+        "building-bb-apps",
+      ]);
+      expect(
+        enabled.injectedSkillSources.find(
+          (skill) => skill.name === "bb-workflows",
+        )?.sourceRootPath,
+      ).toBe(workflowsSkillRootPath);
+    });
+  });
+
+  it("gates Claude Code mock CLI traffic on its experiment with the fixed endpoint", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-mock-cli-traffic-experiment",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      const execution = await resolveExecutionOptions(harness.deps, {
+        threadId: thread.id,
+        requestedExecution: {
+          model: "gpt-5",
+          source: "client/turn/requested",
+        },
+      });
+      const buildCommand = (requestValue: number) =>
+        buildThreadStartCommand(harness.deps, {
+          environment,
+          execution,
+          permissionEscalation: "ask",
+          input: textInput("hello"),
+          projectId: project.id,
+          providerId: "codex",
+          requestId: encodeClientTurnRequestIdNumber({ value: requestValue }),
+          syncGeneratedTitle: false,
+          thread,
+        });
+
+      expect((await buildCommand(1)).options.claudeCodeMockCliTraffic).toEqual({
+        enabled: false,
+        endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+      });
+
+      setExperiments(harness.db, {
+        claudeCodeMockCliTraffic: true,
+        workflows: false,
+      });
+
+      expect((await buildCommand(2)).options.claudeCodeMockCliTraffic).toEqual({
+        enabled: true,
+        endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+      });
+    });
+  });
+
   it("consumes the sticky thread execution override across turns without a request value", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -425,10 +596,9 @@ describe("thread runtime config", () => {
         environmentId: environment.id,
         parentThreadId: rootThread.id,
       });
-      const managerThread = seedThread(harness.deps, {
+      const parentThread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        type: "manager",
       });
 
       expect(
@@ -451,14 +621,14 @@ describe("thread runtime config", () => {
       ).toBe("deny");
       expect(
         resolvePermissionEscalation({
-          thread: managerThread,
+          thread: parentThread,
           initiator: "user",
         }),
-      ).toBe("deny");
+      ).toBe("ask");
     });
   });
 
-  it("uses the project root as cwd and a host data-dir workspace for managers", async () => {
+  it("resolves the workspace and host data-dir storage path", async () => {
     await withTestHarness(async (harness) => {
       const hostId = "host-runtime";
       seedHostSession(harness.deps, { id: hostId });
@@ -471,16 +641,15 @@ describe("thread runtime config", () => {
         projectId: project.id,
         path: "/tmp/runtime-project-root",
       });
-      const managerThread = seedThread(harness.deps, {
+      const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        type: "manager",
       });
 
       const runtimeConfig = await resolveThreadRuntimeCommandConfig(
         harness.deps,
         {
-          thread: managerThread,
+          thread,
           environment: {
             cleanupRequestedAt: environment.cleanupRequestedAt,
             hostId: environment.hostId,
@@ -492,17 +661,13 @@ describe("thread runtime config", () => {
         },
       );
 
-      expect(runtimeConfig.instructions).toContain(
-        "Project root: `/tmp/runtime-project-root`",
+      expect(runtimeConfig.workspacePath).toBe("/tmp/runtime-project-root");
+      expect(runtimeConfig.threadStoragePath).toBe(
+        `/tmp/bb-host-data/${hostId}/thread-storage/${thread.id}`,
       );
+      expect(runtimeConfig.workspaceProvisionType).toBe("unmanaged");
       expect(runtimeConfig.instructions).toContain(
-        `BB data dir: \`/tmp/bb-host-data/${hostId}\``,
-      );
-      expect(runtimeConfig.instructions).toContain(
-        `Thread storage: \`/tmp/bb-host-data/${hostId}/thread-storage/${managerThread.id}\``,
-      );
-      expect(runtimeConfig.instructions).toContain(
-        `Local timezone: \`${resolveLocalTimezone()}\``,
+        "You are working inside bb, an agentic IDE",
       );
     });
   });

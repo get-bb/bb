@@ -179,6 +179,7 @@ export class ServerConnection {
         hostType: this.options.hostType,
         dataDir: this.options.dataDir,
         activeThreads: this.options.getActiveThreads?.() ?? [],
+        activeWorkflowRunIds: this.options.getActiveWorkflowRunIds?.() ?? [],
         loadedEnvironments: this.options.getLoadedEnvironments?.() ?? [],
       });
       this.session = session;

@@ -11,6 +11,7 @@ import {
   promptMentionIconLabel,
   promptMentionTooltipLabel,
 } from "@/components/promptbox/mentions/prompt-mention-display";
+import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
 import { cn } from "@/lib/utils";
 
 interface MentionRenderArgs {
@@ -97,11 +98,14 @@ export const PromptMentionExtension = Mention.extend({
   renderText: renderMentionText,
   renderHTML({ node, options }) {
     const attrs = parsePromptEditorMentionAttrs(node.attrs);
+    const clipboardAttributes = attrs
+      ? promptMentionClipboardDataAttributes(attrs)
+      : { "data-prompt-mention": "true" };
     return [
       "span",
       mergeAttributes(options.HTMLAttributes, {
         class: cn(PROMPT_MENTION_PILL_CLASS, "bg-surface-raised"),
-        "data-prompt-mention": "true",
+        ...clipboardAttributes,
         title: renderMentionTitle(attrs),
       }),
       renderMentionLabel(attrs),

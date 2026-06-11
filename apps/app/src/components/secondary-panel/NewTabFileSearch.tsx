@@ -8,8 +8,14 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import type { ThreadType } from "@bb/domain";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { directoryFromPath } from "@bb/thread-view";
+import {
+  COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+  COARSE_POINTER_ICON_SIZE_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@/components/ui/coarse-pointer-sizing.js";
+import { Icon } from "@/components/ui/icon.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Input } from "@/components/ui/input.js";
 import { Separator } from "@/components/ui/separator.js";
@@ -25,15 +31,17 @@ import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { useApps } from "@/hooks/queries/thread-queries";
 import type { FileSearchSelection } from "./useThreadFileTabs";
 import {
-  getRecentItemName,
-  resolveRecentFileKind,
   useThreadRecentItems,
   THREAD_RECENT_ITEMS_VISIBLE_LIMIT,
-  type RecentFileChip,
   type ThreadRecentItem,
 } from "./threadRecentItems";
+import {
+  getFileNameFromPath,
+  resolveRightPanelFileVisual,
+} from "./rightPanelFileVisuals";
 import { cn } from "@/lib/utils";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import { isProjectlessProjectId } from "@/lib/app-route-paths";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { isPromptDraftEmpty, type PromptDraftState } from "@/lib/prompt-draft";
 import {
@@ -72,7 +80,6 @@ export interface NewTabFileSearchProps {
   projectId: string | undefined;
   environmentId: string | null;
   currentThreadId: string;
-  currentThreadType: ThreadType | undefined;
   focusRequest: number;
   initialQuery?: string;
   onSelect: (selection: FileSearchSelection) => void;
@@ -80,13 +87,14 @@ export interface NewTabFileSearchProps {
 
 export interface NewTabActionMenuProps {
   projectId: string | undefined;
+  environmentId: string | null;
   currentThreadId: string;
-  currentThreadType: ThreadType | undefined;
   onSelect: (selection: FileSearchSelection) => void;
   onOpenFileSearch: () => void;
   onCreateAppPromptPrefill?: CreateAppPromptPrefillHandler;
   /** Desktop-only: open a new in-panel browser tab. Absent ⇒ no Browser entry. */
   onOpenBrowser?: () => void;
+  onStartTerminal?: () => void;
   onCloseMenu: () => void;
 }
 
@@ -131,6 +139,7 @@ type FileSearchSectionEntry =
   | { kind: "suggestion"; suggestion: FileSearchSuggestion }
   | { kind: "open-browser" }
   | { kind: "open-file" }
+  | { kind: "start-terminal" }
   | { kind: "create-app" }
   | { kind: "recent"; item: ThreadRecentItem };
 
@@ -145,11 +154,6 @@ interface FileSearchSection {
   items: FileSearchSectionItem[];
 }
 
-interface SplitPathResult {
-  name: string;
-  directory: string;
-}
-
 type LauncherKeyDownHandler = (event: KeyboardEvent<HTMLElement>) => void;
 type CreateAppPromptPrefillHandler = () => void;
 type FileSearchSource = FileSearchSuggestion["source"];
@@ -159,8 +163,8 @@ type LauncherTileVariant = "result" | "menu";
 
 interface GetAvailableFileSearchSourcesArgs {
   projectId: string | undefined;
+  environmentId: string | null;
   currentThreadId: string;
-  currentThreadType: ThreadType | undefined;
 }
 
 interface GroupFileSearchSectionsArgs {
@@ -168,6 +172,7 @@ interface GroupFileSearchSectionsArgs {
   availableSources: readonly FileSearchSource[];
   includeOpenBrowserEntry: boolean;
   includeOpenFileEntry: boolean;
+  includeStartTerminalEntry: boolean;
   includeCreateAppEntry: boolean;
   createAppPlacement: CreateAppEntryPlacement;
   recentEntries: readonly FileSearchSectionEntry[];
@@ -204,6 +209,13 @@ interface OpenFileTileProps {
   onSelect: () => void;
 }
 
+interface StartTerminalTileProps {
+  id: string;
+  isActive: boolean;
+  onActivate: () => void;
+  onSelect: () => void;
+}
+
 const FILE_SEARCH_LIMIT = 20;
 const FILE_SEARCH_SECTION_ORDER: readonly FileSearchSectionKind[] = [
   "apps",
@@ -228,35 +240,33 @@ const FILE_SEARCH_SOURCE_LABELS = {
 const CREATE_APP_ENTRY_ID = "file-search-result-create-app";
 const OPEN_BROWSER_ENTRY_ID = "file-search-result-open-browser";
 const OPEN_FILE_ENTRY_ID = "file-search-result-open-file";
+const START_TERMINAL_ENTRY_ID = "file-search-result-start-terminal";
 
-const LAUNCHER_TILE_ICON_CLASS_DASHED =
-  "flex size-4 shrink-0 items-center justify-center text-muted-foreground group-hover:text-foreground";
-const NEW_TAB_ACTION_MENU_SEPARATOR_CLASS =
-  "mx-2 my-1.5 w-auto bg-border-seam";
+const LAUNCHER_TILE_ICON_CLASS_DASHED = `flex shrink-0 items-center justify-center text-muted-foreground group-hover:text-foreground ${COARSE_POINTER_ICON_SIZE_CLASS}`;
+const NEW_TAB_ACTION_MENU_SEPARATOR_CLASS = "mx-2 my-1.5 w-auto bg-border-seam";
 
-// File-type identity comes from the glyph alone so recent rows stay as compact
-// as file-search results without per-type row coloring.
-const RECENT_CHIP_ICON_NAME = {
-  md: "File",
-  html: "AppWindow",
-  report: "ChartColumn",
-  code: "Code",
-} satisfies Record<RecentFileChip, IconName>;
 const RECENT_ENTRY_ID_PREFIX = "file-search-result-recent";
 
 function getAvailableFileSearchSources({
   projectId,
+  environmentId,
   currentThreadId,
-  currentThreadType,
 }: GetAvailableFileSearchSourcesArgs): readonly FileSearchSource[] {
   const sources: FileSearchSource[] = [];
   if (currentThreadId.length > 0) {
     sources.push("app");
   }
-  if (projectId) {
+  // The workspace is searchable via an existing thread's environment, or via a
+  // standard project's default source before any environment exists. Projectless
+  // (personal) threads have no project source, so without an environment there
+  // is no workspace to search. Mirrors the source selection in usePathSuggestions.
+  if (
+    Boolean(environmentId) ||
+    (projectId && !isProjectlessProjectId(projectId))
+  ) {
     sources.push("workspace");
   }
-  if (currentThreadType === "manager" && currentThreadId.length > 0) {
+  if (currentThreadId.length > 0) {
     sources.push("thread-storage");
   }
   return sources;
@@ -280,23 +290,15 @@ function getFileSearchEntryId(entry: FileSearchSectionEntry): string {
   if (entry.kind === "open-file") {
     return OPEN_FILE_ENTRY_ID;
   }
+  if (entry.kind === "start-terminal") {
+    return START_TERMINAL_ENTRY_ID;
+  }
   if (entry.kind === "recent") {
     return `${RECENT_ENTRY_ID_PREFIX}-${entry.item.source}-${encodeURIComponent(
       entry.item.path,
     )}`;
   }
   return getFileSearchResultId(entry.suggestion);
-}
-
-function splitPath(path: string): SplitPathResult {
-  const lastSlash = path.lastIndexOf("/");
-  if (lastSlash === -1) {
-    return { name: path, directory: "" };
-  }
-  return {
-    name: path.slice(lastSlash + 1),
-    directory: path.slice(0, lastSlash),
-  };
 }
 
 function getFileSearchResultTitle(suggestion: FileSearchSuggestion): string {
@@ -316,6 +318,7 @@ function groupFileSearchSections({
   availableSources,
   includeOpenBrowserEntry,
   includeOpenFileEntry,
+  includeStartTerminalEntry,
   includeCreateAppEntry,
   createAppPlacement,
   recentEntries,
@@ -371,6 +374,13 @@ function groupFileSearchSections({
     });
   }
 
+  if (includeStartTerminalEntry) {
+    ensureSection("actions").items.push({
+      entry: { kind: "start-terminal" },
+      index: 0,
+    });
+  }
+
   // Recent rows trail the Apps and Files sections so the unified index space
   // reads top-down: launch an app, open a new surface, then jump back to a
   // recently-opened file.
@@ -407,9 +417,13 @@ function FileSearchMessage({
       <div className="flex max-w-64 items-center justify-center gap-1.5">
         <Icon
           name={iconName}
-          className={cn("size-4 shrink-0", iconClassName)}
+          className={cn(
+            COARSE_POINTER_ICON_SIZE_CLASS,
+            "shrink-0",
+            iconClassName,
+          )}
         />
-        <p>{message}</p>
+        <p className={COARSE_POINTER_TEXT_SM_CLASS}>{message}</p>
       </div>
     </EmptyStatePanel>
   );
@@ -474,7 +488,10 @@ function AppResultRow({
       <span className={LAUNCHER_ROW_ICON_CLASS}>
         <ResolvedAppIcon
           icon={suggestion.app.icon}
-          className="size-3.5 text-muted-foreground"
+          className={cn(
+            COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+            "text-muted-foreground",
+          )}
         />
       </span>
       <span className="min-w-0 flex-1 truncate text-foreground">
@@ -499,7 +516,11 @@ function CreateAppTile({
       onSelect={onSelect}
     >
       <span className={LAUNCHER_TILE_ICON_CLASS_DASHED}>
-        <Icon name="Plus" className="size-3.5" aria-hidden />
+        <Icon
+          name="Plus"
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+          aria-hidden
+        />
       </span>
       <span className="min-w-0 flex-1 truncate text-foreground">
         Create App...
@@ -523,7 +544,11 @@ function OpenBrowserTile({
       onSelect={onSelect}
     >
       <span className={LAUNCHER_ROW_ICON_CLASS}>
-        <Icon name="Globe" className="size-3.5" aria-hidden />
+        <Icon
+          name="Globe"
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+          aria-hidden
+        />
       </span>
       <span className="min-w-0 flex-1 truncate text-foreground">
         Open browser
@@ -547,9 +572,41 @@ function OpenFileTile({
       onSelect={onSelect}
     >
       <span className={LAUNCHER_ROW_ICON_CLASS}>
-        <Icon name="File" className="size-3.5" aria-hidden />
+        <Icon
+          name="File"
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+          aria-hidden
+        />
       </span>
       <span className="min-w-0 flex-1 truncate text-foreground">Open file</span>
+    </LauncherTile>
+  );
+}
+
+function StartTerminalTile({
+  id,
+  isActive,
+  onActivate,
+  onSelect,
+}: StartTerminalTileProps) {
+  return (
+    <LauncherTile
+      id={id}
+      isActive={isActive}
+      variant="menu"
+      onActivate={onActivate}
+      onSelect={onSelect}
+    >
+      <span className={LAUNCHER_ROW_ICON_CLASS}>
+        <Icon
+          name="Terminal"
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+          aria-hidden
+        />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-foreground">
+        Start terminal
+      </span>
     </LauncherTile>
   );
 }
@@ -564,8 +621,9 @@ function FileResultRow({
   const handleSelect = useCallback(() => {
     onSelect(suggestion);
   }, [onSelect, suggestion]);
-  const { directory } = splitPath(suggestion.path);
+  const directory = directoryFromPath(suggestion.path);
   const secondaryDirectory = directory || null;
+  const visual = resolveRightPanelFileVisual({ path: suggestion.path });
 
   return (
     <button
@@ -577,14 +635,18 @@ function FileResultRow({
       onMouseEnter={onActivate}
       title={getFileSearchResultTitle(suggestion)}
       className={cn(
-        "w-full scroll-mt-7 rounded px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "w-full scroll-mt-7 rounded px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        COARSE_POINTER_TEXT_SM_CLASS,
         isActive ? "bg-state-active" : "hover:bg-state-hover",
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5">
         <Icon
-          name="File"
-          className="size-3.5 shrink-0 text-muted-foreground"
+          name={visual.iconName}
+          className={cn(
+            COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+            "text-muted-foreground",
+          )}
           aria-hidden
         />
         <span className="truncate">{suggestion.name}</span>
@@ -601,8 +663,8 @@ function FileResultRow({
 /**
  * A recently-opened file row. It uses the compact launcher shell so recents sit
  * at roughly the same density as file-search results, with the file-kind glyph
- * and label carried inline. Reopening routes through the same `onSelect` path
- * as a file-search result.
+ * carried inline. Reopening routes through the same `onSelect` path as a
+ * file-search result.
  */
 function RecentResultRow({
   id,
@@ -615,9 +677,9 @@ function RecentResultRow({
   const handleSelect = useCallback(() => {
     onSelect(item);
   }, [item, onSelect]);
-  const { chip, label } = resolveRecentFileKind(item.path);
-  const name = getRecentItemName(item.path);
-  const { directory } = splitPath(item.path);
+  const visual = resolveRightPanelFileVisual({ path: item.path });
+  const name = getFileNameFromPath({ path: item.path });
+  const directory = directoryFromPath(item.path);
   const relativeTime = formatRelativeTime({
     timestamp: item.openedAt,
     now: nowMs,
@@ -629,32 +691,21 @@ function RecentResultRow({
       isActive={isActive}
       onActivate={onActivate}
       onSelect={handleSelect}
-      title={`${label}: ${item.path}`}
+      title={item.path}
     >
       <span className={LAUNCHER_ROW_ICON_CLASS}>
         <Icon
-          name={RECENT_CHIP_ICON_NAME[chip]}
-          className="size-3.5"
+          name={visual.iconName}
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
           aria-hidden
         />
       </span>
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="truncate text-foreground">{name}</span>
-        <span className="shrink-0 font-medium text-muted-foreground">
-          {label}
-        </span>
         {directory ? (
-          <>
-            <span
-              className="shrink-0 text-muted-foreground opacity-50"
-              aria-hidden
-            >
-              ·
-            </span>
-            <TruncateStart className="text-muted-foreground [flex-shrink:9999]">
-              {directory}
-            </TruncateStart>
-          </>
+          <TruncateStart className="text-muted-foreground [flex-shrink:9999]">
+            {directory}
+          </TruncateStart>
         ) : null}
       </span>
       <LauncherRowTrailing idle={relativeTime} isActive={isActive} />
@@ -666,7 +717,6 @@ export function NewTabFileSearch({
   projectId,
   environmentId,
   currentThreadId,
-  currentThreadType,
   focusRequest,
   initialQuery = "",
   onSelect,
@@ -691,16 +741,15 @@ export function NewTabFileSearch({
       limit: FILE_SEARCH_LIMIT,
       environmentId,
       currentThreadId,
-      currentThreadType,
     });
   const availableSources = useMemo(
     () =>
       getAvailableFileSearchSources({
         projectId,
+        environmentId,
         currentThreadId,
-        currentThreadType,
       }),
-    [currentThreadId, currentThreadType, projectId],
+    [currentThreadId, environmentId, projectId],
   );
   const fileSearchSources = useMemo(
     () => availableSources.filter((source) => source !== "app"),
@@ -734,6 +783,7 @@ export function NewTabFileSearch({
         availableSources: fileSearchSources,
         includeOpenBrowserEntry: false,
         includeOpenFileEntry: false,
+        includeStartTerminalEntry: false,
         includeCreateAppEntry: false,
         createAppPlacement: "none",
         recentEntries,
@@ -849,7 +899,10 @@ export function NewTabFileSearch({
       <div className="relative min-w-0">
         <Icon
           name="Search"
-          className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          className={cn(
+            "pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground",
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
         />
         <Input
           ref={inputRef}
@@ -869,12 +922,18 @@ export function NewTabFileSearch({
           placeholder={
             isSearchDisabled ? "No searchable file source" : "Search files"
           }
-          className="h-8 pl-8 pr-8 text-xs focus-visible:ring-0"
+          className={cn(
+            "h-8 pl-8 pr-8 focus-visible:ring-0 max-md:pointer-coarse:h-10",
+            COARSE_POINTER_TEXT_SM_CLASS,
+          )}
         />
         {isDebouncing ? (
           <Icon
             name="Spinner"
-            className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-muted-foreground"
+            className={cn(
+              "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground",
+              COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+            )}
           />
         ) : null}
       </div>
@@ -915,12 +974,13 @@ export function NewTabFileSearch({
 
 export function NewTabActionMenu({
   projectId,
+  environmentId,
   currentThreadId,
-  currentThreadType,
   onSelect,
   onOpenFileSearch,
   onCreateAppPromptPrefill,
   onOpenBrowser,
+  onStartTerminal,
   onCloseMenu,
 }: NewTabActionMenuProps) {
   const promptDraft = usePromptDraftStorage({
@@ -931,10 +991,10 @@ export function NewTabActionMenu({
     () =>
       getAvailableFileSearchSources({
         projectId,
+        environmentId,
         currentThreadId,
-        currentThreadType,
       }),
-    [currentThreadId, currentThreadType, projectId],
+    [currentThreadId, environmentId, projectId],
   );
   const fileSearchSources = useMemo(
     () => availableSources.filter((source) => source !== "app"),
@@ -962,6 +1022,8 @@ export function NewTabActionMenu({
     onOpenBrowser !== undefined &&
     isDesktopBrowserAvailable();
   const showOpenFileEntry = !isMenuUnavailable && fileSearchSources.length > 0;
+  const showStartTerminalEntry =
+    !isMenuUnavailable && onStartTerminal !== undefined;
   const showCreateAppEntry = !isMenuUnavailable && canPrefillCreateAppPrompt;
 
   const handleAppSelect = useCallback(
@@ -981,6 +1043,11 @@ export function NewTabActionMenu({
     onCloseMenu();
     onOpenBrowser?.();
   }, [onCloseMenu, onOpenBrowser]);
+
+  const handleStartTerminal = useCallback(() => {
+    onCloseMenu();
+    onStartTerminal?.();
+  }, [onCloseMenu, onStartTerminal]);
 
   const handleCreateAppPromptPrefill = useCallback(() => {
     onCloseMenu();
@@ -1011,7 +1078,7 @@ export function NewTabActionMenu({
 
   return (
     <div data-testid="new-tab-action-menu" className="flex min-w-0 flex-col">
-      {/* Primary open actions lead the menu: Open file, then Open browser. */}
+      {/* Primary open actions lead the menu before installed apps. */}
       <div className="flex flex-col gap-px">
         {showOpenFileEntry ? (
           <OpenFileTile
@@ -1027,6 +1094,14 @@ export function NewTabActionMenu({
             isActive={false}
             onActivate={() => undefined}
             onSelect={handleOpenBrowser}
+          />
+        ) : null}
+        {showStartTerminalEntry ? (
+          <StartTerminalTile
+            id={START_TERMINAL_ENTRY_ID}
+            isActive={false}
+            onActivate={() => undefined}
+            onSelect={handleStartTerminal}
           />
         ) : null}
       </div>
@@ -1066,12 +1141,22 @@ export function NewTabActionMenu({
           />
         ))}
         {canSearchApps && apps.isLoading && appSuggestions.length === 0 ? (
-          <p className="px-2 py-1 text-xs text-muted-foreground">
+          <p
+            className={cn(
+              "px-2 py-1 text-muted-foreground",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
+          >
             Loading apps...
           </p>
         ) : null}
         {canSearchApps && apps.isError ? (
-          <p className="px-2 py-1 text-xs text-muted-foreground">
+          <p
+            className={cn(
+              "px-2 py-1 text-muted-foreground",
+              COARSE_POINTER_TEXT_SM_CLASS,
+            )}
+          >
             Couldn't load apps.
           </p>
         ) : null}
@@ -1133,7 +1218,9 @@ function NewTabResults({
   const hasSectionsAbove = showFilesSection;
   const showLoading = isLoading && !showFilesSection;
   const showError = fileSearchError && !showFilesSection && !showLoading;
-  const showFileSearchMessage = showLoading || showError;
+  const showNoFileResults =
+    hasQuery && !showFilesSection && !showLoading && !showError;
+  const showFileSearchMessage = showLoading || showError || showNoFileResults;
   const hasRecentSectionPredecessor = hasSectionsAbove || showFileSearchMessage;
   const showEmptyMessage =
     !showFilesSection && !showRecentSection && !showLoading && !showError;
@@ -1148,7 +1235,9 @@ function NewTabResults({
     return (
       <FileSearchMessage
         iconName={hasQuery ? "FileQuestion" : "File"}
-        message={hasQuery ? "No files match." : "Type to search files."}
+        message={
+          hasQuery ? "No files match your search." : "Type to search files."
+        }
       />
     );
   }
@@ -1159,9 +1248,17 @@ function NewTabResults({
           rows exist, so it leads the results just as that group would. */}
       {showFileSearchMessage ? (
         <FileSearchMessage
-          iconName={showError ? "AlertCircle" : "Spinner"}
+          iconName={
+            showError ? "AlertCircle" : showLoading ? "Spinner" : "FileQuestion"
+          }
           iconClassName={showLoading ? "animate-spin" : undefined}
-          message={showError ? "File search failed." : "Searching files..."}
+          message={
+            showError
+              ? "File search failed."
+              : showLoading
+                ? "Searching files..."
+                : "No files match your search."
+          }
         />
       ) : null}
 
@@ -1243,9 +1340,8 @@ function NewTabResults({
             sticky
             className={hasRecentSectionPredecessor ? "pt-2" : undefined}
           />
-          <EmptyStatePanel className="py-4 text-xs">
-            Nothing referenced yet — plans, mockups, and files you open will show
-            up here.
+          <EmptyStatePanel className={cn("py-4", COARSE_POINTER_TEXT_SM_CLASS)}>
+            Plans, mockups, and files you open will show up here.
           </EmptyStatePanel>
         </section>
       ) : null}
@@ -1255,12 +1351,16 @@ function NewTabResults({
           type="button"
           aria-expanded={recent.isExpanded}
           onClick={recent.onToggleExpanded}
-          className="ml-1.5 mt-0.5 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+          className={cn(
+            "ml-1.5 mt-0.5 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground",
+            COARSE_POINTER_TEXT_SM_CLASS,
+          )}
         >
           <Icon
             name="ChevronDown"
             className={cn(
-              "size-3.5 transition-transform",
+              COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+              "transition-transform",
               recent.isExpanded && "rotate-180",
             )}
             aria-hidden

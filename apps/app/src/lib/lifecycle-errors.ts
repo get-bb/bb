@@ -8,12 +8,11 @@ import { HttpError } from "./api";
 export type LifecycleErrorSeverity = "info" | "warning" | "error";
 export type LifecycleErrorOperation =
   | "archive_thread"
-  | "assign_manager"
   | "commit"
   | "create_thread"
   | "load_diff"
   | "load_git_status"
-  | "load_manager_storage"
+  | "load_thread_storage"
   | "open_terminal"
   | "queue_message"
   | "reorder_queued_message"
@@ -85,8 +84,6 @@ function operationTitle(operation: LifecycleErrorOperation): string {
   switch (operation) {
     case "archive_thread":
       return "Failed to archive thread";
-    case "assign_manager":
-      return "Failed to assign manager";
     case "commit":
       return "Commit failed";
     case "create_thread":
@@ -95,8 +92,8 @@ function operationTitle(operation: LifecycleErrorOperation): string {
       return "Failed to load diff";
     case "load_git_status":
       return "Workspace status unavailable";
-    case "load_manager_storage":
-      return "Failed to load manager workspace";
+    case "load_thread_storage":
+      return "Failed to load thread storage";
     case "open_terminal":
       return "Failed to open terminal";
     case "queue_message":
@@ -362,7 +359,7 @@ function describeParentThreadInvalid({
   const isSenderThread = error.details.subject === "sender";
   const title = isSenderThread
     ? "Sender thread unavailable"
-    : "Parent manager unavailable";
+    : "Parent thread unavailable";
 
   switch (error.details.reason) {
     case "not_found":
@@ -371,7 +368,7 @@ function describeParentThreadInvalid({
         title,
         body: isSenderThread
           ? "The sender thread no longer exists."
-          : "That manager no longer exists.",
+          : "That parent thread no longer exists.",
       });
     case "archived":
       return warning({
@@ -379,7 +376,7 @@ function describeParentThreadInvalid({
         title,
         body: isSenderThread
           ? "The sender thread is archived."
-          : "Unarchive the manager first or choose another manager.",
+          : "Unarchive the parent thread first or choose another parent.",
       });
     case "deleted":
       return errorDescription({
@@ -387,19 +384,31 @@ function describeParentThreadInvalid({
         title,
         body: isSenderThread
           ? "The sender thread was deleted."
-          : "That manager was deleted.",
+          : "That parent thread was deleted.",
       });
     case "wrong_project":
       return errorDescription({
         operation,
         title,
-        body: "Choose a manager from this project.",
+        body: "Choose a parent thread from this project.",
       });
-    case "not_a_manager":
+    case "self":
       return errorDescription({
         operation,
         title,
-        body: "Choose a manager thread.",
+        body: "A thread cannot be its own parent.",
+      });
+    case "cycle":
+      return errorDescription({
+        operation,
+        title,
+        body: "Choose a thread that is not a child of this thread.",
+      });
+    case "too_deep":
+      return errorDescription({
+        operation,
+        title,
+        body: "Thread nesting is limited to 4 levels.",
       });
     default:
       return assertNever(error.details.reason);

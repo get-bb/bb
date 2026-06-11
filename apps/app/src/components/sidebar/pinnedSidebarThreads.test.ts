@@ -13,7 +13,6 @@ function createThread(
     environmentId: null,
     automationId: null,
     providerId: "codex",
-    type: "standard",
     title: "Thread",
     titleFallback: "Thread",
     status: "idle",
@@ -101,7 +100,6 @@ describe("buildPinnedSidebarState", () => {
         }),
         createThread({
           id: "manager-child",
-          type: "manager",
           parentThreadId: "standard-parent",
         }),
         createThread({

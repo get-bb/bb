@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import type { ThreadType } from "@bb/domain";
 import type { AppSummary } from "@bb/server-contract";
 import {
   usePathSuggestions,
@@ -38,7 +37,6 @@ export interface UseFileSearchSuggestionsArgs {
   limit?: number;
   environmentId: string | null;
   currentThreadId?: string;
-  currentThreadType?: ThreadType;
 }
 
 export interface UseFileSearchSuggestionsResult {
@@ -148,7 +146,6 @@ export function useFileSearchSuggestions(
     limit,
     environmentId: args.environmentId,
     currentThreadId: args.currentThreadId,
-    currentThreadType: args.currentThreadType,
     includeDirectories: false,
   });
   const canSearchApps = Boolean(args.currentThreadId);
@@ -176,8 +173,7 @@ export function useFileSearchSuggestions(
     [appSuggestions, fileSuggestions],
   );
   const canSearchWorkspace = Boolean(args.projectId);
-  const canSearchThreadStorage =
-    args.currentThreadType === "manager" && Boolean(args.currentThreadId);
+  const canSearchThreadStorage = Boolean(args.currentThreadId);
 
   return {
     suggestions,

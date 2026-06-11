@@ -20,11 +20,13 @@ import {
   sendQueuedMessageRequestSchema,
   sendMessageRequestSchema,
   typedRoutes,
+  type CreateQueuedMessageRequest,
   type ThreadListResponse,
   type PublicApiSchema,
+  type SendMessageRequest,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import type { ThreadQueuedMessage } from "@bb/domain";
+import type { Thread, ThreadQueuedMessage } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
@@ -43,6 +45,7 @@ import {
 import {
   ensureThreadIsNotAwaitingUserInteraction,
   ensureThreadIsWritable,
+  resolveMessageSenderThreadId,
   sendThreadMessage,
 } from "../../services/threads/thread-send.js";
 import {
@@ -56,7 +59,7 @@ import {
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
 import {
-  archiveManagerThreads,
+  archiveThreadAndChildren,
   archiveThreadWithLifecycleEffects,
 } from "../../services/threads/thread-archive.js";
 import {
@@ -126,6 +129,79 @@ function assertPinnedThreadOrderResult(
   }
 }
 
+interface CreateQueuedMessageForThreadArgs {
+  payload: CreateQueuedMessageRequest;
+  thread: Thread;
+}
+
+function queuedMessagePayloadFromSendRequest(
+  payload: SendMessageRequest,
+): CreateQueuedMessageRequest {
+  return {
+    input: payload.input,
+    ...(payload.model !== undefined ? { model: payload.model } : {}),
+    ...(payload.serviceTier !== undefined
+      ? { serviceTier: payload.serviceTier }
+      : {}),
+    ...(payload.reasoningLevel !== undefined
+      ? { reasoningLevel: payload.reasoningLevel }
+      : {}),
+    ...(payload.permissionMode !== undefined
+      ? { permissionMode: payload.permissionMode }
+      : {}),
+    ...(payload.executionInputSources !== undefined
+      ? { executionInputSources: payload.executionInputSources }
+      : {}),
+    ...(payload.senderThreadId !== undefined
+      ? { senderThreadId: payload.senderThreadId }
+      : {}),
+  };
+}
+
+async function createQueuedMessageForThread(
+  deps: AppDeps,
+  args: CreateQueuedMessageForThreadArgs,
+): Promise<ThreadQueuedMessage> {
+  const { payload, thread } = args;
+  ensureThreadIsWritable(thread);
+  await validatePromptAttachmentReferences({
+    dataDir: deps.config.dataDir,
+    input: payload.input,
+    projectId: thread.projectId,
+  });
+  const execution = await buildExecutionOptions(
+    deps,
+    payload,
+    {
+      threadId: thread.id,
+    },
+    "client/turn/requested",
+  );
+  const senderThreadId = resolveMessageSenderThreadId(deps, {
+    senderThreadId: payload.senderThreadId,
+    targetThread: thread,
+  });
+  const queuedMessage = createQueuedThreadMessage(deps.db, deps.hub, {
+    threadId: thread.id,
+    content: payload.input,
+    senderThreadId,
+    model: execution.model,
+    reasoningLevel: execution.reasoningLevel,
+    permissionMode: execution.permissionMode,
+    serviceTier: execution.serviceTier,
+  });
+  if (
+    thread.status === "idle" &&
+    getLastProviderThreadId(deps, thread.id) !== null
+  ) {
+    requestQueuedMessageAutoSendForThread(deps, {
+      queuedMessageId: queuedMessage.id,
+      threadId: thread.id,
+    });
+  }
+  return toThreadQueuedMessage(queuedMessage);
+}
+
 export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   const { post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -136,6 +212,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     sendMessageRequestSchema,
     async (context, payload) => {
       const thread = requirePublicThread(deps.db, context.req.param("id"));
+      if (payload.mode === "queue-if-active" && thread.status === "active") {
+        await createQueuedMessageForThread(deps, {
+          payload: queuedMessagePayloadFromSendRequest(payload),
+          thread,
+        });
+        return context.json({ ok: true });
+      }
       const environment = await requireThreadCommandEnvironment(deps, {
         thread,
       });
@@ -154,38 +237,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     createQueuedMessageRequestSchema,
     async (context, payload) => {
       const thread = requirePublicThread(deps.db, context.req.param("id"));
-      ensureThreadIsWritable(thread);
-      await validatePromptAttachmentReferences({
-        dataDir: deps.config.dataDir,
-        input: payload.input,
-        projectId: thread.projectId,
-      });
-      const execution = await buildExecutionOptions(
-        deps,
+      const queuedMessage = await createQueuedMessageForThread(deps, {
         payload,
-        {
-          threadId: thread.id,
-        },
-        "client/turn/requested",
-      );
-      const queuedMessage = createQueuedThreadMessage(deps.db, deps.hub, {
-        threadId: context.req.param("id"),
-        content: payload.input,
-        model: execution.model,
-        reasoningLevel: execution.reasoningLevel,
-        permissionMode: execution.permissionMode,
-        serviceTier: execution.serviceTier,
+        thread,
       });
-      if (
-        thread.status === "idle" &&
-        getLastProviderThreadId(deps, thread.id) !== null
-      ) {
-        requestQueuedMessageAutoSendForThread(deps, {
-          queuedMessageId: queuedMessage.id,
-          threadId: thread.id,
-        });
-      }
-      return context.json(toThreadQueuedMessage(queuedMessage), 201);
+      return context.json(queuedMessage, 201);
     },
   );
 
@@ -334,16 +390,8 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post("/threads/:id/archive-all", (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (thread.type !== "manager") {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        "Archive all is only available for manager threads",
-      );
-    }
-
-    const archivedThreadIds = archiveManagerThreads(deps, {
-      managerThread: thread,
+    const archivedThreadIds = archiveThreadAndChildren(deps, {
+      parentThread: thread,
     });
     return context.json({
       ok: true,

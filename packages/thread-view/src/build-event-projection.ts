@@ -46,7 +46,7 @@ import {
 import {
   parseAcceptedSteerFromClientRequest,
   parseUserFromClientRequest,
-  parseManagerUserMessage,
+  parseLegacyUserMessage,
 } from "./user-message-parsing.js";
 import { isTerminalBufferedTextFlushEvent } from "./assistant-buffering.js";
 import {
@@ -370,10 +370,10 @@ function buildFlatProjectionData(
       continue;
     }
 
-    const managerUserMessage = parseManagerUserMessage(decoded, meta);
-    if (managerUserMessage) {
+    const legacyUserMessage = parseLegacyUserMessage(decoded, meta);
+    if (legacyUserMessage) {
       flushToolActivityBeforeNonToolMessage(state);
-      state.messages.push(managerUserMessage);
+      state.messages.push(legacyUserMessage);
       continue;
     }
 

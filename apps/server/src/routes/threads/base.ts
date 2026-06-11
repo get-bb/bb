@@ -17,7 +17,7 @@ import {
   typedRoutes,
   type ThreadGetQuery,
   type ThreadIncludeOption,
-  type ThreadAssignedChildSummaryResponse,
+  type ThreadChildSummaryResponse,
   type ThreadWithIncludesResponse,
   type PublicApiSchema,
 } from "@bb/server-contract";
@@ -41,12 +41,12 @@ import {
   requestActiveRuntimeThreadStopIfNeeded,
 } from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
-import { requireManagerChildThreadsConfirmation } from "../../services/threads/manager-child-confirmation.js";
+import { requireChildThreadsConfirmation } from "../../services/threads/child-thread-confirmation.js";
 import {
   toThreadListEntryResponses,
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
-import { assertValidManagerParentThread } from "../../services/threads/thread-parent.js";
+import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
 
@@ -122,12 +122,11 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     }
     const threads = listThreadsWithPendingInteractionState(deps.db, {
       ...(query.projectId ? { projectId: query.projectId } : {}),
-      ...(query.type ? { type: query.type } : {}),
       ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
       archived:
         query.archived === undefined ? undefined : query.archived === "true",
-      managed:
-        query.managed === undefined ? undefined : query.managed === "true",
+      hasParent:
+        query.hasParent === undefined ? undefined : query.hasParent === "true",
       ...(limit !== undefined ? { limit } : {}),
       ...(offset !== undefined ? { offset } : {}),
     });
@@ -141,7 +140,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       ...payload,
       automationId: null,
       origin: payload.origin,
-      type: "standard",
     });
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
@@ -156,30 +154,30 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get("/threads/:id/assigned-child-summary", (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (thread.type !== "manager") {
-      throw new ApiError(
-        400,
-        "invalid_request",
-        "Assigned child summary is only available for manager threads",
-      );
-    }
-    const nonDeletedAssignedChildCount = countNonDeletedAssignedChildThreads(
+  function getThreadChildSummary(
+    threadId: string,
+  ): ThreadChildSummaryResponse {
+    const nonDeletedChildCount = countNonDeletedAssignedChildThreads(
       deps.db,
       {
-        parentThreadId: thread.id,
+        parentThreadId: threadId,
       },
     );
-    return context.json({
-      nonDeletedAssignedChildCount,
-    } satisfies ThreadAssignedChildSummaryResponse);
+    return {
+      nonDeletedChildCount,
+    };
+  }
+
+  get("/threads/:id/child-summary", (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    return context.json(getThreadChildSummary(thread.id));
   });
 
   patch("/threads/:id", updateThreadRequestSchema, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     if (payload.parentThreadId) {
-      assertValidManagerParentThread(deps, {
+      assertValidParentThread(deps, {
+        childThreadId: thread.id,
         parentThreadId: payload.parentThreadId,
         projectId: thread.projectId,
       });
@@ -240,7 +238,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     ) {
       await handleThreadOwnershipChange(deps, {
         previousThread: thread,
-        queueManagerMessages: true,
+        queueParentMessages: true,
         updatedThread: updated,
       });
     }
@@ -250,9 +248,9 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
   del("/threads/:id", deleteThreadRequestSchema, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    requireManagerChildThreadsConfirmation({
+    requireChildThreadsConfirmation({
       action: "delete",
-      confirmed: payload.managerChildThreadsConfirmed,
+      confirmed: payload.childThreadsConfirmed,
       deps,
       thread,
     });

@@ -5,7 +5,6 @@ import { renderTemplate } from "@bb/templates";
 import { describe, expect, it } from "vitest";
 import {
   internalAuthHeaders,
-  reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
   waitForQueuedCommandAfter,
@@ -411,45 +410,44 @@ describe("internal interactive request lifecycle", () => {
     });
   });
 
-  it("notifies a parent manager when a managed child needs attention for a pending interaction", async () => {
+  it("notifies a parent thread when a child needs attention for a pending interaction", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
-        id: "host-managed-child-needs-attention",
+        id: "host-child-needs-attention",
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
       });
-      const managerEnvironment = seedEnvironment(harness.deps, {
+      const parentEnvironment = seedEnvironment(harness.deps, {
         hostId: host.id,
-        path: "/tmp/managed-child-needs-attention-manager",
+        path: "/tmp/child-needs-attention-parent",
         projectId: project.id,
       });
       const childEnvironment = seedEnvironment(harness.deps, {
         hostId: host.id,
-        path: "/tmp/managed-child-needs-attention-child",
+        path: "/tmp/child-needs-attention-child",
         projectId: project.id,
       });
-      const managerThread = seedThread(harness.deps, {
-        environmentId: managerEnvironment.id,
+      const parentThread = seedThread(harness.deps, {
+        environmentId: parentEnvironment.id,
         projectId: project.id,
-        title: "Project manager",
-        type: "manager",
+        title: "Project coordinator",
       });
       seedThreadRuntimeState(harness.deps, {
-        environmentId: managerEnvironment.id,
-        inputText: "Initial manager task",
-        providerThreadId: "provider-manager-needs-attention",
-        threadId: managerThread.id,
+        environmentId: parentEnvironment.id,
+        inputText: "Initial parent task",
+        providerThreadId: "provider-parent-needs-attention",
+        threadId: parentThread.id,
       });
       const childThread = seedThread(harness.deps, {
         environmentId: childEnvironment.id,
-        parentThreadId: managerThread.id,
+        parentThreadId: parentThread.id,
         projectId: project.id,
         title: "Backend port validation cleanup",
       });
       const body = buildCommandApprovalInteractiveRequest({
         sessionId: session.id,
-        suffix: "managed-child-needs-attention",
+        suffix: "child-needs-attention",
         threadId: childThread.id,
       });
 
@@ -460,46 +458,43 @@ describe("internal interactive request lifecycle", () => {
         status: "pending",
       });
 
-      const managerPreferencesPath = `/tmp/bb-host-data/${host.id}/thread-storage/${managerThread.id}/PREFERENCES.md`;
-      const preferencesReadCommand = await waitForQueuedCommand(
+      const parentTurnCommand = await waitForQueuedCommand(
         harness,
-        ({ command, row }) =>
-          row.state === "pending" &&
-          command.type === "host.read_file" &&
-          command.path === managerPreferencesPath,
-      );
-      const preferencesReadResponse = await reportQueuedCommandError(
-        harness,
-        preferencesReadCommand,
-        {
-          errorCode: "ENOENT",
-          errorMessage: "File not found",
-        },
-      );
-      expect(preferencesReadResponse.status).toBe(200);
-
-      const managerTurnCommand = await waitForQueuedCommandAfter(
-        harness,
-        preferencesReadCommand.row.cursor,
         ({ command, row }) =>
           row.state === "pending" &&
           command.type === "turn.submit" &&
-          command.threadId === managerThread.id,
+          command.threadId === parentThread.id,
       );
-      if (managerTurnCommand.command.type !== "turn.submit") {
+      if (parentTurnCommand.command.type !== "turn.submit") {
         throw new Error(
-          `Expected manager turn command, got ${managerTurnCommand.command.type}`,
+          `Expected parent turn command, got ${parentTurnCommand.command.type}`,
         );
       }
-      expect(managerTurnCommand.command.input).toEqual(
+      const threadMention = `@thread:${childThread.id}`;
+      const expectedText = renderTemplate(
+        "systemMessageChildThreadNeedsAttention",
+        {
+          threadMention,
+        },
+      );
+      const mentionStart = expectedText.indexOf(threadMention);
+      expect(parentTurnCommand.command.input).toEqual(
         expect.arrayContaining([
           {
             type: "text",
-            text: renderTemplate("systemMessageManagedThreadNeedsAttention", {
-              threadId: childThread.id,
-              titleSuffix: " (Backend port validation cleanup)",
-            }),
-            mentions: [],
+            text: expectedText,
+            mentions: [
+              {
+                start: mentionStart,
+                end: mentionStart + threadMention.length,
+                resource: {
+                  kind: "thread",
+                  label: "Backend port validation cleanup",
+                  projectId: project.id,
+                  threadId: childThread.id,
+                },
+              },
+            ],
           },
         ]),
       );
@@ -516,10 +511,10 @@ describe("internal interactive request lifecycle", () => {
       await expect(
         waitForQueuedCommandAfter(
           harness,
-          managerTurnCommand.row.cursor,
+          parentTurnCommand.row.cursor,
           ({ command }) =>
-            command.type === "host.read_file" &&
-            command.path === managerPreferencesPath,
+            command.type === "turn.submit" &&
+            command.threadId === parentThread.id,
           100,
         ),
       ).rejects.toThrow("Timed out waiting for queued command");
@@ -835,7 +830,7 @@ describe("internal interactive request lifecycle", () => {
           headers: {
             "content-type": "application/json",
           },
-          body: JSON.stringify({ managerChildThreadsConfirmed: false }),
+          body: JSON.stringify({ childThreadsConfirmed: false }),
         },
       );
       expect(deleteResponse.status).toBe(200);

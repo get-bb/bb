@@ -1,12 +1,18 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { assertNever } from "@bb/core-ui";
-import type { GitBranchRefClassification, ThreadType } from "@bb/domain";
-import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
+import type { GitBranchRefClassification } from "@bb/domain";
+import {
+  DetailCard,
+  DetailRow,
+  DetailRowIconLabel,
+} from "@/components/ui/detail-card.js";
 import type { ThreadGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { ChangedFilesDetailRow } from "@/components/workspace/ChangedFilesDetailRow";
 import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
-import { FormError } from "@/components/ui/form-error.js";
+import { useBrowserDimmingModal } from "@/hooks/useBrowserDimmingModal";
 import { Button } from "@/components/ui/button.js";
+import { Icon } from "@/components/ui/icon.js";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -30,8 +36,6 @@ interface ThreadGitActionDialogProps {
   branchName?: string;
   gitStatusDisplay?: ThreadGitStatusDisplay;
   changedFilesSection?: WorkspaceChangedFilesSection | null;
-  threadId?: string;
-  threadType?: ThreadType;
   showMergeBaseDetails?: boolean;
   mergeBaseBranch?: string;
   mergeBaseBranchRef?: GitBranchRefClassification | null;
@@ -83,8 +87,6 @@ export function ThreadGitActionDialog({
   branchName,
   gitStatusDisplay,
   changedFilesSection,
-  threadId,
-  threadType,
   showMergeBaseDetails = false,
   mergeBaseBranch,
   mergeBaseBranchRef,
@@ -103,6 +105,11 @@ export function ThreadGitActionDialog({
     [target],
   );
 
+  // While this modal is open, hide the in-app browser's native overlay so the
+  // dialog backdrop dims the whole panel (the overlay can't sit behind a DOM
+  // backdrop).
+  useBrowserDimmingModal(target !== null);
+
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[34rem] gap-0 overflow-hidden border-border bg-background p-0 shadow-xl">
@@ -113,8 +120,6 @@ export function ThreadGitActionDialog({
             branchName={branchName}
             gitStatusDisplay={gitStatusDisplay}
             changedFilesSection={changedFilesSection}
-            threadId={threadId}
-            threadType={threadType}
             showMergeBaseDetails={showMergeBaseDetails}
             mergeBaseBranch={mergeBaseBranch}
             mergeBaseBranchRef={mergeBaseBranchRef}
@@ -148,8 +153,6 @@ export function ThreadGitActionDialogContent({
   branchName,
   gitStatusDisplay,
   changedFilesSection,
-  threadId,
-  threadType,
   showMergeBaseDetails,
   mergeBaseBranch,
   mergeBaseBranchRef,
@@ -196,10 +199,10 @@ export function ThreadGitActionDialogContent({
   const blocksRemoteMergeBase =
     dialogCopy.showMergeBase && selectedMergeBaseBranchIsRemote;
   const remoteMergeBaseErrorMessage =
-    "Squash merge requires a local target branch. Create or check out a local branch from the remote first.";
+    "Squash merge requires a local target branch.";
   const missingMergeBaseErrorMessage =
     "Squash merge requires an existing local target branch.";
-  const checkingMergeBaseErrorMessage = "Checking merge base branch.";
+  const checkingMergeBaseMessage = "Checking target branch";
   const canSelectMergeBase =
     dialogCopy.showMergeBase &&
     showMergeBaseDetails === true &&
@@ -212,31 +215,34 @@ export function ThreadGitActionDialogContent({
   const shouldShowChangedFilesRow = Boolean(
     changedFilesSection && changedFilesSection.files.length > 0,
   );
-  const mergeBaseSubmitError = !selectedMergeBaseBranch
+  const mergeBaseValidationErrorMessage = !selectedMergeBaseBranch
     ? "A merge base branch is required"
-    : selectedMergeBaseBranchClassificationPending
-      ? checkingMergeBaseErrorMessage
-      : blocksRemoteMergeBase
-        ? remoteMergeBaseErrorMessage
-        : selectedMergeBaseBranchMissing
-          ? missingMergeBaseErrorMessage
-          : null;
-  const visibleMergeBaseErrorMessage =
-    errorMessage ??
-    (selectedMergeBaseBranchClassificationPending
-      ? checkingMergeBaseErrorMessage
-      : blocksRemoteMergeBase
-        ? remoteMergeBaseErrorMessage
-        : selectedMergeBaseBranchMissing
-          ? missingMergeBaseErrorMessage
-          : null);
-  const submitTitle = selectedMergeBaseBranchClassificationPending
-    ? checkingMergeBaseErrorMessage
     : blocksRemoteMergeBase
       ? remoteMergeBaseErrorMessage
       : selectedMergeBaseBranchMissing
         ? missingMergeBaseErrorMessage
-        : undefined;
+        : null;
+  const mergeBaseSubmitBlockMessage =
+    selectedMergeBaseBranchClassificationPending
+      ? checkingMergeBaseMessage
+      : mergeBaseValidationErrorMessage;
+  const visibleMergeBaseStatusMessage =
+    !errorMessage && selectedMergeBaseBranchClassificationPending
+      ? checkingMergeBaseMessage
+      : null;
+  const visibleMergeBaseErrorMessage =
+    errorMessage ??
+    (blocksRemoteMergeBase
+      ? remoteMergeBaseErrorMessage
+      : selectedMergeBaseBranchMissing
+        ? missingMergeBaseErrorMessage
+        : null);
+  const submitTitle = selectedMergeBaseBranchClassificationPending
+    ? checkingMergeBaseMessage
+    : (mergeBaseValidationErrorMessage ?? undefined);
+  const footerMergeBaseMessage =
+    visibleMergeBaseErrorMessage ?? visibleMergeBaseStatusMessage;
+  const footerMergeBaseMessageIsError = Boolean(visibleMergeBaseErrorMessage);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -248,9 +254,13 @@ export function ThreadGitActionDialogContent({
         void onCommit();
         break;
       case "commit_and_squash_merge":
-        if (mergeBaseSubmitError || !selectedMergeBaseBranch) {
+        if (selectedMergeBaseBranchClassificationPending) {
+          return;
+        }
+        if (mergeBaseValidationErrorMessage || !selectedMergeBaseBranch) {
           setErrorMessage(
-            mergeBaseSubmitError ?? "A merge base branch is required",
+            mergeBaseValidationErrorMessage ??
+              "A merge base branch is required",
           );
           return;
         }
@@ -260,9 +270,13 @@ export function ThreadGitActionDialogContent({
         });
         break;
       case "squash_merge":
-        if (mergeBaseSubmitError || !selectedMergeBaseBranch) {
+        if (selectedMergeBaseBranchClassificationPending) {
+          return;
+        }
+        if (mergeBaseValidationErrorMessage || !selectedMergeBaseBranch) {
           setErrorMessage(
-            mergeBaseSubmitError ?? "A merge base branch is required",
+            mergeBaseValidationErrorMessage ??
+              "A merge base branch is required",
           );
           return;
         }
@@ -289,14 +303,28 @@ export function ThreadGitActionDialogContent({
         shouldShowChangedFilesRow ? (
           <DetailCard appearance="flat">
             {branchName ? (
-              <DetailRow label="Branch" valueClassName="min-w-0 truncate">
+              <DetailRow
+                label={
+                  <DetailRowIconLabel icon="GitBranch">
+                    Branch
+                  </DetailRowIconLabel>
+                }
+                valueClassName="min-w-0 truncate"
+              >
                 <span className="block truncate" title={branchName}>
                   {branchName}
                 </span>
               </DetailRow>
             ) : null}
             {gitStatusDisplay ? (
-              <DetailRow label="Git status" valueClassName="min-w-0">
+              <DetailRow
+                label={
+                  <DetailRowIconLabel icon="FileDiff">
+                    Git status
+                  </DetailRowIconLabel>
+                }
+                valueClassName="min-w-0"
+              >
                 <div
                   className="flex min-w-0 items-baseline gap-2 whitespace-nowrap"
                   title={`${gitStatusDisplay.label} ${gitStatusDisplay.summary}`.trim()}
@@ -311,7 +339,14 @@ export function ThreadGitActionDialogContent({
               </DetailRow>
             ) : null}
             {canShowMergeBase && selectedMergeBaseBranch ? (
-              <DetailRow label="Merge base" valueClassName="min-w-0">
+              <DetailRow
+                label={
+                  <DetailRowIconLabel icon="GitMerge">
+                    Merge base
+                  </DetailRowIconLabel>
+                }
+                valueClassName="min-w-0"
+              >
                 {canSelectMergeBase ? (
                   <BranchPicker
                     value={selectedMergeBaseBranch}
@@ -324,6 +359,7 @@ export function ThreadGitActionDialogContent({
                     loading={mergeBaseBranchOptionsLoading}
                     onChange={(branch) => onMergeBaseBranchChange?.(branch)}
                     onSearchQueryChange={onMergeBaseBranchSearchQueryChange}
+                    variant="minimal"
                     className="max-w-full"
                   />
                 ) : (
@@ -339,17 +375,41 @@ export function ThreadGitActionDialogContent({
             {shouldShowChangedFilesRow && changedFilesSection ? (
               <ChangedFilesDetailRow
                 sections={[changedFilesSection]}
+                rowClassName="mt-3"
                 rowValueClassName="pt-0.5"
                 listClassName="max-h-40"
               />
             ) : null}
           </DetailCard>
         ) : null}
-        <FormError message={visibleMergeBaseErrorMessage} />
-        <DialogFooter>
+        <DialogFooter className="flex-row flex-wrap items-center justify-end gap-x-2 gap-y-1 sm:space-x-0">
+          {footerMergeBaseMessage ? (
+            <p
+              className={cn(
+                "m-0 flex min-w-0 flex-1 items-center justify-end gap-1.5 text-right text-xs leading-5",
+                footerMergeBaseMessageIsError
+                  ? "text-destructive"
+                  : "text-muted-foreground",
+              )}
+              role={footerMergeBaseMessageIsError ? "alert" : "status"}
+              aria-live={footerMergeBaseMessageIsError ? undefined : "polite"}
+            >
+              {footerMergeBaseMessageIsError ? null : (
+                <Icon
+                  name="Spinner"
+                  className="size-3.5 shrink-0 animate-spin"
+                  aria-hidden="true"
+                />
+              )}
+              <span className="min-w-0">{footerMergeBaseMessage}</span>
+            </p>
+          ) : null}
           <Button
             type="submit"
-            disabled={dialogCopy.showMergeBase && mergeBaseSubmitError !== null}
+            className="shrink-0"
+            disabled={
+              dialogCopy.showMergeBase && mergeBaseSubmitBlockMessage !== null
+            }
             title={submitTitle}
           >
             {dialogCopy.submitLabel}

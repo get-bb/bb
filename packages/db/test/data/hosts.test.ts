@@ -85,6 +85,7 @@ describe("hosts", () => {
       notifyHost,
       notifyProject() {},
       notifySystem() {},
+      notifyWorkflowRun() {},
       notifyThread() {},
     };
     const host = upsertHost(db, notifier, {
@@ -112,6 +113,7 @@ describe("hosts", () => {
       notifyHost,
       notifyProject() {},
       notifySystem() {},
+      notifyWorkflowRun() {},
       notifyThread() {},
     };
     const host = upsertHost(db, notifier, {
@@ -219,6 +221,7 @@ describe("hosts", () => {
       notifyHost,
       notifyProject() {},
       notifySystem() {},
+      notifyWorkflowRun() {},
       notifyThread() {},
     };
     const host = upsertHost(db, notifier, {
@@ -245,6 +248,7 @@ describe("hosts", () => {
       notifyHost,
       notifyProject() {},
       notifySystem() {},
+      notifyWorkflowRun() {},
       notifyThread() {},
     };
     const host = upsertHost(db, notifier, {
@@ -268,6 +272,7 @@ describe("hosts", () => {
       notifyHost,
       notifyProject() {},
       notifySystem() {},
+      notifyWorkflowRun() {},
       notifyThread() {},
     };
     const host = upsertHost(db, notifier, {
@@ -290,6 +295,7 @@ describe("hosts", () => {
       notifyProject() {},
       notifySystem() {},
       notifyThread() {},
+      notifyWorkflowRun() {},
     };
     const host = upsertHost(db, notifier, {
       name: "Pending Join Host",

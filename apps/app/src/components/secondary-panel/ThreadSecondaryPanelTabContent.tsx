@@ -1,6 +1,7 @@
 import { memo, useCallback, type ReactNode } from "react";
 import type { ThreadGitDiffResponse } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
+import { COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { useEnvironmentFilePreview } from "@/hooks/queries/environment-queries";
@@ -14,6 +15,7 @@ import {
 } from "@/lib/file-content-urls";
 import type {
   EnvironmentFilePreviewSource,
+  FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
 import { describeLifecycleError } from "@/lib/lifecycle-errors";
@@ -84,7 +86,7 @@ export interface WorkspaceFilePreviewTabContentProps {
   activePath: string;
   copyPath?: string | null;
   environmentId?: string | null;
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
   onOpenInEditor?: (path: string) => void;
   source: EnvironmentFilePreviewSource | null;
@@ -95,7 +97,7 @@ export interface WorkspaceFilePreviewTabContentProps {
 export interface HostFilePreviewTabContentProps {
   activePath: string;
   environmentId?: string | null;
-  lineNumber: number | null;
+  lineRange: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
   onOpenInEditor?: (path: string) => void;
   threadId: string;
@@ -104,6 +106,7 @@ export interface HostFilePreviewTabContentProps {
 export interface ThreadStorageFilePreviewTabContentProps {
   activePath: string;
   copyPath?: string | null;
+  lineRange: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
   onOpenInEditor?: (path: string) => void;
   threadId: string;
@@ -220,7 +223,12 @@ export function GitDiffTabContent({
       {isPreparingGitDiff ? (
         <ThreadDiffSkeleton />
       ) : gitDiffError ? (
-        <div className="rounded-lg border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive">
+        <div
+          className={cn(
+            "rounded-lg border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-destructive",
+            COARSE_POINTER_TEXT_SM_CLASS,
+          )}
+        >
           {gitDiffLifecycleErrorDescription ? (
             <p className="font-medium">
               {gitDiffLifecycleErrorDescription.title}
@@ -235,7 +243,12 @@ export function GitDiffTabContent({
           </p>
         </div>
       ) : gitDiffUnavailableMessage ? (
-        <div className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
+        <div
+          className={cn(
+            "rounded-lg border border-border bg-surface-raised px-3 py-2 text-muted-foreground",
+            COARSE_POINTER_TEXT_SM_CLASS,
+          )}
+        >
           <p className="font-medium text-foreground">Workspace unavailable</p>
           <p className="mt-1 leading-5">{gitDiffUnavailableMessage}</p>
         </div>
@@ -282,7 +295,12 @@ export function GitDiffTabContent({
             </pre>
           )}
           {threadGitDiff.truncated ? (
-            <p className="pt-2 text-xs text-muted-foreground">
+            <p
+              className={cn(
+                "pt-2 text-muted-foreground",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
+            >
               Diff output was truncated for display.
             </p>
           ) : null}
@@ -300,7 +318,7 @@ export function ThreadInfoTabContent({
   metadataContent,
 }: ThreadInfoTabContentProps) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-4 pb-3">
+    <div className="flex min-h-0 flex-1 flex-col pb-3">
       {metadataContent}
     </div>
   );
@@ -310,7 +328,7 @@ export function WorkspaceFilePreviewTabContent({
   activePath,
   copyPath = null,
   environmentId,
-  lineNumber,
+  lineRange,
   markdownLinkRouting,
   onOpenInEditor,
   source,
@@ -335,7 +353,7 @@ export function WorkspaceFilePreviewTabContent({
           : null
       }
       isLoading={isWorkspaceFilePreviewLoading}
-      lineNumber={lineNumber}
+      lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onOpenInEditor={onOpenInEditor}
       statusLabel={statusLabel}
@@ -346,7 +364,7 @@ export function WorkspaceFilePreviewTabContent({
 export function HostFilePreviewTabContent({
   activePath,
   environmentId,
-  lineNumber,
+  lineRange,
   markdownLinkRouting,
   onOpenInEditor,
   threadId,
@@ -364,7 +382,7 @@ export function HostFilePreviewTabContent({
       filePreview={hostFilePreview}
       htmlPreviewUrl={buildRawFilesystemHtmlContentUrl(threadId, activePath)}
       isLoading={isHostFilePreviewLoading}
-      lineNumber={lineNumber}
+      lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onOpenInEditor={onOpenInEditor}
       statusLabel={null}
@@ -375,6 +393,7 @@ export function HostFilePreviewTabContent({
 export function ThreadStorageFilePreviewTabContent({
   activePath,
   copyPath = null,
+  lineRange,
   markdownLinkRouting,
   onOpenInEditor,
   threadId,
@@ -392,6 +411,7 @@ export function ThreadStorageFilePreviewTabContent({
       error={threadStorageFilePreviewError}
       filePreview={threadStorageFilePreview}
       isLoading={isThreadStorageFilePreviewLoading}
+      lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onOpenInEditor={onOpenInEditor}
       threadId={threadId}

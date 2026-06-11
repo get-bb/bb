@@ -71,7 +71,6 @@ describe("thread execution plan input sources", () => {
       upsertProjectExecutionDefaults(harness.deps.db, {
         projectId: project.id,
         providerId: "codex",
-        threadType: "standard",
         model: "gpt-5",
         reasoningLevel: "medium",
         permissionMode: "full",
@@ -85,7 +84,6 @@ describe("thread execution plan input sources", () => {
           model: "openai-codex/gpt-5.4",
           projectId: project.id,
           providerId: "pi",
-          threadType: "standard",
         },
       );
       const legacyExplicitValue = resolveProjectExecutionDefaultsForCreate(
@@ -94,7 +92,6 @@ describe("thread execution plan input sources", () => {
           model: "openai-codex/gpt-5.4",
           projectId: project.id,
           providerId: "pi",
-          threadType: "standard",
         },
       );
 
@@ -105,7 +102,7 @@ describe("thread execution plan input sources", () => {
     });
   });
 
-  it("uses server standard defaults when create metadata has no caller-owned provider or model", async () => {
+  it("uses server product defaults when create metadata has no caller-owned provider or model", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-source-aware-standard-product-defaults",
@@ -121,7 +118,6 @@ describe("thread execution plan input sources", () => {
           model: "openai-codex/gpt-5.4",
           projectId: project.id,
           providerId: "pi",
-          threadType: "standard",
         },
       );
 

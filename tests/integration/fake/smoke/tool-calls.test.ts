@@ -13,7 +13,7 @@ import {
 } from "./shared.js";
 
 describe.sequential("fake provider tool-call integration", () => {
-  it("resolves unresolved provider turn ids before dynamic tool calls reach the server", () =>
+  it("resolves unresolved provider turn ids before tool results unblock the provider", () =>
     withHarness(async (harness) => {
       const project = await createProjectFixture(
         harness,
@@ -28,12 +28,12 @@ describe.sequential("fake provider tool-call integration", () => {
       });
 
       await sendTextMessage(harness.api, thread.id, {
-        text: "call_tool_unresolved:message_user",
+        text: "call_tool_unresolved:notify_user",
       });
-      const managerMessageEvent = await waitForEventType(
+      const completedEvent = await waitForEventType(
         harness.api,
         thread.id,
-        "system/manager/user_message",
+        "turn/completed",
         TURN_TIMEOUT_MS,
       );
       await waitForThreadStatus(
@@ -43,11 +43,9 @@ describe.sequential("fake provider tool-call integration", () => {
         TURN_TIMEOUT_MS,
       );
 
-      const resolvedTurnId = getThreadEventScopeTurnId(
-        managerMessageEvent.scope,
-      );
+      const resolvedTurnId = getThreadEventScopeTurnId(completedEvent.scope);
       if (!resolvedTurnId) {
-        throw new Error("Expected manager message to be turn-scoped");
+        throw new Error("Expected completed tool turn to be turn-scoped");
       }
 
       const events = await getThreadEvents(harness.api, thread.id);
@@ -62,10 +60,6 @@ describe.sequential("fake provider tool-call integration", () => {
         );
       }
 
-      expect(turnStartedEvent.seq).toBeLessThan(managerMessageEvent.seq);
-      expect(managerMessageEvent.data).toMatchObject({
-        text: "Fake provider message",
-        toolCallId: "call-1",
-      });
+      expect(turnStartedEvent.seq).toBeLessThan(completedEvent.seq);
     }));
 });

@@ -46,20 +46,6 @@ export type LiveHostCommandFailureResultReportForType<
   errorMessage: string;
 };
 
-type LiveHostCommandSuccessResultReportByType = {
-  [TType in HostDaemonSettledCommandType]:
-    LiveHostCommandSuccessResultReportForType<TType>;
-};
-
-type LiveHostCommandFailureResultReportByType = {
-  [TType in HostDaemonSettledCommandType]:
-    LiveHostCommandFailureResultReportForType<TType>;
-};
-
-export type LiveHostCommandResultReport =
-  | LiveHostCommandSuccessResultReportByType[HostDaemonSettledCommandType]
-  | LiveHostCommandFailureResultReportByType[HostDaemonSettledCommandType];
-
 export type HostDaemonCommandForType<
   TType extends HostDaemonSettledCommandType,
 > = Extract<HostDaemonCommand, { type: TType }>;

@@ -152,7 +152,7 @@ describe("ThreadStorageFilePreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: "/storage/thr_1/plan.md",
     });
   });
@@ -166,14 +166,14 @@ describe("ThreadStorageFilePreview", () => {
           path: "reports/preview.html",
         })}
         isLoading={false}
-        threadId="thr_manager"
+        threadId="thr_parent"
       />,
     );
 
     const iframe = container.querySelector("iframe");
     expect(iframe).not.toBeNull();
     expect(iframe?.getAttribute("src")).toBe(
-      "/api/v1/threads/thr_manager/thread-storage/files/reports/preview.html",
+      "/api/v1/threads/thr_parent/thread-storage/files/reports/preview.html",
     );
     expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
     expect(iframe?.getAttribute("srcdoc")).toBeNull();

@@ -8,7 +8,7 @@ function notifyLabel(operationStatus: HeaderProps["operationStatus"]): string {
   if (operationStatus === "sent") {
     return "Sent";
   }
-  return "Notify manager";
+  return "Send status";
 }
 
 export function Header(props: HeaderProps) {
@@ -31,7 +31,7 @@ export function Header(props: HeaderProps) {
           type="button"
           disabled={notifyDisabled}
           onClick={() => {
-            void props.onNotifyManager();
+            void props.onSendStatusUpdate();
           }}
         >
           <Send size={14} strokeWidth={2} aria-hidden="true" />

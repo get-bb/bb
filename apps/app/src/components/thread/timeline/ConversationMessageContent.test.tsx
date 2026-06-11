@@ -1,10 +1,38 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import type { PromptMentionResource } from "@bb/domain";
 import { ConversationMessageContent } from "./ConversationMessageContent";
 import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits";
+import {
+  installDriveableResizeObserver,
+  installElementOverflowMetrics,
+  restoreElementOverflowMetrics,
+} from "./conversation-message-overflow.test-utils";
+import { AppRouteNavigationProvider } from "@/components/ui/app-route-anchor";
+
+interface LocationProbeProps {
+  label: string;
+}
+
+function LocationProbe({ label }: LocationProbeProps) {
+  const location = useLocation();
+  return (
+    <span data-testid={label}>
+      {location.pathname}
+      {location.search}
+      {location.hash}
+    </span>
+  );
+}
 
 afterEach(() => {
   cleanup();
@@ -34,6 +62,29 @@ describe("ConversationMessageContent", () => {
     expect(notDefaultPrevented).toBe(false);
   });
 
+  it("routes assistant local file links with line fragments through onOpenLocalFileLink", () => {
+    const onOpenLocalFileLink = vi.fn(() => true);
+    render(
+      <ConversationMessageContent
+        role="assistant"
+        attachments={null}
+        text="[File](file:///Users/michael/.bb-dev/projects-bb-492f14c06eb6/worktrees/env_ncc55uc2cs/bb/apps/app/src/components/sidebar/ProjectList.test.tsx#L327-L330)"
+        turnRequest={null}
+        onOpenLocalFileLink={onOpenLocalFileLink}
+      />,
+    );
+
+    const notDefaultPrevented = fireEvent.click(
+      screen.getByRole("link", { name: "File" }),
+    );
+
+    expect(onOpenLocalFileLink).toHaveBeenCalledWith({
+      lineRange: { startLineNumber: 327, endLineNumber: 330 },
+      path: "/Users/michael/.bb-dev/projects-bb-492f14c06eb6/worktrees/env_ncc55uc2cs/bb/apps/app/src/components/sidebar/ProjectList.test.tsx",
+    });
+    expect(notDefaultPrevented).toBe(false);
+  });
+
   it("renders user message content as plain text with no link surface", () => {
     render(
       <ConversationMessageContent
@@ -56,6 +107,13 @@ describe("ConversationMessageContent", () => {
   });
 
   it("renders user message thread mentions as router links", () => {
+    const token = "@thread:thr_parent";
+    const resource: PromptMentionResource = {
+      kind: "thread",
+      threadId: "thr_parent",
+      projectId: "proj_target",
+      label: "Prompt UX thread",
+    };
     render(
       <MemoryRouter>
         <ConversationMessageContent
@@ -67,32 +125,32 @@ describe("ConversationMessageContent", () => {
           mentions={[
             {
               start: 4,
-              end: 22,
-              resource: {
-                kind: "thread",
-                threadId: "thr_manager",
-                projectId: "proj_target",
-                threadType: "manager",
-                label: "Prompt UX manager",
-              },
+              end: `Ask ${token}`.length,
+              resource,
             },
           ]}
           projectId="proj_current"
-          text="Ask @thread:thr_manager to review this."
+          text={`Ask ${token} to review this.`}
           turnRequest={{ kind: "message", status: "accepted" }}
         />
       </MemoryRouter>,
     );
 
-    // The mention type ("Manager") now renders as a leading icon, so the
-    // pill's accessible name is the resource label; the full prefixed form
-    // stays available as the title/tooltip.
+    // The pill's accessible name is the resource label; the serialized form
+    // stays available as data attributes for editor round-tripping.
     const mention = screen.getByRole("link", {
-      name: "Prompt UX manager",
+      name: "Prompt UX thread",
     });
-    expect(mention.getAttribute("title")).toBe("Manager: Prompt UX manager");
+    expect(mention.getAttribute("title")).toBe("Thread: Prompt UX thread");
     expect(mention.getAttribute("href")).toBe(
-      "/projects/proj_target/threads/thr_manager",
+      "/projects/proj_target/threads/thr_parent",
+    );
+    expect(mention.getAttribute("data-prompt-mention")).toBe("true");
+    expect(
+      mention.getAttribute("data-prompt-mention-serialized-text"),
+    ).toBe(token);
+    expect(mention.getAttribute("data-prompt-mention-resource")).toBe(
+      JSON.stringify(resource),
     );
   });
 
@@ -154,7 +212,6 @@ describe("ConversationMessageContent", () => {
                 kind: "thread",
                 threadId: "thr_boundary",
                 projectId: "proj_boundary",
-                threadType: "standard",
                 label: "Boundary thread",
               },
             },
@@ -171,53 +228,204 @@ describe("ConversationMessageContent", () => {
     expect(screen.queryByRole("link", { name: "Boundary thread" })).toBeNull();
   });
 
-  it("renders agent-originated messages as expandable timeline rows and hides bb reply guidance", () => {
+  it("expands a multi-line agent-originated row, routes the sender link, and hides bb chrome from the rendered body", () => {
+    const messageBody =
+      "Line 1\nLine 2\nLine 3\nLine 4\nAdditional details that make this generated message long enough to expand.";
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppRouteNavigationProvider>
+          <ConversationMessageContent
+            role="user"
+            initiator="agent"
+            resolveSegmentLinkHref={(link) => {
+              switch (link.kind) {
+                case "thread":
+                  return `/projects/proj_123/threads/${link.threadId}`;
+                default:
+                  return null;
+              }
+            }}
+            senderThreadId="thr_sender123"
+            senderThreadTitle="Frontend thread"
+            attachments={null}
+            mentions={[]}
+            text={`[bb message from thread:thr_sender123]\n\n${messageBody}`}
+            turnRequest={{ kind: "message", status: "accepted" }}
+          />
+          <LocationProbe label="location" />
+        </AppRouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    const toggle = screen.getByRole("button", {
+      name: /Message from Frontend thread/u,
+    });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    // Clicking the sender thread link navigates and does NOT also toggle the
+    // row — this is the AppRouteAnchor stopPropagation contract that lets a
+    // <a> live inside the header <button> without HTML's nested-button
+    // restriction surfacing as a UX bug.
+    const senderLink = screen.getByRole("link", { name: "Frontend thread" });
+    expect(senderLink.getAttribute("href")).toBe(
+      "/projects/proj_123/threads/thr_sender123",
+    );
+    expect(fireEvent.click(senderLink)).toBe(false);
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/projects/proj_123/threads/thr_sender123",
+    );
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    // Body should expose all body lines and strip the bb prefix from the
+    // rendered text — the prefix is chrome for the writer, not the reader.
+    expect(screen.getAllByText(/Line 4/u).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/\[bb message from thread/u)).toBeNull();
+  });
+
+  it("renders short agent-originated messages as static rows with no expansion affordance", () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppRouteNavigationProvider>
+          <ConversationMessageContent
+            role="user"
+            initiator="agent"
+            resolveSegmentLinkHref={(link) => {
+              switch (link.kind) {
+                case "thread":
+                  return `/projects/proj_123/threads/${link.threadId}`;
+                default:
+                  return null;
+              }
+            }}
+            senderThreadId="thr_sender123"
+            senderThreadTitle="Frontend thread"
+            attachments={null}
+            mentions={[]}
+            text={"[bb message from thread:thr_sender123]\n\nDone."}
+            turnRequest={{ kind: "message", status: "accepted" }}
+          />
+        </AppRouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.queryByRole("button", {
+        name: /Message from Frontend thread/u,
+      }),
+    ).toBeNull();
+    expect(screen.getByText("Done.")).toBeTruthy();
+  });
+
+  it(
+    // Regression: a long one-line agent-originated body must stay expanded
+    // after the collapsed preview detaches (mid-click, the ResizeObserver
+    // would otherwise fire against the detached node and the row would
+    // collapse itself before the user saw the body).
+    "expands a one-line agent-originated body on click and stays expanded after the post-click resize tick",
+    () => {
+      const descriptors = installElementOverflowMetrics({
+        clientHeight: 20,
+        scrollHeight: 20,
+        clientWidth: 100,
+        scrollWidth: 200,
+      });
+      const resizeObserver = installDriveableResizeObserver();
+      const messageBody =
+        "Reviewed, validated, and landed onto local main as commit fc3a5b7. No further edits needed. This stays on one physical line even when the preview truncates in a narrow story frame.";
+      try {
+        render(
+          <MemoryRouter initialEntries={["/"]}>
+            <AppRouteNavigationProvider>
+              <ConversationMessageContent
+                role="user"
+                initiator="agent"
+                resolveSegmentLinkHref={(link) => {
+                  switch (link.kind) {
+                    case "thread":
+                      return `/projects/proj_123/threads/${link.threadId}`;
+                  }
+                  return null;
+                }}
+                senderThreadId="thr_sender123"
+                senderThreadTitle="Frontend thread"
+                attachments={null}
+                mentions={[]}
+                text={`[bb message from thread:thr_sender123]\n\n${messageBody}`}
+                turnRequest={{ kind: "message", status: "accepted" }}
+              />
+            </AppRouteNavigationProvider>
+          </MemoryRouter>,
+        );
+
+        const getTitleToggle = () =>
+          screen.getByRole("button", {
+            name: /Message from Frontend thread/u,
+          });
+        expect(getTitleToggle().getAttribute("aria-expanded")).toBe("false");
+
+        fireEvent.click(screen.getByRole("button", { name: /Reviewed/u }));
+
+        expect(getTitleToggle().getAttribute("aria-expanded")).toBe("true");
+        expect(screen.getByText(messageBody)).toBeTruthy();
+
+        // Simulate the browser firing the ResizeObserver after the collapsed
+        // preview unmounted (its node is now detached). Before the fix, this
+        // callback reported "fits" → `expandable` collapsed to false → the
+        // title turned back into a non-button div and the toggle disappeared.
+        act(() => {
+          resizeObserver.triggerAll();
+        });
+
+        expect(getTitleToggle().getAttribute("aria-expanded")).toBe("true");
+        // And the user can still collapse it back.
+        fireEvent.click(getTitleToggle());
+        expect(getTitleToggle().getAttribute("aria-expanded")).toBe("false");
+      } finally {
+        resizeObserver.restore();
+        restoreElementOverflowMetrics(descriptors);
+      }
+    },
+  );
+
+  it("renders one-line system messages with mention pills as static generated rows", () => {
+    const token = "@thread:thr_target";
+    const text = `[bb system]\n\n${token} completed.`;
+    const start = text.indexOf(token);
+
     render(
       <MemoryRouter>
         <ConversationMessageContent
           role="user"
-          initiator="agent"
-          resolveSegmentLinkHref={(link) => {
-            switch (link.kind) {
-              case "thread":
-                return `/projects/proj_123/threads/${link.threadId}`;
-            }
-          }}
-          senderThreadId="thr_sender123"
-          senderThreadTitle="Frontend manager"
+          initiator="system"
+          senderThreadId={null}
+          senderThreadTitle={null}
           attachments={null}
-          mentions={[]}
-          text={
-            '[bb message from thread:thr_sender123; reply with `bb thread tell thr_sender123 "<your response>"`]\n\nLine 1\nLine 2\nLine 3\nLine 4'
-          }
+          mentions={[
+            {
+              start,
+              end: start + token.length,
+              resource: {
+                kind: "thread",
+                threadId: "thr_target",
+                projectId: "proj_target",
+                label: "Worker thread",
+              },
+            },
+          ]}
+          text={text}
           turnRequest={{ kind: "message", status: "accepted" }}
         />
       </MemoryRouter>,
     );
 
     expect(
-      screen.getByRole("button", {
-        name: /Message from Frontend manager/u,
-      }),
-    ).toBeTruthy();
-    const senderLink = screen.getByRole("link", {
-      name: "Frontend manager",
-    });
-    expect(senderLink.getAttribute("href")).toBe(
-      "/projects/proj_123/threads/thr_sender123",
-    );
-    expect(screen.queryByText(/Line 4/u)).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /Message from Frontend manager/u,
-      }),
-    );
-
-    expect(screen.queryByText("thr_sender123")).toBeNull();
-    expect(screen.queryByText(/\[bb message from thread/u)).toBeNull();
-    expect(screen.queryByText(/bb thread tell/u)).toBeNull();
-    expect(screen.getByText(/Line 4/u)).toBeTruthy();
+      screen.queryByRole("button", { name: "System Message" }),
+    ).toBeNull();
+    expect(screen.getByRole("link", { name: "Worker thread" })).toBeTruthy();
+    expect(screen.getByText("completed.")).toBeTruthy();
   });
 
   it("renders generated agent steer status inside the expanded body", () => {
@@ -226,32 +434,32 @@ describe("ConversationMessageContent", () => {
         role="user"
         initiator="agent"
         senderThreadId="thr_sender123"
-        senderThreadTitle="Frontend manager"
+        senderThreadTitle="Frontend thread"
         attachments={null}
         mentions={[]}
         text={
-          '[bb message from thread:thr_sender123; reply with `bb thread tell thr_sender123 "<your response>"`]\n\nAgent-to-agent status update.'
+          "[bb message from thread:thr_sender123]\n\nAgent-to-agent status update."
         }
         turnRequest={{ kind: "steer", status: "accepted" }}
       />,
     );
 
     expect(
-      screen.getByRole("button", { name: "Message from Frontend manager" }),
+      screen.getByRole("button", { name: "Message from Frontend thread" }),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /steer/u })).toBeNull();
-    expect(screen.queryByText("steer")).toBeNull();
+    expect(screen.queryByRole("button", { name: /steer/iu })).toBeNull();
+    expect(screen.queryByText("Steer")).toBeNull();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Message from Frontend manager" }),
+      screen.getByRole("button", { name: "Message from Frontend thread" }),
     );
 
-    expect(screen.getByText("steer")).toBeTruthy();
+    expect(screen.getByText("Steer")).toBeTruthy();
   });
 
-  it("renders mention pills in expanded agent-originated rows with shifted offsets", () => {
+  it("renders mention pills in agent-originated rows with shifted offsets", () => {
     const token = "@thread:thr_target";
-    const text = `[bb message from thread:thr_sender123; reply with \`bb thread tell thr_sender123 "<your response>"\`]\n\nAsk ${token} to review.`;
+    const text = `[bb message from thread:thr_sender123]\n\nAsk ${token} to review the parent-thread cleanup details and confirm the route copy still reads clearly.`;
     const start = text.indexOf(token);
 
     render(
@@ -263,10 +471,12 @@ describe("ConversationMessageContent", () => {
             switch (link.kind) {
               case "thread":
                 return `/projects/proj_current/threads/${link.threadId}`;
+              default:
+                return null;
             }
           }}
           senderThreadId="thr_sender123"
-          senderThreadTitle="Frontend manager"
+          senderThreadTitle="Frontend thread"
           attachments={null}
           mentions={[
             {
@@ -276,7 +486,6 @@ describe("ConversationMessageContent", () => {
                 kind: "thread",
                 threadId: "thr_target",
                 projectId: "proj_target",
-                threadType: "standard",
                 label: "API planning",
               },
             },
@@ -287,16 +496,11 @@ describe("ConversationMessageContent", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /Message from Frontend manager/u,
-      }),
-    );
-
     const mention = screen.getByRole("link", { name: "API planning" });
     expect(mention.getAttribute("href")).toBe(
       "/projects/proj_target/threads/thr_target",
     );
+    expect(screen.queryByText(/\[bb message from thread/u)).toBeNull();
     expect(screen.queryByText(token)).toBeNull();
   });
 

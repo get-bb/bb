@@ -230,6 +230,12 @@ interface CloseThreadSessionArgs {
   threadId: string;
 }
 
+interface StartPiThreadSessionArgs {
+  id: string | number;
+  params: PiSessionParams;
+  threadId: string;
+}
+
 interface PiThreadStopResult {
   ok: true;
 }
@@ -586,12 +592,11 @@ async function handleModelList(id: string | number): Promise<void> {
   }
 }
 
-async function handleThreadStart(
-  id: string | number,
-  params: ThreadStartParams,
-): Promise<void> {
-  const threadId = params.threadId ?? `pi-${Date.now()}`;
-
+async function startPiThreadSession({
+  id,
+  params,
+  threadId,
+}: StartPiThreadSessionArgs): Promise<void> {
   // Stop existing session for this thread if any
   const existing = sessions.get(threadId);
   if (existing) {
@@ -632,6 +637,14 @@ async function handleThreadStart(
   }
 
   sendResult(id, { threadId });
+}
+
+async function handleThreadStart(
+  id: string | number,
+  params: ThreadStartParams,
+): Promise<void> {
+  const threadId = params.threadId ?? `pi-${Date.now()}`;
+  await startPiThreadSession({ id, params, threadId });
   send({
     jsonrpc: "2.0",
     method: "thread/identity",
@@ -643,48 +656,7 @@ async function handleThreadResume(
   id: string | number,
   params: ThreadResumeParams,
 ): Promise<void> {
-  const threadId = params.threadId;
-
-  // Stop existing session for this thread if any
-  const existing = sessions.get(threadId);
-  if (existing) {
-    await closeThreadSession({
-      message: "Pi thread session replaced while tool call was pending",
-      threadId,
-    });
-  }
-
-  const shellEnvOverrides = extractEnvOverrides(params.config);
-  const sessionOptions = buildSessionOptions({
-    params: buildPiSessionParams(params),
-    shellEnvOverrides,
-    threadId,
-  });
-  applyDynamicTools(sessionOptions, params.dynamicTools, threadId);
-
-  const sessionSerial = nextSessionSerial();
-  const session = new PiSdkSession(
-    sessionOptions,
-    createOnPiEvent({ sessionSerial, threadId }),
-    createOnSessionDone({ sessionSerial, threadId }),
-  );
-
-  const threadSession: ThreadSession = {
-    session,
-    sessionSerial,
-    stopping: false,
-    pendingToolCalls: new Map(),
-  };
-  sessions.set(threadId, threadSession);
-
-  try {
-    await session.start();
-  } catch (error) {
-    removeThreadSessionIfCurrent({ sessionSerial, threadId });
-    throw error;
-  }
-
-  sendResult(id, { threadId });
+  await startPiThreadSession({ id, params, threadId: params.threadId });
 }
 
 async function handleTurnStart(

@@ -10,6 +10,7 @@ import { ApiError } from "../../errors.js";
 import { runLiveCommandAndWait } from "../hosts/live-command-wait.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
+import { backsHostDaemonAiServices } from "./host-daemon-ai-provider.js";
 
 interface TranscribeVoiceInputArgs {
   file: File;
@@ -18,7 +19,6 @@ interface TranscribeVoiceInputArgs {
 
 type OptionalJsonValue = JsonValue | null | undefined;
 
-const CODEX_TRANSCRIPTION_PROVIDER = "codex";
 const OPENAI_TRANSCRIPTION_PROVIDER = "openai";
 const VOICE_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024;
 const CODEX_VOICE_TRANSCRIPTION_ATTEMPT_TIMEOUT_MS = 10_000;
@@ -48,7 +48,7 @@ export function resolveVoiceTranscriptionEnabled(
   deps: LoggedWorkSessionDeps,
 ): boolean {
   const modelInfo = parseTranscriptionModel(deps.config.transcriptionModel);
-  if (modelInfo.provider === CODEX_TRANSCRIPTION_PROVIDER) {
+  if (backsHostDaemonAiServices(modelInfo.provider)) {
     return isCodexVoiceTranscriptionAvailable(deps);
   }
   if (modelInfo.provider === OPENAI_TRANSCRIPTION_PROVIDER) {
@@ -279,7 +279,7 @@ export async function transcribeVoiceInput(
   }
 
   const modelInfo = parseTranscriptionModel(deps.config.transcriptionModel);
-  if (modelInfo.provider === CODEX_TRANSCRIPTION_PROVIDER) {
+  if (backsHostDaemonAiServices(modelInfo.provider)) {
     return transcribeWithCodexHostDaemon(deps, modelInfo, args);
   }
   if (modelInfo.provider === OPENAI_TRANSCRIPTION_PROVIDER) {

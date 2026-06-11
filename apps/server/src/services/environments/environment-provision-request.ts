@@ -15,9 +15,6 @@ export type DirectEnvironmentProvisionRequest = z.infer<
   typeof directEnvironmentProvisionRequestSchema
 >;
 
-export const environmentProvisionRequestSchema =
-  directEnvironmentProvisionRequestSchema;
-
 export type EnvironmentProvisionRequest = DirectEnvironmentProvisionRequest;
 
 export interface BuildDirectEnvironmentProvisionRequestArgs {

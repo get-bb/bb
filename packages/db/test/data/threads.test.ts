@@ -27,7 +27,6 @@ import {
   markThreadStopRequested,
   pinThread,
   reorderPinnedThread,
-  reorderManagerThread,
   unpinThread,
   unarchiveThread,
   transitionThreadStatus,
@@ -115,42 +114,6 @@ describe("threads", () => {
     });
   });
 
-  it("orders and reorders active manager threads by sort key", () => {
-    const { db, project } = setup();
-    const firstManager = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      type: "manager",
-    });
-    const secondManager = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      type: "manager",
-    });
-
-    expect(
-      listThreads(db, { projectId: project.id, type: "manager" }).map(
-        (thread) => thread.id,
-      ),
-    ).toEqual([secondManager.id, firstManager.id]);
-
-    const result = reorderManagerThread({
-      db,
-      notifier: noopNotifier,
-      projectId: project.id,
-      threadId: firstManager.id,
-      previousThreadId: null,
-      nextThreadId: secondManager.id,
-    });
-
-    expect(result.kind).toBe("reordered");
-    expect(
-      listThreads(db, { projectId: project.id, type: "manager" }).map(
-        (thread) => thread.id,
-      ),
-    ).toEqual([firstManager.id, secondManager.id]);
-  });
-
   it("pins and unpins threads with durable pin order keys", () => {
     vi.useFakeTimers();
     try {
@@ -162,6 +125,7 @@ describe("threads", () => {
         notifyHost: vi.fn(),
         notifyProject: vi.fn(),
         notifySystem: vi.fn(),
+        notifyWorkflowRun: vi.fn(),
       };
       const thread = createThread(db, noopNotifier, {
         projectId: project.id,
@@ -198,46 +162,39 @@ describe("threads", () => {
   });
 
   it("orders pinned threads before unpinned siblings", () => {
-    const { db, project } = setup();
-    const firstManager = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      type: "manager",
-    });
-    const secondManager = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      type: "manager",
-    });
-    const firstStandard = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const secondStandard = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
+    vi.useFakeTimers();
+    try {
+      const { db, project } = setup();
+      vi.setSystemTime(1_000);
+      const first = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      vi.setSystemTime(2_000);
+      const second = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      vi.setSystemTime(3_000);
+      const third = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      vi.setSystemTime(4_000);
+      const fourth = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
 
-    pinThread(db, noopNotifier, { threadId: firstManager.id });
-    pinThread(db, noopNotifier, { threadId: firstStandard.id });
+      pinThread(db, noopNotifier, { threadId: first.id });
+      pinThread(db, noopNotifier, { threadId: third.id });
 
-    expect(
-      listThreads(db, { projectId: project.id, type: "manager" }).map(
-        (thread) => thread.id,
-      ),
-    ).toEqual([firstManager.id, secondManager.id]);
-    expect(
-      listThreads(db, { projectId: project.id, type: "standard" }).map(
-        (thread) => thread.id,
-      ),
-    ).toEqual([firstStandard.id, secondStandard.id]);
-    expect(listThreads(db, { projectId: project.id }).map((thread) => thread.id))
-      .toEqual([
-        firstManager.id,
-        secondManager.id,
-        firstStandard.id,
-        secondStandard.id,
-      ]);
+      expect(
+        listThreads(db, { projectId: project.id }).map((thread) => thread.id),
+      ).toEqual([third.id, first.id, fourth.id, second.id]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reorders active visible pinned roots globally", () => {
@@ -293,18 +250,17 @@ describe("threads", () => {
       projectId: project.id,
       providerId: "codex",
     });
-    const otherManager = createThread(db, noopNotifier, {
+    const pinnedParent = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      type: "manager",
     });
     const pinnedChild = createThread(db, noopNotifier, {
-      parentThreadId: otherManager.id,
+      parentThreadId: pinnedParent.id,
       projectId: project.id,
       providerId: "codex",
     });
     pinThread(db, noopNotifier, { threadId: pinned.id });
-    pinThread(db, noopNotifier, { threadId: otherManager.id });
+    pinThread(db, noopNotifier, { threadId: pinnedParent.id });
     pinThread(db, noopNotifier, { threadId: pinnedChild.id });
 
     expect(
@@ -345,117 +301,6 @@ describe("threads", () => {
     ).toBe("stale_neighbor");
   });
 
-  it("returns unchanged when manager thread order already matches neighboring threads", () => {
-    const { db, project } = setup();
-    const firstManager = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      type: "manager",
-    });
-    const secondManager = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      type: "manager",
-    });
-
-    const result = reorderManagerThread({
-      db,
-      notifier: noopNotifier,
-      projectId: project.id,
-      threadId: secondManager.id,
-      previousThreadId: null,
-      nextThreadId: firstManager.id,
-    });
-
-    expect(result.kind).toBe("unchanged");
-    if (result.kind !== "unchanged") {
-      throw new Error(`Expected unchanged reorder, received ${result.kind}`);
-    }
-    expect(result.threads.map((thread) => thread.id)).toEqual([
-      secondManager.id,
-      firstManager.id,
-    ]);
-  });
-
-  it("returns not_found when reordering a missing manager thread", () => {
-    const { db, project } = setup();
-
-    expect(
-      reorderManagerThread({
-        db,
-        notifier: noopNotifier,
-        projectId: project.id,
-        threadId: "thr_missing",
-        previousThreadId: null,
-        nextThreadId: null,
-      }).kind,
-    ).toBe("not_found");
-  });
-
-  it("rejects manager reorder neighbors that are in reverse order", () => {
-    const { db, project } = setup();
-    const firstManager = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      type: "manager",
-    });
-    const secondManager = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      type: "manager",
-    });
-    const thirdManager = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      type: "manager",
-    });
-
-    expect(
-      reorderManagerThread({
-        db,
-        notifier: noopNotifier,
-        projectId: project.id,
-        threadId: firstManager.id,
-        previousThreadId: secondManager.id,
-        nextThreadId: thirdManager.id,
-      }).kind,
-    ).toBe("invalid_neighbor_order");
-    expect(
-      listThreads(db, { projectId: project.id, type: "manager" }).map(
-        (thread) => thread.id,
-      ),
-    ).toEqual([thirdManager.id, secondManager.id, firstManager.id]);
-  });
-
-  it("rejects manager reorder neighbors from another project", () => {
-    const { db, host, project } = setup();
-    const { project: otherProject } = createProject(db, noopNotifier, {
-      name: "other-project",
-      source: { type: "local_path", hostId: host.id, path: "/tmp/other" },
-    });
-    const manager = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      type: "manager",
-    });
-    const otherManager = createThread(db, noopNotifier, {
-      projectId: otherProject.id,
-      providerId: "codex",
-      type: "manager",
-    });
-
-    expect(
-      reorderManagerThread({
-        db,
-        notifier: noopNotifier,
-        projectId: project.id,
-        threadId: manager.id,
-        previousThreadId: otherManager.id,
-        nextThreadId: null,
-      }).kind,
-    ).toBe("stale_neighbor");
-  });
-
   it("lists threads by project", () => {
     const { db, project } = setup();
     createThread(db, noopNotifier, {
@@ -488,12 +333,11 @@ describe("threads", () => {
     expect(listThreads(db, { projectId: otherProject.id })).toHaveLength(1);
   });
 
-  it("filters threads by type, parent thread, and archived state", () => {
+  it("filters threads by parent thread and archived state", () => {
     const { db, project } = setup();
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      type: "manager",
     });
     const child = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -503,13 +347,9 @@ describe("threads", () => {
     createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      type: "manager",
     });
     archiveThread(db, noopNotifier, child.id);
 
-    expect(
-      listThreads(db, { projectId: project.id, type: "manager" }),
-    ).toHaveLength(2);
     expect(
       listThreads(db, { projectId: project.id, parentThreadId: parent.id }),
     ).toHaveLength(1);
@@ -521,12 +361,11 @@ describe("threads", () => {
     ).toHaveLength(2);
   });
 
-  it("filters threads by managed state", () => {
+  it("filters threads by parent presence", () => {
     const { db, project } = setup();
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      type: "manager",
     });
     const child = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -538,19 +377,19 @@ describe("threads", () => {
       providerId: "codex",
     });
 
-    const managed = listThreads(db, {
+    const childThreads = listThreads(db, {
       projectId: project.id,
-      managed: true,
+      hasParent: true,
     });
-    expect(managed).toHaveLength(1);
-    expect(managed[0]?.id).toBe(child.id);
+    expect(childThreads).toHaveLength(1);
+    expect(childThreads[0]?.id).toBe(child.id);
 
-    const unmanaged = listThreads(db, {
+    const rootThreads = listThreads(db, {
       projectId: project.id,
-      managed: false,
+      hasParent: false,
     });
-    expect(unmanaged).toHaveLength(2);
-    expect(unmanaged.map((thread) => thread.id)).toContain(parent.id);
+    expect(rootThreads).toHaveLength(2);
+    expect(rootThreads.map((thread) => thread.id)).toContain(parent.id);
   });
 
   it("paginates archived threads ordered by archive recency", async () => {
@@ -599,7 +438,6 @@ describe("threads", () => {
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      type: "manager",
     });
     createThread(db, noopNotifier, {
       projectId: project.id,
@@ -619,7 +457,6 @@ describe("threads", () => {
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      type: "manager",
     });
     const archivedChild = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -641,7 +478,6 @@ describe("threads", () => {
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      type: "manager",
     });
     const deletedChild = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -663,12 +499,10 @@ describe("threads", () => {
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      type: "manager",
     });
     const otherParent = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      type: "manager",
     });
     createThread(db, noopNotifier, {
       projectId: project.id,
@@ -773,7 +607,7 @@ describe("threads", () => {
     expect(updated?.title).toBe("New title");
   });
 
-  it("notifies when a thread manager assignment changes", () => {
+  it("notifies when a thread parent changes", () => {
     const { db, project } = setup();
     const spy: DbNotifier = {
       notifyThread: vi.fn(),
@@ -781,8 +615,9 @@ describe("threads", () => {
       notifyHost: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
+      notifyWorkflowRun: vi.fn(),
     };
-    const managerThread = createThread(db, noopNotifier, {
+    const parentThread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
     });
@@ -792,12 +627,12 @@ describe("threads", () => {
     });
 
     updateThread(db, spy, childThread.id, {
-      parentThreadId: managerThread.id,
+      parentThreadId: parentThread.id,
     });
 
     expect(spy.notifyThread).toHaveBeenCalledWith(
       childThread.id,
-      ["manager-assignment-changed"],
+      ["parent-changed"],
       { projectId: project.id },
     );
   });
@@ -866,6 +701,7 @@ describe("threads", () => {
         notifyHost: vi.fn(),
         notifyProject: vi.fn(),
         notifySystem: vi.fn(),
+        notifyWorkflowRun: vi.fn(),
       };
       const thread = createThread(db, noopNotifier, {
         projectId: project.id,
@@ -1418,26 +1254,30 @@ describe("transitionThreadStatus", () => {
     }
   });
 
-  it("does not mark manager completion as unread by itself", () => {
+  it("does not mark child thread completion as unread by itself", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(1_000);
       const { db, project } = setup();
-      const managerThread = createThread(db, noopNotifier, {
+      const parentThread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const childThread = createThread(db, noopNotifier, {
+        parentThreadId: parentThread.id,
         projectId: project.id,
         providerId: "codex",
         status: "active",
-        type: "manager",
       });
-      updateThread(db, noopNotifier, managerThread.id, {
-        lastReadAt: managerThread.latestAttentionAt,
+      updateThread(db, noopNotifier, childThread.id, {
+        lastReadAt: childThread.latestAttentionAt,
       });
 
       vi.setSystemTime(2_000);
       const idleThread = transitionThreadStatus(
         db,
         noopNotifier,
-        managerThread.id,
+        childThread.id,
         "idle",
       );
 
@@ -1486,6 +1326,7 @@ describe("transitionThreadStatus", () => {
       notifyHost: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
+      notifyWorkflowRun: vi.fn(),
     };
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,

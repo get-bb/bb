@@ -5,12 +5,10 @@ describe("listClaudeCodeModels", () => {
   it("returns the full static Claude Code catalog with version-pinned models", () => {
     const { models } = listClaudeCodeModels();
     expect(models.map((model) => model.model)).toEqual([
+      "claude-fable-5",
+      "claude-mythos-5",
       "claude-opus-4-8[1m]",
-      "claude-opus-4-8",
       "claude-opus-4-7[1m]",
-      "claude-opus-4-7",
-      "claude-opus-4-6[1m]",
-      "claude-opus-4-6",
       "claude-sonnet-4-6[1m]",
       "claude-sonnet-4-6",
       "claude-haiku-4-5",
@@ -19,7 +17,7 @@ describe("listClaudeCodeModels", () => {
 
   it("defaults to Opus 1M", () => {
     const { models } = listClaudeCodeModels();
-    expect(models[0]).toEqual(
+    expect(models.find((model) => model.isDefault)).toEqual(
       expect.objectContaining({
         id: "claude-opus-4-8[1m]",
         model: "claude-opus-4-8[1m]",
@@ -29,14 +27,46 @@ describe("listClaudeCodeModels", () => {
     );
   });
 
-  it("keeps Opus 4.6 as an active option", () => {
-    const { models } = listClaudeCodeModels();
-    expect(models).toContainEqual(
+  it("routes non-active Opus models to the selected-only bucket", () => {
+    const { models, selectedOnlyModels } = listClaudeCodeModels();
+    expect(models.map((model) => model.model)).not.toContain(
+      "claude-opus-4-8",
+    );
+    expect(models.map((model) => model.model)).not.toContain(
+      "claude-opus-4-7",
+    );
+    expect(models.map((model) => model.model)).not.toContain(
+      "claude-opus-4-6",
+    );
+    expect(models.map((model) => model.model)).not.toContain(
+      "claude-opus-4-6[1m]",
+    );
+    expect(selectedOnlyModels).toContainEqual(
+      expect.objectContaining({
+        id: "claude-opus-4-8",
+        model: "claude-opus-4-8",
+        displayName: "Opus 4.8 (Legacy)",
+      }),
+    );
+    expect(selectedOnlyModels).toContainEqual(
+      expect.objectContaining({
+        id: "claude-opus-4-7",
+        model: "claude-opus-4-7",
+        displayName: "Opus 4.7 (Legacy)",
+      }),
+    );
+    expect(selectedOnlyModels).toContainEqual(
       expect.objectContaining({
         id: "claude-opus-4-6",
         model: "claude-opus-4-6",
-        displayName: "Opus 4.6",
-        isDefault: false,
+        displayName: "Opus 4.6 (Legacy)",
+      }),
+    );
+    expect(selectedOnlyModels).toContainEqual(
+      expect.objectContaining({
+        id: "claude-opus-4-6[1m]",
+        model: "claude-opus-4-6[1m]",
+        displayName: "Opus 4.6 (1M, Legacy)",
       }),
     );
   });
@@ -50,7 +80,7 @@ describe("listClaudeCodeModels", () => {
       ]),
     );
 
-    expect(effortLevelsByModel.get("claude-opus-4-8")).toEqual([
+    expect(effortLevelsByModel.get("claude-opus-4-8[1m]")).toEqual([
       "low",
       "medium",
       "high",
@@ -58,7 +88,7 @@ describe("listClaudeCodeModels", () => {
       "ultracode",
       "max",
     ]);
-    expect(effortLevelsByModel.get("claude-opus-4-7")).toEqual([
+    expect(effortLevelsByModel.get("claude-fable-5")).toEqual([
       "low",
       "medium",
       "high",
@@ -66,10 +96,20 @@ describe("listClaudeCodeModels", () => {
       "ultracode",
       "max",
     ]);
-    expect(effortLevelsByModel.get("claude-opus-4-6")).toEqual([
+    expect(effortLevelsByModel.get("claude-mythos-5")).toEqual([
       "low",
       "medium",
       "high",
+      "xhigh",
+      "ultracode",
+      "max",
+    ]);
+    expect(effortLevelsByModel.get("claude-opus-4-7[1m]")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "ultracode",
       "max",
     ]);
     expect(effortLevelsByModel.get("claude-sonnet-4-6")).toEqual([
@@ -80,13 +120,25 @@ describe("listClaudeCodeModels", () => {
     ]);
   });
 
-  it("routes legacy moving aliases to the selected-only bucket", () => {
+  it("routes inactive models and moving aliases to the selected-only bucket", () => {
     const { models, selectedOnlyModels } = listClaudeCodeModels();
     const activeIds = models.map((model) => model.model);
     const selectedOnlyIds = selectedOnlyModels.map((model) => model.model);
-    for (const alias of ["opus[1m]", "opus", "sonnet[1m]", "sonnet", "haiku"]) {
-      expect(activeIds).not.toContain(alias);
-      expect(selectedOnlyIds).toContain(alias);
+    for (const selectedOnlyModel of [
+      "claude-opus-4-8",
+      "claude-opus-4-7",
+      "claude-opus-4-6[1m]",
+      "claude-opus-4-6",
+      "best",
+      "fable",
+      "opus[1m]",
+      "opus",
+      "sonnet[1m]",
+      "sonnet",
+      "haiku",
+    ]) {
+      expect(activeIds).not.toContain(selectedOnlyModel);
+      expect(selectedOnlyIds).toContain(selectedOnlyModel);
     }
     expect(
       selectedOnlyModels.find((model) => model.model === "opus[1m]"),

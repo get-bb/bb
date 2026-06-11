@@ -31,7 +31,6 @@ const DRAFT_MENTION: PromptTextMention = {
     kind: "thread",
     threadId: "thr_prompt",
     projectId: "proj-1",
-    threadType: "standard",
     label: "Prompt review",
   },
 };
@@ -147,7 +146,6 @@ describe("usePromptDraftStorage", () => {
         kind: "thread",
         threadId: "thr_prompt",
         projectId: "proj-1",
-        threadType: "standard",
         label: "Prompt review",
       },
     };

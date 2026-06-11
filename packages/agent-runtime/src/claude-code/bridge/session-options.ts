@@ -17,6 +17,7 @@ export interface BuildSessionOptionsArgs {
   disallowedTools?: readonly string[];
   instructionMode: InstructionMode;
   model?: string;
+  outputFormat?: Options["outputFormat"];
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   plugins?: Options["plugins"];
@@ -41,6 +42,11 @@ const READONLY_ALLOWED_TOOLS = new Set([
   "Grep",
   "LS",
   "Read",
+  // StructuredOutput is the SDK's structured-response channel (outputFormat
+  // json_schema), not a capability: it mutates nothing, and gating it leaves
+  // approver-less sessions (workflow agents) retrying until
+  // error_max_structured_output_retries.
+  "StructuredOutput",
   "TodoRead",
 ]);
 const READONLY_BASH_TOOL_NAME = "Bash";
@@ -244,6 +250,7 @@ export function buildSessionOptions(
       : {}),
     ...(flagSettings ? { settings: flagSettings } : {}),
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
+    ...(params.outputFormat ? { outputFormat: params.outputFormat } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
     ...(sandbox ? { sandbox } : {}),
     ...(hooks ? { hooks } : {}),

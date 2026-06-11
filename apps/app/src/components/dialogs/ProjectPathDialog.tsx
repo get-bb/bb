@@ -34,6 +34,7 @@ interface ProjectPathDialogProps {
   target: ProjectPathDialogTarget | null;
   pending?: boolean;
   platform: HostPlatform | null;
+  hostName: string | null;
   onOpenChange: (open: boolean) => void;
   onSubmit: ProjectPathDialogSubmitHandler;
 }
@@ -42,6 +43,7 @@ export function ProjectPathDialog({
   target,
   pending = false,
   platform,
+  hostName,
   onOpenChange,
   onSubmit,
 }: ProjectPathDialogProps) {
@@ -54,6 +56,7 @@ export function ProjectPathDialog({
             target={target}
             pending={pending}
             platform={platform}
+            hostName={hostName}
             onSubmit={onSubmit}
           />
         ) : null}
@@ -66,6 +69,7 @@ export interface ProjectPathDialogContentProps {
   target: ProjectPathDialogTarget;
   pending: boolean;
   platform: HostPlatform | null;
+  hostName: string | null;
   onSubmit: ProjectPathDialogSubmitHandler;
 }
 
@@ -96,17 +100,22 @@ function getDialogSubmitLabel(kind: ProjectPathDialogTarget["kind"]): string {
   }
 }
 
-function getPlatformCopy(platform: HostPlatform | null): PlatformCopy {
+function getPlatformCopy(
+  platform: HostPlatform | null,
+  hostName: string | null,
+): PlatformCopy {
   const placeholder = "/path/to/project";
+  // The path is resolved on the host machine, not the device showing this
+  // dialog — name the host so remote users don't type a local path.
+  const hostSuffix = hostName ? ` on ${hostName}` : "";
   if (platform === "wsl") {
     return {
-      description:
-        "Enter an absolute WSL path to the project folder, such as /home/me/repo or /mnt/c/...",
+      description: `Enter an absolute WSL path${hostSuffix} to the project folder, such as /home/me/repo or /mnt/c/...`,
       placeholder,
     };
   }
   return {
-    description: "Enter an absolute path to the project folder.",
+    description: `Enter an absolute path${hostSuffix} to the project folder.`,
     placeholder,
   };
 }
@@ -115,6 +124,7 @@ export function ProjectPathDialogContent({
   target,
   pending,
   platform,
+  hostName,
   onSubmit,
 }: ProjectPathDialogContentProps) {
   const inputId = useId();
@@ -125,7 +135,7 @@ export function ProjectPathDialogContent({
     null,
   );
   const derivedProjectName = deriveProjectNameFromPath(pathValue);
-  const copy = getPlatformCopy(platform);
+  const copy = getPlatformCopy(platform, hostName);
   const placeholder =
     target.kind === "update"
       ? target.currentPath || copy.placeholder

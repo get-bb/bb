@@ -24,11 +24,6 @@ interface UpsertHostListArgs {
   hosts: HostListQueryData;
 }
 
-interface ThreadRuntimeCacheArgs {
-  queryClient: QueryClient;
-  thread: ThreadWithRuntime;
-}
-
 interface CachedThreadProjectIdArgs {
   queryClient: QueryClient;
   threadId: string;
@@ -114,16 +109,6 @@ export function ingestThreadDetailBootstrap({
         }),
     });
   }
-}
-
-export function applyThreadRuntimeResult({
-  queryClient,
-  thread,
-}: ThreadRuntimeCacheArgs): void {
-  queryClient.setQueryData<ThreadWithRuntime>(
-    threadQueryKey(thread.id),
-    thread,
-  );
 }
 
 export function getCachedThreadProjectId({

@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button.js";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
+import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 
 export interface ProjectRenameDialogTarget {
@@ -55,19 +56,16 @@ export function ProjectRenameDialogContent({
 }: ProjectRenameDialogContentProps) {
   const inputId = useId();
   const [nextName, setNextName] = useState(target.currentName);
-  const [validationMessage, setValidationMessage] = useState<string | null>(
-    null,
-  );
+  const { validationMessage, validate, clearMessage } = useNameValidation({
+    emptyMessage: "Project name cannot be empty.",
+  });
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
 
-    const trimmedName = nextName.trim();
-    if (!trimmedName) {
-      setValidationMessage("Project name cannot be empty.");
-      return;
-    }
+    const trimmedName = validate(nextName);
+    if (trimmedName === null) return;
 
     onRename(target.id, trimmedName);
   };
@@ -93,9 +91,7 @@ export function ProjectRenameDialogContent({
             disabled={pending}
             onChange={(event) => {
               setNextName(event.target.value);
-              if (validationMessage) {
-                setValidationMessage(null);
-              }
+              clearMessage();
             }}
           />
           {validationMessage ? (

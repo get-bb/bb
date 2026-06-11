@@ -1,7 +1,6 @@
 import {
   allAppsQueryKeyPrefix,
   appSourcesQueryKey,
-  projectDefaultExecutionOptionsQueryKeyPrefix,
   projectPathsQueryKeyPrefix,
   sidebarNavigationQueryKey,
   threadDefaultExecutionOptionsQueryKey,
@@ -99,17 +98,6 @@ export function refetchThreadListsAfterComposerThreadCreate({
     queryKey: sidebarNavigationQueryKey(),
     type: "active",
   });
-}
-
-export function invalidateProjectManagerHireQueries({
-  projectId,
-  queryClient,
-}: ProjectArg): void {
-  invalidateProjectListQueries({ queryClient });
-  queryClient.invalidateQueries({
-    queryKey: projectDefaultExecutionOptionsQueryKeyPrefix({ projectId }),
-  });
-  invalidateBackgroundThreadCreateQueries({ queryClient });
 }
 
 export function invalidateThreadListQueries({
@@ -292,9 +280,3 @@ export function removeThreadScopedQueries({
 }
 
 export { removeEnvironmentScopedQueries };
-
-function invalidateBackgroundThreadCreateQueries({
-  queryClient,
-}: QueryClientArg): void {
-  queryClient.invalidateQueries({ queryKey: threadsQueryKey() });
-}

@@ -84,33 +84,6 @@ export async function buildNodeEsmEntry({
   }
 }
 
-export async function buildNodeCjsEntry({
-  entryPoint,
-  executable = false,
-  outfile,
-  sourcemap = true,
-  target = "node22",
-}) {
-  await removeFileAndMap(outfile);
-
-  await build({
-    bundle: true,
-    conditions: ["source"],
-    entryPoints: [entryPoint],
-    external: createNativeExternalPatterns(),
-    format: "cjs",
-    legalComments: "none",
-    outfile,
-    platform: "node",
-    sourcemap,
-    target,
-  });
-
-  if (executable) {
-    await chmod(outfile, 0o755);
-  }
-}
-
 export async function generateTemplatesIfRequested(enabled) {
   if (!enabled) {
     return;

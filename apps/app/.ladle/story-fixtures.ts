@@ -1,5 +1,4 @@
 import type {
-  AvailableModel,
   Environment,
   Host,
   ProjectSource,
@@ -16,9 +15,11 @@ import type { PickerOption } from "../src/components/pickers/OptionPicker";
 import type { ProjectSelectorOption } from "../src/components/pickers/ProjectSelector";
 import type { ReuseThreadOption } from "../src/components/pickers/WorktreePicker";
 import type { ExecutionControlsProps } from "../src/components/promptbox/ExecutionControls";
-import type {
-  AttachmentsConfig,
-  MentionsConfig,
+import {
+  INERT_TYPEAHEAD_COMMAND_CONFIG,
+  type AttachmentsConfig,
+  type TypeaheadConfig,
+  type TypeaheadMentionConfig,
 } from "../src/components/promptbox/PromptBoxInternal";
 
 const noop = () => {};
@@ -56,30 +57,23 @@ export const BRANCH_NAMES = {
   feature: "feat/sidebar-rail",
 } as const;
 
-/** Stable set of placeholder image URLs for prompt-attachment + preview stories. */
-export const PLACEHOLDER_IMAGE_URLS = [
-  "https://placecats.com/300/200",
-  "https://placecats.com/320/180",
-  "https://placecats.com/360/220",
-  "https://placecats.com/400/240",
-] as const;
-
 // ---------------------------------------------------------------------------
 // Promptbox config builders. PromptBoxInternal, NewThreadPromptBox, and
 // FollowUpPromptBox stories all reach for the same Mentions / Attachments
 // shapes — share them here so the inert defaults stay consistent.
 // ---------------------------------------------------------------------------
 
-export function makeMentionsConfig(
-  overrides: Partial<MentionsConfig> = {},
-): MentionsConfig {
-  const base: MentionsConfig = {
+export function makeTypeaheadConfig(
+  mentionOverrides: Partial<TypeaheadMentionConfig> = {},
+): TypeaheadConfig {
+  const mention: TypeaheadMentionConfig = {
     suggestions: [],
     isLoading: false,
     isError: false,
     onQueryChange: noop,
+    ...mentionOverrides,
   };
-  return { ...base, ...overrides };
+  return { mention, command: INERT_TYPEAHEAD_COMMAND_CONFIG };
 }
 
 export function makeAttachmentsConfig(
@@ -129,15 +123,6 @@ export const STORY_CLAUDE_CODE_MODELS: readonly PickerOption<string>[] = [
   { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
 ];
 
-export const STORY_PI_MODELS: readonly PickerOption<string>[] = [
-  { value: "anthropic/claude-opus-4-7", label: "Claude Opus 4.7" },
-  { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-  { value: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5" },
-  { value: "openai-codex/gpt-5.5", label: "GPT-5.5" },
-  { value: "openai-codex/gpt-5.4", label: "GPT-5.4" },
-  { value: "openai-codex/gpt-5.4-mini", label: "GPT-5.4 Mini" },
-];
-
 export const STORY_CODEX_REASONING: readonly PickerOption<ReasoningLevel>[] = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
@@ -160,93 +145,6 @@ export const STORY_SERVICE_TIER_SUPPORT: Record<string, boolean> = {
   pi: false,
 };
 
-// `AvailableModel`-shaped versions of the same catalog, for stories that go
-// through the real data path (i.e. feed these into `useThreadCreationOptions`
-// rather than into the picker directly).
-const CODEX_EFFORTS: readonly ReasoningLevel[] = [
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-];
-const OPUS_EFFORTS: readonly ReasoningLevel[] = [
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-];
-
-function makeAvailableModel(
-  override: Pick<AvailableModel, "model" | "displayName"> &
-    Partial<AvailableModel>,
-): AvailableModel {
-  return {
-    id: override.model,
-    description: "",
-    supportedReasoningEfforts: CODEX_EFFORTS.map((reasoningEffort) => ({
-      reasoningEffort,
-      description: "",
-    })),
-    defaultReasoningEffort: "medium",
-    isDefault: false,
-    ...override,
-  };
-}
-
-export const STORY_CODEX_AVAILABLE_MODELS: readonly AvailableModel[] = [
-  makeAvailableModel({
-    model: "gpt-5.5",
-    displayName: "GPT-5.5",
-    isDefault: true,
-  }),
-  makeAvailableModel({ model: "gpt-5.4", displayName: "GPT-5.4" }),
-  makeAvailableModel({ model: "gpt-5.4-mini", displayName: "GPT-5.4 Mini" }),
-  makeAvailableModel({ model: "gpt-5.3-codex", displayName: "GPT-5.3 Codex" }),
-  makeAvailableModel({
-    model: "gpt-5.3-codex-spark",
-    displayName: "GPT-5.3 Codex Spark",
-    defaultReasoningEffort: "high",
-  }),
-  makeAvailableModel({ model: "gpt-5.2", displayName: "GPT-5.2" }),
-];
-
-export const STORY_CLAUDE_CODE_AVAILABLE_MODELS: readonly AvailableModel[] = [
-  makeAvailableModel({
-    model: "claude-opus-4-7-1m",
-    displayName: "Claude Opus 4.7 (1M)",
-    supportedReasoningEfforts: OPUS_EFFORTS.map((reasoningEffort) => ({
-      reasoningEffort,
-      description: "",
-    })),
-  }),
-  makeAvailableModel({
-    model: "claude-opus-4-7",
-    displayName: "Claude Opus 4.7",
-    supportedReasoningEfforts: OPUS_EFFORTS.map((reasoningEffort) => ({
-      reasoningEffort,
-      description: "",
-    })),
-  }),
-  makeAvailableModel({
-    model: "claude-sonnet-4-6",
-    displayName: "Claude Sonnet 4.6",
-    isDefault: true,
-    supportedReasoningEfforts: ["low", "medium", "high", "max"].map(
-      (reasoningEffort) => ({
-        reasoningEffort: reasoningEffort as ReasoningLevel,
-        description: "",
-      }),
-    ),
-  }),
-  makeAvailableModel({
-    model: "claude-haiku-4-5",
-    displayName: "Claude Haiku 4.5",
-    supportedReasoningEfforts: [{ reasoningEffort: "low", description: "" }],
-    defaultReasoningEffort: "low",
-  }),
-];
-
 // ---------------------------------------------------------------------------
 // Host / source / branch / worktree / project catalog. Every story that
 // renders the env strip (EnvironmentOptions, NewThreadPromptBox), the project
@@ -254,19 +152,6 @@ export const STORY_CLAUDE_CODE_AVAILABLE_MODELS: readonly AvailableModel[] = [
 // (FollowUpPromptBox) pulls from the same lists so adding a new branch state
 // flows everywhere without each story growing its own copy.
 // ---------------------------------------------------------------------------
-
-export const STORY_HOSTS: readonly Host[] = [
-  makeHost({ id: HOST_IDS.local, name: HOST_NAMES.local }),
-  makeHost({
-    id: HOST_IDS.remote,
-    name: HOST_NAMES.remote,
-  }),
-  makeHost({
-    id: "host_disconnected",
-    name: "Linux laptop",
-    status: "disconnected",
-  }),
-];
 
 export const STORY_PROJECT_SOURCES: readonly ProjectSource[] = [
   {
@@ -322,10 +207,6 @@ export const STORY_PROJECTS: readonly ProjectSelectorOption[] = [
   { id: PROJECT_IDS.pierre, name: PROJECT_NAMES.pierre },
 ];
 
-/** Matches the production helper passed into EnvironmentPickerUI. */
-export const storyIsLocalHost = (hostId: string | null | undefined): boolean =>
-  hostId === HOST_IDS.local;
-
 /**
  * Codex / gpt-5.5 / medium reasoning — the default starting point most
  * stories want. Spread + override individual sections for specific
@@ -376,7 +257,6 @@ export function makeThread(overrides: Partial<Thread> = {}): Thread {
     environmentId: "env_demo",
     automationId: null,
     providerId: "codex",
-    type: "standard",
     title: "Audit recurring permission failures",
     titleFallback: "Audit recurring permission failures",
     status: "idle",
@@ -402,7 +282,6 @@ export function makeThreadListEntry(
     environmentId: null,
     automationId: null,
     providerId: "codex",
-    type: "standard",
     title: "Audit recurring permission failures",
     titleFallback: "Audit recurring permission failures",
     status: "idle",

@@ -5,6 +5,7 @@ import type {
   EnvironmentDiffResponse,
   EnvironmentPullRequestResponse,
   EnvironmentStatusResponse,
+  WorkspacePathListResponse,
 } from "@bb/server-contract";
 import type { FilePreview } from "@/lib/api";
 import type { EnvironmentFilePreviewSource } from "@/lib/file-preview";
@@ -14,6 +15,7 @@ import {
   environmentGitDiffQueryKey,
   environmentMergeBaseBranchesQueryKey,
   environmentPullRequestQueryKey,
+  environmentPathsQueryKey,
   environmentQueryKey,
   environmentWorkStatusQueryKey,
 } from "./query-keys";
@@ -22,6 +24,7 @@ import {
   resolveEnvironmentGitDiffPlaceholder,
   resolveEnvironmentWorkStatusPlaceholder,
 } from "./query-placeholders";
+import { requireEnabledQueryArg } from "./query-helpers";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -50,45 +53,11 @@ function requireEnvironmentId(
   environmentId: string | null | undefined,
   hookName: string,
 ): string {
-  if (!environmentId) {
-    throw new Error(
-      `${hookName}: environmentId is required when query is enabled`,
-    );
-  }
-
-  return environmentId;
-}
-
-function requireEnvironmentFilePreviewPath(path: string | null): string {
-  if (!path) {
-    throw new Error(
-      "useEnvironmentFilePreview: path is required when query is enabled",
-    );
-  }
-  return path;
-}
-
-function requireEnvironmentFilePreviewSource(
-  source: EnvironmentFilePreviewSource | null,
-): EnvironmentFilePreviewSource {
-  if (!source) {
-    throw new Error(
-      "useEnvironmentFilePreview: source is required when query is enabled",
-    );
-  }
-  return source;
-}
-
-function requireGitDiffTarget(
-  target: WorkspaceDiffTarget | undefined,
-): WorkspaceDiffTarget {
-  if (!target) {
-    throw new Error(
-      "useEnvironmentGitDiff: target is required when query is enabled",
-    );
-  }
-
-  return target;
+  return requireEnabledQueryArg({
+    value: environmentId,
+    hookName,
+    argName: "environmentId",
+  });
 }
 
 export function useEnvironment(
@@ -198,8 +167,16 @@ export function useEnvironmentFilePreview(
     queryFn: ({ signal }) =>
       api.getEnvironmentFilePreview({
         id: requireEnvironmentId(environmentId, "useEnvironmentFilePreview"),
-        path: requireEnvironmentFilePreviewPath(path),
-        source: requireEnvironmentFilePreviewSource(source),
+        path: requireEnabledQueryArg({
+          value: path,
+          hookName: "useEnvironmentFilePreview",
+          argName: "path",
+        }),
+        source: requireEnabledQueryArg({
+          value: source,
+          hookName: "useEnvironmentFilePreview",
+          argName: "source",
+        }),
         signal,
       }),
     enabled:
@@ -208,6 +185,58 @@ export function useEnvironmentFilePreview(
       Boolean(path) &&
       source !== null,
     refetchOnWindowFocus: false,
+  });
+}
+
+interface UseEnvironmentPathSuggestionsArgs {
+  environmentId: string | null | undefined;
+  query: string | null;
+  limit?: number;
+  includeFiles: boolean;
+  includeDirectories: boolean;
+}
+
+/**
+ * Search a thread environment's workspace for path suggestions. Project-agnostic
+ * — the canonical workspace path search once a thread has an environment, used
+ * for both file mentions and the new-tab file picker.
+ */
+export function useEnvironmentPathSuggestions(
+  args: UseEnvironmentPathSuggestionsArgs,
+) {
+  const {
+    environmentId,
+    query,
+    limit = 8,
+    includeFiles,
+    includeDirectories,
+  } = args;
+  const trimmedQuery = query?.trim() ?? "";
+
+  return useQuery<WorkspacePathListResponse>({
+    queryKey: environmentPathsQueryKey(
+      environmentId ?? undefined,
+      trimmedQuery,
+      limit,
+      includeFiles,
+      includeDirectories,
+    ),
+    queryFn: () =>
+      api.searchEnvironmentPaths({
+        environmentId: requireEnvironmentId(
+          environmentId,
+          "useEnvironmentPathSuggestions",
+        ),
+        query: trimmedQuery,
+        limit,
+        includeFiles,
+        includeDirectories,
+      }),
+    enabled: Boolean(environmentId) && trimmedQuery.length > 0,
+    staleTime: 15_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -230,7 +259,14 @@ export function useEnvironmentGitDiff(
       targetKey,
     ),
     queryFn: () =>
-      api.getEnvironmentDiff(environmentId, requireGitDiffTarget(target)),
+      api.getEnvironmentDiff(
+        environmentId,
+        requireEnabledQueryArg({
+          value: target,
+          hookName: "useEnvironmentGitDiff",
+          argName: "target",
+        }),
+      ),
     enabled:
       (options.enabled ?? true) &&
       Boolean(environmentId) &&

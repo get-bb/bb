@@ -29,7 +29,7 @@ describe("public thread default routes", () => {
     resumeHostMock.mockReset();
   });
 
-  it("remembers resolved execution options after standard thread creation", async () => {
+  it("remembers resolved execution options after thread creation", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -91,7 +91,6 @@ describe("public thread default routes", () => {
       expect(
         getProjectExecutionDefaults(harness.db, {
           projectId: project.id,
-          threadType: "standard",
         }),
       ).toEqual({
         providerId: "codex",
@@ -197,7 +196,6 @@ describe("public thread default routes", () => {
       expect(
         getProjectExecutionDefaults(harness.db, {
           projectId: project.id,
-          threadType: "standard",
         }),
       ).toBeNull();
     });
@@ -219,7 +217,6 @@ describe("public thread default routes", () => {
       upsertProjectExecutionDefaults(harness.db, {
         projectId: project.id,
         providerId: "codex",
-        threadType: "standard",
         model: "gpt-5",
         serviceTier: "fast",
         reasoningLevel: "high",
@@ -278,7 +275,6 @@ describe("public thread default routes", () => {
       upsertProjectExecutionDefaults(harness.db, {
         projectId: project.id,
         providerId: "codex",
-        threadType: "standard",
         model: "gpt-5",
         serviceTier: "fast",
         reasoningLevel: "high",
@@ -391,7 +387,7 @@ describe("public thread default routes", () => {
     });
   });
 
-  it("does not overwrite project execution defaults after a standard thread send", async () => {
+  it("does not overwrite project execution defaults after a thread send", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -417,7 +413,6 @@ describe("public thread default routes", () => {
       upsertProjectExecutionDefaults(harness.db, {
         projectId: project.id,
         providerId: thread.providerId,
-        threadType: "standard",
         model: "gpt-5",
         serviceTier: "default",
         reasoningLevel: "medium",
@@ -460,7 +455,6 @@ describe("public thread default routes", () => {
       expect(
         getProjectExecutionDefaults(harness.db, {
           projectId: project.id,
-          threadType: "standard",
         }),
       ).toEqual({
         providerId: "codex",

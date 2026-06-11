@@ -31,14 +31,13 @@ import { PI_BRIDGE_SESSION_DIR_ENV } from "../pi/bridge/session-paths.js";
 import type {
   AgentRuntime,
   AgentRuntimeExecutionOptions,
+  AgentRuntimeShellEnvironment,
   AgentRuntimeSkillRoot,
 } from "../types.js";
 import {
   waitForRuntimeConditionUnsafe,
   waitForThreadTurnCompleted as waitForSharedThreadTurnCompleted,
   waitForThreadTurnStarted as waitForSharedThreadTurnStarted,
-  type RuntimeWaitConditionOptions,
-  type RuntimeWaitFailureDescription,
   type RuntimeWaitPredicate,
 } from "./runtime-wait-helpers.js";
 
@@ -56,8 +55,6 @@ export type ErrorThreadEvent = Extract<
   { type: "provider/error" | "system/error" }
 >;
 export type WaitPredicate = RuntimeWaitPredicate;
-export type WaitFailureDescription = RuntimeWaitFailureDescription;
-export type WaitForConditionOptions = RuntimeWaitConditionOptions;
 
 export interface RuntimeDiagnosticsArgs {
   ctx: TestContext;
@@ -794,7 +791,9 @@ export type TestInteractiveRequestHandler = (
 export interface CreateTestRuntimeOptions {
   onInteractiveRequest?: TestInteractiveRequestHandler;
   onToolCall?: TestToolCallHandler;
+  shellEnv?: AgentRuntimeShellEnvironment;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
+  workflowAgentShellEnv?: AgentRuntimeShellEnvironment;
   workspacePath?: string;
 }
 
@@ -875,7 +874,9 @@ export function createTestRuntime(
 
   const runtime = createAgentRuntime({
     env: createRuntimeProcessEnv({ providerId, tmpDir }),
+    shellEnv: opts?.shellEnv,
     skillRoots: opts?.skillRoots,
+    workflowAgentShellEnv: opts?.workflowAgentShellEnv,
     workspacePath: tmpDir,
     onEvent: (e) => events.push(e),
     onCapture: (entry) => captures.push(entry),

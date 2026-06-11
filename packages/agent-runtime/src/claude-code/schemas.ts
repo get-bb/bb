@@ -43,9 +43,6 @@ export const claudeToolUseProcessResultSchema = z
     stderr: z.string().optional(),
   })
   .passthrough();
-export type ClaudeToolUseProcessResult = z.infer<
-  typeof claudeToolUseProcessResultSchema
->;
 
 export const claudeToolUseResultSchema = z.union([
   claudeToolUseProcessResultSchema,
@@ -216,9 +213,6 @@ export const claudeTaskStartedMessageSchema = claudeSystemMessageSchema
     skip_transcript: z.boolean().optional(),
   })
   .passthrough();
-export type ClaudeTaskStartedMessage = z.infer<
-  typeof claudeTaskStartedMessageSchema
->;
 
 export const claudeTaskUpdatedMessageSchema = claudeSystemMessageSchema
   .extend({
@@ -245,9 +239,6 @@ export const claudeTaskUpdatedMessageSchema = claudeSystemMessageSchema
       .passthrough(),
   })
   .passthrough();
-export type ClaudeTaskUpdatedMessage = z.infer<
-  typeof claudeTaskUpdatedMessageSchema
->;
 
 export const claudeTaskProgressMessageSchema = claudeSystemMessageSchema
   .extend({
@@ -267,9 +258,6 @@ export const claudeTaskProgressMessageSchema = claudeSystemMessageSchema
     workflow_progress: z.array(z.unknown()).optional(),
   })
   .passthrough();
-export type ClaudeTaskProgressMessage = z.infer<
-  typeof claudeTaskProgressMessageSchema
->;
 
 export const claudeTaskNotificationMessageSchema = claudeSystemMessageSchema
   .extend({
@@ -283,9 +271,6 @@ export const claudeTaskNotificationMessageSchema = claudeSystemMessageSchema
     skip_transcript: z.boolean().optional(),
   })
   .passthrough();
-export type ClaudeTaskNotificationMessage = z.infer<
-  typeof claudeTaskNotificationMessageSchema
->;
 
 export const claudeWorkflowAgentRecordSchema = z
   .object({
@@ -329,9 +314,6 @@ export const claudeWorkflowPhaseRecordSchema = z
     kind: z.string().optional(),
   })
   .passthrough();
-export type ClaudeWorkflowPhaseRecord = z.infer<
-  typeof claudeWorkflowPhaseRecordSchema
->;
 
 export const claudeAssistantMessageSchema = z
   .object({
@@ -384,6 +366,7 @@ export const claudeResultMessageSchema = z
     api_error_status: z.number().nullable().optional(),
     errors: z.array(z.string()).optional(),
     result: z.unknown().optional(),
+    structured_output: z.unknown().optional(),
     usage: z.unknown().optional(),
     modelUsage: z.unknown().optional(),
   })

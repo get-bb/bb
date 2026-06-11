@@ -11,17 +11,15 @@ import {
 } from "@testing-library/react";
 import { Suspense, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import type {
-  BbDesktopApi,
-  BbDesktopInfo,
-  BbDesktopInfoChangeHandler,
-  SystemConfigResponse,
-} from "@bb/server-contract";
-import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
+import type { BbDesktopApi, SystemConfigResponse } from "@bb/server-contract";
+import { defaultExperiments } from "@bb/domain";
+import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { installFetchRoutes, jsonResponse } from "@/test/http-test-utils";
+import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
+import { restoreMatchMedia, setupMatchMedia } from "@/test/helpers/match-media";
 import { AppLayout } from "./AppLayout";
 import {
   BROWSER_COLLAPSED_HEADER_RESERVE_CLASS,
@@ -51,32 +49,11 @@ interface SidebarResizeEndScenario {
 }
 
 const testSystemConfig: SystemConfigResponse = {
+  experiments: defaultExperiments,
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
   voiceTranscriptionEnabled: false,
 };
-
-function createBbDesktopApi(info: BbDesktopInfo): BbDesktopApi {
-  return {
-    ...info,
-    browser: createNoopDesktopBrowserApi(),
-    async checkForUpdates() {
-      return info;
-    },
-    async getInfo() {
-      return info;
-    },
-    async installUpdate() {
-      return undefined;
-    },
-    onChange(_listener: BbDesktopInfoChangeHandler) {
-      return () => undefined;
-    },
-    setTheme() {
-      // no-op
-    },
-  };
-}
 
 function setBbDesktopInfo(desktopInfo: BbDesktopApi | null): void {
   if (desktopInfo === null) {
@@ -134,6 +111,7 @@ async function renderAppLayout(args: RenderAppLayoutArgs): Promise<void> {
 
 afterEach(() => {
   cleanup();
+  restoreMatchMedia();
   localStorage.clear();
   setBbDesktopInfo(null);
 });
@@ -196,7 +174,7 @@ describe("AppLayout desktop chrome", () => {
       ),
     ).toBe(true);
 
-    // They are no longer in the primary actions above New Thread / New Manager.
+    // They are no longer in the primary actions above New Thread.
     expect(
       within(primaryActions).queryByRole("button", { name: "Go back" }),
     ).toBeNull();
@@ -436,7 +414,7 @@ describe("AppLayout desktop chrome", () => {
 
     expect(screen.queryByTestId("bb-desktop-sidebar-trigger")).toBeNull();
     // The sidebar's top reserve stays mounted while collapsed so its content
-    // (New Thread / New Manager / Projects) holds the same vertical position
+    // (New Thread / Projects) holds the same vertical position
     // below the title-bar chrome as when expanded, instead of riding up under
     // the pinned trigger during the collapse animation. It remains a pure
     // window-drag spacer with no second toggle.
@@ -525,6 +503,40 @@ describe("AppLayout desktop chrome", () => {
       BROWSER_COLLAPSED_HEADER_RESERVE_CLASS,
     );
     // Still exactly one toggle after collapsing — the same pinned overlay.
+    expect(
+      screen.getAllByRole("button", { name: "Toggle Sidebar" }),
+    ).toHaveLength(1);
+  });
+
+  it("keeps the browser header reserve stable while the mobile sidebar drawer opens", async () => {
+    setupMatchMedia({
+      matchesByQuery: new Map([[COMPACT_VIEWPORT_QUERY, true]]),
+    });
+
+    await renderAppLayout({
+      desktopInfo: null,
+      initialEntry: "/projects/proj_mobile",
+    });
+
+    const trigger = await screen.findByRole("button", {
+      name: "Toggle Sidebar",
+    });
+    const headerRow = screen.getByTestId("app-page-header-content-row");
+
+    expect(headerRow.className).toContain(
+      BROWSER_COLLAPSED_HEADER_RESERVE_CLASS,
+    );
+
+    fireEvent.click(trigger);
+
+    expect(
+      document
+        .querySelector("[data-sidebar='panel']")
+        ?.getAttribute("data-open"),
+    ).toBe("true");
+    expect(headerRow.className).toContain(
+      BROWSER_COLLAPSED_HEADER_RESERVE_CLASS,
+    );
     expect(
       screen.getAllByRole("button", { name: "Toggle Sidebar" }),
     ).toHaveLength(1);

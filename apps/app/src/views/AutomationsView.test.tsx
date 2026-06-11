@@ -27,7 +27,6 @@ function makeOverviewThread(
     projectId: project.id,
     title: "Audit recurring permission failures",
     titleFallback: "Audit recurring permission failures",
-    type: "standard",
   };
 
   return { ...thread, ...overrides };

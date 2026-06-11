@@ -39,6 +39,7 @@ for (const providerId of providers) {
           preset: "full",
         });
         const startResult = await ctx1.runtime.startThread({
+          sessionKind: "thread",
           environmentId: "env-1",
           threadId: firstThreadId,
           projectId: "test-project",
@@ -182,6 +183,7 @@ describe.concurrent("codex resume scenarios", () => {
         preset: "full",
       });
       const startResult = await ctx1.runtime.startThread({
+        sessionKind: "thread",
         environmentId: "env-1",
         threadId: firstThreadId,
         projectId: "test-project",
@@ -305,6 +307,7 @@ describe.concurrent("codex resume scenarios", () => {
         preset: "full",
       });
       const startResult = await ctx1.runtime.startThread({
+        sessionKind: "thread",
         environmentId: "env-1",
         threadId: firstThreadId,
         projectId: "test-project",
@@ -436,6 +439,7 @@ describe.concurrent("codex resume scenarios", () => {
           preset: "full",
         });
         const startResult = await ctx1.runtime.startThread({
+          sessionKind: "thread",
           environmentId: "env-1",
           threadId: firstThreadId,
           projectId: "test-project",

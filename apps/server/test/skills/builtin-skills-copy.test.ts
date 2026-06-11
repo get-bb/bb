@@ -17,6 +17,13 @@ async function makeTempDir(): Promise<string> {
   return dir;
 }
 
+async function readBuiltinSkill(skillName: string): Promise<string> {
+  return readFile(
+    path.join(resolveBuiltinSkillsRootPath(), skillName, "SKILL.md"),
+    "utf8",
+  );
+}
+
 afterEach(async () => {
   await Promise.all(
     tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
@@ -39,17 +46,12 @@ describe("builtin skills copy", () => {
     expect(resolveBuiltinSkillsRootPathForModuleDir({ moduleDir })).toBe(
       targetPath,
     );
-    const sourceSkill = await readFile(
-      path.join(
-        resolveBuiltinSkillsRootPath(),
-        "building-bb-apps",
-        "SKILL.md",
-      ),
-      "utf8",
-    );
     await expect(
       readFile(path.join(targetPath, "building-bb-apps", "SKILL.md"), "utf8"),
-    ).resolves.toBe(sourceSkill);
+    ).resolves.toBe(await readBuiltinSkill("building-bb-apps"));
+    await expect(
+      readFile(path.join(targetPath, "bb-cli", "SKILL.md"), "utf8"),
+    ).resolves.toBe(await readBuiltinSkill("bb-cli"));
   });
 
   it("throws when the sentinel skill is missing beside the module", async () => {

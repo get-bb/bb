@@ -175,8 +175,8 @@ Scope:
 - Keep dedupe behavior across the full layout tree.
 - Make open-file/open-diff actions focus the existing tab wherever it lives.
 - Confirm each file preview tab fetches from its own params.
-- Reject unsupported manager/thread combinations, such as hidden git UI for
-  manager threads.
+- Reject unsupported tab and thread-state combinations, such as hidden git UI for
+  threads whose environments cannot use git UI.
 
 Exit criteria:
 

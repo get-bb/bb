@@ -79,6 +79,7 @@ function makeProjectWithThreadsResponse(
 ): ProjectWithThreadsResponse {
   return {
     ...makeProjectResponse(overrides),
+    defaultExecutionOptions: overrides.defaultExecutionOptions ?? null,
     threads: overrides.threads ?? [],
   };
 }

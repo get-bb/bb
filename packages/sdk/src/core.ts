@@ -3,7 +3,6 @@ import { createAppsArea, createCurrentAppDataArea, createCurrentAppMessageArea }
 import { createEnvironmentsArea } from "./areas/environments.js";
 import { createGuideArea } from "./areas/guide.js";
 import { createHostsArea } from "./areas/hosts.js";
-import { createManagersArea } from "./areas/managers.js";
 import { createProjectsArea } from "./areas/projects.js";
 import { createProvidersArea } from "./areas/providers.js";
 import { createReplayArea } from "./areas/replay.js";
@@ -11,6 +10,7 @@ import { createBbRealtimeClient } from "./realtime-client.js";
 import type { BbRealtime } from "./realtime-types.js";
 import { createStatusArea } from "./areas/status.js";
 import { createThreadsArea } from "./areas/threads.js";
+import { createWorkflowsArea } from "./areas/workflows.js";
 
 export interface CreateBbSdkArgs {
   context?: BbSdkContext;
@@ -25,13 +25,13 @@ export interface BbSdk extends BbRealtime {
   environments: ReturnType<typeof createEnvironmentsArea>;
   guide: ReturnType<typeof createGuideArea>;
   hosts: ReturnType<typeof createHostsArea>;
-  managers: ReturnType<typeof createManagersArea>;
   message: ReturnType<typeof createCurrentAppMessageArea>;
   projects: ReturnType<typeof createProjectsArea>;
   providers: ReturnType<typeof createProvidersArea>;
   replay: ReturnType<typeof createReplayArea>;
   status: ReturnType<typeof createStatusArea>;
   threads: ReturnType<typeof createThreadsArea>;
+  workflows: ReturnType<typeof createWorkflowsArea>;
 }
 
 export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
@@ -58,7 +58,6 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
     environments: createEnvironmentsArea(sdkContext),
     guide: createGuideArea(),
     hosts: createHostsArea(sdkContext),
-    managers: createManagersArea(sdkContext),
     message: createCurrentAppMessageArea(sdkContext),
     on(args) {
       return realtime.on(args);
@@ -68,5 +67,6 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
     replay: createReplayArea(sdkContext),
     status: createStatusArea(sdkContext),
     threads: createThreadsArea(sdkContext),
+    workflows: createWorkflowsArea(sdkContext),
   };
 }

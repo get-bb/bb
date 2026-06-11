@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type {
   WorkspaceChangeStats,
+  WorkspaceCommitSummary,
   WorkspaceFileStatus,
   WorkspaceStatus,
 } from "@bb/domain";
@@ -125,6 +126,20 @@ export function selectWorkspaceChangedFilesSections(
     });
   }
   return sections;
+}
+
+/**
+ * Commits on the thread's branch that are ahead of the selected merge base,
+ * newest first. Empty when there is no merge base (e.g. on the default branch)
+ * or nothing is ahead. These are the same patch-unique commits the git diff
+ * panel lets you inspect individually.
+ */
+export function selectWorkspaceAheadCommits(
+  workspaceStatus: WorkspaceStatus | undefined,
+): WorkspaceCommitSummary[] {
+  const commits = workspaceStatus?.mergeBase?.commits;
+  if (!commits || commits.length === 0) return [];
+  return commits.slice().reverse();
 }
 
 /**

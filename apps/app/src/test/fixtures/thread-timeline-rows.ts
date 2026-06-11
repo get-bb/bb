@@ -11,7 +11,7 @@ import type {
   TimelineFileChange,
   TimelineFileChangeWorkRow,
   TimelineImageViewWorkRow,
-  TimelineManagerAssignment,
+  TimelineParentChange,
   TimelineNonOperationSystemRow,
   TimelinePermissionGrantApprovalGrantScope,
   TimelineQuestionWorkRow,
@@ -26,6 +26,7 @@ import type {
   TimelineWebSearchWorkRow,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
+import { LOCAL_WORKFLOW_TASK_TYPE } from "@bb/domain";
 import type { ThreadTurnInitiator } from "@bb/domain";
 
 export interface RowBaseOverrideArgs {
@@ -159,6 +160,7 @@ export interface WorkflowRowArgs extends RowBaseOverrideArgs {
   status?: TimelineRowStatus;
   summary?: string | null;
   taskStatus?: TimelineWorkflowWorkRow["taskStatus"];
+  taskType?: string;
   turnId?: string | null;
   usage?: TimelineWorkflowWorkRow["usage"];
   workflow?: TimelineWorkflowWorkRow["workflow"];
@@ -207,7 +209,7 @@ export interface SystemRowArgs extends RowBaseOverrideArgs {
   detail?: string | null;
   durationMs?: number | null;
   id?: string;
-  managerAssignment?: TimelineManagerAssignment;
+  parentChange?: TimelineParentChange;
   operationKind?: TimelineSystemOperationKind;
   seq?: number;
   sourceSeqEnd?: number;
@@ -221,7 +223,7 @@ export interface SystemRowArgs extends RowBaseOverrideArgs {
 export interface NonOperationSystemRowArgs
   extends Omit<
     SystemRowArgs,
-    "completedAt" | "durationMs" | "managerAssignment" | "operationKind" | "systemKind"
+    "completedAt" | "durationMs" | "parentChange" | "operationKind" | "systemKind"
   > {
   systemKind: TimelineNonOperationSystemRow["systemKind"];
 }
@@ -263,10 +265,6 @@ export interface TurnRowArgs extends RowBaseOverrideArgs {
 
 export interface ReadIntentArgs {
   path: string;
-}
-
-export interface ListFilesIntentArgs {
-  path: string | null;
 }
 
 export interface SearchIntentArgs {
@@ -458,16 +456,6 @@ export function readIntent({ path }: ReadIntentArgs): TimelineActivityIntent {
     type: "read",
     command: `cat ${path}`,
     name: path.split("/").pop() ?? path,
-    path,
-  };
-}
-
-export function listFilesIntent({
-  path,
-}: ListFilesIntentArgs): TimelineActivityIntent {
-  return {
-    type: "list_files",
-    command: path ? `ls ${path}` : "ls",
     path,
   };
 }
@@ -763,6 +751,7 @@ export function workflowRow({
   status = "completed",
   summary = null,
   taskStatus = "completed",
+  taskType = LOCAL_WORKFLOW_TASK_TYPE,
   threadId,
   turnId,
   usage = null,
@@ -785,6 +774,7 @@ export function workflowRow({
     workKind: "workflow",
     status,
     itemId: itemId ?? id,
+    taskType,
     workflowName,
     description,
     taskStatus,
@@ -938,7 +928,7 @@ export function systemRow({
   detail = "Running setup\nProvisioned thread (2s)",
   durationMs,
   id = DEFAULT_SYSTEM_ID,
-  managerAssignment,
+  parentChange,
   operationKind,
   seq,
   sourceSeqEnd,
@@ -973,7 +963,7 @@ export function systemRow({
     };
   }
   const resolvedOperationKind =
-    operationKind ?? (managerAssignment ? "manager-assignment" : "generic");
+    operationKind ?? (parentChange ? "parent-change" : "generic");
   const resolvedCompletedAt =
     completedAt !== undefined
       ? completedAt
@@ -984,9 +974,9 @@ export function systemRow({
             status === "interrupted"
           ? base.createdAt
           : null;
-  if (resolvedOperationKind === "manager-assignment") {
+  if (resolvedOperationKind === "parent-change") {
     if (status === null) {
-      throw new Error("Manager assignment system row requires a status");
+      throw new Error("Parent change system row requires a status");
     }
     return {
       ...base,
@@ -994,12 +984,12 @@ export function systemRow({
       operationKind: resolvedOperationKind,
       status,
       completedAt: resolvedCompletedAt,
-      managerAssignment: managerAssignment ?? {
+      parentChange: parentChange ?? {
         action: "assign",
-        previousManagerThreadId: null,
-        previousManagerThreadTitle: null,
-        nextManagerThreadId: null,
-        nextManagerThreadTitle: null,
+        previousParentThreadId: null,
+        previousParentThreadTitle: null,
+        nextParentThreadId: null,
+        nextParentThreadTitle: null,
       },
     };
   }

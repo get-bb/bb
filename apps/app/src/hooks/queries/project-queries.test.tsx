@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 describe("project queries", () => {
-  it("loads project default execution options by thread type", async () => {
+  it("loads project default execution options without a thread type", async () => {
     const requestUrls: URL[] = [];
     installFetchRoutes([
       {
@@ -46,7 +46,6 @@ describe("project queries", () => {
       () =>
         useProjectDefaultExecutionOptions({
           projectId: "project-1",
-          threadType: "manager",
         }),
       { wrapper },
     );
@@ -55,7 +54,7 @@ describe("project queries", () => {
       expect(result.current.data?.reasoningLevel).toBe("xhigh");
     });
 
-    expect(requestUrls[0]?.searchParams.get("threadType")).toBe("manager");
+    expect(requestUrls[0]?.searchParams.has("threadType")).toBe(false);
   });
 
   it("keeps previous project defaults while new project defaults load", async () => {
@@ -100,7 +99,6 @@ describe("project queries", () => {
       ({ projectId }: DefaultExecutionOptionsHookProps) =>
         useProjectDefaultExecutionOptions({
           projectId,
-          threadType: "manager",
         }),
       {
         initialProps: { projectId: "project-1" },

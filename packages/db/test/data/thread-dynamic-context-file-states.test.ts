@@ -26,7 +26,6 @@ function setup() {
     projectId: project.id,
     providerId: "codex",
     status: "idle",
-    type: "manager",
   });
   return { db, thread };
 }

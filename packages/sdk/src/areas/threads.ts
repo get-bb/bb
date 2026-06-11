@@ -28,9 +28,9 @@ import type { CreateSdkAreaArgs, OkResponse } from "./common.js";
 
 export interface ThreadListArgs {
   archived?: boolean;
+  hasParent?: boolean;
   parentThreadId?: string;
   projectId?: string;
-  type?: "manager" | "standard";
 }
 
 export interface ThreadGetArgs {
@@ -166,7 +166,9 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
     ...(args?.projectId ? { projectId: args.projectId } : {}),
     ...(args?.parentThreadId ? { parentThreadId: args.parentThreadId } : {}),
     ...(args?.archived ? { archived: "true" } : {}),
-    ...(args?.type ? { type: args.type } : {}),
+    ...(args?.hasParent === undefined
+      ? {}
+      : { hasParent: args.hasParent ? "true" : "false" }),
   };
 }
 
@@ -380,8 +382,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"].$delete({
           param: { id: input.threadId },
           json: {
-            managerChildThreadsConfirmed:
-              input.managerChildThreadsConfirmed,
+            childThreadsConfirmed: input.childThreadsConfirmed,
           },
         }),
       );

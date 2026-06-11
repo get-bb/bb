@@ -22,6 +22,7 @@ export interface ProjectFixture {
 export interface ReadyHostThreadOptions {
   execution?: ThreadExecutionRequestOptions;
   input?: CreateThreadRequest["input"];
+  parentThreadId?: string;
   projectId: string;
   providerId?: string;
   timeoutMs?: number;
@@ -35,6 +36,7 @@ export interface ReadyReuseThreadOptions {
   execution?: ThreadExecutionRequestOptions;
   environmentId: string;
   input?: CreateThreadRequest["input"];
+  parentThreadId?: string;
   projectId: string;
   providerId?: string;
   timeoutMs?: number;
@@ -71,6 +73,7 @@ export async function createReadyHostThread(
     execution: options.execution,
     hostId: harness.hostId,
     input: options.input,
+    parentThreadId: options.parentThreadId,
     projectId: options.projectId,
     providerId: options.providerId,
     title: options.title,
@@ -102,6 +105,7 @@ export async function createReadyReuseThread(
     execution: options.execution,
     environmentId: options.environmentId,
     input: options.input,
+    parentThreadId: options.parentThreadId,
     projectId: options.projectId,
     providerId: options.providerId,
     title: options.title,

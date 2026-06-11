@@ -1,7 +1,34 @@
 import { type CSSProperties, type ReactNode } from "react";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
 
-const DETAIL_GRID_CLASS =
+/**
+ * A detail-row label with a leading icon, styled like the timeline's tool-call
+ * leading icons (`size-3.5 text-muted-foreground`). Shared so detail surfaces
+ * (the thread info panel, the git-action dialog) render the same row labels
+ * consistently.
+ */
+export function DetailRowIconLabel({
+  icon,
+  children,
+}: {
+  icon: IconName;
+  children: ReactNode;
+}) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <Icon name={icon} className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 truncate">{children}</span>
+    </span>
+  );
+}
+
+/**
+ * The label/value column grid shared by every detail row. Exported so loading
+ * skeletons can align their placeholder bars to real rows without re-typing
+ * (and silently drifting from) the column template.
+ */
+export const DETAIL_GRID_CLASS =
   "grid grid-cols-[var(--detail-label-width,96px)_minmax(0,1fr)] gap-x-3";
 const DETAIL_LABEL_CLASS = "m-0 text-xs leading-5 text-muted-foreground";
 const DETAIL_VALUE_CLASS = "m-0 min-w-0 text-xs leading-5 text-foreground";

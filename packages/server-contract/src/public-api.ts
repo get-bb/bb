@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { hc } from "hono/client";
 import type {
   Environment,
+  Experiments,
   Host,
   PendingInteraction,
   ProjectExecutionDefaults,
@@ -36,7 +37,6 @@ import type {
   SyncAppSourceRequest,
   CreateAutomationRequest,
   CreateQueuedMessageRequest,
-  CreateManagerThreadRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateThreadScheduleRequest,
@@ -50,6 +50,7 @@ import type {
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
   EnvironmentDiffBranchesResponse,
+  EnvironmentPathsQuery,
   EnvironmentActionApiError,
   EnvironmentActionRequest,
   EnvironmentActionResponse,
@@ -57,7 +58,7 @@ import type {
   EnvironmentStatusQuery,
   EnvironmentStatusResponse,
   EnvironmentPullRequestResponse,
-  ManagerArchiveThreadsResponse,
+  ThreadArchiveAllResponse,
   ThreadStorageContentQuery,
   ThreadHostFileContentQuery,
   ThreadStorageFilesQuery,
@@ -67,6 +68,8 @@ import type {
   ProjectDefaultExecutionOptionsQuery,
   ProjectAttachmentUploadForm,
   ProjectFilesQuery,
+  ProjectWorkflowPolicyResponse,
+  UpdateProjectWorkflowPolicyRequest,
   ProjectPathsQuery,
   ProjectListQuery,
   PromptHistoryQuery,
@@ -74,7 +77,6 @@ import type {
   ProjectResponse,
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
-  ReorderManagerThreadRequest,
   ReorderPinnedThreadRequest,
   ReorderProjectRequest,
   ReorderQueuedMessageRequest,
@@ -82,7 +84,7 @@ import type {
   SendQueuedMessageResponse,
   SendMessageRequest,
   ResolvePendingInteractionRequest,
-  ThreadAssignedChildSummaryResponse,
+  ThreadChildSummaryResponse,
   ThreadComposerBootstrapResponse,
   ThreadQueuedMessageListResponse,
   SystemConfigReloadResponse,
@@ -120,18 +122,29 @@ import type {
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
   ThreadStoragePathsQuery,
+  ProjectCommandsQuery,
+  CommandListResponse,
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
   ReplayCaptureListResponse,
   ReplayRunRequest,
   ReplayRunResponse,
+  CreateWorkflowRunRequest,
+  WorkflowListQuery,
+  WorkflowListResponse,
+  WorkflowRunEventsQuery,
+  WorkflowRunEventsResponse,
+  WorkflowRunListQuery,
+  WorkflowRunListResponse,
+  WorkflowRunResponse,
+  WorkflowRunWaitQuery,
 } from "./api-types.js";
 import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
-type PathProjectManagerThreadId = { param: { id: string; threadId: string } };
 type PathApplicationApp = { param: { applicationId: string } };
 type PathAppSourceName = { param: { name: string } };
+type PathWorkflowRunAgentIndex = { param: { id: string; index: string } };
 
 export type PublicApiSchema = {
   // ─── Development Only ────────────────────────────────────────────────
@@ -291,6 +304,15 @@ export type PublicApiSchema = {
     >;
     $delete: Endpoint<PathProjectSourceId, { ok: true }>;
   };
+  "/projects/:id/workflow-policy": {
+    /** Effective policy: built-in defaults when the project has never set one. */
+    $get: Endpoint<PathProjectId, ProjectWorkflowPolicyResponse>;
+    /** Full replace; applies to future launches only (runs snapshot their ceiling). */
+    $put: Endpoint<
+      PathProjectId & { json: UpdateProjectWorkflowPolicyRequest },
+      ProjectWorkflowPolicyResponse
+    >;
+  };
   "/projects/:id/automations": {
     $get: Endpoint<PathProjectId, Automation[]>;
     $post: Endpoint<
@@ -320,14 +342,34 @@ export type PublicApiSchema = {
   };
   "/projects/:id/paths": {
     /**
-     * Search files and/or folders in the project. Proxies to `host.list_paths`
-     * against the path of the environment identified by `environmentId` when
-     * provided, falling back to the project's default source path when
-     * `environmentId` is null.
+     * Search files and/or folders against the project's default source path.
+     * Proxies to `host.list_paths`. Used by the new-thread compose box before
+     * any environment exists; once a thread has an environment, workspace path
+     * search goes through `/environments/:id/paths` instead.
      */
     $get: Endpoint<
       PathProjectId & { query: ProjectPathsQuery },
       WorkspacePathListResponse
+    >;
+  };
+  "/projects/:id/commands": {
+    /**
+     * List the provider command/skill typeahead entries available to the
+     * project, scoped by `provider` and `environmentId`. Resolves the
+     * `(hostId, cwd)` to discover against — the environment's path when
+     * `environmentId` is provided and ready, else the project's local-path
+     * source, else the primary host with `cwd: null` (user-home roots only) —
+     * proxies to `host.list_commands`, then applies server policy (filter,
+     * de-dup by (source,name) with project origin winning, section-grouped
+     * prefix-then-alpha sort, limit). Returns `{ commands: [], truncated:
+     * false }` for providers without a command surface. Serves both the
+     * existing-thread follow-up composer and the new-thread composer (no
+     * thread id required). The trigger char (`/` for claude-code, `$` for
+     * codex) is a client concern; this route is provider-agnostic.
+     */
+    $get: Endpoint<
+      PathProjectId & { query: ProjectCommandsQuery },
+      CommandListResponse
     >;
   };
   "/projects/:id/branches": {
@@ -374,21 +416,6 @@ export type PublicApiSchema = {
       "binary"
     >;
   };
-  "/projects/:id/managers": {
-    /** Create a manager thread for the project. Same flow as POST /threads with type="manager". */
-    $post: Endpoint<
-      PathProjectId & { json: CreateManagerThreadRequest },
-      ThreadResponse,
-      201
-    >;
-  };
-  "/projects/:id/managers/:threadId/order": {
-    $patch: Endpoint<
-      PathProjectManagerThreadId & { json: ReorderManagerThreadRequest },
-      ThreadListResponse
-    >;
-  };
-
   // ─── Hosts ───────────────────────────────────────────────────────────
 
   /** Host `status` is derived at query time from the `host_daemon_sessions` table. */
@@ -447,6 +474,18 @@ export type PublicApiSchema = {
       EnvironmentDiffBranchesResponse
     >;
   };
+  "/environments/:id/paths": {
+    /**
+     * Search files and/or folders in an environment's workspace. Proxies to
+     * `host.list_paths` against the environment's path. Project-agnostic — works
+     * for any ready environment, including projectless (personal) ones — so it
+     * is the canonical workspace path search for an existing thread.
+     */
+    $get: Endpoint<
+      PathId & { query: EnvironmentPathsQuery },
+      WorkspacePathListResponse
+    >;
+  };
   "/environments/:id/actions": {
     /**
      * Execute an environment action (commit, squash_merge).
@@ -479,7 +518,7 @@ export type PublicApiSchema = {
 
   "/threads": {
     /**
-     * List threads. Supports filters: projectId, type, parentThreadId, archived.
+     * List threads. Supports filters: projectId, parentThreadId, hasParent, archived.
      * Omitting archived intentionally returns both active and archived threads.
      */
     $get: Endpoint<{ query?: ThreadListQuery }, ThreadListResponse>;
@@ -503,14 +542,14 @@ export type PublicApiSchema = {
     /** Update thread metadata. If the title changes, also notifies providers that support `thread.rename`. */
     $patch: Endpoint<PathId & { json: UpdateThreadRequest }, ThreadResponse>;
     /**
-     * Delete a thread. Also destroys its environment if one exists. Manager
-     * threads with assigned child threads require explicit confirmation.
+     * Delete a thread. Also destroys its environment if one exists. Threads
+     * with child threads require explicit confirmation.
      */
     $delete: Endpoint<PathId & { json: DeleteThreadRequest }, { ok: true }>;
   };
-  "/threads/:id/assigned-child-summary": {
-    /** Count non-deleted threads assigned to a manager thread via parentThreadId. Archived child threads are included. */
-    $get: Endpoint<PathId, ThreadAssignedChildSummaryResponse>;
+  "/threads/:id/child-summary": {
+    /** Count non-deleted child threads via parentThreadId. Archived child threads are included. */
+    $get: Endpoint<PathId, ThreadChildSummaryResponse>;
   };
   "/threads/:id/schedules": {
     /** List schedules that wake this existing thread later. */
@@ -533,10 +572,11 @@ export type PublicApiSchema = {
   "/threads/:id/send": {
     /**
      * Send a message to a thread.
-     * Idle thread → starts a new turn. Active thread with mode=steer → steers the current turn.
-     * senderThreadId marks immediate agent-to-agent CLI messages so the server can add reply guidance.
-     * Queued-message routes intentionally omit it because they are stored queued messages,
-     * not immediate sends from a live sender thread.
+     * mode=queue-if-active queues when the thread is active, otherwise starts a new turn.
+     * mode=steer-if-active steers when the thread is active, otherwise starts a new turn.
+     * Legacy mode=auto starts idle threads and sends to active turns with the provider's auto target.
+     * Legacy mode=start only starts idle threads; legacy mode=steer steers active threads and starts idle threads.
+     * senderThreadId marks agent-to-agent CLI messages so the server can add reply guidance.
      */
     $post: Endpoint<PathId & { json: SendMessageRequest }, { ok: true }>;
   };
@@ -546,7 +586,7 @@ export type PublicApiSchema = {
   };
   "/threads/:id/queued-messages": {
     $get: Endpoint<PathId, ThreadQueuedMessageListResponse>;
-    /** Create a queued message. Use /threads/:id/send for immediate agent-to-agent messages. */
+    /** Create a queued message. senderThreadId preserves agent-to-agent context until the queued message sends. */
     $post: Endpoint<
       PathId & { json: CreateQueuedMessageRequest },
       ThreadQueuedMessage,
@@ -626,12 +666,12 @@ export type PublicApiSchema = {
   };
   "/threads/:id/archive-all": {
     /**
-     * Archive a manager thread and every live thread assigned to it. Child
-     * threads are archived before the manager so archived child ownership is
+     * Archive a thread and every live child thread assigned to it. Child
+     * threads are archived before the parent so archived child ownership is
      * preserved, and cleanup is requested for each affected managed environment
      * once it has no live threads.
      */
-    $post: Endpoint<PathId, ManagerArchiveThreadsResponse>;
+    $post: Endpoint<PathId, ThreadArchiveAllResponse>;
   };
   "/threads/:id/unarchive": {
     /** Unarchive a thread and cancel any still-pending cleanup for its environment. */
@@ -750,10 +790,110 @@ export type PublicApiSchema = {
     >;
   };
 
+  // ─── Workflows ───────────────────────────────────────────────────────
+
+  "/workflows": {
+    /**
+     * List workflow definitions visible from the project's resolved source
+     * root, across the registry tiers (project > user > builtin), via the
+     * daemon `workflow.list` RPC. Host offline → 502 `host_unavailable`.
+     */
+    $get: Endpoint<{ query: WorkflowListQuery }, WorkflowListResponse>;
+  };
+  "/workflow-runs": {
+    /**
+     * List workflow runs, newest first (`limit` caps the page). `projectId`
+     * scopes to one project; omitted = all projects. User-archived and
+     * user-deleted runs are always excluded.
+     */
+    $get: Endpoint<{ query: WorkflowRunListQuery }, WorkflowRunListResponse>;
+    /**
+     * Launch a workflow run: validate/resolve the source, snapshot it with
+     * all defaults filled at the boundary, insert the run, and request the
+     * start. Honors `clientRequestId` idempotency (a replay returns the
+     * original run; a replay of a still-`created` run re-requests its start).
+     * Inline source validates with no host round-trip (422 on findings);
+     * named source resolution requires the host online (404 unknown name).
+     * Launch target: explicit `hostId` wins; anchored launches without one
+     * inherit the anchor thread environment's `{hostId, workspacePath}`;
+     * unanchored launches resolve the project's default source.
+     */
+    $post: Endpoint<{ json: CreateWorkflowRunRequest }, WorkflowRunResponse, 201>;
+  };
+  "/workflow-runs/:id": {
+    $get: Endpoint<PathId, WorkflowRunResponse>;
+    /**
+     * Soft-delete a settled run: it disappears from lists and 404s by id;
+     * the retention sweeps still clean up journal payloads and the daemon
+     * run dir. Active runs 409 `workflow_run_not_settled` (cancel first).
+     */
+    $delete: Endpoint<PathId, { ok: true }>;
+  };
+  "/workflow-runs/:id/archive": {
+    /**
+     * Hide a settled run from list surfaces (it stays reachable by id).
+     * Idempotent. Active runs 409 `workflow_run_not_settled` (cancel first).
+     * Distinct from journal-payload retention, which the sweep owns.
+     */
+    $post: Endpoint<PathId, { ok: true }>;
+  };
+  "/workflow-runs/:id/events": {
+    /** Get durable run events with parsed payloads. `afterSeq` returns strictly-greater sequences. */
+    $get: Endpoint<
+      PathId & { query?: WorkflowRunEventsQuery },
+      WorkflowRunEventsResponse
+    >;
+  };
+  "/workflow-runs/:id/wait": {
+    /**
+     * Long-poll until the run reaches a terminal status
+     * (`completed|failed|cancelled`). Returns the terminal run (200) or 204
+     * when it stays unsettled within `waitMs` (capped at 60s) — `interrupted`
+     * is not terminal (a resume may still revive it), so callers loop.
+     */
+    $get: Endpoint<
+      PathId & { query?: WorkflowRunWaitQuery },
+      WorkflowRunResponse | null
+    >;
+  };
+  "/workflow-runs/:id/cancel": {
+    /**
+     * Request cancellation. Terminal runs no-op; `created`/`interrupted`
+     * runs settle `cancelled` server-side; live runs get a durable
+     * `workflow.cancel`; archived runs 409 `workflow_run_archived`.
+     */
+    $post: Endpoint<PathId, { ok: true }>;
+  };
+  "/workflow-runs/:id/resume": {
+    /**
+     * Request an explicit resume. Gated to `interrupted` runs only (409
+     * `workflow_run_not_resumable` otherwise, 409 `workflow_run_archived`
+     * for archived runs); the completed journal prefix replays free.
+     */
+    $post: Endpoint<PathId, { ok: true }>;
+  };
+  "/workflow-runs/:id/agents/:index/events": {
+    /**
+     * Per-agent provider-event log (the bb thread-timeline event rows the
+     * workflow agent emitted), proxied from the run dir on the run's host
+     * via `host.read_file_relative`. 404 when the log does not exist on the
+     * host; 502 `host_unavailable` when the daemon is offline.
+     */
+    $get: Endpoint<PathWorkflowRunAgentIndex, ThreadEventRow[]>;
+  };
+
   // ─── System ──────────────────────────────────────────────────────────
 
   "/system/config": {
     $get: Endpoint<EmptyInput, SystemConfigResponse>;
+  };
+  "/settings/experiments": {
+    /**
+     * Replace the user's opt-in experiments (full object — no partial
+     * updates). Broadcasts system `config-changed` so every open window
+     * re-reads `/system/config` and re-gates its surfaces.
+     */
+    $put: Endpoint<{ json: Experiments }, Experiments>;
   };
   "/system/config/reload": {
     /** Rereads the server's local bb-app config file and applies supported runtime config. */

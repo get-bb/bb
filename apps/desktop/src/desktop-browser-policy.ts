@@ -27,7 +27,7 @@ export interface WindowOpenDecision {
  * the renderer can open it as a new in-panel browser tab.
  */
 export function resolveWindowOpenAction(url: string): WindowOpenDecision {
-  return { openTabUrl: isAllowedBrowserUrl(url) ? url : null };
+  return { openTabUrl: isAllowedPublicBrowserPopupUrl(url) ? url : null };
 }
 
 // --- Loopback / LAN request firewall ---
@@ -43,6 +43,25 @@ export function resolveWindowOpenAction(url: string): WindowOpenDecision {
 // public name that resolves to a private IP (DNS rebinding) is not caught here.
 // That is a deeper, separate mitigation and out of scope for v1.
 
+export interface ShouldBlockBrowserRequestArgs {
+  url: string;
+  resourceType: string;
+  isMainFrame: boolean;
+  targetWebContentsId: number | null;
+  entryWebContentsId: number | null;
+  pendingTrustedLocalTopLevelOriginKey: string | null;
+  currentMainFrameLocalOriginKey: string | null;
+  requestingFrameOriginKey: string | null;
+  mainFrameInitiatorOriginKey: string | null;
+}
+
+interface ParsedBrowserRequestUrl {
+  protocol: string;
+  host: string;
+  originHost: string;
+  port: string;
+}
+
 function parseIpv4Octets(host: string): number[] | null {
   const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (match === null) {
@@ -54,15 +73,24 @@ function parseIpv4Octets(host: string): number[] | null {
   return octets.some((octet) => octet > 255) ? null : octets;
 }
 
-function isBlockedIpv4(octets: readonly number[]): boolean {
+function isLoopbackIpv4(octets: readonly number[]): boolean {
+  return octets[0] === 127; // 127.0.0.0/8 loopback
+}
+
+function isPrivateIpv4(octets: readonly number[]): boolean {
   const [a, b] = octets;
   if (a === 0) return true; // 0.0.0.0/8 "this host"
-  if (a === 127) return true; // 127.0.0.0/8 loopback
   if (a === 10) return true; // 10.0.0.0/8 private
   if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private
   if (a === 192 && b === 168) return true; // 192.168.0.0/16 private
   if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local
   if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+  if (a === 192 && b === 0 && octets[2] === 0) return true; // 192.0.0.0/24
+  if (a === 192 && b === 0 && octets[2] === 2) return true; // TEST-NET-1
+  if (a === 198 && b === 18) return true; // 198.18.0.0/15 benchmarking
+  if (a === 198 && b === 19) return true; // 198.18.0.0/15 benchmarking
+  if (a === 198 && b === 51 && octets[2] === 100) return true; // TEST-NET-2
+  if (a === 203 && b === 0 && octets[2] === 113) return true; // TEST-NET-3
   if (a >= 224) return true; // multicast / reserved / broadcast
   return false;
 }
@@ -115,38 +143,44 @@ function expandIpv6(host: string): number[] | null {
   return hextets;
 }
 
-function isBlockedIpv6Literal(host: string): boolean {
+function isLoopbackIpv6Literal(host: string): boolean {
   const hextets = expandIpv6(host);
   if (hextets === null) {
-    return true; // unparseable IPv6 literal → block to be safe
+    return false;
   }
   const leadingZeros = hextets.slice(0, 7).every((value) => value === 0);
-  if (leadingZeros && hextets[7] === 1) return true; // ::1 loopback
+  return leadingZeros && hextets[7] === 1; // ::1 loopback
+}
+
+function isPrivateIpv6Literal(host: string): boolean {
+  const hextets = expandIpv6(host);
+  if (hextets === null) {
+    return true; // unparseable IPv6 literal -> block to be safe
+  }
   if (hextets.every((value) => value === 0)) return true; // :: unspecified
+  if (isLoopbackIpv6Literal(host)) return false; // ::1 is handled as loopback
   if ((hextets[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
   if ((hextets[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
+  if ((hextets[0] & 0xff00) === 0xff00) return true; // ff00::/8 multicast
+  if (hextets[0] === 0x2001 && hextets[1] === 0x0db8) return true; // docs
   // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d).
   const firstFiveZero = hextets.slice(0, 5).every((value) => value === 0);
   if (firstFiveZero && (hextets[5] === 0xffff || hextets[5] === 0)) {
-    return isBlockedIpv4([
+    const mappedOctets = [
       hextets[6] >> 8,
       hextets[6] & 0xff,
       hextets[7] >> 8,
       hextets[7] & 0xff,
-    ]);
+    ];
+    return isLoopbackIpv4(mappedOctets) || isPrivateIpv4(mappedOctets);
   }
   return false;
 }
 
-/**
- * Whether a request host (URL hostname, no port) must be blocked because it
- * targets loopback, link-local, private/LAN, or mDNS `.local` space. Public
- * names and addresses return false. Exported for unit testing.
- */
-export function isBlockedBrowserRequestHost(rawHost: string): boolean {
+function normalizeBrowserRequestHost(rawHost: string): string | null {
   let host = rawHost.trim().toLowerCase();
   if (host.length === 0) {
-    return true;
+    return null;
   }
   if (host.startsWith("[") && host.endsWith("]")) {
     host = host.slice(1, -1);
@@ -155,44 +189,242 @@ export function isBlockedBrowserRequestHost(rawHost: string): boolean {
   if (zoneIndex !== -1) {
     host = host.slice(0, zoneIndex);
   }
-  if (host === "localhost" || host.endsWith(".localhost")) {
-    return true;
+  while (host.endsWith(".") && host.length > 1) {
+    host = host.slice(0, -1);
   }
-  if (host === "local" || host.endsWith(".local")) {
+  return host.length === 0 ? null : host;
+}
+
+function normalizeBrowserOriginHost(rawHost: string): string | null {
+  let host = rawHost.trim().toLowerCase();
+  if (host.length === 0) {
+    return null;
+  }
+  if (host.startsWith("[") && host.endsWith("]")) {
+    host = host.slice(1, -1);
+  }
+  const zoneIndex = host.indexOf("%");
+  if (zoneIndex !== -1) {
+    host = host.slice(0, zoneIndex);
+  }
+  return host.length === 0 ? null : host;
+}
+
+function isLocalhostName(host: string): boolean {
+  return host === "localhost" || host.endsWith(".localhost");
+}
+
+function isMdnsName(host: string): boolean {
+  return host === "local" || host.endsWith(".local");
+}
+
+function parseBrowserRequestUrl(url: string): ParsedBrowserRequestUrl | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = normalizeBrowserRequestHost(parsed.hostname);
+  const originHost = normalizeBrowserOriginHost(parsed.hostname);
+  if (host === null || originHost === null) {
+    return null;
+  }
+  return { protocol: parsed.protocol, host, originHost, port: parsed.port };
+}
+
+function isGuardedRequestProtocol(protocol: string): boolean {
+  return (
+    protocol === "http:" ||
+    protocol === "https:" ||
+    protocol === "ws:" ||
+    protocol === "wss:"
+  );
+}
+
+function requestUrlTargetsLoopbackOrPrivate(url: string): boolean {
+  const parsed = parseBrowserRequestUrl(url);
+  if (parsed === null || !isGuardedRequestProtocol(parsed.protocol)) {
+    return false;
+  }
+  return (
+    isLoopbackBrowserRequestHost(parsed.host) ||
+    isPrivateBrowserRequestHost(parsed.host)
+  );
+}
+
+function browserRequestHasEntryAttribution(
+  args: ShouldBlockBrowserRequestArgs,
+): boolean {
+  return (
+    args.targetWebContentsId !== null &&
+    args.entryWebContentsId !== null &&
+    args.targetWebContentsId === args.entryWebContentsId
+  );
+}
+
+function localRequestProtocolClass(protocol: string): string | null {
+  if (protocol === "http:" || protocol === "ws:") {
+    return "local";
+  }
+  if (protocol === "https:" || protocol === "wss:") {
+    return "secure-local";
+  }
+  return null;
+}
+
+function isAllowedPublicBrowserPopupUrl(url: string): boolean {
+  const parsed = parseBrowserRequestUrl(url);
+  return (
+    parsed !== null &&
+    (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+    !isLoopbackBrowserRequestHost(parsed.host) &&
+    !isPrivateBrowserRequestHost(parsed.host)
+  );
+}
+
+/**
+ * Whether a request host (URL hostname, no port) is a loopback host that may be
+ * allowed only through explicit trusted browser-chrome navigation.
+ */
+export function isLoopbackBrowserRequestHost(rawHost: string): boolean {
+  const host = normalizeBrowserRequestHost(rawHost);
+  if (host === null) {
+    return false;
+  }
+  if (isLocalhostName(host)) {
     return true;
   }
   const ipv4 = parseIpv4Octets(host);
   if (ipv4 !== null) {
-    return isBlockedIpv4(ipv4);
+    return isLoopbackIpv4(ipv4);
+  }
+  return host.includes(":") && isLoopbackIpv6Literal(host);
+}
+
+/**
+ * Whether a request host targets private/LAN, link-local, mDNS, CGNAT,
+ * multicast/reserved, unspecified, or otherwise ambiguous local address space.
+ * Loopback hosts are intentionally classified separately.
+ */
+export function isPrivateBrowserRequestHost(rawHost: string): boolean {
+  const host = normalizeBrowserRequestHost(rawHost);
+  if (host === null) {
+    return true;
+  }
+  if (isLocalhostName(host)) {
+    return false;
+  }
+  if (isMdnsName(host)) {
+    return true;
+  }
+  const ipv4 = parseIpv4Octets(host);
+  if (ipv4 !== null) {
+    return !isLoopbackIpv4(ipv4) && isPrivateIpv4(ipv4);
   }
   if (host.includes(":")) {
-    return isBlockedIpv6Literal(host);
+    return isPrivateIpv6Literal(host);
   }
   return false;
 }
 
 /**
- * Whether a network request URL must be blocked. Only `http(s)`/`ws(s)` carry a
- * remote host worth guarding; `data:`/`blob:`/`about:` have none and are
- * allowed (`webSecurity` guards `file:`). Exported for unit testing.
+ * Whether a request host (URL hostname, no port) must be blocked by the legacy
+ * coarse firewall because it targets loopback, private/LAN, or related local
+ * address space. Public names and addresses return false.
+ */
+export function isBlockedBrowserRequestHost(rawHost: string): boolean {
+  return (
+    isLoopbackBrowserRequestHost(rawHost) ||
+    isPrivateBrowserRequestHost(rawHost)
+  );
+}
+
+/**
+ * Returns the comparable local origin key for loopback `http(s)`/`ws(s)` URLs.
+ * `http` and `ws` share one transport class; `https` and `wss` share another.
+ */
+export function localRequestOriginKey(url: string): string | null {
+  const parsed = parseBrowserRequestUrl(url);
+  if (parsed === null || !isLoopbackBrowserRequestHost(parsed.host)) {
+    return null;
+  }
+  const protocolClass = localRequestProtocolClass(parsed.protocol);
+  if (protocolClass === null) {
+    return null;
+  }
+  return `${protocolClass}|${parsed.originHost}|${parsed.port}`;
+}
+
+/**
+ * Trusted top-level local navigations may only target loopback `http(s)` URLs.
+ */
+export function isAllowedTrustedLocalTopLevelUrl(url: string): boolean {
+  const parsed = parseBrowserRequestUrl(url);
+  return (
+    parsed !== null &&
+    (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+    isLoopbackBrowserRequestHost(parsed.host)
+  );
+}
+
+/**
+ * Whether a network request URL must be blocked by the current coarse
+ * loopback/LAN firewall. Only `http(s)`/`ws(s)` carry a remote host worth
+ * guarding; `data:`/`blob:`/`about:` have none and are allowed (`webSecurity`
+ * guards `file:`). Exported for unit testing and current native wiring.
  */
 export function isBlockedBrowserRequestUrl(url: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
+  return requestUrlTargetsLoopbackOrPrivate(url);
+}
+
+/**
+ * Pure same-origin loopback/private request decision. The caller is responsible
+ * for resolving Electron's `webContentsId` to exactly one live browser entry
+ * before passing the entry id and local-origin state here.
+ */
+export function shouldBlockBrowserRequest(
+  args: ShouldBlockBrowserRequestArgs,
+): boolean {
+  const parsed = parseBrowserRequestUrl(args.url);
+  if (parsed === null || !isGuardedRequestProtocol(parsed.protocol)) {
     return false;
   }
-  const protocol = parsed.protocol;
+  if (isPrivateBrowserRequestHost(parsed.host)) {
+    return true;
+  }
+  if (!isLoopbackBrowserRequestHost(parsed.host)) {
+    return false;
+  }
+  if (!browserRequestHasEntryAttribution(args)) {
+    return true;
+  }
+  const targetOriginKey = localRequestOriginKey(args.url);
+  if (targetOriginKey === null) {
+    return true;
+  }
+  const isMainFrameRequest =
+    args.isMainFrame || args.resourceType === "mainFrame";
+  if (isMainFrameRequest) {
+    if (!isAllowedTrustedLocalTopLevelUrl(args.url)) {
+      return true;
+    }
+    if (targetOriginKey === args.pendingTrustedLocalTopLevelOriginKey) {
+      return false;
+    }
+    return (
+      targetOriginKey !== args.currentMainFrameLocalOriginKey ||
+      args.mainFrameInitiatorOriginKey !== args.currentMainFrameLocalOriginKey
+    );
+  }
   if (
-    protocol !== "http:" &&
-    protocol !== "https:" &&
-    protocol !== "ws:" &&
-    protocol !== "wss:"
+    args.currentMainFrameLocalOriginKey === null ||
+    args.requestingFrameOriginKey === null ||
+    args.requestingFrameOriginKey !== args.currentMainFrameLocalOriginKey
   ) {
-    return false;
+    return true;
   }
-  return isBlockedBrowserRequestHost(parsed.hostname);
+  return targetOriginKey !== args.currentMainFrameLocalOriginKey;
 }
 
 // --- Popup-tab rate limiting ---

@@ -1,0 +1,12 @@
+---
+kind: prompt
+title: Child Thread Outcome Batch
+summary: Notifies a parent thread about one or more child thread outcomes.
+intent: Give the parent thread batched outcome context without forcing immediate action for every child thread.
+editingNotes: Keep this concise. The updates variable is a server-formatted singular or plural outcome body with rich thread mention ranges attached by the server.
+variables:
+  updates: "Rendered child thread outcome message body."
+---
+[bb system]
+
+{{updates}}

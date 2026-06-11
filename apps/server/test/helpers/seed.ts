@@ -169,7 +169,6 @@ export function seedThread(
     environmentId?: string | null;
     providerId?: string;
     status?: "created" | "provisioning" | "idle" | "active" | "error";
-    type?: "standard" | "manager";
     title?: string | null;
     parentThreadId?: string | null;
     titleFallback?: string | null;
@@ -180,7 +179,6 @@ export function seedThread(
     environmentId: args.environmentId ?? null,
     providerId: args.providerId ?? "codex",
     status: args.status ?? "idle",
-    type: args.type ?? "standard",
     title: args.title ?? "Test Thread",
     titleFallback: args.titleFallback ?? "Test Thread",
     parentThreadId: args.parentThreadId ?? null,

@@ -11,8 +11,7 @@ import { useNavigate } from "react-router-dom";
 import { appToast } from "@/components/ui/app-toast";
 import type { Thread } from "@bb/domain";
 import {
-  useArchiveThread,
-  useArchiveManagerThreads,
+  useArchiveThreadAndChildren,
   useDeleteThread,
   useMarkThreadRead,
   useMarkThreadUnread,
@@ -21,14 +20,14 @@ import {
   useUnpinThread,
   useUpdateThread,
 } from "@/hooks/mutations/thread-state-mutations";
-import { getThreadAssignedChildSummary } from "@/lib/api";
+import { getThreadChildSummary } from "@/lib/api";
 import { useAppRoute } from "@/hooks/useAppRoute";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
   getMutationErrorMessage,
   shouldShowMutationErrorToast,
 } from "@/lib/mutation-errors";
-import { getThreadDisplayTitle, threadTypeLabel } from "@/lib/thread-title";
+import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   ThreadRenameDialog,
   type ThreadRenameDialogTarget,
@@ -37,17 +36,21 @@ import {
   ThreadDeleteDialog,
   type ThreadDeleteDialogTarget,
 } from "@/components/dialogs/ThreadDeleteDialog";
+import { ArchivedThreadToastTitle } from "@/components/thread/ArchivedThreadToastTitle";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { getThreadReadToggleAction } from "@/components/sidebar/threadReadState";
-import { getRootComposeRoutePath } from "@/lib/app-route-paths";
+import {
+  getRootComposeRoutePath,
+  getThreadRoutePath,
+} from "@/lib/app-route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 
 export interface ThreadActionsContextValue {
-  archiveAllAssigned: (thread: Thread) => void;
+  archiveThreadAndChildren: (thread: Thread) => void;
   requestRename: (thread: Thread) => void;
   requestDelete: (thread: Thread) => void;
-  toggleArchive: (thread: Thread) => void;
+  unarchiveThread: (thread: Thread) => void;
   togglePin: (thread: Thread) => void;
   toggleRead: (thread: Thread) => void;
 }
@@ -71,23 +74,13 @@ interface ThreadActionsProviderProps {
 }
 
 interface DeleteThreadActionRequest {
+  childThreadsConfirmed: boolean;
   closeDialog: () => void;
-  managerChildThreadsConfirmed: boolean;
   thread: Thread;
 }
 
 interface ThreadActionContext {
-  assignedChildCount: number;
-}
-
-function formatArchiveAllSuccessMessage(archivedThreadCount: number): string {
-  if (archivedThreadCount <= 1) {
-    return "Archived manager";
-  }
-  const assignedThreadCount = archivedThreadCount - 1;
-  return assignedThreadCount === 1
-    ? "Archived manager and 1 assigned thread"
-    : `Archived manager and ${assignedThreadCount} assigned threads`;
+  childThreadCount: number;
 }
 
 export function ThreadActionsProvider({
@@ -96,9 +89,8 @@ export function ThreadActionsProvider({
   const navigate = useNavigate();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const { threadId: viewedThreadId } = useAppRoute();
-  const archiveThread = useArchiveThread();
-  const archiveManagerThreads = useArchiveManagerThreads();
-  const unarchiveThread = useUnarchiveThread();
+  const archiveThreadAndChildrenMutation = useArchiveThreadAndChildren();
+  const unarchiveThreadMutation = useUnarchiveThread();
   const markThreadRead = useMarkThreadRead();
   const markThreadUnread = useMarkThreadUnread();
   const pinThread = usePinThread();
@@ -110,9 +102,9 @@ export function ThreadActionsProvider({
   // renders. Depending on the full mutation objects would churn callback
   // identities on every isPending flip and force every useThreadActions()
   // consumer to re-render whenever any mutation fires.
-  const { mutate: archiveMutate } = archiveThread;
-  const { mutate: archiveManagerThreadsMutate } = archiveManagerThreads;
-  const { mutate: unarchiveMutate } = unarchiveThread;
+  const { mutate: archiveThreadAndChildrenMutate } =
+    archiveThreadAndChildrenMutation;
+  const { mutate: unarchiveMutate } = unarchiveThreadMutation;
   const { mutate: markReadMutate } = markThreadRead;
   const { mutate: markUnreadMutate } = markThreadUnread;
   const { mutate: pinMutate } = pinThread;
@@ -150,7 +142,6 @@ export function ThreadActionsProvider({
       openRenameDialog({
         id: thread.id,
         currentTitle: getThreadDisplayTitle(thread),
-        threadType: thread.type,
       });
     },
     [openRenameDialog],
@@ -179,14 +170,11 @@ export function ThreadActionsProvider({
       signal: AbortSignal,
     ): Promise<ThreadActionContext | null> => {
       try {
-        const childSummary =
-          thread.type === "manager"
-            ? await getThreadAssignedChildSummary(thread.id, signal)
-            : null;
+        const childSummary = await getThreadChildSummary(thread.id, signal);
         if (signal.aborted) return null;
 
         return {
-          assignedChildCount: childSummary?.nonDeletedAssignedChildCount ?? 0,
+          childThreadCount: childSummary?.nonDeletedChildCount ?? 0,
         };
       } catch (error) {
         if (signal.aborted) return null;
@@ -215,23 +203,23 @@ export function ThreadActionsProvider({
   function buildDialogTargetFromContext<T extends { thread: Thread }>(
     base: T,
     context: ThreadActionContext,
-  ): T & { assignedChildCount?: number } {
+  ): T & { childThreadCount?: number } {
     return {
       ...base,
-      ...(context.assignedChildCount > 0
-        ? { assignedChildCount: context.assignedChildCount }
+      ...(context.childThreadCount > 0
+        ? { childThreadCount: context.childThreadCount }
         : {}),
     };
   }
 
   const performDelete = useCallback(
     ({
+      childThreadsConfirmed,
       closeDialog,
-      managerChildThreadsConfirmed,
       thread,
     }: DeleteThreadActionRequest) => {
       deleteMutate(
-        { id: thread.id, managerChildThreadsConfirmed },
+        { id: thread.id, childThreadsConfirmed },
         {
           onSuccess: () => {
             destroyPersistedBrowserViewsForThread({
@@ -267,63 +255,24 @@ export function ThreadActionsProvider({
   const confirmDelete = useCallback(
     (target: ThreadDeleteDialogTarget) => {
       performDelete({
+        childThreadsConfirmed: target.childThreadCount !== undefined,
         closeDialog: closeDeleteDialog,
-        managerChildThreadsConfirmed: target.assignedChildCount !== undefined,
         thread: target.thread,
       });
     },
     [closeDeleteDialog, performDelete],
   );
 
-  const showArchiveError = useCallback((thread: Thread, error: Error) => {
-    appToast.error(
-      getMutationErrorMessage({
-        error,
-        fallbackMessage: `Failed to archive ${threadTypeLabel(thread.type)}`,
-        lifecycleOperation: "archive_thread",
-      }),
-    );
-  }, []);
-
-  const archiveWithUndoToast = useCallback(
+  const unarchiveThreadAction = useCallback(
     (thread: Thread) => {
-      archiveMutate(
-        { id: thread.id },
-        {
-          onSuccess: () => {
-            navigateAwayIfViewing(thread);
-            appToast.success("Thread archived", {
-              cancel: {
-                label: "Undo",
-                onClick: () => {
-                  unarchiveMutate({ id: thread.id });
-                },
-              },
-            });
-          },
-          onError: (error) => {
-            showArchiveError(thread, error);
-          },
-        },
-      );
+      unarchiveMutate({ id: thread.id });
     },
-    [archiveMutate, navigateAwayIfViewing, showArchiveError, unarchiveMutate],
+    [unarchiveMutate],
   );
 
-  const toggleArchive = useCallback(
+  const archiveThreadAndChildrenAction = useCallback(
     (thread: Thread) => {
-      if (thread.archivedAt != null) {
-        unarchiveMutate({ id: thread.id });
-        return;
-      }
-      archiveWithUndoToast(thread);
-    },
-    [archiveWithUndoToast, unarchiveMutate],
-  );
-
-  const archiveAllAssigned = useCallback(
-    (thread: Thread) => {
-      archiveManagerThreadsMutate(
+      archiveThreadAndChildrenMutate(
         { id: thread.id },
         {
           onSuccess: (response) => {
@@ -334,15 +283,29 @@ export function ThreadActionsProvider({
               setRootComposeProjectId(thread.projectId);
               navigate(getRootComposeRoutePath());
             }
+            const toastId = `thread-archived-${thread.id}`;
             appToast.success(
-              formatArchiveAllSuccessMessage(response.archivedThreadIds.length),
+              <ArchivedThreadToastTitle
+                archivedThreadCount={response.archivedThreadIds.length}
+                threadTitle={getThreadDisplayTitle(thread)}
+                onOpenThread={() => {
+                  navigate(
+                    getThreadRoutePath({
+                      projectId: thread.projectId,
+                      threadId: thread.id,
+                    }),
+                  );
+                  appToast.dismiss(toastId);
+                }}
+              />,
+              { id: toastId },
             );
           },
           onError: (error) => {
             appToast.error(
               getMutationErrorMessage({
                 error,
-                fallbackMessage: "Failed to archive manager threads",
+                fallbackMessage: "Failed to archive thread and children",
                 lifecycleOperation: "archive_thread",
               }),
             );
@@ -351,7 +314,7 @@ export function ThreadActionsProvider({
       );
     },
     [
-      archiveManagerThreadsMutate,
+      archiveThreadAndChildrenMutate,
       navigate,
       setRootComposeProjectId,
       viewedThreadId,
@@ -402,18 +365,18 @@ export function ThreadActionsProvider({
     () => ({
       requestRename,
       requestDelete,
-      archiveAllAssigned,
-      toggleArchive,
+      archiveThreadAndChildren: archiveThreadAndChildrenAction,
+      unarchiveThread: unarchiveThreadAction,
       togglePin,
       toggleRead,
     }),
     [
-      archiveAllAssigned,
+      archiveThreadAndChildrenAction,
       requestRename,
       requestDelete,
-      toggleArchive,
       togglePin,
       toggleRead,
+      unarchiveThreadAction,
     ],
   );
 

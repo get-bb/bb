@@ -1,0 +1,553 @@
+import { describe, expect, it, vi } from "vitest";
+import * as domain from "@bb/domain";
+import {
+  setupCommandOutputTestEnvironment,
+  collectLogLines,
+  getHelpOutput,
+  resolveLocalHostIdMock,
+  runCommand,
+  stubServerApi,
+} from "../helpers/command-output-harness.js";
+import type { CommandRegistrar } from "../helpers/command-output-harness.js";
+import * as fixtures from "../helpers/command-output-fixtures.js";
+import { registerThreadCommands } from "../../commands/thread/index.js";
+
+describe("bb thread spawn command output", () => {
+  setupCommandOutputTestEnvironment();
+
+  const register: CommandRegistrar = (program) =>
+    registerThreadCommands(program, () => "http://server");
+
+  it("bb thread spawn omits provider and model when the user relies on project defaults", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-1",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "created",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      ["thread", "spawn", "--project", "proj-1", "--prompt", "hello"],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        origin: "cli",
+        projectId: "proj-1",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        environment: {
+          type: "host",
+          hostId: "host-test-001",
+          workspace: { type: "unmanaged", path: null },
+        },
+      },
+    });
+  });
+
+  it("bb thread spawn defaults to the personal project without local host lookup", async () => {
+    vi.stubEnv("BB_PROJECT_ID", undefined);
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-personal",
+      projectId: domain.PERSONAL_PROJECT_ID,
+      providerId: "codex",
+      status: "created",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(["thread", "spawn", "--prompt", "hello"], register);
+
+    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        origin: "cli",
+        projectId: domain.PERSONAL_PROJECT_ID,
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        environment: {
+          type: "host",
+          workspace: { type: "personal" },
+        },
+      },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toContain("  Project:  -");
+  });
+
+  it("bb thread spawn honors BB_PROJECT_ID when --project is omitted", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-env");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-env-project",
+      projectId: "proj-env",
+      providerId: "codex",
+      status: "created",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(["thread", "spawn", "--prompt", "hello"], register);
+
+    expect(resolveLocalHostIdMock).toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        origin: "cli",
+        projectId: "proj-env",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        environment: {
+          type: "host",
+          hostId: "host-test-001",
+          workspace: { type: "unmanaged", path: null },
+        },
+      },
+    });
+  });
+
+  it("bb thread spawn forwards explicit execution overrides", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-overrides",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "created",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "hello",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+        "--reasoning-level",
+        "high",
+        "--service-tier",
+        "fast",
+        "--permission-mode",
+        "workspace-write",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        origin: "cli",
+        projectId: "proj-1",
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "high",
+        permissionMode: "workspace-write",
+        serviceTier: "fast",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        environment: {
+          type: "host",
+          hostId: "host-test-001",
+          workspace: { type: "unmanaged", path: null },
+        },
+      },
+    });
+  });
+
+  it("bb thread spawn help lists product permission modes", async () => {
+    const helpOutput = await getHelpOutput(["thread", "spawn"], register);
+    expect(helpOutput).toContain("--permission-mode <mode>");
+    expect(helpOutput).toMatch(
+      /Permission mode: full, workspace-write, or\s+readonly/,
+    );
+  });
+
+  it("bb thread spawn reports invalid permission mode choices", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--prompt",
+          "hello",
+          "--permission-mode",
+          "unsafe",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Invalid permission mode 'unsafe'. Expected full, workspace-write, or readonly.",
+    );
+  });
+
+  it("bb thread spawn --json prints the raw thread", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-json-spawn",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "created",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--json",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "hello",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+      ],
+      register,
+    );
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(thread);
+  });
+
+  it("bb thread spawn prefixes missing-project-default failures with context", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const post = vi.fn(async () => {
+      throw new Error(
+        "HTTP 400: Provider is required when project proj-1 has no stored execution defaults for thread type standard",
+      );
+    });
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        ["thread", "spawn", "--project", "proj-1", "--prompt", "hello"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(collectLogLines(vi.mocked(console.error))).toContain(
+      "Error: Failed to create thread: HTTP 400: Provider is required when project proj-1 has no stored execution defaults for thread type standard",
+    );
+  });
+
+  it("bb thread spawn with --parent-thread forwards parent thread id", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-2",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "created",
+      parentThreadId: "thread-parent",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--parent-thread",
+        "thread-parent",
+        "--prompt",
+        "hello",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        origin: "cli",
+        projectId: "proj-1",
+        providerId: "codex",
+        model: "gpt-5",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        parentThreadId: "thread-parent",
+        environment: {
+          type: "host",
+          hostId: "host-test-001",
+          workspace: { type: "unmanaged", path: null },
+        },
+      },
+    });
+  });
+
+  it("bb thread spawn defaults parent thread id from BB_THREAD_ID", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    vi.stubEnv("BB_THREAD_ID", "thread-context-parent");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-2",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "created",
+      parentThreadId: "thread-context-parent",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "hello",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        parentThreadId: "thread-context-parent",
+      }),
+    });
+  });
+
+  it("bb thread spawn rejects invalid parent-thread values", async () => {
+    const post = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-invalid-parent",
+        projectId: "proj-1",
+        providerId: "codex",
+      }),
+    );
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--parent-thread",
+          "thread/invalid",
+          "--prompt",
+          "hello",
+          "--provider",
+          "codex",
+          "--model",
+          "gpt-5",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      'Error: Invalid ID from --parent-thread: "thread/invalid". IDs must contain only letters, digits, hyphens, and underscores.',
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("bb thread spawn forwards a valid --environment ID", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-env-1",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "created",
+      environmentId: "env-worktree-001",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--environment",
+        "env-worktree-001",
+        "--prompt",
+        "hello",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        origin: "cli",
+        projectId: "proj-1",
+        providerId: "codex",
+        model: "gpt-5",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        environment: { type: "reuse", environmentId: "env-worktree-001" },
+      },
+    });
+  });
+
+  it("bb thread spawn forwards an absolute --environment path as an unmanaged workspace", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const workspacePath = "/Users/michael/Projects/bb";
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-env-path-1",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "created",
+      environmentId: "env-unmanaged-001",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--environment",
+        workspacePath,
+        "--prompt",
+        "hello",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+      ],
+      register,
+    );
+
+    expect(resolveLocalHostIdMock).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        origin: "cli",
+        projectId: "proj-1",
+        providerId: "codex",
+        model: "gpt-5",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        environment: {
+          type: "host",
+          hostId: "host-test-001",
+          workspace: { type: "unmanaged", path: workspacePath },
+        },
+      },
+    });
+  });
+
+  it("bb thread spawn rejects invalid non-path --environment IDs", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const post = vi.fn();
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--environment",
+          "env:bad",
+          "--prompt",
+          "hello",
+          "--provider",
+          "codex",
+          "--model",
+          "gpt-5",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      'Error: Invalid ID from --environment flag: "env:bad". IDs must contain only letters, digits, hyphens, and underscores.',
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("bb thread spawn forwards --new-environment", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-env-1",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "created",
+      environmentId: "env-worktree-001",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--new-environment",
+        "worktree",
+        "--prompt",
+        "hello",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: {
+        origin: "cli",
+        projectId: "proj-1",
+        providerId: "codex",
+        model: "gpt-5",
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        environment: {
+          type: "host",
+          hostId: "host-test-001",
+          workspace: {
+            type: "managed-worktree",
+            baseBranch: { kind: "default" },
+          },
+        },
+      },
+    });
+  });
+});

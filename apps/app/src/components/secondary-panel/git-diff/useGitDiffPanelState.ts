@@ -8,27 +8,32 @@ import {
 } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
-import type { FileContents } from "@pierre/diffs";
 import type { ThreadGitDiffResponse, WorkspaceDiffTarget } from "@bb/domain";
+import type { EnvironmentDiffFileResponse } from "@bb/server-contract";
 import {
   useEnvironmentGitDiff,
   useEnvironmentWorkStatus,
 } from "../../../hooks/queries/environment-queries";
 import { environmentDiffFileQueryKey } from "../../../hooks/queries/query-keys";
 import { getEnvironmentDiffFile, type DiffFileTarget } from "../../../lib/api";
-import type { RequestDiffFileContents } from "../../git-diff/GitDiffCard";
+import { normalizeFilePreviewMimeType } from "../../../lib/file-preview";
+import type {
+  DiffFileContentsResult,
+  RequestDiffFileContents,
+} from "../../git-diff/GitDiffCard";
 import {
   gitDiffCollapsedFileKeysAtom,
   gitDiffLoadingFileKeysAtom,
+  pendingGitDiffCommitShaAtom,
   pendingGitDiffScrollPathAtom,
   selectedMergeBaseBranchAtom,
 } from "../threadSecondaryPanelAtoms";
 import {
   buildParsedGitDiffFileEntries,
   doesGitDiffFileMatchPath,
+  parseGitShortstat,
   parseGitDiffFiles,
   parseGitDiffPatchChunks,
-  summarizeGitDiff,
   type ParsedGitDiffFile,
 } from "../../git-diff/git-diff-parsing";
 import { type GitDiffSelectionOption } from "../ThreadSecondaryPanel";
@@ -115,6 +120,8 @@ export function useGitDiffPanelState({
   const selectedMergeBaseBranch = useAtomValue(selectedMergeBaseBranchAtom);
   const pendingGitDiffScrollPath = useAtomValue(pendingGitDiffScrollPathAtom);
   const setPendingGitDiffScrollPath = useSetAtom(pendingGitDiffScrollPathAtom);
+  const pendingGitDiffCommitSha = useAtomValue(pendingGitDiffCommitShaAtom);
+  const setPendingGitDiffCommitSha = useSetAtom(pendingGitDiffCommitShaAtom);
   const collapsedGitDiffFileKeys = useAtomValue(gitDiffCollapsedFileKeysAtom);
   const loadingGitDiffFileKeys = useAtomValue(gitDiffLoadingFileKeysAtom);
   const lastFocusedScrollPathRef = useRef<string | null>(null);
@@ -169,12 +176,19 @@ export function useGitDiffPanelState({
     fetchedGitDiffResponse?.outcome === "available"
       ? fetchedGitDiffResponse.diff
       : undefined;
+  const localGitDiffUnavailableMessage =
+    isDiffPanelActive && !environmentId
+      ? "This thread does not have a workspace to diff."
+      : isDiffPanelActive && gitDiffTarget === undefined
+        ? "No merge base branch is configured for this workspace."
+        : null;
   const gitDiffUnavailableMessage =
-    fetchedGitDiffResponse?.outcome === "unavailable"
+    localGitDiffUnavailableMessage ??
+    (fetchedGitDiffResponse?.outcome === "unavailable"
       ? fetchedGitDiffResponse.failure.message
       : fetchedGitDiffResponse?.outcome === "not_applicable"
         ? fetchedGitDiffResponse.message
-        : null;
+        : null);
   const workspaceStatus =
     gitDiffWorkspaceStatus?.outcome === "available"
       ? gitDiffWorkspaceStatus.workspace
@@ -246,7 +260,10 @@ export function useGitDiffPanelState({
     isParsingGitDiffFiles,
   });
   const isAwaitingPrerequisites =
-    isDiffPanelActive && Boolean(environmentId) && gitDiffTarget === undefined;
+    isDiffPanelActive &&
+    Boolean(environmentId) &&
+    gitDiffTarget === undefined &&
+    localGitDiffUnavailableMessage === null;
   const gitDiffPreparationState = resolveGitDiffPreparationState({
     currentGitDiff,
     isAwaitingPrerequisites,
@@ -387,6 +404,10 @@ export function useGitDiffPanelState({
     setPendingGitDiffScrollPath(null);
   }, [environmentId, setPendingGitDiffScrollPath]);
 
+  useEffect(() => {
+    setPendingGitDiffCommitSha(null);
+  }, [environmentId, setPendingGitDiffCommitSha]);
+
   // --- Reset selected commit when pendingGitDiffScrollPath arrives (from openDiffFile) ---
 
   useEffect(() => {
@@ -394,6 +415,15 @@ export function useGitDiffPanelState({
       setSelectedGitDiffCommitSha(null);
     }
   }, [pendingGitDiffScrollPath]);
+
+  // --- Apply the commit selection requested from the info tab (openCommitDiff) ---
+
+  useEffect(() => {
+    if (pendingGitDiffCommitSha) {
+      setSelectedGitDiffCommitSha(pendingGitDiffCommitSha);
+      setPendingGitDiffCommitSha(null);
+    }
+  }, [pendingGitDiffCommitSha, setPendingGitDiffCommitSha]);
 
   const hasUncommittedChanges =
     (workspaceStatus?.workingTree.files.length ?? 0) > 0;
@@ -495,15 +525,10 @@ export function useGitDiffPanelState({
     [diffCommits, hasUncommittedChanges],
   );
   const gitDiffStats = useMemo(
-    () =>
-      summarizeGitDiff(
-        isParsingGitDiffFiles ? [] : parsedGitDiffFiles,
-        currentGitDiff,
-      ),
-    [currentGitDiff, isParsingGitDiffFiles, parsedGitDiffFiles],
+    () => parseGitShortstat(threadGitDiff?.shortstat ?? ""),
+    [threadGitDiff?.shortstat],
   );
-  const { hasParsedGitDiffFiles, isPreparingGitDiff } =
-    gitDiffPreparationState;
+  const { hasParsedGitDiffFiles, isPreparingGitDiff } = gitDiffPreparationState;
 
   const onGitDiffSelectionChange = useCallback((value: string) => {
     setSelectedGitDiffCommitSha(value === "all" ? null : value);
@@ -533,7 +558,7 @@ export function useGitDiffPanelState({
         queryFn: () => getEnvironmentDiffFile(envId, target, path, side),
         staleTime: 5_000,
       });
-      return toFileContents(path, result.content, result.contentEncoding);
+      return toDiffFileContentsResult(path, result);
     };
   }, [environmentId, fileTarget, queryClient]);
 
@@ -604,11 +629,9 @@ function buildGitDiffRequestIdentity({
     case "uncommitted":
       return `${environmentKey}:uncommitted`;
     case "branch_committed":
-      return [
-        environmentKey,
-        "branch_committed",
-        target.mergeBaseBranch,
-      ].join(":");
+      return [environmentKey, "branch_committed", target.mergeBaseBranch].join(
+        ":",
+      );
     case "all":
       return [environmentKey, "all", target.mergeBaseBranch].join(":");
     case "commit":
@@ -667,14 +690,22 @@ function buildDiffFileTarget(
   }
 }
 
-function toFileContents(
+function toDiffFileContentsResult(
   path: string,
-  content: string,
-  contentEncoding: "utf8" | "base64",
-): FileContents | null {
-  // `@pierre/diffs` wants a UTF-8 string; binary blobs come back base64. Skip
-  // those — the diff-rendering library can't show context for binaries
-  // (parsePatchFiles doesn't produce hunks for them anyway).
-  if (contentEncoding !== "utf8") return null;
-  return { name: path, contents: content };
+  response: EnvironmentDiffFileResponse,
+): DiffFileContentsResult | null {
+  if (response.contentEncoding === "utf8") {
+    return { kind: "text", file: { name: path, contents: response.content } };
+  }
+  const mimeType = normalizeFilePreviewMimeType(response.mimeType ?? null);
+  if (mimeType.startsWith("image/")) {
+    return {
+      kind: "image",
+      dataUrl: `data:${mimeType};base64,${response.content}`,
+      sizeBytes: response.sizeBytes,
+    };
+  }
+  // Non-image binary: `@pierre/diffs` wants a UTF-8 string for context
+  // expansion and the card has no preview for it.
+  return null;
 }

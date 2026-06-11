@@ -1,9 +1,51 @@
 import { z } from "zod";
-import type { ProviderCapabilities, ProviderInfo } from "@bb/domain";
+import type {
+  ProviderCapabilities,
+  ProviderInfo,
+  ReasoningLevel,
+} from "@bb/domain";
 
 const AGENT_PROVIDER_ID_VALUES = ["codex", "claude-code", "pi"] as const;
 export const agentProviderIdSchema = z.enum(AGENT_PROVIDER_ID_VALUES);
 export type AgentProviderId = z.infer<typeof agentProviderIdSchema>;
+
+/**
+ * Server- and daemon-internal capability facts about a built-in provider —
+ * the answers that previously lived as `providerId === "..."` literals in
+ * server policy modules. Distinct from the wire-facing `ProviderCapabilities`
+ * (which the client also reads): these never leave the backend, so they stay
+ * off the `ProviderInfo` contract.
+ *
+ * Adding a provider: every new catalog entry MUST declare all of these (and
+ * the wire `info` block below). See the checklist at
+ * `BUILT_IN_AGENT_PROVIDER_CATALOG`.
+ */
+export interface ProviderServerCapabilities {
+  /**
+   * Whether sessions get the Workflows feature (dynamic multi-agent
+   * orchestration). The Workflow tool's own opt-in rules govern actual use.
+   */
+  supportsWorkflows: boolean;
+  /**
+   * Whether the provider applies a changed model/reasoning level in place on
+   * `thread/resume` while preserving context (sticky execution override).
+   * Providers without verified in-place swap require respawning the thread.
+   */
+  supportsExecutionOverride: boolean;
+  /**
+   * Whether this provider backs host-daemon-routed AI services (voice
+   * transcription and structured inference) via its `*.voice.transcribe` /
+   * `*.inference.complete` daemon commands.
+   */
+  backsHostDaemonAiServices: boolean;
+  /**
+   * The coarse, ordered per-provider reasoning ladder. Used as a fallback when
+   * a precise per-model `supportedReasoningEfforts` set is unavailable. Mirrors
+   * daemon-side translation: codex rejects "max"/"ultracode" provider-wide and
+   * the pi bridge caps at xhigh, so those ladders stop at xhigh.
+   */
+  reasoningLevels: readonly ReasoningLevel[];
+}
 
 export interface BuiltInAgentProviderInfo extends ProviderInfo {
   id: AgentProviderId;
@@ -11,6 +53,7 @@ export interface BuiltInAgentProviderInfo extends ProviderInfo {
 
 export interface BuiltInAgentProviderCatalogEntry {
   info: BuiltInAgentProviderInfo;
+  serverCapabilities: ProviderServerCapabilities;
 }
 
 type PiDefaultModelPerProvider = Partial<Record<string, string>>;
@@ -39,6 +82,40 @@ const PI_CAPABILITIES: ProviderCapabilities = {
   supportedPermissionModes: ["full"],
 };
 
+const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsWorkflows: false,
+  supportsExecutionOverride: false,
+  backsHostDaemonAiServices: true,
+  reasoningLevels: ["low", "medium", "high", "xhigh"],
+};
+
+const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsWorkflows: true,
+  supportsExecutionOverride: true,
+  backsHostDaemonAiServices: false,
+  reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
+};
+
+const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsWorkflows: false,
+  supportsExecutionOverride: false,
+  backsHostDaemonAiServices: false,
+  reasoningLevels: ["low", "medium", "high", "xhigh"],
+};
+
+/**
+ * Adding a provider checklist — a new entry MUST declare:
+ *   1. `info.id` (add it to `AGENT_PROVIDER_ID_VALUES` above) and
+ *      `info.displayName` / `info.available`.
+ *   2. `info.capabilities` (wire-facing `ProviderCapabilities`): archive,
+ *      rename, service tier, user question, supported permission modes.
+ *   3. `serverCapabilities` (`ProviderServerCapabilities`, backend-only):
+ *      workflows, execution override, host-daemon AI services, reasoning ladder.
+ *   4. Its adapter + factory in `@bb/agent-runtime` (`provider-registry.ts`).
+ * Host-local specifics stay with the daemon: provider CLI executable/install
+ * metadata (`provider-cli-health.ts`) and injected-skill root layout
+ * (`injected-skills.ts`), both keyed by this `info.id`.
+ */
 const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
   {
     info: {
@@ -47,6 +124,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
       displayName: "Codex",
       id: "codex",
     },
+    serverCapabilities: CODEX_SERVER_CAPABILITIES,
   },
   {
     info: {
@@ -55,6 +133,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
       displayName: "Claude Code",
       id: "claude-code",
     },
+    serverCapabilities: CLAUDE_SERVER_CAPABILITIES,
   },
   {
     info: {
@@ -63,6 +142,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
       displayName: "Pi",
       id: "pi",
     },
+    serverCapabilities: PI_SERVER_CAPABILITIES,
   },
 ];
 
@@ -132,6 +212,16 @@ export function getBuiltInAgentProviderInfo(
     throw new Error(`Unsupported agent provider "${providerId}".`);
   }
   return cloneBuiltInAgentProviderInfo(provider.info);
+}
+
+export function getBuiltInAgentProviderServerCapabilities(
+  providerId: AgentProviderId,
+): ProviderServerCapabilities {
+  const provider = builtInAgentProviderById.get(providerId);
+  if (!provider) {
+    throw new Error(`Unsupported agent provider "${providerId}".`);
+  }
+  return provider.serverCapabilities;
 }
 
 export function resolvePiDefaultModelId(

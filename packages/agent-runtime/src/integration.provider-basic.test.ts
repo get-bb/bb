@@ -63,6 +63,7 @@ for (const providerId of providers) {
           preset: "full",
         });
         await ctx.runtime.startThread({
+          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -108,6 +109,7 @@ for (const providerId of providers) {
           preset: "full",
         });
         await ctx.runtime.startThread({
+          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -169,6 +171,7 @@ for (const providerId of providers) {
           preset: "full",
         });
         await ctx.runtime.startThread({
+          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -256,6 +259,7 @@ for (const providerId of providers) {
           preset: "full",
         });
         const startResult = await ctx.runtime.startThread({
+          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -361,6 +365,7 @@ for (const providerId of providers) {
           preset: "full",
         });
         await ctx.runtime.startThread({
+          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -403,6 +408,7 @@ for (const providerId of providers) {
           preset: "full",
         });
         await ctx.runtime.startThread({
+          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -494,6 +500,7 @@ for (const providerId of providers) {
           preset: "full",
         });
         await ctx.runtime.startThread({
+          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",

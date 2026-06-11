@@ -12,6 +12,11 @@
       "source": "./src/internal-environment-lifecycle.ts",
       "types": "./src/internal-environment-lifecycle.ts",
       "default": "./src/internal-environment-lifecycle.ts"
+    },
+    "./internal-lifecycle": {
+      "source": "./src/internal-lifecycle.ts",
+      "types": "./src/internal-lifecycle.ts",
+      "default": "./src/internal-lifecycle.ts"
     }
   },
   "types": "./src/index.ts",
@@ -28,7 +33,6 @@
   "dependencies": {
     "@bb/config": "workspace:*",
     "@bb/domain": "workspace:*",
-    "@bb/host-daemon-contract": "workspace:*",
     "better-sqlite3": "12.10.0",
     "drizzle-orm": "^0.38.0",
     "nanoid": "^5.0.9"

@@ -5,7 +5,7 @@ import type {
   TimelineCommandWorkRow,
   TimelineFileChangeWorkRow,
   TimelineImageViewWorkRow,
-  TimelineManagerAssignment,
+  TimelineParentChange,
   TimelineRowBase,
   TimelineRowStatus,
   TimelineSystemRow,
@@ -49,8 +49,8 @@ interface PermissionGrantApprovalRowArgs {
   toolName?: string | null;
 }
 
-interface ManagerAssignmentSystemRowArgs {
-  managerAssignment: TimelineManagerAssignment;
+interface ParentChangeSystemRowArgs {
+  parentChange: TimelineParentChange;
   status?: TimelineRowStatus;
 }
 
@@ -309,17 +309,17 @@ function systemOperationRow(): TimelineSystemRow {
   };
 }
 
-function managerAssignmentSystemRow({
-  managerAssignment,
+function parentChangeSystemRow({
+  parentChange,
   status = "completed",
-}: ManagerAssignmentSystemRowArgs): TimelineSystemRow {
+}: ParentChangeSystemRowArgs): TimelineSystemRow {
   return {
-    ...baseRow(`system-manager-${managerAssignment.action}`),
+    ...baseRow(`system-parent-${parentChange.action}`),
     kind: "system",
     systemKind: "operation",
-    operationKind: "manager-assignment",
-    managerAssignment,
-    title: "Thread assigned to manager",
+    operationKind: "parent-change",
+    parentChange,
+    title: "Thread assigned to parent",
     detail: null,
     status,
     completedAt: 1,
@@ -443,7 +443,7 @@ describe("buildTimelineRowTitle", () => {
     );
 
     expect(title.plain).toBe(
-      "Ran tool: LookupTool { query: select:TodoWrite } (3s, interrupted)",
+      "Ran tool LookupTool { query: select:TodoWrite } (3s, interrupted)",
     );
     expect(title.decorations).toEqual([
       { kind: "status", status: "interrupted", durationMs: 3_000, emphasis: false },
@@ -668,69 +668,69 @@ describe("buildTimelineRowTitle", () => {
   it.each([
     {
       action: "assign",
-      managerAssignment: {
+      parentChange: {
         action: "assign" as const,
-        previousManagerThreadId: null,
-        previousManagerThreadTitle: null,
-        nextManagerThreadId: "thr_next",
-        nextManagerThreadTitle: "Frontend Manager",
+        previousParentThreadId: null,
+        previousParentThreadTitle: null,
+        nextParentThreadId: "thr_next",
+        nextParentThreadTitle: "Frontend Parent",
       },
-      expectedPlain: "Thread assigned to Frontend Manager",
-      expectedSegments: ["Thread assigned to", "Frontend Manager"],
+      expectedPlain: "Thread assigned to Frontend Parent",
+      expectedSegments: ["Thread assigned to", "Frontend Parent"],
       expectedLinkIndex: 1,
       expectedLinkThreadId: "thr_next",
     },
     {
       action: "release",
-      managerAssignment: {
+      parentChange: {
         action: "release" as const,
-        previousManagerThreadId: "thr_prev",
-        previousManagerThreadTitle: "Frontend Manager",
-        nextManagerThreadId: null,
-        nextManagerThreadTitle: null,
+        previousParentThreadId: "thr_prev",
+        previousParentThreadTitle: "Frontend Parent",
+        nextParentThreadId: null,
+        nextParentThreadTitle: null,
       },
-      expectedPlain: "Thread unassigned from Frontend Manager",
-      expectedSegments: ["Thread unassigned from", "Frontend Manager"],
+      expectedPlain: "Thread unassigned from Frontend Parent",
+      expectedSegments: ["Thread unassigned from", "Frontend Parent"],
       expectedLinkIndex: 1,
       expectedLinkThreadId: "thr_prev",
     },
     {
       action: "transfer",
-      managerAssignment: {
+      parentChange: {
         action: "transfer" as const,
-        previousManagerThreadId: "thr_prev",
-        previousManagerThreadTitle: "Frontend Manager",
-        nextManagerThreadId: "thr_next",
-        nextManagerThreadTitle: "Backend Manager",
+        previousParentThreadId: "thr_prev",
+        previousParentThreadTitle: "Frontend Parent",
+        nextParentThreadId: "thr_next",
+        nextParentThreadTitle: "Backend Parent",
       },
-      expectedPlain: "Thread reassigned from Frontend Manager to Backend Manager",
+      expectedPlain: "Thread reassigned from Frontend Parent to Backend Parent",
       expectedSegments: [
         "Thread reassigned from",
-        "Frontend Manager",
+        "Frontend Parent",
         "to",
-        "Backend Manager",
+        "Backend Parent",
       ],
       expectedLinkIndex: 1,
       expectedLinkThreadId: "thr_prev",
     },
   ] satisfies Array<{
-    action: TimelineManagerAssignment["action"];
-    managerAssignment: TimelineManagerAssignment;
+    action: TimelineParentChange["action"];
+    parentChange: TimelineParentChange;
     expectedPlain: string;
     expectedSegments: string[];
     expectedLinkIndex: number;
     expectedLinkThreadId: string;
   }>)(
-    "renders typed manager assignment system action $action",
+    "renders typed parent change system action $action",
     ({
-      managerAssignment,
+      parentChange,
       expectedPlain,
       expectedSegments,
       expectedLinkIndex,
       expectedLinkThreadId,
     }) => {
       const title = buildTimelineRowTitle(
-        managerAssignmentSystemRow({ managerAssignment }),
+        parentChangeSystemRow({ parentChange }),
         DEFAULT_OPTIONS,
       );
 
@@ -745,15 +745,15 @@ describe("buildTimelineRowTitle", () => {
     },
   );
 
-  it("falls back to the manager thread id when title is null", () => {
+  it("falls back to the parent thread id when title is null", () => {
     const title = buildTimelineRowTitle(
-      managerAssignmentSystemRow({
-        managerAssignment: {
+      parentChangeSystemRow({
+        parentChange: {
           action: "assign",
-          previousManagerThreadId: null,
-          previousManagerThreadTitle: null,
-          nextManagerThreadId: "thr_xyz",
-          nextManagerThreadTitle: null,
+          previousParentThreadId: null,
+          previousParentThreadTitle: null,
+          nextParentThreadId: "thr_xyz",
+          nextParentThreadTitle: null,
         },
       }),
       DEFAULT_OPTIONS,
@@ -769,19 +769,19 @@ describe("buildTimelineRowTitle", () => {
 
   it.each([
     {
-      expectedPlain: "Assigning thread to Frontend Manager",
+      expectedPlain: "Assigning thread to Frontend Parent",
       expectedShimmer: true,
       expectedDecorationText: "",
       status: "pending",
     },
     {
-      expectedPlain: "Thread assigned to Frontend Manager (error)",
+      expectedPlain: "Thread assigned to Frontend Parent (error)",
       expectedShimmer: false,
       expectedDecorationText: "(error)",
       status: "error",
     },
     {
-      expectedPlain: "Thread assigned to Frontend Manager (interrupted)",
+      expectedPlain: "Thread assigned to Frontend Parent (interrupted)",
       expectedShimmer: false,
       expectedDecorationText: "(interrupted)",
       status: "interrupted",
@@ -792,7 +792,7 @@ describe("buildTimelineRowTitle", () => {
     expectedDecorationText: string;
     status: Exclude<TimelineSystemRow["status"], "completed" | null>;
   }>)(
-    "renders manager assignment $status status with typed wording",
+    "renders parent change $status status with typed wording",
     ({
       expectedPlain,
       expectedShimmer,
@@ -800,13 +800,13 @@ describe("buildTimelineRowTitle", () => {
       status,
     }) => {
       const title = buildTimelineRowTitle(
-        managerAssignmentSystemRow({
-          managerAssignment: {
+        parentChangeSystemRow({
+          parentChange: {
             action: "assign",
-            previousManagerThreadId: null,
-            previousManagerThreadTitle: null,
-            nextManagerThreadId: "thr_next",
-            nextManagerThreadTitle: "Frontend Manager",
+            previousParentThreadId: null,
+            previousParentThreadTitle: null,
+            nextParentThreadId: "thr_next",
+            nextParentThreadTitle: "Frontend Parent",
           },
           status,
         }),

@@ -10,7 +10,6 @@ import type {
   ReasoningLevel,
   ResolvedThreadExecutionOptions,
   ServiceTier,
-  ThreadType,
   ThreadExecutionSource,
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
@@ -63,7 +62,6 @@ export interface ResolveExistingThreadExecutionPlanArgs {
 export interface ResolveProjectCreateDefaultExecutionPlanArgs {
   projectId: string;
   requestedProviderId?: string;
-  threadType: ThreadType;
 }
 
 export interface ExistingThreadExecutionPlan {
@@ -234,7 +232,6 @@ export async function resolveExistingThreadExecutionPlan(
     args.projectDefaults === undefined
       ? getProjectExecutionDefaults(deps.db, {
           projectId: thread.projectId,
-          threadType: thread.type,
         })
       : args.projectDefaults;
   const projectExecution =
@@ -244,6 +241,10 @@ export async function resolveExistingThreadExecutionPlan(
   const parentThread =
     thread.parentThreadId !== null
       ? getThread(deps.db, thread.parentThreadId)
+      : null;
+  const parentExecution =
+    parentThread !== null
+      ? getLastExecutionOptions(deps, parentThread.id)
       : null;
   const model = resolveRequiredField<string>([
     args.input.model?.value,
@@ -259,6 +260,7 @@ export async function resolveExistingThreadExecutionPlan(
     requestedPermissionMode: args.input.permissionMode?.value,
     lastExecutionPermissionMode: lastExecution?.permissionMode,
     parentThread,
+    parentThreadExecutionPermissionMode: parentExecution?.permissionMode,
     projectExecutionPermissionMode: projectExecution?.permissionMode,
     thread,
   });
@@ -325,12 +327,10 @@ export function resolveProjectCreateDefaultExecutionPlan(
 ): ProjectCreateDefaultExecutionPlan {
   const storedDefaults = getProjectExecutionDefaults(deps.db, {
     projectId: args.projectId,
-    threadType: args.threadType,
   });
   const resolution = resolveCreateThreadExecutionDefaults({
     requestedProviderId: args.requestedProviderId,
     storedDefaults,
-    threadType: args.threadType,
   });
   return {
     defaultView: resolution.executionDefaults,

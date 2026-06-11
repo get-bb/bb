@@ -28,6 +28,8 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
   switch (link.kind) {
     case "thread":
       return `/projects/proj_demo/threads/${link.threadId}`;
+    default:
+      return null;
   }
 }
 
@@ -85,11 +87,221 @@ Reply with a punch list, not code. Each item should call out the current shape, 
 
 Cap at ~600 words. Lead with the highest-value trims so I can prioritize.`;
 
-const longSystemMessageText = `[bb system]
+interface BuiltMessage {
+  text: string;
+  mentions: PromptTextMention[];
+}
 
-Scheduled follow-up: refresh the active project context, collect the latest thread status, and prepare a concise handoff for the next assistant turn. This fixture is intentionally long enough to exercise the expanded generated-message body.
+function buildMessage(
+  text: string,
+  mentionSpecs: ReadonlyArray<{ token: string; resource: PromptMentionResource }>,
+): BuiltMessage {
+  return {
+    text,
+    mentions: mentionSpecs.map((spec) =>
+      storyMention({ resource: spec.resource, text, token: spec.token }),
+    ),
+  };
+}
 
-Additional detail confirms that expanding the row preserves the rest of the message body.`;
+const agentInitiatedMessage = buildMessage(
+  [
+    "[bb message from thread:thr_ux3h8sxg65; reply with `bb thread tell thr_ux3h8sxg65 \"<your response>\"`]",
+    "",
+    "Fixed both blockers on @apps/server/src/services/manager/manager-system-messages.ts. No merge or push.",
+    "",
+    "Fix summary:",
+    "- Clipboard blocker: `parsePromptMentionClipboardElement` now validates pasted resource metadata and derives `serializedText` from that resource.",
+    "- Manager range blocker: added segment/template-slot builders and moved rich manager system message call sites to build text and ranges together.",
+    "- Template docs nit: updated @packages/templates/src/templates/system-message-thread-ownership-assigned.md, then regenerated `templates.generated.ts`.",
+  ].join("\n"),
+  [
+    {
+      token: "@apps/server/src/services/manager/manager-system-messages.ts",
+      resource: {
+        kind: "path",
+        source: "workspace",
+        entryKind: "file",
+        path: "apps/server/src/services/manager/manager-system-messages.ts",
+        label: "manager-system-messages.ts",
+      },
+    },
+    {
+      token:
+        "@packages/templates/src/templates/system-message-thread-ownership-assigned.md",
+      resource: {
+        kind: "path",
+        source: "workspace",
+        entryKind: "file",
+        path: "packages/templates/src/templates/system-message-thread-ownership-assigned.md",
+        label: "system-message-thread-ownership-assigned.md",
+      },
+    },
+  ],
+);
+
+const agentSteerMessage = buildMessage(
+  [
+    "[bb message from thread:thr_h4u3fgr6be; reply with `bb thread tell thr_h4u3fgr6be \"<your response>\"`]",
+    "",
+    "Committed the two scoped fixes touching @apps/app/src/components/thread/timeline/ConversationMessageContent.tsx. Worktree is clean.",
+  ].join("\n"),
+  [
+    {
+      token:
+        "@apps/app/src/components/thread/timeline/ConversationMessageContent.tsx",
+      resource: {
+        kind: "path",
+        source: "workspace",
+        entryKind: "file",
+        path: "apps/app/src/components/thread/timeline/ConversationMessageContent.tsx",
+        label: "ConversationMessageContent.tsx",
+      },
+    },
+  ],
+);
+
+const systemAssignedMessage = buildMessage(
+  ["[bb system]", "", "@thread:thr_4z3cyhcufk was assigned to you."].join("\n"),
+  [
+    {
+      token: "@thread:thr_4z3cyhcufk",
+      resource: {
+        kind: "thread",
+        threadId: "thr_4z3cyhcufk",
+        projectId: "proj_demo",
+        label: "Investigate flaky storybook layout",
+      },
+    },
+  ],
+);
+
+const systemChildOutcomeBatchMessage = buildMessage(
+  [
+    "[bb system]",
+    "",
+    "Child thread updates:",
+    "- @thread:thr_ux3h8sxg65 completed: shipped rich thread name rendering and pushed.",
+    "- @thread:thr_cpf5sq7pyr completed: hardened thread stop retry; awaiting your review.",
+    "- @thread:thr_h4u3fgr6be needs input: post-rebase QA found three failing storybook stories.",
+  ].join("\n"),
+  [
+    {
+      token: "@thread:thr_ux3h8sxg65",
+      resource: {
+        kind: "thread",
+        threadId: "thr_ux3h8sxg65",
+        projectId: "proj_demo",
+        label: "Render Rich Thread Names",
+      },
+    },
+    {
+      token: "@thread:thr_cpf5sq7pyr",
+      resource: {
+        kind: "thread",
+        threadId: "thr_cpf5sq7pyr",
+        projectId: "proj_demo",
+        label: "Investigate lost thread stop retry",
+      },
+    },
+    {
+      token: "@thread:thr_h4u3fgr6be",
+      resource: {
+        kind: "thread",
+        threadId: "thr_h4u3fgr6be",
+        projectId: "proj_demo",
+        label: "Full QA post-rebase: prompt timeline app data voice",
+      },
+    },
+  ],
+);
+
+const systemScheduledMessage = buildMessage(
+  [
+    "[bb schedule due:tsched_7njqipuist]",
+    "",
+    "Scheduled nudge: run the independent fund-manager sanity/strategy review loop with a neutral brief: current mandate, authority boundaries, active positions, monitors, dashboard/status, schedules, recent actions, and open incidents. Ask for broken assumptions, over-conservatism/recklessness, stale state, missing catalysts, and concrete fixes. Triage findings as manager; delegate follow-ups via @thread:thr_fund_strategy and message only useful outcomes or blockers.",
+  ].join("\n"),
+  [
+    {
+      token: "@thread:thr_fund_strategy",
+      resource: {
+        kind: "thread",
+        threadId: "thr_fund_strategy",
+        projectId: "proj_demo",
+        label: "Fund strategy review",
+      },
+    },
+  ],
+);
+
+const longSystemMessage = buildMessage(
+  [
+    "[bb system]",
+    "",
+    "@thread:thr_cpf5sq7pyr completed:",
+    "",
+    "Rebased and tightened the branch. No merge or push.",
+    "",
+    "Changed files:",
+    "- @apps/server/src/services/threads/thread-lifecycle.ts",
+    "- @apps/server/test/threads/thread-stop-retry.test.ts",
+    "",
+    "Behavior summary:",
+    "- `stopRequestedAt` remains durable stop intent.",
+    "- Live `thread.stop` RPC dedupe now uses a separate in-memory in-flight set.",
+    "- Failed stop RPC clears the in-flight marker, so `stop-requested-thread-retry` can redeliver.",
+    "- Sweep does not queue duplicate stop RPCs while one is already in flight.",
+    "",
+    "Validation:",
+    "- `pnpm exec turbo run test --filter=@bb/server -- test/threads/thread-stop-retry.test.ts` passed, 2 tests.",
+    "- `pnpm exec turbo run typecheck --filter=@bb/server` passed.",
+    "",
+    "Blockers: none. Worktree status: clean.",
+  ].join("\n"),
+  [
+    {
+      token: "@thread:thr_cpf5sq7pyr",
+      resource: {
+        kind: "thread",
+        threadId: "thr_cpf5sq7pyr",
+        projectId: "proj_demo",
+        label: "Investigate lost thread stop retry",
+      },
+    },
+    {
+      token: "@apps/server/src/services/threads/thread-lifecycle.ts",
+      resource: {
+        kind: "path",
+        source: "workspace",
+        entryKind: "file",
+        path: "apps/server/src/services/threads/thread-lifecycle.ts",
+        label: "thread-lifecycle.ts",
+      },
+    },
+    {
+      token: "@apps/server/test/threads/thread-stop-retry.test.ts",
+      resource: {
+        kind: "path",
+        source: "workspace",
+        entryKind: "file",
+        path: "apps/server/test/threads/thread-stop-retry.test.ts",
+        label: "thread-stop-retry.test.ts",
+      },
+    },
+  ],
+);
+
+// The exact fixture that surfaced the detached-ResizeObserver expansion bug:
+// long single-line scheduled prompt with no mentions. Before the isConnected
+// guard in `useOverflowMeasurement`, clicking expand bounced the row right
+// back to collapsed (and removed the toggle button). Kept as a plain-text
+// regression canary so the row visibly stays expanded after a click.
+const systemScheduledRegressionText = [
+  "[bb schedule due:tsched_7njqipuist]",
+  "",
+  "Scheduled nudge: system-review-feedback-loop. Run the independent fund-manager sanity/strategy review loop with a neutral brief: current mandate, authority boundaries, active positions, monitors, dashboard/status, schedules, recent actions, and open incidents. Ask for broken assumptions, over-conservatism/recklessness, stale state, missing catalysts, and concrete fixes. Triage findings as manager; delegate follow-ups and message only useful outcomes/blockers.",
+].join("\n");
 
 const singleImageAttachments: TimelineConversationAttachments = {
   webImages: 0,
@@ -113,17 +325,16 @@ const mixedAttachments: TimelineConversationAttachments = {
 };
 
 const mentionedMessageText =
-  "Ask @thread:thr_manager and @apps/app/src/components/promptbox/PromptBoxInternal.tsx to review the prompt mention flow.";
+  "Ask @thread:thr_parent and @apps/app/src/components/promptbox/PromptBoxInternal.tsx to review the prompt mention flow.";
 const mentionedMessageMentions: PromptTextMention[] = [
   storyMention({
     text: mentionedMessageText,
-    token: "@thread:thr_manager",
+    token: "@thread:thr_parent",
     resource: {
       kind: "thread",
-      threadId: "thr_manager",
+      threadId: "thr_parent",
       projectId: "proj_bb",
-      threadType: "manager",
-      label: "Prompt UX manager",
+      label: "Prompt UX thread",
     },
   }),
   storyMention({
@@ -261,20 +472,19 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="agent-initiated"
-        hint="collapsed activity row: Message from Frontend manager"
+        hint="file mentions in the body collapse to one-line pills with full-path hover"
       >
         <TimelineStage>
           <ConversationMessageContent
             role="user"
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
-            senderThreadId="thr_sender123"
-            senderThreadTitle="Frontend manager"
-            text={
-              '[bb message from thread:thr_sender123; reply with `bb thread tell thr_sender123 "<your response>"`]\n\nHey — I finished the audit you asked for. Punch list is in `notes/audit-2026-05.md`; the highest-value trim is collapsing the picker-shape options into a discriminated union.'
-            }
+            senderThreadId="thr_ux3h8sxg65"
+            senderThreadTitle="Render Rich Thread Names"
+            text={agentInitiatedMessage.text}
             attachments={null}
-            mentions={[]}
+            mentions={agentInitiatedMessage.mentions}
+            projectId="proj_demo"
             turnRequest={acceptedMessage}
           />
         </TimelineStage>
@@ -288,13 +498,12 @@ export function Overview() {
             role="user"
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
-            senderThreadId="thr_sender123"
-            senderThreadTitle="Frontend manager"
-            text={
-              '[bb message from thread:thr_sender123; reply with `bb thread tell thr_sender123 "<your response>"`]\n\nOne more note from the frontend manager while the current turn is already running.'
-            }
+            senderThreadId="thr_h4u3fgr6be"
+            senderThreadTitle="Full QA post-rebase: prompt timeline app data voice"
+            text={agentSteerMessage.text}
             attachments={null}
-            mentions={[]}
+            mentions={agentSteerMessage.mentions}
+            projectId="proj_demo"
             turnRequest={acceptedSteer}
           />
           <ConversationMessageContent
@@ -302,16 +511,17 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            text={"[bb system]\n\nScheduled follow-up requested mid-turn."}
+            text={systemAssignedMessage.text}
             attachments={null}
-            mentions={[]}
+            mentions={systemAssignedMessage.mentions}
+            projectId="proj_demo"
             turnRequest={pendingSteer}
           />
         </div>
       </StoryRow>
       <StoryRow
         label="system-initiated (scheduled turn)"
-        hint="collapsed activity row: System Message"
+        hint="long single-line schedule prompt expands to the full message body"
       >
         <TimelineStage>
           <ConversationMessageContent
@@ -319,7 +529,25 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            text={"[bb system]\n\nScheduled turn: daily-recap."}
+            text={systemScheduledMessage.text}
+            attachments={null}
+            mentions={systemScheduledMessage.mentions}
+            projectId="proj_demo"
+            turnRequest={acceptedMessage}
+          />
+        </TimelineStage>
+      </StoryRow>
+      <StoryRow
+        label="system-initiated (scheduled turn, regression fixture)"
+        hint="exact plain-text fixture that surfaced the detached-resize bug — click expand, the body should stay open and the chevron should still collapse it"
+      >
+        <TimelineStage>
+          <ConversationMessageContent
+            role="user"
+            initiator="system"
+            senderThreadId={null}
+            senderThreadTitle={null}
+            text={systemScheduledRegressionText}
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
@@ -327,8 +555,8 @@ export function Overview() {
         </TimelineStage>
       </StoryRow>
       <StoryRow
-        label="system-initiated (welcome)"
-        hint="system message body is shown after expanding the row"
+        label="system-initiated (assigned)"
+        hint="single-line system activity with a thread mention pill"
       >
         <TimelineStage>
           <ConversationMessageContent
@@ -336,18 +564,35 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            text={
-              "[bb system]\n\nWelcome!\nStart with a short meet-and-greet."
-            }
+            text={systemAssignedMessage.text}
             attachments={null}
-            mentions={[]}
+            mentions={systemAssignedMessage.mentions}
+            projectId="proj_demo"
+            turnRequest={acceptedMessage}
+          />
+        </TimelineStage>
+      </StoryRow>
+      <StoryRow
+        label="system-initiated (child outcome batch)"
+        hint="multi-thread updates render as a list of pill mentions"
+      >
+        <TimelineStage>
+          <ConversationMessageContent
+            role="user"
+            initiator="system"
+            senderThreadId={null}
+            senderThreadTitle={null}
+            text={systemChildOutcomeBatchMessage.text}
+            attachments={null}
+            mentions={systemChildOutcomeBatchMessage.mentions}
+            projectId="proj_demo"
             turnRequest={acceptedMessage}
           />
         </TimelineStage>
       </StoryRow>
       <StoryRow
         label="system-initiated (long)"
-        hint="expanded body shows the full generated message"
+        hint="expanded body shows the full generated message with mixed pills"
       >
         <TimelineStage>
           <ConversationMessageContent
@@ -355,9 +600,10 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            text={longSystemMessageText}
+            text={longSystemMessage.text}
             attachments={null}
-            mentions={[]}
+            mentions={longSystemMessage.mentions}
+            projectId="proj_demo"
             turnRequest={acceptedMessage}
           />
         </TimelineStage>

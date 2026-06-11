@@ -1,5 +1,7 @@
-import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "./ConfirmDeleteDialog";
 
 export interface ProjectDeleteDialogTarget {
   id: string;
@@ -20,17 +22,15 @@ export function ProjectDeleteDialog({
   onDelete,
 }: ProjectDeleteDialogProps) {
   return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
-        {target ? (
-          <ProjectDeleteDialogContent
-            target={target}
-            pending={pending}
-            onDelete={onDelete}
-          />
-        ) : null}
-      </DialogContent>
-    </Dialog>
+    <ConfirmDeleteDialog open={target !== null} onOpenChange={onOpenChange}>
+      {target ? (
+        <ProjectDeleteDialogContent
+          target={target}
+          pending={pending}
+          onDelete={onDelete}
+        />
+      ) : null}
+    </ConfirmDeleteDialog>
   );
 }
 
@@ -46,23 +46,12 @@ export function ProjectDeleteDialogContent({
   onDelete,
 }: ProjectDeleteDialogContentProps) {
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Remove project?</DialogTitle>
-        <DialogDescription>
-          {`Remove "${target.name}" and all of its threads? This cannot be undone.`}
-        </DialogDescription>
-      </DialogHeader>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="destructive"
-          disabled={pending}
-          onClick={() => onDelete(target.id)}
-        >
-          Remove project
-        </Button>
-      </DialogFooter>
-    </>
+    <ConfirmDeleteDialogContent
+      title="Remove project?"
+      description={`Remove "${target.name}" and all of its threads? This cannot be undone.`}
+      confirmLabel="Remove project"
+      pending={pending}
+      onConfirm={() => onDelete(target.id)}
+    />
   );
 }

@@ -57,7 +57,7 @@ import { WorkRowBody } from "./TimelineRowDetails.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { Button } from "../../ui/button.js";
 import { AutoHeightContainer } from "../../ui/height-transition.js";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import {
   joinSignatureParts,
@@ -65,7 +65,10 @@ import {
   timelineRowsSignature,
 } from "./timelineRowSignatures.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import {
+  getThreadRoutePath,
+  getWorkflowRunRoutePath,
+} from "@/lib/app-route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
 import {
   allThreadQueryKeyPrefix,
@@ -726,11 +729,13 @@ function TimelineUnreadDivider({ autoScroll }: TimelineUnreadDividerProps) {
       ref={dividerRef}
       role="separator"
       aria-label="New messages"
-      className="flex items-center gap-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-foreground"
+      className={cn(
+        "flex items-center gap-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-foreground",
+      )}
       data-testid="thread-unread-divider"
     >
       <span className="shrink-0">New</span>
-      <span className="h-px min-w-0 flex-1 bg-border" aria-hidden />
+      <span className="h-px min-w-0 flex-1 bg-border/50" aria-hidden />
     </div>
   );
 }
@@ -751,7 +756,7 @@ function TimelineSystemDetailBlock({
       contentKey={detail}
       className="overflow-hidden rounded-lg border border-border bg-card"
     >
-      <pre className="whitespace-pre-wrap break-words px-4 py-3 font-mono text-xs leading-tight text-foreground">
+      <pre className="whitespace-pre-wrap break-words px-4 py-3 font-mono text-xs leading-tight text-subtle-foreground opacity-70">
         {detail}
       </pre>
     </TimelineDetailScroll>
@@ -948,7 +953,7 @@ function LazyTurnRowBody({
 
   if (!rows && isError) {
     return (
-      <div className="flex items-center gap-2 text-sm text-destructive">
+      <div className="flex items-center gap-2 text-sm text-destructive-text">
         <span>Failed to load turn details.</span>
         <Button
           type="button"
@@ -981,6 +986,69 @@ function LazyTurnRowBody({
   );
 }
 
+/**
+ * Completed work rows (tool / command / file-change calls) recede: once a call
+ * is done its row dims so attention lands on active work and the model's prose.
+ */
+function completedWorkRowDimClassName(
+  row: ThreadTimelineViewRow,
+): string | undefined {
+  return row.kind === "work" && row.status === "completed"
+    ? "opacity-70"
+    : undefined;
+}
+
+/**
+ * Rolled-up section headers — the turn header ("Worked for …") and the
+ * bundle/step summaries that aggregate finished tool calls ("Explored 3 files")
+ * — dim so they recede beneath the live content they summarize.
+ */
+function rolledUpHeaderDimClassName(
+  row: ThreadTimelineViewRow,
+): string | undefined {
+  return row.kind === "turn" ||
+    row.kind === "bundle-summary" ||
+    row.kind === "step-summary"
+    ? "opacity-70"
+    : undefined;
+}
+
+/**
+ * A leading glyph for every tool-call (work) row, keyed by its kind so the eye
+ * can tell edits from explores from commands at a glance.
+ */
+function leadingIconForWorkRow(
+  row: ThreadTimelineViewRow,
+): IconName | undefined {
+  if (row.kind !== "work") {
+    return undefined;
+  }
+  switch (row.workKind) {
+    case "file-change":
+      return "EditFile";
+    case "command":
+      return "Terminal";
+    case "tool":
+      return "Terminal";
+    case "web-search":
+      return "Search";
+    case "web-fetch":
+      return "Globe";
+    case "image-view":
+      return "File";
+    case "delegation":
+      return "UserRoundPlus";
+    case "workflow":
+      return "ListTodo";
+    case "approval":
+      return "Lock";
+    case "question":
+      return "MessageQuestion";
+    default:
+      return undefined;
+  }
+}
+
 function TimelineRowView({
   activeLatestBundleId,
   compactActivityIntents,
@@ -1010,12 +1078,20 @@ function TimelineRowView({
           <TimelineStaticRow
             key={entry.id}
             horizontalPadding={horizontalPadding}
+            className={completedWorkRowDimClassName(row)}
           >
-            <TimelineTitleView
-              title={entry.title}
-              onTitleAction={onTitleAction}
-              resolveSegmentLinkHref={resolveSegmentLinkHref}
-            />
+            <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+              <Icon
+                name={entry.intentType === "search" ? "Search" : "Explore"}
+                className="size-3.5 shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+              <TimelineTitleView
+                title={entry.title}
+                onTitleAction={onTitleAction}
+                resolveSegmentLinkHref={resolveSegmentLinkHref}
+              />
+            </span>
           </TimelineStaticRow>
         ))}
       </>
@@ -1023,13 +1099,26 @@ function TimelineRowView({
   }
 
   if (!isRowExpandable(row)) {
+    const staticLeadingIcon = leadingIconForWorkRow(row);
     return (
-      <TimelineStaticRow horizontalPadding={horizontalPadding}>
-        <TimelineTitleView
-          title={titleState.title}
-          onTitleAction={onTitleAction}
-          resolveSegmentLinkHref={resolveSegmentLinkHref}
-        />
+      <TimelineStaticRow
+        horizontalPadding={horizontalPadding}
+        className={completedWorkRowDimClassName(row)}
+      >
+        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+          {staticLeadingIcon ? (
+            <Icon
+              name={staticLeadingIcon}
+              className="size-3.5 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+          ) : null}
+          <TimelineTitleView
+            title={titleState.title}
+            onTitleAction={onTitleAction}
+            resolveSegmentLinkHref={resolveSegmentLinkHref}
+          />
+        </span>
       </TimelineStaticRow>
     );
   }
@@ -1075,10 +1164,19 @@ function TimelineExpandableRowView({
     [activeLatestBundleId, compactActivityIntents, row],
   );
 
+  const leadingIcon = leadingIconForWorkRow(row);
+
   return (
     <ExpandableTimelineRow
       title={title}
+      // Dim the row's title content (not the whole row) so the disclosure caret
+      // keeps a uniform opacity across completed/header/normal rows instead of
+      // compounding the row-level dim onto the caret.
+      summaryClassName={
+        rolledUpHeaderDimClassName(row) ?? completedWorkRowDimClassName(row)
+      }
       horizontalPadding={horizontalPadding}
+      leadingIcon={leadingIcon}
       autoExpanded={
         liveAutoExpandedRowIds.has(row.id) ||
         initialAutoExpandedRowIds.has(row.id)
@@ -1246,18 +1344,19 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const senderThreadMetadataById = useSenderThreadMetadataById({
     queryClient,
   });
-  const resolveSegmentLinkHref = useMemo<
-    TimelineTitleLinkResolver | undefined
-  >(() => {
-    if (projectId === undefined) {
-      return undefined;
-    }
+  const resolveSegmentLinkHref = useMemo<TimelineTitleLinkResolver>(() => {
     return (link) => {
       switch (link.kind) {
         case "thread":
-          return getThreadRoutePath({ projectId, threadId: link.threadId });
+          // Thread routes are project-scoped; without a project context the
+          // segment renders as plain text.
+          return projectId !== undefined
+            ? getThreadRoutePath({ projectId, threadId: link.threadId })
+            : null;
+        case "workflow-run":
+          return getWorkflowRunRoutePath(link.runId);
         default:
-          return assertNever(link.kind);
+          return assertNever(link);
       }
     };
   }, [projectId]);

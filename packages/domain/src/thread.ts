@@ -28,10 +28,6 @@ export const threadRuntimeStateSchema = z.object({
 });
 export type ThreadRuntimeState = z.infer<typeof threadRuntimeStateSchema>;
 
-export const threadTypeValues = ["standard", "manager"] as const;
-export const threadTypeSchema = z.enum(threadTypeValues);
-export type ThreadType = z.infer<typeof threadTypeSchema>;
-
 export const workspaceStateValues = [
   "clean",
   "untracked",
@@ -186,7 +182,6 @@ export const threadSchema = z.object({
   environmentId: z.string().nullable(),
   automationId: z.string().nullable(),
   providerId: z.string(),
-  type: threadTypeSchema,
   title: z.string().nullable(),
   titleFallback: z.string().nullable(),
   status: threadStatusSchema,

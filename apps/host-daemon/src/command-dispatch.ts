@@ -24,6 +24,7 @@ import {
   provisionEnvironment,
 } from "./command-handlers/environment.js";
 import { listHostBranches } from "./command-handlers/host-branches.js";
+import { listHostCommands } from "./command-handlers/list-commands.js";
 import {
   listHostFiles,
   listHostPaths,
@@ -52,6 +53,13 @@ import {
   submitTurn,
 } from "./command-handlers/thread.js";
 import { WorkspaceError } from "@bb/host-workspace";
+import {
+  cancelWorkflowRun,
+  listWorkflows,
+  pruneWorkflowRun,
+  resolveWorkflow,
+  startWorkflowRun,
+} from "./command-handlers/workflow.js";
 import { squashMerge } from "./command-handlers/workspace.js";
 import {
   requireResolvedWorkspaceForCommand,
@@ -340,10 +348,10 @@ const commandHandlers: CommandHandlerMap = {
         resolution.failure.message,
       );
     }
-    options.terminalManager?.closeEnvironmentTerminals(
-      command.environmentId,
-      "environment-destroyed",
-    );
+    await options.terminalManager?.closeEnvironmentTerminals({
+      environmentId: command.environmentId,
+      reason: "environment-destroyed",
+    });
     await options.runtimeManager.destroyEnvironment(command.environmentId);
     return {};
   },
@@ -362,12 +370,15 @@ const commandHandlers: CommandHandlerMap = {
     });
   },
   "workspace.squash_merge": squashMerge,
+  "workflow.start": startWorkflowRun,
+  "workflow.cancel": cancelWorkflowRun,
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "development.replay": dispatchDevelopmentReplayCommand,
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
+  "host.list_commands": listHostCommands,
   "host.list_branches": listHostBranches,
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
@@ -380,6 +391,9 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       providerId: command.providerId,
     }),
   "environment.cleanup_preflight": environmentCleanupPreflight,
+  "workflow.list": listWorkflows,
+  "workflow.prune": pruneWorkflowRun,
+  "workflow.resolve": resolveWorkflow,
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,

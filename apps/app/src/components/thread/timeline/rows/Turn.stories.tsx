@@ -55,7 +55,7 @@ const assistantOpener: TimelineRow = conversationRow({
   startedAt: 1777337120500,
   createdAt: 1777337121200,
   role: "assistant",
-  text: "I’m moving the active-thinking state into the main projection pass so we stop reconstructing it from events afterward. After that I’ll short-circuit the manager path and stop recomputing active-thinking inside the turn-summary-details loop.",
+  text: "I’m moving the active-thinking state into the main projection pass so we stop reconstructing it from events afterward. After that I’ll remove the old parent-specific branch and stop recomputing active-thinking inside the turn-summary-details loop.",
   attachments: null,
 });
 
@@ -240,18 +240,18 @@ const fileChangeTimelineService: TimelineRow = fileChangeRow({
 +  toViewProjectionEntries,
    toViewProjection,
 @@ -256,2 +257,23 @@
-     thread.type === "manager" && !options.showAllManagerEvents;
+     thread.parentThreadId !== null && !options.showAllParentEvents;
 +  const contextWindowUsageRows = listContextWindowUsageRows(db, {
 +    threadId: thread.id,
 +  });
 +
-+  if (isDefaultManagerView) {
++  if (isDefaultParentView) {
 +    return {
-+      rows: buildManagerConversationRows(
++      rows: buildParentConversationRows(
 +        toViewMessages(decodedEvents, {
-+          includeInternalSystemMessages: options.showAllManagerEvents,
++          includeInternalSystemMessages: options.showAllParentEvents,
 +          threadStatus: thread.status,
-+          threadType: thread.type,
++          parentThreadId: thread.parentThreadId,
 +        }),
 +      ),
 +      activeThinking: null,

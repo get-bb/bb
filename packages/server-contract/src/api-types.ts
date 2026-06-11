@@ -4,6 +4,7 @@ import {
   getProjectPathValidationMessage,
   normalizeProjectPathInput,
   activeThinkingSchema,
+  experimentsSchema,
   featureFlagsSchema,
   environmentSchema,
   gitBranchNameSchema,
@@ -30,7 +31,6 @@ import {
   threadGitDiffResponseSchema,
   threadTimelinePendingTodosSchema,
   threadScheduleKindSchema,
-  threadTypeSchema,
   threadWithRuntimeSchema,
   threadQueuedMessageSchema,
   threadPullRequestSchema,
@@ -42,10 +42,20 @@ import {
   changedMessageSchema,
   changedMessageLenientSchema,
   callerExecutionInputSourceSchema,
+  projectExecutionDefaultsSchema,
+  workflowProgressSnapshotSchema,
+  workflowRunEventSchema,
+  workflowRunRetentionSchema,
+  workflowRunSourceTierSchema,
+  workflowRunStatusSchema,
+  workflowSandboxSchema,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
-import { workspaceResolutionFailureSchema } from "@bb/host-daemon-contract";
+import {
+  hostDaemonWorkflowListingSchema,
+  workspaceResolutionFailureSchema,
+} from "@bb/host-daemon-contract";
 import type {
   AppDataPath,
   ApplicationId,
@@ -63,7 +73,13 @@ export {
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
 
-export const sendMessageModeSchema = z.enum(["auto", "start", "steer"]);
+export const sendMessageModeSchema = z.enum([
+  "queue-if-active",
+  "steer-if-active",
+  "auto",
+  "start",
+  "steer",
+]);
 
 export const AUTOMATION_NAME_MAX_LENGTH = 200;
 export const SCHEDULE_CRON_MAX_LENGTH = 100;
@@ -147,6 +163,13 @@ export interface BbDesktopApi extends BbDesktopInfo {
   getInfo(): Promise<BbDesktopInfo>;
   installUpdate(): Promise<void>;
   onChange(listener: BbDesktopInfoChangeHandler): BbDesktopInfoUnsubscribe;
+  /**
+   * Open a URL in the user's default system browser, leaving the in-app
+   * browser tab. The main process only honors `http(s)` URLs — the address
+   * originates from a possibly-hostile page, so other schemes are dropped.
+   * No-op on the web build where `window.bbDesktop` is undefined.
+   */
+  openExternalUrl(url: string): void;
   /**
    * Push the renderer-resolved theme to the Electron main process so the
    * NSWindow appearance — traffic lights and inactive title-bar chrome —
@@ -516,18 +539,6 @@ export type CreateExecutionInputSources = z.infer<
   typeof createExecutionInputSourcesSchema
 >;
 
-export const createManagerExecutionInputSourcesSchema = z
-  .object({
-    providerId: executionInputFieldSourceSchema.optional(),
-    model: executionInputFieldSourceSchema.optional(),
-    serviceTier: executionInputFieldSourceSchema.optional(),
-    reasoningLevel: executionInputFieldSourceSchema.optional(),
-  })
-  .strict();
-export type CreateManagerExecutionInputSources = z.infer<
-  typeof createManagerExecutionInputSourcesSchema
->;
-
 export const existingThreadExecutionInputSourcesSchema = z
   .object({
     model: executionInputFieldSourceSchema.optional(),
@@ -610,7 +621,6 @@ export const scheduledThreadAutomationActionSchema = z.object({
 export const automationTriggerSchema = z.discriminatedUnion("triggerType", [
   automationScheduleTriggerSchema,
 ]);
-export type AutomationTrigger = z.infer<typeof automationTriggerSchema>;
 
 export const automationActionSchema = z.discriminatedUnion("actionType", [
   scheduledThreadAutomationActionSchema,
@@ -672,7 +682,6 @@ export const automationsOverviewThreadSchema = z.object({
   projectId: z.string().min(1),
   title: z.string().nullable(),
   titleFallback: z.string().nullable(),
-  type: threadTypeSchema,
 });
 export type AutomationsOverviewThread = z.infer<
   typeof automationsOverviewThreadSchema
@@ -825,6 +834,7 @@ export const createQueuedMessageRequestSchema = z.object({
   reasoningLevel: reasoningLevelSchema.optional(),
   permissionMode: permissionModeSchema.optional(),
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
+  senderThreadId: z.string().min(1).optional(),
 });
 export type CreateQueuedMessageRequest = z.infer<
   typeof createQueuedMessageRequestSchema
@@ -906,15 +916,15 @@ export type ThreadQueuedMessageListResponse = z.infer<
   typeof threadQueuedMessageListResponseSchema
 >;
 
-export const threadAssignedChildSummaryResponseSchema = z.object({
-  nonDeletedAssignedChildCount: z.number().int().nonnegative(),
+export const threadChildSummaryResponseSchema = z.object({
+  nonDeletedChildCount: z.number().int().nonnegative(),
 });
-export type ThreadAssignedChildSummaryResponse = z.infer<
-  typeof threadAssignedChildSummaryResponseSchema
+export type ThreadChildSummaryResponse = z.infer<
+  typeof threadChildSummaryResponseSchema
 >;
 
 export const deleteThreadRequestSchema = z.object({
-  managerChildThreadsConfirmed: z.boolean(),
+  childThreadsConfirmed: z.boolean(),
 });
 export type DeleteThreadRequest = z.infer<typeof deleteThreadRequestSchema>;
 
@@ -949,8 +959,7 @@ export const updateEnvironmentRequestSchema = z
   })
   .partial()
   .refine(
-    (value) =>
-      value.mergeBaseBranch !== undefined || value.name !== undefined,
+    (value) => value.mergeBaseBranch !== undefined || value.name !== undefined,
     "At least one field must be provided",
   );
 export type UpdateEnvironmentRequest = z.infer<
@@ -1000,57 +1009,12 @@ export const reorderProjectRequestSchema = z.object({
 });
 export type ReorderProjectRequest = z.infer<typeof reorderProjectRequestSchema>;
 
-export const reorderManagerThreadRequestSchema = z.object({
-  previousThreadId: z.string().min(1).nullable(),
-  nextThreadId: z.string().min(1).nullable(),
-});
-export type ReorderManagerThreadRequest = z.infer<
-  typeof reorderManagerThreadRequestSchema
->;
-
 export const reorderPinnedThreadRequestSchema = z.object({
   previousThreadId: z.string().min(1).nullable(),
   nextThreadId: z.string().min(1).nullable(),
 });
 export type ReorderPinnedThreadRequest = z.infer<
   typeof reorderPinnedThreadRequestSchema
->;
-
-export const managerHostEnvironmentSchema = z.object({
-  type: z.literal("host"),
-  hostId: z.string().min(1),
-});
-
-export const managerEnvironmentArgsSchema = z.discriminatedUnion("type", [
-  managerHostEnvironmentSchema,
-]);
-export type ManagerEnvironmentArgs = z.infer<
-  typeof managerEnvironmentArgsSchema
->;
-
-export const createManagerThreadRequestSchema = z
-  .object({
-    name: z.string().min(1).optional(),
-    providerId: z.string().min(1).optional(),
-    origin: threadCreateOriginSchema,
-    model: z.string().min(1).optional(),
-    serviceTier: serviceTierSchema.optional(),
-    reasoningLevel: reasoningLevelSchema.optional(),
-    executionInputSources: createManagerExecutionInputSourcesSchema.optional(),
-    environment: managerEnvironmentArgsSchema,
-    /**
-     * Optional user-provided first message. When present and contains
-     * meaningful content (any non-text part, or text with non-whitespace
-     * content), replaces the default `systemMessageManagerWelcome` template
-     * as the manager's first message. Omit to use the welcome-message
-     * fallback — the schema rejects empty arrays. Whitespace-only text
-     * input is also treated as no-input at the route boundary.
-     */
-    input: z.array(promptInputSchema).min(1).optional(),
-  })
-  .strict();
-export type CreateManagerThreadRequest = z.infer<
-  typeof createManagerThreadRequestSchema
 >;
 
 export const projectListIncludeOptionSchema = z.enum(["threads"]);
@@ -1101,6 +1065,20 @@ export const projectPathsQuerySchema = projectFilesQuerySchema.extend({
 });
 export type ProjectPathsQuery = z.infer<typeof projectPathsQuerySchema>;
 
+/**
+ * Query for searching paths in an environment's workspace. Unlike the
+ * project-scoped variant this needs no `environmentId` — the environment is
+ * the route param — and is project-agnostic, so it works for projectless
+ * (personal) environments too.
+ */
+export const environmentPathsQuerySchema = z.object({
+  query: z.string().min(1).max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
+  limit: z.string().regex(/^\d+$/).optional(),
+  includeFiles: pathListIncludeQueryValueSchema,
+  includeDirectories: pathListIncludeQueryValueSchema,
+});
+export type EnvironmentPathsQuery = z.infer<typeof environmentPathsQuerySchema>;
+
 export const branchListQuerySchema = z.object({
   query: z.string().min(1).max(BRANCH_LIST_QUERY_MAX_LENGTH).optional(),
   limit: z.string().regex(/^\d+$/).optional(),
@@ -1145,9 +1123,7 @@ export type ProjectAttachmentContentQuery = z.infer<
   typeof projectAttachmentContentQuerySchema
 >;
 
-export const projectDefaultExecutionOptionsQuerySchema = z.object({
-  threadType: threadTypeSchema,
-});
+export const projectDefaultExecutionOptionsQuerySchema = z.object({});
 export type ProjectDefaultExecutionOptionsQuery = z.infer<
   typeof projectDefaultExecutionOptionsQuerySchema
 >;
@@ -1313,21 +1289,20 @@ export type EnvironmentArchiveThreadsResponse = z.infer<
   typeof environmentArchiveThreadsResponseSchema
 >;
 
-export const managerArchiveThreadsResponseSchema = z.object({
+export const threadArchiveAllResponseSchema = z.object({
   ok: z.literal(true),
   archivedThreadIds: z.array(z.string().min(1)),
 });
-export type ManagerArchiveThreadsResponse = z.infer<
-  typeof managerArchiveThreadsResponseSchema
+export type ThreadArchiveAllResponse = z.infer<
+  typeof threadArchiveAllResponseSchema
 >;
 
 export const threadListQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
-  type: threadTypeSchema.optional(),
   parentThreadId: z.string().min(1).optional(),
   archived: z.enum(["true", "false"]).optional(),
-  /** Filter by parent thread presence: "true" → managed (has parent), "false" → unmanaged. */
-  managed: z.enum(["true", "false"]).optional(),
+  /** Filter by parent thread presence: "true" means child threads; "false" means root threads. */
+  hasParent: z.enum(["true", "false"]).optional(),
   limit: z.string().regex(/^\d+$/).optional(),
   offset: z.string().regex(/^\d+$/).optional(),
 });
@@ -2277,6 +2252,85 @@ export type WorkspacePathListResponse = z.infer<
   typeof workspacePathListResponseSchema
 >;
 
+/** `command` = Claude Code legacy slash command (`.claude/commands/*.md`). */
+export const providerCommandSourceSchema = z.enum(["skill", "command"]);
+export type ProviderCommandSource = z.infer<typeof providerCommandSourceSchema>;
+
+export const providerCommandOriginSchema = z.enum(["project", "user"]);
+export type ProviderCommandOrigin = z.infer<typeof providerCommandOriginSchema>;
+
+export const providerCommandSchema = z.object({
+  /** Invocation name, e.g. "review" or "frontend:component". */
+  name: z.string(),
+  source: providerCommandSourceSchema,
+  origin: providerCommandOriginSchema,
+  /** `null` = no description (menu falls back to the name). */
+  description: z.string().nullable(),
+  /** `null` = no argument hint. */
+  argumentHint: z.string().nullable(),
+});
+export type ProviderCommand = z.infer<typeof providerCommandSchema>;
+
+/**
+ * The command typeahead menu's visual sections, top-to-bottom: skills first,
+ * then Claude Code's legacy project commands, then user commands. This single
+ * ordered list is the one source of truth for both the server's flat sort
+ * (which buckets the response in this order) and the composer menu's section
+ * grouping, so keyboard navigation (which walks the flat order) can never
+ * disagree with what the user sees.
+ */
+export const PROVIDER_COMMAND_SECTIONS = [
+  "skill",
+  "project-command",
+  "user-command",
+] as const;
+export type ProviderCommandSection = (typeof PROVIDER_COMMAND_SECTIONS)[number];
+
+/**
+ * Derive the menu section a command belongs to from its source + origin:
+ * `skill` source → the skills section; otherwise the legacy `command` source
+ * splits by origin into the project- and user-command sections.
+ */
+export function providerCommandSection(cmd: {
+  source: ProviderCommandSource;
+  origin: ProviderCommandOrigin;
+}): ProviderCommandSection {
+  if (cmd.source === "skill") {
+    return "skill";
+  }
+  return cmd.origin === "project" ? "project-command" : "user-command";
+}
+
+/**
+ * Section rank used as the primary sort key for the command-list response, so
+ * the flat order is grouped in {@link PROVIDER_COMMAND_SECTIONS} order. Lower
+ * ranks sort first.
+ */
+export function providerCommandSectionRank(cmd: {
+  source: ProviderCommandSource;
+  origin: ProviderCommandOrigin;
+}): number {
+  return PROVIDER_COMMAND_SECTIONS.indexOf(providerCommandSection(cmd));
+}
+
+export const commandListResponseSchema = z.object({
+  commands: z.array(providerCommandSchema),
+  truncated: z.boolean(),
+});
+export type CommandListResponse = z.infer<typeof commandListResponseSchema>;
+
+/**
+ * Command typeahead query. Extends the shared project file-search query
+ * (`query`/`limit`/`environmentId`, including the empty-string→null wire
+ * convention) with the `provider` whose skill/command surface to discover.
+ * `query` here is a case-insensitive substring filter on command name/description.
+ */
+export const projectCommandsQuerySchema = projectFilesQuerySchema.extend({
+  /** Provider whose command/skill surface to discover (e.g. `claude-code`, `codex`). */
+  provider: z.string().min(1),
+});
+export type ProjectCommandsQuery = z.infer<typeof projectCommandsQuerySchema>;
+
 export const threadStorageFileListResponseSchema =
   workspaceFileListResponseSchema.extend({
     /**
@@ -2314,6 +2368,14 @@ export type ProjectResponse = z.infer<typeof projectResponseSchema>;
 
 export const projectWithThreadsResponseSchema = projectResponseSchema.extend({
   threads: z.array(threadListEntrySchema),
+  /**
+   * Project's stored execution defaults (provider/model/reasoning/permission/
+   * tier). `null` when the project has never had a thread created in the app
+   * UI. Inlined here so the new-thread composer can seed its picker without a
+   * second round-trip per visit — the value comes from the sidebar bootstrap
+   * the page is already loading.
+   */
+  defaultExecutionOptions: projectExecutionDefaultsSchema.nullable(),
 });
 export type ProjectWithThreadsResponse = z.infer<
   typeof projectWithThreadsResponseSchema
@@ -2328,6 +2390,8 @@ export type SidebarBootstrapResponse = z.infer<
 >;
 
 export const systemConfigResponseSchema = z.object({
+  /** User-opt-in experiments (Settings → Experiments), persisted server-side. */
+  experiments: experimentsSchema,
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
   voiceTranscriptionEnabled: z.boolean(),
@@ -2453,3 +2517,191 @@ export type {
   ReplayRunResponse,
   ReplayRunSpeed,
 } from "@bb/replay-capture/schema";
+
+// ─── Workflows ─────────────────────────────────────────────────────────
+
+export const workflowListQuerySchema = z.object({
+  projectId: z.string().min(1),
+  /** Omitted = resolve the listing root from the project's default source. */
+  hostId: z.string().min(1).optional(),
+});
+export type WorkflowListQuery = z.infer<typeof workflowListQuerySchema>;
+
+/** Winners-only registry listings (project > user > builtin) from the resolved source root. */
+export const workflowListResponseSchema = z.array(
+  hostDaemonWorkflowListingSchema,
+);
+export type WorkflowListResponse = z.infer<typeof workflowListResponseSchema>;
+
+/** Inline launches carry the script source verbatim; the server validates and snapshots it. */
+const inlineWorkflowRunSourceSchema = z.object({
+  type: z.literal("inline"),
+  script: z.string().min(1),
+});
+
+/** Named launches resolve `name` through the host registry tiers (project > user > builtin). */
+const namedWorkflowRunSourceSchema = z.object({
+  type: z.literal("named"),
+  name: z.string().min(1),
+});
+
+export const createWorkflowRunSourceSchema = z.discriminatedUnion("type", [
+  inlineWorkflowRunSourceSchema,
+  namedWorkflowRunSourceSchema,
+]);
+export type CreateWorkflowRunSource = z.infer<
+  typeof createWorkflowRunSourceSchema
+>;
+
+/**
+ * The per-project workflow policy (plan M7): `sandboxCeiling` is the most
+ * permissive sandbox the project's workflow launches — and per-call
+ * `agent({sandbox})` specs — may use; "danger-full-access" must be granted
+ * here before a launch can resolve it. `defaultBudgetOutputTokens` fills the
+ * run budget when a launch carries no override; null = no budget default
+ * (unbounded). GET returns the built-in defaults when the project has never
+ * set a policy; PUT replaces the whole policy (both fields required — a null
+ * budget means "no budget default", never "keep the old value"). Every run
+ * snapshots its ceiling at create time, and each `workflow.start` queue
+ * clamps that snapshot to the project's CURRENT effective ceiling — so
+ * raising the ceiling never loosens an existing run, while LOWERING it (grant
+ * revocation) takes effect the next time a held run starts or an interrupted
+ * run resumes. Budget changes apply to future launches only.
+ */
+export const projectWorkflowPolicySchema = z
+  .object({
+    sandboxCeiling: workflowSandboxSchema,
+    defaultBudgetOutputTokens: z.number().int().positive().nullable(),
+  })
+  .strict();
+export type ProjectWorkflowPolicyResponse = z.infer<
+  typeof projectWorkflowPolicySchema
+>;
+export const updateProjectWorkflowPolicyRequestSchema =
+  projectWorkflowPolicySchema;
+export type UpdateProjectWorkflowPolicyRequest = ProjectWorkflowPolicyResponse;
+
+/**
+ * Launch a workflow run. Optionality always carries real semantics:
+ * `hostId` omitted = inherit `{hostId, workspacePath}` from the anchor
+ * thread's environment when `anchorThreadId` is set (409
+ * `thread_environment_unavailable`/`environment_not_ready` when the anchor
+ * has no usable environment — never a silent fallback to the project
+ * source), else the project's default source (409 when none); explicit
+ * `hostId` always wins and 404s when that host has no local-path source;
+ * `anchorThreadId` omitted = unanchored run; `args` omitted = launched
+ * without args (distinct from `args: null`, which is JSON null args); the
+ * override fields omitted = fall through to the workflow meta default, then
+ * server policy; `clientRequestId` omitted = no launch replay protection (a
+ * replayed `clientRequestId` returns the original run without re-creating
+ * anything).
+ */
+export const createWorkflowRunRequestSchema = z.object({
+  projectId: z.string().min(1),
+  source: createWorkflowRunSourceSchema,
+  hostId: z.string().min(1).optional(),
+  anchorThreadId: z.string().min(1).optional(),
+  args: jsonValueSchema.optional(),
+  clientRequestId: z.string().min(1).max(200).optional(),
+  providerId: z.string().min(1).optional(),
+  model: z.string().min(1).optional(),
+  effort: reasoningLevelSchema.optional(),
+  sandbox: workflowSandboxSchema.optional(),
+  budgetOutputTokens: z.number().int().positive().optional(),
+});
+export type CreateWorkflowRunRequest = z.infer<
+  typeof createWorkflowRunRequestSchema
+>;
+
+export const workflowRunUsageSchema = z.object({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  toolUses: z.number().int().nonnegative(),
+  durationMs: z.number().int().nonnegative(),
+});
+export type WorkflowRunUsage = z.infer<typeof workflowRunUsageSchema>;
+
+/**
+ * The canonical public workflow-run projection (detail and list rows share
+ * it). Deliberately excludes `scriptSource` — the snapshot is a potentially
+ * large blob kept for resume/audit, not for client rendering; `scriptHash`
+ * identifies it.
+ */
+export const workflowRunResponseSchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+  hostId: z.string().min(1),
+  workspacePath: z.string().min(1),
+  anchorThreadId: z.string().min(1).nullable(),
+  workflowName: z.string().min(1),
+  sourceTier: workflowRunSourceTierSchema,
+  scriptHash: z.string().min(1),
+  argsJson: z.string().nullable(),
+  seed: z.number().int(),
+  keyVersion: z.string().min(1),
+  providerId: z.string().min(1),
+  model: z.string().nullable(),
+  effort: reasoningLevelSchema,
+  sandbox: workflowSandboxSchema,
+  concurrency: z.number().int(),
+  maxAgents: z.number().int(),
+  maxFanout: z.number().int(),
+  budgetOutputTokens: z.number().int().nullable(),
+  status: workflowRunStatusSchema,
+  failureReason: z.string().nullable(),
+  progressSnapshot: workflowProgressSnapshotSchema.nullable(),
+  usage: workflowRunUsageSchema,
+  resultJson: z.string().nullable(),
+  retention: workflowRunRetentionSchema,
+  createdAt: z.number().int(),
+  startedAt: z.number().int().nullable(),
+  settledAt: z.number().int().nullable(),
+  updatedAt: z.number().int(),
+});
+export type WorkflowRunResponse = z.infer<typeof workflowRunResponseSchema>;
+
+export const workflowRunListQuerySchema = z.object({
+  /** Omitted = runs across all projects (the sidebar's recent-runs list). */
+  projectId: z.string().min(1).optional(),
+  limit: z.string().regex(/^\d+$/).optional(),
+});
+export type WorkflowRunListQuery = z.infer<typeof workflowRunListQuerySchema>;
+
+export const workflowRunListResponseSchema = z.array(workflowRunResponseSchema);
+export type WorkflowRunListResponse = z.infer<
+  typeof workflowRunListResponseSchema
+>;
+
+export const workflowRunEventsQuerySchema = z
+  .object({
+    afterSeq: z.string().regex(/^\d+$/),
+  })
+  .partial();
+export type WorkflowRunEventsQuery = z.infer<
+  typeof workflowRunEventsQuerySchema
+>;
+
+/** One durable run-event row with its payload parsed (`event.type` discriminates). */
+export const workflowRunEventRowResponseSchema = z.object({
+  sequence: z.number().int().positive(),
+  agentIndex: z.number().int().nullable(),
+  createdAt: z.number().int(),
+  event: workflowRunEventSchema,
+});
+export type WorkflowRunEventRowResponse = z.infer<
+  typeof workflowRunEventRowResponseSchema
+>;
+
+export const workflowRunEventsResponseSchema = z.array(
+  workflowRunEventRowResponseSchema,
+);
+export type WorkflowRunEventsResponse = z.infer<
+  typeof workflowRunEventsResponseSchema
+>;
+
+export const workflowRunWaitQuerySchema = z
+  .object({
+    waitMs: z.string().regex(/^\d+$/),
+  })
+  .partial();
+export type WorkflowRunWaitQuery = z.infer<typeof workflowRunWaitQuerySchema>;

@@ -3,6 +3,7 @@ import type {
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
+  JsonObject,
   PendingInteractionCreate,
   PendingInteractionResolution,
   PromptInput,
@@ -14,6 +15,15 @@ import type {
 import type { AgentRuntimeCaptureEntry } from "./capture-types.js";
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
+
+/**
+ * Which kind of session a thread runs as. Interactive bb threads use
+ * "thread"; daemon-executed workflow agents use "workflowAgent" and get the
+ * restricted shell environment (no `BB_SERVER_URL`, `BB_HOST_DAEMON_PORT`,
+ * or `BB_THREAD_ID`, and a PATH without the bb executable) so workflow
+ * agents cannot reach the server or spawn nested bb work.
+ */
+export type AgentRuntimeSessionKind = "thread" | "workflowAgent";
 
 export type AgentRuntimeExecutionOptions = RuntimeThreadExecutionOptions;
 
@@ -63,8 +73,16 @@ export interface AgentRuntimeOptions {
   /** Environment variables passed to ALL provider processes. */
   env?: Record<string, string>;
 
-  /** Environment variables injected into agent shell execution via adapters. */
+  /** Environment variables injected into agent shell execution via adapters.
+   *  Used for `sessionKind: "thread"` sessions. */
   shellEnv?: AgentRuntimeShellEnvironment;
+
+  /** Restricted base shell environment for `sessionKind: "workflowAgent"`
+   *  sessions. The embedder prepares it without server coordinates
+   *  (`BB_SERVER_URL`, `BB_HOST_DAEMON_PORT`) and with a PATH that does not
+   *  expose the bb executable. Never falls back to `shellEnv`; when omitted,
+   *  workflow agent sessions get no injected base env. */
+  workflowAgentShellEnv?: AgentRuntimeShellEnvironment;
 
   /** Root directory containing per-thread storage directories. */
   threadStorageRootPath?: string;
@@ -113,6 +131,9 @@ export interface StartThreadArgs {
   threadId: string;
   projectId: string;
   providerId: string;
+  /** Explicit per the no-hidden-defaults contract rule; selects the shell
+   *  environment the thread's agent shells receive. */
+  sessionKind: AgentRuntimeSessionKind;
   clientRequestId?: ClientTurnRequestId;
   input?: PromptInput[];
   options: AgentRuntimeExecutionOptions;
@@ -120,6 +141,11 @@ export interface StartThreadArgs {
   dynamicTools?: DynamicTool[];
   disallowedTools?: readonly string[];
   instructionMode?: InstructionMode;
+  /** JSON Schema constraining the session's structured output. Session-level
+   *  structured output is claude-code only (SDK `outputFormat` is fixed at
+   *  query creation); other adapters reject it. Absent means no structured
+   *  output. */
+  outputSchema?: JsonObject;
 }
 
 export interface StartThreadResult {
@@ -149,6 +175,10 @@ export interface RunTurnArgs {
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
   instructions?: string;
+  /** JSON Schema constraining this turn's final assistant message. Per-turn
+   *  structured output is codex only (app-server `turn/start.outputSchema`);
+   *  other adapters reject it. Absent means no structured output. */
+  outputSchema?: JsonObject;
 }
 
 export interface SteerTurnArgs {

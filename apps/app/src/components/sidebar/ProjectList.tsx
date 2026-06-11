@@ -4,7 +4,9 @@ import {
   useEffect,
   useMemo,
   type CSSProperties,
+  type KeyboardEventHandler,
   type MouseEventHandler,
+  type PointerEventHandler,
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -14,7 +16,11 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type { AppSummary, ProjectResponse } from "@bb/server-contract";
+import type {
+  AppSummary,
+  ProjectResponse,
+  WorkflowRunResponse,
+} from "@bb/server-contract";
 import {
   findLocalPathProjectSourceForHost,
   PERSONAL_PROJECT_ID,
@@ -30,10 +36,9 @@ import {
   stripProjectThreads,
   useSidebarNavigation,
 } from "@/hooks/queries/project-queries";
-import {
-  useReorderProject,
-  useReorderProjectManager,
-} from "@/hooks/mutations/project-mutations";
+import { useExperiments } from "@/hooks/queries/system-queries";
+import { useRecentWorkflowRuns } from "@/hooks/queries/workflow-queries";
+import { useReorderProject } from "@/hooks/mutations/project-mutations";
 import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
 import {
   isLocalPathMissing,
@@ -46,20 +51,15 @@ import {
   buildNeighborReorderRequest,
 } from "@/lib/neighbor-reorder";
 import {
-  useSetRootComposeMode,
   useSetRootComposeProjectId,
-  type RootComposeMode,
 } from "@/lib/root-compose-selection";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
-import { EmptyState } from "@/components/ui/empty-state.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
+import { Skeleton } from "@/components/ui/skeleton.js";
 import {
   SidebarGroupContent,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuSkeleton,
   SidebarStickyGroup,
   SidebarStickyStack,
   SidebarStickyTier,
@@ -69,12 +69,15 @@ import {
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
-import { ProjectRow, ProjectThreadTree } from "./ProjectRow";
+import { ProjectThreadTree } from "./ProjectRow";
 import { SidebarAppsSection } from "./SidebarAppsSection";
-import type {
-  ProjectRowProps,
-  ProjectThreadListState,
-} from "./ProjectRow";
+import { SidebarWorkflowsSection } from "./SidebarWorkflowsSection";
+import type { ProjectThreadListState } from "./ProjectRow";
+import {
+  ProjectListProjects,
+  type ProjectListReorderBindings,
+  type ProjectListRowModel,
+} from "./ProjectListProjects";
 import {
   PinnedThreadTree,
   type PinnedThreadTreeProps,
@@ -84,8 +87,10 @@ import {
   collapsedEnvironmentIdsAtom,
   collapsedThreadIdsAtom,
   collapsedProjectIdsAtom,
+  collapsedSidebarSectionIdsAtom,
   DEFAULT_SIDEBAR_SECTION_ORDER,
   sidebarSectionOrderAtom,
+  type CollapsibleSidebarSectionId,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
 import {
@@ -102,7 +107,7 @@ import {
   type SidebarSortableDragBindings,
 } from "./sortableMotion";
 import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
-import type { ConsumeDragClickSuppression } from "./useDragClickSuppression";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import {
   useNeighborReorderSortable,
   type UseNeighborReorderSortableArgs,
@@ -116,7 +121,6 @@ interface ProjectListProps {
 
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
-  onNewManager?: () => void;
   onOpenAutomations?: () => void;
 }
 
@@ -138,18 +142,16 @@ interface ProjectListProjectsSectionActionsProps {
 }
 
 interface ProjectListThreadsSectionActionsProps {
-  onNewManager: () => void;
   onNewThread: () => void;
+}
+
+interface ProjectListNavigationLoadingRowProps {
+  textWidthClassName: string;
 }
 
 interface LocalSourcePathTarget {
   path: string;
   projectId: string;
-}
-
-interface OpenRootComposeForProjectArgs {
-  projectId: string;
-  mode: RootComposeMode;
 }
 
 const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
@@ -181,16 +183,16 @@ interface ToggleCollapsedIdListArgs {
 }
 
 type ToggleCollapsedId = (id: string) => void;
-
-interface SortableProjectRowProps extends ProjectRowProps {
-  reorderDisabled: boolean;
-}
+type ToggleCollapsedSidebarSectionId = (
+  id: CollapsibleSidebarSectionId,
+) => void;
 
 interface TopLevelSidebarSectionProps {
   label: string;
   children: ReactNode;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
+  collapseControl?: TopLevelSidebarSectionCollapseControl;
   dragBindings?: SidebarSortableDragBindings;
   sectionRef?: (element: HTMLDivElement | null) => void;
   sectionStyle?: CSSProperties;
@@ -202,9 +204,14 @@ interface SortableSidebarSectionProps extends TopLevelSidebarSectionProps {
   disabled: boolean;
 }
 
-function hasSameSidebarSectionOrder(
-  left: readonly SidebarSectionId[],
-  right: readonly SidebarSectionId[],
+interface TopLevelSidebarSectionCollapseControl {
+  isCollapsed: boolean;
+  onToggleCollapsed: () => void;
+}
+
+function hasSameStringList(
+  left: readonly string[],
+  right: readonly string[],
 ): boolean {
   if (left.length !== right.length) {
     return false;
@@ -217,6 +224,18 @@ function isSidebarSectionId(value: string): value is SidebarSectionId {
     value === "pinned" ||
     value === "projects" ||
     value === "threads" ||
+    value === "workflows" ||
+    value === "apps"
+  );
+}
+
+function isCollapsibleSidebarSectionId(
+  value: string,
+): value is CollapsibleSidebarSectionId {
+  return (
+    value === "projects" ||
+    value === "threads" ||
+    value === "workflows" ||
     value === "apps"
   );
 }
@@ -252,6 +271,7 @@ const EMPTY_PROJECT_THREAD_LIST_STATE: ProjectThreadListState = {
 
 const EMPTY_APPS: readonly AppSummary[] = [];
 const EMPTY_PROJECTS: readonly ProjectResponse[] = [];
+const EMPTY_WORKFLOW_RUNS: readonly WorkflowRunResponse[] = [];
 
 function getProjectId(project: ProjectResponse): string {
   return project.id;
@@ -287,6 +307,21 @@ function toggleCollapsedIdList({
   }
 
   return Array.from(next);
+}
+
+function normalizeCollapsedSidebarSectionIds(
+  sectionIds: readonly CollapsibleSidebarSectionId[],
+): CollapsibleSidebarSectionId[] {
+  const seen = new Set<CollapsibleSidebarSectionId>();
+  const normalized: CollapsibleSidebarSectionId[] = [];
+  for (const sectionId of sectionIds) {
+    if (!isCollapsibleSidebarSectionId(sectionId) || seen.has(sectionId)) {
+      continue;
+    }
+    seen.add(sectionId);
+    normalized.push(sectionId);
+  }
+  return normalized;
 }
 
 function ProjectListSectionIconButton({
@@ -334,24 +369,46 @@ function ProjectListProjectsSectionActions({
 }
 
 function ProjectListThreadsSectionActions({
-  onNewManager,
   onNewThread,
 }: ProjectListThreadsSectionActionsProps) {
   return (
-    <>
-      <ProjectListSectionIconButton
-        ariaLabel="New manager"
-        title="New manager"
-        iconName="UserRoundPlus"
-        onClick={onNewManager}
+    <ProjectListSectionIconButton
+      ariaLabel="New thread"
+      title="New thread"
+      iconName="MessageSquarePlus"
+      onClick={onNewThread}
+    />
+  );
+}
+
+export function ProjectListNavigationLoadingState() {
+  return (
+    <div
+      aria-label="Loading sidebar navigation"
+      className="space-y-1.5 px-2 pt-1 group-data-[collapsible=icon]:hidden"
+    >
+      <ProjectListNavigationLoadingRow textWidthClassName="w-2/3" />
+      <ProjectListNavigationLoadingRow textWidthClassName="w-1/2" />
+    </div>
+  );
+}
+
+function ProjectListNavigationLoadingRow({
+  textWidthClassName,
+}: ProjectListNavigationLoadingRowProps) {
+  return (
+    <div
+      data-sidebar="navigation-loading-row"
+      className="flex h-7 items-center gap-2 rounded-md"
+    >
+      <Skeleton className="size-4 shrink-0 rounded-md bg-sidebar-border/60" />
+      <Skeleton
+        className={cn(
+          "h-3 rounded-sm bg-sidebar-border/50",
+          textWidthClassName,
+        )}
       />
-      <ProjectListSectionIconButton
-        ariaLabel="New thread"
-        title="New thread"
-        iconName="MessageSquarePlus"
-        onClick={onNewThread}
-      />
-    </>
+    </div>
   );
 }
 
@@ -360,6 +417,7 @@ function TopLevelSidebarSection({
   children,
   actions,
   actionsAlwaysVisible = false,
+  collapseControl,
   dragBindings,
   sectionRef,
   sectionStyle,
@@ -375,6 +433,27 @@ function TopLevelSidebarSection({
     },
     [consumeClickSuppression],
   );
+  const handleCollapseControlClick = useCallback<
+    MouseEventHandler<HTMLButtonElement>
+  >(
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      collapseControl?.onToggleCollapsed();
+    },
+    [collapseControl],
+  );
+  const stopCollapseControlPointerDown = useCallback<
+    PointerEventHandler<HTMLButtonElement>
+  >((event) => {
+    event.stopPropagation();
+  }, []);
+  const stopCollapseControlKeyDown = useCallback<
+    KeyboardEventHandler<HTMLButtonElement>
+  >((event) => {
+    event.stopPropagation();
+  }, []);
+
   return (
     <SidebarStickyGroup
       ref={sectionRef}
@@ -399,11 +478,43 @@ function TopLevelSidebarSection({
       >
         <span
           className={cn(
-            "relative z-10 min-w-0 flex-1 truncate text-left",
+            "relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left",
             actions && "pr-14",
           )}
         >
-          {label}
+          <span className="min-w-0 truncate">{label}</span>
+          {collapseControl ? (
+            <button
+              type="button"
+              aria-expanded={!collapseControl.isCollapsed}
+              aria-label={
+                collapseControl.isCollapsed
+                  ? `Expand ${label} section`
+                  : `Collapse ${label} section`
+              }
+              title={
+                collapseControl.isCollapsed
+                  ? `Expand ${label}`
+                  : `Collapse ${label}`
+              }
+              className={cn(
+                SIDEBAR_HOVER_ACTIONS_CLASS,
+                "relative z-20 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2",
+              )}
+              onClick={handleCollapseControlClick}
+              onPointerDown={stopCollapseControlPointerDown}
+              onKeyDown={stopCollapseControlKeyDown}
+            >
+              <Icon
+                name="ChevronRight"
+                className={cn(
+                  "size-3 transition-transform duration-150",
+                  !collapseControl.isCollapsed && "rotate-90",
+                )}
+                aria-hidden="true"
+              />
+            </button>
+          ) : null}
         </span>
         {actions ? (
           <span className="absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center">
@@ -418,7 +529,9 @@ function TopLevelSidebarSection({
           </span>
         ) : null}
       </SidebarStickyTier>
-      <div className="mt-1">{children}</div>
+      {collapseControl?.isCollapsed ? null : (
+        <div className="mt-1">{children}</div>
+      )}
     </SidebarStickyGroup>
   );
 }
@@ -443,38 +556,12 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
   );
 });
 
-const SortableProjectRow = memo(function SortableProjectRow({
-  project,
-  reorderDisabled,
-  ...props
-}: SortableProjectRowProps) {
-  const { dragBindings, setNodeRef, style } = useSidebarSortable({
-    id: project.id,
-    disabled: reorderDisabled,
-  });
-
-  return (
-    <ProjectRow
-      {...props}
-      project={project}
-      projectDragBindings={dragBindings}
-      projectRowRef={setNodeRef}
-      projectRowStyle={style}
-    />
-  );
-});
-
 export function ProjectListActionButtons({
   onNewChat,
-  onNewManager,
   onOpenAutomations,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
-  const isNewManagerDisabled = !onNewManager;
   const newChatTitle = isNewChatDisabled ? "Start a new thread" : "New thread";
-  const newManagerTitle = isNewManagerDisabled
-    ? "Hire a new manager"
-    : "New manager";
 
   return (
     <div className="space-y-1">
@@ -489,22 +576,6 @@ export function ProjectListActionButtons({
       >
         <Icon name="MessageSquarePlus" />
         <span className="min-w-0 flex-1 truncate text-left">New thread</span>
-        <span
-          className={PROJECT_LIST_ACTION_TRAILING_SLOT_CLASS}
-          aria-hidden="true"
-        />
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        className={PROJECT_LIST_ACTION_BUTTON_CLASS}
-        onClick={onNewManager}
-        disabled={isNewManagerDisabled}
-        title={newManagerTitle}
-      >
-        <Icon name="UserRoundPlus" />
-        <span className="min-w-0 flex-1 truncate text-left">New manager</span>
         <span
           className={PROJECT_LIST_ACTION_TRAILING_SLOT_CLASS}
           aria-hidden="true"
@@ -546,11 +617,15 @@ function ProjectListComponent({
 }: ProjectListProps) {
   const navigate = useNavigate();
   const setRootComposeProjectId = useSetRootComposeProjectId();
-  const setRootComposeMode = useSetRootComposeMode();
   const sidebarNavigationQuery = useSidebarNavigation();
   const sidebarNavigation = sidebarNavigationQuery.data;
   const appsQuery = useApps();
   const apps = appsQuery.data ?? EMPTY_APPS;
+  const experiments = useExperiments();
+  const recentWorkflowRunsQuery = useRecentWorkflowRuns({
+    enabled: experiments.workflows,
+  });
+  const workflowRuns = recentWorkflowRunsQuery.data ?? EMPTY_WORKFLOW_RUNS;
   const projects = useMemo(
     () => sidebarNavigation?.projects.map(stripProjectThreads),
     [sidebarNavigation],
@@ -608,10 +683,6 @@ function ProjectListComponent({
   const { isPending: isProjectReorderPending, mutate: reorderProjectMutate } =
     useReorderProject();
   const {
-    isPending: isManagerReorderPending,
-    mutate: reorderProjectManagerMutate,
-  } = useReorderProjectManager();
-  const {
     isPending: isPinnedReorderPending,
     mutate: reorderPinnedThreadMutate,
   } = useReorderPinnedThread();
@@ -649,24 +720,6 @@ function ProjectListComponent({
     dndContextProps: projectDndContextProps,
     consumeClickSuppression: consumeProjectClickSuppression,
   } = useSidebarReorderDnd({ onDragEnd: handleSortableProjectDragEnd });
-  const handleReorderManager = useCallback<
-    NonNullable<ProjectRowProps["onReorderManager"]>
-  >(
-    (projectId, request, callbacks) => {
-      reorderProjectManagerMutate(
-        {
-          projectId,
-          threadId: request.itemId,
-          previousThreadId: request.previousItemId,
-          nextThreadId: request.nextItemId,
-        },
-        {
-          onSettled: callbacks.onSettled,
-        },
-      );
-    },
-    [reorderProjectManagerMutate],
-  );
   const handleReorderPinnedRoot = useCallback<
     NonNullable<PinnedThreadTreeProps["onReorderPinnedRoot"]>
   >(
@@ -685,39 +738,23 @@ function ProjectListComponent({
     [reorderPinnedThreadMutate],
   );
   const openRootComposeForProject = useCallback(
-    ({ projectId, mode }: OpenRootComposeForProjectArgs) => {
+    (projectId: string) => {
       setRootComposeProjectId(projectId);
-      setRootComposeMode(mode);
       onProjectSelect?.();
       navigate(getRootComposeRoutePath(), {
         state: { focusPrompt: true },
       });
     },
-    [navigate, onProjectSelect, setRootComposeMode, setRootComposeProjectId],
+    [navigate, onProjectSelect, setRootComposeProjectId],
   );
   const handleCreateProjectThread = useCallback(
     (projectId: string) => {
-      openRootComposeForProject({ projectId, mode: "thread" });
-    },
-    [openRootComposeForProject],
-  );
-  const handleCreateProjectManager = useCallback(
-    (projectId: string) => {
-      openRootComposeForProject({ projectId, mode: "manager" });
+      openRootComposeForProject(projectId);
     },
     [openRootComposeForProject],
   );
   const handleCreateProjectlessThread = useCallback(() => {
-    openRootComposeForProject({
-      projectId: PERSONAL_PROJECT_ID,
-      mode: "thread",
-    });
-  }, [openRootComposeForProject]);
-  const handleCreateProjectlessManager = useCallback(() => {
-    openRootComposeForProject({
-      projectId: PERSONAL_PROJECT_ID,
-      mode: "manager",
-    });
+    openRootComposeForProject(PERSONAL_PROJECT_ID);
   }, [openRootComposeForProject]);
   const [collapsedProjectIdList, setCollapsedProjectIdList] = useAtom(
     collapsedProjectIdsAtom,
@@ -728,6 +765,8 @@ function ProjectListComponent({
   const [collapsedEnvironmentIdList, setCollapsedEnvironmentIdList] = useAtom(
     collapsedEnvironmentIdsAtom,
   );
+  const [collapsedSidebarSectionIdList, setCollapsedSidebarSectionIdList] =
+    useAtom(collapsedSidebarSectionIdsAtom);
   const [sidebarSectionOrderList, setSidebarSectionOrderList] = useAtom(
     sidebarSectionOrderAtom,
   );
@@ -747,10 +786,16 @@ function ProjectListComponent({
     () => normalizeSidebarSectionOrder(sidebarSectionOrderList),
     [sidebarSectionOrderList],
   );
+  const normalizedCollapsedSidebarSectionIds = useMemo(
+    () => normalizeCollapsedSidebarSectionIds(collapsedSidebarSectionIdList),
+    [collapsedSidebarSectionIdList],
+  );
+  const collapsedSidebarSectionIds = useMemo(
+    () => new Set(normalizedCollapsedSidebarSectionIds),
+    [normalizedCollapsedSidebarSectionIds],
+  );
   useEffect(() => {
-    if (
-      hasSameSidebarSectionOrder(sidebarSectionOrderList, sidebarSectionOrder)
-    ) {
+    if (hasSameStringList(sidebarSectionOrderList, sidebarSectionOrder)) {
       return;
     }
     setSidebarSectionOrderList(sidebarSectionOrder);
@@ -758,6 +803,21 @@ function ProjectListComponent({
     setSidebarSectionOrderList,
     sidebarSectionOrder,
     sidebarSectionOrderList,
+  ]);
+  useEffect(() => {
+    if (
+      hasSameStringList(
+        collapsedSidebarSectionIdList,
+        normalizedCollapsedSidebarSectionIds,
+      )
+    ) {
+      return;
+    }
+    setCollapsedSidebarSectionIdList(normalizedCollapsedSidebarSectionIds);
+  }, [
+    collapsedSidebarSectionIdList,
+    normalizedCollapsedSidebarSectionIds,
+    setCollapsedSidebarSectionIdList,
   ]);
   const pinnedSidebarState = useMemo(
     () => buildPinnedSidebarState({ threads }),
@@ -767,14 +827,18 @@ function ProjectListComponent({
   // No apps → no section: the empty Apps list adds nothing, so it stays hidden
   // (like the Pinned section) until at least one global app exists.
   const hasAppsSection = apps.length > 0;
+  // Same rule for Workflows — plus the experiment opt-in: hidden until the
+  // user enables it in Settings and at least one recent run exists.
+  const hasWorkflowsSection = experiments.workflows && workflowRuns.length > 0;
   const visibleSidebarSectionOrder = useMemo(
     () =>
       sidebarSectionOrder.filter((sectionId) => {
         if (sectionId === "pinned") return hasPinnedSection;
+        if (sectionId === "workflows") return hasWorkflowsSection;
         if (sectionId === "apps") return hasAppsSection;
         return true;
       }),
-    [hasAppsSection, hasPinnedSection, sidebarSectionOrder],
+    [hasAppsSection, hasPinnedSection, hasWorkflowsSection, sidebarSectionOrder],
   );
   const threadsByProject = useMemo(() => {
     const grouped = new Map<string, ThreadListEntry[]>();
@@ -811,6 +875,42 @@ function ProjectListComponent({
     return map;
   }, [projectsState.status, renderedProjects, threadsByProject]);
 
+  const projectRows = useMemo<ProjectListRowModel[]>(
+    () =>
+      renderedProjects.map((project) => ({
+        project,
+        threadListState:
+          threadListStatesByProjectId.get(project.id) ??
+          EMPTY_PROJECT_THREAD_LIST_STATE,
+        isActive: false,
+        isLocalPathInvalid: isLocalPathMissing(
+          pathExistence,
+          localSourcePathsByProjectId.get(project.id),
+        ),
+      })),
+    [
+      localSourcePathsByProjectId,
+      pathExistence,
+      renderedProjects,
+      threadListStatesByProjectId,
+    ],
+  );
+
+  const projectReorder = useMemo<ProjectListReorderBindings>(
+    () => ({
+      dndContextProps: projectDndContextProps,
+      itemIds: renderedProjectIds,
+      disabled: projectReorderDisabled,
+      consumeClickSuppression: consumeProjectClickSuppression,
+    }),
+    [
+      consumeProjectClickSuppression,
+      projectDndContextProps,
+      projectReorderDisabled,
+      renderedProjectIds,
+    ],
+  );
+
   const toggleProjectCollapsed = useCallback<ToggleCollapsedId>(
     (projectId) => {
       setCollapsedProjectIdList((current) => {
@@ -837,6 +937,18 @@ function ProjectListComponent({
     },
     [setCollapsedEnvironmentIdList],
   );
+
+  const toggleSidebarSectionCollapsed =
+    useCallback<ToggleCollapsedSidebarSectionId>(
+      (sectionId) => {
+        setCollapsedSidebarSectionIdList((current) => {
+          return toggleCollapsedIdList({ current, id: sectionId }).filter(
+            isCollapsibleSidebarSectionId,
+          );
+        });
+      },
+      [setCollapsedSidebarSectionIdList],
+    );
 
   const handleReorderSidebarSection = useCallback(
     (event: DragEndEvent) => {
@@ -892,105 +1004,20 @@ function ProjectListComponent({
     />
   );
   const projectsSectionContent = (
-    <SidebarMenu className="gap-1">
-      {projectsState.status === "loading" ? (
-        <>
-          <SidebarMenuSkeleton />
-          <SidebarMenuSkeleton />
-        </>
-      ) : renderedProjects.length > 1 ? (
-        <DndContext {...projectDndContextProps}>
-          <SortableContext
-            items={renderedProjectIds}
-            strategy={verticalListSortingStrategy}
-          >
-            {renderedProjects.map((project) => {
-              const threadListState =
-                threadListStatesByProjectId.get(project.id) ??
-                EMPTY_PROJECT_THREAD_LIST_STATE;
-              const localSourcePath = localSourcePathsByProjectId.get(
-                project.id,
-              );
-              const isLocalPathInvalid = isLocalPathMissing(
-                pathExistence,
-                localSourcePath,
-              );
-              return (
-                <SortableProjectRow
-                  key={project.id}
-                  project={project}
-                  reorderDisabled={projectReorderDisabled}
-                  threadListState={threadListState}
-                  selectedThreadId={selectedThreadId}
-                  isActive={false}
-                  isCollapsed={collapsedProjectIds.has(project.id)}
-                  collapsedThreadIds={collapsedThreadIds}
-                  collapsedEnvironmentIds={collapsedEnvironmentIds}
-                  isLocalPathInvalid={isLocalPathInvalid}
-                  onProjectSelect={onProjectSelect}
-                  onCreateProjectThread={handleCreateProjectThread}
-                  onCreateProjectManager={handleCreateProjectManager}
-                  onToggleProjectCollapsed={toggleProjectCollapsed}
-                  onToggleThreadCollapsed={toggleThreadCollapsed}
-                  onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
-                  isManagerReorderPending={isManagerReorderPending}
-                  onReorderManager={handleReorderManager}
-                  consumeProjectClickSuppression={
-                    consumeProjectClickSuppression
-                  }
-                />
-              );
-            })}
-          </SortableContext>
-        </DndContext>
-      ) : renderedProjects.length > 0 ? (
-        renderedProjects.map((project) => {
-          const threadListState =
-            threadListStatesByProjectId.get(project.id) ??
-            EMPTY_PROJECT_THREAD_LIST_STATE;
-          const localSourcePath = localSourcePathsByProjectId.get(project.id);
-          const isLocalPathInvalid = isLocalPathMissing(
-            pathExistence,
-            localSourcePath,
-          );
-          return (
-            <ProjectRow
-              key={project.id}
-              project={project}
-              threadListState={threadListState}
-              selectedThreadId={selectedThreadId}
-              isActive={false}
-              isCollapsed={collapsedProjectIds.has(project.id)}
-              collapsedThreadIds={collapsedThreadIds}
-              collapsedEnvironmentIds={collapsedEnvironmentIds}
-              isLocalPathInvalid={isLocalPathInvalid}
-              onProjectSelect={onProjectSelect}
-              onCreateProjectThread={handleCreateProjectThread}
-              onCreateProjectManager={handleCreateProjectManager}
-              onToggleProjectCollapsed={toggleProjectCollapsed}
-              onToggleThreadCollapsed={toggleThreadCollapsed}
-              onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
-              isManagerReorderPending={isManagerReorderPending}
-              onReorderManager={handleReorderManager}
-            />
-          );
-        })
-      ) : (
-        <SidebarMenuItem>
-          <EmptyState
-            message={
-              projectsState.status === "unavailable"
-                ? "Projects unavailable"
-                : "No projects"
-            }
-            icon="Folder"
-            className="px-2 py-1.5"
-            iconClassName="size-3.5 text-sidebar-foreground/75"
-            messageClassName="text-xs font-medium text-sidebar-foreground/85"
-          />
-        </SidebarMenuItem>
-      )}
-    </SidebarMenu>
+    <ProjectListProjects
+      status={projectsState.status}
+      rows={projectRows}
+      selectedThreadId={selectedThreadId}
+      collapsedProjectIds={collapsedProjectIds}
+      collapsedThreadIds={collapsedThreadIds}
+      collapsedEnvironmentIds={collapsedEnvironmentIds}
+      onProjectSelect={onProjectSelect}
+      onCreateProjectThread={handleCreateProjectThread}
+      onToggleProjectCollapsed={toggleProjectCollapsed}
+      onToggleThreadCollapsed={toggleThreadCollapsed}
+      onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
+      reorder={projectReorder}
+    />
   );
   const threadsSectionContent = (
     <ProjectThreadTree
@@ -1003,10 +1030,9 @@ function ProjectListComponent({
       onProjectSelect={onProjectSelect}
       onToggleThreadCollapsed={toggleThreadCollapsed}
       onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
-      isManagerReorderPending={isManagerReorderPending}
-      onReorderManager={handleReorderManager}
     />
   );
+  const workflowsSectionContent = <SidebarWorkflowsSection runs={workflowRuns} />;
   const appsSectionContent = <SidebarAppsSection apps={apps} />;
   const projectsSectionActions = onNewProject ? (
     <ProjectListProjectsSectionActions
@@ -1019,9 +1045,16 @@ function ProjectListComponent({
   const threadsSectionActions = (
     <ProjectListThreadsSectionActions
       onNewThread={handleCreateProjectlessThread}
-      onNewManager={handleCreateProjectlessManager}
     />
   );
+
+  if (projectsState.status === "loading") {
+    return (
+      <ProjectListShell>
+        <ProjectListNavigationLoadingState />
+      </ProjectListShell>
+    );
+  }
 
   return (
     <ProjectListShell>
@@ -1052,6 +1085,11 @@ function ProjectListComponent({
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={projectsSectionActions}
                   actionsAlwaysVisible={projectsSectionActionsAlwaysVisible}
+                  collapseControl={{
+                    isCollapsed: collapsedSidebarSectionIds.has("projects"),
+                    onToggleCollapsed: () =>
+                      toggleSidebarSectionCollapsed("projects"),
+                  }}
                   consumeClickSuppression={
                     consumeSidebarSectionClickSuppression
                   }
@@ -1065,11 +1103,33 @@ function ProjectListComponent({
                   label="Threads"
                   disabled={visibleSidebarSectionOrder.length < 2}
                   actions={threadsSectionActions}
+                  collapseControl={{
+                    isCollapsed: collapsedSidebarSectionIds.has("threads"),
+                    onToggleCollapsed: () =>
+                      toggleSidebarSectionCollapsed("threads"),
+                  }}
                   consumeClickSuppression={
                     consumeSidebarSectionClickSuppression
                   }
                 >
                   {threadsSectionContent}
+                </SortableSidebarSection>
+              ) : sectionId === "workflows" ? (
+                <SortableSidebarSection
+                  key={sectionId}
+                  id={sectionId}
+                  label="Workflows"
+                  disabled={visibleSidebarSectionOrder.length < 2}
+                  collapseControl={{
+                    isCollapsed: collapsedSidebarSectionIds.has("workflows"),
+                    onToggleCollapsed: () =>
+                      toggleSidebarSectionCollapsed("workflows"),
+                  }}
+                  consumeClickSuppression={
+                    consumeSidebarSectionClickSuppression
+                  }
+                >
+                  {workflowsSectionContent}
                 </SortableSidebarSection>
               ) : (
                 <SortableSidebarSection
@@ -1077,6 +1137,11 @@ function ProjectListComponent({
                   id={sectionId}
                   label="Apps"
                   disabled={visibleSidebarSectionOrder.length < 2}
+                  collapseControl={{
+                    isCollapsed: collapsedSidebarSectionIds.has("apps"),
+                    onToggleCollapsed: () =>
+                      toggleSidebarSectionCollapsed("apps"),
+                  }}
                   consumeClickSuppression={
                     consumeSidebarSectionClickSuppression
                   }

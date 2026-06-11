@@ -23,7 +23,7 @@ segment. Use a stable lowercase id such as `todo_20260603_review_notes`.
 ```json
 {
   "id": "todo_20260603_review_notes",
-  "title": "Review notes from the manager",
+  "title": "Review project notes",
   "done": false,
   "createdAt": "2026-06-03T20:00:00.000Z",
   "updatedAt": "2026-06-03T20:00:00.000Z"
@@ -40,7 +40,7 @@ per-item records under `todos/`.
 application_id="<applicationId>"
 todo_id="todo_20260603_review_notes"
 created_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-json="{\"id\":\"$todo_id\",\"title\":\"Review notes from the manager\",\"done\":false,\"createdAt\":\"$created_at\",\"updatedAt\":\"$created_at\"}"
+json="{\"id\":\"$todo_id\",\"title\":\"Review project notes\",\"done\":false,\"createdAt\":\"$created_at\",\"updatedAt\":\"$created_at\"}"
 printf '%s\n' "$json" | bb app data write "$application_id" "todos/$todo_id" --stdin
 ```
 

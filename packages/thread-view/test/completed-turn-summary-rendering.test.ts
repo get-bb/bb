@@ -5,7 +5,6 @@ import {
   renderTimelineFixture,
 } from "./timeline-test-harness.js";
 import type { TimelineEventFactory } from "./timeline-test-harness.js";
-import type { SystemClientRequestVisibility } from "../src/event-projection-types.js";
 
 type TimelineFixtureEvent = ReturnType<
   TimelineEventFactory[keyof TimelineEventFactory]
@@ -16,7 +15,6 @@ type TimelineWorkRow = Extract<TimelineRow, { kind: "work" }>;
 interface RenderCompletedTimelineArgs {
   events: TimelineFixtureEvent[];
   includeDebugRawEvents?: boolean;
-  systemClientRequestVisibility?: SystemClientRequestVisibility;
 }
 
 function renderCompletedTimeline(args: RenderCompletedTimelineArgs) {
@@ -24,8 +22,6 @@ function renderCompletedTimeline(args: RenderCompletedTimelineArgs) {
     events: args.events,
     projectionOptions: {
       includeDebugRawEvents: args.includeDebugRawEvents,
-      systemClientRequestVisibility:
-        args.systemClientRequestVisibility ?? "hidden",
       threadStatus: "idle",
       turnMessageDetail: "summary",
     },
@@ -271,7 +267,7 @@ describe("completed turn summary rendering", () => {
     ];
     const steerRequest = event.clientTurnRequested({
       initiator: "agent",
-      senderThreadId: "thr_manager",
+      senderThreadId: "thr_parent",
       target: { kind: "auto", expectedTurnId: "turn-1" },
       text: "Please account for the restart",
     });
@@ -339,10 +335,7 @@ describe("completed turn summary rendering", () => {
       event.turnCompleted(),
     );
 
-    const timeline = renderCompletedTimeline({
-      events,
-      systemClientRequestVisibility: "visible",
-    });
+    const timeline = renderCompletedTimeline({ events });
 
     expect(rowSignatures(timeline.rows)).toEqual([
       "turn:1-7",
@@ -359,7 +352,7 @@ describe("completed turn summary rendering", () => {
     ]);
   });
 
-  it("splits completed turn summaries around converted manager user messages", () => {
+  it("splits completed turn summaries around converted legacy user messages", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
 
     const timeline = renderCompletedTimeline({
@@ -369,8 +362,8 @@ describe("completed turn summary rendering", () => {
           itemId: "tool-before-message",
           command: "pnpm test",
         }),
-        event.managerUserMessage({
-          text: "Visible manager update",
+        event.legacyUserMessage({
+          text: "Visible legacy update",
         }),
         event.commandCompleted({
           itemId: "tool-after-message",

@@ -9,6 +9,7 @@ import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { runLiveCommandAndWait } from "../hosts/live-command-wait.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
+import { backsHostDaemonAiServices } from "./host-daemon-ai-provider.js";
 
 type BaseInferenceDeps = Pick<AppDeps, "config" | "logger">;
 type InferenceCompleteDeps = LoggedWorkSessionDeps;
@@ -33,7 +34,6 @@ function getInferenceModel(
 }
 
 const RESULT_TOOL_NAME = "result";
-const CODEX_INFERENCE_PROVIDER = "codex";
 const DEFAULT_INFERENCE_TIMEOUT_MS = 30_000;
 
 interface InferenceCompleteArgs<T extends TSchema> {
@@ -149,7 +149,7 @@ export async function inferenceComplete<T extends TSchema>(
     name: "BB_INFERENCE",
     value: deps.config.inferenceModel,
   });
-  if (modelInfo.provider === CODEX_INFERENCE_PROVIDER) {
+  if (backsHostDaemonAiServices(modelInfo.provider)) {
     return completeWithCodexHostDaemon(deps, modelInfo, args);
   }
 

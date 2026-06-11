@@ -11,10 +11,6 @@ interface UseOverflowMeasurementArgs {
   measurementKey: string;
 }
 
-interface UseLineOverflowMeasurementArgs extends UseOverflowMeasurementArgs {
-  visibleLineCount: number;
-}
-
 type OverflowMeasurement = "unmeasured" | "fits" | "overflowing";
 
 interface ConversationMessageOverflowToggleLabels {
@@ -59,8 +55,15 @@ export function useOverflowMeasurement({
     }
 
     const measure = () => {
+      // ResizeObserver still fires after the observed node detaches (e.g. when
+      // an expandable row swaps the collapsed preview for the expanded body).
+      // A detached node reports scroll/client size 0, which would flip the
+      // measurement to "fits" and unexpand the row mid-click. Treat detached
+      // nodes as "no new information" — the last connected measurement stands.
+      if (!element.isConnected) return;
       setMeasurement(
-        element.scrollHeight > element.clientHeight + 1
+        element.scrollHeight > element.clientHeight + 1 ||
+          element.scrollWidth > element.clientWidth + 1
           ? "overflowing"
           : "fits",
       );
@@ -75,56 +78,6 @@ export function useOverflowMeasurement({
     resizeObserver.observe(element);
     return () => resizeObserver.disconnect();
   }, [elementRef, enabled, measurementKey]);
-
-  return measurement;
-}
-
-function elementLineHeight(element: HTMLElement): number {
-  const computedLineHeight = window.getComputedStyle(element).lineHeight;
-  const lineHeight = Number.parseFloat(computedLineHeight);
-  if (Number.isFinite(lineHeight)) {
-    return lineHeight;
-  }
-  return element.clientHeight;
-}
-
-export function useLineOverflowMeasurement({
-  elementRef,
-  enabled,
-  measurementKey,
-  visibleLineCount,
-}: UseLineOverflowMeasurementArgs): OverflowMeasurement {
-  const [measurement, setMeasurement] =
-    useState<OverflowMeasurement>("unmeasured");
-
-  useLayoutEffect(() => {
-    if (!enabled) {
-      setMeasurement("fits");
-      return;
-    }
-
-    const element = elementRef.current;
-    if (!element) {
-      setMeasurement("unmeasured");
-      return;
-    }
-
-    const measure = () => {
-      const visibleHeight = elementLineHeight(element) * visibleLineCount;
-      setMeasurement(
-        element.scrollHeight > visibleHeight + 1 ? "overflowing" : "fits",
-      );
-    };
-    measure();
-
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const resizeObserver = new ResizeObserver(measure);
-    resizeObserver.observe(element);
-    return () => resizeObserver.disconnect();
-  }, [elementRef, enabled, measurementKey, visibleLineCount]);
 
   return measurement;
 }

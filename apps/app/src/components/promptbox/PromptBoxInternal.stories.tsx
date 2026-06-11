@@ -13,7 +13,7 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeAttachmentsConfig as makeAttachments,
   makeExecutionControlsProps,
-  makeMentionsConfig as makeMentions,
+  makeTypeaheadConfig as makeTypeahead,
 } from "../../../.ladle/story-fixtures";
 
 export default {
@@ -139,7 +139,6 @@ const liveMentionThreads: PromptMentionSuggestion[] = [
     projectId: "proj_promptbox",
     threadId: "thr_qfk8ksbxkk",
     title: "Wire up promptbox stories",
-    threadType: "standard",
   },
   {
     kind: "thread",
@@ -147,8 +146,7 @@ const liveMentionThreads: PromptMentionSuggestion[] = [
     replacement: "thread:thr_mgr_kj4n2x",
     projectId: "proj_promptbox",
     threadId: "thr_mgr_kj4n2x",
-    title: "Manager: app/timeline cleanup sprint",
-    threadType: "manager",
+    title: "Parent: app/timeline cleanup sprint",
   },
   {
     kind: "thread",
@@ -157,7 +155,6 @@ const liveMentionThreads: PromptMentionSuggestion[] = [
     projectId: "proj_promptbox",
     threadId: "thr_4hge9xn14m",
     title: "Review flow cleanup",
-    threadType: "standard",
   },
 ];
 
@@ -249,7 +246,7 @@ function DefaultRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}
@@ -270,7 +267,7 @@ function WithAttachmentsRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments({ items: mockAttachments })}
       history={baseHistory}
@@ -283,16 +280,15 @@ function WithAttachmentsRow() {
 
 function WithMentionsRow() {
   const initialValue =
-    "Ask @thread:thr_manager to inspect @apps/app/src/components/promptbox/PromptBoxInternal.tsx.";
+    "Ask @thread:thr_parent to inspect @apps/app/src/components/promptbox/PromptBoxInternal.tsx.";
   const { value, mentionRanges, onChange } = useControlledValue(initialValue, [
     storyMention({
       text: initialValue,
-      token: "@thread:thr_manager",
+      token: "@thread:thr_parent",
       resource: {
         kind: "thread",
-        threadId: "thr_manager",
-        threadType: "manager",
-        label: "Prompt UX manager",
+        threadId: "thr_parent",
+        label: "Prompt UX thread",
       },
     }),
     storyMention({
@@ -313,7 +309,7 @@ function WithMentionsRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}
@@ -335,7 +331,7 @@ function WithLiveMentionsRow() {
       onChange={onChange}
       onSubmit={noop}
       placeholder="Type @ to mention a file, folder, or thread"
-      mentions={makeMentions({
+      typeahead={makeTypeahead({
         suggestions,
         onQueryChange: setQuery,
       })}
@@ -359,7 +355,7 @@ function SubmittingRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}
@@ -382,8 +378,8 @@ function RunningWithStopRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      placeholder="Ask for a follow-up. @ to mention files or folders"
-      mentions={makeMentions()}
+      placeholder="Ask for a follow-up. @ to mention files, folders, or threads"
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}
@@ -406,7 +402,7 @@ function RecordingActiveRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}
@@ -425,7 +421,7 @@ function RecordingProcessingRow() {
       mentionRanges={mentionRanges}
       onChange={onChange}
       onSubmit={noop}
-      mentions={makeMentions()}
+      typeahead={makeTypeahead()}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { defaultExperiments, type Experiments } from "@bb/domain";
 import type {
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
@@ -13,6 +14,7 @@ import {
   systemExecutionOptionsQueryKey,
   systemVersionQueryKey,
 } from "./query-keys";
+import { requireEnabledQueryArg } from "./query-helpers";
 
 export interface UseSystemExecutionOptionsArgs {
   enabled?: boolean;
@@ -22,18 +24,6 @@ export interface UseSystemExecutionOptionsArgs {
 
 interface QueryOptions {
   enabled?: boolean;
-}
-
-function requireDaemonPort(
-  daemonPort: number | null,
-  hookName: string,
-): number {
-  if (daemonPort === null) {
-    throw new Error(
-      `${hookName}: daemonPort is required when query is enabled`,
-    );
-  }
-  return daemonPort;
 }
 
 export function useSystemExecutionOptions(
@@ -63,6 +53,16 @@ export function useSystemConfig(options?: QueryOptions) {
   });
 }
 
+/**
+ * The user's opt-in experiments from `/system/config`. Falls back to
+ * `defaultExperiments` (everything off) while loading or on error, so gated
+ * surfaces fail closed.
+ */
+export function useExperiments(): Experiments {
+  const systemConfigQuery = useSystemConfig();
+  return systemConfigQuery.data?.experiments ?? defaultExperiments;
+}
+
 const SYSTEM_VERSION_STALE_TIME_MS = 60 * 60 * 1000;
 
 export function useSystemVersion(options?: QueryOptions) {
@@ -89,7 +89,11 @@ export function useLocalProviderCliStatus({
     queryKey: localProviderCliStatusQueryKey(daemonPort),
     queryFn: () =>
       fetchProviderCliStatus(
-        requireDaemonPort(daemonPort, "useLocalProviderCliStatus"),
+        requireEnabledQueryArg({
+          value: daemonPort,
+          hookName: "useLocalProviderCliStatus",
+          argName: "daemonPort",
+        }),
       ),
     enabled: (enabled ?? true) && daemonPort !== null,
     refetchOnMount: false,

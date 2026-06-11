@@ -76,12 +76,6 @@ export interface StatefulBrowserWindow {
   isMaximized(): boolean;
 }
 
-export interface PersistBrowserWindowStateArgs {
-  browserWindow: StatefulBrowserWindow;
-  stateKey: WindowStateKey;
-  userDataPath: string;
-}
-
 export interface PersistBrowserWindowStateSnapshot {
   browserWindow: StatefulBrowserWindow;
   stateKey: WindowStateKey;
@@ -343,24 +337,6 @@ export async function removePersistedWindowState(
       entries,
       stateKey: args.stateKey,
     }),
-    userDataPath: args.userDataPath,
-  });
-}
-
-export async function persistBrowserWindowState(
-  args: PersistBrowserWindowStateArgs,
-): Promise<void> {
-  if (args.browserWindow.isDestroyed()) {
-    return;
-  }
-
-  await writePersistedWindowState({
-    state: {
-      bounds: browserWindowBounds(args.browserWindow),
-      isFullScreen: args.browserWindow.isFullScreen(),
-      isMaximized: args.browserWindow.isMaximized(),
-    },
-    stateKey: args.stateKey,
     userDataPath: args.userDataPath,
   });
 }

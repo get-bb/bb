@@ -17,7 +17,6 @@ import {
   createAutomationRequestSchema,
   createThreadTerminalRequestSchema,
   createQueuedMessageRequestSchema,
-  createManagerThreadRequestSchema,
   createProjectSourceRequestSchema,
   createPublicApiClient,
   createThreadRequestSchema,
@@ -76,6 +75,8 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Queued messages may inherit the thread's default reasoning level.",
   "createQueuedMessageRequestSchema.permissionMode":
     "Queued messages may inherit the thread's default permission mode.",
+  "createQueuedMessageRequestSchema.senderThreadId":
+    "Queued messages omit senderThreadId unless they originate from another thread.",
   "createQueuedMessageRequestSchema.serviceTier":
     "Queued messages may inherit the thread's default service tier.",
   "createQueuedMessageRequestSchema.executionInputSources":
@@ -116,28 +117,6 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Environment PATCH requests omit mergeBaseBranch when leaving it unchanged or use null to clear it.",
   "updateEnvironmentRequestSchema.name":
     "Environment PATCH requests omit name when leaving it unchanged or use null to clear the custom display name.",
-  "createManagerThreadRequestSchema.model":
-    "Manager creation may omit model and inherit remembered manager defaults for the resolved provider or the server manager default.",
-  "createManagerThreadRequestSchema.name":
-    "Manager creation may omit a custom name and use the server-generated default.",
-  "createManagerThreadRequestSchema.providerId":
-    "Manager creation may omit providerId and use remembered manager defaults or the server manager default.",
-  "createManagerThreadRequestSchema.reasoningLevel":
-    "Manager creation may omit reasoning level and use the server default.",
-  "createManagerThreadRequestSchema.serviceTier":
-    "Manager creation may omit service tier and use the server default.",
-  "createManagerThreadRequestSchema.executionInputSources":
-    "Manager creation may omit source metadata; legacy callers treat supplied execution fields as explicit.",
-  "createManagerThreadRequestSchema.executionInputSources.model":
-    "Manager creation source metadata omits model when the client is only displaying the server default.",
-  "createManagerThreadRequestSchema.executionInputSources.providerId":
-    "Manager creation source metadata omits providerId when the client is only displaying the server default.",
-  "createManagerThreadRequestSchema.executionInputSources.reasoningLevel":
-    "Manager creation source metadata omits reasoningLevel when the client is only displaying the server default.",
-  "createManagerThreadRequestSchema.executionInputSources.serviceTier":
-    "Manager creation source metadata omits serviceTier when the client is only displaying the server default.",
-  "createManagerThreadRequestSchema.input":
-    "Manager creation may omit initial input and use the server welcome-message template.",
   "createThreadRequestSchema.environment.workspace.branch":
     "Unmanaged workspaces may omit branch when the daemon should not check out before starting the thread.",
   "createThreadRequestSchema.environment.hostId":
@@ -218,16 +197,14 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
     "Thread listing may omit archived to include both archived and unarchived threads.",
   "threadListQuerySchema.limit":
     "Thread listing may omit limit to return all matching threads without pagination.",
-  "threadListQuerySchema.managed":
-    "Thread listing may omit managed to include both managed and unmanaged threads.",
+  "threadListQuerySchema.hasParent":
+    "Thread listing may omit hasParent to include both root and child threads.",
   "threadListQuerySchema.offset":
     "Thread listing may omit offset to start from the first row.",
   "threadListQuerySchema.parentThreadId":
     "Thread listing may omit parentThreadId when not filtering by parent.",
   "threadListQuerySchema.projectId":
     "Thread listing may omit projectId to list across projects.",
-  "threadListQuerySchema.type":
-    "Thread listing may omit type when not filtering by thread type.",
   "threadTimelineQuerySchema.includeNestedRows":
     "Timeline queries may omit nested rows unless explicitly requested.",
   "threadTimelineQuerySchema.segmentLimit":
@@ -669,19 +646,16 @@ describe("server-contract canonical schemas", () => {
       details: { reason: "pending_deletion" },
     });
 
-    expect(
+    expect(() =>
       contract.lifecycleApiErrorSchema.parse({
         code: "parent_thread_invalid",
         message: "Parent thread is invalid",
         details: {
-          reason: "not_a_manager",
+          reason: "not_a_valid_reason",
           subject: "parent",
         },
       }),
-    ).toMatchObject({
-      code: "parent_thread_invalid",
-      details: { reason: "not_a_manager", subject: "parent" },
-    });
+    ).toThrow();
 
     expect(() =>
       contract.lifecycleApiErrorSchema.parse({
@@ -936,10 +910,10 @@ describe("server-contract canonical schemas", () => {
     expect(
       sendMessageRequestSchema.parse({
         input: [{ type: "text", text: "Follow up" }],
-        mode: "auto",
+        mode: "queue-if-active",
       }),
     ).toMatchObject({
-      mode: "auto",
+      mode: "queue-if-active",
     });
 
     expect(sendQueuedMessageRequestSchema.parse({ mode: "auto" })).toEqual({
@@ -983,7 +957,6 @@ describe("server-contract canonical schemas", () => {
           environmentId: null,
           automationId: null,
           providerId: "codex",
-          type: "standard",
           title: "Pending thread",
           titleFallback: "Pending thread",
           status: "idle",
@@ -1119,42 +1092,6 @@ describe("server-contract canonical schemas", () => {
     });
 
     expect(
-      createManagerThreadRequestSchema.parse({
-        model: "claude-opus-4-7",
-        providerId: "codex",
-        origin: "app",
-        reasoningLevel: "high",
-        name: "Manager",
-        environment: { type: "host", hostId: "host_123" },
-      }),
-    ).toMatchObject({
-      providerId: "codex",
-      environment: { type: "host", hostId: "host_123" },
-    });
-
-    expect(() =>
-      createManagerThreadRequestSchema.parse({
-        model: "claude-opus-4-7",
-        providerId: "codex",
-        origin: "app",
-        permissionMode: "full",
-        environment: { type: "host", hostId: "host_123" },
-      }),
-    ).toThrow();
-
-    expect(() =>
-      createManagerThreadRequestSchema.parse({
-        model: "claude-opus-4-7",
-        providerId: "codex",
-        origin: "app",
-        executionInputSources: {
-          permissionMode: "explicit",
-        },
-        environment: { type: "host", hostId: "host_123" },
-      }),
-    ).toThrow();
-
-    expect(
       createProjectSourceRequestSchema.parse({
         hostId: "host_123",
         type: "local_path",
@@ -1259,10 +1196,10 @@ describe("server-contract canonical schemas", () => {
     expect(
       sendMessageRequestSchema.parse({
         input: [{ type: "text", text: "Use the thread defaults" }],
-        mode: "auto",
+        mode: "queue-if-active",
       }),
     ).toMatchObject({
-      mode: "auto",
+      mode: "queue-if-active",
     });
 
     expect(
@@ -1271,17 +1208,6 @@ describe("server-contract canonical schemas", () => {
       }),
     ).toMatchObject({
       input: [{ type: "text", text: "Queue this with inherited defaults" }],
-    });
-
-    expect(
-      createManagerThreadRequestSchema.parse({
-        origin: "cli",
-        reasoningLevel: "high",
-        name: "Missing model",
-        environment: { type: "host", hostId: "host_123" },
-      }),
-    ).toMatchObject({
-      origin: "cli",
     });
 
     expect(() =>
@@ -1297,13 +1223,6 @@ describe("server-contract canonical schemas", () => {
       }),
     ).toThrow();
 
-    expect(() =>
-      createManagerThreadRequestSchema.parse({
-        reasoningLevel: "high",
-        name: "Missing origin",
-        environment: { type: "host", hostId: "host_123" },
-      }),
-    ).toThrow();
   });
 });
 
@@ -1353,11 +1272,6 @@ describe("server-contract clients", () => {
     expect(publicClient.automations.$url().pathname).toBe(
       "/api/v1/automations",
     );
-    expect(
-      publicClient.projects[":id"].managers.$url({
-        param: { id: "proj_123" },
-      }).pathname,
-    ).toBe("/api/v1/projects/proj_123/managers");
     expect(
       publicClient.projects[":id"].paths.$url({
         param: { id: "proj_123" },
@@ -1476,7 +1390,7 @@ describe("server-contract clients", () => {
     ).toThrow();
   });
 
-  it("requires manager assignment timeline system rows to carry status", () => {
+  it("requires parent change timeline system rows to carry status", () => {
     const baseRow = {
       id: "row-1",
       threadId: "thr_123",
@@ -1486,34 +1400,34 @@ describe("server-contract clients", () => {
       startedAt: 1,
       createdAt: 1,
       kind: "system",
-      title: "Thread assigned to manager",
+      title: "Thread assigned to parent",
       detail: null,
     };
-    const managerAssignmentRow = {
+    const parentChangeRow = {
       ...baseRow,
       systemKind: "operation",
-      operationKind: "manager-assignment",
+      operationKind: "parent-change",
       status: "completed",
       completedAt: 1,
-      managerAssignment: {
+      parentChange: {
         action: "assign",
-        previousManagerThreadId: null,
-        previousManagerThreadTitle: null,
-        nextManagerThreadId: "thr_manager",
-        nextManagerThreadTitle: "Manager",
+        previousParentThreadId: null,
+        previousParentThreadTitle: null,
+        nextParentThreadId: "thr_parent",
+        nextParentThreadTitle: "Parent thread",
       },
     };
 
     expect(
-      contract.timelineManagerAssignmentSystemRowSchema.parse(
-        managerAssignmentRow,
+      contract.timelineParentChangeSystemRowSchema.parse(
+        parentChangeRow,
       ),
     ).toMatchObject({
       status: "completed",
     });
     expect(() =>
-      contract.timelineManagerAssignmentSystemRowSchema.parse({
-        ...managerAssignmentRow,
+      contract.timelineParentChangeSystemRowSchema.parse({
+        ...parentChangeRow,
         status: null,
       }),
     ).toThrow();
@@ -1537,8 +1451,6 @@ describe("server-contract clients", () => {
       createQueuedMessageRequestSchema:
         contract.createQueuedMessageRequestSchema,
       createAutomationRequestSchema: contract.createAutomationRequestSchema,
-      createManagerThreadRequestSchema:
-        contract.createManagerThreadRequestSchema,
       createThreadScheduleRequestSchema:
         contract.createThreadScheduleRequestSchema,
       createThreadRequestSchema: contract.createThreadRequestSchema,
@@ -1546,8 +1458,6 @@ describe("server-contract clients", () => {
       environmentStatusResponseSchema: contract.environmentStatusResponseSchema,
       threadStorageFilesQuerySchema: contract.threadStorageFilesQuerySchema,
       projectFilesQuerySchema: contract.projectFilesQuerySchema,
-      reorderManagerThreadRequestSchema:
-        contract.reorderManagerThreadRequestSchema,
       reorderPinnedThreadRequestSchema:
         contract.reorderPinnedThreadRequestSchema,
       reorderProjectRequestSchema: contract.reorderProjectRequestSchema,

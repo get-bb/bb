@@ -1,4 +1,3 @@
-import type { ThreadType } from "@bb/domain";
 import {
   DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
   type ThreadStorageFileListOptions,
@@ -14,7 +13,6 @@ interface UseThreadStorageViewerParams {
   fileListOptions?: ThreadStorageFileListOptions;
   filePreviewEnabled?: boolean;
   threadId?: string;
-  threadType?: ThreadType;
 }
 
 export function useThreadStorageViewer({
@@ -23,23 +21,22 @@ export function useThreadStorageViewer({
   fileListOptions = DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
   filePreviewEnabled = true,
   threadId,
-  threadType,
 }: UseThreadStorageViewerParams) {
-  const isManagerThread = threadType === "manager";
+  const hasThread = Boolean(threadId);
   const {
     data: threadStorageFiles,
     isLoading: isThreadStorageFilesLoading,
     error: threadStorageFilesError,
     refetch: refetchThreadStorageFiles,
   } = useThreadStorageFiles(threadId ?? "", fileListOptions, {
-    enabled: isManagerThread && fileListEnabled,
+    enabled: hasThread && fileListEnabled,
   });
   const {
     data: threadStorageFilePreview,
     isLoading: isThreadStorageFilePreviewLoading,
     error: threadStorageFilePreviewError,
   } = useThreadStorageFilePreview(threadId ?? "", activePath, {
-    enabled: isManagerThread && filePreviewEnabled && activePath !== null,
+    enabled: hasThread && filePreviewEnabled && activePath !== null,
   });
 
   return {

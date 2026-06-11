@@ -27,7 +27,7 @@ import {
   type ResolvedStableThreadRequestEnvironment,
 } from "./thread-request-eligibility.js";
 import { resolveCreateThreadEnvironment } from "./thread-default-policy.js";
-import { assertValidManagerParentThread } from "./thread-parent.js";
+import { assertValidParentThread } from "./thread-parent.js";
 import {
   type ThreadCreateServiceRequestInput,
   type ThreadCreateServiceRequest,
@@ -270,7 +270,7 @@ export async function createThreadFromRequest(
   );
   assertProjectWorkspaceCompatibility(project, requestInput);
   const parentThread = requestInput.parentThreadId
-    ? assertValidManagerParentThread(deps, {
+    ? assertValidParentThread(deps, {
         parentThreadId: requestInput.parentThreadId,
         projectId: requestInput.projectId,
       })
@@ -286,7 +286,6 @@ export async function createThreadFromRequest(
       model: requestInput.model,
       projectId: requestInput.projectId,
       providerId: requestInput.providerId,
-      threadType: requestInput.type,
     });
   const request: ThreadCreateServiceRequest = {
     ...requestInput,
@@ -294,7 +293,6 @@ export async function createThreadFromRequest(
       parentThread,
       projectId: requestInput.projectId,
       requestedEnvironment: requestInput.environment,
-      threadType: requestInput.type,
     }),
     providerId,
   };

@@ -143,7 +143,7 @@ await window.bb.data.write({
   path: "todos/todo_20260603_review_notes",
   value: {
     id: "todo_20260603_review_notes",
-    title: "Review notes from the manager",
+    title: "Review project notes",
     done: false,
     createdAt: "2026-06-03T20:00:00.000Z",
     updatedAt: "2026-06-03T20:00:00.000Z"
@@ -290,7 +290,7 @@ target. Non-iframe callers must provide a target thread or the server returns
 The injected runtime currently exposes the broader bb SDK prototype too:
 `window.bb.threads`, `window.bb.apps`, `window.bb.hosts`,
 `window.bb.projects`, `window.bb.environments`, `window.bb.providers`,
-`window.bb.managers`, `window.bb.replay`, and `window.bb.status`. Treat those
+`window.bb.replay`, and `window.bb.status`. Treat those
 as CLI-level power inside the browser prototype; prefer the current-app
 `data` and `message` areas for ordinary app behavior.
 
@@ -322,7 +322,7 @@ The generated Todo scaffold binds to `todos/` and uses records like:
 ```json
 {
   "id": "todo_20260603_review_notes",
-  "title": "Review notes from the manager",
+  "title": "Review project notes",
   "done": false,
   "createdAt": "2026-06-03T20:00:00.000Z",
   "updatedAt": "2026-06-03T20:00:00.000Z"
@@ -494,7 +494,7 @@ Write data in the browser:
 ```ts
 const todo = {
   id: "todo_20260603_review_notes",
-  title: "Review notes from the manager",
+  title: "Review project notes",
   done: false,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
@@ -518,7 +518,7 @@ Write the same kind of data from an agent or shell:
 ```bash
 todo_id="todo_20260603_review_notes"
 created_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-printf '%s\n' "{\"id\":\"$todo_id\",\"title\":\"Review notes from the manager\",\"done\":false,\"createdAt\":\"$created_at\",\"updatedAt\":\"$created_at\"}" |
+printf '%s\n' "{\"id\":\"$todo_id\",\"title\":\"Review project notes\",\"done\":false,\"createdAt\":\"$created_at\",\"updatedAt\":\"$created_at\"}" |
   bb app data write review-board "todos/$todo_id" --stdin
 
 bb app data list review-board todos

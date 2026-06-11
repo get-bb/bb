@@ -404,8 +404,9 @@ describe("bb-app launcher", () => {
     const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const expectedVersion = z
       .object({ version: z.string() })
-      .parse(JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")))
-      .version;
+      .parse(
+        JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")),
+      ).version;
     expect(readBbAppPackageVersion(packageRoot)).toBe(expectedVersion);
   });
 
@@ -434,9 +435,9 @@ describe("bb-app launcher", () => {
   });
 
   it("creates host enroll-key request bodies", () => {
-    expect(
-      createHostEnrollKeyRequestBody({ requestedHostId: null }),
-    ).toEqual({});
+    expect(createHostEnrollKeyRequestBody({ requestedHostId: null })).toEqual(
+      {},
+    );
     expect(
       createHostEnrollKeyRequestBody({
         requestedHostId: "host_local",
@@ -660,6 +661,14 @@ describe("bb-app launcher", () => {
     await runBbApp([
       "--data-dir",
       dataDir,
+      "config",
+      "set",
+      "BB_INFERENCE",
+      "anthropic/claude-sonnet-4-5",
+    ]);
+    await runBbApp([
+      "--data-dir",
+      dataDir,
       "env",
       "set",
       "OPENAI_API_KEY",
@@ -671,6 +680,7 @@ describe("bb-app launcher", () => {
     ).toEqual({
       config: {
         BB_APP_URL: "https://bb.example.test",
+        BB_INFERENCE: "anthropic/claude-sonnet-4-5",
       },
     });
     expect(JSON.parse(readFileSync(join(dataDir, "env.json"), "utf8"))).toEqual(

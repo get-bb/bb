@@ -1,5 +1,7 @@
-import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "./ConfirmDeleteDialog";
 
 export interface ProjectSourceDeleteDialogTarget {
   id: string;
@@ -20,17 +22,15 @@ export function ProjectSourceDeleteDialog({
   onDelete,
 }: ProjectSourceDeleteDialogProps) {
   return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
-        {target ? (
-          <ProjectSourceDeleteDialogContent
-            target={target}
-            pending={pending}
-            onDelete={onDelete}
-          />
-        ) : null}
-      </DialogContent>
-    </Dialog>
+    <ConfirmDeleteDialog open={target !== null} onOpenChange={onOpenChange}>
+      {target ? (
+        <ProjectSourceDeleteDialogContent
+          target={target}
+          pending={pending}
+          onDelete={onDelete}
+        />
+      ) : null}
+    </ConfirmDeleteDialog>
   );
 }
 
@@ -46,23 +46,12 @@ export function ProjectSourceDeleteDialogContent({
   onDelete,
 }: ProjectSourceDeleteDialogContentProps) {
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Remove source?</DialogTitle>
-        <DialogDescription>
-          {`Remove "${target.label}" from this project? This cannot be undone.`}
-        </DialogDescription>
-      </DialogHeader>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="destructive"
-          disabled={pending}
-          onClick={() => onDelete(target.id)}
-        >
-          Remove source
-        </Button>
-      </DialogFooter>
-    </>
+    <ConfirmDeleteDialogContent
+      title="Remove source?"
+      description={`Remove "${target.label}" from this project? This cannot be undone.`}
+      confirmLabel="Remove source"
+      pending={pending}
+      onConfirm={() => onDelete(target.id)}
+    />
   );
 }

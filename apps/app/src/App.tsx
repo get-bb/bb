@@ -5,6 +5,7 @@ import { AuthCallbackView } from "./views/AuthCallbackView";
 import { RootComposeRoute } from "./views/RootComposeView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { ProviderCliHealthToasts } from "./components/provider-cli/ProviderCliHealthToasts";
+import { AppRouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import {
   useDesktopUpdateAvailableToast,
@@ -19,10 +20,13 @@ import {
   DEVELOPMENT_REPLAY_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
+  PROJECT_WORKFLOWS_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   STANDALONE_APP_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
+  WORKFLOW_RUN_AGENT_ROUTE_PATH,
+  WORKFLOW_RUN_ROUTE_PATH,
 } from "./lib/app-route-paths";
 
 const ThreadDetailRoute = lazy(
@@ -58,6 +62,16 @@ const StandaloneAppView = lazy(() =>
     default: m.StandaloneAppView,
   })),
 );
+const WorkflowRunView = lazy(() =>
+  import("./views/workflow-run/WorkflowRunView").then((m) => ({
+    default: m.WorkflowRunView,
+  })),
+);
+const ProjectWorkflowsView = lazy(() =>
+  import("./views/project-workflows/ProjectWorkflowsView").then((m) => ({
+    default: m.ProjectWorkflowsView,
+  })),
+);
 
 function AppRoutes() {
   return (
@@ -90,12 +104,21 @@ function AppRoutes() {
             element={<ProjectArchivedThreadsView />}
           />
           <Route
+            path={PROJECT_WORKFLOWS_ROUTE_PATH}
+            element={<ProjectWorkflowsView />}
+          />
+          <Route
             path={THREAD_DETAIL_ROUTE_PATH}
             element={<ThreadDetailRoute />}
           />
           <Route
             path={PROJECTLESS_THREAD_DETAIL_ROUTE_PATH}
             element={<ThreadDetailRoute />}
+          />
+          <Route path={WORKFLOW_RUN_ROUTE_PATH} element={<WorkflowRunView />} />
+          <Route
+            path={WORKFLOW_RUN_AGENT_ROUTE_PATH}
+            element={<WorkflowRunView />}
           />
           <Route
             path="*"
@@ -120,11 +143,16 @@ export function App() {
 
   return (
     <QuickCreateProjectProvider>
-      <ProviderCliHealthToasts />
-      <Routes>
-        <Route path={AUTH_CALLBACK_ROUTE_PATH} element={<AuthCallbackView />} />
-        <Route path="*" element={<AppRoutes />} />
-      </Routes>
+      <AppRouteNavigationProvider>
+        <ProviderCliHealthToasts />
+        <Routes>
+          <Route
+            path={AUTH_CALLBACK_ROUTE_PATH}
+            element={<AuthCallbackView />}
+          />
+          <Route path="*" element={<AppRoutes />} />
+        </Routes>
+      </AppRouteNavigationProvider>
     </QuickCreateProjectProvider>
   );
 }

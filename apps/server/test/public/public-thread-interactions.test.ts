@@ -935,7 +935,7 @@ describe("public thread interaction routes", () => {
             "content-type": "application/json",
           },
           body: JSON.stringify({
-            mode: "auto",
+            mode: "queue-if-active",
             input: [{ type: "text", text: "Run the command" }],
           }),
         },

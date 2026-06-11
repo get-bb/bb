@@ -75,12 +75,11 @@ function toLifecycleErrorOperation(
 
   switch (value) {
     case "archive_thread":
-    case "assign_manager":
     case "commit":
     case "create_thread":
     case "load_diff":
     case "load_git_status":
-    case "load_manager_storage":
+    case "load_thread_storage":
     case "open_terminal":
     case "queue_message":
     case "reorder_queued_message":

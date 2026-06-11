@@ -3,6 +3,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { UrlTransform } from "react-markdown";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { AppRouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import type {
@@ -24,6 +26,10 @@ interface BuildMarkdownLinkRoutingArgs {
   onOpenLink?: MarkdownPreviewLinkHandler;
   onOpenLocalFileLink?: MarkdownPreviewLocalFileLinkHandler;
   relativeLinks?: MarkdownRelativeLocalFileLinkRouting;
+}
+
+interface LocationProbeProps {
+  label: string;
 }
 
 function buildMarkdownLinkRouting({
@@ -55,6 +61,17 @@ function buildMarkdownLinkRouting({
     }
   }
   return routing;
+}
+
+function LocationProbe({ label }: LocationProbeProps) {
+  const location = useLocation();
+  return (
+    <span data-testid={label}>
+      {location.pathname}
+      {location.search}
+      {location.hash}
+    </span>
+  );
 }
 
 function installClipboardWriteTextMock() {
@@ -179,7 +196,29 @@ describe("MarkdownPreview", () => {
 
     expect(onOpenLocalFileLink).toHaveBeenCalledTimes(1);
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: 12,
+      lineRange: { startLineNumber: 12, endLineNumber: 12 },
+      path: "/workspace/src/app.ts",
+    });
+  });
+
+  it("routes local file link ranges through the handler", () => {
+    const onOpenLocalFileLink = vi.fn(() => true);
+    render(
+      <MarkdownPreview
+        content="[Open range](/workspace/src/app.ts#L12-L15)"
+        linkRouting={buildMarkdownLinkRouting({ onOpenLocalFileLink })}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "Open range" });
+    expect(link.getAttribute("href")).toBe(
+      "file:///workspace/src/app.ts#L12-L15",
+    );
+
+    fireEvent.click(link);
+
+    expect(onOpenLocalFileLink).toHaveBeenCalledWith({
+      lineRange: { startLineNumber: 12, endLineNumber: 15 },
       path: "/workspace/src/app.ts",
     });
   });
@@ -214,7 +253,7 @@ describe("MarkdownPreview", () => {
 
     expect(onOpenLocalFileLink).toHaveBeenCalledTimes(1);
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: 4,
+      lineRange: { startLineNumber: 4, endLineNumber: 4 },
       path: "/workspace/src/app.ts",
     });
   });
@@ -250,7 +289,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: [
         "/Users/brsbl/Moss/Notes/Agent Workspaces/bb Workspace/workstreams/",
         "moss-skills-distribution-discovery/",
@@ -278,7 +317,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: "/Users/me/My Notes/app.md",
     });
   });
@@ -300,7 +339,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: "/Users/me/My Notes/app.md",
     });
   });
@@ -328,7 +367,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: 7,
+      lineRange: { startLineNumber: 7, endLineNumber: 7 },
       path: "/storage/thr_1/current/branch-summary.md",
     });
   });
@@ -354,7 +393,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: "/intro.md",
     });
   });
@@ -399,15 +438,15 @@ describe("MarkdownPreview", () => {
 
     expect(onOpenLocalFileLink).toHaveBeenCalledTimes(3);
     expect(onOpenLocalFileLink).toHaveBeenNthCalledWith(1, {
-      lineNumber: 14,
+      lineRange: { startLineNumber: 14, endLineNumber: 14 },
       path: "/workspace/Cargo.lock",
     });
     expect(onOpenLocalFileLink).toHaveBeenNthCalledWith(2, {
-      lineNumber: 5,
+      lineRange: { startLineNumber: 5, endLineNumber: 5 },
       path: "/workspace/foo.md",
     });
     expect(onOpenLocalFileLink).toHaveBeenNthCalledWith(3, {
-      lineNumber: 5,
+      lineRange: { startLineNumber: 5, endLineNumber: 5 },
       path: "/workspace/foo",
     });
   });
@@ -433,7 +472,7 @@ describe("MarkdownPreview", () => {
     fireEvent.click(link);
 
     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
-      lineNumber: null,
+      lineRange: null,
       path: "/storage/thr_1/status.md",
     });
   });
@@ -541,6 +580,32 @@ describe("MarkdownPreview", () => {
     expect(link.getAttribute("href")).toBe("https://example.com/docs");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("routes app links through client-side navigation", () => {
+    const onOpenLink = vi.fn(() => true);
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppRouteNavigationProvider>
+          <MarkdownPreview
+            content="[Thread](/projects/proj_1/threads/thr_1?panel=files#row)"
+            linkRouting={buildMarkdownLinkRouting({ onOpenLink })}
+          />
+          <LocationProbe label="location" />
+        </AppRouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    const link = screen.getByRole("link", { name: "Thread" });
+    const notDefaultPrevented = fireEvent.click(link);
+
+    expect(link.getAttribute("target")).toBeNull();
+    expect(link.getAttribute("rel")).toBeNull();
+    expect(onOpenLink).not.toHaveBeenCalled();
+    expect(notDefaultPrevented).toBe(false);
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/projects/proj_1/threads/thr_1?panel=files#row",
+    );
   });
 
   it("routes web link clicks through onOpenLink and prevents default when handled", () => {

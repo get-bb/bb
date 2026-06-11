@@ -11,7 +11,7 @@ export type TodoFilter = "all" | "open" | "done";
 export type AddTodo = (title: string) => Promise<void>;
 export type ToggleTodo = (id: string) => Promise<void>;
 export type RemoveTodo = (id: string) => Promise<void>;
-export type NotifyManager = () => Promise<void>;
+export type SendStatusUpdate = () => Promise<void>;
 
 export interface TodoStats {
   total: number;
@@ -24,9 +24,9 @@ export interface UseTodosResult {
   errorMessage: string | null;
   invalidCount: number;
   isSdkAvailable: boolean;
-  notifyManager: NotifyManager;
   operationStatus: OperationStatus;
   removeTodo: RemoveTodo;
+  sendStatusUpdate: SendStatusUpdate;
   stats: TodoStats;
   todos: TodoRecord[];
   toggleTodo: ToggleTodo;
@@ -83,6 +83,6 @@ export interface DataNoticesProps {
 
 export interface HeaderProps {
   appId: string;
-  onNotifyManager: NotifyManager;
+  onSendStatusUpdate: SendStatusUpdate;
   operationStatus: OperationStatus;
 }

@@ -54,6 +54,7 @@ function createStoryDesktopApi(): BbDesktopApi {
       return () => {};
     },
     setTheme() {},
+    openExternalUrl() {},
   };
 }
 

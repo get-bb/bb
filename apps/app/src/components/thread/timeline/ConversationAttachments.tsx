@@ -198,7 +198,7 @@ export function ConversationAttachments({
                 type="button"
                 className={cn(className, "hover:bg-state-hover")}
                 onClick={() => {
-                  onOpenLocalFileLink({ lineNumber: null, path });
+                  onOpenLocalFileLink({ lineRange: null, path });
                 }}
               >
                 {label}

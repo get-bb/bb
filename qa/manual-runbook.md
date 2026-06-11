@@ -286,33 +286,54 @@ bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 120
 bb thread output "$SMOKE_THREAD_ID"
 ```
 
-Create a manager and verify the first bootstrap reaches idle without protocol
-disconnect symptoms. This is a user-facing smoke check; malformed host-RPC
-message invariants require automated boundary tests.
+Create a parent thread and child thread, then verify the first bootstrap reaches
+idle without protocol disconnect symptoms. This is a user-facing smoke check;
+malformed host-RPC message invariants require automated boundary tests.
 
 ```bash
-MANAGER_PROTOCOL_STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M")
-PROTOCOL_MANAGER_ID=$(bb manager hire "$BB_PROJECT_ID" \
-  --name "QA protocol smoke manager" \
+THREAD_PROTOCOL_STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M")
+PROTOCOL_PARENT_ID=$(bb thread spawn \
+  --project "$BB_PROJECT_ID" \
   --provider codex \
   --model "$CODEX_MODEL" \
   --reasoning-level low \
+  --title "QA protocol smoke parent" \
+  --prompt "Say hello from the parent protocol smoke check." \
   --json | jq -r '.id')
 
-bb thread wait "$PROTOCOL_MANAGER_ID" --status idle --timeout 240
-bb thread show "$PROTOCOL_MANAGER_ID" --json | jq '.thread | {id, providerId, type, status}'
-bb thread output "$PROTOCOL_MANAGER_ID"
-printf 'manager protocol smoke started at UTC minute: %s\n' "$MANAGER_PROTOCOL_STARTED_AT"
+bb thread wait "$PROTOCOL_PARENT_ID" --status idle --timeout 240
+
+PROTOCOL_CHILD_ID=$(bb thread spawn \
+  --project "$BB_PROJECT_ID" \
+  --parent-thread "$PROTOCOL_PARENT_ID" \
+  --provider codex \
+  --model "$CODEX_MODEL" \
+  --reasoning-level low \
+  --title "QA protocol smoke child" \
+  --prompt "Say hello from the child protocol smoke check." \
+  --json | jq -r '.id')
+
+bb thread wait "$PROTOCOL_CHILD_ID" --status idle --timeout 240
+bb thread show "$PROTOCOL_PARENT_ID" --json | jq '.thread | {id, parentThreadId, providerId, status}'
+bb thread show "$PROTOCOL_CHILD_ID" --json | jq '.thread | {id, parentThreadId, providerId, status}'
+bb thread output "$PROTOCOL_CHILD_ID"
+if bb manager list; then
+  echo "expected bb manager list to fail"
+  exit 1
+fi
+bb manager list 2>&1 | rg "Managers were replaced by parent threads|bb thread"
+printf 'thread protocol smoke started at UTC minute: %s\n' "$THREAD_PROTOCOL_STARTED_AT"
 rg -n "invalid-message|1008|host_unavailable|command_result_type_mismatch|Ignoring host RPC response" \
   "$SERVER_LOG_DIR" "$DAEMON_LOG_DIR" || true
 ```
 
 Expected result:
 
-- the hired thread is type `manager`
-- the manager reaches `idle` and produces its first visible output
+- the parent and child threads reach `idle`
+- the child thread reports the parent thread ID
+- `bb manager list` exits non-zero with a parent-thread replacement message
 - server and daemon logs have no matching protocol disconnect or host-RPC
-  mismatch entries at or after `$MANAGER_PROTOCOL_STARTED_AT`
+  mismatch entries at or after `$THREAD_PROTOCOL_STARTED_AT`
 
 Create a managed worktree thread and inspect workspace status:
 

@@ -1,24 +1,19 @@
-import type { ThreadType } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
-import { threadTypeLabel } from "@/lib/thread-title";
 import { cn } from "@/lib/utils";
 
 export function ThreadUnarchiveButton({
   isPending,
   onUnarchive,
   buttonLabel,
-  threadType,
   className,
 }: {
   isPending?: boolean;
   onUnarchive: () => void;
   buttonLabel?: string;
-  threadType?: ThreadType;
   className?: string;
 }) {
-  const resolvedLabel =
-    buttonLabel ?? `Unarchive ${threadTypeLabel(threadType ?? "standard")}`;
+  const resolvedLabel = buttonLabel ?? "Unarchive thread";
   return (
     <Button
       type="button"

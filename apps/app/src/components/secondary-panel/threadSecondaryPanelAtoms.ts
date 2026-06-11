@@ -183,3 +183,6 @@ export const selectedMergeBaseBranchAtom = atom<string | undefined>(undefined);
 
 /** Set by openDiffFile (prompt banner), consumed by useGitDiffPanelState to scroll to file. */
 export const pendingGitDiffScrollPathAtom = atom<string | null>(null);
+
+/** Set by openCommitDiff (info tab Commits row), consumed by useGitDiffPanelState to scope the diff to a commit. */
+export const pendingGitDiffCommitShaAtom = atom<string | null>(null);

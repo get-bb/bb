@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { Provider as JotaiProvider } from "jotai";
 import { QueryClientProvider } from "@tanstack/react-query";
-import type { ThreadAssignedChildSummaryResponse } from "@bb/server-contract";
+import type { ThreadChildSummaryResponse } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { createAppQueryClient } from "@/lib/query-client";
 import { useRootComposeProjectId } from "@/lib/root-compose-selection";
@@ -44,6 +44,8 @@ interface ThreadToastInvocation {
   options: CapturedToastOptions;
   props: CapturedToastProps;
 }
+
+type ThreadChildSummaryOverrides = Partial<ThreadChildSummaryResponse>;
 
 interface SonnerCustomOptions {
   id?: string | number;
@@ -88,10 +90,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
   return {
     ...actual,
-    archiveManagerThreads: vi.fn(),
-    archiveThread: vi.fn(),
+    archiveThreadAndChildren: vi.fn(),
     deleteThread: vi.fn(),
-    getThreadAssignedChildSummary: vi.fn(),
+    getThreadChildSummary: vi.fn(),
     markThreadRead: vi.fn(),
     markThreadUnread: vi.fn(),
     pinThread: vi.fn(),
@@ -128,7 +129,6 @@ function makeThread(
     status: "idle",
     title: "Thread title",
     titleFallback: "Thread title",
-    type: "standard",
     updatedAt: 10,
     runtime: {
       displayStatus: "idle",
@@ -138,11 +138,11 @@ function makeThread(
   };
 }
 
-function makeAssignedChildSummary(
-  overrides: Partial<ThreadAssignedChildSummaryResponse> = {},
-): ThreadAssignedChildSummaryResponse {
+function makeChildSummary(
+  overrides: ThreadChildSummaryOverrides = {},
+): ThreadChildSummaryResponse {
   return {
-    nonDeletedAssignedChildCount: 0,
+    nonDeletedChildCount: 0,
     ...overrides,
   };
 }
@@ -216,8 +216,8 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  vi.mocked(api.getThreadAssignedChildSummary).mockResolvedValue(
-    makeAssignedChildSummary(),
+  vi.mocked(api.getThreadChildSummary).mockResolvedValue(
+    makeChildSummary(),
   );
 });
 
@@ -256,9 +256,10 @@ describe("ThreadActionsProvider", () => {
     });
   });
 
-  it("archives and supports undo from the toast action", async () => {
-    const thread = makeThread();
-    vi.mocked(api.archiveThread).mockResolvedValue(undefined);
+  it("unarchives an archived thread", async () => {
+    const thread = makeThread({
+      archivedAt: 1_000,
+    });
     vi.mocked(api.unarchiveThread).mockResolvedValue(undefined);
 
     let actions: ReturnType<typeof useThreadActions> | null = null;
@@ -271,24 +272,7 @@ describe("ThreadActionsProvider", () => {
     );
 
     act(() => {
-      actions!.toggleArchive(thread);
-    });
-
-    await waitFor(() => {
-      expect(api.archiveThread).toHaveBeenCalledWith(thread.id);
-    });
-    expect(api.getThreadAssignedChildSummary).not.toHaveBeenCalled();
-    const successInvocation = requireLatestThreadToastInvocation();
-    expect(successInvocation.props.tone).toBe("success");
-    expect(successInvocation.props.title).toBe("Thread archived");
-    expect(successInvocation.props.cancel?.label).toBe("Undo");
-    const undo = successInvocation.props.cancel;
-    if (!undo) {
-      throw new Error("Expected archive success toast to include Undo.");
-    }
-
-    act(() => {
-      undo.onClick();
+      actions!.unarchiveThread(thread);
     });
 
     await waitFor(() => {
@@ -296,43 +280,59 @@ describe("ThreadActionsProvider", () => {
     });
   });
 
-  it("archives all assigned manager threads with a grouped success toast", async () => {
-    const thread = makeThread({ id: "manager-1", type: "manager" });
-    vi.mocked(api.archiveManagerThreads).mockResolvedValue({
+  it("archives a thread and its children with a grouped success toast linking to the thread", async () => {
+    const thread = makeThread({ id: "parent-1" });
+    vi.mocked(api.archiveThreadAndChildren).mockResolvedValue({
       ok: true,
       archivedThreadIds: ["child-1", thread.id],
     });
 
     let actions: ReturnType<typeof useThreadActions> | null = null;
     renderWithProvider(
-      <HookProbe
-        onReady={(a) => {
-          actions = a;
-        }}
-      />,
+      <>
+        <HookProbe
+          onReady={(a) => {
+            actions = a;
+          }}
+        />
+        <RouteProbe />
+      </>,
     );
 
     act(() => {
-      actions!.archiveAllAssigned(thread);
+      actions!.archiveThreadAndChildren(thread);
     });
 
     await waitFor(() => {
-      expect(api.archiveManagerThreads).toHaveBeenCalledWith(thread.id);
+      expect(api.archiveThreadAndChildren).toHaveBeenCalledWith(thread.id);
     });
     const successInvocation = requireLatestThreadToastInvocation();
     expect(successInvocation.props.tone).toBe("success");
-    expect(successInvocation.props.title).toBe(
-      "Archived manager and 1 assigned thread",
+
+    const { container: titleContainer } = render(
+      <>{successInvocation.props.title}</>,
+    );
+    expect(titleContainer.textContent).toBe(
+      "Archived Thread title and 1 child thread",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Thread title" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("route-pathname").textContent).toBe(
+        "/projects/project-1/threads/parent-1",
+      );
+    });
+    expect(threadToastState.dismiss).toHaveBeenCalledWith(
+      successInvocation.options.id,
     );
   });
 
-  it("returns to root compose when archive all includes the current projectless thread", async () => {
+  it("returns to root compose when archive thread and children includes the current projectless thread", async () => {
     const thread = makeThread({
       id: "manager-1",
       projectId: PERSONAL_PROJECT_ID,
-      type: "manager",
     });
-    vi.mocked(api.archiveManagerThreads).mockResolvedValue({
+    vi.mocked(api.archiveThreadAndChildren).mockResolvedValue({
       ok: true,
       archivedThreadIds: ["child-1", thread.id],
     });
@@ -351,11 +351,11 @@ describe("ThreadActionsProvider", () => {
     );
 
     act(() => {
-      actions!.archiveAllAssigned(thread);
+      actions!.archiveThreadAndChildren(thread);
     });
 
     await waitFor(() => {
-      expect(api.archiveManagerThreads).toHaveBeenCalledWith(thread.id);
+      expect(api.archiveThreadAndChildren).toHaveBeenCalledWith(thread.id);
     });
     await waitFor(() => {
       expect(screen.getByTestId("route-pathname").textContent).toBe("/");
@@ -365,11 +365,11 @@ describe("ThreadActionsProvider", () => {
     );
   });
 
-  it("confirms before deleting a manager with assigned child threads", async () => {
-    const thread = makeThread({ type: "manager" });
-    vi.mocked(api.getThreadAssignedChildSummary).mockResolvedValue(
-      makeAssignedChildSummary({
-        nonDeletedAssignedChildCount: 1,
+  it("confirms before deleting a thread with child threads", async () => {
+    const thread = makeThread();
+    vi.mocked(api.getThreadChildSummary).mockResolvedValue(
+      makeChildSummary({
+        nonDeletedChildCount: 1,
       }),
     );
     vi.mocked(api.deleteThread).mockResolvedValue(undefined);
@@ -388,24 +388,24 @@ describe("ThreadActionsProvider", () => {
     });
 
     expect(
-      await screen.findByText(/assigned threads will be unassigned/i),
+      await screen.findByText(/child threads will be deleted/i),
     ).not.toBeNull();
     expect(api.deleteThread).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: /delete manager/i }));
+    fireEvent.click(screen.getByRole("button", { name: /delete thread/i }));
 
     await waitFor(() => {
       expect(api.deleteThread).toHaveBeenCalledWith(thread.id, {
-        managerChildThreadsConfirmed: true,
+        childThreadsConfirmed: true,
       });
     });
   });
 
-  it("does not delete when the manager assigned-child confirmation is cancelled", async () => {
-    const thread = makeThread({ type: "manager" });
-    vi.mocked(api.getThreadAssignedChildSummary).mockResolvedValue(
-      makeAssignedChildSummary({
-        nonDeletedAssignedChildCount: 1,
+  it("does not delete when the child-thread confirmation is cancelled", async () => {
+    const thread = makeThread();
+    vi.mocked(api.getThreadChildSummary).mockResolvedValue(
+      makeChildSummary({
+        nonDeletedChildCount: 1,
       }),
     );
     vi.mocked(api.deleteThread).mockResolvedValue(undefined);
@@ -423,20 +423,20 @@ describe("ThreadActionsProvider", () => {
       actions!.requestDelete(thread);
     });
 
-    await screen.findByText(/assigned threads will be unassigned/i);
+    await screen.findByText(/child threads will be deleted/i);
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
 
     await waitFor(() => {
       expect(
-        screen.queryByText(/assigned threads will be unassigned/i),
+        screen.queryByText(/child threads will be deleted/i),
       ).toBeNull();
     });
     expect(api.deleteThread).not.toHaveBeenCalled();
   });
 
-  it("does not delete and shows a toast when the manager assigned-child summary fails", async () => {
-    const thread = makeThread({ type: "manager" });
-    vi.mocked(api.getThreadAssignedChildSummary).mockRejectedValue(
+  it("does not delete and shows a toast when the child summary fails", async () => {
+    const thread = makeThread();
+    vi.mocked(api.getThreadChildSummary).mockRejectedValue(
       new Error("Summary failed"),
     );
     vi.mocked(api.deleteThread).mockResolvedValue(undefined);
@@ -461,10 +461,10 @@ describe("ThreadActionsProvider", () => {
     expect(api.deleteThread).not.toHaveBeenCalled();
   });
 
-  it("uses the regular delete confirmation for a manager without assigned child threads", async () => {
-    const thread = makeThread({ type: "manager" });
-    vi.mocked(api.getThreadAssignedChildSummary).mockResolvedValue(
-      makeAssignedChildSummary(),
+  it("uses the regular delete confirmation for a thread without child threads", async () => {
+    const thread = makeThread();
+    vi.mocked(api.getThreadChildSummary).mockResolvedValue(
+      makeChildSummary(),
     );
     vi.mocked(api.deleteThread).mockResolvedValue(undefined);
 
@@ -482,17 +482,17 @@ describe("ThreadActionsProvider", () => {
     });
 
     const confirmButton = await screen.findByRole("button", {
-      name: /delete manager/i,
+      name: /delete thread/i,
     });
 
     expect(
-      screen.queryByText(/assigned threads will be unassigned/i),
+      screen.queryByText(/child threads will be deleted/i),
     ).toBeNull();
     fireEvent.click(confirmButton);
 
     await waitFor(() => {
       expect(api.deleteThread).toHaveBeenCalledWith(thread.id, {
-        managerChildThreadsConfirmed: false,
+        childThreadsConfirmed: false,
       });
     });
   });

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@/components/ui/icon.js";
@@ -10,7 +10,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
+  useCloseMobileSidebar,
 } from "@/components/ui/sidebar.js";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
@@ -28,7 +28,6 @@ import {
   getAutomationsRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/app-route-paths";
-import { useSetRootComposeMode } from "@/lib/root-compose-selection";
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -43,35 +42,16 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
   const navigate = useNavigate();
-  const setRootComposeMode = useSetRootComposeMode();
-  const { isCompactViewport, setOpenMobile } = useSidebar();
+  const closeOnMobile = useCloseMobileSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const isCompactViewportRef = useRef(isCompactViewport);
-  // Keep the ProjectList callback stable while reading the latest breakpoint.
-  isCompactViewportRef.current = isCompactViewport;
-
-  const closeOnMobile = useCallback(() => {
-    if (isCompactViewportRef.current) {
-      setOpenMobile(false);
-    }
-  }, [setOpenMobile]);
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
-    setRootComposeMode("thread");
     void navigate(getRootComposeRoutePath(), {
       state: { focusPrompt: true },
     });
-  }, [closeOnMobile, navigate, setRootComposeMode]);
-
-  const handleNewManager = useCallback(() => {
-    closeOnMobile();
-    setRootComposeMode("manager");
-    void navigate(getRootComposeRoutePath(), {
-      state: { focusPrompt: true },
-    });
-  }, [closeOnMobile, navigate, setRootComposeMode]);
+  }, [closeOnMobile, navigate]);
 
   const handleOpenAutomations = useCallback(() => {
     closeOnMobile();
@@ -83,7 +63,7 @@ export function AppSidebar({
       <Sidebar>
         {showTopReserve ? (
           /* Top reserve that keeps the sidebar's content (New Thread / New
-             Manager / Projects) anchored below the title-bar chrome, mirroring
+             Projects) anchored below the title-bar chrome, mirroring
              the page-header height on the content side. The sidebar toggle is
              pinned at the app's top-left for every chrome (see AppLayout's
              SidebarTriggerOverlay), so this row hosts no trigger of its own — it
@@ -119,7 +99,6 @@ export function AppSidebar({
         >
           <ProjectListActionButtons
             onNewChat={handleNewChat}
-            onNewManager={handleNewManager}
             onOpenAutomations={handleOpenAutomations}
           />
         </div>
@@ -144,7 +123,7 @@ export function AppSidebar({
                 tooltip="App settings"
                 aria-label="App settings"
               >
-                <Link to="/settings">
+                <Link to="/settings" onClick={closeOnMobile}>
                   <Icon name="Settings" />
                 </Link>
               </SidebarMenuButton>

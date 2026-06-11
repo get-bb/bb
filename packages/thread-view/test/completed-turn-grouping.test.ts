@@ -58,12 +58,12 @@ function userMessage(args: UserMessageArgs): EventProjectionUserMessage {
   };
 }
 
-function managerUserMessage(
+function legacyUserMessage(
   args: MessageBaseArgs,
 ): EventProjectionAssistantTextMessage {
   return {
     ...assistantMessage(args),
-    isManagerUserMessage: true,
+    isLegacyUserMessage: true,
   };
 }
 
@@ -196,11 +196,11 @@ describe("groupCompletedTurnMessages", () => {
     ]);
   });
 
-  it("segments summary groups around converted manager user messages", () => {
+  it("segments summary groups around converted legacy user messages", () => {
     const turn = completedTurn(
       [
         assistantMessage({ id: "assistant-before", seq: 1 }),
-        managerUserMessage({ id: "manager-user-message", seq: 2 }),
+        legacyUserMessage({ id: "legacy-user-message", seq: 2 }),
         assistantMessage({ id: "assistant-after", seq: 3 }),
       ],
       undefined,
@@ -218,7 +218,7 @@ describe("groupCompletedTurnMessages", () => {
       {
         kind: "ungrouped-message",
         message: {
-          id: "manager-user-message",
+          id: "legacy-user-message",
         },
       },
       {

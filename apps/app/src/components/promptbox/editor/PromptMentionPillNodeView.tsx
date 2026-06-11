@@ -1,14 +1,15 @@
 import { useContext, type KeyboardEvent, type MouseEvent } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
-import { promptMentionResourceSchema } from "@bb/domain";
 import {
   PROMPT_MENTION_PILL_CLASS,
   promptMentionIconName,
   promptMentionTooltipLabel,
 } from "@/components/promptbox/mentions/prompt-mention-display";
+import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import { PromptMentionLinkContext } from "./prompt-mention-link";
+import { parsePromptEditorMentionAttrs } from "./prompt-editor-serialization";
 
 // The `selection:` utilities suppress the native `::selection` paint inside the
 // pill — it can't cover the SVG icon, so the pill paints its own selected
@@ -22,7 +23,7 @@ const EDITOR_MENTION_PILL_CLASS = cn(
 
 /**
  * Renders an inserted prompt mention as a pill with a leading type icon (file,
- * folder, thread, or manager) matching the suggestion menu rows. A Tiptap React
+ * folder or thread) matching the suggestion menu rows. A Tiptap React
  * node view is used instead of `renderHTML` so the pill can mount the shared
  * `Icon` component; `renderHTML` remains the serialization fallback.
  *
@@ -35,7 +36,8 @@ export function PromptMentionPillNodeView({
   decorations,
 }: NodeViewProps) {
   const resolveLink = useContext(PromptMentionLinkContext);
-  const serializedText =
+  const attrs = parsePromptEditorMentionAttrs(node.attrs);
+  const fallbackSerializedText =
     typeof node.attrs.serializedText === "string"
       ? node.attrs.serializedText
       : undefined;
@@ -45,21 +47,20 @@ export function PromptMentionPillNodeView({
   const backgroundClass = isSelected
     ? "bg-surface-selected"
     : "bg-surface-raised";
-  const parsed = promptMentionResourceSchema.safeParse(node.attrs.resource);
 
-  if (!parsed.success) {
+  if (!attrs) {
     return (
       <NodeViewWrapper
         as="span"
         className={cn(EDITOR_MENTION_PILL_CLASS, backgroundClass)}
         data-prompt-mention="true"
       >
-        {serializedText ?? "@mention"}
+        {fallbackSerializedText ?? "@mention"}
       </NodeViewWrapper>
     );
   }
 
-  const resource = parsed.data;
+  const resource = attrs.resource;
   const activate = resolveLink?.(resource) ?? null;
   const title = promptMentionTooltipLabel(resource);
   const activationLabel = activate ? `Open ${title}` : undefined;
@@ -104,7 +105,7 @@ export function PromptMentionPillNodeView({
         backgroundClass,
         activate && "cursor-pointer",
       )}
-      data-prompt-mention="true"
+      {...promptMentionClipboardDataAttributes(attrs)}
       title={title}
       role={activate ? "button" : undefined}
       tabIndex={activate ? 0 : undefined}

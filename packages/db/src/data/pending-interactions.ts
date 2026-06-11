@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import type { PendingInteractionStatus } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import { createPendingInteractionId } from "../ids.js";
@@ -267,9 +268,14 @@ export function setPendingInteractionInterrupted(
   });
 }
 
-export function interruptPendingInteractionsForThreads(
+function interruptPendingInteractionsBatched(
   db: PendingInteractionWriteConnection,
-  args: InterruptPendingInteractionsForThreadsArgs,
+  args: {
+    extraConditions: SQL[];
+    resolvedAt?: number;
+    statusReason: string;
+    threadIds: readonly string[];
+  },
 ): PendingInteractionRow[] {
   if (args.threadIds.length === 0) {
     return [];
@@ -290,7 +296,7 @@ export function interruptPendingInteractionsForThreads(
         })
         .where(
           and(
-            eq(pendingInteractions.providerId, args.providerId),
+            ...args.extraConditions,
             inArray(pendingInteractions.threadId, threadIdsBatch),
             inArray(pendingInteractions.status, ["pending", "resolving"]),
           ),
@@ -303,37 +309,26 @@ export function interruptPendingInteractionsForThreads(
   return interruptedRows;
 }
 
+export function interruptPendingInteractionsForThreads(
+  db: PendingInteractionWriteConnection,
+  args: InterruptPendingInteractionsForThreadsArgs,
+): PendingInteractionRow[] {
+  return interruptPendingInteractionsBatched(db, {
+    extraConditions: [eq(pendingInteractions.providerId, args.providerId)],
+    resolvedAt: args.resolvedAt,
+    statusReason: args.statusReason,
+    threadIds: args.threadIds,
+  });
+}
+
 export function interruptPendingInteractionsForThreadIds(
   db: PendingInteractionWriteConnection,
   args: InterruptPendingInteractionsForThreadIdsArgs,
 ): PendingInteractionRow[] {
-  if (args.threadIds.length === 0) {
-    return [];
-  }
-
-  const now = Date.now();
-  const interruptedRows: PendingInteractionRow[] = [];
-
-  for (const threadIdsBatch of sliceInClauseBatches(args.threadIds)) {
-    interruptedRows.push(
-      ...db
-        .update(pendingInteractions)
-        .set({
-          status: "interrupted",
-          statusReason: args.statusReason,
-          resolvedAt: args.resolvedAt ?? now,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            inArray(pendingInteractions.threadId, threadIdsBatch),
-            inArray(pendingInteractions.status, ["pending", "resolving"]),
-          ),
-        )
-        .returning()
-        .all(),
-    );
-  }
-
-  return interruptedRows;
+  return interruptPendingInteractionsBatched(db, {
+    extraConditions: [],
+    resolvedAt: args.resolvedAt,
+    statusReason: args.statusReason,
+    threadIds: args.threadIds,
+  });
 }

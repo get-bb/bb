@@ -6,6 +6,7 @@ import {
   PROJECT_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
   THREAD_CHANGE_KINDS,
+  WORKFLOW_RUN_CHANGE_KINDS,
 } from "@bb/domain";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
@@ -28,6 +29,10 @@ import {
   threadTerminalsQueryKey,
   threadStorageFilePreviewQueryKey,
   threadTimelineQueryKey,
+  workflowRunAgentEventsQueryKey,
+  workflowRunEventsQueryKey,
+  workflowRunQueryKey,
+  workflowRunsQueryKey,
 } from "./queries/query-keys";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
@@ -36,6 +41,7 @@ import {
   REALTIME_PROJECT_CHANGE_REGISTRY,
   REALTIME_SYSTEM_CHANGE_REGISTRY,
   REALTIME_THREAD_CHANGE_REGISTRY,
+  REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY,
 } from "./cache-owners/realtime-cache-registry";
 
 const PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
@@ -44,7 +50,6 @@ const PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
   "archived-changed",
 ] as const;
 const NON_PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
-  "manager-assignment-changed",
   "parent-changed",
   "read-state-changed",
   "title-changed",
@@ -137,6 +142,14 @@ describe("createRealtimeCacheEffects", () => {
     }
   });
 
+  it("maps every realtime workflow-run change to at least one dirty handler", () => {
+    for (const changeKind of WORKFLOW_RUN_CHANGE_KINDS) {
+      expect(
+        REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY[changeKind].dirty.length,
+      ).toBeGreaterThan(0);
+    }
+  });
+
   it.each(PROJECT_PROMPT_HISTORY_THREAD_CHANGES)(
     "invalidates all cached project prompt histories for %s thread events",
     (change) => {
@@ -222,15 +235,14 @@ describe("createRealtimeCacheEffects", () => {
     const globalActiveThreadListKey = threadListQueryKey({
       archived: false,
     });
-    const globalManagerThreadListKey = threadListQueryKey({
+    const globalRootThreadListKey = threadListQueryKey({
       archived: false,
-      type: "manager",
     });
     queryClient.setQueryData(firstProjectThreadListKey, []);
     queryClient.setQueryData(firstProjectArchivedThreadListKey, []);
     queryClient.setQueryData(secondProjectThreadListKey, []);
     queryClient.setQueryData(globalActiveThreadListKey, []);
-    queryClient.setQueryData(globalManagerThreadListKey, []);
+    queryClient.setQueryData(globalRootThreadListKey, []);
 
     effects.handleChanged({
       type: "changed",
@@ -253,7 +265,7 @@ describe("createRealtimeCacheEffects", () => {
       queryClient.getQueryState(globalActiveThreadListKey)?.isInvalidated,
     ).toBe(true);
     expect(
-      queryClient.getQueryState(globalManagerThreadListKey)?.isInvalidated,
+      queryClient.getQueryState(globalRootThreadListKey)?.isInvalidated,
     ).toBe(true);
     expect(
       queryClient.getQueryState(secondProjectThreadListKey)?.isInvalidated,
@@ -290,19 +302,19 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refetches active manager order lists without refetching managed child lists for order changes", async () => {
+  it("refetches active root thread lists without refetching child lists for order changes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const activeProjectThreadListKey = threadListQueryKey({
       projectId: "project-1",
       archived: false,
     });
-    const managerThreadListKey = threadListQueryKey({
+    const rootThreadListKey = threadListQueryKey({
       projectId: "project-1",
+      hasParent: false,
       archived: false,
-      type: "manager",
     });
-    const managedChildThreadListKey = threadListQueryKey({
+    const childThreadListKey = threadListQueryKey({
       projectId: "project-1",
       parentThreadId: "thr_1",
       archived: false,
@@ -310,38 +322,38 @@ describe("createRealtimeCacheEffects", () => {
     const globalActiveThreadListKey = threadListQueryKey({
       archived: false,
     });
-    const globalManagerThreadListKey = threadListQueryKey({
+    const globalRootThreadListKey = threadListQueryKey({
       archived: false,
-      type: "manager",
+      hasParent: false,
     });
     const archivedThreadListKey = archivedThreadsListQueryKey({
       kind: "all",
       projectId: "project-1",
     });
     queryClient.setQueryData(activeProjectThreadListKey, []);
-    queryClient.setQueryData(managerThreadListKey, []);
-    queryClient.setQueryData(managedChildThreadListKey, []);
+    queryClient.setQueryData(rootThreadListKey, []);
+    queryClient.setQueryData(childThreadListKey, []);
     queryClient.setQueryData(globalActiveThreadListKey, []);
-    queryClient.setQueryData(globalManagerThreadListKey, []);
+    queryClient.setQueryData(globalRootThreadListKey, []);
     queryClient.setQueryData(archivedThreadListKey, []);
     const activeProjectThreadListQueryFn = vi.fn(async () => []);
-    const managerThreadListQueryFn = vi.fn(async () => []);
-    const managedChildThreadListQueryFn = vi.fn(async () => []);
+    const rootThreadListQueryFn = vi.fn(async () => []);
+    const childThreadListQueryFn = vi.fn(async () => []);
     const globalActiveThreadListQueryFn = vi.fn(async () => []);
-    const globalManagerThreadListQueryFn = vi.fn(async () => []);
+    const globalRootThreadListQueryFn = vi.fn(async () => []);
     const activeProjectThreadListObserver = new QueryObserver(queryClient, {
       queryKey: activeProjectThreadListKey,
       queryFn: activeProjectThreadListQueryFn,
       staleTime: Infinity,
     });
-    const managerThreadListObserver = new QueryObserver(queryClient, {
-      queryKey: managerThreadListKey,
-      queryFn: managerThreadListQueryFn,
+    const rootThreadListObserver = new QueryObserver(queryClient, {
+      queryKey: rootThreadListKey,
+      queryFn: rootThreadListQueryFn,
       staleTime: Infinity,
     });
-    const managedChildThreadListObserver = new QueryObserver(queryClient, {
-      queryKey: managedChildThreadListKey,
-      queryFn: managedChildThreadListQueryFn,
+    const childThreadListObserver = new QueryObserver(queryClient, {
+      queryKey: childThreadListKey,
+      queryFn: childThreadListQueryFn,
       staleTime: Infinity,
     });
     const globalActiveThreadListObserver = new QueryObserver(queryClient, {
@@ -349,27 +361,27 @@ describe("createRealtimeCacheEffects", () => {
       queryFn: globalActiveThreadListQueryFn,
       staleTime: Infinity,
     });
-    const globalManagerThreadListObserver = new QueryObserver(queryClient, {
-      queryKey: globalManagerThreadListKey,
-      queryFn: globalManagerThreadListQueryFn,
+    const globalRootThreadListObserver = new QueryObserver(queryClient, {
+      queryKey: globalRootThreadListKey,
+      queryFn: globalRootThreadListQueryFn,
       staleTime: Infinity,
     });
     const unsubscribeActiveProjectThreadList =
       activeProjectThreadListObserver.subscribe(() => {});
-    const unsubscribeManagerThreadList = managerThreadListObserver.subscribe(
+    const unsubscribeRootThreadList = rootThreadListObserver.subscribe(
       () => {},
     );
-    const unsubscribeManagedChildThreadList =
-      managedChildThreadListObserver.subscribe(() => {});
+    const unsubscribeChildThreadList =
+      childThreadListObserver.subscribe(() => {});
     const unsubscribeGlobalActiveThreadList =
       globalActiveThreadListObserver.subscribe(() => {});
-    const unsubscribeGlobalManagerThreadList =
-      globalManagerThreadListObserver.subscribe(() => {});
+    const unsubscribeGlobalRootThreadList =
+      globalRootThreadListObserver.subscribe(() => {});
     activeProjectThreadListQueryFn.mockClear();
-    managerThreadListQueryFn.mockClear();
-    managedChildThreadListQueryFn.mockClear();
+    rootThreadListQueryFn.mockClear();
+    childThreadListQueryFn.mockClear();
     globalActiveThreadListQueryFn.mockClear();
-    globalManagerThreadListQueryFn.mockClear();
+    globalRootThreadListQueryFn.mockClear();
 
     effects.handleChanged({
       type: "changed",
@@ -381,19 +393,19 @@ describe("createRealtimeCacheEffects", () => {
     await vi.advanceTimersByTimeAsync(50);
 
     expect(activeProjectThreadListQueryFn).toHaveBeenCalledTimes(1);
-    expect(managerThreadListQueryFn).toHaveBeenCalledTimes(1);
+    expect(rootThreadListQueryFn).toHaveBeenCalledTimes(1);
     expect(globalActiveThreadListQueryFn).toHaveBeenCalledTimes(1);
-    expect(globalManagerThreadListQueryFn).toHaveBeenCalledTimes(1);
-    expect(managedChildThreadListQueryFn).not.toHaveBeenCalled();
+    expect(globalRootThreadListQueryFn).toHaveBeenCalledTimes(1);
+    expect(childThreadListQueryFn).not.toHaveBeenCalled();
     expect(
       queryClient.getQueryState(archivedThreadListKey)?.isInvalidated,
     ).not.toBe(true);
 
     unsubscribeActiveProjectThreadList();
-    unsubscribeManagerThreadList();
-    unsubscribeManagedChildThreadList();
+    unsubscribeRootThreadList();
+    unsubscribeChildThreadList();
     unsubscribeGlobalActiveThreadList();
-    unsubscribeGlobalManagerThreadList();
+    unsubscribeGlobalRootThreadList();
     effects.dispose();
   });
 
@@ -881,7 +893,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("invalidates thread list and detail but not timeline for manager assignment changes", () => {
+  it("invalidates thread list and detail but not timeline for parent changes", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadKey = threadQueryKey("thr_1");
@@ -913,7 +925,7 @@ describe("createRealtimeCacheEffects", () => {
       entity: "thread",
       id: "thr_1",
       metadata: { projectId: "project-1" },
-      changes: ["manager-assignment-changed"],
+      changes: ["parent-changed"],
     });
     vi.advanceTimersByTime(50);
 
@@ -990,7 +1002,6 @@ describe("createRealtimeCacheEffects", () => {
       "project-1",
       "",
       20,
-      null,
       true,
       true,
     );
@@ -998,7 +1009,6 @@ describe("createRealtimeCacheEffects", () => {
       "project-2",
       "",
       20,
-      null,
       true,
       true,
     );
@@ -1253,5 +1263,228 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(terminalKey)?.isInvalidated).toBe(true);
 
     effects.dispose();
+  });
+
+  describe("workflow-run changes", () => {
+    interface WorkflowRunCacheFixture {
+      changedRunAgentOneEventsKey: ReturnType<
+        typeof workflowRunAgentEventsQueryKey
+      >;
+      changedRunAgentTwoEventsKey: ReturnType<
+        typeof workflowRunAgentEventsQueryKey
+      >;
+      changedRunDetailKey: ReturnType<typeof workflowRunQueryKey>;
+      changedRunEventsKey: ReturnType<typeof workflowRunEventsQueryKey>;
+      otherRunAgentEventsKey: ReturnType<typeof workflowRunAgentEventsQueryKey>;
+      otherRunDetailKey: ReturnType<typeof workflowRunQueryKey>;
+      runsListKey: ReturnType<typeof workflowRunsQueryKey>;
+    }
+
+    function seedWorkflowRunCaches(
+      queryClient: ReturnType<
+        typeof createRealtimeEffectsTestContext
+      >["queryClient"],
+    ): WorkflowRunCacheFixture {
+      const fixture: WorkflowRunCacheFixture = {
+        changedRunDetailKey: workflowRunQueryKey("wfr_changed"),
+        changedRunEventsKey: workflowRunEventsQueryKey("wfr_changed"),
+        // Agent display indexes are 1-based; the per-run prefix invalidation
+        // must cover every mounted drill-in index.
+        changedRunAgentOneEventsKey: workflowRunAgentEventsQueryKey({
+          agentIndex: 1,
+          runId: "wfr_changed",
+        }),
+        changedRunAgentTwoEventsKey: workflowRunAgentEventsQueryKey({
+          agentIndex: 2,
+          runId: "wfr_changed",
+        }),
+        otherRunDetailKey: workflowRunQueryKey("wfr_other"),
+        otherRunAgentEventsKey: workflowRunAgentEventsQueryKey({
+          agentIndex: 1,
+          runId: "wfr_other",
+        }),
+        runsListKey: workflowRunsQueryKey("project-1"),
+      };
+      queryClient.setQueryData(fixture.changedRunDetailKey, {});
+      queryClient.setQueryData(fixture.changedRunEventsKey, { events: [] });
+      queryClient.setQueryData(fixture.changedRunAgentOneEventsKey, []);
+      queryClient.setQueryData(fixture.changedRunAgentTwoEventsKey, []);
+      queryClient.setQueryData(fixture.otherRunDetailKey, {});
+      queryClient.setQueryData(fixture.otherRunAgentEventsKey, []);
+      queryClient.setQueryData(fixture.runsListKey, []);
+      return fixture;
+    }
+
+    it("debounces run-updated into the changed run's detail and the run lists only", () => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const caches = seedWorkflowRunCaches(queryClient);
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "workflow-run",
+        id: "wfr_changed",
+        changes: ["run-updated"],
+      });
+
+      // Nothing flushes synchronously: per-batch hub notifications ride the
+      // shared debounce window.
+      expect(
+        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
+      ).not.toBe(true);
+
+      vi.advanceTimersByTime(50);
+
+      expect(
+        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.otherRunDetailKey)?.isInvalidated,
+      ).not.toBe(true);
+      expect(
+        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
+      ).not.toBe(true);
+      expect(
+        queryClient.getQueryState(caches.changedRunAgentOneEventsKey)
+          ?.isInvalidated,
+      ).not.toBe(true);
+
+      effects.dispose();
+    });
+
+    it("scopes events-appended to the run's detail, event stream, and agent-events prefix", () => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const caches = seedWorkflowRunCaches(queryClient);
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "workflow-run",
+        id: "wfr_changed",
+        changes: ["events-appended"],
+      });
+      vi.advanceTimersByTime(50);
+
+      expect(
+        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.changedRunAgentOneEventsKey)
+          ?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.changedRunAgentTwoEventsKey)
+          ?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.otherRunDetailKey)?.isInvalidated,
+      ).not.toBe(true);
+      expect(
+        queryClient.getQueryState(caches.otherRunAgentEventsKey)
+          ?.isInvalidated,
+      ).not.toBe(true);
+      expect(
+        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
+      ).not.toBe(true);
+
+      effects.dispose();
+    });
+
+    it("coalesces an events-appended burst into a single drill-in refetch", async () => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const caches = seedWorkflowRunCaches(queryClient);
+      const agentEventsQueryFn = vi.fn(async () => []);
+      const agentEventsObserver = new QueryObserver(queryClient, {
+        queryKey: caches.changedRunAgentOneEventsKey,
+        queryFn: agentEventsQueryFn,
+        staleTime: Infinity,
+      });
+      const unsubscribeAgentEvents = agentEventsObserver.subscribe(() => {});
+      agentEventsQueryFn.mockClear();
+
+      // A wide fan-out delivers one hub message per ingested daemon batch;
+      // the mounted drill-in must refetch once per debounce window, not once
+      // per message.
+      for (let batch = 0; batch < 5; batch += 1) {
+        effects.handleChanged({
+          type: "changed",
+          entity: "workflow-run",
+          id: "wfr_changed",
+          changes: ["events-appended"],
+        });
+      }
+      await vi.advanceTimersByTimeAsync(50);
+
+      expect(agentEventsQueryFn).toHaveBeenCalledTimes(1);
+
+      unsubscribeAgentEvents();
+      effects.dispose();
+    });
+
+    it("invalidates seeded workflow-run caches on server reconnect", () => {
+      // Realtime messages emitted while the socket was down are lost, and a
+      // run that reached terminal during the gap emits nothing afterward —
+      // reconnect invalidation is the only recovery path for mounted
+      // workflow-run queries.
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const caches = seedWorkflowRunCaches(queryClient);
+
+      effects.handleConnected({ reconnected: true });
+
+      expect(
+        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.changedRunAgentOneEventsKey)
+          ?.isInvalidated,
+      ).toBe(true);
+
+      effects.dispose();
+    });
+
+    it("falls back to invalidating all cached workflow-run queries when the change has no id", () => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const caches = seedWorkflowRunCaches(queryClient);
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "workflow-run",
+        changes: ["run-updated", "events-appended"],
+      });
+      vi.advanceTimersByTime(50);
+
+      expect(
+        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.otherRunDetailKey)?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.otherRunAgentEventsKey)
+          ?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
+      ).toBe(true);
+
+      effects.dispose();
+    });
   });
 });

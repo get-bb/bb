@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
-  ManagerArchiveThreadsResponse,
   ReorderPinnedThreadRequest,
+  ThreadArchiveAllResponse,
   UpdateThreadRequest,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
@@ -11,7 +11,7 @@ import {
   applyThreadPinStateResult,
   applyThreadReadStateResult,
   applyThreadUpdateResult,
-  beginArchiveManagerThreadsTransaction,
+  beginArchiveThreadAndChildrenTransaction,
   beginArchiveThreadTransaction,
   beginDeleteThreadTransaction,
   beginPinThreadTransaction,
@@ -48,13 +48,13 @@ interface ArchiveThreadMutationRequest {
   id: string;
 }
 
-interface ArchiveManagerThreadsMutationRequest {
+interface ArchiveThreadAndChildrenMutationRequest {
   id: string;
 }
 
 interface DeleteThreadMutationRequest {
   id: string;
-  managerChildThreadsConfirmed: boolean;
+  childThreadsConfirmed: boolean;
 }
 
 export function useUpdateThread(options?: UpdateThreadMutationOptions) {
@@ -196,23 +196,23 @@ export function useArchiveThread() {
   });
 }
 
-export function useArchiveManagerThreads() {
+export function useArchiveThreadAndChildren() {
   const queryClient = useQueryClient();
 
   return useMutation({
     meta: {
-      errorMessage: "Failed to archive manager threads.",
+      errorMessage: "Failed to archive thread and children.",
       lifecycleOperation: "archive_thread",
       showErrorToast: false,
     },
     mutationFn: ({
       id,
-    }: ArchiveManagerThreadsMutationRequest): Promise<ManagerArchiveThreadsResponse> =>
-      api.archiveManagerThreads(id),
+    }: ArchiveThreadAndChildrenMutationRequest): Promise<ThreadArchiveAllResponse> =>
+      api.archiveThreadAndChildren(id),
     onMutate: async ({ id }): Promise<ArchiveThreadsTransaction> =>
-      beginArchiveManagerThreadsTransaction({
-        managerThreadId: id,
+      beginArchiveThreadAndChildrenTransaction({
         queryClient,
+        threadId: id,
       }),
     onError: (_error, _variables, context) => {
       rollbackArchiveThreadsTransaction({ queryClient, transaction: context });
@@ -261,10 +261,10 @@ export function useDeleteThread() {
       errorMessage: "Failed to delete thread.",
     },
     mutationFn: ({
+      childThreadsConfirmed,
       id,
-      managerChildThreadsConfirmed,
     }: DeleteThreadMutationRequest) =>
-      api.deleteThread(id, { managerChildThreadsConfirmed }),
+      api.deleteThread(id, { childThreadsConfirmed }),
     onMutate: async ({ id }): Promise<DeleteThreadTransaction> =>
       beginDeleteThreadTransaction({ queryClient, threadId: id }),
     onError: (_error, variables, context) => {

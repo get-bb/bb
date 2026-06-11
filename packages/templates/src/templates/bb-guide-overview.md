@@ -14,12 +14,7 @@ Core concepts:
 - Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.
 - Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.
 
-Thread types:
-
-- standard — does coding, research, debugging, or other tasks.
-- manager — coordinates work across other threads and communicates with the user directly in the manager thread.
-
-Threads can have a parent-child relationship. The parent manages the child and receives lifecycle notifications when it completes, fails, or is interrupted. Threads without a parent are managed by the user.
+Threads can have a parent-child relationship. The parent coordinates the child and receives lifecycle notifications when it completes, fails, or is interrupted. Threads without a parent are managed directly by the user.
 
 Context variables set automatically inside a thread environment:
 
@@ -35,7 +30,6 @@ Run `bb guide <chapter>` for command details:
 
   threads        Spawning, inspecting, messaging, and managing threads
   environments   Environment operations, commits, and merges
-  managers       Hiring and managing project managers
   app            Global apps, app data, browser APIs, and styling
   providers      Discovering providers and models
   projects       Project CRUD and sources

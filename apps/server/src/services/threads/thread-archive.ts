@@ -33,8 +33,8 @@ interface ArchiveEnvironmentThreadsArgs {
   environment: Environment;
 }
 
-interface ArchiveManagerThreadsArgs {
-  managerThread: Thread;
+interface ArchiveThreadAndChildrenArgs {
+  parentThread: Thread;
 }
 
 export function archiveThreadWithLifecycleEffects(
@@ -111,17 +111,17 @@ export function archiveEnvironmentThreads(
   return archivedThreadIds;
 }
 
-export function archiveManagerThreads(
+export function archiveThreadAndChildren(
   deps: AppDeps,
-  args: ArchiveManagerThreadsArgs,
+  args: ArchiveThreadAndChildrenArgs,
 ): string[] {
   const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
-    parentThreadId: args.managerThread.id,
+    parentThreadId: args.parentThread.id,
   });
   const threads: ArchiveThreadWithLifecycleEffectsArgs["thread"][] =
-    childThreads.filter((thread) => thread.id !== args.managerThread.id);
-  if (args.managerThread.archivedAt === null) {
-    threads.push(args.managerThread);
+    childThreads.filter((thread) => thread.id !== args.parentThread.id);
+  if (args.parentThread.archivedAt === null) {
+    threads.push(args.parentThread);
   }
   const archivedThreadIds: string[] = [];
   const affectedEnvironmentIds = new Set<string>();

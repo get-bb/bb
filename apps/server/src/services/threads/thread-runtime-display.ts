@@ -88,7 +88,6 @@ function toPublicThread(thread: Thread): Thread {
     environmentId: thread.environmentId,
     automationId: thread.automationId,
     providerId: thread.providerId,
-    type: thread.type,
     title: thread.title,
     titleFallback: thread.titleFallback,
     status: thread.status,

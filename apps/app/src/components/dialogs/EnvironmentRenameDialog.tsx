@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog.js";
 import { Input } from "@/components/ui/input.js";
+import { useNameValidation } from "./useNameValidation.js";
 import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 
 const ENVIRONMENT_NAME_MAX_LENGTH = 80;
@@ -71,25 +72,20 @@ export function EnvironmentRenameDialogContent({
 }: EnvironmentRenameDialogContentProps) {
   const inputId = useId();
   const [nextName, setNextName] = useState(target.currentName);
-  const [validationMessage, setValidationMessage] = useState<string | null>(
-    null,
-  );
+  const { validationMessage, validate, clearMessage } = useNameValidation({
+    emptyMessage: "Environment name cannot be empty.",
+    maxLength: {
+      limit: ENVIRONMENT_NAME_MAX_LENGTH,
+      message: `Environment name must be ${ENVIRONMENT_NAME_MAX_LENGTH} characters or fewer.`,
+    },
+  });
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
 
-    const trimmedName = nextName.trim();
-    if (!trimmedName) {
-      setValidationMessage("Environment name cannot be empty.");
-      return;
-    }
-    if (trimmedName.length > ENVIRONMENT_NAME_MAX_LENGTH) {
-      setValidationMessage(
-        `Environment name must be ${ENVIRONMENT_NAME_MAX_LENGTH} characters or fewer.`,
-      );
-      return;
-    }
+    const trimmedName = validate(nextName);
+    if (trimmedName === null) return;
 
     onRename(target.id, trimmedName);
   };
@@ -118,9 +114,7 @@ export function EnvironmentRenameDialogContent({
             disabled={pending}
             onChange={(event) => {
               setNextName(event.target.value);
-              if (validationMessage) {
-                setValidationMessage(null);
-              }
+              clearMessage();
             }}
           />
           {displayedErrorMessage ? (

@@ -63,19 +63,6 @@ export const toolCallResponseSchema = z.object({
 });
 export type ToolCallResponse = z.infer<typeof toolCallResponseSchema>;
 
-export const messageUserToolArgumentsSchema = z
-  .object({
-    text: z.string().trim().min(1).optional(),
-    message: z.string().trim().min(1).optional(),
-  })
-  .refine(
-    (value) => value.text !== undefined || value.message !== undefined,
-    "message_user requires text",
-  )
-  .transform((value) => ({
-    text: value.text ?? value.message ?? "",
-  }));
-
 export const dynamicToolSchema = z.object({
   name: z.string(),
   description: z.string(),

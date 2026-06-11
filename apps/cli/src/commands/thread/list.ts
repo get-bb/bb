@@ -28,7 +28,7 @@ export function registerListCommand(
       "--project <id>",
       "Filter by project ID (defaults to BB_PROJECT_ID; omit both to list all projects)",
     )
-    .option("--parent-thread <id>", "Filter by managing parent thread ID")
+    .option("--parent-thread <id>", "Filter by parent thread ID")
     .option("--archived", "Show only archived threads")
     .option("--json", "Print machine-readable JSON output")
     .action(

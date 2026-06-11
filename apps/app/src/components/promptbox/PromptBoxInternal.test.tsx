@@ -10,11 +10,17 @@ import {
 import { useState } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PromptDraftState } from "@/lib/prompt-draft";
-import type { PromptMentionSuggestion } from "@/components/promptbox/mentions/types";
+import type {
+  ProviderCommandSuggestion,
+  PromptMentionSuggestion,
+} from "@/components/promptbox/mentions/types";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import { POINTER_COARSE_QUERY } from "@/components/ui/hooks/use-pointer-coarse";
+import { restoreMatchMedia, setupMatchMedia } from "@/test/helpers/match-media";
 import {
   PromptBoxInternal,
   type PromptBoxZenModeConfig,
+  type TypeaheadCommandConfig,
 } from "./PromptBoxInternal";
 
 beforeAll(() => {
@@ -25,11 +31,12 @@ beforeAll(() => {
 });
 
 interface PromptBoxHarnessProps {
-  autoFocus?: boolean;
   historyEntries: PromptBoxHarnessDraft[];
   initialDraft: PromptBoxHarnessDraft;
   mentionSuggestions?: PromptMentionSuggestion[];
+  command?: TypeaheadCommandConfig;
   onChangeSpy?: PromptBoxHarnessChangeSpy;
+  onSubmitSpy?: PromptBoxSubmitSpy;
   onAttachFiles?: (files: File[]) => void | Promise<void>;
   placeholder?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
@@ -45,6 +52,8 @@ type PromptBoxHarnessChangeSpy = (
   nextText: string,
   nextMentions: PromptDraftState["mentions"],
 ) => void;
+
+type PromptBoxSubmitSpy = () => void;
 
 type HistoryArrowKey = "ArrowUp" | "ArrowDown";
 
@@ -95,20 +104,28 @@ function PromptBoxHarness(args: PromptBoxHarnessProps) {
             mentions: nextMentions,
           }));
         }}
-        onSubmit={() => {}}
-        autoFocus={args.autoFocus ?? false}
+        onSubmit={args.onSubmitSpy ?? noopPromptSubmit}
         placeholder={args.placeholder}
         attachments={{
           items: draft.attachments,
           onAttachFiles: args.onAttachFiles,
           onRemove: () => {},
         }}
-        mentions={{
-          suggestions: args.mentionSuggestions ?? [],
-          isLoading: false,
-          isError: false,
-          onQueryChange: () => {},
-          resolveLink: args.resolveMentionLink,
+        typeahead={{
+          mention: {
+            suggestions: args.mentionSuggestions ?? [],
+            isLoading: false,
+            isError: false,
+            onQueryChange: () => {},
+            resolveLink: args.resolveMentionLink,
+          },
+          command: args.command ?? {
+            trigger: null,
+            suggestions: [],
+            isLoading: false,
+            isError: false,
+            onQueryChange: () => {},
+          },
         }}
         mentionMenuPlacement="bottom"
         zenMode={{
@@ -124,9 +141,14 @@ function PromptBoxHarness(args: PromptBoxHarnessProps) {
       />
       <output data-testid="draft-text">{draft.text}</output>
       <output data-testid="draft-mentions">{draft.mentions.length}</output>
+      <output data-testid="draft-mentions-json">
+        {JSON.stringify(draft.mentions)}
+      </output>
     </>
   );
 }
+
+function noopPromptSubmit(): void {}
 
 function normalizeHarnessDraft(draft: PromptBoxHarnessDraft): PromptDraftState {
   return {
@@ -137,8 +159,15 @@ function normalizeHarnessDraft(draft: PromptBoxHarnessDraft): PromptDraftState {
 
 afterEach(() => {
   cleanup();
+  restoreMatchMedia();
   vi.clearAllMocks();
 });
+
+function setupCoarsePointerViewport(): void {
+  setupMatchMedia({
+    matchesByQuery: new Map([[POINTER_COARSE_QUERY, true]]),
+  });
+}
 
 async function pressHistoryArrow({
   expectedValue,
@@ -183,6 +212,10 @@ function getDraftText(): string {
 
 function getDraftMentionCount(): number {
   return Number(screen.getByTestId("draft-mentions").textContent ?? "0");
+}
+
+function getDraftMentionsJson(): string {
+  return screen.getByTestId("draft-mentions-json").textContent ?? "";
 }
 
 function createTestClipboardData({
@@ -262,6 +295,38 @@ function waitForAnimationFrame(): Promise<void> {
     });
   });
 }
+
+describe("PromptBoxInternal autofocus", () => {
+  it("autofocuses the prompt editor on fine pointer devices", async () => {
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "Run this", attachments: [] }}
+        historyEntries={[]}
+      />,
+    );
+
+    const editor = getEditor();
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(editor);
+    });
+  });
+
+  it("does not autofocus the prompt editor on coarse pointer devices", async () => {
+    setupCoarsePointerViewport();
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "Run this", attachments: [] }}
+        historyEntries={[]}
+      />,
+    );
+
+    const editor = getEditor();
+    await waitForAnimationFrame();
+
+    expect(document.activeElement).not.toBe(editor);
+  });
+});
 
 describe("PromptBoxInternal rich paste", () => {
   it("updates the empty editor placeholder after rerender", async () => {
@@ -348,6 +413,7 @@ describe("PromptBoxInternal rich paste", () => {
         historyEntries={[]}
       />,
     );
+    await waitForAnimationFrame();
     const scrollContainer = getPromptEditorScrollContainer(container);
     vi.spyOn(scrollContainer, "getBoundingClientRect").mockReturnValue(
       new DOMRect(0, 0, 320, 100),
@@ -466,7 +532,87 @@ describe("PromptBoxInternal rich paste", () => {
     expect(getDraftMentionCount()).toBe(0);
   });
 
-  it("pastes copied mention pills as serialized text without mention metadata", async () => {
+  it("pastes copied mention pills with clipboard metadata as mention nodes", async () => {
+    const resource = {
+      kind: "thread",
+      threadId: "thr_design",
+      projectId: "proj_design",
+      label: "Design review",
+    };
+    const serializedText = "@thread:thr_design";
+    render(
+      <PromptBoxHarness
+        initialDraft={{
+          text: "",
+          attachments: [],
+        }}
+        historyEntries={[]}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, 0);
+    const wasNotCanceled = pasteIntoEditor(editor, {
+      html: `<p>Ask <span data-prompt-mention="true" data-prompt-mention-serialized-text="${serializedText}" data-prompt-mention-resource='${JSON.stringify(
+        resource,
+      )}'>Thread: Design review</span> next</p>`,
+      text: `Ask ${serializedText} next`,
+    });
+
+    expect(wasNotCanceled).toBe(false);
+    await waitFor(() => {
+      expect(getDraftText()).toBe(`Ask ${serializedText} next`);
+    });
+    const expectedMention = {
+      start: "Ask ".length,
+      end: `Ask ${serializedText}`.length,
+      resource,
+    };
+    expect(getDraftMentionsJson()).toBe(JSON.stringify([expectedMention]));
+    expect(getDraftMentionCount()).toBe(1);
+    expect(editor.querySelector('[data-prompt-mention="true"]')).not.toBeNull();
+  });
+
+  it("derives pasted mention text from resource metadata instead of forged serialized text", async () => {
+    const resource = {
+      kind: "thread",
+      threadId: "thr_design",
+      projectId: "proj_design",
+      label: "Design review",
+    };
+    render(
+      <PromptBoxHarness
+        initialDraft={{
+          text: "",
+          attachments: [],
+        }}
+        historyEntries={[]}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, 0);
+    const wasNotCanceled = pasteIntoEditor(editor, {
+      html: `<p>Ask <span data-prompt-mention="true" data-prompt-mention-serialized-text="@thread:thr_forged" data-prompt-mention-resource='${JSON.stringify(
+        resource,
+      )}'>Thread: Forged review</span> next</p>`,
+      text: "Ask @thread:thr_forged next",
+    });
+
+    expect(wasNotCanceled).toBe(false);
+    await waitFor(() => {
+      expect(getDraftText()).toBe("Ask @thread:thr_design next");
+    });
+    const expectedMention = {
+      start: "Ask ".length,
+      end: "Ask @thread:thr_design".length,
+      resource,
+    };
+    expect(getDraftMentionsJson()).toBe(JSON.stringify([expectedMention]));
+    expect(getDraftMentionCount()).toBe(1);
+  });
+
+  it("pastes copied mention pills without clipboard metadata as plain serialized text", async () => {
     render(
       <PromptBoxHarness
         initialDraft={{
@@ -525,6 +671,49 @@ describe("PromptBoxInternal rich paste", () => {
   });
 });
 
+describe("PromptBoxInternal submit shortcuts", () => {
+  it("submits on unshifted Enter for fine pointer devices", () => {
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "Run this", attachments: [] }}
+        historyEntries={[]}
+        onSubmitSpy={onSubmit}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    const wasNotCanceled = fireEvent.keyDown(editor, { key: "Enter" });
+
+    expect(wasNotCanceled).toBe(false);
+    expect(editor.getAttribute("enterkeyhint")).toBe("send");
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not submit on unshifted Enter for coarse pointer devices", async () => {
+    setupCoarsePointerViewport();
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "First line", attachments: [] }}
+        historyEntries={[]}
+        onSubmitSpy={onSubmit}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    fireEvent.keyDown(editor, { key: "Enter" });
+
+    expect(editor.getAttribute("enterkeyhint")).toBe("enter");
+    expect(onSubmit).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(getDraftText()).toBe("First line\n");
+    });
+  });
+});
+
 describe("PromptBoxInternal mentions", () => {
   it("shows the full path as the hover title for file mention pills", async () => {
     const text = "Open @apps/app/src/App.tsx";
@@ -578,7 +767,6 @@ describe("PromptBoxInternal mentions", () => {
               resource: {
                 kind: "thread",
                 threadId: "thr_x",
-                threadType: "standard",
                 label: "Design review",
               },
             },
@@ -756,7 +944,6 @@ describe("PromptBoxInternal mentions", () => {
             projectId: "proj_current",
             threadId: "thr_project",
             title: "Project planning",
-            threadType: "manager",
           },
           {
             kind: "thread",
@@ -766,7 +953,6 @@ describe("PromptBoxInternal mentions", () => {
             projectName: "Marketing Site",
             threadId: "thr_standard_project",
             title: "Project implementation",
-            threadType: "standard",
           },
           {
             kind: "path",
@@ -812,7 +998,6 @@ describe("PromptBoxInternal mentions", () => {
     expect(screen.getByRole("button", { name: /Marketing Site/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /project\.ts/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /projects/ })).toBeTruthy();
-    expect(container.querySelector('[data-icon="UserRound"]')).not.toBeNull();
     expect(
       container.querySelector('[data-icon="MessageSquare"]'),
     ).not.toBeNull();
@@ -1172,5 +1357,308 @@ describe("PromptBoxInternal history navigation", () => {
       key: "ArrowDown",
       editor,
     });
+  });
+});
+
+interface CommandConfigArgs {
+  trigger: "/" | "$";
+  suggestions: ProviderCommandSuggestion[];
+}
+
+function makeCommandConfig({
+  trigger,
+  suggestions,
+}: CommandConfigArgs): TypeaheadCommandConfig {
+  return {
+    trigger,
+    suggestions,
+    isLoading: false,
+    isError: false,
+    onQueryChange: () => {},
+  };
+}
+
+function makeCommandSuggestion(
+  overrides: Partial<ProviderCommandSuggestion> = {},
+): ProviderCommandSuggestion {
+  return {
+    kind: "command",
+    name: "review",
+    source: "skill",
+    origin: "project",
+    description: null,
+    argumentHint: null,
+    ...overrides,
+  };
+}
+
+describe("PromptBoxInternal command typeahead", () => {
+  it("shows the command menu and inserts a slash token as plain text on Enter", async () => {
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "/rev", attachments: [] }}
+        historyEntries={[]}
+        command={makeCommandConfig({
+          trigger: "/",
+          suggestions: [makeCommandSuggestion({ name: "review" })],
+        })}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    fireEvent.click(editor);
+
+    expect(await screen.findByText("Skills")).toBeTruthy();
+    const commandButton = await screen.findByRole("button", {
+      name: /review/,
+    });
+    fireEvent.keyDown(editor, { key: "Enter" });
+    await waitForAnimationFrame();
+
+    await waitFor(() => {
+      expect(getDraftText()).toBe("/review ");
+    });
+    // Plain text, not a pill node — and no mention range recorded.
+    expect(editor.querySelector('[data-prompt-mention="true"]')).toBeNull();
+    expect(getDraftMentionCount()).toBe(0);
+    expect(commandButton).toBeTruthy();
+  });
+
+  it("inserts a dollar token as plain text for a codex command", async () => {
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "$pr", attachments: [] }}
+        historyEntries={[]}
+        command={makeCommandConfig({
+          trigger: "$",
+          suggestions: [makeCommandSuggestion({ name: "prd" })],
+        })}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    fireEvent.click(editor);
+
+    const commandButton = await screen.findByRole("button", { name: /prd/ });
+    fireEvent.mouseDown(commandButton);
+    await waitForAnimationFrame();
+
+    await waitFor(() => {
+      expect(getDraftText()).toBe("$prd ");
+    });
+    expect(editor.querySelector('[data-prompt-mention="true"]')).toBeNull();
+    expect(getDraftMentionCount()).toBe(0);
+  });
+
+  it("renders command name, description, and argument hint", async () => {
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "/rev", attachments: [] }}
+        historyEntries={[]}
+        command={makeCommandConfig({
+          trigger: "/",
+          suggestions: [
+            makeCommandSuggestion({
+              name: "review",
+              description: "Review the current diff",
+              argumentHint: "[path]",
+            }),
+          ],
+        })}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    fireEvent.click(editor);
+
+    expect(await screen.findByText("review")).toBeTruthy();
+    expect(screen.getByText("Review the current diff")).toBeTruthy();
+    expect(screen.getByText("[path]")).toBeTruthy();
+  });
+
+  it("dismisses on Escape, preserves the typed token, and stays closed in range", async () => {
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "/rev", attachments: [] }}
+        historyEntries={[]}
+        command={makeCommandConfig({
+          trigger: "/",
+          suggestions: [makeCommandSuggestion({ name: "review" })],
+        })}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    fireEvent.click(editor);
+
+    expect(await screen.findByRole("button", { name: /review/ })).toBeTruthy();
+
+    const wasNotCanceled = fireEvent.keyDown(editor, { key: "Escape" });
+    expect(wasNotCanceled).toBe(false);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /review/ })).toBeNull();
+    });
+    // Literal text is untouched by the dismissal.
+    expect(getDraftText()).toBe("/rev");
+
+    // Caret stays inside the dismissed `[from, to]` token span — no re-open.
+    fireEvent.click(editor);
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /review/ })).toBeNull();
+    });
+  });
+
+  it("does not open the menu when the command list is empty", async () => {
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "/rev", attachments: [] }}
+        historyEntries={[]}
+        command={makeCommandConfig({ trigger: "/", suggestions: [] })}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    fireEvent.click(editor);
+
+    await waitForAnimationFrame();
+    expect(screen.queryByText("Skills")).toBeNull();
+    expect(screen.queryByText("Failed to load commands")).toBeNull();
+  });
+
+  it("keeps keyboard nav aligned with the visual section order across sections", async () => {
+    // The server returns commands already grouped in the menu's visual section
+    // order (skills → project commands → user commands). The composer walks this
+    // flat order for keyboard nav while the menu re-buckets it into the same
+    // sections, so highlight/Arrow/Enter must track the rendered rows top to
+    // bottom. This spans all three sections.
+    //
+    // This catches the flat-vs-section bug: before the server sorted by section
+    // rank it returned a name-alphabetical order (`a-user`, `m-skill`,
+    // `z-project`) that the menu re-bucketed to `m-skill`, `z-project`,
+    // `a-user`. Flat index 0 (`a-user`) is then rendered LAST, so selectedIndex
+    // 0 would highlight the bottom row instead of the top, and Enter would apply
+    // `a-user` while `m-skill` looked selected. With the section-first sort the
+    // flat order equals the rendered order and the assertions below hold.
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "/x", attachments: [] }}
+        historyEntries={[]}
+        command={makeCommandConfig({
+          trigger: "/",
+          suggestions: [
+            makeCommandSuggestion({
+              name: "m-skill",
+              source: "skill",
+              origin: "project",
+            }),
+            makeCommandSuggestion({
+              name: "z-project",
+              source: "command",
+              origin: "project",
+            }),
+            makeCommandSuggestion({
+              name: "a-user",
+              source: "command",
+              origin: "user",
+            }),
+          ],
+        })}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    fireEvent.click(editor);
+
+    await screen.findByText("Skills");
+    expect(screen.getByText("Project commands")).toBeTruthy();
+    expect(screen.getByText("User commands")).toBeTruthy();
+
+    // Visual (DOM) order matches the section order, top to bottom.
+    const commandRows = screen
+      .getAllByRole("button")
+      .filter((button) =>
+        ["m-skill", "z-project", "a-user"].includes(
+          button.textContent?.trim() ?? "",
+        ),
+      );
+    expect(commandRows.map((row) => row.textContent?.trim())).toEqual([
+      "m-skill",
+      "z-project",
+      "a-user",
+    ]);
+
+    const isHighlighted = (row: HTMLElement): boolean =>
+      row.classList.contains("bg-state-active");
+
+    // selectedIndex starts at 0 → the FIRST visual row is highlighted.
+    await waitFor(() => {
+      expect(isHighlighted(commandRows[0]!)).toBe(true);
+    });
+    expect(isHighlighted(commandRows[1]!)).toBe(false);
+    expect(isHighlighted(commandRows[2]!)).toBe(false);
+
+    // ArrowDown walks the rows top-to-bottom in visual order.
+    fireEvent.keyDown(editor, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(isHighlighted(commandRows[1]!)).toBe(true);
+    });
+    expect(isHighlighted(commandRows[0]!)).toBe(false);
+    expect(isHighlighted(commandRows[2]!)).toBe(false);
+
+    // Enter applies the visually-highlighted command (the second row).
+    fireEvent.keyDown(editor, { key: "Enter" });
+    await waitForAnimationFrame();
+    await waitFor(() => {
+      expect(getDraftText()).toBe("/z-project ");
+    });
+  });
+
+  it("still inserts a mention pill while a command trigger is configured", async () => {
+    render(
+      <PromptBoxHarness
+        initialDraft={{ text: "Open @src/com", attachments: [] }}
+        historyEntries={[]}
+        mentionSuggestions={[
+          {
+            kind: "path",
+            source: "workspace",
+            entryKind: "directory",
+            path: "src/components",
+            name: "components",
+            replacement: "src/components/",
+          },
+        ]}
+        command={makeCommandConfig({
+          trigger: "/",
+          suggestions: [makeCommandSuggestion({ name: "review" })],
+        })}
+      />,
+    );
+
+    const editor = getEditor();
+    setEditorSelection(editor, getDraftText().length);
+    fireEvent.click(editor);
+
+    const mentionButton = await screen.findByRole("button", {
+      name: /components/,
+    });
+    fireEvent.mouseDown(mentionButton);
+    await waitForAnimationFrame();
+
+    await waitFor(() => {
+      expect(getDraftText()).toBe("Open @src/components/ ");
+    });
+    // The mention still inserts a pill node and records a mention range.
+    expect(
+      editor.querySelector('[data-prompt-mention="true"]'),
+    ).not.toBeNull();
+    expect(getDraftMentionCount()).toBe(1);
   });
 });

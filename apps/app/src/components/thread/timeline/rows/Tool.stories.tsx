@@ -20,7 +20,7 @@ const baseProps = {
 // Real tool work rows pulled from live threads in ~/.bb-dev/bb.db. These are
 // the catch-all "tool" rows — tools that aren't classified as activity intents
 // on a command row (Read/Grep/Glob/list_files/search go on commands instead).
-// Common tools that surface here: TodoWrite, ToolSearch, message_user, Skill,
+// Common tools that surface here: TodoWrite, ToolSearch, notify_user, Skill,
 // ScheduleWakeup. Real toolName, toolArgs, and output JSON are inlined below.
 // ---------------------------------------------------------------------------
 
@@ -49,9 +49,9 @@ const toolSearchTool: TimelineRow = toolRow({
 });
 
 // thr_bj3p5vk9py, seq 13, turn 019de9bd-c299-7053-b11d-11b1f40e8b83 —
-// manager bb thread sending an introductory message_user. Free-form text
-// arg, "Message delivered" result.
-const messageUserShort: TimelineRow = toolRow({
+// parent thread sending an introductory notify_user. Free-form text
+// arg, "Notification delivered" result.
+const notifyUserShort: TimelineRow = toolRow({
   id: "thr_bj3p5vk9py:tool:call_MZFh9Lp2X4LkW9gQteoyDB2F",
   threadId: "thr_bj3p5vk9py",
   turnId: "019de9bd-c299-7053-b11d-11b1f40e8b83",
@@ -61,21 +61,21 @@ const messageUserShort: TimelineRow = toolRow({
   createdAt: 1777743031156,
   status: "completed",
   callId: "call_MZFh9Lp2X4LkW9gQteoyDB2F",
-  toolName: "message_user",
+  toolName: "notify_user",
   toolArgs: {
-    text: "Hi — I’m your bb manager for this project. I’ll coordinate work by delegating substantive coding, debugging, and investigation tasks to managed child threads in isolated worktrees, then review results and report back.\n\nA few quick preferences so I can work the way you like:\n1. What should I call you?\n2. Do you prefer heavy delegation with concise summaries, or more hands-on collaboration with more frequent check-ins?\n3. What kinds of tasks should I expect most often: implementation, debugging, planning/reviews, or something else?",
+    text: "Hi — I’m your bb parent thread for this project. I’ll coordinate work by delegating substantive coding, debugging, and investigation tasks to child threads in isolated worktrees, then review results and report back.\n\nA few quick preferences so I can work the way you like:\n1. What should I call you?\n2. Do you prefer heavy delegation with concise summaries, or more hands-on collaboration with more frequent check-ins?\n3. What kinds of tasks should I expect most often: implementation, debugging, planning/reviews, or something else?",
   },
-  output: "Message delivered",
+  output: "Notification delivered",
   approvalStatus: null,
   activityIntents: [],
   durationMs: 0,
 });
 
-// thr_bj3p5vk9py, seq 28209 — manager merge-evaluation summary. Long
+// thr_bj3p5vk9py, seq 28209 — parent merge-evaluation summary. Long
 // markdown body in args.text (multi-section, tables, code-fence-ish lists).
 // Useful for the "expanded" story so we can see how long tool-arg payloads
 // render inside the row body.
-const messageUserLong: TimelineRow = toolRow({
+const notifyUserLong: TimelineRow = toolRow({
   id: "thr_bj3p5vk9py:tool:call_llaogf7VfpS1YkeQ2iIPUuL7",
   threadId: "thr_bj3p5vk9py",
   turnId: "019de9bd-c299-7053-b11d-11b1f40e8b83",
@@ -85,11 +85,11 @@ const messageUserLong: TimelineRow = toolRow({
   createdAt: 1777800000000,
   status: "completed",
   callId: "call_llaogf7VfpS1YkeQ2iIPUuL7",
-  toolName: "message_user",
+  toolName: "notify_user",
   toolArgs: {
     text: "Here’s the merge-evaluation summary.\n\n## 1. `bb/daemon-protocol-phase6-cleanup`\n\n**Status:** code complete, validated by worker, Claude review active. **Not merging without your explicit go-ahead.**\n\n**Commits over `main` (`d75f390c`):**\n- `452df600` — remove daemon high-water response compatibility\n- `c1261311` — remove completed daemon cutover scaffolding\n\n**Diff:** 19 files, **+75 / -3502**, net **-3427 LOC**.\n\n| Area | Files | Diff | Responsibility |\n| --- | --- | ---: | --- |\n| One-off cutover tooling/docs | server migration script, runner, test, runbook | **-2945** | Delete post-live-migration executable scaffolding. Git history is the archive. |\n| Plans/docs cleanup | delete completed host cutover plan; update simplification/complexity plans | **-415** | Keep roadmap accurate; remove completed plan per AGENTS.md. |\n| Server runtime/tests/package | command-result route, session route, events comment, package dep/script, tests | **-62** | Remove response high-water computation and stale naming. |\n| Host daemon tests/helpers | test server/session result expectations | **-14** | Stop modeling high-water marks in daemon-facing tests. |\n| Contract package | session response schemas/tests | **+13** | Tighten contract to reject removed field. |\n| DB public surface | `packages/db/src/data/index.ts` | **-1** | Stop exporting internal `getHighWaterMarks`. |\n\n### Contract boundary changes\n- `/internal/session/open` response no longer includes `threadHighWaterMarks`.\n- `/internal/session/command-result` response is now strictly `{ ok: true }`.\n- Contract schemas are `.strict()`, so old response fields are rejected rather than silently tolerated.\n- Host daemon tests now assert the removed field is absent/rejected.\n\n### Main risk / decision\nThe big decision is whether we are comfortable deleting the one-off migration tooling now. It’s the right simplification move after successful live cutover, but it is a burn-the-bridge step; recovery would be via git history, not a current script.",
   },
-  output: "Message delivered",
+  output: "Notification delivered",
   approvalStatus: null,
   activityIntents: [],
   durationMs: 50,
@@ -151,9 +151,9 @@ const errorTool: TimelineRow = toolRow({
   durationMs: 100,
 });
 
-// Interrupted tool — reuses a real message_user shape but with
+// Interrupted tool — reuses a real notify_user shape but with
 // status=interrupted (the user steered/aborted before the message was
-// delivered). Real interrupted message_user payloads are rare; the
+// delivered). Real interrupted notify_user payloads are rare; the
 // toolName/toolArgs are real, only the status is adjusted.
 const interruptedTool: TimelineRow = toolRow({
   id: "thr_bj3p5vk9py:tool:call_interrupted",
@@ -165,7 +165,7 @@ const interruptedTool: TimelineRow = toolRow({
   createdAt: 1777743100200,
   status: "interrupted",
   callId: "call_interrupted",
-  toolName: "message_user",
+  toolName: "notify_user",
   toolArgs: {
     text: "Got it. I’ve recorded this workflow and started the main Codex/GPT-5.5 xhigh worker in its own worktree to familiarize itself with the five change ranges before we process comments.\n\nI’ll wait for its readiness summary, then I’ll ask you for the first batch of 3–4 review comments and run the triage → fix/commit → review-check cycle you described.",
   },
@@ -240,26 +240,26 @@ export function Overview() {
         </TimelineStage>
       </StoryRow>
       <StoryRow
-        label="message_user — short"
+        label="notify_user — short"
         hint="single multi-line text arg, exercises the Show more overlay"
       >
         <TimelineStage>
           <ThreadTimelineRows
             {...baseProps}
-            initialExpanded={new Set([messageUserShort.id])}
-            timelineRows={[messageUserShort]}
+            initialExpanded={new Set([notifyUserShort.id])}
+            timelineRows={[notifyUserShort]}
           />
         </TimelineStage>
       </StoryRow>
       <StoryRow
-        label="message_user — long"
+        label="notify_user — long"
         hint="long markdown arg renders inside the row body"
       >
         <TimelineStage>
           <ThreadTimelineRows
             {...baseProps}
-            initialExpanded={new Set([messageUserLong.id])}
-            timelineRows={[messageUserLong]}
+            initialExpanded={new Set([notifyUserLong.id])}
+            timelineRows={[notifyUserLong]}
           />
         </TimelineStage>
       </StoryRow>

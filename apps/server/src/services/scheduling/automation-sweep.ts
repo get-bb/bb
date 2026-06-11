@@ -131,7 +131,6 @@ async function runAutomation(
       automationId: automation.id,
       origin: null,
       projectId: automation.projectId,
-      type: "standard",
     });
   } catch (error) {
     const restored = restoreAutomationAfterFailedRun(deps.db, deps.hub, {

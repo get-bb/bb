@@ -36,6 +36,39 @@ import {
   resolveThreadTimelinePlaceholder,
 } from "./query-placeholders";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { requireEnabledQueryArg } from "./query-helpers";
+
+describe("requireEnabledQueryArg", () => {
+  it("returns the value when present", () => {
+    expect(
+      requireEnabledQueryArg({
+        value: "thr_1",
+        hookName: "useThread",
+        argName: "thread id",
+      }),
+    ).toBe("thr_1");
+  });
+
+  it("keeps a numeric zero rather than treating it as missing", () => {
+    expect(
+      requireEnabledQueryArg({
+        value: 0,
+        hookName: "useLocalProviderCliStatus",
+        argName: "daemonPort",
+      }),
+    ).toBe(0);
+  });
+
+  it.each([null, undefined, ""])("throws when the value is %p", (value) => {
+    expect(() =>
+      requireEnabledQueryArg({
+        value,
+        hookName: "useThread",
+        argName: "thread id",
+      }),
+    ).toThrow("useThread: thread id is required when query is enabled");
+  });
+});
 
 function makeStatusResponse(
   state: WorkspaceStatus["workingTree"]["state"],
@@ -99,7 +132,6 @@ function makeThreadWithRuntime(
     projectId: "project-1",
     automationId: null,
     providerId: "codex",
-    type: "standard",
     createdAt: 1,
     status: "active",
     updatedAt: 1,

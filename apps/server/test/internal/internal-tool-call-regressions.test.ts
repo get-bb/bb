@@ -26,7 +26,6 @@ describe("internal tool-call regressions", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        type: "manager",
       });
 
       const response = await harness.app.request(

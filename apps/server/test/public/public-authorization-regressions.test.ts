@@ -125,7 +125,7 @@ describe("public authorization regressions", () => {
           projectId: project.id,
           providerId: "codex",
           model: "gpt-5",
-          input: [{ type: "text", text: "Create the managed thread" }],
+          input: [{ type: "text", text: "Create the child thread" }],
           environment: {
             type: "host",
             hostId: host.id,

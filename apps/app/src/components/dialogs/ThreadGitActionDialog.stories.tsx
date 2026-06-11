@@ -156,8 +156,8 @@ export function Overview() {
         </DialogStage>
       </StoryRow>
       <StoryRow
-        label="loading options"
-        hint="merge base options still loading — picker shows a spinner"
+        label="checking target branch"
+        hint="selected merge base is still being classified — inline footer status, submit disabled"
       >
         <DialogStage className={stageClassName}>
           <ThreadGitActionDialogContent
@@ -167,8 +167,29 @@ export function Overview() {
             changedFilesSection={changedFilesSection}
             showMergeBaseDetails
             mergeBaseBranch="main"
-            mergeBaseBranchOptions={[]}
+            mergeBaseBranchOptions={["main"]}
             mergeBaseBranchOptionsLoading
+            onMergeBaseBranchChange={noop}
+            onOpenChange={noop}
+            onCommit={asyncNoop}
+            onSquashMerge={asyncNoop}
+          />
+        </DialogStage>
+      </StoryRow>
+      <StoryRow
+        label="remote target blocked"
+        hint="selected merge base is remote-only — inline footer validation stays visible"
+      >
+        <DialogStage className={stageClassName}>
+          <ThreadGitActionDialogContent
+            target={squashTarget}
+            branchName={BRANCH_NAMES.feature}
+            gitStatusDisplay={aheadGitStatus}
+            showMergeBaseDetails
+            mergeBaseBranch="origin/main"
+            mergeBaseBranchRef={{ name: "origin/main", kind: "remote" }}
+            mergeBaseBranchOptions={mergeBaseOptions}
+            mergeBaseRemoteBranchOptions={mergeBaseRemoteOptions}
             onMergeBaseBranchChange={noop}
             onOpenChange={noop}
             onCommit={asyncNoop}

@@ -26,14 +26,14 @@ Spawning:
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
     --no-context-parent-thread     Do not default parent thread to BB_THREAD_ID
 
-  When --provider and --model are omitted, the project's remembered defaults apply.
+  Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.
   When --parent-thread is omitted inside a thread, BB_THREAD_ID is used automatically.
 
 Listing:
 
   bb thread list                           List threads
     --project <id>                         Filter by project (defaults to BB_PROJECT_ID)
-    --parent-thread <id>                   Filter by parent/manager
+    --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
 
 Inspecting:
@@ -53,9 +53,10 @@ Inspecting:
     --limit <count>                        Limit entries
     --after-seq <seq>                      Paginate after sequence number
 
-  bb thread output <id>                    Get the final output of a thread
+  bb thread output [id]                    Get the final output of a thread (defaults to BB_THREAD_ID)
+    --self                                 Target current thread
 
-  bb thread wait [id]                      Wait for a thread status or event
+  bb thread wait [id]                      Wait for a thread status or event (defaults to --status idle)
     --status <status>                      Wait for this status
     --event <type>                         Wait for this event type
     --timeout <seconds>                    Timeout
@@ -64,7 +65,7 @@ Inspecting:
 Messaging:
 
   bb thread tell <id> <message>            Send a follow-up message
-    --mode <mode>                          Message mode (e.g., steer)
+    --mode <mode>                          Message mode: queue (default), steer, or auto
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
 
@@ -76,7 +77,7 @@ Ownership:
   bb thread update [id]                    Update thread metadata
     --self                                 Target current thread
     --title <title>                        Set title
-    --parent-thread <id>                   Assign to a parent/manager
+    --parent-thread <id>                   Assign to a parent thread
     --clear-parent-thread                  Remove parent assignment
 
 Lifecycle:

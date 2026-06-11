@@ -1063,6 +1063,8 @@ export function createClaudeCodeProviderAdapter(
               threadId: command.threadId,
               cwd: command.cwd,
               instructionMode: command.instructionMode,
+              claudeCodeMockCliTraffic:
+                command.options.claudeCodeMockCliTraffic,
               permissionMode: toClaudePermissionMode(permissionPolicy),
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
@@ -1077,6 +1079,14 @@ export function createClaudeCodeProviderAdapter(
                 ? { reasoningLevel: command.options.reasoningLevel }
                 : {}),
               workflowsEnabled: command.options.workflowsEnabled,
+              ...(command.outputSchema !== undefined
+                ? {
+                    outputFormat: {
+                      type: "json_schema",
+                      schema: command.outputSchema,
+                    },
+                  }
+                : {}),
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
@@ -1125,6 +1135,8 @@ export function createClaudeCodeProviderAdapter(
               cwd: command.cwd,
               providerThreadId: command.providerThreadId,
               instructionMode: command.instructionMode,
+              claudeCodeMockCliTraffic:
+                command.options.claudeCodeMockCliTraffic,
               permissionMode: toClaudePermissionMode(permissionPolicy),
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
@@ -1149,6 +1161,11 @@ export function createClaudeCodeProviderAdapter(
           };
         }
         case "turn/start":
+          if (command.outputSchema !== undefined) {
+            throw new Error(
+              `Provider "${providerInfo.id}" structured output is session-level; pass outputSchema on thread/start instead.`,
+            );
+          }
           if (command.options?.model) {
             setClaudeModelContextWindowHint(
               command.threadId,

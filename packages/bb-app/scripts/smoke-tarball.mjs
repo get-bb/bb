@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -358,6 +358,23 @@ async function smokeProviderBridgeBundles(tarballPath) {
   });
 }
 
+async function smokeBuiltinWorkflows(tarballPath) {
+  const packageDir = await extractTarball(tarballPath);
+  for (const name of ["deep-research", "code-review"]) {
+    const builtinPath = join(
+      packageDir,
+      "host-daemon",
+      "builtins",
+      `${name}.workflow.js`,
+    );
+    try {
+      await access(builtinPath);
+    } catch {
+      throw new Error(`Missing builtin workflow in tarball: ${builtinPath}`);
+    }
+  }
+}
+
 async function smokeHelpCommands(tarballPath) {
   await runCommand({
     args: createNpxArgs(tarballPath, "bb-app", ["--help"]),
@@ -539,6 +556,7 @@ async function smokeDaemonJoin(tarballPath) {
 try {
   const tarballPath = await packTarball();
   await smokeProviderBridgeBundles(tarballPath);
+  await smokeBuiltinWorkflows(tarballPath);
   await smokeHelpCommands(tarballPath);
   await smokeConfigCommand(tarballPath);
   await smokeFullStack(tarballPath);

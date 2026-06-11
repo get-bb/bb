@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useIsSidebarShowing } from "@/components/ui/sidebar.js";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
 import {
   BROWSER_COLLAPSED_HEADER_RESERVE_CLASS,
   CHROME_ROW_CLASS,
@@ -35,8 +36,11 @@ export function AppPageHeader({
   className,
 }: AppPageHeaderProps) {
   const isSidebarShowing = useIsSidebarShowing();
+  const isCompactViewport = useIsCompactViewport();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+  const shouldReserveSidebarTrigger =
+    isCompactViewport || !isSidebarShowing;
   return (
     <header
       className={cn(
@@ -63,14 +67,13 @@ export function AppPageHeader({
           // and the sidebar arrows. No-op in the web build (no traffic lights).
           usesDesktopChrome && MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
           // The sidebar toggle is pinned at the app's top-left (see AppLayout's
-          // SidebarTriggerOverlay), so when the sidebar is collapsed the header
-          // content shares the row with that fixed button and reserves its
-          // footprint as left padding. Transition the padding on the same 200ms
-          // linear curve as the sidebar panel/inset slide so the two compose into
-          // one smooth motion; without it the reserve snaps on/off instantly
-          // while the inset animates and the content jumps left/right.
+          // SidebarTriggerOverlay). On desktop, reserve its footprint only when
+          // the sidebar is collapsed and content shares that row with the fixed
+          // button. On compact viewports, the sidebar opens as an overlay that
+          // covers the header, so keep the reserve stable across open/closed
+          // drawer state instead of shifting content behind the overlay.
           "transition-[padding] duration-200 ease-linear",
-          !isSidebarShowing &&
+          shouldReserveSidebarTrigger &&
             (usesDesktopChrome
               ? MACOS_COLLAPSED_HEADER_RESERVE_CLASS
               : BROWSER_COLLAPSED_HEADER_RESERVE_CLASS),

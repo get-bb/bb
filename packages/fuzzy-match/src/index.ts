@@ -1,5 +1,4 @@
 import { Fzf } from "fzf";
-import { distance } from "fastest-levenshtein";
 import type { FzfResultItem, Selector, Tiebreaker } from "fzf";
 
 export type FuzzyPathGetter<T> = (item: T) => string;
@@ -29,7 +28,6 @@ interface RankedPathMatch<T> {
   item: T;
   path: string;
   positions: number[];
-  tier: MatchTier;
   score: number;
   start: number;
 }
@@ -61,9 +59,21 @@ interface PathQueryParts {
   leafQuery: string;
 }
 
-interface SegmentMatch {
+interface PathSegment {
+  text: string;
+  start: number;
+  isFileName: boolean;
+}
+
+interface PathSegmentCandidate {
+  segment: PathSegment;
+  segmentIndex: number;
+}
+
+interface PathSegmentMatch extends PathSegmentCandidate {
   positions: number[];
   score: number;
+  start: number;
 }
 
 interface ComparableValues {
@@ -71,28 +81,33 @@ interface ComparableValues {
   value: string;
 }
 
-interface PathSegment {
-  text: string;
-  start: number;
-  isFileName: boolean;
-}
-
 export const FUZZY_MATCH_QUERY_MAX_LENGTH = 256;
 
 const STRUCTURED_QUERY_SEGMENT_MAX_COUNT = 8;
-const TYPO_MATCH_MAX_SEGMENT_LENGTH = 32;
+const IMPLICIT_DIRECTORY_QUERY_MIN_LENGTH = 2;
 
-enum MatchTier {
+enum PathIntentRank {
   PlainFzf = 0,
-  StructuredPath = 1,
-  ExactPrefix = 2,
+  DirectorySegmentPrefix = 1,
+  StructuredPath = 2,
+  ExactDirectoryPrefix = 3,
 }
 
 /**
- * Ranking is lexicographic: tier picks the matching strategy first, then these
- * scores order candidates inside the same strategy. The gaps keep stronger
- * human-visible signals, such as basename hits, ahead of weaker full-path hits.
+ * `fzf` is the only fuzzy alignment engine here. Path-specific behavior is a
+ * small intent layer around it: directory scopes and segment searches outrank a
+ * plain full-path fuzzy match, while the fzf score still orders candidates
+ * inside each intent.
  */
+const PATH_INTENT_SCORE = {
+  rankUnit: 1_000_000,
+  directorySegmentExact: 30_000,
+  directorySegmentPrefix: 25_000,
+  rootDirectorySegment: 5_000,
+  consecutiveSegment: 5_000,
+  leafSegment: 50_000,
+};
+
 const PATH_RELEVANCE_SCORE = {
   baseNameContains: 10_000,
   baseNameSubsequence: 5_000,
@@ -107,18 +122,6 @@ const TEXT_RELEVANCE_SCORE = {
   subsequence: 5_000,
 };
 
-const SEGMENT_SCORE = {
-  leafSegment: 50_000,
-  exact: 30_000,
-  prefix: 25_000,
-  contains: 20_000,
-  subsequence: 10_000,
-  typo: 7_500,
-  consecutiveSegment: 5_000,
-  typoDistancePenalty: 1_000,
-};
-const EXACT_PREFIX_SCORE = SEGMENT_SCORE.leafSegment + SEGMENT_SCORE.exact;
-
 function byPathStartAsc<T>(
   left: FzfResultItem<T>,
   right: FzfResultItem<T>,
@@ -132,6 +135,10 @@ function byPathLengthAsc<T>(
   selector: Selector<T>,
 ): number {
   return selector(left.item).length - selector(right.item).length;
+}
+
+function isPresent<T>(value: T | null): value is T {
+  return value !== null;
 }
 
 function getNormalizedQuery(query: string): string {
@@ -179,31 +186,6 @@ function isSubsequence(query: string, value: string): boolean {
   return query.length === 0;
 }
 
-function getSubsequencePositions(
-  query: string,
-  value: string,
-): number[] | null {
-  const comparable = getComparableValues(query, value);
-  const positions: number[] = [];
-  let queryIndex = 0;
-
-  for (
-    let valueIndex = 0;
-    valueIndex < comparable.value.length;
-    valueIndex += 1
-  ) {
-    if (comparable.value[valueIndex] === comparable.query[queryIndex]) {
-      positions.push(valueIndex);
-      queryIndex += 1;
-    }
-    if (queryIndex === comparable.query.length) {
-      return positions;
-    }
-  }
-
-  return comparable.query.length === 0 ? [] : null;
-}
-
 function countOccurrences(value: string, query: string): number {
   if (!query) {
     return 0;
@@ -243,82 +225,14 @@ function getPathRelevanceBonus(path: string, query: string): number {
   );
 }
 
-function getTypoThreshold(query: string): number {
-  if (query.length < 4) {
-    return 0;
-  }
-  return 2;
-}
-
-function getSegmentMatch(query: string, segment: string): SegmentMatch | null {
-  if (!query) {
-    return { positions: [], score: 0 };
-  }
-
-  const comparable = getComparableValues(query, segment);
-  const includesIndex = comparable.value.indexOf(comparable.query);
-  if (comparable.value === comparable.query) {
-    return {
-      positions: Array.from({ length: query.length }, (_, index) => index),
-      score: SEGMENT_SCORE.exact,
-    };
-  }
-  if (comparable.value.startsWith(comparable.query)) {
-    return {
-      positions: Array.from({ length: query.length }, (_, index) => index),
-      score: SEGMENT_SCORE.prefix - Math.max(segment.length - query.length, 0),
-    };
-  }
-  if (includesIndex !== -1) {
-    return {
-      positions: Array.from(
-        { length: query.length },
-        (_, index) => includesIndex + index,
-      ),
-      score: SEGMENT_SCORE.contains - includesIndex,
-    };
-  }
-
-  const subsequencePositions = getSubsequencePositions(query, segment);
-  if (subsequencePositions) {
-    return {
-      positions: subsequencePositions,
-      score:
-        SEGMENT_SCORE.subsequence - Math.max(segment.length - query.length, 0),
-    };
-  }
-
-  const threshold = getTypoThreshold(comparable.query);
-  if (
-    threshold === 0 ||
-    comparable.query.length > TYPO_MATCH_MAX_SEGMENT_LENGTH
-  ) {
-    return null;
-  }
-
-  const comparableSegmentPrefix = comparable.value.slice(
-    0,
-    comparable.query.length,
-  );
-  const typoDistance = distance(comparable.query, comparableSegmentPrefix);
-  if (typoDistance <= threshold) {
-    return {
-      positions: [],
-      score:
-        SEGMENT_SCORE.typo - typoDistance * SEGMENT_SCORE.typoDistancePenalty,
-    };
-  }
-
-  return null;
+function getRankedScore(rank: PathIntentRank, score: number): number {
+  return rank * PATH_INTENT_SCORE.rankUnit + score;
 }
 
 function compareRankedMatches<T>(
   left: RankedPathMatch<T>,
   right: RankedPathMatch<T>,
 ): number {
-  if (left.tier !== right.tier) {
-    return right.tier - left.tier;
-  }
   if (left.score !== right.score) {
     return right.score - left.score;
   }
@@ -351,6 +265,180 @@ function splitPathSegments(path: string): PathSegment[] {
   });
 }
 
+function getPrefixPositions(length: number): number[] {
+  return Array.from({ length }, (_, index) => index);
+}
+
+function mergePositions(left: number[], right: number[]): number[] {
+  return [...new Set([...left, ...right])].sort((a, b) => a - b);
+}
+
+function getPathSegmentMatch(
+  query: string,
+  pathSegments: readonly PathSegment[],
+  startSegmentIndex: number,
+  skipFileName: boolean,
+): PathSegmentMatch | null {
+  const candidates: PathSegmentCandidate[] = pathSegments
+    .map((segment, segmentIndex) => ({ segment, segmentIndex }))
+    .filter(
+      (candidate) =>
+        candidate.segmentIndex >= startSegmentIndex &&
+        !(skipFileName && candidate.segment.isFileName),
+    );
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const matcher = new Fzf<readonly PathSegmentCandidate[]>(candidates, {
+    selector: (candidate: PathSegmentCandidate) => candidate.segment.text,
+    casing: "smart-case",
+    forward: true,
+    tiebreakers: [byPathStartAsc, byPathLengthAsc],
+  });
+  const matches: FzfResultItem<PathSegmentCandidate>[] = matcher.find(query);
+  const match = matches[0];
+  if (!match) {
+    return null;
+  }
+
+  return {
+    segment: match.item.segment,
+    segmentIndex: match.item.segmentIndex,
+    positions: [...match.positions]
+      .map((position) => match.item.segment.start + position)
+      .sort((left, right) => left - right),
+    score: match.score,
+    start: match.item.segment.start + match.start,
+  };
+}
+
+function getDirectorySegmentPrefixPathMatch<T>(
+  item: NormalizedPathItem<T>,
+  query: string,
+): RankedPathMatch<T> | null {
+  if (query.length < IMPLICIT_DIRECTORY_QUERY_MIN_LENGTH) {
+    return null;
+  }
+
+  let bestMatch: PathSegmentMatch | null = null;
+  for (const [segmentIndex, segment] of splitPathSegments(
+    item.path,
+  ).entries()) {
+    if (segment.isFileName) {
+      continue;
+    }
+    const comparable = getComparableValues(query, segment.text);
+    let score: number;
+    if (comparable.value === comparable.query) {
+      score = PATH_INTENT_SCORE.directorySegmentExact;
+    } else if (comparable.value.startsWith(comparable.query)) {
+      score =
+        PATH_INTENT_SCORE.directorySegmentPrefix -
+        Math.max(segment.text.length - query.length, 0);
+    } else {
+      continue;
+    }
+
+    if (segment.start === 0) {
+      score += PATH_INTENT_SCORE.rootDirectorySegment;
+    }
+
+    const match: PathSegmentMatch = {
+      segment,
+      segmentIndex,
+      positions: Array.from(
+        { length: query.length },
+        (_, index) => segment.start + index,
+      ),
+      score,
+      start: segment.start,
+    };
+    if (!bestMatch || comparePathSegmentMatches(match, bestMatch) < 0) {
+      bestMatch = match;
+    }
+  }
+
+  if (!bestMatch) {
+    return null;
+  }
+
+  return {
+    item: item.item,
+    path: item.path,
+    positions: bestMatch.positions,
+    score: getRankedScore(
+      PathIntentRank.DirectorySegmentPrefix,
+      bestMatch.score,
+    ),
+    start: bestMatch.start,
+  };
+}
+
+function comparePathSegmentMatches(
+  left: PathSegmentMatch,
+  right: PathSegmentMatch,
+): number {
+  if (left.score !== right.score) {
+    return right.score - left.score;
+  }
+  return left.start - right.start;
+}
+
+function getExactDirectoryPrefixPathMatch<T>(
+  item: NormalizedPathItem<T>,
+  query: string,
+): RankedPathMatch<T> | null {
+  const queryParts = getPathQueryParts(query);
+  if (
+    !queryParts.directoryPrefix ||
+    !startsWithQueryCase(item.path, queryParts.directoryPrefix)
+  ) {
+    return null;
+  }
+
+  const prefixPositions = getPrefixPositions(queryParts.directoryPrefix.length);
+  if (!queryParts.leafQuery) {
+    return {
+      item: item.item,
+      path: item.path,
+      positions: prefixPositions,
+      score: getRankedScore(PathIntentRank.ExactDirectoryPrefix, 0),
+      start: 0,
+    };
+  }
+
+  const tail = item.path.slice(queryParts.directoryPrefix.length);
+  const matcher = new Fzf([tail], {
+    casing: "smart-case",
+    forward: true,
+    tiebreakers: [byPathStartAsc, byPathLengthAsc],
+  });
+  const tailMatches: FzfResultItem<string>[] = matcher.find(
+    queryParts.leafQuery,
+  );
+  const tailMatch = tailMatches[0];
+  if (!tailMatch) {
+    return null;
+  }
+
+  return {
+    item: item.item,
+    path: item.path,
+    positions: mergePositions(
+      prefixPositions,
+      [...tailMatch.positions].map(
+        (position) => queryParts.directoryPrefix.length + position,
+      ),
+    ),
+    score: getRankedScore(
+      PathIntentRank.ExactDirectoryPrefix,
+      tailMatch.score + getPathRelevanceBonus(tail, queryParts.leafQuery),
+    ),
+    start: 0,
+  };
+}
+
 function getStructuredPathMatch<T>(
   item: NormalizedPathItem<T>,
   query: string,
@@ -377,144 +465,75 @@ function getStructuredPathMatch<T>(
     querySegmentIndex < querySegments.length;
     querySegmentIndex += 1
   ) {
-    const querySegment = querySegments[querySegmentIndex];
-    let bestSegmentIndex = -1;
-    let bestSegmentMatch: SegmentMatch | null = null;
-
-    for (
-      let pathSegmentIndex = nextSegmentIndex;
-      pathSegmentIndex < pathSegments.length;
-      pathSegmentIndex += 1
-    ) {
-      const pathSegment = pathSegments[pathSegmentIndex];
-      if (
-        trailingSlash &&
-        querySegmentIndex === querySegments.length - 1 &&
-        pathSegment.isFileName
-      ) {
-        continue;
-      }
-
-      const segmentMatch = getSegmentMatch(querySegment, pathSegment.text);
-      if (
-        segmentMatch &&
-        (!bestSegmentMatch || segmentMatch.score > bestSegmentMatch.score)
-      ) {
-        bestSegmentMatch = segmentMatch;
-        bestSegmentIndex = pathSegmentIndex;
-      }
-    }
-
-    if (!bestSegmentMatch) {
+    const segmentMatch = getPathSegmentMatch(
+      querySegments[querySegmentIndex],
+      pathSegments,
+      nextSegmentIndex,
+      trailingSlash && querySegmentIndex === querySegments.length - 1,
+    );
+    if (!segmentMatch) {
       return null;
     }
 
-    const pathSegment = pathSegments[bestSegmentIndex];
-    const segmentPositions = bestSegmentMatch.positions.map(
-      (position) => pathSegment.start + position,
-    );
-    positions.push(...segmentPositions);
-    const segmentStart = segmentPositions[0] ?? pathSegment.start;
+    positions.push(...segmentMatch.positions);
     firstMatchStart =
       firstMatchStart === null
-        ? segmentStart
-        : Math.min(firstMatchStart, segmentStart);
-    score += bestSegmentMatch.score;
-    score +=
-      bestSegmentIndex === nextSegmentIndex
-        ? SEGMENT_SCORE.consecutiveSegment
-        : 0;
-    nextSegmentIndex = bestSegmentIndex + 1;
+        ? segmentMatch.start
+        : Math.min(firstMatchStart, segmentMatch.start);
+    score += segmentMatch.score;
+    if (segmentMatch.segmentIndex === nextSegmentIndex) {
+      score += PATH_INTENT_SCORE.consecutiveSegment;
+    }
+    nextSegmentIndex = segmentMatch.segmentIndex + 1;
   }
 
-  const leafMatch = getSegmentMatch(
-    querySegments[querySegments.length - 1],
-    getBaseName(item.path),
-  );
+  const leafSegment = pathSegments[pathSegments.length - 1];
+  const leafMatch = leafSegment
+    ? getPathSegmentMatch(
+        querySegments[querySegments.length - 1],
+        [leafSegment],
+        0,
+        false,
+      )
+    : null;
   if (leafMatch) {
-    score += SEGMENT_SCORE.leafSegment + leafMatch.score;
+    score += PATH_INTENT_SCORE.leafSegment + leafMatch.score;
   }
 
   return {
     item: item.item,
     path: item.path,
     positions: [...new Set(positions)].sort((left, right) => left - right),
-    tier: MatchTier.StructuredPath,
-    score,
+    score: getRankedScore(PathIntentRank.StructuredPath, score),
     start: firstMatchStart ?? 0,
   };
 }
 
-function getPrefixPositions(length: number): number[] {
-  return Array.from({ length }, (_, index) => index);
-}
-
-function mergePositions(left: number[], right: number[]): number[] {
-  return [...new Set([...left, ...right])].sort((a, b) => a - b);
-}
-
-function getPrefixMatches<T>(
-  items: NormalizedPathItem<T>[],
+function getExactDirectoryPrefixPathMatches<T>(
+  items: readonly NormalizedPathItem<T>[],
   query: string,
 ): RankedPathMatch<T>[] {
-  const queryParts = getPathQueryParts(query);
-  const prefixPositions = getPrefixPositions(queryParts.directoryPrefix.length);
-  const prefixMatches = items.filter((item) =>
-    startsWithQueryCase(item.path, queryParts.directoryPrefix),
-  );
-
-  if (!queryParts.leafQuery) {
-    return prefixMatches.map((match) => ({
-      item: match.item,
-      path: match.path,
-      positions: prefixPositions,
-      tier: MatchTier.ExactPrefix,
-      score: EXACT_PREFIX_SCORE,
-      start: 0,
-    }));
-  }
-
-  const matcher = new Fzf<readonly NormalizedPathItem<T>[]>(prefixMatches, {
-    selector: (match: NormalizedPathItem<T>) =>
-      match.path.slice(queryParts.directoryPrefix.length),
-    casing: "smart-case",
-    forward: true,
-    tiebreakers: [byPathStartAsc, byPathLengthAsc],
-  });
-
-  const matches: FzfResultItem<NormalizedPathItem<T>>[] = matcher.find(
-    queryParts.leafQuery,
-  );
-
-  return matches.map((match) => ({
-    item: match.item.item,
-    path: match.item.path,
-    positions: mergePositions(
-      prefixPositions,
-      [...match.positions].map(
-        (position) => position + queryParts.directoryPrefix.length,
-      ),
-    ),
-    tier: MatchTier.ExactPrefix,
-    score:
-      EXACT_PREFIX_SCORE +
-      match.score +
-      getPathRelevanceBonus(
-        match.item.path.slice(queryParts.directoryPrefix.length),
-        queryParts.leafQuery,
-      ),
-    start: 0,
-  }));
+  return items
+    .map((item) => getExactDirectoryPrefixPathMatch(item, query))
+    .filter(isPresent);
 }
 
 function getStructuredPathMatches<T>(
-  items: NormalizedPathItem<T>[],
+  items: readonly NormalizedPathItem<T>[],
   query: string,
 ): RankedPathMatch<T>[] {
   return items
     .map((item) => getStructuredPathMatch(item, query))
-    .filter((match) => match !== null)
-    .sort(compareRankedMatches);
+    .filter(isPresent);
+}
+
+function getDirectorySegmentPrefixPathMatches<T>(
+  items: readonly NormalizedPathItem<T>[],
+  query: string,
+): RankedPathMatch<T>[] {
+  return items
+    .map((item) => getDirectorySegmentPrefixPathMatch(item, query))
+    .filter(isPresent);
 }
 
 function isOnlyPathSeparators(query: string): boolean {
@@ -522,7 +541,7 @@ function isOnlyPathSeparators(query: string): boolean {
 }
 
 function rankPlainQueryMatches<T>(
-  items: NormalizedPathItem<T>[],
+  items: readonly NormalizedPathItem<T>[],
   query: string,
 ): RankedPathMatch<T>[] {
   const tiebreakers: Tiebreaker<NormalizedPathItem<T>>[] = [
@@ -543,35 +562,47 @@ function rankPlainQueryMatches<T>(
       item: match.item.item,
       path: match.item.path,
       positions: [...match.positions].sort((left, right) => left - right),
-      tier: MatchTier.PlainFzf,
-      score: match.score + getPathRelevanceBonus(match.item.path, query),
+      score:
+        getRankedScore(PathIntentRank.PlainFzf, match.score) +
+        getPathRelevanceBonus(match.item.path, query),
       start: match.start,
     }))
     .sort(compareRankedMatches);
 }
 
 function rankPathQueryMatches<T>(
-  items: NormalizedPathItem<T>[],
+  items: readonly NormalizedPathItem<T>[],
   query: string,
 ): RankedPathMatch<T>[] {
   if (isOnlyPathSeparators(query)) {
     return [];
   }
 
-  const pathMatches = mergeRankedMatches(
-    getPrefixMatches(items, query).concat(
-      getStructuredPathMatches(items, query),
-    ),
-  );
-  if (pathMatches.length > 0) {
-    return pathMatches;
+  if (query.includes("/")) {
+    const exactPrefixMatches = getExactDirectoryPrefixPathMatches(items, query);
+    if (exactPrefixMatches.length > 0 && query.endsWith("/")) {
+      return mergeRankedMatches(exactPrefixMatches);
+    }
+
+    const structuredMatches = getStructuredPathMatches(items, query);
+    if (exactPrefixMatches.length > 0) {
+      return mergeRankedMatches(exactPrefixMatches.concat(structuredMatches));
+    }
+
+    return mergeRankedMatches(
+      rankPlainQueryMatches(items, query).concat(structuredMatches),
+    );
   }
 
-  return rankPlainQueryMatches(items, query);
+  return mergeRankedMatches(
+    rankPlainQueryMatches(items, query).concat(
+      getDirectorySegmentPrefixPathMatches(items, query),
+    ),
+  );
 }
 
 function mergeRankedMatches<T>(
-  matches: RankedPathMatch<T>[],
+  matches: readonly RankedPathMatch<T>[],
 ): RankedPathMatch<T>[] {
   const matchesByPath = new Map<string, RankedPathMatch<T>>();
 
@@ -586,7 +617,7 @@ function mergeRankedMatches<T>(
 }
 
 function rankedMatchesToFuzzyMatches<T>(
-  matches: RankedPathMatch<T>[],
+  matches: readonly RankedPathMatch<T>[],
   limit: number,
 ): FuzzyMatch<T>[] {
   return matches.slice(0, limit).map((match) => ({
@@ -673,7 +704,7 @@ function compareRankedTextMatches<T>(
 }
 
 function rankTextQueryMatches<T>(
-  candidates: NormalizedTextCandidate<T>[],
+  candidates: readonly NormalizedTextCandidate<T>[],
   query: string,
 ): RankedTextMatch<T>[] {
   const tiebreakers: Tiebreaker<NormalizedTextCandidate<T>>[] = [
@@ -686,6 +717,7 @@ function rankTextQueryMatches<T>(
     forward: true,
     tiebreakers,
   });
+
   const matches: FzfResultItem<NormalizedTextCandidate<T>>[] =
     matcher.find(query);
 
@@ -703,7 +735,7 @@ function rankTextQueryMatches<T>(
 }
 
 function mergeRankedTextMatches<T>(
-  matches: RankedTextMatch<T>[],
+  matches: readonly RankedTextMatch<T>[],
 ): RankedTextMatch<T>[] {
   const matchesByItemIndex = new Map<number, RankedTextMatch<T>>();
 
@@ -718,7 +750,7 @@ function mergeRankedTextMatches<T>(
 }
 
 function rankedTextMatchesToFuzzyMatches<T>(
-  matches: RankedTextMatch<T>[],
+  matches: readonly RankedTextMatch<T>[],
   limit: number,
 ): FuzzyMatch<T>[] {
   return matches.slice(0, limit).map((match) => ({
@@ -755,15 +787,8 @@ export function fuzzyMatchPaths<T>(
     path: getNormalizedPath(item),
   }));
 
-  if (normalizedQuery.includes("/")) {
-    return rankedMatchesToFuzzyMatches(
-      rankPathQueryMatches(normalizedItems, normalizedQuery),
-      args.limit,
-    );
-  }
-
   return rankedMatchesToFuzzyMatches(
-    rankPlainQueryMatches(normalizedItems, normalizedQuery),
+    rankPathQueryMatches(normalizedItems, normalizedQuery),
     args.limit,
   );
 }

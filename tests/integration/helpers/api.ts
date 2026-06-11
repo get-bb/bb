@@ -18,7 +18,6 @@ import {
 } from "@bb/domain";
 import { listPreferredTestModels } from "@bb/test-helpers";
 import type {
-  CreateManagerThreadRequest,
   CreateProjectRequest,
   CreateThreadRequest,
   EnvironmentActionRequest,
@@ -53,6 +52,7 @@ export interface CreateHostThreadOptions {
   hostId: string;
   input?: CreateThreadRequest["input"];
   origin?: CreateThreadRequest["origin"];
+  parentThreadId?: string;
   projectId: string;
   providerId?: string;
   title?: string;
@@ -66,16 +66,10 @@ export interface CreateReuseThreadOptions {
   environmentId: string;
   input?: CreateThreadRequest["input"];
   origin?: CreateThreadRequest["origin"];
+  parentThreadId?: string;
   projectId: string;
   providerId?: string;
   title?: string;
-}
-
-export interface CreateManagerThreadOptions extends Omit<
-  CreateManagerThreadRequest,
-  "origin"
-> {
-  origin?: CreateManagerThreadRequest["origin"];
 }
 
 export type ThreadExecutionRequestOptions = Pick<
@@ -110,7 +104,7 @@ interface ResolveThreadInteractionArgs {
   threadId: string;
 }
 
-async function expectStatus(
+export async function expectStatus(
   response: Response,
   expectedStatus: number,
   label: string,
@@ -179,26 +173,6 @@ export async function createProject(
   return projectResponseSchema.parse(await response.json());
 }
 
-export async function createManagerThread(
-  api: PublicApiClient,
-  projectId: string,
-  request: CreateManagerThreadOptions,
-): Promise<Thread> {
-  const response = await api.projects[":id"].managers.$post({
-    param: { id: projectId },
-    json: {
-      ...request,
-      origin: request.origin ?? DEFAULT_PUBLIC_TEST_THREAD_ORIGIN,
-    },
-  });
-  await expectStatus(
-    response,
-    201,
-    `create manager thread for project ${projectId}`,
-  );
-  return threadSchema.parse(await response.json());
-}
-
 export async function createHostThread(
   api: PublicApiClient,
   options: CreateHostThreadOptions,
@@ -217,6 +191,7 @@ export async function createHostThread(
       origin,
       ...execution,
       model: model ?? defaultModelForProvider(providerId),
+      parentThreadId: options.parentThreadId,
       projectId: options.projectId,
       providerId,
       title: options.title,
@@ -243,6 +218,7 @@ export async function createReuseThread(
       origin,
       ...execution,
       model: model ?? defaultModelForProvider(providerId),
+      parentThreadId: options.parentThreadId,
       projectId: options.projectId,
       providerId,
       title: options.title,
@@ -258,7 +234,7 @@ export async function deleteThread(
 ): Promise<void> {
   const response = await api.threads[":id"].$delete({
     param: { id: threadId },
-    json: { managerChildThreadsConfirmed: false },
+    json: { childThreadsConfirmed: false },
   });
   await expectStatus(response, 200, `delete thread ${threadId}`);
 }

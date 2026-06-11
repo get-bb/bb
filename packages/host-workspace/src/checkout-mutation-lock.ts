@@ -1,10 +1,5 @@
 import path from "node:path";
-import {
-  getAbsoluteGitDir,
-  runGit,
-  type GitCommandResult,
-  type RunGitOptions,
-} from "./git.js";
+import { getAbsoluteGitDir, runGit } from "./git.js";
 import {
   withProcessLocalQueuedLocks,
   type ProcessLocalQueuedLockSpec,
@@ -126,16 +121,5 @@ export async function withCheckoutMutationLocks<T>(
       return withProcessLocalQueuedLocks({ locks, signal, work });
     },
     signal,
-  );
-}
-
-export async function runGitWithCheckoutMutationLock(
-  args: string[],
-  options: RunGitOptions,
-): Promise<GitCommandResult> {
-  return withCheckoutMutationLock(
-    options.cwd,
-    () => runGit(args, options),
-    options.signal,
   );
 }

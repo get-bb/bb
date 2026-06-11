@@ -179,7 +179,7 @@ export function buildAutoFollowUpRequest({
   return {
     id: threadId,
     input,
-    mode: "auto",
+    mode: "queue-if-active",
     ...buildSharedThreadExecutionRequestFields(execution),
   };
 }
@@ -195,7 +195,7 @@ function buildSteerFollowUpRequest({
   return {
     id: threadId,
     input,
-    mode: "steer",
+    mode: "steer-if-active",
   };
 }
 

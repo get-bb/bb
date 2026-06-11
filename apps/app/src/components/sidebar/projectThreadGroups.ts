@@ -49,11 +49,6 @@ interface BuildThreadNodeArgs {
   visitedThreadIds: Set<string>;
 }
 
-interface BuildRootItemsArgs {
-  projectThreads: readonly ThreadListEntry[];
-  rootNodes: ProjectThreadNode[];
-}
-
 interface BucketWorktreeEnvironmentGroupsResult {
   environmentThreadGroups: EnvironmentThreadGroup[];
   looseNodes: ProjectThreadNode[];
@@ -184,31 +179,6 @@ function buildSortedItems(nodes: ProjectThreadNode[]): ProjectThreadItem[] {
   return items;
 }
 
-function buildRootItems({
-  projectThreads,
-  rootNodes,
-}: BuildRootItemsArgs): ProjectThreadItem[] {
-  const rootNodesById = new Map(rootNodes.map((node) => [node.thread.id, node]));
-  const orderedManagerRootItems: ProjectThreadItem[] = [];
-  const orderedManagerRootIds = new Set<string>();
-
-  for (const thread of projectThreads) {
-    if (thread.type !== "manager") continue;
-    const node = rootNodesById.get(thread.id);
-    if (!node) continue;
-
-    orderedManagerRootIds.add(node.thread.id);
-    orderedManagerRootItems.push(buildThreadItem(node));
-  }
-
-  return [
-    ...orderedManagerRootItems,
-    ...buildSortedItems(
-      rootNodes.filter((node) => !orderedManagerRootIds.has(node.thread.id)),
-    ),
-  ];
-}
-
 function buildThreadNode({
   ancestorThreadIds,
   childrenByParentId,
@@ -308,7 +278,7 @@ export function buildProjectThreadGroups(
     );
   }
 
-  return buildRootItems({ projectThreads, rootNodes });
+  return buildSortedItems(rootNodes);
 }
 
 // Bucket nodes by shared worktree environmentId. A bucket only becomes a group

@@ -115,6 +115,7 @@ function ReorderableQueuedMessagesList() {
       sendDisabled={false}
       actionDisabled={false}
       processingMessageId={null}
+      processingAction={null}
       onSendImmediately={noop}
       onReorder={handleReorder}
       onEdit={noop}
@@ -141,6 +142,7 @@ export function Overview() {
             sendDisabled={false}
             actionDisabled={false}
             processingMessageId={null}
+            processingAction={null}
             onSendImmediately={noop}
             onReorder={noop}
             onEdit={noop}
@@ -163,6 +165,7 @@ export function Overview() {
             sendDisabled={false}
             actionDisabled={false}
             processingMessageId={null}
+            processingAction={null}
             onSendImmediately={noop}
             onReorder={noop}
             onEdit={noop}
@@ -180,6 +183,7 @@ export function Overview() {
             sendDisabled={false}
             actionDisabled={false}
             processingMessageId={null}
+            processingAction={null}
             onSendImmediately={noop}
             onReorder={noop}
             onEdit={noop}
@@ -197,6 +201,7 @@ export function Overview() {
             sendDisabled={false}
             actionDisabled={false}
             processingMessageId="q_b"
+            processingAction="send"
             onSendImmediately={noop}
             onReorder={noop}
             onEdit={noop}
@@ -214,6 +219,7 @@ export function Overview() {
             sendDisabled
             actionDisabled={false}
             processingMessageId={null}
+            processingAction={null}
             onSendImmediately={noop}
             onReorder={noop}
             onEdit={noop}

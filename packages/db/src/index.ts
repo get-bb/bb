@@ -27,6 +27,7 @@ export {
   createThreadScheduleId,
   createThreadId,
   createThreadProvisioningId,
+  createWorkflowRunId,
 } from "./ids.js";
 
 export { migrate } from "./migrate.js";

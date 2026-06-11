@@ -52,7 +52,6 @@ function makeThread(overrides: ThreadOverrides = {}): ThreadWithRuntime {
     stopRequestedAt: null,
     title: "Thread title",
     titleFallback: "Thread title",
-    type: "standard",
     updatedAt: 1,
     ...overrides,
   };
@@ -81,6 +80,7 @@ function makeSidebarNavigationResponse(
     projects: [
       {
         createdAt: 1,
+        defaultExecutionOptions: null,
         id: "project-1",
         kind: "standard",
         name: "Project One",
@@ -91,6 +91,7 @@ function makeSidebarNavigationResponse(
     ],
     personalProject: {
       createdAt: 1,
+      defaultExecutionOptions: null,
       id: "personal-project",
       kind: "personal",
       name: "Personal",

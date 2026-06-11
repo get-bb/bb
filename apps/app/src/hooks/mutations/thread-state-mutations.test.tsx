@@ -14,8 +14,8 @@ import {
 } from "../queries/query-keys";
 import {
   useArchiveThread,
+  useArchiveThreadAndChildren,
   useDeleteThread,
-  useArchiveManagerThreads,
   useMarkThreadRead,
   useMarkThreadUnread,
   usePinThread,
@@ -25,7 +25,7 @@ import {
 
 vi.mock("@/lib/api", () => ({
   archiveThread: vi.fn(),
-  archiveManagerThreads: vi.fn(),
+  archiveThreadAndChildren: vi.fn(),
   deleteThread: vi.fn(),
   markThreadRead: vi.fn(),
   markThreadUnread: vi.fn(),
@@ -69,7 +69,6 @@ function makeThread(
     stopRequestedAt: null,
     title: "Thread title",
     titleFallback: "Thread title",
-    type: "standard",
     updatedAt: 10,
     ...overrides,
   };
@@ -98,6 +97,7 @@ function makeSidebarNavigationResponse(
     projects: [
       {
         createdAt: 1,
+        defaultExecutionOptions: null,
         id: "project-1",
         kind: "standard",
         name: "Project One",
@@ -108,6 +108,7 @@ function makeSidebarNavigationResponse(
     ],
     personalProject: {
       createdAt: 1,
+      defaultExecutionOptions: null,
       id: "personal-project",
       kind: "personal",
       name: "Personal",
@@ -336,7 +337,7 @@ describe("thread state mutations", () => {
     act(() => {
       result.current.mutate({
         id: deletedThread.id,
-        managerChildThreadsConfirmed: false,
+        childThreadsConfirmed: false,
       });
     });
 
@@ -350,21 +351,20 @@ describe("thread state mutations", () => {
     });
   });
 
-  it("archives cached manager groups and invalidates thread lists", async () => {
-    const managerThread = makeThread({
-      id: "manager-1",
-      type: "manager",
+  it("archives cached parent groups and invalidates thread lists", async () => {
+    const parentThread = makeThread({
+      id: "parent-1",
     });
     const childThread = makeThread({
       id: "child-1",
-      parentThreadId: managerThread.id,
+      parentThreadId: parentThread.id,
     });
     const otherThread = makeThread({
       id: "thread-2",
     });
-    vi.mocked(api.archiveManagerThreads).mockResolvedValue({
+    vi.mocked(api.archiveThreadAndChildren).mockResolvedValue({
       ok: true,
-      archivedThreadIds: [childThread.id, managerThread.id],
+      archivedThreadIds: [childThread.id, parentThread.id],
     });
 
     const { queryClient, wrapper } = createQueryClientTestHarness();
@@ -373,16 +373,15 @@ describe("thread state mutations", () => {
       projectId: "project-1",
     });
     const sidebarNavigationKey = sidebarNavigationQueryKey();
-    queryClient.setQueryData(threadQueryKey(managerThread.id), managerThread);
+    queryClient.setQueryData(threadQueryKey(parentThread.id), parentThread);
     queryClient.setQueryData(threadQueryKey(childThread.id), childThread);
     const cachedThreads = [
       makeThreadListEntry({
-        id: managerThread.id,
-        type: managerThread.type,
+        id: parentThread.id,
       }),
       makeThreadListEntry({
         id: childThread.id,
-        parentThreadId: managerThread.id,
+        parentThreadId: parentThread.id,
       }),
       makeThreadListEntry({
         id: otherThread.id,
@@ -394,15 +393,15 @@ describe("thread state mutations", () => {
       makeSidebarNavigationResponse(cachedThreads),
     );
 
-    const { result } = renderHook(() => useArchiveManagerThreads(), {
+    const { result } = renderHook(() => useArchiveThreadAndChildren(), {
       wrapper,
     });
 
     await act(async () => {
-      await result.current.mutateAsync({ id: managerThread.id });
+      await result.current.mutateAsync({ id: parentThread.id });
     });
 
-    expect(api.archiveManagerThreads).toHaveBeenCalledWith(managerThread.id);
+    expect(api.archiveThreadAndChildren).toHaveBeenCalledWith(parentThread.id);
     expect(queryClient.getQueryData<ThreadListEntry[]>(listKey)).toEqual([
       expect.objectContaining({ id: otherThread.id }),
     ]);
@@ -414,7 +413,7 @@ describe("thread state mutations", () => {
     ).toEqual([otherThread.id]);
     expect(
       queryClient.getQueryData<ThreadWithRuntime>(
-        threadQueryKey(managerThread.id),
+        threadQueryKey(parentThread.id),
       )?.archivedAt,
     ).toBeTypeOf("number");
     expect(
@@ -428,24 +427,22 @@ describe("thread state mutations", () => {
     );
   });
 
-  it("restores cached manager groups when archive all fails", async () => {
-    const managerThread = makeThread({
-      id: "manager-1",
-      type: "manager",
+  it("restores cached parent groups when archive all fails", async () => {
+    const parentThread = makeThread({
+      id: "parent-1",
     });
     const childThread = makeThread({
       id: "child-1",
-      parentThreadId: managerThread.id,
+      parentThreadId: parentThread.id,
     });
-    const managerListEntry = makeThreadListEntry({
-      id: managerThread.id,
-      type: managerThread.type,
+    const parentListEntry = makeThreadListEntry({
+      id: parentThread.id,
     });
     const childListEntry = makeThreadListEntry({
       id: childThread.id,
-      parentThreadId: managerThread.id,
+      parentThreadId: parentThread.id,
     });
-    vi.mocked(api.archiveManagerThreads).mockRejectedValue(
+    vi.mocked(api.archiveThreadAndChildren).mockRejectedValue(
       new Error("archive failed"),
     );
 
@@ -455,46 +452,46 @@ describe("thread state mutations", () => {
       projectId: "project-1",
     });
     const sidebarNavigationKey = sidebarNavigationQueryKey();
-    queryClient.setQueryData(threadQueryKey(managerThread.id), managerThread);
+    queryClient.setQueryData(threadQueryKey(parentThread.id), parentThread);
     queryClient.setQueryData(threadQueryKey(childThread.id), childThread);
     queryClient.setQueryData<ThreadListEntry[]>(listKey, [
-      managerListEntry,
+      parentListEntry,
       childListEntry,
     ]);
     queryClient.setQueryData<SidebarBootstrapResponse>(
       sidebarNavigationKey,
-      makeSidebarNavigationResponse([managerListEntry, childListEntry]),
+      makeSidebarNavigationResponse([parentListEntry, childListEntry]),
     );
 
-    const { result } = renderHook(() => useArchiveManagerThreads(), {
+    const { result } = renderHook(() => useArchiveThreadAndChildren(), {
       wrapper,
     });
 
     await act(async () => {
       await expect(
-        result.current.mutateAsync({ id: managerThread.id }),
+        result.current.mutateAsync({ id: parentThread.id }),
       ).rejects.toThrow("archive failed");
     });
 
     expect(
       queryClient.getQueryData<ThreadWithRuntime>(
-        threadQueryKey(managerThread.id),
+        threadQueryKey(parentThread.id),
       ),
-    ).toEqual(managerThread);
+    ).toEqual(parentThread);
     expect(
       queryClient.getQueryData<ThreadWithRuntime>(
         threadQueryKey(childThread.id),
       ),
     ).toEqual(childThread);
     expect(queryClient.getQueryData<ThreadListEntry[]>(listKey)).toEqual([
-      managerListEntry,
+      parentListEntry,
       childListEntry,
     ]);
     expect(
       queryClient
         .getQueryData<SidebarBootstrapResponse>(sidebarNavigationKey)
         ?.projects.at(0)?.threads,
-    ).toEqual([managerListEntry, childListEntry]);
+    ).toEqual([parentListEntry, childListEntry]);
   });
 
   it("marks a thread read without invalidating active thread lists", async () => {

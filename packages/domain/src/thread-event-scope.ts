@@ -150,7 +150,7 @@ export const threadEventScopeDefinitionByType = {
   "system/manager/user_message": {
     policy: "thread-or-turn",
     rationale:
-      "Manager messages can be thread-scoped for general manager updates or turn-scoped for in-turn updates.",
+      "Legacy persisted user-visible system messages may be thread-scoped for general updates or turn-scoped for in-turn updates.",
   },
   "system/thread/interrupted": {
     policy: "thread",

@@ -17,13 +17,7 @@ import {
 import { textInput } from "../../helpers/prompt-input.js";
 import { createTestAppHarness } from "../../helpers/test-app.js";
 
-interface CreateThreadEventTestContextArgs {
-  threadType?: "standard" | "manager";
-}
-
-async function createThreadEventTestContext(
-  args: CreateThreadEventTestContextArgs = {},
-) {
+async function createThreadEventTestContext() {
   const harness = await createTestAppHarness();
   const { host } = seedHostSession(harness.deps);
   const { project } = seedProjectWithSource(harness.deps, {
@@ -36,7 +30,6 @@ async function createThreadEventTestContext(
   const thread = seedThread(harness.deps, {
     projectId: project.id,
     environmentId: environment.id,
-    type: args.threadType ?? "standard",
   });
 
   return { environment, harness, thread };
@@ -262,62 +255,9 @@ describe("thread event appends", () => {
     }
   });
 
-  it("updates manager attention before notifying that a user-visible manager event was appended", async () => {
-    const { harness, thread } = await createThreadEventTestContext({
-      threadType: "manager",
-    });
-    try {
-      harness.db
-        .update(threads)
-        .set({
-          lastReadAt: 1_000,
-          latestAttentionAt: 1_000,
-          updatedAt: 1_000,
-        })
-        .where(eq(threads.id, thread.id))
-        .run();
-      vi.spyOn(Date, "now").mockReturnValue(2_000);
-      const attentionAtNotification: number[] = [];
-      const notifyThreadSpy = vi
-        .spyOn(harness.deps.hub, "notifyThread")
-        .mockImplementation((threadId, changes) => {
-          if (threadId !== thread.id || !changes.includes("events-appended")) {
-            return;
-          }
-          const notifiedThread = getThread(harness.db, thread.id);
-          if (notifiedThread) {
-            attentionAtNotification.push(notifiedThread.latestAttentionAt);
-          }
-        });
-
-      const sequence = appendThreadEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: null,
-        type: "system/manager/user_message",
-        scope: threadScope(),
-        data: {
-          text: "Please review this update.",
-        },
-      });
-
-      expect(sequence).toBe(1);
-      expect(attentionAtNotification).toEqual([2_000]);
-      expect(notifyThreadSpy).toHaveBeenCalledWith(
-        thread.id,
-        ["events-appended", "read-state-changed"],
-        {
-          eventTypes: ["system/manager/user_message"],
-          projectId: thread.projectId,
-        },
-      );
-    } finally {
-      await harness.cleanup();
-    }
-  });
-
   it("advances lastReadAt and notifies read-state-changed for a user-initiated turn request", async () => {
     const { environment, harness, thread } =
-      await createThreadEventTestContext({ threadType: "manager" });
+      await createThreadEventTestContext();
     try {
       harness.db
         .update(threads)
@@ -366,7 +306,7 @@ describe("thread event appends", () => {
 
   it("does not advance lastReadAt for an agent-initiated turn request", async () => {
     const { environment, harness, thread } =
-      await createThreadEventTestContext({ threadType: "manager" });
+      await createThreadEventTestContext();
     try {
       harness.db
         .update(threads)
@@ -410,40 +350,4 @@ describe("thread event appends", () => {
     }
   });
 
-  it("updates manager attention inside batched transactional appends", async () => {
-    const { harness, thread } = await createThreadEventTestContext({
-      threadType: "manager",
-    });
-    try {
-      harness.db
-        .update(threads)
-        .set({
-          lastReadAt: 1_000,
-          latestAttentionAt: 1_000,
-          updatedAt: 1_000,
-        })
-        .where(eq(threads.id, thread.id))
-        .run();
-      vi.spyOn(Date, "now").mockReturnValue(2_000);
-
-      const sequences = harness.db.transaction((tx) =>
-        appendThreadEventsInTransaction(tx, [
-          {
-            threadId: thread.id,
-            environmentId: null,
-            type: "system/manager/user_message",
-            scope: threadScope(),
-            data: {
-              text: "Transactional update.",
-            },
-          },
-        ]),
-      );
-
-      expect(sequences).toEqual([1]);
-      expect(getThread(harness.db, thread.id)?.latestAttentionAt).toBe(2_000);
-    } finally {
-      await harness.cleanup();
-    }
-  });
 });

@@ -33,12 +33,23 @@ export type {
 
 export {
   getProjectExecutionDefaults,
+  listProjectExecutionDefaultsByProjectIds,
   upsertProjectExecutionDefaults,
 } from "./project-execution-defaults.js";
 export type {
   GetProjectExecutionDefaultsArgs,
+  ListProjectExecutionDefaultsByProjectIdsArgs,
   UpsertProjectExecutionDefaultsArgs,
 } from "./project-execution-defaults.js";
+
+export {
+  getProjectWorkflowPolicy,
+  upsertProjectWorkflowPolicy,
+} from "./project-workflow-policies.js";
+export type {
+  ProjectWorkflowPolicyRow,
+  UpsertProjectWorkflowPolicyArgs,
+} from "./project-workflow-policies.js";
 
 export {
   createProjectSource,
@@ -96,6 +107,7 @@ export {
   listActiveVisiblePinnedThreadRoots,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   listLiveThreadsInEnvironment,
+  listNonDeletedChildThreads,
   listStopRequestedThreads,
   listThreadEnvironmentAssignmentsOnHost,
   listTrackedThreadStorageTargetsOnHost,
@@ -105,7 +117,6 @@ export {
   listThreadsWithPendingInteractionStateForProjects,
   pinThread,
   reorderPinnedThread,
-  reorderManagerThread,
   updateThread,
   deleteThread,
   archiveThread,
@@ -125,10 +136,9 @@ export type {
   CountNonDeletedAssignedChildThreadsArgs,
   CreateThreadInput,
   HasNonTerminalThreadInEnvironmentArgs,
+  ListNonDeletedChildThreadsArgs,
   ListUnarchivedAssignedChildThreadsArgs,
   ListThreadsOptions,
-  ReorderManagerThreadArgs,
-  ReorderManagerThreadResult,
   StopRequestedThreadRow,
   TransitionThreadStatusInTransactionArgs,
   ListThreadEnvironmentAssignmentsOnHostArgs,
@@ -174,6 +184,61 @@ export type {
   ThreadScheduleWithThreadAndProjectRow,
   UpdateThreadScheduleInput,
 } from "./thread-schedules.js";
+
+export { getExperiments, setExperiments } from "./app-settings.js";
+
+export {
+  ALLOWED_WORKFLOW_RUN_STATUS_TRANSITIONS,
+  createWorkflowRun,
+  getWorkflowRun,
+  getWorkflowRunByClientRequestId,
+  InvalidWorkflowRunStatusTransitionError,
+  listArchivableWorkflowRuns,
+  listWorkflowRunsAwaitingRunDirPrune,
+  listWorkflowRuns,
+  listWorkflowRunsByHostAndStatuses,
+  listWorkflowRunsByIds,
+  listWorkflowRunsWithPendingManagerNotification,
+  markWorkflowRunUserArchived,
+  markWorkflowRunUserDeleted,
+} from "./workflow-runs.js";
+export type {
+  CreateWorkflowRunInput,
+  ListArchivableWorkflowRunsArgs,
+  ListWorkflowRunsArgs,
+  ListWorkflowRunsAwaitingRunDirPruneArgs,
+  ListWorkflowRunsByHostAndStatusesArgs,
+  TransitionableWorkflowRunStatus,
+  WorkflowRunRow,
+  WorkflowRunUsageTotals,
+} from "./workflow-runs.js";
+
+export {
+  getWorkflowRunOperation,
+  getWorkflowRunOperationByCommandId,
+  listWorkflowRunOperations,
+} from "./workflow-run-operations.js";
+export type {
+  GetWorkflowRunOperationArgs,
+  ListWorkflowRunOperationsArgs,
+  WorkflowRunOperationRow,
+} from "./workflow-run-operations.js";
+
+export {
+  appendWorkflowRunEventsInTransaction,
+  hasWorkflowRunEventsSince,
+  listWorkflowRunEvents,
+  ProducerEventPayloadMismatchError,
+} from "./workflow-run-events.js";
+export type {
+  AcceptedWorkflowRunEvent,
+  AppendWorkflowRunEventInput,
+  AppendWorkflowRunEventsResult,
+  HasWorkflowRunEventsSinceArgs,
+  ListWorkflowRunEventsArgs,
+  ProducerEventPayloadMismatchDetails,
+  WorkflowRunEventRow,
+} from "./workflow-run-events.js";
 
 export {
   getThreadDynamicContextFileState,
@@ -234,6 +299,7 @@ export {
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
   getLatestThreadOutputEventRow,
+  getLatestThreadSystemErrorEventRow,
   getLatestThreadSequence,
   insertEvents,
   listContextWindowUsageRows,
@@ -278,7 +344,6 @@ export type {
   ListEventsOptions,
   ListTimelineSegmentAnchorsDescendingArgs,
   TimelineSegmentAnchorLookupArgs,
-  TimelineSegmentAnchorAudience,
   ListStoredClientTurnRequestIdsInRangeArgs,
   ListStoredThreadProvisioningRowsByProvisioningIdArgs,
   ListStoredTimelineWindowEventRowsArgs,

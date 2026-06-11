@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { ThreadListEntry } from "@bb/domain";
+import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   makeEnvironment,
   makeThread,
@@ -21,6 +22,10 @@ export {
 
 const noop = () => {};
 
+export const localEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "local",
+};
+
 export function PanelStage({ children }: { children: ReactNode }) {
   return (
     <div className="w-full max-w-[480px] min-w-0 rounded-md border border-border bg-background px-4 py-3">
@@ -29,18 +34,16 @@ export function PanelStage({ children }: { children: ReactNode }) {
   );
 }
 
-export const managerThreads: ThreadListEntry[] = [
+export const parentThreads: ThreadListEntry[] = [
   makeThreadListEntry({
-    id: "thr_codex_manager",
-    type: "manager",
-    title: "Codex Manager",
-    titleFallback: "Codex Manager",
+    id: "thr_codex_parent",
+    title: "Codex Parent",
+    titleFallback: "Codex Parent",
   }),
   makeThreadListEntry({
-    id: "thr_frontend_manager",
-    type: "manager",
-    title: "Frontend Manager",
-    titleFallback: "Frontend Manager",
+    id: "thr_frontend_parent",
+    title: "Frontend Parent",
+    titleFallback: "Frontend Parent",
   }),
 ];
 
@@ -48,10 +51,11 @@ export const baseProps: ThreadMetadataContentProps = {
   thread: makeThread(),
   projectId: "proj_bb",
   parentThreadDisplayName: null,
-  managerThreads,
-  canAssignToManager: true,
+  parentThreads,
+  canAssignToParent: true,
   canTakeOverThread: false,
   environment: makeEnvironment(),
+  environmentDisplayHost: localEnvironmentDisplayHost,
   workspaceStatus: makeWorkspaceStatus(),
   workspaceStatusError: null,
   pullRequest: null,
@@ -60,7 +64,7 @@ export const baseProps: ThreadMetadataContentProps = {
   isLoadingMergeBaseBranchOptions: false,
   threadSchedules: [],
   updateThreadPending: false,
-  onAssignManager: noop,
+  onAssignParent: noop,
   onMergeBaseBranchChange: noop,
   onChangedFileClick: noop,
 };

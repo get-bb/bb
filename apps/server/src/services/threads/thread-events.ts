@@ -7,7 +7,6 @@ import {
   getLastStoredTurnRequestEvent,
   getThread,
   listStoredTurnStartedKeys,
-  markThreadAttentionRequested,
   noopNotifier,
   updateThread,
   type StoredTurnRequestEventRow,
@@ -315,37 +314,10 @@ function isThreadReadStateUpdate(
   return result !== null;
 }
 
-// `system/manager/user_message` is the legacy `message_user` tool's outbound
-// message event. It advances `latestAttentionAt` so the
-// sidebar and the manager unread divider can mark the message as new.
-function applyManagerAttentionForEvent(
-  db: DbTransaction,
-  args: AppendThreadEventArgs,
-): ThreadReadStateUpdate | null {
-  if (args.type !== "system/manager/user_message") {
-    return null;
-  }
-
-  const previousThread = getThread(db, args.threadId);
-  const updatedThread = markThreadAttentionRequested(db, noopNotifier, {
-    threadId: args.threadId,
-  });
-  if (!previousThread || !updatedThread) {
-    return null;
-  }
-
-  return {
-    changed:
-      updatedThread.latestAttentionAt !== previousThread.latestAttentionAt,
-    projectId: updatedThread.projectId,
-    threadId: updatedThread.id,
-  };
-}
-
 // A user-initiated turn request implies the user has eyes on the thread, so
-// `lastReadAt` advances alongside the event. Without this, the manager
-// unread divider would later be placed against a stale read floor — the
-// user's own message would land past the cutoff when the manager eventually
+// `lastReadAt` advances alongside the event. Without this, the unread divider
+// would later be placed against a stale read floor: the user's own message
+// would land past the cutoff when the thread eventually
 // replies and re-arms the snapshot.
 function applyUserTurnReadForEvent(
   db: DbTransaction,
@@ -377,10 +349,7 @@ function applyReadStateUpdateForEvent(
   db: DbTransaction,
   args: AppendThreadEventArgs,
 ): ThreadReadStateUpdate | null {
-  return (
-    applyManagerAttentionForEvent(db, args) ??
-    applyUserTurnReadForEvent(db, args)
-  );
+  return applyUserTurnReadForEvent(db, args);
 }
 
 function appendThreadEventsInTransactionWithAttention(
@@ -847,11 +816,11 @@ function threadOwnershipChangeMessage(
 ): string {
   switch (action) {
     case "assign":
-      return "Thread assigned to manager";
+      return "Thread assigned to parent";
     case "release":
-      return "Thread released from manager";
+      return "Thread released from parent";
     case "transfer":
-      return "Thread transferred to new manager";
+      return "Thread transferred to new parent";
   }
 }
 

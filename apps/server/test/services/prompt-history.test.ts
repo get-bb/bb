@@ -253,21 +253,20 @@ describe("prompt history service", () => {
     ]);
   });
 
-  it("does not record project history for managed child thread starts", () => {
+  it("does not record project history for child thread starts", () => {
     const { db, firstProject, logger } = setup();
-    const managerThread = createThread(db, noopNotifier, {
+    const parentThread = createThread(db, noopNotifier, {
       projectId: firstProject.id,
       providerId: "codex",
-      type: "manager",
     });
     const directThread = createThread(db, noopNotifier, {
       projectId: firstProject.id,
       providerId: "codex",
     });
-    const managedThread = createThread(db, noopNotifier, {
+    const childThread = createThread(db, noopNotifier, {
       projectId: firstProject.id,
       providerId: "codex",
-      parentThreadId: managerThread.id,
+      parentThreadId: parentThread.id,
     });
 
     expect(
@@ -286,8 +285,8 @@ describe("prompt history service", () => {
       recordAcceptedPromptHistoryEntry(
         { db },
         {
-          thread: managedThread,
-          input: textInput("Manager-created worker"),
+          thread: childThread,
+          input: textInput("Parent-created worker"),
           initiator: "user",
           target: { kind: "thread-start" },
           requestSequence: 1,

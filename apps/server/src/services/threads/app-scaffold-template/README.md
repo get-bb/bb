@@ -2,7 +2,7 @@
 
 A Vite, React, and TypeScript Todo app scaffold for bb apps. It stores each
 todo as its own app data record, subscribes to live data changes, and can send a
-message back to the manager thread that opened it.
+message back to the thread that opened it.
 
 ## Layout
 
@@ -70,7 +70,7 @@ The app subscribes with `window.bb.data.onChange({ prefix: "todos", callback })`
 subscription also hydrates initial state — and resets its state on
 `window.bb.on({ event: "app-data:resync", callback })` before the SDK
 re-replays records. It writes with `window.bb.data.write({ path, value })`,
-deletes with `window.bb.data.delete({ path })`, and sends manager updates with
+deletes with `window.bb.data.delete({ path })`, and sends thread updates with
 `window.bb.message.send({ payload })`.
 
 The vendored SDK declaration at `source/src/bb-sdk.d.ts` mirrors the current

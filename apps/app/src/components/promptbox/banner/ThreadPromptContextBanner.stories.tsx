@@ -9,8 +9,9 @@ import {
   type ContextBannerMergeBaseConfig,
   type ThreadPromptArchivedSection,
   type ThreadPromptContextBannerExpandedSection,
-  type ThreadPromptManagedBySection,
-  type ThreadPromptManagerChildrenSection,
+  type ThreadPromptParentThreadSection,
+  type ThreadPromptChildThreadsSection,
+  type ThreadPromptWorkflowsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
   selectWorkspaceChangedFilesSection,
@@ -222,12 +223,12 @@ const pendingTodosFixture: ThreadTimelinePendingTodos = {
   ],
 };
 
-const managedByFixture: ThreadPromptManagedBySection = {
-  managerName: "Manager",
-  href: "/projects/proj-1/threads/thr_mgr_demo",
+const parentThreadFixture: ThreadPromptParentThreadSection = {
+  parentThreadTitle: "Parent thread",
+  href: "/projects/proj-1/threads/thr_parent_demo",
 };
 
-const managerChildrenFixture: ThreadPromptManagerChildrenSection = {
+const childThreadsFixture: ThreadPromptChildThreadsSection = {
   items: [
     {
       id: "thr_a",
@@ -252,12 +253,29 @@ const managerChildrenFixture: ThreadPromptManagerChildrenSection = {
   ],
 };
 
-const managerChildrenLargeFixture: ThreadPromptManagerChildrenSection = {
+const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
   items: Array.from({ length: 12 }, (_, i) => ({
     id: `thr_large_${i}`,
-    title: `Managed work item ${i + 1} that is busy doing thing-${i}`,
+    title: `Child work item ${i + 1} that is busy doing thing-${i}`,
     href: `/projects/proj-1/threads/thr_large_${i}`,
   })),
+};
+
+const workflowsFixture: ThreadPromptWorkflowsSection = {
+  items: [
+    {
+      id: "wfr_demo_1",
+      name: "Repo-wide audit fanout",
+      agentProgress: "3/5 agents",
+      href: "/workflows/runs/wfr_demo_1",
+    },
+    {
+      id: "wfr_demo_2",
+      name: "Adversarial review",
+      agentProgress: null,
+      href: "/workflows/runs/wfr_demo_2",
+    },
+  ],
 };
 
 interface RowConfig {
@@ -265,8 +283,9 @@ interface RowConfig {
   mergeBase?: ContextBannerMergeBaseConfig | null;
   pendingTodos?: ThreadTimelinePendingTodos | null;
   archived?: ThreadPromptArchivedSection | null;
-  managedBy?: ThreadPromptManagedBySection | null;
-  managerChildren?: ThreadPromptManagerChildrenSection | null;
+  parentThread?: ThreadPromptParentThreadSection | null;
+  childThreads?: ThreadPromptChildThreadsSection | null;
+  workflows?: ThreadPromptWorkflowsSection | null;
   initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
 }
 
@@ -275,8 +294,9 @@ function Row({
   mergeBase = featureBranchMergeBase,
   pendingTodos = null,
   archived = null,
-  managedBy = null,
-  managerChildren = null,
+  parentThread = null,
+  childThreads = null,
+  workflows = null,
   initiallyExpandedSection = null,
 }: RowConfig) {
   const [expandedSection, setExpandedSection] = useState<
@@ -297,8 +317,9 @@ function Row({
         }
         gitSectionPending={false}
         archivedSection={archived}
-        managedBySection={managedBy}
-        managerChildrenSection={managerChildren}
+        parentThreadSection={parentThread}
+        childThreadsSection={childThreads}
+        workflowsSection={workflows}
         expandedSection={expandedSection}
         onToggleSection={(next) =>
           setExpandedSection((previous) =>
@@ -319,72 +340,88 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="archived thread"
-        hint="archive icon + 'Thread is archived'; suppresses todos/git/managerChildren"
+        hint="archive icon + 'Thread is archived'; suppresses todos/git/childThreads"
       >
         <Row archived={archivedFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="archived + managed thread"
-        hint="archived row plus 'Managed by <name>' — manager context still relevant on a frozen thread"
+        label="archived + child thread"
+        hint="archived row plus parent context on a frozen thread"
       >
         <Row
           archived={archivedFixture}
-          managedBy={managedByFixture}
+          parentThread={parentThreadFixture}
           mergeBase={null}
         />
       </StoryRow>
       <StoryRow
         label="archived thread (with other context, all suppressed)"
-        hint="archived takes precedence — todos/git/managerChildren are hidden"
+        hint="archived takes precedence — todos/git/child work are hidden"
       >
         <Row
           archived={archivedFixture}
           section={uncommittedSection}
           pendingTodos={pendingTodosFixture}
-          managerChildren={managerChildrenFixture}
+          childThreads={childThreadsFixture}
           mergeBase={null}
         />
       </StoryRow>
       <StoryRow
-        label="managed thread (alone)"
-        hint="inline 'Managed by <name>' with the manager name as a link"
+        label="child thread (alone)"
+        hint="inline parent link"
       >
-        <Row managedBy={managedByFixture} mergeBase={null} />
+        <Row parentThread={parentThreadFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="manager thread with active children (collapsed)"
+        label="parent thread with active children (collapsed)"
         hint="spinning icon signals active work; click to expand the child list"
       >
-        <Row managerChildren={managerChildrenFixture} mergeBase={null} />
+        <Row childThreads={childThreadsFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="manager thread with active children (expanded)"
+        label="parent thread with active children (expanded)"
         hint="list of children with status + pending-approval marker on item 2"
       >
         <Row
-          managerChildren={managerChildrenFixture}
+          childThreads={childThreadsFixture}
           mergeBase={null}
-          initiallyExpandedSection="managerChildren"
+          initiallyExpandedSection="childThreads"
         />
       </StoryRow>
       <StoryRow
-        label="manager thread with many children (scrollable)"
+        label="parent thread with many children (scrollable)"
         hint="max-h-40 caps the list; rest scrolls"
       >
         <Row
-          managerChildren={managerChildrenLargeFixture}
+          childThreads={childThreadsLargeFixture}
           mergeBase={null}
-          initiallyExpandedSection="managerChildren"
+          initiallyExpandedSection="childThreads"
         />
       </StoryRow>
       <StoryRow
-        label="managed thread + todos + uncommitted"
-        hint="with other context, the managed-by segment collapses to an icon-only toggle"
+        label="active workflows (collapsed)"
+        hint="workflow icon + count; click to expand the run list"
+      >
+        <Row workflows={workflowsFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="active workflows (expanded)"
+        hint="each row links to the run page; agent progress when known"
+      >
+        <Row
+          workflows={workflowsFixture}
+          mergeBase={null}
+          initiallyExpandedSection="workflows"
+        />
+      </StoryRow>
+      <StoryRow
+        label="child thread + todos + uncommitted"
+        hint="with other context, the parent-thread segment collapses to an icon-only toggle"
       >
         <Row
           section={uncommittedSection}
           pendingTodos={pendingTodosFixture}
-          managedBy={managedByFixture}
+          parentThread={parentThreadFixture}
         />
       </StoryRow>
       <StoryRow

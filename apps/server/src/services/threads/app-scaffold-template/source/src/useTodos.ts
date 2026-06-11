@@ -12,15 +12,15 @@ import {
 } from "./todo-data";
 import type {
   AddTodo,
-  NotifyManager,
   OperationStatus,
   RemoveTodo,
+  SendStatusUpdate,
   TodoStats,
   ToggleTodo,
   UseTodosResult,
 } from "./types";
 
-interface SendManagerPayloadArgs {
+interface CreateStatusPayloadArgs {
   stats: TodoStats;
   todos: TodoRecord[];
 }
@@ -48,7 +48,7 @@ function createTodoStats(todos: TodoRecord[]): TodoStats {
   };
 }
 
-function createManagerPayload(args: SendManagerPayloadArgs): JsonObject {
+function createStatusPayload(args: CreateStatusPayloadArgs): JsonObject {
   return {
     kind: "todo-app.status",
     total: args.stats.total,
@@ -195,7 +195,7 @@ export function useTodos(): UseTodosResult {
     }
   }, []);
 
-  const notifyManager = useCallback<NotifyManager>(async () => {
+  const sendStatusUpdate = useCallback<SendStatusUpdate>(async () => {
     const bb = getBbSdk();
     if (bb === null) {
       setErrorText(sdkUnavailableMessage());
@@ -205,7 +205,7 @@ export function useTodos(): UseTodosResult {
     setOperationStatus("sending");
     try {
       await bb.message.send({
-        payload: createManagerPayload({ stats, todos }),
+        payload: createStatusPayload({ stats, todos }),
       });
       setOperationStatus("sent");
       setErrorText(null);
@@ -214,7 +214,7 @@ export function useTodos(): UseTodosResult {
       setErrorText(
         error instanceof Error
           ? errorMessage(error)
-          : "Failed to notify the manager.",
+          : "Failed to send status update.",
       );
     }
   }, [stats, todos]);
@@ -224,9 +224,9 @@ export function useTodos(): UseTodosResult {
     errorMessage: errorText,
     invalidCount: dataState.invalidPaths.length,
     isSdkAvailable,
-    notifyManager,
     operationStatus,
     removeTodo,
+    sendStatusUpdate,
     stats,
     todos,
     toggleTodo,

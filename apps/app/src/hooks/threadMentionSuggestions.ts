@@ -30,8 +30,8 @@ interface ThreadMentionContext {
 }
 
 const THREAD_RELATION_RANK = {
-  directlyManaged: 0,
-  sameManager: 1,
+  directParentOrChild: 0,
+  sameParent: 1,
   sameProject: 2,
   unrelated: 3,
 };
@@ -84,7 +84,6 @@ function toThreadMentionSuggestion(
     ...(projectName ? { projectName } : {}),
     threadId: thread.id,
     title: getThreadDisplayTitle(thread),
-    threadType: thread.type,
   };
 }
 
@@ -110,19 +109,19 @@ function getThreadRelationRank(
     context.currentThreadId !== undefined &&
     thread.parentThreadId === context.currentThreadId
   ) {
-    return THREAD_RELATION_RANK.directlyManaged;
+    return THREAD_RELATION_RANK.directParentOrChild;
   }
   if (
     context.currentParentThreadId !== null &&
     thread.id === context.currentParentThreadId
   ) {
-    return THREAD_RELATION_RANK.directlyManaged;
+    return THREAD_RELATION_RANK.directParentOrChild;
   }
   if (
     context.currentParentThreadId !== null &&
     thread.parentThreadId === context.currentParentThreadId
   ) {
-    return THREAD_RELATION_RANK.sameManager;
+    return THREAD_RELATION_RANK.sameParent;
   }
   if (
     context.currentProjectId !== undefined &&
@@ -142,9 +141,6 @@ function compareRankedThreadMentionSuggestions(
   }
   if (left.relationRank !== right.relationRank) {
     return left.relationRank - right.relationRank;
-  }
-  if (left.suggestion.threadType !== right.suggestion.threadType) {
-    return left.suggestion.threadType === "manager" ? -1 : 1;
   }
   const leftTitle = left.suggestion.title ?? "";
   const rightTitle = right.suggestion.title ?? "";

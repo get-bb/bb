@@ -3,10 +3,12 @@ import {
   createThreadSchedule,
   events,
   getThreadSchedule,
+  setThreadExecutionOverride,
   threads,
   threadSchedules,
 } from "@bb/db";
 import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
+import { renderTemplate } from "@bb/templates";
 import { describe, expect, it } from "vitest";
 import { sweepDueThreadSchedules } from "../../src/services/scheduling/thread-schedule-sweep.js";
 import { appendClientTurnEvent } from "../../src/services/threads/thread-events.js";
@@ -33,7 +35,20 @@ interface SeedRunnableThreadArgs {
   projectId: string;
   status?: "active" | "idle";
   turnId?: string;
-  type?: "manager" | "standard";
+}
+
+interface ExpectedScheduleInputArgs {
+  prompt: string;
+  scheduleId: string;
+}
+
+function expectedScheduleInput(args: ExpectedScheduleInputArgs) {
+  return textInput(
+    renderTemplate("systemMessageThreadScheduleDue", {
+      prompt: args.prompt,
+      scheduleId: args.scheduleId,
+    }),
+  );
 }
 
 function seedRunnableThread(args: SeedRunnableThreadArgs) {
@@ -43,7 +58,6 @@ function seedRunnableThread(args: SeedRunnableThreadArgs) {
     environmentId: args.environmentId,
     providerId: args.providerId,
     status,
-    type: args.type ?? "standard",
   });
   seedEvent(args.harness.deps, {
     threadId: thread.id,
@@ -94,7 +108,6 @@ interface SeedDueThreadScheduleFixtureArgs {
   hostId: string;
   providerId?: string;
   status?: "active" | "idle";
-  threadType?: "manager" | "standard";
 }
 
 function seedDueThreadScheduleFixture(args: SeedDueThreadScheduleFixtureArgs) {
@@ -115,7 +128,6 @@ function seedDueThreadScheduleFixture(args: SeedDueThreadScheduleFixtureArgs) {
     projectId: project.id,
     providerId: args.providerId,
     status: args.status,
-    type: args.threadType,
   });
   const now = Date.now();
   const schedule = createThreadSchedule(args.harness.db, args.harness.hub, {
@@ -172,12 +184,10 @@ describe("thread schedule sweep", () => {
       await sweepPromise;
 
       expect(queuedTurnSubmit.command).toMatchObject({
-        input: [
-          {
-            type: "text",
-            text: "Run the daily recap if there is useful progress.",
-          },
-        ],
+        input: expectedScheduleInput({
+          prompt: "Run the daily recap if there is useful progress.",
+          scheduleId: schedule.id,
+        }),
         target: { mode: "start" },
       });
       expect(
@@ -224,12 +234,10 @@ describe("thread schedule sweep", () => {
       );
       expect(requestData).toMatchObject({
         initiator: "system",
-        input: [
-          {
-            type: "text",
-            text: "Run the daily recap if there is useful progress.",
-          },
-        ],
+        input: expectedScheduleInput({
+          prompt: "Run the daily recap if there is useful progress.",
+          scheduleId: schedule.id,
+        }),
         target: { kind: "new-turn" },
       });
     });
@@ -256,7 +264,7 @@ describe("thread schedule sweep", () => {
         turnId: "turn-active-schedule",
       });
       const now = Date.now();
-      createThreadSchedule(harness.db, harness.hub, {
+      const schedule = createThreadSchedule(harness.db, harness.hub, {
         projectId: project.id,
         threadId: thread.id,
         name: "active-check",
@@ -276,7 +284,10 @@ describe("thread schedule sweep", () => {
       await sweepPromise;
 
       expect(queuedTurnSubmit.command).toMatchObject({
-        input: textInput("Check active work."),
+        input: expectedScheduleInput({
+          prompt: "Check active work.",
+          scheduleId: schedule.id,
+        }),
         target: {
           mode: "auto",
           expectedTurnId: "turn-active-schedule",
@@ -449,14 +460,17 @@ describe("thread schedule sweep", () => {
     });
   });
 
-  it("skip-advances without firing when runtime preparation fails", async () => {
+  it("skip-advances without firing when execution options are invalid", async () => {
     await withTestHarness(async (harness) => {
       const { now, schedule, thread } = seedDueThreadScheduleFixture({
         harness,
-        hostId: "host-thread-schedule-runtime-failure",
-        environmentPath: "/tmp/thread-schedule-runtime-failure-environment",
-        providerId: "unsupported-provider",
-        threadType: "manager",
+        hostId: "host-thread-schedule-invalid-execution",
+        environmentPath: "/tmp/thread-schedule-invalid-execution-environment",
+      });
+      setThreadExecutionOverride(harness.db, {
+        threadId: thread.id,
+        modelOverride: "gpt-5",
+        reasoningLevelOverride: "max",
       });
 
       await sweepDueThreadSchedules(harness.deps, { now });

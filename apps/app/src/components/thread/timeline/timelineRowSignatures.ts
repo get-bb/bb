@@ -165,6 +165,7 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
       return joinSignatureParts([
         ...baseParts,
         row.itemId,
+        row.taskType,
         row.taskStatus,
         row.workflowName,
         row.description,
@@ -181,6 +182,7 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
                   agent.label,
                   agent.state,
                   agent.attempt,
+                  agent.cached,
                   agent.tokens ?? null,
                   agent.toolCalls ?? null,
                   agent.durationMs ?? null,
@@ -280,20 +282,20 @@ function computeTimelineRowRenderSignature(row: ThreadTimelineViewRow): string {
           row.status,
           row.systemKind,
           row.operationKind,
-          row.operationKind === "manager-assignment"
-            ? row.managerAssignment.action
+          row.operationKind === "parent-change"
+            ? row.parentChange.action
             : null,
-          row.operationKind === "manager-assignment"
-            ? row.managerAssignment.previousManagerThreadId
+          row.operationKind === "parent-change"
+            ? row.parentChange.previousParentThreadId
             : null,
-          row.operationKind === "manager-assignment"
-            ? row.managerAssignment.previousManagerThreadTitle
+          row.operationKind === "parent-change"
+            ? row.parentChange.previousParentThreadTitle
             : null,
-          row.operationKind === "manager-assignment"
-            ? row.managerAssignment.nextManagerThreadId
+          row.operationKind === "parent-change"
+            ? row.parentChange.nextParentThreadId
             : null,
-          row.operationKind === "manager-assignment"
-            ? row.managerAssignment.nextManagerThreadTitle
+          row.operationKind === "parent-change"
+            ? row.parentChange.nextParentThreadTitle
             : null,
           row.title,
           row.detail,

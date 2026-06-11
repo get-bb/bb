@@ -21,8 +21,6 @@ export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
 const SERVICE_TIERS: ServiceTier[] = ["fast", "default"];
 export const PERMISSION_MODE_HELP =
   "Permission mode: full, workspace-write, or readonly";
-export const MANAGED_PERMISSION_MODE_HELP =
-  "Permission mode: full, workspace-write, or readonly (managed threads deny escalations)";
 
 export function statusText(status: ThreadStatus): string {
   switch (status) {

@@ -3,6 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffffff" id="theme-color" />
+    <!-- iOS ignores the manifest's display mode, so these opt the home-screen
+         app into standalone (chrome-less) launch. Status-bar style is left at
+         the default (opaque, non-overlapping) on purpose: black-translucent
+         renders content under the status bar, which needs viewport-fit=cover
+         plus top safe-area-inset padding the app does not yet have. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="bb" />
     <title>bb</title>
     <link
       rel="icon"
@@ -19,6 +28,7 @@
       id="favicon-16"
     />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <script>
       (function () {
         var dev = "%MODE%" === "development";
@@ -35,6 +45,15 @@
           mq.addEventListener("change", function (e) {
             setFavicon(e.matches);
           });
+        // Pre-paint browser-chrome color so PWA/status-bar chrome doesn't
+        // flash the wrong shade before the app boots; useTheme.ts owns the
+        // meta tag afterwards. Mirrors the bb.theme preference resolution and
+        // the --canvas values in theme.css (#151515 = oklch(0.195 0 0)).
+        var theme = localStorage.getItem("bb.theme");
+        var darkTheme = theme === "dark" || (theme !== "light" && mq.matches);
+        document.getElementById("theme-color").content = darkTheme
+          ? "#151515"
+          : "#ffffff";
       })();
     </script>
   </head>

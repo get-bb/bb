@@ -16,7 +16,7 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import {
   useDragClickSuppression,
   type ConsumeDragClickSuppression,
-} from "./useDragClickSuppression";
+} from "@/components/ui/use-drag-click-suppression";
 
 /**
  * Sidebar reorder lists mix uneven row heights — a tall expanded parent next
@@ -62,7 +62,7 @@ export interface UseSidebarReorderDndResult {
 
 /**
  * Container-side reorder plumbing shared by every sortable sidebar surface
- * (sections, projects, pinned roots, manager roots): the activation-tuned
+ * (sections, projects, pinned roots, parent-thread roots): the activation-tuned
  * sensors, the drag-click suppression glue, and the `DndContext` handler shell.
  * Pair with {@link useSidebarSortable} on the items inside the context.
  */

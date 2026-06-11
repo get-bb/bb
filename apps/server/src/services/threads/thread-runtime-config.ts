@@ -1,4 +1,4 @@
-import { getDefaultProjectSource, getProject } from "@bb/db";
+import { getExperiments, getProject } from "@bb/db";
 import type {
   DynamicTool,
   InstructionMode,
@@ -17,7 +17,7 @@ import { renderTemplate } from "@bb/templates";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
-import { requireThreadStorageContext } from "./thread-storage.js";
+import { requireThreadStoragePath } from "./thread-storage.js";
 import {
   buildExistingThreadExecutionInput,
   resolveExistingThreadExecutionPlan,
@@ -26,39 +26,9 @@ import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
 export { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
 const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
-  "standardAgentInstructions",
+  "standardAgentAppendInstructions",
   {},
 );
-const MESSAGE_USER_TOOL_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    text: {
-      type: "string",
-      description:
-        "Exact message text to show to the user. Keep it concise, factual, and appropriate for the user conversation.",
-    },
-  },
-  required: ["text"],
-};
-const MANAGER_DYNAMIC_TOOLS: DynamicTool[] = [
-  {
-    name: "message_user",
-    description:
-      "Legacy compatibility tool for older manager instructions. Sends a concise message that is visible to the user from the manager thread. New manager instructions use regular assistant messages, but this tool remains available for manager threads that still call it.",
-    inputSchema: MESSAGE_USER_TOOL_SCHEMA,
-  },
-];
-const MANAGER_DISALLOWED_TOOLS = [
-  "ExitPlanMode",
-  "NotebookEdit",
-  "Task",
-] as const;
-
-function resolveLocalTimezone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-}
-
 export interface ThreadRuntimeCommandEnvironment {
   cleanupRequestedAt: number | null;
   hostId: string;
@@ -90,14 +60,12 @@ export interface ResolvePermissionEscalationArgs {
 
 export interface ResolvedThreadRuntimeCommandConfig {
   dynamicTools: DynamicTool[];
-  disallowedTools?: readonly string[];
   injectedSkillSources: HostDaemonInjectedSkillSource[];
   instructionMode: InstructionMode;
   instructions: string;
   projectId: string;
   providerId: string;
-  /** Only set for manager threads. */
-  threadStoragePath?: string;
+  threadStoragePath: string;
   workspacePath: string;
   workspaceProvisionType: WorkspaceProvisionType;
 }
@@ -115,11 +83,7 @@ function requireWorkspacePath(
 export function resolvePermissionEscalation(
   args: ResolvePermissionEscalationArgs,
 ): PermissionEscalation {
-  if (
-    args.initiator === "system" ||
-    args.thread.parentThreadId !== null ||
-    args.thread.type === "manager"
-  ) {
+  if (args.initiator !== "user" || args.thread.parentThreadId !== null) {
     return "deny";
   }
 
@@ -146,57 +110,35 @@ export async function resolveThreadRuntimeCommandConfig(
   args: ResolveThreadRuntimeCommandConfigArgs,
 ): Promise<ResolvedThreadRuntimeCommandConfig> {
   const workspacePath = requireWorkspacePath(args.environment);
-  const project = getProject(deps.db, args.thread.projectId);
-  if (!project) {
+  if (!getProject(deps.db, args.thread.projectId)) {
     throw new ApiError(404, "project_not_found", "Project not found");
   }
 
-  const defaultSource = getDefaultProjectSource(deps.db, args.thread.projectId);
-  const projectRootPath =
-    defaultSource?.type === "local_path" ? defaultSource.path : workspacePath;
   const { workspaceProvisionType } = args.environment;
+  // Server-owned product policy: the workflows experiment gates the
+  // agent-facing `bb-workflows` skill (by name, so a user override of the
+  // builtin is gated identically). With the experiment off, agents get no
+  // workflow guidance — the API stays available for explicit callers.
+  const workflowsExperimentEnabled = getExperiments(deps.db).workflows;
   const injectedSkillSources = resolveInjectedSkillSources(deps.logger, {
     builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
-  });
-
-  if (args.thread.type !== "manager") {
-    return {
-      dynamicTools: [],
-      injectedSkillSources,
-      instructionMode: "append",
-      instructions: STANDARD_AGENT_INSTRUCTIONS,
-      projectId: args.thread.projectId,
-      providerId: args.thread.providerId,
-      ...(args.thread.environmentId === null
-        ? { threadStoragePath: workspacePath }
-        : {}),
-      workspacePath,
-      workspaceProvisionType,
-    };
-  }
-  const threadStorageContext = await requireThreadStorageContext(deps, {
+  }).filter(
+    (skill) => workflowsExperimentEnabled || skill.name !== "bb-workflows",
+  );
+  const threadStoragePath = await requireThreadStoragePath(deps, {
     hostId: args.environment.hostId,
     threadId: args.thread.id,
   });
 
   return {
-    dynamicTools: MANAGER_DYNAMIC_TOOLS,
-    disallowedTools: MANAGER_DISALLOWED_TOOLS,
+    dynamicTools: [],
     injectedSkillSources,
-    instructionMode: "replace",
-    instructions: renderTemplate("managerAgentInstructions", {
-      localTimezone: resolveLocalTimezone(),
-      managerDataDir: threadStorageContext.dataDir,
-      managerThreadId: args.thread.id,
-      threadStoragePath: threadStorageContext.threadStoragePath,
-      projectId: args.thread.projectId,
-      projectName: project.name,
-      projectRootPath,
-    }),
+    instructionMode: "append",
+    instructions: STANDARD_AGENT_INSTRUCTIONS,
     projectId: args.thread.projectId,
     providerId: args.thread.providerId,
-    threadStoragePath: threadStorageContext.threadStoragePath,
+    threadStoragePath,
     workspacePath,
     workspaceProvisionType,
   };

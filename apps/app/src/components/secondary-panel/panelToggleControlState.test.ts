@@ -10,7 +10,7 @@ describe("resolveShowPanelControl", () => {
     const state = resolveShowPanelControl({ onToggleSecondaryPanel });
 
     expect(state.action).toBe("show-panel");
-    expect(state.label).toBe("Show panel");
+    expect(state.label).toBe("Show right panel");
     expect(state.isExpanded).toBe(false);
     // The recognizable panel icon reads as "open the right side panel".
     expect(state.iconName).toBe("PanelRight");
@@ -29,7 +29,7 @@ describe("resolveConversationCollapseControl", () => {
     });
 
     expect(state.action).toBe("expand-panel");
-    expect(state.label).toBe("Expand panel");
+    expect(state.label).toBe("Expand right panel");
     // The conversation is currently expanded; clicking collapses it.
     expect(state.isExpanded).toBe(true);
     // An expand-to-fill glyph, not a directional chevron.

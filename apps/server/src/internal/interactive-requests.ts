@@ -11,37 +11,36 @@ import { ApiError } from "../errors.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
 import { requireThreadEnvironment } from "../services/lib/entity-lookup.js";
 import {
-  queueManagedThreadNeedsAttentionNotificationBestEffort,
-} from "../services/threads/managed-thread-notifications.js";
+  queueChildThreadNeedsAttentionNotificationBestEffort,
+} from "../services/threads/child-thread-notifications.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
 
-interface RequestManagedThreadNeedsAttentionNotificationArgs {
-  managedThreadId: string;
+interface RequestChildThreadNeedsAttentionNotificationArgs {
+  childThreadId: string;
 }
 
-function requestManagedThreadNeedsAttentionNotification(
+function requestChildThreadNeedsAttentionNotification(
   deps: AppDeps,
-  args: RequestManagedThreadNeedsAttentionNotificationArgs,
+  args: RequestChildThreadNeedsAttentionNotificationArgs,
 ): void {
-  const managedThread = getThread(deps.db, args.managedThreadId);
-  if (!managedThread?.parentThreadId) {
+  const childThread = getThread(deps.db, args.childThreadId);
+  if (!childThread?.parentThreadId) {
     return;
   }
-  const managerThreadId = managedThread.parentThreadId;
+  const parentThreadId = childThread.parentThreadId;
 
   deferAfterResponse({
     config: deps.config,
     context: {
-      managedThreadId: managedThread.id,
-      managerThreadId,
+      childThreadId: childThread.id,
+      parentThreadId,
     },
     logger: deps.logger,
-    name: "Managed thread needs-attention notification",
+    name: "Child thread needs-attention notification",
     work: () =>
-      queueManagedThreadNeedsAttentionNotificationBestEffort(deps, {
-        managedThreadId: managedThread.id,
-        managerThreadId,
-        title: managedThread.title,
+      queueChildThreadNeedsAttentionNotificationBestEffort(deps, {
+        childThread,
+        parentThreadId,
       }),
   });
 }
@@ -112,8 +111,8 @@ export function registerInternalInteractiveRequestRoutes(
         });
       }
       if (registered.outcome === "created") {
-        requestManagedThreadNeedsAttentionNotification(deps, {
-          managedThreadId: registered.interaction.threadId,
+        requestChildThreadNeedsAttentionNotification(deps, {
+          childThreadId: registered.interaction.threadId,
         });
       }
 

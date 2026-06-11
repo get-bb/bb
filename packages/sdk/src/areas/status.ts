@@ -2,7 +2,6 @@ import type {
   Thread,
   ThreadStatus,
   ThreadTimelinePendingTodos,
-  ThreadType,
 } from "@bb/domain";
 import type {
   ProjectResponse,
@@ -23,11 +22,10 @@ export interface StatusThreadResponse {
   projectId: string;
   status: ThreadStatus;
   title: string | null;
-  type: ThreadType;
 }
 
 export interface StatusGetResponse {
-  managedThreads: Thread[] | null;
+  childThreads: Thread[] | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
   project: ProjectResponse | null;
   thread: StatusThreadResponse | null;
@@ -56,7 +54,6 @@ function summarizeThread(thread: Thread): StatusThreadResponse {
     projectId: thread.projectId,
     status: thread.status,
     title: thread.title ?? null,
-    type: thread.type,
   };
 }
 
@@ -98,9 +95,10 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
               );
               return timeline.pendingTodos;
             });
-      const managedThreads =
-        thread?.type === "manager"
-          ? await fetchSilent(() =>
+      const childThreads =
+        thread === null
+          ? null
+          : await fetchSilent(() =>
               transport.readJson(
                 transport.api.v1.threads.$get({
                   query: {
@@ -109,11 +107,10 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
                   },
                 }),
               ),
-            )
-          : null;
+            );
 
       return {
-        managedThreads,
+        childThreads,
         pendingTodos,
         project,
         thread: thread === null ? null : summarizeThread(thread),

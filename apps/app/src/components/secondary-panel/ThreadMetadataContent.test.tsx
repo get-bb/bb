@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
 
+import type { ReactElement } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Environment, Thread, ThreadPullRequest } from "@bb/domain";
+import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import type { ThreadSchedule } from "@bb/server-contract";
 import { makeWorkspaceStatus } from "@bb/test-helpers";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  EnvironmentRow,
   GitStatusRow,
   MergeBaseRow,
   PullRequestRow,
@@ -17,6 +21,18 @@ type ThreadOverrides = Partial<Thread>;
 type EnvironmentOverrides = Partial<Environment>;
 type ThreadScheduleOverrides = Partial<ThreadSchedule>;
 
+const localEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "local",
+};
+
+const remoteEnvironmentDisplayHost: EnvironmentDisplayHostContext = {
+  locality: "remote",
+};
+
+function renderWithRouter(element: ReactElement) {
+  return render(<MemoryRouter>{element}</MemoryRouter>);
+}
+
 function makeThread(overrides: ThreadOverrides = {}): Thread {
   const base: Thread = {
     id: "thr_test",
@@ -24,7 +40,6 @@ function makeThread(overrides: ThreadOverrides = {}): Thread {
     environmentId: "env_test",
     automationId: null,
     providerId: "openai",
-    type: "standard",
     title: "Test thread",
     titleFallback: null,
     status: "idle",
@@ -142,6 +157,38 @@ describe("WorkspacePathRow", () => {
   });
 });
 
+describe("EnvironmentRow", () => {
+  it("labels a direct workspace on a remote host as remote", () => {
+    renderWithRouter(
+      <EnvironmentRow
+        thread={makeThread()}
+        environment={makeEnvironment({
+          isWorktree: false,
+          workspaceProvisionType: "unmanaged",
+        })}
+        environmentDisplayHost={remoteEnvironmentDisplayHost}
+      />,
+    );
+
+    expect(screen.getByText("Working remotely")).not.toBeNull();
+  });
+
+  it("keeps local direct workspace labels local", () => {
+    renderWithRouter(
+      <EnvironmentRow
+        thread={makeThread()}
+        environment={makeEnvironment({
+          isWorktree: false,
+          workspaceProvisionType: "unmanaged",
+        })}
+        environmentDisplayHost={localEnvironmentDisplayHost}
+      />,
+    );
+
+    expect(screen.getByText("Working locally")).not.toBeNull();
+  });
+});
+
 describe("MergeBaseRow", () => {
   it("requests branch options when the Info tab merge-base picker opens", () => {
     const handleOpenChange = vi.fn();
@@ -212,9 +259,7 @@ describe("PullRequestRow", () => {
   }
 
   it("renders the PR number, state, and an external link", () => {
-    render(
-      <PullRequestRow thread={makeThread()} pullRequest={makePullRequest()} />,
-    );
+    render(<PullRequestRow pullRequest={makePullRequest()} />);
 
     const link = screen.getByRole("link");
     expect(link.getAttribute("href")).toBe(
@@ -233,31 +278,13 @@ describe("PullRequestRow", () => {
     ["merged", "Merged"],
     ["closed", "Closed"],
   ] as const)("labels the %s state as %s", (state, label) => {
-    render(
-      <PullRequestRow
-        thread={makeThread()}
-        pullRequest={makePullRequest({ state })}
-      />,
-    );
+    render(<PullRequestRow pullRequest={makePullRequest({ state })} />);
 
     expect(screen.getByRole("link").textContent).toContain(label);
   });
 
   it("renders nothing when there is no PR", () => {
-    const { container } = render(
-      <PullRequestRow thread={makeThread()} pullRequest={null} />,
-    );
-
-    expect(container.firstChild).toBeNull();
-  });
-
-  it("renders nothing for manager threads", () => {
-    const { container } = render(
-      <PullRequestRow
-        thread={makeThread({ type: "manager" })}
-        pullRequest={makePullRequest()}
-      />,
-    );
+    const { container } = render(<PullRequestRow pullRequest={null} />);
 
     expect(container.firstChild).toBeNull();
   });

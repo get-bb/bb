@@ -109,6 +109,12 @@ interface RenderQueueProps {
   parsedGitDiffFileEntries: ParsedGitDiffFileEntry[];
 }
 
+interface RenderPanelStateArgs {
+  defaultMergeBaseBranch?: string;
+  environmentId?: string;
+  isDiffPanelActive?: boolean;
+}
+
 function buildPatchDiff(paths: readonly string[]): string {
   return paths.map((path) => buildModifiedFileDiff(path)).join("\n");
 }
@@ -214,14 +220,20 @@ function renderQueueHook(initialProps: RenderQueueProps) {
   };
 }
 
-function renderPanelStateHook(store: ReturnType<typeof createStore>) {
+function renderPanelStateHook(
+  store: ReturnType<typeof createStore>,
+  args: RenderPanelStateArgs = {},
+) {
   const wrapper = createTestWrapper(store);
   return renderHook(
     () =>
       useGitDiffPanelState({
-        defaultMergeBaseBranch: "main",
-        environmentId: "env-test",
-        isDiffPanelActive: true,
+        defaultMergeBaseBranch:
+          "defaultMergeBaseBranch" in args
+            ? args.defaultMergeBaseBranch
+            : "main",
+        environmentId: "environmentId" in args ? args.environmentId : "env-test",
+        isDiffPanelActive: args.isDiffPanelActive ?? true,
       }),
     { wrapper },
   );
@@ -497,6 +509,34 @@ describe("useGitDiffFileRenderQueue", () => {
 });
 
 describe("useGitDiffPanelState pending scroll", () => {
+  it("does not prepare forever when the diff tab has no environment", () => {
+    const store = createStore();
+    const { result } = renderPanelStateHook(store, {
+      environmentId: undefined,
+    });
+
+    expect(result.current.gitDiffUnavailableMessage).toBe(
+      "This thread does not have a workspace to diff.",
+    );
+    expect(result.current.isPreparingGitDiff).toBe(false);
+    expect(result.current.threadGitDiff).toBeUndefined();
+    expect(result.current.currentGitDiff).toBe("");
+  });
+
+  it("does not prepare forever when no merge base branch is available", () => {
+    const store = createStore();
+    const { result } = renderPanelStateHook(store, {
+      defaultMergeBaseBranch: undefined,
+    });
+
+    expect(result.current.gitDiffUnavailableMessage).toBe(
+      "No merge base branch is configured for this workspace.",
+    );
+    expect(result.current.isPreparingGitDiff).toBe(false);
+    expect(result.current.threadGitDiff).toBeUndefined();
+    expect(result.current.currentGitDiff).toBe("");
+  });
+
   it("exposes unavailable workspace diff as a typed data state", () => {
     mockEnvironmentQueries.gitDiff.data = {
       outcome: "unavailable",

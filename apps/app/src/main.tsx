@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { AppToaster } from "./components/AppToaster";
 import { initializePreferredTheme } from "./hooks/useTheme";
+import { initializeFaviconColor } from "./lib/favicon-color-preference";
 import { createAppQueryClient } from "./lib/query-client";
 import { takeOverPanelResizeCursor } from "./lib/resizeCursor";
 import "./app.css";
@@ -12,6 +13,7 @@ import "./app.css";
 const queryClient = createAppQueryClient();
 
 initializePreferredTheme();
+initializeFaviconColor();
 takeOverPanelResizeCursor();
 
 createRoot(document.getElementById("root")!).render(

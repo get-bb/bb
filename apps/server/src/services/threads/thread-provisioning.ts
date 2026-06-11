@@ -32,7 +32,10 @@ import {
   saveThreadProvisionContext,
   type ThreadProvisioningDeps,
 } from "./thread-provisioning-environment.js";
-import { forgetActiveThreadProvisionContext } from "./thread-provisioning-active-context.js";
+import {
+  forgetActiveThreadProvisionContext,
+  getActiveThreadProvisionContext,
+} from "./thread-provisioning-active-context.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
@@ -59,8 +62,8 @@ interface AdvanceThreadProvisioningArgs {
   threadId: string;
 }
 
-interface InterruptUnrecoverableThreadProvisioningArgs {
-  detail: string;
+interface CurrentProvisioningFailureThreadArgs {
+  context: ThreadProvisionContext;
   threadId: string;
 }
 
@@ -79,6 +82,37 @@ interface EnvironmentPayloadThreadArgs {
   context: ThreadProvisionProvisionableContext;
   environment: Environment;
   thread: Thread;
+}
+
+type CurrentProvisioningFailureThreadDeps = Pick<AppDeps, "db">;
+
+function getCurrentProvisioningFailureThread(
+  deps: CurrentProvisioningFailureThreadDeps,
+  args: CurrentProvisioningFailureThreadArgs,
+): Thread | null {
+  const currentThread = getThread(deps.db, args.threadId);
+  if (!currentThread || currentThread.deletedAt !== null) {
+    forgetActiveThreadProvisionContext(args.threadId);
+    return null;
+  }
+  if (
+    currentThread.status !== "provisioning" ||
+    currentThread.archivedAt !== null ||
+    currentThread.stopRequestedAt !== null
+  ) {
+    forgetActiveThreadProvisionContext(args.threadId);
+    return null;
+  }
+
+  const activeContext = getActiveThreadProvisionContext(args.threadId);
+  if (
+    activeContext &&
+    activeContext.state.provisioningId !== args.context.state.provisioningId
+  ) {
+    return null;
+  }
+
+  return currentThread;
 }
 
 async function startThreadIfEnvironmentReady(
@@ -141,7 +175,7 @@ async function startThreadIfEnvironmentReady(
     execution: args.context.request.execution,
     permissionEscalation: resolvePermissionEscalation({
       thread: args.thread,
-      initiator: args.thread.type === "manager" ? "system" : "user",
+      initiator: "user",
     }),
     projectId: args.thread.projectId,
     providerId: args.thread.providerId,
@@ -153,8 +187,7 @@ export function requestThreadProvision(
   deps: Pick<AppDeps, "db" | "hub">,
   args: RequestThreadProvisionArgs,
 ): ThreadProvisionContext {
-  const initiator: ThreadTurnInitiator =
-    args.thread.type === "manager" ? "system" : "user";
+  const initiator: ThreadTurnInitiator = "user";
   const target: TurnRequestTarget = { kind: "thread-start" };
   const request = appendClientTurnEvent(deps, {
     threadId: args.thread.id,
@@ -283,10 +316,18 @@ async function advanceThreadProvisioningOnce(
       thread: ready.thread,
     });
   } catch (error) {
+    const failureThread = getCurrentProvisioningFailureThread(deps, {
+      context,
+      threadId: thread.id,
+    });
+    if (!failureThread) {
+      return;
+    }
     const detail = error instanceof Error ? error.message : String(error);
     failThreadProvisioning(deps, {
-      thread,
-      environmentId: attachedEnvironmentIdForContext(context),
+      thread: failureThread,
+      environmentId:
+        attachedEnvironmentIdForContext(context) ?? failureThread.environmentId,
       detail,
     });
   }
@@ -299,28 +340,4 @@ export async function advanceThreadProvisioning(
   await deps.lifecycleDedupers.threadProvisionAdvance.run(args.threadId, () =>
     advanceThreadProvisioningOnce(deps, args),
   );
-}
-
-export function interruptUnrecoverableThreadProvisioning(
-  deps: ThreadProvisioningDeps,
-  args: InterruptUnrecoverableThreadProvisioningArgs,
-): void {
-  const thread = getThread(deps.db, args.threadId);
-  if (!thread || thread.deletedAt !== null) {
-    return;
-  }
-  const context = loadActiveThreadProvisionContext(deps, thread.id);
-  if (!context) {
-    failThreadProvisioning(deps, {
-      thread,
-      environmentId: thread.environmentId,
-      detail: args.detail,
-    });
-    return;
-  }
-  failThreadProvisioning(deps, {
-    thread,
-    environmentId: attachedEnvironmentIdForContext(context),
-    detail: args.detail,
-  });
 }

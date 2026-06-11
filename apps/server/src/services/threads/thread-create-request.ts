@@ -1,4 +1,4 @@
-import type { PromptInput, ThreadType } from "@bb/domain";
+import type { PromptInput } from "@bb/domain";
 import type {
   CreateThreadRequest,
   EnvironmentArgs,
@@ -19,7 +19,6 @@ export interface ThreadCreateServiceRequestInput {
   reasoningLevel?: CreateThreadRequest["reasoningLevel"];
   serviceTier?: CreateThreadRequest["serviceTier"];
   title?: string;
-  type: ThreadType;
 }
 
 export interface ThreadCreateServiceRequest extends Omit<

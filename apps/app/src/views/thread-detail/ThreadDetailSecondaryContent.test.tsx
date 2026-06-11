@@ -18,7 +18,6 @@ interface MockPanelGroupProps {
 
 type MockPanelResizeHandler = (size: number) => void;
 type MockPanelDraggingHandler = (isDragging: boolean) => void;
-type TerminalPanelResizeHandler = (sizePercent: number) => void;
 
 interface MockPanelProps {
   children: ReactNode;
@@ -207,7 +206,7 @@ vi.mock("./ThreadTimelinePane", () => ({
 
 const noop = () => {};
 
-function noopAssignManager(_parentThreadId: string | null): void {}
+function noopAssignParent(_parentThreadId: string | null): void {}
 
 function noopBranchChange(_branch: string): void {}
 
@@ -222,7 +221,6 @@ function makeThread(): Thread {
     environmentId: "env_test",
     automationId: null,
     providerId: "openai",
-    type: "standard",
     title: "Test thread",
     titleFallback: null,
     status: "idle",
@@ -239,14 +237,12 @@ function makeThread(): Thread {
 }
 
 interface SecondaryContentOverrides {
-  onTerminalPanelResize?: TerminalPanelResizeHandler;
   isSecondaryPanelOpen?: boolean;
   isConversationCollapsed?: boolean;
   onToggleConversationCollapse?: () => void;
 }
 
 function buildSecondaryContentProps({
-  onTerminalPanelResize = noop,
   isSecondaryPanelOpen = false,
   isConversationCollapsed = false,
   onToggleConversationCollapse = noop,
@@ -264,10 +260,13 @@ function buildSecondaryContentProps({
       thread: makeThread(),
       projectId: "proj_test",
       parentThreadDisplayName: null,
-      managerThreads: [],
-      canAssignToManager: false,
+      parentThreads: [],
+      canAssignToParent: false,
       canTakeOverThread: false,
       environment: null,
+      environmentDisplayHost: {
+        locality: "local",
+      },
       workspaceStatus: undefined,
       workspaceStatusError: null,
       pullRequest: null,
@@ -276,11 +275,11 @@ function buildSecondaryContentProps({
       isLoadingMergeBaseBranchOptions: false,
       threadSchedules: [],
       updateThreadPending: false,
-      onAssignManager: noopAssignManager,
+      onAssignParent: noopAssignParent,
       onMergeBaseBranchChange: noopBranchChange,
     },
     secondaryPanel: {
-      activePanel: null,
+      activeTab: null,
       canUseGitUi: false,
       defaultMergeBaseBranch: undefined,
       environmentId: undefined,
@@ -291,16 +290,13 @@ function buildSecondaryContentProps({
       workspaceRootPath: undefined,
       onClose: noop,
       onCollapse: noop,
+      onFileTabReorder: noop,
       onOpenFileInEditor: noopOpenFile,
       onOpenFilePreview: noopOpenFile,
       renderNewTabMenu: () => <div>New tab menu</div>,
       onPanelChange: noopSecondaryPanelChange,
       onPanelFocus: noop,
     },
-    terminalPanel: <div>Terminal</div>,
-    terminalPanelHeightPercent: 32,
-    terminalPanelOpen: true,
-    onTerminalPanelResize,
     timeline: {
       activeThinking: null,
       hasOlderTimelineRows: false,
@@ -320,14 +316,6 @@ function buildSecondaryContentProps({
       workspaceRootPath: undefined,
     },
   };
-}
-
-function renderContent(onTerminalPanelResize: TerminalPanelResizeHandler) {
-  return render(
-    <ThreadDetailSecondaryContent
-      {...buildSecondaryContentProps({ onTerminalPanelResize })}
-    />,
-  );
 }
 
 const TIMELINE_PANEL_LABEL = "thread-detail-timeline-panel";
@@ -370,45 +358,6 @@ afterEach(() => {
   vi.clearAllMocks();
   sidebarShowingRef.current = true;
   desktopChromeRef.current = false;
-});
-
-describe("ThreadDetailSecondaryContent", () => {
-  it("persists terminal size immediately outside an active drag", () => {
-    const onTerminalPanelResize = vi.fn();
-    renderContent(onTerminalPanelResize);
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Resize thread-detail-terminal-panel to 45",
-      }),
-    );
-
-    expect(onTerminalPanelResize).toHaveBeenCalledTimes(1);
-    expect(onTerminalPanelResize).toHaveBeenCalledWith(45);
-  });
-
-  it("defers terminal size persistence until drag end", () => {
-    const onTerminalPanelResize = vi.fn();
-    renderContent(onTerminalPanelResize);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Start terminal panel drag" }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Resize thread-detail-terminal-panel to 45",
-      }),
-    );
-
-    expect(onTerminalPanelResize).not.toHaveBeenCalled();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "End terminal panel drag" }),
-    );
-
-    expect(onTerminalPanelResize).toHaveBeenCalledTimes(1);
-    expect(onTerminalPanelResize).toHaveBeenCalledWith(45);
-  });
 });
 
 describe("ThreadDetailSecondaryContent conversation collapse", () => {

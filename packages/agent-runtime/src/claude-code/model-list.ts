@@ -21,7 +21,7 @@ type ClaudeCodeCatalogEntry = {
 
 // Ultracode requires an xhigh-capable model (it decomposes to xhigh effort +
 // standing workflow orchestration), so only the xhigh ladder offers it.
-const OPUS_4_8_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
+const XHIGH_CAPABLE_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
   LOW_REASONING_EFFORT,
   MEDIUM_REASONING_EFFORT,
   HIGH_REASONING_EFFORT,
@@ -31,7 +31,7 @@ const OPUS_4_8_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
 ];
 
 const OPUS_4_7_REASONING_EFFORTS: readonly ModelReasoningEffort[] =
-  OPUS_4_8_REASONING_EFFORTS;
+  XHIGH_CAPABLE_REASONING_EFFORTS;
 
 const OPUS_4_6_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
   LOW_REASONING_EFFORT,
@@ -51,6 +51,8 @@ const HAIKU_REASONING_EFFORTS: readonly ModelReasoningEffort[] = [
   LOW_REASONING_EFFORT,
 ];
 
+const CLAUDE_FABLE_5_MODEL = "claude-fable-5";
+const CLAUDE_MYTHOS_5_MODEL = "claude-mythos-5";
 const CLAUDE_OPUS_4_8_MODEL = "claude-opus-4-8";
 const CLAUDE_OPUS_4_7_MODEL = "claude-opus-4-7";
 const CLAUDE_OPUS_4_6_MODEL = "claude-opus-4-6";
@@ -61,24 +63,37 @@ function withOneMillionContext(model: string): string {
   return `${model}[1m]`;
 }
 
+const DEFAULT_CLAUDE_CODE_MODEL = withOneMillionContext(
+  CLAUDE_OPUS_4_8_MODEL,
+);
+
 // Keep the active catalog version-pinned. Moving aliases and retired model
 // strings live in the selected-only catalog so existing stored selections can
 // render with their proper label without being offered as fresh choices.
 const CLAUDE_CODE_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
   {
+    id: CLAUDE_FABLE_5_MODEL,
+    model: CLAUDE_FABLE_5_MODEL,
+    displayName: "Fable 5",
+    description:
+      "Fable 5 for demanding reasoning; requires Claude Code v2.1.170+",
+    supportedReasoningEfforts: XHIGH_CAPABLE_REASONING_EFFORTS,
+    defaultReasoningEffort: "high",
+  },
+  {
+    id: CLAUDE_MYTHOS_5_MODEL,
+    model: CLAUDE_MYTHOS_5_MODEL,
+    displayName: "Mythos 5",
+    description: "Mythos 5 for approved Project Glasswing access",
+    supportedReasoningEfforts: XHIGH_CAPABLE_REASONING_EFFORTS,
+    defaultReasoningEffort: "high",
+  },
+  {
     id: withOneMillionContext(CLAUDE_OPUS_4_8_MODEL),
     model: withOneMillionContext(CLAUDE_OPUS_4_8_MODEL),
     displayName: "Opus 4.8 (1M)",
     description: "Opus 4.8 with 1M context for complex long coding sessions",
-    supportedReasoningEfforts: OPUS_4_8_REASONING_EFFORTS,
-    defaultReasoningEffort: "high",
-  },
-  {
-    id: CLAUDE_OPUS_4_8_MODEL,
-    model: CLAUDE_OPUS_4_8_MODEL,
-    displayName: "Opus 4.8",
-    description: "Opus 4.8 for complex coding tasks",
-    supportedReasoningEfforts: OPUS_4_8_REASONING_EFFORTS,
+    supportedReasoningEfforts: XHIGH_CAPABLE_REASONING_EFFORTS,
     defaultReasoningEffort: "high",
   },
   {
@@ -87,30 +102,6 @@ const CLAUDE_CODE_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
     displayName: "Opus 4.7 (1M)",
     description: "Opus 4.7 with 1M context for complex long coding sessions",
     supportedReasoningEfforts: OPUS_4_7_REASONING_EFFORTS,
-    defaultReasoningEffort: "medium",
-  },
-  {
-    id: CLAUDE_OPUS_4_7_MODEL,
-    model: CLAUDE_OPUS_4_7_MODEL,
-    displayName: "Opus 4.7",
-    description: "Opus 4.7 for complex coding tasks",
-    supportedReasoningEfforts: OPUS_4_7_REASONING_EFFORTS,
-    defaultReasoningEffort: "medium",
-  },
-  {
-    id: withOneMillionContext(CLAUDE_OPUS_4_6_MODEL),
-    model: withOneMillionContext(CLAUDE_OPUS_4_6_MODEL),
-    displayName: "Opus 4.6 (1M)",
-    description: "Opus 4.6 with 1M context for complex long coding sessions",
-    supportedReasoningEfforts: OPUS_4_6_REASONING_EFFORTS,
-    defaultReasoningEffort: "medium",
-  },
-  {
-    id: CLAUDE_OPUS_4_6_MODEL,
-    model: CLAUDE_OPUS_4_6_MODEL,
-    displayName: "Opus 4.6",
-    description: "Opus 4.6 for complex coding tasks",
-    supportedReasoningEfforts: OPUS_4_6_REASONING_EFFORTS,
     defaultReasoningEffort: "medium",
   },
   {
@@ -140,6 +131,59 @@ const CLAUDE_CODE_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
 ];
 
 const CLAUDE_CODE_SELECTED_ONLY_CATALOG: readonly ClaudeCodeCatalogEntry[] = [
+  {
+    id: CLAUDE_OPUS_4_8_MODEL,
+    model: CLAUDE_OPUS_4_8_MODEL,
+    displayName: "Opus 4.8 (Legacy)",
+    description:
+      "Legacy Opus 4.8 model retained for existing non-1M selections",
+    supportedReasoningEfforts: XHIGH_CAPABLE_REASONING_EFFORTS,
+    defaultReasoningEffort: "high",
+  },
+  {
+    id: CLAUDE_OPUS_4_7_MODEL,
+    model: CLAUDE_OPUS_4_7_MODEL,
+    displayName: "Opus 4.7 (Legacy)",
+    description:
+      "Legacy Opus 4.7 model retained for existing non-1M selections",
+    supportedReasoningEfforts: OPUS_4_7_REASONING_EFFORTS,
+    defaultReasoningEffort: "medium",
+  },
+  {
+    id: withOneMillionContext(CLAUDE_OPUS_4_6_MODEL),
+    model: withOneMillionContext(CLAUDE_OPUS_4_6_MODEL),
+    displayName: "Opus 4.6 (1M, Legacy)",
+    description:
+      "Legacy Opus 4.6 1M model retained for existing selections",
+    supportedReasoningEfforts: OPUS_4_6_REASONING_EFFORTS,
+    defaultReasoningEffort: "medium",
+  },
+  {
+    id: CLAUDE_OPUS_4_6_MODEL,
+    model: CLAUDE_OPUS_4_6_MODEL,
+    displayName: "Opus 4.6 (Legacy)",
+    description: "Legacy Opus 4.6 model retained for existing selections",
+    supportedReasoningEfforts: OPUS_4_6_REASONING_EFFORTS,
+    defaultReasoningEffort: "medium",
+  },
+  {
+    id: "best",
+    model: "best",
+    displayName: "Best Alias",
+    description:
+      "Moving best alias retained for existing selections; resolves to Fable 5 where available",
+    supportedReasoningEfforts: XHIGH_CAPABLE_REASONING_EFFORTS,
+    defaultReasoningEffort: "high",
+  },
+  {
+    id: "fable",
+    model: "fable",
+    displayName: "Fable Alias",
+    description:
+      "Moving Fable alias retained for existing selections; resolves to Claude Fable 5",
+    supportedReasoningEfforts: XHIGH_CAPABLE_REASONING_EFFORTS,
+    defaultReasoningEffort: "high",
+  },
   {
     id: "opus[1m]",
     model: "opus[1m]",
@@ -198,8 +242,10 @@ function buildCatalogModel(entry: ClaudeCodeCatalogEntry): AvailableModel {
 }
 
 function markDefaultModel(models: AvailableModel[]): AvailableModel[] {
-  return models.map((model, index) =>
-    index === 0 ? { ...model, isDefault: true } : model,
+  return models.map((model) =>
+    model.model === DEFAULT_CLAUDE_CODE_MODEL
+      ? { ...model, isDefault: true }
+      : model,
   );
 }
 

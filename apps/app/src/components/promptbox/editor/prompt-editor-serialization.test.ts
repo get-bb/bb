@@ -52,8 +52,7 @@ describe("prompt editor serialization", () => {
           resource: {
             kind: "thread",
             threadId: "thr_prompt",
-            threadType: "manager",
-            label: "Prompt manager",
+            label: "Prompt thread",
           },
         },
         {
@@ -78,12 +77,40 @@ describe("prompt editor serialization", () => {
     }
   });
 
+  it("serializes mention clipboard metadata into editor HTML", () => {
+    const editor = createTestEditor({
+      text: "Ask @thread:thr_prompt",
+      mentions: [
+        {
+          start: "Ask ".length,
+          end: "Ask @thread:thr_prompt".length,
+          resource: {
+            kind: "thread",
+            threadId: "thr_prompt",
+            label: "Prompt manager",
+          },
+        },
+      ],
+    });
+
+    try {
+      const html = editor.getHTML();
+
+      expect(html).toContain('data-prompt-mention="true"');
+      expect(html).toContain(
+        'data-prompt-mention-serialized-text="@thread:thr_prompt"',
+      );
+      expect(html).toContain("data-prompt-mention-resource=");
+    } finally {
+      editor.destroy();
+    }
+  });
+
   it("serializes paragraph boundaries as newlines and keeps mention offsets", () => {
     const resource = {
       kind: "thread",
       threadId: "thr_second",
       projectId: "proj_second",
-      threadType: "standard",
       label: "Second thread",
     };
     const editor = createTestEditorFromContent({
@@ -136,7 +163,6 @@ describe("prompt editor serialization", () => {
           resource: {
             kind: "thread",
             threadId: "thr_one",
-            threadType: "standard",
             label: "First thread",
           },
         },
@@ -146,7 +172,6 @@ describe("prompt editor serialization", () => {
           resource: {
             kind: "thread",
             threadId: "thr_overlap",
-            threadType: "standard",
             label: "Overlapping thread",
           },
         },
@@ -156,7 +181,6 @@ describe("prompt editor serialization", () => {
           resource: {
             kind: "thread",
             threadId: "thr_two",
-            threadType: "standard",
             label: "Second thread",
           },
         },
@@ -166,7 +190,6 @@ describe("prompt editor serialization", () => {
           resource: {
             kind: "thread",
             threadId: "thr_out_of_bounds",
-            threadType: "standard",
             label: "Out of bounds",
           },
         },

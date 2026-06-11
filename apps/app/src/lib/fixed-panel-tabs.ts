@@ -40,7 +40,6 @@ interface LastFixedPanelTabsTouch {
 type FixedPanelSecondaryPanelSetter = (panel: ThreadSecondaryPanel) => void;
 type FixedPanelSecondaryPanelOpener = () => void;
 type FixedPanelSecondaryPanelCloser = () => void;
-type FixedPanelSecondaryPanelToggler = () => void;
 type FixedPanelTerminalIdSetter = (terminalId: string | null) => void;
 type FixedPanelTerminalIdRemover = (terminalId: string) => void;
 
@@ -107,16 +106,16 @@ function buildSecondaryPanelTab(panel: ThreadSecondaryPanel): FixedPanelTab {
 function findActiveTerminalTab(
   state: FixedPanelTabsState,
 ): TerminalFixedPanelTab | null {
-  const activeTabId = state.bottom.activeTabId;
+  const activeTabId = state.secondary.activeTabId;
   if (activeTabId === null) {
     return null;
   }
 
-  const activeTab = state.bottom.tabs.find((tab) => tab.id === activeTabId);
+  const activeTab = state.secondary.tabs.find((tab) => tab.id === activeTabId);
   return activeTab?.kind === "terminal" ? activeTab : null;
 }
 
-function upsertBottomTerminalTab(
+function upsertTerminalTab(
   tabs: readonly FixedPanelTab[],
   terminalId: string,
 ): readonly FixedPanelTab[] {
@@ -125,7 +124,7 @@ function upsertBottomTerminalTab(
   return existingTab ? tabs : [...tabs, nextTab];
 }
 
-function removeBottomTerminalTab(
+function removeTerminalTab(
   tabs: readonly FixedPanelTab[],
   terminalId: string,
 ): readonly FixedPanelTab[] {
@@ -314,19 +313,6 @@ export function useOpenFixedSecondaryPanel(
   }, [updateState]);
 }
 
-export function useToggleFixedSecondaryPanel(
-  threadId: string | null | undefined,
-): FixedPanelSecondaryPanelToggler {
-  const updateState = useUpdateFixedPanelTabsState(threadId);
-  return useCallback(() => {
-    updateState((current) =>
-      current.secondary.isOpen
-        ? closeFixedSecondaryPanelState(current)
-        : openFixedSecondaryPanelState(current),
-    );
-  }, [updateState]);
-}
-
 export function useFixedPanelTabsSecondaryPanelUrlSync(
   threadId: string | null | undefined,
   setSecondaryPanel: FixedPanelSecondaryPanelSetter,
@@ -361,14 +347,14 @@ export function useFixedPanelTabsSecondaryPanelUrlSync(
   ]);
 }
 
-export function useActiveFixedBottomTerminalId(
+export function useActiveFixedRightTerminalId(
   threadId: string | null | undefined,
 ): string | null {
   const state = useFixedPanelTabsState(threadId);
   return findActiveTerminalTab(state)?.terminalId ?? null;
 }
 
-export function useSetFixedBottomTerminalActiveTerminal(
+export function useSetFixedRightTerminalActiveTerminal(
   threadId: string | null | undefined,
 ): FixedPanelTerminalIdSetter {
   const updateState = useUpdateFixedPanelTabsState(threadId);
@@ -376,31 +362,34 @@ export function useSetFixedBottomTerminalActiveTerminal(
     (terminalId: string | null) => {
       updateState((current) => {
         if (terminalId === null) {
-          if (current.bottom.activeTabId === null) {
+          const activeTerminalTab = findActiveTerminalTab(current);
+          if (activeTerminalTab === null) {
             return current;
           }
           return {
             ...current,
-            bottom: {
-              ...current.bottom,
+            secondary: {
+              ...current.secondary,
               activeTabId: null,
             },
           };
         }
 
-        const tabs = upsertBottomTerminalTab(current.bottom.tabs, terminalId);
+        const tabs = upsertTerminalTab(current.secondary.tabs, terminalId);
         const activeTabId = createTerminalFixedPanelTab({ terminalId }).id;
         if (
-          tabs === current.bottom.tabs &&
-          current.bottom.activeTabId === activeTabId
+          tabs === current.secondary.tabs &&
+          current.secondary.activeTabId === activeTabId &&
+          current.secondary.isOpen
         ) {
           return current;
         }
         return {
           ...current,
-          bottom: {
+          secondary: {
             tabs,
             activeTabId,
+            isOpen: true,
           },
         };
       });
@@ -409,25 +398,28 @@ export function useSetFixedBottomTerminalActiveTerminal(
   );
 }
 
-export function useRemoveFixedBottomTerminalTab(
+export function useRemoveFixedRightTerminalTab(
   threadId: string | null | undefined,
 ): FixedPanelTerminalIdRemover {
   const updateState = useUpdateFixedPanelTabsState(threadId);
   return useCallback(
     (terminalId: string) => {
       updateState((current) => {
-        const tabs = removeBottomTerminalTab(current.bottom.tabs, terminalId);
-        if (tabs === current.bottom.tabs) {
+        const tabs = removeTerminalTab(current.secondary.tabs, terminalId);
+        if (tabs === current.secondary.tabs) {
           return current;
         }
         const removedActiveTabId =
-          current.bottom.activeTabId ===
+          current.secondary.activeTabId ===
           createTerminalFixedPanelTab({ terminalId }).id;
         return {
           ...current,
-          bottom: {
+          secondary: {
+            ...current.secondary,
             tabs,
-            activeTabId: removedActiveTabId ? null : current.bottom.activeTabId,
+            activeTabId: removedActiveTabId
+              ? null
+              : current.secondary.activeTabId,
           },
         };
       });

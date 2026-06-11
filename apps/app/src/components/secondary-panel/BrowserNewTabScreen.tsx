@@ -1,3 +1,7 @@
+import {
+  COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@/components/ui/coarse-pointer-sizing.js";
 import { Icon } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
 import { getBrowserUrlHost } from "@/lib/browser-url";
@@ -44,7 +48,11 @@ function BrowserRecentRow({ entry, now, onNavigate }: BrowserRecentRowProps) {
       className={cn(LAUNCHER_ROW_BASE_CLASS, "hover:bg-state-hover")}
     >
       <span className={LAUNCHER_ROW_ICON_CLASS}>
-        <Icon name="Browser" className="size-3.5" aria-hidden />
+        <Icon
+          name="Browser"
+          className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+          aria-hidden
+        />
       </span>
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span className="truncate text-foreground">{primary}</span>
@@ -82,7 +90,10 @@ export function BrowserNewTabScreen({
                 type="button"
                 onClick={onClearRecent}
                 aria-label="Clear recently visited"
-                className="rounded text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className={cn(
+                  "rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                  COARSE_POINTER_TEXT_SM_CLASS,
+                )}
               >
                 Clear
               </button>

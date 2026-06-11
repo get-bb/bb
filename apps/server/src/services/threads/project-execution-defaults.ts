@@ -24,7 +24,6 @@ export interface ResolveProjectExecutionDefaultsForCreateArgs {
   model?: ThreadCreateServiceRequestInput["model"];
   projectId: string;
   providerId?: ThreadCreateServiceRequestInput["providerId"];
-  threadType: ThreadCreateServiceRequestInput["type"];
 }
 
 export interface ResolvedProjectExecutionDefaultsForCreate {
@@ -74,7 +73,6 @@ export function resolveProjectExecutionDefaultsForCreate(
 ): ResolvedProjectExecutionDefaultsForCreate {
   const storedDefaults = getProjectExecutionDefaults(deps.db, {
     projectId: args.projectId,
-    threadType: args.threadType,
   });
   const requestedProviderId = resolveRequestedCreateExecutionValue({
     field: "providerId",
@@ -89,7 +87,6 @@ export function resolveProjectExecutionDefaultsForCreate(
   const resolution = resolveCreateThreadExecutionDefaults({
     requestedProviderId,
     storedDefaults,
-    threadType: args.threadType,
   });
   const { executionDefaults, providerId } = resolution;
 
@@ -97,7 +94,7 @@ export function resolveProjectExecutionDefaultsForCreate(
     throw new ApiError(
       400,
       "invalid_request",
-      `Model is required when project ${args.projectId} has no stored execution defaults for provider ${providerId} and thread type ${args.threadType}`,
+      `Model is required when project ${args.projectId} has no stored execution defaults for provider ${providerId}`,
     );
   }
 
@@ -118,7 +115,6 @@ export function rememberProjectExecutionDefaultsForCreate(
   upsertProjectExecutionDefaults(deps.db, {
     projectId: args.request.projectId,
     providerId: args.request.providerId,
-    threadType: args.request.type,
     model: args.execution.model,
     reasoningLevel: args.execution.reasoningLevel,
     permissionMode: args.execution.permissionMode,

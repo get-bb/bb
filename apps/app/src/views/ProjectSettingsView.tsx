@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   findLocalPathProjectSourceForHost,
   isLocalPathProjectSource,
@@ -20,6 +19,7 @@ import {
 import { ProjectSourceRow } from "@/views/project-settings/ProjectSourceRow";
 import {
   useAddLocalProjectSource,
+  useDeleteLocalProjectSource,
   useUpdateLocalProjectSource,
 } from "@/hooks/mutations/project-mutations";
 import {
@@ -34,12 +34,6 @@ import {
   stripProjectThreads,
   useSidebarNavigation,
 } from "@/hooks/queries/project-queries";
-import { invalidateProjectSourceQueries } from "@/hooks/cache-owners/mutation-cache-effects";
-import * as api from "@/lib/api";
-
-interface DeleteProjectSourceMutationRequest {
-  sourceId: string;
-}
 
 export function ProjectSettingsView() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -49,25 +43,11 @@ export function ProjectSettingsView() {
     [sidebarNavigationQuery.data],
   );
   const isLoading = sidebarNavigationQuery.isFetching && projects === undefined;
-  const queryClient = useQueryClient();
 
   const [deleteTarget, setDeleteTarget] =
     useState<ProjectSourceDeleteDialogTarget | null>(null);
 
-  const deleteSource = useMutation({
-    meta: {
-      errorMessage: "Failed to remove source.",
-    },
-    mutationFn: ({ sourceId }: DeleteProjectSourceMutationRequest) => {
-      if (!projectId) return Promise.resolve();
-      return api.removeProjectSource(projectId, sourceId);
-    },
-    onSuccess: () => {
-      invalidateProjectSourceQueries({ projectId, queryClient });
-      setDeleteTarget(null);
-    },
-  });
-
+  const deleteSource = useDeleteLocalProjectSource();
   const addLocalSource = useAddLocalProjectSource();
   const updateLocalSource = useUpdateLocalProjectSource();
 
@@ -124,23 +104,25 @@ export function ProjectSettingsView() {
     },
     [localSourcePicker, projectId, projectName],
   );
-  const localDaemonHostId = localSourcePicker.localDaemonHostId;
+  const pickerHostId = localSourcePicker.hostId;
 
-  const localDaemonSourcePaths = useMemo(() => {
-    if (!localDaemonHostId) return [];
+  const pickerHostSourcePaths = useMemo(() => {
+    if (!pickerHostId) return [];
     return sources
       .filter(
         (source): source is LocalPathProjectSource =>
-          isLocalPathProjectSource(source) &&
-          source.hostId === localDaemonHostId,
+          isLocalPathProjectSource(source) && source.hostId === pickerHostId,
       )
       .map((source) => source.path);
-  }, [localDaemonHostId, sources]);
-  const pathExistence = useLocalPathExistence(localDaemonSourcePaths);
+  }, [pickerHostId, sources]);
+  // Existence probing needs the loopback daemon; useLocalPathExistence
+  // disables itself when the daemon is unreachable, so remote devices simply
+  // skip the missing-path warning.
+  const pathExistence = useLocalPathExistence(pickerHostSourcePaths);
 
   const showAddLocalSourceButton =
-    localDaemonHostId != null &&
-    !findLocalPathProjectSourceForHost(sources, localDaemonHostId);
+    pickerHostId != null &&
+    !findLocalPathProjectSourceForHost(sources, pickerHostId);
 
   const addSourceButtons = showAddLocalSourceButton ? (
     <div className="mt-2 flex gap-2">
@@ -172,18 +154,18 @@ export function ProjectSettingsView() {
             <div>
               <SettingsRowList>
                 {sources.map((source) => {
-                  const isLocalDaemonSource =
+                  const isPickerHostSource =
                     isLocalPathProjectSource(source) &&
-                    localDaemonHostId != null &&
-                    source.hostId === localDaemonHostId;
+                    pickerHostId != null &&
+                    source.hostId === pickerHostId;
                   const isInvalid =
-                    isLocalDaemonSource &&
+                    isPickerHostSource &&
                     isLocalPathMissing(pathExistence, source.path);
                   return (
                     <ProjectSourceRow
                       key={source.id}
                       source={source}
-                      canEditLocalPath={isLocalDaemonSource}
+                      canEditLocalPath={isPickerHostSource}
                       isLocalPathInvalid={isInvalid}
                       isEditPending={localSourcePickerPending}
                       isOnlySource={sources.length <= 1}
@@ -208,6 +190,7 @@ export function ProjectSettingsView() {
         target={localSourcePicker.projectPathDialog.target}
         pending={localSourcePickerPending}
         platform={localSourcePicker.platform}
+        hostName={localSourcePicker.hostName}
         onOpenChange={localSourcePicker.projectPathDialog.onOpenChange}
         onSubmit={localSourcePicker.submitProjectPath}
       />
@@ -218,7 +201,13 @@ export function ProjectSettingsView() {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        onDelete={(sourceId) => deleteSource.mutate({ sourceId })}
+        onDelete={(sourceId) => {
+          if (!projectId) return;
+          deleteSource.mutate(
+            { projectId, sourceId },
+            { onSuccess: () => setDeleteTarget(null) },
+          );
+        }}
       />
     </PageShell>
   );

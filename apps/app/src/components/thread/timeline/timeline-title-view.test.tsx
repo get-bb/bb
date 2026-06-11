@@ -3,6 +3,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import type {
   TimelineTitle,
   TimelineTitleAction,
@@ -10,6 +11,7 @@ import type {
   TimelineTitleSegment,
 } from "@bb/thread-view";
 import { TimelineTitleView } from "@/components/thread/timeline/TimelineTitleView";
+import { AppRouteNavigationProvider } from "@/components/ui/app-route-anchor";
 
 interface TitleArgs {
   segments: TimelineTitleSegment[];
@@ -17,6 +19,14 @@ interface TitleArgs {
   tone?: TimelineTitle["tone"];
   action?: TimelineTitleAction | null;
   plain?: string;
+}
+
+interface LocationProbeProps {
+  label: string;
+}
+
+function classTokens(element: HTMLElement): Set<string> {
+  return new Set(element.className.split(/\s+/).filter(Boolean));
 }
 
 function title({
@@ -52,6 +62,17 @@ const fileDiffAction: TimelineTitleAction = {
   kind: "open-file-diff",
   path: "src/foo.ts",
 };
+
+function LocationProbe({ label }: LocationProbeProps) {
+  const location = useLocation();
+  return (
+    <span data-testid={label}>
+      {location.pathname}
+      {location.search}
+      {location.hash}
+    </span>
+  );
+}
 
 afterEach(() => {
   cleanup();
@@ -116,15 +137,19 @@ describe("TimelineTitleView", () => {
     const onWrapperKeyDown = vi.fn();
 
     render(
-      <div onClick={onWrapperClick} onKeyDown={onWrapperKeyDown}>
-        <TimelineTitleView
-          title={title({
-            segments: [seg("src/foo.ts", { em: true, truncate: true })],
-            action: fileDiffAction,
-          })}
-          onTitleAction={() => onAction}
-        />
-      </div>,
+      <MemoryRouter>
+        <AppRouteNavigationProvider>
+          <div onClick={onWrapperClick} onKeyDown={onWrapperKeyDown}>
+            <TimelineTitleView
+              title={title({
+                segments: [seg("src/foo.ts", { em: true, truncate: true })],
+                action: fileDiffAction,
+              })}
+              onTitleAction={() => onAction}
+            />
+          </div>
+        </AppRouteNavigationProvider>
+      </MemoryRouter>,
     );
 
     const link = screen.getByRole("link", { name: /src\/foo\.ts/ });
@@ -140,26 +165,79 @@ describe("TimelineTitleView", () => {
     const onWrapperClick = vi.fn();
 
     render(
-      <div onClick={onWrapperClick}>
-        <TimelineTitleView
-          title={title({
-            segments: [
-              {
-                text: "Manager",
-                em: true,
-                shimmer: false,
-                truncate: true,
-                link: { kind: "thread", threadId: "thr_manager" },
-              },
-            ],
-          })}
-          resolveSegmentLinkHref={() => "/projects/p/threads/thr_manager"}
-        />
-      </div>,
+      <MemoryRouter>
+        <AppRouteNavigationProvider>
+          <div onClick={onWrapperClick}>
+            <TimelineTitleView
+              title={title({
+                segments: [
+                  {
+                    text: "Parent thread",
+                    em: true,
+                    shimmer: false,
+                    truncate: true,
+                    link: { kind: "thread", threadId: "thr_parent" },
+                  },
+                ],
+              })}
+              resolveSegmentLinkHref={() => "/projects/p/threads/thr_parent"}
+            />
+          </div>
+        </AppRouteNavigationProvider>
+      </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("link", { name: "Manager" }));
+    fireEvent.click(screen.getByRole("link", { name: "Parent thread" }));
 
     expect(onWrapperClick).not.toHaveBeenCalled();
+  });
+
+  it("routes segment links through client-side navigation", () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppRouteNavigationProvider>
+          <TimelineTitleView
+            title={title({
+              segments: [
+                {
+                  text: "Parent thread",
+                  em: true,
+                  shimmer: false,
+                  truncate: true,
+                  link: { kind: "thread", threadId: "thr_parent" },
+                },
+              ],
+            })}
+            resolveSegmentLinkHref={() =>
+              "/projects/proj_1/threads/thr_parent?panel=timeline#row"
+            }
+          />
+          <LocationProbe label="location" />
+        </AppRouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    const notDefaultPrevented = fireEvent.click(
+      screen.getByRole("link", { name: "Parent thread" }),
+    );
+
+    expect(notDefaultPrevented).toBe(false);
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/projects/proj_1/threads/thr_parent?panel=timeline#row",
+    );
+  });
+
+  it("renders emphasized tool titles at medium weight", () => {
+    render(
+      <TimelineTitleView
+        title={title({
+          segments: [seg("pnpm test", { em: true })],
+        })}
+      />,
+    );
+
+    expect(classTokens(screen.getByText("pnpm test")).has("font-medium")).toBe(
+      true,
+    );
   });
 });

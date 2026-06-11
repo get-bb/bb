@@ -148,7 +148,7 @@ export function registerSpawnCommand(
     )
     .option(
       "--provider <id>",
-      "Provider ID for the thread. Omit to use the project's remembered provider choice for standard threads",
+      "Provider ID for the thread. Omit to use the project's remembered provider choice",
     )
     .option(
       "--model <model>",

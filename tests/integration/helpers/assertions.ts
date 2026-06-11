@@ -217,25 +217,6 @@ export async function waitForThreadOutputContaining(
   );
 }
 
-export async function waitForEvents(
-  api: PublicApiClient,
-  threadId: string,
-  minCount: number,
-  timeoutMs = 10_000,
-): Promise<ThreadEventRow[]> {
-  let currentCount = 0;
-  return pollUntil(
-    async () => {
-      const events = await readThreadEvents(api, threadId);
-      currentCount = events.length;
-      return events.length >= minCount ? events : null;
-    },
-    `Timed out waiting for ${minCount} events on thread ${threadId}`,
-    timeoutMs,
-    () => `${currentCount} events`,
-  );
-}
-
 export async function waitForEventType(
   api: PublicApiClient,
   threadId: string,

@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import type { WorkspacePathEntry } from "@bb/server-contract";
@@ -25,6 +26,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     searchProjectPaths: vi.fn(),
+    searchEnvironmentPaths: vi.fn(),
     listApps: vi.fn(),
     listThreadStoragePaths: vi.fn(),
   };
@@ -44,8 +46,8 @@ interface PathListFixtureResponse {
 
 interface RenderNewTabPageArgs {
   projectId?: string;
+  environmentId?: string | null;
   currentThreadId?: string;
-  currentThreadType?: "manager" | "standard";
   onSelect?: (selection: FileSearchSelection) => void;
 }
 
@@ -85,6 +87,7 @@ function seedRecentItems(threadId: string, items: ThreadRecentItem[]): void {
 function mockEmptySearchSources(): void {
   vi.mocked(api.listApps).mockResolvedValue([]);
   vi.mocked(api.searchProjectPaths).mockResolvedValue(makePathResponse([]));
+  vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(makePathResponse([]));
   vi.mocked(api.listThreadStoragePaths).mockResolvedValue({
     ...makePathResponse([]),
     storageRootPath: "/tmp/thread-storage",
@@ -100,9 +103,8 @@ function renderNewTabPage(args: RenderNewTabPageArgs = {}) {
     ...render(
       <NewTabPage
         projectId={args.projectId}
-        environmentId="env-1"
+        environmentId={args.environmentId === undefined ? "env-1" : args.environmentId}
         currentThreadId={args.currentThreadId ?? "thr-standard"}
-        currentThreadType={args.currentThreadType ?? "standard"}
         focusRequest={0}
         onSelect={onSelect}
       />,
@@ -121,7 +123,7 @@ afterEach(() => {
 describe("NewTabPage", () => {
   it("renders file search and selects a workspace result", async () => {
     vi.mocked(api.listApps).mockResolvedValue([]);
-    vi.mocked(api.searchProjectPaths).mockResolvedValue(
+    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
       makePathResponse([
         {
           kind: "file",
@@ -167,9 +169,9 @@ describe("NewTabPage", () => {
     expect(CREATE_APP_PROMPT_TEMPLATE.endsWith("What I want:\n\n")).toBe(true);
   });
 
-  it("selects a manager thread-storage result with the keyboard", async () => {
+  it("selects a thread-storage result with the keyboard", async () => {
     vi.mocked(api.listApps).mockResolvedValue([]);
-    vi.mocked(api.searchProjectPaths).mockResolvedValue(
+    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
       makePathResponse([
         {
           kind: "file",
@@ -190,8 +192,7 @@ describe("NewTabPage", () => {
     });
     const { onSelect } = renderNewTabPage({
       projectId: "proj-1",
-      currentThreadId: "thr-manager",
-      currentThreadType: "manager",
+      currentThreadId: "thr-storage",
     });
 
     const input = screen.getByRole("combobox", {
@@ -208,13 +209,40 @@ describe("NewTabPage", () => {
     });
   });
 
+  it("ends file-search loading in a projectless thread with no workspace", async () => {
+    mockEmptySearchSources();
+    renderNewTabPage({
+      projectId: undefined,
+      environmentId: null,
+      currentThreadId: "thr-projectless-search",
+    });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Search files" }), {
+      target: { value: "missing" },
+    });
+
+    await waitFor(() => {
+      expect(api.listThreadStoragePaths).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Searching files...")).toBeNull();
+    });
+
+    // No project source and no environment ⇒ workspace is never queried.
+    expect(api.searchProjectPaths).not.toHaveBeenCalled();
+    expect(api.searchEnvironmentPaths).not.toHaveBeenCalled();
+    expect(screen.queryByText("File search failed.")).toBeNull();
+    expect(screen.getByText("No files match your search.")).toBeTruthy();
+  });
+
   it("renders an unavailable state without querying", () => {
-    renderNewTabPage({ currentThreadId: "" });
+    renderNewTabPage({ currentThreadId: "", environmentId: null });
 
     expect(
       screen.getByText("No searchable file source is available."),
     ).toBeTruthy();
     expect(api.searchProjectPaths).not.toHaveBeenCalled();
+    expect(api.searchEnvironmentPaths).not.toHaveBeenCalled();
     expect(api.listApps).not.toHaveBeenCalled();
     expect(api.listThreadStoragePaths).not.toHaveBeenCalled();
 
@@ -231,7 +259,7 @@ describe("NewTabPage", () => {
 });
 
 describe("NewTabPage recent section", () => {
-  it("lists recent items newest-first with type chips and relative timestamps", async () => {
+  it("lists recent items newest-first with relative timestamps", async () => {
     mockEmptySearchSources();
     const threadId = "thr-recent-render";
     const now = Date.now();
@@ -240,6 +268,11 @@ describe("NewTabPage recent section", () => {
         source: "thread-storage",
         path: "plans/swap-model.md",
         openedAt: now - 2 * MINUTE_MS,
+      },
+      {
+        source: "thread-storage",
+        path: "README.md",
+        openedAt: now - 5 * MINUTE_MS,
       },
       {
         source: "thread-storage",
@@ -256,7 +289,6 @@ describe("NewTabPage recent section", () => {
     renderNewTabPage({
       projectId: "proj-1",
       currentThreadId: threadId,
-      currentThreadType: "manager",
     });
 
     // Recent is a labelled option group inside the single combobox listbox.
@@ -264,17 +296,24 @@ describe("NewTabPage recent section", () => {
     const recentOptions = within(recentGroup).getAllByRole("option");
     expect(recentOptions.map((option) => option.textContent ?? "")).toEqual([
       expect.stringContaining("swap-model.md"),
+      expect.stringContaining("README.md"),
       expect.stringContaining("sidebar-mockup.html"),
       expect.stringContaining("NewTabFileSearch.tsx"),
     ]);
 
-    // Chip labels follow the artifact kind, not just the extension.
-    expect(within(recentGroup).getByText("Plan")).toBeTruthy();
-    expect(within(recentGroup).getByText("Mockup")).toBeTruthy();
-    expect(within(recentGroup).getByText("Source")).toBeTruthy();
+    // Recent rows keep the icon and path context, but do not render visual-kind
+    // labels or the old separator glyphs inline.
+    expect(within(recentGroup).queryByText("Plan")).toBeNull();
+    expect(within(recentGroup).queryByText("Doc")).toBeNull();
+    expect(within(recentGroup).queryByText("Mockup")).toBeNull();
+    expect(within(recentGroup).queryByText("Source")).toBeNull();
+    for (const option of recentOptions) {
+      expect(option.textContent ?? "").not.toContain(String.fromCharCode(183));
+    }
 
     // Right-aligned relative timestamps.
     expect(within(recentGroup).getByText("2m ago")).toBeTruthy();
+    expect(within(recentGroup).getByText("5m ago")).toBeTruthy();
     expect(within(recentGroup).getByText("1h ago")).toBeTruthy();
     expect(within(recentGroup).getByText("Yesterday")).toBeTruthy();
   });
@@ -292,7 +331,6 @@ describe("NewTabPage recent section", () => {
     const { onSelect } = renderNewTabPage({
       projectId: "proj-1",
       currentThreadId: threadId,
-      currentThreadType: "manager",
     });
 
     fireEvent.click(
@@ -323,7 +361,6 @@ describe("NewTabPage recent section", () => {
     renderNewTabPage({
       projectId: "proj-1",
       currentThreadId: threadId,
-      currentThreadType: "manager",
     });
 
     await screen.findByText("swap-model.md");
@@ -332,6 +369,38 @@ describe("NewTabPage recent section", () => {
     expect(
       screen.queryByRole("button", { name: "Back to new tab menu" }),
     ).toBeNull();
+  });
+
+  it("shows a no-results message above Recent when a search has no file matches", async () => {
+    mockEmptySearchSources();
+    const threadId = "thr-recent-no-search-results";
+    seedRecentItems(threadId, [
+      {
+        source: "thread-storage",
+        path: "plans/swap-model.md",
+        openedAt: Date.now() - 2 * MINUTE_MS,
+      },
+    ]);
+    renderNewTabPage({
+      projectId: "proj-1",
+      currentThreadId: threadId,
+    });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Search files" }), {
+      target: { value: "does-not-exist" },
+    });
+
+    const noResults = await screen.findByText("No files match your search.");
+    const recent = screen.getByRole("group", { name: "Recent" });
+    expect(
+      Boolean(
+        noResults.compareDocumentPosition(recent) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+    expect(
+      within(recent).getByRole("option", { name: /swap-model\.md/u }),
+    ).toBeTruthy();
   });
 
   it("reaches a recent row via keyboard navigation", async () => {
@@ -347,7 +416,6 @@ describe("NewTabPage recent section", () => {
     renderNewTabPage({
       projectId: "proj-1",
       currentThreadId: threadId,
-      currentThreadType: "manager",
     });
 
     const input = screen.getByRole("combobox", { name: "Search files" });
@@ -366,10 +434,11 @@ describe("NewTabPage recent section", () => {
     renderNewTabPage({
       projectId: "proj-1",
       currentThreadId: "thr-recent-empty",
-      currentThreadType: "manager",
     });
 
-    const hint = await screen.findByText(/Nothing referenced yet/u);
+    const hint = await screen.findByText(
+      "Plans, mockups, and files you open will show up here.",
+    );
     expect(hint.className).toContain("border-dashed");
     // The deprecated raised fill stays gone so the card never clashes on white.
     expect(hint.className).not.toContain("bg-surface-raised");

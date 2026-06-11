@@ -44,8 +44,7 @@ import {
   requestEnvironmentCleanupAdvance,
   wouldCleanupEnvironment,
 } from "../services/environments/environment-cleanup-internal.js";
-import { queueAsyncMdMigrationReminderIfPresent } from "../services/scheduling/async-md-compatibility.js";
-import { queueManagedThreadTurnNotificationBestEffort } from "../services/threads/managed-thread-notifications.js";
+import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
 import { runQueuedMessageAutoSendForThread } from "../services/threads/queued-messages.js";
 import { dispatchSettledArchivedThreadProviderArchiveCommand } from "../services/threads/thread-lifecycle.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
@@ -141,15 +140,11 @@ interface ArchiveCompletedAutomationThreadIfNeededArgs {
   turnStatus: ThreadEventTurnStatus;
 }
 
-interface AsyncMdMigrationReminderFollowUp {
-  kind: "async-md-migration-reminder";
-  threadId: string;
-}
-
-interface ManagerTurnNotificationFollowUp {
-  kind: "manager-turn-notification";
-  managedThreadId: string;
-  managerThreadId: string;
+interface ParentTurnNotificationFollowUp {
+  kind: "parent-turn-notification";
+  childThreadId: string;
+  projectId: string;
+  parentThreadId: string;
   title: string | null;
   turnStatus: ThreadEventTurnStatus;
 }
@@ -160,8 +155,7 @@ interface QueuedMessageAutoSendFollowUp {
 }
 
 type EventEffectFollowUp =
-  | AsyncMdMigrationReminderFollowUp
-  | ManagerTurnNotificationFollowUp
+  | ParentTurnNotificationFollowUp
   | QueuedMessageAutoSendFollowUp;
 
 function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
@@ -348,7 +342,7 @@ async function applyEventEffects(
           threadId: entry.threadId,
         });
         if (turnCompleted.thread?.parentThreadId) {
-          // Command-result failures already notify managers for failed turns
+          // Command-result failures already notify parent threads for failed turns
           // without terminal events; late terminal events still own status effects.
           const alreadyHandledByCommandFailure =
             event.status === "failed" &&
@@ -358,11 +352,12 @@ async function applyEventEffects(
             });
           if (!alreadyHandledByCommandFailure) {
             followUps.push({
-              kind: "manager-turn-notification",
-              managedThreadId: turnCompleted.thread.id,
-              managerThreadId: turnCompleted.thread.parentThreadId,
-              turnStatus: event.status,
+              kind: "parent-turn-notification",
+              childThreadId: turnCompleted.thread.id,
+              projectId: turnCompleted.thread.projectId,
+              parentThreadId: turnCompleted.thread.parentThreadId,
               title: turnCompleted.thread.title,
+              turnStatus: event.status,
             });
           }
         }
@@ -375,12 +370,6 @@ async function applyEventEffects(
         if (turnCompleted.nextStatus === "idle" && turnCompleted.thread) {
           const latestThread = getThread(deps.db, turnCompleted.thread.id);
           if (latestThread?.status === "idle") {
-            if (latestThread.type === "manager") {
-              followUps.push({
-                kind: "async-md-migration-reminder",
-                threadId: latestThread.id,
-              });
-            }
             await archiveCompletedAutomationThreadIfNeeded(deps, {
               latestThread,
               turnStatus: event.status,
@@ -435,17 +424,15 @@ async function executeEventFollowUpBestEffort(
 ): Promise<void> {
   try {
     switch (followUp.kind) {
-      case "async-md-migration-reminder":
-        await queueAsyncMdMigrationReminderIfPresent(deps, {
-          threadId: followUp.threadId,
-        });
-        return;
-      case "manager-turn-notification":
-        await queueManagedThreadTurnNotificationBestEffort(deps, {
-          managedThreadId: followUp.managedThreadId,
-          managerThreadId: followUp.managerThreadId,
+      case "parent-turn-notification":
+        await queueChildThreadTurnNotificationBestEffort(deps, {
+          childThread: {
+            id: followUp.childThreadId,
+            projectId: followUp.projectId,
+            title: followUp.title,
+          },
+          parentThreadId: followUp.parentThreadId,
           turnStatus: followUp.turnStatus,
-          title: followUp.title,
         });
         return;
       case "queued-message-auto-send":

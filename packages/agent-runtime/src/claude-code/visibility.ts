@@ -25,8 +25,20 @@ type ClaudeMessageContentType =
   | "unknown";
 
 type ClaudeSystemSubtype =
+  | "commands_changed"
   | "compact_boundary"
+  | "elicitation_complete"
+  | "files_persisted"
+  | "hook_progress"
+  | "hook_response"
+  | "hook_started"
   | "init"
+  | "local_command_output"
+  | "memory_recall"
+  | "mirror_error"
+  | "notification"
+  | "permission_denied"
+  | "plugin_install"
   | "session_state_changed"
   | "status"
   | "task_notification"
@@ -171,8 +183,20 @@ function toClaudeSystemSubtype(
   subtype: string | undefined,
 ): ClaudeSystemSubtype {
   switch (subtype) {
+    case "commands_changed":
     case "compact_boundary":
+    case "elicitation_complete":
+    case "files_persisted":
+    case "hook_progress":
+    case "hook_response":
+    case "hook_started":
     case "init":
+    case "local_command_output":
+    case "memory_recall":
+    case "mirror_error":
+    case "notification":
+    case "permission_denied":
+    case "plugin_install":
     case "session_state_changed":
     case "status":
     case "task_notification":
@@ -419,9 +443,23 @@ function describeParsedClaudeRawEvent(
         case "task_updated":
           return { kind: `sdk/system:${event.subtype}`, coverage: "normalized" };
         case "init":
-        // The bg-agent turn-over signal and the live thinking-token estimate
-        // are intentionally unrendered; classified so they never surface as
-        // provider/unhandled debug rows.
+        // Known SDK system signals bb intentionally does not render — async
+        // hook lifecycle (hook_started/progress/response), slash-command list
+        // changes, the bg-agent turn-over signal, the live thinking-token
+        // estimate, and assorted control-channel notices. Classified as noise
+        // so they never surface as provider/unhandled debug rows.
+        case "commands_changed":
+        case "elicitation_complete":
+        case "files_persisted":
+        case "hook_progress":
+        case "hook_response":
+        case "hook_started":
+        case "local_command_output":
+        case "memory_recall":
+        case "mirror_error":
+        case "notification":
+        case "permission_denied":
+        case "plugin_install":
         case "session_state_changed":
         case "thinking_tokens":
           return { kind: `sdk/system:${event.subtype}`, coverage: "noise" };

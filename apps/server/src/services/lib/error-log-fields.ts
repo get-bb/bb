@@ -50,3 +50,7 @@ export function runtimeErrorLogFields(
 export function isCommandTimeoutError(error: LoggableError): boolean {
   return error instanceof ApiError && error.body.code === "command_timeout";
 }
+
+export function isHostUnavailableError(error: LoggableError): boolean {
+  return error instanceof ApiError && error.body.code === "host_unavailable";
+}

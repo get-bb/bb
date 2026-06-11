@@ -50,9 +50,13 @@ describe("ThreadTimelinePane", () => {
 
     renderLoadingTimelinePane();
 
-    expect(screen.queryByText("Loading thread...")).toBeNull();
+    expect(
+      screen.queryByRole("status", { name: "Loading thread" }),
+    ).toBeNull();
     act(() => vi.advanceTimersByTime(LOADING_INDICATOR_REVEAL_DELAY_MS));
-    expect(screen.getByText("Loading thread...")).toBeTruthy();
+    expect(
+      screen.getByRole("status", { name: "Loading thread" }),
+    ).toBeTruthy();
   });
 
   it("suppresses the initial loading placeholder when loading finishes before the reveal delay", () => {
@@ -61,7 +65,9 @@ describe("ThreadTimelinePane", () => {
     const view = renderLoadingTimelinePane();
 
     act(() => vi.advanceTimersByTime(LOADING_INDICATOR_REVEAL_DELAY_MS - 1));
-    expect(screen.queryByText("Loading thread...")).toBeNull();
+    expect(
+      screen.queryByRole("status", { name: "Loading thread" }),
+    ).toBeNull();
 
     view.rerender(
       <ThreadTimelinePane
@@ -85,7 +91,9 @@ describe("ThreadTimelinePane", () => {
       />,
     );
     act(() => vi.advanceTimersByTime(1));
-    expect(screen.queryByText("Loading thread...")).toBeNull();
+    expect(
+      screen.queryByRole("status", { name: "Loading thread" }),
+    ).toBeNull();
   });
 
   it("shows a pending stop row when a stop has been requested", () => {

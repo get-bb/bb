@@ -8,6 +8,7 @@ import {
   AppToastCommandDescription,
   AppToastCommitDescription,
 } from "./app-toast-descriptions";
+import { ArchivedThreadToastTitle } from "../thread/ArchivedThreadToastTitle";
 import { Button } from "./button";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import type { ReactNode } from "react";
@@ -28,7 +29,7 @@ interface ToastExample {
 }
 
 interface CurrentToast {
-  title: string;
+  title: ReactNode;
   description?: ReactNode;
   tone: ToastTone;
   primaryActionLabel?: string;
@@ -297,15 +298,40 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     },
   },
   {
-    id: "archive-undo",
+    id: "archive-thread",
     group: "Thread actions",
-    label: "archive undo",
+    label: "archive success",
     source: "ThreadActionsProvider",
-    usage: ["Single thread archive succeeds", "Undo calls unarchive"],
+    usage: ["Thread archive succeeds", "Title opens the archived thread"],
     current: {
       tone: "success",
-      title: "Thread archived",
-      secondaryActionLabel: "Undo",
+      title: (
+        <ArchivedThreadToastTitle
+          archivedThreadCount={1}
+          threadTitle="Audit recurring permission failures"
+          onOpenThread={() => undefined}
+        />
+      ),
+    },
+  },
+  {
+    id: "archive-thread-children",
+    group: "Thread actions",
+    label: "archive with children",
+    source: "ThreadActionsProvider",
+    usage: [
+      "Archive includes child threads",
+      "Long titles truncate to one line",
+    ],
+    current: {
+      tone: "success",
+      title: (
+        <ArchivedThreadToastTitle
+          archivedThreadCount={3}
+          threadTitle="Investigate intermittent provider CLI health check timeouts on managed environments"
+          onOpenThread={() => undefined}
+        />
+      ),
     },
   },
   {
@@ -327,7 +353,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     usage: ["Thread archive fails", "Title varies by thread type/error"],
     current: {
       tone: "error",
-      title: "Failed to archive thread",
+      title: "Failed to archive thread and children",
     },
   },
   {

@@ -6,45 +6,40 @@ import {
   deleteProjectSource,
   getProjectSourceByHost,
   getProjectSourceForProject,
+  listProjectExecutionDefaultsByProjectIds,
   listPublicProjects,
   listProjectSourcesByProjectIds,
-  listThreads,
-  listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
-  reorderManagerThread,
   reorderProject,
   updateProject,
   updateProjectSource,
-  type ReorderManagerThreadResult,
+  upsertProjectWorkflowPolicy,
   type ReorderProjectResult,
 } from "@bb/db";
 import {
-  createManagerThreadRequestSchema,
   createProjectRequestSchema,
   createProjectSourceRequestSchema,
   projectAttachmentContentQuerySchema,
   projectBranchesQuerySchema,
+  projectCommandsQuerySchema,
   projectDefaultExecutionOptionsQuerySchema,
   projectFilesQuerySchema,
   projectPathsQuerySchema,
   projectListIncludeOptionSchema,
   projectListQuerySchema,
   promptHistoryQuerySchema,
-  reorderManagerThreadRequestSchema,
   reorderProjectRequestSchema,
   typedRoutes,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
+  updateProjectWorkflowPolicyRequestSchema,
   type ProjectListIncludeOption,
   type ProjectListQuery,
   type ProjectResponse,
   type ProjectWithThreadsResponse,
   type PublicApiSchema,
-  type ThreadListResponse,
-  type EnvironmentArgs,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import { renderTemplate } from "@bb/templates";
 import type { AppDeps } from "../types.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
@@ -59,20 +54,26 @@ import {
   requirePublicStandardProject,
   requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
-import { PROMPT_HISTORY_ENTRY_LIMIT, type PromptInput } from "@bb/domain";
-import { createThreadFromRequest } from "../services/threads/thread-create.js";
+import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
 import {
   toThreadListEntryResponses,
-  toThreadResponseFromThread,
 } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
+import {
+  buildCommandListResponse,
+  providerHasCommandSurface,
+  resolveCommandWorkspace,
+  PROVIDER_COMMAND_DEFAULT_LIMIT,
+  PROVIDER_COMMAND_LIMIT_MAX,
+} from "../services/threads/provider-command-typeahead.js";
 import {
   beginProjectDeletion,
   requestProjectDeletionAdvance,
 } from "../services/projects/project-deletion.js";
 import { listProjectPromptHistory } from "../services/prompt-history.js";
+import { getEffectiveProjectWorkflowPolicy } from "../services/workflows/workflow-run-policy.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import {
   normalizeBranchQuery,
@@ -152,62 +153,6 @@ function toProjectOrderResponse(
   }
 }
 
-function buildProjectThreadListResponse(
-  deps: AppDeps,
-  projectId: string,
-): ThreadListResponse {
-  return toThreadListEntryResponses(deps, {
-    threads: listThreadsWithPendingInteractionState(deps.db, {
-      archived: false,
-      projectId,
-    }),
-  });
-}
-
-function assertManagerThreadOrderResult(
-  result: ReorderManagerThreadResult,
-): void {
-  switch (result.kind) {
-    case "reordered":
-    case "unchanged":
-      return;
-    case "not_found":
-      throw new ApiError(404, "thread_not_found", "Thread not found");
-    case "stale_neighbor":
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "Manager thread order changed",
-      );
-    case "invalid_neighbor_order":
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "Manager thread order is invalid",
-      );
-  }
-}
-
-/**
- * True when the caller-supplied input has any content the manager should act
- * on: any non-text part (image, local file), or at least one text part with
- * non-whitespace content. Used by the manager-hire route to decide between
- * the quick-start preamble path and the welcome-fallback path — a
- * whitespace-only text input has the same semantic meaning as no input at
- * all, so it should fall back to the welcome rather than emit an empty
- * timeline message preceded by an agent-only preamble.
- */
-function managerHireInputHasMeaningfulContent(
-  input: readonly PromptInput[],
-): boolean {
-  return input.some((part) => {
-    if (part.type === "text") {
-      return part.text.trim().length > 0;
-    }
-    return true;
-  });
-}
-
 function parseProjectListIncludes(
   query: ProjectListQuery,
 ): Set<ProjectListIncludeOption> {
@@ -258,10 +203,15 @@ function buildProjectsWithThreadsResponseFromRows(
     }
     threadsByProjectId.set(thread.projectId, [thread]);
   }
+  const defaultsByProjectId = listProjectExecutionDefaultsByProjectIds(
+    deps.db,
+    { projectIds },
+  );
 
   return projects.map((project) => ({
     ...project,
     threads: threadsByProjectId.get(project.id) ?? [],
+    defaultExecutionOptions: defaultsByProjectId.get(project.id) ?? null,
   }));
 }
 
@@ -373,7 +323,7 @@ function resolveProjectSourcePath(
 }
 
 export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
-  const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, patch, put, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
 
@@ -414,7 +364,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       requirePublicProject(deps.db, projectId);
       const plan = resolveProjectCreateDefaultExecutionPlan(deps, {
         projectId,
-        threadType: query.threadType,
       });
       return context.json(plan.defaultView);
     },
@@ -574,6 +523,30 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ ok: true });
   });
 
+  get("/projects/:id/workflow-policy", (context) => {
+    requirePublicProject(deps.db, context.req.param("id"));
+    return context.json(
+      getEffectiveProjectWorkflowPolicy(deps.db, context.req.param("id")),
+    );
+  });
+
+  put(
+    "/projects/:id/workflow-policy",
+    updateProjectWorkflowPolicyRequestSchema,
+    (context, payload) => {
+      const projectId = context.req.param("id");
+      requirePublicProject(deps.db, projectId);
+      upsertProjectWorkflowPolicy(deps.db, {
+        projectId,
+        sandboxCeiling: payload.sandboxCeiling,
+        defaultBudgetOutputTokens: payload.defaultBudgetOutputTokens,
+      });
+      return context.json(
+        getEffectiveProjectWorkflowPolicy(deps.db, projectId),
+      );
+    },
+  );
+
   get(
     "/projects/:id/files",
     projectFilesQuerySchema,
@@ -617,13 +590,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
       const limit = parseFileListLimit(query.limit);
 
-      const target =
-        query.environmentId !== null
-          ? resolveEnvironmentPath(deps, {
-              projectId,
-              environmentId: query.environmentId,
-            })
-          : resolveProjectSourcePath(deps, { projectId, hostId: null });
+      // Project-source listing only: used by the new-thread compose box before
+      // any environment exists. Once a thread has an environment, workspace
+      // path search goes through `GET /environments/:id/paths` instead.
+      const target = resolveProjectSourcePath(deps, { projectId, hostId: null });
       const inclusion = parsePathKindInclusion({
         includeFiles: query.includeFiles,
         includeDirectories: query.includeDirectories,
@@ -641,6 +611,48 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return context.json({ paths: result.paths, truncated: result.truncated });
+    },
+  );
+
+  get(
+    "/projects/:id/commands",
+    projectCommandsQuerySchema,
+    async (context, query) => {
+      const projectId = context.req.param("id");
+      requirePublicStandardProject(deps.db, projectId);
+
+      // Providers without a command surface (pi, anything unknown) have no
+      // typeahead entries, so skip the daemon roundtrip entirely.
+      if (!providerHasCommandSurface(query.provider)) {
+        return context.json({ commands: [], truncated: false });
+      }
+
+      const limit = parseBoundedPositiveOptionalInteger({
+        defaultValue: PROVIDER_COMMAND_DEFAULT_LIMIT,
+        max: PROVIDER_COMMAND_LIMIT_MAX,
+        name: "limit",
+        value: query.limit,
+      });
+      const workspace = resolveCommandWorkspace(deps, {
+        environmentId: query.environmentId,
+        projectId,
+      });
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: workspace.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_commands",
+          providerId: query.provider,
+          cwd: workspace.cwd,
+        },
+      });
+      return context.json(
+        buildCommandListResponse({
+          commands: result.commands,
+          limit,
+          query: query.query,
+        }),
+      );
     },
   );
 
@@ -701,135 +713,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
           "content-type": attachment.mimeType ?? "application/octet-stream",
         } as HeadersInit,
       });
-    },
-  );
-
-  post(
-    "/projects/:id/managers",
-    createManagerThreadRequestSchema,
-    async (context, payload) => {
-      const projectId = context.req.param("id");
-      const project = requireProject(deps.db, projectId);
-
-      const { hostId } = payload.environment;
-      requireNonDestroyedHostWithStatus(deps.db, hostId);
-      assertPrimaryHostId(deps, { hostId });
-      let environment: EnvironmentArgs;
-      if (project.kind === "personal") {
-        environment = {
-          type: "host",
-          hostId,
-          workspace: { type: "personal" },
-        };
-      } else {
-        requirePublicProject(deps.db, projectId);
-        const source = getProjectSourceByHost(deps.db, projectId, hostId);
-        if (!source) {
-          throw new ApiError(
-            409,
-            "invalid_request",
-            "No project source found for the selected host",
-          );
-        }
-        if (source.type !== "local_path") {
-          throw new ApiError(
-            409,
-            "invalid_request",
-            "Project source for host has no local path",
-          );
-        }
-        environment = {
-          type: "host",
-          hostId,
-          workspace: { type: "unmanaged", path: source.path },
-        };
-      }
-
-      let title: string;
-      if (payload.name) {
-        title = payload.name;
-      } else {
-        const existingManagers = listThreads(deps.db, {
-          projectId,
-          type: "manager",
-        });
-        title =
-          existingManagers.length === 0
-            ? "Manager"
-            : `Manager ${existingManagers.length + 1}`;
-      }
-
-      // When the user provided instructions at hire time, prepend an
-      // agent-only quick-start preamble so the manager knows to skip the
-      // welcome ceremony (no scope / landing-mode / identity questions)
-      // and act on the user's message directly. The preamble is hidden
-      // from the timeline; the user's input renders as the first turn.
-      // Without instructions — or with input that only contains
-      // whitespace-only text — we fall back to the welcome template so
-      // the manager still bootstraps preferences and asks the ceremony
-      // questions on its own, and so the timeline doesn't show an empty
-      // user message preceded by an invisible preamble.
-      const quickStartUserInput =
-        payload.input && managerHireInputHasMeaningfulContent(payload.input)
-          ? payload.input
-          : null;
-      const firstMessage = quickStartUserInput
-        ? [
-            {
-              type: "text" as const,
-              text: renderTemplate("systemMessageManagerQuickStart", {}),
-              mentions: [],
-              visibility: "agent-only" as const,
-            },
-            ...quickStartUserInput,
-          ]
-        : [
-            {
-              type: "text" as const,
-              text: renderTemplate("systemMessageManagerWelcome", {}),
-              mentions: [],
-            },
-          ];
-
-      const thread = await createThreadFromRequest(deps, {
-        automationId: null,
-        origin: payload.origin,
-        projectId,
-        providerId: payload.providerId,
-        type: "manager",
-        title,
-        input: firstMessage,
-        ...(payload.model ? { model: payload.model } : {}),
-        ...(payload.serviceTier ? { serviceTier: payload.serviceTier } : {}),
-        ...(payload.reasoningLevel
-          ? { reasoningLevel: payload.reasoningLevel }
-          : {}),
-        ...(payload.executionInputSources
-          ? { executionInputSources: payload.executionInputSources }
-          : {}),
-        environment,
-      });
-      return context.json(toThreadResponseFromThread(deps, { thread }), 201);
-    },
-  );
-
-  patch(
-    "/projects/:id/managers/:threadId/order",
-    reorderManagerThreadRequestSchema,
-    async (context, payload) => {
-      const projectId = context.req.param("id");
-      requirePublicStandardProject(deps.db, projectId);
-      assertManagerThreadOrderResult(
-        reorderManagerThread({
-          db: deps.db,
-          notifier: deps.hub,
-          projectId,
-          threadId: context.req.param("threadId"),
-          previousThreadId: payload.previousThreadId,
-          nextThreadId: payload.nextThreadId,
-        }),
-      );
-      return context.json(buildProjectThreadListResponse(deps, projectId));
     },
   );
 }

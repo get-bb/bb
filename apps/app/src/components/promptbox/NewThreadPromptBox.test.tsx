@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import type { PermissionMode, ProjectSource } from "@bb/domain";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import type { Host, PermissionMode, ProjectSource } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { restoreMatchMedia, setupMatchMedia } from "@/test/helpers/match-media";
+import { COMPACT_VIEWPORT_QUERY } from "@/components/ui/hooks/use-compact-viewport";
+import { POINTER_COARSE_QUERY } from "@/components/ui/hooks/use-pointer-coarse";
 import {
   NewThreadPromptBoxUI,
   type NewThreadModeConfig,
@@ -16,6 +19,16 @@ interface TestProviderIconProps {
 }
 
 const localHostId = "host_local";
+
+const localHost: Host = {
+  id: localHostId,
+  name: "localhost",
+  type: "persistent",
+  status: "connected",
+  lastSeenAt: 0,
+  createdAt: 0,
+  updatedAt: 0,
+};
 
 const projectSources: readonly ProjectSource[] = [
   {
@@ -44,12 +57,12 @@ function TestProviderIcon({ className }: TestProviderIconProps) {
 
 function buildThreadModeConfig(): NewThreadModeConfig {
   return {
-    mode: "thread",
     environment: {
       value: `host:${localHostId}:local`,
       onChange: noop,
       sources: projectSources,
-      hostId: localHostId,
+      host: localHost,
+      isLocal: true,
     },
     branch: {
       value: null,
@@ -73,12 +86,6 @@ function buildThreadModeConfig(): NewThreadModeConfig {
   };
 }
 
-function buildManagerModeConfig(): NewThreadModeConfig {
-  return {
-    mode: "manager",
-  };
-}
-
 function renderNewThreadPrompt(modeConfig: NewThreadModeConfig): void {
   const { wrapper } = createQueryClientTestHarness();
 
@@ -96,15 +103,23 @@ function renderNewThreadPrompt(modeConfig: NewThreadModeConfig): void {
         entries: [],
         onSelectEntry: noop,
       }}
-      mentions={{
-        suggestions: [],
-        isLoading: false,
-        isError: false,
-        onQueryChange: noop,
+      typeahead={{
+        mention: {
+          suggestions: [],
+          isLoading: false,
+          isError: false,
+          onQueryChange: noop,
+        },
+        command: {
+          trigger: null,
+          suggestions: [],
+          isLoading: false,
+          isError: false,
+          onQueryChange: noop,
+        },
       }}
       attachments={{ items: [] }}
       modeConfig={modeConfig}
-      onModeChange={noop}
       project={{
         projects: [{ id: "proj_bb", name: "bb" }],
         value: null,
@@ -129,34 +144,47 @@ function renderNewThreadPrompt(modeConfig: NewThreadModeConfig): void {
   );
 }
 
+function setupCompactViewport() {
+  setupMatchMedia({
+    matchesByQuery: new Map([[COMPACT_VIEWPORT_QUERY, true]]),
+  });
+}
+
+function setupCoarsePointerViewport() {
+  setupMatchMedia({
+    matchesByQuery: new Map([[POINTER_COARSE_QUERY, true]]),
+  });
+}
+
+function waitForAnimationFrame() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
 afterEach(() => {
   cleanup();
+  restoreMatchMedia();
   noop.mockClear();
 });
 
 describe("NewThreadPromptBoxUI", () => {
+  it("autofocuses the prompt editor in fine pointer desktop viewports", async () => {
+    renderNewThreadPrompt(buildThreadModeConfig());
+
+    const textbox = screen.getByRole("textbox");
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(textbox);
+    });
+  });
+
   it("omits file mention copy from the projectless thread placeholder", () => {
     renderNewThreadPrompt(buildThreadModeConfig());
 
     expect(screen.getByRole("textbox").getAttribute("data-placeholder")).toBe(
       "Ask anything.",
     );
-  });
-
-  it("omits file mention copy from the projectless manager placeholder", () => {
-    renderNewThreadPrompt(buildManagerModeConfig());
-
-    expect(screen.getByRole("textbox").getAttribute("data-placeholder")).toBe(
-      "Optional — instructions for the manager: what to work on, or how you like things done.",
-    );
-  });
-
-  it("does not render permission controls in manager mode", () => {
-    renderNewThreadPrompt(buildManagerModeConfig());
-
-    expect(
-      screen.queryByRole("button", { name: /Permission mode/ }),
-    ).toBeNull();
   });
 
   it("hides environment controls for projectless threads", () => {
@@ -166,11 +194,10 @@ describe("NewThreadPromptBoxUI", () => {
     expect(screen.queryByRole("button", { name: "Environment" })).toBeNull();
   });
 
-  it("uses shared promptbox selector dimensions for mode, model, and project controls", () => {
+  it("uses shared promptbox selector dimensions for model and project controls", () => {
     renderNewThreadPrompt(buildThreadModeConfig());
 
     const selectorButtons = [
-      screen.getByRole("button", { name: "Thread creation mode" }),
       screen.getByRole("button", { name: "Provider, model and reasoning" }),
       screen.getByRole("button", { name: "Project" }),
     ];
@@ -182,5 +209,26 @@ describe("NewThreadPromptBoxUI", () => {
         "size-3.5",
       );
     }
+  });
+
+  it("autofocuses the prompt editor in compact fine pointer viewports", async () => {
+    setupCompactViewport();
+    renderNewThreadPrompt(buildThreadModeConfig());
+
+    const textbox = screen.getByRole("textbox");
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(textbox);
+    });
+  });
+
+  it("does not autofocus the prompt editor on coarse pointer devices", async () => {
+    setupCoarsePointerViewport();
+    renderNewThreadPrompt(buildThreadModeConfig());
+
+    const textbox = screen.getByRole("textbox");
+    await waitForAnimationFrame();
+
+    expect(document.activeElement).not.toBe(textbox);
   });
 });

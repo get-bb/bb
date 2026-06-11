@@ -1,6 +1,5 @@
 import type { ThreadEventRow } from "@bb/domain";
 import { expect } from "vitest";
-import { getEnvironment } from "../../helpers/api.js";
 import {
   createProjectFixture as createProjectFixtureForHarness,
   createReadyHostThread,
@@ -9,6 +8,7 @@ import {
   type ReadyThreadFixture,
 } from "../../helpers/fixtures.js";
 import type { IntegrationHarness } from "../../helpers/harness.js";
+import { waitForEnvironmentStatus } from "../../helpers/assertions.js";
 import { scaleTimeoutMs } from "../../helpers/time.js";
 
 // Setup and provisioning waits: project creation, environment readiness, and archive cleanup.
@@ -24,6 +24,7 @@ export interface RuntimeConfigCommand {
   commandType: string;
   dynamicToolNames: string[];
   instructions: string | undefined;
+  skillRootPaths: string[];
   threadId: string;
 }
 
@@ -64,6 +65,11 @@ export async function expectEnvironmentDestroyed(
   harness: IntegrationHarness,
   environmentId: string,
 ): Promise<void> {
-  const environment = await getEnvironment(harness.api, environmentId);
+  const environment = await waitForEnvironmentStatus(
+    harness.api,
+    environmentId,
+    "destroyed",
+    DEFAULT_TIMEOUT_MS,
+  );
   expect(environment.status).toBe("destroyed");
 }

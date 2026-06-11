@@ -34,9 +34,8 @@ describe("computeMutedPrefixLength", () => {
     expect(computeMutedPrefixLength("system", text)).toBe(text.length);
   });
 
-  it("handles the long agent prefix shape", () => {
-    const prefix =
-      '[bb message from thread:thr_sender; reply with `bb thread tell thr_sender "<your response>"`]';
+  it("handles the agent prefix shape", () => {
+    const prefix = "[bb message from thread:thr_sender]";
     const text = `${prefix}\n\nHi`;
     // The whole prefix + the `\n\n` separator gets absorbed.
     expect(computeMutedPrefixLength("agent", text)).toBe(prefix.length + 2);

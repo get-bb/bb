@@ -86,7 +86,6 @@ const threadSuggestions: PromptMentionSuggestion[] = [
     projectId: "proj_bb",
     threadId: "thr_qfk8ksbxkk",
     title: "Wire up promptbox stories and trim FollowUp API",
-    threadType: "standard",
   },
   {
     kind: "thread",
@@ -94,8 +93,7 @@ const threadSuggestions: PromptMentionSuggestion[] = [
     replacement: "thread:thr_mgr_kj4n2x",
     projectId: "proj_bb",
     threadId: "thr_mgr_kj4n2x",
-    title: "Manager: app/timeline cleanup sprint",
-    threadType: "manager",
+    title: "Parent: app/timeline cleanup sprint",
   },
   {
     kind: "thread",
@@ -105,7 +103,6 @@ const threadSuggestions: PromptMentionSuggestion[] = [
     projectName: "Docs Site",
     threadId: "thr_untitled_3",
     title: undefined,
-    threadType: "standard",
   },
 ];
 
@@ -146,7 +143,11 @@ function makeResultsState(args: ResultsStateConfig): MentionMenuState {
 function Row({ state, selectedIndex = 0 }: RowConfig) {
   return (
     <PromptStage>
-      <MentionMenu state={state} selectedIndex={selectedIndex} onApply={noop} />
+      <MentionMenu
+        state={{ trigger: "mention", state }}
+        selectedIndex={selectedIndex}
+        onApply={noop}
+      />
     </PromptStage>
   );
 }
@@ -180,7 +181,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="thread matches"
-        hint="manager + standard threads; cross-project rows include project"
+        hint="parent and root threads; cross-project rows include project"
       >
         <Row state={makeResultsState({ suggestions: threadSuggestions })} />
       </StoryRow>

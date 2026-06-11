@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
+import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
 import { Pill } from "@/components/ui/pill.js";
 import type { ReplayRunSpeed } from "@bb/server-contract";
@@ -105,9 +106,9 @@ export function InternalReplayListView() {
             Failed to load replay captures.
           </p>
         ) : captures.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+          <EmptyStatePanel className="py-4 text-left">
             No replay captures found on any connected host.
-          </p>
+          </EmptyStatePanel>
         ) : (
           <div className="space-y-1">
             {captures.map((capture) => {

@@ -173,7 +173,7 @@ describe("workspace command dispatch", () => {
 
   it("covers host.list_files", async () => {
     const tempDir = await makeTempDir("bb-dispatch-host-list-files-");
-    await fs.writeFile(path.join(tempDir, "PREFERENCES.md"), "hello");
+    await fs.writeFile(path.join(tempDir, "notes.md"), "hello");
     await fs.mkdir(path.join(tempDir, "notes"));
     await fs.writeFile(path.join(tempDir, "notes", "todo.md"), "world");
 
@@ -188,7 +188,7 @@ describe("workspace command dispatch", () => {
     );
 
     const paths = result.files.map((file) => file.path).sort();
-    expect(paths).toEqual(["PREFERENCES.md", path.join("notes", "todo.md")]);
+    expect(paths).toEqual(["notes.md", path.join("notes", "todo.md")]);
     expect(result.truncated).toBe(false);
   });
 
@@ -289,8 +289,8 @@ describe("workspace command dispatch", () => {
 
   it("covers host.read_file", async () => {
     const tempDir = await makeTempDir("bb-dispatch-host-read-file-");
-    const filePath = path.join(tempDir, "PREFERENCES.md");
-    await fs.writeFile(filePath, "durable manager notes");
+    const filePath = path.join(tempDir, "notes.md");
+    await fs.writeFile(filePath, "durable thread notes");
 
     const harness = createHarness();
     const result = await dispatchOnlineRpcCommand(
@@ -303,9 +303,9 @@ describe("workspace command dispatch", () => {
     );
 
     expect(result.path).toBe(filePath);
-    expect(result.content).toBe("durable manager notes");
+    expect(result.content).toBe("durable thread notes");
     expect(result.contentEncoding).toBe("utf8");
-    expect(result.sizeBytes).toBe("durable manager notes".length);
+    expect(result.sizeBytes).toBe("durable thread notes".length);
   });
 
   it("covers rootless host.read_file for explicit disk paths", async () => {
@@ -330,8 +330,8 @@ describe("workspace command dispatch", () => {
 
   it("covers host.file_metadata", async () => {
     const tempDir = await makeTempDir("bb-dispatch-host-file-metadata-");
-    const filePath = path.join(tempDir, "PREFERENCES.md");
-    await fs.writeFile(filePath, "durable manager notes");
+    const filePath = path.join(tempDir, "notes.md");
+    await fs.writeFile(filePath, "durable thread notes");
 
     const harness = createHarness();
     const result = await dispatchOnlineRpcCommand(
@@ -344,7 +344,7 @@ describe("workspace command dispatch", () => {
     );
 
     expect(result.path).toBe(filePath);
-    expect(result.sizeBytes).toBe("durable manager notes".length);
+    expect(result.sizeBytes).toBe("durable thread notes".length);
     expect(result.modifiedAtMs).toBeGreaterThan(0);
   });
 
@@ -520,7 +520,7 @@ describe("workspace command dispatch", () => {
       dispatchOnlineRpcCommand(
         {
           type: "host.read_file",
-          path: "PREFERENCES.md",
+          path: "notes.md",
           rootPath: "/tmp",
         },
         harness.dispatchOptions(),

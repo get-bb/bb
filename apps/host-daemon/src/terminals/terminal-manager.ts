@@ -111,6 +111,16 @@ interface CloseTerminalArgs {
   terminalId: string;
 }
 
+interface CloseEnvironmentTerminalsArgs {
+  environmentId: string;
+  reason: TerminalSessionCloseReason;
+}
+
+interface ShutdownTerminalArgs {
+  reason: TerminalSessionCloseReason;
+  terminalId: string;
+}
+
 interface BuildTerminalEnvArgs {
   shellEnv: NodeJS.ProcessEnv;
   terminalId: string;
@@ -126,6 +136,23 @@ interface FinishTerminalSessionArgs {
   closeReason: TerminalSessionCloseReason;
   exitCode: number | null;
   session: TerminalSession;
+}
+
+type TerminalOperation = () => Promise<void> | void;
+
+interface RunTerminalOperationArgs {
+  operation: TerminalOperation;
+  terminalId: string;
+}
+
+interface RunTerminalOperationAfterPreviousArgs {
+  operation: TerminalOperation;
+  previousOperation: Promise<void> | undefined;
+}
+
+interface TerminalOperationCompletion {
+  promise: Promise<void>;
+  resolve: () => void;
 }
 
 export const nodePtyAdapter: TerminalPtyAdapter = {
@@ -290,12 +317,24 @@ function terminalTitleFromShell(shell: string): string {
   return path.basename(shell) || "Terminal";
 }
 
+function createTerminalOperationCompletion(): TerminalOperationCompletion {
+  let resolveCompletion: () => void = () => {
+    throw new Error("Terminal operation completion resolver was not set");
+  };
+  const promise = new Promise<void>((resolve) => {
+    resolveCompletion = resolve;
+  });
+  return { promise, resolve: resolveCompletion };
+}
+
 export class TerminalManager {
   private readonly platform: NodeJS.Platform;
   private readonly ptyAdapter: TerminalPtyAdapter;
   private readonly resolveShell: ResolveTerminalShell;
   private readonly scrollbackMaxBytes: number;
   private readonly scrollbackMaxChunks: number;
+  private readonly terminalOperations = new Map<string, Promise<void>>();
+  private readonly openingTerminalEnvironmentIds = new Map<string, string>();
   private readonly sessions = new Map<string, TerminalSession>();
 
   constructor(private readonly options: TerminalManagerOptions) {
@@ -309,6 +348,15 @@ export class TerminalManager {
   }
 
   async handleMessage(message: HostDaemonServerTerminalMessage): Promise<void> {
+    await this.runTerminalOperation({
+      operation: () => this.handleSerializedMessage(message),
+      terminalId: message.terminalId,
+    });
+  }
+
+  private async handleSerializedMessage(
+    message: HostDaemonServerTerminalMessage,
+  ): Promise<void> {
     switch (message.type) {
       case "terminal.open":
         await this.openTerminal(message);
@@ -335,42 +383,50 @@ export class TerminalManager {
     }
   }
 
-  closeEnvironmentTerminals(
-    environmentId: string,
-    reason: TerminalSessionCloseReason,
-  ): void {
+  async closeEnvironmentTerminals(
+    args: CloseEnvironmentTerminalsArgs,
+  ): Promise<void> {
+    const terminalIds = new Set<string>();
     for (const session of this.sessions.values()) {
-      if (session.environmentId === environmentId) {
-        this.closeTerminal({
-          reason,
-          terminalId: session.terminalId,
-        });
+      if (session.environmentId === args.environmentId) {
+        terminalIds.add(session.terminalId);
       }
     }
+    for (const [terminalId, openingEnvironmentId] of this
+      .openingTerminalEnvironmentIds) {
+      if (openingEnvironmentId === args.environmentId) {
+        terminalIds.add(terminalId);
+      }
+    }
+    await Promise.all(
+      [...terminalIds].map((terminalId) =>
+        this.runTerminalOperation({
+          operation: () =>
+            this.closeTerminal({
+              reason: args.reason,
+              terminalId,
+            }),
+          terminalId,
+        }),
+      ),
+    );
   }
 
   async shutdownAll(
     reason: TerminalSessionCloseReason = "daemon-disconnect",
   ): Promise<void> {
-    const sessions = [...this.sessions.values()];
-    for (const session of sessions) {
-      try {
-        session.pty.kill();
-      } catch (error) {
-        this.options.logger.warn(
-          {
-            terminalId: session.terminalId,
-            ...runtimeErrorLogFields(error),
-          },
-          "Failed to kill terminal during shutdown",
-        );
-      }
-      this.finishTerminalSession({
-        closeReason: reason,
-        exitCode: null,
-        session,
-      });
-    }
+    const terminalIds = new Set([
+      ...this.sessions.keys(),
+      ...this.openingTerminalEnvironmentIds.keys(),
+    ]);
+    await Promise.all(
+      [...terminalIds].map((terminalId) =>
+        this.runTerminalOperation({
+          operation: () => this.shutdownTerminal({ reason, terminalId }),
+          terminalId,
+        }),
+      ),
+    );
   }
 
   private async openTerminal(message: TerminalOpenMessage): Promise<void> {
@@ -394,6 +450,10 @@ export class TerminalManager {
       return;
     }
 
+    this.openingTerminalEnvironmentIds.set(
+      message.terminalId,
+      message.environmentId,
+    );
     try {
       const entry = await requireResolvedWorkspaceForCommand({
         dataDir: this.options.dataDir,
@@ -432,13 +492,25 @@ export class TerminalManager {
       );
       session.disposables.push(
         pty.onData((data) => this.handleTerminalOutput(session, data)),
-        pty.onExit((event) =>
-          this.finishTerminalSession({
-            closeReason: session.closeReason ?? "process-exit",
-            exitCode: event.exitCode,
-            session,
-          }),
-        ),
+        pty.onExit((event) => {
+          void this.runTerminalOperation({
+            operation: () =>
+              this.finishTerminalSession({
+                closeReason: session.closeReason ?? "process-exit",
+                exitCode: event.exitCode,
+                session,
+              }),
+            terminalId: session.terminalId,
+          }).catch((error) => {
+            this.options.logger.warn(
+              {
+                terminalId: session.terminalId,
+                ...runtimeErrorLogFields(error),
+              },
+              "Terminal exit handler failed",
+            );
+          });
+        }),
       );
       this.options.sendMessage({
         type: "terminal.opened",
@@ -462,6 +534,13 @@ export class TerminalManager {
         requestId: message.requestId,
         terminalId: message.terminalId,
       });
+    } finally {
+      if (
+        this.openingTerminalEnvironmentIds.get(message.terminalId) ===
+        message.environmentId
+      ) {
+        this.openingTerminalEnvironmentIds.delete(message.terminalId);
+      }
     }
   }
 
@@ -530,7 +609,34 @@ export class TerminalManager {
     }
   }
 
+  private shutdownTerminal(args: ShutdownTerminalArgs): void {
+    const session = this.sessions.get(args.terminalId);
+    if (!session) {
+      return;
+    }
+    try {
+      session.pty.kill();
+    } catch (error) {
+      this.options.logger.warn(
+        {
+          terminalId: session.terminalId,
+          ...runtimeErrorLogFields(error),
+        },
+        "Failed to kill terminal during shutdown",
+      );
+    }
+    this.finishTerminalSession({
+      closeReason: args.reason,
+      exitCode: null,
+      session,
+    });
+  }
+
   private handleTerminalOutput(session: TerminalSession, data: string): void {
+    if (this.sessions.get(session.terminalId) !== session) {
+      return;
+    }
+
     const buffer = Buffer.from(data, "utf8");
     if (buffer.byteLength === 0) {
       return;
@@ -579,7 +685,7 @@ export class TerminalManager {
   }
 
   private finishTerminalSession(args: FinishTerminalSessionArgs): void {
-    if (!this.sessions.has(args.session.terminalId)) {
+    if (this.sessions.get(args.session.terminalId) !== args.session) {
       return;
     }
     this.sessions.delete(args.session.terminalId);
@@ -606,5 +712,40 @@ export class TerminalManager {
       code: args.code,
       message: args.message,
     });
+  }
+
+  private runTerminalOperation(args: RunTerminalOperationArgs): Promise<void> {
+    const previousOperation = this.terminalOperations.get(args.terminalId);
+    const completion = createTerminalOperationCompletion();
+    this.terminalOperations.set(args.terminalId, completion.promise);
+    const operation = this.runTerminalOperationAfterPrevious({
+      operation: args.operation,
+      previousOperation,
+    });
+
+    void operation.then(
+      () => {
+        completion.resolve();
+      },
+      () => {
+        completion.resolve();
+      },
+    );
+    void completion.promise.then(() => {
+      if (this.terminalOperations.get(args.terminalId) === completion.promise) {
+        this.terminalOperations.delete(args.terminalId);
+      }
+    });
+
+    return operation;
+  }
+
+  private async runTerminalOperationAfterPrevious(
+    args: RunTerminalOperationAfterPreviousArgs,
+  ): Promise<void> {
+    if (args.previousOperation) {
+      await args.previousOperation;
+    }
+    await args.operation();
   }
 }

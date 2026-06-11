@@ -3,23 +3,22 @@ import { assertNever } from "@bb/core-ui";
 
 /**
  * Placeholder copy for the follow-up prompt-box, derived from the thread's
- * runtime display status and whether the thread itself is a manager. Lives in
- * its own module so stories can share the same derivation as production
+ * runtime display status. Lives in its own module so stories can share the
+ * same derivation as production
  * (ThreadDetailPromptArea) — keeping placeholder text from drifting across
  * surfaces.
  */
 export function getFollowUpPromptPlaceholder(
   displayStatus: ThreadRuntimeDisplayStatus,
-  isManagerThread: boolean,
 ): string {
   if (displayStatus === "created") {
-    return isManagerThread ? "Hiring manager..." : "Creating thread...";
+    return "Creating thread...";
   }
 
   switch (displayStatus) {
     case "provisioning":
       // Matches the timeline's provisioning operation title ("Provisioning
-      // thread"), which is uniform across standard and manager threads.
+      // thread"), which is uniform across all threads.
       return "Provisioning thread...";
     case "waiting-for-host":
       return "Host disconnected";
@@ -29,9 +28,7 @@ export function getFollowUpPromptPlaceholder(
       return "Retry by sending a follow-up message";
     case "idle":
     case "active":
-      return isManagerThread
-        ? "Send a message. @ to mention threads, files, or folders"
-        : "Ask for a follow-up. @ to mention files or folders";
+      return "Ask for a follow-up. @ to mention files, folders, or threads";
     default:
       return assertNever(displayStatus);
   }

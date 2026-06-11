@@ -9,9 +9,11 @@ import {
   promptMentionIconName,
   promptMentionTooltipLabel,
 } from "@/components/promptbox/mentions/prompt-mention-display";
+import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
 
 interface PromptMentionPillProps {
   resource: PromptMentionResource;
+  serializedText: string;
 }
 
 interface NormalizeMentionsArgs {
@@ -101,13 +103,20 @@ export function clipMentionTextToVisibleRange({
 function mentionPillClassName(interactive: boolean): string {
   return cn(
     PROMPT_MENTION_PILL_CLASS,
-    "bg-surface-raised",
+    "bg-surface-raised/50 no-underline hover:no-underline",
     interactive && "hover:bg-state-hover",
   );
 }
 
-function PromptMentionPill({ resource }: PromptMentionPillProps) {
+function PromptMentionPill({
+  resource,
+  serializedText,
+}: PromptMentionPillProps) {
   const title = promptMentionTooltipLabel(resource);
+  const clipboardAttributes = promptMentionClipboardDataAttributes({
+    resource,
+    serializedText,
+  });
   const labelNode = (
     <>
       <Icon
@@ -123,7 +132,7 @@ function PromptMentionPill({ resource }: PromptMentionPillProps) {
     return (
       <Link
         className={mentionPillClassName(true)}
-        data-prompt-mention="true"
+        {...clipboardAttributes}
         to={getThreadRoutePath({
           projectId: resource.projectId,
           threadId: resource.threadId,
@@ -136,14 +145,14 @@ function PromptMentionPill({ resource }: PromptMentionPillProps) {
   }
 
   // Timeline path mentions are workspace/thread-storage-relative resources.
-  // Opening them needs the same environment and manager-thread storage context
+  // Opening them needs the same environment and thread-storage context
   // the composer resolver owns, so they are intentionally display-only here.
   // Thread mentions without project context are also display-only; linking
   // through the current page project can misroute cross-project mentions.
   return (
     <span
       className={mentionPillClassName(false)}
-      data-prompt-mention="true"
+      {...clipboardAttributes}
       title={title}
     >
       {labelNode}
@@ -176,6 +185,7 @@ export function renderMentionTextSegments({
       <PromptMentionPill
         key={`${mention.start}:${mention.end}:${mention.resource.kind}`}
         resource={mention.resource}
+        serializedText={text.slice(mention.start, mention.end)}
       />,
     );
     cursor = mention.end;

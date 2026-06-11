@@ -167,7 +167,6 @@ export function createThreadRecord(
     environmentId: args.environmentId,
     automationId: args.request.automationId,
     providerId: args.request.providerId,
-    type: args.request.type,
     title: args.request.title ?? null,
     titleFallback: deriveTitleFallback(args.request.input),
     parentThreadId: args.request.parentThreadId ?? null,

@@ -1,4 +1,3 @@
-import type { HostType } from "@bb/domain";
 import type { AppDataPath, ApplicationId } from "@bb/domain";
 import type { WorkspaceStatusWatchChangeKind } from "./watch-status-types.js";
 
@@ -155,8 +154,4 @@ export interface HostWatcher {
   watchDataDirSkillsRoot?(
     args: WatchDataDirSkillsRootArgs,
   ): () => void | Promise<void>;
-}
-
-export interface CreateHostWatcherArgs {
-  hostType: HostType;
 }

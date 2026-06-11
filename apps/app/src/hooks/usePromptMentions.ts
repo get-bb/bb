@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { ThreadType } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { buildPathMentionSuggestions } from "./pathMentionSuggestions";
 import { useSidebarNavigation } from "./queries/project-queries";
@@ -9,11 +8,10 @@ import { buildThreadMentionSuggestions } from "./threadMentionSuggestions";
 import { usePathSuggestions } from "./usePathSuggestions";
 import type { PromptMentionSuggestion } from "@/components/promptbox/mentions/types";
 
-const PROMPT_MENTION_LIMIT = 8;
+const PROMPT_MENTION_SOURCE_LIMIT = 8;
 
 export interface UsePromptMentionsOptions {
   currentThreadId?: string;
-  currentThreadType?: ThreadType;
   environmentId: string | null;
 }
 
@@ -34,11 +32,9 @@ interface BuildPromptMentionSuggestionsArgs {
 function buildPromptMentionSuggestions(
   args: BuildPromptMentionSuggestionsArgs,
 ): PromptMentionSuggestion[] {
-  const orderedSuggestions = args.trimmedQuery.includes("/")
+  return args.trimmedQuery.includes("/")
     ? [...args.pathSuggestions, ...args.threadSuggestions]
     : [...args.threadSuggestions, ...args.pathSuggestions];
-
-  return orderedSuggestions.slice(0, PROMPT_MENTION_LIMIT);
 }
 
 function buildProjectNamesById(
@@ -70,10 +66,9 @@ export function usePromptMentions(
   const pathSearch = usePathSuggestions({
     projectId,
     query,
-    limit: PROMPT_MENTION_LIMIT,
+    limit: PROMPT_MENTION_SOURCE_LIMIT,
     environmentId: options.environmentId,
     currentThreadId: options.currentThreadId,
-    currentThreadType: options.currentThreadType,
     includeDirectories: true,
   });
   const projectNamesQuery = useSidebarNavigation({
@@ -102,7 +97,7 @@ export function usePromptMentions(
       currentProjectId: projectId,
       currentThreadId,
       projectNamesById,
-      limit: PROMPT_MENTION_LIMIT,
+      limit: PROMPT_MENTION_SOURCE_LIMIT,
     });
   }, [
     currentThreadId,

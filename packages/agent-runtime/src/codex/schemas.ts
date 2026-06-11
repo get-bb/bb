@@ -671,7 +671,6 @@ export const codexRawResponseItemSchema = z.discriminatedUnion("type", [
   codexRawCompactionResponseItemSchema,
   codexRawOtherResponseItemSchema,
 ]);
-export type CodexRawResponseItem = z.infer<typeof codexRawResponseItemSchema>;
 
 export const codexRawResponseItemCompletedParamsSchema = z
   .object({
@@ -680,18 +679,12 @@ export const codexRawResponseItemCompletedParamsSchema = z
     item: codexRawResponseItemSchema,
   })
   .passthrough();
-export type CodexRawResponseItemCompletedParams = z.infer<
-  typeof codexRawResponseItemCompletedParamsSchema
->;
 
 export const codexThreadClosedParamsSchema = z
   .object({
     threadId: z.string(),
   })
   .passthrough();
-export type CodexThreadClosedParams = z.infer<
-  typeof codexThreadClosedParamsSchema
->;
 
 export const codexBridgeEnvelopeSchema = z.union([
   jsonRpcEnvelopeSchema,

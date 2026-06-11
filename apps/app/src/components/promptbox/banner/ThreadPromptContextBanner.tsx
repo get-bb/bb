@@ -45,32 +45,41 @@ export interface ThreadPromptGitSection {
   onPromptBannerFileClick: (selection: WorkspaceChangedFileSelection) => void;
 }
 
-/**
- * Local mirror of the planned managed-by data lane (see
- * plans/thread-prompt-context-banner.md). Promoted to a shared contract once
- * the manager slice lands and a real manager-thread reference is wired in.
- *
- * The segment is non-interactive aside from navigation: the manager name is
- * a link to the manager thread and there is no expanded body.
- */
-export interface ThreadPromptManagedBySection {
-  managerName: string;
+export interface ThreadPromptParentThreadSection {
+  parentThreadTitle: string;
   href: string;
 }
 
 /**
- * Single managed child surfaced in the manager thread's context banner. The
+ * Single active child surfaced in the parent thread's context banner. The
  * caller is responsible for filtering down to active children — the banner
  * just renders what it's given.
  */
-export interface ThreadPromptManagerChildItem {
+export interface ThreadPromptChildThreadItem {
   id: string;
   title: string;
   href: string;
 }
 
-export interface ThreadPromptManagerChildrenSection {
-  items: readonly ThreadPromptManagerChildItem[];
+export interface ThreadPromptChildThreadsSection {
+  items: readonly ThreadPromptChildThreadItem[];
+}
+
+/**
+ * Actively running workflow run anchored to this thread. The caller is
+ * responsible for filtering down to active runs — the banner just renders
+ * what it's given.
+ */
+export interface ThreadPromptWorkflowItem {
+  id: string;
+  name: string;
+  /** Preformatted agent progress, e.g. "3/5 agents"; null when unknown. */
+  agentProgress: string | null;
+  href: string;
+}
+
+export interface ThreadPromptWorkflowsSection {
+  items: readonly ThreadPromptWorkflowItem[];
 }
 
 /**
@@ -83,25 +92,32 @@ export interface ThreadPromptArchivedSection {
 }
 
 /**
- * Runtime statuses that count as "active managed work" for the banner's
+ * Runtime statuses that count as active child work for the banner's
  * children section. These are the children the banner surfaces and (when the
  * bulk-stop slice lands) the children `Stop all` will target. Keep the set in
  * one place so future status additions don't drift across callers.
  */
-const THREAD_BANNER_ACTIVE_MANAGED_RUNTIME_STATUSES: ReadonlySet<ThreadRuntimeDisplayStatus> =
-  new Set(["active", "host-reconnecting", "waiting-for-host"]);
+const THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES: ReadonlySet<ThreadRuntimeDisplayStatus> =
+  new Set([
+    "active",
+    "created",
+    "host-reconnecting",
+    "provisioning",
+    "waiting-for-host",
+  ]);
 
 export function isThreadDisplayStatusBannerActive(
   status: ThreadRuntimeDisplayStatus,
 ): boolean {
-  return THREAD_BANNER_ACTIVE_MANAGED_RUNTIME_STATUSES.has(status);
+  return THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES.has(status);
 }
 
 export type ThreadPromptContextBannerExpandedSection =
   | "todos"
   | "git"
-  | "managedBy"
-  | "managerChildren";
+  | "parentThread"
+  | "childThreads"
+  | "workflows";
 
 /**
  * Pixel height of the banner's collapsed (single-row) state. Pinned via the
@@ -119,19 +135,20 @@ export interface ThreadPromptContextBannerProps {
   /**
    * True while the workspace status query for this thread is in flight. Holds
    * banner rendering until the result settles so first paint is the final
-   * form — without this, managedBy would render inline then collapse to its
+   * form — without this, parentThread would render inline then collapse to its
    * icon-only sibling form when git pills arrive.
    */
   gitSectionPending: boolean;
   /**
    * When set, the banner renders the "Thread is archived" row and suppresses
-   * todos, git, and manager-children — those represent live work that no
-   * longer applies. managedBy still renders alongside if provided, since the
-   * manager relationship remains relevant context for a frozen thread.
+   * todos, git, child-threads, and workflows — those represent live work that
+   * no longer applies. parentThread still renders alongside if provided, since
+   * the parent relationship remains relevant context for a frozen thread.
    */
   archivedSection: ThreadPromptArchivedSection | null;
-  managedBySection: ThreadPromptManagedBySection | null;
-  managerChildrenSection: ThreadPromptManagerChildrenSection | null;
+  parentThreadSection: ThreadPromptParentThreadSection | null;
+  childThreadsSection: ThreadPromptChildThreadsSection | null;
+  workflowsSection: ThreadPromptWorkflowsSection | null;
   expandedSection: ThreadPromptContextBannerExpandedSection | null;
   onToggleSection: (section: ThreadPromptContextBannerExpandedSection) => void;
 }
@@ -147,13 +164,17 @@ const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
 // Stable ids for aria-controls / aria-labelledby pairing between each
 // section's toggle button and its expanded body region.
 const SECTION_IDS = {
-  managedBy: {
-    toggle: "thread-prompt-banner-managed-by-toggle",
-    body: "thread-prompt-banner-managed-by-body",
+  parentThread: {
+    toggle: "thread-prompt-banner-parent-thread-toggle",
+    body: "thread-prompt-banner-parent-thread-body",
   },
-  managerChildren: {
-    toggle: "thread-prompt-banner-manager-children-toggle",
-    body: "thread-prompt-banner-manager-children-body",
+  childThreads: {
+    toggle: "thread-prompt-banner-child-threads-toggle",
+    body: "thread-prompt-banner-child-threads-body",
+  },
+  workflows: {
+    toggle: "thread-prompt-banner-workflows-toggle",
+    body: "thread-prompt-banner-workflows-body",
   },
   todos: {
     toggle: "thread-prompt-banner-todos-toggle",
@@ -191,12 +212,7 @@ function renderTodoCounts(
   return `${completedCount}/${items.length}`;
 }
 
-/**
- * L-shape "managed child" indicator. Mirrors the sidebar's
- * `ManagedChildChevron` (a 45°-rotated `ChevronDown`) so the banner uses the
- * same visual idiom for managed-children context.
- */
-function ManagedChildIcon({ className }: { className?: string }) {
+function ChildThreadIcon({ className }: { className?: string }) {
   return (
     <Icon
       name="ChevronDown"
@@ -336,31 +352,31 @@ function TodoBody({
   );
 }
 
-function ManagedByBody({
-  managerName,
+function ParentThreadBody({
+  parentThreadTitle,
   href,
 }: {
-  managerName: string;
+  parentThreadTitle: string;
   href: string;
 }) {
   return (
     <div className="px-3 pb-2 pt-1.5 text-xs leading-relaxed text-muted-foreground">
-      This thread is managed by{" "}
+      This thread is a child of{" "}
       <NavLink
         to={href}
         className="text-foreground/90 underline-offset-2 hover:underline"
       >
-        {managerName}
+        {parentThreadTitle}
       </NavLink>
       .
     </div>
   );
 }
 
-function ManagerChildrenBody({
+function ChildThreadsBody({
   items,
 }: {
-  items: readonly ThreadPromptManagerChildItem[];
+  items: readonly ThreadPromptChildThreadItem[];
 }) {
   return (
     <ul className="max-h-40 space-y-0.5 overflow-y-auto px-3 pb-2 pt-1.5">
@@ -371,8 +387,40 @@ function ManagerChildrenBody({
             title={item.title}
             className="flex min-w-0 items-center gap-2 py-0.5 text-foreground/90 underline-offset-2 hover:underline"
           >
-            <ManagedChildIcon className="text-subtle-foreground no-underline" />
+            <ChildThreadIcon className="text-subtle-foreground no-underline" />
             <span className="min-w-0 flex-1 truncate">{item.title}</span>
+          </NavLink>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function WorkflowsBody({
+  items,
+}: {
+  items: readonly ThreadPromptWorkflowItem[];
+}) {
+  return (
+    <ul className="max-h-40 space-y-0.5 overflow-y-auto px-3 pb-2 pt-1.5">
+      {items.map((item) => (
+        <li key={item.id} className="text-xs">
+          <NavLink
+            to={item.href}
+            title={item.name}
+            className="flex min-w-0 items-center gap-2 py-0.5 text-foreground/90 underline-offset-2 hover:underline"
+          >
+            <Icon
+              name="Workflow"
+              className="size-3.5 shrink-0 text-subtle-foreground"
+              aria-hidden="true"
+            />
+            <span className="min-w-0 flex-1 truncate">{item.name}</span>
+            {item.agentProgress ? (
+              <span className="shrink-0 text-subtle-foreground">
+                {item.agentProgress}
+              </span>
+            ) : null}
           </NavLink>
         </li>
       ))}
@@ -404,7 +452,7 @@ function AnimatedBody({
           : "pointer-events-none grid-rows-[0fr] border-t border-transparent opacity-0",
       )}
     >
-      <div className="overflow-hidden">{children}</div>
+      <div className="overflow-hidden bg-popover">{children}</div>
     </section>
   );
 }
@@ -421,8 +469,9 @@ export function ThreadPromptContextBanner({
   gitSection,
   gitSectionPending,
   archivedSection,
-  managedBySection,
-  managerChildrenSection,
+  parentThreadSection,
+  childThreadsSection,
+  workflowsSection,
   expandedSection,
   onToggleSection,
 }: ThreadPromptContextBannerProps) {
@@ -430,9 +479,9 @@ export function ThreadPromptContextBanner({
     return null;
   }
   if (archivedSection) {
-    const isManagedByExpandedInArchived =
-      expandedSection === "managedBy" && managedBySection !== null;
-    const hasMultipleArchivedSegments = managedBySection !== null;
+    const isParentThreadExpandedInArchived =
+      expandedSection === "parentThread" && parentThreadSection !== null;
+    const hasMultipleArchivedSegments = parentThreadSection !== null;
     return (
       <PromptStackCard
         ariaLabel="Thread context before sending"
@@ -440,11 +489,11 @@ export function ThreadPromptContextBanner({
         style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
       >
         <div className="flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground">
-          {managedBySection ? (
+          {parentThreadSection ? (
             <SectionToggleButton
-              id={SECTION_IDS.managedBy.toggle}
-              controlsId={SECTION_IDS.managedBy.body}
-              ariaLabel={`Managed by ${managedBySection.managerName}`}
+              id={SECTION_IDS.parentThread.toggle}
+              controlsId={SECTION_IDS.parentThread.body}
+              ariaLabel={`Parent thread ${parentThreadSection.parentThreadTitle}`}
               icon={
                 <Icon
                   name="UserRound"
@@ -453,8 +502,8 @@ export function ThreadPromptContextBanner({
                 />
               }
               label={null}
-              isExpanded={isManagedByExpandedInArchived}
-              onToggle={() => onToggleSection("managedBy")}
+              isExpanded={isParentThreadExpandedInArchived}
+              onToggle={() => onToggleSection("parentThread")}
             />
           ) : null}
           <div
@@ -478,15 +527,15 @@ export function ThreadPromptContextBanner({
             </span>
           </div>
         </div>
-        {managedBySection ? (
+        {parentThreadSection ? (
           <AnimatedBody
-            id={SECTION_IDS.managedBy.body}
-            labelledBy={SECTION_IDS.managedBy.toggle}
-            isExpanded={isManagedByExpandedInArchived}
+            id={SECTION_IDS.parentThread.body}
+            labelledBy={SECTION_IDS.parentThread.toggle}
+            isExpanded={isParentThreadExpandedInArchived}
           >
-            <ManagedByBody
-              managerName={managedBySection.managerName}
-              href={managedBySection.href}
+            <ParentThreadBody
+              parentThreadTitle={parentThreadSection.parentThreadTitle}
+              href={parentThreadSection.href}
             />
           </AnimatedBody>
         ) : null}
@@ -496,15 +545,24 @@ export function ThreadPromptContextBanner({
   const showTodo =
     todoSection !== null && hasObservedTodoItems(todoSection.pendingTodos);
   const showGit = gitSection !== null;
-  const showManagedBy = managedBySection !== null;
-  const showManagerChildren =
-    managerChildrenSection !== null && managerChildrenSection.items.length > 0;
-  if (!showTodo && !showGit && !showManagedBy && !showManagerChildren) {
+  const showParentThread = parentThreadSection !== null;
+  const showChildThreads =
+    childThreadsSection !== null && childThreadsSection.items.length > 0;
+  const showWorkflows =
+    workflowsSection !== null && workflowsSection.items.length > 0;
+  if (
+    !showTodo &&
+    !showGit &&
+    !showParentThread &&
+    !showChildThreads &&
+    !showWorkflows
+  ) {
     return null;
   }
   const visibleSegmentCount =
-    Number(showManagedBy) +
-    Number(showManagerChildren) +
+    Number(showParentThread) +
+    Number(showChildThreads) +
+    Number(showWorkflows) +
     Number(showTodo) +
     Number(showGit);
   const hasSingleVisibleSegment = visibleSegmentCount === 1;
@@ -515,9 +573,10 @@ export function ThreadPromptContextBanner({
   // selectWorkspaceChangedFilesSection only emits a section when files exist,
   // so showGit implies a non-empty file list.
   const isGitExpanded = expandedSection === "git" && showGit;
-  const isManagedByExpanded = expandedSection === "managedBy" && showManagedBy;
-  const isManagerChildrenExpanded =
-    expandedSection === "managerChildren" && showManagerChildren;
+  const isParentThreadExpanded = expandedSection === "parentThread" && showParentThread;
+  const isChildThreadsExpanded =
+    expandedSection === "childThreads" && showChildThreads;
+  const isWorkflowsExpanded = expandedSection === "workflows" && showWorkflows;
 
   const gitTally = showGit ? toChangeTally(gitSection.changedFiles.stats) : null;
   const gitSummaryText = gitTally ? formatChangeSummary(gitTally) : "";
@@ -539,24 +598,28 @@ export function ThreadPromptContextBanner({
         })
       : { options: [], remoteOptions: [] };
 
-  // When the managed-by segment is the only item in the banner, render it
-  // inline as "Managed by <name>" with the name as a link. There's no other
+  // When the parent segment is the only item in the banner, render it
+  // inline as "Parent <name>" with the name as a link. There's no other
   // context to compete for the row, so the icon-only toggle would be a strict
   // downgrade in legibility.
-  const isManagedByOnly =
-    showManagedBy && !showTodo && !showGit && !showManagerChildren;
+  const isParentThreadOnly =
+    showParentThread &&
+    !showTodo &&
+    !showGit &&
+    !showChildThreads &&
+    !showWorkflows;
 
   return (
     <PromptStackCard
       ariaLabel="Thread context before sending"
-      className="overflow-hidden"
+      className="overflow-hidden bg-surface-recessed"
       style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
     >
       <div className="flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground">
-        {showManagedBy && managedBySection && isManagedByOnly ? (
+        {showParentThread && parentThreadSection && isParentThreadOnly ? (
           <div
             className="flex min-w-0 items-center gap-1.5 px-1 py-0.5"
-            title={`Managed by ${managedBySection.managerName}`}
+            title={`Parent thread ${parentThreadSection.parentThreadTitle}`}
           >
             <Icon
               name="UserRound"
@@ -564,21 +627,21 @@ export function ThreadPromptContextBanner({
               aria-hidden="true"
             />
             <span className="min-w-0 truncate">
-              Managed by{" "}
+              Parent{" "}
               <NavLink
-                to={managedBySection.href}
+                to={parentThreadSection.href}
                 className="text-foreground/90 underline underline-offset-2"
               >
-                {managedBySection.managerName}
+                {parentThreadSection.parentThreadTitle}
               </NavLink>
             </span>
           </div>
         ) : null}
-        {showManagedBy && managedBySection && !isManagedByOnly ? (
+        {showParentThread && parentThreadSection && !isParentThreadOnly ? (
           <SectionToggleButton
-            id={SECTION_IDS.managedBy.toggle}
-            controlsId={SECTION_IDS.managedBy.body}
-            ariaLabel={`Managed by ${managedBySection.managerName}`}
+            id={SECTION_IDS.parentThread.toggle}
+            controlsId={SECTION_IDS.parentThread.body}
+            ariaLabel={`Parent thread ${parentThreadSection.parentThreadTitle}`}
             icon={
               <Icon
                 name="UserRound"
@@ -587,14 +650,14 @@ export function ThreadPromptContextBanner({
               />
             }
             label={null}
-            isExpanded={isManagedByExpanded}
-            onToggle={() => onToggleSection("managedBy")}
+            isExpanded={isParentThreadExpanded}
+            onToggle={() => onToggleSection("parentThread")}
           />
         ) : null}
-        {showManagerChildren && managerChildrenSection ? (
+        {showChildThreads && childThreadsSection ? (
           <SectionToggleButton
-            id={SECTION_IDS.managerChildren.toggle}
-            controlsId={SECTION_IDS.managerChildren.body}
+            id={SECTION_IDS.childThreads.toggle}
+            controlsId={SECTION_IDS.childThreads.body}
             icon={
               <Icon
                 name="CircleDashed"
@@ -602,15 +665,37 @@ export function ThreadPromptContextBanner({
                 aria-hidden="true"
               />
             }
-            label={`${managerChildrenSection.items.length} active managed ${
-              managerChildrenSection.items.length === 1 ? "thread" : "threads"
+            label={`${childThreadsSection.items.length} active child ${
+              childThreadsSection.items.length === 1 ? "thread" : "threads"
             }`}
             hideLabelInCompact={!hasSingleVisibleSegment}
-            ariaLabel={`${managerChildrenSection.items.length} active managed ${
-              managerChildrenSection.items.length === 1 ? "thread" : "threads"
+            ariaLabel={`${childThreadsSection.items.length} active child ${
+              childThreadsSection.items.length === 1 ? "thread" : "threads"
             }`}
-            isExpanded={isManagerChildrenExpanded}
-            onToggle={() => onToggleSection("managerChildren")}
+            isExpanded={isChildThreadsExpanded}
+            onToggle={() => onToggleSection("childThreads")}
+          />
+        ) : null}
+        {showWorkflows && workflowsSection ? (
+          <SectionToggleButton
+            id={SECTION_IDS.workflows.toggle}
+            controlsId={SECTION_IDS.workflows.body}
+            icon={
+              <Icon
+                name="Workflow"
+                className="size-3.5 shrink-0"
+                aria-hidden="true"
+              />
+            }
+            label={`${workflowsSection.items.length} ${
+              workflowsSection.items.length === 1 ? "workflow" : "workflows"
+            }`}
+            hideLabelInCompact={!hasSingleVisibleSegment}
+            ariaLabel={`${workflowsSection.items.length} active ${
+              workflowsSection.items.length === 1 ? "workflow" : "workflows"
+            }`}
+            isExpanded={isWorkflowsExpanded}
+            onToggle={() => onToggleSection("workflows")}
           />
         ) : null}
         {showTodo ? (
@@ -654,7 +739,11 @@ export function ThreadPromptContextBanner({
             className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
             data-promptbox-hide-compact=""
           >
-            <span className="shrink-0">Merge base:</span>
+            <Icon
+              name="GitMerge"
+              className="size-3.5 shrink-0"
+              aria-label="Merge base"
+            />
             <BranchPicker
               value={gitSection.mergeBase.branch}
               options={mergeBaseCandidates.options}
@@ -673,25 +762,34 @@ export function ThreadPromptContextBanner({
           </div>
         ) : null}
       </div>
-      {showManagedBy && managedBySection && !isManagedByOnly ? (
+      {showParentThread && parentThreadSection && !isParentThreadOnly ? (
         <AnimatedBody
-          id={SECTION_IDS.managedBy.body}
-          labelledBy={SECTION_IDS.managedBy.toggle}
-          isExpanded={isManagedByExpanded}
+          id={SECTION_IDS.parentThread.body}
+          labelledBy={SECTION_IDS.parentThread.toggle}
+          isExpanded={isParentThreadExpanded}
         >
-          <ManagedByBody
-            managerName={managedBySection.managerName}
-            href={managedBySection.href}
+          <ParentThreadBody
+            parentThreadTitle={parentThreadSection.parentThreadTitle}
+            href={parentThreadSection.href}
           />
         </AnimatedBody>
       ) : null}
-      {showManagerChildren && managerChildrenSection ? (
+      {showChildThreads && childThreadsSection ? (
         <AnimatedBody
-          id={SECTION_IDS.managerChildren.body}
-          labelledBy={SECTION_IDS.managerChildren.toggle}
-          isExpanded={isManagerChildrenExpanded}
+          id={SECTION_IDS.childThreads.body}
+          labelledBy={SECTION_IDS.childThreads.toggle}
+          isExpanded={isChildThreadsExpanded}
         >
-          <ManagerChildrenBody items={managerChildrenSection.items} />
+          <ChildThreadsBody items={childThreadsSection.items} />
+        </AnimatedBody>
+      ) : null}
+      {showWorkflows && workflowsSection ? (
+        <AnimatedBody
+          id={SECTION_IDS.workflows.body}
+          labelledBy={SECTION_IDS.workflows.toggle}
+          isExpanded={isWorkflowsExpanded}
+        >
+          <WorkflowsBody items={workflowsSection.items} />
         </AnimatedBody>
       ) : null}
       {showTodo ? (

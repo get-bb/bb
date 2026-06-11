@@ -197,7 +197,7 @@ describe("live thread start handoff", () => {
           {
             method: "DELETE",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ managerChildThreadsConfirmed: false }),
+            body: JSON.stringify({ childThreadsConfirmed: false }),
           },
         );
 

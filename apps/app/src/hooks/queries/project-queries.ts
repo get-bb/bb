@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ProjectExecutionDefaults, ThreadType } from "@bb/domain";
+import type { ProjectExecutionDefaults } from "@bb/domain";
 import type {
+  CommandListResponse,
   ProjectBranchesResponse,
-  ProjectResponse,
   ProjectWithThreadsResponse,
   PromptHistoryResponse,
   SidebarBootstrapResponse,
@@ -10,6 +10,7 @@ import type {
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import {
+  projectCommandsQueryKey,
   projectDefaultExecutionOptionsQueryKey,
   projectPathsQueryKey,
   projectPromptHistoryQueryKey,
@@ -17,6 +18,10 @@ import {
   sidebarNavigationQueryKey,
 } from "./query-keys";
 import { resolveProjectSourceBranchesPlaceholder } from "./query-placeholders";
+import {
+  PROMPT_HISTORY_STALE_TIME_MS,
+  requireEnabledQueryArg,
+} from "./query-helpers";
 
 interface QueryOptions {
   enabled?: boolean;
@@ -30,16 +35,22 @@ interface BranchQueryOptions extends QueryOptions {
 
 interface UseProjectDefaultExecutionOptionsArgs {
   projectId: string | undefined;
-  threadType: ThreadType;
 }
 
 interface UseProjectPathSuggestionsArgs {
   projectId: string | undefined;
   query: string | null;
   limit?: number;
-  environmentId: string | null;
   includeFiles: boolean;
   includeDirectories: boolean;
+}
+
+interface UseProjectCommandsArgs {
+  projectId: string | undefined;
+  providerId: string | undefined;
+  environmentId: string | null;
+  query: string;
+  limit: number;
 }
 
 const PROJECT_SOURCE_BRANCHES_STALE_TIME_MS = 5_000;
@@ -49,18 +60,31 @@ function requireProjectId(
   projectId: string | undefined,
   hookName: string,
 ): string {
-  if (!projectId) {
-    throw new Error(`${hookName}: projectId is required when query is enabled`);
-  }
-
-  return projectId;
+  return requireEnabledQueryArg({
+    value: projectId,
+    hookName,
+    argName: "projectId",
+  });
 }
+
+function requireProviderId(
+  providerId: string | undefined,
+  hookName: string,
+): string {
+  return requireEnabledQueryArg({
+    value: providerId,
+    hookName,
+    argName: "providerId",
+  });
+}
+
+export type SidebarProject = Omit<ProjectWithThreadsResponse, "threads">;
 
 export function stripProjectThreads(
   project: ProjectWithThreadsResponse,
-): ProjectResponse {
-  const { threads, ...projectResponse } = project;
-  return projectResponse;
+): SidebarProject {
+  const { threads, ...rest } = project;
+  return rest;
 }
 
 export function useSidebarNavigation(options?: QueryOptions) {
@@ -130,7 +154,7 @@ export function useProjectPromptHistory(
         signal,
       ),
     enabled: (options?.enabled ?? true) && Boolean(projectId),
-    staleTime: 10_000,
+    staleTime: PROMPT_HISTORY_STALE_TIME_MS,
   });
 }
 
@@ -138,11 +162,10 @@ export function useProjectDefaultExecutionOptions(
   args: UseProjectDefaultExecutionOptionsArgs,
   options?: QueryOptions,
 ) {
-  const { projectId, threadType } = args;
+  const { projectId } = args;
   return useQuery<ProjectExecutionDefaults | null>({
     queryKey: projectDefaultExecutionOptionsQueryKey({
       projectId: projectId ?? "",
-      threadType,
     }),
     queryFn: () =>
       api.getProjectDefaultExecutionOptions({
@@ -150,7 +173,6 @@ export function useProjectDefaultExecutionOptions(
           projectId,
           "useProjectDefaultExecutionOptions",
         ),
-        threadType,
       }),
     enabled: (options?.enabled ?? true) && Boolean(projectId),
     staleTime: 10_000,
@@ -163,7 +185,6 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
     projectId,
     query,
     limit = 8,
-    environmentId,
     includeFiles,
     includeDirectories,
   } = args;
@@ -174,7 +195,6 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
       projectId,
       trimmedQuery,
       limit,
-      environmentId,
       includeFiles,
       includeDirectories,
     ),
@@ -183,11 +203,48 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
         projectId: projectId ?? "",
         query: trimmedQuery,
         limit,
-        environmentId,
         includeFiles,
         includeDirectories,
       }),
     enabled: Boolean(projectId) && trimmedQuery.length > 0,
+    staleTime: 15_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+/**
+ * Fetches the discoverable provider skills/commands for a project, scoped by
+ * provider + environment. Backs `useCommandSuggestions`, which owns trigger
+ * resolution, debounce, and mapping to menu rows, and serves both the
+ * existing-thread follow-up composer and the new-thread composer. Unlike
+ * mentions, the command list is enabled even with an empty query (commands show
+ * the full list on `/`/`$`); the caller gates fetching via `options.enabled`.
+ */
+export function useProjectCommands(
+  args: UseProjectCommandsArgs,
+  options?: QueryOptions,
+) {
+  return useQuery<CommandListResponse>({
+    queryKey: projectCommandsQueryKey(
+      args.projectId,
+      args.providerId,
+      args.environmentId,
+      args.query,
+    ),
+    queryFn: () =>
+      api.listProjectCommands({
+        projectId: requireProjectId(args.projectId, "useProjectCommands"),
+        providerId: requireProviderId(args.providerId, "useProjectCommands"),
+        environmentId: args.environmentId,
+        query: args.query,
+        limit: args.limit,
+      }),
+    enabled:
+      (options?.enabled ?? true) &&
+      Boolean(args.projectId) &&
+      Boolean(args.providerId),
     staleTime: 15_000,
     retry: false,
     refetchOnWindowFocus: false,

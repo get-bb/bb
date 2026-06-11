@@ -56,7 +56,7 @@ export function Overview() {
                 href="#manager"
                 className="min-w-0 truncate text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
               >
-                Frontend Manager
+                Frontend Parent
               </a>
               <Button
                 type="button"
@@ -126,7 +126,7 @@ export function Overview() {
             <Input
               placeholder="Eg. Manager (optional)"
               className="border-border text-sm"
-              defaultValue="Frontend Manager"
+              defaultValue="Frontend Parent"
             />
           </DetailRow>
           <DetailRow label="Model" valueClassName="min-w-0">

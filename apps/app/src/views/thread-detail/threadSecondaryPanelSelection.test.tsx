@@ -21,8 +21,7 @@ import {
 import type { ThreadSecondaryPanel } from "@/lib/thread-secondary-panel";
 import {
   getActiveFixedSecondaryTab,
-  getActiveThreadSecondaryPanel,
-  getSelectedThreadSecondaryPanel,
+  getOpenFixedSecondaryTab,
   useSetThreadSecondaryPanelSelection,
   useToggleThreadSecondaryPanelSelection,
 } from "./threadSecondaryPanelSelection";
@@ -63,22 +62,19 @@ function useSelectionHarness({ threadId }: SelectionHookProps) {
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
-  const selectedSecondaryPanel = getSelectedThreadSecondaryPanel({
+  const openFixedSecondaryTab = getOpenFixedSecondaryTab({
     activeFixedSecondaryTab,
-  });
-  const activeSecondaryPanel = getActiveThreadSecondaryPanel({
     isSecondaryPanelOpen,
-    selectedSecondaryPanel,
   });
   const setThreadSecondaryPanel = useSetThreadSecondaryPanelSelection(threadId);
   const toggleThreadSecondaryPanel =
     useToggleThreadSecondaryPanelSelection(threadId);
 
   return {
-    activeSecondaryPanel,
+    activeFixedSecondaryTab,
     fixedPanelTabsState,
     isSecondaryPanelOpen,
-    selectedSecondaryPanel,
+    openFixedSecondaryTab,
     setThreadSecondaryPanel,
     toggleThreadSecondaryPanel,
   };
@@ -122,8 +118,14 @@ describe("thread secondary panel selection", () => {
       result.current.setThreadSecondaryPanel("git-diff");
     });
 
-    expect(result.current.activeSecondaryPanel).toBe("git-diff");
-    expect(result.current.selectedSecondaryPanel).toBe("git-diff");
+    expect(result.current.activeFixedSecondaryTab).toEqual({
+      id: "git-diff",
+      kind: "git-diff",
+    });
+    expect(result.current.openFixedSecondaryTab).toEqual({
+      id: "git-diff",
+      kind: "git-diff",
+    });
     expect(result.current.isSecondaryPanelOpen).toBe(true);
     expect(result.current.fixedPanelTabsState.secondary.isOpen).toBe(true);
     expect(result.current.fixedPanelTabsState.secondary.activeTabId).toBe(
@@ -137,8 +139,11 @@ describe("thread secondary panel selection", () => {
       result.current.setThreadSecondaryPanel(null);
     });
 
-    expect(result.current.activeSecondaryPanel).toBeNull();
-    expect(result.current.selectedSecondaryPanel).toBe("git-diff");
+    expect(result.current.activeFixedSecondaryTab).toEqual({
+      id: "git-diff",
+      kind: "git-diff",
+    });
+    expect(result.current.openFixedSecondaryTab).toBeNull();
     expect(result.current.isSecondaryPanelOpen).toBe(false);
     expect(result.current.fixedPanelTabsState.secondary.isOpen).toBe(false);
     expect(result.current.fixedPanelTabsState.secondary.activeTabId).toBe(
@@ -152,8 +157,14 @@ describe("thread secondary panel selection", () => {
       result.current.toggleThreadSecondaryPanel();
     });
 
-    expect(result.current.activeSecondaryPanel).toBe("git-diff");
-    expect(result.current.selectedSecondaryPanel).toBe("git-diff");
+    expect(result.current.activeFixedSecondaryTab).toEqual({
+      id: "git-diff",
+      kind: "git-diff",
+    });
+    expect(result.current.openFixedSecondaryTab).toEqual({
+      id: "git-diff",
+      kind: "git-diff",
+    });
     expect(result.current.isSecondaryPanelOpen).toBe(true);
     expect(result.current.fixedPanelTabsState.secondary.isOpen).toBe(true);
   });
@@ -185,7 +196,7 @@ describe("thread secondary panel selection", () => {
     rerender({ threadId: threadB });
 
     expect(result.current.isSecondaryPanelOpen).toBe(false);
-    expect(result.current.activeSecondaryPanel).toBeNull();
+    expect(result.current.openFixedSecondaryTab).toBeNull();
     expect(
       window.localStorage.getItem(
         getThreadSecondaryPanelOpenStorageKey({ threadId: threadB }),
@@ -211,7 +222,10 @@ describe("thread secondary panel selection", () => {
     rerender({ threadId: threadA });
 
     expect(result.current.isSecondaryPanelOpen).toBe(true);
-    expect(result.current.activeSecondaryPanel).toBe("thread-info");
+    expect(result.current.openFixedSecondaryTab).toEqual({
+      id: "thread-info",
+      kind: "thread-info",
+    });
 
     unmount();
 
@@ -226,7 +240,10 @@ describe("thread secondary panel selection", () => {
     );
 
     expect(reloadedResult.current.isSecondaryPanelOpen).toBe(true);
-    expect(reloadedResult.current.activeSecondaryPanel).toBe("thread-info");
+    expect(reloadedResult.current.openFixedSecondaryTab).toEqual({
+      id: "thread-info",
+      kind: "thread-info",
+    });
   });
 
   it("consumes a URL override without rewriting another thread preference", async () => {

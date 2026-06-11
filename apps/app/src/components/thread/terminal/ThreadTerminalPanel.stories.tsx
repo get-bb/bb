@@ -2,11 +2,10 @@ import type { ReactNode } from "react";
 import type { TerminalSession } from "@bb/server-contract";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import { ThreadTerminalContent } from "./ThreadTerminalContent";
-import { ThreadTerminalTabStrip } from "./ThreadTerminalTabStrip";
 import type { ThreadTerminalController } from "./useThreadTerminalController";
 
 export default {
-  title: "terminal/Panel",
+  title: "terminal/Content",
 };
 
 const THREAD_ID = "thr_terminal_story";
@@ -67,7 +66,7 @@ interface MakeControllerArgs {
   visibleSessions: readonly TerminalSession[];
 }
 
-interface TerminalPanelStageProps {
+interface TerminalContentStageProps {
   children?: ReactNode;
   controller: ThreadTerminalController;
 }
@@ -207,19 +206,17 @@ const queryErrorController = makeController({
   visibleSessions: [],
 });
 
-function TerminalPanelStage({ children, controller }: TerminalPanelStageProps) {
+function TerminalContentStage({
+  children,
+  controller,
+}: TerminalContentStageProps) {
   return (
     <div className="h-[260px] w-full max-w-[720px] min-w-0 overflow-hidden rounded-md border border-border bg-background">
       <section
-        aria-label="Thread terminals"
+        aria-label="Thread terminal"
         className="flex h-full min-h-0 min-w-0 flex-col bg-background"
       >
-        <div className="flex h-10 min-h-10 items-center gap-2 bg-background px-3">
-          <ThreadTerminalTabStrip controller={controller} />
-        </div>
-        <div className="min-h-0 flex-1 overflow-hidden bg-background">
-          {children ?? <ThreadTerminalContent controller={controller} />}
-        </div>
+        {children ?? <ThreadTerminalContent controller={controller} />}
       </section>
     </div>
   );
@@ -242,36 +239,36 @@ export function Overview() {
         label="disconnected"
         hint="Replacement available."
       >
-        <TerminalPanelStage controller={disconnectedController} />
+        <TerminalContentStage controller={disconnectedController} />
       </StoryRow>
       <StoryRow
         label="disconnected, unavailable"
         hint="No replacement available."
       >
-        <TerminalPanelStage controller={disconnectedUnavailableController} />
+        <TerminalContentStage controller={disconnectedUnavailableController} />
       </StoryRow>
       <StoryRow label="starting" hint="Session exists but is not running yet.">
-        <TerminalPanelStage controller={startingController} />
+        <TerminalContentStage controller={startingController} />
       </StoryRow>
       <StoryRow label="exited" hint="Terminal has ended and cannot accept input.">
-        <TerminalPanelStage controller={exitedController} />
+        <TerminalContentStage controller={exitedController} />
       </StoryRow>
-      <StoryRow label="empty" hint="Panel open with no visible sessions.">
-        <TerminalPanelStage controller={emptyController} />
+      <StoryRow label="empty" hint="Right panel tab with no visible sessions.">
+        <TerminalContentStage controller={emptyController} />
       </StoryRow>
       <StoryRow label="starting empty" hint="Create mutation is in flight.">
-        <TerminalPanelStage controller={startingEmptyController} />
+        <TerminalContentStage controller={startingEmptyController} />
       </StoryRow>
       <StoryRow label="loading" hint="Initial terminal list query is loading.">
-        <TerminalPanelStage controller={loadingController} />
+        <TerminalContentStage controller={loadingController} />
       </StoryRow>
       <StoryRow label="query error" hint="Terminal list query failed.">
-        <TerminalPanelStage controller={queryErrorController} />
+        <TerminalContentStage controller={queryErrorController} />
       </StoryRow>
-      <StoryRow label="running chrome" hint="Tab strip with running status.">
-        <TerminalPanelStage controller={terminalController(RUNNING_SESSION)}>
+      <StoryRow label="running" hint="Running terminal content.">
+        <TerminalContentStage controller={terminalController(RUNNING_SESSION)}>
           <RunningTerminalPreview />
-        </TerminalPanelStage>
+        </TerminalContentStage>
       </StoryRow>
     </StoryCard>
   );

@@ -16,8 +16,6 @@ export default {
 type StoredTargetId = LocalOpenTargetSettingsSectionProps["directoryTargetId"];
 
 interface LocalOpenTargetSettingsStoryProps {
-  initialDirectoryTargetId?: StoredTargetId;
-  initialFileTargetId?: StoredTargetId;
   hasDaemon: boolean;
   targets: WorkspaceOpenTarget[];
 }
@@ -71,15 +69,11 @@ const connectedTargets: WorkspaceOpenTarget[] = [
 
 function LocalOpenTargetSettingsStory({
   hasDaemon,
-  initialDirectoryTargetId = null,
-  initialFileTargetId = null,
   targets,
 }: LocalOpenTargetSettingsStoryProps) {
-  const [directoryTargetId, setDirectoryTargetId] = useState<StoredTargetId>(
-    initialDirectoryTargetId,
-  );
-  const [fileTargetId, setFileTargetId] =
-    useState<StoredTargetId>(initialFileTargetId);
+  const [directoryTargetId, setDirectoryTargetId] =
+    useState<StoredTargetId>(null);
+  const [fileTargetId, setFileTargetId] = useState<StoredTargetId>(null);
 
   function handleDirectoryTargetChange(targetId: WorkspaceOpenTargetId): void {
     setDirectoryTargetId(targetId);
@@ -112,16 +106,6 @@ export function Overview() {
           <LocalOpenTargetSettingsStory
             hasDaemon={true}
             targets={connectedTargets}
-          />
-        </div>
-      </StoryRow>
-      <StoryRow label="disconnected" hint="menus explain unavailable changes">
-        <div className="w-full max-w-3xl">
-          <LocalOpenTargetSettingsStory
-            hasDaemon={false}
-            initialDirectoryTargetId="finder"
-            initialFileTargetId="default-app"
-            targets={[]}
           />
         </div>
       </StoryRow>

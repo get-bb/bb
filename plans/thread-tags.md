@@ -2,18 +2,18 @@
 
 ## Goal
 
-Add project-scoped tags to threads so users and manager threads can categorize,
+Add project-scoped tags to threads so users and parent threads can categorize,
 follow, and filter high-volume work. Threads can have multiple tags such as
 `code review` and `react perf`; tags render as pills in the sidebar and thread
 detail header; tags are editable from the app three-dot menu and the CLI.
 
-Do not treat the existing manager/managed labels as tags. Those remain
-derived state. Tags are user/manager-maintained categorization metadata.
+Do not treat the existing parent/child indicators as tags. Those remain
+derived state. Tags are user/agent-maintained categorization metadata.
 
 ## Current Findings
 
 - Thread persistence is a single `threads` table in
-  `packages/db/src/schema.ts` with project/type/parent/archive indexes. There is
+  `packages/db/src/schema.ts` with project/parent/archive indexes. There is
   no generic metadata column to reuse, and embedding tags there would make list
   filters and uniqueness weak.
 - Thread API responses currently come from `@bb/domain` thread schemas via
@@ -22,25 +22,25 @@ derived state. Tags are user/manager-maintained categorization metadata.
   explicit response extension rather than silently changing persisted thread
   records.
 - `GET /threads` uses `listThreadsWithPendingInteractionState` and returns a
-  project-scoped list filtered by type, parent thread, and archived state.
+  project-scoped list filtered by parent thread, and archived state.
   Tag filtering must be pushed into SQL with indexes, not applied in JS after
   loading project threads.
-- `PATCH /threads/:id` currently updates title and manager parent assignment.
-  Parent changes queue manager ownership messages; tag mutations should be
+- `PATCH /threads/:id` currently updates title and parent thread assignment.
+  Parent changes queue parent ownership messages; tag mutations should be
   separate from this route to keep lifecycle ownership isolated.
 - Realtime invalidation is driven by `ThreadChangeKind`; app cache logic treats
   title/read/archive/status as list-affecting thread changes. Tags need their
   own change kind that invalidates both thread detail and thread lists.
 - The thread detail header uses
-  `StatusPill` for `manager` and `managed`. Add one canonical
+  `StatusPill` for parent and child. Add one canonical
   thread-tag pill renderer reused in both locations instead of duplicating local
   class bundles.
 - The three-dot menu is centralized in `ThreadActionsMenu` and
   `ThreadActionsProvider`, which already host rename/delete/archive dialogs.
   Tag editing belongs there.
 - CLI thread commands already support `list`, `show`, `update`, `spawn`,
-  lifecycle, and manager flows. Managers use `bb thread spawn` and inherit
-  `BB_THREAD_ID` as the parent, so managers can tag child threads through the
+  lifecycle, and parent/child flows. Threads use `bb thread spawn` and inherit
+  `BB_THREAD_ID` as the parent, so parent threads can tag child threads through the
   same CLI assignment commands.
 
 ## Data Model
@@ -82,7 +82,7 @@ Add indexes:
 Semantics:
 
 - Tags are project-scoped. This matches existing thread/project ownership,
-  manager workflows, and expected project-specific vocabularies.
+  parent-thread workflows, and expected project-specific vocabularies.
 - `normalized_name` is computed at the server boundary by trimming, collapsing
   internal whitespace, and lower-casing. Names are unique per project after
   normalization while the tag is active.
@@ -251,13 +251,13 @@ Command details:
   `createMissing: true`; `set`, `remove`, and tag-filtering commands use
   `createMissing: false` semantics and fail on missing names.
 
-Manager workflow:
+Parent-thread workflow:
 
-- Managers can run `bb thread tag add <child-id> "react perf"` after spawning
-  or taking over child threads.
-- Update `bb guide threads`, `bb guide managers`, and
-  `manager-agent-instructions.md` to mention tags for grouping child work.
-- Do not add a manager-only tagging tool in the first pass; the manager already
+- Parent threads can run `bb thread tag add <child-id> "react perf"` after
+  spawning or taking over child threads.
+- Update `bb guide threads` and the built-in `bb-cli` skill to mention tags for
+  grouping child work.
+- Do not add a parent-only tagging tool in the first pass; a parent thread already
   uses the CLI for thread lifecycle operations.
 
 ## App UX
@@ -276,13 +276,13 @@ Sidebar:
 - Render compact tag pills after the title in `ThreadRow`.
 - Keep row dimensions stable. Show the first one or two tags plus a `+N` pill
   when space is constrained; expose the full tag list in a tooltip/title.
-- Preserve existing manager child count, environment icon, pending interaction,
+- Preserve existing child count, environment icon, pending interaction,
   unread, and action-menu behavior.
 
 Thread detail header:
 
 - Render the full tag pill list next to the thread title and existing
-  `manager`/`managed` status pills.
+  parent/child indicators.
 - Allow wrapping within the header center area on narrow widths without
   overlapping actions.
 
@@ -376,7 +376,7 @@ Server/API:
   create missing names only when `mode: "names"` sets `createMissing: true`.
 - Thread detail and list responses include required `tags`.
 - Tag changes emit the expected thread/project notifications.
-- Existing title/parent update behavior and manager ownership messages remain
+- Existing title/parent update behavior and parent ownership messages remain
   unchanged.
 
 CLI:
@@ -425,7 +425,7 @@ For app visual validation, run the dev app and verify:
 - Tags can be created, renamed, color-updated, soft-deleted, assigned, removed,
   and replaced through explicit API contracts.
 - CLI supports tag definition and thread assignment workflows, including JSON
-  output and manager-friendly child-thread tagging.
+  output and parent-thread-friendly child-thread tagging.
 - App sidebar, thread detail header, archived list, and three-dot tag editor use
   one canonical tag pill renderer.
 - Thread list filtering by tags is SQL-backed with indexes.
@@ -446,7 +446,7 @@ For app visual validation, run the dev app and verify:
 
 - Should `bb thread spawn` grow `--tag <name>` as a convenience in the first
   implementation, or is post-spawn `bb thread tag add` sufficient?
-- Should manager agents be encouraged to auto-tag every child thread, or should
-  tags remain opt-in based on manager/user judgment?
+- Should parent threads be encouraged to auto-tag every child thread, or should
+  tags remain opt-in based on parent-thread/user judgment?
 - Should archived tag filters default to including archived threads only when
   `--archived`/`archived=true` is set, matching current list semantics?

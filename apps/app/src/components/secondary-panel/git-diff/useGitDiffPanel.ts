@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useEnvironmentMergeBaseBranches } from "../../../hooks/queries/environment-queries";
+import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import {
+  pendingGitDiffCommitShaAtom,
   pendingGitDiffScrollPathAtom,
   selectedMergeBaseBranchAtom,
 } from "../threadSecondaryPanelAtoms";
@@ -12,7 +14,7 @@ type ThreadSecondaryPanelSetter = (
 ) => void;
 
 interface UseGitDiffPanelParams {
-  activeSecondaryPanel: ThreadSecondaryPanelTab | null;
+  activeSecondaryTab: SecondaryFixedPanelTab | null;
   clearActiveFileTabs: () => void;
   defaultMergeBaseBranch?: string;
   environmentId?: string;
@@ -21,7 +23,7 @@ interface UseGitDiffPanelParams {
 }
 
 export function useGitDiffPanel({
-  activeSecondaryPanel,
+  activeSecondaryTab,
   clearActiveFileTabs,
   defaultMergeBaseBranch,
   environmentId,
@@ -31,6 +33,7 @@ export function useGitDiffPanel({
   const selectedMergeBaseBranch = useAtomValue(selectedMergeBaseBranchAtom);
   const setSelectedMergeBaseBranch = useSetAtom(selectedMergeBaseBranchAtom);
   const setPendingGitDiffScrollPath = useSetAtom(pendingGitDiffScrollPathAtom);
+  const setPendingGitDiffCommitSha = useSetAtom(pendingGitDiffCommitShaAtom);
   const [mergeBaseBranchSearchQuery, setMergeBaseBranchSearchQuery] =
     useState("");
   const requestedMergeBaseBranch =
@@ -44,7 +47,8 @@ export function useGitDiffPanel({
     // panel is visible; initial thread load can use the persisted/default base.
     enabled:
       Boolean(environmentId) &&
-      (mergeBaseBranchOptionsEnabled || activeSecondaryPanel === "git-diff"),
+      (mergeBaseBranchOptionsEnabled ||
+        activeSecondaryTab?.kind === "git-diff"),
     query: mergeBaseBranchSearchQuery,
     selectedBranch: requestedMergeBaseBranch,
   });
@@ -105,6 +109,15 @@ export function useGitDiffPanel({
     [clearActiveFileTabs, openThreadDiffPanel, setPendingGitDiffScrollPath],
   );
 
+  const openCommitDiff = useCallback(
+    (sha: string) => {
+      clearActiveFileTabs();
+      setPendingGitDiffCommitSha(sha);
+      openThreadDiffPanel();
+    },
+    [clearActiveFileTabs, openThreadDiffPanel, setPendingGitDiffCommitSha],
+  );
+
   return {
     closeThreadSecondaryPanel,
     defaultMergeBaseBranch,
@@ -112,6 +125,7 @@ export function useGitDiffPanel({
     mergeBaseBranchOptions,
     mergeBaseBranchOptionsTruncated,
     mergeBaseRemoteBranchOptions,
+    openCommitDiff,
     openDiffFile,
     openThreadDiffPanel,
     openThreadSecondaryPanel,

@@ -17,6 +17,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return {
     ...actual,
     searchProjectPaths: vi.fn(),
+    searchEnvironmentPaths: vi.fn(),
     listApps: vi.fn(),
     listThreadStoragePaths: vi.fn(),
   };
@@ -78,9 +79,9 @@ afterEach(() => {
 });
 
 describe("useFileSearchSuggestions", () => {
-  it("merges workspace and manager thread-storage file results", async () => {
+  it("merges workspace and thread-storage file results", async () => {
     vi.mocked(api.listApps).mockResolvedValue([]);
-    vi.mocked(api.searchProjectPaths).mockResolvedValue(
+    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
       makePathResponse([
         {
           kind: "file",
@@ -110,8 +111,7 @@ describe("useFileSearchSuggestions", () => {
           query: "status",
           limit: 2,
           environmentId: "env-1",
-          currentThreadId: "thr-manager",
-          currentThreadType: "manager",
+          currentThreadId: "thr-storage",
         }),
       { wrapper },
     );
@@ -125,16 +125,16 @@ describe("useFileSearchSuggestions", () => {
         .filter(isFilePathSearchSuggestion)
         .map((suggestion) => suggestion.path),
     ).toEqual(["notes/status.md", "src/project.ts"]);
-    expect(api.searchProjectPaths).toHaveBeenCalledWith({
-      projectId: "proj-1",
+    expect(api.searchEnvironmentPaths).toHaveBeenCalledWith({
+      environmentId: "env-1",
       query: "status",
       limit: 4,
-      environmentId: "env-1",
       includeFiles: true,
       includeDirectories: false,
     });
+    expect(api.searchProjectPaths).not.toHaveBeenCalled();
     expect(api.listThreadStoragePaths).toHaveBeenCalledWith({
-      id: "thr-manager",
+      id: "thr-storage",
       options: {
         limit: 4,
         query: "status",
@@ -147,7 +147,7 @@ describe("useFileSearchSuggestions", () => {
 
   it("returns matching apps before files", async () => {
     vi.mocked(api.listApps).mockResolvedValue([APP]);
-    vi.mocked(api.searchProjectPaths).mockResolvedValue(
+    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
       makePathResponse([
         {
           kind: "file",
@@ -168,8 +168,7 @@ describe("useFileSearchSuggestions", () => {
           projectId: "proj-1",
           query: "status",
           environmentId: "env-1",
-          currentThreadId: "thr-manager",
-          currentThreadType: "manager",
+          currentThreadId: "thr-storage",
         }),
       { wrapper },
     );

@@ -1,12 +1,13 @@
 import type { Thread } from "@bb/domain";
-import { Button } from "@/components/ui/button.js";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
-import { threadTypeLabel } from "@/lib/thread-title";
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "./ConfirmDeleteDialog";
 
 export interface ThreadDeleteDialogTarget {
   thread: Thread;
-  /** Present iff manager thread with one or more assigned children. */
-  assignedChildCount?: number;
+  /** Present iff the thread has one or more non-deleted children. */
+  childThreadCount?: number;
 }
 
 interface ThreadDeleteDialogProps {
@@ -23,18 +24,16 @@ export function ThreadDeleteDialog({
   onDelete,
 }: ThreadDeleteDialogProps) {
   return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
-        {target ? (
-          <ThreadDeleteDialogContent
-            target={target}
-            pending={pending}
-            onOpenChange={onOpenChange}
-            onDelete={onDelete}
-          />
-        ) : null}
-      </DialogContent>
-    </Dialog>
+    <ConfirmDeleteDialog open={target !== null} onOpenChange={onOpenChange}>
+      {target ? (
+        <ThreadDeleteDialogContent
+          target={target}
+          pending={pending}
+          onOpenChange={onOpenChange}
+          onDelete={onDelete}
+        />
+      ) : null}
+    </ConfirmDeleteDialog>
   );
 }
 
@@ -51,36 +50,20 @@ export function ThreadDeleteDialogContent({
   onOpenChange,
   onDelete,
 }: ThreadDeleteDialogContentProps) {
-  const label = threadTypeLabel(target.thread.type);
+  const label = "thread";
   const sentences = [
-    target.assignedChildCount ? "Assigned threads will be unassigned." : null,
+    target.childThreadCount ? "Child threads will be deleted." : null,
     "This action cannot be undone.",
   ].filter((part): part is string => part !== null);
 
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>Delete {label}?</DialogTitle>
-        <DialogDescription>{sentences.join(" ")}</DialogDescription>
-      </DialogHeader>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={pending}
-          onClick={() => onOpenChange(false)}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          variant="destructive"
-          disabled={pending}
-          onClick={() => onDelete(target)}
-        >
-          Delete {label}
-        </Button>
-      </DialogFooter>
-    </>
+    <ConfirmDeleteDialogContent
+      title={`Delete ${label}?`}
+      description={sentences.join(" ")}
+      confirmLabel={`Delete ${label}`}
+      pending={pending}
+      onConfirm={() => onDelete(target)}
+      onCancel={() => onOpenChange(false)}
+    />
   );
 }
