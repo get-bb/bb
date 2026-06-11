@@ -327,7 +327,7 @@ export function WorkspacePathRow({
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel icon="Folder">{display.rowLabel}</DetailRowIconLabel>
+        <DetailRowIconLabel icon="FolderGit">{display.rowLabel}</DetailRowIconLabel>
       }
       valueClassName="min-w-0"
     >
