@@ -340,6 +340,31 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
+  it("uses rowid lookups for thread search FTS segment hydration", () => {
+    const { db } = setup();
+
+    const details = queryPlanDetails({
+      db,
+      params: ['"queryplanneedle"*', 20],
+      sql: `
+        SELECT s.id
+        FROM thread_search_segments_fts
+        JOIN thread_search_segments AS s
+          ON s.rowid = thread_search_segments_fts.rowid
+        WHERE thread_search_segments_fts MATCH ?
+        LIMIT ?
+      `,
+    });
+
+    expect(details).toContain(
+      "SCAN thread_search_segments_fts VIRTUAL TABLE INDEX",
+    );
+    expect(details).toContain("SEARCH s USING INTEGER PRIMARY KEY (rowid=?)");
+    expect(details).not.toContain("SCAN s");
+
+    db.$client.close();
+  });
+
   it("uses the completed item truncation partial index for emitted cursor scans", () => {
     const { db, logger, thread } = setup();
     const createdBefore = Date.now();
@@ -503,5 +528,4 @@ describe("slow query index plans", () => {
 
     db.$client.close();
   });
-
 });

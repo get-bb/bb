@@ -787,7 +787,7 @@ function listThreadSearchMatchRows(
         t.updated_at AS threadUpdatedAt,
         thread_search_segments_fts.rank AS segmentRank
       FROM thread_search_segments_fts
-      JOIN thread_search_segments AS s ON s.id = thread_search_segments_fts.id
+      JOIN thread_search_segments AS s ON s.rowid = thread_search_segments_fts.rowid
       JOIN threads AS t ON t.id = s.thread_id
       WHERE thread_search_segments_fts MATCH ${args.matchQuery}
         AND t.deleted_at IS NULL

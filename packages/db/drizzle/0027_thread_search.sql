@@ -15,7 +15,6 @@ CREATE UNIQUE INDEX `thread_search_segments_source_idx` ON `thread_search_segmen
 CREATE INDEX `thread_search_segments_thread_idx` ON `thread_search_segments` (`thread_id`);
 --> statement-breakpoint
 CREATE VIRTUAL TABLE `thread_search_segments_fts` USING fts5(
-  `id` UNINDEXED,
   `text`,
   tokenize = 'unicode61'
 );
@@ -158,30 +157,30 @@ FROM `events`
 WHERE `events`.`type` = 'system/manager/user_message'
   AND trim(COALESCE(json_extract(`events`.`data`, '$.text'), '')) <> '';
 --> statement-breakpoint
-INSERT INTO `thread_search_segments_fts` (`id`, `text`)
-SELECT `id`, `text`
+INSERT INTO `thread_search_segments_fts` (`rowid`, `text`)
+SELECT `rowid`, `text`
 FROM `thread_search_segments`;
 --> statement-breakpoint
 CREATE TRIGGER `thread_search_segments_after_insert`
 AFTER INSERT ON `thread_search_segments`
 BEGIN
-  INSERT INTO `thread_search_segments_fts` (`id`, `text`)
-  VALUES (new.`id`, new.`text`);
+  INSERT INTO `thread_search_segments_fts` (`rowid`, `text`)
+  VALUES (new.`rowid`, new.`text`);
 END;
 --> statement-breakpoint
 CREATE TRIGGER `thread_search_segments_after_delete`
 AFTER DELETE ON `thread_search_segments`
 BEGIN
   DELETE FROM `thread_search_segments_fts`
-  WHERE `id` = old.`id`;
+  WHERE `rowid` = old.`rowid`;
 END;
 --> statement-breakpoint
 CREATE TRIGGER `thread_search_segments_after_text_update`
 AFTER UPDATE OF `id`, `text` ON `thread_search_segments`
 BEGIN
   DELETE FROM `thread_search_segments_fts`
-  WHERE `id` = old.`id`;
+  WHERE `rowid` = old.`rowid`;
 
-  INSERT INTO `thread_search_segments_fts` (`id`, `text`)
-  VALUES (new.`id`, new.`text`);
+  INSERT INTO `thread_search_segments_fts` (`rowid`, `text`)
+  VALUES (new.`rowid`, new.`text`);
 END;
