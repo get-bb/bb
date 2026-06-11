@@ -7,9 +7,9 @@ export function getEnvironmentWorkspaceDisplayIconName(
 ): IconName | null {
   switch (kind) {
     case "managed-worktree":
-      return "GitBranch";
+      return "FolderGit";
     case "unmanaged-worktree":
-      return "GitBranch";
+      return "FolderGit";
     case "other":
       return null;
   }
