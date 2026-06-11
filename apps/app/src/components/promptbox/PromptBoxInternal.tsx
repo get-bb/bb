@@ -940,20 +940,6 @@ export function PromptBoxInternal({
     shouldAvoidSoftKeyboardAutofocus,
   ]);
 
-  // An explicit draft-restore action (e.g. editing a queued message) bumps
-  // `focusEndKey` so the caret lands at the end of the restored text and the
-  // user can type immediately. This follows a deliberate click, so unlike the
-  // scope autofocus above it is not gated by the coarse-pointer keyboard guard.
-  const lastFocusEndKeyRef = useRef(focusEndKey);
-  useLayoutEffect(() => {
-    if (focusEndKey === undefined) return;
-    if (focusEndKey === lastFocusEndKeyRef.current) return;
-    if (!editor) return;
-    lastFocusEndKeyRef.current = focusEndKey;
-    editor.commands.focus("end");
-    scheduleRevealEditorSelection();
-  }, [editor, focusEndKey, scheduleRevealEditorSelection]);
-
   useEffect(() => {
     mentionRangesRef.current = mentionRanges;
   }, [mentionRanges]);
@@ -989,6 +975,24 @@ export function PromptBoxInternal({
     syncTriggerState,
     value,
   ]);
+
+  // An explicit draft-restore action (e.g. editing a queued message) bumps
+  // `focusEndKey` so the caret lands at the END of the restored text. It is a
+  // passive effect defined AFTER the content-sync effect above, so React's
+  // definition-order guarantee runs it once that effect has applied
+  // `setContent` for the new draft in the same commit. (A useLayoutEffect, or
+  // an effect ordered before content-sync, would focus("end") against the
+  // pre-edit content and setContent would then map the caret to the start.)
+  // Not gated by the coarse-pointer guard since it follows a deliberate click.
+  const lastFocusEndKeyRef = useRef(focusEndKey);
+  useEffect(() => {
+    if (focusEndKey === undefined) return;
+    if (focusEndKey === lastFocusEndKeyRef.current) return;
+    if (!editor) return;
+    lastFocusEndKeyRef.current = focusEndKey;
+    editor.commands.focus("end");
+    scheduleRevealEditorSelection();
+  }, [editor, focusEndKey, scheduleRevealEditorSelection]);
 
   useEffect(() => {
     if (zenModeResetKey === undefined) return;

@@ -105,11 +105,12 @@ describe("FollowUpPromptBox", () => {
     expect(document.activeElement).not.toBe(editor);
   });
 
-  it("focuses the caret at the end when focusEndKey changes (e.g. edit message), even on coarse pointers", async () => {
+  it("puts the caret at the end of the restored draft when focusEndKey changes (edit message)", async () => {
     setupCoarsePointerViewport();
     const props = makeFollowUpPromptBoxProps();
     props.composer = {
       ...props.composer,
+      message: "",
       promptPlaceholder: "Ask for follow-up changes",
       submitMode: { kind: "ready" },
     };
@@ -121,11 +122,25 @@ describe("FollowUpPromptBox", () => {
     // Coarse pointer suppresses the passive mount autofocus.
     expect(document.activeElement).not.toBe(editor);
 
-    // Editing a queued message bumps focusEndKey — a deliberate action — so the
-    // caret focuses even though the passive autofocus is suppressed here.
-    rerender(<FollowUpPromptBox {...props} focusEndKey={1} />);
+    // Editing a queued message restores its text into the draft AND bumps
+    // focusEndKey in the SAME commit. The caret must land at the END of the
+    // restored text (so typing appends, not prepends) — which only holds if the
+    // focus runs after the content sync applies setContent.
+    const restored = "Restored draft text";
+    rerender(
+      <FollowUpPromptBox
+        {...props}
+        composer={{ ...props.composer, message: restored }}
+        focusEndKey={1}
+      />,
+    );
     await waitForAnimationFrame();
+
     expect(document.activeElement).toBe(editor);
+    expect(editor.textContent).toContain(restored);
+    const selection = document.getSelection();
+    expect(selection?.isCollapsed).toBe(true);
+    expect(selection?.focusOffset).toBe(restored.length);
   });
 
   it("uses modifier submit with Cmd+Enter without invoking the normal submit", () => {

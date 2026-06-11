@@ -47,7 +47,10 @@ import {
   useSendThreadMessage,
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { buildConversationContextSnapshot } from "@/lib/conversation-context-snapshot";
-import { buildSideChatCreateRequest } from "@/lib/side-chat-create-request";
+import {
+  SIDE_CHAT_PERMISSION_MODE,
+  buildSideChatCreateRequest,
+} from "@/lib/side-chat-create-request";
 import { HttpError } from "@/lib/api";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 
@@ -367,23 +370,18 @@ export function SideChatTabContent({
   );
 
   // Built the same shape as the main thread's executionConfig (see
-  // ThreadDetailPromptArea). The pickers are rendered disabled via the
-  // FollowUpPromptBox `readOnly` flag, so the `onChange` setters never fire —
-  // but wiring the hook's real setters keeps the config identical to the main
-  // thread rather than inventing parallel no-op plumbing.
+  // ThreadDetailPromptArea), but the side chat is read-only: the footer pickers
+  // render disabled via the FollowUpPromptBox `readOnly` flag, so the controls
+  // are display-only and their `onChange` is a no-op. The hook supplies the
+  // inherited display values (provider / model / reasoning / permission options).
   const {
     selectedProviderId,
     providerOptions,
     hasMultipleProviders,
     selectedProviderDisplayName,
     selectedModel,
-    setSelectedModel,
     serviceTier,
-    setServiceTier,
     reasoningLevel,
-    setReasoningLevel,
-    permissionMode,
-    setPermissionMode,
     activeModel,
     modelOptions,
     modelLoadError,
@@ -407,18 +405,18 @@ export function SideChatTabContent({
         selected: selectedModel,
         options: modelOptions,
         loadError: modelLoadError,
-        onChange: setSelectedModel,
+        onChange: noop,
       },
       serviceTier: {
         value: serviceTier,
-        onChange: setServiceTier,
+        onChange: noop,
         supported: supportsServiceTier,
         supportByProvider: serviceTierSupportByProvider,
       },
       reasoning: {
         value: reasoningLevel,
         options: reasoningOptions,
-        onChange: setReasoningLevel,
+        onChange: noop,
       },
     }),
     [
@@ -434,26 +432,20 @@ export function SideChatTabContent({
       selectedProviderId,
       serviceTier,
       serviceTierSupportByProvider,
-      setReasoningLevel,
-      setSelectedModel,
-      setServiceTier,
       supportsServiceTier,
     ],
   );
 
   const permissionConfig = useMemo<ExecutionPermissionConfig>(
     () => ({
-      value: permissionMode,
+      // Pinned to the same constant the create request uses, so the displayed
+      // label can't drift from the side chat's actual (always read-only) reach.
+      value: SIDE_CHAT_PERMISSION_MODE,
       options: permissionModeOptions,
-      onChange: setPermissionMode,
+      onChange: noop,
       supported: supportsPermissionModeSelection,
     }),
-    [
-      permissionMode,
-      permissionModeOptions,
-      setPermissionMode,
-      supportsPermissionModeSelection,
-    ],
+    [permissionModeOptions, supportsPermissionModeSelection],
   );
 
   const environmentSummary = useMemo(() => {

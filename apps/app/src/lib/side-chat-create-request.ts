@@ -3,6 +3,14 @@ import type { AppCreateThreadRequest } from "@/lib/api";
 import { resolveChildThreadEnvironment } from "@/lib/child-thread-environment";
 
 /**
+ * Side chats always run read-only — they observe a conversation and never mutate
+ * the workspace. The composer's displayed permission label and the create
+ * request both source this single constant, so the displayed label cannot drift
+ * from the permission the thread is actually created with.
+ */
+export const SIDE_CHAT_PERMISSION_MODE: PermissionMode = "readonly";
+
+/**
  * Inputs for building a side chat's create-thread request. A side chat is a
  * child thread of the main thread, created lazily on the user's first submit.
  */
@@ -61,7 +69,7 @@ export function buildSideChatCreateRequest({
   model,
   title,
 }: BuildSideChatCreateRequestArgs): AppCreateThreadRequest {
-  const permissionMode: PermissionMode = "readonly";
+  const permissionMode = SIDE_CHAT_PERMISSION_MODE;
   return {
     projectId,
     providerId,
