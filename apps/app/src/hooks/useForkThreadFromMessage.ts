@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Environment, Thread } from "@bb/domain";
+import type { TimelineRow } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { getThreadRoutePath } from "@/lib/app-route-paths";
 import { buildForkThreadRequest } from "@/lib/fork-thread-request";
@@ -18,6 +19,8 @@ export interface UseForkThreadFromMessageArgs {
   sourceThread: Thread | null;
   /** Source thread's environment. Null until it loads / for personal threads. */
   sourceEnvironment: Environment | null;
+  /** Source thread's timeline rows — snapshotted as the fork's lead-up context. */
+  sourceTimelineRows: readonly TimelineRow[];
 }
 
 /**
@@ -34,6 +37,7 @@ export interface UseForkThreadFromMessageArgs {
 export function useForkThreadFromMessage({
   sourceThread,
   sourceEnvironment,
+  sourceTimelineRows,
 }: UseForkThreadFromMessageArgs): (
   args: ForkThreadFromMessageArgs,
 ) => Promise<void> {
@@ -72,6 +76,7 @@ export function useForkThreadFromMessage({
           sourceThread,
           sourceEnvironment,
           anchorMessageText: messageText,
+          sourceTimelineRows,
           model: executionOptions.model,
           permissionMode: executionOptions.permissionMode,
         });
@@ -92,6 +97,13 @@ export function useForkThreadFromMessage({
         forkInFlightRef.current = false;
       }
     },
-    [createThread, navigate, queryClient, sourceEnvironment, sourceThread],
+    [
+      createThread,
+      navigate,
+      queryClient,
+      sourceEnvironment,
+      sourceThread,
+      sourceTimelineRows,
+    ],
   );
 }

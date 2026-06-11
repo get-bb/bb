@@ -235,6 +235,9 @@ export function buildProjectThreadGroups(
   for (const thread of projectThreads) {
     if (thread.parentThreadId === null) continue;
     if (!projectThreadIds.has(thread.parentThreadId)) continue;
+    // Side chats live in the right-panel tab, not the sidebar tree — keep them
+    // out of the parent's nesting (and out of its rolled-up stats).
+    if (thread.childOrigin === "side-chat") continue;
 
     const children = childrenByParentId.get(thread.parentThreadId);
     if (children) {

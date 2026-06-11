@@ -565,6 +565,7 @@ export function ThreadDetailView() {
   const forkThreadFromMessage = useForkThreadFromMessage({
     sourceThread: thread ?? null,
     sourceEnvironment: environment ?? null,
+    sourceTimelineRows: timelineRows,
   });
   const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(
     (target) => {

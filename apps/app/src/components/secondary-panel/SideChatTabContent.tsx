@@ -23,7 +23,7 @@ import {
   useCreateThread,
   useSendThreadMessage,
 } from "@/hooks/mutations/thread-runtime-mutations";
-import { buildSideChatContextSnapshot } from "@/lib/side-chat-context-snapshot";
+import { buildConversationContextSnapshot } from "@/lib/conversation-context-snapshot";
 import { buildSideChatCreateRequest } from "@/lib/side-chat-create-request";
 import { HttpError } from "@/lib/api";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
@@ -233,9 +233,11 @@ export function SideChatTabContent({
       if (sourceThread.environmentId !== null && sourceEnvironment === null) {
         return;
       }
-      const contextSnapshot = buildSideChatContextSnapshot({
+      const contextSnapshot = buildConversationContextSnapshot({
         rows: sourceTimelineRows,
         sourceMessageText: tab.sourceMessageText,
+        parentThreadId: sourceThread.id,
+        scope: "side-chat",
       });
       const request = buildSideChatCreateRequest({
         projectId: sourceThread.projectId,
