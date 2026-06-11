@@ -208,6 +208,7 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
       <OptionDisplay
         label="Permission"
         value={selectedLabel}
+        compactValue={selectedLabel}
         className="h-6"
         muted
       />

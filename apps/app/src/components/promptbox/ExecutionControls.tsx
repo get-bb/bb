@@ -117,6 +117,7 @@ export const ExecutionControls = memo(function ExecutionControls({
         <OptionDisplay
           label="Model"
           value={formatModelLabel(lockedModelValue)}
+          compactValue={formatModelLabel(lockedModelValue)}
           muted
         />
       ) : null}
