@@ -197,6 +197,13 @@ type DiffStatArtifacts = {
 type ReadTrackedPatchByPathArgs = {
   target: WorkspaceDiffTarget;
   paths: string[];
+  /**
+   * Per-file patch byte budget. Bounds the page's combined `git diff` buffer
+   * (sized `paths.length * maxBytesPerFile` + headroom) and, on the per-file
+   * fallback, each single-file read — so a large page truncates instead of
+   * overflowing the default buffer and failing the whole page.
+   */
+  maxBytesPerFile: number;
 };
 
 type WorkspaceMutationTargets = Workspace[];
@@ -462,6 +469,28 @@ function withDiffPathspec(
   const withoutSeparator =
     args[args.length - 1] === "--" ? args.slice(0, -1) : args;
   return [...withoutSeparator, "--", ...paths];
+}
+
+/**
+ * Per-file framing headroom (`diff --git` header, index/mode lines, hunk
+ * headers, the `GIT binary patch` terminator) added on top of each file's patch
+ * budget when sizing the combined page buffer, plus a fixed base so a tiny
+ * page is never starved. The buffer only needs to be generous enough that a
+ * page whose files are individually within budget reads fully; anything larger
+ * is intentionally truncated and recovered downstream (the section/entry
+ * count-mismatch fallback to per-file fetch, then per-entry tail-cut).
+ */
+const COMBINED_PAGE_PER_FILE_HEADROOM_BYTES = 4 * 1024;
+const COMBINED_PAGE_BASE_HEADROOM_BYTES = 64 * 1024;
+
+function combinedPageBufferBudget(
+  fileCount: number,
+  maxBytesPerFile: number,
+): number {
+  return (
+    COMBINED_PAGE_BASE_HEADROOM_BYTES +
+    fileCount * (maxBytesPerFile + COMBINED_PAGE_PER_FILE_HEADROOM_BYTES)
+  );
 }
 
 function buildDiffOutputGitOptions(
@@ -741,6 +770,7 @@ export class Workspace {
         ? await this.readTrackedPatchByPathCombined({
             target: args.target,
             paths: trackedPaths,
+            maxBytesPerFile: args.maxBytesPerFile,
           })
         : new Map<string, string>();
 
@@ -749,6 +779,7 @@ export class Workspace {
         untrackedPaths.map(async (relativePath) => {
           const artifact = await this.readUntrackedDiffArtifact({
             relativePath,
+            maxDiffBytes: args.maxBytesPerFile,
           });
           return [relativePath, artifact.diff] as const;
         }),
@@ -1506,10 +1537,7 @@ export class Workspace {
   private async readTrackedPatchByPathCombined(
     args: ReadTrackedPatchByPathArgs,
   ): Promise<Map<string, string>> {
-    const combined = await this.readCombinedTrackedDiff(
-      args.target,
-      args.paths,
-    );
+    const combined = await this.readCombinedTrackedDiff(args);
     if (combined === null) {
       return new Map();
     }
@@ -1562,6 +1590,7 @@ export class Workspace {
         } = await this.readDiffArtifacts({
           target: args.target,
           paths: pathspec,
+          maxDiffBytes: args.maxBytesPerFile,
         });
         return [path, diff] as const;
       }),
@@ -1585,10 +1614,9 @@ export class Workspace {
    * base cannot be found), matching the stat/artifact readers.
    */
   private async readCombinedTrackedDiff(
-    target: WorkspaceDiffTarget,
-    paths: string[],
+    args: ReadTrackedPatchByPathArgs,
   ): Promise<{ nameStatus: string; patch: string } | null> {
-    const range = await this.resolveTrackedDiffRange(target);
+    const range = await this.resolveTrackedDiffRange(args.target);
     if (range === null) {
       return null;
     }
@@ -1597,7 +1625,7 @@ export class Workspace {
       [...range.baseArgs, "--name-status", "-z", "-M", ...range.rangeArgs],
       { cwd: this.path },
     );
-    const requested = new Set(paths);
+    const requested = new Set(args.paths);
     const renameSources = parseNameStatusSourceEntries(fullNameStatus.stdout)
       .filter((entry) => requested.has(entry.path))
       .map((entry) => entry.previousPath)
@@ -1605,7 +1633,7 @@ export class Workspace {
         (previousPath): previousPath is string =>
           previousPath !== null && !requested.has(previousPath),
       );
-    const pagePathspec = [...paths, ...renameSources];
+    const pagePathspec = [...args.paths, ...renameSources];
 
     const [nameStatus, patch] = await Promise.all([
       runGit(
@@ -1620,7 +1648,10 @@ export class Workspace {
           [...range.baseArgs, "--binary", "-M", ...range.rangeArgs],
           pagePathspec,
         ),
-        { cwd: this.path },
+        buildDiffOutputGitOptions(
+          this.path,
+          combinedPageBufferBudget(pagePathspec.length, args.maxBytesPerFile),
+        ),
       ),
     ]);
 

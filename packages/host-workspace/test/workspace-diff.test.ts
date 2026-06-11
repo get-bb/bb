@@ -454,6 +454,75 @@ describe("Workspace.diffPatch", () => {
     );
   });
 
+  it("bounds a single tracked file whose raw patch exceeds the per-file budget without throwing", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "huge.txt", "seed\n");
+    await commitAll(repoPath, "base");
+
+    // One very long single line (~400 KB) so the raw `git diff` for this file
+    // far exceeds the small per-file budget below. A pre-fix unbounded read
+    // would either return the full ~400 KB patch or, with a 16 MB default
+    // buffer overflow on a larger page, throw — here we assert it is bounded.
+    const longLine = "x".repeat(400 * 1024);
+    await write(repoPath, "huge.txt", `${longLine}\n`);
+
+    const workspace = new Workspace(repoPath);
+    const budget = 16 * 1024;
+    const patches = await workspace.diffPatch({
+      target: UNCOMMITTED,
+      paths: ["huge.txt"],
+      maxBytesPerFile: budget,
+    });
+
+    expect(patches).toHaveLength(1);
+    expect(patches[0]?.path).toBe("huge.txt");
+    expect(patches[0]?.truncated).toBe(true);
+    // Non-empty, bounded patch — truncation must keep a real prefix, not blank
+    // the whole page, and must respect the byte budget.
+    expect(patches[0]?.patch.length).toBeGreaterThan(0);
+    expect(
+      Buffer.byteLength(patches[0]?.patch ?? "", "utf8"),
+    ).toBeLessThanOrEqual(budget);
+  });
+
+  it("bounds every entry of a page whose raw combined diff exceeds the 16 MB default buffer", async () => {
+    const repoPath = await initRepo();
+    const fileCount = 6;
+    for (let index = 0; index < fileCount; index += 1) {
+      await write(repoPath, `big-${index}.txt`, "seed\n");
+    }
+    await commitAll(repoPath, "base");
+
+    // Each file's raw patch is one ~5 MB long line; 6 of them put the combined
+    // page diff well past the 16 MB default `git diff` buffer. Pre-fix, the
+    // unbounded combined `runGit` would throw WorkspaceError("git_command_failed")
+    // on MAXBUFFER overflow and fail the WHOLE page. Post-fix the page buffer is
+    // capped and `allowTruncatedStdout` is set, so the read truncates, the
+    // per-file fallback fires, and every entry returns bounded — no throw.
+    const longLine = "z".repeat(5 * 1024 * 1024);
+    const paths: string[] = [];
+    for (let index = 0; index < fileCount; index += 1) {
+      const relativePath = `big-${index}.txt`;
+      await write(repoPath, relativePath, `${longLine}-${index}\n`);
+      paths.push(relativePath);
+    }
+
+    const workspace = new Workspace(repoPath);
+    const budget = 64 * 1024;
+    const patches = await workspace.diffPatch({
+      target: UNCOMMITTED,
+      paths,
+      maxBytesPerFile: budget,
+    });
+
+    expect(patches.map((entry) => entry.path)).toEqual(paths);
+    for (const entry of patches) {
+      expect(entry.truncated).toBe(true);
+      expect(entry.patch.length).toBeGreaterThan(0);
+      expect(Buffer.byteLength(entry.patch, "utf8")).toBeLessThanOrEqual(budget);
+    }
+  });
+
   it("matches the full-diff slice for a branch_committed rename target", async () => {
     const repoPath = await initRepo();
     await write(repoPath, "mod.txt", "stable\n");
