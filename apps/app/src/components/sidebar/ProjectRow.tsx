@@ -670,13 +670,23 @@ function EnvironmentThreadGroupHeader({
       </span>
       <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
         <span className="min-w-0 truncate">
-          <span>{environmentName ?? "Worktree"}</span>
-          {branchName ? (
+          {environmentName ? (
             <>
-              <span>{environmentName ? " · " : ": "}</span>
-              <span className="text-muted-foreground">{branchName}</span>
+              <span>{environmentName}</span>
+              {branchName ? (
+                <>
+                  <span> · </span>
+                  <span className="text-muted-foreground">{branchName}</span>
+                </>
+              ) : null}
             </>
-          ) : null}
+          ) : branchName ? (
+            // No custom env name: the folder-git icon already says "worktree",
+            // so the branch alone is the group label (no "Worktree:" prefix).
+            <span>{branchName}</span>
+          ) : (
+            <span>Worktree</span>
+          )}
         </span>
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
