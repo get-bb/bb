@@ -77,8 +77,8 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadQueuedMessagesQueryKey",
   ],
   "hooks/cache-owners/environment-cache-effects.ts": [
+    "environmentDiffFilesQueryKeyPrefix",
     "environmentFilePreviewQueryKeyPrefix",
-    "environmentGitDiffQueryKeyPrefix",
     "environmentMergeBaseBranchesQueryKeyPrefix",
     "environmentWorkStatusQueryKeyPrefix",
     "systemExecutionOptionsEnvironmentQueryKeyPrefix",
@@ -144,7 +144,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allThreadQueryKeyPrefix",
     "allThreadTerminalsQueryKeyPrefix",
     "environmentDiffFilesQueryKeyPrefix",
-    "environmentDiffPatchQueryKeyPrefix",
     "environmentFilePreviewQueryKeyPrefix",
     "environmentWorkStatusQueryKeyPrefix",
     "hostsQueryKey",
@@ -158,8 +157,9 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadsQueryKey",
   ],
   "hooks/cache-owners/system-cache-effects.ts": [
+    "allEnvironmentDiffFilesQueryKeyPrefix",
+    "allEnvironmentDiffPatchQueryKeyPrefix",
     "allEnvironmentFilePreviewQueryKeyPrefix",
-    "allEnvironmentGitDiffQueryKeyPrefix",
     "allEnvironmentMergeBaseBranchesQueryKeyPrefix",
     "allEnvironmentQueryKeyPrefix",
     "allEnvironmentWorkStatusQueryKeyPrefix",

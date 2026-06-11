@@ -29,6 +29,14 @@ export interface DiffFilesPanelProps {
   /** Single identity for the active (environment, target) diff slice. */
   diffIdentity: string;
   files: DiffFileEntry[];
+  /**
+   * The TOC query's `dataUpdatedAt`. Bumps whenever the diff's table of contents
+   * refetches — including a content-only file edit that leaves the file
+   * membership (and therefore the visible/overscan paths) unchanged. The panel
+   * re-requests visible patches on this change so the evicted (stale) patches
+   * are re-fetched even when the path set is identical.
+   */
+  filesUpdatedAt: number;
   diffViewOptions: Record<string, string | boolean | number>;
   filePathRoot?: string | null;
   onOpenFileInEditor?: (path: string) => void;
@@ -48,6 +56,7 @@ export function DiffFilesPanel({
   target,
   diffIdentity,
   files,
+  filesUpdatedAt,
   diffViewOptions,
   filePathRoot,
   onOpenFileInEditor,
@@ -63,7 +72,19 @@ export function DiffFilesPanel({
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => {
       const entry = files[index];
-      return entry ? estimateCardHeight(entry) + DIFF_FILES_GAP_PX : 0;
+      if (!entry) {
+        return 0;
+      }
+      // Seed the estimate from the card's resolved initial collapsed state so a
+      // many-file diff (which opens every card collapsed) estimates header-row
+      // floors, not full expanded bodies — otherwise the total size overshoots
+      // ~50-100x and the scrollbar jumps. `measureElement` corrects the exact
+      // height once the card mounts (or the user toggles it open).
+      const collapsed = resolveDiffFileCardInitialState({
+        entry,
+        fileCount: files.length,
+      }).collapsed;
+      return estimateCardHeight({ entry, collapsed }) + DIFF_FILES_GAP_PX;
     },
     // Key the measurement cache by the stable per-row path (the same identity
     // used as the React key) rather than by index, so measured heights don't
@@ -106,9 +127,12 @@ export function DiffFilesPanel({
   useEffect(() => {
     requestPaths({ visible: visiblePaths, overscan: overscanPaths });
     // visiblePaths/overscanPaths are derived from the keys; depend on the keys
-    // so we skip re-requesting identical membership.
+    // so we skip re-requesting identical membership. Also re-fire when the TOC
+    // refetches (`filesUpdatedAt` bumps): a content-only edit produces the same
+    // paths but evicts the patch cache, so the same visible set must be
+    // re-requested to fetch the fresh patch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestPaths, visibleKey, overscanKey]);
+  }, [requestPaths, visibleKey, overscanKey, filesUpdatedAt]);
 
   return (
     <div ref={scrollRef} className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>

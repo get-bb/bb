@@ -132,6 +132,7 @@ export function GitDiffTabContent({
     isDiffPanelActive && Boolean(environmentId) && target !== undefined;
   const {
     data: diffFilesResponse,
+    dataUpdatedAt: diffFilesUpdatedAt,
     isLoading: isDiffFilesLoading,
     error: diffFilesError,
   } = useEnvironmentDiffFiles(environmentId ?? "", {
@@ -250,6 +251,7 @@ export function GitDiffTabContent({
       target={target}
       diffIdentity={diffIdentity}
       files={diffFilesResponse.files}
+      filesUpdatedAt={diffFilesUpdatedAt}
       diffViewOptions={gitDiffViewOptions}
       filePathRoot={workspaceRootPath}
       onOpenFileInEditor={onOpenFileInEditor}

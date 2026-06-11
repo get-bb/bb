@@ -531,7 +531,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refetches active diff TOC, patch, and work-status queries for work-status changes", async () => {
+  it("refetches the active diff TOC and work-status queries but evicts the observer-less patch cache for work-status changes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const diffFilesKey = environmentDiffFilesQueryKey("env-1", "all", "main");
@@ -548,15 +548,15 @@ describe("createRealtimeCacheEffects", () => {
       shortstat: "1 file changed",
       mergeBaseRef: "base-ref",
     });
+    // The per-file patch cache is imperative and observer-less in production —
+    // it is written with setQueryData and read with getQueryData, with no
+    // useQuery/queryFn. Seed it the same way (no observer) so the assertion
+    // catches a real bug: invalidateQueries would only mark it stale and leave
+    // getQueryData returning the stale patch, while removeQueries evicts it.
     queryClient.setQueryData(diffPatchKey, {
-      outcome: "available",
-      patches: [
-        {
-          path: "file.ts",
-          patch: "diff --git a/file.ts b/file.ts\n",
-          truncated: false,
-        },
-      ],
+      path: "file.ts",
+      patch: "diff --git a/file.ts b/file.ts\n",
+      truncated: false,
     });
     queryClient.setQueryData(workStatusKey, null);
     const diffFilesQueryFn = vi.fn(async () => ({
@@ -565,19 +565,10 @@ describe("createRealtimeCacheEffects", () => {
       shortstat: "",
       mergeBaseRef: "base-ref",
     }));
-    const diffPatchQueryFn = vi.fn(async () => ({
-      outcome: "available" as const,
-      patches: [],
-    }));
     const workStatusQueryFn = vi.fn(async () => null);
     const diffFilesObserver = new QueryObserver(queryClient, {
       queryKey: diffFilesKey,
       queryFn: diffFilesQueryFn,
-      staleTime: Infinity,
-    });
-    const diffPatchObserver = new QueryObserver(queryClient, {
-      queryKey: diffPatchKey,
-      queryFn: diffPatchQueryFn,
       staleTime: Infinity,
     });
     const workStatusObserver = new QueryObserver(queryClient, {
@@ -586,10 +577,8 @@ describe("createRealtimeCacheEffects", () => {
       staleTime: Infinity,
     });
     const unsubscribeDiffFiles = diffFilesObserver.subscribe(() => {});
-    const unsubscribeDiffPatch = diffPatchObserver.subscribe(() => {});
     const unsubscribeWorkStatus = workStatusObserver.subscribe(() => {});
     diffFilesQueryFn.mockClear();
-    diffPatchQueryFn.mockClear();
     workStatusQueryFn.mockClear();
 
     effects.handleChanged({
@@ -600,12 +589,14 @@ describe("createRealtimeCacheEffects", () => {
     });
     await vi.advanceTimersByTimeAsync(250);
 
+    // The observer-backed TOC and work-status queries refetch.
     expect(diffFilesQueryFn).toHaveBeenCalledTimes(1);
-    expect(diffPatchQueryFn).toHaveBeenCalledTimes(1);
     expect(workStatusQueryFn).toHaveBeenCalledTimes(1);
+    // The observer-less patch entry is evicted, not left stale — so the panel's
+    // readDiffPatchEntry returns undefined and re-fetches a fresh patch.
+    expect(queryClient.getQueryData(diffPatchKey)).toBeUndefined();
 
     unsubscribeDiffFiles();
-    unsubscribeDiffPatch();
     unsubscribeWorkStatus();
     effects.dispose();
   });

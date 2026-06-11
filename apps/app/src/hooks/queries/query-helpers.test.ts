@@ -409,18 +409,23 @@ describe("resolveEnvironmentMergeBaseBranchesPlaceholder", () => {
 });
 
 describe("getEnvironmentWorkspaceStateInvalidationQueryKeys", () => {
-  it("targets workspace-derived status and diff queries", () => {
-    expect(
-      getEnvironmentWorkspaceStateInvalidationQueryKeys({
-        environmentId: "env-1",
-      }),
-    ).toEqual([
+  it("targets workspace-derived status and the observer-backed diff TOC, but never the observer-less patch cache", () => {
+    const queryKeys = getEnvironmentWorkspaceStateInvalidationQueryKeys({
+      environmentId: "env-1",
+    });
+
+    expect(queryKeys).toEqual([
       ["environmentWorkStatus", "env-1"],
       ["environmentGitDiff", "env-1"],
       ["environmentDiffFiles", "env-1"],
-      ["environmentDiffPatch", "env-1"],
       ["environmentFilePreview", "env-1"],
     ]);
+    // The patch cache is observer-less; invalidation is a no-op for it, so it
+    // must be evicted (removeEnvironmentDiffPatchQueries) rather than appearing
+    // in any invalidate-key list.
+    expect(queryKeys).not.toContainEqual(
+      environmentDiffPatchQueryKeyPrefix("env-1"),
+    );
   });
 });
 
@@ -446,15 +451,18 @@ describe("getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys", () => {
         environmentId: "env-1",
       });
 
-    // Only the merge-base-scoped work status for env-1, plus the diff TOC and
-    // patch caches (invalidated by prefix — a moved merge base affects every
-    // ref-derived diff target).
-    expect(queryKeys).toHaveLength(3);
+    // Only the merge-base-scoped work status for env-1, plus the observer-backed
+    // diff TOC cache (invalidated by prefix — a moved merge base affects every
+    // ref-derived diff target). The observer-less patch cache is absent: it is
+    // evicted separately via removeEnvironmentDiffPatchQueries.
+    expect(queryKeys).toHaveLength(2);
     expect(queryKeys).toContainEqual(
       environmentWorkStatusQueryKey("env-1", "main"),
     );
     expect(queryKeys).toContainEqual(environmentDiffFilesQueryKeyPrefix("env-1"));
-    expect(queryKeys).toContainEqual(environmentDiffPatchQueryKeyPrefix("env-1"));
+    expect(queryKeys).not.toContainEqual(
+      environmentDiffPatchQueryKeyPrefix("env-1"),
+    );
     expect(queryKeys).not.toContainEqual(
       environmentWorkStatusQueryKey("env-1", null),
     );

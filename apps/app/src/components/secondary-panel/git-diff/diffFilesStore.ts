@@ -199,12 +199,32 @@ export function clearDiffFileCardStates(activeDiffIdentity: string): void {
  * the first paint is close enough to keep the scrollbar stable, with a header
  * floor for collapsed / zero-change rows.
  */
-const DIFF_CARD_HEADER_HEIGHT_PX = 40;
+export const DIFF_CARD_HEADER_HEIGHT_PX = 40;
 const DIFF_CARD_LINE_HEIGHT_PX = 18;
 const DIFF_CARD_BODY_PADDING_PX = 16;
 const DIFF_CARD_MAX_ESTIMATED_LINES = 80;
 
-export function estimateCardHeight(entry: DiffFileEntry): number {
+/**
+ * A card's estimate must respect its resolved initial collapsed state. Large
+ * diffs (over {@link GIT_DIFF_AUTO_COLLAPSE_FILE_THRESHOLD}) and deleted files
+ * open collapsed — only the header row renders — so estimating the full
+ * expanded body for them overshoots the total size by ~50-100x and yanks the
+ * scrollbar. A collapsed card estimates to the header-row floor; the
+ * virtualizer's `measureElement` still corrects the exact height on mount and
+ * when the user toggles the card open.
+ */
+export interface EstimateCardHeightArgs {
+  entry: DiffFileEntry;
+  collapsed: boolean;
+}
+
+export function estimateCardHeight({
+  entry,
+  collapsed,
+}: EstimateCardHeightArgs): number {
+  if (collapsed) {
+    return DIFF_CARD_HEADER_HEIGHT_PX;
+  }
   const changedLines = entry.additions + entry.deletions;
   if (changedLines === 0) {
     return DIFF_CARD_HEADER_HEIGHT_PX;
