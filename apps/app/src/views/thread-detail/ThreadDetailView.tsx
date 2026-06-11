@@ -50,7 +50,6 @@ import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
-import { useExperiments } from "@/hooks/queries/system-queries";
 import {
   useCloseThreadTerminal,
   useCreateThreadTerminal,
@@ -78,7 +77,6 @@ import {
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
-import { selectThreadPromptWorkflowsSection } from "./threadPromptWorkflowsSection";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import { useThreadSecondaryPanelVisibility } from "./useThreadSecondaryPanelVisibility";
 import type { HostConnectionNotice } from "./ThreadTimelinePane";
@@ -971,14 +969,6 @@ export function ThreadDetailView() {
       if (activeItems.length === 0) return null;
       return { items: activeItems };
     }, [childThreadSubsetQuery.data]);
-  const workflowsExperimentEnabled = useExperiments().workflows;
-  const workflowsSection = useMemo(
-    () =>
-      workflowsExperimentEnabled
-        ? selectThreadPromptWorkflowsSection(timelineRows)
-        : null,
-    [timelineRows, workflowsExperimentEnabled],
-  );
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({
     markThreadRead,
@@ -1310,7 +1300,6 @@ export function ThreadDetailView() {
       pendingTodos={pendingTodos}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
-      workflowsSection={workflowsSection}
       thread={thread}
     />
   );

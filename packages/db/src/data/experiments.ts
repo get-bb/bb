@@ -9,7 +9,6 @@ export function getExperiments(db: DbConnection): Experiments {
   const row = db
     .select({
       claudeCodeMockCliTraffic: systemExperiments.claudeCodeMockCliTraffic,
-      workflows: systemExperiments.workflows,
     })
     .from(systemExperiments)
     .where(eq(systemExperiments.id, SYSTEM_EXPERIMENTS_ROW_ID))
@@ -27,14 +26,12 @@ export function setExperiments(
     .values({
       id: SYSTEM_EXPERIMENTS_ROW_ID,
       claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
-      workflows: experiments.workflows,
       updatedAt,
     })
     .onConflictDoUpdate({
       target: systemExperiments.id,
       set: {
         claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
-        workflows: experiments.workflows,
         updatedAt,
       },
     })

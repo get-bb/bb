@@ -307,43 +307,6 @@ describe("claude-code provider adapter", () => {
       permissionEscalation: null,
       cwd: "/tmp/worktree",
     });
-    expect(cmd?.params).not.toHaveProperty("outputFormat");
-  });
-
-  it("buildCommand thread/start maps the output schema to the bridge json_schema output format", () => {
-    const adapter = createClaudeCodeProviderAdapter();
-    const outputSchema = {
-      type: "object",
-      properties: { answer: { type: "string" } },
-      required: ["answer"],
-    };
-    const cmd = adapter.buildCommandPlan({
-      type: "thread/start",
-      cwd: "/tmp/worktree",
-      threadId: "bb-thread-1",
-      input: [{ type: "text", text: "hello", mentions: [] }],
-      instructionMode: "append",
-      options: fullProviderExecutionContext,
-      outputSchema,
-    });
-    expect(cmd?.params).toMatchObject({
-      outputFormat: { type: "json_schema", schema: outputSchema },
-    });
-  });
-
-  it("buildCommand turn/start rejects per-turn output schemas", () => {
-    const adapter = createClaudeCodeProviderAdapter();
-    expect(() =>
-      adapter.buildCommandPlan({
-        type: "turn/start",
-        clientRequestId: "creq_2222222298",
-        threadId: "bb-thread-1",
-        providerThreadId: "claude-session-1",
-        input: [{ type: "text", text: "extract", mentions: [] }],
-        options: fullProviderExecutionContext,
-        outputSchema: { type: "object" },
-      }),
-    ).toThrow(/structured output is session-level/);
   });
 
   it("buildCommand passes workflowsEnabled through explicitly on thread/start and thread/resume", () => {
@@ -2407,60 +2370,6 @@ describe("claude-code provider adapter", () => {
           providerCode: null,
           httpStatusCode: 529,
         },
-      }),
-    );
-  });
-
-  it("translateEvent surfaces result structured_output as a final agent message", () => {
-    const adapter = createClaudeCodeProviderAdapter();
-
-    adapter.translateEvent({
-      jsonrpc: "2.0",
-      method: "sdk/message",
-      params: {
-        threadId: "claude-thread-1",
-        message: {
-          type: "assistant",
-          message: {
-            id: "assistant-1",
-            content: [],
-          },
-        },
-      },
-    });
-
-    const events = adapter.translateEvent({
-      jsonrpc: "2.0",
-      method: "sdk/message",
-      params: {
-        threadId: "claude-thread-1",
-        message: {
-          type: "result",
-          subtype: "success",
-          is_error: false,
-          structured_output: { ok: true, count: 2 },
-          usage: {},
-          modelUsage: {},
-        },
-      },
-    });
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        scope: turnScope("turn-1"),
-        item: {
-          type: "agentMessage",
-          id: "claude-structured-output-turn-1",
-          text: JSON.stringify({ ok: true, count: 2 }),
-        },
-      }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope("turn-1"),
-        status: "completed",
       }),
     );
   });

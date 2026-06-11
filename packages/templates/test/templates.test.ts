@@ -64,64 +64,6 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("nothing to commit");
   });
 
-
-  it("renders workflow run system messages in block form with the [bb system] prefix", () => {
-    // The bodies are pinned exactly: the integration suites' wording markers
-    // ("was paused", "completed. Fetch the result", "was cancelled") and the
-    // manager-instructions claim that these arrive `[bb system]`-prefixed
-    // both ride this rendering.
-    expect(
-      renderTemplate("systemMessageWorkflowRunPaused", {
-        runId: "wfr_test",
-        workflowName: "deep-research",
-        reason: "host daemon unavailable",
-      }),
-    ).toBe(
-      [
-        "[bb system]",
-        "",
-        "Workflow run wfr_test (deep-research) was paused: host daemon unavailable. The completed prefix is preserved — resume it from the run page or with `bb workflow resume wfr_test`.",
-      ].join("\n"),
-    );
-    expect(
-      renderTemplate("systemMessageWorkflowRunCompleted", {
-        runId: "wfr_test",
-        workflowName: "deep-research",
-      }),
-    ).toBe(
-      [
-        "[bb system]",
-        "",
-        "Workflow run wfr_test (deep-research) completed. Fetch the result with `bb workflow show wfr_test`.",
-      ].join("\n"),
-    );
-    expect(
-      renderTemplate("systemMessageWorkflowRunFailed", {
-        runId: "wfr_test",
-        workflowName: "deep-research",
-        failureSuffix: ": script_invalid",
-      }),
-    ).toBe(
-      [
-        "[bb system]",
-        "",
-        "Workflow run wfr_test (deep-research) failed: script_invalid.",
-      ].join("\n"),
-    );
-    expect(
-      renderTemplate("systemMessageWorkflowRunCancelled", {
-        runId: "wfr_test",
-        workflowName: "deep-research",
-      }),
-    ).toBe(
-      [
-        "[bb system]",
-        "",
-        "Workflow run wfr_test (deep-research) was cancelled.",
-      ].join("\n"),
-    );
-  });
-
   it("renders bbGuideSchedules", () => {
     const templates = listTemplates();
     expect(

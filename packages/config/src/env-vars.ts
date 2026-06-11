@@ -249,31 +249,6 @@ export const BB_HOST_TYPE_ENV = defineEnvVar<HostType | undefined>({
   parse: parseHostTypeValue,
 });
 
-function parsePositiveIntegerEnvValue(args: EnvVarParseArgs): number {
-  const parsed = Number(args.value.trim());
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${args.name} must be a positive integer`);
-  }
-  return parsed;
-}
-
-export const BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST_ENV =
-  defineEnvVar<number>({
-    description:
-      "Server cap: max workflow runs concurrently holding one host's capacity (over-cap starts/resumes hold in `requested` until the sweep re-admits them)",
-    name: "BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST",
-    parse: parsePositiveIntegerEnvValue,
-  });
-
-export const BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES_ENV = defineEnvVar<number>(
-  {
-    description:
-      "Daemon cap: max live workflow provider processes (each worktree agent costs one dedicated process; shared-cwd agents reuse the run's processes)",
-    name: "BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES",
-    parse: parsePositiveIntegerEnvValue,
-  },
-);
-
 export const DEFAULT_BB_APP_VERSION = "0.0.0-dev";
 export const DEFAULT_BB_APP_URL = "";
 export const DEFAULT_BB_EXTERNAL_URL = "";
@@ -288,7 +263,3 @@ export const DEFAULT_BB_DEV_APP_HOST = "";
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
 export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
-export const DEFAULT_BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST =
-  DEFAULTS.workflowMaxConcurrentRunsPerHost;
-export const DEFAULT_BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES =
-  DEFAULTS.workflowMaxLiveProviderProcesses;

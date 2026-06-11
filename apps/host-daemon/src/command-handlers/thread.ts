@@ -80,7 +80,6 @@ export async function startThread(
       threadId: command.threadId,
       projectId: command.projectId,
       providerId: command.providerId,
-      sessionKind: command.sessionKind,
       clientRequestId: command.requestId,
       input: staged.input,
       options: command.options,

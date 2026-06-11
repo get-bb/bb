@@ -27,17 +27,6 @@ export type {
 } from "./workspace.js";
 
 export {
-  provisionWorkflowWorktree,
-  teardownWorkflowWorktree,
-} from "./workflow-worktree.js";
-export type {
-  ProvisionWorkflowWorktreeArgs,
-  TeardownWorkflowWorktreeArgs,
-  WorkflowWorktree,
-  WorkflowWorktreeTeardownResult,
-} from "./workflow-worktree.js";
-
-export {
   WorkspaceError,
   detectGitRepo,
   getCheckoutRef,

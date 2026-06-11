@@ -42,7 +42,6 @@ import type {
   ThreadChangeKind,
   ThreadEventType,
   ThreadWithRuntime,
-  WorkflowRunChangeKind,
 } from "@bb/domain";
 import {
   getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys,
@@ -79,13 +78,6 @@ import {
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
   threadStoragePathsForThreadQueryKeyPrefix,
-  allWorkflowRunAgentEventsQueryKeyPrefix,
-  allWorkflowRunEventsQueryKeyPrefix,
-  allWorkflowRunQueryKeyPrefix,
-  allWorkflowRunsQueryKeyPrefix,
-  workflowRunAgentEventsQueryKeyPrefix,
-  workflowRunEventsQueryKey,
-  workflowRunQueryKey,
 } from "../queries/query-keys";
 import {
   getProjectListInvalidationQueryKeys,
@@ -326,27 +318,6 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   },
 } satisfies SystemChangeRegistry;
 
-/**
- * Workflow-run changes arrive per ingested daemon batch (the hub does not
- * throttle them), so the dispatcher accumulates per-run kinds and flushes on
- * the shared debounce window — a 30-agent fan-out must not thrash react-query.
- */
-export const REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY = {
-  "run-updated": {
-    dirty: [
-      dirtyWorkflowRunDetailQueries, // Run page header renders status/usage/result.
-      dirtyWorkflowRunListQueries, // Run lists render status badges per run.
-    ],
-  },
-  "events-appended": {
-    dirty: [
-      dirtyWorkflowRunDetailQueries, // progressSnapshot folds per batch; the agent tree reads it from the run row.
-      dirtyWorkflowRunEventsQueries, // Run event stream appends.
-      dirtyWorkflowRunAgentEventsQueries, // Per-agent drill-in timelines refetch their logs.
-    ],
-  },
-} satisfies WorkflowRunChangeRegistry;
-
 export type ThreadChangeFlushPriority = "debounced" | "immediate";
 
 export interface RealtimeDirtyContext {
@@ -370,10 +341,6 @@ export interface ProjectRealtimeDirtyContext extends RealtimeDirtyContext {
 }
 
 export type HostRealtimeDirtyContext = RealtimeDirtyContext;
-
-export interface WorkflowRunRealtimeDirtyContext extends RealtimeDirtyContext {
-  workflowRunId: string | undefined;
-}
 
 export type RealtimeDirtyHandler<Context extends RealtimeDirtyContext> = (
   context: Context,
@@ -423,15 +390,6 @@ export interface SystemChangeRule {
 
 export type SystemChangeRegistry = Partial<
   Record<SystemChangeKind, SystemChangeRule>
->;
-
-export interface WorkflowRunChangeRule {
-  dirty: readonly RealtimeDirtyHandler<WorkflowRunRealtimeDirtyContext>[];
-}
-
-export type WorkflowRunChangeRegistry = Record<
-  WorkflowRunChangeKind,
-  WorkflowRunChangeRule
 >;
 
 export function executeRealtimeDirtyHandlers<
@@ -738,33 +696,4 @@ function dirtySystemProviderQueries(): QueryKey[] {
 
 function dirtySystemExecutionOptionQueries(): QueryKey[] {
   return [allSystemExecutionOptionsQueryKeyPrefix()];
-}
-
-function dirtyWorkflowRunDetailQueries({
-  workflowRunId,
-}: WorkflowRunRealtimeDirtyContext): QueryKey[] {
-  return workflowRunId
-    ? [workflowRunQueryKey(workflowRunId)]
-    : [allWorkflowRunQueryKeyPrefix()];
-}
-
-function dirtyWorkflowRunListQueries(): QueryKey[] {
-  // The change message carries no projectId, so all cached run lists go stale.
-  return [allWorkflowRunsQueryKeyPrefix()];
-}
-
-function dirtyWorkflowRunEventsQueries({
-  workflowRunId,
-}: WorkflowRunRealtimeDirtyContext): QueryKey[] {
-  return workflowRunId
-    ? [workflowRunEventsQueryKey(workflowRunId)]
-    : [allWorkflowRunEventsQueryKeyPrefix()];
-}
-
-function dirtyWorkflowRunAgentEventsQueries({
-  workflowRunId,
-}: WorkflowRunRealtimeDirtyContext): QueryKey[] {
-  return workflowRunId
-    ? [workflowRunAgentEventsQueryKeyPrefix(workflowRunId)]
-    : [allWorkflowRunAgentEventsQueryKeyPrefix()];
 }

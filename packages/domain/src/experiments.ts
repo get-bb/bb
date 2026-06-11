@@ -14,16 +14,9 @@ export const experimentsSchema = z.object({
    * local proxy so forwarded requests use CLI-shaped traffic.
    */
   claudeCodeMockCliTraffic: z.boolean(),
-  /**
-   * Multi-agent workflow runs: the Workflows sidebar section, project
-   * workflows page, thread-pill segment, and the agent-facing `bb-workflows`
-   * injected skill.
-   */
-  workflows: z.boolean(),
 });
 export type Experiments = z.infer<typeof experimentsSchema>;
 
 export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
-  workflows: false,
 };

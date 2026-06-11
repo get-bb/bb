@@ -22,8 +22,6 @@ import {
   useSidebarNavigation,
   stripProjectThreads,
 } from "@/hooks/queries/project-queries";
-import { useExperiments } from "@/hooks/queries/system-queries";
-import { useWorkflowRun } from "@/hooks/queries/workflow-queries";
 import {
   useThread,
   useThreadDetailBootstrap,
@@ -52,7 +50,6 @@ import {
   AUTOMATIONS_ROUTE_PATH,
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
-  getProjectWorkflowsRoutePath,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
@@ -232,7 +229,6 @@ interface AppHeaderProps {
   usesDesktopChrome: boolean;
   isArchivedView: boolean;
   isSettingsView: boolean;
-  isWorkflowsView: boolean;
   projectId?: string;
   project?: ProjectResponse;
   meta: {
@@ -247,12 +243,10 @@ function AppHeader({
   usesDesktopChrome,
   isArchivedView,
   isSettingsView,
-  isWorkflowsView,
   projectId,
   project,
   meta,
 }: AppHeaderProps) {
-  const workflowsExperimentEnabled = useExperiments().workflows;
   const headerBreadcrumbs = meta.breadcrumbs;
   const headerTitle =
     headerBreadcrumbs || usesProjectChromeStyle ? undefined : meta.title;
@@ -331,23 +325,6 @@ function AppHeader({
         >
           <Icon name="Settings" />
         </Link>
-        {workflowsExperimentEnabled ? (
-          <Link
-            to={getProjectWorkflowsRoutePath(projectId)}
-            className={cn(
-              HEADER_ICON_BUTTON_CLASS,
-              "inline-flex items-center justify-center transition-colors",
-              isWorkflowsView
-                ? "bg-state-active text-foreground"
-                : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
-            )}
-            aria-label="Workflows"
-            aria-current={isWorkflowsView ? "page" : undefined}
-            title="Workflows"
-          >
-            <Icon name="Workflow" />
-          </Link>
-        ) : null}
         <Link
           to={getProjectArchivedRoutePath(projectId)}
           className={cn(
@@ -391,11 +368,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const {
     projectId,
     threadId,
-    workflowRunId,
     isThreadView,
     isArchivedView,
-    isWorkflowsView,
-    isWorkflowRunView,
     isSettingsView,
     isRootView,
   } = useRouteState();
@@ -442,11 +416,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     : threadId
       ? `Thread ${threadId.slice(0, 8)}`
       : "Thread";
-  // The run page route is projectless, so the run row (shared query with the
-  // page itself) is the only synchronous source for the document title.
-  const { data: workflowRun } = useWorkflowRun(
-    isWorkflowRunView ? (workflowRunId ?? "") : "",
-  );
   useEffect(() => {
     if (!thread?.projectId) return;
     setRootComposeProjectId(thread.projectId);
@@ -468,19 +437,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             { label: "Archived" },
           ],
         }
-      : isWorkflowsView && projectId
-        ? {
-            title: "",
-            subtitle: undefined,
-            breadcrumbs: [
-              {
-                label: projectLabel ?? projectId,
-                to: getLegacyProjectComposeRoutePath(projectId),
-              },
-              { label: "Workflows" },
-            ],
-          }
-        : isSettingsView && projectId
+      : isSettingsView && projectId
           ? {
               title: "",
               subtitle: undefined,
@@ -505,14 +462,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
     if (isArchivedView && projectId) {
       return `${projectLabel ?? projectId} · Archived`;
-    }
-    if (isWorkflowsView && projectId) {
-      return `${projectLabel ?? projectId} · Workflows`;
-    }
-    if (isWorkflowRunView) {
-      return workflowRun
-        ? `${workflowRun.workflowName} · Workflow run`
-        : "Workflow run";
     }
     if (isSettingsView && projectId) {
       return `${projectLabel ?? projectId} · Settings`;
@@ -627,14 +576,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <AppHeader
                   usesDesktopChrome={usesDesktopChrome}
                   usesProjectChromeStyle={
-                    isRootView ||
-                    isArchivedView ||
-                    isWorkflowsView ||
-                    isSettingsView
+                    isRootView || isArchivedView || isSettingsView
                   }
                   isArchivedView={isArchivedView}
                   isSettingsView={isSettingsView}
-                  isWorkflowsView={isWorkflowsView}
                   projectId={projectId}
                   project={project}
                   meta={meta}

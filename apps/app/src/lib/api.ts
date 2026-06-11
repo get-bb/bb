@@ -7,7 +7,6 @@ import type {
   ProjectExecutionDefaults,
   ProjectSource,
   ResolvedThreadExecutionOptions,
-  ThreadEventRow,
   ThreadQueuedMessage,
   WorkspaceDiffTarget,
 } from "@bb/domain";
@@ -76,12 +75,6 @@ import type {
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
   WorkspacePathListResponse,
-  CreateWorkflowRunRequest,
-  WorkflowListResponse,
-  WorkflowRunEventsResponse,
-  WorkflowRunListQuery,
-  WorkflowRunListResponse,
-  WorkflowRunResponse,
 } from "@bb/server-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
 import {
@@ -1403,15 +1396,6 @@ export async function getSystemConfig(): Promise<SystemConfigResponse> {
   return request<SystemConfigResponse>(apiClient.system.config.$get());
 }
 
-export async function listHosts(): Promise<Host[]> {
-  return request<Host[]>(apiClient.hosts.$get());
-}
-
-/**
- * Replace the user's opt-in experiments (full object — no partial updates).
- * The server broadcasts system `config-changed`, so other windows re-read
- * `/system/config` and re-gate their surfaces.
- */
 export async function updateExperiments(
   experiments: Experiments,
 ): Promise<Experiments> {
@@ -1420,94 +1404,6 @@ export async function updateExperiments(
   );
 }
 
-interface GetWorkflowRunAgentEventsArgs {
-  /** Journal-stable 1-based display index (snapshot `agent.index`). */
-  agentIndex: number;
-  runId: string;
-}
-
-/**
- * Workflow definitions across the registry tiers (project > user > builtin)
- * from the project's default source root. Requires the source host online —
- * 502 `host_unavailable` otherwise; 409 when the project has no default
- * source. (The route accepts an explicit `hostId` for CLI/SDK callers; the
- * SPA lists the default source only — host choice is launch-time-only.)
- */
-export async function listWorkflows(
-  projectId: string,
-): Promise<WorkflowListResponse> {
-  return request<WorkflowListResponse>(
-    apiClient.workflows.$get({ query: { projectId } }),
-  );
-}
-
-export async function listWorkflowRuns(
-  query: WorkflowRunListQuery,
-): Promise<WorkflowRunListResponse> {
-  return request<WorkflowRunListResponse>(
-    apiClient["workflow-runs"].$get({ query }),
-  );
-}
-
-export async function createWorkflowRun(
-  req: CreateWorkflowRunRequest,
-): Promise<WorkflowRunResponse> {
-  return request<WorkflowRunResponse>(
-    apiClient["workflow-runs"].$post({ json: req }),
-  );
-}
-
-export async function getWorkflowRun(id: string): Promise<WorkflowRunResponse> {
-  return request<WorkflowRunResponse>(
-    apiClient["workflow-runs"][":id"].$get({ param: { id } }),
-  );
-}
-
-export async function getWorkflowRunEvents(
-  id: string,
-): Promise<WorkflowRunEventsResponse> {
-  return request<WorkflowRunEventsResponse>(
-    apiClient["workflow-runs"][":id"].events.$get({ param: { id } }),
-  );
-}
-
-/**
- * Per-agent provider-event log, proxied from the run's host. 404 when the log
- * does not exist (agent not started or run dir pruned); 502 `host_unavailable`
- * when the daemon is offline — both surface as `HttpError`s for the drill-in
- * UI to render as distinct non-error states.
- */
-export async function getWorkflowRunAgentEvents({
-  agentIndex,
-  runId,
-}: GetWorkflowRunAgentEventsArgs): Promise<ThreadEventRow[]> {
-  return request<ThreadEventRow[]>(
-    apiClient["workflow-runs"][":id"].agents[":index"].events.$get({
-      param: { id: runId, index: String(agentIndex) },
-    }),
-  );
-}
-
-export async function cancelWorkflowRun(id: string): Promise<void> {
-  await requestVoid(
-    apiClient["workflow-runs"][":id"].cancel.$post({ param: { id } }),
-  );
-}
-
-export async function resumeWorkflowRun(id: string): Promise<void> {
-  await requestVoid(
-    apiClient["workflow-runs"][":id"].resume.$post({ param: { id } }),
-  );
-}
-
-export async function archiveWorkflowRun(id: string): Promise<void> {
-  await requestVoid(
-    apiClient["workflow-runs"][":id"].archive.$post({ param: { id } }),
-  );
-}
-
-export async function deleteWorkflowRun(id: string): Promise<void> {
-  await requestVoid(
-    apiClient["workflow-runs"][":id"].$delete({ param: { id } }),
-  );
+export async function listHosts(): Promise<Host[]> {
+  return request<Host[]>(apiClient.hosts.$get());
 }

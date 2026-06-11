@@ -7,11 +7,6 @@ import {
   allEnvironmentQueryKeyPrefix,
   allEnvironmentWorkStatusQueryKeyPrefix,
   allHostQueryKeyPrefix,
-  allWorkflowRunAgentEventsQueryKeyPrefix,
-  allWorkflowRunEventsQueryKeyPrefix,
-  allWorkflowRunQueryKeyPrefix,
-  allWorkflowRunsQueryKeyPrefix,
-  allWorkflowsQueryKeyPrefix,
   allProjectPathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
   allThreadDefaultExecutionOptionsQueryKeyPrefix,
@@ -109,14 +104,5 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     localPathExistenceQueryKeyPrefix(),
     systemProvidersQueryKey(),
     allSystemExecutionOptionsQueryKeyPrefix(),
-    // Workflow runs are realtime-fed: messages emitted while the socket was
-    // down are lost, and a run that reached terminal during the gap emits
-    // nothing afterward — without this, a focused run page or Workflows tab
-    // renders the run frozen at its pre-disconnect state indefinitely.
-    allWorkflowRunQueryKeyPrefix(),
-    allWorkflowRunsQueryKeyPrefix(),
-    allWorkflowRunEventsQueryKeyPrefix(),
-    allWorkflowRunAgentEventsQueryKeyPrefix(),
-    allWorkflowsQueryKeyPrefix(),
   ];
 }

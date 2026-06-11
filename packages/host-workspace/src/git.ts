@@ -308,12 +308,7 @@ export async function getGitCommonDir(cwd: string): Promise<string> {
       `git rev-parse --git-common-dir returned no path for ${cwd}`,
     );
   }
-  // realpath, not just resolve: the worktree metadata lock keys on this path,
-  // and symlinked locations (macOS /tmp → /private/tmp, /var → /private/var)
-  // otherwise split source-repo-cwd commands (relative `.git` resolved via the
-  // symlinked cwd) and worktree-cwd commands (git reports the real-path form)
-  // into two disjoint lock domains — the M7-soak-diagnosed config.lock race.
-  return fs.realpath(path.resolve(cwd, commonDir));
+  return path.resolve(cwd, commonDir);
 }
 
 /**

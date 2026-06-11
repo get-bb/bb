@@ -342,52 +342,6 @@ describe("consumer-specific config", () => {
     ).toThrow(/BB_FF_PLACEHOLDER/u);
   });
 
-  it("defaults and parses the per-host workflow run cap (positive integer only)", () => {
-    expect(
-      loadServerConfig({ env: createServerRuntimeEnv({}) })
-        .BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST,
-    ).toBe(4);
-    expect(
-      loadServerConfig({
-        env: createServerRuntimeEnv({
-          BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST: "9",
-        }),
-      }).BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST,
-    ).toBe(9);
-    for (const invalid of ["0", "-2", "1.5", "many"]) {
-      expect(() =>
-        loadServerConfig({
-          env: createServerRuntimeEnv({
-            BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST: invalid,
-          }),
-        }),
-      ).toThrow(/BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST/u);
-    }
-  });
-
-  it("defaults and parses the daemon workflow provider-process cap", () => {
-    const baseEnv = {
-      BB_DATA_DIR: "/tmp/bb-data",
-      BB_HOST_DAEMON_PORT: "3999",
-      BB_SERVER_URL: "http://localhost:9999",
-      NODE_ENV: "development",
-    };
-    expect(
-      loadHostDaemonConfig({ env: baseEnv })
-        .BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES,
-    ).toBe(8);
-    expect(
-      loadHostDaemonConfig({
-        env: { ...baseEnv, BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES: "12" },
-      }).BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES,
-    ).toBe(12);
-    expect(() =>
-      loadHostDaemonConfig({
-        env: { ...baseEnv, BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES: "0" },
-      }),
-    ).toThrow(/BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES/u);
-  });
-
   it("uses 0.0.0-dev as the default BB_APP_VERSION in production", () => {
     const serverConfig = loadServerConfig({
       env: createServerRuntimeEnv({

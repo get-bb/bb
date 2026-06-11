@@ -125,7 +125,6 @@ describe("threads", () => {
         notifyHost: vi.fn(),
         notifyProject: vi.fn(),
         notifySystem: vi.fn(),
-        notifyWorkflowRun: vi.fn(),
       };
       const thread = createThread(db, noopNotifier, {
         projectId: project.id,
@@ -615,7 +614,6 @@ describe("threads", () => {
       notifyHost: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
-      notifyWorkflowRun: vi.fn(),
     };
     const parentThread = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -701,7 +699,6 @@ describe("threads", () => {
         notifyHost: vi.fn(),
         notifyProject: vi.fn(),
         notifySystem: vi.fn(),
-        notifyWorkflowRun: vi.fn(),
       };
       const thread = createThread(db, noopNotifier, {
         projectId: project.id,
@@ -1326,7 +1323,6 @@ describe("transitionThreadStatus", () => {
       notifyHost: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
-      notifyWorkflowRun: vi.fn(),
     };
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,

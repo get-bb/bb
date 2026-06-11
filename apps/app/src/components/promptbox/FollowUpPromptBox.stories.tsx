@@ -258,7 +258,6 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
     gitSectionPending={false}
     parentThreadSection={null}
     childThreadsSection={null}
-    workflowsSection={null}
     expandedSection={null}
     onToggleSection={noop}
   />

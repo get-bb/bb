@@ -12,11 +12,9 @@ import type {
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
-import type { WorkflowJournalEntry } from "@bb/workflow-runtime";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
 import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { TerminalManager } from "./terminals/terminal-manager.js";
-import type { WorkflowRunManager } from "./workflow-run-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
 
 type DispatchCommand = HostDaemonCommand | HostDaemonOnlineRpcCommand;
@@ -36,25 +34,11 @@ export const noopEventSink: EventSink = {
   flush: async () => undefined,
 };
 
-export interface FetchWorkflowRunJournalArgs {
-  runId: string;
-}
-
 export interface CommandDispatchOptions {
   dataDir: string;
   fetchProjectAttachment: FetchProjectAttachment;
   runtimeManager: RuntimeManager;
   terminalManager?: Pick<TerminalManager, "closeEnvironmentTerminals">;
-  /** Absent only in embeddings that never receive workflow.* commands (tests). */
-  workflowRunManager?: Pick<
-    WorkflowRunManager,
-    "startRun" | "cancelRun" | "pruneRunDir"
-  >;
-  /** Fetches the server-authoritative resume journal (daemon→server internal
-   *  route); absent only alongside an absent workflowRunManager. */
-  fetchWorkflowRunJournal?: (
-    args: FetchWorkflowRunJournalArgs,
-  ) => Promise<WorkflowJournalEntry[]>;
   eventSink: EventSink;
   listModels?: (args: { providerId: string }) => Promise<{
     models: AvailableModel[];

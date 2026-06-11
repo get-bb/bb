@@ -224,10 +224,6 @@ export async function buildThreadStartCommand(
   });
   return {
     type: "thread.start",
-    // Server-launched thread.start commands always open interactive bb
-    // threads; workflow agent sessions are started daemon-internally by the
-    // workflow agent executor.
-    sessionKind: "thread",
     environmentId: args.environment.id,
     threadId: args.thread.id,
     workspaceContext: workspaceContextFromPath({

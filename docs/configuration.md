@@ -66,8 +66,6 @@ starts.
 | `BB_SERVER_URL`    | `bb-app config` | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine.                                    |
 | `BB_LOG_LEVEL`     | `bb-app config` | Debugging               | Log level for the next bb start: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                  |
 | `OPENAI_API_KEY`   | `bb-app env`    | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-4o-transcribe`. |
-| `BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST` | env (server startup) | Workflow tuning | Max workflow runs concurrently holding one host's capacity; over-cap launches queue until a slot frees. Defaults to 4. |
-| `BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES` | env (daemon startup) | Workflow tuning | Daemon cap on live workflow provider processes (each worktree agent costs one dedicated process). Defaults to 8. |
 
 By default, helper inference and voice transcription use Codex credentials from
 the host daemon. Run `codex login` on the host for the default path. Set

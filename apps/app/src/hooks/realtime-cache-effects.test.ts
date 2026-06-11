@@ -6,7 +6,6 @@ import {
   PROJECT_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
   THREAD_CHANGE_KINDS,
-  WORKFLOW_RUN_CHANGE_KINDS,
 } from "@bb/domain";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
@@ -26,10 +25,6 @@ import {
   threadTerminalsQueryKey,
   threadStorageFilePreviewQueryKey,
   threadTimelineQueryKey,
-  workflowRunAgentEventsQueryKey,
-  workflowRunEventsQueryKey,
-  workflowRunQueryKey,
-  workflowRunsQueryKey,
 } from "./queries/query-keys";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
@@ -38,7 +33,6 @@ import {
   REALTIME_PROJECT_CHANGE_REGISTRY,
   REALTIME_SYSTEM_CHANGE_REGISTRY,
   REALTIME_THREAD_CHANGE_REGISTRY,
-  REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY,
 } from "./cache-owners/realtime-cache-registry";
 
 const PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
@@ -135,14 +129,6 @@ describe("createRealtimeCacheEffects", () => {
     for (const changeKind of SYSTEM_CHANGE_KINDS) {
       expect(
         REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind].dirty.length,
-      ).toBeGreaterThan(0);
-    }
-  });
-
-  it("maps every realtime workflow-run change to at least one dirty handler", () => {
-    for (const changeKind of WORKFLOW_RUN_CHANGE_KINDS) {
-      expect(
-        REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY[changeKind].dirty.length,
       ).toBeGreaterThan(0);
     }
   });
@@ -1070,228 +1056,5 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(terminalKey)?.isInvalidated).toBe(true);
 
     effects.dispose();
-  });
-
-  describe("workflow-run changes", () => {
-    interface WorkflowRunCacheFixture {
-      changedRunAgentOneEventsKey: ReturnType<
-        typeof workflowRunAgentEventsQueryKey
-      >;
-      changedRunAgentTwoEventsKey: ReturnType<
-        typeof workflowRunAgentEventsQueryKey
-      >;
-      changedRunDetailKey: ReturnType<typeof workflowRunQueryKey>;
-      changedRunEventsKey: ReturnType<typeof workflowRunEventsQueryKey>;
-      otherRunAgentEventsKey: ReturnType<typeof workflowRunAgentEventsQueryKey>;
-      otherRunDetailKey: ReturnType<typeof workflowRunQueryKey>;
-      runsListKey: ReturnType<typeof workflowRunsQueryKey>;
-    }
-
-    function seedWorkflowRunCaches(
-      queryClient: ReturnType<
-        typeof createRealtimeEffectsTestContext
-      >["queryClient"],
-    ): WorkflowRunCacheFixture {
-      const fixture: WorkflowRunCacheFixture = {
-        changedRunDetailKey: workflowRunQueryKey("wfr_changed"),
-        changedRunEventsKey: workflowRunEventsQueryKey("wfr_changed"),
-        // Agent display indexes are 1-based; the per-run prefix invalidation
-        // must cover every mounted drill-in index.
-        changedRunAgentOneEventsKey: workflowRunAgentEventsQueryKey({
-          agentIndex: 1,
-          runId: "wfr_changed",
-        }),
-        changedRunAgentTwoEventsKey: workflowRunAgentEventsQueryKey({
-          agentIndex: 2,
-          runId: "wfr_changed",
-        }),
-        otherRunDetailKey: workflowRunQueryKey("wfr_other"),
-        otherRunAgentEventsKey: workflowRunAgentEventsQueryKey({
-          agentIndex: 1,
-          runId: "wfr_other",
-        }),
-        runsListKey: workflowRunsQueryKey("project-1"),
-      };
-      queryClient.setQueryData(fixture.changedRunDetailKey, {});
-      queryClient.setQueryData(fixture.changedRunEventsKey, { events: [] });
-      queryClient.setQueryData(fixture.changedRunAgentOneEventsKey, []);
-      queryClient.setQueryData(fixture.changedRunAgentTwoEventsKey, []);
-      queryClient.setQueryData(fixture.otherRunDetailKey, {});
-      queryClient.setQueryData(fixture.otherRunAgentEventsKey, []);
-      queryClient.setQueryData(fixture.runsListKey, []);
-      return fixture;
-    }
-
-    it("debounces run-updated into the changed run's detail and the run lists only", () => {
-      vi.useFakeTimers();
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const caches = seedWorkflowRunCaches(queryClient);
-
-      effects.handleChanged({
-        type: "changed",
-        entity: "workflow-run",
-        id: "wfr_changed",
-        changes: ["run-updated"],
-      });
-
-      // Nothing flushes synchronously: per-batch hub notifications ride the
-      // shared debounce window.
-      expect(
-        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
-      ).not.toBe(true);
-
-      vi.advanceTimersByTime(50);
-
-      expect(
-        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.otherRunDetailKey)?.isInvalidated,
-      ).not.toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
-      ).not.toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunAgentOneEventsKey)
-          ?.isInvalidated,
-      ).not.toBe(true);
-
-      effects.dispose();
-    });
-
-    it("scopes events-appended to the run's detail, event stream, and agent-events prefix", () => {
-      vi.useFakeTimers();
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const caches = seedWorkflowRunCaches(queryClient);
-
-      effects.handleChanged({
-        type: "changed",
-        entity: "workflow-run",
-        id: "wfr_changed",
-        changes: ["events-appended"],
-      });
-      vi.advanceTimersByTime(50);
-
-      expect(
-        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunAgentOneEventsKey)
-          ?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunAgentTwoEventsKey)
-          ?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.otherRunDetailKey)?.isInvalidated,
-      ).not.toBe(true);
-      expect(
-        queryClient.getQueryState(caches.otherRunAgentEventsKey)
-          ?.isInvalidated,
-      ).not.toBe(true);
-      expect(
-        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
-      ).not.toBe(true);
-
-      effects.dispose();
-    });
-
-    it("coalesces an events-appended burst into a single drill-in refetch", async () => {
-      vi.useFakeTimers();
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const caches = seedWorkflowRunCaches(queryClient);
-      const agentEventsQueryFn = vi.fn(async () => []);
-      const agentEventsObserver = new QueryObserver(queryClient, {
-        queryKey: caches.changedRunAgentOneEventsKey,
-        queryFn: agentEventsQueryFn,
-        staleTime: Infinity,
-      });
-      const unsubscribeAgentEvents = agentEventsObserver.subscribe(() => {});
-      agentEventsQueryFn.mockClear();
-
-      // A wide fan-out delivers one hub message per ingested daemon batch;
-      // the mounted drill-in must refetch once per debounce window, not once
-      // per message.
-      for (let batch = 0; batch < 5; batch += 1) {
-        effects.handleChanged({
-          type: "changed",
-          entity: "workflow-run",
-          id: "wfr_changed",
-          changes: ["events-appended"],
-        });
-      }
-      await vi.advanceTimersByTimeAsync(50);
-
-      expect(agentEventsQueryFn).toHaveBeenCalledTimes(1);
-
-      unsubscribeAgentEvents();
-      effects.dispose();
-    });
-
-    it("invalidates seeded workflow-run caches on server reconnect", () => {
-      // Realtime messages emitted while the socket was down are lost, and a
-      // run that reached terminal during the gap emits nothing afterward —
-      // reconnect invalidation is the only recovery path for mounted
-      // workflow-run queries.
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const caches = seedWorkflowRunCaches(queryClient);
-
-      effects.handleConnected({ reconnected: true });
-
-      expect(
-        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunAgentOneEventsKey)
-          ?.isInvalidated,
-      ).toBe(true);
-
-      effects.dispose();
-    });
-
-    it("falls back to invalidating all cached workflow-run queries when the change has no id", () => {
-      vi.useFakeTimers();
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const caches = seedWorkflowRunCaches(queryClient);
-
-      effects.handleChanged({
-        type: "changed",
-        entity: "workflow-run",
-        changes: ["run-updated", "events-appended"],
-      });
-      vi.advanceTimersByTime(50);
-
-      expect(
-        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.otherRunDetailKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.otherRunAgentEventsKey)
-          ?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
-      ).toBe(true);
-
-      effects.dispose();
-    });
   });
 });

@@ -113,8 +113,6 @@ export interface ExperimentsSettingsSectionProps {
   disabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
-  onWorkflowsEnabledChange: (enabled: boolean) => void;
-  workflowsEnabled: boolean;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -473,15 +471,12 @@ export function GeneralSettingsSection({
   );
 }
 
-const WORKFLOWS_EXPERIMENT_LABEL = "Workflows";
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 
 export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
   disabled,
   onClaudeCodeMockCliTrafficEnabledChange,
-  onWorkflowsEnabledChange,
-  workflowsEnabled,
 }: ExperimentsSettingsSectionProps) {
   return (
     <SettingsSection
@@ -489,18 +484,6 @@ export function ExperimentsSettingsSection({
       description="Early features that are off by default. Opt in to try them."
     >
       <div className="space-y-4">
-        <SettingsWithControl
-          label={WORKFLOWS_EXPERIMENT_LABEL}
-          description="Enable multi-agent workflows and the Workflows sidebar."
-        >
-          <Switch
-            checked={workflowsEnabled}
-            disabled={disabled}
-            onCheckedChange={onWorkflowsEnabledChange}
-            aria-label={WORKFLOWS_EXPERIMENT_LABEL}
-          />
-        </SettingsWithControl>
-
         <SettingsWithControl
           label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
           description="Proxy Claude Code requests as CLI traffic to api.anthropic.com."
@@ -576,13 +559,6 @@ export function SettingsView() {
               claudeCodeMockCliTraffic: enabled,
             })
           }
-          onWorkflowsEnabledChange={(enabled) =>
-            updateExperimentsMutation.mutate({
-              ...experiments,
-              workflows: enabled,
-            })
-          }
-          workflowsEnabled={experiments.workflows}
         />
       </div>
     </PageShell>

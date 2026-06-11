@@ -11,18 +11,15 @@ const SIDEBAR_SECTION_ORDER_STORAGE_KEY = "bb.sidebar.sectionOrder";
 export type SidebarSectionId =
   | "pinned"
   | "projects"
-  | "threads"
-  | "workflows";
+  | "threads";
 export type CollapsibleSidebarSectionId =
   | "projects"
-  | "threads"
-  | "workflows";
+  | "threads";
 
 export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly SidebarSectionId[] = [
   "pinned",
   "projects",
   "threads",
-  "workflows",
 ];
 
 export const collapsedProjectIdsAtom = atomWithStorage<string[]>(

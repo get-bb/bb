@@ -43,13 +43,6 @@ import {
   submitTurn,
 } from "./command-handlers/thread.js";
 import { WorkspaceError } from "@bb/host-workspace";
-import {
-  cancelWorkflowRun,
-  listWorkflows,
-  pruneWorkflowRun,
-  resolveWorkflow,
-  startWorkflowRun,
-} from "./command-handlers/workflow.js";
 import { squashMerge } from "./command-handlers/workspace.js";
 import {
   requireResolvedWorkspaceForCommand,
@@ -281,8 +274,6 @@ const commandHandlers: CommandHandlerMap = {
     });
   },
   "workspace.squash_merge": squashMerge,
-  "workflow.start": startWorkflowRun,
-  "workflow.cancel": cancelWorkflowRun,
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
@@ -301,9 +292,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       providerId: command.providerId,
     }),
   "environment.cleanup_preflight": environmentCleanupPreflight,
-  "workflow.list": listWorkflows,
-  "workflow.prune": pruneWorkflowRun,
-  "workflow.resolve": resolveWorkflow,
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,

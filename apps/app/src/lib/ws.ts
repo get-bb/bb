@@ -19,11 +19,7 @@ export type WebSocketConnectionState =
 
 export class WebSocketManager {
   private socket: ReconnectingWebSocket | null = null;
-  // Refcounted per key: independent surfaces can subscribe to the same
-  // entity/id (e.g. the sidebar Workflows section and the project Workflows
-  // tab both subscribe entity-wide to "workflow-run"), and one unmounting
-  // must not drop the other's subscription.
-  private subscriptions = new Map<string, number>();
+  private subscriptions = new Set<string>();
   private callbacks = new Set<ChangeCallback>();
   private connectedCallbacks = new Set<ConnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
@@ -34,19 +30,12 @@ export class WebSocketManager {
     if (this.socket) return;
 
     // In dev mode, connect directly to the server to bypass Vite's WS proxy
-    // which does not handle reconnection after backend restarts. The baked
-    // URL targets localhost; rehost it onto the page's hostname so remote
-    // devices (BB_DEV_APP_HOST=0.0.0.0, e.g. over tailscale) reach the same
-    // server, which listens on all interfaces.
+    // which does not handle reconnection after backend restarts.
     // In production, use the same origin (server serves the app).
-    let url: string;
-    if (typeof __BB_DEV_WS_URL__ === "string") {
-      const devUrl = new URL(__BB_DEV_WS_URL__);
-      devUrl.hostname = window.location.hostname;
-      url = devUrl.toString();
-    } else {
-      url = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
-    }
+    const url =
+      typeof __BB_DEV_WS_URL__ === "string"
+        ? __BB_DEV_WS_URL__
+        : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
 
     this.socket = new ReconnectingWebSocket(url, undefined, {
       minReconnectionDelay: 1000,
@@ -61,7 +50,7 @@ export class WebSocketManager {
       this.hasConnected = true;
       this.setConnectionState("connected");
       // Re-subscribe to all active subscriptions
-      for (const key of this.subscriptions.keys()) {
+      for (const key of this.subscriptions) {
         const parsed = parseSubKey(key);
         if (!parsed) continue;
         this.sendMessage({
@@ -113,24 +102,16 @@ export class WebSocketManager {
 
   subscribe(entity: RealtimeEntity, id?: string): void {
     const key = subKey(entity, id);
-    const count = this.subscriptions.get(key) ?? 0;
-    this.subscriptions.set(key, count + 1);
-    // The hub holds one subscription per key per connection, so only the
-    // 0 → 1 transition needs a message.
-    if (count === 0 && this.socket?.readyState === WebSocket.OPEN) {
+    this.subscriptions.add(key);
+    if (this.socket?.readyState === WebSocket.OPEN) {
       this.sendMessage({ type: "subscribe", entity, id });
     }
   }
 
   unsubscribe(entity: RealtimeEntity, id?: string): void {
     const key = subKey(entity, id);
-    const count = this.subscriptions.get(key) ?? 0;
-    if (count > 1) {
-      this.subscriptions.set(key, count - 1);
-      return;
-    }
     this.subscriptions.delete(key);
-    if (count === 1 && this.socket?.readyState === WebSocket.OPEN) {
+    if (this.socket?.readyState === WebSocket.OPEN) {
       this.sendMessage({ type: "unsubscribe", entity, id });
     }
   }

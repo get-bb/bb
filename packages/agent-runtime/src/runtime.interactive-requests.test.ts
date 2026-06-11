@@ -195,7 +195,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -450,7 +449,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -818,7 +816,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -958,7 +955,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -1088,7 +1084,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",

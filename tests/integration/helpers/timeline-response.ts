@@ -1,7 +1,6 @@
 import type {
   ThreadTimelineResponse,
   TimelineRow,
-  TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
 
 export function timelineHasAssistantConversation(
@@ -9,20 +8,6 @@ export function timelineHasAssistantConversation(
 ): boolean {
   return flattenTimelineRows(timeline.rows).some(
     (row) => row.kind === "conversation" && row.role === "assistant",
-  );
-}
-
-/**
- * Every workflow work row in the timeline (nested rows included) — the
- * thread-view projection's fold of the anchor `item/backgroundTask/*` rows,
- * which the M5 anchor criteria assert collapses to exactly ONE row per run.
- */
-export function listWorkflowTimelineRows(
-  timeline: ThreadTimelineResponse,
-): TimelineWorkflowWorkRow[] {
-  return flattenTimelineRows(timeline.rows).filter(
-    (row): row is TimelineWorkflowWorkRow =>
-      row.kind === "work" && row.workKind === "workflow",
   );
 }
 

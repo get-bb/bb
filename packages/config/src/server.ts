@@ -15,7 +15,6 @@ import {
   BB_POSTHOG_API_KEY_ENV,
   BB_TELEMETRY_ENV,
   BB_TRANSCRIPTION_ENV,
-  BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_VERSION,
   DEFAULT_BB_EXTERNAL_URL,
@@ -23,7 +22,6 @@ import {
   DEFAULT_BB_POSTHOG_API_KEY,
   DEFAULT_BB_TELEMETRY,
   DEFAULT_BB_TRANSCRIPTION,
-  DEFAULT_BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST,
   DEFAULT_OPENAI_API_KEY,
   OPENAI_API_KEY_ENV,
 } from "./env-vars.js";
@@ -43,7 +41,6 @@ export interface ServerConfig
   BB_POSTHOG_API_KEY: string;
   BB_TELEMETRY: boolean;
   BB_TRANSCRIPTION: string;
-  BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST: number;
   OPENAI_API_KEY: string;
   featureFlags: FeatureFlags;
 }
@@ -128,12 +125,6 @@ export function loadServerConfig(
       context: loader.context,
       defaultValue: DEFAULT_BB_TRANSCRIPTION,
       definition: BB_TRANSCRIPTION_ENV,
-      env: loader.env,
-    }),
-    BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST,
-      definition: BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST_ENV,
       env: loader.env,
     }),
     OPENAI_API_KEY: readEnvVarWithDefault({

@@ -125,22 +125,4 @@ describe("context-env", () => {
       requireThreadIdWithLabelOrSelf("thread-explicit", { self: true }),
     ).toThrow("Cannot combine a thread ID argument with --self.");
   });
-
-  it("rejects workflow run ids where a thread id is expected", () => {
-    expect(() => resolveThreadId("wfr_run_1")).toThrow(
-      "is a workflow run id. Use 'bb workflow show wfr_run_1'",
-    );
-    expect(() => requireThreadId("wfr_run_1")).toThrow("workflow run id");
-  });
-
-  it("rejects workflow agent session ids where a thread id is expected", () => {
-    expect(() => resolveThreadId("wfa_run_1_3")).toThrow(
-      "is a workflow agent session id, not a thread.",
-    );
-
-    vi.stubEnv("BB_THREAD_ID", "wfa_run_1_3");
-    expect(() => requireThreadIdWithLabelOrSelf(undefined, {})).toThrow(
-      "workflow agent session id",
-    );
-  });
 });

@@ -32,7 +32,6 @@ import type { DynamicToolSpec } from "./generated/codex-app-server/schema/v2/Dyn
 import type { SandboxMode as CodexSandboxMode } from "./generated/codex-app-server/schema/v2/SandboxMode.js";
 import type { ThreadResumeParams } from "./generated/codex-app-server/schema/v2/ThreadResumeParams.js";
 import type { ThreadStartParams } from "./generated/codex-app-server/schema/v2/ThreadStartParams.js";
-import type { TurnStartParams } from "./generated/codex-app-server/schema/v2/TurnStartParams.js";
 import type { UserInput as CodexUserInput } from "./generated/codex-app-server/schema/v2/UserInput.js";
 import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskForApproval.js";
 import { parseModelsResponse } from "./models.js";
@@ -1357,11 +1356,6 @@ export function createCodexProviderAdapter(
           };
         }
         case "thread/start": {
-          if (command.outputSchema !== undefined) {
-            throw new Error(
-              `Provider "${providerInfo.id}" does not support session-level output schemas; pass outputSchema on turn/start instead.`,
-            );
-          }
           const dynamicTools = toCodexDynamicTools(command.dynamicTools);
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
           const params: ThreadStartParams = {
@@ -1417,21 +1411,17 @@ export function createCodexProviderAdapter(
             gitWritableRoots: writableRoots,
             options: command.options,
           });
-          const params: TurnStartParams = {
-            threadId: command.providerThreadId,
-            input: toCodexUserInput(command.input),
-            approvalPolicy: permissionSettings.approvalPolicy,
-            sandboxPolicy: permissionSettings.sandboxPolicy,
-            model: command.options?.model ?? undefined,
-            serviceTier: toCodexServiceTier(command.options?.serviceTier),
-            ...(command.outputSchema !== undefined
-              ? { outputSchema: command.outputSchema }
-              : {}),
-          };
           return {
             kind: "request",
             method: "turn/start",
-            params,
+            params: {
+              threadId: command.providerThreadId,
+              input: toCodexUserInput(command.input),
+              approvalPolicy: permissionSettings.approvalPolicy,
+              sandboxPolicy: permissionSettings.sandboxPolicy,
+              model: command.options?.model ?? undefined,
+              serviceTier: toCodexServiceTier(command.options?.serviceTier),
+            },
           };
         }
         case "turn/steer":

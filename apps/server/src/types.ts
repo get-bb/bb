@@ -26,9 +26,6 @@ export interface ServerRuntimeConfig {
   serverPort: number;
   threadStorageRootPath: string;
   transcriptionModel: string;
-  /** Max workflow runs concurrently holding one host's capacity
-   *  (BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST; default 4). */
-  workflowMaxConcurrentRunsPerHost: number;
   appUrl?: string;
   devAppPort?: number;
 }

@@ -189,64 +189,6 @@ export const templateDefinitions = [
     }
   },
   {
-    "id": "systemMessageWorkflowRunCancelled",
-    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) was cancelled.",
-    "fileName": "system-message-workflow-run-cancelled.md",
-    "kind": "prompt",
-    "title": "Workflow Run Cancelled",
-    "summary": "Notifies a manager that a workflow run anchored to its thread was cancelled.",
-    "intent": "Inform the manager so it can update the user; cancelled runs are never revived.",
-    "editingNotes": "Deliberately terse — cancellation is usually user-initiated, so the manager needs the fact, not instructions.",
-    "variables": {
-      "runId": "The cancelled workflow run's ID.",
-      "workflowName": "The run's workflow name."
-    }
-  },
-  {
-    "id": "systemMessageWorkflowRunCompleted",
-    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) completed. Fetch the result with `bb workflow show {{runId}}`.",
-    "fileName": "system-message-workflow-run-completed.md",
-    "kind": "prompt",
-    "title": "Workflow Run Completed",
-    "summary": "Notifies a manager that a workflow run anchored to its thread completed.",
-    "intent": "Wake the manager to fetch the structured result and report to the user.",
-    "editingNotes": "Keep the single `bb workflow show` instruction — it is the message's own fetch step, not polling.",
-    "variables": {
-      "runId": "The completed workflow run's ID.",
-      "workflowName": "The run's workflow name."
-    }
-  },
-  {
-    "id": "systemMessageWorkflowRunFailed",
-    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) failed{{failureSuffix}}.",
-    "fileName": "system-message-workflow-run-failed.md",
-    "kind": "prompt",
-    "title": "Workflow Run Failed",
-    "summary": "Notifies a manager that a workflow run anchored to its thread failed.",
-    "intent": "Wake the manager to inspect the failure and decide next steps.",
-    "editingNotes": "The failure suffix is pre-formatted by the caller (': <reason>' or empty) because a reason is not always recorded.",
-    "variables": {
-      "runId": "The failed workflow run's ID.",
-      "workflowName": "The run's workflow name.",
-      "failureSuffix": "Formatted failure suffix like ': script_invalid', or empty string when no reason was recorded."
-    }
-  },
-  {
-    "id": "systemMessageWorkflowRunPaused",
-    "body": "[bb system]\n\nWorkflow run {{runId}} ({{workflowName}}) was paused: {{reason}}. The completed prefix is preserved — resume it from the run page or with `bb workflow resume {{runId}}`.",
-    "fileName": "system-message-workflow-run-paused.md",
-    "kind": "prompt",
-    "title": "Workflow Run Paused",
-    "summary": "Notifies a manager that a workflow run anchored to its thread was interrupted and is resumable.",
-    "intent": "Informational paused signal, distinct from the single terminal settlement message; the run resumes only on explicit request, never automatically.",
-    "editingNotes": "Keep the resume command and the \"completed prefix is preserved\" clause so managers know resuming replays finished agents free instead of re-billing them.",
-    "variables": {
-      "runId": "The interrupted workflow run's ID.",
-      "workflowName": "The run's workflow name.",
-      "reason": "Why the run was interrupted (the recorded failure reason, or a host-unavailable default)."
-    }
-  },
-  {
     "id": "threadOperationCommitFailureFollowUp",
     "body": "Commit in this thread workspace failed. Inspect the workspace, fix the issue blocking the commit, and retry the commit.\n{{#if errorMessage}}\nGit reported: {{errorMessage}}.\n{{/if}}",
     "fileName": "thread-operation-commit-failure-follow-up.md",
@@ -326,24 +268,6 @@ export interface TemplateVariables {
   systemMessageThreadScheduleDue: {
     scheduleId: string;
     prompt: string;
-  };
-  systemMessageWorkflowRunCancelled: {
-    runId: string;
-    workflowName: string;
-  };
-  systemMessageWorkflowRunCompleted: {
-    runId: string;
-    workflowName: string;
-  };
-  systemMessageWorkflowRunFailed: {
-    runId: string;
-    workflowName: string;
-    failureSuffix?: string;
-  };
-  systemMessageWorkflowRunPaused: {
-    runId: string;
-    workflowName: string;
-    reason: string;
   };
   threadOperationCommitFailureFollowUp: {
     errorMessage?: string;

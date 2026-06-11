@@ -18,9 +18,6 @@ export function buildTerminalWebSocketUrl(
   const path = buildTerminalWebSocketPath(args);
   if (typeof __BB_DEV_WS_URL__ === "string") {
     const url = new URL(__BB_DEV_WS_URL__);
-    // The baked URL targets localhost; rehost it onto the page's hostname so
-    // remote devices (BB_DEV_APP_HOST=0.0.0.0) reach the same server.
-    url.hostname = window.location.hostname;
     url.pathname = path;
     url.search = "";
     url.hash = "";

@@ -1,15 +1,14 @@
-import type {
-  AgentRuntimeSessionKind,
-  AgentRuntimeShellEnvironment,
-} from "./types.js";
+import type { AgentRuntimeShellEnvironment } from "./types.js";
 
-interface BuildThreadShellEnvironmentArgs {
-  baseShellEnv: AgentRuntimeShellEnvironment | undefined;
+interface ThreadShellEnvironmentArgs {
   environmentId: string;
   projectId?: string;
-  sessionKind: AgentRuntimeSessionKind;
   threadStoragePath?: string;
   threadId: string;
+}
+
+interface BuildThreadShellEnvironmentArgs extends ThreadShellEnvironmentArgs {
+  baseShellEnv: AgentRuntimeShellEnvironment | undefined;
 }
 
 export function buildThreadShellEnvironment(
@@ -21,9 +20,7 @@ export function buildThreadShellEnvironment(
     ...(args.threadStoragePath
       ? { BB_THREAD_STORAGE: args.threadStoragePath }
       : {}),
-    // Workflow agent sessions stay unaddressable as bb threads: without
-    // BB_THREAD_ID their synthetic ids never leak into thr_* surfaces.
-    ...(args.sessionKind === "thread" ? { BB_THREAD_ID: args.threadId } : {}),
+    BB_THREAD_ID: args.threadId,
     BB_ENVIRONMENT_ID: args.environmentId,
   };
 }

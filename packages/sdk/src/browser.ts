@@ -47,4 +47,3 @@ export type * from "./areas/projects.js";
 export type * from "./areas/providers.js";
 export type * from "./areas/status.js";
 export type * from "./areas/threads.js";
-export type * from "./areas/workflows.js";

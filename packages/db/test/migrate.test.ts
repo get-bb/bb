@@ -1592,10 +1592,14 @@ describe("migrate", () => {
         )
         .run();
       db.$client.prepare("DROP TABLE thread_dynamic_context_file_states").run();
-      db.$client.prepare("DROP TABLE workflow_run_events").run();
-      db.$client.prepare("DROP TABLE workflow_run_operations").run();
-      db.$client.prepare("DROP TABLE workflow_runs").run();
-      db.$client.prepare("DROP TABLE project_workflow_policies").run();
+      db.$client.prepare("DROP TABLE IF EXISTS workflow_run_events").run();
+      db.$client
+        .prepare("DROP TABLE IF EXISTS workflow_run_operations")
+        .run();
+      db.$client.prepare("DROP TABLE IF EXISTS workflow_runs").run();
+      db.$client
+        .prepare("DROP TABLE IF EXISTS project_workflow_policies")
+        .run();
       db.$client.prepare("DELETE FROM projects WHERE kind = 'personal'").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN kind").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN sort_key").run();

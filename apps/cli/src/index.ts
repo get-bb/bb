@@ -7,7 +7,6 @@ import { registerProjectCommands } from "./commands/project.js";
 import { registerProviderCommands } from "./commands/provider.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerThreadCommands } from "./commands/thread/index.js";
-import { registerWorkflowCommands } from "./commands/workflow/index.js";
 import {
   createCliRuntimeContext,
   resolveContextSnapshot,
@@ -64,7 +63,6 @@ registerProjectCommands(program, getUrl);
 registerProviderCommands(program, getUrl);
 registerManagerCommands(program, getUrl);
 registerThreadCommands(program, getUrl);
-registerWorkflowCommands(program, getUrl);
 registerEnvironmentCommands(program, getUrl);
 registerGuideCommand(program);
 

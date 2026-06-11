@@ -18,13 +18,10 @@ import {
   AUTH_CALLBACK_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
-  PROJECT_WORKFLOWS_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
-  WORKFLOW_RUN_AGENT_ROUTE_PATH,
-  WORKFLOW_RUN_ROUTE_PATH,
 } from "./lib/route-paths";
 
 const ThreadDetailRoute = lazy(
@@ -50,16 +47,6 @@ const ProjectArchivedThreadsView = lazy(() =>
     default: m.ProjectArchivedThreadsView,
   })),
 );
-const WorkflowRunView = lazy(() =>
-  import("./views/workflow-run/WorkflowRunView").then((m) => ({
-    default: m.WorkflowRunView,
-  })),
-);
-const ProjectWorkflowsView = lazy(() =>
-  import("./views/project-workflows/ProjectWorkflowsView").then((m) => ({
-    default: m.ProjectWorkflowsView,
-  })),
-);
 
 function AppRoutes() {
   return (
@@ -82,21 +69,12 @@ function AppRoutes() {
             element={<ProjectArchivedThreadsView />}
           />
           <Route
-            path={PROJECT_WORKFLOWS_ROUTE_PATH}
-            element={<ProjectWorkflowsView />}
-          />
-          <Route
             path={THREAD_DETAIL_ROUTE_PATH}
             element={<ThreadDetailRoute />}
           />
           <Route
             path={PROJECTLESS_THREAD_DETAIL_ROUTE_PATH}
             element={<ThreadDetailRoute />}
-          />
-          <Route path={WORKFLOW_RUN_ROUTE_PATH} element={<WorkflowRunView />} />
-          <Route
-            path={WORKFLOW_RUN_AGENT_ROUTE_PATH}
-            element={<WorkflowRunView />}
           />
           <Route
             path="*"

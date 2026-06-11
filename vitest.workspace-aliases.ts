@@ -55,10 +55,6 @@ export const workspaceTestAliases = {
     repoRoot,
     "packages/db/src/internal-environment-lifecycle.ts",
   ),
-  "@bb/db/internal-lifecycle": path.resolve(
-    repoRoot,
-    "packages/db/src/internal-lifecycle.ts",
-  ),
   "@bb/db": path.resolve(repoRoot, "packages/db/src/index.ts"),
   "@bb/host-daemon-contract": path.resolve(
     repoRoot,

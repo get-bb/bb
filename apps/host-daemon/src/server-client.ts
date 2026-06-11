@@ -19,18 +19,10 @@ import {
   type HostDaemonSessionOpenResponse,
   type HostDaemonToolCallRequest,
   type HostDaemonToolCallResponse,
-  type HostDaemonWorkflowRunEventEnvelope,
 } from "@bb/host-daemon-contract";
 import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
-import type { WorkflowJournalEntry } from "@bb/workflow-runtime";
 import type { HostDaemonLogger } from "./logger.js";
 import type { EventPostResult } from "./event-sink.js";
-import type { FetchWorkflowRunJournalArgs } from "./command-dispatch-support.js";
-import type { WorkflowRunEventPostResult } from "./workflow-event-buffer.js";
-import {
-  workflowRunEventBatchResponseSchema,
-  workflowRunJournalResponseSchema,
-} from "./workflow-server-wire.js";
 import { runtimeErrorLogFields } from "./error-utils.js";
 import type {
   FetchedProjectAttachment,
@@ -159,7 +151,6 @@ interface OpenSessionArgs {
   dataDir: string;
   instanceId: string;
   activeThreads: HostDaemonActiveThread[] | Promise<HostDaemonActiveThread[]>;
-  activeWorkflowRunIds: string[] | Promise<string[]>;
   loadedEnvironments:
     | HostDaemonLoadedEnvironment[]
     | Promise<HostDaemonLoadedEnvironment[]>;
@@ -171,12 +162,6 @@ export interface ServerClient {
     args: FetchProjectAttachmentArgs,
   ): Promise<FetchedProjectAttachment>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
-  postWorkflowRunEvents(
-    events: HostDaemonWorkflowRunEventEnvelope[],
-  ): Promise<WorkflowRunEventPostResult>;
-  fetchWorkflowRunJournal(
-    args: FetchWorkflowRunJournalArgs,
-  ): Promise<WorkflowJournalEntry[]>;
   callTool(request: ToolCallRequest): Promise<HostDaemonToolCallResponse>;
   registerInteractiveRequest(
     request: PendingInteractionCreate,
@@ -347,7 +332,6 @@ export function createServerClient(
         dataDir: args.dataDir,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: await args.activeThreads,
-        activeWorkflowRunIds: await args.activeWorkflowRunIds,
         loadedEnvironments: await args.loadedEnvironments,
       };
       const response = await fetchFn(buildInternalUrl("/session/open"), {
@@ -427,56 +411,6 @@ export function createServerClient(
         kind: "accepted",
         rejectedEvents: parsed.rejectedEvents,
       };
-    },
-
-    async postWorkflowRunEvents(
-      events: HostDaemonWorkflowRunEventEnvelope[],
-    ): Promise<WorkflowRunEventPostResult> {
-      const response = await fetchFn(
-        buildInternalUrl("/session/workflow-run-events"),
-        {
-          method: "POST",
-          headers: headers(),
-          body: JSON.stringify({
-            sessionId: requireSessionId(),
-            events,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        throw await createResponseError("post workflow run events", response);
-      }
-
-      const parsed = workflowRunEventBatchResponseSchema.parse(
-        await response.json(),
-      );
-      return {
-        acceptedEvents: parsed.acceptedEvents,
-        rejectedEvents: parsed.rejectedEvents,
-      };
-    },
-
-    async fetchWorkflowRunJournal(
-      args: FetchWorkflowRunJournalArgs,
-    ): Promise<WorkflowJournalEntry[]> {
-      const response = await fetchFn(
-        buildInternalUrl("/session/workflow-run-journal", {
-          sessionId: requireSessionId(),
-          runId: args.runId,
-        }),
-        {
-          method: "GET",
-          headers: headers(),
-        },
-      );
-
-      if (!response.ok) {
-        throw await createResponseError("fetch workflow run journal", response);
-      }
-
-      return workflowRunJournalResponseSchema.parse(await response.json())
-        .entries;
     },
 
     async callTool(

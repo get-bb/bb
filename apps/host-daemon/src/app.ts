@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { CommandRouter } from "./command-router.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
@@ -6,11 +5,6 @@ import {
   EventSinkDisposedError,
   type EventSink,
 } from "./event-sink.js";
-import {
-  createWorkflowEventBuffer,
-  WorkflowEventBufferDisposedError,
-  type WorkflowEventBuffer,
-} from "./workflow-event-buffer.js";
 import {
   InteractiveRequestRegistry,
   InteractiveRequestRegistryError,
@@ -42,15 +36,7 @@ import {
   type CreateReconnectingWebSocket,
 } from "./server-connection.js";
 import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
-import { prepareWorkflowAgentShellEnv } from "./runtime-shell-env.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
-import { DEFAULT_WORKFLOW_TURN_STALL_TIMEOUT_MS } from "./workflow-agent-executor.js";
-import {
-  DEFAULT_WORKFLOW_CANCEL_ESCALATION_GRACE_MS,
-  DEFAULT_WORKFLOW_WORKTREE_SETUP_TIMEOUT_MS,
-  WORKFLOW_STALE_RUNNER_SWEEP_INTERVAL_MS,
-  WorkflowRunManager,
-} from "./workflow-run-manager.js";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import {
   type HostType,
@@ -74,10 +60,6 @@ export interface CreateHostDaemonAppOptions {
   hostId: string;
   hostName: string;
   instanceId: string;
-  /** Cap on live workflow provider processes (the worktree-runtime token
-   *  gate). The entrypoint fills it from
-   *  BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES (default 8). */
-  maxLiveWorkflowProviderProcesses: number;
   appUrl?: string;
   devAppPort?: number;
   logger: HostDaemonLogger;
@@ -96,11 +78,9 @@ export interface CreateHostDaemonAppOptions {
 export interface HostDaemonApp {
   daemon: HostDaemon;
   eventSink: EventSink;
-  workflowEventBuffer: WorkflowEventBuffer;
   localApi: LocalApiServer | null;
   runtimeManager: RuntimeManager;
   terminalManager: TerminalManager;
-  workflowRunManager: WorkflowRunManager;
   router: CommandRouter;
   connection: ServerConnection;
 }
@@ -255,11 +235,6 @@ export async function createHostDaemonApp(
     isSessionOpen: () => sessionState.value !== null,
     logger: options.logger,
     postEvents: (events) => serverClient.postEvents(events),
-  });
-  const workflowEventBuffer = createWorkflowEventBuffer({
-    dataDir: options.dataDir,
-    logger: options.logger,
-    postEvents: (events) => serverClient.postWorkflowRunEvents(events),
   });
 
   const interactiveRequestRegistry = new InteractiveRequestRegistry({
@@ -462,62 +437,11 @@ export async function createHostDaemonApp(
     sendMessage: (message) => sendTerminalMessage(message),
   });
 
-  const workflowRunManager = new WorkflowRunManager({
-    dataDir: options.dataDir,
-    logger: options.logger,
-    workflowAgentShellEnv: await prepareWorkflowAgentShellEnv({
-      shimDirectoryPath: join(options.dataDir, "workflow-agent-shim"),
-    }),
-    bridgeBundleDir: options.bridgeBundleDir,
-    createRuntime: options.createRuntime,
-    onRunEvent: ({ runId, event }) => {
-      try {
-        workflowEventBuffer.push({ runId, event });
-      } catch (error) {
-        if (error instanceof WorkflowEventBufferDisposedError) {
-          options.logger.warn(
-            { runId, eventType: event.type },
-            "Ignoring workflow run event received after spool disposal",
-          );
-          return;
-        }
-        throw error;
-      }
-    },
-    maxLiveProviderProcesses: options.maxLiveWorkflowProviderProcesses,
-    worktreeSetupTimeoutMs: DEFAULT_WORKFLOW_WORKTREE_SETUP_TIMEOUT_MS,
-    turnStallTimeoutMs: DEFAULT_WORKFLOW_TURN_STALL_TIMEOUT_MS,
-    cancelEscalationGraceMs: DEFAULT_WORKFLOW_CANCEL_ESCALATION_GRACE_MS,
-  });
-  // Boot reap is silent: the server's session-open reconciliation interrupts
-  // (and keeps resumable) every unreported run from a previous instance.
-  await workflowRunManager.reapStaleRunners({
-    spoolSyntheticTerminalEvents: false,
-  });
-  // The in-life sweep DOES spool synthetic run/failed settles: a runner that
-  // outlived its daemon, got reported via its fresh heartbeat, and died later
-  // has no handle, so nothing else ever observes its exit while the session
-  // stays healthy — the run would dangle `running` until the next restart.
-  const staleRunnerSweep = setInterval(() => {
-    workflowRunManager
-      .reapStaleRunners({ spoolSyntheticTerminalEvents: true })
-      .catch((error) => {
-        options.logger.warn(
-          { err: error },
-          "Workflow stale-runner sweep failed",
-        );
-      });
-  }, WORKFLOW_STALE_RUNNER_SWEEP_INTERVAL_MS);
-  staleRunnerSweep.unref();
-
   const router = new CommandRouter({
     dataDir: options.dataDir,
     fetchProjectAttachment: (args) => serverClient.fetchProjectAttachment(args),
     runtimeManager,
     terminalManager,
-    workflowRunManager,
-    fetchWorkflowRunJournal: (args) =>
-      serverClient.fetchWorkflowRunJournal(args),
     listModels: (args) =>
       defaultListModels(args, {
         bridgeBundleDir: options.bridgeBundleDir,
@@ -545,20 +469,6 @@ export async function createHostDaemonApp(
     serverClient,
     createWebSocket: options.createWebSocket,
     getActiveThreads: () => runtimeManager.listActiveThreads(),
-    getActiveWorkflowRunIds: async () => {
-      try {
-        return await workflowRunManager.listActiveWorkflowRunIds();
-      } catch (error) {
-        // Reporting [] interrupts the host's running runs server-side, but
-        // they revive on the next successful report (bucket (c)); failing the
-        // session open would block reconnection entirely.
-        options.logger.error(
-          { err: error },
-          "Failed to list active workflow runs for session open; reporting none",
-        );
-        return [];
-      }
-    },
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
     onHostRpcRequest: async (message) => {
       const response = await router.handleOnlineRpcRequest(message);
@@ -591,15 +501,6 @@ export async function createHostDaemonApp(
             ...runtimeErrorLogFields(error),
           },
           "Failed to flush pending daemon events after session opened",
-        );
-      });
-      void workflowEventBuffer.flush().catch((error) => {
-        options.logger.warn(
-          {
-            sessionId: session.sessionId,
-            ...runtimeErrorLogFields(error),
-          },
-          "Failed to flush buffered workflow run events after session opened",
         );
       });
       void flushPendingInteractiveInterrupts();
@@ -639,21 +540,14 @@ export async function createHostDaemonApp(
     releaseLock: options.releaseLock,
     flushEvents: async () => {
       await eventSink.flush();
-      await workflowEventBuffer.flush();
     },
     shutdownRuntimes: async () => {
       eventLoopStallMonitor.stop();
-      clearInterval(staleRunnerSweep);
       await localApi?.close();
       await terminalManager.shutdownAll();
-      await workflowRunManager.shutdown();
       await runtimeManager.shutdownAll();
       await eventSink.flush();
       await eventSink.dispose();
-      // After manager shutdown so the runners' synthetic terminal events are
-      // spooled (and flushed when the server is reachable) before disposal.
-      await workflowEventBuffer.flush();
-      await workflowEventBuffer.dispose();
       await shutdownDefaultListModelsRuntimes();
       await connection.shutdown();
     },
@@ -672,11 +566,9 @@ export async function createHostDaemonApp(
   return {
     daemon,
     eventSink,
-    workflowEventBuffer,
     localApi,
     runtimeManager,
     terminalManager,
-    workflowRunManager,
     router,
     connection,
   };

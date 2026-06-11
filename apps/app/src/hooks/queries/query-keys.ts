@@ -49,12 +49,6 @@ export const ENVIRONMENT_PATHS_QUERY_KEY = "environmentPaths";
 export const THREAD_TIMELINE_QUERY_KEY = "threadTimeline";
 export const THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY =
   "threadTimelineTurnSummaryDetails";
-export const WORKFLOWS_QUERY_KEY = "workflows";
-export const WORKFLOW_RUNS_QUERY_KEY = "workflowRuns";
-const RECENT_WORKFLOW_RUNS_SCOPE = "recent";
-export const WORKFLOW_RUN_QUERY_KEY = "workflowRun";
-export const WORKFLOW_RUN_EVENTS_QUERY_KEY = "workflowRunEvents";
-export const WORKFLOW_RUN_AGENT_EVENTS_QUERY_KEY = "workflowRunAgentEvents";
 export const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
 export const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
@@ -243,51 +237,6 @@ export type ThreadStorageFilePreviewQueryKey = readonly [
 export type ThreadStorageFilePreviewQueryKeyPrefix = readonly [
   typeof THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY,
   string,
-];
-export interface WorkflowRunAgentEventsQueryIdentity {
-  /** 1-based agent display index (`agents/<index>.events.jsonl`). */
-  agentIndex: number;
-  runId: string;
-}
-
-export type AllWorkflowsQueryKeyPrefix = readonly [typeof WORKFLOWS_QUERY_KEY];
-export type WorkflowsQueryKey = readonly [typeof WORKFLOWS_QUERY_KEY, string];
-export type AllWorkflowRunsQueryKeyPrefix = readonly [
-  typeof WORKFLOW_RUNS_QUERY_KEY,
-];
-export type WorkflowRunsQueryKey = readonly [
-  typeof WORKFLOW_RUNS_QUERY_KEY,
-  string,
-];
-export type RecentWorkflowRunsQueryKey = readonly [
-  typeof WORKFLOW_RUNS_QUERY_KEY,
-  typeof RECENT_WORKFLOW_RUNS_SCOPE,
-];
-export type AllWorkflowRunQueryKeyPrefix = readonly [
-  typeof WORKFLOW_RUN_QUERY_KEY,
-];
-export type WorkflowRunQueryKey = readonly [
-  typeof WORKFLOW_RUN_QUERY_KEY,
-  string,
-];
-export type AllWorkflowRunEventsQueryKeyPrefix = readonly [
-  typeof WORKFLOW_RUN_EVENTS_QUERY_KEY,
-];
-export type WorkflowRunEventsQueryKey = readonly [
-  typeof WORKFLOW_RUN_EVENTS_QUERY_KEY,
-  string,
-];
-export type AllWorkflowRunAgentEventsQueryKeyPrefix = readonly [
-  typeof WORKFLOW_RUN_AGENT_EVENTS_QUERY_KEY,
-];
-export type WorkflowRunAgentEventsQueryKeyPrefix = readonly [
-  typeof WORKFLOW_RUN_AGENT_EVENTS_QUERY_KEY,
-  string,
-];
-export type WorkflowRunAgentEventsQueryKey = readonly [
-  typeof WORKFLOW_RUN_AGENT_EVENTS_QUERY_KEY,
-  string,
-  number,
 ];
 export type ThreadHostFilePreviewQueryKey = readonly [
   typeof THREAD_HOST_FILE_PREVIEW_QUERY_KEY,
@@ -944,65 +893,4 @@ export function localPathExistenceQueryKey(
 
 export function localPathExistenceQueryKeyPrefix(): LocalPathExistenceQueryKeyPrefix {
   return [LOCAL_PATH_EXISTENCE_QUERY_KEY];
-}
-
-export function allWorkflowsQueryKeyPrefix(): AllWorkflowsQueryKeyPrefix {
-  return [WORKFLOWS_QUERY_KEY];
-}
-
-export function workflowsQueryKey(projectId: string): WorkflowsQueryKey {
-  return [WORKFLOWS_QUERY_KEY, projectId];
-}
-
-export function allWorkflowRunsQueryKeyPrefix(): AllWorkflowRunsQueryKeyPrefix {
-  return [WORKFLOW_RUNS_QUERY_KEY];
-}
-
-export function workflowRunsQueryKey(projectId: string): WorkflowRunsQueryKey {
-  return [WORKFLOW_RUNS_QUERY_KEY, projectId];
-}
-
-/**
- * The sidebar's cross-project recent-runs list. Shares the run-list key
- * family with the project-scoped lists so `allWorkflowRunsQueryKeyPrefix()`
- * invalidation (realtime `run-updated`, lifecycle actions) covers both. The
- * scope segment can't collide with a project id (`proj_*`).
- */
-export function recentWorkflowRunsQueryKey(): RecentWorkflowRunsQueryKey {
-  return [WORKFLOW_RUNS_QUERY_KEY, RECENT_WORKFLOW_RUNS_SCOPE];
-}
-
-export function allWorkflowRunQueryKeyPrefix(): AllWorkflowRunQueryKeyPrefix {
-  return [WORKFLOW_RUN_QUERY_KEY];
-}
-
-export function workflowRunQueryKey(runId: string): WorkflowRunQueryKey {
-  return [WORKFLOW_RUN_QUERY_KEY, runId];
-}
-
-export function allWorkflowRunEventsQueryKeyPrefix(): AllWorkflowRunEventsQueryKeyPrefix {
-  return [WORKFLOW_RUN_EVENTS_QUERY_KEY];
-}
-
-export function workflowRunEventsQueryKey(
-  runId: string,
-): WorkflowRunEventsQueryKey {
-  return [WORKFLOW_RUN_EVENTS_QUERY_KEY, runId];
-}
-
-export function allWorkflowRunAgentEventsQueryKeyPrefix(): AllWorkflowRunAgentEventsQueryKeyPrefix {
-  return [WORKFLOW_RUN_AGENT_EVENTS_QUERY_KEY];
-}
-
-export function workflowRunAgentEventsQueryKeyPrefix(
-  runId: string,
-): WorkflowRunAgentEventsQueryKeyPrefix {
-  return [WORKFLOW_RUN_AGENT_EVENTS_QUERY_KEY, runId];
-}
-
-export function workflowRunAgentEventsQueryKey({
-  agentIndex,
-  runId,
-}: WorkflowRunAgentEventsQueryIdentity): WorkflowRunAgentEventsQueryKey {
-  return [WORKFLOW_RUN_AGENT_EVENTS_QUERY_KEY, runId, agentIndex];
 }

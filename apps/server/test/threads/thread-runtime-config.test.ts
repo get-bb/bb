@@ -405,74 +405,6 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("gates the bb-workflows skill on the workflows experiment", async () => {
-    await withTestHarness(async (harness) => {
-      const workflowsSkillRootPath = await writeRuntimeSkill({
-        name: "bb-workflows",
-        rootPath: harness.config.builtinSkillsRootPath,
-      });
-      await writeRuntimeSkill({
-        name: "bb-cli",
-        rootPath: harness.config.builtinSkillsRootPath,
-      });
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-workflows-experiment",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "codex",
-      });
-      const execution = await resolveExecutionOptions(harness.deps, {
-        threadId: thread.id,
-        requestedExecution: {
-          model: "gpt-5",
-          source: "client/turn/requested",
-        },
-      });
-      const buildCommand = (requestValue: number) =>
-        buildThreadStartCommand(harness.deps, {
-          environment,
-          execution,
-          permissionEscalation: "ask",
-          input: textInput("hello"),
-          projectId: project.id,
-          providerId: "codex",
-          requestId: encodeClientTurnRequestIdNumber({ value: requestValue }),
-          syncGeneratedTitle: false,
-          thread,
-        });
-
-      // Experiments default to off: the bb-workflows skill never ships.
-      const gated = await buildCommand(1);
-      expect(gated.injectedSkillSources.map((skill) => skill.name)).toEqual([
-        "bb-cli",
-      ]);
-
-      setExperiments(harness.db, {
-        claudeCodeMockCliTraffic: false,
-        workflows: true,
-      });
-      const enabled = await buildCommand(2);
-      expect(enabled.injectedSkillSources.map((skill) => skill.name)).toEqual([
-        "bb-cli",
-        "bb-workflows",
-      ]);
-      expect(
-        enabled.injectedSkillSources.find(
-          (skill) => skill.name === "bb-workflows",
-        )?.sourceRootPath,
-      ).toBe(workflowsSkillRootPath);
-    });
-  });
-
   it("gates Claude Code mock CLI traffic on its experiment with the fixed endpoint", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -517,7 +449,6 @@ describe("thread runtime config", () => {
 
       setExperiments(harness.db, {
         claudeCodeMockCliTraffic: true,
-        workflows: false,
       });
 
       expect((await buildCommand(2)).options.claudeCodeMockCliTraffic).toEqual({

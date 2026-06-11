@@ -1,5 +1,4 @@
 export { createAgentRuntime } from "./runtime.js";
-export { ProviderProcessExitedError } from "./runtime-provider-process.js";
 export {
   createProviderForId,
   listAvailableProviderInfos as listAvailableProviders,
@@ -12,8 +11,6 @@ export type {
   AgentRuntimeOptions,
   AgentRuntimePiSkillRoot,
   AgentRuntimeProcessExitInfo,
-  AgentRuntimeSessionKind,
-  AgentRuntimeShellEnvironment,
   AgentRuntimeSkillRoot,
   EnsureProviderArgs,
   ListModelsArgs,

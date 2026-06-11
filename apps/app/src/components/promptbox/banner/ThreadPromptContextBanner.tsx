@@ -66,23 +66,6 @@ export interface ThreadPromptChildThreadsSection {
 }
 
 /**
- * Actively running workflow run anchored to this thread. The caller is
- * responsible for filtering down to active runs — the banner just renders
- * what it's given.
- */
-export interface ThreadPromptWorkflowItem {
-  id: string;
-  name: string;
-  /** Preformatted agent progress, e.g. "3/5 agents"; null when unknown. */
-  agentProgress: string | null;
-  href: string;
-}
-
-export interface ThreadPromptWorkflowsSection {
-  items: readonly ThreadPromptWorkflowItem[];
-}
-
-/**
  * Archived-state segment for the banner. When present, the banner renders
  * only this row — archived threads are read-only, so suppressing the other
  * sections keeps the surface focused on "you are looking at a frozen thread".
@@ -116,8 +99,7 @@ export type ThreadPromptContextBannerExpandedSection =
   | "todos"
   | "git"
   | "parentThread"
-  | "childThreads"
-  | "workflows";
+  | "childThreads";
 
 /**
  * Pixel height of the banner's collapsed (single-row) state. Pinned via the
@@ -141,14 +123,13 @@ export interface ThreadPromptContextBannerProps {
   gitSectionPending: boolean;
   /**
    * When set, the banner renders the "Thread is archived" row and suppresses
-   * todos, git, child-threads, and workflows — those represent live work that
-   * no longer applies. parentThread still renders alongside if provided, since
-   * the parent relationship remains relevant context for a frozen thread.
+   * todos, git, and child-threads — those represent live work that no
+   * longer applies. parentThread still renders alongside if provided, since the
+   * parent relationship remains relevant context for a frozen thread.
    */
   archivedSection: ThreadPromptArchivedSection | null;
   parentThreadSection: ThreadPromptParentThreadSection | null;
   childThreadsSection: ThreadPromptChildThreadsSection | null;
-  workflowsSection: ThreadPromptWorkflowsSection | null;
   expandedSection: ThreadPromptContextBannerExpandedSection | null;
   onToggleSection: (section: ThreadPromptContextBannerExpandedSection) => void;
 }
@@ -171,10 +152,6 @@ const SECTION_IDS = {
   childThreads: {
     toggle: "thread-prompt-banner-child-threads-toggle",
     body: "thread-prompt-banner-child-threads-body",
-  },
-  workflows: {
-    toggle: "thread-prompt-banner-workflows-toggle",
-    body: "thread-prompt-banner-workflows-body",
   },
   todos: {
     toggle: "thread-prompt-banner-todos-toggle",
@@ -396,38 +373,6 @@ function ChildThreadsBody({
   );
 }
 
-function WorkflowsBody({
-  items,
-}: {
-  items: readonly ThreadPromptWorkflowItem[];
-}) {
-  return (
-    <ul className="max-h-40 space-y-0.5 overflow-y-auto px-3 pb-2 pt-1.5">
-      {items.map((item) => (
-        <li key={item.id} className="text-xs">
-          <NavLink
-            to={item.href}
-            title={item.name}
-            className="flex min-w-0 items-center gap-2 py-0.5 text-foreground/90 underline-offset-2 hover:underline"
-          >
-            <Icon
-              name="Workflow"
-              className="size-3.5 shrink-0 text-subtle-foreground"
-              aria-hidden="true"
-            />
-            <span className="min-w-0 flex-1 truncate">{item.name}</span>
-            {item.agentProgress ? (
-              <span className="shrink-0 text-subtle-foreground">
-                {item.agentProgress}
-              </span>
-            ) : null}
-          </NavLink>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 function AnimatedBody({
   id,
   labelledBy,
@@ -471,7 +416,6 @@ export function ThreadPromptContextBanner({
   archivedSection,
   parentThreadSection,
   childThreadsSection,
-  workflowsSection,
   expandedSection,
   onToggleSection,
 }: ThreadPromptContextBannerProps) {
@@ -548,21 +492,12 @@ export function ThreadPromptContextBanner({
   const showParentThread = parentThreadSection !== null;
   const showChildThreads =
     childThreadsSection !== null && childThreadsSection.items.length > 0;
-  const showWorkflows =
-    workflowsSection !== null && workflowsSection.items.length > 0;
-  if (
-    !showTodo &&
-    !showGit &&
-    !showParentThread &&
-    !showChildThreads &&
-    !showWorkflows
-  ) {
+  if (!showTodo && !showGit && !showParentThread && !showChildThreads) {
     return null;
   }
   const visibleSegmentCount =
     Number(showParentThread) +
     Number(showChildThreads) +
-    Number(showWorkflows) +
     Number(showTodo) +
     Number(showGit);
   const hasSingleVisibleSegment = visibleSegmentCount === 1;
@@ -576,7 +511,6 @@ export function ThreadPromptContextBanner({
   const isParentThreadExpanded = expandedSection === "parentThread" && showParentThread;
   const isChildThreadsExpanded =
     expandedSection === "childThreads" && showChildThreads;
-  const isWorkflowsExpanded = expandedSection === "workflows" && showWorkflows;
 
   const gitTally = showGit ? toChangeTally(gitSection.changedFiles.stats) : null;
   const gitSummaryText = gitTally ? formatChangeSummary(gitTally) : "";
@@ -603,11 +537,7 @@ export function ThreadPromptContextBanner({
   // context to compete for the row, so the icon-only toggle would be a strict
   // downgrade in legibility.
   const isParentThreadOnly =
-    showParentThread &&
-    !showTodo &&
-    !showGit &&
-    !showChildThreads &&
-    !showWorkflows;
+    showParentThread && !showTodo && !showGit && !showChildThreads;
 
   return (
     <PromptStackCard
@@ -674,28 +604,6 @@ export function ThreadPromptContextBanner({
             }`}
             isExpanded={isChildThreadsExpanded}
             onToggle={() => onToggleSection("childThreads")}
-          />
-        ) : null}
-        {showWorkflows && workflowsSection ? (
-          <SectionToggleButton
-            id={SECTION_IDS.workflows.toggle}
-            controlsId={SECTION_IDS.workflows.body}
-            icon={
-              <Icon
-                name="Workflow"
-                className="size-3.5 shrink-0"
-                aria-hidden="true"
-              />
-            }
-            label={`${workflowsSection.items.length} ${
-              workflowsSection.items.length === 1 ? "workflow" : "workflows"
-            }`}
-            hideLabelInCompact={!hasSingleVisibleSegment}
-            ariaLabel={`${workflowsSection.items.length} active ${
-              workflowsSection.items.length === 1 ? "workflow" : "workflows"
-            }`}
-            isExpanded={isWorkflowsExpanded}
-            onToggle={() => onToggleSection("workflows")}
           />
         ) : null}
         {showTodo ? (
@@ -781,15 +689,6 @@ export function ThreadPromptContextBanner({
           isExpanded={isChildThreadsExpanded}
         >
           <ChildThreadsBody items={childThreadsSection.items} />
-        </AnimatedBody>
-      ) : null}
-      {showWorkflows && workflowsSection ? (
-        <AnimatedBody
-          id={SECTION_IDS.workflows.body}
-          labelledBy={SECTION_IDS.workflows.toggle}
-          isExpanded={isWorkflowsExpanded}
-        >
-          <WorkflowsBody items={workflowsSection.items} />
         </AnimatedBody>
       ) : null}
       {showTodo ? (

@@ -1,4 +1,4 @@
-import { getExperiments, getProject } from "@bb/db";
+import { getProject } from "@bb/db";
 import type {
   DynamicTool,
   InstructionMode,
@@ -115,17 +115,10 @@ export async function resolveThreadRuntimeCommandConfig(
   }
 
   const { workspaceProvisionType } = args.environment;
-  // Server-owned product policy: the workflows experiment gates the
-  // agent-facing `bb-workflows` skill (by name, so a user override of the
-  // builtin is gated identically). With the experiment off, agents get no
-  // workflow guidance — the API stays available for explicit callers.
-  const workflowsExperimentEnabled = getExperiments(deps.db).workflows;
   const injectedSkillSources = resolveInjectedSkillSources(deps.logger, {
     builtinSkillsRootPath: deps.config.builtinSkillsRootPath,
     dataDir: deps.config.dataDir,
-  }).filter(
-    (skill) => workflowsExperimentEnabled || skill.name !== "bb-workflows",
-  );
+  });
   const threadStoragePath = await requireThreadStoragePath(deps, {
     hostId: args.environment.hostId,
     threadId: args.thread.id,

@@ -57,8 +57,6 @@ import type {
   ProjectDefaultExecutionOptionsQuery,
   ProjectAttachmentUploadForm,
   ProjectFilesQuery,
-  ProjectWorkflowPolicyResponse,
-  UpdateProjectWorkflowPolicyRequest,
   ProjectPathsQuery,
   ProjectListQuery,
   PromptHistoryQuery,
@@ -115,21 +113,10 @@ import type {
   CommandListResponse,
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
-  CreateWorkflowRunRequest,
-  WorkflowListQuery,
-  WorkflowListResponse,
-  WorkflowRunEventsQuery,
-  WorkflowRunEventsResponse,
-  WorkflowRunListQuery,
-  WorkflowRunListResponse,
-  WorkflowRunResponse,
-  WorkflowRunWaitQuery,
 } from "./api-types.js";
 import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
-type PathWorkflowRunAgentIndex = { param: { id: string; index: string } };
-
 export type PublicApiSchema = {
   // ─── Automations ─────────────────────────────────────────────────────
 
@@ -191,15 +178,6 @@ export type PublicApiSchema = {
       ProjectSource
     >;
     $delete: Endpoint<PathProjectSourceId, { ok: true }>;
-  };
-  "/projects/:id/workflow-policy": {
-    /** Effective policy: built-in defaults when the project has never set one. */
-    $get: Endpoint<PathProjectId, ProjectWorkflowPolicyResponse>;
-    /** Full replace; applies to future launches only (runs snapshot their ceiling). */
-    $put: Endpoint<
-      PathProjectId & { json: UpdateProjectWorkflowPolicyRequest },
-      ProjectWorkflowPolicyResponse
-    >;
   };
   "/projects/:id/automations": {
     $get: Endpoint<PathProjectId, Automation[]>;
@@ -676,102 +654,6 @@ export type PublicApiSchema = {
       200,
       "binary"
     >;
-  };
-
-  // ─── Workflows ───────────────────────────────────────────────────────
-
-  "/workflows": {
-    /**
-     * List workflow definitions visible from the project's resolved source
-     * root, across the registry tiers (project > user > builtin), via the
-     * daemon `workflow.list` RPC. Host offline → 502 `host_unavailable`.
-     */
-    $get: Endpoint<{ query: WorkflowListQuery }, WorkflowListResponse>;
-  };
-  "/workflow-runs": {
-    /**
-     * List workflow runs, newest first (`limit` caps the page). `projectId`
-     * scopes to one project; omitted = all projects. User-archived and
-     * user-deleted runs are always excluded.
-     */
-    $get: Endpoint<{ query: WorkflowRunListQuery }, WorkflowRunListResponse>;
-    /**
-     * Launch a workflow run: validate/resolve the source, snapshot it with
-     * all defaults filled at the boundary, insert the run, and request the
-     * start. Honors `clientRequestId` idempotency (a replay returns the
-     * original run; a replay of a still-`created` run re-requests its start).
-     * Inline source validates with no host round-trip (422 on findings);
-     * named source resolution requires the host online (404 unknown name).
-     * Launch target: explicit `hostId` wins; anchored launches without one
-     * inherit the anchor thread environment's `{hostId, workspacePath}`;
-     * unanchored launches resolve the project's default source.
-     */
-    $post: Endpoint<
-      { json: CreateWorkflowRunRequest },
-      WorkflowRunResponse,
-      201
-    >;
-  };
-  "/workflow-runs/:id": {
-    $get: Endpoint<PathId, WorkflowRunResponse>;
-    /**
-     * Soft-delete a settled run: it disappears from lists and 404s by id;
-     * the retention sweeps still clean up journal payloads and the daemon
-     * run dir. Active runs 409 `workflow_run_not_settled` (cancel first).
-     */
-    $delete: Endpoint<PathId, { ok: true }>;
-  };
-  "/workflow-runs/:id/archive": {
-    /**
-     * Hide a settled run from list surfaces (it stays reachable by id).
-     * Idempotent. Active runs 409 `workflow_run_not_settled` (cancel first).
-     * Distinct from journal-payload retention, which the sweep owns.
-     */
-    $post: Endpoint<PathId, { ok: true }>;
-  };
-  "/workflow-runs/:id/events": {
-    /** Get durable run events with parsed payloads. `afterSeq` returns strictly-greater sequences. */
-    $get: Endpoint<
-      PathId & { query?: WorkflowRunEventsQuery },
-      WorkflowRunEventsResponse
-    >;
-  };
-  "/workflow-runs/:id/wait": {
-    /**
-     * Long-poll until the run reaches a terminal status
-     * (`completed|failed|cancelled`). Returns the terminal run (200) or 204
-     * when it stays unsettled within `waitMs` (capped at 60s) — `interrupted`
-     * is not terminal (a resume may still revive it), so callers loop.
-     */
-    $get: Endpoint<
-      PathId & { query?: WorkflowRunWaitQuery },
-      WorkflowRunResponse | null
-    >;
-  };
-  "/workflow-runs/:id/cancel": {
-    /**
-     * Request cancellation. Terminal runs no-op; `created`/`interrupted`
-     * runs settle `cancelled` server-side; live runs get a durable
-     * `workflow.cancel`; archived runs 409 `workflow_run_archived`.
-     */
-    $post: Endpoint<PathId, { ok: true }>;
-  };
-  "/workflow-runs/:id/resume": {
-    /**
-     * Request an explicit resume. Gated to `interrupted` runs only (409
-     * `workflow_run_not_resumable` otherwise, 409 `workflow_run_archived`
-     * for archived runs); the completed journal prefix replays free.
-     */
-    $post: Endpoint<PathId, { ok: true }>;
-  };
-  "/workflow-runs/:id/agents/:index/events": {
-    /**
-     * Per-agent provider-event log (the bb thread-timeline event rows the
-     * workflow agent emitted), proxied from the run dir on the run's host
-     * via `host.read_file_relative`. 404 when the log does not exist on the
-     * host; 502 `host_unavailable` when the daemon is offline.
-     */
-    $get: Endpoint<PathWorkflowRunAgentIndex, ThreadEventRow[]>;
   };
 
   // ─── System ──────────────────────────────────────────────────────────

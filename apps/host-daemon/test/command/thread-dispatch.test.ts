@@ -55,7 +55,6 @@ describe("thread command dispatch", () => {
 
     const command: Extract<HostDaemonCommand, { type: "thread.start" }> = {
       type: "thread.start",
-      sessionKind: "thread",
       environmentId: "env-loaded",
       threadId: "thread-stale-start",
       workspaceContext: {
@@ -166,7 +165,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-attachments",
         threadId: "thread-attachments",
         workspaceContext: {
@@ -351,7 +349,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-no-stage-attachments",
         threadId: "thread-no-stage-attachments",
         workspaceContext: {
@@ -414,7 +411,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-restage-attachments",
         threadId: "thread-restage-attachments",
         workspaceContext: {
@@ -472,7 +468,6 @@ describe("thread command dispatch", () => {
       await dispatchCommand(
         {
           type: "thread.start",
-          sessionKind: "thread",
           environmentId: "env-failed-stage-attachments",
           threadId: "thread-failed-stage-attachments",
           workspaceContext: {
@@ -539,7 +534,6 @@ describe("thread command dispatch", () => {
       dispatchCommand(
         {
           type: "thread.start",
-          sessionKind: "thread",
           environmentId: "env-oversized-stage-attachments",
           threadId: "thread-oversized-stage-attachments",
           workspaceContext: {
@@ -605,7 +599,6 @@ describe("thread command dispatch", () => {
       dispatchCommand(
         {
           type: "thread.start",
-          sessionKind: "thread",
           environmentId: "env-runtime-failed-start-attachments",
           threadId: "thread-runtime-failed-start-attachments",
           workspaceContext: {
@@ -715,7 +708,6 @@ describe("thread command dispatch", () => {
     const startResult = await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "thread-1",
         workspaceContext: {
@@ -847,7 +839,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-resume-after-archive",
         threadId: "thread-resume-after-archive",
         workspaceContext: {
@@ -1609,7 +1600,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-parent",
         threadId: "thread-parent",
         workspaceContext: {
@@ -1666,7 +1656,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "thread-1",
         workspaceContext: {
@@ -1704,7 +1693,6 @@ describe("thread command dispatch", () => {
     const result = await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "thread-1",
         workspaceContext: {
@@ -1816,7 +1804,6 @@ describe("thread command dispatch", () => {
       dispatchCommand(
         {
           type: "thread.start",
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId: "thread-1",
           workspaceContext: {

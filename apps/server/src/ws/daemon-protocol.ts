@@ -10,7 +10,6 @@ import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
 import { requireAuthorizedActiveSession } from "../internal/session-state.js";
 import { handleDaemonSocketClosed } from "../internal/session-owner-side-effects.js";
 import { notifyDaemonEnvironmentChange } from "../internal/environment-changes.js";
-import { scheduleWorkflowRunPendingNotificationDelivery } from "../services/workflows/workflow-run-pending-notifications.js";
 import { decodeSocketPayload } from "./decode-payload.js";
 
 interface DaemonSocket {
@@ -84,12 +83,6 @@ export function onDaemonSocketOpen(
     daemonSessionId: args.sessionId,
     hostId: args.hostId,
   });
-  // First moment a pending workflow-run manager notification becomes
-  // deliverable after a reconnect: session-open reconciliation recorded the
-  // intent BEFORE this socket attached (manager pushes need the hub socket
-  // for the preferences RPC), so drain it now rather than waiting out the
-  // periodic sweep.
-  scheduleWorkflowRunPendingNotificationDelivery(deps);
 }
 
 export function onDaemonSocketMessage(

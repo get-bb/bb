@@ -147,13 +147,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadStoragePathsForThreadQueryKeyPrefix",
     "threadTerminalsQueryKey",
     "threadsQueryKey",
-    "allWorkflowRunAgentEventsQueryKeyPrefix",
-    "allWorkflowRunEventsQueryKeyPrefix",
-    "allWorkflowRunQueryKeyPrefix",
-    "allWorkflowRunsQueryKeyPrefix",
-    "workflowRunAgentEventsQueryKeyPrefix",
-    "workflowRunEventsQueryKey",
-    "workflowRunQueryKey",
   ],
   "hooks/cache-owners/system-cache-effects.ts": [
     "allEnvironmentFilePreviewQueryKeyPrefix",
@@ -182,11 +175,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "systemProvidersQueryKey",
     "threadPromptHistoryQueryKeyPrefix",
     "threadsQueryKey",
-    "allWorkflowRunAgentEventsQueryKeyPrefix",
-    "allWorkflowRunEventsQueryKeyPrefix",
-    "allWorkflowRunQueryKeyPrefix",
-    "allWorkflowRunsQueryKeyPrefix",
-    "allWorkflowsQueryKeyPrefix",
   ],
   "hooks/cache-owners/system-config-cache-owner.ts": ["systemConfigQueryKey"],
   "hooks/cache-owners/terminal-cache-owner.ts": ["threadTerminalsQueryKey"],
@@ -222,11 +210,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "sidebarNavigationQueryKey",
     "threadQueryKey",
     "threadsQueryKey",
-  ],
-  "hooks/cache-owners/workflow-run-cache-owner.ts": [
-    "allWorkflowRunsQueryKeyPrefix",
-    "workflowRunQueryKey",
-    "workflowRunsQueryKey",
   ],
 };
 

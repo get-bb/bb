@@ -1000,33 +1000,6 @@ describe("bridge", () => {
       ),
     ).resolves.toEqual({ continue: true });
 
-    // StructuredOutput is the SDK structured-response channel: it must pass
-    // the readonly policy in both ask and deny escalation modes, or sessions
-    // without an approver (workflow agents) wedge on structured output.
-    for (const hookUnderTest of [
-      askHook,
-      denyOptions.hooks?.PreToolUse?.[0]?.hooks[0],
-    ]) {
-      if (!hookUnderTest) {
-        throw new Error("Expected readonly PreToolUse hook");
-      }
-      await expect(
-        hookUnderTest(
-          {
-            hook_event_name: "PreToolUse",
-            tool_name: "StructuredOutput",
-            tool_input: { ok: true },
-            tool_use_id: "tool-structured",
-            session_id: "session-1",
-            transcript_path: "/tmp/transcript.jsonl",
-            cwd: "/tmp/worktree",
-          },
-          "tool-structured",
-          { signal: new AbortController().signal },
-        ),
-      ).resolves.toEqual({ continue: true });
-    }
-
     const preToolUseHook = denyOptions.hooks?.PreToolUse?.[0]?.hooks[0];
     if (!preToolUseHook) {
       throw new Error("Expected readonly PreToolUse hook");
@@ -1647,54 +1620,6 @@ describe("bridge", () => {
 
       bridge.sendRequest(2, "thread/stop", {
         threadId: "thread-reasoning",
-      });
-      await bridge.flushWork();
-      queries[0]?.finish();
-      await bridge.waitForResponse(2);
-    } finally {
-      bridge.restore();
-    }
-  });
-
-  it("passes thread/start json_schema output format through to Claude SDK options", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-    const outputFormat = {
-      type: "json_schema",
-      schema: {
-        type: "object",
-        properties: { answer: { type: "string" } },
-        required: ["answer"],
-      },
-    };
-
-    try {
-      bridge.sendRequest(1, "thread/start", {
-        workflowsEnabled: false,
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        baseInstructions: "test",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        outputFormat,
-        permissionEscalation: "ask",
-        permissionMode: "default",
-        threadId: "thread-output-format",
-      });
-      await bridge.waitForResponse(1);
-
-      expect(queryMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          options: expect.objectContaining({ outputFormat }),
-        }),
-      );
-
-      bridge.sendRequest(2, "thread/stop", {
-        threadId: "thread-output-format",
       });
       await bridge.flushWork();
       queries[0]?.finish();

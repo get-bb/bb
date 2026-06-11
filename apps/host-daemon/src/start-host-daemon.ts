@@ -3,7 +3,6 @@ import {
   loadHostDaemonStartConfig,
   type HostDaemonConnectionConfig,
 } from "@bb/config/host-daemon";
-import { DEFAULTS } from "@bb/config/defaults";
 import type { HostType, ToolCallRequest, ToolCallResponse } from "@bb/domain";
 import { createHostWatcher, type HostWatcher } from "@bb/host-watcher";
 import { createLogger } from "@bb/logger";
@@ -168,11 +167,6 @@ export async function startHostDaemon(
       hostId: identity.hostId,
       hostName: identity.hostName,
       instanceId,
-      // The config loader applies the env default; the fallback covers the
-      // explicit-dataDir embedding that skips connection-config loading.
-      maxLiveWorkflowProviderProcesses:
-        hostDaemonConfig?.BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES ??
-        DEFAULTS.workflowMaxLiveProviderProcesses,
       appUrl:
         hostDaemonConfig?.BB_APP_URL === ""
           ? undefined

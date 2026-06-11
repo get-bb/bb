@@ -65,10 +65,7 @@ import {
   timelineRowsSignature,
 } from "./timelineRowSignatures.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
-import {
-  getThreadRoutePath,
-  getWorkflowRunRoutePath,
-} from "@/lib/route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
 import {
   allThreadQueryKeyPrefix,
@@ -1346,18 +1343,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   });
   const resolveSegmentLinkHref = useMemo<TimelineTitleLinkResolver>(() => {
     return (link) => {
-      switch (link.kind) {
-        case "thread":
-          // Thread routes are project-scoped; without a project context the
-          // segment renders as plain text.
-          return projectId !== undefined
-            ? getThreadRoutePath({ projectId, threadId: link.threadId })
-            : null;
-        case "workflow-run":
-          return getWorkflowRunRoutePath(link.runId);
-        default:
-          return assertNever(link);
-      }
+      // Thread routes are project-scoped; without a project context the
+      // segment renders as plain text.
+      return projectId !== undefined
+        ? getThreadRoutePath({ projectId, threadId: link.threadId })
+        : null;
     };
   }, [projectId]);
   const staticContextValue = useMemo<TimelineRendererStaticContextValue>(

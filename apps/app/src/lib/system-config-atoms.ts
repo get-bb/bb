@@ -1,5 +1,4 @@
 import { atom } from "jotai";
-import { defaultExperiments } from "@bb/domain";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
 import type { SystemConfigResponse } from "@bb/server-contract";
@@ -9,7 +8,7 @@ import { wsManager } from "./ws";
 
 // Offline/unavailable app behavior should fail closed independently of server defaults.
 const unavailableSystemConfig: SystemConfigResponse = {
-  experiments: defaultExperiments,
+  experiments: { claudeCodeMockCliTraffic: false },
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
   voiceTranscriptionEnabled: false,

@@ -16,7 +16,6 @@ import {
   type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
-  type ThreadPromptWorkflowsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import type {
   WorkspaceChangedFileSelection,
@@ -114,8 +113,6 @@ interface ThreadDetailPromptAreaProps {
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
   childThreadsSection: ThreadPromptChildThreadsSection | null;
-  /** Actively running workflow runs anchored to this thread. Null when none. */
-  workflowsSection: ThreadPromptWorkflowsSection | null;
   sendMessage: SendMessageMutationLike;
   thread: ThreadWithRuntime;
 }
@@ -149,7 +146,6 @@ export function ThreadDetailPromptArea({
   pendingTodos,
   parentThreadSection,
   childThreadsSection,
-  workflowsSection,
   sendMessage,
   thread,
 }: ThreadDetailPromptAreaProps) {
@@ -848,7 +844,6 @@ export function ThreadDetailPromptArea({
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
-          workflowsSection={workflowsSection}
           gitSection={
             workspaceChangedFilesSection
               ? {
@@ -895,7 +890,6 @@ export function ThreadDetailPromptArea({
       isQueueMutationPending,
       parentThreadSection,
       childThreadsSection,
-      workflowsSection,
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessages,
