@@ -33,11 +33,17 @@ const MENTION_TRIGGER: TypeaheadTrigger = { char: "@", kind: "mention" };
 const SLASH_TRIGGER: TypeaheadTrigger = { char: "/", kind: "command" };
 const DOLLAR_TRIGGER: TypeaheadTrigger = { char: "$", kind: "command" };
 
-let activeEditor: Editor | null = null;
+// Track EVERY editor a test creates, not just the last one: a test that builds
+// more than one editor would otherwise leak the earlier ones, whose ProseMirror
+// `DOMObserver` flush timeout fires after jsdom teardown ("document is not
+// defined") and crashes a later test file.
+const createdEditors: Editor[] = [];
 
 afterEach(() => {
-  activeEditor?.destroy();
-  activeEditor = null;
+  for (const editor of createdEditors) {
+    editor.destroy();
+  }
+  createdEditors.length = 0;
 });
 
 /**
@@ -50,7 +56,7 @@ function editorWithCaret(text: string, caretOffset = text.length): Editor {
     extensions: testEditorExtensions,
     content: text.length === 0 ? "" : { type: "doc", content: [paragraph(text)] },
   });
-  activeEditor = editor;
+  createdEditors.push(editor);
   const docPosition = caretOffset + 1;
   editor.commands.setTextSelection(docPosition);
   return editor;
