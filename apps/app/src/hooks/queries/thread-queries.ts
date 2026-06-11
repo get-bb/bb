@@ -476,7 +476,7 @@ export function useThreadSearch({
   const hasSearchableQuery = hasThreadSearchableQuery(debouncedQuery);
   const isDebouncing =
     active && liveQueryIsSearchable && trimmedQuery !== debouncedQuery;
-  const enabled = active && hasSearchableQuery;
+  const enabled = active && liveQueryIsSearchable && hasSearchableQuery;
   const threadSearchQuery = useQuery<ThreadSearchResponse>({
     queryKey: threadSearchQueryKey({ limitPerGroup, query: debouncedQuery }),
     queryFn: ({ signal }) =>

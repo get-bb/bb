@@ -39,7 +39,11 @@ interface ThreadListInvalidationArgs extends ProjectScopedInvalidationArgs {
 }
 
 export function getProjectListInvalidationQueryKeys(): QueryKey[] {
-  return [projectsQueryKey(), sidebarNavigationQueryKey()];
+  return [
+    projectsQueryKey(),
+    sidebarNavigationQueryKey(),
+    threadSearchQueryKeyPrefix(),
+  ];
 }
 
 export function getProjectPromptHistoryInvalidationQueryKeys({

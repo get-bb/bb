@@ -7,6 +7,7 @@ import {
   threadQueuedMessagesQueryKey,
   threadPromptHistoryQueryKey,
   threadQueryKey,
+  threadSearchQueryKeyPrefix,
   threadsQueryKey,
   threadStorageFilePreviewQueryKeyPrefix,
   threadStorageFilesForThreadQueryKeyPrefix,
@@ -96,6 +97,10 @@ export function refetchThreadListsAfterComposerThreadCreate({
   });
   void queryClient.refetchQueries({
     queryKey: sidebarNavigationQueryKey(),
+    type: "active",
+  });
+  void queryClient.refetchQueries({
+    queryKey: threadSearchQueryKeyPrefix(),
     type: "active",
   });
 }
