@@ -501,7 +501,7 @@ export function SideChatTabContent({
           />
         )}
       </div>
-      <div className="px-2 pb-2 pt-2">
+      <div className="px-4 pb-4 pt-2">
         <FollowUpPromptBox
           attachments={SIDE_CHAT_ATTACHMENTS}
           stack={null}
