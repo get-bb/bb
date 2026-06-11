@@ -16,7 +16,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import type { ThreadRuntimeDisplayStatus, ThreadWithRuntime } from "@bb/domain";
-import type { TimelineRow } from "@bb/server-contract";
+import type { TimelineActivityIntent, TimelineRow } from "@bb/server-contract";
 import {
   assertNever,
   buildTimelineActivityIntentTitles,
@@ -309,6 +309,7 @@ const TimelineRendererStaticContext =
   createContext<TimelineRendererStaticContextValue | null>(null);
 const TimelineTurnStateContext =
   createContext<TimelineTurnStateContextValue | null>(null);
+const SKILL_FILE_NAME = "SKILL.md";
 
 function useTimelineRendererStaticContext(): TimelineRendererStaticContextValue {
   const context = useContext(TimelineRendererStaticContext);
@@ -496,7 +497,10 @@ function addSenderThreadMetadata(
 
 function buildSenderThreadMetadataById({
   queryClient,
-}: BuildSenderThreadMetadataByIdArgs): ReadonlyMap<string, SenderThreadMetadata> {
+}: BuildSenderThreadMetadataByIdArgs): ReadonlyMap<
+  string,
+  SenderThreadMetadata
+> {
   const metadataById = new Map<string, SenderThreadMetadata>();
   if (queryClient === null) {
     return metadataById;
@@ -536,10 +540,7 @@ function shouldSyncSenderThreadMetadata(
 
 function useSenderThreadMetadataById({
   queryClient,
-}: UseSenderThreadMetadataByIdArgs): ReadonlyMap<
-  string,
-  SenderThreadMetadata
-> {
+}: UseSenderThreadMetadataByIdArgs): ReadonlyMap<string, SenderThreadMetadata> {
   const [metadataById, setMetadataById] = useState(() =>
     buildSenderThreadMetadataById({ queryClient }),
   );
@@ -961,13 +962,7 @@ function LazyTurnRowBody({
         rowTurnId,
         threadId,
       }),
-    [
-      rowSourceSeqEnd,
-      rowSourceSeqStart,
-      rowThreadId,
-      rowTurnId,
-      threadId,
-    ],
+    [rowSourceSeqEnd, rowSourceSeqStart, rowThreadId, rowTurnId, threadId],
   );
   const {
     data: detail,
@@ -1056,6 +1051,9 @@ function leadingIconForWorkRow(
   if (row.kind !== "work") {
     return undefined;
   }
+  if ("activityIntents" in row && row.activityIntents.some(isSkillReadIntent)) {
+    return "Zap";
+  }
   switch (row.workKind) {
     case "file-change":
       return "EditFile";
@@ -1080,6 +1078,23 @@ function leadingIconForWorkRow(
     default:
       return undefined;
   }
+}
+
+function isSkillReadIntent(intent: TimelineActivityIntent): boolean {
+  if (intent.type !== "read") {
+    return false;
+  }
+  const target = (intent.path ?? intent.name).replaceAll("\\", "/");
+  return target.split("/").pop() === SKILL_FILE_NAME;
+}
+
+function leadingIconForActivityIntentTitle(
+  entry: TimelineActivityIntentTitle,
+): IconName {
+  if (isSkillReadIntent(entry.intent)) {
+    return "Zap";
+  }
+  return entry.intentType === "search" ? "Search" : "Explore";
 }
 
 function TimelineRowView({
@@ -1115,7 +1130,7 @@ function TimelineRowView({
           >
             <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
               <Icon
-                name={entry.intentType === "search" ? "Search" : "Explore"}
+                name={leadingIconForActivityIntentTitle(entry)}
                 className="size-3.5 shrink-0 text-muted-foreground"
                 aria-hidden
               />

@@ -17,6 +17,9 @@ type TimelineReadActivityIntent = Extract<
   { type: "read" }
 >;
 
+const SKILL_FILE_NAME = "SKILL.md";
+const PLUGIN_CACHE_PATH_MARKERS = ["plugins", "cache"];
+
 export interface FormatTimelineActivityIntentDetailArgs {
   intent: TimelineActivityIntent;
   pathMode: TimelinePathDisplayMode;
@@ -62,7 +65,61 @@ function formatReadTarget(
   intent: TimelineReadActivityIntent,
   pathMode: TimelinePathDisplayMode,
 ): string {
-  return formatTimelinePath({ path: readTarget(intent), mode: pathMode });
+  const target = readTarget(intent);
+  if (pathMode === "compact") {
+    const skillTarget = formatCompactSkillTarget(target);
+    if (skillTarget !== null) {
+      return skillTarget;
+    }
+  }
+  return formatTimelinePath({ path: target, mode: pathMode });
+}
+
+function formatCompactSkillTarget(path: string): string | null {
+  const segments = path.replaceAll("\\", "/").split("/");
+  const fileIndex = segments.length - 1;
+  const fileName = segments[fileIndex];
+  if (fileName !== SKILL_FILE_NAME) {
+    return null;
+  }
+
+  const pluginCacheSkillName = formatPluginCacheRootSkillTarget({
+    fileIndex,
+    segments,
+  });
+  if (pluginCacheSkillName !== null) {
+    return pluginCacheSkillName;
+  }
+
+  for (let index = segments.length - 2; index >= 0; index -= 1) {
+    const skillName = segments[index];
+    if (skillName && skillName.length > 0) {
+      return `${skillName}/${SKILL_FILE_NAME}`;
+    }
+  }
+  return null;
+}
+
+interface FormatPluginCacheRootSkillTargetArgs {
+  fileIndex: number;
+  segments: readonly string[];
+}
+
+function formatPluginCacheRootSkillTarget({
+  fileIndex,
+  segments,
+}: FormatPluginCacheRootSkillTargetArgs): string | null {
+  const pluginName = segments[fileIndex - 2];
+  if (!pluginName || pluginName.length === 0) {
+    return null;
+  }
+  if (
+    segments[fileIndex - 4] !== PLUGIN_CACHE_PATH_MARKERS[1] ||
+    segments[fileIndex - 5] !== PLUGIN_CACHE_PATH_MARKERS[0]
+  ) {
+    return null;
+  }
+  return `${pluginName}/${SKILL_FILE_NAME}`;
 }
 
 export function formatTimelineActivityIntentDetail({
