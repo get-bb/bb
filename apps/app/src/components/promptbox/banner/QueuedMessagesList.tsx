@@ -324,7 +324,7 @@ export function QueuedMessagesList({
           type="button"
           aria-expanded={isExpanded}
           onClick={() => setIsExpanded((prev) => !prev)}
-          className="-ml-1 flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
+          className="-ml-2 flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
         >
           <span className="opacity-70">Queued</span>
           <span className="text-2xs text-subtle-foreground">
