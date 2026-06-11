@@ -1,5 +1,11 @@
 import { CopyButton } from "../../ui/copy-button.js";
 import { Icon } from "@/components/ui/icon.js";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip.js";
 import { cn } from "@/lib/utils";
 
 interface MessageActionBarProps {
@@ -41,43 +47,60 @@ export function MessageActionBar({
   }
 
   return (
-    <div
-      className={cn(
-        "flex items-center gap-2",
-        alignment === "end" ? "justify-end" : "justify-start",
-      )}
-    >
-      {hasCopy ? (
-        <CopyButton
-          text={messageText}
-          label="Copy message"
-          className={HOVER_REVEAL_CLASS}
-        />
-      ) : null}
-      {onFork ? (
-        <button
-          type="button"
-          className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
-          onClick={onFork}
-          disabled={disabled}
-          aria-label="Fork into new thread"
-          title="Fork into new thread"
-        >
-          <Icon name="Fork" className="size-3" />
-        </button>
-      ) : null}
-      {onSideChat ? (
-        <button
-          type="button"
-          className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
-          onClick={onSideChat}
-          disabled={disabled}
-          aria-label="Open side chat"
-          title="Open side chat"
-        >
-          <Icon name="SideChat" className="size-3" />
-        </button>
-      ) : null}
-    </div>
+    <TooltipProvider delayDuration={300}>
+      <div
+        className={cn(
+          "flex items-center gap-2",
+          alignment === "end" ? "justify-end" : "justify-start",
+        )}
+      >
+        {hasCopy ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <CopyButton
+                text={messageText}
+                label="Copy message"
+                // The design-system tooltip replaces the native one below.
+                title={undefined}
+                className={HOVER_REVEAL_CLASS}
+              />
+            </TooltipTrigger>
+            <TooltipContent>Copy message</TooltipContent>
+          </Tooltip>
+        ) : null}
+        {onFork ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
+                onClick={onFork}
+                disabled={disabled}
+                aria-label="Fork into new thread"
+              >
+                <Icon name="Fork" className="size-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Fork into new thread</TooltipContent>
+          </Tooltip>
+        ) : null}
+        {onSideChat ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
+                onClick={onSideChat}
+                disabled={disabled}
+                aria-label="Open side chat"
+              >
+                <Icon name="SideChat" className="size-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Open side chat</TooltipContent>
+          </Tooltip>
+        ) : null}
+      </div>
+    </TooltipProvider>
   );
 }

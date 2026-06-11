@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useState,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+} from "react";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { Icon } from "@/components/ui/icon.js";
@@ -36,47 +43,59 @@ function useClipboardCopy({
   return { copied, copy };
 }
 
-interface CopyButtonProps extends ClipboardCopyOptions {
-  className?: string;
+interface CopyButtonProps
+  extends ClipboardCopyOptions,
+    Omit<ComponentPropsWithoutRef<"button">, "type" | "onClick"> {
   iconClassName?: string;
   label?: string;
 }
 
-export function CopyButton({
-  text,
-  className,
-  iconClassName,
-  label = "Copy to clipboard",
-  successMessage,
-  errorMessage,
-}: CopyButtonProps) {
-  const { copied, copy } = useClipboardCopy({
-    text,
-    successMessage,
-    errorMessage,
-  });
+// forwardRef + prop spreading so it can act as a Radix `asChild` trigger (e.g.
+// wrapped in a Tooltip). `title` defaults to the label but a caller can pass
+// `title={undefined}` to suppress the native tooltip when supplying its own.
+export const CopyButton = forwardRef<HTMLButtonElement, CopyButtonProps>(
+  function CopyButton(
+    {
+      text,
+      className,
+      iconClassName,
+      label = "Copy to clipboard",
+      successMessage,
+      errorMessage,
+      ...rest
+    },
+    ref,
+  ) {
+    const { copied, copy } = useClipboardCopy({
+      text,
+      successMessage,
+      errorMessage,
+    });
 
-  return (
-    <button
-      type="button"
-      className={cn(
-        "inline-flex size-5 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:opacity-100",
-        className,
-      )}
-      onClick={() => {
-        void copy();
-      }}
-      aria-label={label}
-      title={label}
-    >
-      {copied ? (
-        <Icon name="Check" className={cn("size-3", iconClassName)} />
-      ) : (
-        <Icon name="Copy" className={cn("size-3", iconClassName)} />
-      )}
-    </button>
-  );
-}
+    return (
+      <button
+        ref={ref}
+        type="button"
+        aria-label={label}
+        title={label}
+        {...rest}
+        className={cn(
+          "inline-flex size-5 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:opacity-100",
+          className,
+        )}
+        onClick={() => {
+          void copy();
+        }}
+      >
+        {copied ? (
+          <Icon name="Check" className={cn("size-3", iconClassName)} />
+        ) : (
+          <Icon name="Copy" className={cn("size-3", iconClassName)} />
+        )}
+      </button>
+    );
+  },
+);
 
 interface CopyableInlineLabelProps extends ClipboardCopyOptions {
   label: string;
