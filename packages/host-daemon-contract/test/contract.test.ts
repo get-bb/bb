@@ -433,6 +433,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
+  "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
+    "Runtime execution options may omit the Claude Code mock-CLI-traffic config on legacy commands; the server fills the current app setting before dispatching new runtime work.",
 };
 
 describe("host-daemon local schemas", () => {

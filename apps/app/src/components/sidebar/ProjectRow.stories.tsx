@@ -300,6 +300,112 @@ const deepWorktreeB = makeThread({
   hasPendingInteraction: true,
 });
 
+// --- Forks + a mixed-children parent, for the long mixed-list story below. ---
+
+// A source thread someone forked twice from different branch points. Forks nest
+// under their source (parentThreadId) and carry a leading fork glyph
+// (childOrigin: "fork"); side chats, by contrast, are kept out of the tree.
+const forkSourceThread = makeThread({
+  id: "thr_fork_source",
+  title: "Investigate flaky timeline test",
+  titleFallback: "Investigate flaky timeline test",
+});
+const forkMutexAttempt = makeThread({
+  id: "thr_fork_mutex",
+  title: "Try a mutex around the watcher",
+  titleFallback: "Try a mutex around the watcher",
+  parentThreadId: forkSourceThread.id,
+  childOrigin: "fork",
+});
+const forkFakeClock = makeThread({
+  id: "thr_fork_clock",
+  title: "Repro with a fake clock",
+  titleFallback: "Repro with a fake clock",
+  parentThreadId: forkSourceThread.id,
+  childOrigin: "fork",
+  status: "active",
+  runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+});
+
+// One parent with both a fork and an agent-delegated child, so the fork glyph
+// visibly distinguishes the two child kinds under a single parent.
+const mixedParent = makeThread({
+  id: "thr_mixed_parent",
+  title: "Ship the settings redesign",
+  titleFallback: "Ship the settings redesign",
+});
+const mixedAgentChild = makeThread({
+  id: "thr_mixed_agent_child",
+  title: "Migrate appearance settings",
+  titleFallback: "Migrate appearance settings",
+  parentThreadId: mixedParent.id,
+  hasPendingInteraction: true,
+});
+const mixedForkChild = makeThread({
+  id: "thr_mixed_fork_child",
+  title: "Spike: token-based theming",
+  titleFallback: "Spike: token-based theming",
+  parentThreadId: mixedParent.id,
+  childOrigin: "fork",
+});
+
+// Extra standalone roots so the mixed list reads like a real, busy project.
+const standaloneRoots: ThreadListEntry[] = [
+  makeThread({
+    id: "thr_extra_vite",
+    title: "Upgrade Vite to 6 and dedupe esbuild",
+    titleFallback: "Upgrade Vite to 6 and dedupe esbuild",
+  }),
+  makeThread({
+    id: "thr_extra_backoff",
+    title: "Tune host reconnect backoff",
+    titleFallback: "Tune host reconnect backoff",
+    status: "active",
+    runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+  }),
+  makeThread({
+    id: "thr_extra_docs",
+    title: "Draft the side-chat docs",
+    titleFallback: "Draft the side-chat docs",
+  }),
+  makeThread({
+    id: "thr_extra_perf",
+    title: "Profile sidebar re-renders",
+    titleFallback: "Profile sidebar re-renders",
+    hasPendingInteraction: true,
+  }),
+];
+
+// A long, mixed list exercising every row type the sidebar tree renders: plain
+// roots in several states, an agent-delegated parent (collapse it to see the
+// rolled-up child activity), forks nested under a source, a parent mixing a
+// fork with an agent child, a project-level worktree env group, and a deep nest
+// with its own nested worktree group.
+const mixedThreadList: ThreadListEntry[] = [
+  busyThread,
+  pendingThread,
+  ...standaloneRoots,
+  parentThread,
+  parentChildA,
+  parentChildB,
+  forkSourceThread,
+  forkMutexAttempt,
+  forkFakeClock,
+  mixedParent,
+  mixedAgentChild,
+  mixedForkChild,
+  sharedWorktreeThreadA,
+  sharedWorktreeThreadB,
+  idleThread,
+  deepRootParent,
+  deepIntermediateParent,
+  deepParentChild,
+  deepNestedParent,
+  deepNestedParentChild,
+  deepWorktreeA,
+  deepWorktreeB,
+];
+
 const multipleProjects: StoryProjectRow[] = [
   {
     project: makeProject({ id: "proj_bb", name: "bb" }),
@@ -750,6 +856,27 @@ export function MultipleProjects() {
             <InteractiveProjectList rows={fullProjects} />
           </ProjectListShell>
         </SidebarStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function MixedThreadList() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="long mixed list — every thread type"
+        hint="plain roots in several states, an agent-delegated parent collapsed to show its rolled-up child activity, forks nested under a source (leading fork glyph), a parent mixing a fork + an agent child, a project-level worktree env group, and a deep nest with a nested worktree group. Click chevrons to expand/collapse."
+      >
+        {singleProject({
+          project: makeProject({ id: "proj_bb", name: "bb" }),
+          isActive: true,
+          threadListState: { status: "ready", threads: mixedThreadList },
+          // Collapse the agent-delegated parent so its rolled-up child activity
+          // (count + busy/pending glyphs) shows; the fork and mixed parents stay
+          // expanded so their fork glyphs are visible.
+          initialCollapsedThreadIds: new Set([parentThread.id]),
+        })}
       </StoryRow>
     </StoryCard>
   );
