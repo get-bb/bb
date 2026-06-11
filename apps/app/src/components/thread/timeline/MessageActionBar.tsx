@@ -116,7 +116,7 @@ export function MessageActionBar({
                 onClick={onSendToMain}
                 aria-label="Send to main thread"
               >
-                <Icon name="ArrowUpRight" className="size-3" />
+                <Icon name="ArrowTurnBackward" className="size-3" />
               </button>
             </TooltipTrigger>
             <TooltipContent>Send to main thread</TooltipContent>
