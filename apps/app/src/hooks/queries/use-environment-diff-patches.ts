@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import {
   DIFF_PATCH_MAX_PATHS_PER_REQUEST,
+  type DiffPatchEntry,
   type EnvironmentDiffPatchResponse,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
@@ -44,12 +45,18 @@ export type RequestDiffPatchPaths = (args: RequestDiffPatchPathsArgs) => void;
 export type GetDiffPatchState = (path: string) => DiffPatchState;
 export type RetryDiffPatchPath = (path: string) => void;
 export type LoadDiffPatchPath = (path: string) => void;
+export type SeedDiffPatchEntries = (entries: DiffPatchEntry[]) => void;
 
 export interface UseEnvironmentDiffPatchesResult {
   requestPaths: RequestDiffPatchPaths;
   getPatchState: GetDiffPatchState;
   retry: RetryDiffPatchPath;
   loadPath: LoadDiffPatchPath;
+  /**
+   * Prime the cache with patches the TOC shipped inline (`initialPatches`) so
+   * the first screen renders without a separate fetch. Idempotent.
+   */
+  seedInitialPatches: SeedDiffPatchEntries;
 }
 
 const IDLE_STATE: DiffPatchState = { status: "idle" };
@@ -349,7 +356,16 @@ export function useEnvironmentDiffPatches(
     [queryClient, identity, inFlight],
   );
 
-  return { requestPaths, getPatchState, retry, loadPath };
+  const seedInitialPatches = useCallback(
+    (entries: DiffPatchEntry[]) => {
+      for (const entry of entries) {
+        writeDiffPatchEntry({ queryClient, identity, entry });
+      }
+    },
+    [queryClient, identity],
+  );
+
+  return { requestPaths, getPatchState, retry, loadPath, seedInitialPatches };
 }
 
 function markLoading(

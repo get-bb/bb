@@ -15,6 +15,7 @@ import {
   environmentStatusQuerySchema,
   updateEnvironmentRequestSchema,
   typedRoutes,
+  type DiffPatchEntry,
   type EnvironmentDiffFileQuery,
   type EnvironmentDiffQuery,
   type PublicApiSchema,
@@ -48,7 +49,10 @@ import {
   requireAvailableWorkspaceDiff,
   requireAvailableWorkspaceStatus,
 } from "../services/environments/workspace-rpc-results.js";
-import { rawDiffFileStatToEntry } from "./diff-tiering.js";
+import {
+  rawDiffFileStatToEntry,
+  selectInitialPatchPaths,
+} from "./diff-tiering.js";
 
 const COMMIT_FALLBACK_MESSAGE = "bb: automated commit";
 const SQUASH_MERGE_FALLBACK_MESSAGE = "bb: squash merge";
@@ -353,11 +357,36 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           message: `This diff changes more than ${DIFF_FILES_MAX_COUNT} files; it is too large to display.`,
         });
       }
+      const files = result.files.map(rawDiffFileStatToEntry);
+      // Ship a small diff's `auto`-tier patches with the TOC so initial content
+      // paints in one round-trip (empty for large diffs — see
+      // selectInitialPatchPaths). A failed/unavailable patch fetch degrades to an
+      // empty list; the client then loads the first screen on demand.
+      const initialPatchPaths = selectInitialPatchPaths(files);
+      let initialPatches: DiffPatchEntry[] = [];
+      if (initialPatchPaths.length > 0) {
+        const patchResult = await callHostRetryableOnlineRpc(deps, {
+          hostId: target.hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "workspace.diffPatch",
+            environmentId: target.environmentId,
+            workspaceContext: target.workspaceContext,
+            target: toWorkspaceDiffTarget(query),
+            paths: initialPatchPaths,
+            maxBytesPerFile: DIFF_FILE_PATCH_MAX_BYTES,
+          },
+        });
+        if (patchResult.outcome === "available") {
+          initialPatches = patchResult.patches;
+        }
+      }
       return context.json({
         outcome: "available",
-        files: result.files.map(rawDiffFileStatToEntry),
+        files,
         shortstat: result.shortstat,
         mergeBaseRef: result.mergeBaseRef,
+        initialPatches,
       });
     },
   );

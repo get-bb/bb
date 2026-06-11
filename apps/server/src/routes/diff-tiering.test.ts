@@ -4,8 +4,26 @@ import { describe, expect, it } from "vitest";
 import {
   DIFF_FILE_AUTO_LOAD_MAX_CHANGED_LINES,
   DIFF_FILE_TOO_LARGE_CHANGED_LINES,
+  DIFF_FILES_INLINE_PATCH_MAX_FILES,
 } from "../constants.js";
-import { rawDiffFileStatToEntry } from "./diff-tiering.js";
+import {
+  rawDiffFileStatToEntry,
+  selectInitialPatchPaths,
+} from "./diff-tiering.js";
+
+function makeEntry(overrides: Partial<DiffFileEntry>): DiffFileEntry {
+  return {
+    path: "src/file.ts",
+    previousPath: null,
+    changeKind: "modified",
+    additions: 1,
+    deletions: 0,
+    binary: false,
+    origin: "tracked",
+    loadMode: "auto",
+    ...overrides,
+  };
+}
 
 function makeStat(overrides: Partial<RawDiffFileStat>): RawDiffFileStat {
   return {
@@ -115,5 +133,43 @@ describe("rawDiffFileStatToEntry", () => {
       );
       expect(entry.loadMode).toBe("too_large");
     });
+  });
+});
+
+describe("selectInitialPatchPaths", () => {
+  it("returns only the auto-tier paths for a small diff", () => {
+    const paths = selectInitialPatchPaths([
+      makeEntry({ path: "a.ts", loadMode: "auto" }),
+      makeEntry({ path: "b.ts", loadMode: "on_demand" }),
+      makeEntry({ path: "c.ts", loadMode: "auto" }),
+      makeEntry({ path: "d.ts", loadMode: "too_large" }),
+    ]);
+    expect(paths).toEqual(["a.ts", "c.ts"]);
+  });
+
+  it("includes a diff at exactly the inline-patch file ceiling", () => {
+    const files = Array.from({ length: DIFF_FILES_INLINE_PATCH_MAX_FILES }, (_, i) =>
+      makeEntry({ path: `f${i}.ts`, loadMode: "auto" }),
+    );
+    expect(selectInitialPatchPaths(files)).toHaveLength(
+      DIFF_FILES_INLINE_PATCH_MAX_FILES,
+    );
+  });
+
+  it("ships nothing for a diff above the ceiling (cards auto-collapse)", () => {
+    const files = Array.from(
+      { length: DIFF_FILES_INLINE_PATCH_MAX_FILES + 1 },
+      (_, i) => makeEntry({ path: `f${i}.ts`, loadMode: "auto" }),
+    );
+    expect(selectInitialPatchPaths(files)).toEqual([]);
+  });
+
+  it("returns an empty list for an all-on_demand/too_large small diff", () => {
+    expect(
+      selectInitialPatchPaths([
+        makeEntry({ path: "big.ts", loadMode: "too_large" }),
+        makeEntry({ path: "img.png", loadMode: "on_demand", binary: true }),
+      ]),
+    ).toEqual([]);
   });
 });

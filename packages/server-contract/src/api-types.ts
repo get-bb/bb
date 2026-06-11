@@ -2551,6 +2551,15 @@ export const diffFileEntrySchema = z.object({
 });
 export type DiffFileEntry = z.infer<typeof diffFileEntrySchema>;
 
+export const diffPatchEntrySchema = z.object({
+  path: z.string(),
+  /** Unified diff for just this file. */
+  patch: z.string(),
+  /** True when the patch exceeded the per-file byte budget and was tail-cut. */
+  truncated: z.boolean(),
+});
+export type DiffPatchEntry = z.infer<typeof diffPatchEntrySchema>;
+
 export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
   "outcome",
   [
@@ -2561,6 +2570,14 @@ export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
         shortstat: z.string(),
         /** Required + nullable: null = no merge-base for the current target. */
         mergeBaseRef: z.string().nullable(),
+        /**
+         * Patches for the first screen of `auto`-tier files, shipped with the
+         * TOC so initial content paints in one round-trip (no separate
+         * `/diff/patch` hop). Bounded by the server's initial-patch budget;
+         * the rest load on demand as the list scrolls. Empty when the diff has
+         * no `auto` files.
+         */
+        initialPatches: z.array(diffPatchEntrySchema),
       })
       .strict(),
     environmentWorkspaceNotApplicableOutcomeSchema,
@@ -2575,15 +2592,6 @@ export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
 export type EnvironmentDiffFilesResponse = z.infer<
   typeof environmentDiffFilesResponseSchema
 >;
-
-export const diffPatchEntrySchema = z.object({
-  path: z.string(),
-  /** Unified diff for just this file. */
-  patch: z.string(),
-  /** True when the patch exceeded the per-file byte budget and was tail-cut. */
-  truncated: z.boolean(),
-});
-export type DiffPatchEntry = z.infer<typeof diffPatchEntrySchema>;
 
 export const environmentDiffPatchResponseSchema = z.discriminatedUnion(
   "outcome",

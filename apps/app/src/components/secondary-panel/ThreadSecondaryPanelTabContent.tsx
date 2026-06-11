@@ -253,6 +253,7 @@ export function GitDiffTabContent({
       target={target}
       diffIdentity={diffIdentity}
       files={diffFilesResponse.files}
+      initialPatches={diffFilesResponse.initialPatches}
       filesUpdatedAt={diffFilesUpdatedAt}
       diffViewOptions={gitDiffViewOptions}
       filePathRoot={workspaceRootPath}

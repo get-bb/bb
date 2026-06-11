@@ -19,3 +19,12 @@ export const DIFF_FILE_TOO_LARGE_CHANGED_LINES = 20_000;
 export const DIFF_FILE_PATCH_MAX_BYTES = 512 * 1024;
 /** Hard ceiling on table-of-contents entries; beyond this the TOC is not_applicable. */
 export const DIFF_FILES_MAX_COUNT = 5000;
+/**
+ * Diffs with at most this many files get ALL their `auto`-tier patches shipped
+ * inline with the TOC (`/diff/files` → `initialPatches`), so a small diff paints
+ * in one round-trip. Larger diffs ship none: their cards auto-collapse on the
+ * client (mirrors the frontend's auto-collapse threshold), so inline patches
+ * would not render, and the extra patch pass would not be worth its cost. Those
+ * load on demand as rows expand/scroll.
+ */
+export const DIFF_FILES_INLINE_PATCH_MAX_FILES = 10;

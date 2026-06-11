@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAtom } from "jotai";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { DiffFileEntry } from "@bb/server-contract";
+import type { DiffFileEntry, DiffPatchEntry } from "@bb/server-contract";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { RequestDiffFileContents } from "@/components/git-diff/GitDiffCardBody";
 import {
@@ -30,6 +30,12 @@ export interface DiffFilesPanelProps {
   diffIdentity: string;
   files: DiffFileEntry[];
   /**
+   * Patches the TOC shipped inline for the first screen of `auto` files. Seeded
+   * into the patch cache on load so initial content renders in one round-trip,
+   * without a separate `/diff/patch` fetch.
+   */
+  initialPatches: DiffPatchEntry[];
+  /**
    * The TOC query's `dataUpdatedAt`. Bumps whenever the diff's table of contents
    * refetches — including a content-only file edit that leaves the file
    * membership (and therefore the visible/overscan paths) unchanged. The panel
@@ -56,6 +62,7 @@ export function DiffFilesPanel({
   target,
   diffIdentity,
   files,
+  initialPatches,
   filesUpdatedAt,
   diffViewOptions,
   filePathRoot,
@@ -64,8 +71,17 @@ export function DiffFilesPanel({
   onRequestFileContents,
 }: DiffFilesPanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const { requestPaths, getPatchState, retry, loadPath } =
+  const { requestPaths, getPatchState, retry, loadPath, seedInitialPatches } =
     useEnvironmentDiffPatches(environmentId, { target });
+
+  // Prime the cache with the TOC's inline first-screen patches before the
+  // scroll-driven fetch runs, so those cards render immediately and aren't
+  // re-requested. Re-seeds whenever the TOC refetches (`filesUpdatedAt`).
+  useEffect(() => {
+    if (initialPatches.length > 0) {
+      seedInitialPatches(initialPatches);
+    }
+  }, [seedInitialPatches, initialPatches, filesUpdatedAt]);
 
   const virtualizer = useVirtualizer({
     count: files.length,
