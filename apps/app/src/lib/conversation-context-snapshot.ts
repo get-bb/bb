@@ -41,8 +41,6 @@ export interface BuildConversationContextSnapshotArgs {
    * since the fork renders the anchor as its visible seed-without-run row.
    */
   scope: ConversationContextScope;
-  /** Preceding-message window size; defaults per {@link scope}. */
-  windowSize?: number;
 }
 
 interface SnapshotMessage {
@@ -80,11 +78,20 @@ function flattenConversationMessages(
 }
 
 /**
- * Locates the anchor agent message in the flattened list. Matches the last
- * assistant message whose text equals the source text (the source is an agent
- * message, and the most recent occurrence is the one just acted on). Returns the
- * index, or the last index when no exact match is found so the window still
- * captures the most recent exchange.
+ * Locates the anchor agent message in the flattened list. Matches the LAST
+ * assistant message whose text equals the source text — the source is an agent
+ * message and, when its text recurs, the most recent occurrence is the one just
+ * acted on. Returns that index, or the last index when no exact match is found
+ * so the window still captures the most recent exchange.
+ *
+ * Two consequences worth knowing: for `fork` scope this fallback treats the tail
+ * as the anchor, so the lead-up window excludes the genuinely-last message; and
+ * if the forked text happens to recur, the window anchors on the newest
+ * occurrence rather than the exact one forked from. Both are acceptable here —
+ * the visible seed still carries the exact forked text, and the `bb thread show`
+ * pointer in the header lets the agent pull the full parent when the bounded
+ * window misrepresents the lead-up. (Text is the only anchor signal threaded
+ * through today; switch to row-id matching if this ever becomes a real problem.)
  */
 function resolveAnchorIndex(
   messages: readonly SnapshotMessage[],
@@ -143,14 +150,13 @@ export function buildConversationContextSnapshot({
   sourceMessageText,
   parentThreadId,
   scope,
-  windowSize,
 }: BuildConversationContextSnapshotArgs): PromptInput[] {
   const messages = flattenConversationMessages(rows);
   if (messages.length === 0) {
     return [];
   }
 
-  const size = windowSize ?? defaultWindowSize(scope);
+  const size = defaultWindowSize(scope);
   const anchorIndex = resolveAnchorIndex(messages, sourceMessageText);
   const windowStart = Math.max(0, anchorIndex - size);
   const windowMessages =

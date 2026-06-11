@@ -50,9 +50,10 @@ export interface ThreadPromptParentThreadSection {
   href: string;
   /**
    * How the current thread relates to the linked thread: a fork renders
-   * "Forked from …", any other child renders "Parent …".
+   * "Forked from …", a side chat renders "Side chat of …", any other child
+   * renders "Parent …".
    */
-  relationship: "parent" | "fork";
+  relationship: "parent" | "fork" | "side-chat";
 }
 
 /**
@@ -357,12 +358,33 @@ function TodoBody({
   );
 }
 
+// Single source of truth for how the linked source thread is described across
+// the banner's three render surfaces (inline label, expanded body, aria).
+const PARENT_SECTION_COPY: Record<
+  ThreadPromptParentThreadSection["relationship"],
+  { verb: string; bodyLead: string; ariaPrefix: string }
+> = {
+  parent: {
+    verb: "Parent",
+    bodyLead: "This thread is a child of ",
+    ariaPrefix: "Parent thread",
+  },
+  fork: {
+    verb: "Forked from",
+    bodyLead: "This thread was forked from ",
+    ariaPrefix: "Forked from",
+  },
+  "side-chat": {
+    verb: "Side chat of",
+    bodyLead: "This thread is a side chat of ",
+    ariaPrefix: "Side chat of",
+  },
+};
+
 function parentSectionAriaLabel(
   section: ThreadPromptParentThreadSection,
 ): string {
-  return section.relationship === "fork"
-    ? `Forked from ${section.parentThreadTitle}`
-    : `Parent thread ${section.parentThreadTitle}`;
+  return `${PARENT_SECTION_COPY[section.relationship].ariaPrefix} ${section.parentThreadTitle}`;
 }
 
 function ParentThreadBody({
@@ -376,9 +398,7 @@ function ParentThreadBody({
 }) {
   return (
     <div className="px-3 pb-2 pt-1.5 text-xs leading-relaxed text-muted-foreground">
-      {relationship === "fork"
-        ? "This thread was forked from "
-        : "This thread is a child of "}
+      {PARENT_SECTION_COPY[relationship].bodyLead}
       <NavLink
         to={href}
         className="text-foreground/90 underline-offset-2 hover:underline"
@@ -645,9 +665,7 @@ export function ThreadPromptContextBanner({
               aria-hidden="true"
             />
             <span className="min-w-0 truncate">
-              {parentThreadSection.relationship === "fork"
-                ? "Forked from"
-                : "Parent"}{" "}
+              {PARENT_SECTION_COPY[parentThreadSection.relationship].verb}{" "}
               <NavLink
                 to={parentThreadSection.href}
                 className="text-foreground/90 underline underline-offset-2"

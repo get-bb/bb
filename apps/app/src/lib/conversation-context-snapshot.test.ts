@@ -65,7 +65,6 @@ function snapshotText(args: {
   rows: readonly TimelineRow[];
   sourceMessageText: string;
   scope: ConversationContextScope;
-  windowSize?: number;
 }): string {
   const parts = buildConversationContextSnapshot({
     parentThreadId: "thr_main",
@@ -127,47 +126,43 @@ describe("buildConversationContextSnapshot", () => {
   });
 
   describe("side-chat scope", () => {
-    it("includes the anchor, the preceding window, and the tail after it", () => {
-      const rows = [
-        conversationRow("user", "u1"),
-        conversationRow("assistant", "a1"),
-        conversationRow("user", "u2"),
-        conversationRow("assistant", "anchor"),
-        conversationRow("user", "after-user"),
-      ];
+    it("includes the anchor + preceding window + tail, but drops messages older than the window", () => {
+      const rows: TimelineRow[] = [];
+      // (window + 2) messages precede the anchor, so the two oldest fall outside.
+      for (let i = 0; i < SIDE_CHAT_CONTEXT_WINDOW_SIZE + 2; i += 1) {
+        rows.push(conversationRow("user", `pre-${i}`));
+      }
+      rows.push(conversationRow("assistant", "anchor"));
+      rows.push(conversationRow("user", "after-user"));
       const text = snapshotText({
         rows,
         sourceMessageText: "anchor",
         scope: "side-chat",
-        windowSize: 2,
       });
       expect(text).toContain("Assistant: anchor"); // anchor itself
-      expect(text).toContain("User: u2"); // preceding window
       expect(text).toContain("User: after-user"); // captured tail
-      expect(text).not.toContain("User: u1"); // beyond the window
+      expect(text).toContain(`User: pre-${SIDE_CHAT_CONTEXT_WINDOW_SIZE - 1}`); // newest within window
+      expect(text).not.toContain("User: pre-0"); // oldest, beyond the window
     });
   });
 
   describe("fork scope", () => {
-    it("includes the lead-up before the anchor but not the anchor (it's the seed) or the tail", () => {
-      const rows = [
-        conversationRow("user", "u1"),
-        conversationRow("assistant", "a1"),
-        conversationRow("user", "u2"),
-        conversationRow("assistant", "anchor"),
-        conversationRow("user", "after-user"),
-      ];
+    it("includes the lead-up within the window but not the anchor, the tail, or pre-window messages", () => {
+      const rows: TimelineRow[] = [];
+      for (let i = 0; i < FORK_CONTEXT_WINDOW_SIZE + 2; i += 1) {
+        rows.push(conversationRow("user", `pre-${i}`));
+      }
+      rows.push(conversationRow("assistant", "anchor"));
+      rows.push(conversationRow("user", "after-user"));
       const text = snapshotText({
         rows,
         sourceMessageText: "anchor",
         scope: "fork",
-        windowSize: 2,
       });
-      expect(text).toContain("Assistant: a1"); // lead-up (within window)
-      expect(text).toContain("User: u2"); // lead-up
+      expect(text).toContain(`User: pre-${FORK_CONTEXT_WINDOW_SIZE - 1}`); // lead-up within window
       expect(text).not.toContain("Assistant: anchor"); // anchor is the visible seed
       expect(text).not.toContain("User: after-user"); // nothing after the anchor
-      expect(text).not.toContain("User: u1"); // beyond the window
+      expect(text).not.toContain("User: pre-0"); // oldest, beyond the window
     });
 
     it("still emits the parent pointer when the anchor is the first message (no lead-up)", () => {

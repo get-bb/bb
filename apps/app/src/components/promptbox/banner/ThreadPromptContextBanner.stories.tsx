@@ -235,6 +235,12 @@ const forkedFromFixture: ThreadPromptParentThreadSection = {
   relationship: "fork",
 };
 
+const sideChatFromFixture: ThreadPromptParentThreadSection = {
+  parentThreadTitle: "Investigate flaky test",
+  href: "/projects/proj-1/threads/thr_source_demo",
+  relationship: "side-chat",
+};
+
 const childThreadsFixture: ThreadPromptChildThreadsSection = {
   items: [
     {
@@ -384,6 +390,12 @@ export function Overview() {
         hint={'renders "Forked from …" instead of "Parent …"'}
       >
         <Row parentThread={forkedFromFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="side-chat thread (alone)"
+        hint={'renders "Side chat of …"'}
+      >
+        <Row parentThread={sideChatFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
         label="parent thread with active children (collapsed)"

@@ -1047,10 +1047,16 @@ export function ThreadDetailView() {
         projectId: thread.projectId,
         threadId: thread.parentThreadId,
       });
-      // A fork links back as "Forked from …"; any other child renders the
-      // generic "Parent …". The banner supplies the verb, so the title here is
-      // just the linked thread's name (or an id fallback while it loads).
-      const relationship = thread.childOrigin === "fork" ? "fork" : "parent";
+      // A fork links back as "Forked from …", a side chat as "Side chat of …";
+      // any other child renders the generic "Parent …". The banner supplies the
+      // verb, so the title here is just the linked thread's name (or an id
+      // fallback while it loads).
+      const relationship =
+        thread.childOrigin === "fork"
+          ? "fork"
+          : thread.childOrigin === "side-chat"
+            ? "side-chat"
+            : "parent";
       if (parentThread === undefined) {
         // Parent record not yet loaded — show id-based fallback so the user
         // doesn't get a flicker of "no parent" before resolution.
@@ -1394,7 +1400,9 @@ export function ThreadDetailView() {
         parentThreadId
           ? thread?.childOrigin === "fork"
             ? "fork"
-            : "child"
+            : thread?.childOrigin === "side-chat"
+              ? "side chat"
+              : "child"
           : null
       }
       isSecondaryPanelOpen={isSecondaryPanelOpen}

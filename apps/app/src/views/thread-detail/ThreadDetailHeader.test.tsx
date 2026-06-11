@@ -25,7 +25,7 @@ vi.mock("@/components/ui/sidebar.js", () => ({
 interface RenderHeaderOverrides {
   actionsMenu?: ReactNode;
   activeTerminalCount?: number;
-  childPillLabel?: "child" | "fork" | null;
+  childPillLabel?: "child" | "fork" | "side chat" | null;
   isSecondaryPanelOpen?: boolean;
   onOpenThreadGitAction?: (target: ThreadGitActionDialogTarget) => void;
   onToggleSecondaryPanel?: () => void;
@@ -81,6 +81,11 @@ describe("ThreadDetailHeader child pill", () => {
   it("renders a 'child' pill for a non-fork child thread", () => {
     renderHeader({ childPillLabel: "child" });
     expect(screen.getByText("child")).toBeTruthy();
+  });
+
+  it("renders a 'side chat' pill for a side-chat thread", () => {
+    renderHeader({ childPillLabel: "side chat" });
+    expect(screen.getByText("side chat")).toBeTruthy();
   });
 
   it("renders no pill for a root thread", () => {
