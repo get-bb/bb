@@ -8,6 +8,14 @@ const execFileAsync = promisify(execFile);
 /** `gh` is a network round-trip; cap it so it never blocks a status poll. */
 const GH_PR_VIEW_TIMEOUT_MS = 10_000;
 
+/**
+ * Explicit stdout cap rather than Node's 1 MB execFile default. The selected
+ * field set is tiny (a few hundred bytes) so this is never reached today, but
+ * stating the bound keeps it intentional and matches the package's git buffer
+ * if the field list ever grows.
+ */
+const GH_PR_VIEW_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+
 const GH_PR_VIEW_JSON_FIELDS = "number,title,state,url,isDraft";
 
 interface GetPullRequestForBranchArgs {
@@ -52,12 +60,15 @@ export async function getPullRequestForBranch(
   try {
     const { stdout } = await execFileAsync(
       "gh",
-      ["pr", "view", args.branch, "--json", GH_PR_VIEW_JSON_FIELDS],
+      // `--` ends option parsing so `branch` is always taken as the positional
+      // target, never mistaken for a flag.
+      ["pr", "view", "--json", GH_PR_VIEW_JSON_FIELDS, "--", args.branch],
       {
         cwd: args.cwd,
         encoding: "utf8",
         env: sanitizeInheritedChildProcessEnv({ env: process.env }),
         timeout: GH_PR_VIEW_TIMEOUT_MS,
+        maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
       },
     );
     return parseGitHostPullRequest(stdout);
