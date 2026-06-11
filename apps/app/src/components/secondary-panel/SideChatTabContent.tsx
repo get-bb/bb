@@ -28,6 +28,12 @@ import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironme
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { Icon } from "@/components/ui/icon.js";
+import { cn } from "@/lib/utils";
+import {
+  COARSE_POINTER_ICON_SIZE_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@/components/ui/coarse-pointer-sizing";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import {
   ThreadTimelineRows,
@@ -409,8 +415,20 @@ export function SideChatTabContent({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3">
         {childThreadId === null ? (
-          <EmptyStatePanel className="mx-2 rounded-lg">
-            Ask a question to start a side chat grounded in this conversation.
+          <EmptyStatePanel className="flex min-h-24 flex-1 items-center justify-center">
+            <div className="flex max-w-64 items-center justify-center gap-1.5">
+              <Icon
+                name="SideChat"
+                className={cn(
+                  COARSE_POINTER_ICON_SIZE_CLASS,
+                  "shrink-0 text-subtle-foreground",
+                )}
+              />
+              <p className={COARSE_POINTER_TEXT_SM_CLASS}>
+                Ask a question to start a side chat grounded in this
+                conversation.
+              </p>
+            </div>
           </EmptyStatePanel>
         ) : (
           <SideChatConversation
@@ -419,7 +437,7 @@ export function SideChatTabContent({
           />
         )}
       </div>
-      <div className="border-t border-border px-2 pb-2 pt-2">
+      <div className="px-2 pb-2 pt-2">
         <FollowUpPromptBox
           attachments={SIDE_CHAT_ATTACHMENTS}
           stack={null}
