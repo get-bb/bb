@@ -23,10 +23,22 @@ describe("app settings", () => {
 
   it("round-trips experiments through set/get", () => {
     const db = setup();
-    setExperiments(db, { workflows: true });
-    expect(getExperiments(db)).toEqual({ workflows: true });
-    setExperiments(db, { workflows: false });
-    expect(getExperiments(db)).toEqual({ workflows: false });
+    setExperiments(db, {
+      claudeCodeMockCliTraffic: true,
+      workflows: true,
+    });
+    expect(getExperiments(db)).toEqual({
+      claudeCodeMockCliTraffic: true,
+      workflows: true,
+    });
+    setExperiments(db, {
+      claudeCodeMockCliTraffic: false,
+      workflows: false,
+    });
+    expect(getExperiments(db)).toEqual({
+      claudeCodeMockCliTraffic: false,
+      workflows: false,
+    });
   });
 
   it("falls back to defaults on an unreadable stored value", () => {
@@ -38,8 +50,27 @@ describe("app settings", () => {
 
     // A value written by a different schema version (wrong shape) also
     // fails closed instead of throwing into config reads.
-    setExperiments(db, { workflows: true });
+    setExperiments(db, {
+      claudeCodeMockCliTraffic: false,
+      workflows: true,
+    });
     db.update(appSettings).set({ value: '{"unknown":true}' }).run();
     expect(getExperiments(db)).toEqual(defaultExperiments);
+  });
+
+  it("merges older stored experiments over current defaults", () => {
+    const db = setup();
+    db.insert(appSettings)
+      .values({
+        key: "experiments",
+        value: '{"workflows":true}',
+        updatedAt: 1,
+      })
+      .run();
+
+    expect(getExperiments(db)).toEqual({
+      ...defaultExperiments,
+      workflows: true,
+    });
   });
 });

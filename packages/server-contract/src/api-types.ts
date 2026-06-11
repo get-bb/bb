@@ -41,7 +41,6 @@ import {
   changedMessageSchema,
   changedMessageLenientSchema,
   callerExecutionInputSourceSchema,
-  claudeCodeMockCliTrafficConfigSchema,
   projectExecutionDefaultsSchema,
   workflowProgressSnapshotSchema,
   workflowRunEventSchema,
@@ -2371,18 +2370,11 @@ export type SidebarBootstrapResponse = z.infer<
 export const systemConfigResponseSchema = z.object({
   /** User-opt-in experiments (Settings → Experiments), persisted server-side. */
   experiments: experimentsSchema,
-  claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema,
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
   voiceTranscriptionEnabled: z.boolean(),
 });
 export type SystemConfigResponse = z.infer<typeof systemConfigResponseSchema>;
-
-export const systemClaudeCodeMockCliTrafficUpdateRequestSchema =
-  claudeCodeMockCliTrafficConfigSchema;
-export type SystemClaudeCodeMockCliTrafficUpdateRequest = z.infer<
-  typeof systemClaudeCodeMockCliTrafficUpdateRequestSchema
->;
 
 export const systemVersionResponseSchema = z.object({
   /** Version of the running bb-app package, read from package.json. */

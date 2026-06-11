@@ -20,6 +20,7 @@ export interface ClaudeCodeMockCliTrafficProxy {
 
 export interface StartClaudeCodeMockCliTrafficProxyArgs {
   endpoint: string;
+  threadId: string;
 }
 
 interface RewriteRequestBodyArgs {
@@ -40,8 +41,16 @@ interface ForwardRequestArgs {
   upstreamUrl: URL;
 }
 
+interface WriteForwardLogArgs {
+  billingHeaderPresent: boolean;
+  method: string;
+  threadId: string;
+  upstreamUrl: URL;
+}
+
 const CLI_USER_AGENT_FALLBACK = "claude-cli/0.0.0 (external, cli)";
 const JSON_CONTENT_TYPE_PATTERN = /\bapplication\/json\b/iu;
+const BILLING_HEADER_ENTRYPOINT_PATTERN = /^cc_entrypoint\s*=/iu;
 
 function isJsonObject(value: JsonValue): value is JsonObject {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -70,6 +79,25 @@ function rewriteIdentityString(value: string): string {
     .replaceAll("sdk-cli", "cli")
     .replaceAll("sdk-ts", "cli")
     .replaceAll("agent-sdk/", "cli-mock-agent-sdk/");
+}
+
+function rewriteBillingHeader(value: string): string {
+  const segments = value
+    .split(";")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  let foundEntrypoint = false;
+  const rewrittenSegments = segments.map((segment) => {
+    if (BILLING_HEADER_ENTRYPOINT_PATTERN.test(segment)) {
+      foundEntrypoint = true;
+      return "cc_entrypoint=cli";
+    }
+    return rewriteIdentityString(segment);
+  });
+  if (!foundEntrypoint) {
+    rewrittenSegments.push("cc_entrypoint=cli");
+  }
+  return rewrittenSegments.join("; ");
 }
 
 function rewriteJsonIdentity(value: JsonValue): JsonValue {
@@ -114,12 +142,27 @@ function rewriteHeaders(headers: IncomingHttpHeaders): OutgoingHttpHeaders {
       : rewriteIdentityString(value);
   }
   nextHeaders["user-agent"] = rewriteUserAgent(headers["user-agent"]);
-  if (typeof headers["x-anthropic-billing-header"] === "string") {
-    nextHeaders["x-anthropic-billing-header"] = rewriteIdentityString(
-      headers["x-anthropic-billing-header"],
-    );
+  const billingHeader = headers["x-anthropic-billing-header"];
+  if (billingHeader !== undefined) {
+    nextHeaders["x-anthropic-billing-header"] = Array.isArray(billingHeader)
+      ? billingHeader.map(rewriteBillingHeader)
+      : rewriteBillingHeader(billingHeader);
   }
   return nextHeaders;
+}
+
+function writeForwardLog(args: WriteForwardLogArgs): void {
+  process.stderr.write(
+    `${JSON.stringify({
+      component: "claude-code-mock-cli-traffic-proxy",
+      event: "forward",
+      method: args.method,
+      path: args.upstreamUrl.pathname,
+      billingHeader: args.billingHeaderPresent ? "rewritten-to-cli" : "absent",
+      threadId: args.threadId,
+      upstreamOrigin: args.upstreamUrl.origin,
+    })}\n`,
+  );
 }
 
 function rewriteRequestBody(
@@ -258,6 +301,13 @@ export async function startClaudeCodeMockCliTrafficProxy(
       if (rewrittenBody.contentType) {
         headers["content-type"] = rewrittenBody.contentType;
       }
+      writeForwardLog({
+        billingHeaderPresent:
+          request.headers["x-anthropic-billing-header"] !== undefined,
+        method: request.method ?? "GET",
+        threadId: args.threadId,
+        upstreamUrl,
+      });
       forwardRequest({
         body: rewrittenBody.body,
         headers,

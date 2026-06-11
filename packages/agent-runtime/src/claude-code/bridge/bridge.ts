@@ -20,16 +20,17 @@ import { realpathSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+  type PendingInteractionGrantedPermissionProfile,
+  type PermissionEscalation,
+} from "@bb/domain";
 import type {
   CanUseTool,
   PermissionResult,
   SDKMessage,
   SDKResultMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type {
-  PendingInteractionGrantedPermissionProfile,
-  PermissionEscalation,
-} from "@bb/domain";
 import { z } from "zod";
 import {
   decodeBridgeJsonRpcResponse,
@@ -247,6 +248,7 @@ interface PreparedSessionEnv {
 interface PrepareSessionEnvParams {
   claudeCodeMockCliTraffic: ThreadStartParams["claudeCodeMockCliTraffic"];
   config?: ThreadStartParams["config"];
+  threadId: ThreadStartParams["threadId"];
 }
 
 interface ReplaceThreadSessionArgs {
@@ -864,7 +866,8 @@ async function prepareSessionEnv(
   }
 
   const mockCliTrafficProxy = await startClaudeCodeMockCliTrafficProxy({
-    endpoint: params.claudeCodeMockCliTraffic.endpoint,
+    endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+    threadId: params.threadId,
   });
   return {
     env: buildSessionEnv({

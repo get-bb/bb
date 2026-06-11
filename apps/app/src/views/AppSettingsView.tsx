@@ -1,16 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  defaultExperiments,
-} from "@bb/domain";
+import { useMemo, useState } from "react";
+import { defaultExperiments } from "@bb/domain";
 import type {
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
-import { Input } from "@/components/ui/input.js";
 import { Switch } from "@/components/ui/switch.js";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
 import {
@@ -44,9 +39,7 @@ import {
 } from "@/lib/favicon-color-preference";
 import { useOpenLinksInAppBrowserPreference } from "@/lib/in-app-browser-link-preference";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
-import { updateClaudeCodeMockCliTraffic } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { hydrateSystemConfigCache } from "@/hooks/cache-owners/system-config-cache-owner";
 import {
   resolvePreferredWorkspaceOpenTarget,
   supportsWorkspaceOpenTargetCapability,
@@ -120,16 +113,10 @@ export interface GeneralSettingsSectionProps {
 export interface ExperimentsSettingsSectionProps {
   /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
+  claudeCodeMockCliTrafficEnabled: boolean;
+  onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
   onWorkflowsEnabledChange: (enabled: boolean) => void;
   workflowsEnabled: boolean;
-}
-
-export interface ClaudeCodeSettingsSectionProps {
-  enabled: boolean;
-  endpoint: string;
-  isSaving: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-  onEndpointSave: (endpoint: string) => void;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -385,8 +372,6 @@ export function LocalOpenTargetSettingsSection({
 const IN_APP_BROWSER_LINK_SETTING_LABEL = "Open links in the in-app browser";
 const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
   "Navigate to threads on creation";
-const CLAUDE_CODE_MOCK_CLI_TRAFFIC_SETTING_LABEL = "Mock CLI traffic";
-const CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT_LABEL = "Mock endpoint";
 
 export function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
@@ -496,9 +481,12 @@ export function GeneralSettingsSection({
 }
 
 const WORKFLOWS_EXPERIMENT_LABEL = "Workflows";
+const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 
 export function ExperimentsSettingsSection({
+  claudeCodeMockCliTrafficEnabled,
   disabled,
+  onClaudeCodeMockCliTrafficEnabledChange,
   onWorkflowsEnabledChange,
   workflowsEnabled,
 }: ExperimentsSettingsSectionProps) {
@@ -518,80 +506,25 @@ export function ExperimentsSettingsSection({
           aria-label={WORKFLOWS_EXPERIMENT_LABEL}
         />
       </SettingsWithControl>
-    </SettingsSection>
-  );
-}
 
-export function ClaudeCodeSettingsSection({
-  enabled,
-  endpoint,
-  isSaving,
-  onEnabledChange,
-  onEndpointSave,
-}: ClaudeCodeSettingsSectionProps) {
-  const [draftEndpoint, setDraftEndpoint] = useState(endpoint);
-
-  useEffect(() => {
-    setDraftEndpoint(endpoint);
-  }, [endpoint]);
-
-  return (
-    <SettingsSection title="Claude Code">
-      <div className="space-y-4">
-        <SettingsWithControl
-          label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_SETTING_LABEL}
-          description="Route Claude Code API requests through an approved test endpoint that receives interactive CLI-shaped requests."
-        >
-          <Switch
-            checked={enabled}
-            disabled={isSaving}
-            onCheckedChange={onEnabledChange}
-            aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_SETTING_LABEL}
-          />
-        </SettingsWithControl>
-
-        <SettingsWithControl
-          label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT_LABEL}
-          description="Only http:// loopback URLs or https://api.anthropic.com are accepted."
-        >
-          <div className="flex w-full flex-col gap-2 sm:w-80 sm:flex-row">
-            <Input
-              value={draftEndpoint}
-              disabled={isSaving}
-              onChange={(event) => setDraftEndpoint(event.target.value)}
-              aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT_LABEL}
-              className="min-w-0"
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={isSaving || draftEndpoint === endpoint}
-              onClick={() => onEndpointSave(draftEndpoint)}
-              className="shrink-0"
-            >
-              Save
-            </Button>
-          </div>
-        </SettingsWithControl>
-      </div>
+      <SettingsWithControl
+        label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+        description="Route Claude Code API requests through the local proxy using CLI-shaped traffic to https://api.anthropic.com."
+      >
+        <Switch
+          checked={claudeCodeMockCliTrafficEnabled}
+          disabled={disabled}
+          onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
+          aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+        />
+      </SettingsWithControl>
     </SettingsSection>
   );
 }
 
 export function AppSettingsView() {
-  const queryClient = useQueryClient();
   const themePreference = useThemePreference();
   const systemConfigQuery = useSystemConfig();
-  const mockCliTraffic =
-    systemConfigQuery.data?.claudeCodeMockCliTraffic ??
-    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
-  const updateMockCliTraffic = useMutation({
-    mutationFn: updateClaudeCodeMockCliTraffic,
-    onSuccess: (config) => {
-      hydrateSystemConfigCache({ config, queryClient });
-    },
-  });
   const [faviconColor, setFaviconColor] = useFaviconColorPreference();
   const { hasDaemon } = useHostDaemon();
   const { workspaceOpenTargets } = useWorkspaceOpenTargets({
@@ -635,9 +568,18 @@ export function AppSettingsView() {
         />
 
         <ExperimentsSettingsSection
+          claudeCodeMockCliTrafficEnabled={
+            experiments.claudeCodeMockCliTraffic
+          }
           disabled={
             systemConfigQuery.data === undefined ||
             updateExperimentsMutation.isPending
+          }
+          onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
+            updateExperimentsMutation.mutate({
+              ...experiments,
+              claudeCodeMockCliTraffic: enabled,
+            })
           }
           onWorkflowsEnabledChange={(enabled) =>
             updateExperimentsMutation.mutate({
@@ -646,24 +588,6 @@ export function AppSettingsView() {
             })
           }
           workflowsEnabled={experiments.workflows}
-        />
-
-        <ClaudeCodeSettingsSection
-          enabled={mockCliTraffic.enabled}
-          endpoint={mockCliTraffic.endpoint}
-          isSaving={updateMockCliTraffic.isPending}
-          onEnabledChange={(enabled) =>
-            updateMockCliTraffic.mutate({
-              enabled,
-              endpoint: mockCliTraffic.endpoint,
-            })
-          }
-          onEndpointSave={(endpoint) =>
-            updateMockCliTraffic.mutate({
-              enabled: mockCliTraffic.enabled,
-              endpoint: endpoint.trim(),
-            })
-          }
         />
 
         <AppSourcesSection />

@@ -82,7 +82,6 @@ import type {
   SendQueuedMessageResponse,
   SendMessageRequest,
   ResolvePendingInteractionRequest,
-  SystemClaudeCodeMockCliTrafficUpdateRequest,
   ThreadChildSummaryResponse,
   ThreadComposerBootstrapResponse,
   ThreadQueuedMessageListResponse,
@@ -877,13 +876,6 @@ export type PublicApiSchema = {
   "/system/config/reload": {
     /** Rereads the server's local bb-app config file and applies supported runtime config. */
     $post: Endpoint<EmptyInput, SystemConfigReloadResponse>;
-  };
-  "/system/claude-code/mock-cli-traffic": {
-    /** Update the local-only Claude Code mock CLI traffic setting. */
-    $post: Endpoint<
-      { json: SystemClaudeCodeMockCliTrafficUpdateRequest },
-      SystemConfigResponse
-    >;
   };
   "/system/execution-options": {
     /** List provider metadata and models for execution controls in one host lookup flow. */

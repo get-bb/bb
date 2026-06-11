@@ -109,7 +109,10 @@ function installSidebarFetchRoutes({
       pathname: "/api/v1/system/config",
       handler: () =>
         jsonResponse({
-          experiments: { workflows: workflowsExperimentEnabled },
+          experiments: {
+            claudeCodeMockCliTraffic: false,
+            workflows: workflowsExperimentEnabled,
+          },
           hostDaemonPort: null,
           voiceTranscriptionEnabled: false,
         }),

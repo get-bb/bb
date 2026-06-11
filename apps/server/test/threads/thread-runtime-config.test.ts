@@ -1,8 +1,15 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { markThreadDeleted, setExperiments, setThreadExecutionOverride } from "@bb/db";
-import { encodeClientTurnRequestIdNumber } from "@bb/domain";
+import {
+  markThreadDeleted,
+  setExperiments,
+  setThreadExecutionOverride,
+} from "@bb/db";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+  encodeClientTurnRequestIdNumber,
+} from "@bb/domain";
 import {
   resolvePermissionEscalation,
   resolveExecutionOptions,
@@ -402,7 +409,10 @@ describe("thread runtime config", () => {
         "building-bb-apps",
       ]);
 
-      setExperiments(harness.db, { workflows: true });
+      setExperiments(harness.db, {
+        claudeCodeMockCliTraffic: false,
+        workflows: true,
+      });
       const enabled = await buildCommand(2);
       expect(enabled.injectedSkillSources.map((skill) => skill.name)).toEqual([
         "bb-workflows",
@@ -413,6 +423,60 @@ describe("thread runtime config", () => {
           (skill) => skill.name === "bb-workflows",
         )?.sourceRootPath,
       ).toBe(workflowsSkillRootPath);
+    });
+  });
+
+  it("gates Claude Code mock CLI traffic on its experiment with the fixed endpoint", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-mock-cli-traffic-experiment",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      const execution = await resolveExecutionOptions(harness.deps, {
+        threadId: thread.id,
+        requestedExecution: {
+          model: "gpt-5",
+          source: "client/turn/requested",
+        },
+      });
+      const buildCommand = (requestValue: number) =>
+        buildThreadStartCommand(harness.deps, {
+          environment,
+          execution,
+          permissionEscalation: "ask",
+          input: textInput("hello"),
+          projectId: project.id,
+          providerId: "codex",
+          requestId: encodeClientTurnRequestIdNumber({ value: requestValue }),
+          syncGeneratedTitle: false,
+          thread,
+        });
+
+      expect((await buildCommand(1)).options.claudeCodeMockCliTraffic).toEqual({
+        enabled: false,
+        endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+      });
+
+      setExperiments(harness.db, {
+        claudeCodeMockCliTraffic: true,
+        workflows: false,
+      });
+
+      expect((await buildCommand(2)).options.claudeCodeMockCliTraffic).toEqual({
+        enabled: true,
+        endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+      });
     });
   });
 

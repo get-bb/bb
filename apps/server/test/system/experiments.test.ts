@@ -11,7 +11,10 @@ describe("experiments settings", () => {
       const response = await harness.app.request("/api/v1/system/config");
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
-      expect(body.experiments).toEqual({ workflows: false });
+      expect(body.experiments).toEqual({
+        claudeCodeMockCliTraffic: false,
+        workflows: false,
+      });
     });
   });
 
@@ -20,18 +23,28 @@ describe("experiments settings", () => {
       const put = await harness.app.request("/api/v1/settings/experiments", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ workflows: true }),
+        body: JSON.stringify({
+          claudeCodeMockCliTraffic: true,
+          workflows: true,
+        }),
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
+        claudeCodeMockCliTraffic: true,
         workflows: true,
       });
-      expect(getExperiments(harness.db)).toEqual({ workflows: true });
+      expect(getExperiments(harness.db)).toEqual({
+        claudeCodeMockCliTraffic: true,
+        workflows: true,
+      });
 
       const config = await harness.app.request("/api/v1/system/config");
       expect(
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
-      ).toEqual({ workflows: true });
+      ).toEqual({
+        claudeCodeMockCliTraffic: true,
+        workflows: true,
+      });
     });
   });
 

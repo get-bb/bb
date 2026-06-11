@@ -123,17 +123,6 @@ const invalidConfigCommandCases: InvalidConfigCommandCase[] = [
     value: "not-a-url",
   },
   {
-    expectedError: /BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC must be a boolean/u,
-    key: "BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC",
-    value: "maybe",
-  },
-  {
-    expectedError:
-      /BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT must be an http:\/\/ loopback URL or https:\/\/api\.anthropic\.com/u,
-    key: "BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT",
-    value: "https://test.anthropic.com",
-  },
-  {
     expectedError: /BB_SERVER_URL must be a valid URL/u,
     key: "BB_SERVER_URL",
     value: "not-a-url",
@@ -674,16 +663,8 @@ describe("bb-app launcher", () => {
       dataDir,
       "config",
       "set",
-      "BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC",
-      "true",
-    ]);
-    await runBbApp([
-      "--data-dir",
-      dataDir,
-      "config",
-      "set",
-      "BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT",
-      "https://api.anthropic.com",
+      "BB_INFERENCE",
+      "anthropic/claude-sonnet-4-5",
     ]);
     await runBbApp([
       "--data-dir",
@@ -699,8 +680,7 @@ describe("bb-app launcher", () => {
     ).toEqual({
       config: {
         BB_APP_URL: "https://bb.example.test",
-        BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC: "true",
-        BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT: "https://api.anthropic.com",
+        BB_INFERENCE: "anthropic/claude-sonnet-4-5",
       },
     });
     expect(JSON.parse(readFileSync(join(dataDir, "env.json"), "utf8"))).toEqual(

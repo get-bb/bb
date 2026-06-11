@@ -17,7 +17,6 @@ import {
 } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   defaultExperiments,
   PERSONAL_PROJECT_ID,
   type Host,
@@ -131,7 +130,6 @@ const systemExecutionOptions = {
 
 const systemConfig = {
   experiments: defaultExperiments,
-  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
   voiceTranscriptionEnabled: false,

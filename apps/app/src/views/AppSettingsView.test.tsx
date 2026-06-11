@@ -195,7 +195,9 @@ describe("ExperimentsSettingsSection", () => {
     const onWorkflowsEnabledChange = vi.fn();
     render(
       <ExperimentsSettingsSection
+        claudeCodeMockCliTrafficEnabled={false}
         disabled={false}
+        onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
         onWorkflowsEnabledChange={onWorkflowsEnabledChange}
         workflowsEnabled
       />,
@@ -212,7 +214,9 @@ describe("ExperimentsSettingsSection", () => {
     const onWorkflowsEnabledChange = vi.fn();
     render(
       <ExperimentsSettingsSection
+        claudeCodeMockCliTrafficEnabled={false}
         disabled={false}
+        onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
         onWorkflowsEnabledChange={onWorkflowsEnabledChange}
         workflowsEnabled={false}
       />,
@@ -225,20 +229,52 @@ describe("ExperimentsSettingsSection", () => {
     expect(onWorkflowsEnabledChange).toHaveBeenCalledWith(true);
   });
 
+  it("reflects the mock CLI traffic experiment and toggles it on", () => {
+    const onClaudeCodeMockCliTrafficEnabledChange = vi.fn();
+    render(
+      <ExperimentsSettingsSection
+        claudeCodeMockCliTrafficEnabled={false}
+        disabled={false}
+        onClaudeCodeMockCliTrafficEnabledChange={
+          onClaudeCodeMockCliTrafficEnabledChange
+        }
+        onWorkflowsEnabledChange={vi.fn()}
+        workflowsEnabled={false}
+      />,
+    );
+
+    const toggle = screen.getByRole("switch", { name: "Mock CLI Traffic" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(toggle);
+    expect(onClaudeCodeMockCliTrafficEnabledChange).toHaveBeenCalledWith(true);
+  });
+
   it("blocks toggling while the config has not loaded or a write is pending", () => {
+    const onClaudeCodeMockCliTrafficEnabledChange = vi.fn();
     const onWorkflowsEnabledChange = vi.fn();
     render(
       <ExperimentsSettingsSection
+        claudeCodeMockCliTrafficEnabled={false}
         disabled
+        onClaudeCodeMockCliTrafficEnabledChange={
+          onClaudeCodeMockCliTrafficEnabledChange
+        }
         onWorkflowsEnabledChange={onWorkflowsEnabledChange}
         workflowsEnabled={false}
       />,
     );
 
-    const toggle = screen.getByRole("switch", { name: "Workflows" });
-    expect(toggle).toHaveProperty("disabled", true);
+    const workflowsToggle = screen.getByRole("switch", { name: "Workflows" });
+    const mockCliTrafficToggle = screen.getByRole("switch", {
+      name: "Mock CLI Traffic",
+    });
+    expect(workflowsToggle).toHaveProperty("disabled", true);
+    expect(mockCliTrafficToggle).toHaveProperty("disabled", true);
 
-    fireEvent.click(toggle);
+    fireEvent.click(workflowsToggle);
+    fireEvent.click(mockCliTrafficToggle);
     expect(onWorkflowsEnabledChange).not.toHaveBeenCalled();
+    expect(onClaudeCodeMockCliTrafficEnabledChange).not.toHaveBeenCalled();
   });
 });

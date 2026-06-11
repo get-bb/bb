@@ -11,11 +11,12 @@ type AppSettingsReadConnection = DbConnection | DbTransaction;
 type AppSettingsWriteConnection = DbConnection | DbTransaction;
 
 const EXPERIMENTS_KEY = "experiments";
+const storedExperimentsSchema = experimentsSchema.partial();
 
 /**
  * The user's opt-in experiments. A missing row or an unreadable/stale value
- * (e.g. written by a newer server) falls back to the defaults — experiments
- * fail closed to off rather than 500ing config reads.
+ * falls back to the defaults. Older stored objects merge over current
+ * defaults so adding a new experiment does not reset existing opt-ins.
  */
 export function getExperiments(db: AppSettingsReadConnection): Experiments {
   const row = db
@@ -27,8 +28,10 @@ export function getExperiments(db: AppSettingsReadConnection): Experiments {
     return defaultExperiments;
   }
   try {
-    const parsed = experimentsSchema.safeParse(JSON.parse(row.value));
-    return parsed.success ? parsed.data : defaultExperiments;
+    const parsed = storedExperimentsSchema.safeParse(JSON.parse(row.value));
+    return parsed.success
+      ? { ...defaultExperiments, ...parsed.data }
+      : defaultExperiments;
   } catch {
     return defaultExperiments;
   }

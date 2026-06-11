@@ -17,10 +17,7 @@ import type {
   BbDesktopInfoChangeHandler,
   SystemConfigResponse,
 } from "@bb/server-contract";
-import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  defaultExperiments,
-} from "@bb/domain";
+import { defaultExperiments } from "@bb/domain";
 import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
@@ -56,7 +53,6 @@ interface SidebarResizeEndScenario {
 
 const testSystemConfig: SystemConfigResponse = {
   experiments: defaultExperiments,
-  claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   featureFlags: { placeholder: false },
   hostDaemonPort: null,
   voiceTranscriptionEnabled: false,

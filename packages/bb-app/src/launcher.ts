@@ -31,7 +31,6 @@ import {
   validateInferenceModel,
   validateTranscriptionModel,
 } from "@bb/config/inference-model";
-import { isLoopbackHostname } from "@bb/config/loopback";
 import { validateLogLevel } from "@bb/config/log-level";
 import { validateOptionalUrl } from "@bb/config/public-url";
 import {
@@ -70,7 +69,6 @@ const MANAGED_CONFIG_KEY_VALUES = new Set<string>(MANAGED_CONFIG_KEYS);
 const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const SECRET_SHAPED_ENV_NAME_PATTERN =
   /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/u;
-const CLAUDE_CODE_MOCK_CLI_TRAFFIC_TEST_HOSTNAME = "api.anthropic.com";
 
 const bbAppPackageJsonSchema = z
   .object({
@@ -880,17 +878,6 @@ function validateManagedConfigForWrite(config: ManagedConfig): void {
   if (configValues.BB_APP_URL !== undefined) {
     validateOptionalUrl("BB_APP_URL", configValues.BB_APP_URL);
   }
-  if (configValues.BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC !== undefined) {
-    validateManagedBooleanConfigValue(
-      "BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC",
-      configValues.BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC,
-    );
-  }
-  if (configValues.BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT !== undefined) {
-    validateClaudeCodeMockCliTrafficEndpoint(
-      configValues.BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-    );
-  }
   if (configValues.BB_INFERENCE !== undefined) {
     validateInferenceModel(configValues.BB_INFERENCE);
   }
@@ -899,48 +886,6 @@ function validateManagedConfigForWrite(config: ManagedConfig): void {
   }
   if (configValues.BB_LOG_LEVEL !== undefined) {
     validateLogLevel(configValues.BB_LOG_LEVEL);
-  }
-}
-
-function validateManagedBooleanConfigValue(name: string, value: string): void {
-  const normalizedValue = value.trim().toLowerCase();
-  if (
-    normalizedValue === "true" ||
-    normalizedValue === "1" ||
-    normalizedValue === "yes" ||
-    normalizedValue === "y" ||
-    normalizedValue === "false" ||
-    normalizedValue === "0" ||
-    normalizedValue === "no" ||
-    normalizedValue === "n"
-  ) {
-    return;
-  }
-  throw new Error(`${name} must be a boolean`);
-}
-
-function validateClaudeCodeMockCliTrafficEndpoint(value: string): void {
-  let endpointUrl: URL;
-  try {
-    endpointUrl = new URL(value);
-  } catch {
-    throw new Error(
-      "BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT must be an http:// loopback URL or https://api.anthropic.com",
-    );
-  }
-  const isLoopbackHttpEndpoint =
-    endpointUrl.protocol === "http:" &&
-    isLoopbackHostname(endpointUrl.hostname);
-  const isAnthropicTestEndpoint =
-    endpointUrl.protocol === "https:" &&
-    endpointUrl.hostname === CLAUDE_CODE_MOCK_CLI_TRAFFIC_TEST_HOSTNAME &&
-    endpointUrl.port === "" &&
-    endpointUrl.username === "" &&
-    endpointUrl.password === "";
-  if (!isLoopbackHttpEndpoint && !isAnthropicTestEndpoint) {
-    throw new Error(
-      "BB_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT must be an http:// loopback URL or https://api.anthropic.com",
-    );
   }
 }
 

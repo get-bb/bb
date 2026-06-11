@@ -10,6 +10,11 @@ import { z } from "zod";
  */
 export const experimentsSchema = z.object({
   /**
+   * Claude Code mock CLI traffic: routes Claude Code API requests through the
+   * local proxy so forwarded requests use CLI-shaped traffic.
+   */
+  claudeCodeMockCliTraffic: z.boolean(),
+  /**
    * Multi-agent workflow runs: the Workflows sidebar section, project
    * workflows page, thread-pill segment, and the agent-facing `bb-workflows`
    * injected skill.
@@ -19,5 +24,6 @@ export const experimentsSchema = z.object({
 export type Experiments = z.infer<typeof experimentsSchema>;
 
 export const defaultExperiments: Experiments = {
+  claudeCodeMockCliTraffic: false,
   workflows: false,
 };

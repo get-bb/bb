@@ -38,7 +38,6 @@ import type {
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
   SendMessageRequest,
-  SystemClaudeCodeMockCliTrafficUpdateRequest,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
@@ -699,14 +698,6 @@ export async function transcribeVoiceInput(
     file,
     signal,
     trimmedPrompt ? { prompt: trimmedPrompt } : undefined,
-  );
-}
-
-export async function updateClaudeCodeMockCliTraffic(
-  req: SystemClaudeCodeMockCliTrafficUpdateRequest,
-): Promise<SystemConfigResponse> {
-  return request<SystemConfigResponse>(
-    apiClient.system["claude-code"]["mock-cli-traffic"].$post({ json: req }),
   );
 }
 

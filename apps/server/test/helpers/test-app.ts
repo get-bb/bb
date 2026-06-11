@@ -5,11 +5,7 @@ import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import { DEFAULTS } from "@bb/config/defaults";
 import type { DbConnection } from "@bb/db";
-import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  defaultFeatureFlags,
-  type HostType,
-} from "@bb/domain";
+import { defaultFeatureFlags, type HostType } from "@bb/domain";
 import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
@@ -127,7 +123,6 @@ export async function createTestAppHarness(
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-test",
     builtinSkillsRootPath: join(dataDir, "builtin-skills"),
-    claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
     customModels: [],
     dataDir,
     featureFlags: defaultFeatureFlags,

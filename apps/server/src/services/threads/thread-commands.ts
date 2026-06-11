@@ -1,14 +1,15 @@
-import { environments, events, threads } from "@bb/db";
+import { environments, events, getExperiments, threads } from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   getBuiltInAgentProviderInfo,
   isAgentProviderId,
 } from "@bb/agent-providers";
-import type {
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+  type ClaudeCodeMockCliTrafficConfig,
   PromptInput,
   ProjectExecutionDefaults,
   PermissionEscalation,
-  ClaudeCodeMockCliTrafficConfig,
   ResolvedThreadExecutionOptions,
   RuntimeThreadExecutionOptions,
   Thread,
@@ -163,6 +164,15 @@ function providerSupportsThreadArchiveForwarding(providerId: string): boolean {
   return getBuiltInAgentProviderInfo(providerId).capabilities.supportsArchive;
 }
 
+function resolveClaudeCodeMockCliTrafficConfig(
+  deps: Pick<AppDeps, "db">,
+): ClaudeCodeMockCliTrafficConfig {
+  return {
+    enabled: getExperiments(deps.db).claudeCodeMockCliTraffic,
+    endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+  };
+}
+
 function toRuntimeExecutionOptions(
   args: RuntimeExecutionOptionsArgs,
 ): RuntimeThreadExecutionOptions {
@@ -230,7 +240,7 @@ export async function buildThreadStartCommand(
     input: args.input,
     options: toRuntimeExecutionOptions({
       ...args,
-      claudeCodeMockCliTraffic: deps.config.claudeCodeMockCliTraffic,
+      claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
     }),
     instructions: runtimeContext.instructions,
     dynamicTools: runtimeContext.dynamicTools,
@@ -292,7 +302,7 @@ export async function prepareTurnSubmitCommandPayload(
     environment: args.environment,
   });
   return buildPreparedTurnSubmitCommandPayload({
-    claudeCodeMockCliTraffic: deps.config.claudeCodeMockCliTraffic,
+    claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
     environmentId: args.environment.id,
     execution: args.execution,
     permissionEscalation: args.permissionEscalation,
