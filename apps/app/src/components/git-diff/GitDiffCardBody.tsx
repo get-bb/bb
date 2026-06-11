@@ -143,9 +143,14 @@ export interface GitDiffCardBodyProps {
 
 /**
  * The diff card's body: the lazily-enriched `@pierre/diffs` `FileDiff` plus the
- * deleted-file load gate and the in-viewport render skeleton. Shared by the
- * parsed-patch `GitDiffCard` (timeline + legacy) and the tiered `DiffFileCard`
- * (diff tab) so there is exactly one diff renderer + context-expansion path.
+ * deleted-file load gate and the in-viewport render skeleton. Used by the tiered
+ * `DiffFileCard` (diff tab, text diffs only).
+ *
+ * NOTE: the timeline `GitDiffCard` does NOT use this — it carries its own inline
+ * body with image-lightbox support (landed on main after this was extracted), so
+ * the text enrichment/context-expansion logic is currently duplicated between the
+ * two. Follow-up: fold the image branch into this body and have both consume it,
+ * which would also give the diff tab image previews. See PR discussion.
  */
 export function GitDiffCardBody({
   fileDiff,
