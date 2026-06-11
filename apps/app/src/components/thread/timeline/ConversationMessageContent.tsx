@@ -339,7 +339,10 @@ function AssistantConversationMessage({
         projectId={projectId}
       />
       {messageText ? (
-        <div className="mt-1 flex justify-start">
+        // Pull the hover action row up to reclaim the gap below the message
+        // rather than stacking on top of it, so the copy button (and future
+        // icon buttons in this row) sit in space the message already reserves.
+        <div className="-mt-1 flex justify-start">
           <CopyButton
             text={text}
             label="Copy message"
