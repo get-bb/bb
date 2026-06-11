@@ -11,6 +11,8 @@ import {
   listBuiltInAgentProviderInfos,
 } from "@bb/agent-providers";
 import type { ProviderInfo } from "@bb/domain";
+import { createAcpProviderAdapter } from "./acp/adapter.js";
+import { ACP_AGENT_PROFILES } from "./acp/profiles.js";
 import { createClaudeCodeProviderAdapter } from "./claude-code/adapter.js";
 import { createCodexProviderAdapter } from "./codex/adapter.js";
 import { createPiProviderAdapter } from "./pi/adapter.js";
@@ -46,6 +48,11 @@ const builtInProviders = [
     createAdapter: (options) => createPiProviderAdapter(options),
     info: getBuiltInAgentProviderInfo("pi"),
   },
+  ...ACP_AGENT_PROFILES.map((profile) => ({
+    createAdapter: (options: ProviderAdapterFactoryOptions) =>
+      createAcpProviderAdapter({ ...options, profile }),
+    info: getBuiltInAgentProviderInfo(profile.providerId),
+  })),
 ] satisfies BuiltInProviderDescriptor[];
 
 const builtInProvidersById = new Map(

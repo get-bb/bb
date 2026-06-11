@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getBuiltInAgentProviderInfo,
   getBuiltInAgentProviderServerCapabilities,
+  isAcpAgentProviderId,
   listBuiltInAgentProviderInfos,
   PI_DEFAULT_MODEL_PER_PROVIDER,
   resolvePiDefaultModelId,
@@ -49,7 +50,52 @@ describe("agent provider catalog", () => {
         },
         available: true,
       },
+      {
+        id: "acp-cursor",
+        displayName: "Cursor",
+        capabilities: {
+          supportsArchive: false,
+          supportsRename: false,
+          supportsServiceTier: false,
+          supportsUserQuestion: false,
+          supportedPermissionModes: ["full", "workspace-write", "readonly"],
+        },
+        available: true,
+      },
+      {
+        id: "acp-hermes",
+        displayName: "Hermes",
+        capabilities: {
+          supportsArchive: false,
+          supportsRename: false,
+          supportsServiceTier: false,
+          supportsUserQuestion: false,
+          supportedPermissionModes: ["full", "workspace-write", "readonly"],
+        },
+        available: true,
+      },
+      {
+        id: "acp-opencode",
+        displayName: "OpenCode",
+        capabilities: {
+          supportsArchive: false,
+          supportsRename: false,
+          supportsServiceTier: false,
+          supportsUserQuestion: false,
+          supportedPermissionModes: ["full", "workspace-write", "readonly"],
+        },
+        available: true,
+      },
     ]);
+  });
+
+  it("classifies ACP provider ids", () => {
+    expect(isAcpAgentProviderId("acp-cursor")).toBe(true);
+    expect(isAcpAgentProviderId("acp-hermes")).toBe(true);
+    expect(isAcpAgentProviderId("acp-opencode")).toBe(true);
+    expect(isAcpAgentProviderId("codex")).toBe(false);
+    expect(isAcpAgentProviderId("claude-code")).toBe(false);
+    expect(isAcpAgentProviderId("pi")).toBe(false);
   });
 
   it("declares the backend-only server capability facts per provider", () => {
@@ -71,6 +117,18 @@ describe("agent provider catalog", () => {
       backsHostDaemonAiServices: false,
       reasoningLevels: ["low", "medium", "high", "xhigh"],
     });
+    for (const providerId of [
+      "acp-cursor",
+      "acp-hermes",
+      "acp-opencode",
+    ] as const) {
+      expect(getBuiltInAgentProviderServerCapabilities(providerId)).toEqual({
+        supportsWorkflows: false,
+        supportsExecutionOverride: false,
+        backsHostDaemonAiServices: false,
+        reasoningLevels: ["medium"],
+      });
+    }
   });
 
   it("returns cloned catalog entries", () => {

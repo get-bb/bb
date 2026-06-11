@@ -361,6 +361,10 @@ async function smokeProviderBridgeBundles(tarballPath) {
     bridgePath: join(packageDir, "host-daemon", "dist", "bb-pi-bridge.mjs"),
     label: "Pi bridge model/list",
   });
+  await smokeBridgeModelList({
+    bridgePath: join(packageDir, "host-daemon", "dist", "bb-acp-bridge.mjs"),
+    label: "ACP bridge model/list",
+  });
 }
 
 async function smokeHelpCommands(tarballPath) {
