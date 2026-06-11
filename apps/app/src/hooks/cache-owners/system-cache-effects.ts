@@ -35,6 +35,7 @@ import {
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
   threadPromptHistoryQueryKeyPrefix,
+  threadSearchQueryKeyPrefix,
   threadsQueryKey,
 } from "../queries/query-keys";
 import type { QueryClientArg } from "../cache-effect-types";
@@ -101,6 +102,7 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     sidebarNavigationQueryKey(),
     allProjectPathsQueryKeyPrefix(),
     threadsQueryKey(),
+    threadSearchQueryKeyPrefix(),
     allThreadQueryKeyPrefix(),
     allThreadTimelineQueryKeyPrefix(),
     allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(),

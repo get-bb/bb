@@ -80,6 +80,7 @@ import {
   systemConfigQueryKey,
   systemProvidersQueryKey,
   threadQueryKey,
+  threadSearchQueryKeyPrefix,
   threadTerminalsQueryKey,
   threadsQueryKey,
   threadStorageFilePreviewQueryKeyPrefix,
@@ -133,6 +134,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "events-appended": {
     flush: "debounced",
     dirty: [
+      dirtyThreadSearchQueries, // Indexed conversation content may now match a search query.
       dirtyThreadTimelineQueries, // Timeline rows are built from appended events.
       dirtyThreadPromptHistoryQueriesForTurnRequests, // Follow-up recall is built from client turn requests.
     ],
@@ -140,6 +142,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "interactions-changed": {
     flush: "debounced",
     dirty: [
+      dirtyThreadSearchQueries, // Result rows render pending-interaction state.
       dirtyThreadPendingInteractionQueries, // Composer reads the interaction list directly.
       patchThreadListPendingInteractionState, // Sidebar badge patches from notification metadata.
     ],
@@ -543,6 +546,10 @@ function dirtyThreadDetailQueries({
   threadId,
 }: ThreadRealtimeDirtyContext): QueryKey[] {
   return getThreadDetailInvalidationQueryKeys({ threadId });
+}
+
+function dirtyThreadSearchQueries(): QueryKey[] {
+  return [threadSearchQueryKeyPrefix()];
 }
 
 function dirtyThreadTimelineQueries({

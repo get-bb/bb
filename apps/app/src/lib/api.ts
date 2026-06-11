@@ -50,6 +50,7 @@ import type {
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
+  ThreadSearchResponse,
   ThreadResponse,
   ThreadSchedule,
   ThreadWithIncludesResponse,
@@ -758,6 +759,11 @@ export interface ThreadListFilters {
   offset?: number;
 }
 
+export interface ThreadSearchFilters {
+  query: string;
+  limitPerGroup?: number;
+}
+
 function toBooleanQueryValue(value: boolean): "true" | "false" {
   return value ? "true" : "false";
 }
@@ -783,6 +789,25 @@ export async function listThreads(
             : {}),
           ...(filters.offset !== undefined
             ? { offset: String(filters.offset) }
+            : {}),
+        },
+      },
+      requestOptions(signal),
+    ),
+  );
+}
+
+export async function searchThreads(
+  filters: ThreadSearchFilters,
+  signal?: AbortSignal,
+): Promise<ThreadSearchResponse> {
+  return request<ThreadSearchResponse>(
+    apiClient.threads.search.$get(
+      {
+        query: {
+          query: filters.query,
+          ...(filters.limitPerGroup !== undefined
+            ? { limitPerGroup: String(filters.limitPerGroup) }
             : {}),
         },
       },
@@ -1249,10 +1274,7 @@ export async function markThreadUnread(id: string): Promise<ThreadResponse> {
   );
 }
 
-export async function getHost(
-  id: string,
-  signal?: AbortSignal,
-): Promise<Host> {
+export async function getHost(id: string, signal?: AbortSignal): Promise<Host> {
   return request<Host>(
     apiClient.hosts[":id"].$get({ param: { id } }, requestOptions(signal)),
   );
@@ -1596,5 +1618,7 @@ export async function archiveWorkflowRun(id: string): Promise<void> {
 }
 
 export async function deleteWorkflowRun(id: string): Promise<void> {
-  await requestVoid(apiClient["workflow-runs"][":id"].$delete({ param: { id } }));
+  await requestVoid(
+    apiClient["workflow-runs"][":id"].$delete({ param: { id } }),
+  );
 }

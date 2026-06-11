@@ -1,4 +1,4 @@
-import type { ThreadListFilters } from "@/lib/api";
+import type { ThreadListFilters, ThreadSearchFilters } from "@/lib/api";
 import type { EnvironmentFilePreviewSource } from "@/lib/file-preview";
 import {
   DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
@@ -20,6 +20,7 @@ export const PROJECT_PROMPT_HISTORY_QUERY_KEY = "projectPromptHistory";
 export const SIDEBAR_NAVIGATION_QUERY_KEY = "sidebarNavigation";
 export const AUTOMATIONS_OVERVIEW_QUERY_KEY = "automationsOverview";
 export const THREADS_QUERY_KEY = "threads";
+export const THREAD_SEARCH_QUERY_KEY = "threadSearch";
 export const THREADS_DISABLED_QUERY_KEY = "threadsDisabled";
 export const THREAD_QUERY_KEY = "thread";
 export const THREAD_DETAIL_BOOTSTRAP_QUERY_KEY = "threadDetailBootstrap";
@@ -71,6 +72,11 @@ export interface ThreadListQueryFilters {
   parentThreadId?: string;
   archived: boolean;
   limit?: number;
+}
+
+export interface ThreadSearchQueryFilters {
+  query: ThreadSearchFilters["query"];
+  limitPerGroup: NonNullable<ThreadSearchFilters["limitPerGroup"]>;
 }
 
 export type ArchivedThreadsKindFilter = "all" | "root" | "child";
@@ -138,6 +144,13 @@ export type ThreadsQueryKey = readonly [typeof THREADS_QUERY_KEY];
 export type ThreadListQueryKey = readonly [
   typeof THREADS_QUERY_KEY,
   ThreadListQueryFilters,
+];
+export type ThreadSearchQueryKey = readonly [
+  typeof THREAD_SEARCH_QUERY_KEY,
+  ThreadSearchQueryFilters,
+];
+export type ThreadSearchQueryKeyPrefix = readonly [
+  typeof THREAD_SEARCH_QUERY_KEY,
 ];
 export type ArchivedThreadsListQueryKey = readonly [
   typeof THREADS_QUERY_KEY,
@@ -586,6 +599,16 @@ export function threadListQueryKey(
   filters: ThreadListQueryFilters,
 ): ThreadListQueryKey {
   return [THREADS_QUERY_KEY, filters];
+}
+
+export function threadSearchQueryKey(
+  filters: ThreadSearchQueryFilters,
+): ThreadSearchQueryKey {
+  return [THREAD_SEARCH_QUERY_KEY, filters];
+}
+
+export function threadSearchQueryKeyPrefix(): ThreadSearchQueryKeyPrefix {
+  return [THREAD_SEARCH_QUERY_KEY];
 }
 
 export function archivedThreadsListQueryKey(

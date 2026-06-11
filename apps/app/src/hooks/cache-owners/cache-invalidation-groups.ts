@@ -20,6 +20,7 @@ import {
   threadPromptHistoryQueryKey,
   threadPromptHistoryQueryKeyPrefix,
   threadQueryKey,
+  threadSearchQueryKeyPrefix,
   threadsQueryKey,
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
@@ -81,7 +82,11 @@ export function getThreadListInvalidationQueryKeys({
         queryClient,
       })
     : [threadsQueryKey()];
-  return [...threadListQueryKeys, sidebarNavigationQueryKey()];
+  return [
+    ...threadListQueryKeys,
+    sidebarNavigationQueryKey(),
+    threadSearchQueryKeyPrefix(),
+  ];
 }
 
 export function getThreadDetailInvalidationQueryKeys({
