@@ -16,7 +16,6 @@ import {
   environmentDiffFilesQueryKeyPrefix,
   environmentDiffPatchQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
-  environmentGitDiffQueryKeyPrefix,
   environmentMergeBaseBranchesQueryKeyPrefix,
   environmentQueryKey,
   environmentWorkStatusQueryKey,
@@ -331,7 +330,6 @@ export function getEnvironmentWorkspaceStateInvalidationQueryKeys({
 }: EnvironmentInvalidationParams): QueryKey[] {
   return [
     environmentWorkStatusQueryKeyPrefix(environmentId),
-    environmentGitDiffQueryKeyPrefix(environmentId),
     environmentDiffFilesQueryKeyPrefix(environmentId),
     environmentFilePreviewQueryKeyPrefix(environmentId),
   ];

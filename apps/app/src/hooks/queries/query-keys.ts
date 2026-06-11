@@ -45,7 +45,6 @@ export const ENVIRONMENT_QUERY_KEY = "environment";
 export const ENVIRONMENT_WORK_STATUS_QUERY_KEY = "environmentWorkStatus";
 export const ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY =
   "environmentMergeBaseBranches";
-export const ENVIRONMENT_GIT_DIFF_QUERY_KEY = "environmentGitDiff";
 export const ENVIRONMENT_DIFF_FILES_QUERY_KEY = "environmentDiffFiles";
 export const ENVIRONMENT_DIFF_PATCH_QUERY_KEY = "environmentDiffPatch";
 export const ENVIRONMENT_DIFF_FILE_QUERY_KEY = "environmentDiffFile";
@@ -321,19 +320,6 @@ export type ThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
 ];
 export type AllThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
-];
-export type EnvironmentGitDiffQueryKey = readonly [
-  typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY,
-  string,
-  string | null,
-  string | null,
-];
-export type EnvironmentGitDiffQueryKeyRootPrefix = readonly [
-  typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY,
-];
-export type EnvironmentGitDiffQueryKeyPrefix = readonly [
-  typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY,
-  string,
 ];
 export type EnvironmentDiffFilesQueryKey = readonly [
   typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
@@ -834,24 +820,6 @@ export function environmentDiffTargetKey(
     default:
       return null;
   }
-}
-
-export function environmentGitDiffQueryKey(
-  environmentId: string,
-  targetType: string | null,
-  targetKey: string | null,
-): EnvironmentGitDiffQueryKey {
-  return [ENVIRONMENT_GIT_DIFF_QUERY_KEY, environmentId, targetType, targetKey];
-}
-
-export function allEnvironmentGitDiffQueryKeyPrefix(): EnvironmentGitDiffQueryKeyRootPrefix {
-  return [ENVIRONMENT_GIT_DIFF_QUERY_KEY];
-}
-
-export function environmentGitDiffQueryKeyPrefix(
-  environmentId: string,
-): EnvironmentGitDiffQueryKeyPrefix {
-  return [ENVIRONMENT_GIT_DIFF_QUERY_KEY, environmentId];
 }
 
 export function environmentDiffFilesQueryKey(
