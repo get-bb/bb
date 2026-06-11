@@ -8,7 +8,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import type { WorkspacePathEntry } from "@bb/server-contract";
+import type { AppSummary, WorkspacePathEntry } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -76,6 +76,14 @@ function makePathResponse(
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
+const REVIEW_BOARD_APP = {
+  applicationId: "review-board",
+  name: "Review Board",
+  entry: { path: "index.html", kind: "html" },
+  capabilities: ["data", "message"],
+  icon: { kind: "builtin", name: "ListTodo" },
+  source: null,
+} satisfies AppSummary;
 
 function seedRecentItems(threadId: string, items: ThreadRecentItem[]): void {
   window.localStorage.setItem(
@@ -140,7 +148,7 @@ describe("NewTabPage", () => {
     expect(screen.queryByRole("option", { name: /Open file/u })).toBeNull();
     expect(screen.queryByRole("option", { name: /Open browser/u })).toBeNull();
     const input = screen.getByRole("combobox", {
-      name: "Search files",
+      name: "Search files and apps",
     });
     expect(document.activeElement).toBe(input);
     fireEvent.change(input, { target: { value: "app" } });
@@ -196,7 +204,7 @@ describe("NewTabPage", () => {
     });
 
     const input = screen.getByRole("combobox", {
-      name: "Search files",
+      name: "Search files and apps",
     });
     fireEvent.change(input, { target: { value: "status" } });
     await screen.findByText("Files");
@@ -209,6 +217,63 @@ describe("NewTabPage", () => {
     });
   });
 
+  it("searches apps with files and hides default sections while searching", async () => {
+    const threadId = "thr-search-apps";
+    vi.mocked(api.listApps).mockResolvedValue([REVIEW_BOARD_APP]);
+    vi.mocked(api.searchEnvironmentPaths).mockResolvedValue(
+      makePathResponse([
+        {
+          kind: "file",
+          path: "src/review.ts",
+          score: 80,
+        },
+      ]),
+    );
+    vi.mocked(api.listThreadStoragePaths).mockResolvedValue({
+      ...makePathResponse([]),
+      storageRootPath: "/tmp/thread-storage",
+    });
+    seedRecentItems(threadId, [
+      {
+        source: "thread-storage",
+        path: "plans/recent-review.md",
+        openedAt: Date.now() - MINUTE_MS,
+      },
+    ]);
+    const { onSelect } = renderNewTabPage({
+      projectId: "proj-1",
+      currentThreadId: threadId,
+    });
+
+    expect(
+      await screen.findByRole("button", { name: /Review Board/u }),
+    ).toBeTruthy();
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Search files and apps" }),
+      {
+        target: { value: "review" },
+      },
+    );
+
+    const listbox = await screen.findByRole("listbox", {
+      name: "File and app search results",
+    });
+    expect(
+      await within(listbox).findByRole("group", { name: "Files" }),
+    ).toBeTruthy();
+    const appsGroup = within(listbox).getByRole("group", { name: "Apps" });
+    fireEvent.click(
+      within(appsGroup).getByRole("option", { name: /Review Board/u }),
+    );
+
+    expect(screen.queryByRole("group", { name: "Recent" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Create App..." })).toBeNull();
+    expect(onSelect).toHaveBeenCalledWith({
+      source: "app",
+      applicationId: "review-board",
+    });
+  });
+
   it("ends file-search loading in a projectless thread with no workspace", async () => {
     mockEmptySearchSources();
     renderNewTabPage({
@@ -217,29 +282,32 @@ describe("NewTabPage", () => {
       currentThreadId: "thr-projectless-search",
     });
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Search files" }), {
-      target: { value: "missing" },
-    });
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Search files and apps" }),
+      {
+        target: { value: "missing" },
+      },
+    );
 
     await waitFor(() => {
       expect(api.listThreadStoragePaths).toHaveBeenCalled();
     });
     await waitFor(() => {
-      expect(screen.queryByText("Searching files...")).toBeNull();
+      expect(screen.queryByText("Searching files and apps...")).toBeNull();
     });
 
     // No project source and no environment ⇒ workspace is never queried.
     expect(api.searchProjectPaths).not.toHaveBeenCalled();
     expect(api.searchEnvironmentPaths).not.toHaveBeenCalled();
-    expect(screen.queryByText("File search failed.")).toBeNull();
-    expect(screen.getByText("No files match your search.")).toBeTruthy();
+    expect(screen.queryByText("Search failed.")).toBeNull();
+    expect(screen.getByText("No results match your search.")).toBeTruthy();
   });
 
   it("renders an unavailable state without querying", () => {
     renderNewTabPage({ currentThreadId: "", environmentId: null });
 
     expect(
-      screen.getByText("No searchable file source is available."),
+      screen.getByText("No searchable source is available."),
     ).toBeTruthy();
     expect(api.searchProjectPaths).not.toHaveBeenCalled();
     expect(api.searchEnvironmentPaths).not.toHaveBeenCalled();
@@ -249,7 +317,9 @@ describe("NewTabPage", () => {
     // With no searchable source the combobox is disabled and advertises no
     // popup, so it never dangles aria-controls/activedescendant at an absent
     // listbox.
-    const input = screen.getByRole("combobox", { name: "Search files" });
+    const input = screen.getByRole("combobox", {
+      name: "Search files and apps",
+    });
     expect(input).toHaveProperty("disabled", true);
     expect(input.getAttribute("aria-expanded")).toBe("false");
     expect(input.getAttribute("aria-controls")).toBeNull();
@@ -371,7 +441,7 @@ describe("NewTabPage recent section", () => {
     ).toBeNull();
   });
 
-  it("shows a no-results message above Recent when a search has no file matches", async () => {
+  it("hides Recent while a search has no matches", async () => {
     mockEmptySearchSources();
     const threadId = "thr-recent-no-search-results";
     seedRecentItems(threadId, [
@@ -386,21 +456,16 @@ describe("NewTabPage recent section", () => {
       currentThreadId: threadId,
     });
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Search files" }), {
-      target: { value: "does-not-exist" },
-    });
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Search files and apps" }),
+      {
+        target: { value: "does-not-exist" },
+      },
+    );
 
-    const noResults = await screen.findByText("No files match your search.");
-    const recent = screen.getByRole("group", { name: "Recent" });
-    expect(
-      Boolean(
-        noResults.compareDocumentPosition(recent) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBe(true);
-    expect(
-      within(recent).getByRole("option", { name: /swap-model\.md/u }),
-    ).toBeTruthy();
+    expect(await screen.findByText("No results match your search.")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Recent" })).toBeNull();
+    expect(screen.queryByRole("option", { name: /swap-model\.md/u })).toBeNull();
   });
 
   it("reaches a recent row via keyboard navigation", async () => {
@@ -418,7 +483,9 @@ describe("NewTabPage recent section", () => {
       currentThreadId: threadId,
     });
 
-    const input = screen.getByRole("combobox", { name: "Search files" });
+    const input = screen.getByRole("combobox", {
+      name: "Search files and apps",
+    });
     const recentOption = await screen.findByRole("option", {
       name: /swap-model\.md/u,
     });

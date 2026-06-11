@@ -42,6 +42,7 @@ const ENVIRONMENT_ID = "env_open_file_story";
 const STORY_SOURCE_LIMIT = 40;
 const BLANK_THREAD_ID = "thr_new_tab_blank_story";
 const APPS_THREAD_ID = "thr_new_tab_apps_story";
+const LONG_RECENTS_THREAD_ID = "thr_new_tab_long_recents_story";
 const SEARCH_THREAD_ID = "thr_new_tab_search_story";
 const STORY_TERMINAL_ID = "term_new_tab_story";
 
@@ -196,6 +197,79 @@ const RECENT_ROW_ITEMS: ThreadRecentItem[] = [
     source: "workspace",
     path: "apps/app/src/components/right-panel/story-source.tsx",
     openedAt: Date.now() - 25 * 60 * 60 * 1000,
+  },
+];
+
+const LONG_RECENT_ROW_ITEMS: ThreadRecentItem[] = [
+  {
+    source: "thread-storage",
+    path: "plans/launch-readiness.md",
+    openedAt: Date.now() - 2 * 60 * 1000,
+  },
+  {
+    source: "thread-storage",
+    path: "plans/ux-research-synthesis.md",
+    openedAt: Date.now() - 18 * 60 * 1000,
+  },
+  {
+    source: "thread-storage",
+    path: "mockups/new-tab-overflow.html",
+    openedAt: Date.now() - 42 * 60 * 1000,
+  },
+  {
+    source: "workspace",
+    path: "apps/app/src/components/secondary-panel/NewTabPage.tsx",
+    openedAt: Date.now() - 2 * 60 * 60 * 1000,
+  },
+  {
+    source: "thread-storage",
+    path: "reports/search-behavior-review.md",
+    openedAt: Date.now() - 4 * 60 * 60 * 1000,
+  },
+  {
+    source: "workspace",
+    path: "apps/app/src/components/secondary-panel/NewTabFileSearch.tsx",
+    openedAt: Date.now() - 6 * 60 * 60 * 1000,
+  },
+  {
+    source: "thread-storage",
+    path: "artifacts/browser-entrypoint-demo.html",
+    openedAt: Date.now() - 9 * 60 * 60 * 1000,
+  },
+  {
+    source: "thread-storage",
+    path: "plans/app-launcher-taxonomy.md",
+    openedAt: Date.now() - 12 * 60 * 60 * 1000,
+  },
+  {
+    source: "workspace",
+    path: "apps/app/src/views/thread-detail/ThreadDetailView.tsx",
+    openedAt: Date.now() - 23 * 60 * 60 * 1000,
+  },
+  {
+    source: "thread-storage",
+    path: "reports/right-panel-qa-notes.md",
+    openedAt: Date.now() - 30 * 60 * 60 * 1000,
+  },
+  {
+    source: "thread-storage",
+    path: "mockups/terminal-action-state.html",
+    openedAt: Date.now() - 40 * 60 * 60 * 1000,
+  },
+  {
+    source: "workspace",
+    path: "apps/app/src/components/right-panel/ThreadSecondaryPanelNewTab.stories.tsx",
+    openedAt: Date.now() - 52 * 60 * 60 * 1000,
+  },
+  {
+    source: "thread-storage",
+    path: "plans/browser-default-page.md",
+    openedAt: Date.now() - 64 * 60 * 60 * 1000,
+  },
+  {
+    source: "thread-storage",
+    path: "reports/new-tab-metrics.md",
+    openedAt: Date.now() - 80 * 60 * 60 * 1000,
   },
 ];
 
@@ -623,13 +697,28 @@ export function NewTab() {
           />
         </StoryRow>
         <StoryRow
+          label="long recents"
+          hint="fourteen recent entries; expand with Show 8 more"
+        >
+          <NewTabPanelStory
+            apps={[]}
+            currentThreadId={LONG_RECENTS_THREAD_ID}
+            initialQuery=""
+            projectId={PROJECT_ID}
+            recentItems={LONG_RECENT_ROW_ITEMS}
+            showOpenBrowser
+            threadStoragePaths={[]}
+            workspacePaths={[]}
+          />
+        </StoryRow>
+        <StoryRow
           label="search results"
-          hint="file matches appear above Recent while Actions and Apps stay available"
+          hint="typed search shows only file and app results"
         >
           <NewTabPanelStory
             apps={APPS_RESPONSE}
             currentThreadId={SEARCH_THREAD_ID}
-            initialQuery="thread"
+            initialQuery="review"
             projectId={PROJECT_ID}
             recentItems={RECENT_ROW_ITEMS}
             showOpenBrowser

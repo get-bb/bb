@@ -38,6 +38,7 @@ interface RenderLauncherArgs {
   projectId?: string;
   environmentId?: string | null;
   currentThreadId?: string;
+  initialQuery?: string;
   onSelect?: NewTabFileSearchProps["onSelect"];
 }
 
@@ -220,6 +221,7 @@ function renderLauncher(args: RenderLauncherArgs = {}) {
       environmentId: args.environmentId ?? null,
       currentThreadId: args.currentThreadId ?? "thr_1",
       focusRequest: 0,
+      initialQuery: args.initialQuery,
       onSelect: args.onSelect ?? vi.fn(),
     }),
     { wrapper },
@@ -496,14 +498,14 @@ describe("NewTabActions", () => {
 });
 
 describe("NewTabFileSearch", () => {
-  it("keeps app rows out of file search", () => {
+  it("includes app rows as search results while a query is active", () => {
     setFileSearchSuggestions([APP_SUGGESTION, FILE_SUGGESTION]);
 
-    renderLauncher();
+    renderLauncher({ initialQuery: "review" });
 
-    expect(screen.queryByRole("option", { name: /Review Board/u })).toBeNull();
+    expect(screen.getByRole("option", { name: /Review Board/u })).toBeTruthy();
     expect(screen.getByRole("option", { name: /app\.ts/u })).toBeTruthy();
-    expect(screen.queryByText("Apps")).toBeNull();
+    expect(screen.getByText("Apps")).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: "Back to new tab menu" }),
     ).toBeNull();
@@ -514,7 +516,9 @@ describe("NewTabFileSearch", () => {
 
     renderLauncher();
 
-    const input = screen.getByRole("combobox", { name: "Search files" });
+    const input = screen.getByRole("combobox", {
+      name: "Search files and apps",
+    });
     // Exactly one listbox: the combobox controls a single popup spanning the
     // Files and Recent groups, so its active descendant always resolves within
     // the one controlled element rather than a detached or ambiguous listbox.
@@ -539,7 +543,7 @@ describe("NewTabFileSearch", () => {
     renderLauncher();
 
     const listbox = screen.getByRole("listbox", {
-      name: "File search results",
+      name: "File and app search results",
     });
     const filesGroup = within(listbox).getByRole("group", { name: "Files" });
     expect(
@@ -564,7 +568,7 @@ describe("NewTabFileSearch", () => {
     renderLauncher({ currentThreadId });
 
     const listbox = screen.getByRole("listbox", {
-      name: "File search results",
+      name: "File and app search results",
     });
     const filesGroup = within(listbox).getByRole("group", { name: "Files" });
     const recentGroup = within(listbox).getByRole("group", { name: "Recent" });
@@ -603,7 +607,7 @@ describe("NewTabFileSearch", () => {
     // workspace suggestions are filtered out of the results.
     expect(screen.queryByRole("option", { name: /app\.ts/u })).toBeNull();
     expect(
-      screen.getByRole("combobox", { name: "Search files" }),
+      screen.getByRole("combobox", { name: "Search files and apps" }),
     ).toHaveProperty("disabled", false);
   });
 });

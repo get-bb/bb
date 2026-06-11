@@ -82,11 +82,13 @@ export interface NewTabFileSearchProps {
   currentThreadId: string;
   focusRequest: number;
   initialQuery?: string;
+  onSearchActiveChange?: SearchActiveChangeHandler;
   onSelect: (selection: FileSearchSelection) => void;
 }
 
 export type CreateAppPromptPrefillHandler = () => void;
 export type OpenBrowserHandler = () => void;
+export type SearchActiveChangeHandler = (isSearchActive: boolean) => void;
 export type StartTerminalHandler = () => void;
 
 export interface NewTabActionsProps {
@@ -103,6 +105,7 @@ interface AppResultRowProps {
   id: string;
   suggestion: AppSearchSuggestion;
   isActive: boolean;
+  variant?: LauncherTileVariant;
   onActivate: () => void;
   onSelect: (suggestion: AppSearchSuggestion) => void;
 }
@@ -207,10 +210,10 @@ interface ShowMoreToggleProps {
 
 const FILE_SEARCH_LIMIT = 20;
 const FILE_SEARCH_SECTION_ORDER: readonly FileSearchSectionKind[] = [
-  "apps",
-  "actions",
   "files",
+  "apps",
   "recent",
+  "actions",
 ];
 
 const FILE_SEARCH_SECTION_LABELS = {
@@ -325,8 +328,8 @@ function groupFileSearchSections({
     });
   }
 
-  // Recent rows trail file matches so the unified index space reads top-down:
-  // open a matching file first, then jump back to a recently-opened file.
+  // Recent rows trail search matches so the unified index space reads top-down:
+  // open a matching result first, then jump back to a recently-opened file.
   for (const entry of recentEntries) {
     ensureSection("recent").items.push({ entry, index: 0 });
   }
@@ -415,6 +418,7 @@ function AppResultRow({
   id,
   suggestion,
   isActive,
+  variant = "action",
   onActivate,
   onSelect,
 }: AppResultRowProps) {
@@ -425,7 +429,7 @@ function AppResultRow({
     <LauncherTile
       id={id}
       isActive={isActive}
-      variant="action"
+      variant={variant}
       onActivate={onActivate}
       onSelect={handleSelect}
       title={getFileSearchResultTitle(suggestion)}
@@ -667,6 +671,7 @@ export function NewTabFileSearch({
   currentThreadId,
   focusRequest,
   initialQuery = "",
+  onSearchActiveChange,
   onSelect,
 }: NewTabFileSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -682,7 +687,7 @@ export function NewTabFileSearch({
   );
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
-  const { suggestions, isLoading, fileSearchError, isDebouncing } =
+  const { suggestions, isLoading, appsError, fileSearchError, isDebouncing } =
     useFileSearchSuggestions({
       projectId,
       query,
@@ -703,13 +708,15 @@ export function NewTabFileSearch({
     () => availableSources.filter((source) => source !== "app"),
     [availableSources],
   );
-  const fileSuggestions = useMemo(
+  const searchSuggestions = useMemo(
     () =>
-      suggestions.filter(
-        (suggestion): suggestion is FilePathSearchSuggestion =>
-          suggestion.entryKind === "file",
-      ),
-    [suggestions],
+      hasQuery
+        ? suggestions
+        : suggestions.filter(
+            (suggestion): suggestion is FilePathSearchSuggestion =>
+              suggestion.entryKind === "file",
+          ),
+    [hasQuery, suggestions],
   );
   // Collapsed to the visible cap by default. Recents are file/artifact entries,
   // so this section is owned by the Open file/search surface rather than the
@@ -722,17 +729,26 @@ export function NewTabFileSearch({
     [isRecentExpanded, recentItems],
   );
   const recentEntries = useMemo<FileSearchSectionEntry[]>(
-    () => visibleRecentItems.map((item) => ({ kind: "recent", item })),
-    [visibleRecentItems],
+    () =>
+      hasQuery
+        ? []
+        : visibleRecentItems.map((item) => ({ kind: "recent", item })),
+    [hasQuery, visibleRecentItems],
   );
   const sections = useMemo(
     () =>
       groupFileSearchSections({
-        availableSources: fileSearchSources,
+        availableSources: hasQuery ? availableSources : fileSearchSources,
         recentEntries,
-        suggestions: fileSuggestions,
+        suggestions: searchSuggestions,
       }),
-    [fileSearchSources, fileSuggestions, recentEntries],
+    [
+      availableSources,
+      fileSearchSources,
+      hasQuery,
+      recentEntries,
+      searchSuggestions,
+    ],
   );
   const navigableEntries = useMemo(
     () =>
@@ -762,6 +778,14 @@ export function NewTabFileSearch({
     setActiveIndex(navigableEntries.length > 0 ? 0 : -1);
   }, [navigableEntries]);
 
+  const handleQueryChange = useCallback(
+    (nextQuery: string) => {
+      setQuery(nextQuery);
+      onSearchActiveChange?.(nextQuery.trim().length > 0);
+    },
+    [onSearchActiveChange],
+  );
+
   const handleFileSelect = useCallback(
     (suggestion: FilePathSearchSuggestion) => {
       onSelect({ source: suggestion.source, path: suggestion.path });
@@ -784,9 +808,11 @@ export function NewTabFileSearch({
     (suggestion: FileSearchSuggestion) => {
       if (suggestion.entryKind === "file") {
         handleFileSelect(suggestion);
+        return;
       }
+      onSelect({ source: "app", applicationId: suggestion.applicationId });
     },
-    [handleFileSelect],
+    [handleFileSelect, onSelect],
   );
 
   const handleLauncherKeyDown = useCallback<LauncherKeyDownHandler>(
@@ -831,7 +857,7 @@ export function NewTabFileSearch({
   const activeEntryId = activeEntry
     ? getFileSearchEntryId(activeEntry)
     : undefined;
-  const isSearchDisabled = fileSearchSources.length === 0;
+  const isSearchDisabled = availableSources.length === 0;
   // The results listbox renders only when there is a searchable source and at
   // least one option. Gate the combobox relationship on that so
   // `aria-controls`/`aria-activedescendant` never point at an absent element.
@@ -850,20 +876,20 @@ export function NewTabFileSearch({
         <Input
           ref={inputRef}
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => handleQueryChange(event.target.value)}
           onKeyDown={handleLauncherKeyDown}
           disabled={isSearchDisabled}
           // Combobox with a list autocomplete popup: one listbox holds the
-          // navigable Files/Recent options, and the highlighted row is the
+          // navigable Files/Apps/Recent options, and the highlighted row is the
           // combobox's active descendant within that controlled listbox.
           role="combobox"
-          aria-label="Search files"
+          aria-label="Search files and apps"
           aria-autocomplete="list"
           aria-expanded={hasListbox}
           aria-controls={hasListbox ? listboxId : undefined}
           aria-activedescendant={hasListbox ? activeEntryId : undefined}
           placeholder={
-            isSearchDisabled ? "No searchable file source" : "Search files"
+            isSearchDisabled ? "No searchable source" : "Search files and apps"
           }
           className={cn(
             "h-8 pl-8 pr-8 focus-visible:ring-0 max-md:pointer-coarse:h-10",
@@ -880,21 +906,21 @@ export function NewTabFileSearch({
           />
         ) : null}
       </div>
-      {fileSearchSources.length === 0 ? (
+      {availableSources.length === 0 ? (
         <FileSearchMessage
           iconName="FileQuestion"
-          message="No searchable file source is available."
+          message="No searchable source is available."
         />
       ) : (
         <NewTabResults
           activeIndex={activeIndex}
           hasQuery={hasQuery}
-          fileSearchError={fileSearchError}
+          searchError={fileSearchError || appsError}
           isLoading={isLoading}
           listboxId={listboxId}
           nowMs={nowMs}
           onActivateIndex={setActiveIndex}
-          onFileSelect={handleFileSelect}
+          onSuggestionSelect={handleSuggestionSelect}
           onRecentSelect={handleRecentSelect}
           recent={{
             count: recentItems.length,
@@ -904,8 +930,9 @@ export function NewTabFileSearch({
             ),
             isExpanded: isRecentExpanded,
             toggleVisible:
+              !hasQuery &&
               recentItems.length > THREAD_RECENT_ITEMS_VISIBLE_LIMIT,
-            emptyHintVisible: recentItems.length === 0,
+            emptyHintVisible: !hasQuery && recentItems.length === 0,
             onToggleExpanded: handleToggleRecentExpanded,
           }}
           sections={sections}
@@ -1117,13 +1144,13 @@ interface NewTabRecentState {
 interface NewTabResultsProps {
   activeIndex: number;
   hasQuery: boolean;
-  fileSearchError: boolean;
+  searchError: boolean;
   isLoading: boolean;
-  /** Id of the single combobox listbox that wraps the Files/Recent option groups. */
+  /** Id of the single combobox listbox that wraps the Files/Apps/Recent option groups. */
   listboxId: string;
   nowMs: number;
   onActivateIndex: (index: number) => void;
-  onFileSelect: (suggestion: FilePathSearchSuggestion) => void;
+  onSuggestionSelect: (suggestion: FileSearchSuggestion) => void;
   onRecentSelect: (item: ThreadRecentItem) => void;
   recent: NewTabRecentState;
   sections: readonly FileSearchSection[];
@@ -1132,43 +1159,48 @@ interface NewTabResultsProps {
 function NewTabResults({
   activeIndex,
   hasQuery,
-  fileSearchError,
+  searchError,
   isLoading,
   listboxId,
   nowMs,
   onActivateIndex,
-  onFileSelect,
+  onSuggestionSelect,
   onRecentSelect,
   recent,
   sections,
 }: NewTabResultsProps) {
+  const appsSection = sections.find((section) => section.kind === "apps");
   const filesSection = sections.find((section) => section.kind === "files");
   const recentSection = sections.find((section) => section.kind === "recent");
+  const showAppsSection = appsSection !== undefined;
   const showFilesSection = filesSection !== undefined;
   const showRecentSection =
-    recentSection !== undefined || recent.emptyHintVisible;
-  const hasSectionsAbove = showFilesSection;
-  const showLoading = isLoading && !showFilesSection;
-  const showError = fileSearchError && !showFilesSection && !showLoading;
-  const showNoFileResults =
-    hasQuery && !showFilesSection && !showLoading && !showError;
-  const showFileSearchMessage = showLoading || showError || showNoFileResults;
-  const hasRecentSectionPredecessor = hasSectionsAbove || showFileSearchMessage;
+    !hasQuery && (recentSection !== undefined || recent.emptyHintVisible);
+  const hasSearchResults = showFilesSection || showAppsSection;
+  const showLoading = isLoading && !hasSearchResults;
+  const showError = searchError && !hasSearchResults && !showLoading;
+  const showNoSearchResults =
+    hasQuery && !hasSearchResults && !showLoading && !showError;
+  const showSearchMessage = showLoading || showError || showNoSearchResults;
+  const hasRecentSectionPredecessor = hasSearchResults || showSearchMessage;
   const showEmptyMessage =
-    !showFilesSection && !showRecentSection && !showLoading && !showError;
+    !hasSearchResults && !showRecentSection && !showLoading && !showError;
   // The combobox popup is a single listbox spanning both groups, so the active
   // descendant the input points at always resolves inside one controlled
   // element. It renders only when a group has option rows; the loading/error
   // message, the empty-recent card, and the show-more toggle are not options
   // and stay outside the listbox.
-  const showListbox = showFilesSection || recentSection !== undefined;
+  const showListbox =
+    showFilesSection || showAppsSection || recentSection !== undefined;
 
   if (showEmptyMessage) {
     return (
       <FileSearchMessage
         iconName={hasQuery ? "FileQuestion" : "File"}
         message={
-          hasQuery ? "No files match your search." : "Type to search files."
+          hasQuery
+            ? "No results match your search."
+            : "Type to search files and apps."
         }
       />
     );
@@ -1176,9 +1208,9 @@ function NewTabResults({
 
   return (
     <div className="pb-1">
-      {/* The loading/error message stands in for the Files group while no file
-          rows exist, so it leads the results just as that group would. */}
-      {showFileSearchMessage ? (
+      {/* The loading/error message stands in for search results while no result
+          rows exist, so it leads the results just as a result group would. */}
+      {showSearchMessage ? (
         <FileSearchMessage
           iconName={
             showError ? "AlertCircle" : showLoading ? "Spinner" : "FileQuestion"
@@ -1186,16 +1218,20 @@ function NewTabResults({
           iconClassName={showLoading ? "animate-spin" : undefined}
           message={
             showError
-              ? "File search failed."
+              ? "Search failed."
               : showLoading
-                ? "Searching files..."
-                : "No files match your search."
+                ? "Searching files and apps..."
+                : "No results match your search."
           }
         />
       ) : null}
 
       {showListbox ? (
-        <div id={listboxId} role="listbox" aria-label="File search results">
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label="File and app search results"
+        >
           {showFilesSection && filesSection ? (
             <section role="group" aria-label={FILE_SEARCH_SECTION_LABELS.files}>
               <LauncherSectionHeader
@@ -1218,7 +1254,43 @@ function NewTabResults({
                       suggestion={suggestion}
                       isActive={index === activeIndex}
                       onActivate={() => onActivateIndex(index)}
-                      onSelect={onFileSelect}
+                      onSelect={onSuggestionSelect}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          {showAppsSection && appsSection ? (
+            <section
+              role="group"
+              aria-label={FILE_SEARCH_SECTION_LABELS.apps}
+              className={cn(showFilesSection && "mt-3")}
+            >
+              <LauncherSectionHeader
+                label={FILE_SEARCH_SECTION_LABELS.apps}
+                sticky
+                className={showFilesSection ? "pt-2" : undefined}
+              />
+              <div className="flex flex-col gap-px">
+                {appsSection.items.map(({ entry, index }) => {
+                  if (
+                    entry.kind !== "suggestion" ||
+                    entry.suggestion.entryKind !== "app"
+                  ) {
+                    return null;
+                  }
+                  const suggestion = entry.suggestion;
+                  return (
+                    <AppResultRow
+                      key={`app:${suggestion.applicationId}`}
+                      id={getFileSearchEntryId(entry)}
+                      suggestion={suggestion}
+                      isActive={index === activeIndex}
+                      variant="result"
+                      onActivate={() => onActivateIndex(index)}
+                      onSelect={onSuggestionSelect}
                     />
                   );
                 })}
