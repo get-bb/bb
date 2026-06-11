@@ -9,6 +9,7 @@ import {
 import type { ThreadGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { ChangedFilesDetailRow } from "@/components/workspace/ChangedFilesDetailRow";
 import type { WorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
+import { useBrowserDimmingModal } from "@/hooks/useBrowserDimmingModal";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
@@ -103,6 +104,11 @@ export function ThreadGitActionDialog({
     () => (target ? getDialogCopy(target) : null),
     [target],
   );
+
+  // While this modal is open, hide the in-app browser's native overlay so the
+  // dialog backdrop dims the whole panel (the overlay can't sit behind a DOM
+  // backdrop).
+  useBrowserDimmingModal(target !== null);
 
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
@@ -299,7 +305,9 @@ export function ThreadGitActionDialogContent({
             {branchName ? (
               <DetailRow
                 label={
-                  <DetailRowIconLabel icon="GitBranch">Branch</DetailRowIconLabel>
+                  <DetailRowIconLabel icon="GitBranch">
+                    Branch
+                  </DetailRowIconLabel>
                 }
                 valueClassName="min-w-0 truncate"
               >
@@ -365,19 +373,12 @@ export function ThreadGitActionDialogContent({
               </DetailRow>
             ) : null}
             {shouldShowChangedFilesRow && changedFilesSection ? (
-              <>
-                {/* Separate the changed-files section from the metadata above,
-                    matching the info page's section divider + spacing. */}
-                <div
-                  className="mb-1 mt-3 border-t border-border"
-                  aria-hidden
-                />
-                <ChangedFilesDetailRow
-                  sections={[changedFilesSection]}
-                  rowValueClassName="pt-0.5"
-                  listClassName="max-h-40"
-                />
-              </>
+              <ChangedFilesDetailRow
+                sections={[changedFilesSection]}
+                rowClassName="mt-3"
+                rowValueClassName="pt-0.5"
+                listClassName="max-h-40"
+              />
             ) : null}
           </DetailCard>
         ) : null}

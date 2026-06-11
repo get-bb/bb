@@ -160,7 +160,7 @@ export function ParentSelectorRow({
                   : 0
               }
               className={cn(
-                "inline-flex w-fit max-w-full min-w-0 items-center gap-1 rounded-md px-0 leading-tight text-foreground outline-none ring-sidebar-ring transition-colors hover:text-foreground focus-visible:ring-2",
+                "-mx-1 inline-flex w-fit max-w-full min-w-0 items-center gap-1 rounded-md px-1 leading-tight text-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover data-[state=open]:bg-state-hover focus-visible:ring-2",
                 COARSE_POINTER_TEXT_SM_CLASS,
               )}
             >

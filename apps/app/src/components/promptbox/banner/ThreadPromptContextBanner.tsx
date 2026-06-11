@@ -233,8 +233,6 @@ interface SectionToggleButtonProps {
   onToggle: () => void;
   /** Hide the trailing chevron (e.g. when the whole row is the click target). */
   hideChevron?: boolean;
-  /** Grow to fill the header row so the full width is a toggle target. */
-  grow?: boolean;
 }
 
 function SectionToggleButton({
@@ -247,7 +245,6 @@ function SectionToggleButton({
   isExpanded,
   onToggle,
   hideChevron = false,
-  grow = false,
 }: SectionToggleButtonProps) {
   return (
     <button
@@ -264,7 +261,6 @@ function SectionToggleButton({
         // icon — the icons' own internal padding provides enough separation,
         // and a gap here makes the pair look untethered.
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
-        grow && "flex-1 justify-start",
         isExpanded ? "text-foreground" : "text-muted-foreground",
       )}
     >
@@ -741,7 +737,6 @@ export function ThreadPromptContextBanner({
             ariaLabel={`Changed files: ${gitSummaryText}`}
             isExpanded={isGitExpanded}
             onToggle={() => onToggleSection("git")}
-            grow
           />
         ) : null}
         {showGit && gitSection.mergeBase ? (

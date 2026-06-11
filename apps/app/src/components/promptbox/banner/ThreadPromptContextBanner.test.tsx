@@ -242,9 +242,9 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(
       screen
-        .getByText("Merge base:")
-        .parentElement?.hasAttribute("data-promptbox-hide-compact"),
-    ).toBe(true);
+        .getByLabelText("Merge base")
+        .closest("[data-promptbox-hide-compact]"),
+    ).not.toBeNull();
   });
 
   it("opens changed files from the expanded git row", () => {

@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -7,9 +7,11 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type Modifier,
 } from "@dnd-kit/core";
 import {
   SortableContext,
+  arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -115,7 +117,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           type="button"
           variant="ghost"
           className={cn(
-            "-ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-md px-1 text-muted-foreground",
+            "-ml-2 flex h-7 shrink-0 items-center gap-0 rounded-md px-0.5 text-muted-foreground",
             !dragDisabled && "cursor-grab active:cursor-grabbing",
           )}
           disabled={dragDisabled}
@@ -225,30 +227,86 @@ export function QueuedMessagesList({
     }),
   );
   const [isExpanded, setIsExpanded] = useState(true);
+
+  // Render from a local order so a drag can reorder synchronously in the drop
+  // event (no snap-back). The prop is re-adopted only when the queue's
+  // membership changes (add / send / delete / edit) — not when a reorder's
+  // optimistic cache update merely catches up to an order we already applied.
+  // (React Query defers its notification past dnd-kit's drop, so re-adopting on
+  // every prop change would momentarily re-render a dropped row in its old
+  // slot.)
+  const [orderedMessages, setOrderedMessages] = useState(queuedMessages);
+  const membershipKey = queuedMessages
+    .map((queuedMessage) => queuedMessage.id)
+    .slice()
+    .sort()
+    .join("|");
+  const [syncedMembershipKey, setSyncedMembershipKey] = useState(membershipKey);
+  if (membershipKey !== syncedMembershipKey) {
+    setSyncedMembershipKey(membershipKey);
+    setOrderedMessages(queuedMessages);
+  }
+
   const queuedMessageIds = useMemo(
-    () => queuedMessages.map((queuedMessage) => queuedMessage.id),
-    [queuedMessages],
+    () => orderedMessages.map((queuedMessage) => queuedMessage.id),
+    [orderedMessages],
   );
   const sortingDisabled =
     actionDisabled || processingMessageId !== null || queuedMessages.length < 2;
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      if (!event.over) {
+      if (!event.over || event.active.id === event.over.id) {
         return;
       }
+      const activeId = String(event.active.id);
+      const overId = String(event.over.id);
+      const oldIndex = orderedMessages.findIndex(
+        (queuedMessage) => queuedMessage.id === activeId,
+      );
+      const newIndex = orderedMessages.findIndex(
+        (queuedMessage) => queuedMessage.id === overId,
+      );
+      if (oldIndex === -1 || newIndex === -1) {
+        return;
+      }
+
+      // Apply the new order locally and synchronously so the dropped row
+      // settles into place in the same render flush as the drop; the mutation
+      // syncs the server in the background.
+      setOrderedMessages((current) =>
+        arrayMove([...current], oldIndex, newIndex),
+      );
 
       const reorderRequest = buildQueuedMessageReorderRequest({
-        activeId: String(event.active.id),
-        overId: String(event.over.id),
-        queuedMessages,
+        activeId,
+        overId,
+        queuedMessages: orderedMessages,
       });
-      if (!reorderRequest) {
-        return;
+      if (reorderRequest) {
+        onReorder(reorderRequest);
       }
-
-      onReorder(reorderRequest);
     },
-    [onReorder, queuedMessages],
+    [onReorder, orderedMessages],
+  );
+
+  // Keep a dragged row from being pulled outside the visible list: clamp the
+  // drag to the list's bounds and to the vertical axis.
+  const listRef = useRef<HTMLUListElement>(null);
+  const restrictToListBounds = useCallback<Modifier>(
+    ({ draggingNodeRect, transform }) => {
+      const listRect = listRef.current?.getBoundingClientRect();
+      if (!listRect || !draggingNodeRect) {
+        return { ...transform, x: 0 };
+      }
+      const minY = listRect.top - draggingNodeRect.top;
+      const maxY = listRect.bottom - draggingNodeRect.bottom;
+      return {
+        ...transform,
+        x: 0,
+        y: Math.min(Math.max(transform.y, minY), maxY),
+      };
+    },
+    [],
   );
 
   if (queuedMessages.length === 0) return null;
@@ -261,39 +319,40 @@ export function QueuedMessagesList({
       // coming up from behind the composer rather than floating above it.
       className="-mb-3 overflow-hidden rounded-b-none border-b-0 pb-3"
     >
-      {/* Whole header row is the collapse target (accordion-style), so the
-          caret sits at the far right rather than hugging the label. */}
-      <button
-        type="button"
-        aria-expanded={isExpanded}
-        onClick={() => setIsExpanded((prev) => !prev)}
-        className="flex w-full items-center gap-1.5 px-2.5 pb-1 pt-2.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
-      >
-        <span className="opacity-70">Queued</span>
-        <span className="text-2xs text-subtle-foreground">
-          {queuedMessages.length}
-        </span>
-        <Icon
-          name="ChevronDown"
-          className={cn(
-            "ml-auto size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
-            isExpanded && "rotate-180",
-          )}
-          aria-hidden="true"
-        />
-      </button>
+      <div className="px-2.5 pb-1 pt-2.5">
+        <button
+          type="button"
+          aria-expanded={isExpanded}
+          onClick={() => setIsExpanded((prev) => !prev)}
+          className="-ml-1 flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover"
+        >
+          <span className="opacity-70">Queued</span>
+          <span className="text-2xs text-subtle-foreground">
+            {queuedMessages.length}
+          </span>
+          <Icon
+            name="ChevronDown"
+            className={cn(
+              "size-3.5 shrink-0 text-subtle-foreground transition-transform duration-200",
+              isExpanded && "rotate-180",
+            )}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
       {isExpanded ? (
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
+          modifiers={[restrictToListBounds]}
           onDragEnd={handleDragEnd}
         >
           <SortableContext
             items={queuedMessageIds}
             strategy={verticalListSortingStrategy}
           >
-            <ul>
-              {queuedMessages.map((queuedMessage, index) => (
+            <ul ref={listRef}>
+              {orderedMessages.map((queuedMessage, index) => (
                 <QueuedMessageRow
                   key={queuedMessage.id}
                   queuedMessage={queuedMessage}
