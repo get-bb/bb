@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DiffFileEntry } from "@bb/server-contract";
+import type { RequestDiffFileContents } from "@/components/git-diff/GitDiffCardBody";
 import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
 import { DiffFileCard } from "./DiffFileCard";
 
@@ -34,6 +35,18 @@ const MODIFIED_PATCH = [
   "+export const value = 2;",
   "",
 ].join("\n");
+
+// Git emits this (no `--binary`) for an added image; it parses to a zero-hunk
+// file the card routes to its inline image preview.
+const ADDED_IMAGE_PATCH = [
+  "diff --git a/assets/logo.png b/assets/logo.png",
+  "new file mode 100644",
+  "index 0000000..2222222",
+  "Binary files /dev/null and b/assets/logo.png differ",
+  "",
+].join("\n");
+
+const IMAGE_DATA_URL = "data:image/png;base64,bmV3";
 
 // `FilePathLink` renders its label through `TruncateStart`, which prepends a
 // U+200E (LRM) marker, so an exact-text query misses. Match the button by its
@@ -68,6 +81,7 @@ interface RenderCardOptions {
   onLoadPatch?: () => void;
   onRetry?: () => void;
   onOpenFilePreview?: (path: string) => void;
+  onRequestFileContents?: RequestDiffFileContents;
 }
 
 function renderCard(options: RenderCardOptions = {}) {
@@ -81,6 +95,7 @@ function renderCard(options: RenderCardOptions = {}) {
       onLoadPatch={options.onLoadPatch ?? (() => {})}
       onRetry={options.onRetry ?? (() => {})}
       onOpenFilePreview={options.onOpenFilePreview}
+      onRequestFileContents={options.onRequestFileContents}
     />,
   );
 }
@@ -160,5 +175,34 @@ describe("DiffFileCard", () => {
     expect(screen.queryByTestId("diff-view")).toBeNull();
     fireEvent.click(getLinkByText(container, "Open file"));
     expect(onOpenFilePreview).toHaveBeenCalledWith("src/file.ts");
+  });
+
+  it("renders an image preview for an image file change instead of a No renderable diff notice", async () => {
+    const requestFileContents: RequestDiffFileContents = async () => ({
+      kind: "image",
+      dataUrl: IMAGE_DATA_URL,
+      sizeBytes: 20_480,
+    });
+    renderCard({
+      entry: {
+        path: "assets/logo.png",
+        changeKind: "added",
+        additions: 0,
+        deletions: 0,
+        binary: true,
+        loadMode: "on_demand",
+      },
+      patchState: {
+        status: "loaded",
+        patch: ADDED_IMAGE_PATCH,
+        truncated: false,
+      },
+      onRequestFileContents: requestFileContents,
+    });
+
+    const image = await screen.findByRole("img", { name: "assets/logo.png" });
+    expect(image.getAttribute("src")).toBe(IMAGE_DATA_URL);
+    expect(screen.queryByText("No renderable diff for this file.")).toBeNull();
+    expect(screen.queryByTestId("diff-view")).toBeNull();
   });
 });

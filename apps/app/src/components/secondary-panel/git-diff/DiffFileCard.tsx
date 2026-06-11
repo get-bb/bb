@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import type { DiffFileEntry } from "@bb/server-contract";
 import {
   GitDiffCardBody,
+  useGitDiffCardBody,
   type RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
 import {
@@ -297,15 +298,55 @@ function DiffFileCardBody({
   }
 
   return (
+    <DiffFileCardRenderedBody
+      entry={entry}
+      parsedFile={parsedFile}
+      diffViewOptions={diffViewOptions}
+      truncated={patchState.truncated ?? false}
+      onOpenFilePreview={onOpenFilePreview}
+      onRequestFileContents={onRequestFileContents}
+    />
+  );
+}
+
+interface DiffFileCardRenderedBodyProps {
+  entry: DiffFileEntry;
+  parsedFile: ParsedGitDiffFile;
+  diffViewOptions: Record<string, string | boolean | number>;
+  truncated: boolean;
+  onOpenFilePreview?: (path: string) => void;
+  onRequestFileContents?: RequestDiffFileContents;
+}
+
+/**
+ * The diff tab's loaded-and-parsed body: the shared {@link GitDiffCardBody}
+ * (text diff with context expansion, or an inline image preview for binary image
+ * changes) plus the truncated-patch "Show full diff" affordance. Split out so
+ * {@link useGitDiffCardBody} is only called once a renderable parsed file exists
+ * (the gate/notice branches above have no file to enrich).
+ */
+function DiffFileCardRenderedBody({
+  entry,
+  parsedFile,
+  diffViewOptions,
+  truncated,
+  onOpenFilePreview,
+  onRequestFileContents,
+}: DiffFileCardRenderedBodyProps) {
+  const bodyState = useGitDiffCardBody({
+    fileDiff: parsedFile,
+    changeKind: entry.changeKind,
+    isRendering: false,
+    onRequestFileContents,
+  });
+  return (
     <>
       <GitDiffCardBody
-        fileDiff={parsedFile}
-        changeKind={entry.changeKind}
+        state={bodyState}
         diffViewOptions={diffViewOptions}
-        onRequestFileContents={onRequestFileContents}
         reservesCollapseGutter
       />
-      {patchState.truncated ? (
+      {truncated ? (
         <div className={DIFF_FILE_CARD_NOTICE_CLASS}>
           <span>This diff was truncated for display.</span>
           {onOpenFilePreview ? (

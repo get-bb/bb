@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { GitDiffFileChangeKind } from "@bb/server-contract";
 import { CopyButton } from "@/components/ui/copy-button.js";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
@@ -8,6 +8,7 @@ import { OpenInEditorButton } from "@/components/ui/open-in-editor-button.js";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
 import { cn } from "@/lib/utils";
+import type { DiffImageSizeStat } from "./GitDiffCardBody";
 
 /**
  * Explicit, patch-independent description of a diff card's header. Both the
@@ -48,6 +49,51 @@ export interface GitDiffCardHeaderProps {
    * supported.
    */
   hasChanges: boolean;
+  /**
+   * Replaces the right-side `+/-` line tally. Image cards pass their byte-size
+   * delta here (rendered via {@link GitDiffCardImageSizeStat}) since an image
+   * swap has no line counts to tally.
+   */
+  statSlot?: ReactNode;
+}
+
+const BYTES_PER_UNIT = 1024;
+
+function formatByteSize(bytes: number): string {
+  if (bytes < BYTES_PER_UNIT) {
+    return `${bytes} B`;
+  }
+  const kb = bytes / BYTES_PER_UNIT;
+  if (kb < BYTES_PER_UNIT) {
+    return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)} KB`;
+  }
+  const mb = kb / BYTES_PER_UNIT;
+  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+}
+
+export interface GitDiffCardImageSizeStatProps {
+  stat: DiffImageSizeStat;
+}
+
+/**
+ * Header size indicator for an image card. An image change swaps the whole
+ * binary, so rather than netting the two sizes it surfaces them like a text
+ * diff's `+/-` tally: the new file's bytes as added, the old file's bytes as
+ * removed. Adds show only `+`, deletes only `-`, edits show both.
+ */
+export function GitDiffCardImageSizeStat({
+  stat,
+}: GitDiffCardImageSizeStatProps) {
+  return (
+    <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs tabular-nums">
+      {stat.addedBytes !== null ? (
+        <span className="text-diff-added">{`+${formatByteSize(stat.addedBytes)}`}</span>
+      ) : null}
+      {stat.removedBytes !== null ? (
+        <span className="text-diff-removed">{`-${formatByteSize(stat.removedBytes)}`}</span>
+      ) : null}
+    </span>
+  );
 }
 
 /**
@@ -77,6 +123,7 @@ export function GitDiffCardHeader({
   isCollapsed,
   onToggleCollapsed,
   hasChanges,
+  statSlot,
 }: GitDiffCardHeaderProps) {
   const isAddedFile = model.changeKind === "added";
   const isDeletedFile = model.changeKind === "deleted";
@@ -179,12 +226,14 @@ export function GitDiffCardHeader({
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-1">
-        <DiffStatsTally
-          insertions={headerInsertions}
-          deletions={headerDeletions}
-          hideZero={hideEmptyHeaderStats}
-          className="text-xs"
-        />
+        {statSlot ?? (
+          <DiffStatsTally
+            insertions={headerInsertions}
+            deletions={headerDeletions}
+            hideZero={hideEmptyHeaderStats}
+            className="text-xs"
+          />
+        )}
       </span>
     </div>
   );

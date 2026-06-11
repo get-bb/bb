@@ -1,10 +1,13 @@
 import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { FileContents } from "@pierre/diffs";
 import type { WorkspaceDiffTarget } from "@bb/domain";
+import type { EnvironmentDiffFileResponse } from "@bb/server-contract";
 import { environmentDiffFileQueryKey } from "@/hooks/queries/query-keys";
 import { getEnvironmentDiffFile, type DiffFileTarget } from "@/lib/api";
-import type { RequestDiffFileContents } from "@/components/git-diff/GitDiffCardBody";
+import type {
+  DiffFileContentsResult,
+  RequestDiffFileContents,
+} from "@/components/git-diff/GitDiffCardBody";
 
 export interface UseDiffFileContentsRequesterArgs {
   environmentId?: string;
@@ -56,7 +59,7 @@ export function useDiffFileContentsRequester({
           getEnvironmentDiffFile(envId, resolvedTarget, path, side),
         staleTime: 5_000,
       });
-      return toFileContents(path, result.content, result.contentEncoding);
+      return toDiffFileContentsResult(path, result);
     };
   }, [environmentId, fileTarget, queryClient]);
 }
@@ -107,14 +110,40 @@ function buildDiffFileTarget(
   }
 }
 
-function toFileContents(
+// Browser-renderable raster image MIME types. Mirrors the extension allowlist
+// in `isImageGitDiffFile` (SVG is text, so it diffs as hunks, not a preview).
+const PREVIEWABLE_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
+  "image/avif",
+  "image/bmp",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/vnd.microsoft.icon",
+  "image/webp",
+  "image/x-icon",
+]);
+
+/**
+ * Map a `/diff/file` response into the card's `DiffFileContentsResult`. UTF-8
+ * content becomes a `text` side @pierre/diffs can expand context from. A base64
+ * blob with a browser-renderable image MIME type becomes an `image` side the
+ * card previews inline (with its byte size for the header `+/-` delta). Anything
+ * else (binary, non-image) yields `null` so the card leaves that side blank.
+ */
+function toDiffFileContentsResult(
   path: string,
-  content: string,
-  contentEncoding: "utf8" | "base64",
-): FileContents | null {
-  // `@pierre/diffs` wants a UTF-8 string; binary blobs come back base64. Skip
-  // those — the diff-rendering library can't show context for binaries
-  // (parsePatchFiles doesn't produce hunks for them anyway).
-  if (contentEncoding !== "utf8") return null;
-  return { name: path, contents: content };
+  response: EnvironmentDiffFileResponse,
+): DiffFileContentsResult | null {
+  if (response.contentEncoding === "utf8") {
+    return { kind: "text", file: { name: path, contents: response.content } };
+  }
+  const mimeType = response.mimeType;
+  if (mimeType !== undefined && PREVIEWABLE_IMAGE_MIME_TYPES.has(mimeType)) {
+    return {
+      kind: "image",
+      dataUrl: `data:${mimeType};base64,${response.content}`,
+      sizeBytes: response.sizeBytes,
+    };
+  }
+  return null;
 }
