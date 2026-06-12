@@ -45,6 +45,7 @@ export function createBbDesktopApi(
     popout: {
       toggle() {},
       setThread() {},
+      stateChanged() {},
       openInMain() {},
       onThreadChanged() {
         return () => {};

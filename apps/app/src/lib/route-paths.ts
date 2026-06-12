@@ -4,6 +4,10 @@ import { matchPath } from "react-router-dom";
 export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
 export const POPOUT_ROUTE_PATH = "/popout";
+export const POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH =
+  "/popout/threads/:threadId";
+export const POPOUT_THREAD_DETAIL_ROUTE_PATH =
+  "/popout/projects/:projectId/threads/:threadId";
 export const SETTINGS_ROUTE_PATH = "/settings";
 export const AUTOMATIONS_ROUTE_PATH = "/automations";
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
@@ -42,6 +46,16 @@ export function getRootComposeRoutePath(): string {
   return ROOT_COMPOSE_ROUTE_PATH;
 }
 
+export function getPopoutRoutePath(): string {
+  return POPOUT_ROUTE_PATH;
+}
+
+export function getPopoutThreadRoutePath(args: ThreadRoutePathArgs): string {
+  return isProjectlessProjectId(args.projectId)
+    ? `/popout/threads/${args.threadId}`
+    : `/popout/projects/${args.projectId}/threads/${args.threadId}`;
+}
+
 export function getAutomationsRoutePath(): string {
   return AUTOMATIONS_ROUTE_PATH;
 }
@@ -68,6 +82,8 @@ const baseRoutePatterns: readonly string[] = [
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
   POPOUT_ROUTE_PATH,
+  POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
+  POPOUT_THREAD_DETAIL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   AUTOMATIONS_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,

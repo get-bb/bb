@@ -67,7 +67,10 @@ import {
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import {
+  getThreadRoutePath,
+  type ThreadRoutePathArgs,
+} from "@/lib/route-paths";
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
@@ -98,6 +101,8 @@ import { Icon } from "@/components/ui/icon.js";
 import {
   getDesktopBrowserApi,
   isDesktopBrowserAvailable,
+  MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_WINDOW_DRAG_CLASS,
 } from "@/lib/bb-desktop";
 import {
   resolveChatLinkOpenTarget,
@@ -176,6 +181,28 @@ interface RightPanelFileTabIconProps {
   path: string;
 }
 
+interface ThreadDetailViewPageProps {
+  surface: "page";
+}
+
+interface ThreadDetailViewPopoutProps {
+  onPopoutHide: () => void;
+  onPopoutNewQuickThread: () => void;
+  onPopoutOpenInMain: (thread: ThreadRoutePathArgs) => void;
+  surface: "popout";
+}
+
+type ThreadDetailViewProps =
+  | ThreadDetailViewPageProps
+  | ThreadDetailViewPopoutProps;
+
+interface PopoutThreadHeaderProps {
+  onHide: () => void;
+  onNewQuickThread: () => void;
+  onOpenInMain: () => void;
+  threadTitle: string;
+}
+
 function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
   const visual = resolveRightPanelFileVisual({ path });
   return (
@@ -184,6 +211,61 @@ function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
       className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
       aria-hidden
     />
+  );
+}
+
+function PopoutThreadHeader({
+  onHide,
+  onNewQuickThread,
+  onOpenInMain,
+  threadTitle,
+}: PopoutThreadHeaderProps) {
+  const buttonClassName = [
+    "inline-flex items-center justify-center text-muted-foreground",
+    "transition-colors hover:bg-state-hover hover:text-foreground",
+    HEADER_ICON_BUTTON_CLASS,
+    MACOS_APP_REGION_NO_DRAG_CLASS,
+  ].join(" ");
+
+  return (
+    <div
+      className={[
+        MACOS_WINDOW_DRAG_CLASS,
+        "flex h-10 shrink-0 items-center gap-1",
+        "border-b border-border-seam-vertical px-2",
+      ].join(" ")}
+    >
+      <button
+        type="button"
+        className={buttonClassName}
+        aria-label="Hide popout"
+        title="Hide popout"
+        onClick={onHide}
+      >
+        <Icon name="X" />
+      </button>
+      <p className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">
+        {threadTitle}
+      </p>
+      <button
+        type="button"
+        className={buttonClassName}
+        aria-label="New quick thread"
+        title="New quick thread"
+        onClick={onNewQuickThread}
+      >
+        <Icon name="EditFile" />
+      </button>
+      <button
+        type="button"
+        className={buttonClassName}
+        aria-label="Open in main app"
+        title="Open in main app"
+        onClick={onOpenInMain}
+      >
+        <Icon name="ExternalLink" />
+      </button>
+    </div>
   );
 }
 
@@ -284,7 +366,7 @@ export function resolveHostFilePreviewLinkRootPath({
   return null;
 }
 
-export function ThreadDetailView() {
+export function ThreadDetailView(props: ThreadDetailViewProps) {
   const { projectId, threadId } = useRouteState();
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
@@ -1392,19 +1474,32 @@ export function ThreadDetailView() {
         }}
       />
     ) : undefined;
-  const timelineHeader = (
-    <ThreadDetailHeader
-      actionsMenu={threadActionsMenu}
-      isChildThread={Boolean(parentThreadId)}
-      isSecondaryPanelOpen={isSecondaryPanelOpen}
-      activeTerminalCount={activeTerminalCount}
-      onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
-      onToggleSecondaryPanel={toggleSecondaryPanel}
-      threadHeaderGitActions={gitActions.threadHeaderGitActions}
-      threadTitle={threadTitle}
-      workspaceOpenButton={workspaceOpenButton}
-    />
-  );
+  const timelineHeader =
+    props.surface === "popout" ? (
+      <PopoutThreadHeader
+        threadTitle={threadTitle}
+        onHide={props.onPopoutHide}
+        onNewQuickThread={props.onPopoutNewQuickThread}
+        onOpenInMain={() => {
+          props.onPopoutOpenInMain({
+            projectId,
+            threadId: thread.id,
+          });
+        }}
+      />
+    ) : (
+      <ThreadDetailHeader
+        actionsMenu={threadActionsMenu}
+        isChildThread={Boolean(parentThreadId)}
+        isSecondaryPanelOpen={isSecondaryPanelOpen}
+        activeTerminalCount={activeTerminalCount}
+        onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
+        onToggleSecondaryPanel={toggleSecondaryPanel}
+        threadHeaderGitActions={gitActions.threadHeaderGitActions}
+        threadTitle={threadTitle}
+        workspaceOpenButton={workspaceOpenButton}
+      />
+    );
   const composerFooter = (
     <ThreadDetailPromptArea
       canUseGitUi={canUseGitUi}
@@ -1523,6 +1618,7 @@ export function ThreadDetailView() {
         isMetadataLoading={environmentQuery.isLoading}
         isSecondaryPanelOpen={isSecondaryPanelOpen}
         isConversationCollapsed={storedConversationCollapsed}
+        surface={props.surface}
         onToggleConversationCollapse={toggleConversationCollapse}
         metadata={{
           thread,

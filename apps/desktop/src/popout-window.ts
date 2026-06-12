@@ -41,6 +41,7 @@ export interface PopoutWindowManager {
   hide(): void;
   openInMain(thread: BbDesktopPopoutThreadRef): void;
   requestResize(request: BbDesktopPopoutResizeRequest): void;
+  setCurrentThread(thread: BbDesktopPopoutThreadRef | null): void;
   setOpenInMainHandler(handler: PopoutOpenInMainHandler): void;
   setThread(thread: BbDesktopPopoutThreadRef): Promise<void>;
   toggle(): Promise<void>;
@@ -226,6 +227,9 @@ export function createPopoutWindowManager(
       if (browserWindow.isVisible()) {
         setPopoutWindowPosition({ browserWindow });
       }
+    },
+    setCurrentThread(thread): void {
+      currentThread = thread;
     },
     setOpenInMainHandler(handler): void {
       openInMainHandler = handler;

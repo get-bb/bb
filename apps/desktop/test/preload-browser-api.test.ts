@@ -17,6 +17,7 @@ import {
   BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
   BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
   BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
+  BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
 } from "../src/popout-ipc.js";
@@ -175,6 +176,7 @@ describe("desktop preload browser API", () => {
       "openInMain",
       "requestResize",
       "setThread",
+      "stateChanged",
       "toggle",
     ]);
     expect(api.browser).not.toHaveProperty("send");
@@ -191,6 +193,7 @@ describe("desktop preload browser API", () => {
     api.browser.setVisible(visibleRequest);
     api.popout.toggle();
     api.popout.setThread({ projectId: "proj_a", threadId: "thr_a" });
+    api.popout.stateChanged({ projectId: "proj_a", threadId: "thr_a" });
     api.popout.openInMain({ projectId: "proj_a", threadId: "thr_a" });
     api.popout.requestResize({ height: 240 });
     api.setTheme("dark");
@@ -237,6 +240,10 @@ describe("desktop preload browser API", () => {
       },
       {
         channel: BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
+        payload: { projectId: "proj_a", threadId: "thr_a" },
+      },
+      {
+        channel: BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
         payload: { projectId: "proj_a", threadId: "thr_a" },
       },
       {

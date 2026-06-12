@@ -113,7 +113,7 @@ export function App() {
             element={<AuthCallbackView />}
           />
           <Route
-            path={POPOUT_ROUTE_PATH}
+            path={`${POPOUT_ROUTE_PATH}/*`}
             element={
               <Suspense fallback={null}>
                 <PopoutChatView />

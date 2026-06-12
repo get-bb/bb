@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   getLegacyProjectComposeRoutePath,
+  getPopoutRoutePath,
+  getPopoutThreadRoutePath,
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
@@ -72,7 +74,29 @@ describe("route path helpers", () => {
 
   it("recognizes the desktop popout route", () => {
     expect(POPOUT_ROUTE_PATH).toBe("/popout");
+    expect(getPopoutRoutePath()).toBe("/popout");
     expect(isRoutePath({ path: "/popout" })).toBe(true);
+  });
+
+  it("builds and recognizes popout thread URLs", () => {
+    expect(
+      getPopoutThreadRoutePath({
+        projectId: PERSONAL_PROJECT_ID,
+        threadId: "thr_personal",
+      }),
+    ).toBe("/popout/threads/thr_personal");
+    expect(
+      getPopoutThreadRoutePath({
+        projectId: "proj_standard",
+        threadId: "thr_standard",
+      }),
+    ).toBe("/popout/projects/proj_standard/threads/thr_standard");
+    expect(isRoutePath({ path: "/popout/threads/thr_personal" })).toBe(true);
+    expect(
+      isRoutePath({
+        path: "/popout/projects/proj_standard/threads/thr_standard",
+      }),
+    ).toBe(true);
   });
 
   it("does not mistake deeper filesystem-like paths for routes", () => {

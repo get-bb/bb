@@ -41,6 +41,7 @@ import {
   getThreadRoutePath,
   getRootComposeRoutePath,
   isProjectlessProjectId,
+  type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import {
   useRootComposeProjectId,
@@ -68,6 +69,7 @@ type RootComposeViewProps =
       surface: "page";
     }
   | {
+      onThreadCreated(args: ThreadRoutePathArgs): void;
       onEscapeEmptyPrompt(): void;
       surface: "popout";
     };
@@ -578,7 +580,12 @@ export function RootComposeView(props: RootComposeViewProps) {
       setLastCreatedThreadId(thread.id);
       clearReuseEnvironment();
       promptDraft.clearIfCurrentMatches(submittedDraft);
-      if (navigateToThreadAfterCreate) {
+      if (props.surface === "popout") {
+        props.onThreadCreated({
+          projectId: thread.projectId,
+          threadId: thread.id,
+        });
+      } else if (navigateToThreadAfterCreate) {
         navigate(
           getThreadRoutePath({
             projectId: thread.projectId,
@@ -597,6 +604,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     navigateToThreadAfterCreate,
     permissionMode,
     projectId,
+    props,
     promptDraft,
     reasoningLevel,
     selectedEnvironment,

@@ -46,6 +46,7 @@ function createStoryDesktopApi(): BbDesktopApi {
     popout: {
       toggle() {},
       setThread() {},
+      stateChanged() {},
       openInMain() {},
       onThreadChanged() {
         return () => {};

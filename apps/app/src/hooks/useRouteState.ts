@@ -33,18 +33,27 @@ export function useRouteState(): RouteState {
     "/projects/:projectId/threads/:threadId/*",
   );
   const projectlessThreadMatch = useMatch("/threads/:threadId/*");
+  const popoutProjectThreadMatch = useMatch(
+    "/popout/projects/:projectId/threads/:threadId/*",
+  );
+  const popoutProjectlessThreadMatch = useMatch("/popout/threads/:threadId/*");
   const projectArchivedMatch = useMatch("/projects/:projectId/archived");
   const projectSettingsMatch = useMatch("/projects/:projectId/settings");
   const isRootView = location.pathname === "/";
   const isUnsupportedPersonalProjectThread =
-    projectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID;
-  const projectlessThreadId = projectlessThreadMatch?.params.threadId;
+    projectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID ||
+    popoutProjectThreadMatch?.params.projectId === PERSONAL_PROJECT_ID;
+  const projectlessThreadId =
+    projectlessThreadMatch?.params.threadId ??
+    popoutProjectlessThreadMatch?.params.threadId;
   const threadId =
     projectlessThreadId ??
     (isUnsupportedPersonalProjectThread
       ? undefined
-      : projectThreadMatch?.params.threadId);
-  const projectRouteProjectId = projectMatch?.params.projectId;
+      : (projectThreadMatch?.params.threadId ??
+        popoutProjectThreadMatch?.params.threadId));
+  const projectRouteProjectId =
+    projectMatch?.params.projectId ?? popoutProjectThreadMatch?.params.projectId;
   const projectId =
     projectlessThreadId !== undefined
       ? PERSONAL_PROJECT_ID
@@ -57,7 +66,9 @@ export function useRouteState(): RouteState {
     threadId,
     isThreadView:
       Boolean(projectlessThreadMatch) ||
-      (Boolean(projectThreadMatch) && !isUnsupportedPersonalProjectThread),
+      Boolean(popoutProjectlessThreadMatch) ||
+      ((Boolean(projectThreadMatch) || Boolean(popoutProjectThreadMatch)) &&
+        !isUnsupportedPersonalProjectThread),
     isArchivedView: Boolean(projectArchivedMatch),
     isSettingsView: Boolean(projectSettingsMatch),
     isRootView,

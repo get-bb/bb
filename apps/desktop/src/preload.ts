@@ -45,6 +45,7 @@ import {
   BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
   BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
   BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
+  BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
 } from "./popout-ipc.js";
@@ -164,6 +165,9 @@ const bbPopoutApi: BbDesktopPopoutApi = {
   },
   setThread(thread): void {
     ipcRenderer.send(BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL, thread);
+  },
+  stateChanged(thread): void {
+    ipcRenderer.send(BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL, thread);
   },
   openInMain(thread): void {
     ipcRenderer.send(BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL, thread);

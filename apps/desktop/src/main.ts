@@ -17,6 +17,7 @@ import { autoUpdater } from "electron-updater";
 import { PERSONAL_PROJECT_ID, type Experiments } from "@bb/domain";
 import {
   bbDesktopPopoutResizeRequestSchema,
+  bbDesktopPopoutThreadChangedPayloadSchema,
   bbDesktopPopoutThreadRefSchema,
   bbDesktopThemeSchema,
   serverMessageLenientSchema,
@@ -95,6 +96,7 @@ import {
   BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
   BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
   BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
+  BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
 } from "./popout-ipc.js";
 import {
@@ -1014,6 +1016,17 @@ function registerPopoutIpc(): void {
     }
     void ensurePopoutWindowManager()?.setThread(parsed.data);
   });
+  ipcMain.on(
+    BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
+    (_event, payload: unknown) => {
+      const parsed =
+        bbDesktopPopoutThreadChangedPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      ensurePopoutWindowManager()?.setCurrentThread(parsed.data);
+    },
+  );
   ipcMain.on(
     BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
     (_event, payload: unknown) => {

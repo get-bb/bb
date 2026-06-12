@@ -454,6 +454,7 @@ export type BbDesktopPopoutUnsubscribe = () => void;
 export interface BbDesktopPopoutApi {
   toggle(): void;
   setThread(thread: BbDesktopPopoutThreadRef): void;
+  stateChanged(thread: BbDesktopPopoutThreadChangedPayload): void;
   openInMain(thread: BbDesktopPopoutThreadRef): void;
   onThreadChanged(
     listener: BbDesktopPopoutThreadChangedHandler,
