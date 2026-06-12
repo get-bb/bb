@@ -122,7 +122,19 @@ interface TempClaudeExecutable {
   executablePath: string;
 }
 
-type ControlledClaudeQueryResult = IteratorResult<SDKMessage> | Error;
+interface ControlledClaudeQueryMessageResult {
+  result: IteratorResult<SDKMessage>;
+  type: "result";
+}
+
+interface ControlledClaudeQueryErrorResult {
+  error: Error;
+  type: "error";
+}
+
+type ControlledClaudeQueryResult =
+  | ControlledClaudeQueryMessageResult
+  | ControlledClaudeQueryErrorResult;
 
 const tempDirs: string[] = [];
 
@@ -271,41 +283,43 @@ function invokeReadonlyBashHook(args: ReadonlyBashHookArgs) {
 
 function createControlledClaudeQuery(): ControlledClaudeQuery {
   let finishNext: ((result: IteratorResult<SDKMessage>) => void) | undefined;
-  let rejectNext: ((error: Error) => void) | undefined;
+  let failNext: ((error: Error) => void) | undefined;
   const pendingResults: ControlledClaudeQueryResult[] = [];
-  function pushResult(result: ControlledClaudeQueryResult): void {
-    if (result instanceof Error && rejectNext) {
-      const reject = rejectNext;
-      finishNext = undefined;
-      rejectNext = undefined;
-      reject(result);
-      return;
-    }
+  function pushResult(result: IteratorResult<SDKMessage>): void {
     if (finishNext) {
       const resolve = finishNext;
       finishNext = undefined;
-      rejectNext = undefined;
-      if (result instanceof Error) {
-        throw new Error("Expected pending SDK result, got Error");
-      }
+      failNext = undefined;
       resolve(result);
       return;
     }
-    pendingResults.push(result);
+    pendingResults.push({ type: "result", result });
+  }
+  function pushError(error: Error): void {
+    if (failNext) {
+      const reject = failNext;
+      finishNext = undefined;
+      failNext = undefined;
+      reject(error);
+      return;
+    }
+    pendingResults.push({ type: "error", error });
   }
   const iterator: AsyncIterator<SDKMessage> = {
     next: () => {
-      const result = pendingResults.shift();
-      if (result instanceof Error) {
-        return Promise.reject(result);
-      }
-      if (result) return Promise.resolve(result);
+      const pending = pendingResults.shift();
+      if (pending?.type === "result") return Promise.resolve(pending.result);
+      if (pending?.type === "error") return Promise.reject(pending.error);
       return new Promise<IteratorResult<SDKMessage>>((resolve, reject) => {
         finishNext = resolve;
-        rejectNext = reject;
+        failNext = reject;
       });
     },
-    return: async () => ({ value: undefined, done: true }),
+    return: async () => {
+      finishNext = undefined;
+      failNext = undefined;
+      return { value: undefined, done: true };
+    },
   };
   return {
     close: vi.fn(() => {
@@ -315,7 +329,7 @@ function createControlledClaudeQuery(): ControlledClaudeQuery {
       pushResult({ value: message, done: false });
     },
     fail(error: Error): void {
-      pushResult(error);
+      pushError(error);
     },
     finish() {
       pushResult({ value: undefined, done: true });
@@ -1812,6 +1826,70 @@ describe("bridge", () => {
       await bridge.flushWork();
       queries[0]?.finish();
       await bridge.waitForResponse(2);
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("resumes a Claude session when follow-up arrives after an SDK stream error", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-sdk-error-follow-up";
+      const inputText = "Continue after the provider error";
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        threadId,
+      });
+      const startResponse = await bridge.waitForResponse(1);
+      const providerThreadId = getProviderThreadIdFromResult(startResponse);
+
+      queries[0]?.fail(new Error("Claude SDK exploded"));
+      await bridge.flushWork();
+
+      expect(
+        bridge.messages.some(
+          (message) =>
+            message.method === "error" &&
+            isRecord(message.params) &&
+            message.params.threadId === threadId &&
+            message.params.message === "Claude SDK exploded",
+        ),
+      ).toBe(true);
+
+      bridge.sendRequest(2, "turn/start", {
+        input: [{ type: "text", text: inputText }],
+        providerThreadId,
+        threadId,
+      });
+      await bridge.waitForResponse(2);
+
+      expect(queries).toHaveLength(2);
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: providerThreadId,
+      });
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        inputText,
+      );
+
+      bridge.sendRequest(3, "thread/stop", {
+        threadId,
+      });
+      await bridge.flushWork();
+      queries[1]?.finish();
+      await bridge.waitForResponse(3);
     } finally {
       bridge.restore();
     }

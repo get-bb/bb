@@ -195,6 +195,7 @@ interface ThreadSession {
   sessionOptions: SdkSessionOptions;
   sessionSerial: number;
   closing: boolean;
+  streamEnded: boolean;
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   pendingToolCalls: Map<string | number, PendingToolCall>;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
@@ -255,6 +256,13 @@ interface ReplaceThreadSessionArgs {
   acceptedInputTexts: string[];
   providerThreadId: string;
   replacementSession: ThreadSession;
+  reason: string;
+  startMode: "fresh" | "resume";
+  threadId: string;
+  threadSession: ThreadSession;
+}
+
+interface ReplaceEndedThreadSessionArgs {
   threadId: string;
   threadSession: ThreadSession;
 }
@@ -467,6 +475,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionOptions: args.sessionOptions,
     sessionSerial,
     closing: false,
+    streamEnded: false,
     mockCliTrafficProxy: args.mockCliTrafficProxy,
     pendingToolCalls: new Map(),
     pendingInteractiveRequests: new Map(),
@@ -549,6 +558,8 @@ function startFreshSessionAfterStaleResume(
     acceptedInputTexts,
     providerThreadId,
     replacementSession,
+    reason: "Thread session replaced after stale Claude resume",
+    startMode: "fresh",
     threadId: args.threadId,
     threadSession: args.threadSession,
   });
@@ -557,10 +568,7 @@ function startFreshSessionAfterStaleResume(
 function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
   args.threadSession.closing = true;
   args.threadSession.mockCliTrafficProxy = null;
-  resolvePendingSessionWork(
-    args.threadSession,
-    "Thread session replaced after stale Claude resume",
-  );
+  resolvePendingSessionWork(args.threadSession, args.reason);
   args.threadSession.session.stop();
 
   // This is not a user-requested thread close: the thread remains active and
@@ -568,7 +576,9 @@ function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
   // external stop/replace requests, so a stop after this point should target
   // the replacement, not wait on the poisoned resume session.
   sessions.set(args.threadId, args.replacementSession);
-  args.replacementSession.session.start();
+  args.replacementSession.session.start(
+    args.startMode === "resume" ? args.providerThreadId : undefined,
+  );
   sendThreadIdentity(args.threadId, args.providerThreadId);
 
   for (const inputText of args.acceptedInputTexts) {
@@ -576,6 +586,50 @@ function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
       args.replacementSession.session.pushInput(inputText),
     );
   }
+}
+
+function replaceEndedThreadSession(
+  args: ReplaceEndedThreadSessionArgs,
+): ThreadSession | undefined {
+  const providerThreadId =
+    args.threadSession.providerThreadId ??
+    args.threadSession.session.getSessionId();
+  if (!providerThreadId) {
+    return undefined;
+  }
+
+  const replacementSession = createThreadSession({
+    mockCliTrafficProxy: args.threadSession.mockCliTrafficProxy,
+    permissionEscalation: args.threadSession.permissionEscalation,
+    permissionMode: args.threadSession.permissionMode,
+    providerThreadId,
+    resumeRecovery: null,
+    sessionOptions: args.threadSession.sessionOptions,
+    sessionPermissionGrants: args.threadSession.sessionPermissionGrants,
+    threadIdRef: args.threadSession.threadIdRef,
+  });
+
+  replaceThreadSession({
+    acceptedInputTexts: [],
+    providerThreadId,
+    replacementSession,
+    reason: "Thread session replaced after Claude SDK stream ended",
+    startMode: "resume",
+    threadId: args.threadId,
+    threadSession: args.threadSession,
+  });
+  return replacementSession;
+}
+
+function getWritableThreadSession(threadId: string): ThreadSession | undefined {
+  const threadSession = sessions.get(threadId);
+  if (!threadSession || threadSession.closing) {
+    return undefined;
+  }
+  if (!threadSession.streamEnded) {
+    return threadSession;
+  }
+  return replaceEndedThreadSession({ threadId, threadSession });
 }
 
 function handleStaleResumeRecovery(
@@ -652,12 +706,19 @@ function createOnSdkDone(
   args: CreateSdkCallbackArgs,
 ): (error?: unknown) => void {
   return (error?: unknown) => {
-    if (!error) return;
     const threadSession = getCurrentThreadSession({
       sessionSerial: args.sessionSerial,
       threadId: args.threadIdRef.current,
     });
     if (!threadSession) return;
+
+    threadSession.streamEnded = true;
+    resolvePendingSessionWork(
+      threadSession,
+      "Claude SDK stream ended before pending work completed",
+    );
+
+    if (!error) return;
 
     const message = error instanceof Error ? error.message : String(error);
 
@@ -1353,8 +1414,8 @@ async function handleThreadResume(
 }
 
 function handleTurnStart(id: string | number, params: TurnStartParams): void {
-  const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.closing) {
+  const threadSession = getWritableThreadSession(params.threadId);
+  if (!threadSession) {
     sendError(id, -32000, "No active session");
     return;
   }
@@ -1374,8 +1435,8 @@ async function handleTurnSteer(
   id: string | number,
   params: TurnSteerParams,
 ): Promise<void> {
-  const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.closing) {
+  const threadSession = getWritableThreadSession(params.threadId);
+  if (!threadSession) {
     sendError(id, -32000, "No active session");
     return;
   }
