@@ -1,4 +1,5 @@
 import type { PostHog } from "posthog-js";
+import type { CtaPlacement } from "./site";
 
 /**
  * PostHog wiring for the landing page.
@@ -14,14 +15,7 @@ import type { PostHog } from "posthog-js";
  * build time, so local dev and forks ship with analytics disabled by default.
  */
 
-/** Where on the page a CTA lives, for click-through comparison. */
-export type CtaPlacement = "nav" | "hero" | "closer" | "footer";
-
 export type LandingEvent =
-  | {
-      name: "landing_download_macos_clicked";
-      properties: { placement: CtaPlacement };
-    }
   | {
       name: "landing_github_clicked";
       properties: { placement: CtaPlacement };

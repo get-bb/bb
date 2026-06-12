@@ -3,11 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { trackLandingEvent } from "../analytics";
-import type { CtaPlacement } from "../analytics";
 import appScreenshot from "../assets/bb-app.webp";
 import bbIcon from "../assets/bb-icon.png";
 import { ClaudeIcon, OpenAiIcon, PiIcon } from "../icons";
-import { CLI_COMMAND, DOWNLOAD_MACOS_URL, GITHUB_URL } from "../site";
+import type { CtaPlacement } from "../site";
+import { CLI_COMMAND, GITHUB_URL, downloadMacosHref } from "../site";
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
@@ -22,16 +22,7 @@ type CtaLinkProps = {
 
 function DownloadLink({ placement, className, children }: CtaLinkProps) {
   return (
-    <a
-      className={className}
-      href={DOWNLOAD_MACOS_URL}
-      onClick={() =>
-        trackLandingEvent({
-          name: "landing_download_macos_clicked",
-          properties: { placement },
-        })
-      }
-    >
+    <a className={className} href={downloadMacosHref(placement)}>
       {children}
     </a>
   );

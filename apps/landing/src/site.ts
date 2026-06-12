@@ -1,7 +1,15 @@
 export const GITHUB_URL = "https://github.com/ymichael/bb";
 export const DOWNLOAD_MACOS_URL =
   "https://github.com/ymichael/bb/releases/tag/desktop-latest";
+export const DOWNLOAD_MACOS_REDIRECT_PATH = "/download/macos";
 export const CLI_COMMAND = "npx bb-app@latest";
+
+/** Where on the page a CTA lives, for click-through comparison. */
+export type CtaPlacement = "nav" | "hero" | "closer" | "footer";
+
+export function downloadMacosHref(placement: CtaPlacement): string {
+  return `${DOWNLOAD_MACOS_REDIRECT_PATH}?placement=${placement}`;
+}
 
 export const SITE_TITLE = "bb: the IDE built for humans and agents";
 export const SITE_DESCRIPTION =

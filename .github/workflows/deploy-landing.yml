@@ -58,6 +58,17 @@ jobs:
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
         run: pnpm exec turbo run build --filter=@bb/landing --cache-dir=.turbo/cache --output-logs=new-only
 
+      - name: Sync landing analytics secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          LANDING_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+        run: |
+          if [ -z "$LANDING_POSTHOG_KEY" ]; then
+            echo "VITE_POSTHOG_KEY is required for landing download tracking."
+            exit 1
+          fi
+          printf '%s' "$LANDING_POSTHOG_KEY" | pnpm --filter @bb/landing exec wrangler secret put LANDING_POSTHOG_KEY
+
       - name: Deploy landing
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
