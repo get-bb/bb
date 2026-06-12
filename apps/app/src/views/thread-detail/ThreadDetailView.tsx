@@ -174,6 +174,9 @@ type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
 >;
 type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
+type NullableSecondaryPanelChangeHandler = (
+  panel: ThreadSecondaryPanelTab | null,
+) => void;
 type OpenInEditorHandler = NonNullable<
   ReturnType<typeof buildOpenInEditorHandler>
 >;
@@ -376,6 +379,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const isPersistedSecondaryPanelOpen = useAtomValue(
     getThreadSecondaryPanelOpenAtom(threadId),
   );
+  const isPersistedSecondaryPanelOpenForSurface =
+    props.surface === "popout" ? false : isPersistedSecondaryPanelOpen;
   const setPersistedSecondaryPanelOpen = useSetAtom(
     getThreadSecondaryPanelOpenAtom(threadId),
   );
@@ -384,7 +389,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   });
   const openFixedSecondaryTab = getOpenFixedSecondaryTab({
     activeFixedSecondaryTab,
-    isSecondaryPanelOpen: isPersistedSecondaryPanelOpen,
+    isSecondaryPanelOpen: isPersistedSecondaryPanelOpenForSurface,
   });
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
@@ -393,14 +398,24 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     useSetFixedRightTerminalActiveTerminal(threadId);
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(threadId);
   const setThreadSecondaryPanel = useSetThreadSecondaryPanelSelection(threadId);
+  const setThreadSecondaryPanelForSurface =
+    useCallback<NullableSecondaryPanelChangeHandler>(
+      (panel) => {
+        if (props.surface === "popout") {
+          return;
+        }
+        setThreadSecondaryPanel(panel);
+      },
+      [props.surface, setThreadSecondaryPanel],
+    );
   const toggleDefaultPersistedSecondaryPanel =
     useToggleThreadSecondaryPanelSelection(threadId);
   const setThreadSecondaryPanelFromUrl =
     useCallback<SecondaryPanelChangeHandler>(
       (panel) => {
-        setThreadSecondaryPanel(panel);
+        setThreadSecondaryPanelForSurface(panel);
       },
-      [setThreadSecondaryPanel],
+      [setThreadSecondaryPanelForSurface],
     );
   useFixedPanelTabsSecondaryPanelUrlSync(
     threadId,
@@ -647,7 +662,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       ? (thread?.environmentId ?? undefined)
       : undefined,
     mergeBaseBranchOptionsEnabled: hasRequestedMergeBaseOptions,
-    setThreadSecondaryPanel,
+    setThreadSecondaryPanel: setThreadSecondaryPanelForSurface,
   });
   const {
     closePanel: closeSecondaryPanel,
@@ -662,7 +677,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     togglePanel: toggleSecondaryPanel,
   } = useThreadSecondaryPanelVisibility({
     closePersistedPanel: closeThreadSecondaryPanel,
-    isPersistedOpen: isPersistedSecondaryPanelOpen,
+    isPersistedOpen: isPersistedSecondaryPanelOpenForSurface,
     isCompactViewport: renderSecondaryPanelAsDrawer,
     openPersistedCommitDiff,
     openPersistedDiffFile,
@@ -671,6 +686,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     openPersistedPanel: openPersistedSecondaryPanel,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
+    surface: props.surface,
     threadId,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
@@ -692,6 +708,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const [storedConversationCollapsed, setStoredConversationCollapsed] = useAtom(
     getThreadConversationCollapsedAtom(threadId),
   );
+  const isConversationCollapsed =
+    props.surface === "popout" ? false : storedConversationCollapsed;
   // The collapse preference only applies while the panel is open on a wide
   // viewport; ThreadDetailSecondaryContent gates it (there is nothing to expand
   // into otherwise) and surfaces the toggle on the seam arrow.
@@ -1639,7 +1657,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         header={timelineHeader}
         isMetadataLoading={environmentQuery.isLoading}
         isSecondaryPanelOpen={isSecondaryPanelOpen}
-        isConversationCollapsed={storedConversationCollapsed}
+        isConversationCollapsed={isConversationCollapsed}
         surface={props.surface}
         onToggleConversationCollapse={toggleConversationCollapse}
         metadata={{

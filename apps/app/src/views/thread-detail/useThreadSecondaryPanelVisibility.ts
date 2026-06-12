@@ -7,6 +7,7 @@ import type {
 import type { ThreadSecondaryPanel } from "@/lib/thread-secondary-panel";
 
 type ThreadSecondaryPanelThreadId = string | undefined;
+type ThreadDetailSurface = "page" | "popout";
 
 export type ThreadSecondaryPanelOpenHandler = (
   panel: ThreadSecondaryPanel,
@@ -34,6 +35,7 @@ export interface UseThreadSecondaryPanelVisibilityArgs {
   openPersistedPanel: ThreadSecondaryPanelOpenHandler;
   openPersistedStorageFile: ThreadSecondaryPanelStorageFileOpenHandler;
   openPersistedWorkspaceFile: ThreadSecondaryPanelWorkspaceFileOpenHandler;
+  surface: ThreadDetailSurface;
   threadId: ThreadSecondaryPanelThreadId;
   togglePersistedPanel: () => void;
 }
@@ -66,6 +68,7 @@ export function useThreadSecondaryPanelVisibility({
   openPersistedPanel,
   openPersistedStorageFile,
   openPersistedWorkspaceFile,
+  surface,
   threadId,
   togglePersistedPanel,
 }: UseThreadSecondaryPanelVisibilityArgs): ThreadSecondaryPanelVisibility {
@@ -98,86 +101,153 @@ export function useThreadSecondaryPanelVisibility({
 
   const isDrawerVisible =
     hasThreadId(threadId) && openDrawerThreadId === threadId;
-  const isOpen = isCompactViewport ? isDrawerVisible : isPersistedOpen;
+  const isOpen =
+    surface === "popout"
+      ? false
+      : isCompactViewport
+        ? isDrawerVisible
+        : isPersistedOpen;
 
   const openPanel = useCallback<ThreadSecondaryPanelOpenHandler>(
     (panel) => {
+      if (surface === "popout") {
+        return;
+      }
       openPersistedPanel(panel);
       if (isCompactViewport) {
         openDrawerForCurrentThread();
       }
     },
-    [isCompactViewport, openDrawerForCurrentThread, openPersistedPanel],
+    [isCompactViewport, openDrawerForCurrentThread, openPersistedPanel, surface],
   );
 
   const openDiffPanel = useCallback(() => {
+    if (surface === "popout") {
+      return;
+    }
     openPersistedDiffPanel();
     if (isCompactViewport) {
       openDrawerForCurrentThread();
     }
-  }, [isCompactViewport, openDrawerForCurrentThread, openPersistedDiffPanel]);
+  }, [
+    isCompactViewport,
+    openDrawerForCurrentThread,
+    openPersistedDiffPanel,
+    surface,
+  ]);
 
   const openDiffFile = useCallback<ThreadSecondaryPanelDiffFileOpenHandler>(
     (path) => {
+      if (surface === "popout") {
+        return;
+      }
       openPersistedDiffFile(path);
       if (isCompactViewport) {
         openDrawerForCurrentThread();
       }
     },
-    [isCompactViewport, openDrawerForCurrentThread, openPersistedDiffFile],
+    [
+      isCompactViewport,
+      openDrawerForCurrentThread,
+      openPersistedDiffFile,
+      surface,
+    ],
   );
 
   const openCommitDiff = useCallback<ThreadSecondaryPanelCommitDiffOpenHandler>(
     (sha) => {
+      if (surface === "popout") {
+        return;
+      }
       openPersistedCommitDiff(sha);
       if (isCompactViewport) {
         openDrawerForCurrentThread();
       }
     },
-    [isCompactViewport, openDrawerForCurrentThread, openPersistedCommitDiff],
+    [
+      isCompactViewport,
+      openDrawerForCurrentThread,
+      openPersistedCommitDiff,
+      surface,
+    ],
   );
 
   const openWorkspaceFile =
     useCallback<ThreadSecondaryPanelWorkspaceFileOpenHandler>(
       (file) => {
+        if (surface === "popout") {
+          return;
+        }
         openPersistedWorkspaceFile(file);
         if (isCompactViewport) {
           openDrawerForCurrentThread();
         }
       },
-      [isCompactViewport, openDrawerForCurrentThread, openPersistedWorkspaceFile],
+      [
+        isCompactViewport,
+        openDrawerForCurrentThread,
+        openPersistedWorkspaceFile,
+        surface,
+      ],
     );
 
   const openStorageFile =
     useCallback<ThreadSecondaryPanelStorageFileOpenHandler>(
       (file) => {
+        if (surface === "popout") {
+          return;
+        }
         openPersistedStorageFile(file);
         if (isCompactViewport) {
           openDrawerForCurrentThread();
         }
       },
-      [isCompactViewport, openDrawerForCurrentThread, openPersistedStorageFile],
+      [
+        isCompactViewport,
+        openDrawerForCurrentThread,
+        openPersistedStorageFile,
+        surface,
+      ],
     );
 
   const openHostFile = useCallback<ThreadSecondaryPanelHostFileOpenHandler>(
     (file) => {
+      if (surface === "popout") {
+        return;
+      }
       openPersistedHostFile(file);
       if (isCompactViewport) {
         openDrawerForCurrentThread();
       }
     },
-    [isCompactViewport, openDrawerForCurrentThread, openPersistedHostFile],
+    [
+      isCompactViewport,
+      openDrawerForCurrentThread,
+      openPersistedHostFile,
+      surface,
+    ],
   );
 
   const closePanel = useCallback(() => {
+    if (surface === "popout") {
+      return;
+    }
     if (isCompactViewport) {
       closeDrawerForCurrentThread();
       return;
     }
     closePersistedPanel();
-  }, [closeDrawerForCurrentThread, closePersistedPanel, isCompactViewport]);
+  }, [
+    closeDrawerForCurrentThread,
+    closePersistedPanel,
+    isCompactViewport,
+    surface,
+  ]);
 
   const togglePanel = useCallback(() => {
+    if (surface === "popout") {
+      return;
+    }
     if (!isCompactViewport) {
       togglePersistedPanel();
       return;
@@ -192,6 +262,7 @@ export function useThreadSecondaryPanelVisibility({
     isCompactViewport,
     isDrawerVisible,
     openDrawerForCurrentThread,
+    surface,
     togglePersistedPanel,
   ]);
 

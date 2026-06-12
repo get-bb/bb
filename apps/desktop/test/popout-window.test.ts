@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { BrowserWindowConstructorOptions } from "electron";
 import { createPopoutWindowManager } from "../src/popout-window.js";
 import { BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL } from "../src/popout-ipc.js";
+import { shouldHandlePopoutToggleSender } from "../src/popout-ipc-authorization.js";
 
 const electronMock = vi.hoisted(() => {
   interface Bounds {
@@ -226,6 +227,30 @@ describe("createPopoutWindowManager", () => {
     manager.openInMain({ projectId: "proj_a", threadId: "thr_a" });
     await Promise.resolve();
     expect(browserWindow?.isVisible()).toBe(true);
+  });
+
+  it("accepts a toggle from its own webContents and hides the visible popout", async () => {
+    const manager = createPopoutWindowManager({
+      appUrl: "http://127.0.0.1:38886",
+      preloadPath: "/tmp/preload.cjs",
+      openExternalUrl() {},
+      openInMainHandler: async () => true,
+    });
+    const showPromise = manager.toggle();
+    const browserWindow = electronMock.createdWindows[0];
+    browserWindow?.resolveLoaded();
+    await showPromise;
+
+    const shouldHandleToggle = shouldHandlePopoutToggleSender({
+      isApplicationWindowSender: false,
+      isPopoutWindowSender: true,
+    });
+    if (shouldHandleToggle) {
+      await manager.toggle();
+    }
+
+    expect(shouldHandleToggle).toBe(true);
+    expect(browserWindow?.isVisible()).toBe(false);
   });
 
   it("destroys a warm window after load failure", async () => {

@@ -105,6 +105,7 @@ import {
   BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
 } from "./popout-ipc.js";
+import { shouldHandlePopoutToggleSender } from "./popout-ipc-authorization.js";
 import {
   createLogTailer,
   createLogLineBuffer,
@@ -142,6 +143,20 @@ interface DesktopRuntime {
   ownership: RuntimeOwnership;
   serverUrl: string;
   userDataPath: string | null;
+}
+
+type PopoutWindowOperationExecutor = (
+  manager: PopoutWindowManager,
+) => Promise<void>;
+
+interface RunPopoutWindowOperationArgs {
+  execute: PopoutWindowOperationExecutor;
+  operation: string;
+}
+
+interface LogPopoutWindowOperationFailureArgs {
+  error: unknown;
+  operation: string;
 }
 
 interface LoadStartupErrorArgs {
@@ -609,6 +624,27 @@ function ensurePopoutWindowManager(): PopoutWindowManager | null {
   return popoutWindowManager;
 }
 
+function logPopoutWindowOperationFailure({
+  error,
+  operation,
+}: LogPopoutWindowOperationFailureArgs): void {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`Could not ${operation}: ${message}\n`);
+}
+
+function runPopoutWindowOperation({
+  execute,
+  operation,
+}: RunPopoutWindowOperationArgs): void {
+  const manager = ensurePopoutWindowManager();
+  if (manager === null) {
+    return;
+  }
+  void execute(manager).catch((error: unknown) => {
+    logPopoutWindowOperationFailure({ error, operation });
+  });
+}
+
 function registerPopoutHotkey(accelerator: string): void {
   if (popoutHotkeyAccelerator === accelerator) {
     return;
@@ -616,7 +652,10 @@ function registerPopoutHotkey(accelerator: string): void {
 
   if (
     globalShortcut.register(accelerator, () => {
-      void ensurePopoutWindowManager()?.toggle();
+      runPopoutWindowOperation({
+        execute: (manager) => manager.toggle(),
+        operation: "toggle popout chat",
+      });
     })
   ) {
     unregisterPopoutHotkey();
@@ -692,6 +731,13 @@ function isPopoutWindowSender(webContents: WebContents): boolean {
 
 function shouldHandleMainWindowPopoutEvent(event: IpcMainEvent): boolean {
   return isApplicationWindowSender(event.sender);
+}
+
+function shouldHandlePopoutToggleEvent(event: IpcMainEvent): boolean {
+  return shouldHandlePopoutToggleSender({
+    isApplicationWindowSender: isApplicationWindowSender(event.sender),
+    isPopoutWindowSender: isPopoutWindowSender(event.sender),
+  });
 }
 
 function shouldHandlePopoutWindowEvent(event: IpcMainEvent): boolean {
@@ -1062,10 +1108,13 @@ function registerDesktopUpdateIpc(): void {
 
 function registerPopoutIpc(): void {
   ipcMain.on(BB_DESKTOP_POPOUT_TOGGLE_CHANNEL, (event) => {
-    if (!shouldHandleMainWindowPopoutEvent(event)) {
+    if (!shouldHandlePopoutToggleEvent(event)) {
       return;
     }
-    void ensurePopoutWindowManager()?.toggle();
+    runPopoutWindowOperation({
+      execute: (manager) => manager.toggle(),
+      operation: "toggle popout chat",
+    });
   });
   ipcMain.on(BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL, (event, payload: unknown) => {
     if (!shouldHandleMainWindowPopoutEvent(event)) {
@@ -1075,7 +1124,10 @@ function registerPopoutIpc(): void {
     if (!parsed.success) {
       return;
     }
-    void ensurePopoutWindowManager()?.setThread(parsed.data);
+    runPopoutWindowOperation({
+      execute: (manager) => manager.setThread(parsed.data),
+      operation: "set popout chat thread",
+    });
   });
   ipcMain.handle(BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL, (event) => {
     if (!shouldHandlePopoutWindowInvoke(event)) {
