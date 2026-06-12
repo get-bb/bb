@@ -15,7 +15,6 @@ import {
   markThreadStopRequested,
   requireThreadLifecycleEventApplied,
   ThreadLifecycleEventNotAppliedError,
-  transitionThreadStatus,
 } from "../../src/data/threads.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
@@ -284,7 +283,7 @@ describe("applyThreadLifecycleEvent", () => {
     expect(getThread(db, thread.id)?.status).toBe("provisioning");
   });
 
-  it("matches the old writer's latestAttentionAt behavior transition-for-transition", () => {
+  it("sets latestAttentionAt only on attention-worthy transitions", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(1_000);
@@ -333,13 +332,7 @@ describe("applyThreadLifecycleEvent", () => {
               providerId: "codex",
             }).id
           : null;
-        const oldWriterThread = createThread(db, noopNotifier, {
-          parentThreadId,
-          projectId: project.id,
-          providerId: "codex",
-          status: testCase.status,
-        });
-        const newWriterThread = createThread(db, noopNotifier, {
+        const thread = createThread(db, noopNotifier, {
           parentThreadId,
           projectId: project.id,
           providerId: "codex",
@@ -348,28 +341,19 @@ describe("applyThreadLifecycleEvent", () => {
 
         now += 1_000;
         vi.setSystemTime(now);
-        const oldResult = transitionThreadStatus(
-          db,
-          noopNotifier,
-          oldWriterThread.id,
-          testCase.target,
-        );
-        const newOutcome = applyThreadLifecycleEvent(db, noopNotifier, {
+        const outcome = applyThreadLifecycleEvent(db, noopNotifier, {
           event: testCase.event,
-          threadId: newWriterThread.id,
+          threadId: thread.id,
         });
 
-        expect(newOutcome.applied).toBe(true);
-        if (!newOutcome.applied) {
+        expect(outcome.applied).toBe(true);
+        if (!outcome.applied) {
           continue;
         }
-        expect(newOutcome.thread.status).toBe(oldResult.status);
-        expect(newOutcome.thread.updatedAt).toBe(oldResult.updatedAt);
-        expect(newOutcome.thread.latestAttentionAt).toBe(
-          oldResult.latestAttentionAt,
-        );
-        expect(newOutcome.thread.latestAttentionAt).toBe(
-          testCase.attention ? now : oldWriterThread.latestAttentionAt,
+        expect(outcome.thread.status).toBe(testCase.target);
+        expect(outcome.thread.updatedAt).toBe(now);
+        expect(outcome.thread.latestAttentionAt).toBe(
+          testCase.attention ? now : thread.latestAttentionAt,
         );
       }
     } finally {

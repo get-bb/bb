@@ -1,6 +1,6 @@
 import {
   getThread,
-  transitionThreadStatusInTransaction,
+  requireThreadLifecycleEventApplied,
   type DbTransaction,
 } from "@bb/db";
 import type {
@@ -24,6 +24,7 @@ import {
   prepareReadyThreadTurnCommand,
   prepareReadyThreadTurnDispatchInTransaction,
 } from "./thread-lifecycle.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
   appendClientTurnEventInTransaction,
   appendPreparedClientTurnRequestedEventInTransaction,
@@ -345,10 +346,12 @@ async function queueReadyParentSystemMessage(
         thread: args.thread,
       });
       if (dispatchKind === "turn.submit") {
-        transitionThreadStatusInTransaction(tx, {
-          id: args.thread.id,
-          newStatus: "active",
-        });
+        requireThreadLifecycleEventApplied(
+          applyLoggedThreadLifecycleEventInTransaction(
+            { db: tx, logger: deps.logger },
+            { event: { type: "turn.dispatched" }, threadId: args.thread.id },
+          ),
+        );
         transitioned = true;
       }
     },

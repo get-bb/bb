@@ -42,7 +42,7 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   startLiveHostCommand,
 } from "../hosts/live-command.js";
-import { tryTransition } from "../threads/thread-transitions.js";
+import { applyLoggedThreadLifecycleEvent } from "../threads/lifecycle-outcome.js";
 import {
   computeNextScheduledTime,
   ScheduleValidationError,
@@ -625,7 +625,10 @@ async function runDueThreadSchedule(
     eventTypes: ["client/turn/requested"],
   });
   if (preparation.targetIntent.kind === "start") {
-    tryTransition(deps.db, deps.hub, preparation.thread.id, "active");
+    applyLoggedThreadLifecycleEvent(deps, {
+      event: { type: "turn.dispatched" },
+      threadId: preparation.thread.id,
+    });
   }
   startLiveHostCommand(deps, {
     command: transactionResult.command,

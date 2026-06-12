@@ -20,7 +20,6 @@ import {
   listThreadTurnInterruptionEventStates,
   markThreadStopRequested,
   threads,
-  transitionThreadStatusInTransaction,
   type DbNotifier,
   type DbQueryConnection,
   type DbTransaction,
@@ -69,10 +68,9 @@ import {
   getLastProviderThreadId,
 } from "./thread-events.js";
 import {
-  tryTransition,
-  tryTransitionInTransaction,
-} from "./thread-transitions.js";
-import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
+  applyLoggedThreadLifecycleEvent,
+  applyLoggedThreadLifecycleEventInTransaction,
+} from "./lifecycle-outcome.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
   buildThreadStartCommand,
@@ -158,7 +156,7 @@ interface CompleteThreadStartArgs {
 interface ThreadStartSuccessActivationArgs {
   commandStartedAt: number;
   providerThreadId: string;
-  thread: Thread;
+  threadId: string;
 }
 
 interface HasThreadInterruptedEventAtOrAfterArgs {
@@ -250,6 +248,7 @@ interface DispatchSettledArchivedThreadProviderArchiveCommandArgs {
 interface ThreadCommandResultSettlementDeps {
   db: DbTransaction;
   hub: DbNotifier;
+  logger: AppDeps["logger"];
 }
 
 interface SettleThreadCommandFailureArgs {
@@ -277,22 +276,6 @@ interface SettleThreadStopCommandResultArgs {
   deps: FinalizeStoppedThreadTransactionDeps;
   execution: HostDaemonCommandExecutionRecord;
   report: ThreadStopCommandResultReport;
-}
-
-function nextStatusForInterruptedThread(
-  reason: SystemThreadInterruptedReason,
-): Extract<ThreadStatus, "idle" | "error"> {
-  switch (reason) {
-    case "manual-stop":
-      return "idle";
-    case "host-daemon-restarted":
-      return "error";
-    // Legacy persisted watchdog interruption; no current producer.
-    case "provider-turn-idle":
-      return "error";
-    default:
-      return assertNever(reason);
-  }
 }
 
 function lifecycleEventForInterruptedThread(
@@ -630,34 +613,26 @@ function hasProviderTurnCompletedEventAtOrAfter(
   );
 }
 
-function canActivateThreadAfterSuccessfulStart(
+/**
+ * Event-log staleness the thread row cannot express: an interruption or a
+ * provider turn completion recorded since the start command was issued means
+ * the activation is stale. Row-level staleness (deleted/archived/
+ * stop-requested) and from-status legality are the start.succeeded event's
+ * predicates and table cells.
+ */
+function isThreadStartActivationStale(
   deps: ThreadLifecycleReadDeps,
   args: ThreadStartSuccessActivationArgs,
 ): boolean {
-  if (
-    args.thread.deletedAt !== null ||
-    args.thread.archivedAt !== null ||
-    args.thread.stopRequestedAt !== null
-  ) {
-    return false;
-  }
-  if (
-    !isPreStartThreadStatus(args.thread.status) &&
-    args.thread.status !== "idle" &&
-    args.thread.status !== "error"
-  ) {
-    return false;
-  }
-
   return (
-    !hasThreadInterruptedEventAtOrAfter(deps, {
+    hasThreadInterruptedEventAtOrAfter(deps, {
       createdAt: args.commandStartedAt,
-      threadId: args.thread.id,
-    }) &&
-    !hasProviderTurnCompletedEventAtOrAfter(deps, {
+      threadId: args.threadId,
+    }) ||
+    hasProviderTurnCompletedEventAtOrAfter(deps, {
       createdAt: args.commandStartedAt,
       providerThreadId: args.providerThreadId,
-      threadId: args.thread.id,
+      threadId: args.threadId,
     })
   );
 }
@@ -681,7 +656,13 @@ function settleThreadCommandFailure(
     detail: args.report.errorMessage,
     scope: getThreadFailureCommandErrorScope(args.command),
   });
-  tryTransitionInTransaction(args.deps.db, args.deps.hub, thread.id, "error");
+  const outcome = applyLoggedThreadLifecycleEventInTransaction(args.deps, {
+    event: { type: "command.failed" },
+    threadId: thread.id,
+  });
+  if (outcome.applied) {
+    args.deps.hub.notifyThread(thread.id, ["status-changed"]);
+  }
   if (thread.parentThreadId !== null) {
     const parentThreadId = thread.parentThreadId;
     postCommitActions.push({
@@ -743,18 +724,19 @@ export function settleThreadStartCommandResult(
   }
   if (
     currentThread &&
-    canActivateThreadAfterSuccessfulStart(args.deps, {
+    !isThreadStartActivationStale(args.deps, {
       commandStartedAt: args.execution.createdAt,
       providerThreadId: args.report.result.providerThreadId,
-      thread: currentThread,
+      threadId: currentThread.id,
     })
   ) {
-    tryTransitionInTransaction(
-      args.deps.db,
-      args.deps.hub,
-      currentThread.id,
-      "active",
-    );
+    const outcome = applyLoggedThreadLifecycleEventInTransaction(args.deps, {
+      event: { type: "start.succeeded" },
+      threadId: currentThread.id,
+    });
+    if (outcome.applied) {
+      args.deps.hub.notifyThread(currentThread.id, ["status-changed"]);
+    }
   }
   const threadTitle = thread.title;
   if (threadTitle && shouldSyncTitle) {
@@ -1259,7 +1241,7 @@ function interruptActiveTurnForThreadInTransaction(
  * threads with an open turn also get an interrupted turn completion event.
  */
 export function interruptActiveThreads(
-  deps: Pick<AppDeps, "db" | "hub" | "pendingInteractions">,
+  deps: Pick<AppDeps, "db" | "hub" | "logger" | "pendingInteractions">,
   args: InterruptActiveThreadsArgs,
 ): InterruptActiveThreadsResult {
   if (args.threads.length === 0) {
@@ -1268,7 +1250,7 @@ export function interruptActiveThreads(
 
   const results: InterruptedActiveThreadResult[] = [];
   const threadIds = args.threads.map((thread) => thread.threadId);
-  const nextStatus = nextStatusForInterruptedThread(args.reason);
+  const lifecycleEvent = lifecycleEventForInterruptedThread(args.reason);
 
   deps.db.transaction(
     (tx) => {
@@ -1334,10 +1316,10 @@ export function interruptActiveThreads(
 
       appendThreadEventsInTransaction(tx, eventArgs);
       for (const thread of args.threads) {
-        transitionThreadStatusInTransaction(tx, {
-          id: thread.threadId,
-          newStatus: nextStatus,
-        });
+        applyLoggedThreadLifecycleEventInTransaction(
+          { db: tx, logger: deps.logger },
+          { event: lifecycleEvent, threadId: thread.threadId },
+        );
       }
     },
     { behavior: "immediate" },
@@ -1369,7 +1351,7 @@ export function interruptActiveThreads(
 }
 
 export function interruptActiveThreadsForHost(
-  deps: Pick<AppDeps, "db" | "hub" | "pendingInteractions">,
+  deps: Pick<AppDeps, "db" | "hub" | "logger" | "pendingInteractions">,
   args: InterruptActiveThreadsForHostArgs,
 ): InterruptActiveThreadsResult {
   const activeThreads = deps.db
@@ -1619,7 +1601,10 @@ export async function reconcileDaemonReportedThreads(
       .all();
 
     for (const thread of erroredThreads) {
-      tryTransition(deps.db, deps.hub, thread.id, "active");
+      applyLoggedThreadLifecycleEvent(deps, {
+        event: { type: "runtime.observed-active" },
+        threadId: thread.id,
+      });
     }
   }
 
@@ -1677,7 +1662,10 @@ export async function reconcileDaemonReportedThreads(
     if (blockedRevivalThreadIds.has(thread.id)) {
       continue;
     }
-    tryTransition(deps.db, deps.hub, thread.id, "active");
+    applyLoggedThreadLifecycleEvent(deps, {
+      event: { type: "runtime.observed-active" },
+      threadId: thread.id,
+    });
     completeThreadStart(deps, {
       threadId: thread.id,
     });

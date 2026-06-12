@@ -48,7 +48,7 @@ import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { formatAgentThreadInput, sendThreadMessage } from "./thread-send.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
-import { tryTransitionInTransaction } from "./thread-transitions.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 
 interface SendQueuedMessageArgs {
   mode: SendQueuedMessageMode;
@@ -281,7 +281,13 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         requestId: request.requestId,
         preparedCommand,
       });
-      tryTransitionInTransaction(tx, deps.hub, thread.id, "active");
+      const outcome = applyLoggedThreadLifecycleEventInTransaction(
+        { db: tx, logger: deps.logger },
+        { event: { type: "turn.dispatched" }, threadId: thread.id },
+      );
+      if (outcome.applied) {
+        deps.hub.notifyThread(thread.id, ["status-changed"]);
+      }
       return command;
     },
     { behavior: "immediate" },

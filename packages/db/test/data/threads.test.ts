@@ -28,9 +28,8 @@ import {
   reorderPinnedThread,
   unpinThread,
   unarchiveThread,
-  transitionThreadStatus,
-  InvalidThreadStatusTransitionError,
-  ALLOWED_TRANSITIONS,
+  applyThreadLifecycleEvent,
+  requireThreadLifecycleEventApplied,
 } from "../../src/data/threads.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
@@ -1090,150 +1089,7 @@ describe("threads", () => {
   });
 });
 
-describe("transitionThreadStatus", () => {
-  it("allows valid transitions", () => {
-    const { db, project } = setup();
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "created",
-    });
-
-    // created → idle
-    const t1 = transitionThreadStatus(db, noopNotifier, thread.id, "idle");
-    expect(t1.status).toBe("idle");
-
-    // idle → provisioning
-    const t2 = transitionThreadStatus(
-      db,
-      noopNotifier,
-      thread.id,
-      "provisioning",
-    );
-    expect(t2.status).toBe("provisioning");
-
-    // provisioning → idle
-    const t3 = transitionThreadStatus(db, noopNotifier, thread.id, "idle");
-    expect(t3.status).toBe("idle");
-
-    // idle → active
-    const t4 = transitionThreadStatus(db, noopNotifier, thread.id, "active");
-    expect(t4.status).toBe("active");
-
-    // active → idle
-    const t5 = transitionThreadStatus(db, noopNotifier, thread.id, "idle");
-    expect(t5.status).toBe("idle");
-
-    // idle → error
-    const t6 = transitionThreadStatus(db, noopNotifier, thread.id, "error");
-    expect(t6.status).toBe("error");
-
-    // error → active
-    const t7 = transitionThreadStatus(db, noopNotifier, thread.id, "active");
-    expect(t7.status).toBe("active");
-  });
-
-  it("allows created to error when provisioning fails before activation", () => {
-    const { db, project } = setup();
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "created",
-    });
-
-    const updated = transitionThreadStatus(
-      db,
-      noopNotifier,
-      thread.id,
-      "error",
-    );
-    expect(updated.status).toBe("error");
-  });
-
-  it("rejects invalid transitions", () => {
-    const { db, project } = setup();
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "created",
-    });
-
-    // created → provisioning is allowed, so move through an invalid edge after that
-    transitionThreadStatus(db, noopNotifier, thread.id, "provisioning");
-
-    // provisioning → created is not allowed
-    expect(() =>
-      transitionThreadStatus(db, noopNotifier, thread.id, "created"),
-    ).toThrow("Invalid thread status transition: provisioning → created");
-    expect(() =>
-      transitionThreadStatus(db, noopNotifier, thread.id, "created"),
-    ).toThrow(InvalidThreadStatusTransitionError);
-
-    // provisioning → active is allowed, so move to active before checking an invalid edge
-    transitionThreadStatus(db, noopNotifier, thread.id, "active");
-
-    // active → created is not allowed
-    expect(() =>
-      transitionThreadStatus(db, noopNotifier, thread.id, "created"),
-    ).toThrow("Invalid thread status transition: active → created");
-  });
-
-  it("rejects transition for non-existent thread", () => {
-    const { db } = setup();
-    expect(() =>
-      transitionThreadStatus(db, noopNotifier, "thr_nonexistent", "idle"),
-    ).toThrow("Thread not found");
-  });
-
-  it("verifies all transitions in ALLOWED_TRANSITIONS map", () => {
-    // Verify the transitions match the current state machine
-    expect(ALLOWED_TRANSITIONS.created).toEqual([
-      "provisioning",
-      "active",
-      "idle",
-      "error",
-    ]);
-    expect(ALLOWED_TRANSITIONS.provisioning).toEqual([
-      "active",
-      "idle",
-      "error",
-    ]);
-    expect(ALLOWED_TRANSITIONS.idle).toEqual([
-      "provisioning",
-      "active",
-      "error",
-    ]);
-    expect(ALLOWED_TRANSITIONS.active).toEqual(["idle", "error"]);
-    expect(ALLOWED_TRANSITIONS.error).toEqual([
-      "provisioning",
-      "active",
-      "idle",
-    ]);
-  });
-
-  it("allows created and provisioning to move active when startup work begins", () => {
-    const { db, project } = setup();
-    const createdThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "created",
-    });
-    const provisioningThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "provisioning",
-    });
-
-    expect(
-      transitionThreadStatus(db, noopNotifier, createdThread.id, "active")
-        .status,
-    ).toBe("active");
-    expect(
-      transitionThreadStatus(db, noopNotifier, provisioningThread.id, "active")
-        .status,
-    ).toBe("active");
-  });
-
+describe("thread lifecycle transitions and read state", () => {
   it("only attention-worthy status transitions make a read thread unread", () => {
     vi.useFakeTimers();
     try {
@@ -1249,12 +1105,13 @@ describe("transitionThreadStatus", () => {
       });
 
       vi.setSystemTime(2_000);
-      const idleThread = transitionThreadStatus(
-        db,
-        noopNotifier,
-        activeThread.id,
-        "idle",
+      const idleThread = requireThreadLifecycleEventApplied(
+        applyThreadLifecycleEvent(db, noopNotifier, {
+          event: { type: "turn.completed" },
+          threadId: activeThread.id,
+        }),
       );
+      expect(idleThread.status).toBe("idle");
       expect(idleThread.updatedAt).toBe(2_000);
       expect(idleThread.latestAttentionAt).toBe(2_000);
       expect(idleThread.lastReadAt).toBe(1_000);
@@ -1263,12 +1120,13 @@ describe("transitionThreadStatus", () => {
         lastReadAt: idleThread.latestAttentionAt,
       });
       vi.setSystemTime(3_000);
-      const activeAgainThread = transitionThreadStatus(
-        db,
-        noopNotifier,
-        activeThread.id,
-        "active",
+      const activeAgainThread = requireThreadLifecycleEventApplied(
+        applyThreadLifecycleEvent(db, noopNotifier, {
+          event: { type: "turn.dispatched" },
+          threadId: activeThread.id,
+        }),
       );
+      expect(activeAgainThread.status).toBe("active");
       expect(activeAgainThread.updatedAt).toBe(3_000);
       expect(activeAgainThread.latestAttentionAt).toBe(2_000);
       expect(activeAgainThread.lastReadAt).toBe(2_000);
@@ -1297,13 +1155,14 @@ describe("transitionThreadStatus", () => {
       });
 
       vi.setSystemTime(2_000);
-      const idleThread = transitionThreadStatus(
-        db,
-        noopNotifier,
-        childThread.id,
-        "idle",
+      const idleThread = requireThreadLifecycleEventApplied(
+        applyThreadLifecycleEvent(db, noopNotifier, {
+          event: { type: "turn.completed" },
+          threadId: childThread.id,
+        }),
       );
 
+      expect(idleThread.status).toBe("idle");
       expect(idleThread.updatedAt).toBe(2_000);
       expect(idleThread.latestAttentionAt).toBe(1_000);
       expect(idleThread.lastReadAt).toBe(1_000);
@@ -1327,40 +1186,18 @@ describe("transitionThreadStatus", () => {
       });
 
       vi.setSystemTime(2_000);
-      const erroredThread = transitionThreadStatus(
-        db,
-        noopNotifier,
-        createdThread.id,
-        "error",
+      const erroredThread = requireThreadLifecycleEventApplied(
+        applyThreadLifecycleEvent(db, noopNotifier, {
+          event: { type: "command.failed" },
+          threadId: createdThread.id,
+        }),
       );
+      expect(erroredThread.status).toBe("error");
       expect(erroredThread.updatedAt).toBe(2_000);
       expect(erroredThread.latestAttentionAt).toBe(1_000);
       expect(erroredThread.lastReadAt).toBe(1_000);
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("notifies on status change", () => {
-    const { db, project } = setup();
-    const spy: DbNotifier = {
-      notifyThread: vi.fn(),
-      notifyEnvironment: vi.fn(),
-      notifyHost: vi.fn(),
-      notifyProject: vi.fn(),
-      notifySystem: vi.fn(),
-    };
-    const thread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      status: "created",
-    });
-
-    transitionThreadStatus(db, spy, thread.id, "idle");
-    expect(spy.notifyThread).toHaveBeenCalledWith(
-      thread.id,
-      ["status-changed"],
-      { projectId: project.id },
-    );
   });
 });

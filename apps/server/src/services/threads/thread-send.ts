@@ -1,4 +1,4 @@
-import { getThread, transitionThreadStatusInTransaction } from "@bb/db";
+import { getThread, requireThreadLifecycleEventApplied } from "@bb/db";
 import type { DbConnection, DbTransaction } from "@bb/db";
 import type {
   ClientTurnRequestId,
@@ -32,6 +32,7 @@ import {
   prepareReadyThreadTurnCommand,
   prepareReadyThreadTurnDispatchInTransaction,
 } from "./thread-lifecycle.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
   dispatchTurnDuringReprovision,
   requireReadyThreadEnvironment,
@@ -440,14 +441,20 @@ export async function sendThreadMessage(
           thread,
         });
         const currentThread = getThread(tx, thread.id);
+        // The error arm is dispatch routing, not just transition protection:
+        // an errored thread re-activates optimistically even when the
+        // dispatch is a thread.start, while an idle thread.start dispatch
+        // stays non-active until the daemon reports back.
         if (
           dispatchKind === "turn.submit" ||
           currentThread?.status === "error"
         ) {
-          transitionThreadStatusInTransaction(tx, {
-            id: thread.id,
-            newStatus: "active",
-          });
+          requireThreadLifecycleEventApplied(
+            applyLoggedThreadLifecycleEventInTransaction(
+              { db: tx, logger: deps.logger },
+              { event: { type: "turn.dispatched" }, threadId: thread.id },
+            ),
+          );
           return { threadBecameActive: true };
         }
         return { threadBecameActive: false };

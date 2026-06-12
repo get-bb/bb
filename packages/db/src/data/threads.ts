@@ -39,18 +39,6 @@ import {
 
 type ThreadWriteConnection = DbConnection | DbTransaction;
 
-/**
- * Allowed thread status transitions.
- * Key is the current status, values are the statuses it can transition to.
- */
-export const ALLOWED_TRANSITIONS: Record<ThreadStatus, ThreadStatus[]> = {
-  created: ["provisioning", "active", "idle", "error"],
-  provisioning: ["active", "idle", "error"],
-  idle: ["provisioning", "active", "error"],
-  active: ["idle", "error"],
-  error: ["provisioning", "active", "idle"],
-};
-
 export interface CreateThreadInput {
   automationId?: string | null;
   projectId: string;
@@ -284,30 +272,6 @@ function resolvePinnedThreadNeighbor(
     args.pinnedThreads.find((thread) => thread.id === args.neighborThreadId) ??
     false
   );
-}
-
-interface InvalidThreadStatusTransitionErrorArgs {
-  currentStatus: ThreadStatus;
-  newStatus: ThreadStatus;
-}
-
-export interface TransitionThreadStatusInTransactionArgs {
-  id: string;
-  newStatus: ThreadStatus;
-}
-
-export class InvalidThreadStatusTransitionError extends Error {
-  readonly currentStatus: ThreadStatus;
-  readonly newStatus: ThreadStatus;
-
-  constructor(args: InvalidThreadStatusTransitionErrorArgs) {
-    super(
-      `Invalid thread status transition: ${args.currentStatus} → ${args.newStatus}`,
-    );
-    this.name = "InvalidThreadStatusTransitionError";
-    this.currentStatus = args.currentStatus;
-    this.newStatus = args.newStatus;
-  }
 }
 
 export interface ThreadWithPendingInteractionState extends ThreadRow {
@@ -1218,83 +1182,6 @@ export function unarchiveThread(
     });
   }
   return updated ?? null;
-}
-
-/**
- * @deprecated Use applyThreadLifecycleEvent / applyThreadLifecycleEventInTransaction
- * with a ThreadLifecycleEvent instead of choosing a target status. This API throws
- * on stale events; the replacement returns a typed no-op outcome.
- */
-function transitionThreadStatusRecord(
-  db: ThreadWriteConnection,
-  id: string,
-  newStatus: ThreadStatus,
-) {
-  const thread = db.select().from(threads).where(eq(threads.id, id)).get();
-  if (!thread) {
-    throw new Error(`Thread not found: ${id}`);
-  }
-
-  const currentStatus = thread.status;
-  const allowed = ALLOWED_TRANSITIONS[currentStatus];
-  if (!allowed || !allowed.includes(newStatus)) {
-    throw new InvalidThreadStatusTransitionError({
-      currentStatus,
-      newStatus,
-    });
-  }
-
-  const now = Date.now();
-  const set: Partial<typeof threads.$inferInsert> = {
-    status: newStatus,
-    updatedAt: now,
-  };
-  if (
-    statusTransitionNeedsAttention({
-      currentStatus,
-      newStatus,
-      parentThreadId: thread.parentThreadId,
-    })
-  ) {
-    set.latestAttentionAt = now;
-  }
-
-  const updated = db
-    .update(threads)
-    .set(set)
-    .where(eq(threads.id, id))
-    .returning()
-    .get();
-
-  return updated!;
-}
-
-/**
- * @deprecated Use applyThreadLifecycleEventInTransaction with a
- * ThreadLifecycleEvent instead of choosing a target status.
- */
-export function transitionThreadStatusInTransaction(
-  db: DbTransaction,
-  args: TransitionThreadStatusInTransactionArgs,
-) {
-  return transitionThreadStatusRecord(db, args.id, args.newStatus);
-}
-
-/**
- * @deprecated Use applyThreadLifecycleEvent with a ThreadLifecycleEvent
- * instead of choosing a target status.
- */
-export function transitionThreadStatus(
-  db: DbConnection,
-  notifier: DbNotifier,
-  id: string,
-  newStatus: ThreadStatus,
-) {
-  const updated = transitionThreadStatusRecord(db, id, newStatus);
-  notifier.notifyThread(id, ["status-changed"], {
-    projectId: updated.projectId,
-  });
-  return updated;
 }
 
 export type ApplyThreadLifecycleEventNoopReason =
