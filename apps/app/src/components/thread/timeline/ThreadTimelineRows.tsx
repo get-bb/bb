@@ -58,6 +58,7 @@ import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { Button } from "../../ui/button.js";
 import { AutoHeightContainer } from "../../ui/height-transition.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import {
   joinSignatureParts,
@@ -91,6 +92,7 @@ export interface ThreadTimelineRowsProps {
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
+  resolveMentionLink?: PromptMentionLinkResolver;
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   themeType?: ThreadTimelineTheme;
@@ -122,6 +124,7 @@ interface TimelineRendererStaticContextValue {
   onTitleAction: TimelineTitleActionResolver | undefined;
   projectId: string | undefined;
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
+  resolveMentionLink: PromptMentionLinkResolver | undefined;
   resolveSegmentLinkHref: TimelineTitleLinkResolver | undefined;
   resolveUserAttachmentImageSrc: UserAttachmentImageSrcResolver | undefined;
   senderThreadMetadataById: ReadonlyMap<string, SenderThreadMetadata>;
@@ -656,6 +659,7 @@ function ConversationRow({ row }: ConversationRowProps) {
     onOpenLink,
     onOpenLocalFileLink,
     projectId,
+    resolveMentionLink,
     resolveSegmentLinkHref,
     resolveUserAttachmentImageSrc,
     senderThreadMetadataById,
@@ -672,6 +676,7 @@ function ConversationRow({ row }: ConversationRowProps) {
         mentions={row.mentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
+        resolveMentionLink={resolveMentionLink}
         resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
         role="user"
         resolveSegmentLinkHref={resolveSegmentLinkHref}
@@ -1358,6 +1363,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       onTitleAction: props.onTitleAction,
       projectId,
       resolveImageViewSrc: props.resolveImageViewSrc,
+      resolveMentionLink: props.resolveMentionLink,
       resolveSegmentLinkHref,
       resolveUserAttachmentImageSrc: props.resolveUserAttachmentImageSrc,
       senderThreadMetadataById,
@@ -1372,6 +1378,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.onTitleAction,
       projectId,
       props.resolveImageViewSrc,
+      props.resolveMentionLink,
       resolveSegmentLinkHref,
       props.resolveUserAttachmentImageSrc,
       senderThreadMetadataById,

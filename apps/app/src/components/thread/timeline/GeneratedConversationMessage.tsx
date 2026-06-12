@@ -3,6 +3,7 @@ import type { TimelineUserConversationRow } from "@bb/server-contract";
 import type { PromptTextMention } from "@bb/domain";
 import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
 import { type IconName } from "@/components/ui/icon.js";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
   ConversationAttachments,
   type ConversationAttachmentItems,
@@ -26,6 +27,7 @@ interface GeneratedConversationMessageProps {
   mentions: readonly PromptTextMention[];
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
+  resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
@@ -172,6 +174,7 @@ export const GeneratedConversationMessage = memo(
     mentions,
     onOpenLocalFileLink,
     projectId,
+    resolveMentionLink,
     resolveSegmentLinkHref,
     sourceKind,
     sourceName,
@@ -233,6 +236,7 @@ export const GeneratedConversationMessage = memo(
         >
           {renderMentionTextSegments({
             mentions: collapsedPreviewBody.mentions,
+            resolveMentionLink,
             text: collapsedPreviewBody.text,
           })}
           {expandable ? (
@@ -249,6 +253,7 @@ export const GeneratedConversationMessage = memo(
               <p className="whitespace-pre-wrap break-words">
                 {renderMentionTextSegments({
                   mentions: messageMentions,
+                  resolveMentionLink,
                   text: messageText,
                 })}
               </p>
@@ -279,6 +284,7 @@ export const GeneratedConversationMessage = memo(
         messageMentions,
         onOpenLocalFileLink,
         projectId,
+        resolveMentionLink,
         sourceKind,
         requestLabel,
         turnRequest,

@@ -10,9 +10,11 @@ import {
   promptMentionTooltipLabel,
 } from "@/components/promptbox/mentions/prompt-mention-display";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 
 interface PromptMentionPillProps {
   resource: PromptMentionResource;
+  resolveMentionLink?: PromptMentionLinkResolver;
   serializedText: string;
 }
 
@@ -29,6 +31,7 @@ export interface ShiftMentionsToTextRangeArgs {
 
 export interface RenderMentionTextSegmentsArgs {
   mentions: readonly PromptTextMention[];
+  resolveMentionLink?: PromptMentionLinkResolver;
   text: string;
 }
 
@@ -104,12 +107,13 @@ function mentionPillClassName(interactive: boolean): string {
   return cn(
     PROMPT_MENTION_PILL_CLASS,
     "bg-surface-raised/50 no-underline hover:no-underline",
-    interactive && "hover:bg-state-hover",
+    interactive && "cursor-pointer hover:bg-state-hover",
   );
 }
 
 function PromptMentionPill({
   resource,
+  resolveMentionLink,
   serializedText,
 }: PromptMentionPillProps) {
   const title = promptMentionTooltipLabel(resource);
@@ -144,9 +148,26 @@ function PromptMentionPill({
     );
   }
 
+  if (resource.kind === "path") {
+    const activate = resolveMentionLink?.(resource) ?? null;
+    if (activate) {
+      return (
+        <button
+          type="button"
+          className={mentionPillClassName(true)}
+          {...clipboardAttributes}
+          onClick={activate}
+          title={title}
+        >
+          {labelNode}
+        </button>
+      );
+    }
+  }
+
   // Timeline path mentions are workspace/thread-storage-relative resources.
-  // Opening them needs the same environment and thread-storage context
-  // the composer resolver owns, so they are intentionally display-only here.
+  // Opening them needs environment and thread-storage context from the page
+  // owner; without a resolver, they stay display-only.
   // Thread mentions without project context are also display-only; linking
   // through the current page project can misroute cross-project mentions.
   return (
@@ -162,6 +183,7 @@ function PromptMentionPill({
 
 export function renderMentionTextSegments({
   mentions,
+  resolveMentionLink,
   text,
 }: RenderMentionTextSegmentsArgs): ReactNode {
   const normalizedMentions = normalizePromptTextMentions({
@@ -185,6 +207,7 @@ export function renderMentionTextSegments({
       <PromptMentionPill
         key={`${mention.start}:${mention.end}:${mention.resource.kind}`}
         resource={mention.resource}
+        resolveMentionLink={resolveMentionLink}
         serializedText={text.slice(mention.start, mention.end)}
       />,
     );
