@@ -260,6 +260,48 @@ describe("live thread start handoff", () => {
     });
   });
 
+  it("does not reactivate a thread when a late start succeeds while its stop is still in flight", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = await startLiveThreadStartRpc({
+        harness,
+        requestIdValue: 7,
+      });
+
+      requestThreadStopForCurrentState(
+        harness.deps,
+        fixture.thread,
+        fixture.environment,
+      );
+      const stopCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" &&
+          command.threadId === fixture.thread.id,
+      );
+      expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
+        status: "idle",
+        stopRequestedAt: expect.any(Number),
+      });
+
+      // The start RPC settles before the stop RPC does: the pending stop
+      // request supersedes the activation and the row stays untouched.
+      await reportQueuedCommandSuccess(harness, fixture.startCommand, {
+        providerThreadId: "provider-stop-in-flight-late-start",
+      });
+
+      expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
+        status: "idle",
+        stopRequestedAt: expect.any(Number),
+      });
+
+      await reportQueuedCommandSuccess(harness, stopCommand, {});
+      expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
+        status: "idle",
+        stopRequestedAt: null,
+      });
+    });
+  });
+
   it("does not reactivate an idle thread when a completed start turn settled first", async () => {
     await withTestHarness(async (harness) => {
       const fixture = await startLiveThreadStartRpc({

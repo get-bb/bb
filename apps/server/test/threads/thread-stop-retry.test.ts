@@ -1,9 +1,10 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { getThread } from "@bb/db";
+import { getThread, listEvents } from "@bb/db";
 import type { Environment, Thread } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { runStopRequestedThreadSweep } from "../../src/services/system/periodic-sweeps.js";
 import {
+  finalizeStoppedThread,
   hasLiveThreadStopInFlight,
   requestThreadStopForCurrentState,
 } from "../../src/services/threads/thread-lifecycle.js";
@@ -19,6 +20,7 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
@@ -121,6 +123,51 @@ describe("thread stop retry", () => {
         status: "idle",
         stopRequestedAt: null,
       });
+    });
+  });
+
+  it("treats a second stop completion as a no-op after the stop already settled", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedActiveThreadStopFixture({
+        harness,
+        value: 3,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        threadId: thread.id,
+        turnId: "turn-stop-settles-twice",
+      });
+
+      requestThreadStopForCurrentState(harness.deps, thread, environment);
+      const stopCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === thread.id,
+      );
+      await reportQueuedCommandSuccess(harness, stopCommand, {});
+      const settled = getThread(harness.db, thread.id);
+      expect(settled).toMatchObject({
+        status: "idle",
+        stopRequestedAt: null,
+      });
+
+      // Daemon reconnect reconciliation re-finalizes stop-requested threads;
+      // a second completion of the same stop must change nothing.
+      const finalized = finalizeStoppedThread(harness.deps, {
+        threadId: thread.id,
+      });
+
+      expect(finalized).toBe(true);
+      expect(getThread(harness.db, thread.id)).toEqual(settled);
+      const threadEvents = listEvents(harness.db, { threadId: thread.id });
+      expect(
+        threadEvents.filter((event) => event.type === "turn/completed"),
+      ).toHaveLength(1);
+      expect(
+        threadEvents.filter(
+          (event) => event.type === "system/thread/interrupted",
+        ),
+      ).toHaveLength(1);
     });
   });
 
