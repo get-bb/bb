@@ -21,8 +21,9 @@ The deployable static site lands in `apps/landing/dist/client/`.
 ## Deploy
 
 The site ships as a Cloudflare Workers assets-only deploy (no server runtime —
-see `wrangler.jsonc`), currently at
-<https://bb-landing.sawyer-7bb.workers.dev>.
+see `wrangler.jsonc`), live at <https://getbb.app> (and
+<https://bb-landing.sawyer-7bb.workers.dev>). Pushes to `main` touching
+`apps/landing/**` auto-deploy via `.github/workflows/deploy-landing.yml`.
 
 ```bash
 pnpm exec turbo run build --filter=@bb/landing

@@ -9,5 +9,9 @@
   "compatibility_date": "2026-06-11",
   "assets": {
     "directory": "./dist/client"
-  }
+  },
+  "routes": [
+    { "pattern": "getbb.app", "custom_domain": true },
+    { "pattern": "www.getbb.app", "custom_domain": true }
+  ]
 }
