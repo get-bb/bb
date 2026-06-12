@@ -16,7 +16,6 @@ import {
   APP_ROOT_ROUTE_PATH,
   AUTOMATIONS_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
-  DEVELOPMENT_REPLAY_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECT_WORKFLOWS_ROUTE_PATH,
@@ -51,11 +50,6 @@ const ProjectArchivedThreadsView = lazy(() =>
     default: m.ProjectArchivedThreadsView,
   })),
 );
-const InternalReplayListView = lazy(() =>
-  import("./views/InternalReplayListView").then((m) => ({
-    default: m.InternalReplayListView,
-  })),
-);
 const WorkflowRunView = lazy(() =>
   import("./views/workflow-run/WorkflowRunView").then((m) => ({
     default: m.WorkflowRunView,
@@ -75,12 +69,6 @@ function AppRoutes() {
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
           <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
           <Route path={AUTOMATIONS_ROUTE_PATH} element={<AutomationsView />} />
-          {import.meta.env.DEV ? (
-            <Route
-              path={DEVELOPMENT_REPLAY_ROUTE_PATH}
-              element={<InternalReplayListView />}
-            />
-          ) : null}
           <Route
             path={LEGACY_PROJECT_COMPOSE_ROUTE_PATH}
             element={<RootComposeRoute />}

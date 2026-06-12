@@ -464,16 +464,6 @@ describe("consumer-specific config", () => {
     ).toThrow(/BB_TRANSCRIPTION/u);
   });
 
-  it("accepts envsafe-compatible boolean forms from env", () => {
-    const hostDaemonConfig = loadHostDaemonConnectionConfig({
-      env: createHostDaemonRuntimeEnv({
-        BB_DEV_REPLAY_CAPTURE: "0",
-      }),
-    });
-
-    expect(hostDaemonConfig.BB_DEV_REPLAY_CAPTURE).toBe(false);
-  });
-
   it("requires a valid server URL for the daemon and CLI", () => {
     const env = createHostDaemonRuntimeEnv({
       BB_SERVER_URL: "http://localhost:9999",

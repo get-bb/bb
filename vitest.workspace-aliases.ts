@@ -28,10 +28,6 @@ export const workspaceTestAliases = {
     repoRoot,
     "packages/agent-runtime/src/index.ts",
   ),
-  "@bb/replay-capture/schema": path.resolve(
-    repoRoot,
-    "packages/replay-capture/src/schema.ts",
-  ),
   "@bb/config/common": path.resolve(repoRoot, "packages/config/src/common.ts"),
   "@bb/config/defaults": path.resolve(
     repoRoot,

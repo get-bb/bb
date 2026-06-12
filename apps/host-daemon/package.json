@@ -32,7 +32,6 @@
     "@bb/host-workspace": "workspace:*",
     "@bb/logger": "workspace:*",
     "@bb/process-utils": "workspace:*",
-    "@bb/replay-capture": "workspace:*",
     "@bb/templates": "workspace:*",
     "@bb/workflow-runtime": "workspace:*",
     "@hono/node-server": "^1.19.11",

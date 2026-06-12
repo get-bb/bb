@@ -115,9 +115,6 @@ import type {
   CommandListResponse,
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
-  ReplayCaptureListResponse,
-  ReplayRunRequest,
-  ReplayRunResponse,
   CreateWorkflowRunRequest,
   WorkflowListQuery,
   WorkflowListResponse,
@@ -134,22 +131,6 @@ type PathProjectSourceId = { param: { id: string; sourceId: string } };
 type PathWorkflowRunAgentIndex = { param: { id: string; index: string } };
 
 export type PublicApiSchema = {
-  // ─── Development Only ────────────────────────────────────────────────
-
-  "/development-only/replay/captures": {
-    $get: Endpoint<EmptyInput, ReplayCaptureListResponse>;
-  };
-  "/development-only/replay/captures/:id": {
-    $delete: Endpoint<PathId, { ok: true }>;
-  };
-  "/development-only/replay/captures/:id/runs": {
-    $post: Endpoint<
-      PathId & { json: ReplayRunRequest },
-      ReplayRunResponse,
-      201
-    >;
-  };
-
   // ─── Automations ─────────────────────────────────────────────────────
 
   "/automations": {
@@ -725,7 +706,11 @@ export type PublicApiSchema = {
      * inherit the anchor thread environment's `{hostId, workspacePath}`;
      * unanchored launches resolve the project's default source.
      */
-    $post: Endpoint<{ json: CreateWorkflowRunRequest }, WorkflowRunResponse, 201>;
+    $post: Endpoint<
+      { json: CreateWorkflowRunRequest },
+      WorkflowRunResponse,
+      201
+    >;
   };
   "/workflow-runs/:id": {
     $get: Endpoint<PathId, WorkflowRunResponse>;

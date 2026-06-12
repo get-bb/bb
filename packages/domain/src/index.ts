@@ -254,7 +254,6 @@ export type {
 
 export {
   BB_THREAD_NAME_TAG,
-  REPLAY_THREAD_NAME_TAG,
   fromProviderExternalThreadName,
   normalizeProviderThreadNameEvent,
   tagThreadName,

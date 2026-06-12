@@ -365,7 +365,6 @@ function commandRpcResponseSuccessSchemaFor<
 const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
   "commandType",
   [
-    onlineRpcResponseSuccessSchemaFor("development.replay"),
     onlineRpcResponseSuccessSchemaFor("host.list_files"),
     onlineRpcResponseSuccessSchemaFor("host.list_paths"),
     onlineRpcResponseSuccessSchemaFor("host.list_commands"),

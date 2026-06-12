@@ -76,9 +76,6 @@ import type {
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
   WorkspacePathListResponse,
-  ReplayCaptureListResponse,
-  ReplayRunRequest,
-  ReplayRunResponse,
   CreateWorkflowRunRequest,
   WorkflowListResponse,
   WorkflowRunEventsResponse,
@@ -462,32 +459,6 @@ async function postMultipart<T>(
   }
   const text = await res.text();
   return JSON.parse(text) as T;
-}
-
-export async function listReplayCaptures(): Promise<ReplayCaptureListResponse> {
-  return request<ReplayCaptureListResponse>(
-    apiClient["development-only"].replay.captures.$get(),
-  );
-}
-
-export async function startReplayRun(
-  id: string,
-  req: ReplayRunRequest,
-): Promise<ReplayRunResponse> {
-  return request<ReplayRunResponse>(
-    apiClient["development-only"].replay.captures[":id"].runs.$post({
-      param: { id },
-      json: req,
-    }),
-  );
-}
-
-export async function deleteReplayCapture(id: string): Promise<void> {
-  await requestVoid(
-    apiClient["development-only"].replay.captures[":id"].$delete({
-      param: { id },
-    }),
-  );
 }
 
 export async function createProject(
@@ -1180,10 +1151,7 @@ export async function markThreadUnread(id: string): Promise<ThreadResponse> {
   );
 }
 
-export async function getHost(
-  id: string,
-  signal?: AbortSignal,
-): Promise<Host> {
+export async function getHost(id: string, signal?: AbortSignal): Promise<Host> {
   return request<Host>(
     apiClient.hosts[":id"].$get({ param: { id } }, requestOptions(signal)),
   );
@@ -1539,5 +1507,7 @@ export async function archiveWorkflowRun(id: string): Promise<void> {
 }
 
 export async function deleteWorkflowRun(id: string): Promise<void> {
-  await requestVoid(apiClient["workflow-runs"][":id"].$delete({ param: { id } }));
+  await requestVoid(
+    apiClient["workflow-runs"][":id"].$delete({ param: { id } }),
+  );
 }

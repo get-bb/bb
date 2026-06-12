@@ -1,16 +1,12 @@
 import type {
   HostDaemonCommand,
   HostDaemonCommandResult,
-  HostDaemonSettledCommandType,
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcCommandType,
   HostDaemonOnlineRpcResult,
+  HostDaemonSettledCommandType,
   WorkspaceResolutionFailure,
 } from "@bb/host-daemon-contract";
-import type {
-  ResolvedThreadExecutionOptions,
-  RuntimeThreadExecutionOptions,
-} from "@bb/domain";
 import { listAvailableProviders } from "@bb/agent-runtime";
 import {
   defaultListModels,
@@ -36,12 +32,6 @@ import {
   writeHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
-import {
-  getReplayCapture,
-  listReplayCaptures,
-  removeReplayCapture,
-  runReplay,
-} from "./command-handlers/replay.js";
 import {
   completeCodexInference,
   transcribeCodexVoice,
@@ -75,76 +65,6 @@ export {
   noopEventSink,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";
-
-function recordReplayThreadMetadata(
-  command:
-    | Extract<HostDaemonCommand, { type: "thread.start" }>
-    | Extract<HostDaemonCommand, { type: "turn.submit" }>,
-  options: CommandDispatchOptions,
-): void {
-  if (!options.recordReplayCaptureThreadMetadata) {
-    return;
-  }
-  const runtimeContext =
-    command.type === "thread.start" ? command : command.resumeContext;
-  options.recordReplayCaptureThreadMetadata({
-    environmentId: command.environmentId,
-    projectId: runtimeContext.projectId,
-    providerId: runtimeContext.providerId,
-    threadId: command.threadId,
-    title: null,
-  });
-}
-
-/**
- * Translate runtime-shape execution options (which carry permissionEscalation
- * details and no source field) into the server-shape used by stored client
- * turn-request events, which is what the manifest persists for replay.
- */
-function toReplayCaptureExecution(
-  options: RuntimeThreadExecutionOptions,
-): ResolvedThreadExecutionOptions {
-  return {
-    model: options.model,
-    serviceTier: options.serviceTier,
-    reasoningLevel: options.reasoningLevel,
-    permissionMode: options.permissionMode,
-    source: "client/turn/requested",
-  };
-}
-
-function recordReplayTurnRequest(
-  command:
-    | Extract<HostDaemonCommand, { type: "thread.start" }>
-    | Extract<HostDaemonCommand, { type: "turn.submit" }>,
-  options: CommandDispatchOptions,
-): void {
-  if (!options.recordReplayCaptureTurnRequest) {
-    return;
-  }
-  if (command.type === "thread.start") {
-    options.recordReplayCaptureTurnRequest({
-      threadId: command.threadId,
-      kind: "thread-start",
-      input: command.input,
-      execution: toReplayCaptureExecution(command.options),
-    });
-    return;
-  }
-  // Only "start" guarantees a new turn (and thus a turn/started event that
-  // consumes the buffered request). "auto" and "steer" may resolve to a steer
-  // that emits no turn/started — leaving a stale request that would mislabel
-  // a later capture. Skip them.
-  if (command.target.mode !== "start") {
-    return;
-  }
-  options.recordReplayCaptureTurnRequest({
-    threadId: command.threadId,
-    kind: "turn-start",
-    input: command.input,
-    execution: toReplayCaptureExecution(command.options),
-  });
-}
 
 type CommandHandlerMap = {
   [TType in HostDaemonSettledCommandType]: (
@@ -237,22 +157,13 @@ async function environmentCleanupPreflight(
 
 const commandHandlers: CommandHandlerMap = {
   "thread.start": async (command, options) => {
-    recordReplayThreadMetadata(command, options);
-    recordReplayTurnRequest(command, options);
     return startThread(command, options);
   },
   "turn.submit": async (command, options) => {
-    recordReplayThreadMetadata(command, options);
-    recordReplayTurnRequest(command, options);
     const entry = await ensureThreadRuntime(command, options);
     return submitTurn(command, entry, options);
   },
   "thread.stop": async (command, options) => {
-    const replayTask = options.replayTasks?.get(command.threadId);
-    if (replayTask) {
-      replayTask.abort.abort();
-      return {};
-    }
     const entry = await requireExistingEnvironment(
       command.environmentId,
       options.runtimeManager,
@@ -375,7 +286,6 @@ const commandHandlers: CommandHandlerMap = {
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
-  "development.replay": dispatchDevelopmentReplayCommand,
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
   "host.list_commands": listHostCommands,
@@ -480,31 +390,6 @@ export async function dispatchCommand<
 ): Promise<HostDaemonCommandResult<TType>> {
   try {
     return await commandHandlers[command.type](command, options);
-  } catch (error) {
-    throwExpectedWorkspacePathNotFoundOrRethrow(error);
-  }
-}
-
-type DevelopmentReplayCommand = Extract<
-  HostDaemonOnlineRpcCommand,
-  { type: "development.replay" }
->;
-
-export async function dispatchDevelopmentReplayCommand(
-  command: DevelopmentReplayCommand,
-  options: CommandDispatchOptions,
-): Promise<HostDaemonOnlineRpcResult<"development.replay">> {
-  try {
-    switch (command.operation) {
-      case "capture-list":
-        return await listReplayCaptures(options);
-      case "capture-get":
-        return await getReplayCapture(command, options);
-      case "capture-delete":
-        return await removeReplayCapture(command, options);
-      case "run":
-        return await runReplay(command, options);
-    }
   } catch (error) {
     throwExpectedWorkspacePathNotFoundOrRethrow(error);
   }

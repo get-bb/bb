@@ -23,7 +23,7 @@ const USAGE: Partial<Record<IconName, string>> = {
     "Picker/dropdown trigger, section toggle headers, child-thread indent glyph",
   ChevronLeft: "Image lightbox previous",
   ChevronRight:
-    "Sidebar row collapsed-state glyph, breadcrumb separator, lightbox next, submenu indicator, replay-capture expand",
+    "Sidebar row collapsed-state glyph, breadcrumb separator, lightbox next, submenu indicator",
   ChevronUp: "“Load older messages” button",
   ChevronsDown: "Git diff toolbar collapse-all",
   ChevronsUp: "Git diff toolbar expand-all",
@@ -52,7 +52,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   GitBranch:
     "Worktree environment icon (resolved via environment-workspace helpers)",
   GitMerge: "Branch name display, branch picker selected/option glyph",
-  Info: "Right panel “thread info” tab, replay list info banner",
+  Info: "Right panel “thread info” tab, informational banners",
   Laptop: "Persistent host icon (resolved via getHostIconName)",
   ListTodo: "Todo section header in prompt context banner",
   Maximize2: "Enter zen mode (prompt expand)",
@@ -74,7 +74,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   Settings: "Settings link in sidebar, project settings link in header",
   Spinner: "All loading / pending states",
   Square: "Stop button while running, in-progress and pending todo glyphs",
-  Trash2: "Delete queued message, remove project source, delete replay capture",
+  Trash2: "Delete queued message, remove project source",
   UserRound: "Parent-thread indicator in sidebar and prompt banner",
   UserRoundPlus: "unused legacy parent-action icon",
   X: "Close dialogs/drawers, clear search input, remove attachment, close metadata panel",

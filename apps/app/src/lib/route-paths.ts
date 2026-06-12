@@ -5,7 +5,6 @@ export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
 export const SETTINGS_ROUTE_PATH = "/settings";
 export const AUTOMATIONS_ROUTE_PATH = "/automations";
-export const DEVELOPMENT_REPLAY_ROUTE_PATH = "/development-only/replay";
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_THREAD_DETAIL_ROUTE_PATH = "/threads/:threadId";
@@ -103,9 +102,7 @@ const baseRoutePatterns: readonly string[] = [
   WORKFLOW_RUN_AGENT_ROUTE_PATH,
 ];
 
-export const ROUTE_PATTERNS = import.meta.env.DEV
-  ? [...baseRoutePatterns, DEVELOPMENT_REPLAY_ROUTE_PATH]
-  : baseRoutePatterns;
+export const ROUTE_PATTERNS = baseRoutePatterns;
 
 const ABSOLUTE_HTTP_URL_PATTERN = /^https?:\/\//iu;
 

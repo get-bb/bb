@@ -208,13 +208,6 @@ export const BB_DEV_ENV_PORT_ENV = defineEnvVar<number | undefined>({
   parse: parseOptionalPortEnvValue,
 });
 
-export const BB_DEV_REPLAY_CAPTURE_ENV = defineEnvVar<boolean>({
-  description:
-    "When true, the daemon records live provider traffic as replay captures",
-  name: "BB_DEV_REPLAY_CAPTURE",
-  parse: parseBooleanEnvValue,
-});
-
 export const BB_CLI_DIR_ENV = defineEnvVar<string | undefined>({
   description:
     "Directory containing the bb CLI executable to inject into runtime shells",
@@ -272,13 +265,14 @@ export const BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST_ENV =
     parse: parsePositiveIntegerEnvValue,
   });
 
-export const BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES_ENV =
-  defineEnvVar<number>({
+export const BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES_ENV = defineEnvVar<number>(
+  {
     description:
       "Daemon cap: max live workflow provider processes (each worktree agent costs one dedicated process; shared-cwd agents reuse the run's processes)",
     name: "BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES",
     parse: parsePositiveIntegerEnvValue,
-  });
+  },
+);
 
 export const DEFAULT_BB_APP_VERSION = "0.0.0-dev";
 export const DEFAULT_BB_APP_URL = "";
@@ -287,7 +281,6 @@ export const DEFAULT_OPENAI_API_KEY = "";
 export const DEFAULT_BB_POSTHOG_API_KEY = "";
 export const DEFAULT_BB_TELEMETRY = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
-export const DEFAULT_BB_DEV_REPLAY_CAPTURE = false;
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
 export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;

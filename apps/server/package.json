@@ -21,7 +21,6 @@
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/logger": "workspace:*",
     "@bb/process-utils": "workspace:*",
-    "@bb/replay-capture": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/secret-storage": "workspace:*",
     "@bb/server-contract": "workspace:*",

@@ -51,53 +51,6 @@ interface OnlineRpcResponseRoundTripCase {
   result: JsonObject;
 }
 
-const RESOLVED_REPLAY_EXECUTION_OPTIONS: JsonObject = {
-  model: "test/model",
-  serviceTier: "default",
-  reasoningLevel: "medium",
-  permissionMode: "workspace-write",
-  source: "client/turn/requested",
-};
-
-const REPLAY_CAPTURE_SUMMARY_RESULT: JsonObject = {
-  captureId: "cap_lx0_abcdefgh",
-  capturedAt: 1_700_000_000_000,
-  completedAt: 1_700_000_000_100,
-  providerId: "codex",
-  projectId: "proj_123",
-  environmentId: "env_123",
-  threadId: "thr_123",
-  title: "Replay capture",
-  kind: "turn-start",
-  userInputPreview: "Run the test",
-  execution: RESOLVED_REPLAY_EXECUTION_OPTIONS,
-  eventCounts: {
-    rawProviderEvents: 2,
-    droppedRecords: 0,
-  },
-  errorMessage: null,
-};
-
-const REPLAY_CAPTURE_MANIFEST_RESULT: JsonObject = {
-  ...REPLAY_CAPTURE_SUMMARY_RESULT,
-  schemaVersion: 3,
-  source: "live-dev-capture",
-  providerThreadId: "provider-thread-123",
-  turns: [
-    {
-      turnId: "turn_123",
-      userInput: [
-        {
-          type: "text",
-          text: "Run the test",
-          mentions: [],
-        },
-      ],
-      createdAt: 1_700_000_000_010,
-    },
-  ],
-};
-
 const WORKSPACE_UNAVAILABLE_RESULT: JsonObject = {
   outcome: "unavailable",
   failure: {
@@ -169,7 +122,6 @@ const WORKSPACE_DIFF_AVAILABLE_RESULT: JsonObject = {
 };
 
 const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
-  "development.replay": {},
   "host.list_files": {
     files: [
       {
@@ -321,18 +273,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
 const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTripCase[] =
   [
     {
-      name: "development.replay capture-list result",
-      commandType: "development.replay",
-      result: {
-        captures: [REPLAY_CAPTURE_SUMMARY_RESULT],
-      },
-    },
-    {
-      name: "development.replay capture-get manifest result",
-      commandType: "development.replay",
-      result: REPLAY_CAPTURE_MANIFEST_RESULT,
-    },
-    {
       name: "workspace.status available result",
       commandType: "workspace.status",
       result: WORKSPACE_STATUS_AVAILABLE_RESULT,
@@ -379,14 +319,7 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
     },
   },
   {
-    name: "development.replay command with a provider-list result",
-    commandType: "development.replay",
-    result: {
-      providers: [],
-    },
-  },
-  {
-    name: "provider.list command with a replay-list result",
+    name: "provider.list command with unrelated collection result",
     commandType: "provider.list",
     result: {
       captures: [],

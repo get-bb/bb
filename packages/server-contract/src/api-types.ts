@@ -53,10 +53,7 @@ import {
   hostDaemonWorkflowListingSchema,
   workspaceResolutionFailureSchema,
 } from "@bb/host-daemon-contract";
-import type {
-  CallerExecutionInputSource,
-  GitBranchName,
-} from "@bb/domain";
+import type { CallerExecutionInputSource, GitBranchName } from "@bb/domain";
 import { apiErrorSchema } from "./errors.js";
 import { timelineRowSchema } from "./thread-timeline.js";
 
@@ -2014,25 +2011,6 @@ export type UploadedPromptAttachment = z.infer<
 export type EnvironmentStatusResponse = z.infer<
   typeof environmentStatusResponseSchema
 >;
-
-export {
-  replayCaptureDetailSchema,
-  replayCaptureListResponseSchema,
-  replayCaptureHostSummarySchema,
-  replayCaptureSummarySchema,
-  replayRunRequestSchema,
-  replayRunResponseSchema,
-  replaySpeedSchema,
-} from "@bb/replay-capture/schema";
-export type {
-  ReplayCaptureDetail,
-  ReplayCaptureHostSummary,
-  ReplayCaptureListResponse,
-  ReplayCaptureSummary,
-  ReplayRunRequest,
-  ReplayRunResponse,
-  ReplayRunSpeed,
-} from "@bb/replay-capture/schema";
 
 // ─── Workflows ─────────────────────────────────────────────────────────
 

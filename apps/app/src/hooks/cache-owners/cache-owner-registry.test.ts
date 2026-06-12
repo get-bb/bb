@@ -176,7 +176,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "hostsQueryKey",
     "localPathExistenceQueryKeyPrefix",
     "projectsQueryKey",
-    "replayCapturesQueryKey",
     "sidebarNavigationQueryKey",
     "systemConfigQueryKey",
     "systemExecutionOptionsQueryKey",

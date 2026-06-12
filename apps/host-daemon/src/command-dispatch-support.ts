@@ -11,10 +11,6 @@ import type {
   HostDaemonOnlineRpcCommand,
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
-import type {
-  ReplayCaptureThreadMetadata,
-  ReplayTurnRequestInput,
-} from "@bb/replay-capture/writer";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
 import type { WorkflowJournalEntry } from "@bb/workflow-runtime";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
@@ -34,12 +30,6 @@ export interface EventSink {
   emit: (event: EventSinkInput) => void;
   flush: () => Promise<void>;
 }
-
-export interface ReplayTaskHandle {
-  abort: AbortController;
-  done: Promise<void>;
-}
-export type ReplayTaskRegistry = Map<string, ReplayTaskHandle>;
 
 export const noopEventSink: EventSink = {
   emit: () => undefined,
@@ -74,11 +64,6 @@ export interface CommandDispatchOptions {
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;
-  recordReplayCaptureThreadMetadata?: (
-    metadata: ReplayCaptureThreadMetadata,
-  ) => void;
-  recordReplayCaptureTurnRequest?: (input: ReplayTurnRequestInput) => void;
-  replayTasks?: ReplayTaskRegistry;
   threadStorageRootPath: string;
 }
 

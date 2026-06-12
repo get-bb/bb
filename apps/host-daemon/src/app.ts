@@ -18,7 +18,6 @@ import {
 import { startEventLoopStallMonitor } from "./event-loop-stall-monitor.js";
 import {
   defaultListModels,
-  type ReplayTaskRegistry,
   shutdownDefaultListModelsRuntimes,
 } from "./command-dispatch-support.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
@@ -33,7 +32,6 @@ import {
   TerminalManager,
   type TerminalManagerOptions,
 } from "./terminals/terminal-manager.js";
-import { createReplayCaptureService } from "@bb/replay-capture/writer";
 import { createServerClient } from "./server-client.js";
 import {
   cleanupInjectedSkillStagingDirs,
@@ -82,7 +80,6 @@ export interface CreateHostDaemonAppOptions {
   maxLiveWorkflowProviderProcesses: number;
   appUrl?: string;
   devAppPort?: number;
-  devReplayCapture?: boolean;
   logger: HostDaemonLogger;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
@@ -264,19 +261,6 @@ export async function createHostDaemonApp(
     logger: options.logger,
     postEvents: (events) => serverClient.postWorkflowRunEvents(events),
   });
-  const replayTasks: ReplayTaskRegistry = new Map();
-  async function abortReplayTasks(): Promise<void> {
-    const tasks = [...replayTasks.values()];
-    for (const task of tasks) {
-      task.abort.abort();
-    }
-    await Promise.allSettled(tasks.map((task) => task.done));
-  }
-  const replayCapture = createReplayCaptureService({
-    dataDir: options.dataDir,
-    enabled: options.devReplayCapture ?? false,
-    logger: options.logger,
-  });
 
   const interactiveRequestRegistry = new InteractiveRequestRegistry({
     registerRequest: (request) =>
@@ -299,9 +283,6 @@ export async function createHostDaemonApp(
     hostWatcher: options.hostWatcher,
     logger: options.logger,
     shellEnv: options.runtimeShellEnv,
-    onCapture: (entry) => {
-      replayCapture?.recordRuntimeCaptureEntry(entry);
-    },
     onEvent: ({ environmentId, event }) => {
       try {
         eventSink.emit({
@@ -322,11 +303,6 @@ export async function createHostDaemonApp(
         }
         throw error;
       }
-      replayCapture?.recordThreadEvent({
-        environmentId,
-        threadId: event.threadId,
-        event,
-      });
     },
     onThreadStorageChanged: ({ environmentId }) => {
       sendServerMessage({
@@ -549,13 +525,8 @@ export async function createHostDaemonApp(
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);
     },
-    replayTasks,
     threadStorageRootPath,
     logger: options.logger,
-    recordReplayCaptureThreadMetadata: (metadata) =>
-      replayCapture?.recordThreadMetadata(metadata),
-    recordReplayCaptureTurnRequest: (input) =>
-      replayCapture?.recordTurnRequest(input),
     eventSink: {
       emit: (event) => eventSink.emit(event),
       flush: () => eventSink.flush(),
@@ -667,7 +638,6 @@ export async function createHostDaemonApp(
     logger: options.logger,
     releaseLock: options.releaseLock,
     flushEvents: async () => {
-      await abortReplayTasks();
       await eventSink.flush();
       await workflowEventBuffer.flush();
     },
@@ -685,7 +655,6 @@ export async function createHostDaemonApp(
       await workflowEventBuffer.flush();
       await workflowEventBuffer.dispose();
       await shutdownDefaultListModelsRuntimes();
-      await replayCapture?.drain();
       await connection.shutdown();
     },
     onStart: async () => {

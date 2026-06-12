@@ -26,7 +26,6 @@ import {
   hostsQueryKey,
   localPathExistenceQueryKeyPrefix,
   projectsQueryKey,
-  replayCapturesQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
@@ -82,12 +81,6 @@ export function refetchErroredRealtimeQueriesOnInitialConnect({
  */
 export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
   queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
-}
-
-export function invalidateReplayCaptures({
-  queryClient,
-}: QueryClientArg): void {
-  queryClient.invalidateQueries({ queryKey: replayCapturesQueryKey() });
 }
 
 function getServerReconnectInvalidationQueryKeys(): QueryKey[] {

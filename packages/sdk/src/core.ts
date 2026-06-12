@@ -4,7 +4,6 @@ import { createGuideArea } from "./areas/guide.js";
 import { createHostsArea } from "./areas/hosts.js";
 import { createProjectsArea } from "./areas/projects.js";
 import { createProvidersArea } from "./areas/providers.js";
-import { createReplayArea } from "./areas/replay.js";
 import { createBbRealtimeClient } from "./realtime-client.js";
 import type { BbRealtime } from "./realtime-types.js";
 import { createStatusArea } from "./areas/status.js";
@@ -22,7 +21,6 @@ export interface BbSdk extends BbRealtime {
   hosts: ReturnType<typeof createHostsArea>;
   projects: ReturnType<typeof createProjectsArea>;
   providers: ReturnType<typeof createProvidersArea>;
-  replay: ReturnType<typeof createReplayArea>;
   status: ReturnType<typeof createStatusArea>;
   threads: ReturnType<typeof createThreadsArea>;
   workflows: ReturnType<typeof createWorkflowsArea>;
@@ -43,7 +41,6 @@ export function createBbSdk(args: CreateBbSdkArgs): BbSdk {
     },
     projects: createProjectsArea(sdkContext),
     providers: createProvidersArea(sdkContext),
-    replay: createReplayArea(sdkContext),
     status: createStatusArea(sdkContext),
     threads: createThreadsArea(sdkContext),
     workflows: createWorkflowsArea(sdkContext),

@@ -221,7 +221,6 @@ const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
   [AUTOMATIONS_ROUTE_PATH]: { title: "Automations" },
   "/settings": { title: "Settings" },
-  "/development-only/replay": { title: "Replay threads" },
 };
 
 interface AppHeaderProps {
@@ -458,6 +457,18 @@ export function AppLayout({ children }: AppLayoutProps) {
         subtitle: undefined,
       }
     : isArchivedView && projectId
+      ? {
+          title: "",
+          subtitle: undefined,
+          breadcrumbs: [
+            {
+              label: projectLabel ?? projectId,
+              to: getLegacyProjectComposeRoutePath(projectId),
+            },
+            { label: "Archived" },
+          ],
+        }
+      : isWorkflowsView && projectId
         ? {
             title: "",
             subtitle: undefined,
@@ -466,21 +477,9 @@ export function AppLayout({ children }: AppLayoutProps) {
                 label: projectLabel ?? projectId,
                 to: getLegacyProjectComposeRoutePath(projectId),
               },
-              { label: "Archived" },
+              { label: "Workflows" },
             ],
           }
-        : isWorkflowsView && projectId
-          ? {
-              title: "",
-              subtitle: undefined,
-              breadcrumbs: [
-                {
-                  label: projectLabel ?? projectId,
-                  to: getLegacyProjectComposeRoutePath(projectId),
-                },
-                { label: "Workflows" },
-              ],
-            }
         : isSettingsView && projectId
           ? {
               title: "",

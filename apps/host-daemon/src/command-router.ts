@@ -110,9 +110,6 @@ export interface CommandRouterOptions {
   eventSink: CommandDispatchOptions["eventSink"];
   listModels?: CommandDispatchOptions["listModels"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
-  recordReplayCaptureThreadMetadata?: CommandDispatchOptions["recordReplayCaptureThreadMetadata"];
-  recordReplayCaptureTurnRequest?: CommandDispatchOptions["recordReplayCaptureTurnRequest"];
-  replayTasks?: CommandDispatchOptions["replayTasks"];
   threadStorageRootPath: string;
   logger: CommandRouterLogger;
 }
@@ -316,11 +313,6 @@ export class CommandRouter {
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
-      recordReplayCaptureThreadMetadata:
-        this.options.recordReplayCaptureThreadMetadata,
-      recordReplayCaptureTurnRequest:
-        this.options.recordReplayCaptureTurnRequest,
-      replayTasks: this.options.replayTasks,
       threadStorageRootPath: this.options.threadStorageRootPath,
     };
   }

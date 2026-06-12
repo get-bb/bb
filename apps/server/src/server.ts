@@ -16,7 +16,6 @@ import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerSystemRoutes } from "./routes/system.js";
-import { registerDevelopmentOnlyReplayRoutes } from "./routes/internal-replay.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
 import { registerWorkflowRunRoutes } from "./routes/workflow-runs.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
@@ -253,7 +252,6 @@ export function createApp(
   registerThreadRoutes(publicApi, deps);
   registerWorkflowRunRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps);
-  registerDevelopmentOnlyReplayRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");

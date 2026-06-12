@@ -178,7 +178,6 @@ export async function startHostDaemon(
           ? undefined
           : hostDaemonConfig?.BB_APP_URL,
       devAppPort: hostDaemonConfig?.BB_DEV_APP_PORT,
-      devReplayCapture: hostDaemonConfig?.BB_DEV_REPLAY_CAPTURE ?? false,
       logger:
         options.logger ??
         createLogger({

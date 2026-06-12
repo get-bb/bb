@@ -233,39 +233,6 @@ describe("dispatchCommand", () => {
     expect(manager.hasThread("env-1", "thread-1")).toBe(false);
   });
 
-  it("aborts a replay task before falling through to the runtime thread.stop path", async () => {
-    const manager = new RuntimeManager({
-      createRuntime: () => createRuntime(),
-      provisionWorkspace: async () => createWorkspace(),
-    });
-    const abort = new AbortController();
-    const replayTasks = new Map([
-      ["thread-1", { abort, done: Promise.resolve() }],
-    ]);
-    const command: CommandOf<"thread.stop"> = {
-      type: "thread.stop",
-      environmentId: "env-1",
-      threadId: "thread-1",
-    };
-
-    const result = await dispatchCommand(command, {
-      dataDir: "/tmp/bb-data",
-      eventSink: {
-        emit: vi.fn(),
-        flush: vi.fn(async () => undefined),
-      },
-      fetchProjectAttachment: async () => {
-        throw new Error("Unexpected project attachment fetch");
-      },
-      replayTasks,
-      runtimeManager: manager,
-      threadStorageRootPath: "/tmp/bb-thread-storage",
-    });
-
-    expect(result).toEqual({});
-    expect(abort.signal.aborted).toBe(true);
-  });
-
   it("treats thread.rename as best-effort when the runtime is not loaded", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({

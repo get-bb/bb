@@ -12,10 +12,8 @@ import {
 import {
   BB_APP_URL_ENV,
   BB_DEV_APP_PORT_ENV,
-  BB_DEV_REPLAY_CAPTURE_ENV,
   BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES_ENV,
   DEFAULT_BB_APP_URL,
-  DEFAULT_BB_DEV_REPLAY_CAPTURE,
   DEFAULT_BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES,
 } from "./env-vars.js";
 import { assignIfDefined } from "./objects.js";
@@ -27,7 +25,6 @@ import { loadServerUrlValue } from "./server-url.js";
 export interface HostDaemonConnectionConfig {
   BB_APP_URL: string;
   BB_DEV_APP_PORT?: number;
-  BB_DEV_REPLAY_CAPTURE: boolean;
   BB_HOST_DAEMON_PORT: number;
   BB_SERVER_URL: string;
   BB_WORKFLOW_MAX_LIVE_PROVIDER_PROCESSES: number;
@@ -82,12 +79,6 @@ export function loadHostDaemonConnectionConfig(
         env: loader.env,
       }),
     ),
-    BB_DEV_REPLAY_CAPTURE: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_BB_DEV_REPLAY_CAPTURE,
-      definition: BB_DEV_REPLAY_CAPTURE_ENV,
-      env: loader.env,
-    }),
     BB_HOST_DAEMON_PORT: resolveHostDaemonPort({
       ...args,
       env: loader.env,

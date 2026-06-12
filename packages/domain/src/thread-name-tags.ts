@@ -1,7 +1,6 @@
 import type { ThreadEvent } from "./provider-event.js";
 
 export const BB_THREAD_NAME_TAG = "bb";
-export const REPLAY_THREAD_NAME_TAG = "Replay";
 
 export interface TagThreadNameArgs {
   name: string;
