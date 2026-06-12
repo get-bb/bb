@@ -1,13 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import {
   POPOUT_QUICK_ASK_HEIGHT,
-  POPOUT_THREAD_HEIGHT,
+  POPOUT_WINDOW_HEIGHT,
   type BbDesktopPopoutThreadChangedPayload,
 } from "@bb/server-contract";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 import { RootComposeView } from "./RootComposeView";
-import ThreadDetailRoute from "./thread-detail/ThreadDetailRoute";
 import { useRouteState } from "@/hooks/useRouteState";
 import {
   MACOS_APP_REGION_NO_DRAG_CLASS,
@@ -18,6 +27,130 @@ import {
   getPopoutRoutePath,
   getPopoutThreadRoutePath,
 } from "@/lib/route-paths";
+import {
+  HEIGHT_TRANSITION_DURATION_MS,
+  HEIGHT_TRANSITION_EASE_CSS,
+} from "@/components/ui/height-transition";
+import { Icon } from "@/components/ui/icon";
+import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
+
+const ThreadDetailRoute = lazy(
+  () => import("./thread-detail/ThreadDetailRoute"),
+);
+
+const POPOUT_ROUTE_DATA_ATTRIBUTE = "data-bb-popout-route";
+const POPOUT_CARD_DATA_ATTRIBUTE = "data-bb-popout-card";
+const POPOUT_PORTAL_SELECTOR =
+  "[data-radix-popper-content-wrapper], [data-radix-portal]";
+
+interface PopoutShellProps {
+  children: ReactNode;
+  isThreadOpen: boolean;
+}
+
+interface PopoutCardStyle extends CSSProperties {
+  "--popout-card-height": string;
+  "--popout-card-transition-duration": string;
+  "--popout-card-transition-ease": string;
+}
+
+function PopoutLoadingCard() {
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center text-sm text-muted-foreground">
+      <Icon name="Spinner" className="mr-2 size-4 animate-spin" />
+      Loading...
+    </div>
+  );
+}
+
+function isPointerOverPopoutContent(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  const card = document.querySelector(`[${POPOUT_CARD_DATA_ATTRIBUTE}]`);
+  if (card?.contains(target) === true) {
+    return true;
+  }
+  return target.closest(POPOUT_PORTAL_SELECTOR) !== null;
+}
+
+function usePopoutRouteTransparency() {
+  useEffect(() => {
+    document.documentElement.setAttribute(POPOUT_ROUTE_DATA_ATTRIBUTE, "");
+    document.body.setAttribute(POPOUT_ROUTE_DATA_ATTRIBUTE, "");
+    return () => {
+      document.documentElement.removeAttribute(POPOUT_ROUTE_DATA_ATTRIBUTE);
+      document.body.removeAttribute(POPOUT_ROUTE_DATA_ATTRIBUTE);
+    };
+  }, []);
+}
+
+function usePopoutMousePassthrough() {
+  const desktop = getBbDesktopInfo();
+  const popout = desktop?.popout ?? null;
+  const isIgnoringMouseEventsRef = useRef(false);
+
+  useEffect(() => {
+    if (popout === null) {
+      return;
+    }
+    isIgnoringMouseEventsRef.current = false;
+
+    function setIgnored(ignore: boolean): void {
+      if (isIgnoringMouseEventsRef.current === ignore) {
+        return;
+      }
+      isIgnoringMouseEventsRef.current = ignore;
+      popout?.setMouseEventsIgnored({ ignore });
+    }
+
+    function handlePointerMove(event: MouseEvent): void {
+      setIgnored(!isPointerOverPopoutContent(event.target));
+    }
+
+    function handlePointerLeave(): void {
+      setIgnored(true);
+    }
+
+    window.addEventListener("mousemove", handlePointerMove);
+    window.addEventListener("mouseleave", handlePointerLeave);
+    return () => {
+      window.removeEventListener("mousemove", handlePointerMove);
+      window.removeEventListener("mouseleave", handlePointerLeave);
+      if (isIgnoringMouseEventsRef.current) {
+        popout.setMouseEventsIgnored({ ignore: false });
+      }
+    };
+  }, [popout]);
+}
+
+function PopoutShell({ children, isThreadOpen }: PopoutShellProps) {
+  const cardHeight = isThreadOpen
+    ? POPOUT_WINDOW_HEIGHT
+    : POPOUT_QUICK_ASK_HEIGHT;
+  const cardStyle: PopoutCardStyle = {
+    "--popout-card-height": `${cardHeight}px`,
+    "--popout-card-transition-duration": `${HEIGHT_TRANSITION_DURATION_MS}ms`,
+    "--popout-card-transition-ease": HEIGHT_TRANSITION_EASE_CSS,
+  };
+
+  return (
+    <CompactViewportOverrideProvider isCompactViewport={false}>
+      <div
+        className="h-screen overflow-visible bg-transparent text-foreground"
+        data-bb-popout-transparent-region=""
+      >
+        <div
+          className="flex h-[var(--popout-card-height)] min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_8px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.18)] transition-[height] duration-[var(--popout-card-transition-duration)] ease-[var(--popout-card-transition-ease)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_2px_8px_rgba(0,0,0,0.4),0_16px_48px_rgba(0,0,0,0.55)]"
+          data-bb-popout-card=""
+          style={cardStyle}
+        >
+          <Suspense fallback={<PopoutLoadingCard />}>{children}</Suspense>
+        </div>
+      </div>
+    </CompactViewportOverrideProvider>
+  );
+}
 
 function PopoutQuickAskRoute() {
   const desktop = getBbDesktopInfo();
@@ -86,13 +219,19 @@ export function PopoutChatView() {
     }
     return { projectId, threadId };
   }, [projectId, threadId]);
+  const isThreadOpen = threadState !== null;
+
+  usePopoutRouteTransparency();
+  usePopoutMousePassthrough();
 
   useEffect(() => {
     if (popout === null) {
       return;
     }
     let cancelled = false;
-    function navigateToThread(nextThread: BbDesktopPopoutThreadChangedPayload): void {
+    function navigateToThread(
+      nextThread: BbDesktopPopoutThreadChangedPayload,
+    ): void {
       navigate(
         nextThread === null
           ? getPopoutRoutePath()
@@ -119,10 +258,6 @@ export function PopoutChatView() {
       return;
     }
     popout?.stateChanged(threadState);
-    popout?.requestResize({
-      height:
-        threadState === null ? POPOUT_QUICK_ASK_HEIGHT : POPOUT_THREAD_HEIGHT,
-    });
   }, [hasLoadedCurrentThread, popout, threadState]);
 
   if (popout === null) {
@@ -134,7 +269,7 @@ export function PopoutChatView() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+    <PopoutShell isThreadOpen={isThreadOpen}>
       <Routes>
         <Route index element={<PopoutQuickAskRoute />} />
         <Route path="threads/:threadId" element={<PopoutThreadRoute />} />
@@ -147,6 +282,6 @@ export function PopoutChatView() {
           element={<Navigate to={getPopoutRoutePath()} replace />}
         />
       </Routes>
-    </div>
+    </PopoutShell>
   );
 }

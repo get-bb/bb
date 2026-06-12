@@ -19,7 +19,7 @@ import {
 import { autoUpdater } from "electron-updater";
 import { type Experiments } from "@bb/domain";
 import {
-  bbDesktopPopoutResizeRequestSchema,
+  bbDesktopPopoutMouseEventsIgnoredRequestSchema,
   bbDesktopPopoutThreadChangedPayloadSchema,
   bbDesktopPopoutThreadRefSchema,
   bbDesktopThemeSchema,
@@ -100,12 +100,15 @@ import {
 import {
   BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
   BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
-  BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
+  BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
   BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
   BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
 } from "./popout-ipc.js";
-import { shouldHandlePopoutToggleSender } from "./popout-ipc-authorization.js";
+import {
+  shouldHandlePopoutToggleSender,
+  shouldHandlePopoutWindowSender,
+} from "./popout-ipc-authorization.js";
 import {
   createLogTailer,
   createLogLineBuffer,
@@ -504,7 +507,9 @@ function formatRealtimeUrl(serverUrl: string): string {
 async function fetchSystemConfig(args: FetchSystemConfigArgs) {
   const response = await fetch(formatApiUrl(args));
   if (!response.ok) {
-    throw new Error(`System config request failed with HTTP ${response.status}`);
+    throw new Error(
+      `System config request failed with HTTP ${response.status}`,
+    );
   }
   const payload: unknown = await response.json();
   return systemConfigResponseSchema.parse(payload);
@@ -741,11 +746,11 @@ function shouldHandlePopoutToggleEvent(event: IpcMainEvent): boolean {
 }
 
 function shouldHandlePopoutWindowEvent(event: IpcMainEvent): boolean {
-  return isPopoutWindowSender(event.sender);
+  return shouldHandlePopoutWindowSender(isPopoutWindowSender(event.sender));
 }
 
 function shouldHandlePopoutWindowInvoke(event: IpcMainInvokeEvent): boolean {
-  return isPopoutWindowSender(event.sender);
+  return shouldHandlePopoutWindowSender(isPopoutWindowSender(event.sender));
 }
 
 function getWindowUrlForRoute(path: string): string | null {
@@ -768,9 +773,12 @@ async function openPopoutThreadInMain(
   }
   const path = getDesktopThreadRoutePath(thread);
   if (
-    desktopWindowFactory.sendToFirstWindow(BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL, {
-      url: path,
-    })
+    desktopWindowFactory.sendToFirstWindow(
+      BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
+      {
+        url: path,
+      },
+    )
   ) {
     return true;
   }
@@ -1089,21 +1097,24 @@ function registerDesktopUpdateIpc(): void {
   // The in-app browser tab hands off the current address to the system
   // browser. The URL originates from a possibly-hostile page, so only open
   // well-formed `http(s)` URLs — never `file:`, custom schemes, or junk.
-  ipcMain.on(BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL, (_event, payload: unknown) => {
-    if (typeof payload !== "string") {
-      return;
-    }
-    let parsed: URL;
-    try {
-      parsed = new URL(payload);
-    } catch {
-      return;
-    }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return;
-    }
-    void shell.openExternal(parsed.toString());
-  });
+  ipcMain.on(
+    BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
+    (_event, payload: unknown) => {
+      if (typeof payload !== "string") {
+        return;
+      }
+      let parsed: URL;
+      try {
+        parsed = new URL(payload);
+      } catch {
+        return;
+      }
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return;
+      }
+      void shell.openExternal(parsed.toString());
+    },
+  );
 }
 
 function registerPopoutIpc(): void {
@@ -1116,19 +1127,22 @@ function registerPopoutIpc(): void {
       operation: "toggle popout chat",
     });
   });
-  ipcMain.on(BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL, (event, payload: unknown) => {
-    if (!shouldHandleMainWindowPopoutEvent(event)) {
-      return;
-    }
-    const parsed = bbDesktopPopoutThreadRefSchema.safeParse(payload);
-    if (!parsed.success) {
-      return;
-    }
-    runPopoutWindowOperation({
-      execute: (manager) => manager.setThread(parsed.data),
-      operation: "set popout chat thread",
-    });
-  });
+  ipcMain.on(
+    BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
+    (event, payload: unknown) => {
+      if (!shouldHandleMainWindowPopoutEvent(event)) {
+        return;
+      }
+      const parsed = bbDesktopPopoutThreadRefSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      runPopoutWindowOperation({
+        execute: (manager) => manager.setThread(parsed.data),
+        operation: "set popout chat thread",
+      });
+    },
+  );
   ipcMain.handle(BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL, (event) => {
     if (!shouldHandlePopoutWindowInvoke(event)) {
       return null;
@@ -1162,16 +1176,20 @@ function registerPopoutIpc(): void {
       ensurePopoutWindowManager()?.openInMain(parsed.data);
     },
   );
-  ipcMain.on(BB_DESKTOP_POPOUT_RESIZE_CHANNEL, (event, payload: unknown) => {
-    if (!shouldHandlePopoutWindowEvent(event)) {
-      return;
-    }
-    const parsed = bbDesktopPopoutResizeRequestSchema.safeParse(payload);
-    if (!parsed.success) {
-      return;
-    }
-    ensurePopoutWindowManager()?.requestResize(parsed.data);
-  });
+  ipcMain.on(
+    BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
+    (event, payload: unknown) => {
+      if (!shouldHandlePopoutWindowEvent(event)) {
+        return;
+      }
+      const parsed =
+        bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      ensurePopoutWindowManager()?.setMouseEventsIgnored(parsed.data);
+    },
+  );
 }
 
 interface DesktopBrowserWindowLifecycleArgs {

@@ -13,4 +13,5 @@ export const BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL =
   "bb-desktop:popout:open-in-main";
 export const BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL =
   "bb-desktop:popout:thread-changed";
-export const BB_DESKTOP_POPOUT_RESIZE_CHANNEL = "bb-desktop:popout:resize";
+export const BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL =
+  "bb-desktop:popout:set-mouse-events-ignored";

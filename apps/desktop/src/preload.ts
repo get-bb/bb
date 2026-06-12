@@ -4,6 +4,7 @@ import {
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
+  bbDesktopPopoutMouseEventsIgnoredRequestSchema,
   bbDesktopPopoutThreadChangedPayloadSchema,
   type BbDesktopApi,
   type BbDesktopBrowserApi,
@@ -45,7 +46,7 @@ import {
 import {
   BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
   BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
-  BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
+  BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
   BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
   BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
@@ -167,7 +168,8 @@ const bbPopoutApi: BbDesktopPopoutApi = {
       const payload: unknown = await ipcRenderer.invoke(
         BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
       );
-      const parsed = bbDesktopPopoutThreadChangedPayloadSchema.safeParse(payload);
+      const parsed =
+        bbDesktopPopoutThreadChangedPayloadSchema.safeParse(payload);
       return parsed.success ? parsed.data : null;
     } catch {
       return null;
@@ -185,14 +187,22 @@ const bbPopoutApi: BbDesktopPopoutApi = {
   openInMain(thread): void {
     ipcRenderer.send(BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL, thread);
   },
+  setMouseEventsIgnored(request): void {
+    const parsed =
+      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse(request);
+    if (!parsed.success) {
+      return;
+    }
+    ipcRenderer.send(
+      BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
+      parsed.data,
+    );
+  },
   onThreadChanged(listener): BbDesktopPopoutUnsubscribe {
     popoutThreadChangedListeners.add(listener);
     return () => {
       popoutThreadChangedListeners.delete(listener);
     };
-  },
-  requestResize(request): void {
-    ipcRenderer.send(BB_DESKTOP_POPOUT_RESIZE_CHANNEL, request);
   },
 };
 

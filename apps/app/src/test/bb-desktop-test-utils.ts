@@ -50,10 +50,10 @@ export function createBbDesktopApi(
       setThread() {},
       stateChanged() {},
       openInMain() {},
+      setMouseEventsIgnored() {},
       onThreadChanged() {
         return () => {};
       },
-      requestResize() {},
     },
     async checkForUpdates() {
       return info;

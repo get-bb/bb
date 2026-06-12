@@ -9,3 +9,9 @@ export function shouldHandlePopoutToggleSender({
 }: PopoutToggleSenderAuthorizationArgs): boolean {
   return isApplicationWindowSender || isPopoutWindowSender;
 }
+
+export function shouldHandlePopoutWindowSender(
+  isPopoutWindowSender: boolean,
+): boolean {
+  return isPopoutWindowSender;
+}

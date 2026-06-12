@@ -4,18 +4,13 @@ import {
   type BrowserWindowConstructorOptions,
 } from "electron";
 import {
-  BB_DESKTOP_POPOUT_HEIGHT_MAX,
-  BB_DESKTOP_POPOUT_HEIGHT_MIN,
-  POPOUT_QUICK_ASK_HEIGHT,
   POPOUT_ROUTE_PATH,
-  type BbDesktopPopoutResizeRequest,
+  POPOUT_WINDOW_HEIGHT,
+  POPOUT_WINDOW_WIDTH,
+  type BbDesktopPopoutMouseEventsIgnoredRequest,
   type BbDesktopPopoutThreadRef,
 } from "@bb/server-contract";
 import { BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL } from "./popout-ipc.js";
-
-const POPOUT_WIDTH = 480;
-const POPOUT_MIN_WIDTH = 420;
-const POPOUT_MIN_HEIGHT = BB_DESKTOP_POPOUT_HEIGHT_MIN;
 
 interface CreatePopoutWindowManagerArgs {
   appUrl: string;
@@ -42,7 +37,9 @@ export interface PopoutWindowManager {
   getCurrentThread(): BbDesktopPopoutThreadRef | null;
   openInMain(thread: BbDesktopPopoutThreadRef): void;
   ownsWebContents(webContents: Electron.WebContents): boolean;
-  requestResize(request: BbDesktopPopoutResizeRequest): void;
+  setMouseEventsIgnored(
+    request: BbDesktopPopoutMouseEventsIgnoredRequest,
+  ): void;
   setCurrentThread(thread: BbDesktopPopoutThreadRef | null): void;
   setThread(thread: BbDesktopPopoutThreadRef): Promise<void>;
   toggle(): Promise<void>;
@@ -65,29 +62,27 @@ function createPopoutWindowOptions(
 ): BrowserWindowConstructorOptions {
   return {
     alwaysOnTop: true,
+    backgroundColor: "#00000000",
     frame: false,
     fullscreenable: false,
-    height: POPOUT_QUICK_ASK_HEIGHT,
-    minHeight: POPOUT_MIN_HEIGHT,
-    minWidth: POPOUT_MIN_WIDTH,
-    resizable: true,
+    hasShadow: false,
+    height: POPOUT_WINDOW_HEIGHT,
+    resizable: false,
     show: false,
     skipTaskbar: true,
     title: "bb Popout Chat",
-    vibrancy: "under-window",
+    transparent: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       preload: args.preloadPath,
       sandbox: true,
     },
-    width: POPOUT_WIDTH,
+    width: POPOUT_WINDOW_WIDTH,
   };
 }
 
-async function loadUrlIntoPopout(
-  args: LoadUrlIntoPopoutArgs,
-): Promise<void> {
+async function loadUrlIntoPopout(args: LoadUrlIntoPopoutArgs): Promise<void> {
   try {
     await args.browserWindow.loadURL(args.url);
   } catch (error) {
@@ -99,13 +94,6 @@ async function loadUrlIntoPopout(
   }
 }
 
-function clampPopoutHeight(height: number): number {
-  return Math.min(
-    Math.max(height, BB_DESKTOP_POPOUT_HEIGHT_MIN),
-    BB_DESKTOP_POPOUT_HEIGHT_MAX,
-  );
-}
-
 function setPopoutWindowPosition({
   browserWindow,
 }: SetPopoutWindowPositionArgs): void {
@@ -113,11 +101,8 @@ function setPopoutWindowPosition({
   const display = screen.getDisplayNearestPoint(cursor);
   const workArea = display.workArea;
   const bounds = browserWindow.getBounds();
-  const width = Math.min(Math.max(bounds.width, POPOUT_MIN_WIDTH), workArea.width);
-  const height = Math.min(
-    Math.max(bounds.height, POPOUT_MIN_HEIGHT),
-    workArea.height,
-  );
+  const width = Math.min(bounds.width, workArea.width);
+  const height = Math.min(bounds.height, workArea.height);
   const x = workArea.x + Math.round((workArea.width - width) / 2);
   const upperThirdCenterY = workArea.y + Math.round(workArea.height / 3);
   const y = Math.min(
@@ -128,28 +113,6 @@ function setPopoutWindowPosition({
   browserWindow.setBounds({ x, y, width, height });
 }
 
-function clampPopoutWindowBounds(browserWindow: BrowserWindow, height: number): void {
-  const bounds = browserWindow.getBounds();
-  const display = screen.getDisplayMatching(bounds);
-  const workArea = display.workArea;
-  const nextHeight = Math.min(clampPopoutHeight(height), workArea.height);
-  const nextWidth = Math.min(Math.max(bounds.width, POPOUT_MIN_WIDTH), workArea.width);
-  const x = Math.min(
-    Math.max(bounds.x, workArea.x),
-    workArea.x + workArea.width - nextWidth,
-  );
-  const y = Math.min(
-    Math.max(bounds.y, workArea.y),
-    workArea.y + workArea.height - nextHeight,
-  );
-  browserWindow.setBounds({
-    x,
-    y,
-    width: nextWidth,
-    height: nextHeight,
-  });
-}
-
 function sendThreadChanged(
   browserWindow: BrowserWindow,
   thread: BbDesktopPopoutThreadRef | null,
@@ -157,7 +120,10 @@ function sendThreadChanged(
   if (browserWindow.isDestroyed()) {
     return;
   }
-  browserWindow.webContents.send(BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL, thread);
+  browserWindow.webContents.send(
+    BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+    thread,
+  );
 }
 
 export function createPopoutWindowManager(
@@ -233,6 +199,7 @@ export function createPopoutWindowManager(
       return;
     }
     setPopoutWindowPosition({ browserWindow });
+    browserWindow.setIgnoreMouseEvents(false);
     browserWindow.show();
     browserWindow.focus();
     sendThreadChanged(browserWindow, currentThread);
@@ -262,12 +229,12 @@ export function createPopoutWindowManager(
       const browserWindow = getLiveWindow();
       return browserWindow?.webContents === webContents;
     },
-    requestResize(request): void {
+    setMouseEventsIgnored(request): void {
       const browserWindow = getLiveWindow();
       if (browserWindow === null) {
         return;
       }
-      clampPopoutWindowBounds(browserWindow, request.height);
+      browserWindow.setIgnoreMouseEvents(request.ignore, { forward: true });
     },
     setCurrentThread(thread): void {
       currentThread = thread;

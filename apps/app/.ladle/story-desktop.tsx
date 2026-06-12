@@ -51,10 +51,10 @@ function createStoryDesktopApi(): BbDesktopApi {
       setThread() {},
       stateChanged() {},
       openInMain() {},
+      setMouseEventsIgnored() {},
       onThreadChanged() {
         return () => {};
       },
-      requestResize() {},
     },
     async checkForUpdates() {
       return STORY_DESKTOP_INFO;

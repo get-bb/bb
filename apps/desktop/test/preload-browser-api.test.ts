@@ -16,7 +16,7 @@ import {
 import {
   BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
   BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
-  BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
+  BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
   BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
   BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
   BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
@@ -186,7 +186,7 @@ describe("desktop preload browser API", () => {
       "getCurrentThread",
       "onThreadChanged",
       "openInMain",
-      "requestResize",
+      "setMouseEventsIgnored",
       "setThread",
       "stateChanged",
       "toggle",
@@ -207,7 +207,7 @@ describe("desktop preload browser API", () => {
     api.popout.setThread({ projectId: "proj_a", threadId: "thr_a" });
     api.popout.stateChanged({ projectId: "proj_a", threadId: "thr_a" });
     api.popout.openInMain({ projectId: "proj_a", threadId: "thr_a" });
-    api.popout.requestResize({ height: 240 });
+    api.popout.setMouseEventsIgnored({ ignore: true });
     electronMock.setCurrentPopoutThread({
       projectId: "proj_a",
       threadId: "thr_a",
@@ -273,8 +273,8 @@ describe("desktop preload browser API", () => {
         payload: { projectId: "proj_a", threadId: "thr_a" },
       },
       {
-        channel: BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
-        payload: { height: 240 },
+        channel: BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
+        payload: { ignore: true },
       },
       { channel: BB_DESKTOP_SET_THEME_CHANNEL, payload: "dark" },
     ]);

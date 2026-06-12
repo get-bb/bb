@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackView } from "./views/AuthCallbackView";
@@ -24,6 +24,8 @@ import {
   SETTINGS_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
 } from "./lib/route-paths";
+import { Icon } from "./components/ui/icon";
+import { POPOUT_QUICK_ASK_HEIGHT } from "@bb/server-contract";
 
 const ThreadDetailRoute = lazy(
   () => import("./views/thread-detail/ThreadDetailRoute"),
@@ -53,6 +55,33 @@ const PopoutChatView = lazy(() =>
     default: m.PopoutChatView,
   })),
 );
+
+function PopoutRouteFallback() {
+  useEffect(() => {
+    document.documentElement.setAttribute("data-bb-popout-route", "");
+    document.body.setAttribute("data-bb-popout-route", "");
+    return () => {
+      document.documentElement.removeAttribute("data-bb-popout-route");
+      document.body.removeAttribute("data-bb-popout-route");
+    };
+  }, []);
+
+  const style = {
+    height: `${POPOUT_QUICK_ASK_HEIGHT}px`,
+  };
+
+  return (
+    <div className="h-screen overflow-visible bg-transparent text-foreground">
+      <div
+        className="flex min-h-0 w-full flex-col items-center justify-center rounded-2xl border border-border bg-background text-sm text-muted-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_8px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.18)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_2px_8px_rgba(0,0,0,0.4),0_16px_48px_rgba(0,0,0,0.55)]"
+        style={style}
+      >
+        <Icon name="Spinner" className="mb-2 size-4 animate-spin" />
+        Loading...
+      </div>
+    </div>
+  );
+}
 
 function AppRoutes() {
   return (
@@ -115,7 +144,7 @@ export function App() {
           <Route
             path={`${POPOUT_ROUTE_PATH}/*`}
             element={
-              <Suspense fallback={null}>
+              <Suspense fallback={<PopoutRouteFallback />}>
                 <PopoutChatView />
               </Suspense>
             }

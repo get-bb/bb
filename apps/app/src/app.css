@@ -19,6 +19,12 @@
     overscroll-behavior: none;
   }
 
+  html.bb-app-shell-root[data-bb-popout-route],
+  body.bb-app-shell[data-bb-popout-route],
+  body.bb-app-shell[data-bb-popout-route] #root {
+    background: transparent;
+  }
+
   .chat-prompt-box {
     padding-bottom: 0.5rem;
   }

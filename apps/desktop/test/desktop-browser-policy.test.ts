@@ -4,7 +4,7 @@ import {
   bbDesktopBrowserAttachRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserStateSchema,
-  bbDesktopPopoutResizeRequestSchema,
+  bbDesktopPopoutMouseEventsIgnoredRequestSchema,
   bbDesktopPopoutThreadChangedPayloadSchema,
   bbDesktopPopoutThreadRefSchema,
 } from "@bb/server-contract";
@@ -176,9 +176,9 @@ describe("popout IPC payload schemas", () => {
     expect(
       bbDesktopPopoutThreadChangedPayloadSchema.safeParse(threadRef).success,
     ).toBe(true);
-    expect(bbDesktopPopoutThreadChangedPayloadSchema.safeParse(null).success).toBe(
-      true,
-    );
+    expect(
+      bbDesktopPopoutThreadChangedPayloadSchema.safeParse(null).success,
+    ).toBe(true);
     expect(
       bbDesktopPopoutThreadRefSchema.safeParse({
         ...threadRef,
@@ -193,15 +193,22 @@ describe("popout IPC payload schemas", () => {
     ).toBe(false);
   });
 
-  it("accepts bounded integer resize requests", () => {
+  it("accepts only strict mouse passthrough requests", () => {
     expect(
-      bbDesktopPopoutResizeRequestSchema.safeParse({ height: 240 }).success,
+      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse({
+        ignore: true,
+      }).success,
     ).toBe(true);
     expect(
-      bbDesktopPopoutResizeRequestSchema.safeParse({ height: 120 }).success,
+      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse({
+        ignore: true,
+        extra: true,
+      }).success,
     ).toBe(false);
     expect(
-      bbDesktopPopoutResizeRequestSchema.safeParse({ height: 240.5 }).success,
+      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse({
+        ignore: "true",
+      }).success,
     ).toBe(false);
   });
 });

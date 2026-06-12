@@ -1,8 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { BrowserWindowConstructorOptions } from "electron";
 import { createPopoutWindowManager } from "../src/popout-window.js";
-import { BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL } from "../src/popout-ipc.js";
-import { shouldHandlePopoutToggleSender } from "../src/popout-ipc-authorization.js";
+import {
+  BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
+  BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+} from "../src/popout-ipc.js";
+import {
+  shouldHandlePopoutToggleSender,
+  shouldHandlePopoutWindowSender,
+} from "../src/popout-ipc-authorization.js";
 
 const electronMock = vi.hoisted(() => {
   interface Bounds {
@@ -43,6 +49,10 @@ const electronMock = vi.hoisted(() => {
     public readonly webContents = new FakeWebContents();
     public destroyed = false;
     public focused = false;
+    public ignoreMouseEventsCalls: Array<{
+      ignore: boolean;
+      options: { forward: boolean } | undefined;
+    }> = [];
     public shown = false;
     public visible = false;
     public visibleOnAllWorkspaces = false;
@@ -103,6 +113,13 @@ const electronMock = vi.hoisted(() => {
 
     setBounds(bounds: Bounds): void {
       this.bounds = bounds;
+    }
+
+    setIgnoreMouseEvents(
+      ignore: boolean,
+      options?: { forward: boolean },
+    ): void {
+      this.ignoreMouseEventsCalls.push({ ignore, options });
     }
 
     setVisibleOnAllWorkspaces(): void {
@@ -179,6 +196,22 @@ describe("createPopoutWindowManager", () => {
     await showPromise;
 
     expect(browserWindow?.shown).toBe(true);
+    expect(browserWindow?.options).toMatchObject({
+      alwaysOnTop: true,
+      backgroundColor: "#00000000",
+      frame: false,
+      hasShadow: false,
+      height: 620,
+      resizable: false,
+      skipTaskbar: true,
+      transparent: true,
+      width: 480,
+    });
+    expect(browserWindow?.options).not.toHaveProperty("vibrancy");
+    expect(browserWindow?.ignoreMouseEventsCalls).toContainEqual({
+      ignore: false,
+      options: undefined,
+    });
     expect(browserWindow?.webContents.sentMessages).toContainEqual({
       channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
       payload: { projectId: "proj_a", threadId: "thr_a" },
@@ -189,7 +222,7 @@ describe("createPopoutWindowManager", () => {
     });
   });
 
-  it("preserves and clamps position when content requests resize", async () => {
+  it("forwards popout mouse passthrough changes to Electron", async () => {
     const manager = createPopoutWindowManager({
       appUrl: "http://127.0.0.1:38886",
       preloadPath: "/tmp/preload.cjs",
@@ -200,16 +233,23 @@ describe("createPopoutWindowManager", () => {
     const browserWindow = electronMock.createdWindows[0];
     browserWindow?.resolveLoaded();
     await showPromise;
-    browserWindow?.setBounds({ height: 500, width: 480, x: 1200, y: 760 });
 
-    manager.requestResize({ height: 620 });
+    manager.setMouseEventsIgnored({ ignore: true });
+    manager.setMouseEventsIgnored({ ignore: false });
 
-    expect(browserWindow?.getBounds()).toEqual({
-      height: 620,
-      width: 480,
-      x: 960,
-      y: 280,
-    });
+    expect(browserWindow?.ignoreMouseEventsCalls).toEqual([
+      { ignore: false, options: undefined },
+      { ignore: true, options: { forward: true } },
+      { ignore: false, options: { forward: true } },
+    ]);
+  });
+
+  it("gates the mouse passthrough channel to the popout webContents", () => {
+    expect(BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL).toBe(
+      "bb-desktop:popout:set-mouse-events-ignored",
+    );
+    expect(shouldHandlePopoutWindowSender(true)).toBe(true);
+    expect(shouldHandlePopoutWindowSender(false)).toBe(false);
   });
 
   it("hides only after open-in-main succeeds", async () => {

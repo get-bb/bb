@@ -419,11 +419,10 @@ export interface BbDesktopBrowserApi {
 // --- Desktop popout chat surface ---
 
 export const BB_DESKTOP_POPOUT_ID_MAX_LENGTH = 200;
-export const BB_DESKTOP_POPOUT_HEIGHT_MIN = 160;
-export const BB_DESKTOP_POPOUT_HEIGHT_MAX = 900;
 export const POPOUT_ROUTE_PATH = "/popout";
+export const POPOUT_WINDOW_WIDTH = 480;
+export const POPOUT_WINDOW_HEIGHT = 620;
 export const POPOUT_QUICK_ASK_HEIGHT = 220;
-export const POPOUT_THREAD_HEIGHT = 620;
 
 export const bbDesktopPopoutThreadRefSchema = z
   .object({
@@ -457,17 +456,13 @@ export type BbDesktopPopoutThreadChangedPayload = z.infer<
   typeof bbDesktopPopoutThreadChangedPayloadSchema
 >;
 
-export const bbDesktopPopoutResizeRequestSchema = z
+export const bbDesktopPopoutMouseEventsIgnoredRequestSchema = z
   .object({
-    height: z
-      .number()
-      .int()
-      .min(BB_DESKTOP_POPOUT_HEIGHT_MIN)
-      .max(BB_DESKTOP_POPOUT_HEIGHT_MAX),
+    ignore: z.boolean(),
   })
   .strict();
-export type BbDesktopPopoutResizeRequest = z.infer<
-  typeof bbDesktopPopoutResizeRequestSchema
+export type BbDesktopPopoutMouseEventsIgnoredRequest = z.infer<
+  typeof bbDesktopPopoutMouseEventsIgnoredRequestSchema
 >;
 
 export type BbDesktopPopoutThreadChangedHandler = (
@@ -481,10 +476,12 @@ export interface BbDesktopPopoutApi {
   setThread(thread: BbDesktopPopoutThreadRef): void;
   stateChanged(thread: BbDesktopPopoutThreadChangedPayload): void;
   openInMain(thread: BbDesktopPopoutThreadRef): void;
+  setMouseEventsIgnored(
+    request: BbDesktopPopoutMouseEventsIgnoredRequest,
+  ): void;
   onThreadChanged(
     listener: BbDesktopPopoutThreadChangedHandler,
   ): BbDesktopPopoutUnsubscribe;
-  requestResize(request: BbDesktopPopoutResizeRequest): void;
 }
 
 // --- Thread creation: environment + workspace discriminated unions ---
