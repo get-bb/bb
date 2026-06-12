@@ -72,10 +72,6 @@ function providerDisplayName(providerId: string): string {
       return "Pi";
     case "acp-cursor":
       return "Cursor";
-    case "acp-hermes":
-      return "Hermes";
-    case "acp-opencode":
-      return "OpenCode";
     default:
       return providerId;
   }

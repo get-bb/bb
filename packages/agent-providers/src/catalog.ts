@@ -10,16 +10,12 @@ const AGENT_PROVIDER_ID_VALUES = [
   "claude-code",
   "pi",
   "acp-cursor",
-  "acp-hermes",
-  "acp-opencode",
 ] as const;
 export const agentProviderIdSchema = z.enum(AGENT_PROVIDER_ID_VALUES);
 export type AgentProviderId = z.infer<typeof agentProviderIdSchema>;
 
 const ACP_AGENT_PROVIDER_ID_VALUES = [
   "acp-cursor",
-  "acp-hermes",
-  "acp-opencode",
 ] as const satisfies readonly AgentProviderId[];
 export type AcpAgentProviderId = (typeof ACP_AGENT_PROVIDER_ID_VALUES)[number];
 
@@ -114,6 +110,9 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
   supportsRename: false,
   supportsServiceTier: false,
   supportsUserQuestion: false,
+  // ACP has no session-fork primitive; the adapter has no thread/fork handler,
+  // so forks are blocked at the server boundary rather than failing at runtime.
+  supportsFork: false,
   supportedPermissionModes: ["full", "workspace-write", "readonly"],
 };
 
@@ -144,7 +143,11 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,
-  reasoningLevels: ["medium"],
+  // Cursor encodes reasoning effort in its model ids (`gpt-5.3-codex-high`);
+  // the ACP bridge resolves (model, level) to the exact variant id at session
+  // launch. This ladder is the coarse fallback — per-model efforts from
+  // `model/list` are the precise set.
+  reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
 };
 
 /**
@@ -194,24 +197,6 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
       capabilities: ACP_CAPABILITIES,
       displayName: "Cursor",
       id: "acp-cursor",
-    },
-    serverCapabilities: ACP_SERVER_CAPABILITIES,
-  },
-  {
-    info: {
-      available: true,
-      capabilities: ACP_CAPABILITIES,
-      displayName: "Hermes",
-      id: "acp-hermes",
-    },
-    serverCapabilities: ACP_SERVER_CAPABILITIES,
-  },
-  {
-    info: {
-      available: true,
-      capabilities: ACP_CAPABILITIES,
-      displayName: "OpenCode",
-      id: "acp-opencode",
     },
     serverCapabilities: ACP_SERVER_CAPABILITIES,
   },

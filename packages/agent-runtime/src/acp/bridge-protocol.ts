@@ -11,6 +11,7 @@ import {
   permissionEscalationSchema,
   permissionModeSchema,
   promptInputSchema,
+  reasoningLevelSchema,
 } from "@bb/domain";
 import { z } from "zod";
 import {
@@ -30,10 +31,44 @@ export const acpBridgeAgentCommandSchema = z.object({
 });
 export type AcpBridgeAgentCommand = z.infer<typeof acpBridgeAgentCommandSchema>;
 
+/**
+ * Id of the synthetic "Agent default" model the bridge serves when the agent's
+ * model list cannot be read. Never forwarded to the agent.
+ */
+export const ACP_DEFAULT_MODEL_ID = "acp-default";
+
+const acpBridgeModelListParamsSchema = z.object({
+  /**
+   * Command whose stdout lists one `id - Display Name` line per model. The
+   * bridge groups the ids into model families with reasoning-effort variants
+   * (see `bridge/model-catalog.ts`), falling back to the synthetic "Agent
+   * default" entry when the command fails or lists nothing.
+   */
+  listCommand: acpBridgeAgentCommandSchema,
+});
+
+/**
+ * Session-level model pin. The bridge resolves (model, reasoningLevel) to the
+ * exact raw agent model id via the catalog parsed from `listCommand`, then
+ * launches the agent with `<selectFlag> <resolved-id>` ahead of its args.
+ * Absent when the thread has no model preference — the agent uses its own
+ * default.
+ */
+const acpBridgeModelSelectionSchema = z.object({
+  listCommand: acpBridgeAgentCommandSchema,
+  selectFlag: z.string().min(1),
+  model: z.string().min(1),
+  reasoningLevel: reasoningLevelSchema.optional(),
+});
+export type AcpBridgeModelSelection = z.infer<
+  typeof acpBridgeModelSelectionSchema
+>;
+
 const acpBridgeSessionParamsSchema = z.object({
   threadId: z.string().min(1),
   cwd: z.string().min(1),
   agent: acpBridgeAgentCommandSchema,
+  modelSelection: acpBridgeModelSelectionSchema.optional(),
   permissionMode: permissionModeSchema,
   permissionEscalation: permissionEscalationSchema.nullable(),
   /** Roots (workspace plus configured extras) where client fs writes are allowed. */
@@ -78,7 +113,10 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
       clientInfo: z.object({ name: z.string(), version: z.string() }),
     }),
   }),
-  z.object({ method: z.literal("model/list"), params: z.object({}) }),
+  z.object({
+    method: z.literal("model/list"),
+    params: acpBridgeModelListParamsSchema,
+  }),
   z.object({
     method: z.literal("thread/start"),
     params: acpBridgeThreadStartParamsSchema,

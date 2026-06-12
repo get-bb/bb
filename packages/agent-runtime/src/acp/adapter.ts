@@ -2,12 +2,13 @@
  * ACP provider adapter.
  *
  * Maps between bb's ProviderAdapter contract and the generic ACP bridge
- * process. One bridge bundle serves every built-in ACP profile (Cursor,
- * Hermes, OpenCode); the adapter binds a profile's agent command into each
- * bridge session. The external ACP agent owns model selection, reasoning
- * effort, and tool execution, so the adapter forwards neither model nor
- * reasoning overrides — the synthetic "Agent default" model from `model/list`
- * is the only execution surface bb exposes.
+ * process; the adapter binds a profile's agent command (Cursor) into each
+ * bridge session. The agent owns tool execution. Models and reasoning ride
+ * the profile's CLI model surface (`modelCli`): the bridge groups the listed
+ * ids into families with reasoning-effort variants, and the session's
+ * (model, reasoningLevel) selection is pinned via the agent's launch flag —
+ * applied per session, so a mid-thread change takes effect on the next
+ * session spawn, not the next turn.
  */
 
 import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
@@ -30,6 +31,7 @@ import type {
   DecodedToolCallRequest,
   ProviderAdapter,
   ProviderCommandPlan,
+  ProviderExecutionContext,
   ProviderTranslationContext,
 } from "../provider-adapter.js";
 import { noPreparedProviderCommandDispatch } from "../provider-adapter.js";
@@ -82,6 +84,7 @@ import {
   acpTurnStartedNotificationParamsSchema,
   acpUpdateNotificationParamsSchema,
   acpWarningNotificationParamsSchema,
+  ACP_DEFAULT_MODEL_ID,
   type AcpPermissionRequestParams,
   type AcpPermissionResponse,
 } from "./bridge-protocol.js";
@@ -908,6 +911,7 @@ export function createAcpProviderAdapter(
         command: profile.agentCommand.command,
         args: [...profile.agentCommand.args],
       },
+      ...buildModelSelectionParam(command.options),
       permissionMode: command.options.permissionMode,
       permissionEscalation: command.options.permissionEscalation,
       workspaceWriteRoots: [command.cwd, ...additionalWorkspaceWriteRoots],
@@ -916,6 +920,34 @@ export function createAcpProviderAdapter(
         ? { envVars: command.options.envVars }
         : {}),
       ...(instructions ? { instructions } : {}),
+    };
+  }
+
+  /**
+   * Session-level model pin for the bridge, which resolves (model,
+   * reasoningLevel) to the exact agent model variant via the list command's
+   * catalog. The synthetic "acp-default" id (persisted by threads started
+   * before the bridge listed real models) is never forwarded.
+   */
+  function buildModelSelectionParam(
+    options: ProviderExecutionContext,
+  ): Record<string, unknown> {
+    const model = options.model;
+    if (!model || model === ACP_DEFAULT_MODEL_ID) {
+      return {};
+    }
+    return {
+      modelSelection: {
+        listCommand: {
+          command: profile.agentCommand.command,
+          args: [...profile.modelCli.listArgs],
+        },
+        selectFlag: profile.modelCli.selectFlag,
+        model,
+        ...(options.reasoningLevel !== undefined
+          ? { reasoningLevel: options.reasoningLevel }
+          : {}),
+      },
     };
   }
 
@@ -946,7 +978,16 @@ export function createAcpProviderAdapter(
             params: { clientInfo: { name: "bb", version: "1.0.0" } },
           };
         case "model/list":
-          return { kind: "request", method: "model/list", params: {} };
+          return {
+            kind: "request",
+            method: "model/list",
+            params: {
+              listCommand: {
+                command: profile.agentCommand.command,
+                args: [...profile.modelCli.listArgs],
+              },
+            },
+          };
         case "skills/configure":
           return {
             kind: "noop",
@@ -1011,6 +1052,13 @@ export function createAcpProviderAdapter(
         case "thread/archive":
         case "thread/unarchive":
           return { kind: "noop", reason: "archive unsupported" };
+        case "thread/fork":
+          // Unreachable: ACP declares supportsFork=false, so the server blocks
+          // forks before they reach the adapter. ACP has no session-fork
+          // primitive, so fail loudly if that guard is ever bypassed.
+          throw new Error(
+            `Provider "${profile.providerId}" does not support forking threads.`,
+          );
       }
     },
 

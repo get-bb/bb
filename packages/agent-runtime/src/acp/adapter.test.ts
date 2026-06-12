@@ -20,10 +20,12 @@ type AcpProviderAdapter = ReturnType<typeof createAcpProviderAdapter>;
 
 function createAdapter(): AcpProviderAdapter {
   return createAcpProviderAdapter({
-    profile: getAcpAgentProfile("acp-opencode"),
+    profile: getAcpAgentProfile("acp-cursor"),
     additionalWorkspaceWriteRoots: ["/extra-root"],
   });
 }
+
+const CURSOR_LIST_COMMAND = { command: "agent", args: ["--list-models"] };
 
 const THREAD_CONTEXT = { threadId: "thread-1" };
 
@@ -69,7 +71,7 @@ describe("acp adapter command plans", () => {
       params: {
         threadId: "thread-1",
         cwd: "/workspace",
-        agent: { command: "opencode", args: ["acp"] },
+        agent: { command: "agent", args: ["acp"] },
         permissionMode: "workspace-write",
         permissionEscalation: "ask",
         workspaceWriteRoots: ["/workspace", "/extra-root"],
@@ -174,6 +176,72 @@ describe("acp adapter command plans", () => {
         ],
       }),
     ).toThrow(/does not support dynamic tools/);
+  });
+});
+
+describe("acp adapter model cli", () => {
+  it("requests the profile's model list command", () => {
+    expect(createAdapter().buildCommandPlan({ type: "model/list" })).toEqual({
+      kind: "request",
+      method: "model/list",
+      params: { listCommand: CURSOR_LIST_COMMAND },
+    });
+  });
+
+  it("forwards the session model and reasoning level for bridge resolution", () => {
+    const plan = createAdapter().buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: {
+        ...fullProviderExecutionContext,
+        model: "gpt-5.3-codex",
+        reasoningLevel: "high",
+      },
+      instructionMode: "append",
+    });
+    expect(plan).toMatchObject({
+      params: {
+        agent: { command: "agent", args: ["acp"] },
+        modelSelection: {
+          listCommand: CURSOR_LIST_COMMAND,
+          selectFlag: "--model",
+          model: "gpt-5.3-codex",
+          reasoningLevel: "high",
+        },
+      },
+    });
+  });
+
+  it("omits the reasoning level when the session has none", () => {
+    const plan = createAdapter().buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: { ...fullProviderExecutionContext, model: "gpt-5.3-codex" },
+      instructionMode: "append",
+    });
+    expect(plan).toMatchObject({
+      params: {
+        modelSelection: { model: "gpt-5.3-codex" },
+      },
+    });
+    const params = (plan as { params: Record<string, unknown> }).params;
+    const selection = params.modelSelection as Record<string, unknown>;
+    expect("reasoningLevel" in selection).toBe(false);
+  });
+
+  it("never forwards the synthetic default model id", () => {
+    const plan = createAdapter().buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: { ...fullProviderExecutionContext, model: "acp-default" },
+      instructionMode: "append",
+    });
+    const params = (plan as { params: Record<string, unknown> }).params;
+    expect("modelSelection" in params).toBe(false);
+    expect(params.agent).toEqual({ command: "agent", args: ["acp"] });
   });
 });
 

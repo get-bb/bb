@@ -58,30 +58,7 @@ describe("agent provider catalog", () => {
           supportsRename: false,
           supportsServiceTier: false,
           supportsUserQuestion: false,
-          supportedPermissionModes: ["full", "workspace-write", "readonly"],
-        },
-        available: true,
-      },
-      {
-        id: "acp-hermes",
-        displayName: "Hermes",
-        capabilities: {
-          supportsArchive: false,
-          supportsRename: false,
-          supportsServiceTier: false,
-          supportsUserQuestion: false,
-          supportedPermissionModes: ["full", "workspace-write", "readonly"],
-        },
-        available: true,
-      },
-      {
-        id: "acp-opencode",
-        displayName: "OpenCode",
-        capabilities: {
-          supportsArchive: false,
-          supportsRename: false,
-          supportsServiceTier: false,
-          supportsUserQuestion: false,
+          supportsFork: false,
           supportedPermissionModes: ["full", "workspace-write", "readonly"],
         },
         available: true,
@@ -91,8 +68,6 @@ describe("agent provider catalog", () => {
 
   it("classifies ACP provider ids", () => {
     expect(isAcpAgentProviderId("acp-cursor")).toBe(true);
-    expect(isAcpAgentProviderId("acp-hermes")).toBe(true);
-    expect(isAcpAgentProviderId("acp-opencode")).toBe(true);
     expect(isAcpAgentProviderId("codex")).toBe(false);
     expect(isAcpAgentProviderId("claude-code")).toBe(false);
     expect(isAcpAgentProviderId("pi")).toBe(false);
@@ -117,18 +92,12 @@ describe("agent provider catalog", () => {
       backsHostDaemonAiServices: false,
       reasoningLevels: ["low", "medium", "high", "xhigh"],
     });
-    for (const providerId of [
-      "acp-cursor",
-      "acp-hermes",
-      "acp-opencode",
-    ] as const) {
-      expect(getBuiltInAgentProviderServerCapabilities(providerId)).toEqual({
-        supportsWorkflows: false,
-        supportsExecutionOverride: false,
-        backsHostDaemonAiServices: false,
-        reasoningLevels: ["medium"],
-      });
-    }
+    expect(getBuiltInAgentProviderServerCapabilities("acp-cursor")).toEqual({
+      supportsWorkflows: false,
+      supportsExecutionOverride: false,
+      backsHostDaemonAiServices: false,
+      reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+    });
   });
 
   it("returns cloned catalog entries", () => {

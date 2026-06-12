@@ -4,13 +4,14 @@
  * Generic ACP bridge.
  *
  * Speaks bb's runtime JSON-RPC on stdio and acts as the ACP *client* for the
- * configured agent (Cursor, Hermes, OpenCode, ...): one agent subprocess and
+ * configured agent (Cursor): one agent subprocess and
  * one ACP session per bb thread. The bridge owns the cooperative permission
  * policy — it answers `session/request_permission` per bb's permission mode
  * (forwarding to the runtime when escalation is "ask") and enforces the
  * workspace write policy on client `fs/write_text_file` requests.
  */
 
+import { execFile } from "node:child_process";
 import { promises as fs, readFileSync, realpathSync } from "node:fs";
 import {
   dirname,
@@ -30,6 +31,7 @@ import {
   jsonRpcEnvelopeSchema,
 } from "../../shared/bridge-tool-calls.js";
 import {
+  ACP_DEFAULT_MODEL_ID,
   ACP_FS_WRITE_METHOD,
   ACP_PERMISSION_REQUEST_METHOD,
   ACP_TURN_COMPLETED_METHOD,
@@ -38,6 +40,7 @@ import {
   ACP_WARNING_METHOD,
   acpBridgeCommandSchema,
   acpPermissionResponseSchema,
+  type AcpBridgeAgentCommand,
   type AcpBridgeCommand,
   type AcpBridgeThreadResumeParams,
   type AcpBridgeThreadStartParams,
@@ -60,6 +63,11 @@ import {
   type AcpAgentConnection,
   type AcpAgentRequestResponder,
 } from "./agent-connection.js";
+import {
+  buildAgentModelCatalog,
+  parseAgentModelLines,
+  type AgentModelCatalog,
+} from "./model-catalog.js";
 
 // ---------------------------------------------------------------------------
 // Session state
@@ -152,12 +160,13 @@ function sendNotification(
 }
 
 // ---------------------------------------------------------------------------
-// Synthetic model list — ACP agents own model selection
+// Model catalog — parsed from the agent CLI's list command, with the
+// synthetic "Agent default" entry as the resilience fallback
 // ---------------------------------------------------------------------------
 
 const ACP_DEFAULT_MODEL: AvailableModel = {
-  id: "acp-default",
-  model: "acp-default",
+  id: ACP_DEFAULT_MODEL_ID,
+  model: ACP_DEFAULT_MODEL_ID,
   displayName: "Agent default",
   description: "Model selection is managed by the connected ACP agent.",
   supportedReasoningEfforts: [
@@ -169,6 +178,89 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
   defaultReasoningEffort: "medium",
   isDefault: true,
 };
+
+const MODEL_LIST_TIMEOUT_MS = 30_000;
+
+let cachedModelCatalog: { key: string; catalog: AgentModelCatalog } | null =
+  null;
+
+/**
+ * Run the agent's model list command and build the variant catalog, cached
+ * per list command for the bridge's lifetime (model/list refreshes it on the
+ * next picker open; session starts reuse it for variant resolution). Returns
+ * null when the command fails or lists nothing so callers can fall back —
+ * the picker to the synthetic entry, session starts to the unresolved id.
+ */
+async function loadAgentModelCatalog(
+  listCommand: AcpBridgeAgentCommand,
+): Promise<AgentModelCatalog | null> {
+  const stdout = await new Promise<string | null>((resolveExec) => {
+    execFile(
+      listCommand.command,
+      listCommand.args,
+      { timeout: MODEL_LIST_TIMEOUT_MS },
+      (error, out) => resolveExec(error ? null : out),
+    );
+  });
+  const key = JSON.stringify(listCommand);
+  if (stdout === null) {
+    process.stderr.write(
+      `acp bridge: model list command "${listCommand.command}" failed\n`,
+    );
+    return cachedModelCatalog?.key === key ? cachedModelCatalog.catalog : null;
+  }
+  const catalog = buildAgentModelCatalog(parseAgentModelLines(stdout));
+  if (!catalog) {
+    process.stderr.write(
+      `acp bridge: model list command "${listCommand.command}" printed no models\n`,
+    );
+    return cachedModelCatalog?.key === key ? cachedModelCatalog.catalog : null;
+  }
+  cachedModelCatalog = { key, catalog };
+  return catalog;
+}
+
+/**
+ * Resolve the session's model pin to the exact raw agent id and compose the
+ * launch args: `<selectFlag> <id>` precedes the agent args because agent
+ * CLIs treat the flag as a global option (`agent --model X acp`). When the
+ * requested reasoning level has no variant (or the catalog is unavailable),
+ * the family id launches as-is — it is a real agent id at its default effort.
+ */
+async function resolveAgentLaunchArgs(
+  params: AcpBridgeThreadStartParams,
+): Promise<{ args: string[]; warning: string | undefined }> {
+  const selection = params.modelSelection;
+  if (!selection) {
+    return { args: [...params.agent.args], warning: undefined };
+  }
+  let resolved: string | undefined;
+  let warning: string | undefined;
+  if (selection.reasoningLevel !== undefined) {
+    // Prefer the catalog cached by the last model/list (the picker the
+    // selection came from) over re-running the list command per spawn.
+    const key = JSON.stringify(selection.listCommand);
+    const catalog =
+      cachedModelCatalog?.key === key
+        ? cachedModelCatalog.catalog
+        : await loadAgentModelCatalog(selection.listCommand);
+    resolved = catalog?.resolveVariant({
+      model: selection.model,
+      reasoningLevel: selection.reasoningLevel,
+    });
+    if (resolved === undefined) {
+      warning = `Model "${selection.model}" has no ${selection.reasoningLevel} reasoning variant; launching it at its default effort.`;
+    }
+  }
+  return {
+    args: [
+      selection.selectFlag,
+      resolved ?? selection.model,
+      ...params.agent.args,
+    ],
+    warning,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Prompt content
@@ -519,13 +611,20 @@ async function startAgentSession(
     await stopSession(existing);
   }
 
+  const launch = await resolveAgentLaunchArgs(params);
+  if (launch.warning) {
+    sendNotification(ACP_WARNING_METHOD, {
+      threadId: bbThreadId,
+      summary: launch.warning,
+    });
+  }
   const agentLabel = [params.agent.command, ...params.agent.args].join(" ");
   // The connection handlers close over `session`; they only fire after the
   // child process emits events, by which point the session is constructed.
   let session: AcpThreadSession;
   const connection = createAcpAgentConnection({
     command: params.agent.command,
-    args: params.agent.args,
+    args: launch.args,
     cwd: params.cwd,
     env: { ...process.env, ...params.envVars },
     onNotification: (method, notificationParams) =>
@@ -796,12 +895,14 @@ async function handleRequest(
       sendResult(request.id, { ok: true });
       return;
 
-    case "model/list":
+    case "model/list": {
+      const catalog = await loadAgentModelCatalog(request.params.listCommand);
       sendResult(request.id, {
-        models: [ACP_DEFAULT_MODEL],
+        models: catalog?.models ?? [ACP_DEFAULT_MODEL],
         selectedOnlyModels: [],
       });
       return;
+    }
 
     case "thread/start": {
       const session = await startAgentSession({

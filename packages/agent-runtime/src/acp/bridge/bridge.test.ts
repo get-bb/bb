@@ -1,4 +1,10 @@
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,6 +75,13 @@ interface StartThreadArgs {
   permissionEscalation?: "ask" | "deny" | null;
   envVars?: Record<string, string>;
   instructions?: string;
+  agent?: { command: string; args: string[] };
+  modelSelection?: {
+    listCommand: { command: string; args: string[] };
+    selectFlag: string;
+    model: string;
+    reasoningLevel?: string;
+  };
 }
 
 async function startThread(args?: StartThreadArgs): Promise<{
@@ -80,7 +93,8 @@ async function startThread(args?: StartThreadArgs): Promise<{
   const id = sendRequest("thread/start", {
     threadId: bbThreadId,
     cwd: workspaceDir,
-    agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+    agent: args?.agent ?? { command: process.execPath, args: [FAKE_AGENT_PATH] },
+    ...(args?.modelSelection ? { modelSelection: args.modelSelection } : {}),
     permissionMode: args?.permissionMode ?? "full",
     permissionEscalation:
       args?.permissionEscalation === undefined
@@ -167,17 +181,129 @@ afterEach(async () => {
 });
 
 describe("acp bridge", () => {
-  it("answers initialize and model/list without spawning an agent", async () => {
+  it("answers initialize and lists grouped models without spawning an agent", async () => {
     const initializeId = sendRequest("initialize", {
       clientInfo: { name: "bb", version: "1.0.0" },
     });
     expect((await waitForResponse(initializeId)).result).toEqual({ ok: true });
 
-    const modelListId = sendRequest("model/list", {});
+    const modelListId = sendRequest("model/list", {
+      listCommand: {
+        command: process.execPath,
+        args: [
+          "-e",
+          'console.log("Available models\\n\\nauto - Auto\\ngrouped-1-low - Grouped One Low\\ngrouped-1 - Grouped One\\ngrouped-1-high - Grouped One High")',
+        ],
+      },
+    });
     const response = await waitForResponse(modelListId);
     expect(response.result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+      models: [
+        { id: "auto", displayName: "Auto", isDefault: true },
+        {
+          id: "grouped-1",
+          displayName: "Grouped One",
+          isDefault: false,
+          defaultReasoningEffort: "medium",
+        },
+      ],
       selectedOnlyModels: [],
+    });
+    const models = (
+      response.result as {
+        models: { supportedReasoningEfforts: { reasoningEffort: string }[] }[];
+      }
+    ).models;
+    expect(
+      models[1]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+    ).toEqual(["low", "medium", "high"]);
+  });
+
+  it("falls back to the synthetic model when the list command fails", async () => {
+    const failingId = sendRequest("model/list", {
+      listCommand: {
+        command: "/nonexistent/acp-model-lister",
+        args: ["--list-models"],
+      },
+    });
+    expect((await waitForResponse(failingId)).result).toMatchObject({
+      models: [{ id: "acp-default", isDefault: true }],
+    });
+
+    const emptyId = sendRequest("model/list", {
+      listCommand: {
+        command: process.execPath,
+        args: ["-e", 'console.log("no model lines here")'],
+      },
+    });
+    expect((await waitForResponse(emptyId)).result).toMatchObject({
+      models: [{ id: "acp-default", isDefault: true }],
+    });
+  });
+
+  it("launches the agent with the resolved model variant", async () => {
+    chmodSync(FAKE_AGENT_PATH, 0o755);
+    // Seed the bridge's catalog cache the way a picker would.
+    const listCommand = {
+      command: process.execPath,
+      args: [
+        "-e",
+        'console.log("pinme-low - Pin Me Low\\npinme - Pin Me\\npinme-extra-high - Pin Me Extra High")',
+      ],
+    };
+    await waitForResponse(sendRequest("model/list", { listCommand }));
+
+    // The fake agent runs via its shebang so the bridge's leading
+    // `--model <id>` lands in the agent's argv instead of node's.
+    const { providerThreadId } = await startThread({
+      agent: { command: FAKE_AGENT_PATH, args: [] },
+      modelSelection: {
+        listCommand,
+        selectFlag: "--model",
+        model: "pinme",
+        reasoningLevel: "xhigh",
+      },
+    });
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-argv", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+    expect(
+      agentMessageTexts().some(
+        (text) => text === "argv:--model pinme-extra-high",
+      ),
+    ).toBe(true);
+  });
+
+  it("warns and launches the family id when a reasoning variant is missing", async () => {
+    chmodSync(FAKE_AGENT_PATH, 0o755);
+    const listCommand = {
+      command: process.execPath,
+      args: ["-e", 'console.log("solo-2 - Solo Two")'],
+    };
+    await waitForResponse(sendRequest("model/list", { listCommand }));
+
+    const { providerThreadId } = await startThread({
+      agent: { command: FAKE_AGENT_PATH, args: [] },
+      modelSelection: {
+        listCommand,
+        selectFlag: "--model",
+        model: "solo-2",
+        reasoningLevel: "max",
+      },
+    });
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-argv", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+    expect(
+      agentMessageTexts().some((text) => text === "argv:--model solo-2"),
+    ).toBe(true);
+    const warning = notifications("acp/warning").at(-1);
+    expect(warning?.params).toMatchObject({
+      summary: expect.stringContaining("no max reasoning variant"),
     });
   });
 

@@ -99,32 +99,26 @@ describe("provider registry", () => {
     expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
   });
 
-  it("creates acp providers with the shared bridge process config", () => {
-    for (const providerId of [
-      "acp-cursor",
-      "acp-hermes",
-      "acp-opencode",
-    ] as const) {
-      const provider = createProviderForId(providerId);
-      expect(provider.id).toBe(providerId);
-      expect(provider.process.command).toBe("node");
-      expect(provider.process.args.at(-1)).toMatch(
-        /agent-runtime\/src\/acp\/bridge\/bridge\.ts$/,
-      );
-      expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
-    }
+  it("creates the acp cursor provider with the bridge process config", () => {
+    const provider = createProviderForId("acp-cursor");
+    expect(provider.id).toBe("acp-cursor");
+    expect(provider.process.command).toBe("node");
+    expect(provider.process.args.at(-1)).toMatch(
+      /agent-runtime\/src\/acp\/bridge\/bridge\.ts$/,
+    );
+    expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
   });
 
-  it("passes the configured bridge bundle directory to acp providers", () => {
-    const provider = createProviderForId("acp-opencode", {
+  it("passes the configured bridge bundle directory to the acp provider", () => {
+    const provider = createProviderForId("acp-cursor", {
       additionalWorkspaceWriteRoots: [],
       bridgeBundleDir: "/tmp",
     });
     expect(provider.process.args[0]).toBe("/tmp/bb-acp-bridge.mjs");
   });
 
-  it("binds each acp provider to its agent launch command", () => {
-    const provider = createProviderForId("acp-hermes");
+  it("binds the acp cursor provider to its agent launch command", () => {
+    const provider = createProviderForId("acp-cursor");
     const plan = provider.buildCommandPlan({
       type: "thread/start",
       threadId: "thread-1",
@@ -141,7 +135,7 @@ describe("provider registry", () => {
       kind: "request",
       method: "thread/start",
       params: {
-        agent: { command: "hermes", args: ["acp"] },
+        agent: { command: "agent", args: ["acp"] },
       },
     });
   });
@@ -194,8 +188,6 @@ describe("provider registry", () => {
         available: true,
       },
       { id: "acp-cursor", displayName: "Cursor", available: true },
-      { id: "acp-hermes", displayName: "Hermes", available: true },
-      { id: "acp-opencode", displayName: "OpenCode", available: true },
     ]);
   });
 });
