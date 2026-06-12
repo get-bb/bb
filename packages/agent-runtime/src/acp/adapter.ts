@@ -986,6 +986,7 @@ export function createAcpProviderAdapter(
                 command: profile.agentCommand.command,
                 args: [...profile.modelCli.listArgs],
               },
+              primaryModels: [...profile.modelCli.primaryModels],
             },
           };
         case "skills/configure":

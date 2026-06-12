@@ -141,3 +141,50 @@ export function buildAgentModelCatalog(
     },
   };
 }
+
+export interface SplitPrimaryModelsResult {
+  models: AvailableModel[];
+  selectedOnlyModels: AvailableModel[];
+}
+
+/**
+ * Split the catalog into the picker's default list (families named in
+ * `primaryModels`, by family id, in the declared order) and the collapsed
+ * "more models" pool. Falls back to everything-primary when no name matches
+ * — a renamed agent catalog must degrade to a full picker, never an empty
+ * one. The default flag is re-anchored onto the primary list so the
+ * picker's preselection never points at a hidden entry.
+ */
+export function splitPrimaryModels(
+  catalogModels: readonly AvailableModel[],
+  primaryModels: readonly string[],
+): SplitPrimaryModelsResult {
+  const primaryIds = new Set(primaryModels);
+  const modelsById = new Map(catalogModels.map((model) => [model.id, model]));
+  const models = primaryModels.flatMap((id) => {
+    const model = modelsById.get(id);
+    return model ? [model] : [];
+  });
+  if (models.length === 0) {
+    return { models: [...catalogModels], selectedOnlyModels: [] };
+  }
+  const selectedOnlyModels = catalogModels.filter(
+    (model) => !primaryIds.has(model.id),
+  );
+  if (models.some((model) => model.isDefault)) {
+    return {
+      models,
+      selectedOnlyModels: selectedOnlyModels.map((model) =>
+        model.isDefault ? { ...model, isDefault: false } : model,
+      ),
+    };
+  }
+  return {
+    models: models.map((model, index) =>
+      index === 0 ? { ...model, isDefault: true } : model,
+    ),
+    selectedOnlyModels: selectedOnlyModels.map((model) =>
+      model.isDefault ? { ...model, isDefault: false } : model,
+    ),
+  };
+}

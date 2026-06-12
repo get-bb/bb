@@ -45,6 +45,12 @@ const acpBridgeModelListParamsSchema = z.object({
    * default" entry when the command fails or lists nothing.
    */
   listCommand: acpBridgeAgentCommandSchema,
+  /**
+   * Family ids served in the picker's default list; the rest become
+   * selected-only "more models". No matches (or an empty list) serves
+   * everything as primary.
+   */
+  primaryModels: z.array(z.string()),
 });
 
 /**

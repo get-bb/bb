@@ -66,6 +66,7 @@ import {
 import {
   buildAgentModelCatalog,
   parseAgentModelLines,
+  splitPrimaryModels,
   type AgentModelCatalog,
 } from "./model-catalog.js";
 
@@ -897,10 +898,17 @@ async function handleRequest(
 
     case "model/list": {
       const catalog = await loadAgentModelCatalog(request.params.listCommand);
-      sendResult(request.id, {
-        models: catalog?.models ?? [ACP_DEFAULT_MODEL],
-        selectedOnlyModels: [],
-      });
+      if (!catalog) {
+        sendResult(request.id, {
+          models: [ACP_DEFAULT_MODEL],
+          selectedOnlyModels: [],
+        });
+        return;
+      }
+      sendResult(
+        request.id,
+        splitPrimaryModels(catalog.models, request.params.primaryModels),
+      );
       return;
     }
 

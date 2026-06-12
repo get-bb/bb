@@ -180,12 +180,17 @@ describe("acp adapter command plans", () => {
 });
 
 describe("acp adapter model cli", () => {
-  it("requests the profile's model list command", () => {
-    expect(createAdapter().buildCommandPlan({ type: "model/list" })).toEqual({
+  it("requests the profile's model list command with its primary families", () => {
+    const plan = createAdapter().buildCommandPlan({ type: "model/list" });
+    expect(plan).toMatchObject({
       kind: "request",
       method: "model/list",
       params: { listCommand: CURSOR_LIST_COMMAND },
     });
+    const params = (plan as { params: Record<string, unknown> }).params;
+    const primaryModels = params.primaryModels as string[];
+    expect(primaryModels).toContain("auto");
+    expect(primaryModels.length).toBeGreaterThan(1);
   });
 
   it("forwards the session model and reasoning level for bridge resolution", () => {

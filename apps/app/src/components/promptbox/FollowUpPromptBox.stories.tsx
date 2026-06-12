@@ -97,6 +97,7 @@ const readOnlyExecution = makeExecutionControlsProps({
     active: { model: "gpt-5.5" },
     selected: "gpt-5.5",
     options: STORY_CODEX_MODELS,
+    moreOptions: [],
     isLoading: false,
     loadFailed: false,
     onChange: noop,

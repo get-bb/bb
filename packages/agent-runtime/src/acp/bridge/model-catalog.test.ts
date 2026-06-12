@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAgentModelCatalog,
   parseAgentModelLines,
+  splitPrimaryModels,
 } from "./model-catalog.js";
 
 const SAMPLE_LIST = [
@@ -136,5 +137,38 @@ describe("acp model catalog", () => {
 
   it("returns null for an empty list", () => {
     expect(buildAgentModelCatalog([])).toBeNull();
+  });
+});
+
+describe("acp primary model split", () => {
+  it("splits families into primary and selected-only pools", () => {
+    const catalog = catalogFromSample();
+    const split = splitPrimaryModels(catalog.models, [
+      "auto",
+      "gpt-5.5-medium",
+    ]);
+    expect(split.models.map((m) => m.id)).toEqual(["auto", "gpt-5.5-medium"]);
+    expect(split.selectedOnlyModels.map((m) => m.id)).toContain(
+      "gpt-5.3-codex",
+    );
+    expect(split.models.filter((m) => m.isDefault).map((m) => m.id)).toEqual([
+      "auto",
+    ]);
+    expect(split.selectedOnlyModels.some((m) => m.isDefault)).toBe(false);
+  });
+
+  it("re-anchors the default flag when the default family is not primary", () => {
+    const catalog = catalogFromSample();
+    const split = splitPrimaryModels(catalog.models, ["gpt-5.5-medium"]);
+    expect(split.models.map((m) => m.id)).toEqual(["gpt-5.5-medium"]);
+    expect(split.models[0]?.isDefault).toBe(true);
+    expect(split.selectedOnlyModels.some((m) => m.isDefault)).toBe(false);
+  });
+
+  it("serves everything as primary when no name matches", () => {
+    const catalog = catalogFromSample();
+    const split = splitPrimaryModels(catalog.models, ["renamed-away"]);
+    expect(split.models).toEqual(catalog.models);
+    expect(split.selectedOnlyModels).toEqual([]);
   });
 });

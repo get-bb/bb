@@ -195,11 +195,12 @@ describe("acp bridge", () => {
           'console.log("Available models\\n\\nauto - Auto\\ngrouped-1-low - Grouped One Low\\ngrouped-1 - Grouped One\\ngrouped-1-high - Grouped One High")',
         ],
       },
+      primaryModels: ["auto"],
     });
     const response = await waitForResponse(modelListId);
     expect(response.result).toMatchObject({
-      models: [
-        { id: "auto", displayName: "Auto", isDefault: true },
+      models: [{ id: "auto", displayName: "Auto", isDefault: true }],
+      selectedOnlyModels: [
         {
           id: "grouped-1",
           displayName: "Grouped One",
@@ -207,15 +208,16 @@ describe("acp bridge", () => {
           defaultReasoningEffort: "medium",
         },
       ],
-      selectedOnlyModels: [],
     });
-    const models = (
+    const selectedOnly = (
       response.result as {
-        models: { supportedReasoningEfforts: { reasoningEffort: string }[] }[];
+        selectedOnlyModels: {
+          supportedReasoningEfforts: { reasoningEffort: string }[];
+        }[];
       }
-    ).models;
+    ).selectedOnlyModels;
     expect(
-      models[1]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
+      selectedOnly[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
     ).toEqual(["low", "medium", "high"]);
   });
 
@@ -225,6 +227,7 @@ describe("acp bridge", () => {
         command: "/nonexistent/acp-model-lister",
         args: ["--list-models"],
       },
+      primaryModels: [],
     });
     expect((await waitForResponse(failingId)).result).toMatchObject({
       models: [{ id: "acp-default", isDefault: true }],
@@ -235,6 +238,7 @@ describe("acp bridge", () => {
         command: process.execPath,
         args: ["-e", 'console.log("no model lines here")'],
       },
+      primaryModels: [],
     });
     expect((await waitForResponse(emptyId)).result).toMatchObject({
       models: [{ id: "acp-default", isDefault: true }],
@@ -251,7 +255,7 @@ describe("acp bridge", () => {
         'console.log("pinme-low - Pin Me Low\\npinme - Pin Me\\npinme-extra-high - Pin Me Extra High")',
       ],
     };
-    await waitForResponse(sendRequest("model/list", { listCommand }));
+    await waitForResponse(sendRequest("model/list", { listCommand, primaryModels: [] }));
 
     // The fake agent runs via its shebang so the bridge's leading
     // `--model <id>` lands in the agent's argv instead of node's.
@@ -282,7 +286,7 @@ describe("acp bridge", () => {
       command: process.execPath,
       args: ["-e", 'console.log("solo-2 - Solo Two")'],
     };
-    await waitForResponse(sendRequest("model/list", { listCommand }));
+    await waitForResponse(sendRequest("model/list", { listCommand, primaryModels: [] }));
 
     const { providerThreadId } = await startThread({
       agent: { command: FAKE_AGENT_PATH, args: [] },
