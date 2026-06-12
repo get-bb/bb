@@ -139,6 +139,8 @@ export const systemExperiments = sqliteTable("system_experiments", {
   claudeCodeMockCliTraffic: integer("claude_code_mock_cli_traffic", {
     mode: "boolean",
   }).notNull(),
+  popoutChat: integer("popout_chat", { mode: "boolean" }).notNull(),
+  popoutChatHotkey: text("popout_chat_hotkey").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
 

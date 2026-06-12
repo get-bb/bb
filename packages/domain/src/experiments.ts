@@ -14,9 +14,19 @@ export const experimentsSchema = z.object({
    * local proxy so forwarded requests use CLI-shaped traffic.
    */
   claudeCodeMockCliTraffic: z.boolean(),
+  /**
+   * Popout chat: enables the desktop-only compact always-on-top chat window.
+   */
+  popoutChat: z.boolean(),
+  /**
+   * Electron accelerator used by the desktop shell to summon popout chat.
+   */
+  popoutChatHotkey: z.string().min(1),
 });
 export type Experiments = z.infer<typeof experimentsSchema>;
 
 export const defaultExperiments: Experiments = {
   claudeCodeMockCliTraffic: false,
+  popoutChat: false,
+  popoutChatHotkey: "Alt+Space",
 };

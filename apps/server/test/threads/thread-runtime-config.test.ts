@@ -449,6 +449,8 @@ describe("thread runtime config", () => {
 
       setExperiments(harness.db, {
         claudeCodeMockCliTraffic: true,
+        popoutChat: false,
+        popoutChatHotkey: "Alt+Space",
       });
 
       expect((await buildCommand(2)).options.claudeCodeMockCliTraffic).toEqual({

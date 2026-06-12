@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type KeyboardEvent } from "react";
 import { defaultExperiments } from "@bb/domain";
 import type {
   WorkspaceOpenTarget,
@@ -29,7 +29,7 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useUpdateExperiments } from "@/hooks/mutations/settings-mutations";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
-import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import {
   FAVICON_COLOR_VALUES,
   getFaviconGlyphHref,
@@ -112,7 +112,12 @@ export interface ExperimentsSettingsSectionProps {
   /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
+  desktopShellAvailable: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
+  onPopoutChatEnabledChange: (enabled: boolean) => void;
+  onPopoutChatHotkeyChange: (hotkey: string) => void;
+  popoutChatEnabled: boolean;
+  popoutChatHotkey: string;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -472,11 +477,192 @@ export function GeneralSettingsSection({
 }
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
+const POPOUT_CHAT_EXPERIMENT_LABEL = "Popout chat";
+const POPOUT_CHAT_HOTKEY_LABEL = "Hotkey";
+
+interface HotkeyRecorderProps {
+  disabled: boolean;
+  hotkey: string;
+  onHotkeyChange: (hotkey: string) => void;
+}
+
+type HotkeyButtonKeyDownEvent = KeyboardEvent<HTMLButtonElement>;
+
+function formatHotkeyForMacos(hotkey: string): string {
+  return hotkey
+    .split("+")
+    .map((part) => {
+      switch (part) {
+        case "Alt":
+        case "Option":
+          return "⌥";
+        case "Command":
+        case "Cmd":
+          return "⌘";
+        case "CommandOrControl":
+        case "CmdOrCtrl":
+          return "⌘/Ctrl";
+        case "Control":
+        case "Ctrl":
+          return "⌃";
+        case "Shift":
+          return "⇧";
+        default:
+          return part;
+      }
+    })
+    .join(" ");
+}
+
+function isModifierKey(key: string): boolean {
+  return (
+    key === "Alt" ||
+    key === "Control" ||
+    key === "Meta" ||
+    key === "OS" ||
+    key === "Shift"
+  );
+}
+
+function normalizeAcceleratorKey(key: string): string | null {
+  if (key === " " || key === "Spacebar") {
+    return "Space";
+  }
+  if (key.length === 1) {
+    if (key === "+") {
+      return "Plus";
+    }
+    return key.toUpperCase();
+  }
+  if (key.startsWith("Arrow")) {
+    return key.slice("Arrow".length);
+  }
+  switch (key) {
+    case "Backspace":
+    case "Delete":
+    case "Down":
+    case "End":
+    case "Enter":
+    case "Home":
+    case "Insert":
+    case "Left":
+    case "PageDown":
+    case "PageUp":
+    case "Right":
+    case "Space":
+    case "Tab":
+    case "Up":
+      return key;
+    default:
+      return /^F(?:[1-9]|1[0-9]|2[0-4])$/.test(key) ? key : null;
+  }
+}
+
+function buildElectronAcceleratorFromKeydown(
+  event: HotkeyButtonKeyDownEvent,
+): string | null {
+  if (isModifierKey(event.key)) {
+    return null;
+  }
+
+  const key = normalizeAcceleratorKey(event.key);
+  if (key === null) {
+    return null;
+  }
+
+  const modifiers: string[] = [];
+  if (event.metaKey) {
+    modifiers.push("Command");
+  }
+  if (event.ctrlKey) {
+    modifiers.push("Control");
+  }
+  if (event.altKey) {
+    modifiers.push("Alt");
+  }
+  if (event.shiftKey) {
+    modifiers.push("Shift");
+  }
+  if (modifiers.length === 0) {
+    return null;
+  }
+  return [...modifiers, key].join("+");
+}
+
+function HotkeyRecorder({
+  disabled,
+  hotkey,
+  onHotkeyChange,
+}: HotkeyRecorderProps) {
+  const [recording, setRecording] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleClick() {
+    setRecording(true);
+    setError(null);
+  }
+
+  function handleKeyDown(event: HotkeyButtonKeyDownEvent) {
+    if (!recording) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.key === "Escape") {
+      setRecording(false);
+      setError(null);
+      return;
+    }
+
+    const accelerator = buildElectronAcceleratorFromKeydown(event);
+    if (accelerator === null) {
+      setError("Use at least one modifier with a key.");
+      return;
+    }
+
+    onHotkeyChange(accelerator);
+    setRecording(false);
+    setError(null);
+  }
+
+  function handleBlur() {
+    setRecording(false);
+    setError(null);
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-1 sm:items-end">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className={cn(
+          "h-7 min-w-24 px-2 font-mono text-xs",
+          recording ? "border-ring text-foreground" : null,
+        )}
+        disabled={disabled}
+        onClick={handleClick}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        aria-label="Record popout chat hotkey"
+      >
+        {recording ? "Press keys" : formatHotkeyForMacos(hotkey)}
+      </Button>
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+    </div>
+  );
+}
 
 export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
+  desktopShellAvailable,
   disabled,
   onClaudeCodeMockCliTrafficEnabledChange,
+  onPopoutChatEnabledChange,
+  onPopoutChatHotkeyChange,
+  popoutChatEnabled,
+  popoutChatHotkey,
 }: ExperimentsSettingsSectionProps) {
   return (
     <SettingsSection
@@ -495,6 +681,40 @@ export function ExperimentsSettingsSection({
             aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
+
+        <SettingsWithControl
+          label={POPOUT_CHAT_EXPERIMENT_LABEL}
+          description="Summon a compact, always-on-top chat with a global hotkey. Desktop app only."
+        >
+          <div className="flex items-center gap-2">
+            {!desktopShellAvailable ? (
+              <span className="text-xs text-muted-foreground">
+                Desktop only
+              </span>
+            ) : null}
+            <Switch
+              checked={popoutChatEnabled}
+              disabled={disabled || !desktopShellAvailable}
+              onCheckedChange={onPopoutChatEnabledChange}
+              aria-label={POPOUT_CHAT_EXPERIMENT_LABEL}
+            />
+          </div>
+        </SettingsWithControl>
+
+        {popoutChatEnabled ? (
+          <div className="border-l border-border pl-3">
+            <SettingsWithControl
+              label={POPOUT_CHAT_HOTKEY_LABEL}
+              description="Press the chip and type a new combination."
+            >
+              <HotkeyRecorder
+                disabled={disabled || !desktopShellAvailable}
+                hotkey={popoutChatHotkey}
+                onHotkeyChange={onPopoutChatHotkeyChange}
+              />
+            </SettingsWithControl>
+          </div>
+        ) : null}
       </div>
     </SettingsSection>
   );
@@ -518,6 +738,7 @@ export function SettingsView() {
   // The in-app browser only exists on desktop; hide the toggle entirely on web,
   // where it would have no effect.
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
+  const [desktopShellAvailable] = useState(() => getBbDesktopInfo() !== null);
   const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
   const updateExperimentsMutation = useUpdateExperiments();
 
@@ -549,6 +770,7 @@ export function SettingsView() {
           claudeCodeMockCliTrafficEnabled={
             experiments.claudeCodeMockCliTraffic
           }
+          desktopShellAvailable={desktopShellAvailable}
           disabled={
             systemConfigQuery.data === undefined ||
             updateExperimentsMutation.isPending
@@ -559,6 +781,20 @@ export function SettingsView() {
               claudeCodeMockCliTraffic: enabled,
             })
           }
+          onPopoutChatEnabledChange={(enabled) =>
+            updateExperimentsMutation.mutate({
+              ...experiments,
+              popoutChat: enabled,
+            })
+          }
+          onPopoutChatHotkeyChange={(hotkey) =>
+            updateExperimentsMutation.mutate({
+              ...experiments,
+              popoutChatHotkey: hotkey,
+            })
+          }
+          popoutChatEnabled={experiments.popoutChat}
+          popoutChatHotkey={experiments.popoutChatHotkey}
         />
       </div>
     </PageShell>
