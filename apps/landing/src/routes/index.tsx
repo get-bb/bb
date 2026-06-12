@@ -98,8 +98,8 @@ function LandingPage() {
         <h1>The IDE agents can use themselves.</h1>
         <p className="sub">
           bb runs Claude Code, Codex, and Pi as threads you can watch and
-          steer. Agents drive bb through the same CLI and API you do, right on
-          your machine.
+          steer. Agents drive bb through a CLI and API built for them, right
+          on your machine.
         </p>
 
         <div className="cta-row">
@@ -154,7 +154,7 @@ function LandingPage() {
             <h3>The IDE agents can drive</h3>
             <p>
               Agents spawn threads, message other agents, and schedule
-              follow-up work through the same <code>bb</code> CLI you use.
+              follow-up work through a <code>bb</code> CLI made for agents.
             </p>
           </div>
           <div className="card">
