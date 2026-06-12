@@ -1,0 +1,64 @@
+name: Deploy Landing
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/landing/**"
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "22.x"
+  PNPM_VERSION: "9.15.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-landing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy landing to Cloudflare Workers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Cache Turbo task outputs
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: ${{ runner.os }}-node-${{ env.NODE_VERSION }}-landing-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ env.NODE_VERSION }}-landing-turbo-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-node-${{ env.NODE_VERSION }}-landing-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build landing
+        env:
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+        run: pnpm exec turbo run build --filter=@bb/landing --cache-dir=.turbo/cache --output-logs=new-only
+
+      - name: Deploy landing
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm --filter @bb/landing deploy

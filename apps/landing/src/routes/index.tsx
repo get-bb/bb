@@ -94,11 +94,11 @@ function LandingPage() {
 
       <header className="hero">
         <span className="kicker">Open source · local-first</span>
-        <h1>Orchestrate every coding agent from one IDE.</h1>
+        <h1>The IDE agents can use themselves.</h1>
         <p className="sub">
-          bb runs Claude Code, Codex, and Pi as threads you can watch live,
-          steer mid-run, and hand off between agents. On your machine, in one
-          SQLite file.
+          bb runs Claude Code, Codex, and Pi as threads you can watch and
+          steer — and agents drive bb through the same CLI and API you do. On
+          your machine, in one SQLite file.
         </p>
 
         <div className="cta-row">
@@ -125,31 +125,31 @@ function LandingPage() {
       </header>
 
       <section className="features">
-        <h2 className="sec-title">One place for all of your agents.</h2>
+        <h2 className="sec-title">One place for you and your agents.</h2>
         <p className="sec-sub">
           Stop juggling terminal tabs. bb gives every agent a thread — and
-          gives you the controls.
+          gives agents the same controls it gives you.
         </p>
         <div className="grid">
           <div className="card hl">
-            <h3>Mix agents per task</h3>
+            <h3>The IDE agents can drive</h3>
             <p>
-              Pick the right agent for each job. Run Claude Code on the
-              refactor while Codex writes the tests.
+              Agents spawn threads, message other agents, and schedule
+              follow-up work through the same <code>bb</code> CLI you use.
             </p>
           </div>
           <div className="card">
-            <h3>Watch and steer live</h3>
+            <h3>Threads, not chat tabs</h3>
             <p>
-              Threads stream as they work. Interrupt, redirect, or hand a task
-              to a different agent mid-run.
+              Every unit of work has status, events, output, files, an
+              environment, and optional parent/child structure.
             </p>
           </div>
           <div className="card">
-            <h3>Manager threads</h3>
+            <h3>Steer work while it runs</h3>
             <p>
-              Delegate to sub-agents and let a manager coordinate them —
-              multi-agent workflows without glue scripts.
+              Queue follow-ups, steer active turns, stop stuck work, or hand a
+              task to another thread without losing the trail.
             </p>
           </div>
           <div className="card hl">
@@ -160,17 +160,17 @@ function LandingPage() {
             </p>
           </div>
           <div className="card">
-            <h3>UI, CLI, and API</h3>
+            <h3>Workspaces, managed or not</h3>
             <p>
-              Three first-class surfaces. Agents are first-class operators too
-              — they can drive bb programmatically.
+              Run agents in your existing folders or in bb-managed git
+              worktrees — isolated when you want, in place when you don&apos;t.
             </p>
           </div>
           <div className="card">
-            <h3>Open source</h3>
+            <h3>Multi-agent workflows</h3>
             <p>
-              MIT licensed and extensible — custom providers, environments, and
-              services welcome.
+              Encode bigger fan-outs as workflow files that launch provider
+              agents with deterministic, resumable orchestration.
             </p>
           </div>
         </div>
@@ -197,8 +197,8 @@ function LandingPage() {
             <div className="num">3</div>
             <h3>Spawn threads</h3>
             <p>
-              From the UI, CLI, or API. Watch, steer, hand off — or let a
-              manager coordinate.
+              From the UI, CLI, or API. Watch and steer — and let agents spawn
+              threads of their own.
             </p>
           </div>
         </div>

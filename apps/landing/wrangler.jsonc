@@ -5,6 +5,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bb-landing",
+  "account_id": "7bb84c630057dafa53e2aacbe6bd094f",
   "compatibility_date": "2026-06-11",
   "assets": {
     "directory": "./dist/client"

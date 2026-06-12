@@ -1,21 +1,24 @@
-/* bb landing — Concept B "Editorial light".
-   Light, typography-led, single indigo accent. */
+/* bb landing — editorial light, themed to match the bb app.
+   Tokens mirror apps/app/src/components/ui/theme.css: neutral zero-chroma
+   oklch grays, inverted-neutral primary button, a single restrained blue
+   accent, Inter Variable. */
 
 :root {
-  --bg: #ffffff;
-  --text: #16181d;
-  --dim: #5c6470;
-  --faint: #eceef1;
-  --border: #e3e6ea;
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-soft: #eef2ff;
-  --accent-ink: #ffffff;
-  --code-bg: #f6f7f9;
+  --bg: oklch(1 0 0);
+  --ink: oklch(0.3211 0 0);
+  --dim: oklch(0.44 0 0);
+  --subtle: oklch(0.5 0 0);
+  --border: color-mix(in oklch, var(--ink) 14%, var(--bg));
+  --border-soft: color-mix(in oklch, var(--ink) 8%, var(--bg));
+  --surface: color-mix(in oklch, var(--ink) 3.5%, var(--bg));
+  --surface-recessed: color-mix(in oklch, var(--ink) 6%, var(--bg));
+  --state-hover: color-mix(in oklch, var(--ink) 5.9%, var(--bg));
+  --accent: oklch(0.55 0.1 250);
+  --radius: 0.5rem;
   --font-sans:
-    "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 * {
@@ -26,7 +29,7 @@
 
 body {
   background: var(--bg);
-  color: var(--text);
+  color: var(--ink);
   font-family: var(--font-sans);
   font-size: 16px;
   line-height: 1.6;
@@ -59,13 +62,13 @@ code,
 }
 
 .logo {
-  font-weight: 800;
+  font-weight: 700;
   font-size: 19px;
   letter-spacing: -0.01em;
 }
 
 .logo span {
-  color: var(--accent);
+  color: var(--subtle);
 }
 
 .nav-links {
@@ -80,28 +83,28 @@ code,
 }
 
 .nav-links a:not(.btn):hover {
-  color: var(--text);
+  color: var(--ink);
 }
 
 /* ── Buttons ────────────────────────────────────────────────────── */
 
 .btn {
   display: inline-block;
-  padding: 11px 22px;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 14.5px;
+  font-weight: 500;
   cursor: pointer;
   border: 1px solid transparent;
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--ink);
+  color: var(--bg);
 }
 
 .btn-primary:hover {
-  background: var(--accent-hover);
+  background: color-mix(in oklch, var(--ink) 90%, var(--bg));
 }
 
 .btn-ghost {
@@ -109,18 +112,17 @@ code,
 }
 
 .btn-ghost:hover {
-  border-color: var(--dim);
+  background: var(--state-hover);
 }
 
 .btn-sm {
-  padding: 8px 16px;
-  font-size: 14px;
-  border-radius: 7px;
+  padding: 7px 14px;
+  font-size: 13.5px;
 }
 
 .cta-row {
   display: flex;
-  gap: 14px;
+  gap: 12px;
   justify-content: center;
   margin-top: 38px;
   flex-wrap: wrap;
@@ -129,35 +131,37 @@ code,
 /* ── Hero ───────────────────────────────────────────────────────── */
 
 .hero {
-  padding: 110px 0 90px;
+  padding: 104px 0 88px;
   text-align: center;
 }
 
 .kicker {
   display: inline-block;
   font-size: 13px;
-  font-weight: 600;
-  color: var(--accent);
-  background: var(--accent-soft);
+  font-weight: 500;
+  color: var(--dim);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
   border-radius: 99px;
   padding: 5px 14px;
   margin-bottom: 28px;
 }
 
 .hero h1 {
-  font-size: clamp(36px, 6vw, 60px);
+  font-size: clamp(36px, 6vw, 58px);
   line-height: 1.08;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.035em;
   max-width: 780px;
   margin: 0 auto;
+  color: oklch(0.21 0 0);
 }
 
 .hero .sub {
   margin: 26px auto 0;
   color: var(--dim);
   max-width: 600px;
-  font-size: 18px;
+  font-size: 17.5px;
 }
 
 .install {
@@ -165,11 +169,11 @@ code,
   display: inline-flex;
   align-items: center;
   gap: 14px;
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
   padding: 11px 18px;
-  font-size: 14.5px;
+  font-size: 14px;
 }
 
 .install .dollar {
@@ -181,7 +185,7 @@ code,
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--dim);
-  border-radius: 6px;
+  border-radius: calc(var(--radius) - 2px);
   padding: 3px 11px;
   font-size: 12.5px;
   cursor: pointer;
@@ -189,12 +193,13 @@ code,
 }
 
 .install button:hover {
-  color: var(--text);
+  background: var(--state-hover);
+  color: var(--ink);
 }
 
 .fine {
   margin-top: 14px;
-  color: var(--dim);
+  color: var(--subtle);
   font-size: 13px;
 }
 
@@ -209,30 +214,31 @@ code,
 .providers .label {
   align-self: center;
   font-size: 13px;
-  color: var(--dim);
+  color: var(--subtle);
 }
 
 .chip {
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--dim);
   border: 1px solid var(--border);
   border-radius: 99px;
-  padding: 7px 16px;
+  padding: 6px 16px;
 }
 
 /* ── Features ───────────────────────────────────────────────────── */
 
 .features {
-  padding: 90px 0;
-  border-top: 1px solid var(--border);
+  padding: 88px 0;
+  border-top: 1px solid var(--border-soft);
 }
 
 .sec-title {
-  font-size: clamp(26px, 4vw, 34px);
-  font-weight: 800;
+  font-size: clamp(26px, 4vw, 32px);
+  font-weight: 700;
   letter-spacing: -0.025em;
   margin-bottom: 12px;
+  color: oklch(0.21 0 0);
 }
 
 .sec-sub {
@@ -248,7 +254,7 @@ code,
 }
 
 .card {
-  border-top: 2px solid var(--faint);
+  border-top: 2px solid var(--border-soft);
   padding-top: 20px;
 }
 
@@ -257,26 +263,27 @@ code,
 }
 
 .card h3 {
-  font-size: 16.5px;
+  font-size: 16px;
+  font-weight: 600;
   margin-bottom: 8px;
 }
 
 .card p {
   color: var(--dim);
-  font-size: 15px;
+  font-size: 14.5px;
 }
 
 .card code {
-  background: var(--code-bg);
-  border-radius: 5px;
+  background: var(--surface-recessed);
+  border-radius: 4px;
   padding: 1px 6px;
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 /* ── How it works ───────────────────────────────────────────────── */
 
 .how {
-  padding: 0 0 90px;
+  padding: 0 0 88px;
 }
 
 .steps {
@@ -286,41 +293,42 @@ code,
 }
 
 .step .num {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  background: var(--text);
+  background: var(--ink);
   color: var(--bg);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: 13.5px;
   margin-bottom: 14px;
 }
 
 .step h3 {
-  font-size: 16.5px;
+  font-size: 16px;
+  font-weight: 600;
   margin-bottom: 6px;
 }
 
 .step p {
   color: var(--dim);
-  font-size: 15px;
+  font-size: 14.5px;
 }
 
 .step code {
-  background: var(--code-bg);
-  border-radius: 5px;
+  background: var(--surface-recessed);
+  border-radius: 4px;
   padding: 1px 6px;
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 /* ── Closer ─────────────────────────────────────────────────────── */
 
 .closer {
-  border-top: 1px solid var(--border);
-  padding: 90px 0;
+  border-top: 1px solid var(--border-soft);
+  padding: 88px 0;
   text-align: center;
 }
 
@@ -332,16 +340,16 @@ code,
 /* ── Footer ─────────────────────────────────────────────────────── */
 
 .footer {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-soft);
   padding: 32px 0 52px;
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 16px;
-  color: var(--dim);
+  color: var(--subtle);
   font-size: 14px;
 }
 
 .footer a:hover {
-  color: var(--text);
+  color: var(--ink);
 }
