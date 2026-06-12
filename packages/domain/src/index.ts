@@ -16,6 +16,7 @@ export * from "./host-list-limits.js";
 export * from "./host.js";
 export * from "./html-escape.js";
 export * from "./json-value.js";
+export * from "./lifecycle-diagram.js";
 export * from "./number-utils.js";
 export * from "./pending-interactions.js";
 export * from "./project-path.js";
