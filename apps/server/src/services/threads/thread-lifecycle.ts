@@ -137,16 +137,54 @@ export interface PrepareReadyThreadTurnDispatchInTransactionArgs {
 }
 
 const threadStartRequestDeduper = createAsyncDeduper<string, void>();
-const activeThreadStartRpcThreadIds = new Set<string>();
-const activeThreadStartGeneratedTitleSyncThreadIds = new Set<string>();
-const activeThreadStopRpcThreadIds = new Set<string>();
+
+type InFlightThreadRpcKind =
+  | "thread.start"
+  | "thread.start.title-sync"
+  | "thread.stop";
+
+/**
+ * Process-local in-flight RPC dedupe, keyed threadId × kind. Deliberately not
+ * durable: stopRequestedAt/deletedAt on the thread row carry cross-restart
+ * intent; this guard only prevents duplicate concurrent RPCs within one
+ * server process. "thread.start.title-sync" is not an RPC of its own — it is
+ * a flag riding the in-flight thread.start (claimed at dispatch when the
+ * settled start should forward a generated title, released with it).
+ */
+class InFlightRpcGuard {
+  private readonly held = new Set<string>();
+
+  private key(threadId: string, kind: InFlightThreadRpcKind): string {
+    return `${kind}:${threadId}`;
+  }
+
+  /** Claims threadId × kind; returns false when already held. */
+  claim(threadId: string, kind: InFlightThreadRpcKind): boolean {
+    const key = this.key(threadId, kind);
+    if (this.held.has(key)) {
+      return false;
+    }
+    this.held.add(key);
+    return true;
+  }
+
+  release(threadId: string, kind: InFlightThreadRpcKind): void {
+    this.held.delete(this.key(threadId, kind));
+  }
+
+  isHeld(threadId: string, kind: InFlightThreadRpcKind): boolean {
+    return this.held.has(this.key(threadId, kind));
+  }
+}
+
+const inFlightThreadRpcGuard = new InFlightRpcGuard();
 
 export function hasLiveThreadStartInFlight(threadId: string): boolean {
-  return activeThreadStartRpcThreadIds.has(threadId);
+  return inFlightThreadRpcGuard.isHeld(threadId, "thread.start");
 }
 
 export function hasLiveThreadStopInFlight(threadId: string): boolean {
-  return activeThreadStopRpcThreadIds.has(threadId);
+  return inFlightThreadRpcGuard.isHeld(threadId, "thread.stop");
 }
 
 interface CompleteThreadStartArgs {
@@ -700,7 +738,7 @@ export function settleThreadStartCommandResult(
 
   const shouldSyncTitle =
     thread.title !== null &&
-    activeThreadStartGeneratedTitleSyncThreadIds.has(thread.id);
+    inFlightThreadRpcGuard.isHeld(thread.id, "thread.start.title-sync");
   completeThreadStart(args.deps, { threadId: thread.id });
   const currentThread = getThread(args.deps.db, args.command.threadId);
   if (currentThread && currentThread.deletedAt !== null) {
@@ -981,9 +1019,9 @@ async function requestThreadStartOnce(
     threadId: args.thread.id,
   });
   if (result.disposition === "started") {
-    activeThreadStartRpcThreadIds.add(args.thread.id);
+    inFlightThreadRpcGuard.claim(args.thread.id, "thread.start");
     if (args.syncGeneratedTitle) {
-      activeThreadStartGeneratedTitleSyncThreadIds.add(args.thread.id);
+      inFlightThreadRpcGuard.claim(args.thread.id, "thread.start.title-sync");
     }
     void runLiveHostCommand(deps, {
       command,
@@ -997,8 +1035,11 @@ async function requestThreadStartOnce(
         );
       })
       .finally(() => {
-        activeThreadStartRpcThreadIds.delete(args.thread.id);
-        activeThreadStartGeneratedTitleSyncThreadIds.delete(args.thread.id);
+        inFlightThreadRpcGuard.release(args.thread.id, "thread.start");
+        inFlightThreadRpcGuard.release(
+          args.thread.id,
+          "thread.start.title-sync",
+        );
       });
   }
 }
@@ -1029,15 +1070,13 @@ export function requestThreadStop(
   }
 
   const currentThread = getThread(deps.db, args.threadId);
-  if (
-    !currentThread ||
-    currentThread.stopRequestedAt === null ||
-    hasLiveThreadStopInFlight(args.threadId)
-  ) {
+  if (!currentThread || currentThread.stopRequestedAt === null) {
+    return;
+  }
+  if (!inFlightThreadRpcGuard.claim(args.threadId, "thread.stop")) {
     return;
   }
 
-  activeThreadStopRpcThreadIds.add(args.threadId);
   void runLiveHostCommand(deps, {
     command: buildThreadStopCommand(args),
     hostId: args.hostId,
@@ -1050,7 +1089,7 @@ export function requestThreadStop(
       );
     })
     .finally(() => {
-      activeThreadStopRpcThreadIds.delete(args.threadId);
+      inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
     });
 }
 
