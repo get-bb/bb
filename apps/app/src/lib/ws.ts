@@ -8,6 +8,7 @@ import type {
   ChangedMessage,
   RealtimeEntity,
 } from "@bb/server-contract";
+import { buildDevWebSocketUrl } from "./dev-websocket-url";
 
 type ChangeCallback = (message: ChangedMessage) => void;
 type ConnectedCallback = (event: { reconnected: boolean }) => void;
@@ -33,9 +34,8 @@ export class WebSocketManager {
     // which does not handle reconnection after backend restarts.
     // In production, use the same origin (server serves the app).
     const url =
-      typeof __BB_DEV_WS_URL__ === "string"
-        ? __BB_DEV_WS_URL__
-        : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
+      buildDevWebSocketUrl({ path: "/ws" }) ??
+      `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
 
     this.socket = new ReconnectingWebSocket(url, undefined, {
       minReconnectionDelay: 1000,
