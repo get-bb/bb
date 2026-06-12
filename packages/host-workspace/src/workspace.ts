@@ -18,6 +18,7 @@ import {
   hasUncommittedChanges,
   listBranches,
   parseNameStatusEntries,
+  parseNumstatCount,
   parseNumstatEntriesZ,
   parsePorcelainEntries,
   pathExists,
@@ -26,6 +27,7 @@ import {
   parsePatchId,
   revParse,
   runGit,
+  type NumstatEntry,
   type RunGitOptions,
   runShellPipeline,
   summarizeNumstat,
@@ -113,6 +115,12 @@ type ReadUntrackedDiffArtifactsArgs = DiffOutputLimits & {
 
 type ReadUntrackedDiffArtifactArgs = DiffOutputLimits & {
   relativePath: string;
+};
+
+type ReadUntrackedNumstatEntriesArgs = {
+  workspacePath: string;
+  relativePaths: readonly string[];
+  timeoutMs?: number;
 };
 
 type TruncatedOutput = {
@@ -411,6 +419,55 @@ async function readHeadNumstat(
   );
 }
 
+async function readUntrackedNumstatEntries(
+  args: ReadUntrackedNumstatEntriesArgs,
+): Promise<NumstatEntry[]> {
+  if (args.relativePaths.length === 0) {
+    return [];
+  }
+
+  const entries: NumstatEntry[] = [];
+  for (
+    let index = 0;
+    index < args.relativePaths.length;
+    index += UNTRACKED_DIFF_BATCH_SIZE
+  ) {
+    const batchPaths = args.relativePaths.slice(
+      index,
+      index + UNTRACKED_DIFF_BATCH_SIZE,
+    );
+    entries.push(
+      ...(await Promise.all(
+        batchPaths.map(async (relativePath) => {
+          const result = await runGit(
+            [
+              "diff",
+              "--no-index",
+              "--numstat",
+              "--",
+              "/dev/null",
+              relativePath,
+            ],
+            {
+              cwd: args.workspacePath,
+              allowFailure: true,
+              timeoutMs: args.timeoutMs,
+            },
+          );
+          const [line = ""] = result.stdout.split("\n");
+          const [insertionsText = "", deletionsText = ""] = line.split("\t");
+          return {
+            path: relativePath,
+            insertions: parseNumstatCount(insertionsText),
+            deletions: parseNumstatCount(deletionsText),
+          };
+        }),
+      )),
+    );
+  }
+  return entries;
+}
+
 export class Workspace {
   readonly path: string;
 
@@ -498,7 +555,17 @@ export class Workspace {
     ]);
 
     const entries = parsePorcelainEntries(statusOutput.stdout);
-    const numstatEntries = parseNumstatEntriesZ(diffOutput);
+    const untrackedPaths = entries
+      .filter((entry) => entry.status === "??")
+      .map((entry) => entry.path);
+    const numstatEntries = [
+      ...parseNumstatEntriesZ(diffOutput),
+      ...(await readUntrackedNumstatEntries({
+        workspacePath: this.path,
+        relativePaths: untrackedPaths,
+        timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
+      })),
+    ];
     const numstatByPath = new Map(
       numstatEntries.map((entry) => [entry.path, entry] as const),
     );
