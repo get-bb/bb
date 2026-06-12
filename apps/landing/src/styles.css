@@ -312,6 +312,20 @@ code,
   flex-shrink: 0;
 }
 
+/* ── App screenshot ─────────────────────────────────────────────── */
+
+/* The capture carries its own macOS window shadow and transparent
+   padding, so it sits directly on the page without a frame. */
+.shot {
+  margin: -24px 0 8px;
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 /* ── Features ───────────────────────────────────────────────────── */
 
 .features {
@@ -350,14 +364,6 @@ code,
 .card:hover {
   border-top-color: var(--border);
   transform: translateY(-2px);
-}
-
-.card.hl {
-  border-top-color: var(--accent);
-}
-
-.card.hl:hover {
-  border-top-color: var(--accent);
 }
 
 .card h3 {

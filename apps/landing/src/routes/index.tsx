@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { trackLandingEvent } from "../analytics";
 import type { CtaPlacement } from "../analytics";
+import appScreenshot from "../assets/bb-app.webp";
 import { ClaudeIcon, OpenAiIcon, PiIcon } from "../icons";
 import { CLI_COMMAND, DOWNLOAD_MACOS_URL, GITHUB_URL } from "../site";
 
@@ -133,6 +134,15 @@ function LandingPage() {
         </div>
       </header>
 
+      <section className="shot">
+        <img
+          src={appScreenshot}
+          alt="The bb app with a thread open and projects and agent threads in the sidebar"
+          width={1392}
+          height={912}
+        />
+      </section>
+
       <section className="features">
         <h2 className="sec-title">One place for you and your agents.</h2>
         <p className="sec-sub">
@@ -140,7 +150,7 @@ function LandingPage() {
           gives agents the same controls it gives you.
         </p>
         <div className="grid">
-          <div className="card hl">
+          <div className="card">
             <h3>The IDE agents can drive</h3>
             <p>
               Agents spawn threads, message other agents, and schedule
