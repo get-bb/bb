@@ -732,7 +732,7 @@ function TimelineUnreadDivider({ autoScroll }: TimelineUnreadDividerProps) {
       role="separator"
       aria-label="New messages"
       className={cn(
-        "flex items-center gap-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-foreground",
+        "flex items-center gap-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-destructive-text",
       )}
       data-testid="thread-unread-divider"
     >
