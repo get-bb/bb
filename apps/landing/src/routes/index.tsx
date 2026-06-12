@@ -204,8 +204,7 @@ function LandingPage() {
     <div className="wrap">
       <nav className="nav">
         <a className="logo" href="/">
-          <img src={bbIcon} alt="" width={26} height={26} />
-          bb
+          <img src={bbIcon} alt="bb" width={36} height={36} />
         </a>
         <div className="nav-links">
           <GitHubLink placement="nav">GitHub</GitHubLink>
