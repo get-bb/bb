@@ -217,14 +217,14 @@ function LandingPage() {
 
       <header className="hero">
         <h1>
-          The IDE{" "}
+          The IDE built for{" "}
           <span className="uline">
-            agents
+            humans and agents
             <svg viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden>
               <path d="M3 9 C 60 3.5, 140 3.5, 197 7" />
             </svg>
-          </span>{" "}
-          can use themselves.
+          </span>
+          .
         </h1>
         <p className="sub">
           You and your agents both use bb to orchestrate work: you through the
