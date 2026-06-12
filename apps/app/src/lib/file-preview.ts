@@ -30,12 +30,16 @@ export interface FilePreviewTarget {
 }
 
 interface FilePreviewBase extends FilePreviewTarget {
-  kind: "image" | "text" | "unsupported";
+  kind: "image" | "text" | "unsupported" | "video";
   mimeType: string;
 }
 
 export interface ImageFilePreview extends FilePreviewBase {
   kind: "image";
+}
+
+export interface VideoFilePreview extends FilePreviewBase {
+  kind: "video";
 }
 
 export interface TextFilePreview extends FilePreviewBase {
@@ -49,6 +53,7 @@ export interface UnsupportedFilePreview extends FilePreviewBase {
 
 export type FilePreview =
   | ImageFilePreview
+  | VideoFilePreview
   | TextFilePreview
   | UnsupportedFilePreview;
 
@@ -221,6 +226,13 @@ export function buildFilePreview(args: BuildFilePreviewArgs): FilePreview {
   if (args.mimeType.startsWith("image/")) {
     return {
       kind: "image",
+      ...base,
+    };
+  }
+
+  if (args.mimeType.startsWith("video/")) {
+    return {
+      kind: "video",
       ...base,
     };
   }

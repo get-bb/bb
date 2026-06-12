@@ -57,6 +57,24 @@ describe("file-preview", () => {
     });
   });
 
+  it("builds video previews for video mime types", () => {
+    const preview = buildFilePreview({
+      contentBytes: Uint8Array.from([0, 0, 0, 24]),
+      mimeType: "video/mp4",
+      name: "demo.mp4",
+      path: "demo.mp4",
+      url: "/files/demo.mp4",
+    });
+
+    expect(preview).toEqual({
+      kind: "video",
+      mimeType: "video/mp4",
+      name: "demo.mp4",
+      path: "demo.mp4",
+      url: "/files/demo.mp4",
+    });
+  });
+
   it("marks null-byte text and non-text binary files as unsupported", () => {
     const textWithNullBytePreview = buildFilePreview({
       contentBytes: Uint8Array.from([97, 0, 98]),

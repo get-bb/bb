@@ -46,6 +46,7 @@ export type FilePreviewState =
   | { kind: "not-found" }
   | { kind: "error"; message?: string }
   | { kind: "image"; url: string }
+  | { kind: "video"; url: string }
   | ({ kind: "iframe" } & IframeFilePreviewTarget)
   | {
       kind: "html";
@@ -97,6 +98,11 @@ interface MarkdownFilePreviewProps {
 interface FilePreviewImageProps {
   url: string;
   alt: string;
+}
+
+interface FilePreviewVideoProps {
+  url: string;
+  title: string;
 }
 
 interface FilePreviewMessageProps {
@@ -316,6 +322,9 @@ function FilePreviewBody({
   if (state.kind === "image") {
     return <FilePreviewImage url={state.url} alt={path} />;
   }
+  if (state.kind === "video") {
+    return <FilePreviewVideo url={state.url} title={path} />;
+  }
   if (state.kind === "iframe") {
     return (
       <IframeFilePreview
@@ -478,6 +487,20 @@ function FilePreviewImage({ url, alt }: FilePreviewImageProps) {
         src={url}
         alt={alt}
         className="block max-h-[34rem] w-full object-contain"
+      />
+    </div>
+  );
+}
+
+function FilePreviewVideo({ url, title }: FilePreviewVideoProps) {
+  return (
+    <div className="pt-4">
+      <video
+        src={url}
+        title={title}
+        className="block max-h-[34rem] w-full bg-black"
+        controls
+        preload="metadata"
       />
     </div>
   );
