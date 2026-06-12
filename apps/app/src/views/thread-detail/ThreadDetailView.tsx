@@ -399,6 +399,7 @@ export function ThreadDetailView() {
     filePreviewEnabled: false,
     threadId,
   });
+  const terminalsListQuery = useThreadTerminals(threadId ?? "");
   const {
     activateBrowserTab,
     activateNewTab,
@@ -435,6 +436,7 @@ export function ThreadDetailView() {
     threadId,
     environmentId: thread?.environmentId,
     storageFiles: threadStorageFiles?.files,
+    terminalSessions: terminalsListQuery.data?.sessions,
   });
   const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
   // The in-app browser surface only exists on desktop; on web this stays false
@@ -497,7 +499,6 @@ export function ThreadDetailView() {
   const updateThread = useUpdateThread({
     errorMessage: "Failed to assign parent thread.",
   });
-  const terminalsListQuery = useThreadTerminals(threadId ?? "");
   const createTerminal = useCreateThreadTerminal();
   const closeTerminal = useCloseThreadTerminal();
   const activeTerminalCount = useMemo(

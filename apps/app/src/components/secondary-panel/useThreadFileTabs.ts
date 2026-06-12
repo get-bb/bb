@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useSetAtom } from "jotai";
 import { arrayMove } from "@dnd-kit/sortable";
+import type { TerminalSession } from "@bb/server-contract";
 import {
   useFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
@@ -18,6 +19,7 @@ import {
   type HostFilePreviewFixedPanelTab,
   type NewTabFixedPanelTab,
   type SecondaryFileFixedPanelTab,
+  type TerminalFixedPanelTab,
   type ThreadStorageFilePreviewFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
@@ -38,7 +40,8 @@ import type {
 interface UseThreadFileTabsParams {
   threadId: string | null | undefined;
   environmentId: string | null | undefined;
-  storageFiles: readonly { path: string }[] | undefined;
+  storageFiles: readonly ThreadStorageFileListItem[] | undefined;
+  terminalSessions: readonly TerminalSession[] | undefined;
 }
 
 interface SetSecondaryTabsArgs {
@@ -56,6 +59,15 @@ interface ReplaceNewTabArgs {
 interface ReorderSecondaryFileTabStateArgs
   extends SecondaryPanelTabReorderRequest {
   state: FixedPanelTabsState;
+}
+
+interface ThreadStorageFileListItem {
+  path: string;
+}
+
+interface PruneTerminalTabsArgs {
+  knownTerminalIds: ReadonlySet<string>;
+  tabs: readonly FixedPanelTab[];
 }
 
 export interface FileSearchWorkspaceSelection {
@@ -102,6 +114,10 @@ function isBrowserTab(tab: FixedPanelTab): tab is BrowserFixedPanelTab {
 
 function isNewTab(tab: FixedPanelTab): tab is NewTabFixedPanelTab {
   return tab.kind === "new-tab";
+}
+
+function isTerminalTab(tab: FixedPanelTab): tab is TerminalFixedPanelTab {
+  return tab.kind === "terminal";
 }
 
 function isSecondaryFileTab(tab: FixedPanelTab): tab is SecondaryFileFixedPanelTab {
@@ -220,6 +236,16 @@ function pruneStorageTabs(
 ): readonly FixedPanelTab[] {
   const nextTabs = tabs.filter(
     (tab) => !isStorageFilePreviewTab(tab) || knownPaths.has(tab.path),
+  );
+  return nextTabs.length === tabs.length ? tabs : nextTabs;
+}
+
+export function pruneTerminalTabs({
+  knownTerminalIds,
+  tabs,
+}: PruneTerminalTabsArgs): readonly FixedPanelTab[] {
+  const nextTabs = tabs.filter(
+    (tab) => !isTerminalTab(tab) || knownTerminalIds.has(tab.terminalId),
   );
   return nextTabs.length === tabs.length ? tabs : nextTabs;
 }
@@ -419,6 +445,7 @@ export function useThreadFileTabs({
   threadId,
   environmentId,
   storageFiles,
+  terminalSessions,
 }: UseThreadFileTabsParams) {
   const fixedPanelTabsState = useFixedPanelTabsState(threadId);
   const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
@@ -472,6 +499,35 @@ export function useThreadFileTabs({
   }, [
     isThreadResolved,
     storageFiles,
+    updateFixedPanelTabsState,
+  ]);
+
+  useEffect(() => {
+    if (!isThreadResolved || terminalSessions === undefined) return;
+    updateFixedPanelTabsState((state) => {
+      const knownTerminalIds = new Set(
+        terminalSessions.map((session) => session.id),
+      );
+      const tabs = pruneTerminalTabs({
+        knownTerminalIds,
+        tabs: state.secondary.tabs,
+      });
+      const activeTabId = isActiveTabStillOpen(
+        tabs,
+        state.secondary.activeTabId,
+      )
+        ? state.secondary.activeTabId
+        : null;
+      return setSecondaryTabs({
+        activeTabId,
+        isOpen: state.secondary.isOpen,
+        state,
+        tabs,
+      });
+    });
+  }, [
+    isThreadResolved,
+    terminalSessions,
     updateFixedPanelTabsState,
   ]);
 
