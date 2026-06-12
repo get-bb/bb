@@ -27,7 +27,7 @@ see `wrangler.jsonc`), live at <https://getbb.app> (and
 
 ```bash
 pnpm exec turbo run build --filter=@bb/landing
-pnpm --filter @bb/landing deploy
+pnpm --filter @bb/landing run deploy
 ```
 
 Requires a wrangler login with workers write access (`wrangler login`).

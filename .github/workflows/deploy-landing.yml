@@ -61,4 +61,4 @@ jobs:
       - name: Deploy landing
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @bb/landing deploy
+        run: pnpm --filter @bb/landing run deploy

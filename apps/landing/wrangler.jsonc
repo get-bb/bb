@@ -1,7 +1,7 @@
 // Cloudflare Workers static-assets deploy of the prerendered landing site.
 // The site is fully prerendered at build time (see vite.config.ts), so this
 // is an assets-only Worker — no server runtime, just dist/client.
-// Deploy: pnpm exec turbo run build --filter=@bb/landing && pnpm --filter @bb/landing deploy
+// Deploy: pnpm exec turbo run build --filter=@bb/landing && pnpm --filter @bb/landing run deploy
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bb-landing",
