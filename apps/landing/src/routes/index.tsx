@@ -215,18 +215,19 @@ function LandingPage() {
 
       <header className="hero">
         <h1>
-          The IDE agents can use{" "}
+          The IDE{" "}
           <span className="uline">
-            themselves.
+            agents
             <svg viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden>
               <path d="M3 9 C 60 3.5, 140 3.5, 197 7" />
             </svg>
-          </span>
+          </span>{" "}
+          can use themselves.
         </h1>
         <p className="sub">
-          bb runs Claude Code, Codex, and Pi as threads you can watch and
-          steer. Agents drive bb through a CLI and API built for them, right
-          on your machine.
+          You and your agents both use bb to orchestrate work: you through the
+          UI, your agents through a CLI made for them. Claude Code, Codex, and
+          Pi, right on your machine.
         </p>
 
         <div className="cta-row">
