@@ -53,7 +53,7 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../hosts/live-command.js";
-import { tryTransitionInTransaction } from "../threads/thread-transitions.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
 import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
@@ -521,7 +521,13 @@ function recordEnvironmentProvisioningFailureInTransaction(
       detail: args.failureReason,
       scope: threadScope(),
     });
-    tryTransitionInTransaction(deps.db, deps.hub, thread.id, "error");
+    const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
+      event: { type: "provision.failed" },
+      threadId: thread.id,
+    });
+    if (outcome.applied) {
+      deps.hub.notifyThread(thread.id, ["status-changed"]);
+    }
   }
 
   return true;

@@ -76,7 +76,7 @@ import {
   getActiveThreadProvisionContext,
   rememberActiveThreadProvisionContext,
 } from "./thread-provisioning-active-context.js";
-import { tryTransition } from "./thread-transitions.js";
+import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import {
   resolveManagedTargetPath,
   resolvePersonalTargetPath,
@@ -84,7 +84,7 @@ import {
 
 export type ThreadProvisioningDeps = CommandResultSideEffectsDeps;
 
-type ThreadProvisionWriteDeps = Pick<AppDeps, "db" | "hub">;
+type ThreadProvisionWriteDeps = Pick<AppDeps, "db" | "hub" | "logger">;
 type DirectUnmanagedIntent = Extract<
   ThreadProvisionEnvironmentIntent,
   { type: "direct-unmanaged" }
@@ -366,7 +366,7 @@ export function ensureWorkspaceReadyEventInTransaction(
 }
 
 export function failThreadProvisioning(
-  deps: Pick<AppDeps, "db" | "hub">,
+  deps: Pick<AppDeps, "db" | "hub" | "logger">,
   args: FailThreadProvisioningArgs,
 ): void {
   forgetActiveThreadProvisionContext(args.thread.id);
@@ -378,7 +378,10 @@ export function failThreadProvisioning(
     detail: args.detail,
     scope: threadScope(),
   });
-  tryTransition(deps.db, deps.hub, args.thread.id, "error");
+  applyLoggedThreadLifecycleEvent(deps, {
+    event: { type: "provision.failed" },
+    threadId: args.thread.id,
+  });
 }
 
 function hasActiveEnvironmentProvision(environment: Environment): boolean {

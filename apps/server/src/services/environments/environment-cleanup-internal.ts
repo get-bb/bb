@@ -40,7 +40,7 @@ import {
 import { deferAfterResponse } from "../lib/response-deferral.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { appendSystemErrorEventInTransaction } from "../threads/thread-events.js";
-import { tryTransitionInTransaction } from "../threads/thread-transitions.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
 import { workspaceContextFromPath } from "./workspace-command-target.js";
 
 interface EnvironmentDestroyTarget {
@@ -112,6 +112,7 @@ interface EnvironmentCleanupCancellationDeps extends Omit<
 
 interface EnvironmentCleanupSettlementDeps extends EnvironmentCleanupWriteDeps {
   db: DbTransaction;
+  logger: AppDeps["logger"];
 }
 
 type EnvironmentCleanupDecisionDeps = Pick<AppDeps, "db">;
@@ -232,7 +233,13 @@ function markLiveThreadsErroredAfterDestroySuccess(
         "The workspace for this thread was destroyed before the thread could be stopped.",
       scope: threadScope(),
     });
-    tryTransitionInTransaction(deps.db, deps.hub, thread.id, "error");
+    const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
+      event: { type: "workspace.lost" },
+      threadId: thread.id,
+    });
+    if (outcome.applied) {
+      deps.hub.notifyThread(thread.id, ["status-changed"]);
+    }
   }
 }
 
