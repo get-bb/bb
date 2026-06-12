@@ -125,6 +125,7 @@ import { useThreadTimelinePages } from "./useThreadTimelinePages";
 import {
   buildTerminalSyncedSecondaryFileTabs,
   findActiveTerminalIdInSecondaryFileTabs,
+  syncTerminalTabsInFixedPanelState,
 } from "./threadTerminalTabs";
 import {
   buildOpenInEditorHandler,
@@ -147,6 +148,7 @@ import {
   useRemoveFixedRightTerminalTab,
   useSetFixedRightTerminalActiveTerminal,
   useTouchFixedPanelTabsState,
+  useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
 import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
@@ -314,6 +316,7 @@ export function ThreadDetailView() {
   const setActiveFixedTerminal =
     useSetFixedRightTerminalActiveTerminal(threadId);
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(threadId);
+  const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
   const setThreadSecondaryPanel = useSetThreadSecondaryPanelSelection(threadId);
   const toggleDefaultPersistedSecondaryPanel =
     useToggleThreadSecondaryPanelSelection(threadId);
@@ -532,6 +535,17 @@ export function ThreadDetailView() {
       }),
     [orderedSecondaryFileTabs, terminalSessions],
   );
+  useEffect(() => {
+    if (terminalsListQuery.data === undefined) {
+      return;
+    }
+    updateFixedPanelTabsState((state) =>
+      syncTerminalTabsInFixedPanelState({
+        state,
+        terminalSessions,
+      }),
+    );
+  }, [terminalSessions, terminalsListQuery.data, updateFixedPanelTabsState]);
   const hostConnectionNotice = useMemo(
     () => (thread ? buildHostConnectionNotice(thread) : null),
     [thread],

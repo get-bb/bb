@@ -1,16 +1,21 @@
 import type { TerminalSession } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
+  createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
   createTerminalFixedPanelTab,
-  type SecondaryFileFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import {
   buildTerminalSyncedSecondaryFileTabs,
   findActiveTerminalIdInSecondaryFileTabs,
+  syncTerminalTabsInFixedPanelState,
 } from "./threadTerminalTabs";
 
 type TerminalSessionOverrides = Partial<TerminalSession>;
+
+interface TabIdentity {
+  id: string;
+}
 
 function terminalSession(
   overrides: TerminalSessionOverrides,
@@ -34,7 +39,7 @@ function terminalSession(
   };
 }
 
-function tabIds(tabs: readonly SecondaryFileFixedPanelTab[]): string[] {
+function tabIds(tabs: readonly TabIdentity[]): string[] {
   return tabs.map((tab) => tab.id);
 }
 
@@ -116,5 +121,74 @@ describe("buildTerminalSyncedSecondaryFileTabs", () => {
         tabs: [fileTab, terminalTab],
       }),
     ).toBeNull();
+  });
+
+  it("syncs missing server terminal sessions into fixed panel state", () => {
+    const fileTab = createHostFilePreviewFixedPanelTab({
+      lineRange: null,
+      path: "/workspace/file.ts",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: fileTab.id,
+        isOpen: true,
+        tabs: [fileTab],
+      },
+    });
+    const nextState = syncTerminalTabsInFixedPanelState({
+      state,
+      terminalSessions: [
+        terminalSession({ id: "term_1" }),
+        terminalSession({ id: "term_2" }),
+      ],
+    });
+
+    expect(tabIds(nextState.secondary.tabs)).toEqual([
+      "host-file-preview:%2Fworkspace%2Ffile.ts",
+      "terminal:term_1",
+      "terminal:term_2",
+    ]);
+    expect(nextState.secondary.activeTabId).toBe(fileTab.id);
+  });
+
+  it("removes stale fixed terminal tabs and clears stale active state", () => {
+    const staleTerminalTab = createTerminalFixedPanelTab({
+      terminalId: "term_stale",
+    });
+    const currentTerminalTab = createTerminalFixedPanelTab({
+      terminalId: "term_1",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: staleTerminalTab.id,
+        isOpen: true,
+        tabs: [staleTerminalTab, currentTerminalTab],
+      },
+    });
+    const nextState = syncTerminalTabsInFixedPanelState({
+      state,
+      terminalSessions: [terminalSession({ id: "term_1" })],
+    });
+
+    expect(tabIds(nextState.secondary.tabs)).toEqual(["terminal:term_1"]);
+    expect(nextState.secondary.activeTabId).toBeNull();
+  });
+
+  it("keeps fixed panel state identity when terminal tabs already match", () => {
+    const terminalTab = createTerminalFixedPanelTab({ terminalId: "term_1" });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: terminalTab.id,
+        isOpen: true,
+        tabs: [terminalTab],
+      },
+    });
+
+    expect(
+      syncTerminalTabsInFixedPanelState({
+        state,
+        terminalSessions: [terminalSession({ id: "term_1" })],
+      }),
+    ).toBe(state);
   });
 });
