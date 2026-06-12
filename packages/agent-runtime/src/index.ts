@@ -11,6 +11,8 @@ export type {
   AgentRuntimeOptions,
   AgentRuntimePiSkillRoot,
   AgentRuntimeProcessExitInfo,
+  AgentRuntimeProcessExitThreadState,
+  AgentRuntimeProviderSession,
   AgentRuntimeSkillRoot,
   EnsureProviderArgs,
   ListModelsArgs,
@@ -22,6 +24,7 @@ export type {
   StartThreadResult,
   SteerTurnArgs,
   StopThreadArgs,
+  WaitForActiveTurnArgs,
 } from "./types.js";
 export type {
   ProviderRawEventCoverage,

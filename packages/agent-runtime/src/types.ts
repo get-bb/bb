@@ -39,9 +39,20 @@ export type AgentRuntimeSkillRoot =
   | AgentRuntimeCodexSkillRoot
   | AgentRuntimePiSkillRoot;
 
+/**
+ * Final per-thread state snapshot taken when a provider process exits,
+ * captured before the runtime clears the thread's state. This is the only
+ * way consumers can see which turn a crashed thread was running.
+ */
+export interface AgentRuntimeProcessExitThreadState {
+  activeTurnId: string | null;
+  providerThreadId: string | null;
+  threadId: string;
+}
+
 export interface AgentRuntimeProcessExitInfo {
   providerId: string;
-  threadIds: string[];
+  threads: AgentRuntimeProcessExitThreadState[];
   code: number | null;
   expected: boolean;
   signal: string | null;
@@ -171,6 +182,15 @@ export interface StopThreadArgs {
   threadId: string;
 }
 
+export interface AgentRuntimeProviderSession {
+  providerId: string;
+  providerThreadId: string;
+}
+
+export interface WaitForActiveTurnArgs {
+  timeoutMs: number;
+}
+
 export interface RenameThreadArgs {
   threadId: string;
   title: string;
@@ -203,6 +223,12 @@ export interface AgentRuntime {
 
   steerTurn(args: SteerTurnArgs): Promise<SteerTurnResult>;
 
+  /**
+   * Stops the thread's active turn and removes the thread from the runtime:
+   * identity, execution config, and turn state are cleared, so `hasThread`
+   * reports `false` afterwards and the next turn must go through
+   * `resumeThread`. The provider process keeps running for other threads.
+   */
   stopThread(args: StopThreadArgs): Promise<void>;
 
   renameThread(args: RenameThreadArgs): Promise<void>;
@@ -217,6 +243,29 @@ export interface AgentRuntime {
   }>;
 
   listRunningProviders(): string[];
+
+  /** Active turn id for the thread, or `null` when no turn is running. */
+  getActiveTurnId(threadId: string): string | null;
+
+  /**
+   * Resolves with the active turn id as soon as one is known: immediately if
+   * a turn is already active, on the next `turn/started` observation
+   * otherwise. Resolves `null` on timeout or when the thread goes idle
+   * (stopped, cleared, or its provider process exits) before a turn starts.
+   */
+  waitForActiveTurn(
+    threadId: string,
+    args: WaitForActiveTurnArgs,
+  ): Promise<string | null>;
+
+  /** Provider identity for a hosted thread, or `null` when not hosted. */
+  getProviderSession(threadId: string): AgentRuntimeProviderSession | null;
+
+  /** Whether the runtime currently hosts the thread (turns can run on it). */
+  hasThread(threadId: string): boolean;
+
+  /** Thread ids with an active turn. */
+  getActiveThreadIds(): string[];
 
   shutdown(): Promise<void>;
 }

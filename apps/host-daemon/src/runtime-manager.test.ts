@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import type { ThreadEvent } from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
+import { turnScope } from "@bb/domain";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import type {
   HostWatcher,
@@ -262,7 +262,14 @@ function createFakeHostWatcher(
   };
 }
 
+interface FakeAgentRuntime extends AgentRuntime {
+  /** Test-only mutators for the runtime-owned per-thread turn state. */
+  endActiveTurn: (threadId: string) => void;
+  setActiveTurn: (threadId: string, turnId: string) => void;
+}
+
 function createFakeRuntime() {
+  const activeTurnsByThreadId = new Map<string, string>();
   return {
     ensureProvider: vi.fn(async (_args: EnsureProviderArgs) => undefined),
     startThread: vi.fn(async (_args: StartThreadArgs) => ({
@@ -284,8 +291,20 @@ function createFakeRuntime() {
       selectedOnlyModels: [],
     })),
     listRunningProviders: vi.fn((): string[] => []),
+    getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
+    waitForActiveTurn: async (threadId) =>
+      activeTurnsByThreadId.get(threadId) ?? null,
+    getProviderSession: () => null,
+    hasThread: (threadId) => activeTurnsByThreadId.has(threadId),
+    getActiveThreadIds: () => [...activeTurnsByThreadId.keys()],
     shutdown: vi.fn(async () => undefined),
-  } satisfies AgentRuntime;
+    endActiveTurn: (threadId) => {
+      activeTurnsByThreadId.delete(threadId);
+    },
+    setActiveTurn: (threadId, turnId) => {
+      activeTurnsByThreadId.set(threadId, turnId);
+    },
+  } satisfies FakeAgentRuntime;
 }
 
 function createProvisionWorkspaceMock(path: string) {
@@ -423,7 +442,12 @@ describe("RuntimeManager", () => {
       token: "first-token",
     });
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
-    const createRuntime = vi.fn(() => createFakeRuntime());
+    const runtimes: ReturnType<typeof createFakeRuntime>[] = [];
+    const createRuntime = vi.fn(() => {
+      const runtime = createFakeRuntime();
+      runtimes.push(runtime);
+      return runtime;
+    });
     const manager = new RuntimeManager({
       dataDir,
       provisionWorkspace,
@@ -436,7 +460,7 @@ describe("RuntimeManager", () => {
       workspacePath: "/tmp/env-1",
     });
     const firstCatalogHash = firstEntry.skillCatalogHash;
-    manager.markThreadActive("env-skills", "thread-1", "provider-1", null);
+    runtimes[0]?.setActiveTurn("thread-1", "turn-1");
     await writeInjectedSkillSource({
       dataDir,
       name: "release-notes",
@@ -455,7 +479,7 @@ describe("RuntimeManager", () => {
     expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(firstEntry.runtime.shutdown).not.toHaveBeenCalled();
 
-    manager.markThreadInactive("env-skills", "thread-1");
+    runtimes[0]?.endActiveTurn("thread-1");
     const idleEntry = await manager.ensureEnvironment({
       environmentId: "env-skills",
       injectedSkillSources: [source],
@@ -490,8 +514,6 @@ describe("RuntimeManager", () => {
       injectedSkillSources: [source],
       workspacePath: "/tmp/env-1",
     });
-    manager.markThreadActive("env-skills", "thread-1", "provider-1", null);
-    manager.markThreadInactive("env-skills", "thread-1");
     await writeInjectedSkillSource({
       dataDir,
       name: "release-notes",
@@ -534,7 +556,8 @@ describe("RuntimeManager", () => {
       token: "first-token",
     });
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
-    const createRuntime = vi.fn(() => createFakeRuntime());
+    const runtime = createFakeRuntime();
+    const createRuntime = vi.fn(() => runtime);
     const manager = new RuntimeManager({
       dataDir,
       provisionWorkspace,
@@ -546,7 +569,7 @@ describe("RuntimeManager", () => {
       injectedSkillSources: [source],
       workspacePath: "/tmp/env-1",
     });
-    manager.markThreadActive("env-skills", "other-thread", "provider-1", null);
+    runtime.setActiveTurn("other-thread", "turn-1");
     await writeInjectedSkillSource({
       dataDir,
       name: "release-notes",
@@ -609,7 +632,8 @@ describe("RuntimeManager", () => {
       token: "first-token",
     });
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
-    const createRuntime = vi.fn(() => createFakeRuntime());
+    const runtime = createFakeRuntime();
+    const createRuntime = vi.fn(() => runtime);
     const manager = new RuntimeManager({
       dataDir,
       provisionWorkspace,
@@ -621,7 +645,7 @@ describe("RuntimeManager", () => {
       injectedSkillSources: [source],
       workspacePath: "/tmp/env-1",
     });
-    manager.markThreadActive("env-skills", "thread-1", "provider-1", null);
+    runtime.setActiveTurn("thread-1", "turn-1");
     await writeInjectedSkillSource({
       dataDir,
       name: "release-notes",
@@ -984,7 +1008,7 @@ describe("RuntimeManager", () => {
   });
 
   it("evicts only idle environments and keeps their workspaces intact", async () => {
-    const runtimes: AgentRuntime[] = [];
+    const runtimes: ReturnType<typeof createFakeRuntime>[] = [];
     const workspaces: HostWorkspace[] = [];
     const createRuntime = vi.fn(() => {
       const runtime = createFakeRuntime();
@@ -1013,12 +1037,7 @@ describe("RuntimeManager", () => {
       environmentId: "env-active",
       workspacePath: "/tmp/env-active",
     });
-    manager.markThreadActive(
-      "env-active",
-      "thr-active",
-      "provider-thread-active",
-      null,
-    );
+    runtimes[1]?.setActiveTurn("thr-active", "turn-active");
 
     await expect(manager.evictIdleEnvironments()).resolves.toEqual([
       "env-idle",
@@ -1492,10 +1511,11 @@ describe("RuntimeManager", () => {
     expect(stopWatchingStatus).not.toHaveBeenCalled();
   });
 
-  it("tracks active threads for session reconciliation", async () => {
+  it("lists the runtimes' active threads for session reconciliation", async () => {
+    const runtime = createFakeRuntime();
     const manager = new RuntimeManager({
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
-      createRuntime: vi.fn(() => createFakeRuntime()),
+      createRuntime: vi.fn(() => runtime),
     });
 
     await manager.ensureEnvironment({
@@ -1503,57 +1523,14 @@ describe("RuntimeManager", () => {
       workspacePath: "/tmp/env-1",
     });
 
-    manager.markThreadActive("env-1", "thread-1", "provider-1", null);
+    runtime.setActiveTurn("thread-1", "turn-1");
     expect(manager.listActiveThreads()).toEqual([
       {
         threadId: "thread-1",
       },
     ]);
 
-    manager.markThreadInactive("env-1", "thread-1");
-    expect(manager.listActiveThreads()).toEqual([]);
-  });
-
-  it("remembers known threads after a turn completes so follow-ups reuse the runtime", async () => {
-    const manager = new RuntimeManager({
-      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-1",
-      workspacePath: "/tmp/env-1",
-    });
-
-    manager.markThreadActive("env-1", "thread-1", "provider-1", null);
-    manager.markThreadInactive("env-1", "thread-1");
-
-    expect(manager.hasThread("env-1", "thread-1")).toBe(true);
-    expect(manager.listActiveThreads()).toEqual([]);
-
-    manager.markThreadActive("env-1", "thread-1", "provider-1", null);
-    expect(manager.listActiveThreads()).toEqual([
-      {
-        threadId: "thread-1",
-      },
-    ]);
-  });
-
-  it("forgets stopped threads so follow-ups resume the provider session", async () => {
-    const manager = new RuntimeManager({
-      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-1",
-      workspacePath: "/tmp/env-1",
-    });
-
-    manager.markThreadActive("env-1", "thread-1", "provider-1", null);
-    manager.forgetThread("env-1", "thread-1");
-
-    expect(manager.hasThread("env-1", "thread-1")).toBe(false);
+    runtime.endActiveTurn("thread-1");
     expect(manager.listActiveThreads()).toEqual([]);
   });
 
@@ -1580,8 +1557,14 @@ describe("RuntimeManager", () => {
       workspacePath: "/tmp/env-storage",
     });
 
-    manager.markThreadActive("env-storage", "thread-1", "provider-1", null);
-    manager.markThreadActive("env-storage", "thread-2", "provider-2", null);
+    manager.registerThreadStorageTarget({
+      environmentId: "env-storage",
+      threadId: "thread-1",
+    });
+    manager.registerThreadStorageTarget({
+      environmentId: "env-storage",
+      threadId: "thread-2",
+    });
     watchThreadStorageRootArgs?.onChange({
       kind: "thread-storage-changed",
       environmentId: "env-storage",
@@ -1673,7 +1656,10 @@ describe("RuntimeManager", () => {
       workspacePath: "/tmp/env-storage",
     });
 
-    manager.markThreadActive("env-storage", "thread-1", "provider-1", null);
+    manager.registerThreadStorageTarget({
+      environmentId: "env-storage",
+      threadId: "thread-1",
+    });
     watchThreadStorageRootArgs?.onWatchError({
       kind: "thread-storage-watch-error",
       message: "watch failed",
@@ -1714,8 +1700,14 @@ describe("RuntimeManager", () => {
       workspacePath: "/tmp/env-b",
     });
 
-    manager.markThreadActive("env-a", "thread-a", "provider-a", null);
-    manager.markThreadActive("env-b", "thread-b", "provider-b", null);
+    manager.registerThreadStorageTarget({
+      environmentId: "env-a",
+      threadId: "thread-a",
+    });
+    manager.registerThreadStorageTarget({
+      environmentId: "env-b",
+      threadId: "thread-b",
+    });
 
     await manager.destroyEnvironment("env-a");
     expect(stopWatchingPathChanges).not.toHaveBeenCalled();
@@ -1750,11 +1742,16 @@ describe("RuntimeManager", () => {
       environmentId: "env-exit",
       workspacePath: "/tmp/env-exit",
     });
-    manager.markThreadActive("env-exit", "thread-1", "provider-1", null);
+    manager.registerThreadStorageTarget({
+      environmentId: "env-exit",
+      threadId: "thread-1",
+    });
 
     onProcessExit?.({
       providerId: "fake",
-      threadIds: ["thread-1"],
+      threads: [
+        { threadId: "thread-1", activeTurnId: null, providerThreadId: null },
+      ],
       code: 1,
       expected: false,
       signal: null,
@@ -1762,7 +1759,6 @@ describe("RuntimeManager", () => {
     });
 
     expect(manager.get("env-exit")).toBeUndefined();
-    expect(manager.hasThread("env-exit", "thread-1")).toBe(false);
     expect(stopWatchingStatus).toHaveBeenCalledTimes(1);
     expect(runtime.shutdown).not.toHaveBeenCalled();
   });
@@ -1795,13 +1791,12 @@ describe("RuntimeManager", () => {
       environmentId: "env-shared",
       workspacePath: "/tmp/env-shared",
     });
-    manager.markThreadActive("env-shared", "thread-a", "provider-a", null);
-    manager.markThreadActive("env-shared", "thread-b", "provider-b", null);
-
     runningProviders = ["fake-beta"];
     onProcessExit?.({
       providerId: "fake-alpha",
-      threadIds: ["thread-a"],
+      threads: [
+        { threadId: "thread-a", activeTurnId: null, providerThreadId: null },
+      ],
       code: 1,
       expected: false,
       signal: null,
@@ -1809,8 +1804,6 @@ describe("RuntimeManager", () => {
     });
 
     expect(manager.get("env-shared")).toBeDefined();
-    expect(manager.hasThread("env-shared", "thread-a")).toBe(false);
-    expect(manager.hasThread("env-shared", "thread-b")).toBe(true);
     expect(stopWatchingStatus).not.toHaveBeenCalled();
     expect(runtime.shutdown).not.toHaveBeenCalled();
   });
@@ -1861,7 +1854,13 @@ describe("RuntimeManager", () => {
 
     onProcessExit({
       providerId: "codex",
-      threadIds: ["thread-1"],
+      threads: [
+        {
+          threadId: "thread-1",
+          activeTurnId: "turn-1",
+          providerThreadId: "provider-1",
+        },
+      ],
       code: 1,
       expected: false,
       signal: null,
@@ -1911,22 +1910,20 @@ describe("RuntimeManager", () => {
     ]);
   });
 
-  it("preserves the active turn when thread identity arrives after turn start", async () => {
+  it("does not synthesize failure events for exited threads without an active turn", async () => {
     const emittedEvents: Array<{
       environmentId: string;
       event: ThreadEvent;
     }> = [];
     const runtime = createFakeRuntime();
-    let onRuntimeEvent: AgentRuntimeOptions["onEvent"] | undefined;
     let onProcessExit:
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
       provisionWorkspace: createProvisionWorkspaceMock(
-        "/tmp/env-identity-after-turn",
-      ).mockResolvedValue(createFakeWorkspace("/tmp/env-identity-after-turn")),
+        "/tmp/env-idle-exit",
+      ).mockResolvedValue(createFakeWorkspace("/tmp/env-idle-exit")),
       createRuntime: vi.fn((options) => {
-        onRuntimeEvent = options.onEvent;
         onProcessExit = options.onProcessExit;
         return runtime;
       }),
@@ -1936,60 +1933,29 @@ describe("RuntimeManager", () => {
     });
 
     await manager.ensureEnvironment({
-      environmentId: "env-identity-after-turn",
-      workspacePath: "/tmp/env-identity-after-turn",
+      environmentId: "env-idle-exit",
+      workspacePath: "/tmp/env-idle-exit",
     });
-    if (!onRuntimeEvent || !onProcessExit) {
+    if (!onProcessExit) {
       throw new Error("Expected runtime callbacks to be captured");
     }
-    onRuntimeEvent({
-      type: "turn/started",
-      threadId: "thread-1",
-      providerThreadId: "provider-before-identity",
-      scope: turnScope("turn-1"),
-    });
-    onRuntimeEvent({
-      type: "thread/identity",
-      threadId: "thread-1",
-      providerThreadId: "provider-after-identity",
-      scope: threadScope(),
-    });
-    emittedEvents.splice(0, emittedEvents.length);
 
     onProcessExit({
       providerId: "codex",
-      threadIds: ["thread-1"],
+      threads: [
+        {
+          threadId: "thread-idle",
+          activeTurnId: null,
+          providerThreadId: "provider-idle",
+        },
+      ],
       code: 1,
       expected: false,
       signal: null,
       stderr: null,
     });
 
-    expect(emittedEvents).toEqual([
-      {
-        environmentId: "env-identity-after-turn",
-        event: {
-          type: "turn/completed",
-          threadId: "thread-1",
-          providerThreadId: "provider-after-identity",
-          scope: turnScope("turn-1"),
-          status: "failed",
-          error: {
-            message: 'Provider "codex" exited unexpectedly with code 1',
-          },
-        },
-      },
-      {
-        environmentId: "env-identity-after-turn",
-        event: {
-          type: "system/error",
-          threadId: "thread-1",
-          scope: turnScope("turn-1"),
-          code: "provider_process_exited",
-          message: 'Provider "codex" exited unexpectedly with code 1',
-        },
-      },
-    ]);
+    expect(emittedEvents).toEqual([]);
   });
 
   it("does not emit failure events for expected provider exits", async () => {
@@ -2033,7 +1999,13 @@ describe("RuntimeManager", () => {
 
     onProcessExit({
       providerId: "codex",
-      threadIds: ["thread-1"],
+      threads: [
+        {
+          threadId: "thread-1",
+          activeTurnId: "turn-1",
+          providerThreadId: "provider-1",
+        },
+      ],
       code: null,
       expected: true,
       signal: "SIGTERM",

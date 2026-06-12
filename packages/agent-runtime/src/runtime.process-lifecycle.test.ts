@@ -53,6 +53,12 @@ describe("createAgentRuntime process lifecycle", () => {
       additionalWorkspaceWriteRoots: [],
       adapterFactory: () => createNoopInitializeAdapter(args.scriptPath),
       bridgeBundleDir: undefined,
+      captureThreadExitState: (threadId) => ({
+        activeTurnId: null,
+        providerThreadId:
+          identityRegistry.getProviderThreadId(threadId) ?? null,
+        threadId,
+      }),
       createProviderIdentityState: (providerId) =>
         identityRegistry.createProviderState({ providerId }),
       env: args.env,

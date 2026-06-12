@@ -88,12 +88,10 @@ export async function startThread(
       disallowedTools: command.disallowedTools,
       instructionMode: command.instructionMode,
     });
-    options.runtimeManager.markThreadActive(
-      command.environmentId,
-      command.threadId,
-      result.providerThreadId,
-      command.providerId,
-    );
+    options.runtimeManager.registerThreadStorageTarget({
+      environmentId: command.environmentId,
+      threadId: command.threadId,
+    });
     return result;
   } catch (error) {
     await cleanupAfterPostStagingFailure(staged.cleanup);
@@ -106,7 +104,6 @@ export async function ensureThreadRuntime(
   options: CommandDispatchOptions,
 ): Promise<RuntimeEntry> {
   const { resumeContext } = command;
-  let providerThreadId = resumeContext.providerThreadId;
   const entry = await requireResolvedWorkspaceForCommand({
     dataDir: options.dataDir,
     environmentId: command.environmentId,
@@ -116,16 +113,14 @@ export async function ensureThreadRuntime(
     workspaceContext: resumeContext.workspaceContext,
   });
 
-  if (
-    !options.runtimeManager.hasThread(command.environmentId, command.threadId)
-  ) {
+  if (!entry.runtime.hasThread(command.threadId)) {
     if (!resumeContext.providerThreadId) {
       throw new CommandDispatchError(
         "unknown_thread_runtime",
         `No provider thread id available for thread ${command.threadId}`,
       );
     }
-    const result = await entry.runtime.resumeThread({
+    await entry.runtime.resumeThread({
       environmentId: command.environmentId,
       threadId: command.threadId,
       projectId: resumeContext.projectId,
@@ -137,14 +132,11 @@ export async function ensureThreadRuntime(
       disallowedTools: resumeContext.disallowedTools,
       instructionMode: resumeContext.instructionMode,
     });
-    providerThreadId = result.providerThreadId;
   }
-  options.runtimeManager.markThreadActive(
-    command.environmentId,
-    command.threadId,
-    providerThreadId,
-    resumeContext.providerId,
-  );
+  options.runtimeManager.registerThreadStorageTarget({
+    environmentId: command.environmentId,
+    threadId: command.threadId,
+  });
   return entry;
 }
 

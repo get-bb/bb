@@ -1,6 +1,5 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import {
   createAgentRuntime,
   type AgentRuntime,
@@ -15,11 +14,7 @@ import type {
   ThreadEvent,
   WorkspaceProvisionType,
 } from "@bb/domain";
-import {
-  requireThreadEventScopeTurnId,
-  threadScope,
-  turnScope,
-} from "@bb/domain";
+import { turnScope } from "@bb/domain";
 import type {
   HostDaemonActiveThread,
   HostDaemonEnvironmentChange,
@@ -56,13 +51,6 @@ const PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH = 4000;
 const LOCAL_WORKSPACE_WATCH_CHANGE_KINDS: readonly WorkspaceStatusWatchChangeKind[] =
   ["workspace-content-changed", "workspace-git-changed"];
 
-interface RuntimeThreadState {
-  activeTurnId: string | null;
-  providerId: string | null;
-  providerThreadId: string | null;
-  status: "active" | "idle";
-}
-
 interface ThreadStorageTarget {
   environmentId: string;
   threadId: string;
@@ -73,28 +61,11 @@ interface ThreadRuntimeTargetArgs {
   threadId: string;
 }
 
-interface WaitForThreadActiveTurnArgs extends ThreadRuntimeTargetArgs {
-  timeoutMs: number;
-}
-
-interface UpsertTrackedThreadStateArgs {
-  entry: RuntimeEntry;
-  environmentId: string;
-  state: RuntimeThreadState;
-  threadId: string;
-}
-
 interface WorkspaceWatchState {
   lastLocalFingerprint: string | null;
   lastSharedRefsFingerprint: string | null;
   pendingKinds: Set<WorkspaceStatusWatchChangeKind>;
   processing: Promise<void> | null;
-}
-
-interface BuildUnexpectedProviderExitEventsArgs {
-  environmentId: string;
-  info: AgentRuntimeProcessExitInfo;
-  threads: Map<string, RuntimeThreadState>;
 }
 
 interface RuntimeSkillConfig {
@@ -244,27 +215,6 @@ export interface RuntimeEntry {
   workspace: HostWorkspace;
   path: string;
   terminals: Set<string>;
-  threads: Map<string, RuntimeThreadState>;
-}
-
-export interface RuntimeThreadProviderSession {
-  environmentId: string;
-  providerId: string | null;
-  providerThreadId: string | null;
-  threadId: string;
-}
-
-export interface RecordThreadProviderSessionArgs {
-  environmentId: string;
-  providerId: string;
-  providerThreadId: string;
-  threadId: string;
-}
-
-export interface RecordThreadProviderStartArgs {
-  environmentId: string;
-  providerId: string;
-  threadId: string;
 }
 
 export interface InjectedSkillsChangedNotification {
@@ -525,168 +475,6 @@ export class RuntimeManager {
     return undefined;
   }
 
-  hasThread(environmentId: string, threadId: string): boolean {
-    return this.entries.get(environmentId)?.threads.has(threadId) ?? false;
-  }
-
-  getThreadActiveTurnId(args: ThreadRuntimeTargetArgs): string | null {
-    return (
-      this.entries.get(args.environmentId)?.threads.get(args.threadId)
-        ?.activeTurnId ?? null
-    );
-  }
-
-  async waitForThreadActiveTurn(
-    args: WaitForThreadActiveTurnArgs,
-  ): Promise<string | null> {
-    const deadline = Date.now() + args.timeoutMs;
-    while (Date.now() < deadline) {
-      const thread = this.entries
-        .get(args.environmentId)
-        ?.threads.get(args.threadId);
-      if (!thread || thread.status === "idle") {
-        return null;
-      }
-      if (thread.activeTurnId !== null) {
-        return thread.activeTurnId;
-      }
-      await delay(Math.min(25, Math.max(0, deadline - Date.now())));
-    }
-    return this.getThreadActiveTurnId(args);
-  }
-
-  markThreadActive(
-    environmentId: string,
-    threadId: string,
-    providerThreadId: string,
-    providerId: string | null,
-  ): void {
-    const entry = this.entries.get(environmentId);
-    if (!entry) {
-      return;
-    }
-
-    const current = entry.threads.get(threadId);
-    this.upsertTrackedThreadState({
-      entry,
-      environmentId,
-      state: {
-        activeTurnId: current?.activeTurnId ?? null,
-        providerId: providerId ?? current?.providerId ?? null,
-        providerThreadId,
-        status: "active",
-      },
-      threadId,
-    });
-  }
-
-  markThreadInactive(environmentId: string, threadId: string): void {
-    const current = this.entries.get(environmentId)?.threads.get(threadId);
-    if (!current) {
-      return;
-    }
-
-    this.entries.get(environmentId)?.threads.set(threadId, {
-      ...current,
-      activeTurnId: null,
-      status: "idle",
-    });
-  }
-
-  recordThreadProviderStart(args: RecordThreadProviderStartArgs): void {
-    const entry = this.entries.get(args.environmentId);
-    if (!entry) {
-      return;
-    }
-
-    const current = entry.threads.get(args.threadId);
-    this.upsertTrackedThreadState({
-      entry,
-      environmentId: args.environmentId,
-      state: {
-        activeTurnId: current?.activeTurnId ?? null,
-        providerId: args.providerId,
-        providerThreadId: current?.providerThreadId ?? null,
-        status: current?.status ?? "idle",
-      },
-      threadId: args.threadId,
-    });
-  }
-
-  recordThreadProviderSession(args: RecordThreadProviderSessionArgs): void {
-    const entry = this.entries.get(args.environmentId);
-    if (!entry) {
-      return;
-    }
-
-    const current = entry.threads.get(args.threadId);
-    this.upsertTrackedThreadState({
-      entry,
-      environmentId: args.environmentId,
-      state: {
-        activeTurnId: current?.activeTurnId ?? null,
-        providerId: args.providerId,
-        providerThreadId: args.providerThreadId,
-        status: current?.status ?? "idle",
-      },
-      threadId: args.threadId,
-    });
-  }
-
-  getThreadProviderSession(
-    environmentId: string,
-    threadId: string,
-  ): RuntimeThreadProviderSession | null {
-    const thread = this.entries.get(environmentId)?.threads.get(threadId);
-    if (!thread) {
-      return null;
-    }
-
-    return {
-      environmentId,
-      providerId: thread.providerId,
-      providerThreadId: thread.providerThreadId,
-      threadId,
-    };
-  }
-
-  markThreadTurnStarted(
-    environmentId: string,
-    threadId: string,
-    providerThreadId: string,
-    turnId: string,
-  ): void {
-    const entry = this.entries.get(environmentId);
-    if (!entry) {
-      return;
-    }
-    this.upsertTrackedThreadState({
-      entry,
-      environmentId,
-      state: {
-        activeTurnId: turnId,
-        providerId: entry.threads.get(threadId)?.providerId ?? null,
-        providerThreadId,
-        status: "active",
-      },
-      threadId,
-    });
-  }
-
-  private upsertTrackedThreadState({
-    entry,
-    environmentId,
-    state,
-    threadId,
-  }: UpsertTrackedThreadStateArgs): void {
-    entry.threads.set(threadId, state);
-    this.trackedThreadStorageTargets.set(threadId, {
-      environmentId,
-      threadId,
-    });
-    this.ensureThreadStorageWatcher();
-  }
-
   markTerminalActive(environmentId: string, terminalId: string): void {
     this.entries.get(environmentId)?.terminals.add(terminalId);
   }
@@ -695,8 +483,15 @@ export class RuntimeManager {
     this.entries.get(environmentId)?.terminals.delete(terminalId);
   }
 
-  forgetThread(environmentId: string, threadId: string): void {
-    this.entries.get(environmentId)?.threads.delete(threadId);
+  registerThreadStorageTarget(args: ThreadRuntimeTargetArgs): void {
+    this.trackedThreadStorageTargets.set(args.threadId, {
+      environmentId: args.environmentId,
+      threadId: args.threadId,
+    });
+    this.ensureThreadStorageWatcher();
+  }
+
+  forgetThread(threadId: string): void {
     this.trackedThreadStorageTargets.delete(threadId);
     this.stopWatchingThreadStorageIfNoTrackedThreads();
   }
@@ -704,10 +499,7 @@ export class RuntimeManager {
   listActiveThreads(): HostDaemonActiveThread[] {
     const activeThreads: HostDaemonActiveThread[] = [];
     for (const entry of this.entries.values()) {
-      for (const [threadId, thread] of entry.threads) {
-        if (thread.status !== "active") {
-          continue;
-        }
+      for (const threadId of entry.runtime.getActiveThreadIds()) {
         activeThreads.push({
           threadId,
         });
@@ -756,15 +548,10 @@ export class RuntimeManager {
   }
 
   private entryHasActiveRuntimeWork(entry: RuntimeEntry): boolean {
-    if (entry.terminals.size > 0) {
-      return true;
-    }
-    for (const thread of entry.threads.values()) {
-      if (thread.status === "active") {
-        return true;
-      }
-    }
-    return false;
+    return (
+      entry.terminals.size > 0 ||
+      entry.runtime.getActiveThreadIds().length > 0
+    );
   }
 
   /**
@@ -1126,12 +913,9 @@ export class RuntimeManager {
       return [];
     }
 
-    const idleEntries = [...this.entries.values()].filter((entry) => {
-      const hasActiveThread = [...entry.threads.values()].some(
-        (thread) => thread.status === "active",
-      );
-      return !hasActiveThread && entry.terminals.size === 0;
-    });
+    const idleEntries = [...this.entries.values()].filter(
+      (entry) => !this.entryHasActiveRuntimeWork(entry),
+    );
 
     for (const entry of idleEntries) {
       await this.stopWatchingStatus(entry);
@@ -1194,40 +978,37 @@ export class RuntimeManager {
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 
+  /**
+   * Synthesizes failure events for threads that were mid-turn when their
+   * provider process died, from the runtime's final per-thread snapshot.
+   * Threads without an active turn need no synthesized events: in-flight
+   * RPCs fail through the command result path, and idle resident threads
+   * simply resume on their next turn.
+   */
   private buildUnexpectedProviderExitEvents(
-    args: BuildUnexpectedProviderExitEventsArgs,
+    info: AgentRuntimeProcessExitInfo,
   ): ThreadEvent[] {
-    const message = buildProviderProcessExitMessage(args.info);
-    const detail = buildProviderProcessExitDetail(args.info);
+    const message = buildProviderProcessExitMessage(info);
+    const detail = buildProviderProcessExitDetail(info);
     const events: ThreadEvent[] = [];
 
-    for (const threadId of args.info.threadIds) {
-      const thread = args.threads.get(threadId);
-      if (!thread || thread.status !== "active") {
+    for (const thread of info.threads) {
+      if (thread.activeTurnId === null || thread.providerThreadId === null) {
         continue;
       }
 
-      if (thread.activeTurnId !== null) {
-        if (thread.providerThreadId === null) {
-          continue;
-        }
-        events.push({
-          type: "turn/completed",
-          threadId,
-          providerThreadId: thread.providerThreadId,
-          scope: turnScope(thread.activeTurnId),
-          status: "failed",
-          error: { message },
-        });
-      }
-
+      events.push({
+        type: "turn/completed",
+        threadId: thread.threadId,
+        providerThreadId: thread.providerThreadId,
+        scope: turnScope(thread.activeTurnId),
+        status: "failed",
+        error: { message },
+      });
       events.push({
         type: "system/error",
-        threadId,
-        scope:
-          thread.activeTurnId !== null
-            ? turnScope(thread.activeTurnId)
-            : threadScope(),
+        threadId: thread.threadId,
+        scope: turnScope(thread.activeTurnId),
         code: "provider_process_exited",
         message,
         ...(detail ? { detail } : {}),
@@ -1331,7 +1112,6 @@ export class RuntimeManager {
           },
         })
       : () => undefined;
-    const threads = new Map<string, RuntimeThreadState>();
     let runtime: AgentRuntime | null = null;
     try {
       runtime = this.createRuntime({
@@ -1344,26 +1124,6 @@ export class RuntimeManager {
         threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
         bridgeBundleDir: this.options.bridgeBundleDir,
         onEvent: (event) => {
-          if (event.type === "thread/identity") {
-            this.markThreadActive(
-              args.environmentId,
-              event.threadId,
-              event.providerThreadId,
-              null,
-            );
-          } else if (event.type === "turn/started") {
-            this.markThreadTurnStarted(
-              args.environmentId,
-              event.threadId,
-              event.providerThreadId,
-              requireThreadEventScopeTurnId({
-                type: event.type,
-                scope: event.scope,
-              }),
-            );
-          } else if (event.type === "turn/completed") {
-            this.markThreadInactive(args.environmentId, event.threadId);
-          }
           this.options.onEvent?.({
             environmentId: args.environmentId,
             event,
@@ -1379,19 +1139,12 @@ export class RuntimeManager {
         onStderr: this.options.onStderr,
         onProcessExit: (info) => {
           if (!info.expected) {
-            for (const event of this.buildUnexpectedProviderExitEvents({
-              environmentId: args.environmentId,
-              info,
-              threads,
-            })) {
+            for (const event of this.buildUnexpectedProviderExitEvents(info)) {
               this.options.onEvent?.({
                 environmentId: args.environmentId,
                 event,
               });
             }
-          }
-          for (const threadId of info.threadIds) {
-            threads.delete(threadId);
           }
           const current = this.entries.get(args.environmentId);
           if (
@@ -1419,7 +1172,6 @@ export class RuntimeManager {
       terminals: new Set<string>(),
       workspace,
       path: workspace.path,
-      threads,
     };
   }
 

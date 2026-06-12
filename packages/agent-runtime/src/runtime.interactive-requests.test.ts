@@ -283,7 +283,7 @@ rl.on("line", (line) => {
 
     try {
       handleRuntimeProviderRequest({
-        getActiveTurnId: () => undefined,
+        getActiveTurnId: () => null,
         getThreadExecutionOptions: () => undefined,
         onInteractiveRequest,
         onToolCall: async () => toolCallResponse,
@@ -527,7 +527,7 @@ rl.on("line", (line) => {
 
     try {
       handleRuntimeProviderRequest({
-        getActiveTurnId: () => undefined,
+        getActiveTurnId: () => null,
         getThreadExecutionOptions: () => ({
           ...fullRuntimeOptions,
           permissionMode: "readonly",
@@ -622,7 +622,7 @@ rl.on("line", (line) => {
 
     try {
       handleRuntimeProviderRequest({
-        getActiveTurnId: () => undefined,
+        getActiveTurnId: () => null,
         getThreadExecutionOptions: () => undefined,
         onInteractiveRequest: undefined,
         onToolCall: async () => ({

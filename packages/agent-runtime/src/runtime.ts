@@ -172,6 +172,12 @@ function createAgentRuntimeInternal(
     additionalWorkspaceWriteRoots,
     adapterFactory: options.adapterFactory,
     bridgeBundleDir: options.bridgeBundleDir,
+    captureThreadExitState: (threadId) => ({
+      activeTurnId: turnState.getActiveTurnId(threadId),
+      providerThreadId:
+        threadIdentityRegistry.getProviderThreadId(threadId) ?? null,
+      threadId,
+    }),
     createProviderIdentityState: (providerId) =>
       threadIdentityRegistry.createProviderState({ providerId }),
     env: options.env,
@@ -326,6 +332,24 @@ function createAgentRuntimeInternal(
     });
   }
 
+  /**
+   * Removes one thread's runtime state while its provider process keeps
+   * running: identity, execution config, turn state (resolving pending
+   * active-turn waiters with `null`), and replay-filter state.
+   */
+  function forgetThreadRuntimeState(
+    proc: ProviderProcess,
+    threadId: string,
+  ): void {
+    threadIdentityRegistry.forgetThread({
+      providerState: proc.identity,
+      threadId,
+    });
+    clearThreadRuntimeConfig(threadId);
+    turnState.clearThread(threadId);
+    turnReplayFilter.clearThread(threadId);
+  }
+
   function requireProviderThreadId(threadId: string): string {
     const providerThreadId =
       threadIdentityRegistry.getProviderThreadId(threadId);
@@ -390,6 +414,11 @@ function createAgentRuntimeInternal(
       proc,
       sourceThreadId: threadId,
     });
+    if (commandType === "thread/archive") {
+      // An archived thread is no longer live in the runtime; the next turn
+      // must resume it (after unarchive) instead of reusing stale state.
+      forgetThreadRuntimeState(proc, threadId);
+    }
   }
 
   async function reconfigureThreadIfNeeded(
@@ -937,7 +966,7 @@ function createAgentRuntimeInternal(
         );
         return {
           status: "stale",
-          activeTurnId: activeTurnId ?? null,
+          activeTurnId,
         };
       }
 
@@ -987,7 +1016,7 @@ function createAgentRuntimeInternal(
         type: "thread/stop",
         threadId,
         providerThreadId,
-        activeTurnId: activeTurnId ?? null,
+        activeTurnId,
       };
       const cmd = proc.adapter.buildCommandPlan(adapterCommand);
 
@@ -997,7 +1026,7 @@ function createAgentRuntimeInternal(
             `Adapter "${pid}" returned no provider request for thread/stop with active turn: ${cmd.reason}`,
           );
         }
-        turnReplayFilter.clearThread(threadId);
+        forgetThreadRuntimeState(proc, threadId);
         return;
       }
 
@@ -1011,8 +1040,7 @@ function createAgentRuntimeInternal(
         proc,
         sourceThreadId: threadId,
       });
-      turnState.clearThread(threadId);
-      turnReplayFilter.clearThread(threadId);
+      forgetThreadRuntimeState(proc, threadId);
     },
 
     async renameThread({ threadId, title }) {
@@ -1081,6 +1109,29 @@ function createAgentRuntimeInternal(
 
     listRunningProviders() {
       return providerProcesses.listRunningProviders();
+    },
+
+    getActiveTurnId(threadId) {
+      return turnState.getActiveTurnId(threadId);
+    },
+
+    waitForActiveTurn(threadId, args) {
+      return turnState.waitForActiveTurn({
+        threadId,
+        timeoutMs: args.timeoutMs,
+      });
+    },
+
+    getProviderSession(threadId) {
+      return threadIdentityRegistry.getProviderSession(threadId);
+    },
+
+    hasThread(threadId) {
+      return threadIdentityRegistry.getProviderSession(threadId) !== null;
+    },
+
+    getActiveThreadIds() {
+      return turnState.getActiveThreadIds();
     },
 
     async shutdown() {

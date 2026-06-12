@@ -24,10 +24,7 @@ import {
 } from "./command-dispatch.js";
 import { isExpectedOnlineRpcFailureError } from "./command-dispatch-support.js";
 import type { HostDaemonLogger } from "./logger.js";
-import {
-  RuntimeManager,
-  type RuntimeThreadProviderSession,
-} from "./runtime-manager.js";
+import { RuntimeManager } from "./runtime-manager.js";
 
 interface CommandRouterLogger extends Pick<HostDaemonLogger, "warn"> {
   debug?: HostDaemonLogger["debug"];
@@ -524,12 +521,6 @@ export class CommandRouter {
     });
   }
 
-  private providerLaneForThreadStop(
-    session: RuntimeThreadProviderSession,
-  ): ProviderExecutionLane {
-    return this.createThreadProviderExecutionLane(session, "write");
-  }
-
   private createInFlightThreadStopLane(
     command: ThreadStartOrTurnSubmitCommand,
   ): ProviderExecutionLane {
@@ -607,11 +598,6 @@ export class CommandRouter {
   ): ProviderExecutionLane | null {
     switch (command.type) {
       case "thread.start":
-        this.options.runtimeManager.recordThreadProviderStart({
-          environmentId: command.environmentId,
-          providerId: command.providerId,
-          threadId: command.threadId,
-        });
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
           processMode: "read",
@@ -626,12 +612,6 @@ export class CommandRouter {
           sessionId: `provider-thread:${command.resumeContext.providerThreadId}`,
         });
       case "thread.archive":
-        this.options.runtimeManager.recordThreadProviderSession({
-          environmentId: command.environmentId,
-          providerId: command.providerId,
-          providerThreadId: command.providerThreadId,
-          threadId: command.threadId,
-        });
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
           processMode: "read",
@@ -639,12 +619,6 @@ export class CommandRouter {
           sessionId: `provider-thread:${command.providerThreadId}`,
         });
       case "interactive.resolve":
-        this.options.runtimeManager.recordThreadProviderSession({
-          environmentId: command.environmentId,
-          providerId: command.providerId,
-          providerThreadId: command.providerThreadId,
-          threadId: command.threadId,
-        });
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
           processMode: "read",
@@ -652,13 +626,21 @@ export class CommandRouter {
           sessionId: `provider-thread:${command.providerThreadId}`,
         });
       case "thread.stop": {
-        const session = this.options.runtimeManager.getThreadProviderSession(
-          command.environmentId,
-          command.threadId,
-        );
-        return session
-          ? this.providerLaneForThreadStop(session)
-          : this.getInFlightThreadStopProviderLane(command);
+        const session = this.options.runtimeManager
+          .get(command.environmentId)
+          ?.runtime.getProviderSession(command.threadId);
+        if (session) {
+          return this.createThreadProviderExecutionLane(
+            {
+              environmentId: command.environmentId,
+              providerId: session.providerId,
+              providerThreadId: session.providerThreadId,
+              threadId: command.threadId,
+            },
+            "write",
+          );
+        }
+        return this.getInFlightThreadStopProviderLane(command);
       }
       default:
         return null;

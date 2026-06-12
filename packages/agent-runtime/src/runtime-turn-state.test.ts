@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { turnScope } from "@bb/domain";
 import { RuntimeTurnReplayFilter } from "./runtime-turn-replay-filter.js";
@@ -24,14 +24,107 @@ function turnCompleted(turnId: string): ThreadEvent {
 }
 
 describe("RuntimeTurnState", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("tracks only the current active turn", () => {
     const state = new RuntimeTurnState();
 
     state.observe(turnStarted("turn-1"));
     expect(state.getActiveTurnId("t1")).toBe("turn-1");
+    expect(state.getActiveThreadIds()).toEqual(["t1"]);
 
     state.observe(turnCompleted("turn-1"));
-    expect(state.getActiveTurnId("t1")).toBeUndefined();
+    expect(state.getActiveTurnId("t1")).toBeNull();
+    expect(state.getActiveThreadIds()).toEqual([]);
+  });
+
+  it("resolves waitForActiveTurn immediately when a turn is active", async () => {
+    const state = new RuntimeTurnState();
+    state.observe(turnStarted("turn-1"));
+
+    await expect(
+      state.waitForActiveTurn({ threadId: "t1", timeoutMs: 5 }),
+    ).resolves.toBe("turn-1");
+  });
+
+  it("resolves pending waiters when observe records turn/started", async () => {
+    vi.useFakeTimers();
+    const state = new RuntimeTurnState();
+
+    const firstWaiter = state.waitForActiveTurn({
+      threadId: "t1",
+      timeoutMs: 5_000,
+    });
+    const secondWaiter = state.waitForActiveTurn({
+      threadId: "t1",
+      timeoutMs: 5_000,
+    });
+    state.observe(turnStarted("turn-1"));
+
+    await expect(firstWaiter).resolves.toBe("turn-1");
+    await expect(secondWaiter).resolves.toBe("turn-1");
+    // Resolution must clear the timeout timers, not leave them dangling.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("resolves waiters with null on timeout", async () => {
+    vi.useFakeTimers();
+    const state = new RuntimeTurnState();
+
+    const waiter = state.waitForActiveTurn({ threadId: "t1", timeoutMs: 100 });
+    vi.advanceTimersByTime(100);
+
+    await expect(waiter).resolves.toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("resolves waiters with null when the thread is cleared", async () => {
+    vi.useFakeTimers();
+    const state = new RuntimeTurnState();
+
+    const waiter = state.waitForActiveTurn({
+      threadId: "t1",
+      timeoutMs: 5_000,
+    });
+    state.clearThread("t1");
+
+    await expect(waiter).resolves.toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("resolves all pending waiters with null on clear", async () => {
+    vi.useFakeTimers();
+    const state = new RuntimeTurnState();
+
+    const firstWaiter = state.waitForActiveTurn({
+      threadId: "t1",
+      timeoutMs: 5_000,
+    });
+    const secondWaiter = state.waitForActiveTurn({
+      threadId: "t2",
+      timeoutMs: 5_000,
+    });
+    state.clear();
+
+    await expect(firstWaiter).resolves.toBeNull();
+    await expect(secondWaiter).resolves.toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps waiters for other threads pending when one thread starts a turn", async () => {
+    vi.useFakeTimers();
+    const state = new RuntimeTurnState();
+
+    const otherWaiter = state.waitForActiveTurn({
+      threadId: "t2",
+      timeoutMs: 100,
+    });
+    state.observe(turnStarted("turn-1"));
+    vi.advanceTimersByTime(100);
+
+    await expect(otherWaiter).resolves.toBeNull();
   });
 });
 

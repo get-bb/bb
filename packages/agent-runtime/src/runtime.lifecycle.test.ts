@@ -946,9 +946,19 @@ rl.on("line", (line) => {
         options: fullRuntimeOptions,
       });
       expect(runtime.listRunningProviders()).toEqual(["fake"]);
+      expect(runtime.hasThread("t1")).toBe(true);
+      expect(runtime.getProviderSession("t1")).toEqual({
+        providerId: "fake",
+        providerThreadId: startResult.providerThreadId,
+      });
 
       await runtime.stopThread({ threadId: "t1" });
       expect(runtime.listRunningProviders()).toEqual(["fake"]);
+      // Stop removes the thread from the runtime; the follow-up below must
+      // resume it before running another turn.
+      expect(runtime.hasThread("t1")).toBe(false);
+      expect(runtime.getProviderSession("t1")).toBeNull();
+      expect(runtime.getActiveTurnId("t1")).toBeNull();
 
       await runtime.resumeThread({
         environmentId: "env-1",
@@ -972,6 +982,91 @@ rl.on("line", (line) => {
         threadId: "t1",
       });
 
+      await runtime.shutdown();
+    });
+
+    it("resolves waitForActiveTurn from the turn/started observation", async () => {
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => {},
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => createFakeAdapter(scriptPath),
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      expect(runtime.getActiveTurnId("t1")).toBeNull();
+
+      const pendingTurnId = runtime.waitForActiveTurn("t1", {
+        timeoutMs: 5_000,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222223t",
+        threadId: "t1",
+        input: [promptTextInput({ text: "delay:500" })],
+        options: fullRuntimeOptions,
+      });
+
+      await expect(pendingTurnId).resolves.toBe("turn-1");
+      expect(runtime.getActiveTurnId("t1")).toBe("turn-1");
+      expect(runtime.getActiveThreadIds()).toEqual(["t1"]);
+      await runtime.shutdown();
+    });
+
+    it("resolves pending waitForActiveTurn waiters with null when the provider crashes", async () => {
+      const crashAfterStartScript = join(tmpDir, "crash-after-start.cjs");
+      writeFileSync(
+        crashAfterStartScript,
+        `const rl = require("readline").createInterface({ input: process.stdin });
+        rl.on("line", (line) => {
+          const msg = JSON.parse(line);
+          if (msg.method === "initialize") {
+            process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} }) + "\\n");
+          } else if (msg.method === "thread/start") {
+            process.stdout.write(JSON.stringify({
+              jsonrpc: "2.0", id: msg.id,
+              result: { providerThreadId: "prov-crash-waiter" }
+            }) + "\\n");
+            process.stdout.write(JSON.stringify({
+              jsonrpc: "2.0", method: "thread/identity",
+              params: { threadId: msg.params?.threadId, providerThreadId: "prov-crash-waiter" }
+            }) + "\\n");
+            setTimeout(() => process.exit(13), 50);
+          }
+        });`,
+      );
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => {},
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => createFakeAdapter(crashAfterStartScript),
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      const pendingTurnId = runtime.waitForActiveTurn("t1", {
+        timeoutMs: 30_000,
+      });
+
+      await expect(pendingTurnId).resolves.toBeNull();
+      expect(runtime.hasThread("t1")).toBe(false);
+      expect(runtime.getProviderSession("t1")).toBeNull();
       await runtime.shutdown();
     });
 

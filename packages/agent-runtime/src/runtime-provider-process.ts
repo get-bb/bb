@@ -17,7 +17,11 @@ import {
   sendJsonRpcRequest,
 } from "./runtime-json-rpc.js";
 import type { RuntimeProviderIdentityState } from "./runtime-thread-identity.js";
-import type { AgentRuntimeOptions, AgentRuntimeSkillRoot } from "./types.js";
+import type {
+  AgentRuntimeOptions,
+  AgentRuntimeProcessExitThreadState,
+  AgentRuntimeSkillRoot,
+} from "./types.js";
 
 export interface RuntimeProviderProcess {
   adapter: ProviderAdapter;
@@ -38,6 +42,14 @@ export interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   adapterFactory?: ProviderAdapterFactory;
   bridgeBundleDir: string | undefined;
+  /**
+   * Snapshots a thread's turn/provider state for the process-exit
+   * notification. Invoked before `onProviderThreadDetached` clears the
+   * state, so exit consumers still see what the dead process was running.
+   */
+  captureThreadExitState: (
+    threadId: string,
+  ) => AgentRuntimeProcessExitThreadState;
   createProviderIdentityState: (
     providerId: string,
   ) => RuntimeProviderIdentityState;
@@ -399,7 +411,9 @@ export class RuntimeProviderProcessManager {
 
     this.args.onProcessExit?.({
       providerId: args.providerId,
-      threadIds: [...args.providerProcess.identity.threadIds],
+      threads: [...args.providerProcess.identity.threadIds].map((threadId) =>
+        this.args.captureThreadExitState(threadId),
+      ),
       code: null,
       expected,
       signal: null,
@@ -415,6 +429,11 @@ export class RuntimeProviderProcessManager {
     );
     this.processes.delete(args.providerId);
     const threadIds = [...args.providerProcess.identity.threadIds];
+    // Snapshot per-thread state before detaching clears it; the exit
+    // notification below is the last place this state is observable.
+    const threads = threadIds.map((threadId) =>
+      this.args.captureThreadExitState(threadId),
+    );
     for (const threadId of threadIds) {
       this.args.onProviderThreadDetached(threadId, args.providerProcess);
     }
@@ -432,7 +451,7 @@ export class RuntimeProviderProcessManager {
 
     this.args.onProcessExit?.({
       providerId: args.providerId,
-      threadIds,
+      threads,
       code: args.code,
       expected,
       signal: args.signal,

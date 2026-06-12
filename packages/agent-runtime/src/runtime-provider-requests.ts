@@ -44,7 +44,7 @@ export interface RuntimeProviderRequestArgs {
 }
 
 export interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
-  getActiveTurnId: (threadId: string) => string | undefined;
+  getActiveTurnId: (threadId: string) => string | null;
   getThreadExecutionOptions: (
     threadId: string,
   ) => AgentRuntimeExecutionOptions | undefined;
@@ -139,7 +139,7 @@ function resolveRuntimeProviderRequestTurnId(
   }
 
   const activeTurnId = args.getActiveTurnId(args.resolvedThreadId);
-  if (activeTurnId !== undefined) {
+  if (activeTurnId !== null) {
     return activeTurnId;
   }
 

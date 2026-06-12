@@ -158,26 +158,21 @@ const commandHandlers: CommandHandlerMap = {
       command.environmentId,
       options.runtimeManager,
     );
-    if (
-      options.runtimeManager.getThreadActiveTurnId({
-        environmentId: command.environmentId,
-        threadId: command.threadId,
-      }) === null
-    ) {
-      await options.runtimeManager.waitForThreadActiveTurn({
-        environmentId: command.environmentId,
-        threadId: command.threadId,
+    if (entry.runtime.hasThread(command.threadId)) {
+      // Stop can be dispatched while the start/submit RPC is still in flight
+      // and the turn/started event has not been observed yet. Wait for the
+      // runtime to learn the active turn (event-driven, resolves null on
+      // timeout or when the thread goes idle) so the provider stop carries
+      // the right turn id.
+      await entry.runtime.waitForActiveTurn(command.threadId, {
         timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
       });
+      await entry.runtime.stopThread({ threadId: command.threadId });
     }
-    await entry.runtime.stopThread({ threadId: command.threadId });
     // Stop completion finalizes server-side thread state. Flush provider
     // events first so buffered lifecycle events cannot arrive after that.
     await options.eventSink.flush();
-    options.runtimeManager.forgetThread(
-      command.environmentId,
-      command.threadId,
-    );
+    options.runtimeManager.forgetThread(command.threadId);
     return {};
   },
   "thread.rename": async (command, options) => {
@@ -205,10 +200,7 @@ const commandHandlers: CommandHandlerMap = {
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
     });
-    options.runtimeManager.forgetThread(
-      command.environmentId,
-      command.threadId,
-    );
+    options.runtimeManager.forgetThread(command.threadId);
     return {};
   },
   "thread.unarchive": async (command, options) => {

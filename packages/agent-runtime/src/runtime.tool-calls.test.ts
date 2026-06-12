@@ -199,7 +199,7 @@ describe("createAgentRuntime tool calls", () => {
 
     try {
       handleRuntimeProviderRequest({
-        getActiveTurnId: () => undefined,
+        getActiveTurnId: () => null,
         getThreadExecutionOptions: () => undefined,
         onInteractiveRequest: async () => ({
           decision: "deny",

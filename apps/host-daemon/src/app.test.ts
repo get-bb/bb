@@ -197,6 +197,21 @@ function createFakeRuntime(): AgentRuntime {
     listRunningProviders() {
       return [];
     },
+    getActiveTurnId() {
+      return null;
+    },
+    async waitForActiveTurn() {
+      return null;
+    },
+    getProviderSession() {
+      return null;
+    },
+    hasThread() {
+      return false;
+    },
+    getActiveThreadIds() {
+      return [];
+    },
     async shutdown() {},
   };
 }
@@ -360,7 +375,13 @@ describe("createHostDaemonApp", () => {
 
       options.onProcessExit({
         providerId: "codex",
-        threadIds: ["thr_provider_exit_log"],
+        threads: [
+          {
+            threadId: "thr_provider_exit_log",
+            activeTurnId: null,
+            providerThreadId: null,
+          },
+        ],
         code: 1,
         expected: false,
         signal: null,
@@ -412,7 +433,13 @@ describe("createHostDaemonApp", () => {
       );
       options.onProcessExit({
         providerId: "codex",
-        threadIds: [request.threadId],
+        threads: [
+          {
+            threadId: request.threadId,
+            activeTurnId: request.turnId,
+            providerThreadId: request.providerThreadId,
+          },
+        ],
         code: null,
         expected: true,
         signal: "SIGTERM",

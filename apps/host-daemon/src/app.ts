@@ -398,11 +398,12 @@ export async function createHostDaemonApp(
       }
     },
     onProcessExit: (info) => {
+      const threadIds = info.threads.map((thread) => thread.threadId);
       if (!info.expected && info.stderr) {
         options.logger.warn(
           {
             providerId: info.providerId,
-            threadIds: info.threadIds,
+            threadIds,
             code: info.code,
             signal: info.signal,
             stderr: info.stderr,
@@ -410,19 +411,19 @@ export async function createHostDaemonApp(
           "Unexpected provider process exited with stderr",
         );
       }
-      if (info.threadIds.length === 0) {
+      if (threadIds.length === 0) {
         return;
       }
       const reason = `Provider "${info.providerId}" exited while awaiting user interaction`;
       interactiveRequestRegistry.interruptThreads({
         providerId: info.providerId,
-        threadIds: info.threadIds,
+        threadIds,
         reason,
       });
 
       enqueueInteractiveInterrupt({
         providerId: info.providerId,
-        threadIds: info.threadIds,
+        threadIds,
         reason,
       });
     },

@@ -51,10 +51,6 @@ interface CreateRouterArgs {
   runtimeManager?: RuntimeManager;
 }
 
-interface ThreadStartProviderResult {
-  providerThreadId: string;
-}
-
 let nextClientRequestIdValue = 1;
 
 function createDeferred<T>(): Deferred<T> {
@@ -281,11 +277,12 @@ describe("CommandRouter", () => {
       workspacePath: "/tmp/env-router",
     });
     const startEntered = createDeferred<void>();
-    const releaseStart = createDeferred<ThreadStartProviderResult>();
+    const releaseStart = createDeferred<void>();
+    const originalStartThread = harness.runtime.startThread;
     harness.runtime.startThread = async (args) => {
-      harness.runtimeState.startedThreadId = args.threadId;
       startEntered.resolve();
-      return releaseStart.promise;
+      await releaseStart.promise;
+      return originalStartThread(args);
     };
 
     const router = createRouter(harness);
@@ -311,25 +308,18 @@ describe("CommandRouter", () => {
     });
     await flushAsyncWork();
 
+    // The stop routes into the in-flight start's provider lane and must not
+    // reach the runtime before the start handoff completes.
     expect(harness.runtimeState.stoppedThreadId).toBeUndefined();
     expect(stopResolved).toBe(false);
 
-    releaseStart.resolve({ providerThreadId: "provider-thread-router-start" });
+    releaseStart.resolve();
     const startResponse = await startTask;
     expect(startResponse.ok).toBe(true);
-    await flushAsyncWork();
-    expect(harness.runtimeState.stoppedThreadId).toBeUndefined();
-    expect(stopResolved).toBe(false);
-
-    harness.manager.markThreadTurnStarted(
-      "env-router",
-      "thread-router-start",
-      "provider-thread-router-start",
-      "turn-router-start",
-    );
     const stopResponse = await stopTask;
 
     expect(stopResponse.ok).toBe(true);
     expect(harness.runtimeState.stoppedThreadId).toBe("thread-router-start");
+    expect(harness.runtime.hasThread("thread-router-start")).toBe(false);
   });
 });
