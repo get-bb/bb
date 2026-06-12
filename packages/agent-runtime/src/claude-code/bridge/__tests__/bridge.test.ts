@@ -112,11 +112,6 @@ interface StaleResumeErrorMessageArgs {
   sessionId: string;
 }
 
-interface SuccessResultMessageArgs {
-  result: string;
-  sessionId: string;
-}
-
 interface TempClaudeExecutable {
   binDir: string;
   executablePath: string;
@@ -391,39 +386,6 @@ function createStaleResumeErrorMessage(
     permission_denials: [],
     errors: [`No conversation found with session ID: ${args.missingSessionId}`],
     uuid: "00000000-0000-4000-8000-000000000001",
-    session_id: args.sessionId,
-  };
-}
-
-function createLegacyStaleResumeResultMessage(
-  args: StaleResumeErrorMessageArgs,
-): SDKMessage {
-  const message = createStaleResumeErrorMessage(args);
-  const legacyMessage = {
-    ...message,
-    errors: [],
-    result: `No conversation found with session ID: ${args.missingSessionId}`,
-  };
-  return legacyMessage;
-}
-
-function createSuccessResultMessage(
-  args: SuccessResultMessageArgs,
-): SDKMessage {
-  return {
-    type: "result",
-    subtype: "success",
-    duration_ms: 0,
-    duration_api_ms: 0,
-    is_error: false,
-    num_turns: 1,
-    result: args.result,
-    stop_reason: null,
-    total_cost_usd: 0,
-    usage: createResultUsage(),
-    modelUsage: {},
-    permission_denials: [],
-    uuid: "00000000-0000-4000-8000-000000000002",
     session_id: args.sessionId,
   };
 }
@@ -1895,7 +1857,7 @@ describe("bridge", () => {
     }
   });
 
-  it("retries a stale Claude resume once with a fresh session", async () => {
+  it("does not resume an ended Claude session for invalid follow-up input", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -1905,7 +1867,55 @@ describe("bridge", () => {
     });
 
     try {
-      const threadId = "thread-stale-resume-recovery";
+      const threadId = "thread-sdk-error-invalid-follow-up";
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        threadId,
+      });
+      const startResponse = await bridge.waitForResponse(1);
+      const providerThreadId = getProviderThreadIdFromResult(startResponse);
+
+      queries[0]?.fail(new Error("Claude SDK exploded"));
+      await bridge.flushWork();
+
+      bridge.sendRequest(2, "turn/start", {
+        input: [{ type: "text", text: "" }],
+        providerThreadId,
+        threadId,
+      });
+      const response = await bridge.waitForResponse(2);
+
+      expect(response).toMatchObject({
+        error: { code: -32602, message: "Missing input text" },
+      });
+      expect(queries).toHaveLength(1);
+
+      bridge.sendRequest(3, "thread/stop", {
+        threadId,
+      });
+      await bridge.waitForResponse(3);
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("forwards stale Claude resume errors without starting a fresh session", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-stale-resume-error";
       const staleProviderThreadId = "stale-provider-thread";
       const staleErrorText = `No conversation found with session ID: ${staleProviderThreadId}`;
       const inputText = "Reply READY";
@@ -1944,147 +1954,13 @@ describe("bridge", () => {
       );
       await bridge.flushWork();
 
-      expect(queries).toHaveLength(2);
-      const replacementOptions = getLatestQueryOptions();
-      const replacementProviderThreadId = replacementOptions.sessionId;
-      if (!replacementProviderThreadId) {
-        throw new Error("Expected fresh Claude session ID");
-      }
-      expect(replacementProviderThreadId).not.toBe(staleProviderThreadId);
-      expect(replacementOptions).not.toHaveProperty("resume");
-      expect(
-        bridge.messages.some(
-          (message) =>
-            message.method === "thread/identity" &&
-            isRecord(message.params) &&
-            message.params.threadId === threadId &&
-            message.params.providerThreadId === replacementProviderThreadId,
-        ),
-      ).toBe(true);
+      expect(queries).toHaveLength(1);
       expect(
         getSdkResultErrorMessages(bridge.messages, staleErrorText),
-      ).toHaveLength(0);
+      ).toHaveLength(1);
       expect(
         bridge.messages.some((message) => message.method === "error"),
       ).toBe(false);
-      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
-        inputText,
-      );
-
-      bridge.sendRequest(3, "thread/stop", {
-        threadId,
-      });
-      await bridge.flushWork();
-      queries[1]?.finish();
-      await bridge.waitForResponse(3);
-    } finally {
-      bridge.restore();
-    }
-  });
-
-  it("retries a stale Claude resume from the legacy result text field", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-
-    try {
-      const threadId = "thread-stale-resume-legacy-result";
-      const staleProviderThreadId = "stale-provider-thread-legacy-result";
-      const staleErrorText = `No conversation found with session ID: ${staleProviderThreadId}`;
-      bridge.sendRequest(1, "thread/resume", {
-        workflowsEnabled: false,
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        baseInstructions: "test",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        permissionEscalation: "ask",
-        permissionMode: "default",
-        providerThreadId: staleProviderThreadId,
-        threadId,
-      });
-      await bridge.waitForResponse(1);
-
-      bridge.sendRequest(2, "turn/start", {
-        input: [{ type: "text", text: "Reply READY" }],
-        providerThreadId: staleProviderThreadId,
-        threadId,
-      });
-      await bridge.waitForResponse(2);
-
-      queries[0]?.emit(
-        createLegacyStaleResumeResultMessage({
-          missingSessionId: staleProviderThreadId,
-          sessionId: staleProviderThreadId,
-        }),
-      );
-      await bridge.flushWork();
-
-      expect(queries).toHaveLength(2);
-      expect(
-        getSdkResultErrorMessages(bridge.messages, staleErrorText),
-      ).toHaveLength(0);
-
-      bridge.sendRequest(3, "thread/stop", {
-        threadId,
-      });
-      await bridge.flushWork();
-      queries[1]?.finish();
-      await bridge.waitForResponse(3);
-    } finally {
-      bridge.restore();
-    }
-  });
-
-  it("does not retry non-matching Claude resume errors", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-
-    try {
-      const threadId = "thread-stale-resume-non-match";
-      const staleProviderThreadId = "stale-provider-thread-non-match";
-      const differentProviderThreadId = "different-provider-thread";
-      const differentErrorText = `No conversation found with session ID: ${differentProviderThreadId}`;
-      bridge.sendRequest(1, "thread/resume", {
-        workflowsEnabled: false,
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        baseInstructions: "test",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        permissionEscalation: "ask",
-        permissionMode: "default",
-        providerThreadId: staleProviderThreadId,
-        threadId,
-      });
-      await bridge.waitForResponse(1);
-
-      bridge.sendRequest(2, "turn/start", {
-        input: [{ type: "text", text: "Reply READY" }],
-        providerThreadId: staleProviderThreadId,
-        threadId,
-      });
-      await bridge.waitForResponse(2);
-
-      queries[0]?.emit(
-        createStaleResumeErrorMessage({
-          missingSessionId: differentProviderThreadId,
-          sessionId: staleProviderThreadId,
-        }),
-      );
-      await bridge.flushWork();
-
-      expect(queries).toHaveLength(1);
-      expect(
-        getSdkResultErrorMessages(bridge.messages, differentErrorText),
-      ).toHaveLength(1);
 
       bridge.sendRequest(3, "thread/stop", {
         threadId,
@@ -2092,229 +1968,6 @@ describe("bridge", () => {
       await bridge.flushWork();
       queries[0]?.finish();
       await bridge.waitForResponse(3);
-    } finally {
-      bridge.restore();
-    }
-  });
-
-  it("does not retry stale errors after the fresh recovery session starts", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-
-    try {
-      const threadId = "thread-stale-resume-retry-cap";
-      const staleProviderThreadId = "stale-provider-thread-retry-cap";
-      bridge.sendRequest(1, "thread/resume", {
-        workflowsEnabled: false,
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        baseInstructions: "test",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        permissionEscalation: "ask",
-        permissionMode: "default",
-        providerThreadId: staleProviderThreadId,
-        threadId,
-      });
-      await bridge.waitForResponse(1);
-
-      bridge.sendRequest(2, "turn/start", {
-        input: [{ type: "text", text: "Reply READY" }],
-        providerThreadId: staleProviderThreadId,
-        threadId,
-      });
-      await bridge.waitForResponse(2);
-
-      queries[0]?.emit(
-        createStaleResumeErrorMessage({
-          missingSessionId: staleProviderThreadId,
-          sessionId: staleProviderThreadId,
-        }),
-      );
-      await bridge.flushWork();
-
-      expect(queries).toHaveLength(2);
-      const replacementProviderThreadId = getLatestQueryOptions().sessionId;
-      if (!replacementProviderThreadId) {
-        throw new Error("Expected fresh Claude session ID");
-      }
-      const replacementErrorText = `No conversation found with session ID: ${replacementProviderThreadId}`;
-
-      queries[1]?.emit(
-        createStaleResumeErrorMessage({
-          missingSessionId: replacementProviderThreadId,
-          sessionId: replacementProviderThreadId,
-        }),
-      );
-      await bridge.flushWork();
-
-      expect(queries).toHaveLength(2);
-      expect(
-        getSdkResultErrorMessages(bridge.messages, replacementErrorText),
-      ).toHaveLength(1);
-
-      bridge.sendRequest(3, "thread/stop", {
-        threadId,
-      });
-      await bridge.flushWork();
-      queries[1]?.finish();
-      await bridge.waitForResponse(3);
-    } finally {
-      bridge.restore();
-    }
-  });
-
-  it("clears stale resume recovery state after a non-stale result", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-
-    try {
-      const threadId = "thread-stale-resume-clears-state";
-      const staleProviderThreadId = "stale-provider-thread-clears-state";
-      const staleErrorText = `No conversation found with session ID: ${staleProviderThreadId}`;
-      bridge.sendRequest(1, "thread/resume", {
-        workflowsEnabled: false,
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        baseInstructions: "test",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        permissionEscalation: "ask",
-        permissionMode: "default",
-        providerThreadId: staleProviderThreadId,
-        threadId,
-      });
-      await bridge.waitForResponse(1);
-
-      bridge.sendRequest(2, "turn/start", {
-        input: [{ type: "text", text: "Reply READY" }],
-        providerThreadId: staleProviderThreadId,
-        threadId,
-      });
-      await bridge.waitForResponse(2);
-
-      queries[0]?.emit(
-        createSuccessResultMessage({
-          result: "ok",
-          sessionId: staleProviderThreadId,
-        }),
-      );
-      await bridge.flushWork();
-
-      queries[0]?.emit(
-        createStaleResumeErrorMessage({
-          missingSessionId: staleProviderThreadId,
-          sessionId: staleProviderThreadId,
-        }),
-      );
-      await bridge.flushWork();
-
-      expect(queries).toHaveLength(1);
-      expect(
-        getSdkResultErrorMessages(bridge.messages, staleErrorText),
-      ).toHaveLength(1);
-
-      bridge.sendRequest(3, "thread/stop", {
-        threadId,
-      });
-      await bridge.flushWork();
-      queries[0]?.finish();
-      await bridge.waitForResponse(3);
-    } finally {
-      bridge.restore();
-    }
-  });
-
-  it("stops the replacement session after stale resume recovery", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-
-    try {
-      const threadId = "thread-stale-resume-stop-replacement";
-      const staleProviderThreadId = "stale-provider-thread-stop-replacement";
-      bridge.sendRequest(1, "thread/resume", {
-        workflowsEnabled: false,
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        baseInstructions: "test",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        permissionEscalation: "ask",
-        permissionMode: "default",
-        providerThreadId: staleProviderThreadId,
-        threadId,
-      });
-      await bridge.waitForResponse(1);
-
-      bridge.sendRequest(2, "turn/start", {
-        input: [{ type: "text", text: "Reply READY" }],
-        providerThreadId: staleProviderThreadId,
-        threadId,
-      });
-      await bridge.waitForResponse(2);
-
-      queries[0]?.emit(
-        createStaleResumeErrorMessage({
-          missingSessionId: staleProviderThreadId,
-          sessionId: staleProviderThreadId,
-        }),
-      );
-      await bridge.flushWork();
-
-      const replacementProviderThreadId = getLatestQueryOptions().sessionId;
-      if (!replacementProviderThreadId) {
-        throw new Error("Expected fresh Claude session ID");
-      }
-      expect(queries).toHaveLength(2);
-      expect(queries[0]?.close).toHaveBeenCalledTimes(1);
-
-      bridge.sendRequest(3, "thread/stop", {
-        threadId,
-      });
-      await bridge.flushWork();
-
-      expect(bridge.hasResponse(3)).toBe(false);
-      expect(queries[1]?.close).not.toHaveBeenCalled();
-
-      queries[1]?.finish();
-      await bridge.waitForResponse(3);
-
-      bridge.sendRequest(4, "thread/resume", {
-        workflowsEnabled: false,
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        baseInstructions: "test",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        permissionEscalation: "ask",
-        permissionMode: "default",
-        providerThreadId: replacementProviderThreadId,
-        threadId,
-      });
-      await bridge.waitForResponse(4);
-
-      expect(queries).toHaveLength(3);
-      expect(getLatestQueryOptions()).toMatchObject({
-        resume: replacementProviderThreadId,
-      });
-
-      bridge.sendRequest(5, "thread/stop", {
-        threadId,
-      });
-      await bridge.flushWork();
-      queries[2]?.finish();
-      await bridge.waitForResponse(5);
     } finally {
       bridge.restore();
     }
