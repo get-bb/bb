@@ -737,7 +737,7 @@ function TimelineUnreadDivider({ autoScroll }: TimelineUnreadDividerProps) {
       data-testid="thread-unread-divider"
     >
       <span className="shrink-0">New</span>
-      <span className="h-px min-w-0 flex-1 bg-border/50" aria-hidden />
+      <span className="h-px min-w-0 flex-1 bg-destructive" aria-hidden />
     </div>
   );
 }
