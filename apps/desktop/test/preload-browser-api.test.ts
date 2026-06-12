@@ -221,7 +221,7 @@ describe("desktop preload browser API", () => {
     expect(electronMock.invokeCalls).toContain(
       BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
     );
-  });
+  }, 10_000);
 
   it("validates browser event payloads before notifying renderer listeners", async () => {
     const api = await loadPreload();

@@ -213,6 +213,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     async (context, payload) => {
       const thread = requirePublicThread(deps.db, context.req.param("id"));
       if (payload.mode === "queue-if-active" && thread.status === "active") {
+        ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
         await createQueuedMessageForThread(deps, {
           payload: queuedMessagePayloadFromSendRequest(payload),
           thread,
