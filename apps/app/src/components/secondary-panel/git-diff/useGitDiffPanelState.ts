@@ -45,7 +45,9 @@ import {
   GIT_DIFF_PARSE_BATCH_SIZE,
   GIT_DIFF_PARSE_INITIAL_BATCH_SIZE,
   resolveGitDiffPreparationState,
-  shouldResetSelectedGitDiffCommit,
+  shouldResetSelectedGitDiffSelection,
+  ALL_GIT_DIFF_SELECTION,
+  type GitDiffSelectionValue,
 } from "./gitDiffPanelHelpers";
 import { useGitDiffFileRenderQueue } from "./useGitDiffFileRenderQueue";
 
@@ -125,9 +127,8 @@ export function useGitDiffPanelState({
   const collapsedGitDiffFileKeys = useAtomValue(gitDiffCollapsedFileKeysAtom);
   const loadingGitDiffFileKeys = useAtomValue(gitDiffLoadingFileKeysAtom);
   const lastFocusedScrollPathRef = useRef<string | null>(null);
-  const [selectedGitDiffCommitSha, setSelectedGitDiffCommitSha] = useState<
-    string | null
-  >(null);
+  const [selectedGitDiffSelection, setSelectedGitDiffSelection] =
+    useState<GitDiffSelectionValue>(null);
   const [parsedGitDiffFiles, setParsedGitDiffFiles] = useState<
     ParsedGitDiffFile[]
   >([]);
@@ -143,8 +144,8 @@ export function useGitDiffPanelState({
     selectedMergeBaseBranch ?? defaultMergeBaseBranch;
   const gitDiffTarget = useMemo(
     () =>
-      buildGitDiffTarget(selectedGitDiffCommitSha, effectiveMergeBaseBranch),
-    [effectiveMergeBaseBranch, selectedGitDiffCommitSha],
+      buildGitDiffTarget(selectedGitDiffSelection, effectiveMergeBaseBranch),
+    [effectiveMergeBaseBranch, selectedGitDiffSelection],
   );
   const gitDiffRequestIdentity = useMemo(
     () => buildGitDiffRequestIdentity({ environmentId, target: gitDiffTarget }),
@@ -397,7 +398,7 @@ export function useGitDiffPanelState({
   // --- Reset on environment change ---
 
   useEffect(() => {
-    setSelectedGitDiffCommitSha(null);
+    setSelectedGitDiffSelection(null);
   }, [environmentId]);
 
   useEffect(() => {
@@ -412,7 +413,7 @@ export function useGitDiffPanelState({
 
   useEffect(() => {
     if (pendingGitDiffScrollPath) {
-      setSelectedGitDiffCommitSha(null);
+      setSelectedGitDiffSelection(null);
     }
   }, [pendingGitDiffScrollPath]);
 
@@ -420,7 +421,7 @@ export function useGitDiffPanelState({
 
   useEffect(() => {
     if (pendingGitDiffCommitSha) {
-      setSelectedGitDiffCommitSha(pendingGitDiffCommitSha);
+      setSelectedGitDiffSelection(pendingGitDiffCommitSha);
       setPendingGitDiffCommitSha(null);
     }
   }, [pendingGitDiffCommitSha, setPendingGitDiffCommitSha]);
@@ -430,17 +431,17 @@ export function useGitDiffPanelState({
 
   useEffect(() => {
     if (
-      shouldResetSelectedGitDiffCommit(
-        selectedGitDiffCommitSha,
+      shouldResetSelectedGitDiffSelection(
+        selectedGitDiffSelection,
         workspaceStatus?.mergeBase?.commits ?? [],
         { hasUncommittedChanges },
       )
     ) {
-      setSelectedGitDiffCommitSha(null);
+      setSelectedGitDiffSelection(null);
     }
   }, [
     hasUncommittedChanges,
-    selectedGitDiffCommitSha,
+    selectedGitDiffSelection,
     workspaceStatus?.mergeBase?.commits,
   ]);
 
@@ -519,7 +520,7 @@ export function useGitDiffPanelState({
     () => workspaceStatus?.mergeBase?.commits ?? [],
     [workspaceStatus?.mergeBase?.commits],
   );
-  const gitDiffSelectValue = selectedGitDiffCommitSha ?? "all";
+  const gitDiffSelectValue = selectedGitDiffSelection ?? ALL_GIT_DIFF_SELECTION;
   const gitDiffSelectOptions: GitDiffSelectionOption[] = useMemo(
     () => buildGitDiffSelectionOptions(diffCommits, { hasUncommittedChanges }),
     [diffCommits, hasUncommittedChanges],
@@ -531,7 +532,9 @@ export function useGitDiffPanelState({
   const { hasParsedGitDiffFiles, isPreparingGitDiff } = gitDiffPreparationState;
 
   const onGitDiffSelectionChange = useCallback((value: string) => {
-    setSelectedGitDiffCommitSha(value === "all" ? null : value);
+    setSelectedGitDiffSelection(
+      value === ALL_GIT_DIFF_SELECTION ? null : value,
+    );
   }, []);
 
   const queryClient = useQueryClient();

@@ -13,11 +13,20 @@ export const GIT_DIFF_PARSE_INITIAL_BATCH_SIZE = 6;
 export const GIT_DIFF_PARSE_BATCH_SIZE = 18;
 export const GIT_DIFF_PARSE_BATCH_DELAY_MS = 24;
 
+export const ALL_GIT_DIFF_SELECTION = "all";
+export const COMMITTED_GIT_DIFF_SELECTION = "branch_committed";
 export const UNCOMMITTED_GIT_DIFF_SELECTION = "uncommitted";
+
+export type GitDiffSelectionValue = string | null;
+
+export interface GitDiffSelectionAvailability {
+  hasUncommittedChanges: boolean;
+}
 
 export type GitDiffTarget =
   | { type: "commit"; sha: string }
   | { type: "uncommitted" }
+  | { type: "branch_committed"; mergeBaseBranch: string }
   | { type: "all"; mergeBaseBranch: string }
   | undefined;
 
@@ -64,15 +73,24 @@ export interface ReconcileGitDiffCollapsedFileKeysParams {
 }
 
 export function buildGitDiffTarget(
-  selectedGitDiffCommitSha: string | null,
+  selectedGitDiffSelection: GitDiffSelectionValue,
   effectiveMergeBaseBranch: string | undefined,
 ): GitDiffTarget {
-  if (selectedGitDiffCommitSha === UNCOMMITTED_GIT_DIFF_SELECTION) {
+  if (selectedGitDiffSelection === UNCOMMITTED_GIT_DIFF_SELECTION) {
     return { type: "uncommitted" };
   }
 
-  if (selectedGitDiffCommitSha) {
-    return { type: "commit", sha: selectedGitDiffCommitSha };
+  if (selectedGitDiffSelection === COMMITTED_GIT_DIFF_SELECTION) {
+    return effectiveMergeBaseBranch
+      ? {
+          type: "branch_committed",
+          mergeBaseBranch: effectiveMergeBaseBranch,
+        }
+      : undefined;
+  }
+
+  if (selectedGitDiffSelection) {
+    return { type: "commit", sha: selectedGitDiffSelection };
   }
 
   if (effectiveMergeBaseBranch) {
@@ -87,11 +105,18 @@ export function buildGitDiffTarget(
 
 export function buildGitDiffSelectionOptions(
   diffCommits: readonly WorkspaceCommitSummary[],
-  options: { hasUncommittedChanges: boolean } = {
+  options: GitDiffSelectionAvailability = {
     hasUncommittedChanges: false,
   },
 ): GitDiffSelectionOption[] {
-  const allChangesOption = { value: "all", label: "All changes" };
+  const allChangesOption = {
+    value: ALL_GIT_DIFF_SELECTION,
+    label: "All changes",
+  };
+  const committedOption = {
+    value: COMMITTED_GIT_DIFF_SELECTION,
+    label: "Committed changes",
+  };
   const uncommittedOption = {
     value: UNCOMMITTED_GIT_DIFF_SELECTION,
     label: "Uncommitted changes",
@@ -110,25 +135,29 @@ export function buildGitDiffSelectionOptions(
 
   return [
     allChangesOption,
+    ...(diffCommits.length > 0 ? [committedOption] : []),
     ...(options.hasUncommittedChanges ? [uncommittedOption] : []),
     ...commitOptions,
   ];
 }
 
-export function shouldResetSelectedGitDiffCommit(
-  selectedGitDiffCommitSha: string | null,
+export function shouldResetSelectedGitDiffSelection(
+  selectedGitDiffSelection: GitDiffSelectionValue,
   diffCommits: readonly WorkspaceCommitSummary[],
-  options: { hasUncommittedChanges: boolean } = {
+  options: GitDiffSelectionAvailability = {
     hasUncommittedChanges: false,
   },
 ): boolean {
-  if (!selectedGitDiffCommitSha) {
+  if (!selectedGitDiffSelection) {
     return false;
   }
-  if (selectedGitDiffCommitSha === UNCOMMITTED_GIT_DIFF_SELECTION) {
+  if (selectedGitDiffSelection === COMMITTED_GIT_DIFF_SELECTION) {
+    return diffCommits.length === 0;
+  }
+  if (selectedGitDiffSelection === UNCOMMITTED_GIT_DIFF_SELECTION) {
     return !options.hasUncommittedChanges;
   }
-  return !diffCommits.some((commit) => commit.sha === selectedGitDiffCommitSha);
+  return !diffCommits.some((commit) => commit.sha === selectedGitDiffSelection);
 }
 
 export function resolveGitDiffPreparationState(
