@@ -14,7 +14,9 @@ import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
 import { Input } from "@/components/ui/input.js";
+import { blurActiveKeyboardInputWithin } from "@/components/ui/overlay-trigger.js";
 import {
   Popover,
   PopoverContent,
@@ -318,10 +320,7 @@ function BranchPickerText({
         >
           New
         </span>
-        <span
-          {...compactAffixProps}
-          className="shrink-0 text-muted-foreground"
-        >
+        <span {...compactAffixProps} className="shrink-0 text-muted-foreground">
           {" branch"}
         </span>
       </span>
@@ -346,19 +345,13 @@ function BranchPickerText({
   if (parts.kind === "parenthetical") {
     return (
       <span className={cn("flex min-w-0 items-baseline", className)}>
-        <span
-          {...compactAffixProps}
-          className="shrink-0 text-muted-foreground"
-        >
+        <span {...compactAffixProps} className="shrink-0 text-muted-foreground">
           {parts.prefix} (
         </span>
         <span className="min-w-0 truncate font-medium text-foreground">
           {parts.value}
         </span>
-        <span
-          {...compactAffixProps}
-          className="shrink-0 text-muted-foreground"
-        >
+        <span {...compactAffixProps} className="shrink-0 text-muted-foreground">
           )
         </span>
       </span>
@@ -367,10 +360,7 @@ function BranchPickerText({
 
   return (
     <span className={cn("flex min-w-0 items-baseline gap-1", className)}>
-      <span
-        {...compactAffixProps}
-        className="shrink-0 text-muted-foreground"
-      >
+      <span {...compactAffixProps} className="shrink-0 text-muted-foreground">
         {parts.prefix}
       </span>
       <span className="min-w-0 truncate font-medium text-foreground">
@@ -732,6 +722,7 @@ export function BranchPicker({
 }: BranchPickerProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
+  const isCompactViewport = useIsCompactViewport();
   const selectedCheckoutIntent = resolveCheckoutIntent({
     isCreatingNew,
     value,
@@ -899,17 +890,27 @@ export function BranchPicker({
     menuCopy.optionsSectionLabel === null
       ? branchChooserDisabledTitle
       : undefined;
+  const updateOpen = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      blurActiveKeyboardInputWithin(inputRef.current);
+    }
+    setOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
+  const closePicker = () => {
+    updateOpen(false);
+  };
   const selectBranchAndClose = (branch: string) => {
     if (isCheckoutMenu && activeCheckoutIntent === "new") {
       (onCreateBaseChange ?? onChange)(branch);
     } else {
       onChange(branch);
     }
-    setOpen(false);
+    closePicker();
   };
   const selectCheckoutTarget = (branch: string) => {
     onChange(branch);
-    setOpen(false);
+    closePicker();
   };
   const selectEnterBranch = (branch: string) => {
     if (isCheckoutMenu && activeCheckoutIntent === "checkout") {
@@ -941,7 +942,7 @@ export function BranchPicker({
   }, [debouncedNormalizedQuery, normalizedQuery, onSearchQueryChange, open]);
 
   useEffect(() => {
-    if (!open || !showOptionsSearch) {
+    if (!open || !showOptionsSearch || isCompactViewport) {
       return;
     }
 
@@ -952,17 +953,10 @@ export function BranchPicker({
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [open, showOptionsSearch]);
+  }, [isCompactViewport, open, showOptionsSearch]);
 
   return (
-    <Popover
-      modal={modal}
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        onOpenChange?.(nextOpen);
-      }}
-    >
+    <Popover modal={modal} open={open} onOpenChange={updateOpen}>
       <PopoverTrigger asChild disabled={disabled}>
         <Button
           type="button"
@@ -1069,7 +1063,7 @@ export function BranchPicker({
                   onSelect={() => {
                     setCheckoutIntent("current");
                     onClear();
-                    setOpen(false);
+                    closePicker();
                   }}
                 />
               ) : null}
@@ -1177,7 +1171,7 @@ export function BranchPicker({
                       selected={!isCreatingNew && value === null}
                       onSelect={() => {
                         onClear();
-                        setOpen(false);
+                        closePicker();
                       }}
                     />
                   ) : null}
@@ -1219,7 +1213,7 @@ export function BranchPicker({
                             selected={isCreatingNew}
                             onSelect={() => {
                               onCreate();
-                              setOpen(false);
+                              closePicker();
                             }}
                           />
                         )

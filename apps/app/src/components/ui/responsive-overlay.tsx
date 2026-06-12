@@ -4,6 +4,8 @@ import { Slot } from "@radix-ui/react-slot";
 import { Drawer, DrawerContent, DrawerTitle } from "./drawer.js";
 import {
   blurActiveKeyboardInputBeforeOverlayOpen,
+  blurActiveKeyboardInputBeforeOverlayClose,
+  blurActiveKeyboardInputWithin,
   getOverlayTriggerClassName,
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
@@ -17,6 +19,15 @@ export interface ResponsiveOverlayContextValue {
   isCompactViewport: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+const ResponsiveDrawerDepthContext = React.createContext(0);
+
+function resetDrawerKeyboardStyles(drawerElement: HTMLElement | null): void {
+  if (drawerElement === null) return;
+
+  drawerElement.style.height = "";
+  drawerElement.style.bottom = "";
 }
 
 // ---------------------------------------------------------------------------
@@ -36,12 +47,15 @@ export function useResponsiveRoot(
 
   const onOpenChange = React.useCallback(
     (next: boolean) => {
+      if (open && !next && isCompactViewport) {
+        blurActiveKeyboardInputBeforeOverlayClose();
+      }
       if (!isControlled) {
         setInternalOpen(next);
       }
       controlledOnChange?.(next);
     },
-    [isControlled, controlledOnChange],
+    [isCompactViewport, isControlled, controlledOnChange, open],
   );
 
   return React.useMemo(
@@ -203,6 +217,12 @@ interface ResponsiveDrawerShellProps {
    * inside web components (e.g. Pierre tree's shadow DOM).
    */
   handleOnly?: boolean;
+  /**
+   * Whether Vaul should mutate drawer height/bottom around focused inputs when
+   * the visual viewport changes. Defaults off for nested drawers because the
+   * parent drawer cannot distinguish a nested drawer's focused input.
+   */
+  repositionInputs?: boolean;
   children: React.ReactNode;
 }
 
@@ -212,15 +232,50 @@ export function ResponsiveDrawerShell({
   srLabel,
   contentClassName,
   handleOnly,
+  repositionInputs,
   children,
 }: ResponsiveDrawerShellProps) {
+  const parentDrawerDepth = React.useContext(ResponsiveDrawerDepthContext);
+  const drawerContentRef = React.useRef<HTMLDivElement>(null);
+  const isNestedDrawer = parentDrawerDepth > 0;
+  const shouldRepositionInputs = repositionInputs ?? !isNestedDrawer;
+  const resetClosingKeyboardState = React.useCallback(() => {
+    blurActiveKeyboardInputWithin(drawerContentRef.current);
+    resetDrawerKeyboardStyles(drawerContentRef.current);
+  }, []);
+  const handleOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) {
+        resetClosingKeyboardState();
+      }
+      onOpenChange(nextOpen);
+    },
+    [onOpenChange, resetClosingKeyboardState],
+  );
+  const previousOpenRef = React.useRef(open);
+
+  React.useLayoutEffect(() => {
+    if (previousOpenRef.current && !open) {
+      resetClosingKeyboardState();
+    }
+    previousOpenRef.current = open;
+  }, [open, resetClosingKeyboardState]);
+
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} handleOnly={handleOnly}>
-      <DrawerContent className={contentClassName}>
-        {srLabel !== undefined ? (
-          <DrawerTitle className="sr-only">{srLabel}</DrawerTitle>
-        ) : null}
-        {children}
+    <Drawer
+      open={open}
+      onOpenChange={handleOpenChange}
+      handleOnly={handleOnly}
+      nested={isNestedDrawer}
+      repositionInputs={shouldRepositionInputs}
+    >
+      <DrawerContent ref={drawerContentRef} className={contentClassName}>
+        <ResponsiveDrawerDepthContext.Provider value={parentDrawerDepth + 1}>
+          {srLabel !== undefined ? (
+            <DrawerTitle className="sr-only">{srLabel}</DrawerTitle>
+          ) : null}
+          {children}
+        </ResponsiveDrawerDepthContext.Provider>
       </DrawerContent>
     </Drawer>
   );

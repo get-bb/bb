@@ -400,6 +400,9 @@ export function ThreadDetailSecondaryContent({
           // element and prevents the click from reaching rows inside the
           // shadow DOM. The drag handle bar still drags the drawer.
           handleOnly
+          // This drawer hosts nested picker drawers; Vaul's input repositioning
+          // reacts to any focused input, including nested search fields.
+          repositionInputs={false}
         >
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {drawerSecondaryPanelContent}
