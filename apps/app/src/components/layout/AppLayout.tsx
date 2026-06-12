@@ -28,6 +28,7 @@ import {
 } from "@/hooks/queries/thread-queries";
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { isThreadRead } from "@/lib/thread-read-state";
 import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
 import { cn } from "@/lib/utils";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
@@ -55,6 +56,7 @@ import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import { useFaviconBadge } from "@/lib/favicon-color-preference";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -378,6 +380,16 @@ export function AppLayout({ children }: AppLayoutProps) {
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
     [sidebarNavigationQuery.data],
   );
+  const sidebarThreads = useMemo(() => {
+    const sidebarNavigation = sidebarNavigationQuery.data;
+    if (!sidebarNavigation) {
+      return [];
+    }
+    return [
+      ...sidebarNavigation.projects.flatMap((project) => project.threads),
+      ...sidebarNavigation.personalProject.threads,
+    ];
+  }, [sidebarNavigationQuery.data]);
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "", {
     composerBootstrapPrefetch: isThreadView && Boolean(threadId),
     enabled: isThreadView && Boolean(threadId),
@@ -438,23 +450,23 @@ export function AppLayout({ children }: AppLayoutProps) {
           ],
         }
       : isSettingsView && projectId
+        ? {
+            title: "",
+            subtitle: undefined,
+            breadcrumbs: [
+              {
+                label: projectLabel ?? projectId,
+                to: getLegacyProjectComposeRoutePath(projectId),
+              },
+              { label: "Settings" },
+            ],
+          }
+        : projectId
           ? {
-              title: "",
+              title: projectLabel ?? projectId,
               subtitle: undefined,
-              breadcrumbs: [
-                {
-                  label: projectLabel ?? projectId,
-                  to: getLegacyProjectComposeRoutePath(projectId),
-                },
-                { label: "Settings" },
-              ],
             }
-          : projectId
-            ? {
-                title: projectLabel ?? projectId,
-                subtitle: undefined,
-              }
-            : (routeTitles[location.pathname] ?? { title: "" });
+          : (routeTitles[location.pathname] ?? { title: "" });
 
   const documentTitle = (() => {
     if (isThreadView) {
@@ -472,6 +484,13 @@ export function AppLayout({ children }: AppLayoutProps) {
     const routeTitle = routeTitles[location.pathname]?.title;
     return routeTitle && routeTitle.length > 0 ? routeTitle : "BB";
   })();
+  const unreadCount = isThreadView
+    ? thread && !isThreadRead(thread)
+      ? 1
+      : 0
+    : sidebarThreads.filter((candidate) => !isThreadRead(candidate)).length;
+  const faviconBadge = unreadCount > 0 ? "unread" : "none";
+  useFaviconBadge(faviconBadge);
 
   const handleResizeMouseDown = useCallback(
     (event: SidebarResizeMouseEvent) => {
