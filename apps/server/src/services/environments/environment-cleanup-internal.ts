@@ -154,6 +154,9 @@ async function workspaceCanBeSafelyCleaned(
   environmentId: string,
 ): Promise<boolean> {
   const environment = getEnvironment(deps.db, environmentId);
+  // Not lifecycle: preflight precondition — only a settled ready workspace is
+  // eligible for a destroy probe; the destroy.dispatched claim re-asserts the
+  // row state atomically when the destroy is actually dispatched.
   if (
     !environment ||
     !environment.managed ||
@@ -195,6 +198,8 @@ async function workspaceCanBeSafelyCleaned(
 function canRequestCleanup(
   environment: NonNullable<ReturnType<typeof getEnvironment>>,
 ): boolean {
+  // Not lifecycle: intent-recording eligibility — cleanup intent is metadata,
+  // and recording it on a destroyed row would be dead state.
   return environment.managed && environment.status !== "destroyed";
 }
 
@@ -433,6 +438,9 @@ async function advanceEnvironmentCleanup(
   args: AdvanceEnvironmentCleanupArgs,
 ): Promise<void> {
   const environment = getEnvironment(deps.db, args.environmentId);
+  // Not lifecycle: advance routing — "destroyed" is terminal, so there is
+  // nothing left to clean; the transition itself is owned by the
+  // destroy.dispatched claim below.
   if (
     !environment ||
     !environment.managed ||

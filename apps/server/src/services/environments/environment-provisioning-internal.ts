@@ -942,6 +942,10 @@ export async function advanceEnvironmentProvisioning(
   }
 
   const environment = getEnvironment(deps.db, args.environmentId);
+  // Not lifecycle: dispatch routing — never issue a provision RPC for a
+  // destroyed record. The provision.requested transition (which observed
+  // reality still permits from "destroyed") is applied by the writer at the
+  // request call sites, not here.
   if (!environment || environment.status === "destroyed") {
     return null;
   }
