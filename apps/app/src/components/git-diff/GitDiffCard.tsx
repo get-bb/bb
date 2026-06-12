@@ -1,12 +1,13 @@
 import {
   type CSSProperties,
+  type PointerEvent,
   memo,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import type { FileContents } from "@pierre/diffs";
+import type { FileContents, FileDiffOptions } from "@pierre/diffs";
 import { FileDiff as DiffView } from "@pierre/diffs/react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@/components/ui/button.js";
@@ -49,13 +50,15 @@ export type RequestDiffFileContents = (
   side: "old" | "new",
 ) => Promise<DiffFileContentsResult | null>;
 
-export const GIT_DIFF_VIEW_BASE_OPTIONS = {
+export type GitDiffViewOptions = FileDiffOptions<undefined>;
+
+export const GIT_DIFF_VIEW_BASE_OPTIONS: GitDiffViewOptions = {
   overflow: "scroll",
   disableFileHeader: false,
   // Reveal 30 unchanged lines per expand-up / expand-down click. Library
   // default is 100 — too aggressive for our compact diff cards.
   expansionLineCount: 30,
-} as const;
+};
 
 const GIT_DIFF_CARD_VIEW_STYLE = {
   "--diffs-font-size": "12px",
@@ -68,9 +71,13 @@ const GIT_DIFF_CARD_BODY_STYLE: CSSProperties = {
   containIntrinsicSize: "0 600px",
 };
 
+const DIFFS_CONTAINER_SELECTOR = "diffs-container";
+const DIFF_CODE_SELECTOR = "[data-code]";
+const DIFF_HORIZONTAL_PAN_THRESHOLD_PX = 6;
+
 export interface GitDiffCardProps {
   fileDiff: ParsedGitDiffFile;
-  diffViewOptions: Record<string, string | boolean | number>;
+  diffViewOptions: GitDiffViewOptions;
   filePathRoot?: string | null;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
@@ -142,6 +149,69 @@ type DiffFileEnrichmentState =
     }
   | { status: "unavailable" }
   | { status: "error" };
+
+type DiffCodeNodeRoot = DocumentFragment | Element;
+
+interface GitDiffHorizontalPanState {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  lastClientX: number;
+  isPanning: boolean;
+  scrollNodes: HTMLElement[];
+}
+
+interface ScrollableDiffCodeNodesAppendArgs {
+  root: DiffCodeNodeRoot;
+  scrollNodes: HTMLElement[];
+}
+
+interface ScrollDiffCodeNodesArgs {
+  deltaX: number;
+  scrollNodes: readonly HTMLElement[];
+}
+
+interface ReleaseDiffPanPointerCaptureArgs {
+  container: HTMLElement;
+  pointerId: number;
+}
+
+function appendScrollableDiffCodeNodes({
+  root,
+  scrollNodes,
+}: ScrollableDiffCodeNodesAppendArgs) {
+  for (const node of root.querySelectorAll(DIFF_CODE_SELECTOR)) {
+    if (node instanceof HTMLElement && node.scrollWidth > node.clientWidth) {
+      scrollNodes.push(node);
+    }
+  }
+}
+
+function getScrollableDiffCodeNodes(container: HTMLElement): HTMLElement[] {
+  const scrollNodes: HTMLElement[] = [];
+  appendScrollableDiffCodeNodes({ root: container, scrollNodes });
+  for (const node of container.querySelectorAll(DIFFS_CONTAINER_SELECTOR)) {
+    if (node instanceof HTMLElement && node.shadowRoot !== null) {
+      appendScrollableDiffCodeNodes({ root: node.shadowRoot, scrollNodes });
+    }
+  }
+  return scrollNodes;
+}
+
+function scrollDiffCodeNodes({ deltaX, scrollNodes }: ScrollDiffCodeNodesArgs) {
+  for (const node of scrollNodes) {
+    node.scrollLeft += deltaX;
+  }
+}
+
+function releaseDiffPanPointerCapture({
+  container,
+  pointerId,
+}: ReleaseDiffPanPointerCaptureArgs) {
+  if (container.hasPointerCapture(pointerId)) {
+    container.releasePointerCapture(pointerId);
+  }
+}
 
 function buildDiffFileContentPlan(
   fileDiff: ParsedGitDiffFile,
@@ -291,9 +361,7 @@ function getImageSizeStat(
   return { addedBytes, removedBytes };
 }
 
-function GitDiffCardImageSizeStat({
-  stat,
-}: GitDiffCardImageSizeStatProps) {
+function GitDiffCardImageSizeStat({ stat }: GitDiffCardImageSizeStatProps) {
   return (
     <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs tabular-nums">
       {stat.addedBytes !== null ? (
@@ -448,10 +516,11 @@ export const GitDiffCard = memo(function GitDiffCard({
   const supportsCollapse =
     isCollapsed !== undefined && onToggleCollapsed !== undefined;
   const isBodyHidden = !hasChanges || (supportsCollapse && isCollapsed);
-  const fileDiffOptions = useMemo(
+  const fileDiffOptions = useMemo<GitDiffViewOptions>(
     () => ({ ...diffViewOptions, disableFileHeader: true }),
     [diffViewOptions],
   );
+  const horizontalPanStateRef = useRef<GitDiffHorizontalPanState | null>(null);
   const { ref: stickySentinelRef, isIntersecting } = useIntersectionObserver({
     initialIsIntersecting: true,
     threshold: 1,
@@ -578,6 +647,75 @@ export const GitDiffCard = memo(function GitDiffCard({
   const imageSizeStat = isImagePreviewCard
     ? getImageSizeStat(enrichment, fileDiffChangeKind)
     : null;
+
+  const handleDiffPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (fileDiffOptions.overflow !== "scroll" || !event.isPrimary) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    const scrollNodes = getScrollableDiffCodeNodes(event.currentTarget);
+    if (scrollNodes.length === 0) return;
+
+    horizontalPanStateRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      lastClientX: event.clientX,
+      isPanning: false,
+      scrollNodes,
+    };
+  };
+
+  const handleDiffPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const panState = horizontalPanStateRef.current;
+    if (panState === null || panState.pointerId !== event.pointerId) return;
+
+    const movedX = event.clientX - panState.startClientX;
+    const movedY = event.clientY - panState.startClientY;
+    const absMovedX = Math.abs(movedX);
+    const absMovedY = Math.abs(movedY);
+
+    if (!panState.isPanning) {
+      if (
+        absMovedY > DIFF_HORIZONTAL_PAN_THRESHOLD_PX &&
+        absMovedY > absMovedX
+      ) {
+        horizontalPanStateRef.current = null;
+        return;
+      }
+      if (
+        absMovedX <= DIFF_HORIZONTAL_PAN_THRESHOLD_PX ||
+        absMovedX <= absMovedY
+      ) {
+        return;
+      }
+
+      panState.isPanning = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    const deltaX = event.clientX - panState.lastClientX;
+    if (deltaX === 0) return;
+
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+    scrollDiffCodeNodes({
+      deltaX: -deltaX,
+      scrollNodes: panState.scrollNodes,
+    });
+    panState.lastClientX = event.clientX;
+  };
+
+  const handleDiffPointerEnd = (event: PointerEvent<HTMLDivElement>) => {
+    const panState = horizontalPanStateRef.current;
+    if (panState === null || panState.pointerId !== event.pointerId) return;
+
+    releaseDiffPanPointerCapture({
+      container: event.currentTarget,
+      pointerId: event.pointerId,
+    });
+    horizontalPanStateRef.current = null;
+  };
 
   return (
     <div
@@ -735,7 +873,13 @@ export const GitDiffCard = memo(function GitDiffCard({
               fileDiffLabel={fileDiffLabel}
             />
           ) : (
-            <div className="overflow-x-auto">
+            <div
+              className="overflow-x-auto touch-pan-y"
+              onPointerDown={handleDiffPointerDown}
+              onPointerMove={handleDiffPointerMove}
+              onPointerUp={handleDiffPointerEnd}
+              onPointerCancel={handleDiffPointerEnd}
+            >
               <div
                 className="w-full max-w-full"
                 style={GIT_DIFF_CARD_VIEW_STYLE}

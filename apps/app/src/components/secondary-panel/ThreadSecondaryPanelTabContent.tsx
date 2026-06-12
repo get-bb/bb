@@ -23,6 +23,7 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { cn } from "@/lib/utils";
 import {
   GitDiffCard,
+  type GitDiffViewOptions,
   type RequestDiffFileContents,
 } from "../git-diff/GitDiffCard";
 import type { ParsedGitDiffFile } from "../git-diff/git-diff-parsing";
@@ -33,7 +34,7 @@ import {
 
 const GIT_DIFF_SKELETON_FILE_COUNT = 3;
 const PANEL_SCROLL_SLOT_CLASS =
-  "min-h-0 flex-1 overflow-x-hidden overflow-y-auto";
+  "min-h-0 flex-1 overflow-x-auto overflow-y-auto";
 
 interface ThreadDiffSkeletonProps {
   count?: number;
@@ -42,7 +43,7 @@ interface ThreadDiffSkeletonProps {
 interface GitDiffFileCardContainerProps {
   fileDiff: ParsedGitDiffFile;
   fileKey: string;
-  diffViewOptions: Record<string, string | boolean | number>;
+  diffViewOptions: GitDiffViewOptions;
   filePathRoot?: string | null;
   isCollapsed: boolean;
   isRendering: boolean;
@@ -63,7 +64,7 @@ export interface GitDiffTabContentProps {
   currentGitDiff: string;
   gitDiffError: Error | null;
   gitDiffUnavailableMessage: string | null;
-  gitDiffViewOptions: Record<string, string | boolean | number>;
+  gitDiffViewOptions: GitDiffViewOptions;
   isParsingGitDiffFiles: boolean;
   isPreparingGitDiff: boolean;
   loadingGitDiffFileKeys: ReadonlySet<string>;
@@ -290,7 +291,14 @@ export function GitDiffTabContent({
               ) : null}
             </div>
           ) : (
-            <pre className="overflow-auto whitespace-pre rounded-lg border border-border bg-surface-raised p-3 font-mono text-xs text-foreground">
+            <pre
+              className={cn(
+                "overflow-auto rounded-lg border border-border bg-surface-raised p-3 font-mono text-xs text-foreground",
+                gitDiffViewOptions.overflow === "wrap"
+                  ? "whitespace-pre-wrap break-words"
+                  : "whitespace-pre",
+              )}
+            >
               {threadGitDiff.diff}
             </pre>
           )}
@@ -318,9 +326,7 @@ export function ThreadInfoTabContent({
   metadataContent,
 }: ThreadInfoTabContentProps) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col pb-3">
-      {metadataContent}
-    </div>
+    <div className="flex min-h-0 flex-1 flex-col pb-3">{metadataContent}</div>
   );
 }
 

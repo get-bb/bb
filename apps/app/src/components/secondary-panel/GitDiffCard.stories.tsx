@@ -7,6 +7,10 @@ import {
   type RequestDiffFileContents,
 } from "../git-diff/GitDiffCard";
 import {
+  DEFAULT_CODE_OVERFLOW_MODE,
+  type CodeOverflowMode,
+} from "@/lib/code-overflow-mode";
+import {
   GitDiffToolbar,
   type GitDiffDisplayMode,
   type GitDiffSelectionOption,
@@ -743,6 +747,9 @@ function InteractiveDiffPanel({
   const preferredTheme = usePreferredTheme();
   const [selection, setSelection] = useState("working");
   const [displayMode, setDisplayMode] = useState<GitDiffDisplayMode>("unified");
+  const [lineOverflowMode, setLineOverflowMode] = useState<CodeOverflowMode>(
+    DEFAULT_CODE_OVERFLOW_MODE,
+  );
   const [collapsedFileKeys, setCollapsedFileKeys] = useState<Set<string>>(
     () => new Set(initialCollapsed ?? []),
   );
@@ -772,9 +779,10 @@ function InteractiveDiffPanel({
     () => ({
       ...GIT_DIFF_VIEW_BASE_OPTIONS,
       diffStyle: displayMode,
+      overflow: lineOverflowMode,
       themeType: preferredTheme,
     }),
-    [displayMode, preferredTheme],
+    [displayMode, lineOverflowMode, preferredTheme],
   );
   const onOpenFileInEditor = useCallback((path: string) => {
     appToast.message("Opening in editor", { description: path });
@@ -818,8 +826,10 @@ function InteractiveDiffPanel({
         onToggleAllCollapsed={toggleAllCollapsed}
         displayMode={displayMode}
         onDisplayModeChange={setDisplayMode}
+        lineOverflowMode={lineOverflowMode}
+        onLineOverflowModeChange={setLineOverflowMode}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3">
+      <div className="min-h-0 flex-1 overflow-auto px-4 pb-3">
         <div className="space-y-2">
           {parsed.map(({ fileKey, fileDiff }) => (
             <GitDiffCard
