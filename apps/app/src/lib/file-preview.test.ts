@@ -75,6 +75,25 @@ describe("file-preview", () => {
     });
   });
 
+  it("prefers UTF-8 text over ambiguous video mime types", () => {
+    const preview = buildFilePreview({
+      contentBytes: new TextEncoder().encode("export const value = 1;\n"),
+      mimeType: "video/mp2t",
+      name: "commands.ts",
+      path: "apps/server/test/helpers/commands.ts",
+      url: "/files/commands.ts",
+    });
+
+    expect(preview).toEqual({
+      kind: "text",
+      mimeType: "video/mp2t",
+      name: "commands.ts",
+      path: "apps/server/test/helpers/commands.ts",
+      url: "/files/commands.ts",
+      content: "export const value = 1;\n",
+    });
+  });
+
   it("marks null-byte text and non-text binary files as unsupported", () => {
     const textWithNullBytePreview = buildFilePreview({
       contentBytes: Uint8Array.from([97, 0, 98]),
