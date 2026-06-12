@@ -120,8 +120,15 @@ export {
   transitionThreadStatusInTransaction,
   InvalidThreadStatusTransitionError,
   ALLOWED_TRANSITIONS,
+  applyThreadLifecycleEvent,
+  applyThreadLifecycleEventInTransaction,
+  requireThreadLifecycleEventApplied,
+  ThreadLifecycleEventNotAppliedError,
 } from "./threads.js";
 export type {
+  ApplyThreadLifecycleEventArgs,
+  ApplyThreadLifecycleEventNoopReason,
+  ApplyThreadLifecycleEventOutcome,
   CountLiveThreadsInEnvironmentArgs,
   CountNonDeletedAssignedChildThreadsArgs,
   CreateThreadInput,

@@ -15,10 +15,15 @@ import type {
   EnvironmentWorkspaceDisplayKind,
   ReasoningLevel,
   ThreadChangeKind,
+  ThreadLifecycleEvent,
+  ThreadLifecycleNoopReason,
   ThreadStatus,
   WorkspaceProvisionType,
 } from "@bb/domain";
-import { resolveEnvironmentWorkspaceDisplayKind } from "@bb/domain";
+import {
+  evaluateThreadLifecycleEvent,
+  resolveEnvironmentWorkspaceDisplayKind,
+} from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
@@ -1215,6 +1220,11 @@ export function unarchiveThread(
   return updated ?? null;
 }
 
+/**
+ * @deprecated Use applyThreadLifecycleEvent / applyThreadLifecycleEventInTransaction
+ * with a ThreadLifecycleEvent instead of choosing a target status. This API throws
+ * on stale events; the replacement returns a typed no-op outcome.
+ */
 function transitionThreadStatusRecord(
   db: ThreadWriteConnection,
   id: string,
@@ -1259,6 +1269,10 @@ function transitionThreadStatusRecord(
   return updated!;
 }
 
+/**
+ * @deprecated Use applyThreadLifecycleEventInTransaction with a
+ * ThreadLifecycleEvent instead of choosing a target status.
+ */
 export function transitionThreadStatusInTransaction(
   db: DbTransaction,
   args: TransitionThreadStatusInTransactionArgs,
@@ -1266,6 +1280,10 @@ export function transitionThreadStatusInTransaction(
   return transitionThreadStatusRecord(db, args.id, args.newStatus);
 }
 
+/**
+ * @deprecated Use applyThreadLifecycleEvent with a ThreadLifecycleEvent
+ * instead of choosing a target status.
+ */
 export function transitionThreadStatus(
   db: DbConnection,
   notifier: DbNotifier,
@@ -1277,4 +1295,150 @@ export function transitionThreadStatus(
     projectId: updated.projectId,
   });
   return updated;
+}
+
+export type ApplyThreadLifecycleEventNoopReason =
+  | ThreadLifecycleNoopReason
+  | "not-found"
+  | "cas-conflict";
+
+export type ApplyThreadLifecycleEventOutcome =
+  | { applied: true; thread: ThreadRow }
+  | {
+      applied: false;
+      detail: string;
+      reason: ApplyThreadLifecycleEventNoopReason;
+    };
+
+export interface ApplyThreadLifecycleEventArgs {
+  event: ThreadLifecycleEvent;
+  threadId: string;
+}
+
+interface ThreadLifecycleEventNotAppliedErrorArgs {
+  detail: string;
+  reason: ApplyThreadLifecycleEventNoopReason;
+}
+
+export class ThreadLifecycleEventNotAppliedError extends Error {
+  readonly detail: string;
+  readonly reason: ApplyThreadLifecycleEventNoopReason;
+
+  constructor(args: ThreadLifecycleEventNotAppliedErrorArgs) {
+    super(`Thread lifecycle event not applied (${args.reason}): ${args.detail}`);
+    this.name = "ThreadLifecycleEventNotAppliedError";
+    this.detail = args.detail;
+    this.reason = args.reason;
+  }
+}
+
+/**
+ * For boundary callers where a no-op outcome is a real error (e.g. a 4xx
+ * response): returns the updated row, or throws
+ * ThreadLifecycleEventNotAppliedError.
+ */
+export function requireThreadLifecycleEventApplied(
+  outcome: ApplyThreadLifecycleEventOutcome,
+) {
+  if (!outcome.applied) {
+    throw new ThreadLifecycleEventNotAppliedError(outcome);
+  }
+  return outcome.thread;
+}
+
+function applyThreadLifecycleEventRecord(
+  db: ThreadWriteConnection,
+  args: ApplyThreadLifecycleEventArgs,
+): ApplyThreadLifecycleEventOutcome {
+  const thread = db
+    .select()
+    .from(threads)
+    .where(eq(threads.id, args.threadId))
+    .get();
+  if (!thread) {
+    return {
+      applied: false,
+      detail: `thread not found: ${args.threadId}`,
+      reason: "not-found",
+    };
+  }
+
+  const evaluation = evaluateThreadLifecycleEvent({
+    event: args.event,
+    thread,
+  });
+  if ("noop" in evaluation) {
+    return {
+      applied: false,
+      detail: evaluation.detail,
+      reason: evaluation.noop,
+    };
+  }
+
+  const now = Date.now();
+  const set: Partial<typeof threads.$inferInsert> = {
+    status: evaluation.to,
+    updatedAt: now,
+  };
+  if (
+    statusTransitionNeedsAttention({
+      currentStatus: thread.status,
+      newStatus: evaluation.to,
+      parentThreadId: thread.parentThreadId,
+    })
+  ) {
+    set.latestAttentionAt = now;
+  }
+
+  // Compare-and-set on the loaded status: belt-and-braces under
+  // better-sqlite3's synchronous transactions, and the contract that survives
+  // any future executor change.
+  const updated = db
+    .update(threads)
+    .set(set)
+    .where(
+      and(eq(threads.id, args.threadId), eq(threads.status, thread.status)),
+    )
+    .returning()
+    .get();
+  if (!updated) {
+    return {
+      applied: false,
+      detail: `status changed from ${thread.status} while applying ${args.event.type}`,
+      reason: "cas-conflict",
+    };
+  }
+  return { applied: true, thread: updated };
+}
+
+/**
+ * Single writer for thread lifecycle events: loads the row, evaluates the
+ * event against THREAD_LIFECYCLE and its supersession predicates, and applies
+ * the transition with a status compare-and-set — all in one transaction.
+ * Never throws on stale or illegal events; returns a typed outcome for the
+ * caller to log. Use applyThreadLifecycleEventInTransaction from inside an
+ * existing transaction (the caller then owns notification).
+ */
+export function applyThreadLifecycleEvent(
+  db: DbConnection,
+  notifier: DbNotifier,
+  args: ApplyThreadLifecycleEventArgs,
+): ApplyThreadLifecycleEventOutcome {
+  const outcome = db.transaction(
+    (tx) => applyThreadLifecycleEventRecord(tx, args),
+    { behavior: "immediate" },
+  );
+  if (outcome.applied) {
+    notifier.notifyThread(args.threadId, ["status-changed"], {
+      projectId: outcome.thread.projectId,
+    });
+  }
+  return outcome;
+}
+
+export function applyThreadLifecycleEventInTransaction(
+  tx: DbTransaction,
+  args: ApplyThreadLifecycleEventArgs,
+): ApplyThreadLifecycleEventOutcome {
+  return applyThreadLifecycleEventRecord(tx, args);
 }
