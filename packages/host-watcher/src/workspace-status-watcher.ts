@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { calculateExponentialBackoffDelay } from "@bb/domain";
@@ -23,6 +24,9 @@ const WORKSPACE_STATUS_WATCH_DEBOUNCE_MS = 75;
 const WORKSPACE_STATUS_WATCH_MAX_WAIT_MS = 500;
 const WORKSPACE_STATUS_WATCH_RETRY_DELAY_MS = 250;
 const WORKSPACE_STATUS_WATCH_MAX_RETRY_DELAY_MS = 30_000;
+const WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS = [".git"];
+const WORKSPACE_ROOT_IGNORE_STATUS_TIMEOUT_MS = 5_000;
+const WORKSPACE_ROOT_IGNORE_STATUS_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
 interface WorkspaceStatusWatcherArgs extends WorkspaceStatusWatchArgs {
   cwd: string;
@@ -32,11 +36,82 @@ interface WorkspaceStatusWatcherArgs extends WorkspaceStatusWatchArgs {
   retryDelayMs: number;
 }
 
+interface GitStatusCommandArgs {
+  cwd: string;
+}
+
+interface GitStatusCommandResult {
+  stdout: string;
+}
+
+interface WorkspaceRootWatchSpecArgs {
+  cwd: string;
+  rootPath: string;
+}
+
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
   }
   return "Unknown watch error";
+}
+
+function runGitIgnoredMatchingStatus(
+  args: GitStatusCommandArgs,
+): Promise<GitStatusCommandResult> {
+  return new Promise<GitStatusCommandResult>((resolve, reject) => {
+    execFile(
+      "git",
+      [
+        "--no-optional-locks",
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--ignored=matching",
+        "--untracked-files=normal",
+      ],
+      {
+        cwd: args.cwd,
+        encoding: "utf8",
+        maxBuffer: WORKSPACE_ROOT_IGNORE_STATUS_MAX_BUFFER_BYTES,
+        timeout: WORKSPACE_ROOT_IGNORE_STATUS_TIMEOUT_MS,
+      },
+      (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve({ stdout });
+      },
+    );
+  });
+}
+
+function collectIgnoredDirectoryPaths(statusOutput: string): string[] {
+  const ignoredDirectoryPaths = new Set<string>();
+  for (const record of statusOutput.split("\0")) {
+    if (!record.startsWith("!! ")) {
+      continue;
+    }
+    const ignoredPath = record.slice("!! ".length);
+    if (!ignoredPath.endsWith("/")) {
+      continue;
+    }
+    ignoredDirectoryPaths.add(ignoredPath);
+  }
+  return Array.from(ignoredDirectoryPaths).sort();
+}
+
+async function resolveWorkspaceRootIgnores(cwd: string): Promise<string[]> {
+  try {
+    const status = await runGitIgnoredMatchingStatus({ cwd });
+    return [
+      ...WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS,
+      ...collectIgnoredDirectoryPaths(status.stdout),
+    ];
+  } catch {
+    return WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS;
+  }
 }
 
 function createWorkspaceStatusCallbackError(
@@ -49,13 +124,15 @@ function createWorkspaceStatusCallbackError(
   };
 }
 
-function createWorkspaceRootWatchSpec(cwd: string): WatchSubscriptionSpec {
+async function createWorkspaceRootWatchSpec(
+  args: WorkspaceRootWatchSpecArgs,
+): Promise<WatchSubscriptionSpec> {
   return {
     kind: "workspace-root",
     options: {
-      ignore: [".git"],
+      ignore: await resolveWorkspaceRootIgnores(args.cwd),
     },
-    rootPath: cwd,
+    rootPath: args.rootPath,
   };
 }
 
@@ -133,8 +210,9 @@ export class WorkspaceStatusWatcher {
     if (this.disposed) {
       return;
     }
+    const rootPath = await resolveWatchRootPath(this.args.cwd);
     this.startWatchSubscription(
-      createWorkspaceRootWatchSpec(await resolveWatchRootPath(this.args.cwd)),
+      await createWorkspaceRootWatchSpec({ cwd: this.args.cwd, rootPath }),
     );
     this.startMetadataWatchSubscriptions();
   }
