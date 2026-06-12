@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
@@ -61,6 +62,10 @@ type ProjectSelectionChangeHandler = NewThreadProjectConfig["onChange"];
 
 interface LegacyProjectComposeRedirectProps {
   projectId: string;
+}
+
+interface BuildMobileRecentThreadsArgs {
+  sidebarNavigation: SidebarBootstrapResponse | undefined;
 }
 
 // react-router's location.state is freeform unknown — narrow it here at the
@@ -133,6 +138,20 @@ function buildReuseThreadOptions(
     return left.environmentId.localeCompare(right.environmentId);
   });
   return options;
+}
+
+export function buildMobileRecentThreads({
+  sidebarNavigation,
+}: BuildMobileRecentThreadsArgs): ThreadListEntry[] {
+  if (!sidebarNavigation) return [];
+
+  const threads: ThreadListEntry[] = [
+    ...sidebarNavigation.personalProject.threads,
+  ];
+  for (const project of sidebarNavigation.projects) {
+    threads.push(...project.threads);
+  }
+  return threads;
 }
 
 function LegacyProjectComposeRedirect({
@@ -323,6 +342,13 @@ export function RootComposeView() {
   const reuseThreadOptions = useMemo(
     () => buildReuseThreadOptions(threadsQuery.data ?? []),
     [threadsQuery.data],
+  );
+  const mobileRecentThreads = useMemo(
+    () =>
+      buildMobileRecentThreads({
+        sidebarNavigation: sidebarNavigationQuery.data,
+      }),
+    [sidebarNavigationQuery.data],
   );
 
   // Projectless threads choose a host directly, not an environment mode. Keep
@@ -939,7 +965,7 @@ export function RootComposeView() {
         highlightedThreadId={lastCreatedThreadId}
         projectNamesById={mobileRecentProjectNamesById}
         showCreatingRow={createThread.isPending}
-        threads={threadsQuery.data ?? []}
+        threads={mobileRecentThreads}
       />
     </PageShell>
   );

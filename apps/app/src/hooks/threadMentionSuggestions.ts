@@ -1,5 +1,5 @@
 import { fuzzyMatchText } from "@bb/fuzzy-match";
-import type { Thread } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
 import type { PromptMentionSuggestion } from "@/components/promptbox/mentions/types";
 import { compareCodepoint } from "@/lib/codepoint-compare";
 
@@ -62,6 +62,10 @@ function shouldShowProjectName(
   thread: Thread,
   context: ThreadMentionContext,
 ): boolean {
+  if (thread.projectId === PERSONAL_PROJECT_ID) {
+    return false;
+  }
+
   return (
     context.currentProjectId === undefined ||
     thread.projectId !== context.currentProjectId

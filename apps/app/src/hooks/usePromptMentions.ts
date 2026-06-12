@@ -45,10 +45,6 @@ function buildProjectNamesById(
     return projectNamesById;
   }
 
-  projectNamesById.set(
-    sidebarNavigation.personalProject.id,
-    sidebarNavigation.personalProject.name,
-  );
   for (const project of sidebarNavigation.projects) {
     projectNamesById.set(project.id, project.name);
   }

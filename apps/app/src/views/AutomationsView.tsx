@@ -8,7 +8,7 @@ import type {
 import { PageShell } from "@/components/ui/page-shell.js";
 import { TruncatedList } from "@/components/ui/truncated-list.js";
 import { useAutomationsOverview } from "@/hooks/queries/thread-queries";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   formatCronCadence,
@@ -51,6 +51,7 @@ function ThreadScheduleGroupSection({
   group,
 }: ThreadScheduleGroupSectionProps) {
   const { thread, project, schedules } = group;
+  const projectLabel = isProjectlessProjectId(project.id) ? null : project.name;
 
   return (
     <section>
@@ -64,9 +65,11 @@ function ThreadScheduleGroupSection({
         >
           {getThreadDisplayTitle(thread)}
         </Link>
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {project.name}
-        </span>
+        {projectLabel ? (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {projectLabel}
+          </span>
+        ) : null}
       </div>
       <TruncatedList
         className="mt-1.5"
