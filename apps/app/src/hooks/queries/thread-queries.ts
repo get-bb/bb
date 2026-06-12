@@ -5,14 +5,10 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { useMemo } from "react";
-import type {
-  PendingInteraction,
-  ResolvedThreadExecutionOptions,
-} from "@bb/domain";
+import type { PendingInteraction } from "@bb/domain";
 import type {
   AutomationsOverviewResponse,
   PromptHistoryResponse,
-  ThreadComposerBootstrapResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
   ThreadPendingInteractionsResponse,
@@ -28,7 +24,6 @@ import type { ThreadListFilters, FilePreview } from "@/lib/api";
 import type { PathListOptions } from "@/lib/path-list-options";
 import type { ThreadStorageFileListOptions } from "@/lib/thread-storage-files";
 import * as api from "@/lib/api";
-import { fetchAndHydrateThreadComposerBootstrap } from "../cache-owners/composer-cache-owner";
 import {
   getCachedSidebarNavigationThreads,
   getCachedThreadListPlaceholder,
@@ -49,9 +44,7 @@ import {
   archivedThreadsListQueryKey,
   automationsOverviewQueryKey,
   disabledThreadListQueryKey,
-  threadComposerBootstrapQueryKey,
   threadDetailBootstrapQueryKey,
-  threadDefaultExecutionOptionsQueryKey,
   threadQueuedMessagesQueryKey,
   threadListQueryKey,
   threadPendingInteractionsQueryKey,
@@ -78,14 +71,7 @@ interface QueryOptions {
 }
 
 const THREAD_LIST_STALE_TIME_MS = 10_000;
-const THREAD_COMPOSER_BOOTSTRAP_STALE_TIME_MS = 10_000;
-const THREAD_COMPOSER_BOOTSTRAP_GC_TIME_MS = 30_000;
 export const THREAD_MENTION_CANDIDATE_LIMIT = 200;
-
-interface ThreadComposerBootstrapQueryOptions extends QueryOptions {
-  environmentId?: string;
-  providerId?: string;
-}
 
 interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
   composerBootstrapPrefetch?: boolean;
@@ -95,8 +81,6 @@ interface ThreadDetailBootstrapQueryOptions extends QueryOptions {
 type ThreadTimelineQueryOptions = QueryOptions;
 
 type ThreadTimelineTurnSummaryDetailsQueryOptions = QueryOptions;
-
-type ThreadDefaultExecutionOptionsQueryOptions = QueryOptions;
 
 type ThreadQueuedMessagesQueryOptions = QueryOptions;
 
@@ -458,48 +442,6 @@ export function useThreadDetailBootstrap(
     },
     enabled: (options?.enabled ?? true) && Boolean(id),
     staleTime: Infinity,
-  });
-}
-
-export function useThreadComposerBootstrap(
-  id: string,
-  options?: ThreadComposerBootstrapQueryOptions,
-) {
-  const queryClient = useQueryClient();
-  const environmentId = options?.environmentId ?? null;
-  const providerId = options?.providerId ?? null;
-
-  return useQuery<ThreadComposerBootstrapResponse>({
-    queryKey: threadComposerBootstrapQueryKey(id, environmentId),
-    queryFn: () =>
-      fetchAndHydrateThreadComposerBootstrap({
-        environmentId,
-        providerId,
-        queryClient,
-        threadId: requireThreadId(id, "useThreadComposerBootstrap"),
-      }),
-    enabled: (options?.enabled ?? true) && Boolean(id),
-    refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
-    staleTime: options?.staleTime ?? THREAD_COMPOSER_BOOTSTRAP_STALE_TIME_MS,
-    gcTime: THREAD_COMPOSER_BOOTSTRAP_GC_TIME_MS,
-  });
-}
-
-export function useThreadDefaultExecutionOptions(
-  id: string,
-  options?: ThreadDefaultExecutionOptionsQueryOptions,
-) {
-  return useQuery<ResolvedThreadExecutionOptions | null>({
-    queryKey: threadDefaultExecutionOptionsQueryKey(id),
-    queryFn: () =>
-      api.getThreadDefaultExecutionOptions(
-        requireThreadId(id, "useThreadDefaultExecutionOptions"),
-      ),
-    enabled: (options?.enabled ?? true) && Boolean(id),
-    refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
-    staleTime: options?.staleTime,
   });
 }
 

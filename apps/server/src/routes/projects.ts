@@ -53,10 +53,9 @@ import {
   requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
 import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
+import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
-import {
-  toThreadListEntryResponses,
-} from "../services/threads/thread-runtime-display.js";
+import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
@@ -208,7 +207,9 @@ function buildProjectsWithThreadsResponseFromRows(
   return projects.map((project) => ({
     ...project,
     threads: threadsByProjectId.get(project.id) ?? [],
-    defaultExecutionOptions: defaultsByProjectId.get(project.id) ?? null,
+    defaultExecutionOptions: resolveCreateThreadExecutionDefaults({
+      storedDefaults: defaultsByProjectId.get(project.id) ?? null,
+    }).executionDefaults,
   }));
 }
 
@@ -566,7 +567,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       // Project-source listing only: used by the new-thread compose box before
       // any environment exists. Once a thread has an environment, workspace
       // path search goes through `GET /environments/:id/paths` instead.
-      const target = resolveProjectSourcePath(deps, { projectId, hostId: null });
+      const target = resolveProjectSourcePath(deps, {
+        projectId,
+        hostId: null,
+      });
       const inclusion = parsePathKindInclusion({
         includeFiles: query.includeFiles,
         includeDirectories: query.includeDirectories,

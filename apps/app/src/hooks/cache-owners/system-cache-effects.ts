@@ -9,7 +9,6 @@ import {
   allHostQueryKeyPrefix,
   allProjectPathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
-  allThreadDefaultExecutionOptionsQueryKeyPrefix,
   allThreadQueuedMessagesQueryKeyPrefix,
   allThreadPendingInteractionsQueryKeyPrefix,
   allThreadQueryKeyPrefix,
@@ -28,6 +27,7 @@ import {
   threadPromptHistoryQueryKeyPrefix,
   threadsQueryKey,
 } from "../queries/query-keys";
+import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/thread-default-execution-options-query";
 import type { QueryClientArg } from "../cache-effect-types";
 import {
   invalidateQueryKeys,

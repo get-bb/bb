@@ -27,10 +27,8 @@ import {
   useConnectionAwareQueryState,
   type ConnectionAwareQueryStatus,
 } from "@/hooks/queries/connection-aware-query-state";
-import {
-  stripProjectThreads,
-  useSidebarNavigation,
-} from "@/hooks/queries/project-queries";
+import { stripProjectThreads } from "@/hooks/queries/project-queries";
+import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useReorderProject } from "@/hooks/mutations/project-mutations";
 import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
 import {

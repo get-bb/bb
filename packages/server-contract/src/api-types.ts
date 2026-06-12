@@ -1878,11 +1878,11 @@ export type ProjectResponse = z.infer<typeof projectResponseSchema>;
 export const projectWithThreadsResponseSchema = projectResponseSchema.extend({
   threads: z.array(threadListEntrySchema),
   /**
-   * Project's stored execution defaults (provider/model/reasoning/permission/
-   * tier). `null` when the project has never had a thread created in the app
-   * UI. Inlined here so the new-thread composer can seed its picker without a
-   * second round-trip per visit — the value comes from the sidebar bootstrap
-   * the page is already loading.
+   * Resolved provider/model/reasoning/permission/tier defaults for creating a
+   * root thread in this project. Inlined so the new-thread composer can render
+   * exactly what the server will use without a second round-trip per visit.
+   * `null` means the server cannot form concrete defaults for the current
+   * policy/provider combination.
    */
   defaultExecutionOptions: projectExecutionDefaultsSchema.nullable(),
 });

@@ -155,7 +155,7 @@ export type PublicApiSchema = {
     >;
   };
   "/projects/:id/default-execution-options": {
-    /** Returns the last remembered provider and execution options for the project and thread type. */
+    /** Returns resolved provider and execution defaults for creating a root thread in the project. */
     $get: Endpoint<
       PathProjectId & { query: ProjectDefaultExecutionOptionsQuery },
       ProjectExecutionDefaults | null

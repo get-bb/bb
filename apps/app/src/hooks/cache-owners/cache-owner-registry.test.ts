@@ -71,7 +71,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadsQueryKey",
   ],
   "hooks/cache-owners/composer-cache-owner.ts": [
-    "threadDefaultExecutionOptionsQueryKey",
     "threadPendingInteractionsQueryKey",
     "threadPromptHistoryQueryKey",
     "threadQueuedMessagesQueryKey",
@@ -83,7 +82,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentPathsQueryKeyPrefix",
     "environmentWorkStatusQueryKeyPrefix",
     "systemExecutionOptionsEnvironmentQueryKeyPrefix",
-    "threadComposerBootstrapEnvironmentQueryKeyPrefix",
   ],
   "hooks/cache-owners/environment-workspace-cache-owner.ts": [
     "environmentQueryKey",
@@ -91,7 +89,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   "hooks/cache-owners/mutation-cache-effects.ts": [
     "projectPathsQueryKeyPrefix",
     "sidebarNavigationQueryKey",
-    "threadDefaultExecutionOptionsQueryKey",
     "threadPromptHistoryQueryKey",
     "threadQueryKey",
     "threadQueuedMessagesQueryKey",
@@ -157,7 +154,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allHostQueryKeyPrefix",
     "allProjectPathsQueryKeyPrefix",
     "allSystemExecutionOptionsQueryKeyPrefix",
-    "allThreadDefaultExecutionOptionsQueryKeyPrefix",
     "allThreadPendingInteractionsQueryKeyPrefix",
     "allThreadQueryKeyPrefix",
     "allThreadQueuedMessagesQueryKeyPrefix",
@@ -186,7 +182,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentQueryKey",
     "hostQueryKey",
     "hostsQueryKey",
-    "threadComposerBootstrapQueryKey",
     "threadQueryKey",
     "threadTimelineQueryKey",
   ],

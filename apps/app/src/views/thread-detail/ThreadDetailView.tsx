@@ -30,12 +30,12 @@ import {
   getLatestPendingInteraction,
   useProjectThreadSubset,
   useThread,
-  useThreadComposerBootstrap,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
   useThreadSchedules,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
+import { useThreadComposerBootstrap } from "../../hooks/queries/thread-composer-bootstrap-query";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";

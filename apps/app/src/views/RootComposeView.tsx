@@ -20,9 +20,10 @@ import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   useProjectPromptHistory,
   useProjectSourceBranches,
-  useSidebarNavigation,
   stripProjectThreads,
 } from "@/hooks/queries/project-queries";
+import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
+import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
@@ -248,17 +249,23 @@ export function RootComposeView() {
     () => currentProject?.sources ?? [],
     [currentProject?.sources],
   );
-  // Seed the picker with the project's stored execution defaults so the
-  // visible default matches what the server will use when the user submits
-  // without touching anything. Without this, the picker would show the
-  // system-wide first-provider/default-model (e.g. Codex / GPT-5.5) while
-  // the server falls back to the project's stored provider (e.g. Claude
-  // Code) — see resolveRequestedCreateExecutionValue, which discards
-  // submitted values that the client hasn't claimed in `executionInputSources`.
-  // Values ride along with the sidebar bootstrap so there's no extra
-  // round-trip per visit.
+  // Seed the picker from the server-resolved project defaults so the visible
+  // default matches what create-thread will use when the user submits without
+  // touching execution controls. Values normally ride along with sidebar
+  // bootstrap; optimistic sidebar entries use a one-off fallback fetch because
+  // their null means "not loaded into this cache entry", not a client default.
+  const projectDefaultExecutionOptionsQuery = useProjectDefaultExecutionOptions(
+    { projectId },
+    {
+      enabled:
+        currentProject !== undefined &&
+        currentProject.defaultExecutionOptions === null,
+    },
+  );
   const projectDefaultExecutionOptions =
-    currentProject?.defaultExecutionOptions ?? null;
+    currentProject?.defaultExecutionOptions ??
+    projectDefaultExecutionOptionsQuery.data ??
+    null;
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
     projectId,

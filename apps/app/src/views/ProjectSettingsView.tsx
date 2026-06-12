@@ -30,10 +30,8 @@ import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
 } from "@/hooks/useLocalPathPicker";
-import {
-  stripProjectThreads,
-  useSidebarNavigation,
-} from "@/hooks/queries/project-queries";
+import { stripProjectThreads } from "@/hooks/queries/project-queries";
+import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 
 export function ProjectSettingsView() {
   const { projectId } = useParams<{ projectId: string }>();

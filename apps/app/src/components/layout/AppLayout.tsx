@@ -18,10 +18,8 @@ import {
 } from "@/components/ui/sidebar.js";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
-import {
-  useSidebarNavigation,
-  stripProjectThreads,
-} from "@/hooks/queries/project-queries";
+import { stripProjectThreads } from "@/hooks/queries/project-queries";
+import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useThread,
   useThreadDetailBootstrap,

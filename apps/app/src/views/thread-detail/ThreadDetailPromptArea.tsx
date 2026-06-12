@@ -41,10 +41,10 @@ import {
 } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   getLatestPendingInteraction,
-  useThreadDefaultExecutionOptions,
   useThreadQueuedMessages,
   useThreadPromptHistory,
 } from "@/hooks/queries/thread-queries";
+import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { promptDraftToInput } from "@/lib/prompt-draft";
