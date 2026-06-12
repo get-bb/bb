@@ -25,6 +25,23 @@
         "dist/**"
       ]
     },
+    "@bb/landing#build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/landing/package.json",
+        "$TURBO_ROOT$/apps/landing/src/**",
+        "$TURBO_ROOT$/apps/landing/tsconfig.json",
+        "$TURBO_ROOT$/apps/landing/vite.config.ts",
+        "$TURBO_ROOT$/packages/tsconfig/*.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/turbo.json"
+      ],
+      "env": ["VITE_POSTHOG_KEY", "VITE_POSTHOG_HOST"],
+      "outputs": [
+        "dist/**"
+      ]
+    },
     "@bb/cli#build": {
       "inputs": [
         "$TURBO_DEFAULT$",

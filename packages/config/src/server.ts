@@ -12,12 +12,16 @@ import {
   BB_APP_VERSION_ENV,
   BB_EXTERNAL_URL_ENV,
   BB_INFERENCE_ENV,
+  BB_POSTHOG_API_KEY_ENV,
+  BB_TELEMETRY_ENV,
   BB_TRANSCRIPTION_ENV,
   BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_VERSION,
   DEFAULT_BB_EXTERNAL_URL,
   DEFAULT_BB_INFERENCE,
+  DEFAULT_BB_POSTHOG_API_KEY,
+  DEFAULT_BB_TELEMETRY,
   DEFAULT_BB_TRANSCRIPTION,
   DEFAULT_BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST,
   DEFAULT_OPENAI_API_KEY,
@@ -36,6 +40,8 @@ export interface ServerConfig
   BB_EXTERNAL_URL: string;
   BB_HOST_DAEMON_PORT: number;
   BB_INFERENCE: string;
+  BB_POSTHOG_API_KEY: string;
+  BB_TELEMETRY: boolean;
   BB_TRANSCRIPTION: string;
   BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST: number;
   OPENAI_API_KEY: string;
@@ -104,6 +110,18 @@ export function loadServerConfig(
       context: loader.context,
       defaultValue: DEFAULT_BB_INFERENCE,
       definition: BB_INFERENCE_ENV,
+      env: loader.env,
+    }),
+    BB_POSTHOG_API_KEY: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_POSTHOG_API_KEY,
+      definition: BB_POSTHOG_API_KEY_ENV,
+      env: loader.env,
+    }),
+    BB_TELEMETRY: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_TELEMETRY,
+      definition: BB_TELEMETRY_ENV,
       env: loader.env,
     }),
     BB_TRANSCRIPTION: readEnvVarWithDefault({

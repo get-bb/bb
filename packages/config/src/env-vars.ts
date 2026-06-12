@@ -168,6 +168,20 @@ export const OPENAI_API_KEY_ENV = defineEnvVar<string>({
   parse: parseStringEnvValue,
 });
 
+export const BB_POSTHOG_API_KEY_ENV = defineEnvVar<string>({
+  description:
+    "PostHog project API key for anonymous usage telemetry. Telemetry is disabled when empty.",
+  name: "BB_POSTHOG_API_KEY",
+  parse: parseStringEnvValue,
+});
+
+export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({
+  description:
+    "Anonymous usage telemetry (app starts and thread creation counts). Set to false to opt out.",
+  name: "BB_TELEMETRY",
+  parse: parseBooleanEnvValue,
+});
+
 export const BB_FF_PLACEHOLDER_ENV = defineEnvVar<boolean>({
   description:
     "Permanent placeholder feature flag. Non-functional keep-alive so the flag system has at least one entry; do not gate behavior on it.",
@@ -270,6 +284,8 @@ export const DEFAULT_BB_APP_VERSION = "0.0.0-dev";
 export const DEFAULT_BB_APP_URL = "";
 export const DEFAULT_BB_EXTERNAL_URL = "";
 export const DEFAULT_OPENAI_API_KEY = "";
+export const DEFAULT_BB_POSTHOG_API_KEY = "";
+export const DEFAULT_BB_TELEMETRY = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
 export const DEFAULT_BB_DEV_REPLAY_CAPTURE = false;
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;

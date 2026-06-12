@@ -70,6 +70,7 @@ export function onDaemonSocketOpen(
     | "logger"
     | "machineAuth"
     | "pendingInteractions"
+    | "telemetry"
     | "terminalSessions"
   >,
   args: { hostId: string; sessionId: string; socket: DaemonSocket },

@@ -116,6 +116,7 @@ describe("pending interaction lifecycle", () => {
         lifecycleDedupers: harness.deps.lifecycleDedupers,
         logger,
         machineAuth: harness.deps.machineAuth,
+        telemetry: harness.deps.telemetry,
         terminalSessions: harness.deps.terminalSessions,
       });
       const { host } = seedHostSession(harness.deps, {
@@ -1216,6 +1217,7 @@ describe("pending interaction lifecycle", () => {
         lifecycleDedupers: harness.deps.lifecycleDedupers,
         logger: harness.deps.logger,
         machineAuth: harness.deps.machineAuth,
+        telemetry: harness.deps.telemetry,
         terminalSessions: harness.deps.terminalSessions,
       });
       const { host } = seedHostSession(harness.deps, {

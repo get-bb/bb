@@ -51,6 +51,16 @@ For install requirements, provider setup, configuration, and package-focused
 docs, start with
 [`packages/bb-app`](./packages/bb-app/README.md).
 
+### Telemetry
+
+Release builds can send anonymous usage telemetry (app starts and thread
+creation counts) to help us understand adoption. Identification is a random
+per-install id stored in your data dir — no user, host, project, or workspace
+data is ever attached. Telemetry only operates when a PostHog key is configured
+(`BB_POSTHOG_API_KEY`; development builds have none), and you can always opt
+out with `BB_TELEMETRY=false`. See
+[`apps/server/src/services/system/telemetry.ts`](./apps/server/src/services/system/telemetry.ts).
+
 ## Repository Overview
 
 This monorepo contains the packaged app plus the runtime services it bundles:
@@ -62,6 +72,7 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 | [`apps/server`](./apps/server)                                     | HTTP API, WebSocket notifications, state management, and server-owned product policy. |
 | [`apps/host-daemon`](./apps/host-daemon)                           | Host-local runtime that provisions workspaces and runs provider processes.            |
 | [`apps/cli`](./apps/cli)                                           | Scriptable `bb` CLI for users and agents.                                             |
+| [`apps/landing`](./apps/landing)                                   | Static marketing landing page (TanStack Start, prerendered).                          |
 | [`packages/server-contract`](./packages/server-contract)           | HTTP and WebSocket contract between clients and the server.                           |
 | [`packages/host-daemon-contract`](./packages/host-daemon-contract) | Command/event contract between the server and host daemons.                           |
 

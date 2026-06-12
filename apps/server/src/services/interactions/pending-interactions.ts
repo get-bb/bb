@@ -232,6 +232,7 @@ export class PendingInteractionLifecycle {
       lifecycleDedupers: args.lifecycleDedupers,
       logger: args.logger,
       machineAuth: args.machineAuth,
+      telemetry: args.telemetry,
       terminalSessions: args.terminalSessions,
     };
   }

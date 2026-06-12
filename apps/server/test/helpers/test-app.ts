@@ -15,6 +15,7 @@ import {
   type AppVersionService,
 } from "../../src/services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
+import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
 import { resolveThreadStorageRootPath } from "../../src/services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
@@ -146,6 +147,7 @@ export async function createTestAppHarness(
     hub,
     logger: testLogger,
   });
+  const telemetry = createNoopTelemetryService();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,
@@ -153,6 +155,7 @@ export async function createTestAppHarness(
     lifecycleDedupers,
     logger: testLogger,
     machineAuth: testMachineAuth,
+    telemetry,
     terminalSessions,
   });
   pendingInteractions.start();
@@ -172,6 +175,7 @@ export async function createTestAppHarness(
     logger: testLogger,
     machineAuth: testMachineAuth,
     pendingInteractions,
+    telemetry,
     terminalSessions,
   };
   const { app } = createApp(deps);
