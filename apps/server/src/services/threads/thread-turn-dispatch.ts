@@ -21,7 +21,7 @@ import {
   getLastProviderThreadId,
 } from "./thread-events.js";
 import { requestThreadReprovision } from "./thread-provisioning.js";
-import { tryTransition } from "./thread-transitions.js";
+import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 
 export interface ReadyThreadEnvironment extends Environment {
   path: string;
@@ -106,11 +106,17 @@ export async function dispatchTurnDuringReprovision(
     hostId: args.environment.hostId,
   });
 
+  // Stronger than the reprovision.started table cell on purpose: an errored
+  // thread may reprovision only when it never started (no provider thread id),
+  // an event-log condition the thread row cannot express.
   if (
     args.thread.status === "idle" ||
     canRecoverPreStartErroredThread(args.deps, args.thread)
   ) {
-    tryTransition(args.deps.db, args.deps.hub, args.thread.id, "provisioning");
+    applyLoggedThreadLifecycleEvent(args.deps, {
+      event: { type: "reprovision.started" },
+      threadId: args.thread.id,
+    });
   }
   const provisioningId = createThreadProvisioningId();
   const provisionEventSequence = appendThreadProvisioningEvent(args.deps, {

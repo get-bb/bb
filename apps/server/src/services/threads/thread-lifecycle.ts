@@ -32,6 +32,7 @@ import {
   type Thread,
   type ThreadEventScope,
   type ThreadEventType,
+  type ThreadLifecycleEvent,
   type ThreadStatus,
   threadScope,
   turnScope,
@@ -71,6 +72,7 @@ import {
   tryTransition,
   tryTransitionInTransaction,
 } from "./thread-transitions.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
   buildThreadStartCommand,
@@ -293,6 +295,23 @@ function nextStatusForInterruptedThread(
   }
 }
 
+function lifecycleEventForInterruptedThread(
+  reason: SystemThreadInterruptedReason,
+): ThreadLifecycleEvent {
+  switch (reason) {
+    case "manual-stop":
+      return { type: "stop.completed" };
+    case "host-daemon-restarted":
+      return { type: "session.lost" };
+    // Legacy persisted watchdog interruption; no current producer. Lands on
+    // "error" like a lost session.
+    case "provider-turn-idle":
+      return { type: "session.lost" };
+    default:
+      return assertNever(reason);
+  }
+}
+
 function pendingInteractionStopReason(
   reason: SystemThreadInterruptedReason,
 ): string {
@@ -368,6 +387,7 @@ type ThreadLifecycleCommandDispatchDeps = CommandResultSideEffectsDeps;
 
 interface ThreadLifecycleTransactionDeps extends ThreadLifecycleWriteDeps {
   db: DbTransaction;
+  logger: AppDeps["logger"];
 }
 
 interface FinalizeStoppedThreadTransactionDeps extends ThreadLifecycleTransactionDeps {
@@ -502,9 +522,9 @@ function applyActiveTurnInterruptionInTransaction(
   });
   const appendedThreadInterruptedEvent =
     appendThreadInterruptedEventIfMissingInTransaction(deps, args);
-  transitionThreadStatusInTransaction(deps.db, {
-    id: args.threadId,
-    newStatus: nextStatusForInterruptedThread(args.reason),
+  applyLoggedThreadLifecycleEventInTransaction(deps, {
+    event: lifecycleEventForInterruptedThread(args.reason),
+    threadId: args.threadId,
   });
   return appendedThreadInterruptedEvent;
 }
@@ -1425,20 +1445,22 @@ export function finalizeStoppedThreadInTransaction(
       },
     );
     if (!appendedThreadInterruptedEvent) {
-      tryTransitionInTransaction(
-        deps.db,
-        deps.hub,
-        currentThread.id,
-        nextStatusForInterruptedThread(interruptionReason),
-      );
+      const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
+        event: lifecycleEventForInterruptedThread(interruptionReason),
+        threadId: currentThread.id,
+      });
+      if (outcome.applied) {
+        deps.hub.notifyThread(currentThread.id, ["status-changed"]);
+      }
     }
   } else if (isPreStartThreadStatus(currentThread.status)) {
-    tryTransitionInTransaction(
-      deps.db,
-      deps.hub,
-      currentThread.id,
-      nextStatusForInterruptedThread(interruptionReason),
-    );
+    const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
+      event: lifecycleEventForInterruptedThread(interruptionReason),
+      threadId: currentThread.id,
+    });
+    if (outcome.applied) {
+      deps.hub.notifyThread(currentThread.id, ["status-changed"]);
+    }
   }
 
   if (currentThread.stopRequestedAt !== null) {

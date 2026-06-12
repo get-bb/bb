@@ -52,8 +52,7 @@ import {
   isCommandTimeoutError,
   runtimeErrorLogFields,
 } from "../services/lib/error-log-fields.js";
-import { isPreStartThreadStatus } from "../services/threads/thread-status.js";
-import { tryTransition } from "../services/threads/thread-transitions.js";
+import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
 import { applyTurnCompletedEvent } from "./turn-completed-events.js";
 import {
   getInactiveSessionLogFields,
@@ -298,14 +297,12 @@ async function applyEventEffects(
     try {
       const event = entry.event;
       if (event.type === "turn/started") {
-        const thread = getThread(deps.db, entry.threadId);
-        if (!thread) {
-          continue;
-        }
         const turnId = requireThreadEventScopeTurnId({
           type: event.type,
           scope: event.scope,
         });
+        // Event-log staleness stays caller-side: a stop recorded before this
+        // turn started means the activation is stale.
         if (
           hasThreadStopBeforeTurnStarted(deps, {
             threadId: entry.threadId,
@@ -314,16 +311,10 @@ async function applyEventEffects(
         ) {
           continue;
         }
-        if (thread.stopRequestedAt !== null) {
-          continue;
-        }
-        if (
-          isPreStartThreadStatus(thread.status) ||
-          thread.status === "idle" ||
-          thread.status === "error"
-        ) {
-          tryTransition(deps.db, deps.hub, thread.id, "active");
-        }
+        applyLoggedThreadLifecycleEvent(deps, {
+          event: { type: "turn.started" },
+          threadId: entry.threadId,
+        });
         continue;
       }
 
@@ -396,10 +387,10 @@ async function applyEventEffects(
           reason:
             "Provider process exited while awaiting user interaction; retry the thread to continue",
         });
-        if (thread.stopRequestedAt !== null) {
-          continue;
-        }
-        tryTransition(deps.db, deps.hub, entry.threadId, "error");
+        applyLoggedThreadLifecycleEvent(deps, {
+          event: { type: "runtime.exited" },
+          threadId: entry.threadId,
+        });
         continue;
       }
 
