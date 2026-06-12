@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { TerminalSession } from "@bb/server-contract";
+import { isVisibleTerminalSessionStatus } from "@bb/domain";
 import {
   useCloseThreadTerminal,
   useCreateThreadTerminal,
@@ -58,7 +59,7 @@ export type ThreadTerminalTitleChangeHandler = (title: string) => void;
 type TerminalTitleRenameTimeout = number;
 
 function isVisibleTerminalSession(session: TerminalSession): boolean {
-  return session.status !== "exited";
+  return isVisibleTerminalSessionStatus(session.status);
 }
 
 function pickActiveTerminalId(

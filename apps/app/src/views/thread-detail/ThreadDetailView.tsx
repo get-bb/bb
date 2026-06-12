@@ -8,6 +8,7 @@ import type {
   TimelineTitleActionResolver,
 } from "@/components/thread/timeline";
 import {
+  isActiveTerminalSessionStatus,
   resolveEnvironmentMergeBaseBranch,
   type ThreadListEntry,
   type ThreadWithRuntime,
@@ -504,7 +505,7 @@ export function ThreadDetailView() {
   const activeTerminalCount = useMemo(
     () =>
       terminalsListQuery.data?.sessions.filter(
-        (session) => session.status !== "exited",
+        (session) => isActiveTerminalSessionStatus(session.status),
       ).length ?? 0,
     [terminalsListQuery.data],
   );
