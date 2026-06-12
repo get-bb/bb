@@ -34,6 +34,7 @@ export * from "./thread-dynamic-context.js";
 export * from "./thread-event-scope.js";
 export * from "./thread-events.js";
 export * from "./thread-git-diff.js";
+export * from "./thread-lifecycle.js";
 export * from "./thread-name-tags.js";
 export * from "./thread-schedules.js";
 export * from "./thread-timeline-pending-todos.js";
