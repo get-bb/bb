@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { trackLandingEvent } from "../analytics";
 import type { CtaPlacement } from "../analytics";
 import appScreenshot from "../assets/bb-app.webp";
+import bbIcon from "../assets/bb-icon.png";
 import { ClaudeIcon, OpenAiIcon, PiIcon } from "../icons";
 import { CLI_COMMAND, DOWNLOAD_MACOS_URL, GITHUB_URL } from "../site";
 
@@ -203,7 +204,8 @@ function LandingPage() {
     <div className="wrap">
       <nav className="nav">
         <a className="logo" href="/">
-          bb<span>.</span>
+          <img src={bbIcon} alt="" width={26} height={26} />
+          bb
         </a>
         <div className="nav-links">
           <GitHubLink placement="nav">GitHub</GitHubLink>
