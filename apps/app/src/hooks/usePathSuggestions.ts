@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { WorkspacePathEntry } from "@bb/server-contract";
 import { useDebounceValue } from "usehooks-ts";
 import { useEnvironmentPathSuggestions } from "./queries/environment-queries";
 import { useProjectPathSuggestions } from "./queries/project-queries";
@@ -43,6 +44,7 @@ export interface UsePathSuggestionsResult {
 
 interface RankedPathSuggestion extends PathSuggestion {
   sourceRank: number;
+  sourceOrder: number;
 }
 
 function getSourceRank(source: PathSuggestionSource): number {
@@ -62,6 +64,9 @@ function comparePathSuggestions(
   if (left.entryKind !== right.entryKind) {
     return left.entryKind === "directory" ? -1 : 1;
   }
+  if (left.sourceOrder !== right.sourceOrder) {
+    return left.sourceOrder - right.sourceOrder;
+  }
   return left.path.localeCompare(right.path);
 }
 
@@ -76,6 +81,63 @@ function toPathSuggestion(
     score: rankedSuggestion.score,
     positions: rankedSuggestion.positions,
   };
+}
+
+interface ToRankedPathSuggestionArgs {
+  pathEntry: WorkspacePathEntry;
+  source: PathSuggestionSource;
+  sourceOrder: number;
+}
+
+interface BuildPathSuggestionsArgs {
+  workspacePaths: readonly WorkspacePathEntry[];
+  threadStoragePaths: readonly WorkspacePathEntry[];
+  limit: number;
+}
+
+function toRankedPathSuggestion(
+  args: ToRankedPathSuggestionArgs,
+): RankedPathSuggestion {
+  return {
+    source: args.source,
+    sourceRank: getSourceRank(args.source),
+    sourceOrder: args.sourceOrder,
+    entryKind: args.pathEntry.kind,
+    path: args.pathEntry.path,
+    name: args.pathEntry.name,
+    score: args.pathEntry.score,
+    positions: args.pathEntry.positions,
+  };
+}
+
+export function buildPathSuggestions(
+  args: BuildPathSuggestionsArgs,
+): PathSuggestion[] {
+  const rankedSuggestions: RankedPathSuggestion[] = [];
+
+  for (const [sourceOrder, pathEntry] of args.workspacePaths.entries()) {
+    rankedSuggestions.push(
+      toRankedPathSuggestion({
+        pathEntry,
+        source: "workspace",
+        sourceOrder,
+      }),
+    );
+  }
+  for (const [sourceOrder, pathEntry] of args.threadStoragePaths.entries()) {
+    rankedSuggestions.push(
+      toRankedPathSuggestion({
+        pathEntry,
+        source: "thread-storage",
+        sourceOrder,
+      }),
+    );
+  }
+
+  return rankedSuggestions
+    .sort(comparePathSuggestions)
+    .slice(0, args.limit)
+    .map(toPathSuggestion);
 }
 
 export function usePathSuggestions(
@@ -152,38 +214,13 @@ export function usePathSuggestions(
       return [];
     }
 
-    const rankedSuggestions: RankedPathSuggestion[] = [];
-    if (includeWorkspace) {
-      for (const pathEntry of workspaceQuery.data?.paths ?? []) {
-        rankedSuggestions.push({
-          source: "workspace",
-          sourceRank: getSourceRank("workspace"),
-          entryKind: pathEntry.kind,
-          path: pathEntry.path,
-          name: pathEntry.name,
-          score: pathEntry.score,
-          positions: pathEntry.positions,
-        });
-      }
-    }
-    if (includeThreadStorage) {
-      for (const pathEntry of threadStorageQuery.data?.paths ?? []) {
-        rankedSuggestions.push({
-          source: "thread-storage",
-          sourceRank: getSourceRank("thread-storage"),
-          entryKind: pathEntry.kind,
-          path: pathEntry.path,
-          name: pathEntry.name,
-          score: pathEntry.score,
-          positions: pathEntry.positions,
-        });
-      }
-    }
-
-    return rankedSuggestions
-      .sort(comparePathSuggestions)
-      .slice(0, limit)
-      .map(toPathSuggestion);
+    return buildPathSuggestions({
+      workspacePaths: includeWorkspace ? (workspaceQuery.data?.paths ?? []) : [],
+      threadStoragePaths: includeThreadStorage
+        ? (threadStorageQuery.data?.paths ?? [])
+        : [],
+      limit,
+    });
   }, [
     hasQuery,
     includeThreadStorage,
