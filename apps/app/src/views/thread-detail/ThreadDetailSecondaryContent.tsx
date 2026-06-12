@@ -132,6 +132,8 @@ const areThreadSecondaryPanelPropsEqual: ThreadSecondaryPanelPropsEqual = (
   previous.canUseGitUi === next.canUseGitUi &&
   previous.defaultMergeBaseBranch === next.defaultMergeBaseBranch &&
   previous.environmentId === next.environmentId &&
+  previous.gitDiffPanelIntent === next.gitDiffPanelIntent &&
+  previous.threadId === next.threadId &&
   previous.workspaceRootPath === next.workspaceRootPath &&
   previous.fileTabs === next.fileTabs &&
   previous.fileTabContent === next.fileTabContent &&

@@ -36,6 +36,7 @@ import {
   type CodeOverflowMode,
 } from "@/lib/code-overflow-mode";
 import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
+import type { GitDiffPanelIntent } from "./git-diff/gitDiffPanelStateReducer";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
 import {
   type SecondaryPanelDraggingHandler,
@@ -89,6 +90,8 @@ export interface ThreadSecondaryPanelProps {
   canUseGitUi: boolean;
   defaultMergeBaseBranch?: string;
   environmentId?: string;
+  gitDiffPanelIntent?: GitDiffPanelIntent | null;
+  threadId: string;
   metadataContent: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
   fileTabContent?: ReactNode;
@@ -175,6 +178,8 @@ export function ThreadSecondaryPanel({
   canUseGitUi,
   defaultMergeBaseBranch,
   environmentId,
+  gitDiffPanelIntent = null,
+  threadId,
   metadataContent,
   fileTabs,
   fileTabContent,
@@ -261,7 +266,9 @@ export function ThreadSecondaryPanel({
     toggleGitDiffFileCollapsed,
   } = useGitDiffPanelState({
     environmentId,
+    intent: gitDiffPanelIntent,
     isDiffPanelActive,
+    threadId,
     defaultMergeBaseBranch,
   });
   const collapsedGitDiffFileKeys = useAtomValue(gitDiffCollapsedFileKeysAtom);

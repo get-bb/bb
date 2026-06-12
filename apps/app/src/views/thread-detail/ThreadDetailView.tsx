@@ -69,6 +69,7 @@ import {
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
+import type { GitDiffPanelIntent } from "@/components/secondary-panel/git-diff/gitDiffPanelStateReducer";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 import {
@@ -537,6 +538,32 @@ export function ThreadDetailView() {
   });
   const environmentMergeBaseBranch =
     resolveEnvironmentMergeBaseBranch(environment);
+  const [gitDiffPanelIntent, setGitDiffPanelIntent] =
+    useState<GitDiffPanelIntent | null>(null);
+  const requestGitDiffFileFocus = useCallback(
+    (path: string) => {
+      setGitDiffPanelIntent((currentIntent) => ({
+        environmentId: thread?.environmentId ?? null,
+        kind: "scroll-to-file",
+        path,
+        requestId: (currentIntent?.requestId ?? 0) + 1,
+        threadId: thread?.id ?? null,
+      }));
+    },
+    [thread?.environmentId, thread?.id],
+  );
+  const requestGitDiffCommitSelection = useCallback(
+    (sha: string) => {
+      setGitDiffPanelIntent((currentIntent) => ({
+        environmentId: thread?.environmentId ?? null,
+        kind: "select-commit",
+        requestId: (currentIntent?.requestId ?? 0) + 1,
+        sha,
+        threadId: thread?.id ?? null,
+      }));
+    },
+    [thread?.environmentId, thread?.id],
+  );
   const {
     closeThreadSecondaryPanel,
     defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
@@ -560,6 +587,8 @@ export function ThreadDetailView() {
       ? (thread?.environmentId ?? undefined)
       : undefined,
     mergeBaseBranchOptionsEnabled: hasRequestedMergeBaseOptions,
+    onRequestCommitDiffSelection: requestGitDiffCommitSelection,
+    onRequestDiffFileFocus: requestGitDiffFileFocus,
     setThreadSecondaryPanel,
   });
   const {
@@ -1553,6 +1582,8 @@ export function ThreadDetailView() {
           canUseGitUi,
           defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
           environmentId: thread.environmentId ?? undefined,
+          gitDiffPanelIntent,
+          threadId: thread.id,
           workspaceRootPath: environment?.path,
           fileTabs,
           fileTabContent,
