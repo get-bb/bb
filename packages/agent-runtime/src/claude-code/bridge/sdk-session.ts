@@ -41,6 +41,73 @@ interface QueuedSdkInputMessage {
   resolveConsumed: () => void;
 }
 
+interface SdkPermissionOptions {
+  allowDangerouslySkipPermissions?: true;
+  permissionMode: ClaudePermissionMode;
+}
+
+interface BuildSdkPermissionOptionsArgs {
+  permissionMode: ClaudePermissionMode | undefined;
+}
+
+interface AppendBoundedTextArgs {
+  chunk: string;
+  current: string;
+}
+
+interface BuildSdkDoneErrorMessageArgs {
+  error: unknown;
+  stderrTail: string;
+}
+
+const SDK_STDERR_TAIL_MAX_CHARS = 4_000;
+
+function isCurrentProcessRoot(): boolean {
+  return process.getuid?.() === 0;
+}
+
+function appendBoundedText(args: AppendBoundedTextArgs): string {
+  const next = `${args.current}${args.chunk}`;
+  if (next.length <= SDK_STDERR_TAIL_MAX_CHARS) {
+    return next;
+  }
+  return next.slice(next.length - SDK_STDERR_TAIL_MAX_CHARS);
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function buildSdkDoneErrorMessage(args: BuildSdkDoneErrorMessageArgs): string {
+  const errorMessage = getErrorMessage(args.error);
+  const stderrTail = args.stderrTail.trim();
+  if (stderrTail.length === 0 || errorMessage.includes(stderrTail)) {
+    return errorMessage;
+  }
+  return `${errorMessage}\n\nClaude Code stderr:\n${stderrTail}`;
+}
+
+function buildSdkPermissionOptions(
+  args: BuildSdkPermissionOptionsArgs,
+): SdkPermissionOptions {
+  const permissionMode = args.permissionMode ?? "default";
+  if (permissionMode !== "bypassPermissions") {
+    return { permissionMode };
+  }
+
+  // Claude Code refuses dangerous permission skipping under root. Keep bb's
+  // logical bypass policy in the bridge canUseTool handler, but avoid sending
+  // the SDK flags that make the CLI exit before the session starts.
+  if (isCurrentProcessRoot()) {
+    return { permissionMode: "default" };
+  }
+
+  return {
+    permissionMode,
+    allowDangerouslySkipPermissions: true,
+  };
+}
+
 export class SdkSession {
   private query: Query | undefined;
   private sessionId: string | undefined;
@@ -53,6 +120,7 @@ export class SdkSession {
   private isProcessing = false;
   private readonly completion: Promise<void>;
   private complete: (() => void) | null = null;
+  private stderrTail = "";
 
   constructor(
     private readonly options: SdkSessionOptions,
@@ -79,11 +147,15 @@ export class SdkSession {
       this.sessionId = this.options.sessionId;
     }
 
+    this.stderrTail = "";
+    const permissionOptions = buildSdkPermissionOptions({
+      permissionMode: this.options.permissionMode,
+    });
     const sdkOptions: Options = {
       abortController: this.abortController,
       cwd: this.options.cwd,
       systemPrompt: this.options.systemPrompt,
-      permissionMode: this.options.permissionMode ?? "default",
+      ...permissionOptions,
       includePartialMessages: true,
       // Mirror the Claude CLI cascade so the SDK loads both the user's global
       // configuration (~/.claude/settings.json, ~/.claude/CLAUDE.md) and the
@@ -92,6 +164,12 @@ export class SdkSession {
       settingSources: ["user", "project", "local"],
       persistSession: true,
       env: this.options.env ?? process.env,
+      stderr: (data) => {
+        this.stderrTail = appendBoundedText({
+          current: this.stderrTail,
+          chunk: data,
+        });
+      },
       ...(this.options.mcpServers
         ? { mcpServers: this.options.mcpServers }
         : {}),
@@ -107,9 +185,6 @@ export class SdkSession {
         : {}),
       ...(this.options.sandbox ? { sandbox: this.options.sandbox } : {}),
       ...(this.options.hooks ? { hooks: this.options.hooks } : {}),
-      ...(this.options.permissionMode === "bypassPermissions"
-        ? { allowDangerouslySkipPermissions: true }
-        : {}),
       ...(resumeSessionId ? { resume: resumeSessionId } : {}),
       ...(!resumeSessionId && this.options.sessionId
         ? { sessionId: this.options.sessionId }
@@ -278,7 +353,14 @@ export class SdkSession {
       this.onDone();
     } catch (error) {
       this.isProcessing = false;
-      this.onDone(error);
+      this.onDone(
+        new Error(
+          buildSdkDoneErrorMessage({
+            error,
+            stderrTail: this.stderrTail,
+          }),
+        ),
+      );
     } finally {
       this.inputDone = true;
       this.rejectQueuedInputs("Claude SDK stream ended before input consumed");

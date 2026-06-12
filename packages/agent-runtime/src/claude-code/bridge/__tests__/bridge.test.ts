@@ -87,6 +87,7 @@ interface CanUseToolPolicyCase {
 interface ControlledClaudeQuery {
   close: ReturnType<typeof vi.fn>;
   emit(message: SDKMessage): void;
+  fail(error: Error): void;
   finish(): void;
   initializationResult: ReturnType<typeof vi.fn>;
   [Symbol.asyncIterator](): AsyncIterator<SDKMessage>;
@@ -98,6 +99,7 @@ interface ClaudeQueryCallOptions {
   resume?: string;
   sessionId?: string;
   settingSources?: string[];
+  stderr?: (data: string) => void;
 }
 
 interface ClaudeQueryCall {
@@ -119,6 +121,8 @@ interface TempClaudeExecutable {
   binDir: string;
   executablePath: string;
 }
+
+type ControlledClaudeQueryResult = IteratorResult<SDKMessage> | Error;
 
 const tempDirs: string[] = [];
 
@@ -225,6 +229,19 @@ function getSdkResultErrorMessages(
   );
 }
 
+function getBridgeErrorMessages(
+  messages: BridgeJsonRpcOutputMessage[],
+): string[] {
+  return messages.flatMap((message) => {
+    if (message.method !== "error" || !isRecord(message.params)) {
+      return [];
+    }
+    return typeof message.params.message === "string"
+      ? [message.params.message]
+      : [];
+  });
+}
+
 function getLastCanUseTool(): CanUseTool {
   const latestCall = queryMock.mock.calls.at(-1)?.[0];
   if (!isClaudeQueryCall(latestCall) || !latestCall.options.canUseTool) {
@@ -254,11 +271,23 @@ function invokeReadonlyBashHook(args: ReadonlyBashHookArgs) {
 
 function createControlledClaudeQuery(): ControlledClaudeQuery {
   let finishNext: ((result: IteratorResult<SDKMessage>) => void) | undefined;
-  const pendingResults: IteratorResult<SDKMessage>[] = [];
-  function pushResult(result: IteratorResult<SDKMessage>): void {
+  let rejectNext: ((error: Error) => void) | undefined;
+  const pendingResults: ControlledClaudeQueryResult[] = [];
+  function pushResult(result: ControlledClaudeQueryResult): void {
+    if (result instanceof Error && rejectNext) {
+      const reject = rejectNext;
+      finishNext = undefined;
+      rejectNext = undefined;
+      reject(result);
+      return;
+    }
     if (finishNext) {
       const resolve = finishNext;
       finishNext = undefined;
+      rejectNext = undefined;
+      if (result instanceof Error) {
+        throw new Error("Expected pending SDK result, got Error");
+      }
       resolve(result);
       return;
     }
@@ -267,9 +296,13 @@ function createControlledClaudeQuery(): ControlledClaudeQuery {
   const iterator: AsyncIterator<SDKMessage> = {
     next: () => {
       const result = pendingResults.shift();
+      if (result instanceof Error) {
+        return Promise.reject(result);
+      }
       if (result) return Promise.resolve(result);
-      return new Promise<IteratorResult<SDKMessage>>((resolve) => {
+      return new Promise<IteratorResult<SDKMessage>>((resolve, reject) => {
         finishNext = resolve;
+        rejectNext = reject;
       });
     },
     return: async () => ({ value: undefined, done: true }),
@@ -280,6 +313,9 @@ function createControlledClaudeQuery(): ControlledClaudeQuery {
     }),
     emit(message: SDKMessage): void {
       pushResult({ value: message, done: false });
+    },
+    fail(error: Error): void {
+      pushResult(error);
     },
     finish() {
       pushResult({ value: undefined, done: true });
@@ -1531,6 +1567,52 @@ describe("bridge", () => {
       } else {
         process.env.HOME = originalHome;
       }
+      bridge.restore();
+    }
+  });
+
+  it("includes captured Claude stderr when the SDK stream fails", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-sdk-stderr-error";
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      getLatestQueryOptions().stderr?.(
+        "--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons\n",
+      );
+      queries[0]?.fail(new Error("Claude Code process exited with code 1"));
+      await bridge.flushWork();
+
+      const errorMessages = getBridgeErrorMessages(bridge.messages);
+      expect(errorMessages).toHaveLength(1);
+      expect(errorMessages[0]).toContain(
+        "Claude Code process exited with code 1",
+      );
+      expect(errorMessages[0]).toContain("Claude Code stderr:");
+      expect(errorMessages[0]).toContain(
+        "cannot be used with root/sudo privileges",
+      );
+
+      bridge.sendRequest(2, "thread/stop", { threadId });
+      await bridge.waitForResponse(2);
+    } finally {
       bridge.restore();
     }
   });

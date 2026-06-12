@@ -1,5 +1,6 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  Options,
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -25,20 +26,40 @@ const defaultOptions: SdkSessionOptions = {
 };
 
 interface ClaudeQueryPromptCall {
+  options: Options;
   prompt: AsyncIterable<SDKUserMessage>;
 }
 
-function getLatestPrompt(): AsyncIterable<SDKUserMessage> {
+interface RejectSdkStreamArgs {
+  error: Error;
+}
+
+function isClaudeQueryPromptCall(value: unknown): value is ClaudeQueryPromptCall {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "options" in value &&
+    "prompt" in value
+  );
+}
+
+function getLatestQueryCall(): ClaudeQueryPromptCall {
   const latestCall = queryMock.mock.calls.at(-1)?.[0];
-  if (
-    latestCall === null ||
-    typeof latestCall !== "object" ||
-    !("prompt" in latestCall)
-  ) {
-    throw new Error("Expected Claude SDK prompt");
+  if (!isClaudeQueryPromptCall(latestCall)) {
+    throw new Error("Expected Claude SDK query call");
   }
-  const call: ClaudeQueryPromptCall = latestCall;
-  return call.prompt;
+  return latestCall;
+}
+
+function getLatestPrompt(): AsyncIterable<SDKUserMessage> {
+  return getLatestQueryCall().prompt;
+}
+
+function rejectSdkStream(args: RejectSdkStreamArgs): void {
+  mockQueryInstance[Symbol.asyncIterator].mockReturnValue({
+    next: vi.fn().mockRejectedValue(args.error),
+    return: vi.fn().mockResolvedValue({ value: undefined, done: true }),
+  });
 }
 
 function keepSdkStreamOpen(): void {
@@ -46,6 +67,14 @@ function keepSdkStreamOpen(): void {
     next: vi.fn(() => new Promise<IteratorResult<SDKMessage>>(() => {})),
     return: vi.fn().mockResolvedValue({ value: undefined, done: true }),
   });
+}
+
+function mockProcessUid(uid: number): void {
+  vi.spyOn(process, "getuid").mockReturnValue(uid);
+}
+
+function waitForAsyncWork(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe("SdkSession", () => {
@@ -57,6 +86,10 @@ describe("SdkSession", () => {
       next: vi.fn().mockResolvedValue({ value: undefined, done: true }),
       return: vi.fn().mockResolvedValue({ value: undefined, done: true }),
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("starts with no session id", () => {
@@ -299,6 +332,7 @@ describe("SdkSession", () => {
   });
 
   it("only enables dangerous permission skipping for bypass mode", () => {
+    mockProcessUid(1000);
     const onMessage = vi.fn();
     const onDone = vi.fn();
     const session = new SdkSession(
@@ -319,6 +353,60 @@ describe("SdkSession", () => {
           allowDangerouslySkipPermissions: true,
         }),
       }),
+    );
+  });
+
+  it("does not send root-forbidden bypass flags when running as root", () => {
+    mockProcessUid(0);
+    const onMessage = vi.fn();
+    const onDone = vi.fn();
+    const session = new SdkSession(
+      {
+        ...defaultOptions,
+        permissionMode: "bypassPermissions",
+      },
+      onMessage,
+      onDone,
+    );
+
+    session.start();
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          permissionMode: "default",
+        }),
+      }),
+    );
+    expect(queryMock.mock.calls[0]?.[0]?.options).not.toHaveProperty(
+      "allowDangerouslySkipPermissions",
+    );
+  });
+
+  it("includes captured Claude stderr in SDK stream failures", async () => {
+    rejectSdkStream({
+      error: new Error("Claude Code process exited with code 1"),
+    });
+    const onMessage = vi.fn();
+    const onDone = vi.fn();
+    const session = new SdkSession(defaultOptions, onMessage, onDone);
+
+    session.start();
+    getLatestQueryCall().options.stderr?.(
+      "--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons\n",
+    );
+    await waitForAsyncWork();
+
+    const doneError = onDone.mock.calls[0]?.[0];
+    if (!(doneError instanceof Error)) {
+      throw new Error("Expected onDone to receive an Error");
+    }
+    expect(doneError.message).toContain(
+      "Claude Code process exited with code 1",
+    );
+    expect(doneError.message).toContain("Claude Code stderr:");
+    expect(doneError.message).toContain(
+      "cannot be used with root/sudo privileges",
     );
   });
 
