@@ -3,9 +3,12 @@ import type {
   DiscoveredWorkspaceProperties,
   EnvironmentChangeKind,
   EnvironmentCleanupMode,
+  EnvironmentLifecycleEvent,
+  EnvironmentLifecycleNoopReason,
   EnvironmentStatus,
   WorkspaceProvisionType,
 } from "@bb/domain";
+import { evaluateEnvironmentLifecycleEvent } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { environments } from "../schema.js";
@@ -408,6 +411,35 @@ export function updateEnvironmentMetadata(
   return updateEnvironmentMetadataRecord(db, notifier, id, input);
 }
 
+export interface RecordProvisionedEnvironmentWorkspaceInput extends DiscoveredWorkspaceProperties {
+  baseBranch?: string | null;
+  mergeBaseBranch?: string | null;
+}
+
+/**
+ * Persists the workspace properties a provision result discovered. Pure
+ * metadata — the status change rides the separate `provision.succeeded`
+ * lifecycle event.
+ */
+export function recordProvisionedEnvironmentWorkspace(
+  db: EnvironmentWriteConnection,
+  notifier: DbNotifier,
+  id: string,
+  input: RecordProvisionedEnvironmentWorkspaceInput,
+) {
+  return updateEnvironmentMetadataRecord(db, notifier, id, {
+    path: input.path,
+    isGitRepo: input.isGitRepo,
+    isWorktree: input.isWorktree,
+    branchName: input.branchName,
+    defaultBranch: input.defaultBranch,
+    ...(input.baseBranch !== undefined ? { baseBranch: input.baseBranch } : {}),
+    ...(input.mergeBaseBranch !== undefined
+      ? { mergeBaseBranch: input.mergeBaseBranch }
+      : {}),
+  });
+}
+
 export function setEnvironmentStatus(
   db: EnvironmentWriteConnection,
   notifier: DbNotifier,
@@ -635,6 +667,210 @@ export function recoverStaleDestroyingEnvironmentCleanup(
   }
 
   return { destroyed, restored };
+}
+
+export interface ListStaleDestroyingManagedEnvironmentsArgs {
+  updatedBefore: number;
+}
+
+/**
+ * Managed environments stuck in "destroying" with cleanup intent whose
+ * destroy RPC result was presumably lost. The sweep applies `destroy.lost`
+ * to each.
+ */
+export function listStaleDestroyingManagedEnvironments(
+  db: DbConnection,
+  args: ListStaleDestroyingManagedEnvironmentsArgs,
+) {
+  return db
+    .select()
+    .from(environments)
+    .where(
+      and(
+        eq(environments.managed, true),
+        eq(environments.status, "destroying"),
+        isNotNull(environments.cleanupRequestedAt),
+        lt(environments.updatedAt, args.updatedBefore),
+      ),
+    )
+    .all();
+}
+
+export type ApplyEnvironmentLifecycleEventNoopReason =
+  | EnvironmentLifecycleNoopReason
+  | "not-found"
+  | "cas-conflict";
+
+export type ApplyEnvironmentLifecycleEventOutcome =
+  | {
+      applied: true;
+      changes: EnvironmentChangeKind[];
+      environment: EnvironmentRow;
+    }
+  | {
+      applied: false;
+      detail: string;
+      reason: ApplyEnvironmentLifecycleEventNoopReason;
+    };
+
+export interface ApplyEnvironmentLifecycleEventArgs {
+  environmentId: string;
+  event: EnvironmentLifecycleEvent;
+}
+
+interface EnvironmentLifecycleEventNotAppliedErrorArgs {
+  detail: string;
+  reason: ApplyEnvironmentLifecycleEventNoopReason;
+}
+
+export class EnvironmentLifecycleEventNotAppliedError extends Error {
+  readonly detail: string;
+  readonly reason: ApplyEnvironmentLifecycleEventNoopReason;
+
+  constructor(args: EnvironmentLifecycleEventNotAppliedErrorArgs) {
+    super(
+      `Environment lifecycle event not applied (${args.reason}): ${args.detail}`,
+    );
+    this.name = "EnvironmentLifecycleEventNotAppliedError";
+    this.detail = args.detail;
+    this.reason = args.reason;
+  }
+}
+
+/**
+ * For boundary callers where a no-op outcome is a real error (e.g. a 4xx
+ * response): returns the updated row, or throws
+ * EnvironmentLifecycleEventNotAppliedError.
+ */
+export function requireEnvironmentLifecycleEventApplied(
+  outcome: ApplyEnvironmentLifecycleEventOutcome,
+) {
+  if (!outcome.applied) {
+    throw new EnvironmentLifecycleEventNotAppliedError(outcome);
+  }
+  return outcome.environment;
+}
+
+function applyEnvironmentLifecycleEventRecord(
+  db: EnvironmentWriteConnection,
+  args: ApplyEnvironmentLifecycleEventArgs,
+): ApplyEnvironmentLifecycleEventOutcome {
+  const environment = getEnvironment(db, args.environmentId);
+  if (!environment) {
+    return {
+      applied: false,
+      detail: `environment not found: ${args.environmentId}`,
+      reason: "not-found",
+    };
+  }
+
+  const evaluation = evaluateEnvironmentLifecycleEvent({
+    environment,
+    event: args.event,
+  });
+  if ("noop" in evaluation) {
+    return {
+      applied: false,
+      detail: evaluation.detail,
+      reason: evaluation.noop,
+    };
+  }
+
+  const set: Partial<typeof environments.$inferInsert> = {
+    status: evaluation.to,
+    updatedAt: Date.now(),
+  };
+  if (args.event.type === "destroy.dispatched") {
+    set.destroyAttemptId = args.event.destroyAttemptId;
+  }
+  if (args.event.type === "destroy.failed" || args.event.type === "destroy.lost") {
+    set.destroyAttemptId = null;
+  }
+  if (evaluation.to === "destroyed") {
+    set.cleanupRequestedAt = null;
+    set.cleanupMode = null;
+    set.destroyAttemptId = null;
+  }
+
+  // Compare-and-set on the loaded status: belt-and-braces under
+  // better-sqlite3's synchronous transactions, and the contract that survives
+  // any future executor change. The destroy claim additionally re-asserts the
+  // cross-table thread conditions the row cannot express, atomically with the
+  // status write.
+  const conditions = [
+    eq(environments.id, args.environmentId),
+    eq(environments.status, environment.status),
+  ];
+  if (args.event.type === "destroy.dispatched") {
+    conditions.push(
+      sql`NOT EXISTS (
+        SELECT 1 FROM threads
+        WHERE threads.environment_id = ${environments.id}
+        AND threads.archived_at IS NULL
+        AND threads.deleted_at IS NULL
+      )`,
+      sql`NOT EXISTS (
+        SELECT 1 FROM threads
+        WHERE threads.environment_id = ${environments.id}
+        AND threads.stop_requested_at IS NOT NULL
+      )`,
+    );
+  }
+
+  const updated = db
+    .update(environments)
+    .set(set)
+    .where(and(...conditions))
+    .returning()
+    .get();
+  if (!updated) {
+    return {
+      applied: false,
+      detail: `state changed while applying ${args.event.type} from status ${environment.status}`,
+      reason: "cas-conflict",
+    };
+  }
+
+  const changes: EnvironmentChangeKind[] = ["status-changed"];
+  if (
+    updated.cleanupRequestedAt !== environment.cleanupRequestedAt ||
+    updated.cleanupMode !== environment.cleanupMode
+  ) {
+    changes.push("metadata-changed");
+  }
+  return { applied: true, changes, environment: updated };
+}
+
+/**
+ * Single writer for environment lifecycle events: loads the row, evaluates
+ * the event against ENVIRONMENT_LIFECYCLE and its supersession predicates,
+ * applies the transition with a status compare-and-set, and stamps or clears
+ * the per-event columns (destroyAttemptId on dispatch/settlement, cleanup
+ * intent on destroyed) — all in one transaction. Never throws on stale or
+ * illegal events; returns a typed outcome for the caller to log. Use
+ * applyEnvironmentLifecycleEventInTransaction from inside an existing
+ * transaction (the caller then owns notification of `outcome.changes`).
+ */
+export function applyEnvironmentLifecycleEvent(
+  db: DbConnection,
+  notifier: DbNotifier,
+  args: ApplyEnvironmentLifecycleEventArgs,
+): ApplyEnvironmentLifecycleEventOutcome {
+  const outcome = db.transaction(
+    (tx) => applyEnvironmentLifecycleEventRecord(tx, args),
+    { behavior: "immediate" },
+  );
+  if (outcome.applied) {
+    notifier.notifyEnvironment(args.environmentId, outcome.changes);
+  }
+  return outcome;
+}
+
+export function applyEnvironmentLifecycleEventInTransaction(
+  tx: DbTransaction,
+  args: ApplyEnvironmentLifecycleEventArgs,
+): ApplyEnvironmentLifecycleEventOutcome {
+  return applyEnvironmentLifecycleEventRecord(tx, args);
 }
 
 export function claimManagedEnvironmentReprovisionRecord(
