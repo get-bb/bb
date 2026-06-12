@@ -4,6 +4,9 @@ import {
   bbDesktopBrowserAttachRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserStateSchema,
+  bbDesktopPopoutResizeRequestSchema,
+  bbDesktopPopoutThreadChangedPayloadSchema,
+  bbDesktopPopoutThreadRefSchema,
 } from "@bb/server-contract";
 import {
   evaluatePopupRate,
@@ -156,6 +159,49 @@ describe("browser IPC payload schemas", () => {
         bounds: { x: 0, y: 0, width: 800, height: 600 },
         visible: true,
       }).success,
+    ).toBe(false);
+  });
+});
+
+describe("popout IPC payload schemas", () => {
+  it("accepts only strict thread references and nullable thread changes", () => {
+    const threadRef = {
+      projectId: "proj_abc",
+      threadId: "thr_abc",
+    };
+
+    expect(bbDesktopPopoutThreadRefSchema.safeParse(threadRef).success).toBe(
+      true,
+    );
+    expect(
+      bbDesktopPopoutThreadChangedPayloadSchema.safeParse(threadRef).success,
+    ).toBe(true);
+    expect(bbDesktopPopoutThreadChangedPayloadSchema.safeParse(null).success).toBe(
+      true,
+    );
+    expect(
+      bbDesktopPopoutThreadRefSchema.safeParse({
+        ...threadRef,
+        extra: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopPopoutThreadRefSchema.safeParse({
+        projectId: "",
+        threadId: "thr_abc",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts bounded integer resize requests", () => {
+    expect(
+      bbDesktopPopoutResizeRequestSchema.safeParse({ height: 240 }).success,
+    ).toBe(true);
+    expect(
+      bbDesktopPopoutResizeRequestSchema.safeParse({ height: 120 }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopPopoutResizeRequestSchema.safeParse({ height: 240.5 }).success,
     ).toBe(false);
   });
 });

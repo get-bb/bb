@@ -8,6 +8,7 @@ import {
   getThreadRoutePath,
   isRoutePath,
   isProjectlessProjectId,
+  POPOUT_ROUTE_PATH,
   resolveRouteHref,
   ROOT_COMPOSE_ROUTE_PATH,
 } from "./route-paths";
@@ -67,6 +68,11 @@ describe("route path helpers", () => {
 
   it("recognizes the global settings route", () => {
     expect(isRoutePath({ path: "/settings" })).toBe(true);
+  });
+
+  it("recognizes the desktop popout route", () => {
+    expect(POPOUT_ROUTE_PATH).toBe("/popout");
+    expect(isRoutePath({ path: "/popout" })).toBe(true);
   });
 
   it("does not mistake deeper filesystem-like paths for routes", () => {

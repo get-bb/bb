@@ -63,6 +63,15 @@ interface LegacyProjectComposeRedirectProps {
   projectId: string;
 }
 
+type RootComposeViewProps =
+  | {
+      surface: "page";
+    }
+  | {
+      onEscapeEmptyPrompt(): void;
+      surface: "popout";
+    };
+
 // react-router's location.state is freeform unknown — narrow it here at the
 // system boundary before reading.
 function readReuseEnvironmentIdFromLocationState(
@@ -166,10 +175,10 @@ export function RootComposeRoute() {
     return <LegacyProjectComposeRedirect projectId={projectId} />;
   }
 
-  return <RootComposeView />;
+  return <RootComposeView surface="page" />;
 }
 
-export function RootComposeView() {
+export function RootComposeView(props: RootComposeViewProps) {
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
   const location = useLocation();
@@ -607,6 +616,29 @@ export function RootComposeView() {
       selectedBranch !== null &&
       branchUiState.mutationBlocker !== null);
 
+  useEffect(() => {
+    if (props.surface !== "popout") {
+      return;
+    }
+    const onEscapeEmptyPrompt = props.onEscapeEmptyPrompt;
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key !== "Escape" || event.defaultPrevented) {
+        return;
+      }
+      if (promptInput.length !== 0) {
+        return;
+      }
+      event.preventDefault();
+      onEscapeEmptyPrompt();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [promptInput.length, props]);
+
   const currentPromptDraft = useMemo(
     () => ({
       text: promptDraft.text,
@@ -897,44 +929,52 @@ export function RootComposeView() {
     );
   }
 
+  const promptBox = (
+    <NewThreadPromptBox
+      id="root-compose-prompt"
+      promptBoxRef={promptBoxRef}
+      value={prompt}
+      mentionRanges={promptDraft.mentions}
+      onChange={promptDraft.setTextAndMentions}
+      onSubmit={submitPrompt}
+      isSubmitting={createThread.isPending}
+      disabled={isSubmitDisabled}
+      zenModeStorageKey={rootComposeZenModeStorageKey}
+      history={historyConfig}
+      typeahead={typeaheadConfig}
+      attachments={attachmentsConfig}
+      modeConfig={{
+        environment: environmentConfig,
+        branch: branchConfig,
+        worktree: worktreeConfig,
+        permission: permissionConfig,
+        header: reuseHeader,
+      }}
+      project={{
+        projects: projectOptions,
+        value: isProjectless ? null : projectId,
+        onChange: handleProjectChange,
+        allowNoProject: true,
+        createProject: {
+          onCreate: quickCreateProject.openCreateDialog,
+          disabled:
+            !quickCreateProject.isAvailable || quickCreateProject.isCreating,
+          isCreating: quickCreateProject.isCreating,
+        },
+      }}
+      execution={executionConfig}
+    />
+  );
+
+  if (props.surface === "popout") {
+    return <div className="w-full">{promptBox}</div>;
+  }
+
   return (
     <PageShell
       contentClassName={ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS}
     >
-      <NewThreadPromptBox
-        id="root-compose-prompt"
-        promptBoxRef={promptBoxRef}
-        value={prompt}
-        mentionRanges={promptDraft.mentions}
-        onChange={promptDraft.setTextAndMentions}
-        onSubmit={submitPrompt}
-        isSubmitting={createThread.isPending}
-        disabled={isSubmitDisabled}
-        zenModeStorageKey={rootComposeZenModeStorageKey}
-        history={historyConfig}
-        typeahead={typeaheadConfig}
-        attachments={attachmentsConfig}
-        modeConfig={{
-          environment: environmentConfig,
-          branch: branchConfig,
-          worktree: worktreeConfig,
-          permission: permissionConfig,
-          header: reuseHeader,
-        }}
-        project={{
-          projects: projectOptions,
-          value: isProjectless ? null : projectId,
-          onChange: handleProjectChange,
-          allowNoProject: true,
-          createProject: {
-            onCreate: quickCreateProject.openCreateDialog,
-            disabled:
-              !quickCreateProject.isAvailable || quickCreateProject.isCreating,
-            isCreating: quickCreateProject.isCreating,
-          },
-        }}
-        execution={executionConfig}
-      />
+      {promptBox}
       <RootComposeMobileRecents
         highlightedThreadId={lastCreatedThreadId}
         projectNamesById={mobileRecentProjectNamesById}

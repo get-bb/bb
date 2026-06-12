@@ -3,6 +3,7 @@ import { matchPath } from "react-router-dom";
 
 export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
+export const POPOUT_ROUTE_PATH = "/popout";
 export const SETTINGS_ROUTE_PATH = "/settings";
 export const AUTOMATIONS_ROUTE_PATH = "/automations";
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
@@ -66,6 +67,7 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
 const baseRoutePatterns: readonly string[] = [
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
+  POPOUT_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   AUTOMATIONS_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,

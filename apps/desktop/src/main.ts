@@ -5,6 +5,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  globalShortcut,
   ipcMain,
   nativeImage,
   nativeTheme,
@@ -13,7 +14,17 @@ import {
   type Event,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import { bbDesktopThemeSchema, type BbDesktopInfo } from "@bb/server-contract";
+import { PERSONAL_PROJECT_ID, type Experiments } from "@bb/domain";
+import {
+  bbDesktopPopoutResizeRequestSchema,
+  bbDesktopPopoutThreadRefSchema,
+  bbDesktopThemeSchema,
+  serverMessageLenientSchema,
+  systemConfigResponseSchema,
+  type BbDesktopInfo,
+  type BbDesktopPopoutThreadRef,
+  type ClientMessage,
+} from "@bb/server-contract";
 import { z } from "zod";
 import {
   assertPathExists,
@@ -77,6 +88,16 @@ import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
 import { clearPackagedSessionHttpCache } from "./desktop-session-cache.js";
 import {
+  createPopoutWindowManager,
+  type PopoutWindowManager,
+} from "./popout-window.js";
+import {
+  BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
+  BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
+  BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
+  BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
+} from "./popout-ipc.js";
+import {
   createLogTailer,
   createLogLineBuffer,
   createLogViewerViewUrl,
@@ -126,6 +147,7 @@ interface LoadWindowUrlArgs {
 }
 
 interface CreateApplicationWindowArgs {
+  initialUrl: string | null;
   stateKey: WindowStateKey | null;
 }
 
@@ -191,6 +213,18 @@ interface MergeDesktopUpdateInfoArgs {
   feedInfo: BbDesktopInfo | null;
 }
 
+interface FetchSystemConfigArgs {
+  serverUrl: string;
+}
+
+interface RefreshPopoutExperimentConfigArgs {
+  serverUrl: string;
+}
+
+interface PopoutConfigSync {
+  stop(): void;
+}
+
 const logViewerCopyRequestSchema = z
   .object({
     text: z.string(),
@@ -208,6 +242,11 @@ let logViewerLineBuffer: LogLineBuffer | null = null;
 let logViewerPreloadPath: string | null = null;
 let logViewerTailer: LogTailer | null = null;
 let logViewerWindow: BrowserWindow | null = null;
+let popoutWindowManager: PopoutWindowManager | null = null;
+let popoutPreloadPath: string | null = null;
+let popoutWindowUrl: string | null = null;
+let popoutHotkeyAccelerator: string | null = null;
+let popoutConfigSync: PopoutConfigSync | null = null;
 let bbAppLoaded = false;
 let stoppingForQuit = false;
 let quitting = false;
@@ -396,7 +435,10 @@ function shouldEnableServerDaemonLogsMenu(): boolean {
 function refreshApplicationMenu(): void {
   installApplicationMenu({
     createNewWindow() {
-      void createApplicationWindow({ stateKey: null });
+      void createApplicationWindow({
+        initialUrl: currentWindowUrl,
+        stateKey: null,
+      });
     },
     openServerDaemonLogs() {
       void openServerDaemonLogs();
@@ -407,10 +449,238 @@ function refreshApplicationMenu(): void {
 
 function setCurrentRuntime(runtime: DesktopRuntime | null): void {
   currentRuntime = runtime;
+  if (runtime === null) {
+    stopPopoutConfigSync();
+  }
   refreshApplicationMenu();
   if (runtime?.ownership !== "spawned") {
     closeServerDaemonLogsWindow();
   }
+}
+
+function formatApiUrl(args: FetchSystemConfigArgs): string {
+  const url = new URL(args.serverUrl);
+  url.pathname = "/api/v1/system/config";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function formatRealtimeUrl(serverUrl: string): string {
+  const url = new URL(serverUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/ws";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+async function fetchSystemConfig(args: FetchSystemConfigArgs) {
+  const response = await fetch(formatApiUrl(args));
+  if (!response.ok) {
+    throw new Error(`System config request failed with HTTP ${response.status}`);
+  }
+  const payload: unknown = await response.json();
+  return systemConfigResponseSchema.parse(payload);
+}
+
+function createPopoutConfigSync(serverUrl: string): PopoutConfigSync {
+  const realtimeUrl = formatRealtimeUrl(serverUrl);
+  const subscribeMessage: ClientMessage = {
+    type: "subscribe",
+    entity: "system",
+  };
+  let reconnectTimer: NodeJS.Timeout | null = null;
+  let socket: WebSocket | null = null;
+  let stopped = false;
+
+  function clearReconnectTimer(): void {
+    if (reconnectTimer === null) {
+      return;
+    }
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  function scheduleReconnect(): void {
+    if (stopped || reconnectTimer !== null) {
+      return;
+    }
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, 1_000);
+  }
+
+  function handleMessage(event: MessageEvent): void {
+    if (typeof event.data !== "string") {
+      return;
+    }
+    try {
+      const parsed = serverMessageLenientSchema.safeParse(
+        JSON.parse(event.data),
+      );
+      if (!parsed.success) {
+        return;
+      }
+      if (
+        parsed.data.entity === "system" &&
+        parsed.data.changes.includes("config-changed")
+      ) {
+        void refreshPopoutExperimentConfig({ serverUrl });
+      }
+    } catch {
+      return;
+    }
+  }
+
+  function connect(): void {
+    if (stopped) {
+      return;
+    }
+    socket = new WebSocket(realtimeUrl);
+    socket.addEventListener("open", () => {
+      socket?.send(JSON.stringify(subscribeMessage));
+    });
+    socket.addEventListener("message", handleMessage);
+    socket.addEventListener("close", scheduleReconnect);
+    socket.addEventListener("error", () => {
+      socket?.close();
+    });
+  }
+
+  connect();
+
+  return {
+    stop(): void {
+      stopped = true;
+      clearReconnectTimer();
+      socket?.close();
+      socket = null;
+    },
+  };
+}
+
+function unregisterPopoutHotkey(): void {
+  if (popoutHotkeyAccelerator === null) {
+    return;
+  }
+  globalShortcut.unregister(popoutHotkeyAccelerator);
+  popoutHotkeyAccelerator = null;
+}
+
+function disablePopoutExperimentSurfaces(): void {
+  unregisterPopoutHotkey();
+  popoutWindowManager?.destroy();
+}
+
+function ensurePopoutWindowManager(): PopoutWindowManager | null {
+  if (popoutWindowManager !== null) {
+    return popoutWindowManager;
+  }
+  if (popoutPreloadPath === null || popoutWindowUrl === null) {
+    return null;
+  }
+  popoutWindowManager = createPopoutWindowManager({
+    appUrl: popoutWindowUrl,
+    preloadPath: popoutPreloadPath,
+    openExternalUrl(openArgs) {
+      void shell.openExternal(openArgs.url);
+    },
+  });
+  popoutWindowManager.setOpenInMainHandler(openPopoutThreadInMain);
+  return popoutWindowManager;
+}
+
+function registerPopoutHotkey(accelerator: string): void {
+  if (popoutHotkeyAccelerator === accelerator) {
+    return;
+  }
+
+  if (
+    globalShortcut.register(accelerator, () => {
+      void ensurePopoutWindowManager()?.toggle();
+    })
+  ) {
+    unregisterPopoutHotkey();
+    popoutHotkeyAccelerator = accelerator;
+    return;
+  }
+
+  process.stderr.write(
+    `Could not register popout chat hotkey "${accelerator}".\n`,
+  );
+}
+
+function applyPopoutExperimentConfig(experiments: Experiments): void {
+  if (!experiments.popoutChat) {
+    disablePopoutExperimentSurfaces();
+    return;
+  }
+
+  ensurePopoutWindowManager();
+  registerPopoutHotkey(experiments.popoutChatHotkey);
+}
+
+async function refreshPopoutExperimentConfig(
+  args: RefreshPopoutExperimentConfigArgs,
+): Promise<void> {
+  try {
+    const config = await fetchSystemConfig({ serverUrl: args.serverUrl });
+    applyPopoutExperimentConfig(config.experiments);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`Could not refresh popout chat config: ${message}\n`);
+  }
+}
+
+function stopPopoutConfigSync(): void {
+  popoutConfigSync?.stop();
+  popoutConfigSync = null;
+  disablePopoutExperimentSurfaces();
+}
+
+function startPopoutConfigSync(serverUrl: string): void {
+  popoutConfigSync?.stop();
+  popoutConfigSync = createPopoutConfigSync(serverUrl);
+  void refreshPopoutExperimentConfig({ serverUrl });
+}
+
+function getDesktopThreadRoutePath(thread: BbDesktopPopoutThreadRef): string {
+  return thread.projectId === PERSONAL_PROJECT_ID
+    ? `/threads/${thread.threadId}`
+    : `/projects/${thread.projectId}/threads/${thread.threadId}`;
+}
+
+function getWindowUrlForRoute(path: string): string | null {
+  const baseUrl = popoutWindowUrl ?? currentWindowUrl ?? currentRuntime?.serverUrl;
+  if (baseUrl === null || baseUrl === undefined) {
+    return null;
+  }
+  const url = new URL(baseUrl);
+  url.pathname = path;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+async function openPopoutThreadInMain(
+  thread: BbDesktopPopoutThreadRef,
+): Promise<void> {
+  if (desktopWindowFactory === null) {
+    return;
+  }
+  const url = getWindowUrlForRoute(getDesktopThreadRoutePath(thread));
+  if (url === null) {
+    return;
+  }
+  if (await desktopWindowFactory.loadUrlInFirstWindow({ url })) {
+    return;
+  }
+  await createApplicationWindow({
+    initialUrl: url,
+    stateKey: null,
+  });
 }
 
 function sendLogViewerSnapshot(args: SendLogViewerSnapshotArgs): void {
@@ -602,6 +872,11 @@ async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
 
 async function loadBbApp(serverUrl: string): Promise<void> {
   bbAppLoaded = true;
+  if (popoutWindowUrl !== serverUrl) {
+    popoutWindowManager?.destroy();
+    popoutWindowManager = null;
+  }
+  popoutWindowUrl = serverUrl;
   await loadWindowUrl({ url: serverUrl });
   if (shouldOpenDevTools()) {
     desktopWindowFactory?.openDevTools();
@@ -620,7 +895,7 @@ async function createApplicationWindow(
   }
 
   const browserWindow = await desktopWindowFactory.createWindow({
-    initialUrl: currentWindowUrl,
+    initialUrl: args.initialUrl,
     stateKey: args.stateKey,
   });
   if (bbAppLoaded && shouldOpenDevTools()) {
@@ -665,6 +940,7 @@ function handleBeforeQuit(event: Event): void {
 }
 
 async function finishQuit(): Promise<void> {
+  stopPopoutConfigSync();
   desktopUpdateService?.stop();
   desktopAutoUpdateService?.stop();
   desktopBrowserViewManager?.destroyAll();
@@ -724,6 +1000,36 @@ function registerDesktopUpdateIpc(): void {
       return;
     }
     void shell.openExternal(parsed.toString());
+  });
+}
+
+function registerPopoutIpc(): void {
+  ipcMain.on(BB_DESKTOP_POPOUT_TOGGLE_CHANNEL, () => {
+    void ensurePopoutWindowManager()?.toggle();
+  });
+  ipcMain.on(BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL, (_event, payload: unknown) => {
+    const parsed = bbDesktopPopoutThreadRefSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    void ensurePopoutWindowManager()?.setThread(parsed.data);
+  });
+  ipcMain.on(
+    BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
+    (_event, payload: unknown) => {
+      const parsed = bbDesktopPopoutThreadRefSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      ensurePopoutWindowManager()?.openInMain(parsed.data);
+    },
+  );
+  ipcMain.on(BB_DESKTOP_POPOUT_RESIZE_CHANNEL, (_event, payload: unknown) => {
+    const parsed = bbDesktopPopoutResizeRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    ensurePopoutWindowManager()?.requestResize(parsed.data);
   });
 }
 
@@ -896,6 +1202,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
         serverUrl: existingProbe.serverUrl,
       }),
     );
+    startPopoutConfigSync(existingProbe.serverUrl);
     refreshApplicationMenu();
     return;
   }
@@ -916,6 +1223,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
   });
   if (runtime !== null) {
     await loadBbApp(runtime.serverUrl);
+    startPopoutConfigSync(runtime.serverUrl);
     refreshApplicationMenu();
   }
 }
@@ -939,7 +1247,10 @@ async function runDesktopApp(): Promise<void> {
     if (desktopWindowFactory?.focusFirstWindow() === true) {
       return;
     }
-    void createApplicationWindow({ stateKey: null });
+    void createApplicationWindow({
+      initialUrl: currentWindowUrl,
+      stateKey: null,
+    });
   });
   app.on("before-quit", handleBeforeQuit);
   app.on("window-all-closed", () => {
@@ -949,7 +1260,10 @@ async function runDesktopApp(): Promise<void> {
   });
   app.on("activate", () => {
     if (desktopWindowFactory?.hasOpenWindows() === false) {
-      void createApplicationWindow({ stateKey: null });
+      void createApplicationWindow({
+        initialUrl: currentWindowUrl,
+        stateKey: null,
+      });
     }
   });
   app.on("did-become-active", () => {
@@ -1043,6 +1357,7 @@ async function runDesktopApp(): Promise<void> {
     sendDesktopInfoChanged();
   });
   registerDesktopUpdateIpc();
+  registerPopoutIpc();
   desktopBrowserViewManager = createDesktopBrowserViewManager();
   registerDesktopBrowserIpc(desktopBrowserViewManager);
   desktopUpdateService.start();
@@ -1069,6 +1384,7 @@ async function runDesktopApp(): Promise<void> {
     preloadPath,
     userDataPath,
   });
+  popoutPreloadPath = preloadPath;
   logViewerPreloadPath = resolvedLogViewerPreloadPath;
   installLogViewerIpcHandlers();
 

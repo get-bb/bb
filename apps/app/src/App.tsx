@@ -17,6 +17,7 @@ import {
   AUTOMATIONS_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
+  POPOUT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
@@ -45,6 +46,11 @@ const ProjectSettingsView = lazy(() =>
 const ProjectArchivedThreadsView = lazy(() =>
   import("./views/ProjectArchivedThreadsView").then((m) => ({
     default: m.ProjectArchivedThreadsView,
+  })),
+);
+const PopoutChatView = lazy(() =>
+  import("./views/PopoutChatView").then((m) => ({
+    default: m.PopoutChatView,
   })),
 );
 
@@ -105,6 +111,14 @@ export function App() {
           <Route
             path={AUTH_CALLBACK_ROUTE_PATH}
             element={<AuthCallbackView />}
+          />
+          <Route
+            path={POPOUT_ROUTE_PATH}
+            element={
+              <Suspense fallback={null}>
+                <PopoutChatView />
+              </Suspense>
+            }
           />
           <Route path="*" element={<AppRoutes />} />
         </Routes>

@@ -140,6 +140,12 @@ export interface BbDesktopApi extends BbDesktopInfo {
    * construction.
    */
   browser: BbDesktopBrowserApi;
+  /**
+   * Control surface for the desktop-only popout chat window. The Electron main
+   * process owns the native window and global hotkey; the renderer only sends
+   * typed commands over the preload bridge.
+   */
+  popout: BbDesktopPopoutApi;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   installUpdate(): Promise<void>;
@@ -407,6 +413,52 @@ export interface BbDesktopBrowserApi {
   onSnapshot?(
     listener: BbDesktopBrowserSnapshotHandler,
   ): BbDesktopBrowserUnsubscribe;
+}
+
+// --- Desktop popout chat surface ---
+
+export const BB_DESKTOP_POPOUT_ID_MAX_LENGTH = 200;
+export const BB_DESKTOP_POPOUT_HEIGHT_MIN = 160;
+export const BB_DESKTOP_POPOUT_HEIGHT_MAX = 900;
+
+export const bbDesktopPopoutThreadRefSchema = z
+  .object({
+    projectId: z.string().min(1).max(BB_DESKTOP_POPOUT_ID_MAX_LENGTH),
+    threadId: z.string().min(1).max(BB_DESKTOP_POPOUT_ID_MAX_LENGTH),
+  })
+  .strict();
+export type BbDesktopPopoutThreadRef = z.infer<
+  typeof bbDesktopPopoutThreadRefSchema
+>;
+
+export const bbDesktopPopoutThreadChangedPayloadSchema =
+  bbDesktopPopoutThreadRefSchema.nullable();
+export type BbDesktopPopoutThreadChangedPayload = z.infer<
+  typeof bbDesktopPopoutThreadChangedPayloadSchema
+>;
+
+export const bbDesktopPopoutResizeRequestSchema = z
+  .object({
+    height: z.number().int().min(BB_DESKTOP_POPOUT_HEIGHT_MIN).max(2000),
+  })
+  .strict();
+export type BbDesktopPopoutResizeRequest = z.infer<
+  typeof bbDesktopPopoutResizeRequestSchema
+>;
+
+export type BbDesktopPopoutThreadChangedHandler = (
+  payload: BbDesktopPopoutThreadChangedPayload,
+) => void;
+export type BbDesktopPopoutUnsubscribe = () => void;
+
+export interface BbDesktopPopoutApi {
+  toggle(): void;
+  setThread(thread: BbDesktopPopoutThreadRef): void;
+  openInMain(thread: BbDesktopPopoutThreadRef): void;
+  onThreadChanged(
+    listener: BbDesktopPopoutThreadChangedHandler,
+  ): BbDesktopPopoutUnsubscribe;
+  requestResize(request: BbDesktopPopoutResizeRequest): void;
 }
 
 // --- Thread creation: environment + workspace discriminated unions ---

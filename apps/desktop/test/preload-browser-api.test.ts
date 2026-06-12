@@ -5,6 +5,7 @@ import type {
   BbDesktopBrowserSnapshot,
   BbDesktopBrowserState,
   BbDesktopInfo,
+  BbDesktopPopoutThreadChangedPayload,
 } from "@bb/server-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
@@ -12,6 +13,13 @@ import {
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "../src/desktop-update-ipc.js";
+import {
+  BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
+  BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
+  BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
+  BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+  BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
+} from "../src/popout-ipc.js";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
@@ -162,6 +170,13 @@ describe("desktop preload browser API", () => {
       "setVisible",
       "stop",
     ]);
+    expect(Object.keys(api.popout).sort()).toEqual([
+      "onThreadChanged",
+      "openInMain",
+      "requestResize",
+      "setThread",
+      "toggle",
+    ]);
     expect(api.browser).not.toHaveProperty("send");
     expect(api.browser).not.toHaveProperty("invoke");
 
@@ -174,6 +189,10 @@ describe("desktop preload browser API", () => {
     api.browser.stop("browser:a");
     api.browser.setBounds(boundsRequest);
     api.browser.setVisible(visibleRequest);
+    api.popout.toggle();
+    api.popout.setThread({ projectId: "proj_a", threadId: "thr_a" });
+    api.popout.openInMain({ projectId: "proj_a", threadId: "thr_a" });
+    api.popout.requestResize({ height: 240 });
     api.setTheme("dark");
     await api.checkForUpdates();
     await api.installUpdate();
@@ -212,6 +231,22 @@ describe("desktop preload browser API", () => {
         channel: BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
         payload: visibleRequest,
       },
+      {
+        channel: BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
+        payload: undefined,
+      },
+      {
+        channel: BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
+        payload: { projectId: "proj_a", threadId: "thr_a" },
+      },
+      {
+        channel: BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
+        payload: { projectId: "proj_a", threadId: "thr_a" },
+      },
+      {
+        channel: BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
+        payload: { height: 240 },
+      },
       { channel: BB_DESKTOP_SET_THEME_CHANNEL, payload: "dark" },
     ]);
     expect(electronMock.invokeCalls).toContain(BB_DESKTOP_GET_INFO_CHANNEL);
@@ -228,6 +263,7 @@ describe("desktop preload browser API", () => {
     const states: BbDesktopBrowserState[] = [];
     const openTabs: BbDesktopBrowserOpenTabRequest[] = [];
     const snapshots: BbDesktopBrowserSnapshot[] = [];
+    const popoutThreads: BbDesktopPopoutThreadChangedPayload[] = [];
     const state: BbDesktopBrowserState = {
       tabId: "browser:a",
       url: "https://example.com/",
@@ -254,6 +290,9 @@ describe("desktop preload browser API", () => {
     api.browser.onSnapshot?.((nextSnapshot) => {
       snapshots.push(nextSnapshot);
     });
+    api.popout.onThreadChanged((thread) => {
+      popoutThreads.push(thread);
+    });
 
     emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_STATE_CHANNEL,
@@ -279,9 +318,25 @@ describe("desktop preload browser API", () => {
       channel: BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
       payload: snapshot,
     });
+    emitIpcPayload({
+      channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+      payload: { projectId: "proj_a", threadId: "thr_a", extra: true },
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+      payload: { projectId: "proj_a", threadId: "thr_a" },
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+      payload: null,
+    });
 
     expect(states).toEqual([state]);
     expect(openTabs).toEqual([openTab]);
     expect(snapshots).toEqual([snapshot]);
+    expect(popoutThreads).toEqual([
+      { projectId: "proj_a", threadId: "thr_a" },
+      null,
+    ]);
   });
 });
