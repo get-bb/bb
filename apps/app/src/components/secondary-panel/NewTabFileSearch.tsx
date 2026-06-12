@@ -50,13 +50,12 @@ export interface NewTabFileSearchProps {
   environmentId: string | null;
   currentThreadId: string;
   focusRequest: number;
+  idleActions: ReactNode;
   initialQuery?: string;
-  onSearchActiveChange?: SearchActiveChangeHandler;
   onSelect: (selection: FileSearchSelection) => void;
 }
 
 export type OpenBrowserHandler = () => void;
-export type SearchActiveChangeHandler = (isSearchActive: boolean) => void;
 export type StartTerminalHandler = () => void;
 
 export interface NewTabActionsProps {
@@ -504,8 +503,8 @@ export function NewTabFileSearch({
   environmentId,
   currentThreadId,
   focusRequest,
+  idleActions,
   initialQuery = "",
-  onSearchActiveChange,
   onSelect,
 }: NewTabFileSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -589,9 +588,8 @@ export function NewTabFileSearch({
   const handleQueryChange = useCallback(
     (nextQuery: string) => {
       setQuery(nextQuery);
-      onSearchActiveChange?.(nextQuery.trim().length > 0);
     },
-    [onSearchActiveChange],
+    [],
   );
 
   const handleFileSelect = useCallback(
@@ -710,6 +708,7 @@ export function NewTabFileSearch({
           />
         ) : null}
       </div>
+      {hasQuery ? null : idleActions}
       {isUnavailable ? (
         <FileSearchMessage
           iconName="FileQuestion"
