@@ -353,4 +353,60 @@ describe("desktop window factory", () => {
     expect(openedExternalUrls).toEqual(["https://example.com/from-markdown"]);
     expect(result).toEqual({ action: "deny" });
   });
+
+  it("loads and focuses an existing first window when navigating by URL", async () => {
+    const tempDir = await createTempDir();
+    const createdWindows: FakeDesktopWindow[] = [];
+    const browserWindowCreator: DesktopBrowserWindowCreator = {
+      create(options) {
+        const browserWindow = new FakeDesktopWindow({ options });
+        createdWindows.push(browserWindow);
+        return browserWindow;
+      },
+    };
+    const factory = createDesktopWindowFactory({
+      browserWindowCreator,
+      createWindowStateKey() {
+        return "window-navigation-test";
+      },
+      displayWorkAreas: [
+        {
+          height: 900,
+          width: 1440,
+          x: 0,
+          y: 0,
+        },
+      ],
+      icon: undefined,
+      isQuitting() {
+        return false;
+      },
+      openExternalUrl() {},
+      preloadPath: "/tmp/preload.cjs",
+      userDataPath: tempDir.path,
+    });
+    const initialUrl = "http://127.0.0.1:38886";
+    const threadUrl = "http://127.0.0.1:38886/projects/proj_a/threads/thr_a";
+
+    expect(await factory.loadUrlInFirstWindow({ url: threadUrl })).toBe(false);
+
+    await factory.createWindow({
+      initialUrl,
+      stateKey: null,
+    });
+    const browserWindow = createdWindows[0];
+    if (browserWindow === undefined) {
+      throw new Error("Expected desktop window");
+    }
+    browserWindow.minimized = true;
+
+    await expect(
+      factory.loadUrlInFirstWindow({ url: threadUrl }),
+    ).resolves.toBe(true);
+
+    expect(browserWindow.loadedUrls).toEqual([initialUrl, threadUrl]);
+    expect(browserWindow.minimized).toBe(false);
+    expect(browserWindow.focused).toBe(true);
+    expect(createdWindows).toHaveLength(1);
+  });
 });

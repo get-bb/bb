@@ -609,6 +609,9 @@ function registerPopoutHotkey(accelerator: string): void {
     return;
   }
 
+  // There is no renderer-facing notification channel for desktop shell errors
+  // like globalShortcut registration. Keep popout otherwise usable and log the
+  // failure for desktop diagnostics instead of inventing a one-off surface.
   process.stderr.write(
     `Could not register popout chat hotkey "${accelerator}".\n`,
   );
