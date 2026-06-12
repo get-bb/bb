@@ -48,7 +48,9 @@ export interface DesktopWindowOpenDevToolsOptions {
 }
 
 export interface DesktopWindowWebContents {
+  id: number;
   openDevTools(options: DesktopWindowOpenDevToolsOptions): void;
+  send(channel: string, payload: unknown): void;
   setWindowOpenHandler(handler: DesktopWindowOpenHandler): void;
 }
 
@@ -101,6 +103,7 @@ export interface DesktopWindowFactory {
   createWindow(args: CreateDesktopWindowArgs): Promise<DesktopBrowserWindow>;
   focusFirstWindow(): boolean;
   hasOpenWindows(): boolean;
+  sendToFirstWindow(channel: string, payload: unknown): boolean;
   loadUrlInFirstWindow(args: LoadDesktopWindowsUrlArgs): Promise<boolean>;
   loadUrl(args: LoadDesktopWindowsUrlArgs): Promise<void>;
   openDevTools(): void;
@@ -326,6 +329,18 @@ export function createDesktopWindowFactory(
     return false;
   }
 
+  function sendToFirstWindow(channel: string, payload: unknown): boolean {
+    for (const browserWindow of activeWindows.values()) {
+      if (browserWindow.isMinimized()) {
+        browserWindow.restore();
+      }
+      browserWindow.webContents.send(channel, payload);
+      browserWindow.focus();
+      return true;
+    }
+    return false;
+  }
+
   function openDevTools(): void {
     for (const browserWindow of activeWindows.values()) {
       browserWindow.webContents.openDevTools({ mode: "detach" });
@@ -350,6 +365,7 @@ export function createDesktopWindowFactory(
     hasOpenWindows() {
       return activeWindows.size > 0;
     },
+    sendToFirstWindow,
     loadUrlInFirstWindow,
     loadUrl,
     openDevTools,

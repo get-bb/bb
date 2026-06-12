@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   availableModelSchema,
   getProjectPathValidationMessage,
@@ -420,6 +421,9 @@ export interface BbDesktopBrowserApi {
 export const BB_DESKTOP_POPOUT_ID_MAX_LENGTH = 200;
 export const BB_DESKTOP_POPOUT_HEIGHT_MIN = 160;
 export const BB_DESKTOP_POPOUT_HEIGHT_MAX = 900;
+export const POPOUT_ROUTE_PATH = "/popout";
+export const POPOUT_QUICK_ASK_HEIGHT = 220;
+export const POPOUT_THREAD_HEIGHT = 620;
 
 export const bbDesktopPopoutThreadRefSchema = z
   .object({
@@ -431,6 +435,22 @@ export type BbDesktopPopoutThreadRef = z.infer<
   typeof bbDesktopPopoutThreadRefSchema
 >;
 
+export function getDesktopThreadRoutePath(
+  thread: BbDesktopPopoutThreadRef,
+): string {
+  return thread.projectId === PERSONAL_PROJECT_ID
+    ? `/threads/${thread.threadId}`
+    : `/projects/${thread.projectId}/threads/${thread.threadId}`;
+}
+
+export function getDesktopPopoutThreadRoutePath(
+  thread: BbDesktopPopoutThreadRef,
+): string {
+  return thread.projectId === PERSONAL_PROJECT_ID
+    ? `${POPOUT_ROUTE_PATH}/threads/${thread.threadId}`
+    : `${POPOUT_ROUTE_PATH}/projects/${thread.projectId}/threads/${thread.threadId}`;
+}
+
 export const bbDesktopPopoutThreadChangedPayloadSchema =
   bbDesktopPopoutThreadRefSchema.nullable();
 export type BbDesktopPopoutThreadChangedPayload = z.infer<
@@ -439,7 +459,11 @@ export type BbDesktopPopoutThreadChangedPayload = z.infer<
 
 export const bbDesktopPopoutResizeRequestSchema = z
   .object({
-    height: z.number().int().min(BB_DESKTOP_POPOUT_HEIGHT_MIN).max(2000),
+    height: z
+      .number()
+      .int()
+      .min(BB_DESKTOP_POPOUT_HEIGHT_MIN)
+      .max(BB_DESKTOP_POPOUT_HEIGHT_MAX),
   })
   .strict();
 export type BbDesktopPopoutResizeRequest = z.infer<
@@ -452,6 +476,7 @@ export type BbDesktopPopoutThreadChangedHandler = (
 export type BbDesktopPopoutUnsubscribe = () => void;
 
 export interface BbDesktopPopoutApi {
+  getCurrentThread(): Promise<BbDesktopPopoutThreadChangedPayload>;
   toggle(): void;
   setThread(thread: BbDesktopPopoutThreadRef): void;
   stateChanged(thread: BbDesktopPopoutThreadChangedPayload): void;

@@ -15,6 +15,7 @@ import {
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,
   type BbDesktopPopoutApi,
+  type BbDesktopPopoutThreadChangedPayload,
   type BbDesktopPopoutThreadChangedHandler,
   type BbDesktopPopoutUnsubscribe,
   type BbDesktopTheme,
@@ -43,6 +44,7 @@ import {
 } from "./desktop-browser-ipc.js";
 import {
   BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
+  BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
   BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
   BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
   BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
@@ -160,6 +162,17 @@ const bbBrowserApi: BbDesktopBrowserApi = {
 };
 
 const bbPopoutApi: BbDesktopPopoutApi = {
+  async getCurrentThread(): Promise<BbDesktopPopoutThreadChangedPayload> {
+    try {
+      const payload: unknown = await ipcRenderer.invoke(
+        BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
+      );
+      const parsed = bbDesktopPopoutThreadChangedPayloadSchema.safeParse(payload);
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  },
   toggle(): void {
     ipcRenderer.send(BB_DESKTOP_POPOUT_TOGGLE_CHANNEL);
   },

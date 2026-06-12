@@ -27,6 +27,7 @@ import { useThreads } from "@/hooks/queries/thread-queries";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -624,28 +625,20 @@ export function RootComposeView(props: RootComposeViewProps) {
       selectedBranch !== null &&
       branchUiState.mutationBlocker !== null);
 
-  useEffect(() => {
-    if (props.surface !== "popout") {
-      return;
-    }
-    const onEscapeEmptyPrompt = props.onEscapeEmptyPrompt;
-
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key !== "Escape" || event.defaultPrevented) {
-        return;
-      }
-      if (promptInput.length !== 0) {
-        return;
-      }
-      event.preventDefault();
-      onEscapeEmptyPrompt();
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [promptInput.length, props]);
+  const isPromptEmpty = useCallback(
+    () => promptInput.length === 0,
+    [promptInput.length],
+  );
+  const onEscapeEmptyPrompt =
+    props.surface === "popout" ? props.onEscapeEmptyPrompt : undefined;
+  const hideEmptyPopoutPrompt = useCallback(() => {
+    onEscapeEmptyPrompt?.();
+  }, [onEscapeEmptyPrompt]);
+  useEscapeToHide({
+    enabled: props.surface === "popout",
+    isEmpty: isPromptEmpty,
+    onHide: hideEmptyPopoutPrompt,
+  });
 
   const currentPromptDraft = useMemo(
     () => ({

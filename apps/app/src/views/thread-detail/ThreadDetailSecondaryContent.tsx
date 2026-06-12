@@ -11,7 +11,7 @@ import {
   getBbDesktopInfo,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { useIsSidebarShowing } from "@/components/ui/sidebar.js";
+import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
 import {
   Panel,
   PanelGroup,
@@ -231,7 +231,9 @@ export function ThreadDetailSecondaryContent({
   // zone; nothing-to-do otherwise (web, or sidebar covers the cluster).
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const isMainSidebarShowing = useIsSidebarShowing();
+  const optionalIsMainSidebarShowing = useOptionalIsSidebarShowing();
+  const isMainSidebarShowing =
+    surface === "popout" ? false : optionalIsMainSidebarShowing === true;
   const isLeftmostSurfaceUnderTrafficLights =
     usesDesktopChrome && !isMainSidebarShowing && !renderAsDrawer;
   // Collapsing the conversation only makes sense on a wide viewport with the

@@ -28,6 +28,7 @@ import {
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
@@ -82,6 +83,7 @@ interface ThreadDetailPromptAreaProps {
   environmentIcon?: IconName;
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
+  onEscapeEmptyPrompt?: () => void;
   isEnvironmentActionPending: boolean;
   pendingInteractions: readonly PendingInteraction[];
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
@@ -134,6 +136,7 @@ export function ThreadDetailPromptArea({
   environmentIcon,
   environmentLabel,
   onCreateNewThreadInWorktree,
+  onEscapeEmptyPrompt,
   isEnvironmentActionPending,
   pendingInteractions,
   onChangedFileClick,
@@ -339,6 +342,18 @@ export function ThreadDetailPromptArea({
     [currentPromptDraft],
   );
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
+  const isPromptEmpty = useCallback(
+    () => !hasPromptDraftInput,
+    [hasPromptDraftInput],
+  );
+  const hideEmptyPrompt = useCallback(() => {
+    onEscapeEmptyPrompt?.();
+  }, [onEscapeEmptyPrompt]);
+  useEscapeToHide({
+    enabled: onEscapeEmptyPrompt !== undefined,
+    isEmpty: isPromptEmpty,
+    onHide: hideEmptyPrompt,
+  });
   const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
     hasPromptDraftInput,
     isFollowUpSubmitting,

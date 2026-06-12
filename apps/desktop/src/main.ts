@@ -12,14 +12,18 @@ import {
   session,
   shell,
   type Event,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  type WebContents,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import { PERSONAL_PROJECT_ID, type Experiments } from "@bb/domain";
+import { type Experiments } from "@bb/domain";
 import {
   bbDesktopPopoutResizeRequestSchema,
   bbDesktopPopoutThreadChangedPayloadSchema,
   bbDesktopPopoutThreadRefSchema,
   bbDesktopThemeSchema,
+  getDesktopThreadRoutePath,
   serverMessageLenientSchema,
   systemConfigResponseSchema,
   type BbDesktopInfo,
@@ -81,6 +85,7 @@ import {
   BB_DESKTOP_OPEN_EXTERNAL_URL_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "./desktop-update-ipc.js";
+import { BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL } from "./desktop-browser-ipc.js";
 import {
   createDesktopBrowserViewManager,
   type DesktopBrowserViewManager,
@@ -94,6 +99,7 @@ import {
 } from "./popout-window.js";
 import {
   BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
+  BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
   BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
   BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
   BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
@@ -249,6 +255,9 @@ let popoutPreloadPath: string | null = null;
 let popoutWindowUrl: string | null = null;
 let popoutHotkeyAccelerator: string | null = null;
 let popoutConfigSync: PopoutConfigSync | null = null;
+let popoutExperimentEnabled = false;
+let popoutConfigRefreshToken = 0;
+const applicationWindowWebContentsIds = new Set<number>();
 let bbAppLoaded = false;
 let stoppingForQuit = false;
 let quitting = false;
@@ -543,6 +552,7 @@ function createPopoutConfigSync(serverUrl: string): PopoutConfigSync {
     socket = new WebSocket(realtimeUrl);
     socket.addEventListener("open", () => {
       socket?.send(JSON.stringify(subscribeMessage));
+      void refreshPopoutExperimentConfig({ serverUrl });
     });
     socket.addEventListener("message", handleMessage);
     socket.addEventListener("close", scheduleReconnect);
@@ -572,11 +582,16 @@ function unregisterPopoutHotkey(): void {
 }
 
 function disablePopoutExperimentSurfaces(): void {
+  popoutExperimentEnabled = false;
   unregisterPopoutHotkey();
   popoutWindowManager?.destroy();
+  popoutWindowManager = null;
 }
 
 function ensurePopoutWindowManager(): PopoutWindowManager | null {
+  if (!popoutExperimentEnabled) {
+    return null;
+  }
   if (popoutWindowManager !== null) {
     return popoutWindowManager;
   }
@@ -589,8 +604,8 @@ function ensurePopoutWindowManager(): PopoutWindowManager | null {
     openExternalUrl(openArgs) {
       void shell.openExternal(openArgs.url);
     },
+    openInMainHandler: openPopoutThreadInMain,
   });
-  popoutWindowManager.setOpenInMainHandler(openPopoutThreadInMain);
   return popoutWindowManager;
 }
 
@@ -623,6 +638,7 @@ function applyPopoutExperimentConfig(experiments: Experiments): void {
     return;
   }
 
+  popoutExperimentEnabled = true;
   ensurePopoutWindowManager();
   registerPopoutHotkey(experiments.popoutChatHotkey);
 }
@@ -630,10 +646,18 @@ function applyPopoutExperimentConfig(experiments: Experiments): void {
 async function refreshPopoutExperimentConfig(
   args: RefreshPopoutExperimentConfigArgs,
 ): Promise<void> {
+  const token = popoutConfigRefreshToken + 1;
+  popoutConfigRefreshToken = token;
   try {
     const config = await fetchSystemConfig({ serverUrl: args.serverUrl });
+    if (token !== popoutConfigRefreshToken) {
+      return;
+    }
     applyPopoutExperimentConfig(config.experiments);
   } catch (error) {
+    if (token !== popoutConfigRefreshToken) {
+      return;
+    }
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`Could not refresh popout chat config: ${message}\n`);
   }
@@ -651,14 +675,35 @@ function startPopoutConfigSync(serverUrl: string): void {
   void refreshPopoutExperimentConfig({ serverUrl });
 }
 
-function getDesktopThreadRoutePath(thread: BbDesktopPopoutThreadRef): string {
-  return thread.projectId === PERSONAL_PROJECT_ID
-    ? `/threads/${thread.threadId}`
-    : `/projects/${thread.projectId}/threads/${thread.threadId}`;
+function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
+  applicationWindowWebContentsIds.add(browserWindow.webContents.id);
+  browserWindow.on("closed", () => {
+    applicationWindowWebContentsIds.delete(browserWindow.webContents.id);
+  });
+}
+
+function isApplicationWindowSender(webContents: WebContents): boolean {
+  return applicationWindowWebContentsIds.has(webContents.id);
+}
+
+function isPopoutWindowSender(webContents: WebContents): boolean {
+  return popoutWindowManager?.ownsWebContents(webContents) === true;
+}
+
+function shouldHandleMainWindowPopoutEvent(event: IpcMainEvent): boolean {
+  return isApplicationWindowSender(event.sender);
+}
+
+function shouldHandlePopoutWindowEvent(event: IpcMainEvent): boolean {
+  return isPopoutWindowSender(event.sender);
+}
+
+function shouldHandlePopoutWindowInvoke(event: IpcMainInvokeEvent): boolean {
+  return isPopoutWindowSender(event.sender);
 }
 
 function getWindowUrlForRoute(path: string): string | null {
-  const baseUrl = popoutWindowUrl ?? currentWindowUrl ?? currentRuntime?.serverUrl;
+  const baseUrl = currentWindowUrl ?? currentRuntime?.serverUrl;
   if (baseUrl === null || baseUrl === undefined) {
     return null;
   }
@@ -671,21 +716,27 @@ function getWindowUrlForRoute(path: string): string | null {
 
 async function openPopoutThreadInMain(
   thread: BbDesktopPopoutThreadRef,
-): Promise<void> {
+): Promise<boolean> {
   if (desktopWindowFactory === null) {
-    return;
+    return false;
   }
-  const url = getWindowUrlForRoute(getDesktopThreadRoutePath(thread));
+  const path = getDesktopThreadRoutePath(thread);
+  if (
+    desktopWindowFactory.sendToFirstWindow(BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL, {
+      url: path,
+    })
+  ) {
+    return true;
+  }
+  const url = getWindowUrlForRoute(path);
   if (url === null) {
-    return;
+    return false;
   }
-  if (await desktopWindowFactory.loadUrlInFirstWindow({ url })) {
-    return;
-  }
-  await createApplicationWindow({
+  const browserWindow = await createApplicationWindow({
     initialUrl: url,
     stateKey: null,
   });
+  return browserWindow !== null;
 }
 
 function sendLogViewerSnapshot(args: SendLogViewerSnapshotArgs): void {
@@ -903,6 +954,7 @@ async function createApplicationWindow(
     initialUrl: args.initialUrl,
     stateKey: args.stateKey,
   });
+  registerApplicationWindow(browserWindow);
   if (bbAppLoaded && shouldOpenDevTools()) {
     browserWindow.webContents.openDevTools({ mode: "detach" });
   }
@@ -1009,19 +1061,34 @@ function registerDesktopUpdateIpc(): void {
 }
 
 function registerPopoutIpc(): void {
-  ipcMain.on(BB_DESKTOP_POPOUT_TOGGLE_CHANNEL, () => {
+  ipcMain.on(BB_DESKTOP_POPOUT_TOGGLE_CHANNEL, (event) => {
+    if (!shouldHandleMainWindowPopoutEvent(event)) {
+      return;
+    }
     void ensurePopoutWindowManager()?.toggle();
   });
-  ipcMain.on(BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL, (_event, payload: unknown) => {
+  ipcMain.on(BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL, (event, payload: unknown) => {
+    if (!shouldHandleMainWindowPopoutEvent(event)) {
+      return;
+    }
     const parsed = bbDesktopPopoutThreadRefSchema.safeParse(payload);
     if (!parsed.success) {
       return;
     }
     void ensurePopoutWindowManager()?.setThread(parsed.data);
   });
+  ipcMain.handle(BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL, (event) => {
+    if (!shouldHandlePopoutWindowInvoke(event)) {
+      return null;
+    }
+    return popoutWindowManager?.getCurrentThread() ?? null;
+  });
   ipcMain.on(
     BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
-    (_event, payload: unknown) => {
+    (event, payload: unknown) => {
+      if (!shouldHandlePopoutWindowEvent(event)) {
+        return;
+      }
       const parsed =
         bbDesktopPopoutThreadChangedPayloadSchema.safeParse(payload);
       if (!parsed.success) {
@@ -1032,7 +1099,10 @@ function registerPopoutIpc(): void {
   );
   ipcMain.on(
     BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
-    (_event, payload: unknown) => {
+    (event, payload: unknown) => {
+      if (!shouldHandlePopoutWindowEvent(event)) {
+        return;
+      }
       const parsed = bbDesktopPopoutThreadRefSchema.safeParse(payload);
       if (!parsed.success) {
         return;
@@ -1040,7 +1110,10 @@ function registerPopoutIpc(): void {
       ensurePopoutWindowManager()?.openInMain(parsed.data);
     },
   );
-  ipcMain.on(BB_DESKTOP_POPOUT_RESIZE_CHANNEL, (_event, payload: unknown) => {
+  ipcMain.on(BB_DESKTOP_POPOUT_RESIZE_CHANNEL, (event, payload: unknown) => {
+    if (!shouldHandlePopoutWindowEvent(event)) {
+      return;
+    }
     const parsed = bbDesktopPopoutResizeRequestSchema.safeParse(payload);
     if (!parsed.success) {
       return;
@@ -1406,9 +1479,12 @@ async function runDesktopApp(): Promise<void> {
 
   refreshApplicationMenu();
   await loadLoadingView();
-  await desktopWindowFactory.restoreSavedWindows({
+  const restoredWindows = await desktopWindowFactory.restoreSavedWindows({
     initialUrl: currentWindowUrl,
   });
+  for (const browserWindow of restoredWindows) {
+    registerApplicationWindow(browserWindow);
+  }
   await initializeRuntime({ bridgePath, serverUrl, userDataPath });
 }
 

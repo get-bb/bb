@@ -6,14 +6,14 @@ import {
 import {
   BB_DESKTOP_POPOUT_HEIGHT_MAX,
   BB_DESKTOP_POPOUT_HEIGHT_MIN,
+  POPOUT_QUICK_ASK_HEIGHT,
+  POPOUT_ROUTE_PATH,
   type BbDesktopPopoutResizeRequest,
   type BbDesktopPopoutThreadRef,
 } from "@bb/server-contract";
 import { BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL } from "./popout-ipc.js";
 
-const POPOUT_ROUTE_PATH = "/popout";
 const POPOUT_WIDTH = 480;
-const POPOUT_HEIGHT = 200;
 const POPOUT_MIN_WIDTH = 420;
 const POPOUT_MIN_HEIGHT = BB_DESKTOP_POPOUT_HEIGHT_MIN;
 
@@ -21,6 +21,7 @@ interface CreatePopoutWindowManagerArgs {
   appUrl: string;
   preloadPath: string;
   openExternalUrl(args: OpenExternalUrlArgs): void;
+  openInMainHandler: PopoutOpenInMainHandler;
 }
 
 interface OpenExternalUrlArgs {
@@ -38,18 +39,18 @@ interface SetPopoutWindowPositionArgs {
 
 export interface PopoutWindowManager {
   destroy(): void;
-  hide(): void;
+  getCurrentThread(): BbDesktopPopoutThreadRef | null;
   openInMain(thread: BbDesktopPopoutThreadRef): void;
+  ownsWebContents(webContents: Electron.WebContents): boolean;
   requestResize(request: BbDesktopPopoutResizeRequest): void;
   setCurrentThread(thread: BbDesktopPopoutThreadRef | null): void;
-  setOpenInMainHandler(handler: PopoutOpenInMainHandler): void;
   setThread(thread: BbDesktopPopoutThreadRef): Promise<void>;
   toggle(): Promise<void>;
 }
 
 export type PopoutOpenInMainHandler = (
   thread: BbDesktopPopoutThreadRef,
-) => Promise<void>;
+) => Promise<boolean>;
 
 function createPopoutUrl(appUrl: string): string {
   const url = new URL(appUrl);
@@ -66,7 +67,7 @@ function createPopoutWindowOptions(
     alwaysOnTop: true,
     frame: false,
     fullscreenable: false,
-    height: POPOUT_HEIGHT,
+    height: POPOUT_QUICK_ASK_HEIGHT,
     minHeight: POPOUT_MIN_HEIGHT,
     minWidth: POPOUT_MIN_WIDTH,
     resizable: true,
@@ -127,6 +128,28 @@ function setPopoutWindowPosition({
   browserWindow.setBounds({ x, y, width, height });
 }
 
+function clampPopoutWindowBounds(browserWindow: BrowserWindow, height: number): void {
+  const bounds = browserWindow.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+  const workArea = display.workArea;
+  const nextHeight = Math.min(clampPopoutHeight(height), workArea.height);
+  const nextWidth = Math.min(Math.max(bounds.width, POPOUT_MIN_WIDTH), workArea.width);
+  const x = Math.min(
+    Math.max(bounds.x, workArea.x),
+    workArea.x + workArea.width - nextWidth,
+  );
+  const y = Math.min(
+    Math.max(bounds.y, workArea.y),
+    workArea.y + workArea.height - nextHeight,
+  );
+  browserWindow.setBounds({
+    x,
+    y,
+    width: nextWidth,
+    height: nextHeight,
+  });
+}
+
 function sendThreadChanged(
   browserWindow: BrowserWindow,
   thread: BbDesktopPopoutThreadRef | null,
@@ -143,7 +166,7 @@ export function createPopoutWindowManager(
   let popoutWindow: BrowserWindow | null = null;
   let currentThread: BbDesktopPopoutThreadRef | null = null;
   let destroyRequested = false;
-  let openInMainHandler: PopoutOpenInMainHandler = async () => {};
+  let loadReadyPromise: Promise<void> | null = null;
 
   function getLiveWindow(): BrowserWindow | null {
     if (popoutWindow === null || popoutWindow.isDestroyed()) {
@@ -180,19 +203,35 @@ export function createPopoutWindowManager(
       if (popoutWindow === browserWindow) {
         popoutWindow = null;
       }
+      if (popoutWindow === null) {
+        loadReadyPromise = null;
+      }
     });
-    browserWindow.webContents.once("did-finish-load", () => {
-      sendThreadChanged(browserWindow, currentThread);
+    browserWindow.webContents.on("did-fail-load", () => {
+      if (!browserWindow.isDestroyed()) {
+        destroyRequested = true;
+        browserWindow.destroy();
+      }
     });
-    void loadUrlIntoPopout({
+    loadReadyPromise = loadUrlIntoPopout({
       browserWindow,
       url: createPopoutUrl(args.appUrl),
+    }).catch((error: unknown) => {
+      if (!browserWindow.isDestroyed()) {
+        destroyRequested = true;
+        browserWindow.destroy();
+      }
+      throw error;
     });
     return browserWindow;
   }
 
   async function show(): Promise<void> {
     const browserWindow = ensureWindow();
+    await loadReadyPromise;
+    if (browserWindow.isDestroyed()) {
+      return;
+    }
     setPopoutWindowPosition({ browserWindow });
     browserWindow.show();
     browserWindow.focus();
@@ -209,30 +248,29 @@ export function createPopoutWindowManager(
         browserWindow.destroy();
       }
     },
-    hide(): void {
-      getLiveWindow()?.hide();
+    getCurrentThread(): BbDesktopPopoutThreadRef | null {
+      return currentThread;
     },
     openInMain(thread): void {
-      void openInMainHandler(thread).finally(() => {
-        getLiveWindow()?.hide();
+      void args.openInMainHandler(thread).then((didOpen) => {
+        if (didOpen) {
+          getLiveWindow()?.hide();
+        }
       });
+    },
+    ownsWebContents(webContents): boolean {
+      const browserWindow = getLiveWindow();
+      return browserWindow?.webContents === webContents;
     },
     requestResize(request): void {
       const browserWindow = getLiveWindow();
       if (browserWindow === null) {
         return;
       }
-      const bounds = browserWindow.getBounds();
-      browserWindow.setSize(bounds.width, clampPopoutHeight(request.height));
-      if (browserWindow.isVisible()) {
-        setPopoutWindowPosition({ browserWindow });
-      }
+      clampPopoutWindowBounds(browserWindow, request.height);
     },
     setCurrentThread(thread): void {
       currentThread = thread;
-    },
-    setOpenInMainHandler(handler): void {
-      openInMainHandler = handler;
     },
     async setThread(thread): Promise<void> {
       currentThread = thread;

@@ -15,6 +15,7 @@ import {
 } from "../src/desktop-update-ipc.js";
 import {
   BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
+  BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
   BB_DESKTOP_POPOUT_RESIZE_CHANNEL,
   BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
   BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
@@ -61,6 +62,7 @@ const electronMock = vi.hoisted(() => {
   const invokeCalls: string[] = [];
   const listeners = new Map<string, IpcRendererListener>();
   const sendCalls: SendCall[] = [];
+  let currentPopoutThread: BbDesktopPopoutThreadChangedPayload = null;
   let exposedApi: BbDesktopApi | null = null;
   let exposedName: string | null = null;
 
@@ -80,6 +82,10 @@ const electronMock = vi.hoisted(() => {
       invokeCalls.length = 0;
       listeners.clear();
       sendCalls.length = 0;
+      currentPopoutThread = null;
+    },
+    setCurrentPopoutThread(thread: BbDesktopPopoutThreadChangedPayload): void {
+      currentPopoutThread = thread;
     },
     contextBridge: {
       exposeInMainWorld(name: string, api: BbDesktopApi): void {
@@ -88,8 +94,13 @@ const electronMock = vi.hoisted(() => {
       },
     },
     ipcRenderer: {
-      invoke(channel: string): Promise<BbDesktopInfo> {
+      invoke(
+        channel: string,
+      ): Promise<BbDesktopInfo | BbDesktopPopoutThreadChangedPayload> {
         invokeCalls.push(channel);
+        if (channel === "bb-desktop:popout:get-current-thread") {
+          return Promise.resolve(currentPopoutThread);
+        }
         return Promise.resolve(desktopInfo);
       },
       on(channel: string, listener: IpcRendererListener): void {
@@ -172,6 +183,7 @@ describe("desktop preload browser API", () => {
       "stop",
     ]);
     expect(Object.keys(api.popout).sort()).toEqual([
+      "getCurrentThread",
       "onThreadChanged",
       "openInMain",
       "requestResize",
@@ -196,6 +208,16 @@ describe("desktop preload browser API", () => {
     api.popout.stateChanged({ projectId: "proj_a", threadId: "thr_a" });
     api.popout.openInMain({ projectId: "proj_a", threadId: "thr_a" });
     api.popout.requestResize({ height: 240 });
+    electronMock.setCurrentPopoutThread({
+      projectId: "proj_a",
+      threadId: "thr_a",
+    });
+    await expect(api.popout.getCurrentThread()).resolves.toEqual({
+      projectId: "proj_a",
+      threadId: "thr_a",
+    });
+    electronMock.setCurrentPopoutThread(null);
+    await expect(api.popout.getCurrentThread()).resolves.toBeNull();
     api.setTheme("dark");
     await api.checkForUpdates();
     await api.installUpdate();
@@ -262,6 +284,9 @@ describe("desktop preload browser API", () => {
     );
     expect(electronMock.invokeCalls).toContain(
       BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
+    );
+    expect(electronMock.invokeCalls).toContain(
+      BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
     );
   });
 

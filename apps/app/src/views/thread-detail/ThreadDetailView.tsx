@@ -68,7 +68,9 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
+  getPopoutThreadRoutePath,
   getThreadRoutePath,
+  isRoutePath,
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
@@ -530,6 +532,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       return;
     }
     return browserApi.onOpenTab(({ url }) => {
+      if (isRoutePath({ path: url })) {
+        return;
+      }
       openBrowserTab(url);
     });
   }, [openBrowserTab]);
@@ -723,7 +728,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         if (!targetProjectId) return null;
         return () =>
           navigate(
-            getThreadRoutePath({
+            (props.surface === "popout"
+              ? getPopoutThreadRoutePath
+              : getThreadRoutePath)({
               projectId: targetProjectId,
               threadId: resource.threadId,
             }),
@@ -751,6 +758,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       openStorageFile,
       openWorkspaceFile,
       projectId,
+      props.surface,
       thread?.environmentId,
     ],
   );
@@ -1011,7 +1019,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const parentThreadSection: ThreadPromptParentThreadSection | null =
     useMemo(() => {
       if (!thread?.parentThreadId) return null;
-      const href = getThreadRoutePath({
+      const threadRoutePath =
+        props.surface === "popout"
+          ? getPopoutThreadRoutePath
+          : getThreadRoutePath;
+      const href = threadRoutePath({
         projectId: thread.projectId,
         threadId: thread.parentThreadId,
       });
@@ -1036,7 +1048,12 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         parentThreadTitle: getThreadDisplayTitle(parentThread),
         href,
       };
-    }, [parentThread, thread?.parentThreadId, thread?.projectId]);
+    }, [
+      parentThread,
+      props.surface,
+      thread?.parentThreadId,
+      thread?.projectId,
+    ]);
   const childThreadsSection: ThreadPromptChildThreadsSection | null =
     useMemo(() => {
       const list = childThreadSubsetQuery.data ?? [];
@@ -1047,14 +1064,16 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         .map((entry) => ({
           id: entry.id,
           title: getThreadDisplayTitle(entry),
-          href: getThreadRoutePath({
+          href: (props.surface === "popout"
+            ? getPopoutThreadRoutePath
+            : getThreadRoutePath)({
             projectId: entry.projectId,
             threadId: entry.id,
           }),
         }));
       if (activeItems.length === 0) return null;
       return { items: activeItems };
-    }, [childThreadSubsetQuery.data]);
+    }, [childThreadSubsetQuery.data, props.surface]);
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({
     markThreadRead,
@@ -1510,6 +1529,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       environmentCompactLabel={threadEnvironmentDisplay?.compactModeLabel}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
+      onEscapeEmptyPrompt={
+        props.surface === "popout" ? props.onPopoutHide : undefined
+      }
       composerQueriesEnabled={hasThreadComposerBootstrapReady}
       composerQueriesStaleTime={composerHydratedDataStaleTime}
       onChangedFileClick={handleChangedFileClick}

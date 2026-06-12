@@ -5,6 +5,8 @@
 export const BB_DESKTOP_POPOUT_TOGGLE_CHANNEL = "bb-desktop:popout:toggle";
 export const BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL =
   "bb-desktop:popout:set-thread";
+export const BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL =
+  "bb-desktop:popout:get-current-thread";
 export const BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL =
   "bb-desktop:popout:state-changed";
 export const BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL =

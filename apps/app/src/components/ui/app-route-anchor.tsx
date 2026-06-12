@@ -2,13 +2,15 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   type ComponentPropsWithoutRef,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { resolveRouteHref } from "@/lib/route-paths";
+import { isRoutePath, resolveRouteHref } from "@/lib/route-paths";
+import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 
 export interface RouteNavigationProviderProps {
   children: ReactNode;
@@ -59,6 +61,18 @@ export function RouteNavigationProvider({
     },
     [navigate],
   );
+  useEffect(() => {
+    const browserApi = getDesktopBrowserApi();
+    if (browserApi === null) {
+      return;
+    }
+    return browserApi.onOpenTab(({ url }) => {
+      if (!isRoutePath({ path: url })) {
+        return;
+      }
+      navigateRoute(url);
+    });
+  }, [navigateRoute]);
 
   return (
     <RouteNavigationContext.Provider value={navigateRoute}>

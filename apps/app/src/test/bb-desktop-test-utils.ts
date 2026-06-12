@@ -43,6 +43,9 @@ export function createBbDesktopApi(
     ...info,
     browser,
     popout: {
+      getCurrentThread() {
+        return Promise.resolve(null);
+      },
       toggle() {},
       setThread() {},
       stateChanged() {},

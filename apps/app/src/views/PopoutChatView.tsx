@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import type { BbDesktopPopoutThreadChangedPayload } from "@bb/server-contract";
+import {
+  POPOUT_QUICK_ASK_HEIGHT,
+  POPOUT_THREAD_HEIGHT,
+  type BbDesktopPopoutThreadChangedPayload,
+} from "@bb/server-contract";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 import { RootComposeView } from "./RootComposeView";
 import ThreadDetailRoute from "./thread-detail/ThreadDetailRoute";
@@ -14,23 +18,6 @@ import {
   getPopoutRoutePath,
   getPopoutThreadRoutePath,
 } from "@/lib/route-paths";
-
-const POPOUT_QUICK_ASK_HEIGHT = 220;
-const POPOUT_THREAD_HEIGHT = 620;
-
-function focusPromptEditor(): void {
-  window.requestAnimationFrame(() => {
-    document.querySelector<HTMLElement>('[contenteditable="true"]')?.focus();
-  });
-}
-
-function isPromptEditorEmpty(): boolean {
-  const editor = document.querySelector<HTMLElement>('[contenteditable="true"]');
-  if (editor === null) {
-    return true;
-  }
-  return editor.innerText.trim().length === 0;
-}
 
 function PopoutQuickAskRoute() {
   const desktop = getBbDesktopInfo();
@@ -91,6 +78,7 @@ export function PopoutChatView() {
   const desktop = getBbDesktopInfo();
   const popout = desktop?.popout ?? null;
   const navigate = useNavigate();
+  const [hasLoadedCurrentThread, setHasLoadedCurrentThread] = useState(false);
   const { projectId, threadId } = useRouteState();
   const threadState = useMemo<BbDesktopPopoutThreadChangedPayload>(() => {
     if (projectId === undefined || threadId === undefined) {
@@ -103,46 +91,39 @@ export function PopoutChatView() {
     if (popout === null) {
       return;
     }
-    return popout.onThreadChanged((nextThread) => {
+    let cancelled = false;
+    function navigateToThread(nextThread: BbDesktopPopoutThreadChangedPayload): void {
       navigate(
         nextThread === null
           ? getPopoutRoutePath()
           : getPopoutThreadRoutePath(nextThread),
         { replace: true },
       );
-      focusPromptEditor();
+    }
+    const unsubscribe = popout.onThreadChanged(navigateToThread);
+    void popout.getCurrentThread().then((currentThread) => {
+      if (cancelled) {
+        return;
+      }
+      navigateToThread(currentThread);
+      setHasLoadedCurrentThread(true);
     });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [navigate, popout]);
 
   useEffect(() => {
+    if (!hasLoadedCurrentThread) {
+      return;
+    }
     popout?.stateChanged(threadState);
     popout?.requestResize({
       height:
         threadState === null ? POPOUT_QUICK_ASK_HEIGHT : POPOUT_THREAD_HEIGHT,
     });
-  }, [popout, threadState]);
-
-  useEffect(() => {
-    if (threadState === null) {
-      return;
-    }
-
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key !== "Escape" || event.defaultPrevented) {
-        return;
-      }
-      if (!isPromptEditorEmpty()) {
-        return;
-      }
-      event.preventDefault();
-      popout?.toggle();
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [popout, threadState]);
+  }, [hasLoadedCurrentThread, popout, threadState]);
 
   if (popout === null) {
     return (

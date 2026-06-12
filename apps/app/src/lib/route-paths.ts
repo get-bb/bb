@@ -1,9 +1,15 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import {
+  POPOUT_ROUTE_PATH,
+  getDesktopPopoutThreadRoutePath,
+  type BbDesktopPopoutThreadRef,
+} from "@bb/server-contract";
 import { matchPath } from "react-router-dom";
+
+export { POPOUT_ROUTE_PATH };
 
 export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
-export const POPOUT_ROUTE_PATH = "/popout";
 export const POPOUT_PROJECTLESS_THREAD_DETAIL_ROUTE_PATH =
   "/popout/threads/:threadId";
 export const POPOUT_THREAD_DETAIL_ROUTE_PATH =
@@ -51,9 +57,11 @@ export function getPopoutRoutePath(): string {
 }
 
 export function getPopoutThreadRoutePath(args: ThreadRoutePathArgs): string {
-  return isProjectlessProjectId(args.projectId)
-    ? `/popout/threads/${args.threadId}`
-    : `/popout/projects/${args.projectId}/threads/${args.threadId}`;
+  const thread: BbDesktopPopoutThreadRef = {
+    projectId: args.projectId,
+    threadId: args.threadId,
+  };
+  return getDesktopPopoutThreadRoutePath(thread);
 }
 
 export function getAutomationsRoutePath(): string {

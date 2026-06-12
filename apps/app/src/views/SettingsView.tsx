@@ -1,5 +1,5 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
-import { defaultExperiments } from "@bb/domain";
+import { defaultExperiments, isValidElectronAccelerator } from "@bb/domain";
 import type {
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
@@ -586,7 +586,8 @@ function buildElectronAcceleratorFromKeydown(
   if (modifiers.length === 0) {
     return null;
   }
-  return [...modifiers, key].join("+");
+  const accelerator = [...modifiers, key].join("+");
+  return isValidElectronAccelerator(accelerator) ? accelerator : null;
 }
 
 function HotkeyRecorder({
