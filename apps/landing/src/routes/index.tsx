@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { trackLandingEvent } from "../analytics";
@@ -72,14 +72,133 @@ function InstallCommand({ placement }: InstallCommandProps) {
     <div className="install mono">
       <span className="dollar">$</span>
       <span>{CLI_COMMAND}</span>
-      <button type="button" onClick={() => void copy()}>
-        {copied ? "Copied" : "Copy"}
+      <button
+        type="button"
+        className={copied ? "copied" : undefined}
+        onClick={() => void copy()}
+      >
+        {copied ? "✓ Copied" : "Copy"}
       </button>
     </div>
   );
 }
 
+type SpotCardProps = {
+  title: string;
+  children: ReactNode;
+};
+
+/** Feature card with a faint cursor-following spotlight. */
+function SpotCard({ title, children }: SpotCardProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const onMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    el.style.setProperty("--mx", `${event.clientX - rect.left}px`);
+    el.style.setProperty("--my", `${event.clientY - rect.top}px`);
+  };
+  return (
+    <div ref={ref} className="card" onMouseMove={onMouseMove}>
+      <h3>{title}</h3>
+      <p>{children}</p>
+    </div>
+  );
+}
+
+/** Fade-up sections as they scroll into view. No-JS and prerender stay fully visible. */
+function useScrollReveal() {
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+    const targets = Array.from(document.querySelectorAll("[data-reveal]"));
+    for (const target of targets) {
+      if (target.getBoundingClientRect().top > window.innerHeight * 0.9) {
+        target.classList.add("reveal-pending");
+      }
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.remove("reveal-pending");
+            observer.unobserve(entry.target);
+          }
+        }
+      },
+      { rootMargin: "0px 0px -12% 0px" },
+    );
+    for (const target of targets) {
+      observer.observe(target);
+    }
+    return () => observer.disconnect();
+  }, []);
+}
+
+/**
+ * The hero screenshot, rendered with a 3D perspective tilt that eases flat as
+ * it scrolls toward the viewport center. Static (tilted) during prerender and
+ * under prefers-reduced-motion.
+ */
+function AppShot() {
+  const ref = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (
+      !el ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const rect = el.getBoundingClientRect();
+      const vh = window.innerHeight;
+      // Hold the full tilt while the window sits low in the viewport, then
+      // ease flat as its top approaches the upper part of the screen.
+      const progress = Math.min(
+        1,
+        Math.max(0, (vh * 0.62 - rect.top) / (vh * 0.47)),
+      );
+      const tilt = 18 * (1 - progress);
+      const scale = 0.94 + 0.06 * progress;
+      el.style.transform = `rotateX(${tilt}deg) scale(${scale})`;
+    };
+    const schedule = () => {
+      if (!raf) {
+        raf = requestAnimationFrame(update);
+      }
+    };
+    update();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      if (raf) {
+        cancelAnimationFrame(raf);
+      }
+    };
+  }, []);
+  return (
+    <section className="shot">
+      <img
+        ref={ref}
+        src={appScreenshot}
+        alt="The bb app with a thread open and projects and agent threads in the sidebar"
+        width={1392}
+        height={912}
+      />
+    </section>
+  );
+}
+
 function LandingPage() {
+  useScrollReveal();
   return (
     <div className="wrap">
       <nav className="nav">
@@ -95,7 +214,15 @@ function LandingPage() {
       </nav>
 
       <header className="hero">
-        <h1>The IDE agents can use themselves.</h1>
+        <h1>
+          The IDE agents can use{" "}
+          <span className="uline">
+            themselves.
+            <svg viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden>
+              <path d="M3 9 C 60 3.5, 140 3.5, 197 7" />
+            </svg>
+          </span>
+        </h1>
         <p className="sub">
           bb runs Claude Code, Codex, and Pi as threads you can watch and
           steer. Agents drive bb through a CLI and API built for them, right
@@ -134,47 +261,31 @@ function LandingPage() {
         </div>
       </header>
 
-      <section className="shot">
-        <img
-          src={appScreenshot}
-          alt="The bb app with a thread open and projects and agent threads in the sidebar"
-          width={1392}
-          height={912}
-        />
-      </section>
+      <AppShot />
 
-      <section className="features">
+      <section className="features" data-reveal>
         <h2 className="sec-title">One place for you and your agents.</h2>
         <p className="sec-sub">
           Stop juggling terminal tabs. bb gives every agent a thread, and
           gives agents the same controls it gives you.
         </p>
         <div className="grid">
-          <div className="card">
-            <h3>The IDE agents can drive</h3>
-            <p>
-              Agents spawn threads, message other agents, and schedule
-              follow-up work through a <code>bb</code> CLI made for agents.
-            </p>
-          </div>
-          <div className="card">
-            <h3>Local-first</h3>
-            <p>
-              bb is free and runs entirely on your machine, using the provider
-              subscriptions you already have. No cloud, no lock-in.
-            </p>
-          </div>
-          <div className="card">
-            <h3>Mix providers</h3>
-            <p>
-              Have Claude Code manage Codex. Pick the right agent for each
-              task and let them coordinate each other.
-            </p>
-          </div>
+          <SpotCard title="The IDE agents can drive">
+            Agents spawn threads, message other agents, and schedule follow-up
+            work through a <code>bb</code> CLI made for agents.
+          </SpotCard>
+          <SpotCard title="Local-first">
+            bb is free and runs entirely on your machine, using the provider
+            subscriptions you already have. No cloud, no lock-in.
+          </SpotCard>
+          <SpotCard title="Mix providers">
+            Have Claude Code manage Codex. Pick the right agent for each task
+            and let them coordinate each other.
+          </SpotCard>
         </div>
       </section>
 
-      <section className="closer">
+      <section className="closer" data-reveal>
         <h2 className="sec-title">Your agents. Your machine. One IDE.</h2>
         <p>Free and open source. Install in under a minute.</p>
         <div className="cta-row">
