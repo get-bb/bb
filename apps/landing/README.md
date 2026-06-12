@@ -18,6 +18,19 @@ pnpm exec turbo run build --filter=@bb/landing
 
 The deployable static site lands in `apps/landing/dist/client/`.
 
+## Deploy
+
+The site ships as a Cloudflare Workers assets-only deploy (no server runtime —
+see `wrangler.jsonc`), currently at
+<https://bb-landing.sawyer-7bb.workers.dev>.
+
+```bash
+pnpm exec turbo run build --filter=@bb/landing
+pnpm --filter @bb/landing deploy
+```
+
+Requires a wrangler login with workers write access (`wrangler login`).
+
 ## Analytics
 
 PostHog, explicit events only (autocapture off). Disabled entirely unless
