@@ -121,6 +121,7 @@ import {
   buildOpenInEditorHandler,
   resolveWorkspaceChangedFileOpenTarget,
   resolveThreadLocalWorkspaceRootPath,
+  resolveThreadWorkspacePreviewRootPath,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
 import {
@@ -915,6 +916,9 @@ export function ThreadDetailView() {
     environment,
     threadEnvironmentIsLocal,
   });
+  const workspacePreviewRootPath = resolveThreadWorkspacePreviewRootPath({
+    environment,
+  });
   const {
     canOpenPreferredDirectoryTarget,
     canOpenPreferredFileTarget,
@@ -1077,7 +1081,7 @@ export function ThreadDetailView() {
           thread?.environmentId !== null && thread?.environmentId !== undefined,
         link,
         threadStorageRootPath,
-        workspaceRootPath: localWorkspaceRootPath,
+        workspaceRootPath: workspacePreviewRootPath,
       });
 
       if (
@@ -1102,7 +1106,7 @@ export function ThreadDetailView() {
             hostFileLinksAvailable: true,
             link,
             threadStorageRootPath: resolvedThreadStorageRootPath,
-            workspaceRootPath: localWorkspaceRootPath,
+            workspaceRootPath: workspacePreviewRootPath,
           });
           handleTimelineLocalFileLinkResolution(resolvedResolution);
         })
@@ -1116,10 +1120,10 @@ export function ThreadDetailView() {
     },
     [
       handleTimelineLocalFileLinkResolution,
-      localWorkspaceRootPath,
       refetchThreadStorageFiles,
       thread?.environmentId,
       threadStorageRootPath,
+      workspacePreviewRootPath,
     ],
   );
   const handleOpenTimelineLink = useCallback<ThreadTimelineLinkHandler>(
@@ -1216,7 +1220,7 @@ export function ThreadDetailView() {
   const workspaceFileCopyPath = activeWorkspaceFilePath
     ? resolveAbsoluteFilePath({
         path: activeWorkspaceFilePath,
-        rootPath: environment?.path,
+        rootPath: workspacePreviewRootPath,
       })
     : null;
   const storageFileCopyPath = activeStorageFilePath
@@ -1239,7 +1243,7 @@ export function ThreadDetailView() {
   const hostFileLinkRootPath = resolveHostFilePreviewLinkRootPath({
     baseDir: hostFileLinkBaseDir,
     threadStorageRootPath,
-    workspaceRootPath: localWorkspaceRootPath,
+    workspaceRootPath: workspacePreviewRootPath,
   });
   const workspaceMarkdownLinkRouting = useMemo(
     () =>
@@ -1247,13 +1251,13 @@ export function ThreadDetailView() {
         baseDir: workspaceFileLinkBaseDir,
         onOpenLink: handleOpenTimelineLink,
         onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-        rootPath: environment?.path,
+        rootPath: workspacePreviewRootPath,
       }),
     [
-      environment?.path,
       handleOpenTimelineLink,
       handleOpenTimelineLocalFileLink,
       workspaceFileLinkBaseDir,
+      workspacePreviewRootPath,
     ],
   );
   const hostMarkdownLinkRouting = useMemo(
@@ -1484,6 +1488,7 @@ export function ThreadDetailView() {
   ) : activeHostFilePath ? (
     <HostFilePreviewTabContent
       activePath={activeHostFilePath}
+      copyPath={activeHostFilePath}
       environmentId={thread.environmentId}
       lineRange={activeHostFileLineRange}
       markdownLinkRouting={hostMarkdownLinkRouting}

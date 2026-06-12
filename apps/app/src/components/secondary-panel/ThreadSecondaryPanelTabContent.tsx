@@ -96,6 +96,7 @@ export interface WorkspaceFilePreviewTabContentProps {
 
 export interface HostFilePreviewTabContentProps {
   activePath: string;
+  copyPath: string;
   environmentId?: string | null;
   lineRange: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
@@ -363,6 +364,7 @@ export function WorkspaceFilePreviewTabContent({
 
 export function HostFilePreviewTabContent({
   activePath,
+  copyPath,
   environmentId,
   lineRange,
   markdownLinkRouting,
@@ -378,6 +380,7 @@ export function HostFilePreviewTabContent({
   return (
     <SecondaryPanelFilePreview
       activePath={activePath}
+      copyPath={copyPath}
       error={hostFilePreviewError}
       filePreview={hostFilePreview}
       htmlPreviewUrl={buildRawFilesystemHtmlContentUrl(threadId, activePath)}
