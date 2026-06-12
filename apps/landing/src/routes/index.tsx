@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { trackLandingEvent } from "../analytics";
 import type { CtaPlacement } from "../analytics";
+import { ClaudeIcon, OpenAiIcon, PiIcon } from "../icons";
 import { CLI_COMMAND, DOWNLOAD_MACOS_URL, GITHUB_URL } from "../site";
 
 export const Route = createFileRoute("/")({
@@ -93,12 +94,11 @@ function LandingPage() {
       </nav>
 
       <header className="hero">
-        <span className="kicker">Open source · local-first</span>
         <h1>The IDE agents can use themselves.</h1>
         <p className="sub">
           bb runs Claude Code, Codex, and Pi as threads you can watch and
-          steer — and agents drive bb through the same CLI and API you do. On
-          your machine, in one SQLite file.
+          steer. Agents drive bb through the same CLI and API you do, right on
+          your machine.
         </p>
 
         <div className="cta-row">
@@ -112,22 +112,31 @@ function LandingPage() {
 
         <InstallCommand placement="hero" />
         <p className="fine">
-          macOS (Apple Silicon) · runs anywhere with Node 22 and Git · MIT
-          licensed
+          Free and open source · macOS (Apple Silicon) · runs anywhere with
+          Node 22 and Git
         </p>
 
         <div className="providers">
           <span className="label">Works with</span>
-          <span className="chip">Claude Code</span>
-          <span className="chip">Codex</span>
-          <span className="chip">Pi</span>
+          <span className="chip">
+            <ClaudeIcon className="chip-icon" />
+            Claude Code
+          </span>
+          <span className="chip">
+            <OpenAiIcon className="chip-icon" />
+            Codex
+          </span>
+          <span className="chip">
+            <PiIcon className="chip-icon" />
+            Pi
+          </span>
         </div>
       </header>
 
       <section className="features">
         <h2 className="sec-title">One place for you and your agents.</h2>
         <p className="sec-sub">
-          Stop juggling terminal tabs. bb gives every agent a thread — and
+          Stop juggling terminal tabs. bb gives every agent a thread, and
           gives agents the same controls it gives you.
         </p>
         <div className="grid">
@@ -139,66 +148,17 @@ function LandingPage() {
             </p>
           </div>
           <div className="card">
-            <h3>Threads, not chat tabs</h3>
-            <p>
-              Every unit of work has status, events, output, files, an
-              environment, and optional parent/child structure.
-            </p>
-          </div>
-          <div className="card">
-            <h3>Steer work while it runs</h3>
-            <p>
-              Queue follow-ups, steer active turns, stop stuck work, or hand a
-              task to another thread without losing the trail.
-            </p>
-          </div>
-          <div className="card hl">
             <h3>Local-first</h3>
             <p>
-              Server and daemon run on your machine. State is one SQLite file
-              under <code>~/.bb</code>. No cloud, no lock-in.
+              bb is free and runs entirely on your machine, using the provider
+              subscriptions you already have. No cloud, no lock-in.
             </p>
           </div>
           <div className="card">
-            <h3>Workspaces, managed or not</h3>
+            <h3>Mix providers</h3>
             <p>
-              Run agents in your existing folders or in bb-managed git
-              worktrees — isolated when you want, in place when you don&apos;t.
-            </p>
-          </div>
-          <div className="card">
-            <h3>Multi-agent workflows</h3>
-            <p>
-              Encode bigger fan-outs as workflow files that launch provider
-              agents with deterministic, resumable orchestration.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="how">
-        <div className="steps">
-          <div className="step">
-            <div className="num">1</div>
-            <h3>Install</h3>
-            <p>
-              Download the macOS app, or run <code>{CLI_COMMAND}</code>.
-            </p>
-          </div>
-          <div className="step">
-            <div className="num">2</div>
-            <h3>Point it at a repo</h3>
-            <p>
-              bb provisions workspaces — managed worktrees or your existing
-              checkout.
-            </p>
-          </div>
-          <div className="step">
-            <div className="num">3</div>
-            <h3>Spawn threads</h3>
-            <p>
-              From the UI, CLI, or API. Watch and steer — and let agents spawn
-              threads of their own.
+              Have Claude Code manage Codex. Pick the right agent for each
+              task and let them coordinate each other.
             </p>
           </div>
         </div>
@@ -218,7 +178,7 @@ function LandingPage() {
       </section>
 
       <footer className="footer">
-        <span>bb — open source under MIT</span>
+        <span>bb is free and open source (MIT)</span>
         <span>
           <GitHubLink placement="footer">GitHub</GitHubLink>
           {" · "}

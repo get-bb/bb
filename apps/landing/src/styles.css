@@ -96,6 +96,22 @@ code,
   font-weight: 500;
   cursor: pointer;
   border: 1px solid transparent;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 4px 14px color-mix(in oklch, var(--ink) 18%, transparent);
 }
 
 .btn-primary {
@@ -133,18 +149,69 @@ code,
 .hero {
   padding: 104px 0 88px;
   text-align: center;
+  position: relative;
 }
 
-.kicker {
-  display: inline-block;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--dim);
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: 99px;
-  padding: 5px 14px;
-  margin-bottom: 28px;
+/* Faint neutral wash behind the hero. */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -140px -25vw auto;
+  height: 480px;
+  z-index: -1;
+  background: radial-gradient(
+    640px 300px at 50% 12%,
+    color-mix(in oklch, var(--ink) 4.5%, transparent),
+    transparent 70%
+  );
+}
+
+/* Staggered entrance for hero content. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero > * {
+  animation: fade-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.hero > :nth-child(2) {
+  animation-delay: 0.07s;
+}
+
+.hero > :nth-child(3) {
+  animation-delay: 0.14s;
+}
+
+.hero > :nth-child(4) {
+  animation-delay: 0.21s;
+}
+
+.hero > :nth-child(5) {
+  animation-delay: 0.28s;
+}
+
+.hero > :nth-child(6) {
+  animation-delay: 0.35s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero > * {
+    animation: none;
+  }
+
+  .btn,
+  .chip,
+  .card {
+    transition: none;
+  }
 }
 
 .hero h1 {
@@ -218,12 +285,31 @@ code,
 }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13.5px;
   font-weight: 500;
   color: var(--dim);
   border: 1px solid var(--border);
   border-radius: 99px;
   padding: 6px 16px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.chip:hover {
+  background: var(--surface);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.chip-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
 }
 
 /* ── Features ───────────────────────────────────────────────────── */
@@ -256,9 +342,21 @@ code,
 .card {
   border-top: 2px solid var(--border-soft);
   padding-top: 20px;
+  transition:
+    border-top-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.card:hover {
+  border-top-color: var(--border);
+  transform: translateY(-2px);
 }
 
 .card.hl {
+  border-top-color: var(--accent);
+}
+
+.card.hl:hover {
   border-top-color: var(--accent);
 }
 
@@ -274,50 +372,6 @@ code,
 }
 
 .card code {
-  background: var(--surface-recessed);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-size: 12.5px;
-}
-
-/* ── How it works ───────────────────────────────────────────────── */
-
-.how {
-  padding: 0 0 88px;
-}
-
-.steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 28px;
-}
-
-.step .num {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--ink);
-  color: var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 13.5px;
-  margin-bottom: 14px;
-}
-
-.step h3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-
-.step p {
-  color: var(--dim);
-  font-size: 14.5px;
-}
-
-.step code {
   background: var(--surface-recessed);
   border-radius: 4px;
   padding: 1px 6px;
