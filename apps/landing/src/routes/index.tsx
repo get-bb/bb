@@ -60,14 +60,16 @@ type InstallCommandProps = {
 
 function InstallCommand({ placement }: InstallCommandProps) {
   const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    await navigator.clipboard.writeText(CLI_COMMAND);
+  const copy = () => {
+    // Track and show feedback first; the clipboard write can reject (no user
+    // activation, permissions) and must not swallow the event.
     trackLandingEvent({
       name: "landing_cli_command_copied",
       properties: { placement, command: CLI_COMMAND },
     });
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+    navigator.clipboard.writeText(CLI_COMMAND).catch(() => {});
   };
   return (
     <div className="install mono">
@@ -76,7 +78,7 @@ function InstallCommand({ placement }: InstallCommandProps) {
       <button
         type="button"
         className={copied ? "copied" : undefined}
-        onClick={() => void copy()}
+        onClick={copy}
       >
         {copied ? "✓ Copied" : "Copy"}
       </button>

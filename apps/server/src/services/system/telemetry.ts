@@ -13,9 +13,11 @@ import type { ServerLogger } from "../../types.js";
  * workflow state, so lost sends (offline, PostHog outage, process exit
  * mid-flight) are dropped without retry or persistence.
  *
- * Telemetry is fully disabled — including the install-id file — unless a
- * PostHog key is configured (BB_POSTHOG_API_KEY, baked into release builds),
- * and can always be opted out of with BB_TELEMETRY=false.
+ * A default public write-only PostHog key ships in @bb/config, but the caller
+ * only enables telemetry for production server runs (the bb-app launcher and
+ * desktop app set NODE_ENV=production; dev/source runs never send). Disabled
+ * telemetry creates nothing, not even the install-id file. Opt out any run
+ * with BB_TELEMETRY=false; override the key with BB_POSTHOG_API_KEY.
  */
 
 const POSTHOG_INGESTION_URL = "https://us.i.posthog.com/capture/";

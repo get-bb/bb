@@ -53,12 +53,11 @@ docs, start with
 
 ### Telemetry
 
-Release builds can send anonymous usage telemetry (app starts and thread
-creation counts) to help us understand adoption. Identification is a random
-per-install id stored in your data dir — no user, host, project, or workspace
-data is ever attached. Telemetry only operates when a PostHog key is configured
-(`BB_POSTHOG_API_KEY`; development builds have none), and you can always opt
-out with `BB_TELEMETRY=false`. See
+Production runs (the desktop app and `npx bb-app`) send anonymous usage
+telemetry (app starts and thread creation counts) to help us understand
+adoption. Identification is a random per-install id stored in your data dir —
+no user, host, project, or workspace data is ever attached. Development/source
+runs never send. Opt out any run with `BB_TELEMETRY=false`. See
 [`apps/server/src/services/system/telemetry.ts`](./apps/server/src/services/system/telemetry.ts).
 
 ## Repository Overview

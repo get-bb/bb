@@ -278,7 +278,11 @@ export const DEFAULT_BB_APP_VERSION = "0.0.0-dev";
 export const DEFAULT_BB_APP_URL = "";
 export const DEFAULT_BB_EXTERNAL_URL = "";
 export const DEFAULT_OPENAI_API_KEY = "";
-export const DEFAULT_BB_POSTHOG_API_KEY = "";
+// Public write-only PostHog ingestion key (these are safe to ship; they can
+// only create events). Telemetry still only activates in production server
+// runs and can always be disabled with BB_TELEMETRY=false.
+export const DEFAULT_BB_POSTHOG_API_KEY =
+  "phc_tejoYoNLV6vG8QAd5eYXXvcsENFYnP4brpZDGqG7zvpy";
 export const DEFAULT_BB_TELEMETRY = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;

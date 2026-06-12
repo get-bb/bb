@@ -76,11 +76,13 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
 
+  // Telemetry only operates in production runs (the bb-app launcher and the
+  // desktop app both set NODE_ENV=production); dev/source runs never send.
   const telemetry = await createTelemetryService({
     apiKey: serverConfig.BB_POSTHOG_API_KEY,
     appVersion: serverConfig.BB_APP_VERSION,
     dataDir: serverConfig.BB_DATA_DIR,
-    enabled: serverConfig.BB_TELEMETRY,
+    enabled: serverConfig.BB_TELEMETRY && isProduction,
     logger,
   });
 
