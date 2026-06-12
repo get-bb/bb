@@ -89,6 +89,12 @@ interface FilePreviewBodyProps {
   markdownLinkRouting?: MarkdownLinkRouting;
 }
 
+interface HtmlFilePreviewBodyProps {
+  lineOverflowMode: CodeOverflowMode;
+  state: Extract<FilePreviewState, { kind: "html" }>;
+  viewMode: FilePreviewViewMode;
+}
+
 interface FilePreviewHeaderProps {
   path: string;
   copyPath: string | null;
@@ -359,20 +365,11 @@ function FilePreviewBody({
     );
   }
   if (state.kind === "html") {
-    if (viewMode === "preview") {
-      return (
-        <IframeFilePreview
-          sandbox={state.iframe.sandbox}
-          title={state.iframe.title}
-          url={state.iframe.url}
-        />
-      );
-    }
     return (
-      <FilePreviewCode
-        file={state.file}
+      <HtmlFilePreviewBody
         lineOverflowMode={lineOverflowMode}
-        lineRange={state.lineRange}
+        state={state}
+        viewMode={viewMode}
       />
     );
   }
@@ -526,6 +523,38 @@ function FilePreviewHeader({
         className="pointer-events-none absolute inset-x-0 top-full h-4 bg-gradient-to-b from-background to-transparent"
       />
     </div>
+  );
+}
+
+function HtmlFilePreviewBody({
+  lineOverflowMode,
+  state,
+  viewMode,
+}: HtmlFilePreviewBodyProps) {
+  const isPreviewVisible = viewMode === "preview";
+  return (
+    <>
+      <div
+        className={isPreviewVisible ? "contents" : "hidden"}
+        aria-hidden={isPreviewVisible ? undefined : true}
+      >
+        <IframeFilePreview
+          sandbox={state.iframe.sandbox}
+          title={state.iframe.title}
+          url={state.iframe.url}
+        />
+      </div>
+      <div
+        className={isPreviewVisible ? "hidden" : "contents"}
+        aria-hidden={isPreviewVisible ? true : undefined}
+      >
+        <FilePreviewCode
+          file={state.file}
+          lineOverflowMode={lineOverflowMode}
+          lineRange={state.lineRange}
+        />
+      </div>
+    </>
   );
 }
 

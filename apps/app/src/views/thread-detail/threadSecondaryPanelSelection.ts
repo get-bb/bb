@@ -1,8 +1,7 @@
 import { useCallback } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
-import { getThreadSecondaryPanelOpenAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   useCloseFixedSecondaryPanel,
+  useFixedPanelTabsState,
   useOpenFixedSecondaryPanel,
   useSetFixedSecondaryPanelTab,
 } from "@/lib/fixed-panel-tabs";
@@ -53,25 +52,16 @@ export function useSetThreadSecondaryPanelSelection(
 ): NullableSecondaryPanelSetter {
   const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(threadId);
   const setFixedSecondaryPanelTab = useSetFixedSecondaryPanelTab(threadId);
-  const setThreadSecondaryPanelOpen = useSetAtom(
-    getThreadSecondaryPanelOpenAtom(threadId),
-  );
 
   return useCallback<NullableSecondaryPanelSetter>(
     (panel) => {
       if (panel === null) {
-        setThreadSecondaryPanelOpen(false);
         closeFixedSecondaryPanel();
         return;
       }
-      setThreadSecondaryPanelOpen(true);
       setFixedSecondaryPanelTab(panel);
     },
-    [
-      closeFixedSecondaryPanel,
-      setFixedSecondaryPanelTab,
-      setThreadSecondaryPanelOpen,
-    ],
+    [closeFixedSecondaryPanel, setFixedSecondaryPanelTab],
   );
 }
 
@@ -80,25 +70,18 @@ export function useToggleThreadSecondaryPanelSelection(
 ): () => void {
   const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(threadId);
   const openFixedSecondaryPanel = useOpenFixedSecondaryPanel(threadId);
-  const isSecondaryPanelOpen = useAtomValue(
-    getThreadSecondaryPanelOpenAtom(threadId),
-  );
-  const setThreadSecondaryPanelOpen = useSetAtom(
-    getThreadSecondaryPanelOpenAtom(threadId),
-  );
+  const fixedPanelTabsState = useFixedPanelTabsState(threadId);
+  const isSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
 
   return useCallback(() => {
     if (isSecondaryPanelOpen) {
-      setThreadSecondaryPanelOpen(false);
       closeFixedSecondaryPanel();
       return;
     }
-    setThreadSecondaryPanelOpen(true);
     openFixedSecondaryPanel();
   }, [
     closeFixedSecondaryPanel,
     isSecondaryPanelOpen,
     openFixedSecondaryPanel,
-    setThreadSecondaryPanelOpen,
   ]);
 }

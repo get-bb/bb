@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom } from "jotai";
 import type {
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLink,
@@ -78,13 +78,15 @@ import {
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
-import { useThreadSecondaryPanelVisibility } from "./useThreadSecondaryPanelVisibility";
+import {
+  useThreadSecondaryPanelVisibility,
+  type ThreadSecondaryPanelHostFileOpenHandler,
+  type ThreadSecondaryPanelStorageFileOpenHandler,
+  type ThreadSecondaryPanelWorkspaceFileOpenHandler,
+} from "./useThreadSecondaryPanelVisibility";
 import type { HostConnectionNotice } from "./ThreadTimelinePane";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
-import {
-  getThreadConversationCollapsedAtom,
-  getThreadSecondaryPanelOpenAtom,
-} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   HostFilePreviewTabContent,
   ThreadStorageFilePreviewTabContent,
@@ -133,13 +135,13 @@ import type {
   MarkdownLocalFileLinkRouting,
 } from "@/components/ui/markdown-link-routing";
 import {
-  useFixedPanelTabsSecondaryPanelUrlSync,
   useFixedPanelTabsState,
   useFixedPanelTabsStorageMaintenance,
   useRemoveFixedRightTerminalTab,
   useSetFixedRightTerminalActiveTerminal,
   useTouchFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
+import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   buildParentSelectorOptions,
   isRootThread,
@@ -290,12 +292,7 @@ export function ThreadDetailView() {
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
   const fixedPanelTabsState = useFixedPanelTabsState(threadId);
-  const isPersistedSecondaryPanelOpen = useAtomValue(
-    getThreadSecondaryPanelOpenAtom(threadId),
-  );
-  const setPersistedSecondaryPanelOpen = useSetAtom(
-    getThreadSecondaryPanelOpenAtom(threadId),
-  );
+  const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
@@ -312,17 +309,6 @@ export function ThreadDetailView() {
   const setThreadSecondaryPanel = useSetThreadSecondaryPanelSelection(threadId);
   const toggleDefaultPersistedSecondaryPanel =
     useToggleThreadSecondaryPanelSelection(threadId);
-  const setThreadSecondaryPanelFromUrl =
-    useCallback<SecondaryPanelChangeHandler>(
-      (panel) => {
-        setThreadSecondaryPanel(panel);
-      },
-      [setThreadSecondaryPanel],
-    );
-  useFixedPanelTabsSecondaryPanelUrlSync(
-    threadId,
-    setThreadSecondaryPanelFromUrl,
-  );
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "");
   const hasThreadDetailBootstrapSettled =
     threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
@@ -402,11 +388,6 @@ export function ThreadDetailView() {
   });
   const terminalsListQuery = useThreadTerminals(threadId ?? "");
   const {
-    activateBrowserTab,
-    activateNewTab,
-    activateHostFileTab,
-    activateStorageFileTab,
-    activateWorkspaceFileTab,
     activeBrowserTab,
     activeHostFileLineRange,
     activeHostFilePath,
@@ -418,17 +399,10 @@ export function ThreadDetailView() {
     activeWorkspaceFileStatusLabel,
     browserTabs,
     clearActiveFileTabs,
-    closeBrowserTab,
-    closeHostFileTab,
-    closeNewTab,
-    closeStorageFileTab,
-    closeWorkspaceFileTab,
+    activateTab,
+    closeTab,
     isNewTabActive,
-    openBrowserTab,
-    openNewTab,
-    openHostFile: openPersistedHostFile,
-    openStorageFile: openPersistedStorageFile,
-    openWorkspaceFile: openPersistedWorkspaceFile,
+    openTab,
     orderedSecondaryFileTabs,
     reorderFileTab,
     selectFileSearchResult,
@@ -439,6 +413,30 @@ export function ThreadDetailView() {
     storageFiles: threadStorageFiles?.files,
     terminalSessions: terminalsListQuery.data?.sessions,
   });
+  const openPersistedWorkspaceFile =
+    useCallback<ThreadSecondaryPanelWorkspaceFileOpenHandler>(
+      (file) => openTab({ kind: "workspace-file-preview", tab: file }),
+      [openTab],
+    );
+  const openPersistedStorageFile =
+    useCallback<ThreadSecondaryPanelStorageFileOpenHandler>(
+      (file) => openTab({ kind: "thread-storage-file-preview", tab: file }),
+      [openTab],
+    );
+  const openPersistedHostFile =
+    useCallback<ThreadSecondaryPanelHostFileOpenHandler>(
+      (file) => openTab({ kind: "host-file-preview", tab: file }),
+      [openTab],
+    );
+  const openBrowserTab = useCallback(
+    (url?: string) => {
+      openTab({ kind: "browser", url: url ?? "" });
+    },
+    [openTab],
+  );
+  const openNewTab = useCallback(() => {
+    openTab({ kind: "new-tab" });
+  }, [openTab]);
   const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
   // The in-app browser surface only exists on desktop; on web this stays false
   // and chat links keep their external-open behavior.
@@ -685,6 +683,7 @@ export function ThreadDetailView() {
     if (!canCreateTerminal || createTerminal.isPending || !threadId) {
       return;
     }
+    const newTab = createNewTabFixedPanelTab();
     createTerminal.mutate(
       {
         threadId,
@@ -693,26 +692,23 @@ export function ThreadDetailView() {
       },
       {
         onSuccess: (session) => {
-          closeNewTab();
-          setPersistedSecondaryPanelOpen(true);
+          closeTab(newTab.id);
           setActiveFixedTerminal(session.id);
         },
       },
     );
   }, [
     canCreateTerminal,
-    closeNewTab,
+    closeTab,
     createTerminal,
     setActiveFixedTerminal,
-    setPersistedSecondaryPanelOpen,
     threadId,
   ]);
   const handleActivateTerminalTab = useCallback(
     (terminalId: string) => {
-      setPersistedSecondaryPanelOpen(true);
       setActiveFixedTerminal(terminalId);
     },
-    [setActiveFixedTerminal, setPersistedSecondaryPanelOpen],
+    [setActiveFixedTerminal],
   );
   const handleCloseTerminalTab = useCallback(
     (terminalId: string) => {
@@ -772,8 +768,8 @@ export function ThreadDetailView() {
               />
             ),
             statusLabel: null,
-            onSelect: () => activateBrowserTab(tab.id),
-            onClose: () => closeBrowserTab(tab.id),
+            onSelect: () => activateTab(tab.id),
+            onClose: () => closeTab(tab.id),
           };
         }
         case "terminal": {
@@ -804,8 +800,8 @@ export function ThreadDetailView() {
             isActive: tab.id === activeFixedSecondaryTabId,
             leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
             statusLabel: tab.statusLabel,
-            onSelect: () => activateWorkspaceFileTab(tab.path),
-            onClose: () => closeWorkspaceFileTab(tab.path),
+            onSelect: () => activateTab(tab.id),
+            onClose: () => closeTab(tab.id),
           };
         case "host-file-preview":
           return {
@@ -814,8 +810,8 @@ export function ThreadDetailView() {
             isActive: tab.id === activeFixedSecondaryTabId,
             leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
             statusLabel: null,
-            onSelect: () => activateHostFileTab(tab.path),
-            onClose: () => closeHostFileTab(tab.path),
+            onSelect: () => activateTab(tab.id),
+            onClose: () => closeTab(tab.id),
           };
         case "thread-storage-file-preview":
           return {
@@ -825,8 +821,8 @@ export function ThreadDetailView() {
             isPinned: tab.isPinned,
             leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
             statusLabel: null,
-            onSelect: () => activateStorageFileTab(tab.path),
-            onClose: () => closeStorageFileTab(tab.path),
+            onSelect: () => activateTab(tab.id),
+            onClose: () => closeTab(tab.id),
           };
         case "new-tab":
           return {
@@ -841,24 +837,16 @@ export function ThreadDetailView() {
               />
             ),
             statusLabel: null,
-            onSelect: activateNewTab,
-            onClose: closeNewTab,
+            onSelect: () => activateTab(tab.id),
+            onClose: () => closeTab(tab.id),
           };
       }
     });
     return tabs.length > 0 ? tabs : undefined;
   }, [
-    activateBrowserTab,
-    activateNewTab,
-    activateHostFileTab,
-    activateStorageFileTab,
-    activateWorkspaceFileTab,
+    activateTab,
     activeFixedSecondaryTabId,
-    closeBrowserTab,
-    closeHostFileTab,
-    closeNewTab,
-    closeStorageFileTab,
-    closeWorkspaceFileTab,
+    closeTab,
     handleActivateTerminalTab,
     handleCloseTerminalTab,
     orderedSecondaryFileTabs,

@@ -222,7 +222,8 @@ function createStoryActiveTab(
 
   if (outcome.kind === "browser") {
     return {
-      id: "browser",
+      environmentId: null,
+      id: "browser:story:none",
       kind: "browser",
       title: null,
       url: "",

@@ -3,7 +3,6 @@ import { atom } from "jotai";
 import { useAtomValue, useSetAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
-import { useLocation, useNavigate } from "react-router-dom";
 import { createLocalStorageSyncStorage } from "./browser-storage";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
@@ -19,8 +18,6 @@ import {
   type TerminalFixedPanelTab,
 } from "./fixed-panel-tabs-state";
 import {
-  getThreadSecondaryPanel,
-  withThreadSecondaryPanel,
   type ThreadSecondaryPanel,
 } from "./thread-secondary-panel";
 
@@ -311,40 +308,6 @@ export function useOpenFixedSecondaryPanel(
   return useCallback(() => {
     updateState(openFixedSecondaryPanelState);
   }, [updateState]);
-}
-
-export function useFixedPanelTabsSecondaryPanelUrlSync(
-  threadId: string | null | undefined,
-  setSecondaryPanel: FixedPanelSecondaryPanelSetter,
-): void {
-  const location = useLocation();
-  const navigate = useNavigate();
-  useEffect(() => {
-    if (!hasThreadId(threadId)) {
-      return;
-    }
-    const fromUrl = getThreadSecondaryPanel(location.search);
-    if (fromUrl === null) {
-      return;
-    }
-
-    setSecondaryPanel(fromUrl);
-
-    const nextSearch = withThreadSecondaryPanel(location.search, null);
-    navigate(
-      {
-        pathname: location.pathname,
-        search: nextSearch.length > 0 ? `?${nextSearch}` : "",
-      },
-      { replace: true },
-    );
-  }, [
-    location.pathname,
-    location.search,
-    navigate,
-    setSecondaryPanel,
-    threadId,
-  ]);
 }
 
 export function useActiveFixedRightTerminalId(

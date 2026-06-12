@@ -516,6 +516,8 @@ export const GitDiffCard = memo(function GitDiffCard({
   const supportsCollapse =
     isCollapsed !== undefined && onToggleCollapsed !== undefined;
   const isBodyHidden = !hasChanges || (supportsCollapse && isCollapsed);
+  const [hasMountedBody, setHasMountedBody] = useState(false);
+  const shouldRenderBody = hasChanges && (hasMountedBody || !isBodyHidden);
   const fileDiffOptions = useMemo<GitDiffViewOptions>(
     () => ({ ...diffViewOptions, disableFileHeader: true }),
     [diffViewOptions],
@@ -562,7 +564,13 @@ export const GitDiffCard = memo(function GitDiffCard({
     enrichmentStatusRef.current = "idle";
     setEnrichment({ status: "idle" });
     setHasLoadedDeletedDiff(false);
+    setHasMountedBody(false);
   }, [fileContentPlan.identity]);
+  useEffect(() => {
+    if (!isBodyHidden && hasChanges) {
+      setHasMountedBody(true);
+    }
+  }, [hasChanges, isBodyHidden]);
   useEffect(() => {
     if (!isBodyHidden && isBodyVisible) {
       setHasBodyEnteredViewport(true);
@@ -838,9 +846,11 @@ export const GitDiffCard = memo(function GitDiffCard({
           </span>
         </div>
       </div>
-      {!isBodyHidden ? (
+      {shouldRenderBody ? (
         <div
           ref={bodySentinelRef}
+          hidden={isBodyHidden}
+          aria-hidden={isBodyHidden}
           className="overflow-hidden rounded-b-lg bg-background"
           style={GIT_DIFF_CARD_BODY_STYLE}
         >

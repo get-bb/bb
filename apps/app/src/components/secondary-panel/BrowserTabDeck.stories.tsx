@@ -20,7 +20,7 @@ const RECENTS_TAB_THREAD_ID = "thr_browser_tab_recents_story";
 // `url` is empty so the tab shows its in-tab new-tab screen rather than a live
 // page — the native WebContentsView only exists in the packaged desktop app.
 function makeBrowserTab(id: string): BrowserFixedPanelTab {
-  return { id, kind: "browser", title: null, url: "" };
+  return { environmentId: null, id, kind: "browser", title: null, url: "" };
 }
 
 const EMPTY_TAB = makeBrowserTab("browser:empty");
