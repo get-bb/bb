@@ -144,54 +144,13 @@ interface EnvironmentCleanupChangeArgs {
   updated: EnvironmentRow;
 }
 
-interface EnvironmentStatusChangeArgs {
-  existing: EnvironmentRow;
-  updated: EnvironmentRow;
-}
-
-export interface ApplyProvisionedEnvironmentInput extends DiscoveredWorkspaceProperties {
-  baseBranch?: string | null;
-  mergeBaseBranch?: string | null;
-  status: EnvironmentStatus;
-}
-
 export interface UpdateEnvironmentMetadataInput {
   mergeBaseBranch?: string | null;
   name?: string | null;
 }
 
-export interface UpdateEnvironmentStatusInput {
-  status: EnvironmentStatus;
-}
-
 export interface RequestEnvironmentCleanupInput {
   requestedAt?: number;
-}
-
-export interface ClaimManagedEnvironmentReprovisionArgs {
-  environmentId: string;
-  now?: number;
-}
-
-export interface ClaimEnvironmentDestroyArgs {
-  destroyAttemptId: string;
-  environmentId: string;
-}
-
-export interface RestoreEnvironmentAfterDestroyAttemptFailureArgs {
-  destroyAttemptId: string;
-  environmentId: string;
-  status: Extract<EnvironmentStatus, "error" | "ready">;
-}
-
-export interface RecoverStaleDestroyingEnvironmentCleanupArgs {
-  updatedBefore: number;
-  now?: number;
-}
-
-export interface RecoverStaleDestroyingEnvironmentCleanupResult {
-  destroyed: number;
-  restored: number;
 }
 
 export interface ListRetiredLoadedEnvironmentIdsOnHostArgs {
@@ -271,10 +230,6 @@ function environmentCleanupChanged(args: EnvironmentCleanupChangeArgs): boolean 
   );
 }
 
-function environmentStatusChanged(args: EnvironmentStatusChangeArgs): boolean {
-  return args.updated.status !== args.existing.status;
-}
-
 function updateEnvironmentMetadataRecord(
   db: EnvironmentWriteConnection,
   notifier: DbNotifier,
@@ -303,33 +258,6 @@ function updateEnvironmentMetadataRecord(
   return updated;
 }
 
-function updateEnvironmentStatusRecord(
-  db: EnvironmentWriteConnection,
-  notifier: DbNotifier,
-  id: string,
-  status: EnvironmentStatus,
-) {
-  const existing = getEnvironment(db, id);
-  if (!existing) return null;
-
-  const updated = db
-    .update(environments)
-    .set({ status, updatedAt: Date.now() })
-    .where(eq(environments.id, id))
-    .returning()
-    .get();
-
-  if (!updated) {
-    return null;
-  }
-
-  if (environmentStatusChanged({ existing, updated })) {
-    notifier.notifyEnvironment(id, ["status-changed"]);
-  }
-
-  return updated;
-}
-
 function updateEnvironmentCleanupRecord(
   db: EnvironmentWriteConnection,
   notifier: DbNotifier,
@@ -352,51 +280,6 @@ function updateEnvironmentCleanupRecord(
 
   if (environmentCleanupChanged({ existing, updated })) {
     notifier.notifyEnvironment(id, ["metadata-changed"]);
-  }
-
-  return updated;
-}
-
-export function applyProvisionedEnvironmentRecord(
-  db: EnvironmentWriteConnection,
-  notifier: DbNotifier,
-  id: string,
-  input: ApplyProvisionedEnvironmentInput,
-) {
-  const existing = getEnvironment(db, id);
-  if (!existing) return null;
-
-  const metadata = buildEnvironmentMetadataUpdateSet({
-    path: input.path,
-    isGitRepo: input.isGitRepo,
-    isWorktree: input.isWorktree,
-    branchName: input.branchName,
-    ...(input.baseBranch !== undefined ? { baseBranch: input.baseBranch } : {}),
-    defaultBranch: input.defaultBranch,
-    ...(input.mergeBaseBranch !== undefined
-      ? { mergeBaseBranch: input.mergeBaseBranch }
-      : {}),
-  });
-  const updated = db
-    .update(environments)
-    .set({ ...metadata, status: input.status, updatedAt: Date.now() })
-    .where(eq(environments.id, id))
-    .returning()
-    .get();
-
-  if (!updated) {
-    return null;
-  }
-
-  const changes: EnvironmentChangeKind[] = [];
-  if (environmentStatusChanged({ existing, updated })) {
-    changes.push("status-changed");
-  }
-  if (environmentMetadataChanged({ existing, metadata, updated })) {
-    changes.push("metadata-changed");
-  }
-  if (changes.length > 0) {
-    notifier.notifyEnvironment(id, changes);
   }
 
   return updated;
@@ -440,15 +323,6 @@ export function recordProvisionedEnvironmentWorkspace(
   });
 }
 
-export function setEnvironmentStatus(
-  db: EnvironmentWriteConnection,
-  notifier: DbNotifier,
-  id: string,
-  input: UpdateEnvironmentStatusInput,
-) {
-  return updateEnvironmentStatusRecord(db, notifier, id, input.status);
-}
-
 export function recordEnvironmentCleanupRequest(
   db: EnvironmentWriteConnection,
   notifier: DbNotifier,
@@ -483,190 +357,6 @@ export function clearEnvironmentCleanupRequestRecord(
     cleanupRequestedAt: null,
     cleanupMode: null,
   });
-}
-
-export function setEnvironmentRecordDestroyed(
-  db: EnvironmentWriteConnection,
-  notifier: DbNotifier,
-  id: string,
-) {
-  const existing = getEnvironment(db, id);
-  if (!existing) return null;
-
-  const cleanup: EnvironmentCleanupUpdateColumns = {
-    cleanupRequestedAt: null,
-    cleanupMode: null,
-  };
-  const updated = db
-    .update(environments)
-    .set({
-      ...cleanup,
-      destroyAttemptId: null,
-      status: "destroyed",
-      updatedAt: Date.now(),
-    })
-    .where(eq(environments.id, id))
-    .returning()
-    .get();
-
-  if (!updated) {
-    return null;
-  }
-
-  const changes: EnvironmentChangeKind[] = [];
-  if (environmentStatusChanged({ existing, updated })) {
-    changes.push("status-changed");
-  }
-  if (environmentCleanupChanged({ existing, updated })) {
-    changes.push("metadata-changed");
-  }
-  if (changes.length > 0) {
-    notifier.notifyEnvironment(id, changes);
-  }
-
-  return updated;
-}
-
-export function claimEnvironmentDestroy(
-  db: DbConnection,
-  notifier: DbNotifier,
-  args: ClaimEnvironmentDestroyArgs,
-) {
-  const now = Date.now();
-  const claimed = db
-    .update(environments)
-    .set({
-      destroyAttemptId: args.destroyAttemptId,
-      status: "destroying",
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(environments.id, args.environmentId),
-        eq(environments.managed, true),
-        eq(environments.status, "ready"),
-        isNotNull(environments.cleanupRequestedAt),
-        isNotNull(environments.path),
-        sql`NOT EXISTS (
-          SELECT 1 FROM threads
-          WHERE threads.environment_id = ${environments.id}
-          AND threads.archived_at IS NULL
-          AND threads.deleted_at IS NULL
-        )`,
-        sql`NOT EXISTS (
-          SELECT 1 FROM threads
-          WHERE threads.environment_id = ${environments.id}
-          AND threads.stop_requested_at IS NOT NULL
-        )`,
-      ),
-    )
-    .returning()
-    .get();
-
-  if (claimed) {
-    notifier.notifyEnvironment(args.environmentId, ["status-changed"]);
-  }
-
-  return claimed ?? null;
-}
-
-export function restoreEnvironmentAfterDestroyAttemptFailure(
-  db: EnvironmentWriteConnection,
-  notifier: DbNotifier,
-  args: RestoreEnvironmentAfterDestroyAttemptFailureArgs,
-) {
-  const existing = getEnvironment(db, args.environmentId);
-  if (
-    !existing ||
-    existing.status !== "destroying" ||
-    existing.destroyAttemptId !== args.destroyAttemptId
-  ) {
-    return null;
-  }
-
-  const updated = db
-    .update(environments)
-    .set({
-      destroyAttemptId: null,
-      status: args.status,
-      updatedAt: Date.now(),
-    })
-    .where(
-      and(
-        eq(environments.id, args.environmentId),
-        eq(environments.status, "destroying"),
-        eq(environments.destroyAttemptId, args.destroyAttemptId),
-      ),
-    )
-    .returning()
-    .get();
-
-  if (!updated) {
-    return null;
-  }
-
-  notifier.notifyEnvironment(args.environmentId, ["status-changed"]);
-  return updated;
-}
-
-export function recoverStaleDestroyingEnvironmentCleanup(
-  db: DbConnection,
-  notifier: DbNotifier,
-  args: RecoverStaleDestroyingEnvironmentCleanupArgs,
-): RecoverStaleDestroyingEnvironmentCleanupResult {
-  const now = args.now ?? Date.now();
-  const staleRows = db
-    .select()
-    .from(environments)
-    .where(
-      and(
-        eq(environments.managed, true),
-        eq(environments.status, "destroying"),
-        isNotNull(environments.cleanupRequestedAt),
-        lt(environments.updatedAt, args.updatedBefore),
-      ),
-    )
-    .all();
-
-  let destroyed = 0;
-  let restored = 0;
-  for (const environment of staleRows) {
-    if (environment.path === null) {
-      const updated = setEnvironmentRecordDestroyed(
-        db,
-        notifier,
-        environment.id,
-      );
-      if (updated) {
-        destroyed += 1;
-      }
-      continue;
-    }
-
-    const updated = db
-      .update(environments)
-      .set({
-        destroyAttemptId: null,
-        status: "ready",
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(environments.id, environment.id),
-          eq(environments.status, "destroying"),
-          isNotNull(environments.cleanupRequestedAt),
-        ),
-      )
-      .returning()
-      .get();
-
-    if (updated) {
-      restored += 1;
-      notifier.notifyEnvironment(environment.id, ["status-changed"]);
-    }
-  }
-
-  return { destroyed, restored };
 }
 
 export interface ListStaleDestroyingManagedEnvironmentsArgs {
@@ -871,44 +561,4 @@ export function applyEnvironmentLifecycleEventInTransaction(
   args: ApplyEnvironmentLifecycleEventArgs,
 ): ApplyEnvironmentLifecycleEventOutcome {
   return applyEnvironmentLifecycleEventRecord(tx, args);
-}
-
-export function claimManagedEnvironmentReprovisionRecord(
-  db: DbConnection,
-  notifier: DbNotifier,
-  args: ClaimManagedEnvironmentReprovisionArgs,
-): boolean {
-  const now = args.now ?? Date.now();
-  const claimed = db.transaction(
-    (tx) => {
-      const current = tx
-        .select({
-          status: environments.status,
-        })
-        .from(environments)
-        .where(eq(environments.id, args.environmentId))
-        .get();
-
-      if (!current || current.status === "provisioning") {
-        return false;
-      }
-
-      tx.update(environments)
-        .set({
-          status: "provisioning",
-          updatedAt: now,
-        })
-        .where(eq(environments.id, args.environmentId))
-        .run();
-
-      return true;
-    },
-    { behavior: "immediate" },
-  );
-
-  if (claimed) {
-    notifier.notifyEnvironment(args.environmentId, ["status-changed"]);
-  }
-
-  return claimed;
 }

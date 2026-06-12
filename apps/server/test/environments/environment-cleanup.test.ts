@@ -1,7 +1,8 @@
 import { getEnvironment } from "@bb/db";
 import {
+  applyEnvironmentLifecycleEvent,
   recordEnvironmentCleanupRequest,
-  setEnvironmentStatus,
+  requireEnvironmentLifecycleEventApplied,
 } from "@bb/db/internal-environment-lifecycle";
 import { describe, expect, it } from "vitest";
 import { cancelPendingEnvironmentCleanup } from "../../src/services/environments/environment-cleanup-internal.js";
@@ -34,9 +35,15 @@ describe("environment cleanup", () => {
         environment.id,
         {},
       );
-      setEnvironmentStatus(harness.db, harness.hub, environment.id, {
-        status: "destroying",
-      });
+      requireEnvironmentLifecycleEventApplied(
+        applyEnvironmentLifecycleEvent(harness.db, harness.hub, {
+          environmentId: environment.id,
+          event: {
+            type: "destroy.dispatched",
+            destroyAttemptId: "rpc_test_destroy",
+          },
+        }),
+      );
 
       const result = cancelPendingEnvironmentCleanup(harness.deps, {
         environmentId: environment.id,

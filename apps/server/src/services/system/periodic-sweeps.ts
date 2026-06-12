@@ -179,11 +179,9 @@ export async function runPeriodicSweepJobs(
 
 async function evaluateManagedEnvironmentArchiveCleanupCandidates(
   deps: LoggedPendingInteractionWorkSessionDeps,
-  now: number,
   orphanedDestroyUpdatedBefore: number,
 ): Promise<ManagedEnvironmentArchiveCleanupEvaluationResult> {
   recoverOrphanedEnvironmentDestroyRequests(deps, {
-    now,
     updatedBefore: orphanedDestroyUpdatedBefore,
   });
 
@@ -392,7 +390,6 @@ export async function runManagedEnvironmentArchiveCleanupRecoverySweep(
 
   const result = await evaluateManagedEnvironmentArchiveCleanupCandidates(
     deps,
-    now,
     now - ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS,
   );
   if (
@@ -682,8 +679,7 @@ export async function runStartupRecoverySweep(
 ): Promise<void> {
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);
-  const now = Date.now();
-  await evaluateManagedEnvironmentArchiveCleanupCandidates(deps, now, now);
+  await evaluateManagedEnvironmentArchiveCleanupCandidates(deps, Date.now());
 }
 
 export async function runPeriodicSweeps(

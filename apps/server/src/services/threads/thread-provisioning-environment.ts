@@ -18,10 +18,8 @@ import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
 import { ApiError } from "../../errors.js";
-import {
-  advanceEnvironmentProvisioning,
-  requestEnvironmentProvisioning,
-} from "../environments/environment-provisioning-internal.js";
+import { advanceEnvironmentProvisioning } from "../environments/environment-provisioning-internal.js";
+import { applyLoggedEnvironmentLifecycleEventInTransaction } from "../environments/lifecycle-outcome.js";
 import {
   buildDirectEnvironmentProvisionRequest,
   type EnvironmentProvisionRequest,
@@ -644,15 +642,8 @@ function createProvisioningEnvironment(
         context,
         environment,
       });
-      requestEnvironmentProvisioning(
-        {
-          db: tx,
-          hub: deps.hub,
-        },
-        {
-          environmentId: environment.id,
-        },
-      );
+      // No provision.requested event here: the environment was created in
+      // this same transaction with status "provisioning".
       return { context, environment, provisionRequest };
     },
     { behavior: "immediate" },
@@ -975,15 +966,19 @@ function requestCheckoutUnmanagedEnvironmentProvision(
         threadId: args.thread.id,
         context,
       });
-      requestEnvironmentProvisioning(
-        {
-          db: tx,
-          hub: deps.hub,
-        },
+      const requestedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+        { db: tx, logger: deps.logger },
         {
           environmentId: args.environment.id,
+          event: { type: "provision.requested" },
         },
       );
+      if (requestedOutcome.applied) {
+        deps.hub.notifyEnvironment(
+          args.environment.id,
+          requestedOutcome.changes,
+        );
+      }
 
       return {
         kind: "queued",
@@ -1079,15 +1074,16 @@ async function requestPreparedEnvironmentProvision(
         context,
         environment,
       });
-      requestEnvironmentProvisioning(
-        {
-          db: tx,
-          hub: deps.hub,
-        },
+      const requestedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+        { db: tx, logger: deps.logger },
         {
           environmentId: environment.id,
+          event: { type: "provision.requested" },
         },
       );
+      if (requestedOutcome.applied) {
+        deps.hub.notifyEnvironment(environment.id, requestedOutcome.changes);
+      }
       return {
         context,
         environment: getEnvironment(tx, environment.id) ?? environment,

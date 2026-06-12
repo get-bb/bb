@@ -190,24 +190,17 @@ export type {
 } from "./thread-dynamic-context-file-states.js";
 
 export {
-  claimEnvironmentDestroy,
   createEnvironment,
   getEnvironment,
   findEnvironmentByHostPath,
   listEnvironments,
   listEnvironmentsByIds,
   listRetiredLoadedEnvironmentIdsOnHost,
-  recoverStaleDestroyingEnvironmentCleanup,
-  restoreEnvironmentAfterDestroyAttemptFailure,
   updateEnvironmentMetadata,
 } from "./environments.js";
 export type {
-  ClaimEnvironmentDestroyArgs,
   CreateEnvironmentInput,
   ListRetiredLoadedEnvironmentIdsOnHostArgs,
-  RecoverStaleDestroyingEnvironmentCleanupArgs,
-  RecoverStaleDestroyingEnvironmentCleanupResult,
-  RestoreEnvironmentAfterDestroyAttemptFailureArgs,
   UpdateEnvironmentMetadataInput,
 } from "./environments.js";
 
