@@ -53,7 +53,10 @@ describe("buildTerminalSyncedSecondaryFileTabs", () => {
       ],
     });
 
-    expect(tabIds(tabs)).toEqual(["terminal:term_1", "terminal:term_2"]);
+    expect(tabIds(tabs)).toEqual([
+      "terminal:term_1:none",
+      "terminal:term_2:none",
+    ]);
   });
 
   it("preserves local terminal tab order when sessions still exist", () => {
@@ -77,10 +80,10 @@ describe("buildTerminalSyncedSecondaryFileTabs", () => {
     });
 
     expect(tabIds(tabs)).toEqual([
-      "terminal:term_2",
-      "host-file-preview:%2Fworkspace%2Ffile.ts",
-      "terminal:term_1",
-      "terminal:term_3",
+      "terminal:term_2:none",
+      "host-file-preview:%2Fworkspace%2Ffile.ts:none",
+      "terminal:term_1:none",
+      "terminal:term_3:none",
     ]);
   });
 
@@ -93,7 +96,7 @@ describe("buildTerminalSyncedSecondaryFileTabs", () => {
       terminalSessions: [terminalSession({ id: "term_1" })],
     });
 
-    expect(tabIds(tabs)).toEqual(["terminal:term_1"]);
+    expect(tabIds(tabs)).toEqual(["terminal:term_1:none"]);
   });
 
   it("finds the active terminal id only for displayed terminal tabs", () => {
@@ -144,9 +147,9 @@ describe("buildTerminalSyncedSecondaryFileTabs", () => {
     });
 
     expect(tabIds(nextState.secondary.tabs)).toEqual([
-      "host-file-preview:%2Fworkspace%2Ffile.ts",
-      "terminal:term_1",
-      "terminal:term_2",
+      "host-file-preview:%2Fworkspace%2Ffile.ts:none",
+      "terminal:term_1:none",
+      "terminal:term_2:none",
     ]);
     expect(nextState.secondary.activeTabId).toBe(fileTab.id);
   });
@@ -170,7 +173,9 @@ describe("buildTerminalSyncedSecondaryFileTabs", () => {
       terminalSessions: [terminalSession({ id: "term_1" })],
     });
 
-    expect(tabIds(nextState.secondary.tabs)).toEqual(["terminal:term_1"]);
+    expect(tabIds(nextState.secondary.tabs)).toEqual([
+      "terminal:term_1:none",
+    ]);
     expect(nextState.secondary.activeTabId).toBeNull();
   });
 
