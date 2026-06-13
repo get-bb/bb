@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
 import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
 import { Icon } from "@/components/ui/icon.js";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
 import { isBusyThread, isUnreadDoneThread } from "@/lib/thread-activity";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@/lib/utils";
@@ -176,7 +176,11 @@ export function RootComposeMobileRecents({
             <MobileRecentThreadRow
               key={thread.id}
               highlighted={thread.id === highlightedThreadId}
-              projectName={projectNamesById.get(thread.projectId) ?? null}
+              projectName={
+                isProjectlessProjectId(thread.projectId)
+                  ? null
+                  : (projectNamesById.get(thread.projectId) ?? null)
+              }
               thread={thread}
             />
           ))}

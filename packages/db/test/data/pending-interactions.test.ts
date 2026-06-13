@@ -210,20 +210,18 @@ describe("pending interactions", () => {
 
   it("chunks provider-thread interrupts to stay under SQLite variable limits", () => {
     const { db, thread } = setup();
-    const manyThreads = [thread];
-    for (let index = 0; index < 1_050; index += 1) {
-      manyThreads.push(
-        createThread(db, noopNotifier, {
-          projectId: thread.projectId,
-          environmentId: thread.environmentId,
-          providerId: "codex",
-        }),
-      );
-    }
-
-    const targetThreadIds = [manyThreads[0], manyThreads[1_000]]
-      .filter((currentThread) => currentThread !== undefined)
-      .map((currentThread) => currentThread.id);
+    const secondBatchThread = createThread(db, noopNotifier, {
+      projectId: thread.projectId,
+      environmentId: thread.environmentId,
+      providerId: "codex",
+    });
+    const threadIds = Array.from(
+      { length: 1_001 },
+      (_value, index) => `missing-provider-thread-${index}`,
+    );
+    threadIds[0] = thread.id;
+    threadIds[1_000] = secondBatchThread.id;
+    const targetThreadIds = [thread.id, secondBatchThread.id];
 
     for (const [index, threadId] of targetThreadIds.entries()) {
       createPendingInteraction(db, {
@@ -243,7 +241,7 @@ describe("pending interactions", () => {
       new Set(
         interruptPendingInteractionsForThreads(db, {
           providerId: "codex",
-          threadIds: manyThreads.map((currentThread) => currentThread.id),
+          threadIds,
           statusReason: "Provider exited",
         }).map((row) => row.threadId),
       ),
@@ -252,20 +250,18 @@ describe("pending interactions", () => {
 
   it("chunks thread-id interrupts to stay under SQLite variable limits", () => {
     const { db, thread } = setup();
-    const manyThreads = [thread];
-    for (let index = 0; index < 1_050; index += 1) {
-      manyThreads.push(
-        createThread(db, noopNotifier, {
-          projectId: thread.projectId,
-          environmentId: thread.environmentId,
-          providerId: "codex",
-        }),
-      );
-    }
-
-    const targetThreadIds = [manyThreads[0], manyThreads[1_000]]
-      .filter((currentThread) => currentThread !== undefined)
-      .map((currentThread) => currentThread.id);
+    const secondBatchThread = createThread(db, noopNotifier, {
+      projectId: thread.projectId,
+      environmentId: thread.environmentId,
+      providerId: "codex",
+    });
+    const threadIds = Array.from(
+      { length: 1_001 },
+      (_value, index) => `missing-thread-${index}`,
+    );
+    threadIds[0] = thread.id;
+    threadIds[1_000] = secondBatchThread.id;
+    const targetThreadIds = [thread.id, secondBatchThread.id];
 
     for (const [index, threadId] of targetThreadIds.entries()) {
       createPendingInteraction(db, {
@@ -284,7 +280,7 @@ describe("pending interactions", () => {
     expect(
       new Set(
         interruptPendingInteractionsForThreadIds(db, {
-          threadIds: manyThreads.map((currentThread) => currentThread.id),
+          threadIds,
           statusReason: "Thread stopped",
         }).map((row) => row.threadId),
       ),

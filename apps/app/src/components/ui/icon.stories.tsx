@@ -74,6 +74,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   Settings: "Settings link in sidebar, project settings link in header",
   Spinner: "All loading / pending states",
   Square: "Stop button while running, in-progress and pending todo glyphs",
+  TextWrap: "Line-wrap toggle for diff cards and source file previews",
   Trash2: "Delete queued message, remove project source",
   UserRound: "Parent-thread indicator in sidebar and prompt banner",
   UserRoundPlus: "unused legacy parent-action icon",

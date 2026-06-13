@@ -128,17 +128,17 @@ const untrackedOnlyStatus: WorkspaceStatus = {
       {
         path: "apps/app/notes/triage.md",
         status: "??",
-        insertions: null,
-        deletions: null,
+        insertions: 18,
+        deletions: 0,
       },
       {
         path: "apps/app/scripts/dev-bb-worktree.sh",
         status: "??",
-        insertions: null,
-        deletions: null,
+        insertions: 42,
+        deletions: 0,
       },
     ],
-    insertions: 0,
+    insertions: 60,
     deletions: 0,
   },
   branch: {
@@ -437,7 +437,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="untracked only"
-        hint='workingTree.state = "untracked" — no insertions/deletions tally'
+        hint='workingTree.state = "untracked" with synthesized insertion stats'
       >
         <Row section={untrackedSection} initiallyExpandedSection="git" />
       </StoryRow>

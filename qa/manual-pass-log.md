@@ -646,3 +646,36 @@ Cleanup:
 
 - Teardown succeeded: `pnpm qa:standalone:stop --state ...` killed PIDs `39234` and `39286` and removed the standalone root.
 - `pnpm qa:standalone:cleanup` reported no remaining roots.
+
+## Full Lint/Test/Build/Runbook Pass With Real Providers
+
+Date: 2026-06-12
+Operator: Codex
+Status: passed after fixes
+Standalone workflow: `pnpm qa:standalone:start` / `pnpm qa:standalone:stop`
+Run logs: `qa/logs/2026-06-12-full-qa/`
+
+Resolved models:
+
+- `codex`: `gpt-5.5`
+- `claude-code`: `claude-haiku-4-5`
+- `pi`: `openai-codex/gpt-5.5`
+
+Validated:
+
+- Final `lint`, `typecheck`, `test`, `test:integration`, and root `build` gates all passed through Turbo.
+- Real-provider integration exercised Codex, Claude Code, and Pi registry, turn, control, concurrency, and workspace scenarios.
+- Standalone manual runbook coverage exercised health/model resolution, API prompt attachments, smoke/follow-up, parent/child protocol, worktree/diff routes, archive safety, automations, multi-thread shared environments, mixed-provider worktrees, recovery probes, provider-specific chat/follow-up/stop/worktree flows, and pending-interaction approval/denial.
+- The final pending-interaction rerun confirmed `bb thread tell` now returns HTTP 409 while a command approval is pending, then approval and denial both resolve through the real Codex provider flow.
+
+Fixes made during the pass:
+
+- Added a focused timeout to the desktop preload browser API test that timed out under full-suite load.
+- Reduced pending-interaction batching test setup cost while preserving coverage across SQLite variable-limit chunks.
+- Installed/verified local QA prerequisites for real providers (`socat`, Pi auth, and the `pi` CLI wrapper).
+- Fixed `/api/v1/threads/:id/send` so `queue-if-active` cannot enqueue a prompt while the active thread awaits user interaction, with a public API regression test.
+
+Cleanup:
+
+- Standalone teardown and cleanup succeeded after the final manual rerun.
+- No `/tmp/bb-standalone-*` roots remained after cleanup.

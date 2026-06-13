@@ -58,8 +58,6 @@ interface DestroyPersistedBrowserViewsForEnvironmentArgs {
 }
 
 const browserViewRecords = new Map<string, BrowserViewRecord>();
-let sharedDesktopBrowser: BbDesktopBrowserApi | null = null;
-let sharedCoordinator: BrowserViewVisibilityCoordinator | null = null;
 
 export function createBrowserViewVisibilityCoordinator(
   desktopBrowser: BbDesktopBrowserApi,
@@ -89,16 +87,6 @@ export function createBrowserViewVisibilityCoordinator(
   };
 }
 
-export function getBrowserViewVisibilityCoordinator(
-  desktopBrowser: BbDesktopBrowserApi,
-): BrowserViewVisibilityCoordinator {
-  if (sharedDesktopBrowser !== desktopBrowser || sharedCoordinator === null) {
-    sharedDesktopBrowser = desktopBrowser;
-    sharedCoordinator = createBrowserViewVisibilityCoordinator(desktopBrowser);
-  }
-  return sharedCoordinator;
-}
-
 export function registerBrowserView({
   environmentId,
   tabId,
@@ -111,9 +99,7 @@ export function destroyPersistedBrowserView({
   desktopBrowser,
   tabId,
 }: DestroyPersistedBrowserViewArgs): void {
-  const coordinator = getBrowserViewVisibilityCoordinator(desktopBrowser);
-  coordinator.hide(tabId);
-  coordinator.release(tabId);
+  desktopBrowser.setVisible({ tabId, visible: false });
   desktopBrowser.detach(tabId);
   browserViewRecords.delete(tabId);
 }
@@ -150,6 +136,4 @@ export function destroyPersistedBrowserViewsForEnvironment({
 
 export function resetBrowserViewPersistence(): void {
   browserViewRecords.clear();
-  sharedDesktopBrowser = null;
-  sharedCoordinator = null;
 }

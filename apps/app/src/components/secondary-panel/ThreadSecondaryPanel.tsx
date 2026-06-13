@@ -26,9 +26,17 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelFileTab";
 import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
-import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
+import {
+  GIT_DIFF_VIEW_BASE_OPTIONS,
+  type GitDiffViewOptions,
+} from "../git-diff/GitDiffCard";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import {
+  DEFAULT_CODE_OVERFLOW_MODE,
+  type CodeOverflowMode,
+} from "@/lib/code-overflow-mode";
 import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
+import type { GitDiffPanelIntent } from "./git-diff/gitDiffPanelStateReducer";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
 import {
   type SecondaryPanelDraggingHandler,
@@ -66,7 +74,7 @@ const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
 // size/max are lifted to the full width of the horizontal group.
 const CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT = 100;
 const PANEL_SCROLL_SLOT_CLASS =
-  "min-h-0 flex-1 overflow-x-hidden overflow-y-auto";
+  "min-h-0 flex-1 overflow-x-auto overflow-y-auto";
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
   pointerEvents: "auto",
 };
@@ -82,6 +90,8 @@ export interface ThreadSecondaryPanelProps {
   canUseGitUi: boolean;
   defaultMergeBaseBranch?: string;
   environmentId?: string;
+  gitDiffPanelIntent?: GitDiffPanelIntent | null;
+  threadId: string;
   metadataContent: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
   fileTabContent?: ReactNode;
@@ -168,6 +178,8 @@ export function ThreadSecondaryPanel({
   canUseGitUi,
   defaultMergeBaseBranch,
   environmentId,
+  gitDiffPanelIntent = null,
+  threadId,
   metadataContent,
   fileTabs,
   fileTabContent,
@@ -254,7 +266,9 @@ export function ThreadSecondaryPanel({
     toggleGitDiffFileCollapsed,
   } = useGitDiffPanelState({
     environmentId,
+    intent: gitDiffPanelIntent,
     isDiffPanelActive,
+    threadId,
     defaultMergeBaseBranch,
   });
   const collapsedGitDiffFileKeys = useAtomValue(gitDiffCollapsedFileKeysAtom);
@@ -263,6 +277,8 @@ export function ThreadSecondaryPanel({
     threadSecondaryPanelResizingAtom,
   );
   const [desktopInfo] = useState(getBbDesktopInfo);
+  const [gitDiffLineOverflowMode, setGitDiffLineOverflowMode] =
+    useState<CodeOverflowMode>(DEFAULT_CODE_OVERFLOW_MODE);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const areAllGitDiffFilesCollapsed = useMemo(
     () =>
@@ -273,13 +289,14 @@ export function ThreadSecondaryPanel({
     [collapsedGitDiffFileKeys, hasParsedGitDiffFiles, parsedGitDiffFileEntries],
   );
   const preferredTheme = usePreferredTheme();
-  const gitDiffViewOptions = useMemo(
+  const gitDiffViewOptions = useMemo<GitDiffViewOptions>(
     () => ({
       ...GIT_DIFF_VIEW_BASE_OPTIONS,
       diffStyle: gitDiffDisplayMode,
+      overflow: gitDiffLineOverflowMode,
       themeType: preferredTheme,
     }),
-    [gitDiffDisplayMode, preferredTheme],
+    [gitDiffDisplayMode, gitDiffLineOverflowMode, preferredTheme],
   );
   const handlePanelFocusCapture = (event: FocusEvent<HTMLElement>) => {
     const previousTarget = event.relatedTarget;
@@ -429,6 +446,8 @@ export function ThreadSecondaryPanel({
             onToggleAllCollapsed={toggleAllGitDiffFilesCollapsed}
             displayMode={gitDiffDisplayMode}
             onDisplayModeChange={handleGitDiffDisplayModeChange}
+            lineOverflowMode={gitDiffLineOverflowMode}
+            onLineOverflowModeChange={setGitDiffLineOverflowMode}
           />
         ) : null}
       </div>
@@ -542,10 +561,7 @@ interface NewTabButtonProps {
   usesDesktopChrome: boolean;
 }
 
-function NewTabButton({
-  onOpenNewTab,
-  usesDesktopChrome,
-}: NewTabButtonProps) {
+function NewTabButton({ onOpenNewTab, usesDesktopChrome }: NewTabButtonProps) {
   return (
     <Button
       type="button"

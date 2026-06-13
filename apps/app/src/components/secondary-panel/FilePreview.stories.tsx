@@ -11,7 +11,10 @@ export default {
 function PreviewStage({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-[360px] w-full max-w-[640px] min-w-0 flex-col overflow-hidden bg-background px-4 pb-3 pt-1">
-      <div className="min-h-0 flex-1 overflow-y-auto" data-file-preview-scroll-container>
+      <div
+        className="min-h-0 flex-1 overflow-auto"
+        data-file-preview-scroll-container
+      >
         {children}
       </div>
     </div>

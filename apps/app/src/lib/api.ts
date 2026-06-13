@@ -4,9 +4,7 @@ import type {
   Experiments,
   Host,
   PendingInteraction,
-  ProjectExecutionDefaults,
   ProjectSource,
-  ResolvedThreadExecutionOptions,
   ThreadQueuedMessage,
   WorkspaceDiffTarget,
 } from "@bb/domain";
@@ -30,7 +28,6 @@ import type {
   CreateThreadTerminalRequest,
   ProjectBranchesResponse,
   ProjectResponse,
-  SidebarBootstrapResponse,
   PromptHistoryResponse,
   ReorderPinnedThreadRequest,
   ReorderProjectRequest,
@@ -46,7 +43,6 @@ import type {
   SystemVoiceTranscriptionResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
-  ThreadComposerBootstrapResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
@@ -123,10 +119,6 @@ export type ProjectBranchListRequest = EnvironmentBranchListRequest;
 
 export type AppCreateThreadRequest = Omit<CreateThreadRequest, "origin">;
 
-export interface GetProjectDefaultExecutionOptionsRequest {
-  projectId: string;
-}
-
 const HTML_DOCUMENT_PATTERN = /<!doctype html|<html[\s>]/i;
 const ERROR_EXTRACT_OPTS = {
   legacyKeys: ["detail"] as const,
@@ -136,7 +128,7 @@ function normalizeErrorText(raw: string): string {
   return raw.replace(/\s+/g, " ").trim();
 }
 
-function requestOptions(signal?: AbortSignal) {
+export function requestOptions(signal?: AbortSignal) {
   return signal ? { init: { signal } } : undefined;
 }
 
@@ -280,7 +272,9 @@ async function throwHttpError(res: Response): Promise<never> {
   });
 }
 
-async function request<T>(responsePromise: Promise<Response>): Promise<T> {
+export async function request<T>(
+  responsePromise: Promise<Response>,
+): Promise<T> {
   const res = await requestResponse(responsePromise);
   const text = await res.text();
   return JSON.parse(text) as T;
@@ -478,14 +472,6 @@ export async function reorderProject(
   );
 }
 
-export async function listProjectsWithThreads(
-  signal?: AbortSignal,
-): Promise<SidebarBootstrapResponse> {
-  return request<SidebarBootstrapResponse>(
-    apiClient["sidebar-bootstrap"].$get(undefined, requestOptions(signal)),
-  );
-}
-
 export async function listAutomationsOverview(
   signal?: AbortSignal,
 ): Promise<AutomationsOverviewResponse> {
@@ -503,17 +489,6 @@ export async function listProjectPromptHistory(
       { param: { id: projectId } },
       requestOptions(signal),
     ),
-  );
-}
-
-export async function getProjectDefaultExecutionOptions(
-  args: GetProjectDefaultExecutionOptionsRequest,
-): Promise<ProjectExecutionDefaults | null> {
-  return request<ProjectExecutionDefaults | null>(
-    apiClient.projects[":id"]["default-execution-options"].$get({
-      param: { id: args.projectId },
-      query: {},
-    }),
   );
 }
 
@@ -924,16 +899,6 @@ export async function updateThread(
   );
 }
 
-export async function getThreadDefaultExecutionOptions(
-  id: string,
-): Promise<ResolvedThreadExecutionOptions | null> {
-  return request<ResolvedThreadExecutionOptions | null>(
-    apiClient.threads[":id"]["default-execution-options"].$get({
-      param: { id },
-    }),
-  );
-}
-
 export async function listThreadTerminals(
   id: string,
   signal?: AbortSignal,
@@ -1002,14 +967,6 @@ export async function createThreadQueuedMessage(
       param: { id },
       json: req,
     }),
-  );
-}
-
-export async function getThreadComposerBootstrap(
-  id: string,
-): Promise<ThreadComposerBootstrapResponse> {
-  return request<ThreadComposerBootstrapResponse>(
-    apiClient.threads[":id"]["composer-bootstrap"].$get({ param: { id } }),
   );
 }
 

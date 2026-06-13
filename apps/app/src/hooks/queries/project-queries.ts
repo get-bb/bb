@@ -1,21 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ProjectExecutionDefaults } from "@bb/domain";
 import type {
   CommandListResponse,
   ProjectBranchesResponse,
   ProjectWithThreadsResponse,
   PromptHistoryResponse,
-  SidebarBootstrapResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import {
   projectCommandsQueryKey,
-  projectDefaultExecutionOptionsQueryKey,
   projectPathsQueryKey,
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKey,
-  sidebarNavigationQueryKey,
 } from "./query-keys";
 import { resolveProjectSourceBranchesPlaceholder } from "./query-placeholders";
 import {
@@ -31,10 +27,6 @@ interface BranchQueryOptions extends QueryOptions {
   limit?: number;
   query?: string;
   selectedBranch?: string;
-}
-
-interface UseProjectDefaultExecutionOptionsArgs {
-  projectId: string | undefined;
 }
 
 interface UseProjectPathSuggestionsArgs {
@@ -85,15 +77,6 @@ export function stripProjectThreads(
 ): SidebarProject {
   const { threads, ...rest } = project;
   return rest;
-}
-
-export function useSidebarNavigation(options?: QueryOptions) {
-  return useQuery<SidebarBootstrapResponse>({
-    queryKey: sidebarNavigationQueryKey(),
-    queryFn: ({ signal }) => api.listProjectsWithThreads(signal),
-    enabled: options?.enabled ?? true,
-    staleTime: Infinity,
-  });
 }
 
 export function useProjectSourceBranches(
@@ -155,28 +138,6 @@ export function useProjectPromptHistory(
       ),
     enabled: (options?.enabled ?? true) && Boolean(projectId),
     staleTime: PROMPT_HISTORY_STALE_TIME_MS,
-  });
-}
-
-export function useProjectDefaultExecutionOptions(
-  args: UseProjectDefaultExecutionOptionsArgs,
-  options?: QueryOptions,
-) {
-  const { projectId } = args;
-  return useQuery<ProjectExecutionDefaults | null>({
-    queryKey: projectDefaultExecutionOptionsQueryKey({
-      projectId: projectId ?? "",
-    }),
-    queryFn: () =>
-      api.getProjectDefaultExecutionOptions({
-        projectId: requireProjectId(
-          projectId,
-          "useProjectDefaultExecutionOptions",
-        ),
-      }),
-    enabled: (options?.enabled ?? true) && Boolean(projectId),
-    staleTime: 10_000,
-    placeholderData: (previousData) => (projectId ? previousData : undefined),
   });
 }
 

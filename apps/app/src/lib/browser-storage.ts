@@ -32,6 +32,12 @@ interface LocalStorageValueCodec<T> {
   serialize: (value: T) => string;
 }
 
+export interface CreatePersistedEnumAtomArgs<T extends string> {
+  baseKey: string;
+  initialValue: T;
+  isValue: StringValueGuard<T>;
+}
+
 function getLocalStorage(): Storage | null {
   if (typeof window === "undefined") {
     return null;
@@ -174,5 +180,17 @@ export function createProjectScopedStorageAtomFamily<T>(
       storage,
       { getOnInit: true },
     ),
+  );
+}
+
+export function createPersistedEnumAtom<T extends string>({
+  baseKey,
+  initialValue,
+  isValue,
+}: CreatePersistedEnumAtomArgs<T>) {
+  return createProjectScopedStorageAtomFamily(
+    baseKey,
+    initialValue,
+    createLocalStorageEnumStorage(isValue),
   );
 }

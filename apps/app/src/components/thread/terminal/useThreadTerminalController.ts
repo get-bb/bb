@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
 import type { TerminalSession } from "@bb/server-contract";
-import { getThreadSecondaryPanelOpenAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { isVisibleTerminalSessionStatus } from "@bb/domain";
 import {
   useCloseThreadTerminal,
   useCreateThreadTerminal,
@@ -10,6 +9,8 @@ import {
 } from "@/hooks/queries/thread-terminal-queries";
 import {
   useActiveFixedRightTerminalId,
+  useCloseFixedSecondaryPanel,
+  useFixedPanelTabsState,
   useRemoveFixedRightTerminalTab,
   useSetFixedRightTerminalActiveTerminal,
 } from "@/lib/fixed-panel-tabs";
@@ -58,7 +59,7 @@ export type ThreadTerminalTitleChangeHandler = (title: string) => void;
 type TerminalTitleRenameTimeout = number;
 
 function isVisibleTerminalSession(session: TerminalSession): boolean {
-  return session.status !== "exited";
+  return isVisibleTerminalSessionStatus(session.status);
 }
 
 function pickActiveTerminalId(
@@ -91,13 +92,10 @@ export function useThreadTerminalController({
   canCreateTerminal,
   threadId,
 }: ThreadTerminalControllerArgs): ThreadTerminalController {
-  const isRightPanelOpen = useAtomValue(
-    getThreadSecondaryPanelOpenAtom(threadId),
-  );
-  const setRightPanelOpen = useSetAtom(
-    getThreadSecondaryPanelOpenAtom(threadId),
-  );
+  const fixedPanelTabsState = useFixedPanelTabsState(threadId);
+  const isRightPanelOpen = fixedPanelTabsState.secondary.isOpen;
   const activeFixedTerminalId = useActiveFixedRightTerminalId(threadId);
+  const closeFixedSecondaryPanel = useCloseFixedSecondaryPanel(threadId);
   const setActiveFixedTerminal =
     useSetFixedRightTerminalActiveTerminal(threadId);
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(threadId);
@@ -163,7 +161,6 @@ export function useThreadTerminalController({
       },
       {
         onSuccess: (session) => {
-          setRightPanelOpen(true);
           setActiveFixedTerminal(session.id);
         },
       },
@@ -172,7 +169,6 @@ export function useThreadTerminalController({
     canCreateTerminal,
     createTerminal,
     setActiveFixedTerminal,
-    setRightPanelOpen,
     threadId,
   ]);
 
@@ -220,9 +216,8 @@ export function useThreadTerminalController({
   const handleSelectTerminal = useCallback(
     (terminalId: string) => {
       setActiveFixedTerminal(terminalId);
-      setRightPanelOpen(true);
     },
-    [setActiveFixedTerminal, setRightPanelOpen],
+    [setActiveFixedTerminal],
   );
 
   const handleCloseTerminal = useCallback(
@@ -303,8 +298,8 @@ export function useThreadTerminalController({
     );
 
   const handleClosePanel = useCallback(() => {
-    setRightPanelOpen(false);
-  }, [setRightPanelOpen]);
+    closeFixedSecondaryPanel();
+  }, [closeFixedSecondaryPanel]);
 
   const terminalIsStarting = createTerminal.isPending;
 

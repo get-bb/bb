@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   NewTabActions,
   NewTabFileSearch,
@@ -9,7 +8,7 @@ import {
 
 type NewTabPageFileSearchProps = Omit<
   NewTabFileSearchProps,
-  "onSearchActiveChange"
+  "idleActions"
 >;
 
 export interface NewTabPageProps extends NewTabPageFileSearchProps {
@@ -32,10 +31,6 @@ export function NewTabPage({
   onStartTerminal,
   projectId,
 }: NewTabPageProps) {
-  const [isSearchActive, setIsSearchActive] = useState(
-    () => (initialQuery ?? "").trim().length > 0,
-  );
-
   return (
     <div className="flex min-h-full flex-col gap-3 px-4 pb-3 pt-1">
       <NewTabFileSearch
@@ -43,16 +38,15 @@ export function NewTabPage({
         environmentId={environmentId}
         currentThreadId={currentThreadId}
         focusRequest={focusRequest}
+        idleActions={
+          <NewTabActions
+            onOpenBrowser={onOpenBrowser}
+            onStartTerminal={onStartTerminal}
+          />
+        }
         initialQuery={initialQuery}
-        onSearchActiveChange={setIsSearchActive}
         onSelect={onSelect}
       />
-      {isSearchActive ? null : (
-        <NewTabActions
-          onOpenBrowser={onOpenBrowser}
-          onStartTerminal={onStartTerminal}
-        />
-      )}
     </div>
   );
 }

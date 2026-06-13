@@ -1,0 +1,312 @@
+import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
+import type {
+  CreateExecutionInputSources,
+  ExecutionInputFieldSource,
+  ExistingThreadExecutionInputSources,
+} from "@bb/server-contract";
+import type {
+  StoredPermissionMode,
+  StoredReasoningLevel,
+  StoredServiceTier,
+} from "./persisted-selection-fields";
+
+export type ThreadCreationOptionsScope = "new-thread" | "component-local";
+
+export interface ThreadPromptSelections {
+  selectedProviderId: string;
+  selectedModel: string;
+  serviceTier: ServiceTier | undefined;
+  reasoningLevel: ReasoningLevel;
+  permissionMode: PermissionMode;
+  environmentSelectionValue: string;
+}
+
+export type ThreadPromptField = keyof ThreadPromptSelections;
+
+export type ScopedExecutionInputSources =
+  | CreateExecutionInputSources
+  | ExistingThreadExecutionInputSources;
+
+export interface UsePromptModelReasoningOptions {
+  enabled?: boolean;
+  environmentId?: string;
+  scope?: ThreadCreationOptionsScope;
+  projectId?: string | null;
+  resetKey?: string | number | null;
+  initialProviderId?: string;
+  initialModel?: string;
+  initialServiceTier?: ServiceTier;
+  initialReasoningLevel?: ReasoningLevel;
+  initialPermissionMode?: PermissionMode;
+  initialEnvironmentSelectionValue?: string;
+}
+
+export interface UseNewThreadCreationOptions extends UsePromptModelReasoningOptions {
+  scope?: "new-thread";
+}
+
+export interface UseComponentLocalCreationOptions extends UsePromptModelReasoningOptions {
+  scope: "component-local";
+}
+
+export interface StoredCreateExecutionValues {
+  selectedProviderId: string;
+  selectedModel: string;
+  serviceTier: StoredServiceTier;
+  reasoningLevel: StoredReasoningLevel;
+  permissionMode: StoredPermissionMode;
+}
+
+export interface EffectiveCreateExecutionValues {
+  selectedProviderId: string;
+  selectedModel: string;
+  serviceTier: ServiceTier | undefined;
+  reasoningLevel: ReasoningLevel;
+  permissionMode: PermissionMode;
+}
+
+export interface BuildExecutionInputSourcesArgs {
+  effectiveValues: EffectiveCreateExecutionValues;
+  scope: ThreadCreationOptionsScope;
+  storedValues: StoredCreateExecutionValues;
+  touchedFields: ReadonlySet<ThreadPromptField>;
+}
+
+export interface SyncThreadPromptSelectionsArgs {
+  currentSelections: ThreadPromptSelections;
+  nextSelections: ThreadPromptSelections;
+  touchedFields: ReadonlySet<ThreadPromptField>;
+}
+
+export interface UpdateThreadPromptSelectionsArgs {
+  currentSelections: ThreadPromptSelections;
+  field: ThreadPromptField;
+  value: ThreadPromptSelections[ThreadPromptField];
+}
+
+interface ResolveCreateExecutionInputSourceArgs {
+  hasStoredValue: boolean;
+  hasValue: boolean;
+  touched: boolean;
+}
+
+interface ResolvePermissionModeSelectionArgs {
+  rawPermissionMode: PermissionMode;
+  supportedPermissionModes: readonly PermissionMode[];
+}
+
+function hasValue(value: string): boolean {
+  return value.length > 0;
+}
+
+function resolveCreateExecutionInputSource({
+  hasStoredValue,
+  hasValue,
+  touched,
+}: ResolveCreateExecutionInputSourceArgs):
+  | ExecutionInputFieldSource
+  | undefined {
+  if (!hasValue) {
+    return undefined;
+  }
+  if (touched) {
+    return "explicit";
+  }
+  if (hasStoredValue) {
+    return "client-preference";
+  }
+  return undefined;
+}
+
+export function getInitialThreadPromptSelections(
+  options?: UsePromptModelReasoningOptions,
+): ThreadPromptSelections {
+  return {
+    selectedProviderId: options?.initialProviderId ?? "",
+    selectedModel: options?.initialModel ?? "",
+    serviceTier: options?.initialServiceTier,
+    reasoningLevel: options?.initialReasoningLevel ?? "medium",
+    permissionMode: options?.initialPermissionMode ?? "full",
+    environmentSelectionValue: options?.initialEnvironmentSelectionValue ?? "",
+  };
+}
+
+export function syncUntouchedThreadPromptSelections({
+  currentSelections,
+  nextSelections,
+  touchedFields,
+}: SyncThreadPromptSelectionsArgs): ThreadPromptSelections {
+  let changed = false;
+  const updatedSelections = { ...currentSelections };
+
+  if (
+    !touchedFields.has("selectedProviderId") &&
+    currentSelections.selectedProviderId !== nextSelections.selectedProviderId
+  ) {
+    updatedSelections.selectedProviderId = nextSelections.selectedProviderId;
+    changed = true;
+  }
+  if (
+    !touchedFields.has("selectedModel") &&
+    currentSelections.selectedModel !== nextSelections.selectedModel
+  ) {
+    updatedSelections.selectedModel = nextSelections.selectedModel;
+    changed = true;
+  }
+  if (
+    !touchedFields.has("serviceTier") &&
+    currentSelections.serviceTier !== nextSelections.serviceTier
+  ) {
+    updatedSelections.serviceTier = nextSelections.serviceTier;
+    changed = true;
+  }
+  if (
+    !touchedFields.has("reasoningLevel") &&
+    currentSelections.reasoningLevel !== nextSelections.reasoningLevel
+  ) {
+    updatedSelections.reasoningLevel = nextSelections.reasoningLevel;
+    changed = true;
+  }
+  if (
+    !touchedFields.has("permissionMode") &&
+    currentSelections.permissionMode !== nextSelections.permissionMode
+  ) {
+    updatedSelections.permissionMode = nextSelections.permissionMode;
+    changed = true;
+  }
+  if (
+    !touchedFields.has("environmentSelectionValue") &&
+    currentSelections.environmentSelectionValue !==
+      nextSelections.environmentSelectionValue
+  ) {
+    updatedSelections.environmentSelectionValue =
+      nextSelections.environmentSelectionValue;
+    changed = true;
+  }
+
+  return changed ? updatedSelections : currentSelections;
+}
+
+export function updateThreadPromptSelections({
+  currentSelections,
+  field,
+  value,
+}: UpdateThreadPromptSelectionsArgs): ThreadPromptSelections {
+  if (currentSelections[field] === value) {
+    return currentSelections;
+  }
+
+  return {
+    ...currentSelections,
+    [field]: value,
+  };
+}
+
+export function buildExecutionInputSources({
+  effectiveValues,
+  scope,
+  storedValues,
+  touchedFields,
+}: BuildExecutionInputSourcesArgs): ScopedExecutionInputSources {
+  const usesStoredValues = scope === "new-thread";
+  const hasTouchedExecutionField =
+    touchedFields.has("selectedProviderId") ||
+    touchedFields.has("selectedModel") ||
+    touchedFields.has("serviceTier") ||
+    touchedFields.has("reasoningLevel") ||
+    touchedFields.has("permissionMode");
+  // Existing-thread submissions are all-or-nothing once an execution control is
+  // touched, so the server never merges stale last-run values with new UI picks.
+  const forcesExplicitExecutionFields =
+    scope === "component-local" && hasTouchedExecutionField;
+
+  if (!usesStoredValues && scope !== "component-local") {
+    return {};
+  }
+
+  const providerSource = resolveCreateExecutionInputSource({
+    hasStoredValue:
+      usesStoredValues &&
+      hasValue(storedValues.selectedProviderId) &&
+      storedValues.selectedProviderId === effectiveValues.selectedProviderId,
+    hasValue: hasValue(effectiveValues.selectedProviderId),
+    touched: touchedFields.has("selectedProviderId"),
+  });
+  const modelSource = resolveCreateExecutionInputSource({
+    hasStoredValue:
+      usesStoredValues &&
+      hasValue(storedValues.selectedModel) &&
+      storedValues.selectedModel === effectiveValues.selectedModel,
+    hasValue: hasValue(effectiveValues.selectedModel),
+    touched:
+      forcesExplicitExecutionFields || touchedFields.has("selectedModel"),
+  });
+  const serviceTierSource = resolveCreateExecutionInputSource({
+    hasStoredValue:
+      usesStoredValues &&
+      storedValues.serviceTier !== "" &&
+      storedValues.serviceTier === effectiveValues.serviceTier,
+    hasValue: effectiveValues.serviceTier !== undefined,
+    touched: forcesExplicitExecutionFields || touchedFields.has("serviceTier"),
+  });
+  const reasoningLevelSource = resolveCreateExecutionInputSource({
+    hasStoredValue: usesStoredValues && storedValues.reasoningLevel !== "",
+    hasValue: hasValue(effectiveValues.reasoningLevel),
+    touched:
+      forcesExplicitExecutionFields || touchedFields.has("reasoningLevel"),
+  });
+  const permissionModeSource = resolveCreateExecutionInputSource({
+    hasStoredValue: usesStoredValues && storedValues.permissionMode !== "",
+    hasValue: hasValue(effectiveValues.permissionMode),
+    touched:
+      forcesExplicitExecutionFields || touchedFields.has("permissionMode"),
+  });
+
+  if (scope === "component-local") {
+    return {
+      ...(modelSource ? { model: modelSource } : {}),
+      ...(serviceTierSource ? { serviceTier: serviceTierSource } : {}),
+      ...(reasoningLevelSource ? { reasoningLevel: reasoningLevelSource } : {}),
+      ...(permissionModeSource ? { permissionMode: permissionModeSource } : {}),
+    };
+  }
+
+  return {
+    ...(providerSource ? { providerId: providerSource } : {}),
+    ...(modelSource ? { model: modelSource } : {}),
+    ...(serviceTierSource ? { serviceTier: serviceTierSource } : {}),
+    ...(reasoningLevelSource ? { reasoningLevel: reasoningLevelSource } : {}),
+    ...(permissionModeSource ? { permissionMode: permissionModeSource } : {}),
+  };
+}
+
+export function resolvePermissionModeSelection({
+  rawPermissionMode,
+  supportedPermissionModes,
+}: ResolvePermissionModeSelectionArgs): PermissionMode {
+  if (supportedPermissionModes.includes(rawPermissionMode)) {
+    return rawPermissionMode;
+  }
+  if (supportedPermissionModes.includes("full")) {
+    return "full";
+  }
+  return supportedPermissionModes[0] ?? "full";
+}
+
+export function formatModelLabel(value: string): string {
+  // Case-normalises a raw model id into a displayable label. The brand prefix
+  // strip ("Claude " / "GPT-") is a presentation rule applied by the picker
+  // itself (see `stripModelBrandPrefix`) so stories and prod render identically
+  // without anyone having to remember to format.
+  return value
+    .split("-")
+    .map((part) => {
+      if (part.toLowerCase() === "gpt") return "GPT";
+      if (/^\d+(\.\d+)*$/.test(part)) return part;
+      if (/^[a-z]+$/i.test(part)) {
+        return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+      }
+      return part;
+    })
+    .join("-");
+}

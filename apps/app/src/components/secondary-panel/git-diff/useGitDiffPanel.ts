@@ -3,11 +3,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { useEnvironmentMergeBaseBranches } from "../../../hooks/queries/environment-queries";
 import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
-import {
-  pendingGitDiffCommitShaAtom,
-  pendingGitDiffScrollPathAtom,
-  selectedMergeBaseBranchAtom,
-} from "../threadSecondaryPanelAtoms";
+import { selectedMergeBaseBranchAtom } from "../threadSecondaryPanelAtoms";
 
 type ThreadSecondaryPanelSetter = (
   panel: ThreadSecondaryPanelTab | null,
@@ -19,6 +15,8 @@ interface UseGitDiffPanelParams {
   defaultMergeBaseBranch?: string;
   environmentId?: string;
   mergeBaseBranchOptionsEnabled?: boolean;
+  onRequestCommitDiffSelection: (sha: string) => void;
+  onRequestDiffFileFocus: (path: string) => void;
   setThreadSecondaryPanel: ThreadSecondaryPanelSetter;
 }
 
@@ -28,12 +26,12 @@ export function useGitDiffPanel({
   defaultMergeBaseBranch,
   environmentId,
   mergeBaseBranchOptionsEnabled = false,
+  onRequestCommitDiffSelection,
+  onRequestDiffFileFocus,
   setThreadSecondaryPanel,
 }: UseGitDiffPanelParams) {
   const selectedMergeBaseBranch = useAtomValue(selectedMergeBaseBranchAtom);
   const setSelectedMergeBaseBranch = useSetAtom(selectedMergeBaseBranchAtom);
-  const setPendingGitDiffScrollPath = useSetAtom(pendingGitDiffScrollPathAtom);
-  const setPendingGitDiffCommitSha = useSetAtom(pendingGitDiffCommitShaAtom);
   const [mergeBaseBranchSearchQuery, setMergeBaseBranchSearchQuery] =
     useState("");
   const requestedMergeBaseBranch =
@@ -103,19 +101,19 @@ export function useGitDiffPanel({
   const openDiffFile = useCallback(
     (path: string) => {
       clearActiveFileTabs();
-      setPendingGitDiffScrollPath(path);
+      onRequestDiffFileFocus(path);
       openThreadDiffPanel();
     },
-    [clearActiveFileTabs, openThreadDiffPanel, setPendingGitDiffScrollPath],
+    [clearActiveFileTabs, onRequestDiffFileFocus, openThreadDiffPanel],
   );
 
   const openCommitDiff = useCallback(
     (sha: string) => {
       clearActiveFileTabs();
-      setPendingGitDiffCommitSha(sha);
+      onRequestCommitDiffSelection(sha);
       openThreadDiffPanel();
     },
-    [clearActiveFileTabs, openThreadDiffPanel, setPendingGitDiffCommitSha],
+    [clearActiveFileTabs, onRequestCommitDiffSelection, openThreadDiffPanel],
   );
 
   return {

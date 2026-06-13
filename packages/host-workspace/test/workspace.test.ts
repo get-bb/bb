@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { WorkspaceChangeStats } from "@bb/domain";
 import { Workspace } from "../src/workspace.js";
 import { WorkspaceError } from "../src/git.js";
 import { runGit } from "../src/git.js";
@@ -19,6 +20,12 @@ const tempDirs: string[] = [];
 type Deferred = {
   promise: Promise<void>;
   resolve: () => void;
+};
+
+type DiffStats = {
+  filesCount: number;
+  insertions: number;
+  deletions: number;
 };
 
 function createDeferred(): Deferred {
@@ -62,6 +69,30 @@ async function initBareRemoteFrom(repoPath: string): Promise<string> {
   await runGit(["remote", "add", "origin", barePath], { cwd: repoPath });
   await runGit(["push", "-u", "origin", "main"], { cwd: repoPath });
   return barePath;
+}
+
+function parseFirstIntegerMatch(text: string, pattern: RegExp): number {
+  const value = Number.parseInt(text.match(pattern)?.[1] ?? "0", 10);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function parseShortstat(shortstat: string): DiffStats {
+  return {
+    filesCount: parseFirstIntegerMatch(shortstat, /(\d+)\s+files?\s+changed/u),
+    insertions: parseFirstIntegerMatch(
+      shortstat,
+      /(\d+)\s+insertions?\(\+\)/u,
+    ),
+    deletions: parseFirstIntegerMatch(shortstat, /(\d+)\s+deletions?\(-\)/u),
+  };
+}
+
+function tallyWorkspaceStats(stats: WorkspaceChangeStats): DiffStats {
+  return {
+    filesCount: stats.files.length,
+    insertions: stats.insertions,
+    deletions: stats.deletions,
+  };
 }
 
 type PrimaryAndFeatureWorktree = {
@@ -108,7 +139,16 @@ describe("Workspace", () => {
     await fs.writeFile(path.join(repoPath, "notes.txt"), "note\n", "utf8");
     const untrackedStatus = await workspace.getStatus();
     expect(untrackedStatus.workingTree.state).toBe("untracked");
-    expect(untrackedStatus.workingTree.files).toHaveLength(1);
+    expect(untrackedStatus.workingTree.files).toEqual([
+      {
+        path: "notes.txt",
+        status: "??",
+        insertions: 1,
+        deletions: 0,
+      },
+    ]);
+    expect(untrackedStatus.workingTree.insertions).toBe(1);
+    expect(untrackedStatus.workingTree.deletions).toBe(0);
 
     await fs.writeFile(
       path.join(repoPath, "README.md"),
@@ -275,8 +315,8 @@ describe("Workspace", () => {
       {
         path: "notes.txt",
         status: "??",
-        insertions: null,
-        deletions: null,
+        insertions: 1,
+        deletions: 0,
       },
     ]);
     expect(status.mergeBase).toMatchObject({
@@ -478,10 +518,12 @@ describe("Workspace", () => {
       {
         path: "notes.txt",
         status: "??",
-        insertions: null,
-        deletions: null,
+        insertions: 1,
+        deletions: 0,
       },
     ]);
+    expect(status.workingTree.insertions).toBe(1);
+    expect(status.workingTree.deletions).toBe(0);
   });
 
   it("returns diff content for each supported target", async () => {
@@ -533,6 +575,88 @@ describe("Workspace", () => {
       target: { type: "commit", sha: commitSha! },
     });
     expect(commitOnly.diff).toContain("+feature");
+  });
+
+  it("aligns committed-only status stats with all and committed diffs", async () => {
+    const repoPath = await initRepo();
+    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
+    await fs.writeFile(path.join(repoPath, "README.md"), "feature\n", "utf8");
+    await runGit(["add", "README.md"], { cwd: repoPath });
+    await runGit(["commit", "-m", "Feature commit"], { cwd: repoPath });
+
+    const workspace = new Workspace(repoPath);
+    const status = await workspace.getStatus({ mergeBaseBranch: "main" });
+    expect(status.workingTree.files).toEqual([]);
+    const mergeBase = status.mergeBase;
+    expect(mergeBase).not.toBeNull();
+    if (!mergeBase) {
+      throw new Error("Expected merge-base status");
+    }
+
+    const allChanges = await workspace.getDiff({
+      target: { type: "all", mergeBaseBranch: "main" },
+    });
+    const committedChanges = await workspace.getDiff({
+      target: { type: "branch_committed", mergeBaseBranch: "main" },
+    });
+    const bannerStats = tallyWorkspaceStats(mergeBase);
+
+    expect(bannerStats).toEqual(parseShortstat(allChanges.shortstat));
+    expect(bannerStats).toEqual(parseShortstat(committedChanges.shortstat));
+  });
+
+  it("aligns uncommitted-only status stats with all and uncommitted diffs", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(
+      path.join(repoPath, "README.md"),
+      "hello\npending\n",
+      "utf8",
+    );
+    await fs.writeFile(path.join(repoPath, "notes.txt"), "note\n", "utf8");
+
+    const workspace = new Workspace(repoPath);
+    const status = await workspace.getStatus({ mergeBaseBranch: "main" });
+    expect(status.mergeBase?.files ?? []).toEqual([]);
+
+    const allChanges = await workspace.getDiff({
+      target: { type: "all", mergeBaseBranch: "main" },
+    });
+    const uncommittedChanges = await workspace.getDiff({
+      target: { type: "uncommitted" },
+    });
+    const bannerStats = tallyWorkspaceStats(status.workingTree);
+
+    expect(bannerStats).toEqual(parseShortstat(allChanges.shortstat));
+    expect(bannerStats).toEqual(parseShortstat(uncommittedChanges.shortstat));
+  });
+
+  it("aligns mixed status working-tree stats with uncommitted diffs", async () => {
+    const repoPath = await initRepo();
+    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
+    await fs.writeFile(path.join(repoPath, "README.md"), "feature\n", "utf8");
+    await runGit(["add", "README.md"], { cwd: repoPath });
+    await runGit(["commit", "-m", "Feature commit"], { cwd: repoPath });
+    await fs.writeFile(
+      path.join(repoPath, "README.md"),
+      "feature\npending\n",
+      "utf8",
+    );
+    await fs.writeFile(path.join(repoPath, "notes.txt"), "note\n", "utf8");
+
+    const workspace = new Workspace(repoPath);
+    const status = await workspace.getStatus({ mergeBaseBranch: "main" });
+    expect(status.workingTree.state).toBe("dirty_and_committed_unmerged");
+
+    const allChanges = await workspace.getDiff({
+      target: { type: "all", mergeBaseBranch: "main" },
+    });
+    const uncommittedChanges = await workspace.getDiff({
+      target: { type: "uncommitted" },
+    });
+    const bannerStats = tallyWorkspaceStats(status.workingTree);
+
+    expect(bannerStats).toEqual(parseShortstat(uncommittedChanges.shortstat));
+    expect(bannerStats).not.toEqual(parseShortstat(allChanges.shortstat));
   });
 
   it("truncates large git diff output before the process buffer fails", async () => {

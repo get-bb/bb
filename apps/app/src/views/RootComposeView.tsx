@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
@@ -20,9 +21,10 @@ import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   useProjectPromptHistory,
   useProjectSourceBranches,
-  useSidebarNavigation,
   stripProjectThreads,
 } from "@/hooks/queries/project-queries";
+import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
+import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useThreads } from "@/hooks/queries/thread-queries";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { usePrimaryHost } from "@/hooks/queries/host-queries";
@@ -74,6 +76,10 @@ type RootComposeViewProps =
       onEscapeEmptyPrompt(): void;
       surface: "popout";
     };
+
+interface BuildMobileRecentThreadsArgs {
+  sidebarNavigation: SidebarBootstrapResponse | undefined;
+}
 
 // react-router's location.state is freeform unknown — narrow it here at the
 // system boundary before reading.
@@ -145,6 +151,20 @@ function buildReuseThreadOptions(
     return left.environmentId.localeCompare(right.environmentId);
   });
   return options;
+}
+
+export function buildMobileRecentThreads({
+  sidebarNavigation,
+}: BuildMobileRecentThreadsArgs): ThreadListEntry[] {
+  if (!sidebarNavigation) return [];
+
+  const threads: ThreadListEntry[] = [
+    ...sidebarNavigation.personalProject.threads,
+  ];
+  for (const project of sidebarNavigation.projects) {
+    threads.push(...project.threads);
+  }
+  return threads;
 }
 
 function LegacyProjectComposeRedirect({
@@ -260,17 +280,23 @@ export function RootComposeView(props: RootComposeViewProps) {
     () => currentProject?.sources ?? [],
     [currentProject?.sources],
   );
-  // Seed the picker with the project's stored execution defaults so the
-  // visible default matches what the server will use when the user submits
-  // without touching anything. Without this, the picker would show the
-  // system-wide first-provider/default-model (e.g. Codex / GPT-5.5) while
-  // the server falls back to the project's stored provider (e.g. Claude
-  // Code) — see resolveRequestedCreateExecutionValue, which discards
-  // submitted values that the client hasn't claimed in `executionInputSources`.
-  // Values ride along with the sidebar bootstrap so there's no extra
-  // round-trip per visit.
+  // Seed the picker from the server-resolved project defaults so the visible
+  // default matches what create-thread will use when the user submits without
+  // touching execution controls. Values normally ride along with sidebar
+  // bootstrap; optimistic sidebar entries use a one-off fallback fetch because
+  // their null means "not loaded into this cache entry", not a client default.
+  const projectDefaultExecutionOptionsQuery = useProjectDefaultExecutionOptions(
+    { projectId },
+    {
+      enabled:
+        currentProject !== undefined &&
+        currentProject.defaultExecutionOptions === null,
+    },
+  );
   const projectDefaultExecutionOptions =
-    currentProject?.defaultExecutionOptions ?? null;
+    currentProject?.defaultExecutionOptions ??
+    projectDefaultExecutionOptionsQuery.data ??
+    null;
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
     projectId,
@@ -335,6 +361,13 @@ export function RootComposeView(props: RootComposeViewProps) {
   const reuseThreadOptions = useMemo(
     () => buildReuseThreadOptions(threadsQuery.data ?? []),
     [threadsQuery.data],
+  );
+  const mobileRecentThreads = useMemo(
+    () =>
+      buildMobileRecentThreads({
+        sidebarNavigation: sidebarNavigationQuery.data,
+      }),
+    [sidebarNavigationQuery.data],
   );
 
   // Projectless threads choose a host directly, not an environment mode. Keep
@@ -980,7 +1013,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         highlightedThreadId={lastCreatedThreadId}
         projectNamesById={mobileRecentProjectNamesById}
         showCreatingRow={createThread.isPending}
-        threads={threadsQuery.data ?? []}
+        threads={mobileRecentThreads}
       />
     </PageShell>
   );

@@ -91,6 +91,16 @@ checkout path. The checkout instance id is the sanitized path to the checkout,
 relative to your home directory, plus a short hash suffix. Separate worktrees
 can run alongside each other and the packaged `npx bb-app@latest` instance.
 
+To use the dev app from another machine, for example over Tailscale, run:
+
+```bash
+BB_DEV_REMOTE=true pnpm dev
+```
+
+Then open `http://<remote-host-or-tailscale-ip>:<app-port>`. Without
+`BB_DEV_REMOTE=true`, source dev keeps the browser app on localhost-only Vite
+defaults.
+
 Development behavior is intentionally split:
 
 - the app hot reloads itself

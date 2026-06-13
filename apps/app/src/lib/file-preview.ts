@@ -230,13 +230,6 @@ export function buildFilePreview(args: BuildFilePreviewArgs): FilePreview {
     };
   }
 
-  if (args.mimeType.startsWith("video/")) {
-    return {
-      kind: "video",
-      ...base,
-    };
-  }
-
   if (isKnownTextMimeType(args.mimeType)) {
     const textContent = decodeDeclaredTextContent(args.contentBytes);
     if (textContent === null) {
@@ -258,6 +251,13 @@ export function buildFilePreview(args: BuildFilePreviewArgs): FilePreview {
       kind: "text",
       ...base,
       content: fallbackTextContent,
+    };
+  }
+
+  if (args.mimeType.startsWith("video/")) {
+    return {
+      kind: "video",
+      ...base,
     };
   }
 

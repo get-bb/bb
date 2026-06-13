@@ -301,7 +301,7 @@ export async function createHostDaemonApp(
           rootPath: error.rootPath,
           watchError: error.message,
         },
-        "Data-dir skills watch unavailable; retrying in background",
+        "Data-dir skills watch unavailable",
       );
     },
     onThreadStorageWatchError: ({ error }) => {
@@ -310,7 +310,7 @@ export async function createHostDaemonApp(
           rootPath: error.rootPath,
           watchError: error.message,
         },
-        "Thread storage watch unavailable; retrying in background",
+        "Thread storage watch unavailable",
       );
     },
     onWorkspaceStatusChanged: ({ environmentId, changeKinds }) => {
@@ -329,7 +329,7 @@ export async function createHostDaemonApp(
           rootPath: error.rootPath,
           watchError: error.message,
         },
-        "Workspace status watch unavailable; retrying in background",
+        "Workspace status watch unavailable",
       );
     },
     onToolCall:

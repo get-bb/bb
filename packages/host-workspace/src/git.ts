@@ -793,7 +793,7 @@ export function parseNumstatEntriesZ(output: string): NumstatEntry[] {
   return entries;
 }
 
-function parseNumstatCount(text: string): number | null {
+export function parseNumstatCount(text: string): number | null {
   const value = Number.parseInt(text, 10);
   return Number.isFinite(value) ? value : null;
 }

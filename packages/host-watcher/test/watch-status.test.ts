@@ -564,6 +564,45 @@ describe.sequential("watchWorkspaceStatus", () => {
     }
   });
 
+  it("does not retry workspace subscriptions after Parcel inotify poll interruptions", async () => {
+    const repoPath = await initRepo();
+    const {
+      emitWorkspaceRootError,
+      getWorkspaceRootSubscriptionCount,
+      ready,
+      watchWorkspaceStatus,
+    } = await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
+    const watchErrors: string[] = [];
+    const stopWatching = watchWorkspaceStatus(repoPath, {
+      onChange: () => undefined,
+      onWatchError: (error) => {
+        watchErrors.push(`${error.rootPath}:${error.message}`);
+      },
+    });
+
+    try {
+      await ready;
+      expect(getWorkspaceRootSubscriptionCount()).toBe(1);
+
+      emitWorkspaceRootError(
+        new Error("Unable to poll: Interrupted system call"),
+      );
+
+      await waitForCallCount(
+        () => watchErrors.length,
+        1,
+        WATCH_TEST_TIMEOUT_MS,
+      );
+      await ensureCallCountStays(getWorkspaceRootSubscriptionCount, 1, 600);
+
+      expect(watchErrors).toEqual([
+        `${normalizeWatchPath(repoPath)}:Unable to poll: Interrupted system call`,
+      ]);
+    } finally {
+      await stopWatching();
+    }
+  });
+
   it("does not emit callbacks when a clean workspace watch starts", async () => {
     const repoPath = await initRepo();
     const { ready, watchWorkspaceStatus } =
@@ -588,13 +627,16 @@ describe.sequential("watchWorkspaceStatus", () => {
     const repoPath = await initRepo();
     await fs.writeFile(
       path.join(repoPath, ".gitignore"),
-      "node_modules/\n.turbo/\n",
+      "node_modules/\n.turbo/\ncoverage/\n",
       "utf8",
     );
     await fs.mkdir(path.join(repoPath, "node_modules", "pkg"), {
       recursive: true,
     });
     await fs.mkdir(path.join(repoPath, ".turbo", "cache"), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(repoPath, "coverage", "tmp"), {
       recursive: true,
     });
     await fs.writeFile(
@@ -628,10 +670,53 @@ describe.sequential("watchWorkspaceStatus", () => {
       await ready;
       expect(getWorkspaceRootSubscribeOptions()?.ignore).toEqual([
         ".git",
-        ".turbo/",
+        ".turbo",
+        "coverage",
       ]);
     } finally {
       stopWatching();
+    }
+  });
+
+  it("reports and retries when Git ignored directory discovery fails", async () => {
+    const repoPath = await initRepo();
+    await fs.rm(path.join(repoPath, ".git"), { force: true, recursive: true });
+    await fs.writeFile(
+      path.join(repoPath, ".git"),
+      "gitdir: /missing\n",
+      "utf8",
+    );
+    const subscribedRoots: string[] = [];
+    const mockSubscribe = async (
+      ...watchArgs: ParcelWatcherSubscribeArgs
+    ): Promise<ParcelWatcherSubscribeResult> => {
+      subscribedRoots.push(watchArgs[0]);
+      return createMockWatcherSubscription();
+    };
+    vi.spyOn(parcelWatcher, "subscribe").mockImplementation(mockSubscribe);
+    const watchErrors: string[] = [];
+    const stopWatching = watchWorkspaceStatusImpl(repoPath, {
+      onChange: () => undefined,
+      onWatchError: (error) => {
+        watchErrors.push(`${error.rootPath}:${error.message}`);
+      },
+    });
+
+    try {
+      await waitForCallCount(
+        () => watchErrors.length,
+        1,
+        WATCH_TEST_TIMEOUT_MS,
+      );
+      await ensureCallCountStays(() => subscribedRoots.length, 0, 600);
+
+      const ignoreDiscoveryErrors = watchErrors.filter((error) =>
+        error.includes("Workspace root ignore discovery failed:"),
+      );
+      expect(ignoreDiscoveryErrors).toHaveLength(1);
+      expect(ignoreDiscoveryErrors[0]).toContain(normalizeWatchPath(repoPath));
+    } finally {
+      await stopWatching();
     }
   });
 

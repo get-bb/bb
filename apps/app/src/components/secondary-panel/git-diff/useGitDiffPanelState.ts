@@ -3,12 +3,11 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  useRef,
-  useState,
+  useReducer,
 } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
-import type { ThreadGitDiffResponse, WorkspaceDiffTarget } from "@bb/domain";
+import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { EnvironmentDiffFileResponse } from "@bb/server-contract";
 import {
   useEnvironmentGitDiff,
@@ -24,8 +23,6 @@ import type {
 import {
   gitDiffCollapsedFileKeysAtom,
   gitDiffLoadingFileKeysAtom,
-  pendingGitDiffCommitShaAtom,
-  pendingGitDiffScrollPathAtom,
   selectedMergeBaseBranchAtom,
 } from "../threadSecondaryPanelAtoms";
 import {
@@ -47,9 +44,13 @@ import {
   resolveGitDiffPreparationState,
   shouldResetSelectedGitDiffSelection,
   ALL_GIT_DIFF_SELECTION,
-  type GitDiffSelectionValue,
 } from "./gitDiffPanelHelpers";
 import { useGitDiffFileRenderQueue } from "./useGitDiffFileRenderQueue";
+import {
+  gitDiffPanelReducer,
+  INITIAL_GIT_DIFF_PANEL_REDUCER_STATE,
+  type GitDiffPanelIntent,
+} from "./gitDiffPanelStateReducer";
 
 function findNearestScrollableAncestor(
   element: HTMLElement,
@@ -94,7 +95,9 @@ function scrollDiffCardToContainerTop(target: HTMLElement): void {
 
 interface UseGitDiffPanelStateParams {
   environmentId?: string;
+  intent?: GitDiffPanelIntent | null;
   isDiffPanelActive: boolean;
+  threadId: string;
   defaultMergeBaseBranch?: string;
 }
 
@@ -109,36 +112,30 @@ interface GitDiffRequestIdentityParams {
   target: WorkspaceDiffTarget | undefined;
 }
 
-interface DisplayedGitDiffState {
-  requestIdentity: string;
-  response: ThreadGitDiffResponse;
-}
-
 export function useGitDiffPanelState({
   environmentId,
+  intent = null,
   isDiffPanelActive,
+  threadId,
   defaultMergeBaseBranch,
 }: UseGitDiffPanelStateParams) {
   const selectedMergeBaseBranch = useAtomValue(selectedMergeBaseBranchAtom);
-  const pendingGitDiffScrollPath = useAtomValue(pendingGitDiffScrollPathAtom);
-  const setPendingGitDiffScrollPath = useSetAtom(pendingGitDiffScrollPathAtom);
-  const pendingGitDiffCommitSha = useAtomValue(pendingGitDiffCommitShaAtom);
-  const setPendingGitDiffCommitSha = useSetAtom(pendingGitDiffCommitShaAtom);
   const collapsedGitDiffFileKeys = useAtomValue(gitDiffCollapsedFileKeysAtom);
   const loadingGitDiffFileKeys = useAtomValue(gitDiffLoadingFileKeysAtom);
-  const lastFocusedScrollPathRef = useRef<string | null>(null);
-  const [selectedGitDiffSelection, setSelectedGitDiffSelection] =
-    useState<GitDiffSelectionValue>(null);
-  const [parsedGitDiffFiles, setParsedGitDiffFiles] = useState<
-    ParsedGitDiffFile[]
-  >([]);
-  const parsedGitDiffFilesRef = useRef<ParsedGitDiffFile[]>([]);
-  const [expectedGitDiffFileCount, setExpectedGitDiffFileCount] = useState(0);
-  const [isParsingGitDiffFiles, setIsParsingGitDiffFiles] = useState(false);
-  const [lastParsedGitDiffKey, setLastParsedGitDiffKey] = useState("");
-  const lastParsedGitDiffKeyRef = useRef("");
-  const [displayedGitDiffState, setDisplayedGitDiffState] =
-    useState<DisplayedGitDiffState | null>(null);
+  const [panelState, dispatch] = useReducer(
+    gitDiffPanelReducer,
+    INITIAL_GIT_DIFF_PANEL_REDUCER_STATE,
+  );
+  const {
+    displayedGitDiffState,
+    expectedGitDiffFileCount,
+    isParsingGitDiffFiles,
+    lastFocusedScrollPath,
+    lastParsedGitDiffKey,
+    parsedGitDiffFiles,
+    pendingScrollPath,
+    selectedGitDiffSelection,
+  } = panelState;
 
   const effectiveMergeBaseBranch =
     selectedMergeBaseBranch ?? defaultMergeBaseBranch;
@@ -196,27 +193,19 @@ export function useGitDiffPanelState({
       : undefined;
   useEffect(() => {
     if (fetchedThreadGitDiff && !isGitDiffPlaceholderData) {
-      setDisplayedGitDiffState((currentState) => {
-        if (
-          currentState?.requestIdentity === gitDiffRequestIdentity &&
-          currentState.response === fetchedThreadGitDiff
-        ) {
-          return currentState;
-        }
-        return {
-          requestIdentity: gitDiffRequestIdentity,
-          response: fetchedThreadGitDiff,
-        };
+      dispatch({
+        type: "displayedResponseUpdated",
+        requestIdentity: gitDiffRequestIdentity,
+        response: fetchedThreadGitDiff,
       });
       return;
     }
 
     if (!isGitDiffLoading) {
-      setDisplayedGitDiffState((currentState) =>
-        currentState?.requestIdentity === gitDiffRequestIdentity
-          ? currentState
-          : null,
-      );
+      dispatch({
+        type: "displayedResponseUnavailable",
+        requestIdentity: gitDiffRequestIdentity,
+      });
     }
   }, [
     fetchedThreadGitDiff,
@@ -283,33 +272,23 @@ export function useGitDiffPanelState({
     });
 
     if (parsePlan.kind === "reset") {
-      parsedGitDiffFilesRef.current = [];
-      setParsedGitDiffFiles([]);
-      setExpectedGitDiffFileCount(0);
-      setIsParsingGitDiffFiles(false);
-      lastParsedGitDiffKeyRef.current = "";
-      setLastParsedGitDiffKey("");
+      dispatch({ type: "parseReset" });
       return;
     }
 
     if (parsePlan.kind === "empty") {
-      parsedGitDiffFilesRef.current = [];
-      setParsedGitDiffFiles([]);
-      setExpectedGitDiffFileCount(0);
-      setIsParsingGitDiffFiles(false);
-      lastParsedGitDiffKeyRef.current = parsePlan.gitDiffKey;
-      setLastParsedGitDiffKey(parsePlan.gitDiffKey);
+      dispatch({ type: "parseEmpty", gitDiffKey: parsePlan.gitDiffKey });
       return;
     }
 
     if (parsePlan.kind === "immediate") {
       const parsedFiles = parseGitDiffFiles(currentGitDiff);
-      parsedGitDiffFilesRef.current = parsedFiles;
-      setParsedGitDiffFiles(parsedFiles);
-      setExpectedGitDiffFileCount(parsePlan.patchChunks.length);
-      setIsParsingGitDiffFiles(false);
-      lastParsedGitDiffKeyRef.current = parsePlan.gitDiffKey;
-      setLastParsedGitDiffKey(parsePlan.gitDiffKey);
+      dispatch({
+        type: "parseImmediate",
+        expectedFileCount: parsePlan.patchChunks.length,
+        gitDiffKey: parsePlan.gitDiffKey,
+        parsedFiles,
+      });
       return;
     }
 
@@ -318,8 +297,8 @@ export function useGitDiffPanelState({
     // refetches. Replacing it with an empty or partial parse collapses the
     // scrollable content and remounts cards, which loses client-side state.
     const shouldBufferNextFiles =
-      parsedGitDiffFilesRef.current.length > 0 &&
-      lastParsedGitDiffKeyRef.current !== parsePlan.gitDiffKey;
+      parsedGitDiffFiles.length > 0 &&
+      lastParsedGitDiffKey !== parsePlan.gitDiffKey;
     let nextParsedFiles: ParsedGitDiffFile[] = [];
     let cancelled = false;
     let timerId: number | null = null;
@@ -338,9 +317,10 @@ export function useGitDiffPanelState({
         nextPatchIndex + batchSize,
       );
       if (batchChunks.length === 0) {
-        setIsParsingGitDiffFiles(false);
-        lastParsedGitDiffKeyRef.current = parsePlan.gitDiffKey;
-        setLastParsedGitDiffKey(parsePlan.gitDiffKey);
+        dispatch({
+          type: "parseBatchedFinished",
+          gitDiffKey: parsePlan.gitDiffKey,
+        });
         return;
       }
 
@@ -351,25 +331,28 @@ export function useGitDiffPanelState({
       if (shouldBufferNextFiles) {
         nextParsedFiles = [...nextParsedFiles, ...parsedBatchFiles];
       } else {
-        setParsedGitDiffFiles((currentFiles) => {
-          const nextFiles = appliedFirstBatch
-            ? [...currentFiles, ...parsedBatchFiles]
-            : parsedBatchFiles;
-          parsedGitDiffFilesRef.current = nextFiles;
-          return nextFiles;
+        dispatch({
+          type: "parseBatchApplied",
+          parsedFiles: parsedBatchFiles,
+          replace: !appliedFirstBatch,
         });
       }
       appliedFirstBatch = true;
 
       if (nextPatchIndex >= patchChunks.length || cancelled) {
         if (shouldBufferNextFiles) {
-          parsedGitDiffFilesRef.current = nextParsedFiles;
-          setParsedGitDiffFiles(nextParsedFiles);
-          setExpectedGitDiffFileCount(parsePlan.patchChunks.length);
+          dispatch({
+            type: "parseBatchedFinished",
+            expectedFileCount: parsePlan.patchChunks.length,
+            gitDiffKey: parsePlan.gitDiffKey,
+            parsedFiles: nextParsedFiles,
+          });
+          return;
         }
-        setIsParsingGitDiffFiles(false);
-        lastParsedGitDiffKeyRef.current = parsePlan.gitDiffKey;
-        setLastParsedGitDiffKey(parsePlan.gitDiffKey);
+        dispatch({
+          type: "parseBatchedFinished",
+          gitDiffKey: parsePlan.gitDiffKey,
+        });
         return;
       }
 
@@ -379,12 +362,11 @@ export function useGitDiffPanelState({
       );
     };
 
-    if (!shouldBufferNextFiles) {
-      parsedGitDiffFilesRef.current = [];
-      setParsedGitDiffFiles([]);
-      setExpectedGitDiffFileCount(parsePlan.patchChunks.length);
-    }
-    setIsParsingGitDiffFiles(true);
+    dispatch({
+      type: "parseBatchedStarted",
+      clearFiles: !shouldBufferNextFiles,
+      expectedFileCount: parsePlan.patchChunks.length,
+    });
     parseNextBatch();
 
     return () => {
@@ -393,38 +375,27 @@ export function useGitDiffPanelState({
         window.clearTimeout(timerId);
       }
     };
+    // Parse state is sampled when the diff input changes. Adding parsed-file
+    // state here would restart and cancel the batched parse after dispatches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentGitDiff, isDiffPanelActive]);
 
   // --- Reset on environment change ---
 
   useEffect(() => {
-    setSelectedGitDiffSelection(null);
+    dispatch({ type: "environmentChanged" });
   }, [environmentId]);
 
   useEffect(() => {
-    setPendingGitDiffScrollPath(null);
-  }, [environmentId, setPendingGitDiffScrollPath]);
-
-  useEffect(() => {
-    setPendingGitDiffCommitSha(null);
-  }, [environmentId, setPendingGitDiffCommitSha]);
-
-  // --- Reset selected commit when pendingGitDiffScrollPath arrives (from openDiffFile) ---
-
-  useEffect(() => {
-    if (pendingGitDiffScrollPath) {
-      setSelectedGitDiffSelection(null);
-    }
-  }, [pendingGitDiffScrollPath]);
-
-  // --- Apply the commit selection requested from the info tab (openCommitDiff) ---
-
-  useEffect(() => {
-    if (pendingGitDiffCommitSha) {
-      setSelectedGitDiffSelection(pendingGitDiffCommitSha);
-      setPendingGitDiffCommitSha(null);
-    }
-  }, [pendingGitDiffCommitSha, setPendingGitDiffCommitSha]);
+    dispatch({
+      type: "intentReceived",
+      intent:
+        intent?.threadId === threadId &&
+        intent.environmentId === (environmentId ?? null)
+          ? intent
+          : null,
+    });
+  }, [environmentId, intent, threadId]);
 
   const hasUncommittedChanges =
     (workspaceStatus?.workingTree.files.length ?? 0) > 0;
@@ -437,7 +408,7 @@ export function useGitDiffPanelState({
         { hasUncommittedChanges },
       )
     ) {
-      setSelectedGitDiffSelection(null);
+      dispatch({ type: "staleSelectionReset" });
     }
   }, [
     hasUncommittedChanges,
@@ -455,13 +426,13 @@ export function useGitDiffPanelState({
   // the layout settled. We instead wait for collapsedGitDiffFileKeys and the
   // render queue to reflect the focus, then snap instantly to the target.
   useLayoutEffect(() => {
-    if (!pendingGitDiffScrollPath || !isDiffPanelActive) {
-      lastFocusedScrollPathRef.current = null;
+    if (!pendingScrollPath || !isDiffPanelActive) {
+      dispatch({ type: "scrollFocusReset" });
       return;
     }
 
     const targetEntry = parsedGitDiffFileEntries.find(({ fileDiff }) =>
-      doesGitDiffFileMatchPath(fileDiff, pendingGitDiffScrollPath),
+      doesGitDiffFileMatchPath(fileDiff, pendingScrollPath),
     );
     if (!targetEntry) {
       if (
@@ -469,13 +440,13 @@ export function useGitDiffPanelState({
         !isParsingGitDiffFiles &&
         !gitDiffPreparationState.isAwaitingCurrentGitDiffParse
       ) {
-        setPendingGitDiffScrollPath(null);
+        dispatch({ type: "scrollRequestCleared" });
       }
       return;
     }
 
-    if (lastFocusedScrollPathRef.current !== pendingGitDiffScrollPath) {
-      lastFocusedScrollPathRef.current = pendingGitDiffScrollPath;
+    if (lastFocusedScrollPath !== pendingScrollPath) {
+      dispatch({ type: "scrollFocusStarted", path: pendingScrollPath });
       focusGitDiffFile(targetEntry.key);
       // Defer the scroll to the next effect run so we measure *after* the
       // focus collapse commits. If the target was already expanded and not
@@ -498,7 +469,7 @@ export function useGitDiffPanelState({
     if (scrollTarget) {
       scrollDiffCardToContainerTop(scrollTarget);
     }
-    setPendingGitDiffScrollPath(null);
+    dispatch({ type: "scrollRequestCleared" });
   }, [
     collapsedGitDiffFileKeys,
     focusGitDiffFile,
@@ -507,11 +478,11 @@ export function useGitDiffPanelState({
     isDiffPanelActive,
     isGitDiffLoading,
     isParsingGitDiffFiles,
+    lastFocusedScrollPath,
     loadingGitDiffFileKeys,
     parsedGitDiffFileEntries,
-    pendingGitDiffScrollPath,
+    pendingScrollPath,
     queuedGitDiffFileRenderKeys,
-    setPendingGitDiffScrollPath,
   ]);
 
   // --- Derived values ---
@@ -532,9 +503,10 @@ export function useGitDiffPanelState({
   const { hasParsedGitDiffFiles, isPreparingGitDiff } = gitDiffPreparationState;
 
   const onGitDiffSelectionChange = useCallback((value: string) => {
-    setSelectedGitDiffSelection(
-      value === ALL_GIT_DIFF_SELECTION ? null : value,
-    );
+    dispatch({
+      type: "selectionChanged",
+      selection: value === ALL_GIT_DIFF_SELECTION ? null : value,
+    });
   }, []);
 
   const queryClient = useQueryClient();

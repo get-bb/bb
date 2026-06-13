@@ -5,7 +5,6 @@ import {
   createBrowserViewVisibilityCoordinator,
   destroyPersistedBrowserViewsForEnvironment,
   destroyPersistedBrowserViewsForThread,
-  getBrowserViewVisibilityCoordinator,
   registerBrowserView,
   resetBrowserViewPersistence,
 } from "./browserViewVisibilityCoordinator";
@@ -101,18 +100,16 @@ describe("browserViewVisibilityCoordinator", () => {
     ]);
   });
 
-  it("shares visibility ownership across browser decks in one renderer window", () => {
+  it("keeps visibility ownership local to each browser deck", () => {
     const { api, visibility } = createRecordingApi();
-    const firstDeckCoordinator = getBrowserViewVisibilityCoordinator(api);
-    const secondDeckCoordinator = getBrowserViewVisibilityCoordinator(api);
+    const firstDeckCoordinator = createBrowserViewVisibilityCoordinator(api);
+    const secondDeckCoordinator = createBrowserViewVisibilityCoordinator(api);
 
     firstDeckCoordinator.show("thread-a-tab", () => {});
     secondDeckCoordinator.show("thread-b-tab", () => {});
 
-    expect(secondDeckCoordinator).toBe(firstDeckCoordinator);
     expect(visibility).toEqual([
       { tabId: "thread-a-tab", visible: true },
-      { tabId: "thread-a-tab", visible: false },
       { tabId: "thread-b-tab", visible: true },
     ]);
   });

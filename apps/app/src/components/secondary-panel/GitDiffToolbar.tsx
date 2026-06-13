@@ -18,12 +18,20 @@ import {
   formatChangeSummary,
   renderChangeSummary,
 } from "@/components/workspace/workspace-change-summary";
+import {
+  getNextCodeOverflowMode,
+  type CodeOverflowMode,
+  type CodeOverflowModeChangeHandler,
+} from "@/lib/code-overflow-mode";
 import { cn } from "@/lib/utils";
 import type { GitDiffStats } from "../git-diff/git-diff-parsing";
 
 const GIT_DIFF_SELECTOR_MENU_MIN_WIDTH = "20rem";
 
 export type GitDiffDisplayMode = "unified" | "split";
+export type GitDiffDisplayModeChangeHandler = (
+  mode: GitDiffDisplayMode,
+) => void;
 
 export interface GitDiffSelectionOption {
   value: string;
@@ -144,7 +152,10 @@ export interface GitDiffToolbarProps {
   onToggleAllCollapsed: () => void;
 
   displayMode: GitDiffDisplayMode;
-  onDisplayModeChange: (mode: GitDiffDisplayMode) => void;
+  onDisplayModeChange: GitDiffDisplayModeChangeHandler;
+
+  lineOverflowMode: CodeOverflowMode;
+  onLineOverflowModeChange: CodeOverflowModeChangeHandler;
 }
 
 export function GitDiffToolbar({
@@ -158,6 +169,8 @@ export function GitDiffToolbar({
   onToggleAllCollapsed,
   displayMode,
   onDisplayModeChange,
+  lineOverflowMode,
+  onLineOverflowModeChange,
 }: GitDiffToolbarProps) {
   const rootRef = useRef<HTMLDivElement>(null!);
   const { width: rootWidth = 0 } = useResizeObserver({
@@ -209,6 +222,33 @@ export function GitDiffToolbar({
             ) : (
               <Icon name="ChevronsUp" />
             )}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+              "text-muted-foreground",
+            )}
+            onClick={() =>
+              onLineOverflowModeChange(
+                getNextCodeOverflowMode(lineOverflowMode),
+              )
+            }
+            aria-label={
+              lineOverflowMode === "wrap"
+                ? "Disable diff line wrap"
+                : "Wrap diff lines"
+            }
+            aria-pressed={lineOverflowMode === "wrap"}
+            title={
+              lineOverflowMode === "wrap"
+                ? "Disable diff line wrap"
+                : "Wrap diff lines"
+            }
+          >
+            <Icon name="TextWrap" />
           </Button>
           <div
             className="inline-flex items-center gap-1 rounded-lg border border-border p-0.5"

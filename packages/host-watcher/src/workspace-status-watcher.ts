@@ -97,21 +97,25 @@ function collectIgnoredDirectoryPaths(statusOutput: string): string[] {
     if (!ignoredPath.endsWith("/")) {
       continue;
     }
-    ignoredDirectoryPaths.add(ignoredPath);
+    ignoredDirectoryPaths.add(ignoredPath.replace(/\/+$/u, ""));
   }
   return Array.from(ignoredDirectoryPaths).sort();
 }
 
-async function resolveWorkspaceRootIgnores(cwd: string): Promise<string[]> {
-  try {
-    const status = await runGitIgnoredMatchingStatus({ cwd });
-    return [
-      ...WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS,
-      ...collectIgnoredDirectoryPaths(status.stdout),
-    ];
-  } catch {
-    return WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS;
+function mergeWorkspaceRootIgnores(gitIgnoredPaths: string[]): string[] {
+  const ignoredPaths = new Set<string>();
+  for (const ignoredPath of [
+    ...WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS,
+    ...gitIgnoredPaths,
+  ]) {
+    ignoredPaths.add(ignoredPath);
   }
+  return Array.from(ignoredPaths);
+}
+
+async function resolveWorkspaceRootIgnores(cwd: string): Promise<string[]> {
+  const status = await runGitIgnoredMatchingStatus({ cwd });
+  return mergeWorkspaceRootIgnores(collectIgnoredDirectoryPaths(status.stdout));
 }
 
 function createWorkspaceStatusCallbackError(
@@ -150,6 +154,10 @@ export class WorkspaceStatusWatcher {
   private disposed = false;
   private metadataRetryAttempt = 0;
   private metadataStartRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private workspaceRootRetryAttempt = 0;
+  private workspaceRootStartRetryTimer: ReturnType<typeof setTimeout> | null =
+    null;
+  private workspaceRootSetupWarned = false;
   private readonly subscriptions = new Map<string, RootSubscription>();
   private readonly changeScheduler;
 
@@ -195,6 +203,10 @@ export class WorkspaceStatusWatcher {
       clearTimeout(this.metadataStartRetryTimer);
       this.metadataStartRetryTimer = null;
     }
+    if (this.workspaceRootStartRetryTimer !== null) {
+      clearTimeout(this.workspaceRootStartRetryTimer);
+      this.workspaceRootStartRetryTimer = null;
+    }
     await Promise.all(
       [...this.subscriptions.values()].map((subscription) =>
         subscription.dispose(),
@@ -211,10 +223,70 @@ export class WorkspaceStatusWatcher {
       return;
     }
     const rootPath = await resolveWatchRootPath(this.args.cwd);
-    this.startWatchSubscription(
-      await createWorkspaceRootWatchSpec({ cwd: this.args.cwd, rootPath }),
-    );
+    this.startWorkspaceRootWatchSubscription(rootPath);
     this.startMetadataWatchSubscriptions();
+  }
+
+  private reportWorkspaceRootSetupError(
+    rootPath: string,
+    error: unknown,
+  ): void {
+    if (this.workspaceRootSetupWarned) {
+      return;
+    }
+    this.workspaceRootSetupWarned = true;
+    this.args.onWatchError({
+      message: `Workspace root ignore discovery failed: ${toErrorMessage(error)}`,
+      rootPath,
+    });
+  }
+
+  private scheduleWorkspaceRootWatchRetry(rootPath: string): void {
+    if (this.disposed || this.workspaceRootStartRetryTimer !== null) {
+      return;
+    }
+    this.workspaceRootRetryAttempt += 1;
+    this.workspaceRootStartRetryTimer = setTimeout(
+      () => {
+        this.workspaceRootStartRetryTimer = null;
+        this.startWorkspaceRootWatchSubscription(rootPath);
+      },
+      calculateExponentialBackoffDelay({
+        attempt: this.workspaceRootRetryAttempt,
+        baseDelayMs: this.args.retryDelayMs,
+        maxDelayMs: this.args.maxRetryDelayMs,
+      }),
+    );
+  }
+
+  private startWorkspaceRootWatchSubscription(rootPath: string): void {
+    void this.startWorkspaceRootWatchSubscriptionAsync(rootPath);
+  }
+
+  private async startWorkspaceRootWatchSubscriptionAsync(
+    rootPath: string,
+  ): Promise<void> {
+    if (this.disposed || this.subscriptions.has(rootPath)) {
+      return;
+    }
+    try {
+      const spec = await createWorkspaceRootWatchSpec({
+        cwd: this.args.cwd,
+        rootPath,
+      });
+      if (this.disposed) {
+        return;
+      }
+      this.workspaceRootRetryAttempt = 0;
+      this.workspaceRootSetupWarned = false;
+      this.startWatchSubscription(spec);
+    } catch (error) {
+      if (this.disposed) {
+        return;
+      }
+      this.reportWorkspaceRootSetupError(rootPath, error);
+      this.scheduleWorkspaceRootWatchRetry(rootPath);
+    }
   }
 
   private startWatchSubscription(spec: WatchSubscriptionSpec): void {
