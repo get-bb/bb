@@ -38,6 +38,10 @@ import {
   useIsOverflowing,
 } from "./conversation-message-overflow.js";
 
+const MESSAGE_COPY_BUTTON_CLASS =
+  "opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 max-md:pointer-coarse:size-7 max-md:pointer-coarse:opacity-100";
+const MESSAGE_COPY_ICON_CLASS = "max-md:pointer-coarse:size-4";
+
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -297,7 +301,8 @@ function UserConversationMessage({
             <CopyButton
               text={text}
               label="Copy message"
-              className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              className={MESSAGE_COPY_BUTTON_CLASS}
+              iconClassName={MESSAGE_COPY_ICON_CLASS}
             />
           </div>
         ) : null}
@@ -352,7 +357,8 @@ function AssistantConversationMessage({
           <CopyButton
             text={text}
             label="Copy message"
-            className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            className={MESSAGE_COPY_BUTTON_CLASS}
+            iconClassName={MESSAGE_COPY_ICON_CLASS}
           />
         </div>
       ) : null}
