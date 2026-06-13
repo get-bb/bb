@@ -18,7 +18,40 @@ const electronMock = vi.hoisted(() => {
     y: number;
   }
 
+  interface Point {
+    x: number;
+    y: number;
+  }
+
+  interface Display {
+    workArea: Bounds;
+  }
+
   type Listener = () => void;
+
+  const primaryDisplay: Display = {
+    workArea: { height: 900, width: 1440, x: 0, y: 0 },
+  };
+  const secondaryDisplay: Display = {
+    workArea: { height: 900, width: 1440, x: 1440, y: 0 },
+  };
+
+  function containsPoint(display: Display, point: Point): boolean {
+    const workArea = display.workArea;
+    return (
+      point.x >= workArea.x &&
+      point.x < workArea.x + workArea.width &&
+      point.y >= workArea.y &&
+      point.y < workArea.y + workArea.height
+    );
+  }
+
+  function getBoundsCenter(bounds: Bounds): Point {
+    return {
+      x: bounds.x + Math.round(bounds.width / 2),
+      y: bounds.y + Math.round(bounds.height / 2),
+    };
+  }
 
   class FakeWebContents {
     public readonly sentMessages: Array<{ channel: string; payload: unknown }> =
@@ -54,6 +87,7 @@ const electronMock = vi.hoisted(() => {
       options: { forward: boolean } | undefined;
     }> = [];
     public loadUrlCalls: string[] = [];
+    public setBoundsCalls: Bounds[] = [];
     public shown = false;
     public visible = false;
     public visibleOnAllWorkspaces = false;
@@ -115,6 +149,7 @@ const electronMock = vi.hoisted(() => {
 
     setBounds(bounds: Bounds): void {
       this.bounds = bounds;
+      this.setBoundsCalls.push(bounds);
     }
 
     setIgnoreMouseEvents(
@@ -149,23 +184,33 @@ const electronMock = vi.hoisted(() => {
   }
 
   const createdWindows: FakeBrowserWindow[] = [];
+  let cursorPoint: Point = { x: 100, y: 100 };
 
   return {
     createdWindows,
     BrowserWindow: FakeBrowserWindow,
     screen: {
       getCursorScreenPoint() {
-        return { x: 100, y: 100 };
+        return cursorPoint;
       },
-      getDisplayNearestPoint() {
-        return { workArea: { height: 900, width: 1440, x: 0, y: 0 } };
+      getDisplayNearestPoint(point: Point) {
+        return containsPoint(secondaryDisplay, point)
+          ? secondaryDisplay
+          : primaryDisplay;
       },
-      getDisplayMatching() {
-        return { workArea: { height: 900, width: 1440, x: 0, y: 0 } };
+      getDisplayMatching(bounds: Bounds) {
+        const center = getBoundsCenter(bounds);
+        return containsPoint(secondaryDisplay, center)
+          ? secondaryDisplay
+          : primaryDisplay;
       },
     },
     reset(): void {
       createdWindows.length = 0;
+      cursorPoint = { x: 100, y: 100 };
+    },
+    setCursorPoint(point: Point): void {
+      cursorPoint = point;
     },
   };
 });
@@ -281,6 +326,83 @@ describe("createPopoutWindowManager", () => {
       projectId: "proj_a",
       threadId: "thr_a",
     });
+  });
+
+  it("does not replay an unchanged thread on popout re-summon", async () => {
+    const manager = createPopoutWindowManager({
+      appUrl: "http://127.0.0.1:38886",
+      preloadPath: "/tmp/preload.cjs",
+      openExternalUrl() {},
+      openInMainHandler: async () => true,
+    });
+    manager.setCurrentThread({ projectId: "proj_a", threadId: "thr_a" });
+
+    manager.warm();
+    const browserWindow = electronMock.createdWindows[0];
+    browserWindow?.resolveLoaded();
+    await manager.toggle();
+    await manager.toggle();
+    await manager.toggle();
+
+    expect(browserWindow?.webContents.sentMessages).toEqual([
+      {
+        channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+        payload: { projectId: "proj_a", threadId: "thr_a" },
+      },
+    ]);
+  });
+
+  it("sends a thread change when setThread adopts a different thread", async () => {
+    const manager = createPopoutWindowManager({
+      appUrl: "http://127.0.0.1:38886",
+      preloadPath: "/tmp/preload.cjs",
+      openExternalUrl() {},
+      openInMainHandler: async () => true,
+    });
+    manager.setCurrentThread({ projectId: "proj_a", threadId: "thr_a" });
+
+    manager.warm();
+    const browserWindow = electronMock.createdWindows[0];
+    browserWindow?.resolveLoaded();
+    await manager.toggle();
+    await manager.setThread({ projectId: "proj_a", threadId: "thr_b" });
+
+    expect(browserWindow?.webContents.sentMessages).toEqual([
+      {
+        channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+        payload: { projectId: "proj_a", threadId: "thr_a" },
+      },
+      {
+        channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+        payload: { projectId: "proj_a", threadId: "thr_b" },
+      },
+    ]);
+  });
+
+  it("keeps same-display re-summons in place and repositions across displays", async () => {
+    const manager = createPopoutWindowManager({
+      appUrl: "http://127.0.0.1:38886",
+      preloadPath: "/tmp/preload.cjs",
+      openExternalUrl() {},
+      openInMainHandler: async () => true,
+    });
+
+    manager.warm();
+    const browserWindow = electronMock.createdWindows[0];
+    browserWindow?.resolveLoaded();
+    await manager.toggle();
+    expect(browserWindow?.setBoundsCalls).toHaveLength(1);
+
+    await manager.toggle();
+    await manager.toggle();
+    expect(browserWindow?.setBoundsCalls).toHaveLength(1);
+
+    await manager.toggle();
+    electronMock.setCursorPoint({ x: 1500, y: 100 });
+    await manager.toggle();
+
+    expect(browserWindow?.setBoundsCalls).toHaveLength(2);
+    expect(browserWindow?.getBounds().x).toBeGreaterThanOrEqual(1440);
   });
 
   it("forwards popout mouse passthrough changes to Electron", async () => {

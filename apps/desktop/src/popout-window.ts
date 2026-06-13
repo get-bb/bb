@@ -32,6 +32,18 @@ interface SetPopoutWindowPositionArgs {
   browserWindow: BrowserWindow;
 }
 
+interface ShouldRepositionPopoutWindowArgs {
+  browserWindow: BrowserWindow;
+  hasPositionedWindow: boolean;
+}
+
+interface DisplayIdentity {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+}
+
 export interface PopoutWindowManager {
   destroy(): void;
   getCurrentThread(): BbDesktopPopoutThreadRef | null;
@@ -114,6 +126,43 @@ function setPopoutWindowPosition({
   browserWindow.setBounds({ x, y, width, height });
 }
 
+function getDisplayIdentity(display: Electron.Display): DisplayIdentity {
+  return {
+    height: display.workArea.height,
+    width: display.workArea.width,
+    x: display.workArea.x,
+    y: display.workArea.y,
+  };
+}
+
+function areSameDisplay(
+  left: Electron.Display,
+  right: Electron.Display,
+): boolean {
+  const leftIdentity = getDisplayIdentity(left);
+  const rightIdentity = getDisplayIdentity(right);
+  return (
+    leftIdentity.x === rightIdentity.x &&
+    leftIdentity.y === rightIdentity.y &&
+    leftIdentity.width === rightIdentity.width &&
+    leftIdentity.height === rightIdentity.height
+  );
+}
+
+function shouldRepositionPopoutWindow({
+  browserWindow,
+  hasPositionedWindow,
+}: ShouldRepositionPopoutWindowArgs): boolean {
+  if (!hasPositionedWindow) {
+    return true;
+  }
+  const cursorDisplay = screen.getDisplayNearestPoint(
+    screen.getCursorScreenPoint(),
+  );
+  const windowDisplay = screen.getDisplayMatching(browserWindow.getBounds());
+  return !areSameDisplay(cursorDisplay, windowDisplay);
+}
+
 function sendThreadChanged(
   browserWindow: BrowserWindow,
   thread: BbDesktopPopoutThreadRef | null,
@@ -127,11 +176,24 @@ function sendThreadChanged(
   );
 }
 
+function areSameThreadRef(
+  left: BbDesktopPopoutThreadRef | null,
+  right: BbDesktopPopoutThreadRef | null,
+): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+  return left.projectId === right.projectId && left.threadId === right.threadId;
+}
+
 export function createPopoutWindowManager(
   args: CreatePopoutWindowManagerArgs,
 ): PopoutWindowManager {
   let popoutWindow: BrowserWindow | null = null;
   let currentThread: BbDesktopPopoutThreadRef | null = null;
+  let lastSentThread: BbDesktopPopoutThreadRef | null = null;
+  let hasSentThread = false;
+  let hasPositionedWindow = false;
   let destroyRequested = false;
   let loadReadyPromise: Promise<void> | null = null;
 
@@ -150,6 +212,9 @@ export function createPopoutWindowManager(
     }
 
     destroyRequested = false;
+    lastSentThread = null;
+    hasSentThread = false;
+    hasPositionedWindow = false;
     const browserWindow = new BrowserWindow(createPopoutWindowOptions(args));
     popoutWindow = browserWindow;
     browserWindow.setVisibleOnAllWorkspaces(true, {
@@ -172,6 +237,9 @@ export function createPopoutWindowManager(
       }
       if (popoutWindow === null) {
         loadReadyPromise = null;
+        lastSentThread = null;
+        hasSentThread = false;
+        hasPositionedWindow = false;
       }
     });
     browserWindow.webContents.on("did-fail-load", () => {
@@ -193,17 +261,29 @@ export function createPopoutWindowManager(
     return browserWindow;
   }
 
+  function sendThreadChangedIfNeeded(browserWindow: BrowserWindow): void {
+    if (hasSentThread && areSameThreadRef(lastSentThread, currentThread)) {
+      return;
+    }
+    sendThreadChanged(browserWindow, currentThread);
+    lastSentThread = currentThread;
+    hasSentThread = true;
+  }
+
   async function show(): Promise<void> {
     const browserWindow = ensureWindow();
     await loadReadyPromise;
     if (browserWindow.isDestroyed()) {
       return;
     }
-    setPopoutWindowPosition({ browserWindow });
+    if (shouldRepositionPopoutWindow({ browserWindow, hasPositionedWindow })) {
+      setPopoutWindowPosition({ browserWindow });
+      hasPositionedWindow = true;
+    }
     browserWindow.setIgnoreMouseEvents(false);
     browserWindow.show();
     browserWindow.focus();
-    sendThreadChanged(browserWindow, currentThread);
+    sendThreadChangedIfNeeded(browserWindow);
   }
 
   return {
@@ -212,6 +292,9 @@ export function createPopoutWindowManager(
       const browserWindow = getLiveWindow();
       popoutWindow = null;
       currentThread = null;
+      lastSentThread = null;
+      hasSentThread = false;
+      hasPositionedWindow = false;
       if (browserWindow !== null) {
         browserWindow.destroy();
       }
@@ -245,7 +328,7 @@ export function createPopoutWindowManager(
       await show();
       const browserWindow = getLiveWindow();
       if (browserWindow !== null) {
-        sendThreadChanged(browserWindow, currentThread);
+        sendThreadChangedIfNeeded(browserWindow);
       }
     },
     async toggle(): Promise<void> {
