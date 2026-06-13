@@ -74,6 +74,10 @@ function isPointerOverPopoutContent(target: EventTarget | null): boolean {
   return target.closest(POPOUT_PORTAL_SELECTOR) !== null;
 }
 
+function hasOpenPopoutPortal(): boolean {
+  return document.querySelector(POPOUT_PORTAL_SELECTOR) !== null;
+}
+
 function usePopoutRouteTransparency() {
   useEffect(() => {
     document.documentElement.setAttribute(POPOUT_ROUTE_DATA_ATTRIBUTE, "");
@@ -89,12 +93,16 @@ function usePopoutMousePassthrough() {
   const desktop = getBbDesktopInfo();
   const popout = desktop?.popout ?? null;
   const isIgnoringMouseEventsRef = useRef(false);
+  const isPointerOverContentRef = useRef(false);
+  const hasOpenPortalRef = useRef(false);
 
   useEffect(() => {
     if (popout === null) {
       return;
     }
     isIgnoringMouseEventsRef.current = false;
+    isPointerOverContentRef.current = false;
+    hasOpenPortalRef.current = hasOpenPopoutPortal();
 
     function setIgnored(ignore: boolean): void {
       if (isIgnoringMouseEventsRef.current === ignore) {
@@ -104,17 +112,52 @@ function usePopoutMousePassthrough() {
       popout?.setMouseEventsIgnored({ ignore });
     }
 
+    function updatePortalInteractivityLock(): void {
+      const hasOpenPortal = hasOpenPopoutPortal();
+      if (hasOpenPortal) {
+        hasOpenPortalRef.current = true;
+        setIgnored(false);
+        return;
+      }
+      if (!hasOpenPortalRef.current) {
+        return;
+      }
+      hasOpenPortalRef.current = false;
+      setIgnored(!isPointerOverContentRef.current);
+    }
+
     function handlePointerMove(event: MouseEvent): void {
-      setIgnored(!isPointerOverPopoutContent(event.target));
+      isPointerOverContentRef.current = isPointerOverPopoutContent(
+        event.target,
+      );
+      if (hasOpenPortalRef.current) {
+        setIgnored(false);
+        return;
+      }
+      setIgnored(!isPointerOverContentRef.current);
     }
 
     function handlePointerLeave(): void {
+      isPointerOverContentRef.current = false;
+      if (hasOpenPortalRef.current) {
+        setIgnored(false);
+        return;
+      }
       setIgnored(true);
     }
 
+    const mutationObserver = new MutationObserver(
+      updatePortalInteractivityLock,
+    );
+    mutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+    updatePortalInteractivityLock();
     window.addEventListener("mousemove", handlePointerMove);
     window.addEventListener("mouseleave", handlePointerLeave);
     return () => {
+      mutationObserver.disconnect();
       window.removeEventListener("mousemove", handlePointerMove);
       window.removeEventListener("mouseleave", handlePointerLeave);
       if (isIgnoringMouseEventsRef.current) {
@@ -211,6 +254,10 @@ export function PopoutChatView() {
   const desktop = getBbDesktopInfo();
   const popout = desktop?.popout ?? null;
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  const bootSyncPopoutRef = useRef(popout);
+  const bootSyncStartedRef = useRef(false);
+  const bootSyncCompletedRef = useRef(false);
   const [hasLoadedCurrentThread, setHasLoadedCurrentThread] = useState(false);
   const { projectId, threadId } = useRouteState();
   const threadState = useMemo<BbDesktopPopoutThreadChangedPayload>(() => {
@@ -225,33 +272,66 @@ export function PopoutChatView() {
   usePopoutMousePassthrough();
 
   useEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
+
+  useEffect(() => {
+    if (bootSyncPopoutRef.current !== popout) {
+      bootSyncPopoutRef.current = popout;
+      bootSyncStartedRef.current = false;
+      bootSyncCompletedRef.current = false;
+      setHasLoadedCurrentThread(false);
+    }
+
     if (popout === null) {
       return;
     }
+
     let cancelled = false;
     function navigateToThread(
       nextThread: BbDesktopPopoutThreadChangedPayload,
     ): void {
-      navigate(
+      navigateRef.current(
         nextThread === null
           ? getPopoutRoutePath()
           : getPopoutThreadRoutePath(nextThread),
         { replace: true },
       );
     }
-    const unsubscribe = popout.onThreadChanged(navigateToThread);
-    void popout.getCurrentThread().then((currentThread) => {
-      if (cancelled) {
+    function completeBootSync(
+      nextThread: BbDesktopPopoutThreadChangedPayload,
+    ): void {
+      if (bootSyncCompletedRef.current) {
         return;
       }
-      navigateToThread(currentThread);
+      bootSyncCompletedRef.current = true;
+      navigateToThread(nextThread);
       setHasLoadedCurrentThread(true);
+    }
+
+    const unsubscribe = popout.onThreadChanged((nextThread) => {
+      navigateToThread(nextThread);
+      if (!bootSyncCompletedRef.current) {
+        bootSyncCompletedRef.current = true;
+        setHasLoadedCurrentThread(true);
+      }
     });
+
+    if (!bootSyncStartedRef.current) {
+      bootSyncStartedRef.current = true;
+      void popout.getCurrentThread().then((currentThread) => {
+        if (cancelled) {
+          return;
+        }
+        completeBootSync(currentThread);
+      });
+    }
+
     return () => {
       cancelled = true;
       unsubscribe();
     };
-  }, [navigate, popout]);
+  }, [popout]);
 
   useEffect(() => {
     if (!hasLoadedCurrentThread) {
