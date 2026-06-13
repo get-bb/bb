@@ -37,11 +37,20 @@ interface ShouldRepositionPopoutWindowArgs {
   hasPositionedWindow: boolean;
 }
 
+interface CreatePopoutWindowReadinessArgs {
+  browserWindow: BrowserWindow;
+}
+
 interface DisplayIdentity {
   height: number;
   width: number;
   x: number;
   y: number;
+}
+
+interface PopoutWindowReadiness {
+  isReadyToReveal(): boolean;
+  readyToRevealPromise: Promise<void>;
 }
 
 export interface PopoutWindowManager {
@@ -80,12 +89,14 @@ function createPopoutWindowOptions(
     fullscreenable: false,
     hasShadow: false,
     height: POPOUT_WINDOW_HEIGHT,
+    paintWhenInitiallyHidden: true,
     resizable: false,
     show: false,
     skipTaskbar: true,
     title: "bb Popout Chat",
     transparent: true,
     webPreferences: {
+      backgroundThrottling: false,
       contextIsolation: true,
       nodeIntegration: false,
       preload: args.preloadPath,
@@ -186,6 +197,43 @@ function areSameThreadRef(
   return left.projectId === right.projectId && left.threadId === right.threadId;
 }
 
+function createPopoutWindowReadiness({
+  browserWindow,
+}: CreatePopoutWindowReadinessArgs): PopoutWindowReadiness {
+  let hasFinishedLoad = false;
+  let hasFirstPaint = false;
+  let isReadyToReveal = false;
+  let resolveReadyToReveal: () => void = () => {};
+
+  const readyToRevealPromise = new Promise<void>((resolve) => {
+    resolveReadyToReveal = resolve;
+  });
+
+  function resolveIfReady(): void {
+    if (isReadyToReveal || !hasFinishedLoad || !hasFirstPaint) {
+      return;
+    }
+    isReadyToReveal = true;
+    resolveReadyToReveal();
+  }
+
+  browserWindow.webContents.on("did-finish-load", () => {
+    hasFinishedLoad = true;
+    resolveIfReady();
+  });
+  browserWindow.on("ready-to-show", () => {
+    hasFirstPaint = true;
+    resolveIfReady();
+  });
+
+  return {
+    isReadyToReveal() {
+      return isReadyToReveal;
+    },
+    readyToRevealPromise,
+  };
+}
+
 export function createPopoutWindowManager(
   args: CreatePopoutWindowManagerArgs,
 ): PopoutWindowManager {
@@ -196,6 +244,8 @@ export function createPopoutWindowManager(
   let hasPositionedWindow = false;
   let destroyRequested = false;
   let loadReadyPromise: Promise<void> | null = null;
+  let windowReadiness: PopoutWindowReadiness | null = null;
+  let hasLoggedWarmReadinessWait = false;
 
   function getLiveWindow(): BrowserWindow | null {
     if (popoutWindow === null || popoutWindow.isDestroyed()) {
@@ -215,8 +265,10 @@ export function createPopoutWindowManager(
     lastSentThread = null;
     hasSentThread = false;
     hasPositionedWindow = false;
+    hasLoggedWarmReadinessWait = false;
     const browserWindow = new BrowserWindow(createPopoutWindowOptions(args));
     popoutWindow = browserWindow;
+    windowReadiness = createPopoutWindowReadiness({ browserWindow });
     browserWindow.setVisibleOnAllWorkspaces(true, {
       visibleOnFullScreen: true,
     });
@@ -237,9 +289,11 @@ export function createPopoutWindowManager(
       }
       if (popoutWindow === null) {
         loadReadyPromise = null;
+        windowReadiness = null;
         lastSentThread = null;
         hasSentThread = false;
         hasPositionedWindow = false;
+        hasLoggedWarmReadinessWait = false;
       }
     });
     browserWindow.webContents.on("did-fail-load", () => {
@@ -272,7 +326,19 @@ export function createPopoutWindowManager(
 
   async function show(): Promise<void> {
     const browserWindow = ensureWindow();
-    await loadReadyPromise;
+    const loadPromise = loadReadyPromise;
+    const readiness = windowReadiness;
+    if (readiness?.isReadyToReveal() !== true && !hasLoggedWarmReadinessWait) {
+      hasLoggedWarmReadinessWait = true;
+      process.stderr.write(
+        "Popout chat summoned before hidden renderer first paint; waiting for warm readiness.\n",
+      );
+    }
+    if (loadPromise !== null && readiness !== null) {
+      await Promise.all([loadPromise, readiness.readyToRevealPromise]);
+    } else {
+      await loadPromise;
+    }
     if (browserWindow.isDestroyed()) {
       return;
     }
@@ -295,6 +361,8 @@ export function createPopoutWindowManager(
       lastSentThread = null;
       hasSentThread = false;
       hasPositionedWindow = false;
+      windowReadiness = null;
+      hasLoggedWarmReadinessWait = false;
       if (browserWindow !== null) {
         browserWindow.destroy();
       }
@@ -341,7 +409,14 @@ export function createPopoutWindowManager(
     },
     warm(): void {
       ensureWindow();
-      void loadReadyPromise?.catch(() => undefined);
+      const loadPromise = loadReadyPromise;
+      const readiness = windowReadiness;
+      if (loadPromise === null || readiness === null) {
+        return;
+      }
+      void Promise.all([loadPromise, readiness.readyToRevealPromise]).catch(
+        () => undefined,
+      );
     },
   };
 }

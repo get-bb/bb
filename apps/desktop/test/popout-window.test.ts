@@ -168,12 +168,20 @@ const electronMock = vi.hoisted(() => {
       this.visible = true;
     }
 
-    resolveLoaded(): void {
-      this.resolveLoad?.();
-    }
-
     rejectLoaded(error: Error): void {
       this.rejectLoad?.(error);
+    }
+
+    emitDidFinishLoad(): void {
+      this.webContents.emit("did-finish-load");
+    }
+
+    emitReadyToShow(): void {
+      this.emit("ready-to-show");
+    }
+
+    resolveLoadUrl(): void {
+      this.resolveLoad?.();
     }
 
     private emit(channel: string): void {
@@ -237,6 +245,15 @@ describe("createPopoutWindowManager", () => {
 
     const browserWindow = electronMock.createdWindows[0];
     expect(electronMock.createdWindows).toHaveLength(1);
+    expect(browserWindow?.options).not.toHaveProperty("type");
+    expect(browserWindow?.options.paintWhenInitiallyHidden).toBe(true);
+    expect(browserWindow?.options.webPreferences).toMatchObject({
+      backgroundThrottling: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: "/tmp/preload.cjs",
+      sandbox: true,
+    });
     expect(browserWindow?.options.show).toBe(false);
     expect(browserWindow?.loadUrlCalls).toEqual([
       "http://127.0.0.1:38886/popout",
@@ -257,13 +274,39 @@ describe("createPopoutWindowManager", () => {
 
     manager.warm();
     const browserWindow = electronMock.createdWindows[0];
-    browserWindow?.resolveLoaded();
+    browserWindow?.emitDidFinishLoad();
+    browserWindow?.resolveLoadUrl();
+    browserWindow?.emitReadyToShow();
     await manager.toggle();
 
     expect(electronMock.createdWindows).toHaveLength(1);
     expect(browserWindow?.loadUrlCalls).toEqual([
       "http://127.0.0.1:38886/popout",
     ]);
+    expect(browserWindow?.shown).toBe(true);
+    expect(browserWindow?.focused).toBe(true);
+  });
+
+  it("waits for first paint readiness before showing the first summon", async () => {
+    const manager = createPopoutWindowManager({
+      appUrl: "http://127.0.0.1:38886",
+      preloadPath: "/tmp/preload.cjs",
+      openExternalUrl() {},
+      openInMainHandler: async () => true,
+    });
+
+    manager.warm();
+    const showPromise = manager.toggle();
+    const browserWindow = electronMock.createdWindows[0];
+    browserWindow?.emitDidFinishLoad();
+    browserWindow?.resolveLoadUrl();
+    await Promise.resolve();
+
+    expect(browserWindow?.shown).toBe(false);
+
+    browserWindow?.emitReadyToShow();
+    await showPromise;
+
     expect(browserWindow?.shown).toBe(true);
     expect(browserWindow?.focused).toBe(true);
   });
@@ -298,7 +341,9 @@ describe("createPopoutWindowManager", () => {
     });
     const browserWindow = electronMock.createdWindows[0];
     expect(browserWindow?.shown).toBe(false);
-    browserWindow?.resolveLoaded();
+    browserWindow?.emitDidFinishLoad();
+    browserWindow?.resolveLoadUrl();
+    browserWindow?.emitReadyToShow();
     await showPromise;
 
     expect(browserWindow?.shown).toBe(true);
@@ -308,10 +353,19 @@ describe("createPopoutWindowManager", () => {
       frame: false,
       hasShadow: false,
       height: 620,
+      paintWhenInitiallyHidden: true,
       resizable: false,
       skipTaskbar: true,
       transparent: true,
       width: 480,
+    });
+    expect(browserWindow?.options).not.toHaveProperty("type");
+    expect(browserWindow?.options.webPreferences).toMatchObject({
+      backgroundThrottling: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: "/tmp/preload.cjs",
+      sandbox: true,
     });
     expect(browserWindow?.options).not.toHaveProperty("vibrancy");
     expect(browserWindow?.ignoreMouseEventsCalls).toContainEqual({
@@ -339,7 +393,9 @@ describe("createPopoutWindowManager", () => {
 
     manager.warm();
     const browserWindow = electronMock.createdWindows[0];
-    browserWindow?.resolveLoaded();
+    browserWindow?.emitDidFinishLoad();
+    browserWindow?.resolveLoadUrl();
+    browserWindow?.emitReadyToShow();
     await manager.toggle();
     await manager.toggle();
     await manager.toggle();
@@ -363,7 +419,9 @@ describe("createPopoutWindowManager", () => {
 
     manager.warm();
     const browserWindow = electronMock.createdWindows[0];
-    browserWindow?.resolveLoaded();
+    browserWindow?.emitDidFinishLoad();
+    browserWindow?.resolveLoadUrl();
+    browserWindow?.emitReadyToShow();
     await manager.toggle();
     await manager.setThread({ projectId: "proj_a", threadId: "thr_b" });
 
@@ -389,7 +447,9 @@ describe("createPopoutWindowManager", () => {
 
     manager.warm();
     const browserWindow = electronMock.createdWindows[0];
-    browserWindow?.resolveLoaded();
+    browserWindow?.emitDidFinishLoad();
+    browserWindow?.resolveLoadUrl();
+    browserWindow?.emitReadyToShow();
     await manager.toggle();
     expect(browserWindow?.setBoundsCalls).toHaveLength(1);
 
@@ -414,7 +474,9 @@ describe("createPopoutWindowManager", () => {
     });
     const showPromise = manager.toggle();
     const browserWindow = electronMock.createdWindows[0];
-    browserWindow?.resolveLoaded();
+    browserWindow?.emitDidFinishLoad();
+    browserWindow?.resolveLoadUrl();
+    browserWindow?.emitReadyToShow();
     await showPromise;
 
     manager.setMouseEventsIgnored({ ignore: true });
@@ -444,7 +506,9 @@ describe("createPopoutWindowManager", () => {
     });
     const showPromise = manager.toggle();
     const browserWindow = electronMock.createdWindows[0];
-    browserWindow?.resolveLoaded();
+    browserWindow?.emitDidFinishLoad();
+    browserWindow?.resolveLoadUrl();
+    browserWindow?.emitReadyToShow();
     await showPromise;
 
     manager.openInMain({ projectId: "proj_a", threadId: "thr_a" });
@@ -461,7 +525,9 @@ describe("createPopoutWindowManager", () => {
     });
     const showPromise = manager.toggle();
     const browserWindow = electronMock.createdWindows[0];
-    browserWindow?.resolveLoaded();
+    browserWindow?.emitDidFinishLoad();
+    browserWindow?.resolveLoadUrl();
+    browserWindow?.emitReadyToShow();
     await showPromise;
 
     const shouldHandleToggle = shouldHandlePopoutToggleSender({
@@ -490,7 +556,9 @@ describe("createPopoutWindowManager", () => {
 
     expect(browserWindow?.destroyed).toBe(true);
     const secondShowPromise = manager.toggle();
-    electronMock.createdWindows[1]?.resolveLoaded();
+    electronMock.createdWindows[1]?.emitDidFinishLoad();
+    electronMock.createdWindows[1]?.resolveLoadUrl();
+    electronMock.createdWindows[1]?.emitReadyToShow();
     await expect(secondShowPromise).resolves.toBeUndefined();
     expect(electronMock.createdWindows).toHaveLength(2);
   });
