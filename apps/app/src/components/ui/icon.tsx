@@ -80,6 +80,8 @@ import {
   UserAdd01Icon,
   UserIcon,
   ZapIcon,
+  ZoomInAreaIcon,
+  ZoomOutAreaIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 
@@ -166,6 +168,8 @@ const ICON_MAP = {
   UserRoundPlus: UserAdd01Icon,
   X: Cancel01Icon,
   Zap: ZapIcon,
+  ZoomIn: ZoomInAreaIcon,
+  ZoomOut: ZoomOutAreaIcon,
 } as const satisfies Record<string, IconSvgElement>;
 
 export type IconName = keyof typeof ICON_MAP;

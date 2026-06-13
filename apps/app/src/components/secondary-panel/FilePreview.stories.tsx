@@ -158,7 +158,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="markdown file with Mermaid"
-        hint="Preview mode renders the Mermaid diagram; Raw keeps the original fence"
+        hint="Preview mode renders the Mermaid diagram with open/zoom controls; Raw keeps the original fence"
       >
         <PreviewStage>
           <FilePreview

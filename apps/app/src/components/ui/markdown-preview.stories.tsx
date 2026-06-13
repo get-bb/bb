@@ -183,7 +183,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="mermaid"
-        hint="fenced Mermaid blocks render as diagrams; ordinary code remains unchanged"
+        hint="fenced Mermaid blocks render as diagrams with open, zoom, pan, and source-copy controls"
       >
         <PreviewStage>
           <MarkdownPreview content={MERMAID_MARKDOWN} />

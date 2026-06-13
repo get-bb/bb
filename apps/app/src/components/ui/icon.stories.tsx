@@ -55,7 +55,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   Info: "Right panel “thread info” tab, informational banners",
   Laptop: "Persistent host icon (resolved via getHostIconName)",
   ListTodo: "Todo section header in prompt context banner",
-  Maximize2: "Enter zen mode (prompt expand)",
+  Maximize2: "Enter zen mode (prompt expand), open Mermaid diagram dialog",
   MessageSquarePlus: "“New chat” button in sidebar",
   Mic: "Voice toggle in prompt",
   Minimize2: "Exit zen mode (prompt collapse)",
@@ -68,7 +68,8 @@ const USAGE: Partial<Record<IconName, string>> = {
     "Toggle right panel (desktop / non-drawer; resolved via togglePanelIconName)",
   Paperclip: "Attach files button",
   Plus: "New host button, new terminal button, “new branch” option in branch picker",
-  RotateCcw: "Retry button when fetching timeline turn details fails",
+  RotateCcw:
+    "Retry button when fetching timeline turn details fails, reset Mermaid diagram view",
   Rows2: "Git diff toolbar “unified view”",
   Search: "Picker search inputs, file tree search, branch picker filter",
   Settings: "Settings link in sidebar, project settings link in header",
@@ -80,6 +81,8 @@ const USAGE: Partial<Record<IconName, string>> = {
   UserRoundPlus: "unused legacy parent-action icon",
   X: "Close dialogs/drawers, clear search input, remove attachment, close metadata panel",
   Zap: "Fast-mode indicator in model picker trigger, Fast-mode toggle row",
+  ZoomIn: "Mermaid diagram dialog zoom in",
+  ZoomOut: "Mermaid diagram dialog zoom out",
 };
 
 const NAMES: readonly IconName[] = [...ICON_NAMES].sort();
