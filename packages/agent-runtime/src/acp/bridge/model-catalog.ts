@@ -15,6 +15,7 @@
  * `…-high-thinking` style) stay standalone single-effort models.
  */
 
+import { reasoningLevelValues } from "@bb/domain";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 
 export interface RawAgentModel {
@@ -157,6 +158,13 @@ export function buildAgentModelCatalog(
   for (const members of families.values()) {
     const defaultVariant =
       members.find((member) => member.effort === "medium") ?? members[0];
+    // Members keep the agent's listing order (it anchors the no-medium
+    // default), but the picker's ladder reads low → max.
+    const effortsInLadderOrder = [...members].sort(
+      (a, b) =>
+        reasoningLevelValues.indexOf(a.effort) -
+        reasoningLevelValues.indexOf(b.effort),
+    );
     models.push({
       id: defaultVariant.id,
       model: defaultVariant.id,
@@ -165,7 +173,7 @@ export function buildAgentModelCatalog(
         effortTokensById.get(defaultVariant.id),
       ),
       description: "",
-      supportedReasoningEfforts: members.map((member) => ({
+      supportedReasoningEfforts: effortsInLadderOrder.map((member) => ({
         reasoningEffort: member.effort,
         description: member.displayName,
       })),

@@ -108,6 +108,25 @@ describe("acp model catalog", () => {
     ).toEqual(["Opus 4.8 1M Medium", "Opus 4.8 1M"]);
   });
 
+  it("orders reasoning efforts low → max regardless of listing order", () => {
+    const catalog = buildAgentModelCatalog(
+      parseAgentModelLines(
+        [
+          "thinky-medium - Thinky Medium",
+          "thinky-high - Thinky High",
+          "thinky-extra-high - Thinky Extra High",
+          "thinky-low - Thinky Low",
+          "thinky-max - Thinky Max",
+        ].join("\n"),
+      ),
+    );
+    expect(
+      catalog?.models[0]?.supportedReasoningEfforts.map(
+        (e) => e.reasoningEffort,
+      ),
+    ).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
   it("keeps brand words that collide with effort spellings", () => {
     const catalog = catalogFromSample();
     expect(
