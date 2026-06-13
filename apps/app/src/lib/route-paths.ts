@@ -29,6 +29,12 @@ export interface ThreadRoutePathArgs {
   threadId: string;
 }
 
+export type ThreadRouteSurface = "page" | "popout";
+
+export interface SurfaceAwareThreadRoutePathArgs extends ThreadRoutePathArgs {
+  surface: ThreadRouteSurface;
+}
+
 export interface IsRoutePathArgs {
   path: string;
 }
@@ -84,6 +90,14 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
   return isProjectlessProjectId(args.projectId)
     ? `/threads/${args.threadId}`
     : `/projects/${args.projectId}/threads/${args.threadId}`;
+}
+
+export function getSurfaceAwareThreadRoutePath(
+  args: SurfaceAwareThreadRoutePathArgs,
+): string {
+  return args.surface === "popout"
+    ? getPopoutThreadRoutePath(args)
+    : getThreadRoutePath(args);
 }
 
 const baseRoutePatterns: readonly string[] = [

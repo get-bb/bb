@@ -112,6 +112,13 @@ function usePopoutMousePassthrough() {
       popout?.setMouseEventsIgnored({ ignore });
     }
 
+    function setInitialPassthroughState(): void {
+      const hasOpenPortal = hasOpenPopoutPortal();
+      isPointerOverContentRef.current = false;
+      hasOpenPortalRef.current = hasOpenPortal;
+      setIgnored(!hasOpenPortal);
+    }
+
     function updatePortalInteractivityLock(): void {
       const hasOpenPortal = hasOpenPopoutPortal();
       if (hasOpenPortal) {
@@ -153,13 +160,15 @@ function usePopoutMousePassthrough() {
       childList: true,
       subtree: true,
     });
-    updatePortalInteractivityLock();
+    setInitialPassthroughState();
     window.addEventListener("mousemove", handlePointerMove);
     window.addEventListener("mouseleave", handlePointerLeave);
+    window.addEventListener("focus", setInitialPassthroughState);
     return () => {
       mutationObserver.disconnect();
       window.removeEventListener("mousemove", handlePointerMove);
       window.removeEventListener("mouseleave", handlePointerLeave);
+      window.removeEventListener("focus", setInitialPassthroughState);
       if (isIgnoringMouseEventsRef.current) {
         popout.setMouseEventsIgnored({ ignore: false });
       }

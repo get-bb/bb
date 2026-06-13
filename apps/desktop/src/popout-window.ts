@@ -197,6 +197,13 @@ function areSameThreadRef(
   return left.projectId === right.projectId && left.threadId === right.threadId;
 }
 
+function logOpenInMainFailure(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(
+    `Could not open popout thread in main window: ${message}\n`,
+  );
+}
+
 function createPopoutWindowReadiness({
   browserWindow,
 }: CreatePopoutWindowReadinessArgs): PopoutWindowReadiness {
@@ -346,7 +353,6 @@ export function createPopoutWindowManager(
       setPopoutWindowPosition({ browserWindow });
       hasPositionedWindow = true;
     }
-    browserWindow.setIgnoreMouseEvents(false);
     browserWindow.show();
     browserWindow.focus();
     sendThreadChangedIfNeeded(browserWindow);
@@ -371,11 +377,16 @@ export function createPopoutWindowManager(
       return currentThread;
     },
     openInMain(thread): void {
-      void args.openInMainHandler(thread).then((didOpen) => {
-        if (didOpen) {
-          getLiveWindow()?.hide();
-        }
-      });
+      void args
+        .openInMainHandler(thread)
+        .then((didOpen) => {
+          if (didOpen) {
+            getLiveWindow()?.hide();
+          }
+        })
+        .catch((error: unknown) => {
+          logOpenInMainFailure(error);
+        });
     },
     ownsWebContents(webContents): boolean {
       const browserWindow = getLiveWindow();

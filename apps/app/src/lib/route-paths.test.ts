@@ -7,6 +7,7 @@ import {
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
+  getSurfaceAwareThreadRoutePath,
   getThreadRoutePath,
   isRoutePath,
   isProjectlessProjectId,
@@ -97,6 +98,30 @@ describe("route path helpers", () => {
         path: "/popout/projects/proj_standard/threads/thr_standard",
       }),
     ).toBe(true);
+  });
+
+  it("builds thread URLs for the active surface", () => {
+    expect(
+      getSurfaceAwareThreadRoutePath({
+        projectId: PERSONAL_PROJECT_ID,
+        surface: "page",
+        threadId: "thr_personal",
+      }),
+    ).toBe("/threads/thr_personal");
+    expect(
+      getSurfaceAwareThreadRoutePath({
+        projectId: PERSONAL_PROJECT_ID,
+        surface: "popout",
+        threadId: "thr_personal",
+      }),
+    ).toBe("/popout/threads/thr_personal");
+    expect(
+      getSurfaceAwareThreadRoutePath({
+        projectId: "proj_standard",
+        surface: "popout",
+        threadId: "thr_standard",
+      }),
+    ).toBe("/popout/projects/proj_standard/threads/thr_standard");
   });
 
   it("does not mistake deeper filesystem-like paths for routes", () => {

@@ -70,8 +70,7 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
-  getPopoutThreadRoutePath,
-  getThreadRoutePath,
+  getSurfaceAwareThreadRoutePath,
   isRoutePath,
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
@@ -803,10 +802,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         if (!targetProjectId) return null;
         return () =>
           navigate(
-            (props.surface === "popout"
-              ? getPopoutThreadRoutePath
-              : getThreadRoutePath)({
+            getSurfaceAwareThreadRoutePath({
               projectId: targetProjectId,
+              surface: props.surface,
               threadId: resource.threadId,
             }),
           );
@@ -1090,12 +1088,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const parentThreadSection: ThreadPromptParentThreadSection | null =
     useMemo(() => {
       if (!thread?.parentThreadId) return null;
-      const threadRoutePath =
-        props.surface === "popout"
-          ? getPopoutThreadRoutePath
-          : getThreadRoutePath;
-      const href = threadRoutePath({
+      const href = getSurfaceAwareThreadRoutePath({
         projectId: thread.projectId,
+        surface: props.surface,
         threadId: thread.parentThreadId,
       });
       if (parentThread === undefined) {
@@ -1135,10 +1130,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         .map((entry) => ({
           id: entry.id,
           title: getThreadDisplayTitle(entry),
-          href: (props.surface === "popout"
-            ? getPopoutThreadRoutePath
-            : getThreadRoutePath)({
+          href: getSurfaceAwareThreadRoutePath({
             projectId: entry.projectId,
+            surface: props.surface,
             threadId: entry.id,
           }),
         }));

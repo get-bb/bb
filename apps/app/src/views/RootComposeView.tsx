@@ -43,6 +43,7 @@ import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   getThreadRoutePath,
   getRootComposeRoutePath,
+  getSurfaceAwareThreadRoutePath,
   isProjectlessProjectId,
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
@@ -697,13 +698,14 @@ export function RootComposeView(props: RootComposeViewProps) {
       resource.kind === "thread"
         ? () =>
             navigate(
-              getThreadRoutePath({
+              getSurfaceAwareThreadRoutePath({
                 projectId: resource.projectId ?? projectId,
+                surface: props.surface,
                 threadId: resource.threadId,
               }),
             )
         : null,
-    [navigate, projectId],
+    [navigate, projectId, props.surface],
   );
   // Mirrors the @-mention plumbing: the composer feeds the text typed after the
   // command trigger into `commandQuery`, which drives the project+provider-
