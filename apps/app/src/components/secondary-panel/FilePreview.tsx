@@ -274,10 +274,9 @@ export function FilePreview({
     (state.kind === "html" && viewMode === "preview");
   const bodyViewMode: FilePreviewViewMode =
     toggleKind === null ? "preview" : viewMode;
-  const showLineOverflowToggle =
-    state.kind === "html" || state.kind === "ready";
-  const usesFullHeightLayout =
-    usesIframeLayout || usesCodeViewLayout(state, bodyViewMode);
+  const usesCodeLayout = usesCodeViewLayout(state, bodyViewMode);
+  const showLineOverflowToggle = usesCodeLayout;
+  const usesFullHeightLayout = usesIframeLayout || usesCodeLayout;
   // The markdown preview renders on a raised "paper" surface that should fill
   // the panel to the bottom even for short documents. `min-h-full` (vs the
   // iframe layout's `h-full min-h-0`) keeps the column growable, so long
