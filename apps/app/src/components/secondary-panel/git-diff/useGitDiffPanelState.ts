@@ -375,6 +375,9 @@ export function useGitDiffPanelState({
         window.clearTimeout(timerId);
       }
     };
+    // Parse state is sampled when the diff input changes. Adding parsed-file
+    // state here would restart and cancel the batched parse after dispatches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentGitDiff, isDiffPanelActive]);
 
   // --- Reset on environment change ---
