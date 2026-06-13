@@ -57,6 +57,7 @@
     "cronstrue": "^3.14.0",
     "jotai": "^2.19.0",
     "jotai-family": "^1.0.1",
+    "mermaid": "^11.15.0",
     "nanoid": "^5.1.6",
     "partysocket": "^1.1.16",
     "react": "^19.0.0",

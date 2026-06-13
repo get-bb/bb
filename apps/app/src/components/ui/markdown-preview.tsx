@@ -23,6 +23,10 @@ import { ImageLightbox } from "./image-lightbox.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "./icon.js";
 import { RouteAnchor } from "./app-route-anchor.js";
+import {
+  getMarkdownCodeLanguage,
+  isMarkdownCodeBlock,
+} from "./markdown-code-block.js";
 import { normalizeLocalFileMarkdownLinks } from "./markdown-local-file-link-normalize.js";
 import {
   buildLocalFileAnchorHref,
@@ -35,6 +39,7 @@ import type {
   MarkdownLinkRouting,
   MarkdownLocalFileLinkRouting,
 } from "./markdown-link-routing.js";
+import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
 import { usePreferredTheme, type Theme } from "@/hooks/useTheme";
 import { resolveRouteHref } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
@@ -115,6 +120,9 @@ type MarkdownAnchorEvent = ReactMouseEvent<HTMLAnchorElement>;
 type MarkdownBlockquoteProps = ComponentPropsWithoutRef<"blockquote"> &
   ExtraProps;
 type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & ExtraProps;
+interface MarkdownCodeRendererProps extends MarkdownCodeProps {
+  preferredTheme: Theme;
+}
 type MarkdownHeadingProps = ComponentPropsWithoutRef<"h1"> & ExtraProps;
 type MarkdownHrProps = ComponentPropsWithoutRef<"hr"> & ExtraProps;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & ExtraProps;
@@ -221,9 +229,7 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
     previous: previous.linkRouting,
   });
 
-function isMarkdownAppRouteHref({
-  href,
-}: IsMarkdownAppRouteHrefArgs): boolean {
+function isMarkdownAppRouteHref({ href }: IsMarkdownAppRouteHrefArgs): boolean {
   if (!href || typeof window === "undefined") {
     return false;
   }
@@ -335,13 +341,23 @@ function MarkdownAnchor({
 function MarkdownCode({
   className: codeClassName,
   children,
+  node: _node,
+  preferredTheme,
   ...props
-}: MarkdownCodeProps) {
+}: MarkdownCodeRendererProps) {
   const codeText = String(children ?? "").replace(/\n$/, "");
-  const languageMatch = /language-(\w+)/u.exec(codeClassName || "");
-  const language = languageMatch?.[1];
-  const isBlock = language !== undefined || codeText.includes("\n");
+  const language = getMarkdownCodeLanguage({ className: codeClassName });
+  const isBlock = isMarkdownCodeBlock({ codeText, language });
   if (isBlock) {
+    if (language === "mermaid") {
+      return (
+        <MarkdownMermaidDiagram
+          preferredTheme={preferredTheme}
+          source={codeText}
+        />
+      );
+    }
+
     return (
       <div className="my-2 overflow-hidden rounded-md border border-border bg-surface-recessed">
         <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
@@ -558,6 +574,10 @@ function buildMarkdownComponents({
     return <MarkdownAnchor {...props} linkRouting={linkRouting} />;
   }
 
+  function MarkdownCodeRenderer(props: MarkdownCodeProps) {
+    return <MarkdownCode {...props} preferredTheme={preferredTheme} />;
+  }
+
   function MarkdownImage({
     src,
     alt,
@@ -589,7 +609,7 @@ function buildMarkdownComponents({
   return {
     a: MarkdownLink,
     blockquote: MarkdownBlockquote,
-    code: MarkdownCode,
+    code: MarkdownCodeRenderer,
     h1: MarkdownH1,
     h2: MarkdownH2,
     h3: MarkdownH3,

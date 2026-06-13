@@ -55,6 +55,19 @@ import { FilePreview } from "...";
 \`\`\`
 `;
 
+const SAMPLE_DIAGRAM_MD = `# Preview Flow
+
+Markdown file previews render Mermaid fences directly in Preview mode.
+
+\`\`\`mermaid
+flowchart LR
+  Open[Open markdown file] --> Preview[Rendered preview]
+  Preview --> Raw[Raw source toggle]
+  Raw --> Preview
+\`\`\`
+
+The Raw toggle still shows this markdown source unchanged.`;
+
 const SAMPLE_BUTTON_TSX = `import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
@@ -95,6 +108,7 @@ Button.displayName = "Button";
 `;
 
 const README_PATH = "docs/right-panel/README.md";
+const DIAGRAM_PATH = "docs/right-panel/preview-flow.md";
 const BUTTON_PATH = "apps/app/src/components/ui/button.tsx";
 const DELETED_BUTTON_PATH = "apps/app/src/components/ui/legacy-button.tsx";
 const SCREENSHOT_PATH = "docs/screenshots/right-panel.svg";
@@ -138,6 +152,23 @@ export function Overview() {
               lineRange: null,
               showMarkdownModeToggle: true,
               file: { name: "README.md", contents: SAMPLE_README_MD },
+            }}
+          />
+        </PreviewStage>
+      </StoryRow>
+      <StoryRow
+        label="markdown file with Mermaid"
+        hint="Preview mode renders the Mermaid diagram; Raw keeps the original fence"
+      >
+        <PreviewStage>
+          <FilePreview
+            path={DIAGRAM_PATH}
+            onOpenInEditor={noopOpenInEditor}
+            state={{
+              kind: "ready",
+              lineRange: null,
+              showMarkdownModeToggle: true,
+              file: { name: "preview-flow.md", contents: SAMPLE_DIAGRAM_MD },
             }}
           />
         </PreviewStage>
