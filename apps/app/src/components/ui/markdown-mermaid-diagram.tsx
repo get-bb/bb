@@ -25,7 +25,7 @@ interface RenderedMermaidDiagram {
 type MermaidRenderState =
   | { kind: "loading" }
   | { kind: "rendered"; diagram: RenderedMermaidDiagram }
-  | { kind: "error" };
+  | { kind: "source" };
 
 type MermaidTheme = NonNullable<MermaidConfig["theme"]>;
 type MermaidDiagramContainerProps = ComponentPropsWithoutRef<"div">;
@@ -111,7 +111,7 @@ export function MarkdownMermaidDiagram({
           return;
         }
 
-        setRenderState({ kind: "error" });
+        setRenderState({ kind: "source" });
       });
 
     return () => {
@@ -156,15 +156,10 @@ export function MarkdownMermaidDiagram({
           Rendering diagram...
         </div>
       ) : null}
-      {renderState.kind === "error" ? (
-        <div className="space-y-2 px-3 pb-3 pt-2">
-          <p className="text-xs text-destructive" role="alert">
-            Unable to render Mermaid diagram.
-          </p>
-          <pre className="max-h-64 overflow-auto rounded-sm border border-border bg-background p-2">
-            <code className="font-mono text-xs">{source}</code>
-          </pre>
-        </div>
+      {renderState.kind === "source" ? (
+        <pre className="overflow-x-auto px-3 pb-3 pt-1">
+          <code className="font-mono text-xs language-mermaid">{source}</code>
+        </pre>
       ) : null}
     </MermaidDiagramContainer>
   );
