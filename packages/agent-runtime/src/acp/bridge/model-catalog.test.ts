@@ -88,6 +88,34 @@ describe("acp model catalog", () => {
     ).toBe("gpt-5.1-codex-max-high");
   });
 
+  it("strips the default variant's effort word from the family name", () => {
+    const catalog = buildAgentModelCatalog(
+      parseAgentModelLines(
+        [
+          "claude-opus-4-8-medium - Opus 4.8 1M Medium",
+          "claude-opus-4-8-high - Opus 4.8 1M",
+          "claude-fable-5-thinking-medium - Fable 5 1M Medium Thinking (NO ZDR)",
+        ].join("\n"),
+      ),
+    );
+    expect(catalog?.models.map((m) => m.displayName)).toEqual([
+      "Opus 4.8 1M",
+      "Fable 5 1M Thinking (NO ZDR)",
+    ]);
+    // The raw variant names survive as per-effort descriptions.
+    expect(
+      catalog?.models[0]?.supportedReasoningEfforts.map((e) => e.description),
+    ).toEqual(["Opus 4.8 1M Medium", "Opus 4.8 1M"]);
+  });
+
+  it("keeps brand words that collide with effort spellings", () => {
+    const catalog = catalogFromSample();
+    expect(
+      catalog.models.find((m) => m.id === "gpt-5.1-codex-max-medium")
+        ?.displayName,
+    ).toBe("Codex 5.1 Max");
+  });
+
   it("defaults effort-less and unrecognized ids to standalone models", () => {
     const catalog = catalogFromSample();
     const none = catalog.models.find((m) => m.id === "gpt-5.5-none");

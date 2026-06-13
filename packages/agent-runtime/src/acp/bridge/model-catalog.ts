@@ -69,7 +69,11 @@ export function parseAgentModelLines(stdout: string): RawAgentModel[] {
   return models;
 }
 
-function splitVariant(id: string): { familyKey: string; effort: ReasoningLevel } {
+function splitVariant(id: string): {
+  familyKey: string;
+  effort: ReasoningLevel;
+  effortToken: string | undefined;
+} {
   let rest = id;
   let fast = false;
   if (rest.endsWith(FAST_TAIL)) {
@@ -79,11 +83,47 @@ function splitVariant(id: string): { familyKey: string; effort: ReasoningLevel }
   for (const [token, effort] of EFFORT_TOKENS) {
     if (rest.endsWith(`-${token}`)) {
       const base = rest.slice(0, -(token.length + 1));
-      return { familyKey: base + (fast ? FAST_TAIL : ""), effort };
+      return {
+        familyKey: base + (fast ? FAST_TAIL : ""),
+        effort,
+        effortToken: token,
+      };
     }
   }
   // No effort token: the id is its own family and acts as its medium.
-  return { familyKey: id, effort: "medium" };
+  return { familyKey: id, effort: "medium", effortToken: undefined };
+}
+
+// How the agent's display names spell each effort token, for stripping the
+// default variant's effort word out of the family display name.
+const EFFORT_DISPLAY_WORDS: Readonly<Record<string, string>> = {
+  "extra-high": "Extra High",
+  medium: "Medium",
+  xhigh: "Extra High",
+  high: "High",
+  low: "Low",
+  max: "Max",
+};
+
+/**
+ * Family display name: the default variant's name minus its own effort word
+ * ("Opus 4.8 1M Medium" → "Opus 4.8 1M") — bb renders reasoning separately,
+ * so keeping the word would show the level twice. Only the default variant's
+ * explicit token is stripped; brand words that happen to match another
+ * effort ("Codex 5.1 Max") are untouched.
+ */
+function familyDisplayName(
+  displayName: string,
+  effortToken: string | undefined,
+): string {
+  const word = effortToken ? EFFORT_DISPLAY_WORDS[effortToken] : undefined;
+  if (!word) {
+    return displayName;
+  }
+  return displayName
+    .replace(new RegExp(`(^|\\s)${word}(?=\\s|$)`), "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 /**
@@ -97,8 +137,10 @@ export function buildAgentModelCatalog(
   rawModels: readonly RawAgentModel[],
 ): AgentModelCatalog | null {
   const families = new Map<string, AgentModelVariant[]>();
+  const effortTokensById = new Map<string, string | undefined>();
   for (const raw of rawModels) {
-    const { familyKey, effort } = splitVariant(raw.id);
+    const { familyKey, effort, effortToken } = splitVariant(raw.id);
+    effortTokensById.set(raw.id, effortToken);
     const members = families.get(familyKey) ?? [];
     if (members.some((member) => member.effort === effort)) {
       continue;
@@ -118,7 +160,10 @@ export function buildAgentModelCatalog(
     models.push({
       id: defaultVariant.id,
       model: defaultVariant.id,
-      displayName: defaultVariant.displayName,
+      displayName: familyDisplayName(
+        defaultVariant.displayName,
+        effortTokensById.get(defaultVariant.id),
+      ),
       description: "",
       supportedReasoningEfforts: members.map((member) => ({
         reasoningEffort: member.effort,

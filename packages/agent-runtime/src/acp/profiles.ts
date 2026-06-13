@@ -45,9 +45,7 @@ export const ACP_AGENT_PROFILES: readonly AcpAgentProfile[] = [
       selectFlag: "--model",
       primaryModels: [
         "auto",
-        "claude-fable-5-medium",
         "claude-fable-5-thinking-medium",
-        "claude-opus-4-8-medium",
         "claude-opus-4-8-thinking-medium",
         "gpt-5.5-medium",
         // Cursor's own default composer is the fast variant.
