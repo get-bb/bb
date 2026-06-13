@@ -53,6 +53,7 @@ const electronMock = vi.hoisted(() => {
       ignore: boolean;
       options: { forward: boolean } | undefined;
     }> = [];
+    public loadUrlCalls: string[] = [];
     public shown = false;
     public visible = false;
     public visibleOnAllWorkspaces = false;
@@ -98,7 +99,8 @@ const electronMock = vi.hoisted(() => {
       return this.visible;
     }
 
-    loadURL(): Promise<void> {
+    loadURL(url: string): Promise<void> {
+      this.loadUrlCalls.push(url);
       return new Promise((resolve, reject) => {
         this.resolveLoad = resolve;
         this.rejectLoad = reject;
@@ -178,6 +180,65 @@ beforeEach(() => {
 });
 
 describe("createPopoutWindowManager", () => {
+  it("warms the popout window hidden without showing or focusing it", () => {
+    const manager = createPopoutWindowManager({
+      appUrl: "http://127.0.0.1:38886",
+      preloadPath: "/tmp/preload.cjs",
+      openExternalUrl() {},
+      openInMainHandler: async () => true,
+    });
+
+    manager.warm();
+
+    const browserWindow = electronMock.createdWindows[0];
+    expect(electronMock.createdWindows).toHaveLength(1);
+    expect(browserWindow?.options.show).toBe(false);
+    expect(browserWindow?.loadUrlCalls).toEqual([
+      "http://127.0.0.1:38886/popout",
+    ]);
+    expect(browserWindow?.shown).toBe(false);
+    expect(browserWindow?.focused).toBe(false);
+    expect(browserWindow?.isVisible()).toBe(false);
+    expect(browserWindow?.webContents.sentMessages).toEqual([]);
+  });
+
+  it("shows a warmed popout without loading the renderer again", async () => {
+    const manager = createPopoutWindowManager({
+      appUrl: "http://127.0.0.1:38886",
+      preloadPath: "/tmp/preload.cjs",
+      openExternalUrl() {},
+      openInMainHandler: async () => true,
+    });
+
+    manager.warm();
+    const browserWindow = electronMock.createdWindows[0];
+    browserWindow?.resolveLoaded();
+    await manager.toggle();
+
+    expect(electronMock.createdWindows).toHaveLength(1);
+    expect(browserWindow?.loadUrlCalls).toEqual([
+      "http://127.0.0.1:38886/popout",
+    ]);
+    expect(browserWindow?.shown).toBe(true);
+    expect(browserWindow?.focused).toBe(true);
+  });
+
+  it("destroys a warmed popout when the manager is destroyed", () => {
+    const manager = createPopoutWindowManager({
+      appUrl: "http://127.0.0.1:38886",
+      preloadPath: "/tmp/preload.cjs",
+      openExternalUrl() {},
+      openInMainHandler: async () => true,
+    });
+
+    manager.warm();
+    const browserWindow = electronMock.createdWindows[0];
+    manager.destroy();
+
+    expect(browserWindow?.destroyed).toBe(true);
+    expect(manager.getCurrentThread()).toBeNull();
+  });
+
   it("waits for load before first show and replays the current thread", async () => {
     const manager = createPopoutWindowManager({
       appUrl: "http://127.0.0.1:38886",

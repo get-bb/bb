@@ -683,7 +683,7 @@ function applyPopoutExperimentConfig(experiments: Experiments): void {
   }
 
   popoutExperimentEnabled = true;
-  ensurePopoutWindowManager();
+  ensurePopoutWindowManager()?.warm();
   registerPopoutHotkey(experiments.popoutChatHotkey);
 }
 

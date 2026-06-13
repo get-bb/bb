@@ -43,6 +43,7 @@ export interface PopoutWindowManager {
   setCurrentThread(thread: BbDesktopPopoutThreadRef | null): void;
   setThread(thread: BbDesktopPopoutThreadRef): Promise<void>;
   toggle(): Promise<void>;
+  warm(): void;
 }
 
 export type PopoutOpenInMainHandler = (
@@ -254,6 +255,10 @@ export function createPopoutWindowManager(
         return;
       }
       await show();
+    },
+    warm(): void {
+      ensureWindow();
+      void loadReadyPromise?.catch(() => undefined);
     },
   };
 }
