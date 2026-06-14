@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useCallback,
   type CSSProperties,
   type ComponentPropsWithoutRef,
   type PointerEventHandler,
@@ -153,6 +154,18 @@ interface GetMermaidWheelZoomDeltaArgs {
   deltaX: number;
   deltaY: number;
   deltaZ: number;
+}
+
+interface MermaidWheelZoomEvent {
+  cancelable: boolean;
+  clientX: number;
+  clientY: number;
+  deltaMode: number;
+  deltaX: number;
+  deltaY: number;
+  deltaZ: number;
+  preventDefault(): void;
+  stopPropagation(): void;
 }
 
 interface MermaidGestureEventData {
@@ -552,6 +565,45 @@ function MermaidDiagramDialog({
   );
   const diagramStyle = createMermaidDialogDiagramStyle({ view });
   const isDragging = dragState !== null;
+  const zoomFromWheelEvent = useCallback((event: MermaidWheelZoomEvent) => {
+    const viewportElement = dialogViewportRef.current;
+    if (!viewportElement) {
+      return;
+    }
+
+    const zoomDelta = getMermaidWheelZoomDelta({
+      deltaX: event.deltaX,
+      deltaY: event.deltaY,
+      deltaZ: event.deltaZ,
+    });
+
+    if (!shouldHandleMermaidWheelZoom({ zoomDelta })) {
+      return;
+    }
+
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+    event.stopPropagation();
+
+    const focalPoint = getMermaidDiagramFocalPoint({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      container: viewportElement,
+    });
+    const zoomFactor = getMermaidWheelZoomFactor({
+      deltaMode: event.deltaMode,
+      deltaY: zoomDelta,
+    });
+
+    setView((currentView) =>
+      zoomMermaidDiagramView({
+        focalPoint,
+        nextScale: currentView.scale * zoomFactor,
+        view: currentView,
+      }),
+    );
+  }, []);
 
   useEffect(() => {
     viewRef.current = view;
@@ -592,37 +644,7 @@ function MermaidDiagramDialog({
     }
 
     const handleWheel = (event: WheelEvent) => {
-      const zoomDelta = getMermaidWheelZoomDelta({
-        deltaX: event.deltaX,
-        deltaY: event.deltaY,
-        deltaZ: event.deltaZ,
-      });
-
-      if (!shouldHandleMermaidWheelZoom({ zoomDelta })) {
-        return;
-      }
-
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-
-      const focalPoint = getMermaidDiagramFocalPoint({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        container: viewportElement,
-      });
-      const zoomFactor = getMermaidWheelZoomFactor({
-        deltaMode: event.deltaMode,
-        deltaY: zoomDelta,
-      });
-
-      setView((currentView) =>
-        zoomMermaidDiagramView({
-          focalPoint,
-          nextScale: currentView.scale * zoomFactor,
-          view: currentView,
-        }),
-      );
+      zoomFromWheelEvent(event);
     };
 
     const handleGestureStart = (event: Event) => {
@@ -773,7 +795,7 @@ function MermaidDiagramDialog({
       viewportElement.removeEventListener("touchend", handleTouchEnd);
       viewportElement.removeEventListener("touchcancel", handleTouchEnd);
     };
-  }, [open]);
+  }, [open, zoomFromWheelEvent]);
 
   const zoomOut = () => {
     setView((currentView) =>
@@ -905,6 +927,7 @@ function MermaidDiagramDialog({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerEnd}
           onPointerCancel={handlePointerEnd}
+          onWheelCapture={zoomFromWheelEvent}
         >
           <div className="flex h-full w-full items-center justify-center p-6">
             <div
