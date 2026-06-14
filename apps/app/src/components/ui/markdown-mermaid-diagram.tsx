@@ -143,10 +143,6 @@ interface PinchMermaidDiagramViewArgs {
   touchPair: MermaidDiagramTouchPair;
 }
 
-interface PrepareMermaidDialogSvgArgs {
-  container: HTMLElement;
-}
-
 interface MermaidPointPairArgs {
   firstPoint: MermaidDiagramPoint;
   secondPoint: MermaidDiagramPoint;
@@ -397,18 +393,6 @@ function createMermaidDialogDiagramStyle({
   };
 }
 
-function prepareMermaidDialogSvg({
-  container,
-}: PrepareMermaidDialogSvgArgs): void {
-  const svgElement = container.querySelector("svg");
-  if (!(svgElement instanceof SVGSVGElement)) {
-    return;
-  }
-
-  svgElement.style.maxWidth = "none";
-  svgElement.setAttribute("preserveAspectRatio", "xMidYMid meet");
-}
-
 function MermaidDiagramContainer({
   children,
   className,
@@ -470,7 +454,6 @@ function MermaidDiagramDialog({
       return;
     }
 
-    prepareMermaidDialogSvg({ container: diagramElement });
     diagram.bindFunctions?.(diagramElement);
   }, [diagram, open]);
 
@@ -657,7 +640,7 @@ function MermaidDiagramDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="relative flex h-[min(84vh,58rem)] w-[min(96vw,88rem)] max-w-none gap-0 overflow-hidden border-border bg-background p-0 shadow-xl [&>button]:right-2 [&>button]:top-2 [&>button]:z-20 [&>button]:flex [&>button]:size-8 [&>button]:items-center [&>button]:justify-center [&>button]:rounded-md [&>button]:bg-surface-scrim/95 [&>button]:text-muted-foreground [&>button]:opacity-100 [&>button]:backdrop-blur-sm [&>button]:hover:bg-state-hover [&>button]:hover:text-foreground">
+      <DialogContent className="relative flex h-[min(84dvh,58rem)] w-full max-w-none gap-0 overflow-hidden border-border bg-background p-0 shadow-xl md:w-[min(96vw,88rem)] [&>button]:right-2 [&>button]:top-2 [&>button]:z-20 [&>button]:flex [&>button]:size-8 [&>button]:items-center [&>button]:justify-center [&>button]:rounded-md [&>button]:bg-surface-scrim/95 [&>button]:text-muted-foreground [&>button]:opacity-100 [&>button]:backdrop-blur-sm [&>button]:hover:bg-state-hover [&>button]:hover:text-foreground">
         <DialogTitle className="sr-only">Mermaid diagram</DialogTitle>
         <DialogDescription className="sr-only">
           Expanded Mermaid diagram preview with zoom and pan controls.
@@ -717,7 +700,7 @@ function MermaidDiagramDialog({
           <div className="flex h-full w-full items-center justify-center p-6">
             <div
               ref={dialogDiagramRef}
-              className="h-full w-full select-none [&_svg]:block [&_svg]:h-full [&_svg]:max-h-none [&_svg]:w-full"
+              className="flex h-full w-full select-none items-center justify-center [&_svg]:block [&_svg]:h-auto [&_svg]:max-h-full [&_svg]:max-w-full"
               role="img"
               aria-label="Mermaid diagram"
               style={diagramStyle}
