@@ -31,14 +31,16 @@ function makeWorkspaceTab(environmentId: string) {
 
 describe("secondaryPanelTabState", () => {
   it("opens, activates, and closes secondary panel tabs by canonical id", () => {
+    const workspaceTab = makeWorkspaceTab("env-1");
+    const hostTab = createHostFilePreviewFixedPanelTab({
+      lineRange: null,
+      path: "/tmp/log.txt",
+    });
     const tabs = [
       createThreadInfoFixedPanelTab(),
       createGitDiffFixedPanelTab(),
-      makeWorkspaceTab("env-1"),
-      createHostFilePreviewFixedPanelTab({
-        lineRange: null,
-        path: "/tmp/log.txt",
-      }),
+      workspaceTab,
+      hostTab,
       createThreadStorageFilePreviewFixedPanelTab({
         isPinned: false,
         tab: { lineRange: null, path: "artifact.txt" },
@@ -58,18 +60,86 @@ describe("secondaryPanelTabState", () => {
       tabs.map((tab) => tab.id),
     );
 
-    const workspaceTab = tabs[2];
-    expect(workspaceTab).toBeDefined();
-    if (!workspaceTab) return;
-
     state = activateSecondaryPanelTabInState(state, workspaceTab.id);
     expect(state.secondary.activeTabId).toBe(workspaceTab.id);
 
     state = closeSecondaryPanelTabInState(state, workspaceTab.id);
-    expect(state.secondary.activeTabId).toBeNull();
+    expect(state.secondary.activeTabId).toBe(hostTab.id);
     expect(state.secondary.tabs.some((tab) => tab.id === workspaceTab.id)).toBe(
       false,
     );
+  });
+
+  it("activates the previous file tab when closing the last active file tab", () => {
+    const firstTab = createHostFilePreviewFixedPanelTab({
+      lineRange: null,
+      path: "/tmp/first.txt",
+    });
+    const secondTab = createHostFilePreviewFixedPanelTab({
+      lineRange: null,
+      path: "/tmp/second.txt",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: secondTab.id,
+        isOpen: true,
+        tabs: [createThreadInfoFixedPanelTab(), firstTab, secondTab],
+      },
+    });
+
+    const nextState = closeSecondaryPanelTabInState(state, secondTab.id);
+
+    expect(nextState.secondary.activeTabId).toBe(firstTab.id);
+    expect(nextState.secondary.tabs.map((tab) => tab.id)).toEqual([
+      createThreadInfoFixedPanelTab().id,
+      firstTab.id,
+    ]);
+  });
+
+  it("clears active state when closing the only active file tab", () => {
+    const fileTab = createHostFilePreviewFixedPanelTab({
+      lineRange: null,
+      path: "/tmp/only.txt",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: fileTab.id,
+        isOpen: true,
+        tabs: [createThreadInfoFixedPanelTab(), fileTab],
+      },
+    });
+
+    const nextState = closeSecondaryPanelTabInState(state, fileTab.id);
+
+    expect(nextState.secondary.activeTabId).toBeNull();
+    expect(nextState.secondary.tabs.map((tab) => tab.id)).toEqual([
+      createThreadInfoFixedPanelTab().id,
+    ]);
+  });
+
+  it("keeps the active tab when closing an inactive file tab", () => {
+    const activeTab = createHostFilePreviewFixedPanelTab({
+      lineRange: null,
+      path: "/tmp/active.txt",
+    });
+    const inactiveTab = createHostFilePreviewFixedPanelTab({
+      lineRange: null,
+      path: "/tmp/inactive.txt",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: activeTab.id,
+        isOpen: true,
+        tabs: [activeTab, inactiveTab],
+      },
+    });
+
+    const nextState = closeSecondaryPanelTabInState(state, inactiveTab.id);
+
+    expect(nextState.secondary.activeTabId).toBe(activeTab.id);
+    expect(nextState.secondary.tabs.map((tab) => tab.id)).toEqual([
+      activeTab.id,
+    ]);
   });
 
   it("does not collide workspace tabs for the same path in different environments", () => {

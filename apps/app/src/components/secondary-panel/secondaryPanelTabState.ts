@@ -40,6 +40,13 @@ interface ReorderSecondaryPanelFileTabInStateArgs {
   state: FixedPanelTabsState;
 }
 
+interface GetActiveTabIdAfterCloseArgs {
+  activeTabId: string | null;
+  closedTabId: string;
+  tabsBeforeClose: readonly FixedPanelTab[];
+  tabsAfterClose: readonly FixedPanelTab[];
+}
+
 interface BuildOrderedSecondaryPanelFileTabsArgs {
   tabs: readonly FixedPanelTab[];
   resolvedEnvironmentId: string | null | undefined;
@@ -256,6 +263,32 @@ export function activateSecondaryPanelTabInState(
   });
 }
 
+function getActiveTabIdAfterClose({
+  activeTabId,
+  closedTabId,
+  tabsBeforeClose,
+  tabsAfterClose,
+}: GetActiveTabIdAfterCloseArgs): string | null {
+  if (activeTabId !== closedTabId) {
+    return activeTabId;
+  }
+
+  const fileTabsBeforeClose = tabsBeforeClose.filter(isSecondaryFileTab);
+  const closedFileTabIndex = fileTabsBeforeClose.findIndex(
+    (tab) => tab.id === closedTabId,
+  );
+  if (closedFileTabIndex === -1) {
+    return null;
+  }
+
+  const fileTabsAfterClose = tabsAfterClose.filter(isSecondaryFileTab);
+  const nextActiveTab =
+    fileTabsAfterClose[closedFileTabIndex] ??
+    fileTabsAfterClose[closedFileTabIndex - 1] ??
+    null;
+  return nextActiveTab?.id ?? null;
+}
+
 export function closeSecondaryPanelTabInState(
   state: FixedPanelTabsState,
   tabId: string,
@@ -265,8 +298,12 @@ export function closeSecondaryPanelTabInState(
     return state;
   }
   return setSecondaryPanelTabsInState({
-    activeTabId:
-      state.secondary.activeTabId === tabId ? null : state.secondary.activeTabId,
+    activeTabId: getActiveTabIdAfterClose({
+      activeTabId: state.secondary.activeTabId,
+      closedTabId: tabId,
+      tabsBeforeClose: state.secondary.tabs,
+      tabsAfterClose: tabs,
+    }),
     isOpen: state.secondary.isOpen,
     state,
     tabs,
