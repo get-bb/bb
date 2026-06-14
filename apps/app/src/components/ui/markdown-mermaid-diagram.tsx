@@ -640,73 +640,72 @@ function MermaidDiagramDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(84vh,58rem)] w-[min(96vw,88rem)] max-w-none gap-0 overflow-hidden border-border bg-background p-0 shadow-xl">
-        <div className="flex h-full min-h-0 w-full flex-col">
-          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-border-seam bg-surface-raised pl-4 pr-12">
-            <DialogTitle className="text-sm leading-5">
-              Mermaid diagram
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              Expanded Mermaid diagram preview with zoom and pan controls.
-            </DialogDescription>
-            <div className="ml-auto flex items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-7 text-muted-foreground"
-                onClick={zoomOut}
-                aria-label="Zoom out"
-                title="Zoom out"
-              >
-                <Icon name="ZoomOut" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-7 text-muted-foreground"
-                onClick={zoomIn}
-                aria-label="Zoom in"
-                title="Zoom in"
-              >
-                <Icon name="ZoomIn" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-7 text-muted-foreground"
-                onClick={resetView}
-                aria-label="Reset view"
-                title="Reset view"
-              >
-                <Icon name="RotateCcw" />
-              </Button>
-              <CopyButton text={source} label="Copy Mermaid source" />
-            </div>
-          </div>
-          <div
-            ref={dialogViewportRef}
-            className={cn(
-              "min-h-0 flex-1 touch-none overflow-hidden bg-surface-recessed",
-              isDragging ? "cursor-grabbing" : "cursor-grab",
-            )}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerEnd}
-            onPointerCancel={handlePointerEnd}
+      <DialogContent className="relative flex h-[min(84vh,58rem)] w-[min(96vw,88rem)] max-w-none gap-0 overflow-hidden border-border bg-background p-0 shadow-xl [&>button]:right-2 [&>button]:top-2 [&>button]:z-20 [&>button]:flex [&>button]:size-8 [&>button]:items-center [&>button]:justify-center [&>button]:rounded-md [&>button]:bg-surface-scrim/95 [&>button]:text-muted-foreground [&>button]:opacity-100 [&>button]:backdrop-blur-sm [&>button]:hover:bg-state-hover [&>button]:hover:text-foreground">
+        <DialogTitle className="sr-only">Mermaid diagram</DialogTitle>
+        <DialogDescription className="sr-only">
+          Expanded Mermaid diagram preview with zoom and pan controls.
+        </DialogDescription>
+        <div className="absolute right-11 top-2 z-10 flex h-8 items-center gap-1 rounded-md bg-surface-scrim/95 p-0.5 shadow-sm backdrop-blur-sm">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground"
+            onClick={zoomOut}
+            aria-label="Zoom out"
+            title="Zoom out"
           >
-            <div className="flex h-full w-full items-center justify-center p-6">
-              <div
-                ref={dialogDiagramRef}
-                className="h-full w-full select-none [&_svg]:block [&_svg]:h-full [&_svg]:max-h-none [&_svg]:max-w-none [&_svg]:w-full"
-                role="img"
-                aria-label="Mermaid diagram"
-                style={diagramStyle}
-                dangerouslySetInnerHTML={{ __html: diagram.svg }}
-              />
-            </div>
+            <Icon name="ZoomOut" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground"
+            onClick={zoomIn}
+            aria-label="Zoom in"
+            title="Zoom in"
+          >
+            <Icon name="ZoomIn" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground"
+            onClick={resetView}
+            aria-label="Reset view"
+            title="Reset view"
+          >
+            <Icon name="RotateCcw" />
+          </Button>
+          <CopyButton
+            text={source}
+            label="Copy Mermaid source"
+            className="size-7 rounded-md hover:bg-state-hover hover:text-foreground"
+            iconClassName="size-4"
+          />
+        </div>
+        <div
+          ref={dialogViewportRef}
+          className={cn(
+            "min-h-0 flex-1 touch-none overflow-hidden bg-surface-recessed",
+            isDragging ? "cursor-grabbing" : "cursor-grab",
+          )}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerEnd}
+        >
+          <div className="flex h-full w-full items-center justify-center p-6">
+            <div
+              ref={dialogDiagramRef}
+              className="h-full w-full select-none [&_svg]:block [&_svg]:h-full [&_svg]:max-h-none [&_svg]:max-w-none [&_svg]:w-full"
+              role="img"
+              aria-label="Mermaid diagram"
+              style={diagramStyle}
+              dangerouslySetInnerHTML={{ __html: diagram.svg }}
+            />
           </div>
         </div>
       </DialogContent>
