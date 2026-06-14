@@ -700,7 +700,7 @@ function MermaidDiagramDialog({
             <div className="flex h-full w-full items-center justify-center p-6">
               <div
                 ref={dialogDiagramRef}
-                className="w-full select-none [&_svg]:h-auto [&_svg]:max-h-none [&_svg]:max-w-none [&_svg]:w-full"
+                className="h-full w-full select-none [&_svg]:block [&_svg]:h-full [&_svg]:max-h-none [&_svg]:max-w-none [&_svg]:w-full"
                 role="img"
                 aria-label="Mermaid diagram"
                 style={diagramStyle}
