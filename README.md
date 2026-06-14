@@ -101,6 +101,15 @@ Then open `http://<remote-host-or-tailscale-ip>:<app-port>`. Without
 `BB_DEV_REMOTE=true`, source dev keeps the browser app on localhost-only Vite
 defaults.
 
+To use the component storybook from another machine, run:
+
+```bash
+REMOTE=true pnpm storybook
+```
+
+That binds Ladle to all interfaces and configures its HMR WebSocket to use the
+browser's current host instead of `localhost`.
+
 Development behavior is intentionally split:
 
 - the app hot reloads itself
