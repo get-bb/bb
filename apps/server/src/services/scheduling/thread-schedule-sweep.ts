@@ -230,6 +230,15 @@ function advanceSkippedThreadSchedule(
 }
 
 function canQueueScheduleForThread(thread: ScheduledThread): boolean {
+  // A pending stop is in flight for this thread's current turn; dispatching a
+  // scheduled turn into that window would race the stop. Skip until the stop
+  // settles and clears stopRequestedAt. The other turn.dispatched call sites
+  // (send, queued-messages, parent-system-messages) guard this caller-side
+  // too; the turn.dispatched supersession predicate is the writer-level
+  // backstop for the status itself.
+  if (thread.stopRequestedAt !== null) {
+    return false;
+  }
   return thread.status === "idle" || thread.status === "active";
 }
 

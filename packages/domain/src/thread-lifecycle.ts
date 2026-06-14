@@ -70,7 +70,7 @@ export const THREAD_LIFECYCLE_EVENT_PREDICATES: Record<
   "turn.failed": { notStopRequested: true },
   "turn.interrupted": {},
   "runtime.exited": { notStopRequested: true },
-  "turn.dispatched": {},
+  "turn.dispatched": { notStopRequested: true },
   "reprovision.started": {},
   "start.succeeded": {
     notArchived: true,

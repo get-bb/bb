@@ -18,7 +18,7 @@
  * | 3 | internal/turn-completed-events.ts:42 ("failed") | any → error | turn.failed | stopRequestedAt null (→ notStopRequested) |
  * | 4 | internal/turn-completed-events.ts:42 ("interrupted") | any → idle | turn.interrupted | none (interruption is itself the stop ack) |
  * | 5 | internal/events.ts:398 | any → error | runtime.exited | stopRequestedAt null (→ notStopRequested) |
- * | 6 | services/scheduling/thread-schedule-sweep.ts:628 | idle → active | turn.dispatched | prepare + in-tx recheck: notDeleted, notArchived, status idle/active, env unchanged; NO stopRequestedAt guard (see suspicious list) |
+ * | 6 | services/scheduling/thread-schedule-sweep.ts:628 | idle → active | turn.dispatched | prepare + in-tx recheck: notDeleted, notArchived, status idle/active, env unchanged. FIXED post-migration: turn.dispatched now carries the notStopRequested predicate, and canQueueScheduleForThread skips a stop-in-flight thread (was the only turn.dispatched site missing the stop guard). |
  * | 7 | services/environments/environment-cleanup-internal.ts:235 | any → error | workspace.lost | listLiveThreadsInEnvironment filters deletedAt/archivedAt (→ notDeleted, notArchived) |
  * | 8 | services/environments/environment-provisioning-internal.ts:524 | any → error | provision.failed | listLiveEnvironmentThreads filters deletedAt (→ notDeleted); shouldPreserveThreadProvisionCancellationOutcome excludes stop-cancelled threads (caller-side, provisioningId-scoped) |
  * | 9 | services/threads/thread-send.ts:447 | idle/error → active | turn.dispatched | route boundary throws for archived/stopping/deleted/active/pre-start; transitions when dispatch is turn.submit OR status is error; THROWING |
@@ -221,7 +221,7 @@ describe("THREAD_LIFECYCLE table", () => {
       "turn.failed": { notStopRequested: true },
       "turn.interrupted": {},
       "runtime.exited": { notStopRequested: true },
-      "turn.dispatched": {},
+      "turn.dispatched": { notStopRequested: true },
       "reprovision.started": {},
       "start.succeeded": {
         notArchived: true,
