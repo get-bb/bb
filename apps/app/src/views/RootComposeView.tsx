@@ -386,6 +386,14 @@ export function RootComposeView() {
     setBranchSearchQuery("");
   }, [effectiveEnvironmentValue, projectId]);
   const isHostMode = parsedEnvironment?.type === "host";
+  const isHostLocalMode = isHostMode && parsedEnvironment.mode === "local";
+  const branchEnvironmentMode: RootComposeBranchEnvironmentMode = isProjectless
+    ? "other"
+    : isHostLocalMode
+      ? "local"
+      : isHostMode && parsedEnvironment.mode === "worktree"
+        ? "worktree"
+        : "other";
   const {
     selectedBranch,
     onBranchChange: handleBranchChange,
@@ -395,6 +403,7 @@ export function RootComposeView() {
   } = useScopedBranchSelection({
     environmentValue: effectiveEnvironmentValue,
     projectId,
+    rememberSelection: branchEnvironmentMode === "worktree",
   });
   const selectedBranchName = selectedBranch?.name ?? "";
   const hostBranchesQuery = useProjectSourceBranches(
@@ -417,14 +426,6 @@ export function RootComposeView() {
     activeBranchesQuery.data?.branches,
     activeBranchesQuery.data?.selectedBranch,
   ]);
-  const isHostLocalMode = isHostMode && parsedEnvironment.mode === "local";
-  const branchEnvironmentMode: RootComposeBranchEnvironmentMode = isProjectless
-    ? "other"
-    : isHostLocalMode
-      ? "local"
-      : isHostMode && parsedEnvironment.mode === "worktree"
-        ? "worktree"
-        : "other";
   const remoteBranchOptions = useMemo(() => {
     if (
       branchEnvironmentMode !== "local" &&
