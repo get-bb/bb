@@ -172,6 +172,37 @@ export function useThreadTerminalController({
     threadId,
   ]);
 
+  const replaceDisconnectedTerminal = useCallback(
+    (terminalId: string) => {
+      if (
+        !canCreateTerminal ||
+        createTerminal.isPending ||
+        closeTerminal.isPending
+      ) {
+        return;
+      }
+      closeTerminal.mutate(
+        { mode: "force", threadId, terminalId },
+        {
+          onSuccess: () => {
+            dirtyTerminalIdsRef.current.delete(terminalId);
+            closingCleanTerminalIdsRef.current.delete(terminalId);
+            removeFixedTerminalTab(terminalId);
+            startTerminal();
+          },
+        },
+      );
+    },
+    [
+      canCreateTerminal,
+      closeTerminal,
+      createTerminal.isPending,
+      removeFixedTerminalTab,
+      startTerminal,
+      threadId,
+    ],
+  );
+
   useEffect(() => {
     if (isRightPanelOpen) {
       return;
@@ -210,8 +241,12 @@ export function useThreadTerminalController({
   ]);
 
   const handleCreateTerminal = useCallback(() => {
+    if (activeSession?.status === "disconnected") {
+      replaceDisconnectedTerminal(activeSession.id);
+      return;
+    }
     startTerminal();
-  }, [startTerminal]);
+  }, [activeSession, replaceDisconnectedTerminal, startTerminal]);
 
   const handleSelectTerminal = useCallback(
     (terminalId: string) => {
@@ -301,7 +336,11 @@ export function useThreadTerminalController({
     closeFixedSecondaryPanel();
   }, [closeFixedSecondaryPanel]);
 
-  const terminalIsStarting = createTerminal.isPending;
+  const terminalIsReplacing =
+    activeSession?.status === "disconnected" &&
+    closeTerminal.isPending &&
+    closeTerminal.variables?.terminalId === activeSession.id;
+  const terminalIsStarting = createTerminal.isPending || terminalIsReplacing;
 
   const emptyTerminalMessage = terminalIsStarting
     ? "Starting terminal..."
