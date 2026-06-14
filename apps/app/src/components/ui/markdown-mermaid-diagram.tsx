@@ -876,7 +876,7 @@ function MermaidDiagramDialog({
         <DialogDescription className="sr-only">
           Expanded Mermaid diagram preview with zoom and pan controls.
         </DialogDescription>
-        <div className="absolute right-11 top-2 z-10 flex h-8 items-center gap-1 rounded-md bg-surface-scrim/95 p-0.5 shadow-sm backdrop-blur-sm">
+        <div className="absolute right-2 top-2 z-10 flex h-8 items-center gap-1 rounded-md bg-surface-scrim/95 p-0.5 backdrop-blur-sm md:right-11">
           <Button
             type="button"
             variant="ghost"
