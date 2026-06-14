@@ -42,6 +42,7 @@ const USAGE: Partial<Record<IconName, string>> = {
     "Queued message indicator, steer/edit request label marker in conversation",
   Edit: "Rename project, edit queued message, edit project source",
   ExternalLink: "FilePathLink external indicator",
+  Eye: "Show rendered Mermaid preview from source mode",
   File: "Right-panel markdown/doc file visual, Open file action",
   FileDiff: "Right panel diff tab, thread changes banner section",
   FileQuestion: "FilePreview empty state (passed via local iconName variable)",

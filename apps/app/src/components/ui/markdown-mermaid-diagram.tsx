@@ -64,16 +64,29 @@ interface MermaidThemePalette {
   textColor: string;
 }
 
+type MermaidDiagramOpenChangeHandler = (open: boolean) => void;
+type MermaidDiagramDisplayMode = "preview" | "source";
+
 interface MermaidDiagramDialogProps {
   diagram: RenderedMermaidDiagram;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange: MermaidDiagramOpenChangeHandler;
   open: boolean;
   source: string;
+}
+
+interface MermaidDiagramPoint {
+  x: number;
+  y: number;
 }
 
 interface MermaidDiagramOffset {
   x: number;
   y: number;
+}
+
+interface MermaidDiagramView {
+  offset: MermaidDiagramOffset;
+  scale: number;
 }
 
 interface MermaidDiagramDragState {
@@ -83,14 +96,56 @@ interface MermaidDiagramDragState {
   startOffset: MermaidDiagramOffset;
 }
 
+interface MermaidDiagramPinchState {
+  startCenter: MermaidDiagramPoint;
+  startDistance: number;
+  startView: MermaidDiagramView;
+}
+
+interface MermaidDiagramTouchPair {
+  center: MermaidDiagramPoint;
+  distance: number;
+}
+
 interface CreateMermaidDialogDiagramStyleArgs {
-  offset: MermaidDiagramOffset;
-  scale: number;
+  view: MermaidDiagramView;
 }
 
 interface MermaidDialogDiagramStyle extends CSSProperties {
   transform: string;
   transformOrigin: string;
+}
+
+interface GetMermaidDiagramPointFromClientPositionArgs {
+  clientX: number;
+  clientY: number;
+  container: HTMLElement;
+}
+
+interface GetMermaidTouchPairArgs {
+  container: HTMLElement;
+  touches: TouchList;
+}
+
+interface GetMermaidWheelZoomFactorArgs {
+  deltaMode: number;
+  deltaY: number;
+}
+
+interface ZoomMermaidDiagramViewArgs {
+  focalPoint: MermaidDiagramPoint;
+  nextScale: number;
+  view: MermaidDiagramView;
+}
+
+interface PinchMermaidDiagramViewArgs {
+  pinchState: MermaidDiagramPinchState;
+  touchPair: MermaidDiagramTouchPair;
+}
+
+interface MermaidPointPairArgs {
+  firstPoint: MermaidDiagramPoint;
+  secondPoint: MermaidDiagramPoint;
 }
 
 type MermaidRenderState =
@@ -108,15 +163,21 @@ const MERMAID_RENDER_ID_SAFE_CHARACTER_PATTERN = /[^a-zA-Z0-9_-]/gu;
 const MERMAID_DIAGRAM_MIN_SCALE = 0.5;
 const MERMAID_DIAGRAM_MAX_SCALE = 4;
 const MERMAID_DIAGRAM_SCALE_STEP = 0.25;
+const MERMAID_WHEEL_DELTA_LINE_MODE = 1;
+const MERMAID_WHEEL_DELTA_PAGE_MODE = 2;
+const MERMAID_WHEEL_LINE_DELTA_PX = 16;
+const MERMAID_WHEEL_PAGE_DELTA_PX = 800;
+const MERMAID_WHEEL_ZOOM_INTENSITY = 0.002;
+const MERMAID_DIAGRAM_CENTER_POINT: MermaidDiagramPoint = { x: 0, y: 0 };
 
 const MERMAID_LIGHT_PALETTE: MermaidThemePalette = {
   actorBkg: "#f1f1f1",
   actorBorder: "#dedede",
   actorTextColor: "#333333",
-  background: "#ffffff",
+  background: "#f7f7f7",
   clusterBkg: "#f9f9f9",
   clusterBorder: "#dedede",
-  edgeLabelBackground: "#ffffff",
+  edgeLabelBackground: "#f1f1f1",
   labelBoxBkgColor: "#f1f1f1",
   labelBoxBorderColor: "#dedede",
   labelTextColor: "#333333",
@@ -196,19 +257,138 @@ function buildMermaidRenderId(reactId: string): string {
   return `${MERMAID_RENDER_ID_PREFIX}-${safeId}`;
 }
 
-function clampMermaidScale(scale: number): number {
+function createInitialMermaidDiagramView(): MermaidDiagramView {
+  return { offset: { x: 0, y: 0 }, scale: 1 };
+}
+
+export function clampMermaidScale(scale: number): number {
   return Math.min(
     MERMAID_DIAGRAM_MAX_SCALE,
     Math.max(MERMAID_DIAGRAM_MIN_SCALE, scale),
   );
 }
 
+function getMermaidDiagramPointFromClientPosition({
+  clientX,
+  clientY,
+  container,
+}: GetMermaidDiagramPointFromClientPositionArgs): MermaidDiagramPoint {
+  const containerRect = container.getBoundingClientRect();
+  return {
+    x: clientX - containerRect.left - containerRect.width / 2,
+    y: clientY - containerRect.top - containerRect.height / 2,
+  };
+}
+
+function getMermaidPointDistance({
+  firstPoint,
+  secondPoint,
+}: MermaidPointPairArgs): number {
+  return Math.hypot(firstPoint.x - secondPoint.x, firstPoint.y - secondPoint.y);
+}
+
+function getMermaidPointMidpoint({
+  firstPoint,
+  secondPoint,
+}: MermaidPointPairArgs): MermaidDiagramPoint {
+  return {
+    x: (firstPoint.x + secondPoint.x) / 2,
+    y: (firstPoint.y + secondPoint.y) / 2,
+  };
+}
+
+function getMermaidTouchPair({
+  container,
+  touches,
+}: GetMermaidTouchPairArgs): MermaidDiagramTouchPair | null {
+  const firstTouch = touches.item(0);
+  const secondTouch = touches.item(1);
+
+  if (firstTouch === null || secondTouch === null) {
+    return null;
+  }
+
+  const firstPoint = getMermaidDiagramPointFromClientPosition({
+    clientX: firstTouch.clientX,
+    clientY: firstTouch.clientY,
+    container,
+  });
+  const secondPoint = getMermaidDiagramPointFromClientPosition({
+    clientX: secondTouch.clientX,
+    clientY: secondTouch.clientY,
+    container,
+  });
+
+  return {
+    center: getMermaidPointMidpoint({ firstPoint, secondPoint }),
+    distance: getMermaidPointDistance({ firstPoint, secondPoint }),
+  };
+}
+
+export function getMermaidWheelZoomFactor({
+  deltaMode,
+  deltaY,
+}: GetMermaidWheelZoomFactorArgs): number {
+  const normalizedDeltaY =
+    deltaMode === MERMAID_WHEEL_DELTA_LINE_MODE
+      ? deltaY * MERMAID_WHEEL_LINE_DELTA_PX
+      : deltaMode === MERMAID_WHEEL_DELTA_PAGE_MODE
+        ? deltaY * MERMAID_WHEEL_PAGE_DELTA_PX
+        : deltaY;
+
+  return Math.exp(-normalizedDeltaY * MERMAID_WHEEL_ZOOM_INTENSITY);
+}
+
+export function zoomMermaidDiagramView({
+  focalPoint,
+  nextScale,
+  view,
+}: ZoomMermaidDiagramViewArgs): MermaidDiagramView {
+  const clampedNextScale = clampMermaidScale(nextScale);
+  if (clampedNextScale === view.scale) {
+    return view;
+  }
+
+  const scaleRatio = clampedNextScale / view.scale;
+  return {
+    offset: {
+      x: focalPoint.x - scaleRatio * (focalPoint.x - view.offset.x),
+      y: focalPoint.y - scaleRatio * (focalPoint.y - view.offset.y),
+    },
+    scale: clampedNextScale,
+  };
+}
+
+export function pinchMermaidDiagramView({
+  pinchState,
+  touchPair,
+}: PinchMermaidDiagramViewArgs): MermaidDiagramView {
+  if (pinchState.startDistance <= 0) {
+    return pinchState.startView;
+  }
+
+  const zoomedView = zoomMermaidDiagramView({
+    focalPoint: pinchState.startCenter,
+    nextScale:
+      pinchState.startView.scale *
+      (touchPair.distance / pinchState.startDistance),
+    view: pinchState.startView,
+  });
+
+  return {
+    offset: {
+      x: zoomedView.offset.x + touchPair.center.x - pinchState.startCenter.x,
+      y: zoomedView.offset.y + touchPair.center.y - pinchState.startCenter.y,
+    },
+    scale: zoomedView.scale,
+  };
+}
+
 function createMermaidDialogDiagramStyle({
-  offset,
-  scale,
+  view,
 }: CreateMermaidDialogDiagramStyleArgs): MermaidDialogDiagramStyle {
   return {
-    transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+    transform: `translate(${view.offset.x}px, ${view.offset.y}px) scale(${view.scale})`,
     transformOrigin: "center center",
   };
 }
@@ -237,20 +417,30 @@ function MermaidDiagramDialog({
   open,
   source,
 }: MermaidDiagramDialogProps) {
+  const dialogViewportRef = useRef<HTMLDivElement>(null);
   const dialogDiagramRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState<MermaidDiagramOffset>({ x: 0, y: 0 });
+  const [view, setView] = useState<MermaidDiagramView>(
+    createInitialMermaidDiagramView,
+  );
+  const viewRef = useRef<MermaidDiagramView>(view);
+  const pinchStateRef = useRef<MermaidDiagramPinchState | null>(null);
   const [dragState, setDragState] = useState<MermaidDiagramDragState | null>(
     null,
   );
-  const diagramStyle = createMermaidDialogDiagramStyle({ offset, scale });
+  const diagramStyle = createMermaidDialogDiagramStyle({ view });
   const isDragging = dragState !== null;
 
   useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+
+  useEffect(() => {
     if (!open) {
-      setScale(1);
-      setOffset({ x: 0, y: 0 });
+      const initialView = createInitialMermaidDiagramView();
+      viewRef.current = initialView;
+      setView(initialView);
       setDragState(null);
+      pinchStateRef.current = null;
     }
   }, [open]);
 
@@ -267,26 +457,150 @@ function MermaidDiagramDialog({
     diagram.bindFunctions?.(diagramElement);
   }, [diagram, open]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const viewportElement = dialogViewportRef.current;
+    if (!viewportElement) {
+      return;
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.metaKey && !event.ctrlKey) {
+        return;
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
+      const focalPoint = getMermaidDiagramPointFromClientPosition({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        container: viewportElement,
+      });
+      const zoomFactor = getMermaidWheelZoomFactor({
+        deltaMode: event.deltaMode,
+        deltaY: event.deltaY,
+      });
+
+      setView((currentView) =>
+        zoomMermaidDiagramView({
+          focalPoint,
+          nextScale: currentView.scale * zoomFactor,
+          view: currentView,
+        }),
+      );
+    };
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length < 2) {
+        pinchStateRef.current = null;
+        return;
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
+      const touchPair = getMermaidTouchPair({
+        container: viewportElement,
+        touches: event.touches,
+      });
+      if (touchPair === null) {
+        return;
+      }
+
+      pinchStateRef.current = {
+        startCenter: touchPair.center,
+        startDistance: touchPair.distance,
+        startView: viewRef.current,
+      };
+      setDragState(null);
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const pinchState = pinchStateRef.current;
+      if (pinchState === null || event.touches.length < 2) {
+        return;
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
+      const touchPair = getMermaidTouchPair({
+        container: viewportElement,
+        touches: event.touches,
+      });
+      if (touchPair === null) {
+        return;
+      }
+
+      setView(pinchMermaidDiagramView({ pinchState, touchPair }));
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length < 2) {
+        pinchStateRef.current = null;
+      }
+    };
+
+    viewportElement.addEventListener("wheel", handleWheel, { passive: false });
+    viewportElement.addEventListener("touchstart", handleTouchStart, {
+      passive: false,
+    });
+    viewportElement.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
+    viewportElement.addEventListener("touchend", handleTouchEnd);
+    viewportElement.addEventListener("touchcancel", handleTouchEnd);
+
+    return () => {
+      viewportElement.removeEventListener("wheel", handleWheel);
+      viewportElement.removeEventListener("touchstart", handleTouchStart);
+      viewportElement.removeEventListener("touchmove", handleTouchMove);
+      viewportElement.removeEventListener("touchend", handleTouchEnd);
+      viewportElement.removeEventListener("touchcancel", handleTouchEnd);
+    };
+  }, [open]);
+
   const zoomOut = () => {
-    setScale((currentScale) =>
-      clampMermaidScale(currentScale - MERMAID_DIAGRAM_SCALE_STEP),
+    setView((currentView) =>
+      zoomMermaidDiagramView({
+        focalPoint: MERMAID_DIAGRAM_CENTER_POINT,
+        nextScale: currentView.scale - MERMAID_DIAGRAM_SCALE_STEP,
+        view: currentView,
+      }),
     );
   };
 
   const zoomIn = () => {
-    setScale((currentScale) =>
-      clampMermaidScale(currentScale + MERMAID_DIAGRAM_SCALE_STEP),
+    setView((currentView) =>
+      zoomMermaidDiagramView({
+        focalPoint: MERMAID_DIAGRAM_CENTER_POINT,
+        nextScale: currentView.scale + MERMAID_DIAGRAM_SCALE_STEP,
+        view: currentView,
+      }),
     );
   };
 
   const resetView = () => {
-    setScale(1);
-    setOffset({ x: 0, y: 0 });
+    const initialView = createInitialMermaidDiagramView();
+    viewRef.current = initialView;
+    setView(initialView);
     setDragState(null);
+    pinchStateRef.current = null;
   };
 
   const handlePointerDown: MermaidDiagramPointerHandler = (event) => {
-    if (event.button !== 0) {
+    if (
+      !event.isPrimary ||
+      pinchStateRef.current !== null ||
+      (event.pointerType === "mouse" && event.button !== 0)
+    ) {
       return;
     }
 
@@ -295,7 +609,7 @@ function MermaidDiagramDialog({
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
-      startOffset: offset,
+      startOffset: view.offset,
     });
   };
 
@@ -304,10 +618,13 @@ function MermaidDiagramDialog({
       return;
     }
 
-    setOffset({
-      x: dragState.startOffset.x + event.clientX - dragState.startClientX,
-      y: dragState.startOffset.y + event.clientY - dragState.startClientY,
-    });
+    setView((currentView) => ({
+      offset: {
+        x: dragState.startOffset.x + event.clientX - dragState.startClientX,
+        y: dragState.startOffset.y + event.clientY - dragState.startClientY,
+      },
+      scale: currentView.scale,
+    }));
   };
 
   const handlePointerEnd: MermaidDiagramPointerHandler = (event) => {
@@ -316,12 +633,15 @@ function MermaidDiagramDialog({
     }
 
     setDragState(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[min(84vh,58rem)] w-[min(96vw,88rem)] max-w-none gap-0 overflow-hidden border-border bg-background p-0 shadow-xl">
-        <div className="flex h-full min-h-0 flex-col">
+        <div className="flex h-full min-h-0 w-full flex-col">
           <div className="flex h-11 shrink-0 items-center gap-3 border-b border-border-seam bg-surface-raised pl-4 pr-12">
             <DialogTitle className="text-sm leading-5">
               Mermaid diagram
@@ -367,8 +687,9 @@ function MermaidDiagramDialog({
             </div>
           </div>
           <div
+            ref={dialogViewportRef}
             className={cn(
-              "min-h-0 flex-1 overflow-hidden bg-surface-recessed",
+              "min-h-0 flex-1 touch-none overflow-hidden bg-surface-recessed",
               isDragging ? "cursor-grabbing" : "cursor-grab",
             )}
             onPointerDown={handlePointerDown}
@@ -379,7 +700,7 @@ function MermaidDiagramDialog({
             <div className="flex h-full w-full items-center justify-center p-6">
               <div
                 ref={dialogDiagramRef}
-                className="select-none [&_svg]:h-auto [&_svg]:max-h-none [&_svg]:max-w-none"
+                className="w-full select-none [&_svg]:h-auto [&_svg]:max-h-none [&_svg]:max-w-none [&_svg]:w-full"
                 role="img"
                 aria-label="Mermaid diagram"
                 style={diagramStyle}
@@ -404,11 +725,14 @@ export function MarkdownMermaidDiagram({
     kind: "loading",
   });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [displayMode, setDisplayMode] =
+    useState<MermaidDiagramDisplayMode>("preview");
 
   useEffect(() => {
     let isCurrentRender = true;
 
     setRenderState({ kind: "loading" });
+    setDisplayMode("preview");
     loadMermaid()
       .then((mermaid) => {
         mermaid.initialize(buildMermaidConfig(preferredTheme));
@@ -441,7 +765,7 @@ export function MarkdownMermaidDiagram({
   }, [preferredTheme, renderId, source]);
 
   useEffect(() => {
-    if (renderState.kind !== "rendered") {
+    if (renderState.kind !== "rendered" || displayMode !== "preview") {
       return;
     }
 
@@ -451,7 +775,17 @@ export function MarkdownMermaidDiagram({
     }
 
     renderState.diagram.bindFunctions?.(diagramElement);
-  }, [renderState]);
+  }, [displayMode, renderState]);
+
+  const isRendered = renderState.kind === "rendered";
+  const showRenderedDiagram = isRendered && displayMode === "preview";
+  const showSource =
+    renderState.kind === "source" || (isRendered && displayMode === "source");
+  const toggleDisplayMode = () => {
+    setDisplayMode((currentDisplayMode) =>
+      currentDisplayMode === "preview" ? "source" : "preview",
+    );
+  };
 
   return (
     <MermaidDiagramContainer>
@@ -460,7 +794,29 @@ export function MarkdownMermaidDiagram({
           mermaid
         </span>
         <div className="flex items-center gap-1">
-          {renderState.kind === "rendered" ? (
+          {isRendered ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7 text-muted-foreground"
+              onClick={toggleDisplayMode}
+              aria-label={
+                displayMode === "preview"
+                  ? "Show Mermaid source"
+                  : "Show Mermaid preview"
+              }
+              aria-pressed={displayMode === "source"}
+              title={
+                displayMode === "preview"
+                  ? "Show Mermaid source"
+                  : "Show Mermaid preview"
+              }
+            >
+              <Icon name={displayMode === "preview" ? "Code" : "Eye"} />
+            </Button>
+          ) : null}
+          {isRendered ? (
             <Button
               type="button"
               variant="ghost"
@@ -476,7 +832,7 @@ export function MarkdownMermaidDiagram({
           <CopyButton text={source} label="Copy Mermaid source" />
         </div>
       </div>
-      {renderState.kind === "rendered" ? (
+      {showRenderedDiagram ? (
         <div className="overflow-x-auto px-3 pb-3 pt-2">
           <div
             ref={diagramElementRef}
@@ -492,12 +848,12 @@ export function MarkdownMermaidDiagram({
           Rendering diagram...
         </div>
       ) : null}
-      {renderState.kind === "source" ? (
+      {showSource ? (
         <pre className="overflow-x-auto px-3 pb-3 pt-1">
           <code className="font-mono text-xs language-mermaid">{source}</code>
         </pre>
       ) : null}
-      {renderState.kind === "rendered" ? (
+      {isRendered ? (
         <MermaidDiagramDialog
           diagram={renderState.diagram}
           open={isDialogOpen}
