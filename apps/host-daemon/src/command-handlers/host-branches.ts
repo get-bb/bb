@@ -24,6 +24,11 @@ interface LimitedBranchList {
   truncated: boolean;
 }
 
+interface PinBranchArgs {
+  branches: readonly string[];
+  branch: string | null | undefined;
+}
+
 interface ClassifySelectedBranchArgs {
   branches: readonly string[];
   remoteBranches: readonly string[];
@@ -46,6 +51,14 @@ function limitBranchList({
     branches: filteredBranches.slice(0, limit),
     truncated: filteredBranches.length > limit,
   };
+}
+
+function pinBranch({ branches, branch }: PinBranchArgs): string[] {
+  if (!branch || !branches.includes(branch)) {
+    return [...branches];
+  }
+
+  return [branch, ...branches.filter((candidate) => candidate !== branch)];
 }
 
 function classifySelectedBranch({
@@ -102,19 +115,20 @@ export async function listHostBranches(
       hasUncommittedChanges(command.path),
       getWorkspaceGitOperation(command.path),
     ]);
-  // Pin the source's default branch to the top of the list so the picker
-  // surfaces it first; everything else preserves git's alphabetical order.
-  const sorted =
-    defaultBranch && branches.includes(defaultBranch)
-      ? [defaultBranch, ...branches.filter((b) => b !== defaultBranch)]
-      : branches;
+  // Pin default refs to the first page so common picks like main and
+  // origin/main are available before the user searches.
+  const sorted = pinBranch({ branches, branch: defaultBranch });
+  const sortedRemoteBranches = pinBranch({
+    branches: remoteBranches,
+    branch: defaultBranch ? `origin/${defaultBranch}` : null,
+  });
   const limitedBranches = limitBranchList({
     branches: sorted,
     limit: command.limit,
     query: command.query,
   });
   const limitedRemoteBranches = limitBranchList({
-    branches: remoteBranches,
+    branches: sortedRemoteBranches,
     limit: command.limit,
     query: command.query,
   });
