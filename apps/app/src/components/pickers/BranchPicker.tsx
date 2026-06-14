@@ -311,7 +311,7 @@ function BranchPickerText({
     : {};
   if (label === CREATE_NEW_BRANCH_LABEL) {
     return (
-      <span className={cn("flex min-w-0 items-baseline", className)}>
+      <span className={cn("flex min-w-0 items-baseline gap-1", className)}>
         <span
           className={cn(
             "min-w-0 truncate",
@@ -321,7 +321,7 @@ function BranchPickerText({
           New
         </span>
         <span {...compactAffixProps} className="shrink-0 text-muted-foreground">
-          {" branch"}
+          branch
         </span>
       </span>
     );
