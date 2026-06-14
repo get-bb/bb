@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clampMermaidScale,
+  getMermaidGestureEventData,
   getMermaidWheelZoomFactor,
   pinchMermaidDiagramView,
   shouldHandleMermaidWheelZoom,
@@ -47,6 +48,27 @@ describe("shouldHandleMermaidWheelZoom", () => {
 
   it("ignores wheel events without vertical movement", () => {
     expect(shouldHandleMermaidWheelZoom({ deltaY: 0 })).toBe(false);
+  });
+});
+
+describe("getMermaidGestureEventData", () => {
+  it("reads the nonstandard trackpad gesture event shape", () => {
+    const event = new Event("gesturechange");
+    Object.defineProperty(event, "clientX", { value: 120 });
+    Object.defineProperty(event, "clientY", { value: 80 });
+    Object.defineProperty(event, "scale", { value: 1.4 });
+
+    expect(getMermaidGestureEventData({ event })).toEqual({
+      clientX: 120,
+      clientY: 80,
+      scale: 1.4,
+    });
+  });
+
+  it("ignores regular events", () => {
+    expect(
+      getMermaidGestureEventData({ event: new Event("gesturechange") }),
+    ).toBeNull();
   });
 });
 

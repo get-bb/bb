@@ -102,6 +102,11 @@ interface MermaidDiagramPinchState {
   startView: MermaidDiagramView;
 }
 
+interface MermaidDiagramGestureState {
+  startScale: number;
+  startView: MermaidDiagramView;
+}
+
 interface MermaidDiagramTouchPair {
   center: MermaidDiagramPoint;
   distance: number;
@@ -132,12 +137,23 @@ interface GetMermaidWheelZoomFactorArgs {
   deltaY: number;
 }
 
+interface MermaidGestureEventData {
+  clientX: number;
+  clientY: number;
+  scale: number;
+}
+
+interface GetMermaidGestureEventDataArgs {
+  event: Event;
+}
+
 interface ShouldHandleMermaidWheelZoomArgs {
   deltaY: number;
 }
 
-interface IsMermaidWheelEventWithinViewportArgs {
-  event: WheelEvent;
+interface IsMermaidClientPointWithinViewportArgs {
+  clientX: number;
+  clientY: number;
   viewportElement: HTMLElement;
 }
 
@@ -356,22 +372,44 @@ export function getMermaidWheelZoomFactor({
   );
 }
 
+export function getMermaidGestureEventData({
+  event,
+}: GetMermaidGestureEventDataArgs): MermaidGestureEventData | null {
+  if (
+    !("clientX" in event) ||
+    typeof event.clientX !== "number" ||
+    !("clientY" in event) ||
+    typeof event.clientY !== "number" ||
+    !("scale" in event) ||
+    typeof event.scale !== "number"
+  ) {
+    return null;
+  }
+
+  return {
+    clientX: event.clientX,
+    clientY: event.clientY,
+    scale: event.scale,
+  };
+}
+
 export function shouldHandleMermaidWheelZoom({
   deltaY,
 }: ShouldHandleMermaidWheelZoomArgs): boolean {
   return deltaY !== 0;
 }
 
-function isMermaidWheelEventWithinViewport({
-  event,
+function isMermaidClientPointWithinViewport({
+  clientX,
+  clientY,
   viewportElement,
-}: IsMermaidWheelEventWithinViewportArgs): boolean {
+}: IsMermaidClientPointWithinViewportArgs): boolean {
   const viewportRect = viewportElement.getBoundingClientRect();
   return (
-    event.clientX >= viewportRect.left &&
-    event.clientX <= viewportRect.right &&
-    event.clientY >= viewportRect.top &&
-    event.clientY <= viewportRect.bottom
+    clientX >= viewportRect.left &&
+    clientX <= viewportRect.right &&
+    clientY >= viewportRect.top &&
+    clientY <= viewportRect.bottom
   );
 }
 
@@ -460,6 +498,7 @@ function MermaidDiagramDialog({
   );
   const viewRef = useRef<MermaidDiagramView>(view);
   const pinchStateRef = useRef<MermaidDiagramPinchState | null>(null);
+  const gestureStateRef = useRef<MermaidDiagramGestureState | null>(null);
   const [dragState, setDragState] = useState<MermaidDiagramDragState | null>(
     null,
   );
@@ -477,6 +516,7 @@ function MermaidDiagramDialog({
       setView(initialView);
       setDragState(null);
       pinchStateRef.current = null;
+      gestureStateRef.current = null;
     }
   }, [open]);
 
@@ -505,8 +545,9 @@ function MermaidDiagramDialog({
 
     const handleWheel = (event: WheelEvent) => {
       if (
-        !isMermaidWheelEventWithinViewport({
-          event,
+        !isMermaidClientPointWithinViewport({
+          clientX: event.clientX,
+          clientY: event.clientY,
           viewportElement,
         })
       ) {
@@ -538,6 +579,74 @@ function MermaidDiagramDialog({
           view: currentView,
         }),
       );
+    };
+
+    const handleGestureStart = (event: Event) => {
+      const gestureEventData = getMermaidGestureEventData({ event });
+      if (
+        gestureEventData === null ||
+        gestureEventData.scale <= 0 ||
+        !isMermaidClientPointWithinViewport({
+          clientX: gestureEventData.clientX,
+          clientY: gestureEventData.clientY,
+          viewportElement,
+        })
+      ) {
+        gestureStateRef.current = null;
+        return;
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
+      gestureStateRef.current = {
+        startScale: gestureEventData.scale,
+        startView: viewRef.current,
+      };
+      setDragState(null);
+    };
+
+    const handleGestureChange = (event: Event) => {
+      const gestureState = gestureStateRef.current;
+      const gestureEventData = getMermaidGestureEventData({ event });
+      if (
+        gestureState === null ||
+        gestureEventData === null ||
+        gestureState.startScale <= 0 ||
+        gestureEventData.scale <= 0 ||
+        !isMermaidClientPointWithinViewport({
+          clientX: gestureEventData.clientX,
+          clientY: gestureEventData.clientY,
+          viewportElement,
+        })
+      ) {
+        return;
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
+      const focalPoint = getMermaidDiagramPointFromClientPosition({
+        clientX: gestureEventData.clientX,
+        clientY: gestureEventData.clientY,
+        container: viewportElement,
+      });
+
+      setView(
+        zoomMermaidDiagramView({
+          focalPoint,
+          nextScale:
+            gestureState.startView.scale *
+            (gestureEventData.scale / gestureState.startScale),
+          view: gestureState.startView,
+        }),
+      );
+    };
+
+    const handleGestureEnd = () => {
+      gestureStateRef.current = null;
     };
 
     const handleTouchStart = (event: TouchEvent) => {
@@ -597,6 +706,17 @@ function MermaidDiagramDialog({
       capture: true,
       passive: false,
     });
+    window.addEventListener("gesturestart", handleGestureStart, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("gesturechange", handleGestureChange, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("gestureend", handleGestureEnd, {
+      capture: true,
+    });
     viewportElement.addEventListener("touchstart", handleTouchStart, {
       passive: false,
     });
@@ -608,6 +728,15 @@ function MermaidDiagramDialog({
 
     return () => {
       window.removeEventListener("wheel", handleWheel, { capture: true });
+      window.removeEventListener("gesturestart", handleGestureStart, {
+        capture: true,
+      });
+      window.removeEventListener("gesturechange", handleGestureChange, {
+        capture: true,
+      });
+      window.removeEventListener("gestureend", handleGestureEnd, {
+        capture: true,
+      });
       viewportElement.removeEventListener("touchstart", handleTouchStart);
       viewportElement.removeEventListener("touchmove", handleTouchMove);
       viewportElement.removeEventListener("touchend", handleTouchEnd);
@@ -641,6 +770,7 @@ function MermaidDiagramDialog({
     setView(initialView);
     setDragState(null);
     pinchStateRef.current = null;
+    gestureStateRef.current = null;
   };
 
   const handlePointerDown: MermaidDiagramPointerHandler = (event) => {
