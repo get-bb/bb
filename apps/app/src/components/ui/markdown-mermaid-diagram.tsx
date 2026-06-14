@@ -143,6 +143,10 @@ interface PinchMermaidDiagramViewArgs {
   touchPair: MermaidDiagramTouchPair;
 }
 
+interface PrepareMermaidDialogSvgArgs {
+  container: HTMLElement;
+}
+
 interface MermaidPointPairArgs {
   firstPoint: MermaidDiagramPoint;
   secondPoint: MermaidDiagramPoint;
@@ -393,6 +397,18 @@ function createMermaidDialogDiagramStyle({
   };
 }
 
+function prepareMermaidDialogSvg({
+  container,
+}: PrepareMermaidDialogSvgArgs): void {
+  const svgElement = container.querySelector("svg");
+  if (!(svgElement instanceof SVGSVGElement)) {
+    return;
+  }
+
+  svgElement.style.maxWidth = "none";
+  svgElement.setAttribute("preserveAspectRatio", "xMidYMid meet");
+}
+
 function MermaidDiagramContainer({
   children,
   className,
@@ -454,6 +470,7 @@ function MermaidDiagramDialog({
       return;
     }
 
+    prepareMermaidDialogSvg({ container: diagramElement });
     diagram.bindFunctions?.(diagramElement);
   }, [diagram, open]);
 
@@ -700,7 +717,7 @@ function MermaidDiagramDialog({
           <div className="flex h-full w-full items-center justify-center p-6">
             <div
               ref={dialogDiagramRef}
-              className="h-full w-full select-none [&_svg]:block [&_svg]:h-full [&_svg]:max-h-none [&_svg]:max-w-none [&_svg]:w-full"
+              className="h-full w-full select-none [&_svg]:block [&_svg]:h-full [&_svg]:max-h-none [&_svg]:w-full"
               role="img"
               aria-label="Mermaid diagram"
               style={diagramStyle}
