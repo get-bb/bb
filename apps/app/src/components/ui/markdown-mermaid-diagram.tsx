@@ -136,6 +136,11 @@ interface ShouldHandleMermaidWheelZoomArgs {
   deltaY: number;
 }
 
+interface IsMermaidWheelEventWithinViewportArgs {
+  event: WheelEvent;
+  viewportElement: HTMLElement;
+}
+
 interface ZoomMermaidDiagramViewArgs {
   focalPoint: MermaidDiagramPoint;
   nextScale: number;
@@ -357,6 +362,19 @@ export function shouldHandleMermaidWheelZoom({
   return deltaY !== 0;
 }
 
+function isMermaidWheelEventWithinViewport({
+  event,
+  viewportElement,
+}: IsMermaidWheelEventWithinViewportArgs): boolean {
+  const viewportRect = viewportElement.getBoundingClientRect();
+  return (
+    event.clientX >= viewportRect.left &&
+    event.clientX <= viewportRect.right &&
+    event.clientY >= viewportRect.top &&
+    event.clientY <= viewportRect.bottom
+  );
+}
+
 export function zoomMermaidDiagramView({
   focalPoint,
   nextScale,
@@ -486,6 +504,15 @@ function MermaidDiagramDialog({
     }
 
     const handleWheel = (event: WheelEvent) => {
+      if (
+        !isMermaidWheelEventWithinViewport({
+          event,
+          viewportElement,
+        })
+      ) {
+        return;
+      }
+
       if (!shouldHandleMermaidWheelZoom({ deltaY: event.deltaY })) {
         return;
       }
@@ -566,7 +593,10 @@ function MermaidDiagramDialog({
       }
     };
 
-    viewportElement.addEventListener("wheel", handleWheel, { passive: false });
+    window.addEventListener("wheel", handleWheel, {
+      capture: true,
+      passive: false,
+    });
     viewportElement.addEventListener("touchstart", handleTouchStart, {
       passive: false,
     });
@@ -577,7 +607,7 @@ function MermaidDiagramDialog({
     viewportElement.addEventListener("touchcancel", handleTouchEnd);
 
     return () => {
-      viewportElement.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("wheel", handleWheel, { capture: true });
       viewportElement.removeEventListener("touchstart", handleTouchStart);
       viewportElement.removeEventListener("touchmove", handleTouchMove);
       viewportElement.removeEventListener("touchend", handleTouchEnd);
