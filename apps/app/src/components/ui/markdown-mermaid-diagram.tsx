@@ -132,6 +132,10 @@ interface GetMermaidWheelZoomFactorArgs {
   deltaY: number;
 }
 
+interface ShouldHandleMermaidWheelZoomArgs {
+  deltaY: number;
+}
+
 interface ZoomMermaidDiagramViewArgs {
   focalPoint: MermaidDiagramPoint;
   nextScale: number;
@@ -167,7 +171,9 @@ const MERMAID_WHEEL_DELTA_LINE_MODE = 1;
 const MERMAID_WHEEL_DELTA_PAGE_MODE = 2;
 const MERMAID_WHEEL_LINE_DELTA_PX = 16;
 const MERMAID_WHEEL_PAGE_DELTA_PX = 800;
-const MERMAID_WHEEL_ZOOM_INTENSITY = 0.002;
+const MERMAID_WHEEL_ZOOM_INTENSITY = 0.01;
+const MERMAID_WHEEL_MIN_ZOOM_FACTOR = 0.82;
+const MERMAID_WHEEL_MAX_ZOOM_FACTOR = 1.22;
 const MERMAID_DIAGRAM_CENTER_POINT: MermaidDiagramPoint = { x: 0, y: 0 };
 
 const MERMAID_LIGHT_PALETTE: MermaidThemePalette = {
@@ -336,7 +342,19 @@ export function getMermaidWheelZoomFactor({
         ? deltaY * MERMAID_WHEEL_PAGE_DELTA_PX
         : deltaY;
 
-  return Math.exp(-normalizedDeltaY * MERMAID_WHEEL_ZOOM_INTENSITY);
+  return Math.min(
+    MERMAID_WHEEL_MAX_ZOOM_FACTOR,
+    Math.max(
+      MERMAID_WHEEL_MIN_ZOOM_FACTOR,
+      Math.exp(-normalizedDeltaY * MERMAID_WHEEL_ZOOM_INTENSITY),
+    ),
+  );
+}
+
+export function shouldHandleMermaidWheelZoom({
+  deltaY,
+}: ShouldHandleMermaidWheelZoomArgs): boolean {
+  return deltaY !== 0;
 }
 
 export function zoomMermaidDiagramView({
@@ -468,7 +486,7 @@ function MermaidDiagramDialog({
     }
 
     const handleWheel = (event: WheelEvent) => {
-      if (!event.metaKey && !event.ctrlKey) {
+      if (!shouldHandleMermaidWheelZoom({ deltaY: event.deltaY })) {
         return;
       }
 

@@ -3,6 +3,7 @@ import {
   clampMermaidScale,
   getMermaidWheelZoomFactor,
   pinchMermaidDiagramView,
+  shouldHandleMermaidWheelZoom,
   zoomMermaidDiagramView,
 } from "./markdown-mermaid-diagram";
 
@@ -26,8 +27,26 @@ describe("getMermaidWheelZoomFactor", () => {
 
   it("normalizes line-mode wheel deltas before computing the factor", () => {
     expect(getMermaidWheelZoomFactor({ deltaMode: 1, deltaY: 1 })).toBeCloseTo(
-      Math.exp(-16 * 0.002),
+      Math.exp(-16 * 0.01),
     );
+  });
+
+  it("caps large wheel deltas so mouse wheels do not jump too far", () => {
+    expect(getMermaidWheelZoomFactor({ deltaMode: 0, deltaY: -100 })).toBe(
+      1.22,
+    );
+    expect(getMermaidWheelZoomFactor({ deltaMode: 0, deltaY: 100 })).toBe(0.82);
+  });
+});
+
+describe("shouldHandleMermaidWheelZoom", () => {
+  it("handles vertical wheel input without requiring keyboard modifiers", () => {
+    expect(shouldHandleMermaidWheelZoom({ deltaY: 1 })).toBe(true);
+    expect(shouldHandleMermaidWheelZoom({ deltaY: -1 })).toBe(true);
+  });
+
+  it("ignores wheel events without vertical movement", () => {
+    expect(shouldHandleMermaidWheelZoom({ deltaY: 0 })).toBe(false);
   });
 });
 
