@@ -444,12 +444,6 @@ export function RootComposeView() {
     activeBranchesQuery.data?.selectedBranch,
     branchEnvironmentMode,
   ]);
-  const branchOptionsTruncated = Boolean(
-    activeBranchesQuery.data?.branchesTruncated ||
-    ((branchEnvironmentMode === "local" ||
-      branchEnvironmentMode === "worktree") &&
-      activeBranchesQuery.data?.remoteBranchesTruncated),
-  );
   const branchSelectionSeed =
     branchEnvironmentMode === "local" &&
     activeBranchesQuery.data?.checkout.kind === "branch"
@@ -820,7 +814,6 @@ export function RootComposeView() {
       isNew: selectedBranch?.isNew ?? false,
       options: branchOptions,
       remoteOptions: remoteBranchOptions,
-      optionsTruncated: branchOptionsTruncated,
       loading: activeBranchesQuery.isFetching,
       placeholder: branchUiState.placeholder,
       triggerLabel: branchUiState.triggerLabel,
@@ -846,7 +839,6 @@ export function RootComposeView() {
     }),
     [
       activeBranchesQuery.isFetching,
-      branchOptionsTruncated,
       branchOptions,
       branchEnvironmentMode,
       remoteBranchOptions,

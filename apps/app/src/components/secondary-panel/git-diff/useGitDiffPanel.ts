@@ -73,11 +73,6 @@ export function useGitDiffPanel({
       ? [selectedMergeBaseBranchRef.name, ...mergeBaseRemoteBranchList]
       : mergeBaseRemoteBranchList;
   }, [mergeBaseRemoteBranchList, selectedMergeBaseBranchRef]);
-  const mergeBaseBranchOptionsTruncated = Boolean(
-    mergeBaseBranches?.branchesTruncated ||
-    mergeBaseBranches?.remoteBranchesTruncated,
-  );
-
   useEffect(() => {
     setSelectedMergeBaseBranch(undefined);
     setMergeBaseBranchSearchQuery("");
@@ -121,7 +116,6 @@ export function useGitDiffPanel({
     defaultMergeBaseBranch,
     isLoadingMergeBaseBranchOptions,
     mergeBaseBranchOptions,
-    mergeBaseBranchOptionsTruncated,
     mergeBaseRemoteBranchOptions,
     openCommitDiff,
     openDiffFile,

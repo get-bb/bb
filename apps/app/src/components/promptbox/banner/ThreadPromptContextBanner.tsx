@@ -28,7 +28,6 @@ export interface ContextBannerMergeBaseConfig {
   branchRef?: GitBranchRefClassification | null;
   options?: readonly string[];
   remoteOptions?: readonly string[];
-  optionsTruncated?: boolean;
   optionsLoading?: boolean;
   onChange: (branch: string) => void;
   onPickerOpenChange?: (open: boolean) => void;
@@ -657,7 +656,6 @@ export function ThreadPromptContextBanner({
               options={mergeBaseCandidates.options}
               remoteOptions={mergeBaseCandidates.remoteOptions}
               selectedOptionKind={mergeBaseCandidates.selectedOptionKind}
-              optionsTruncated={gitSection.mergeBase.optionsTruncated}
               variant="minimal"
               loading={gitSection.mergeBase.optionsLoading}
               onChange={gitSection.mergeBase.onChange}

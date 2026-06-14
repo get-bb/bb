@@ -64,7 +64,6 @@ export interface NewThreadBranchConfig {
   isNew: boolean;
   options: readonly string[];
   remoteOptions?: readonly string[];
-  optionsTruncated?: boolean;
   loading?: boolean;
   placeholder?: string;
   triggerLabel?: string;
@@ -302,7 +301,6 @@ function ThreadEnvSlot({ environment, branch, worktree }: ThreadEnvSlotProps) {
           isCreatingNew={branch.isNew}
           options={branch.options}
           remoteOptions={branch.remoteOptions}
-          optionsTruncated={branch.optionsTruncated}
           loading={branch.loading}
           placeholder={branch.placeholder}
           triggerLabel={branch.triggerLabel}
@@ -349,7 +347,6 @@ export interface NewThreadConnectedBranchConfig {
   isNew: boolean;
   options: readonly string[];
   remoteOptions?: readonly string[];
-  optionsTruncated?: boolean;
   loading?: boolean;
   placeholder?: string;
   triggerLabel?: string;
@@ -436,7 +433,6 @@ function ConnectedThreadModeBranch({
       isNew: allowCreate && branch.isNew,
       options: branch.options,
       remoteOptions: branch.remoteOptions,
-      optionsTruncated: branch.optionsTruncated,
       loading: branch.loading,
       placeholder: branch.placeholder,
       triggerLabel: branch.triggerLabel,

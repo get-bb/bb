@@ -597,7 +597,6 @@ export function ThreadDetailView() {
     defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
     isLoadingMergeBaseBranchOptions,
     mergeBaseBranchOptions,
-    mergeBaseBranchOptionsTruncated,
     mergeBaseRemoteBranchOptions,
     openCommitDiff: openPersistedCommitDiff,
     openDiffFile: openPersistedDiffFile,
@@ -1487,7 +1486,6 @@ export function ThreadDetailView() {
               branchRef: selectedMergeBaseBranchRef,
               options: mergeBaseBranchOptions,
               remoteOptions: mergeBaseRemoteBranchOptions,
-              optionsTruncated: mergeBaseBranchOptionsTruncated,
               optionsLoading: isLoadingMergeBaseBranchOptions,
               onChange: handleMergeBaseBranchChange,
               onPickerOpenChange: handleMergeBasePickerOpenChange,
@@ -1595,7 +1593,6 @@ export function ThreadDetailView() {
           selectedMergeBaseBranch,
           mergeBaseBranchRef: selectedMergeBaseBranchRef,
           mergeBaseBranchOptions,
-          mergeBaseBranchOptionsTruncated,
           mergeBaseRemoteBranchOptions,
           isLoadingMergeBaseBranchOptions,
           threadSchedules,
@@ -1676,7 +1673,6 @@ export function ThreadDetailView() {
           showMergeBaseDetails={showBranchComparisonUi}
           mergeBaseBranch={effectiveMergeBaseBranch}
           mergeBaseBranchOptions={mergeBaseBranchOptions}
-          mergeBaseBranchOptionsTruncated={mergeBaseBranchOptionsTruncated}
           mergeBaseBranchRef={selectedMergeBaseBranchRef}
           mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
           mergeBaseBranchOptionsLoading={isLoadingMergeBaseBranchOptions}

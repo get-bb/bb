@@ -654,7 +654,6 @@ export interface BranchPickerProps {
   onClear?: () => void;
   onCreateBaseChange?: (branch: string) => void;
   onSearchQueryChange?: (query: string) => void;
-  optionsTruncated?: boolean;
   /** When provided, branch-changing choices are disabled with this reason. */
   optionDisabledReason?: string | null;
   optionDisabledTitle?: string;
@@ -704,7 +703,6 @@ export function BranchPicker({
   onClear,
   onCreateBaseChange,
   onSearchQueryChange,
-  optionsTruncated = false,
   optionDisabledReason,
   optionDisabledTitle,
   createDisabledReason,
@@ -1143,11 +1141,6 @@ export function BranchPicker({
                           ) : null}
                         </>
                       )}
-                      {optionsTruncated ? (
-                        <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                          Search to narrow branch results.
-                        </p>
-                      ) : null}
                     </>
                   )}
                 </>
@@ -1229,11 +1222,6 @@ export function BranchPicker({
                           {loading
                             ? "Loading branches..."
                             : "No branches found."}
-                        </p>
-                      ) : null}
-                      {optionsTruncated ? (
-                        <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                          Search to narrow branch results.
                         </p>
                       ) : null}
                     </>

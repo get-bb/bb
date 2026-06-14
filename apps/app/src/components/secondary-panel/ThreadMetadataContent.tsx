@@ -426,7 +426,6 @@ export interface MergeBaseRowProps {
   selectedMergeBaseBranch: string | undefined;
   mergeBaseBranchRef?: GitBranchRefClassification | null;
   mergeBaseBranchOptions: readonly string[] | undefined;
-  mergeBaseBranchOptionsTruncated?: boolean;
   mergeBaseRemoteBranchOptions?: readonly string[];
   isLoadingMergeBaseBranchOptions: boolean;
   onMergeBaseBranchChange: (branch: string) => void;
@@ -442,7 +441,6 @@ export function MergeBaseRow({
   selectedMergeBaseBranch,
   mergeBaseBranchRef,
   mergeBaseBranchOptions,
-  mergeBaseBranchOptionsTruncated,
   mergeBaseRemoteBranchOptions,
   isLoadingMergeBaseBranchOptions,
   onMergeBaseBranchChange,
@@ -506,7 +504,6 @@ export function MergeBaseRow({
           options={mergeBaseCandidates}
           remoteOptions={remoteMergeBaseCandidates}
           selectedOptionKind={mergeBaseCandidateGroups.selectedOptionKind}
-          optionsTruncated={mergeBaseBranchOptionsTruncated}
           variant="minimal"
           loading={
             isLoadingMergeBaseBranchOptions || canRequestMergeBaseOptions
@@ -824,7 +821,6 @@ export interface ThreadMetadataContentProps {
   selectedMergeBaseBranch: string | undefined;
   mergeBaseBranchRef?: GitBranchRefClassification | null;
   mergeBaseBranchOptions: readonly string[] | undefined;
-  mergeBaseBranchOptionsTruncated?: boolean;
   mergeBaseRemoteBranchOptions?: readonly string[];
   isLoadingMergeBaseBranchOptions: boolean;
   threadSchedules: readonly ThreadSchedule[];
@@ -931,7 +927,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     selectedMergeBaseBranch,
     mergeBaseBranchRef,
     mergeBaseBranchOptions,
-    mergeBaseBranchOptionsTruncated,
     mergeBaseRemoteBranchOptions,
     isLoadingMergeBaseBranchOptions,
     threadSchedules,
@@ -970,7 +965,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         selectedMergeBaseBranch={selectedMergeBaseBranch}
         mergeBaseBranchRef={mergeBaseBranchRef}
         mergeBaseBranchOptions={mergeBaseBranchOptions}
-        mergeBaseBranchOptionsTruncated={mergeBaseBranchOptionsTruncated}
         mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
         isLoadingMergeBaseBranchOptions={isLoadingMergeBaseBranchOptions}
         onMergeBaseBranchChange={onMergeBaseBranchChange}

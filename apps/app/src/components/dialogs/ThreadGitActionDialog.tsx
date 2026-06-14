@@ -40,7 +40,6 @@ interface ThreadGitActionDialogProps {
   mergeBaseBranch?: string;
   mergeBaseBranchRef?: GitBranchRefClassification | null;
   mergeBaseBranchOptions?: string[];
-  mergeBaseBranchOptionsTruncated?: boolean;
   mergeBaseRemoteBranchOptions?: readonly string[];
   mergeBaseBranchOptionsLoading?: boolean;
   onMergeBaseBranchChange?: (branch: string) => void;
@@ -91,7 +90,6 @@ export function ThreadGitActionDialog({
   mergeBaseBranch,
   mergeBaseBranchRef,
   mergeBaseBranchOptions,
-  mergeBaseBranchOptionsTruncated,
   mergeBaseRemoteBranchOptions,
   mergeBaseBranchOptionsLoading = false,
   onMergeBaseBranchChange,
@@ -124,7 +122,6 @@ export function ThreadGitActionDialog({
             mergeBaseBranch={mergeBaseBranch}
             mergeBaseBranchRef={mergeBaseBranchRef}
             mergeBaseBranchOptions={mergeBaseBranchOptions}
-            mergeBaseBranchOptionsTruncated={mergeBaseBranchOptionsTruncated}
             mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
             mergeBaseBranchOptionsLoading={mergeBaseBranchOptionsLoading}
             onMergeBaseBranchChange={onMergeBaseBranchChange}
@@ -157,7 +154,6 @@ export function ThreadGitActionDialogContent({
   mergeBaseBranch,
   mergeBaseBranchRef,
   mergeBaseBranchOptions,
-  mergeBaseBranchOptionsTruncated,
   mergeBaseRemoteBranchOptions,
   mergeBaseBranchOptionsLoading,
   onMergeBaseBranchChange,
@@ -355,7 +351,6 @@ export function ThreadGitActionDialogContent({
                     selectedOptionKind={
                       mergeBaseCandidateGroups.selectedOptionKind
                     }
-                    optionsTruncated={mergeBaseBranchOptionsTruncated}
                     loading={mergeBaseBranchOptionsLoading}
                     onChange={(branch) => onMergeBaseBranchChange?.(branch)}
                     onSearchQueryChange={onMergeBaseBranchSearchQueryChange}
