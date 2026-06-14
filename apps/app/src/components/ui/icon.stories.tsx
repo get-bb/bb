@@ -33,7 +33,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   CircleX: "Auth callback failure state",
   Clock:
     "Automations nav button in sidebar, automation rows in Automations view",
-  Code: "Right-panel source file visual",
+  Code: "Right-panel source file visual, Mermaid source toggle",
   Columns2: "Git diff toolbar “split view”",
   Container: "Container icon",
   Copy: "CopyButton, metadata-value copy buttons",
@@ -42,7 +42,6 @@ const USAGE: Partial<Record<IconName, string>> = {
     "Queued message indicator, steer/edit request label marker in conversation",
   Edit: "Rename project, edit queued message, edit project source",
   ExternalLink: "FilePathLink external indicator",
-  Eye: "Show rendered Mermaid preview from source mode",
   File: "Right-panel markdown/doc file visual, Open file action",
   FileDiff: "Right panel diff tab, thread changes banner section",
   FileQuestion: "FilePreview empty state (passed via local iconName variable)",

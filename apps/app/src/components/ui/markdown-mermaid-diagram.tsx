@@ -801,19 +801,11 @@ export function MarkdownMermaidDiagram({
               size="icon"
               className="size-7 text-muted-foreground"
               onClick={toggleDisplayMode}
-              aria-label={
-                displayMode === "preview"
-                  ? "Show Mermaid source"
-                  : "Show Mermaid preview"
-              }
+              aria-label="Show Mermaid source"
               aria-pressed={displayMode === "source"}
-              title={
-                displayMode === "preview"
-                  ? "Show Mermaid source"
-                  : "Show Mermaid preview"
-              }
+              title="Show Mermaid source"
             >
-              <Icon name={displayMode === "preview" ? "Code" : "Eye"} />
+              <Icon name="Code" />
             </Button>
           ) : null}
           {isRendered ? (
