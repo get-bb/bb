@@ -187,16 +187,13 @@ describe("environments", () => {
 
     expect(requested).toMatchObject({
       cleanupRequestedAt: 123,
-      cleanupMode: "safe",
     });
     expect(requestedAgain).toMatchObject({
       cleanupRequestedAt: 123,
-      cleanupMode: "safe",
       updatedAt: requested?.updatedAt,
     });
     expect(cleared).toMatchObject({
       cleanupRequestedAt: null,
-      cleanupMode: null,
     });
     expect(notifier.notifyEnvironment).toHaveBeenNthCalledWith(
       1,

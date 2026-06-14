@@ -126,7 +126,6 @@ describe("applyEnvironmentLifecycleEvent", () => {
     const { db, seedEnvironment } = setup();
     const spy = spyNotifier();
     const environment = seedEnvironment({
-      cleanupMode: "safe",
       cleanupRequestedAt: 1_000,
       path: "/tmp/destroy-failed",
       status: "destroying",
@@ -167,7 +166,6 @@ describe("applyEnvironmentLifecycleEvent", () => {
   it("no-ops the second of two sequential destroy settlements once the first applied", () => {
     const { db, seedEnvironment } = setup();
     const environment = seedEnvironment({
-      cleanupMode: "safe",
       cleanupRequestedAt: 1_000,
       path: "/tmp/double-destroy",
       status: "destroying",
@@ -220,7 +218,6 @@ describe("applyEnvironmentLifecycleEvent", () => {
   it("stamps destroyAttemptId on dispatch and refuses while live threads exist", () => {
     const { db, project, seedEnvironment } = setup();
     const environment = seedEnvironment({
-      cleanupMode: "safe",
       cleanupRequestedAt: 1_000,
       managed: true,
       path: "/tmp/destroy-claim",
@@ -268,7 +265,6 @@ describe("applyEnvironmentLifecycleEvent", () => {
     const { db, seedEnvironment } = setup();
     const spy = spyNotifier();
     const environment = seedEnvironment({
-      cleanupMode: "safe",
       cleanupRequestedAt: 1_000,
       managed: true,
       path: "/tmp/destroyed-clears",
@@ -286,7 +282,6 @@ describe("applyEnvironmentLifecycleEvent", () => {
 
     expect(outcome.applied).toBe(true);
     expect(getEnvironment(db, environment.id)).toMatchObject({
-      cleanupMode: null,
       cleanupRequestedAt: null,
       destroyAttemptId: null,
       status: "destroyed",
@@ -300,7 +295,6 @@ describe("applyEnvironmentLifecycleEvent", () => {
   it("restores the settled state and clears the attempt on a matching destroy failure", () => {
     const { db, seedEnvironment } = setup();
     const environment = seedEnvironment({
-      cleanupMode: "safe",
       cleanupRequestedAt: 1_000,
       managed: true,
       path: "/tmp/destroy-restore",
@@ -319,7 +313,6 @@ describe("applyEnvironmentLifecycleEvent", () => {
     expect(outcome.applied).toBe(true);
     expect(getEnvironment(db, environment.id)).toMatchObject({
       // Cleanup intent survives so the sweep can retry the destroy.
-      cleanupMode: "safe",
       cleanupRequestedAt: 1_000,
       destroyAttemptId: null,
       status: "ready",

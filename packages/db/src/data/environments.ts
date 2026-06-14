@@ -2,7 +2,6 @@ import { and, eq, inArray, ne, sql, lt, isNotNull } from "drizzle-orm";
 import type {
   DiscoveredWorkspaceProperties,
   EnvironmentChangeKind,
-  EnvironmentCleanupMode,
   EnvironmentLifecycleEvent,
   EnvironmentLifecycleNoopReason,
   EnvironmentStatus,
@@ -19,7 +18,6 @@ type EnvironmentWriteConnection = DbConnection | DbTransaction;
 type EnvironmentRow = typeof environments.$inferSelect;
 
 export interface CreateEnvironmentInput {
-  cleanupMode?: EnvironmentCleanupMode | null;
   cleanupRequestedAt?: number | null;
   name?: string | null;
   projectId: string;
@@ -59,7 +57,6 @@ export function createEnvironment(
       defaultBranch: input.defaultBranch ?? null,
       mergeBaseBranch: input.mergeBaseBranch ?? null,
       cleanupRequestedAt: input.cleanupRequestedAt ?? null,
-      cleanupMode: input.cleanupMode ?? null,
       workspaceProvisionType: input.workspaceProvisionType,
       status: input.status ?? "provisioning",
       createdAt: now,
@@ -129,7 +126,6 @@ interface EnvironmentMetadataUpdateColumns {
 }
 
 interface EnvironmentCleanupUpdateColumns {
-  cleanupMode: EnvironmentCleanupMode | null;
   cleanupRequestedAt: number | null;
 }
 
@@ -224,10 +220,7 @@ function environmentMetadataChanged(
 }
 
 function environmentCleanupChanged(args: EnvironmentCleanupChangeArgs): boolean {
-  return (
-    args.updated.cleanupRequestedAt !== args.existing.cleanupRequestedAt ||
-    args.updated.cleanupMode !== args.existing.cleanupMode
-  );
+  return args.updated.cleanupRequestedAt !== args.existing.cleanupRequestedAt;
 }
 
 function updateEnvironmentMetadataRecord(
@@ -334,17 +327,13 @@ export function recordEnvironmentCleanupRequest(
     return null;
   }
 
-  if (
-    existing.cleanupRequestedAt !== null &&
-    existing.cleanupMode === "safe"
-  ) {
+  if (existing.cleanupRequestedAt !== null) {
     return existing;
   }
 
   return updateEnvironmentCleanupRecord(db, notifier, id, {
     cleanupRequestedAt:
       existing.cleanupRequestedAt ?? input.requestedAt ?? Date.now(),
-    cleanupMode: "safe",
   });
 }
 
@@ -355,7 +344,6 @@ export function clearEnvironmentCleanupRequestRecord(
 ) {
   return updateEnvironmentCleanupRecord(db, notifier, id, {
     cleanupRequestedAt: null,
-    cleanupMode: null,
   });
 }
 
@@ -478,7 +466,6 @@ function applyEnvironmentLifecycleEventRecord(
   }
   if (evaluation.to === "destroyed") {
     set.cleanupRequestedAt = null;
-    set.cleanupMode = null;
     set.destroyAttemptId = null;
   }
 
@@ -522,10 +509,7 @@ function applyEnvironmentLifecycleEventRecord(
   }
 
   const changes: EnvironmentChangeKind[] = ["status-changed"];
-  if (
-    updated.cleanupRequestedAt !== environment.cleanupRequestedAt ||
-    updated.cleanupMode !== environment.cleanupMode
-  ) {
+  if (updated.cleanupRequestedAt !== environment.cleanupRequestedAt) {
     changes.push("metadata-changed");
   }
   return { applied: true, changes, environment: updated };

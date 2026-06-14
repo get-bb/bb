@@ -380,7 +380,6 @@ export function makeEnvironment(
     defaultBranch: BRANCH_NAMES.default,
     mergeBaseBranch: null,
     cleanupRequestedAt: null,
-    cleanupMode: null,
     status: "ready",
     createdAt: 0,
     updatedAt: 100,

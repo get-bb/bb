@@ -1,0 +1,1 @@
+ALTER TABLE `environments` DROP COLUMN `cleanup_mode`;

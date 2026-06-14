@@ -269,6 +269,17 @@ function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
     .run();
 }
 
+/**
+ * cleanup_mode existed since the baseline and is dropped by 0030, so a forward
+ * replay from before 0030 must first restore it for 0030's DROP COLUMN to apply
+ * — the mirror of the post-ADD-COLUMN drops above.
+ */
+function restoreEnvironmentCleanupModeColumn(db: DbConnection): void {
+  db.$client
+    .prepare("ALTER TABLE environments ADD COLUMN cleanup_mode text")
+    .run();
+}
+
 function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
   db.$client
     .prepare("ALTER TABLE queued_thread_messages DROP COLUMN sender_thread_id")
@@ -952,6 +963,7 @@ describe("migrate", () => {
         )
         .run(threadTypeRemovalMigrationWhen);
       dropPost0023Tables(db);
+      restoreEnvironmentCleanupModeColumn(db);
 
       migrate(db);
 
@@ -2132,6 +2144,7 @@ describe("migrate", () => {
         .run("main-0001-hash", publishedTerminalSessionUserInputWhen);
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
+      restoreEnvironmentCleanupModeColumn(db);
       dropPost0023Tables(db);
 
       expect(
@@ -2399,6 +2412,7 @@ describe("migrate", () => {
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
       dropQueuedMessageSenderThreadIdColumn(db);
+      restoreEnvironmentCleanupModeColumn(db);
       dropPost0023Tables(db);
       db.$client
         .prepare(
@@ -2593,6 +2607,7 @@ describe("migrate", () => {
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
       dropQueuedMessageSenderThreadIdColumn(db);
+      restoreEnvironmentCleanupModeColumn(db);
       dropPost0023Tables(db);
 
       migrate(db);

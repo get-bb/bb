@@ -232,6 +232,13 @@
       "when": 1781557200000,
       "tag": "0032_restore_event_large_values",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1781557300000,
+      "tag": "0033_drop_cleanup_mode",
+      "breakpoints": true
     }
   ]
 }

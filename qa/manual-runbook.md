@@ -426,7 +426,7 @@ bb thread archive "$DIRTY_ARCHIVE_THREAD_ID"
 
 curl -fsS "$BB_SERVER_URL/api/v1/threads/$DIRTY_ARCHIVE_THREAD_ID" | jq -e '.archivedAt != null'
 curl -fsS "$BB_SERVER_URL/api/v1/environments/$DIRTY_ARCHIVE_ENV_ID" \
-  | jq -e '.cleanupMode == "safe" and (.cleanupRequestedAt | type == "number") and .status == "ready"'
+  | jq -e '(.cleanupRequestedAt | type == "number") and .status == "ready"'
 test -d "$DIRTY_ARCHIVE_ENV_PATH"
 test -f "$DIRTY_ARCHIVE_ENV_PATH/dirty-archive.txt"
 ```

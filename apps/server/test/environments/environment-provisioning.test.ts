@@ -671,7 +671,6 @@ describe("environment reprovisioning", () => {
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         status: "error",
         cleanupRequestedAt: expect.any(Number),
-        cleanupMode: "safe",
       });
       for (const threadId of [firstThread.id, secondThread.id]) {
         const events = listEvents(harness.db, { threadId });
@@ -703,7 +702,6 @@ describe("environment reprovisioning", () => {
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         status: "error",
         cleanupRequestedAt: expect.any(Number),
-        cleanupMode: "safe",
       });
     });
   });

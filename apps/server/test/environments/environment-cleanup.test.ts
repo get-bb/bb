@@ -61,7 +61,7 @@ describe("environment cleanup", () => {
 
       expect(result).toBe("in_progress");
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        cleanupMode: "safe",
+        cleanupRequestedAt: expect.any(Number),
         status: "destroying",
       });
     });

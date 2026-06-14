@@ -24,7 +24,7 @@
  * | 9 | claimEnvironmentDestroy (:498) via advanceEnvironmentCleanup (:483) | ready → destroying | destroy.dispatched | SQL: managed, cleanupRequestedAt NOT NULL, path NOT NULL, no live threads, no stop-requested threads (cross-table NOT EXISTS stay in the db writer's CAS); stamps destroyAttemptId |
  * | 10 | restoreEnvironmentAfterDestroyAttemptFailure (:541) via destroy settle failure (:255) | destroying → ready\|error by path | destroy.failed | caller + SQL: status === destroying, destroyAttemptId match (→ matchingDestroyAttempt); clears destroyAttemptId |
  * | 11 | setEnvironmentRecordDestroyed (:456) via destroy settle ok (:273) | destroying → destroyed | destroy.succeeded | caller: status === destroying; status === destroyed proceeds without a write (idempotent re-settlement routing, stays caller-side); clears cleanup fields + destroyAttemptId |
- * | 12 | setEnvironmentRecordDestroyed via advanceEnvironmentCleanup pathless branch (:448) | ready/error/destroying → destroyed | cleanup.completed | managed; destroy requested (cleanupMode set or status destroying); no live threads; no pending shutdown; path NULL; status !== provisioning/destroyed |
+ * | 12 | setEnvironmentRecordDestroyed via advanceEnvironmentCleanup pathless branch (:448) | ready/error/destroying → destroyed | cleanup.completed | managed; destroy requested (cleanupRequestedAt set or status destroying); no live threads; no pending shutdown; path NULL; status !== provisioning/destroyed |
  * | 13 | recoverStaleDestroyingEnvironmentCleanup (:580) | destroying → ready (path) / destroyed (no path) | destroy.lost | SQL: managed, status destroying, cleanupRequestedAt NOT NULL, stale updatedAt (staleness selection stays a sweep read); clears destroyAttemptId |
  * | 14 | claimManagedEnvironmentReprovisionRecord (:640) | any-non-provisioning → provisioning | — | DEAD CODE: no production callers; deleted |
  *
@@ -77,7 +77,7 @@
  *   provision.requested from destroying — leaves the stale destroyAttemptId
  *     in place; kept as observed.
  *
- * Supersession/intent columns: cleanupRequestedAt + cleanupMode (destroy
+ * Supersession/intent columns: cleanupRequestedAt (destroy
  * intent), destroyAttemptId (per-attempt staleness token), managed, path.
  * Daemon-session staleness on environment paths is only the
  * hasConnectedHostDaemon lease check — a flow precondition, not a row

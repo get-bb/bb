@@ -210,7 +210,8 @@ function isDestroyRequested(
   const environment = getEnvironment(deps.db, environmentId);
   return (
     environment !== null &&
-    (environment.cleanupMode !== null || environment.status === "destroying")
+    (environment.cleanupRequestedAt !== null ||
+      environment.status === "destroying")
   );
 }
 
@@ -343,7 +344,7 @@ export function cancelPendingEnvironmentCleanup(
         return "in_progress";
       }
 
-      if (environment.cleanupMode === null) {
+      if (environment.cleanupRequestedAt === null) {
         return "not_requested";
       }
 
