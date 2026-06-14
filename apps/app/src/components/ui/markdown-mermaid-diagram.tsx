@@ -127,6 +127,18 @@ interface GetMermaidDiagramPointFromClientPositionArgs {
   container: HTMLElement;
 }
 
+interface GetMermaidDiagramFocalPointArgs {
+  clientX: number;
+  clientY: number;
+  container: HTMLElement;
+}
+
+interface IsMermaidClientPointWithinContainerArgs {
+  clientX: number;
+  clientY: number;
+  container: HTMLElement;
+}
+
 interface GetMermaidTouchPairArgs {
   container: HTMLElement;
   touches: TouchList;
@@ -135,6 +147,12 @@ interface GetMermaidTouchPairArgs {
 interface GetMermaidWheelZoomFactorArgs {
   deltaMode: number;
   deltaY: number;
+}
+
+interface GetMermaidWheelZoomDeltaArgs {
+  deltaX: number;
+  deltaY: number;
+  deltaZ: number;
 }
 
 interface MermaidGestureEventData {
@@ -148,13 +166,7 @@ interface GetMermaidGestureEventDataArgs {
 }
 
 interface ShouldHandleMermaidWheelZoomArgs {
-  deltaY: number;
-}
-
-interface IsMermaidClientPointWithinViewportArgs {
-  clientX: number;
-  clientY: number;
-  viewportElement: HTMLElement;
+  zoomDelta: number;
 }
 
 interface ZoomMermaidDiagramViewArgs {
@@ -307,6 +319,42 @@ function getMermaidDiagramPointFromClientPosition({
   };
 }
 
+function isMermaidClientPointWithinContainer({
+  clientX,
+  clientY,
+  container,
+}: IsMermaidClientPointWithinContainerArgs): boolean {
+  const containerRect = container.getBoundingClientRect();
+  return (
+    clientX >= containerRect.left &&
+    clientX <= containerRect.right &&
+    clientY >= containerRect.top &&
+    clientY <= containerRect.bottom
+  );
+}
+
+function getMermaidDiagramFocalPoint({
+  clientX,
+  clientY,
+  container,
+}: GetMermaidDiagramFocalPointArgs): MermaidDiagramPoint {
+  if (
+    !isMermaidClientPointWithinContainer({
+      clientX,
+      clientY,
+      container,
+    })
+  ) {
+    return MERMAID_DIAGRAM_CENTER_POINT;
+  }
+
+  return getMermaidDiagramPointFromClientPosition({
+    clientX,
+    clientY,
+    container,
+  });
+}
+
 function getMermaidPointDistance({
   firstPoint,
   secondPoint,
@@ -372,6 +420,20 @@ export function getMermaidWheelZoomFactor({
   );
 }
 
+export function getMermaidWheelZoomDelta({
+  deltaX,
+  deltaY,
+  deltaZ,
+}: GetMermaidWheelZoomDeltaArgs): number {
+  if (deltaY !== 0) {
+    return deltaY;
+  }
+  if (deltaX !== 0) {
+    return deltaX;
+  }
+  return deltaZ;
+}
+
 export function getMermaidGestureEventData({
   event,
 }: GetMermaidGestureEventDataArgs): MermaidGestureEventData | null {
@@ -394,23 +456,9 @@ export function getMermaidGestureEventData({
 }
 
 export function shouldHandleMermaidWheelZoom({
-  deltaY,
+  zoomDelta,
 }: ShouldHandleMermaidWheelZoomArgs): boolean {
-  return deltaY !== 0;
-}
-
-function isMermaidClientPointWithinViewport({
-  clientX,
-  clientY,
-  viewportElement,
-}: IsMermaidClientPointWithinViewportArgs): boolean {
-  const viewportRect = viewportElement.getBoundingClientRect();
-  return (
-    clientX >= viewportRect.left &&
-    clientX <= viewportRect.right &&
-    clientY >= viewportRect.top &&
-    clientY <= viewportRect.bottom
-  );
+  return zoomDelta !== 0;
 }
 
 export function zoomMermaidDiagramView({
@@ -544,17 +592,13 @@ function MermaidDiagramDialog({
     }
 
     const handleWheel = (event: WheelEvent) => {
-      if (
-        !isMermaidClientPointWithinViewport({
-          clientX: event.clientX,
-          clientY: event.clientY,
-          viewportElement,
-        })
-      ) {
-        return;
-      }
+      const zoomDelta = getMermaidWheelZoomDelta({
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        deltaZ: event.deltaZ,
+      });
 
-      if (!shouldHandleMermaidWheelZoom({ deltaY: event.deltaY })) {
+      if (!shouldHandleMermaidWheelZoom({ zoomDelta })) {
         return;
       }
 
@@ -562,14 +606,14 @@ function MermaidDiagramDialog({
         event.preventDefault();
       }
 
-      const focalPoint = getMermaidDiagramPointFromClientPosition({
+      const focalPoint = getMermaidDiagramFocalPoint({
         clientX: event.clientX,
         clientY: event.clientY,
         container: viewportElement,
       });
       const zoomFactor = getMermaidWheelZoomFactor({
         deltaMode: event.deltaMode,
-        deltaY: event.deltaY,
+        deltaY: zoomDelta,
       });
 
       setView((currentView) =>
@@ -583,15 +627,7 @@ function MermaidDiagramDialog({
 
     const handleGestureStart = (event: Event) => {
       const gestureEventData = getMermaidGestureEventData({ event });
-      if (
-        gestureEventData === null ||
-        gestureEventData.scale <= 0 ||
-        !isMermaidClientPointWithinViewport({
-          clientX: gestureEventData.clientX,
-          clientY: gestureEventData.clientY,
-          viewportElement,
-        })
-      ) {
+      if (gestureEventData === null || gestureEventData.scale <= 0) {
         gestureStateRef.current = null;
         return;
       }
@@ -614,12 +650,7 @@ function MermaidDiagramDialog({
         gestureState === null ||
         gestureEventData === null ||
         gestureState.startScale <= 0 ||
-        gestureEventData.scale <= 0 ||
-        !isMermaidClientPointWithinViewport({
-          clientX: gestureEventData.clientX,
-          clientY: gestureEventData.clientY,
-          viewportElement,
-        })
+        gestureEventData.scale <= 0
       ) {
         return;
       }
@@ -628,7 +659,7 @@ function MermaidDiagramDialog({
         event.preventDefault();
       }
 
-      const focalPoint = getMermaidDiagramPointFromClientPosition({
+      const focalPoint = getMermaidDiagramFocalPoint({
         clientX: gestureEventData.clientX,
         clientY: gestureEventData.clientY,
         container: viewportElement,

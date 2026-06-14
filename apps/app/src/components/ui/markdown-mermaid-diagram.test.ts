@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampMermaidScale,
   getMermaidGestureEventData,
+  getMermaidWheelZoomDelta,
   getMermaidWheelZoomFactor,
   pinchMermaidDiagramView,
   shouldHandleMermaidWheelZoom,
@@ -42,12 +43,29 @@ describe("getMermaidWheelZoomFactor", () => {
 
 describe("shouldHandleMermaidWheelZoom", () => {
   it("handles vertical wheel input without requiring keyboard modifiers", () => {
-    expect(shouldHandleMermaidWheelZoom({ deltaY: 1 })).toBe(true);
-    expect(shouldHandleMermaidWheelZoom({ deltaY: -1 })).toBe(true);
+    expect(shouldHandleMermaidWheelZoom({ zoomDelta: 1 })).toBe(true);
+    expect(shouldHandleMermaidWheelZoom({ zoomDelta: -1 })).toBe(true);
   });
 
-  it("ignores wheel events without vertical movement", () => {
-    expect(shouldHandleMermaidWheelZoom({ deltaY: 0 })).toBe(false);
+  it("ignores wheel events without movement", () => {
+    expect(shouldHandleMermaidWheelZoom({ zoomDelta: 0 })).toBe(false);
+  });
+});
+
+describe("getMermaidWheelZoomDelta", () => {
+  it("prefers vertical wheel movement", () => {
+    expect(
+      getMermaidWheelZoomDelta({ deltaX: 20, deltaY: -10, deltaZ: 5 }),
+    ).toBe(-10);
+  });
+
+  it("falls back to horizontal or z-axis wheel movement", () => {
+    expect(getMermaidWheelZoomDelta({ deltaX: 20, deltaY: 0, deltaZ: 5 })).toBe(
+      20,
+    );
+    expect(getMermaidWheelZoomDelta({ deltaX: 0, deltaY: 0, deltaZ: 5 })).toBe(
+      5,
+    );
   });
 });
 
