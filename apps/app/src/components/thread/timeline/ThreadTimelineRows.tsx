@@ -23,6 +23,7 @@ import {
   buildTimelineViewRows,
   createTimelineViewRowsCache,
   findActiveLatestBundleId,
+  primaryTimelineActivityIntent,
   type BuildTimelineRowTitleOptions,
   type BuildTimelineViewRowsOptions,
   type ThreadTimelineViewRow,
@@ -1105,6 +1106,26 @@ function rolledUpHeaderDimClassName(
 }
 
 /**
+ * Per-intent glyph for an exploration row, shared by the bundled compact-intent
+ * listing and the unbundled standalone row so the icon for a given intent kind
+ * (search / read / list_files) is identical in both surfaces.
+ */
+function explorationIntentIcon(
+  intentType: "read" | "list_files" | "search",
+): IconName {
+  switch (intentType) {
+    case "search":
+      return "Search";
+    case "read":
+      return "FileText";
+    case "list_files":
+      return "Folder";
+    default:
+      return assertNever(intentType);
+  }
+}
+
+/**
  * A leading glyph for every tool-call (work) row, keyed by its kind so the eye
  * can tell edits from explores from commands at a glance.
  */
@@ -1113,6 +1134,16 @@ function leadingIconForWorkRow(
 ): IconName | undefined {
   if (row.kind !== "work") {
     return undefined;
+  }
+  // A command/tool row that carries a single exploration intent renders as a
+  // flat, non-expandable row, so the per-intent search/read/folder glyph must
+  // come from here (not the bundled compact-intent path) — otherwise it would
+  // fall through to the generic Terminal icon.
+  if (row.workKind === "command" || row.workKind === "tool") {
+    const intent = primaryTimelineActivityIntent(row);
+    if (intent !== null && intent.type !== "unknown") {
+      return explorationIntentIcon(intent.type);
+    }
   }
   switch (row.workKind) {
     case "file-change":
@@ -1173,7 +1204,7 @@ function TimelineRowView({
           >
             <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
               <Icon
-                name={entry.intentType === "search" ? "Search" : "Explore"}
+                name={explorationIntentIcon(entry.intentType)}
                 className="size-3.5 shrink-0 text-muted-foreground"
                 aria-hidden
               />
