@@ -226,6 +226,7 @@ export function makeExecutionControlsProps(
       active: { model: "gpt-5.5" },
       selected: "gpt-5.5",
       options: STORY_CODEX_MODELS,
+      isLoading: false,
       onChange: noop,
     },
     serviceTier: {

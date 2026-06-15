@@ -325,6 +325,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     clearReuseEnvironment,
     activeModel,
     modelOptions,
+    isLoadingModels,
     modelLoadError,
     reasoningOptions,
     permissionModeOptions,
@@ -646,6 +647,7 @@ export function RootComposeView(props: RootComposeViewProps) {
 
   const isSubmitDisabled =
     !selectedProviderId ||
+    isLoadingModels ||
     !selectedThreadModel ||
     createThread.isPending ||
     promptInput.length === 0 ||
@@ -777,6 +779,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         active: activeModel,
         selected: selectedModel,
         options: modelOptions,
+        isLoading: isLoadingModels,
         loadError: modelLoadError,
         onChange: setSelectedModel,
       },
@@ -795,6 +798,7 @@ export function RootComposeView(props: RootComposeViewProps) {
     [
       activeModel,
       hasMultipleProviders,
+      isLoadingModels,
       modelLoadError,
       modelOptions,
       providerOptions,

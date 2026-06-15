@@ -168,6 +168,9 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
   const canSubmit = submitMode.kind === "ready" || submitMode.kind === "queue";
   const isStopping =
     submitMode.kind === "blocked" && submitMode.reason === "stopping";
+  const isLoadingExecutionOptions =
+    submitMode.kind === "blocked" &&
+    submitMode.reason === "loading-execution-options";
   const onStopRuntime =
     submitMode.kind === "queue" || submitMode.kind === "stop-only"
       ? submitMode.onStop
@@ -247,7 +250,9 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
               ? "Queue follow-up (Enter)"
               : isStopping
                 ? "Stopping run..."
-                : "Submit (Enter)",
+                : isLoadingExecutionOptions
+                  ? "Loading models..."
+                  : "Submit (Enter)",
             isRunning: canStopRuntime,
           }}
           typeahead={typeahead}

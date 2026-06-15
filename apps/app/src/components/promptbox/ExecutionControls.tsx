@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import { formatModelLabel } from "@/hooks/useThreadCreationOptions";
@@ -8,6 +8,8 @@ import {
   OptionDisplay,
   type PickerOption,
 } from "@/components/pickers/OptionPicker";
+
+const MODEL_LOADING_VISIBLE_DELAY_MS = 180;
 
 export interface ExecutionProviderConfig {
   options?: readonly PickerOption<string>[];
@@ -22,6 +24,7 @@ export interface ExecutionModelConfig {
   active?: { model: string } | null;
   selected: string;
   options: readonly PickerOption<string>[];
+  isLoading: boolean;
   loadError?: SystemExecutionOptionsModelLoadError | null;
   onChange: (value: string) => void;
 }
@@ -53,12 +56,43 @@ export interface ExecutionControlsProps {
   reasoning: ExecutionReasoningConfig;
 }
 
+interface UseDelayedVisibleArgs {
+  visible: boolean;
+  delayMs: number;
+}
+
+function useDelayedVisible({
+  visible,
+  delayMs,
+}: UseDelayedVisibleArgs): boolean {
+  const [delayedVisible, setDelayedVisible] = useState(false);
+
+  useEffect(() => {
+    if (!visible) {
+      setDelayedVisible(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setDelayedVisible(true);
+    }, delayMs);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [delayMs, visible]);
+
+  return delayedVisible;
+}
+
 export const ExecutionControls = memo(function ExecutionControls({
   provider,
   model,
   serviceTier,
   reasoning,
 }: ExecutionControlsProps) {
+  const showModelLoading = useDelayedVisible({
+    visible: model.isLoading,
+    delayMs: MODEL_LOADING_VISIBLE_DELAY_MS,
+  });
   const handleServiceTierChange = serviceTier?.onChange ?? (() => {});
   const isProviderLocked = provider.onChange === undefined;
   const selectedProviderId = provider.selectedId ?? "";
@@ -82,11 +116,14 @@ export const ExecutionControls = memo(function ExecutionControls({
     provider.options &&
     provider.options.length > 1,
   );
-  const showModelPicker = model.options.length > 0 || canSwitchProviders;
+  const showModelPicker =
+    !model.isLoading && (model.options.length > 0 || canSwitchProviders);
   const selectedProviderModelLoadError =
     model.loadError?.providerId === selectedProviderId ? model.loadError : null;
   const showModelLoadError =
-    !showModelPicker && selectedProviderModelLoadError !== null;
+    !model.isLoading &&
+    !showModelPicker &&
+    selectedProviderModelLoadError !== null;
 
   return (
     <>
@@ -95,6 +132,21 @@ export const ExecutionControls = memo(function ExecutionControls({
           label="Provider"
           value={provider.displayName}
           icon={selectedProviderOption?.icon}
+          muted
+        />
+      ) : null}
+      {showModelLoading ? (
+        <OptionDisplay
+          label="Model"
+          value={
+            <span className="animate-shine whitespace-nowrap">
+              Loading models...
+            </span>
+          }
+          compactValue={
+            <span className="animate-shine whitespace-nowrap">Loading</span>
+          }
+          title="Loading models..."
           muted
         />
       ) : null}

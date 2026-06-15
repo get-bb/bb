@@ -271,6 +271,7 @@ export function ThreadDetailPromptArea({
     setPermissionMode,
     activeModel,
     modelOptions,
+    isLoadingModels,
     modelLoadError,
     reasoningOptions,
     permissionModeOptions,
@@ -746,6 +747,7 @@ export function ThreadDetailPromptArea({
         active: activeModel,
         selected: selectedModel,
         options: modelOptions,
+        isLoading: isLoadingModels,
         loadError: modelLoadError,
         onChange: setSelectedModel,
       },
@@ -764,6 +766,7 @@ export function ThreadDetailPromptArea({
     [
       activeModel,
       hasMultipleProviders,
+      isLoadingModels,
       modelLoadError,
       modelOptions,
       providerOptions,
