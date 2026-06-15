@@ -3,13 +3,13 @@ import type { IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
 import type {
+  EnvironmentStatus,
   PendingInteraction,
   ThreadQueuedMessage,
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
 } from "@bb/domain";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
-import { ThreadEnvironmentGoneBanner } from "@/components/thread/ThreadEnvironmentGoneBanner";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   ThreadPromptContextBanner,
@@ -83,11 +83,14 @@ interface ThreadDetailPromptAreaProps {
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
   /**
-   * True when the thread's environment is gone (status `destroying` or
-   * `destroyed`). Replaces the composer with a read-only "environment is gone"
-   * banner — the thread can no longer run work (Decision B*).
+   * Set when the thread's environment is gone (`destroying` or `destroyed`).
+   * Collapses the composer and shows a read-only context-banner row — the
+   * thread can no longer run work (Decision B*).
    */
-  isEnvironmentGone: boolean;
+  environmentGoneStatus: Extract<
+    EnvironmentStatus,
+    "destroying" | "destroyed"
+  > | null;
   environmentIcon?: IconName;
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
@@ -141,7 +144,7 @@ export function ThreadDetailPromptArea({
   contextWindowUsage,
   environmentCheckout,
   environmentCompactLabel,
-  isEnvironmentGone,
+  environmentGoneStatus,
   environmentIcon,
   environmentLabel,
   onCreateNewThreadInWorktree,
@@ -307,6 +310,8 @@ export function ThreadDetailPromptArea({
   const activePendingInteraction =
     getLatestPendingInteraction(pendingInteractions);
   const hasPendingInteraction = activePendingInteraction !== null;
+  const shouldHideComposer =
+    environmentGoneStatus !== null || thread.archivedAt !== null;
   const isQueueMutationPending =
     createQueuedMessage.isPending ||
     sendQueuedMessage.isPending ||
@@ -875,6 +880,11 @@ export function ThreadDetailPromptArea({
               ? { archivedAt: thread.archivedAt }
               : null
           }
+          environmentGoneSection={
+            environmentGoneStatus === null
+              ? null
+              : { status: environmentGoneStatus }
+          }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
           gitSection={
@@ -892,21 +902,23 @@ export function ThreadDetailPromptArea({
           expandedSection={expandedBannerSection}
           onToggleSection={handleToggleBannerSection}
         />
-        <QueuedMessagesList
-          queuedMessages={queuedMessages}
-          sendDisabled={
-            !(submitMode.kind === "ready" || submitMode.kind === "queue") ||
-            isFollowUpSubmitting ||
-            isQueueMutationPending
-          }
-          actionDisabled={isQueueMutationPending}
-          processingMessageId={displayedProcessingQueuedMessage?.id ?? null}
-          processingAction={displayedProcessingQueuedMessage?.action ?? null}
-          onSendImmediately={handleSendQueuedImmediately}
-          onReorder={handleReorderQueuedMessage}
-          onEdit={handleEditQueuedMessage}
-          onDelete={handleDeleteQueuedMessage}
-        />
+        {shouldHideComposer ? null : (
+          <QueuedMessagesList
+            queuedMessages={queuedMessages}
+            sendDisabled={
+              !(submitMode.kind === "ready" || submitMode.kind === "queue") ||
+              isFollowUpSubmitting ||
+              isQueueMutationPending
+            }
+            actionDisabled={isQueueMutationPending}
+            processingMessageId={displayedProcessingQueuedMessage?.id ?? null}
+            processingAction={displayedProcessingQueuedMessage?.action ?? null}
+            onSendImmediately={handleSendQueuedImmediately}
+            onReorder={handleReorderQueuedMessage}
+            onEdit={handleEditQueuedMessage}
+            onDelete={handleDeleteQueuedMessage}
+          />
+        )}
       </>
     ),
     [
@@ -919,6 +931,7 @@ export function ThreadDetailPromptArea({
       handleReorderQueuedMessage,
       handleSendQueuedImmediately,
       handleToggleBannerSection,
+      environmentGoneStatus,
       isFollowUpSubmitting,
       isQueueMutationPending,
       parentThreadSection,
@@ -926,6 +939,7 @@ export function ThreadDetailPromptArea({
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessages,
+      shouldHideComposer,
       submitMode.kind,
       thread.archivedAt,
       workspaceChangedFilesSection,
@@ -933,11 +947,7 @@ export function ThreadDetailPromptArea({
     ],
   );
 
-  if (isEnvironmentGone) {
-    return <ThreadEnvironmentGoneBanner />;
-  }
-
-  if (activePendingInteraction) {
+  if (activePendingInteraction && !shouldHideComposer) {
     return (
       <ThreadPendingInteractionBanner
         interaction={activePendingInteraction}
@@ -951,7 +961,7 @@ export function ThreadDetailPromptArea({
       id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
       attachments={attachmentsConfig}
       stack={promptStack}
-      composer={composerConfig}
+      composer={shouldHideComposer ? null : composerConfig}
       zenModeResetKey={thread.id}
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}

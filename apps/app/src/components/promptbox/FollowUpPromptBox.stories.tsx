@@ -284,6 +284,7 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
   <ThreadPromptContextBanner
     todoSection={null}
     archivedSection={null}
+    environmentGoneSection={null}
     gitSection={{
       changedFiles: dirtyContextBannerSection,
       mergeBase: {
@@ -300,6 +301,34 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
     onToggleSection={noop}
   />
 ) : null;
+
+const archivedContextBannerElement: ReactNode = (
+  <ThreadPromptContextBanner
+    todoSection={null}
+    archivedSection={{ archivedAt: 1_731_456_000_000 }}
+    environmentGoneSection={null}
+    gitSection={null}
+    gitSectionPending={false}
+    parentThreadSection={null}
+    childThreadsSection={null}
+    expandedSection={null}
+    onToggleSection={noop}
+  />
+);
+
+const environmentGoneContextBannerElement: ReactNode = (
+  <ThreadPromptContextBanner
+    todoSection={null}
+    archivedSection={null}
+    environmentGoneSection={{ status: "destroyed" }}
+    gitSection={null}
+    gitSectionPending={false}
+    parentThreadSection={null}
+    childThreadsSection={null}
+    expandedSection={null}
+    onToggleSection={noop}
+  />
+);
 
 const queuedMessages: readonly ThreadQueuedMessage[] = [
   {
@@ -358,17 +387,19 @@ interface RowConfig {
   initialMessage?: string;
   submitMode: FollowUpSubmitMode;
   isFollowUpSubmitting?: boolean;
-  threadRuntimeDisplayStatus?: ComposerCoreRuntimeStatus;
+  threadRuntimeDisplayStatus?: FollowUpComposerRuntimeStatus;
   promptPlaceholder?: string;
   environmentSummary?: ReactNode | null;
   contextWindowUsage?: ThreadContextWindowUsage | null;
   stack?: ReactNode | null;
   zenModeResetKey?: string;
+  hideComposer?: boolean;
 }
 
-type ComposerCoreRuntimeStatus = Parameters<
-  typeof FollowUpPromptBox
->[0]["composer"]["threadRuntimeDisplayStatus"];
+type FollowUpComposerRuntimeStatus =
+  NonNullable<
+    Parameters<typeof FollowUpPromptBox>[0]["composer"]
+  >["threadRuntimeDisplayStatus"];
 
 // Match production: ThreadTimelinePane's PageShell footer caps content at
 // 760px. The story's StoryRow value cell uses flex-wrap, which would
@@ -391,6 +422,7 @@ function Row({
   contextWindowUsage = null,
   stack = null,
   zenModeResetKey = "thr_demo",
+  hideComposer = false,
 }: RowConfig) {
   const [message, setMessage] = useState(initialMessage);
   const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
@@ -409,27 +441,31 @@ function Row({
       <FollowUpPromptBox
         attachments={attachmentsBase}
         stack={stack}
-        composer={{
-          history: {
-            currentDraft: {
-              text: message,
-              mentions: mentionRanges,
-              attachments: [],
-            },
-            entries: historyEntries,
-            onSelectEntry: noop,
-          },
-          isFollowUpSubmitting,
-          message,
-          mentionRanges,
-          onChangeMessage: handleChangeMessage,
-          onModifierSubmit: noop,
-          onSubmit: noop,
-          promptPlaceholder: resolvedPlaceholder,
-          canModifierSubmit: submitMode.kind === "queue",
-          submitMode,
-          threadRuntimeDisplayStatus,
-        }}
+        composer={
+          hideComposer
+            ? null
+            : {
+                history: {
+                  currentDraft: {
+                    text: message,
+                    mentions: mentionRanges,
+                    attachments: [],
+                  },
+                  entries: historyEntries,
+                  onSelectEntry: noop,
+                },
+                isFollowUpSubmitting,
+                message,
+                mentionRanges,
+                onChangeMessage: handleChangeMessage,
+                onModifierSubmit: noop,
+                onSubmit: noop,
+                promptPlaceholder: resolvedPlaceholder,
+                canModifierSubmit: submitMode.kind === "queue",
+                submitMode,
+                threadRuntimeDisplayStatus,
+              }
+        }
         environmentSummary={environmentSummary}
         contextWindowUsage={contextWindowUsage}
         execution={baseExecution}
@@ -506,6 +542,26 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="with promptbox context banner">
         <Row submitMode={{ kind: "ready" }} stack={contextBannerElement} />
+      </StoryRow>
+      <StoryRow
+        label="archived: composer hidden"
+        hint="read-only banner remains; prompt input and footer controls are collapsed"
+      >
+        <Row
+          submitMode={{ kind: "blocked", reason: "pending-interaction" }}
+          stack={archivedContextBannerElement}
+          hideComposer
+        />
+      </StoryRow>
+      <StoryRow
+        label="environment gone: composer hidden"
+        hint="same prompt context banner path for destroyed/destroying environments"
+      >
+        <Row
+          submitMode={{ kind: "blocked", reason: "pending-interaction" }}
+          stack={environmentGoneContextBannerElement}
+          hideComposer
+        />
       </StoryRow>
       <StoryRow
         label="stacked cards"

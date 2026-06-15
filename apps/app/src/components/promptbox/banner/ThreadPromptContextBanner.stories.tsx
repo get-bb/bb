@@ -9,6 +9,7 @@ import {
   type ContextBannerMergeBaseConfig,
   type ThreadPromptArchivedSection,
   type ThreadPromptContextBannerExpandedSection,
+  type ThreadPromptEnvironmentGoneSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
@@ -285,6 +286,7 @@ interface RowConfig {
   mergeBase?: ContextBannerMergeBaseConfig | null;
   pendingTodos?: ThreadTimelinePendingTodos | null;
   archived?: ThreadPromptArchivedSection | null;
+  environmentGone?: ThreadPromptEnvironmentGoneSection | null;
   parentThread?: ThreadPromptParentThreadSection | null;
   childThreads?: ThreadPromptChildThreadsSection | null;
   initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
@@ -295,6 +297,7 @@ function Row({
   mergeBase = featureBranchMergeBase,
   pendingTodos = null,
   archived = null,
+  environmentGone = null,
   parentThread = null,
   childThreads = null,
   initiallyExpandedSection = null,
@@ -317,6 +320,7 @@ function Row({
         }
         gitSectionPending={false}
         archivedSection={archived}
+        environmentGoneSection={environmentGone}
         parentThreadSection={parentThread}
         childThreadsSection={childThreads}
         expandedSection={expandedSection}
@@ -332,6 +336,14 @@ function Row({
 
 const archivedFixture: ThreadPromptArchivedSection = {
   archivedAt: 1_731_456_000_000,
+};
+
+const destroyedEnvironmentFixture: ThreadPromptEnvironmentGoneSection = {
+  status: "destroyed",
+};
+
+const destroyingEnvironmentFixture: ThreadPromptEnvironmentGoneSection = {
+  status: "destroying",
 };
 
 export function Overview() {
@@ -359,6 +371,34 @@ export function Overview() {
       >
         <Row
           archived={archivedFixture}
+          section={uncommittedSection}
+          pendingTodos={pendingTodosFixture}
+          childThreads={childThreadsFixture}
+          mergeBase={null}
+        />
+      </StoryRow>
+      <StoryRow
+        label="environment destroyed"
+        hint="environment-gone row suppresses todos/git/childThreads"
+      >
+        <Row environmentGone={destroyedEnvironmentFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="environment destroying + child thread"
+        hint="environment-gone row plus parent context"
+      >
+        <Row
+          environmentGone={destroyingEnvironmentFixture}
+          parentThread={parentThreadFixture}
+          mergeBase={null}
+        />
+      </StoryRow>
+      <StoryRow
+        label="environment gone (with other context, all suppressed)"
+        hint="gone environment takes precedence — todos/git/child work are hidden"
+      >
+        <Row
+          environmentGone={destroyedEnvironmentFixture}
           section={uncommittedSection}
           pendingTodos={pendingTodosFixture}
           childThreads={childThreadsFixture}
