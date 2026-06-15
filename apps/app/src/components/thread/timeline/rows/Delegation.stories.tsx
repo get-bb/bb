@@ -561,7 +561,7 @@ const correctnessChild17: TimelineRow = {
       "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
   },
   output:
-    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. Prefer the simplest correct change.\n4\t\n5\t## Review Scope\n6\t\n7\t- Review the diff against the intended base. Use `git merge-base main <branch>` when reviewing a branch that may have diverged from main... [truncated]",
+    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. The best review usually asks: what will break, and what is the smallest correction?\n4\t\n5\t## Scope\n6\t\n7\t- Stay inside the changed behavior.\n8\t- Expand only to prove a concrete correctness... [truncated]",
   completedAt: 1778174324388,
   approvalStatus: null,
   activityIntents: [
@@ -1094,7 +1094,7 @@ const maintainabilityChild16: TimelineRow = {
     limit: 200,
   },
   output:
-    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. Prefer the simplest correct change.\n4\t\n5\t## Review Scope\n6\t\n7\t- Review the diff against the intended base. Use `git merge-base main <branch>` when reviewing a branch that may have diverged from main... [truncated]",
+    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. The best review usually asks: what will break, and what is the smallest correction?\n4\t\n5\t## Scope\n6\t\n7\t- Stay inside the changed behavior.\n8\t- Expand only to prove a concrete correctness... [truncated]",
   completedAt: 1778174337233,
   approvalStatus: null,
   activityIntents: [
@@ -2018,7 +2018,7 @@ const testQualityChild22: TimelineRow = {
     limit: 150,
   },
   output:
-    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. Prefer the simplest correct change.\n4\t\n5\t## Review Scope\n6\t\n7\t- Review the diff against the intended base. Use `git merge-base main <branch>` when reviewing a branch that may have diverged from main... [truncated]",
+    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. The best review usually asks: what will break, and what is the smallest correction?\n4\t\n5\t## Scope\n6\t\n7\t- Stay inside the changed behavior.\n8\t- Expand only to prove a concrete correctness... [truncated]",
   completedAt: 1778174351117,
   approvalStatus: null,
   activityIntents: [

@@ -1,36 +1,31 @@
 # Codebase Guidelines
 
-## Default Bias
+## Simplicity First
 
-- Choose the smallest change that fully solves the request.
-- Do not do broad cleanup, opportunistic refactors, or architecture rewrites unless they are required to make the current change correct.
-- Add no abstraction, wrapper, option, config flag, registry, interface, dependency, or shared component for one caller or a hypothetical future.
-- Reuse existing code only when it already fits. Do not bend unrelated callers together just to avoid a little duplication.
-- Keep code local until reuse is real. If adjacent debt is real but not required, mention it as follow-up.
+- Solve the requested problem with the smallest correct change.
+- Prefer deleting code, fields, branches, and surfaces over adding new ones.
+- Keep code local until reuse is proven by real callers. A little duplication is better than a shared abstraction that bends callers together.
+- Do not do broad cleanup, opportunistic refactors, or architecture rewrites unless they are required for the current change to be correct.
+- Do not turn a local bug fix into a descriptor system, registry, lifecycle table, coordinator, queue, cache framework, package split, compatibility adapter, migration/backfill framework, or generalized pipeline.
+- If adjacent debt is real but not required, mention it as follow-up instead of fixing it.
 - When renaming a domain concept, search project-wide for stale names in variables, files, query keys, constants, tests, and docs. TypeScript only catches type references.
 
 ## Types And Contracts
 
 - Validate and parse data at system boundaries, then pass typed values internally.
 - Avoid `unknown` and `as X` casts inside the system. Use them only at genuinely unknowable boundaries such as freeform tool input, then narrow immediately.
-- Keep one-off types near the code that uses them. Shared contract types belong in the appropriate shared package.
+- Keep one-off types near the code that uses them. Move types to a shared package only for a real cross-package contract.
 - Optional contract fields are allowed only when omission has real semantic meaning. Do not use optional or nullable fields to hide defaults.
 - If a field has a default, fill it in once at the server boundary and pass the explicit value through internal routes, commands, and persisted events.
 - Accepted-but-ignored route or command fields are forbidden. Delete them or implement them end to end.
-- Add or update route and command documentation only when behavior is non-obvious: side effects, multi-step flows, guards, or context the type signature does not show.
+- Add or update route and command documentation only when behavior is non-obvious.
 
-## Boundaries And Lifecycles
+## Server And Daemon
 
 - The server owns product policy: defaults, instructions, manager behavior, tool lists, and thread behavior.
 - The host daemon owns host-local primitives, provider translation, runtime/session management, and workspace execution.
 - If the server needs host-local data, the daemon should return raw data and the server should assemble product behavior.
 - Do not move responsibility across the server/daemon boundary unless the current change requires it.
-- Durable async lifecycles are for durable async work. Do not introduce lifecycle machinery for simple synchronous or one-shot behavior.
-- Routes may request lifecycle work, but server-owned lifecycle modules advance it, reconcile it, and handle recovery.
-- `status` fields represent current resource state only. Do not grow them into queue-state ladders such as `requested`, `queued`, or `fetched`.
-- Commands are live host RPCs that succeed, fail, or time out. There is no persisted command queue; durability lives in persisted intent recovered by periodic sweeps in `apps/server/src/services/system/periodic-sweeps.ts`.
-- Every new async lifecycle must define lost-result handling, reconnect reconciliation, and idempotent repeated requests.
-- Generic metadata update helpers must not accept lifecycle fields such as `status`, `stopRequestedAt`, `cleanupRequestedAt`, or `cleanupMode`.
 
 ## Data Access
 
