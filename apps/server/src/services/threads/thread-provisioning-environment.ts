@@ -455,10 +455,16 @@ async function resolveMetadataIfNeeded(
           const environment = titledThread?.environmentId
             ? getEnvironment(deps.db, titledThread.environmentId)
             : null;
+          // A non-managed thread generates its title async (no branch name to
+          // block on), so the turn often finishes before it lands: rename the
+          // provider session for an `idle` thread too, not just an `active`
+          // one. The rename only needs a loaded runtime (warm process), which
+          // an idle thread still has; it is best-effort and logs on failure.
           if (
             !titledThread ||
             !environment ||
-            titledThread.status !== "active"
+            (titledThread.status !== "active" &&
+              titledThread.status !== "idle")
           ) {
             return;
           }
