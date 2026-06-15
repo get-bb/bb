@@ -12,7 +12,6 @@ import {
   reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
-  waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
 import {
   seedEnvironment,
@@ -76,8 +75,8 @@ async function waitForStopRpcIdle(
   throw new Error("Timed out waiting for live thread stop RPC to settle");
 }
 
-describe("thread stop retry", () => {
-  it("re-dispatches the stop inline after a live stop RPC failure", async () => {
+describe("thread stop dispatch", () => {
+  it("does not re-dispatch the stop after a live stop RPC failure", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedActiveThreadStopFixture({
         harness,
@@ -86,42 +85,37 @@ describe("thread stop retry", () => {
 
       requestThreadStopForCurrentState(harness.deps, thread, environment);
 
-      const firstStopCommand = await waitForQueuedCommand(
+      const stopCommand = await waitForQueuedCommand(
         harness,
         ({ command }) =>
           command.type === "thread.stop" && command.threadId === thread.id,
       );
       expect(hasLiveThreadStopInFlight(thread.id)).toBe(true);
-      // The stop is now the durable `stopping` status, not a side-field.
+      // The stop is the durable `stopping` status, not a side-field.
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "stopping",
       });
 
-      // A live stop RPC failure re-dispatches the stop inline (no sweep): the
-      // thread is still stopping and the daemon is still connected, so the
-      // command is sent again rather than dropped.
-      await reportQueuedCommandError(harness, firstStopCommand, {
+      // A live stop RPC failure is NOT retried inline. The thread stays
+      // `stopping` (the durable record), the in-flight guard releases so a
+      // fresh stop can be issued, and no second stop command is queued.
+      // Recovery is reconnect reconciliation or the turn settling itself —
+      // not a retry loop.
+      await reportQueuedCommandError(harness, stopCommand, {
         errorCode: "test_thread_stop_failure",
         errorMessage: "Test live stop failure",
       });
-
-      const retryStopCommand = await waitForQueuedCommandAfter(
-        harness,
-        firstStopCommand.row.cursor,
-        ({ command }) =>
-          command.type === "thread.stop" && command.threadId === thread.id,
-      );
-      expect(retryStopCommand.command).toMatchObject({
-        type: "thread.stop",
-        environmentId: environment.id,
-        threadId: thread.id,
-      });
-
-      await reportQueuedCommandSuccess(harness, retryStopCommand, {});
       await waitForStopRpcIdle({ threadId: thread.id });
+
+      expect(hasLiveThreadStopInFlight(thread.id)).toBe(false);
       expect(getThread(harness.db, thread.id)).toMatchObject({
-        status: "idle",
+        status: "stopping",
       });
+      // No follow-up stop command was dispatched (a retry would have queued
+      // one); the failed command was consumed and nothing replaced it.
+      expect(
+        listQueuedThreadCommands(harness, "thread.stop", thread.id),
+      ).toHaveLength(0);
     });
   });
 

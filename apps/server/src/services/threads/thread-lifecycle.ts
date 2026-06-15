@@ -1074,52 +1074,37 @@ export function requestThreadStop(
     return;
   }
 
-  dispatchThreadStopCommand(deps, args, 0);
+  dispatchThreadStopCommand(deps, args);
 }
 
-// Recovery for a lost stop is split across three backstops, which together
-// replace the deleted periodic stop-requested-thread-retry sweep:
-//   1. Connected-but-dropped command: the stop RPC fails or times out while the
-//      thread is still `stopping` and the daemon is still connected — re-dispatch
-//      inline (below). One retry covers a transient drop without looping.
-//   2. Host disconnect: the daemon went away entirely — reconcileDaemonReported
-//      Threads re-dispatches (or finalizes) on the next session open, keyed off
+// The stop command is dispatched once — no inline retry, no durable timer.
+// Recovery for a stop that doesn't land rests on two backstops:
+//   1. Host disconnect: the daemon went away — reconcileDaemonReportedThreads
+//      re-dispatches (or finalizes) on the next session open, keyed off
 //      status = stopping.
-//   3. Stop never lands but the turn ends anyway: turns are bounded, so the
-//      daemon's turn-completed/failed/interrupted event drives stopping → idle/
-//      error regardless of the stop RPC. The stop only makes the turn end
-//      sooner; it is never the sole thing that settles the thread.
-// So there is no durable timer to lose: a stopping thread always settles via (2)
-// or (3) even if (1) is exhausted.
-const THREAD_STOP_REDISPATCH_LIMIT = 1;
-
+//   2. The turn ends anyway: turns are bounded, so the daemon's
+//      turn-completed/failed/interrupted event drives stopping → idle/error
+//      regardless of the stop RPC. The stop only makes the turn end sooner; it
+//      is never the sole thing that settles the thread.
+// A connected-but-dropped stop is not separately retried: on a local daemon
+// that is a near-empty case, (2) still settles the thread, and the user can
+// stop again (idempotent). So a stopping thread always settles.
 function dispatchThreadStopCommand(
   deps: CommandResultSideEffectsDeps,
   args: RequestThreadStopArgs,
-  attempt: number,
 ): void {
   void runLiveHostCommand(deps, {
     command: buildThreadStopCommand(args),
     hostId: args.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   })
-    .then(() => {
-      inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
-    })
     .catch((error) => {
       deps.logger.warn(
-        { err: error, threadId: args.threadId, attempt },
+        { err: error, threadId: args.threadId },
         "Live thread stop command failed",
       );
-      const currentThread = getThread(deps.db, args.threadId);
-      if (
-        attempt < THREAD_STOP_REDISPATCH_LIMIT &&
-        currentThread?.status === "stopping" &&
-        deps.hub.hasDaemonForHost(args.hostId)
-      ) {
-        dispatchThreadStopCommand(deps, args, attempt + 1);
-        return;
-      }
+    })
+    .finally(() => {
       inFlightThreadRpcGuard.release(args.threadId, "thread.stop");
     });
 }
