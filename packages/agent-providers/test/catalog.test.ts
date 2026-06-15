@@ -44,7 +44,7 @@ describe("agent provider catalog", () => {
           supportsRename: false,
           supportsServiceTier: false,
           supportsUserQuestion: false,
-          supportsFork: false,
+          supportsFork: true,
           supportedPermissionModes: ["full"],
         },
         available: true,

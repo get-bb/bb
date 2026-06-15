@@ -81,7 +81,7 @@ const PI_CAPABILITIES: ProviderCapabilities = {
   supportsRename: false,
   supportsServiceTier: false,
   supportsUserQuestion: false,
-  supportsFork: false,
+  supportsFork: true,
   supportedPermissionModes: ["full"],
 };
 
