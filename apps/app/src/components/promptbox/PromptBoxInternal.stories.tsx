@@ -2,7 +2,10 @@ import { useState } from "react";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import type { UploadedPromptAttachment } from "@bb/server-contract";
 import { ExecutionControls } from "@/components/promptbox/ExecutionControls";
-import type { PromptMentionSuggestion } from "@/components/promptbox/mentions/types";
+import type {
+  PromptMentionSuggestion,
+  ProviderCommandSuggestion,
+} from "@/components/promptbox/mentions/types";
 import {
   PromptBoxInternal,
   type HistoryConfig,
@@ -167,6 +170,49 @@ const liveMentionPaths: PromptMentionSuggestion[] = [
   storageFile("notes/status.md"),
 ];
 
+const liveCommandSuggestions: ProviderCommandSuggestion[] = [
+  {
+    kind: "command",
+    name: "moss-hardening-review",
+    source: "skill",
+    origin: "user",
+    description: "Run a hardening review for Moss persistence paths",
+    argumentHint: "[branch | staged] [base=<ref>]",
+  },
+  {
+    kind: "command",
+    name: "github:gh-fix-ci",
+    source: "skill",
+    origin: "user",
+    description: "Debug failing GitHub Actions checks",
+    argumentHint: null,
+  },
+  {
+    kind: "command",
+    name: "browser:control-in-app-browser",
+    source: "skill",
+    origin: "user",
+    description: "Open and inspect local web targets",
+    argumentHint: null,
+  },
+  {
+    kind: "command",
+    name: "frontend:component",
+    source: "command",
+    origin: "project",
+    description: "Create or update a project component",
+    argumentHint: "$ARGUMENTS",
+  },
+  {
+    kind: "command",
+    name: "review",
+    source: "command",
+    origin: "user",
+    description: "Review local changes",
+    argumentHint: "[target]",
+  },
+];
+
 function suggestionHaystack(suggestion: PromptMentionSuggestion): string {
   return suggestion.kind === "thread"
     ? `${suggestion.title ?? ""} ${suggestion.threadId}`.toLowerCase()
@@ -182,6 +228,24 @@ function filterLiveMentions(query: string): PromptMentionSuggestion[] {
     ...liveMentionThreads.filter(matches),
     ...liveMentionPaths.filter(matches),
   ].slice(0, PROMPT_MENTION_LIMIT);
+}
+
+function commandHaystack(suggestion: ProviderCommandSuggestion): string {
+  return [
+    suggestion.name,
+    suggestion.description ?? "",
+    suggestion.argumentHint ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function filterLiveCommands(query: string): ProviderCommandSuggestion[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) return liveCommandSuggestions;
+  return liveCommandSuggestions.filter((suggestion) =>
+    commandHaystack(suggestion).includes(needle),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +385,8 @@ function WithMentionsRow() {
 }
 
 function WithSkillPillRow() {
-  const initialValue = "$moss-hardening-review <changed-note-or-path>";
+  const argumentHint = "[branch | staged] [base=<ref>]";
+  const initialValue = `$moss-hardening-review ${argumentHint}`;
   const { value, mentionRanges, onChange } = useControlledValue(initialValue, [
     storyMention({
       text: initialValue,
@@ -333,7 +398,7 @@ function WithSkillPillRow() {
         source: "skill",
         origin: "user",
         label: "moss-hardening-review",
-        argumentHint: "<changed-note-or-path>",
+        argumentHint,
       },
     }),
   ]);
@@ -344,6 +409,41 @@ function WithSkillPillRow() {
       onChange={onChange}
       onSubmit={noop}
       typeahead={makeTypeahead()}
+      mentionMenuPlacement="bottom"
+      attachments={makeAttachments()}
+      history={baseHistory}
+      submission={makeSubmission()}
+      voice={idleVoice}
+      footerStart={<ExecutionControls {...mockExecution} />}
+    />
+  );
+}
+
+function WithLiveSkillsRow() {
+  const { value, mentionRanges, onChange } = useControlledValue("");
+  const [query, setQuery] = useState<string | null>(null);
+  const suggestions =
+    query === null ? [] : filterLiveCommands(query).slice(0, 4);
+  return (
+    <PromptBoxInternal
+      value={value}
+      mentionRanges={mentionRanges}
+      onChange={onChange}
+      onSubmit={noop}
+      placeholder="Type $ to insert a skill or command"
+      typeahead={makeTypeahead(
+        {},
+        {
+          trigger: "$",
+          suggestions,
+          isLoading: false,
+          isError: false,
+          hasMore: query !== null && filterLiveCommands(query).length > 4,
+          isLoadingMore: false,
+          loadMore: noop,
+          onQueryChange: setQuery,
+        },
+      )}
       mentionMenuPlacement="bottom"
       attachments={makeAttachments()}
       history={baseHistory}
@@ -489,6 +589,12 @@ export function Overview() {
         hint="skill command pill plus the SKILL.md argument hint text"
       >
         <WithSkillPillRow />
+      </StoryRow>
+      <StoryRow
+        label="live skills"
+        hint="type $ then select a skill; argument hints insert after the pill"
+      >
+        <WithLiveSkillsRow />
       </StoryRow>
       <StoryRow
         label="live mentions"
