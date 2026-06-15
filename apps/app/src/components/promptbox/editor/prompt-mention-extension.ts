@@ -40,7 +40,7 @@ function commandArgumentHint(attrs: ParsedMentionAttrs): string | null {
   return argumentHint ? argumentHint : null;
 }
 
-function hasNonWhitespaceContentAfterPosition({
+function commandArgumentHintWidgetPosition({
   doc,
   position,
   mentionName,
@@ -48,27 +48,36 @@ function hasNonWhitespaceContentAfterPosition({
   doc: ProseMirrorNode;
   position: number;
   mentionName: string;
-}): boolean {
+}): number | null {
+  let widgetPosition = position;
   let hasContent = false;
-  doc.nodesBetween(position, doc.content.size, (node) => {
+  doc.nodesBetween(position, doc.content.size, (node, pos) => {
     if (hasContent) return false;
     if (node.isText) {
-      hasContent = /\S/u.test(node.text ?? "");
+      const text = node.text ?? "";
+      const startOffset = Math.max(position - pos, 0);
+      const textAfterPosition = text.slice(startOffset);
+      hasContent = /\S/u.test(textAfterPosition);
+      widgetPosition = pos + startOffset + textAfterPosition.length;
       return !hasContent;
     }
     if (node.type.name === mentionName) {
       hasContent = true;
       return false;
     }
+    if (node.isLeaf) {
+      hasContent = true;
+      return false;
+    }
     return true;
   });
-  return hasContent;
+  return hasContent ? null : widgetPosition;
 }
 
 function createCommandArgumentHintWidget(argumentHint: string): HTMLElement {
   const element = document.createElement("span");
   element.className = cn(
-    "ml-1 select-none text-subtle-foreground/75",
+    "select-none text-subtle-foreground/75",
     "pointer-events-none",
   );
   element.dataset.promptCommandArgumentPlaceholder = "true";
@@ -138,19 +147,18 @@ export const PromptMentionExtension = Mention.extend({
               if (!argumentHint) return false;
 
               const afterMentionPos = pos + node.nodeSize;
-              if (
-                hasNonWhitespaceContentAfterPosition({
-                  doc: state.doc,
-                  position: afterMentionPos,
-                  mentionName,
-                })
-              ) {
-                return false;
-              }
+              const widgetPosition = commandArgumentHintWidgetPosition({
+                doc: state.doc,
+                position: afterMentionPos,
+                mentionName,
+              });
+              if (widgetPosition === null) return false;
 
               decorations.push(
+                // Render after leading whitespace so the caret stays to the
+                // left of the hint when selection sits at the same position.
                 Decoration.widget(
-                  afterMentionPos,
+                  widgetPosition,
                   () => createCommandArgumentHintWidget(argumentHint),
                   {
                     key: `command-argument-placeholder-${pos}-${argumentHint}`,

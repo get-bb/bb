@@ -386,7 +386,7 @@ function WithMentionsRow() {
 
 function WithSkillPillRow() {
   const argumentHint = "[branch | staged] [base=<ref>]";
-  const initialValue = "$moss-hardening-review";
+  const initialValue = "$moss-hardening-review ";
   const { value, mentionRanges, onChange } = useControlledValue(initialValue, [
     storyMention({
       text: initialValue,
