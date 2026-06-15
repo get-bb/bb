@@ -10,7 +10,10 @@ import {
   InteractiveRequestRegistryError,
 } from "./interactive-request-registry.js";
 import { startEventLoopStallMonitor } from "./event-loop-stall-monitor.js";
-import { defaultListModels } from "./command-dispatch-support.js";
+import {
+  defaultListModels,
+  shutdownDefaultListModelsRuntimes,
+} from "./command-dispatch-support.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import type { HostDaemonLogger } from "./logger.js";
@@ -26,13 +29,15 @@ import {
   TerminalManager,
   type TerminalManagerOptions,
 } from "./terminals/terminal-manager.js";
-import { createServerClient } from "./server-client.js";
+import { createServerClient, ServerResponseError } from "./server-client.js";
 import {
   cleanupInjectedSkillStagingDirs,
   ensureDataDirSkillsRootPath,
 } from "./injected-skills.js";
 import {
   ServerConnection,
+  type HandleServerSessionInvalidatedArgs,
+  type ServerSessionInvalidationSource,
   type CreateReconnectingWebSocket,
 } from "./server-connection.js";
 import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
@@ -172,6 +177,17 @@ export function startIdleProviderSessionReaper(
   };
 }
 
+interface SessionRequestArgs<TResult> {
+  request: () => Promise<TResult>;
+  source: ServerSessionInvalidationSource;
+}
+
+interface MaybeInvalidateSessionArgs {
+  error: unknown;
+  observedSessionId: string | null;
+  source: ServerSessionInvalidationSource;
+}
+
 export async function createHostDaemonApp(
   options: CreateHostDaemonAppOptions,
 ): Promise<HostDaemonApp> {
@@ -202,6 +218,41 @@ export async function createHostDaemonApp(
   let interactiveInterruptRetryTimeout: ReturnType<typeof setTimeout> | null =
     null;
   let eventSink: EventSink;
+  let handleServerSessionInvalidated = (
+    _args: HandleServerSessionInvalidatedArgs,
+  ): void => undefined;
+
+  function maybeInvalidateServerSession(args: MaybeInvalidateSessionArgs): void {
+    if (
+      args.observedSessionId === null ||
+      !(args.error instanceof ServerResponseError) ||
+      args.error.code !== "inactive_session"
+    ) {
+      return;
+    }
+
+    handleServerSessionInvalidated({
+      code: "inactive_session",
+      observedSessionId: args.observedSessionId,
+      source: args.source,
+    });
+  }
+
+  async function runSessionRequest<TResult>(
+    args: SessionRequestArgs<TResult>,
+  ): Promise<TResult> {
+    const observedSessionId = sessionState.value;
+    try {
+      return await args.request();
+    } catch (error) {
+      maybeInvalidateServerSession({
+        error,
+        observedSessionId,
+        source: args.source,
+      });
+      throw error;
+    }
+  }
 
   async function flushThreadEventsBeforeInteractiveRegistration(): Promise<void> {
     // Interactive registration creates server-owned turn-scoped timeline state,
@@ -279,7 +330,10 @@ export async function createHostDaemonApp(
 
         const [key, request] = nextEntry;
         try {
-          await serverClient.interruptInteractiveRequests(request);
+          await runSessionRequest({
+            source: "interruptInteractiveRequests",
+            request: () => serverClient.interruptInteractiveRequests(request),
+          });
           pendingInteractiveInterrupts.delete(key);
         } catch (error) {
           options.logger.warn(
@@ -316,12 +370,19 @@ export async function createHostDaemonApp(
   eventSink = createEventSink({
     isSessionOpen: () => sessionState.value !== null,
     logger: options.logger,
-    postEvents: (events) => serverClient.postEvents(events),
+    postEvents: (events) =>
+      runSessionRequest({
+        source: "postEvents",
+        request: () => serverClient.postEvents(events),
+      }),
   });
 
   const interactiveRequestRegistry = new InteractiveRequestRegistry({
     registerRequest: (request) =>
-      serverClient.registerInteractiveRequest(request),
+      runSessionRequest({
+        source: "registerInteractiveRequest",
+        request: () => serverClient.registerInteractiveRequest(request),
+      }),
     onRegistrationFailure: ({ error, request }) => {
       enqueueInteractiveInterrupt({
         providerId: request.providerId,
@@ -433,7 +494,10 @@ export async function createHostDaemonApp(
       (async (request) => {
         try {
           await flushThreadEventsBeforeToolCall();
-          return await serverClient.callTool(request);
+          return await runSessionRequest({
+            source: "callTool",
+            request: () => serverClient.callTool(request),
+          });
         } catch (error) {
           options.logger.error(
             {
@@ -552,7 +616,11 @@ export async function createHostDaemonApp(
 
   const router = new CommandRouter({
     dataDir: options.dataDir,
-    fetchProjectAttachment: (args) => serverClient.fetchProjectAttachment(args),
+    fetchProjectAttachment: (args) =>
+      runSessionRequest({
+        source: "fetchProjectAttachment",
+        request: () => serverClient.fetchProjectAttachment(args),
+      }),
     runtimeManager,
     terminalManager,
     listModels: (args) =>
@@ -636,6 +704,8 @@ export async function createHostDaemonApp(
     },
   });
   sendServerMessage = (message) => connection.sendMessage(message);
+  handleServerSessionInvalidated = (args) =>
+    connection.handleSessionInvalidated(args);
 
   const localApi = options.localApiConfig
     ? await startLocalApiServer({
@@ -673,6 +743,7 @@ export async function createHostDaemonApp(
       await runtimeManager.shutdownAll();
       await eventSink.flush();
       await eventSink.dispose();
+      await shutdownDefaultListModelsRuntimes();
       await connection.shutdown();
     },
     onStart: async () => {

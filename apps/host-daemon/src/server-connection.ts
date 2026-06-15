@@ -40,6 +40,19 @@ interface ServerMessagePayloadSummary {
   payloadTruncated: boolean;
 }
 
+export type ServerSessionInvalidationSource =
+  | "callTool"
+  | "fetchProjectAttachment"
+  | "interruptInteractiveRequests"
+  | "postEvents"
+  | "registerInteractiveRequest";
+
+export interface HandleServerSessionInvalidatedArgs {
+  code: "inactive_session";
+  observedSessionId: string;
+  source: ServerSessionInvalidationSource;
+}
+
 const SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS = 512;
 
 /**
@@ -89,9 +102,11 @@ export class ServerConnection {
   private session: HostDaemonSessionOpenResponse | null = null;
   private websocket: ReconnectingWebSocketLike | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private lastHeartbeatTickAt: number | null = null;
   private stopped = false;
   private sessionCloseHandler: ServerConnectionOptions["onSessionClose"];
   private fatalConnectError: ServerResponseError | null = null;
+  private sessionInvalidationInProgress = false;
   private readonly pendingRecoverableMessages = new Map<
     string,
     HostDaemonDaemonWsMessage
@@ -130,6 +145,7 @@ export class ServerConnection {
   async shutdown(): Promise<void> {
     this.stopped = true;
     this.pendingRecoverableMessages.clear();
+    this.sessionInvalidationInProgress = false;
     this.clearHeartbeat();
     this.clearSession();
 
@@ -163,6 +179,29 @@ export class ServerConnection {
     handler: ServerConnectionOptions["onSessionClose"],
   ): void {
     this.sessionCloseHandler = handler;
+  }
+
+  handleSessionInvalidated(args: HandleServerSessionInvalidatedArgs): void {
+    if (this.stopped || this.sessionInvalidationInProgress) {
+      return;
+    }
+    const session = this.session;
+    if (!session || session.sessionId !== args.observedSessionId) {
+      return;
+    }
+
+    this.sessionInvalidationInProgress = true;
+    this.options.logger.info(
+      {
+        code: args.code,
+        sessionId: args.observedSessionId,
+        source: args.source,
+      },
+      "Server reported inactive daemon session; reconnecting",
+    );
+    this.clearHeartbeat();
+    this.clearSession();
+    this.websocket?.reconnect(1000, "inactive-session");
   }
 
   private async openSession(): Promise<HostDaemonSessionOpenResponse> {
@@ -269,6 +308,7 @@ export class ServerConnection {
 
         const handleOpen = async () => {
           hasOpened = true;
+          this.sessionInvalidationInProgress = false;
           this.clearTimeoutFn(startupTimer);
           this.resetHeartbeat();
           this.options.setSession?.(session);
@@ -474,7 +514,32 @@ export class ServerConnection {
       return;
     }
 
+    this.lastHeartbeatTickAt = Date.now();
     this.heartbeatInterval = this.setIntervalFn(() => {
+      const session = this.session;
+      if (!session) {
+        return;
+      }
+      const now = Date.now();
+      const lastTickAt = this.lastHeartbeatTickAt;
+      if (lastTickAt !== null) {
+        const gapMs = now - lastTickAt;
+        const thresholdMs = session.leaseTimeoutMs / 2;
+        if (gapMs > thresholdMs) {
+          this.options.logger.warn(
+            {
+              gapMs,
+              heartbeatIntervalMs: session.heartbeatIntervalMs,
+              leaseTimeoutMs: session.leaseTimeoutMs,
+              sessionId: session.sessionId,
+              websocketReadyState: this.websocket?.readyState ?? null,
+            },
+            "Host daemon heartbeat timer delayed",
+          );
+        }
+      }
+      this.lastHeartbeatTickAt = now;
+
       if (!this.websocket || this.websocket.readyState !== OPEN_READY_STATE) {
         return;
       }
@@ -489,6 +554,7 @@ export class ServerConnection {
     }
     this.clearIntervalFn(this.heartbeatInterval);
     this.heartbeatInterval = null;
+    this.lastHeartbeatTickAt = null;
   }
 
   private clearSession(): void {

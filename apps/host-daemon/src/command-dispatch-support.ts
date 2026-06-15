@@ -1,5 +1,6 @@
 import {
   createAgentRuntime,
+  type AgentRuntime,
   type AgentRuntimeOptions,
 } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
@@ -84,6 +85,14 @@ export function isExpectedOnlineRpcFailureError(error: unknown): boolean {
 const MISSING_EXECUTABLE_PATTERN = /\bENOENT\b/;
 const SPAWN_PATTERN = /\bspawn\b/;
 
+const defaultModelListRuntimes = new Map<string, AgentRuntime>();
+
+export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
+  const runtimes = [...defaultModelListRuntimes.values()];
+  defaultModelListRuntimes.clear();
+  await Promise.all(runtimes.map((runtime) => runtime.shutdown()));
+}
+
 export async function defaultListModels(
   args: { providerId: string },
   options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
@@ -91,15 +100,20 @@ export async function defaultListModels(
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
-  const runtime = createAgentRuntime({
-    bridgeBundleDir: options.bridgeBundleDir,
-    workspacePath: process.cwd(),
-    onEvent: () => {},
-    onToolCall: async () => ({
-      contentItems: [],
-      success: true,
-    }),
-  });
+  const runtimeKey = options.bridgeBundleDir ?? "";
+  let runtime = defaultModelListRuntimes.get(runtimeKey);
+  if (!runtime) {
+    runtime = createAgentRuntime({
+      bridgeBundleDir: options.bridgeBundleDir,
+      workspacePath: process.cwd(),
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [],
+        success: true,
+      }),
+    });
+    defaultModelListRuntimes.set(runtimeKey, runtime);
+  }
   try {
     return await runtime.listModels(args);
   } catch (error) {
@@ -110,8 +124,6 @@ export async function defaultListModels(
       throw new CommandDispatchError("unknown_provider", error.message);
     }
     throw error;
-  } finally {
-    await runtime.shutdown();
   }
 }
 

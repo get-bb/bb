@@ -2,7 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
-import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
+import {
+  turnScope,
+  type PendingInteractionCreate,
+  type ToolCallRequest,
+} from "@bb/domain";
 import {
   hostDaemonInteractiveInterruptRequestSchema,
   type HostDaemonInteractiveRequestResponse,
@@ -34,9 +38,11 @@ interface FetchRecorder {
 }
 
 interface CreateFetchRecorderArgs {
+  inactiveSessionOnFirstEventPost?: boolean;
   interactiveRequestError?: Error;
   interactiveRequestResponse?: HostDaemonInteractiveRequestResponse;
   retiredEnvironmentIds?: string[];
+  sessionIds?: string[];
 }
 
 interface RuntimeOptionsRef {
@@ -119,6 +125,8 @@ function createFetchRecorder(
   args: CreateFetchRecorderArgs = {},
 ): FetchRecorder {
   const requests: RecordedFetchRequest[] = [];
+  let eventPostCount = 0;
+  let sessionOpenCount = 0;
   const fetchFn: typeof fetch = async (input, init) => {
     const url = readFetchUrl(input);
     const request = {
@@ -129,9 +137,14 @@ function createFetchRecorder(
     requests.push(request);
 
     if (url.pathname === "/internal/session/open") {
+      const sessionId =
+        args.sessionIds?.[sessionOpenCount] ??
+        args.sessionIds?.at(-1) ??
+        "session-app-test";
+      sessionOpenCount += 1;
       return Response.json(
         {
-          sessionId: "session-app-test",
+          sessionId,
           heartbeatIntervalMs: 30000,
           leaseTimeoutMs: 90000,
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
@@ -140,6 +153,17 @@ function createFetchRecorder(
       );
     }
     if (url.pathname === "/internal/session/events") {
+      eventPostCount += 1;
+      if (args.inactiveSessionOnFirstEventPost && eventPostCount === 1) {
+        return Response.json(
+          {
+            code: "inactive_session",
+            message: "Session is not active",
+            retryable: false,
+          },
+          { status: 401 },
+        );
+      }
       return Response.json({
         acceptedEvents: [],
         rejectedEvents: [],
@@ -192,12 +216,19 @@ function createOpeningWebSocket(): CreateReconnectingWebSocket {
       }),
       reconnect: vi.fn(),
     };
-    void urlProvider().then(() => {
+    const openSocket = async () => {
+      await urlProvider();
       queueMicrotask(() => {
         readyState = 1;
         socket.onopen?.({ type: "open" });
       });
+    };
+    socket.reconnect = vi.fn(() => {
+      readyState = 3;
+      socket.onclose?.({ code: 1000, reason: "test-reconnect" });
+      void openSocket();
     });
+    void openSocket();
     return socket;
   };
 }
@@ -455,6 +486,44 @@ describe("createHostDaemonApp", () => {
     expect(timer.clear).toHaveBeenCalledTimes(1);
     triggerTick();
     expect(reapIdleProviderSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("reconnects through the server connection when event posting sees an inactive session", async () => {
+    const { app, fetchRecorder, logger } = await createAppFixture({
+      inactiveSessionOnFirstEventPost: true,
+      sessionIds: ["session-app-test-1", "session-app-test-2"],
+    });
+    try {
+      await app.connection.start();
+
+      app.eventSink.emit({
+        threadId: "thr_app_inactive_session",
+        event: {
+          type: "turn/started",
+          threadId: "thr_app_inactive_session",
+          providerThreadId: "provider-thread-app-inactive-session",
+          scope: turnScope("turn-app-inactive-session"),
+        },
+      });
+
+      await vi.waitFor(() => {
+        expect(
+          fetchRecorder.requests.filter(
+            (request) => request.pathname === "/internal/session/open",
+          ),
+        ).toHaveLength(2);
+      });
+      expect(logger.info).toHaveBeenCalledWith(
+        {
+          code: "inactive_session",
+          sessionId: "session-app-test-1",
+          source: "postEvents",
+        },
+        "Server reported inactive daemon session; reconnecting",
+      );
+    } finally {
+      await app.daemon.shutdown("test");
+    }
   });
 
   it("forgets server-retired loaded environments when opening a session", async () => {

@@ -3,7 +3,7 @@ import type {
   AgentRuntimeOptions,
 } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createAgentRuntimeMock = vi.hoisted(() =>
   vi.fn<(options: AgentRuntimeOptions) => AgentRuntime>(),
@@ -17,7 +17,10 @@ vi.mock("@bb/agent-runtime", async (importOriginal) => {
   };
 });
 
-import { defaultListModels } from "./command-dispatch-support.js";
+import {
+  defaultListModels,
+  shutdownDefaultListModelsRuntimes,
+} from "./command-dispatch-support.js";
 
 interface MakeModelArgs {
   id: string;
@@ -84,37 +87,36 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
 }
 
 describe("command dispatch support", () => {
+  afterEach(async () => {
+    await shutdownDefaultListModelsRuntimes();
+  });
+
   beforeEach(() => {
     createAgentRuntimeMock.mockReset();
   });
 
-  it("uses a fresh runtime for each default model list probe", async () => {
+  it("reuses the default model list runtime until shutdown", async () => {
     const shutdowns: string[] = [];
     const firstModel = makeModel({ id: "model-first" });
     const secondModel = makeModel({ id: "model-second" });
-    createAgentRuntimeMock
-      .mockReturnValueOnce(
-        makeRuntime({
-          listModels: async () => ({
-            models: [firstModel],
-            selectedOnlyModels: [],
-          }),
-          shutdown: async () => {
-            shutdowns.push("first");
-          },
-        }),
-      )
-      .mockReturnValueOnce(
-        makeRuntime({
-          listModels: async () => ({
-            models: [secondModel],
-            selectedOnlyModels: [],
-          }),
-          shutdown: async () => {
-            shutdowns.push("second");
-          },
-        }),
-      );
+    const listModels = vi
+      .fn<AgentRuntime["listModels"]>()
+      .mockResolvedValueOnce({
+        models: [firstModel],
+        selectedOnlyModels: [],
+      })
+      .mockResolvedValueOnce({
+        models: [secondModel],
+        selectedOnlyModels: [],
+      });
+    createAgentRuntimeMock.mockReturnValue(
+      makeRuntime({
+        listModels,
+        shutdown: async () => {
+          shutdowns.push("runtime");
+        },
+      }),
+    );
 
     await expect(defaultListModels({ providerId: "codex" })).resolves.toEqual({
       models: [firstModel],
@@ -125,7 +127,11 @@ describe("command dispatch support", () => {
       selectedOnlyModels: [],
     });
 
-    expect(createAgentRuntimeMock).toHaveBeenCalledTimes(2);
-    expect(shutdowns).toEqual(["first", "second"]);
+    expect(createAgentRuntimeMock).toHaveBeenCalledTimes(1);
+    expect(listModels).toHaveBeenCalledTimes(2);
+    expect(shutdowns).toEqual([]);
+
+    await shutdownDefaultListModelsRuntimes();
+    expect(shutdowns).toEqual(["runtime"]);
   });
 });
