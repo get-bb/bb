@@ -79,7 +79,11 @@ export const THREAD_LIFECYCLE_EVENT_PREDICATES: Record<
   "turn.failed": {},
   "turn.interrupted": {},
   "runtime.exited": {},
-  "turn.dispatched": {},
+  // A dispatch must never reactivate a thread that was deleted or archived
+  // after the caller's eligibility check (a claim/dispatch TOCTOU window). The
+  // stop dimension is already structural: `stopping` has no turn.dispatched
+  // cell.
+  "turn.dispatched": { notArchived: true, notDeleted: true },
   "reprovision.started": {},
   "start.succeeded": { notArchived: true, notDeleted: true },
   "command.failed": { notDeleted: true },

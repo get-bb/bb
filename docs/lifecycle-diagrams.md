@@ -52,7 +52,7 @@ stateDiagram-v2
     idle --> active : turn.started
     idle --> error : turn.failed
     idle --> error : runtime.exited
-    idle --> active : turn.dispatched
+    idle --> active : turn.dispatched ⟨notArchived, notDeleted⟩
     idle --> provisioning : reprovision.started
     idle --> active : start.succeeded ⟨notArchived, notDeleted⟩
     idle --> error : command.failed ⟨notDeleted⟩
@@ -80,7 +80,7 @@ stateDiagram-v2
     error --> active : turn.started
     error --> idle : turn.completed
     error --> idle : turn.interrupted
-    error --> active : turn.dispatched
+    error --> active : turn.dispatched ⟨notArchived, notDeleted⟩
     error --> provisioning : reprovision.started
     error --> active : start.succeeded ⟨notArchived, notDeleted⟩
     error --> active : runtime.observed-active ⟨notDeleted⟩

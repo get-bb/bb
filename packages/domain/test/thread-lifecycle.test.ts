@@ -170,7 +170,7 @@ describe("THREAD_LIFECYCLE table", () => {
       "turn.failed": {},
       "turn.interrupted": {},
       "runtime.exited": {},
-      "turn.dispatched": {},
+      "turn.dispatched": { notArchived: true, notDeleted: true },
       "reprovision.started": {},
       "start.succeeded": {
         notArchived: true,
