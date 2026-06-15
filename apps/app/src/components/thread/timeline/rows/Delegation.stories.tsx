@@ -23,8 +23,8 @@ const baseProps = {
 //
 //   1. toolu_01LKp2KK7kaTCi5vi15VZYvw — Correctness review (14 toolCalls,
 //      4 commandExecutions)
-//   2. toolu_012rpTKMPCmiRnZnYXLA5Vy9 — Maintainability and AGENTS.md
-//      compliance review (12 toolCalls, 10 commandExecutions)
+//   2. toolu_012rpTKMPCmiRnZnYXLA5Vy9 — Maintainability and
+//      repo-guidance review (12 toolCalls, 10 commandExecutions)
 //   3. toolu_01VfaFeGbfjGckpp9LZNpd5a — Test quality review (19 toolCalls,
 //      3 commandExecutions)
 //
@@ -561,7 +561,7 @@ const correctnessChild17: TimelineRow = {
       "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
   },
   output:
-    "1\t# Code Review Checklist\n2\t\n3\tThis document defines the dimensions of a thorough code review. Each section is designed to be evaluated independently — reviewers may delegate sections to separate agents working in parallel.\n4\t\n5\t## Unbiased Review Protocol\n6\t\n7\tA code review must be unbiased. Do not... [truncated]",
+    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. Prefer the simplest correct change.\n4\t\n5\t## Review Scope\n6\t\n7\t- Review the diff against the intended base. Use `git merge-base main <branch>` when reviewing a branch that may have diverged from main... [truncated]",
   completedAt: 1778174324388,
   approvalStatus: null,
   activityIntents: [
@@ -645,7 +645,7 @@ const completedDelegation: TimelineRow = {
 };
 
 // =============================================================================
-// Dispatch 2 — toolu_012rpTKMPCmiRnZnYXLA5Vy9, "Maintainability and AGENTS.md compliance review".
+// Dispatch 2 — toolu_012rpTKMPCmiRnZnYXLA5Vy9, "Maintainability and repo-guidance review".
 // SYNTHESIZED STATUS — real dispatch toolu_012rpTKMPCmiRnZnYXLA5Vy9 completed;
 // lifecycle synthesized for the running variant. childRows are real.
 // startedAt/createdAt use Date.now() so "running for N seconds" stays plausible.
@@ -1094,7 +1094,7 @@ const maintainabilityChild16: TimelineRow = {
     limit: 200,
   },
   output:
-    "1\t# Code Review Checklist\n2\t\n3\tThis document defines the dimensions of a thorough code review. Each section is designed to be evaluated independently — reviewers may delegate sections to separate agents working in parallel.\n4\t\n5\t## Unbiased Review Protocol\n6\t\n7\tA code review must be unbiased. Do not... [truncated]",
+    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. Prefer the simplest correct change.\n4\t\n5\t## Review Scope\n6\t\n7\t- Review the diff against the intended base. Use `git merge-base main <branch>` when reviewing a branch that may have diverged from main... [truncated]",
   completedAt: 1778174337233,
   approvalStatus: null,
   activityIntents: [
@@ -1308,7 +1308,7 @@ const runningDelegation: TimelineRow = {
   callId: "toolu_012rpTKMPCmiRnZnYXLA5Vy9",
   toolName: "Agent",
   subagentType: "Explore",
-  description: "Maintainability and AGENTS.md compliance review",
+  description: "Maintainability and repo-guidance review",
   output: "",
   completedAt: null,
   childRows: [
@@ -2018,7 +2018,7 @@ const testQualityChild22: TimelineRow = {
     limit: 150,
   },
   output:
-    "1\t# Code Review Checklist\n2\t\n3\tThis document defines the dimensions of a thorough code review. Each section is designed to be evaluated independently — reviewers may delegate sections to separate agents working in parallel.\n4\t\n5\t## Unbiased Review Protocol\n6\t\n7\tA code review must be unbiased. Do not... [truncated]",
+    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. Prefer the simplest correct change.\n4\t\n5\t## Review Scope\n6\t\n7\t- Review the diff against the intended base. Use `git merge-base main <branch>` when reviewing a branch that may have diverged from main... [truncated]",
   completedAt: 1778174351117,
   approvalStatus: null,
   activityIntents: [
@@ -2137,7 +2137,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="running"
-        hint="maintainability + AGENTS.md compliance review (real dispatch, status synthesized as pending)"
+        hint="maintainability + repo-guidance review (real dispatch, status synthesized as pending)"
       >
         <TimelineStage>
           <ThreadTimelineRows
