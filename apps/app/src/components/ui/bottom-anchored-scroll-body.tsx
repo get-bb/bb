@@ -40,9 +40,11 @@ export interface BottomAnchorContextValue {
   scrollElementIntoViewClampedToMaxScroll: (
     args: ScrollElementIntoViewClampedToMaxScrollArgs,
   ) => void;
-  // Snapshot the scroll area so the next height growth (e.g. prepending older
-  // messages) keeps the visible row at the same Y position instead of jumping.
-  captureScrollAnchor: () => void;
+  // Wrap an async mutation that prepends/grows content so the visible row stays
+  // at the same Y position instead of jumping.
+  preserveScrollAnchorDuring: (
+    mutation: ScrollAnchorMutation,
+  ) => Promise<void>;
 }
 
 export interface BottomAnchoredScrollBodyProps {
@@ -61,6 +63,8 @@ export interface ScrollElementIntoViewArgs {
 export interface ScrollElementIntoViewClampedToMaxScrollArgs {
   element: HTMLElement;
 }
+
+export type ScrollAnchorMutation = () => Promise<void> | void;
 
 interface ElementVisibilityArgs {
   element: HTMLElement;
@@ -306,6 +310,14 @@ export function BottomAnchoredScrollBody({
     };
   }, []);
 
+  const preserveScrollAnchorDuring = useCallback(
+    async (mutation: ScrollAnchorMutation): Promise<void> => {
+      captureScrollAnchor();
+      await mutation();
+    },
+    [captureScrollAnchor],
+  );
+
   useLayoutEffect(() => {
     const scrollArea = scrollAreaRef.current;
     const anchor = pendingPrependAnchorRef.current;
@@ -369,14 +381,14 @@ export function BottomAnchoredScrollBody({
       scrollToBottom,
       scrollElementIntoView,
       scrollElementIntoViewClampedToMaxScroll,
-      captureScrollAnchor,
+      preserveScrollAnchorDuring,
     }),
     [
       isAtBottom,
       scrollToBottom,
       scrollElementIntoView,
       scrollElementIntoViewClampedToMaxScroll,
-      captureScrollAnchor,
+      preserveScrollAnchorDuring,
     ],
   );
 

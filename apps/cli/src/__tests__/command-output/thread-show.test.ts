@@ -32,7 +32,7 @@ describe("bb thread show command output", () => {
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.timeline.feed.$get": timelineGet,
     });
 
     await runCommand(["thread", "show", "thread-archived-1"], register);
@@ -62,7 +62,7 @@ describe("bb thread show command output", () => {
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.timeline.feed.$get": timelineGet,
     });
 
     await runCommand(["thread", "show", "thread-pinned-1"], register);
@@ -85,7 +85,7 @@ describe("bb thread show command output", () => {
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.timeline.feed.$get": timelineGet,
     });
 
     await runCommand(["thread", "show", "--self"], register);
@@ -126,7 +126,7 @@ describe("bb thread show command output", () => {
       "v1.environments.:id.$get": environmentGet,
       "v1.environments.:id.status.$get": statusGet,
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.timeline.feed.$get": timelineGet,
     });
 
     await runCommand(
@@ -195,7 +195,7 @@ describe("bb thread show command output", () => {
       "v1.environments.:id.$get": environmentGet,
       "v1.environments.:id.diff.$get": diffGet,
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.timeline.feed.$get": timelineGet,
     });
 
     await runCommand(
@@ -247,7 +247,7 @@ describe("bb thread show command output", () => {
       "v1.environments.:id.$get": environmentGet,
       "v1.environments.:id.diff.$get": diffGet,
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.timeline.feed.$get": timelineGet,
     });
 
     await runCommand(
@@ -288,7 +288,7 @@ describe("bb thread show command output", () => {
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.threads.:id.$get": get,
-      "v1.threads.:id.timeline.$get": timelineGet,
+      "v1.threads.:id.timeline.feed.$get": timelineGet,
     });
 
     await runCommand(

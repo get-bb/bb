@@ -1,5 +1,4 @@
 import type { TimelinePaginationCursor, TimelineRow } from "@bb/server-contract";
-import { ApiError } from "../../errors.js";
 
 export type ThreadTimelinePageKind = "latest" | "older";
 
@@ -31,6 +30,24 @@ export interface PaginatedTimelineRowsResult {
   rows: TimelineRow[];
   segmentLimit: number;
 }
+
+export interface TryPaginateTimelineRowsArgs {
+  page: ThreadTimelinePageRequest;
+  rows: readonly TimelineRow[];
+}
+
+export interface PaginateTimelineRowsSuccess {
+  kind: "success";
+  page: PaginatedTimelineRowsResult;
+}
+
+export interface PaginateTimelineRowsMissingCursor {
+  kind: "missing-cursor";
+}
+
+export type TryPaginateTimelineRowsResult =
+  | PaginateTimelineRowsSuccess
+  | PaginateTimelineRowsMissingCursor;
 
 function isTimelineSegmentAnchorRow(row: TimelineRow): boolean {
   return (
@@ -80,51 +97,51 @@ function buildTimelineLogicalSegments(
   return segments;
 }
 
-function requireTimelineSegmentCursorIndex(
+function findTimelineSegmentCursorIndex(
   segments: readonly TimelineLogicalSegment[],
   cursor: TimelinePaginationCursor,
-): number {
+): number | null {
   const index = segments.findIndex(
     (segment) =>
       segment.cursor.anchorSeq === cursor.anchorSeq &&
       segment.cursor.anchorId === cursor.anchorId,
   );
-  if (index !== -1) {
-    return index;
-  }
-
-  throw new ApiError(
-    400,
-    "invalid_request",
-    "Timeline pagination cursor is no longer available",
-  );
+  return index === -1 ? null : index;
 }
 
-export function paginateTimelineRows(
-  rows: readonly TimelineRow[],
-  page: ThreadTimelinePageRequest,
-): PaginatedTimelineRowsResult {
+export function tryPaginateTimelineRows({
+  page,
+  rows,
+}: TryPaginateTimelineRowsArgs): TryPaginateTimelineRowsResult {
   const segments = buildTimelineLogicalSegments(rows);
-  const candidateSegments =
+  const cursorIndex =
     page.kind === "latest"
-      ? segments
-      : segments.slice(
-          0,
-          requireTimelineSegmentCursorIndex(segments, page.beforeCursor),
-        );
+      ? null
+      : findTimelineSegmentCursorIndex(segments, page.beforeCursor);
+  if (page.kind === "older" && cursorIndex === null) {
+    return {
+      kind: "missing-cursor",
+    };
+  }
+
+  const candidateSegments =
+    page.kind === "latest" ? segments : segments.slice(0, cursorIndex ?? 0);
   const selectedSegments = candidateSegments.slice(-page.segmentLimit);
   const hasOlderRows = candidateSegments.length > selectedSegments.length;
   const oldestSelectedSegment = selectedSegments[0];
 
   return {
-    hasOlderRows,
-    kind: page.kind,
-    olderCursor:
-      hasOlderRows && oldestSelectedSegment
-        ? oldestSelectedSegment.cursor
-        : null,
-    returnedSegmentCount: selectedSegments.length,
-    rows: selectedSegments.flatMap((segment) => segment.rows),
-    segmentLimit: page.segmentLimit,
+    kind: "success",
+    page: {
+      hasOlderRows,
+      kind: page.kind,
+      olderCursor:
+        hasOlderRows && oldestSelectedSegment
+          ? oldestSelectedSegment.cursor
+          : null,
+      returnedSegmentCount: selectedSegments.length,
+      rows: selectedSegments.flatMap((segment) => segment.rows),
+      segmentLimit: page.segmentLimit,
+    },
   };
 }

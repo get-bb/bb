@@ -142,6 +142,23 @@ interface MigratedEventRow {
   type: string;
 }
 
+interface MigratedEventDataRow {
+  data: string;
+}
+
+interface MigratedEventLargeValueRow {
+  createdAt: number;
+  eventId: string;
+  itemId: string | null;
+  itemKind: string;
+  jsonPath: string;
+  originalLength: number;
+  sequence: number;
+  storageKind: string;
+  value: string;
+  valueKind: string;
+}
+
 interface MigratedPendingInteractionStatusRow {
   id: string;
   resolvedAt: number | null;
@@ -185,6 +202,16 @@ interface SeedPre0017TerminalSessionMigrationArgs {
   db: DbConnection;
 }
 
+interface SeedEventLargeValueBackfillEventArgs {
+  createdAt: number;
+  data: string;
+  id: string;
+  itemId: string;
+  itemKind: string;
+  sequence: number;
+  type?: string;
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function requirePublishedMigrationWhen(tag: string): number {
@@ -213,6 +240,7 @@ const eventProducerColumnsMigrationWhen = 1780692763264;
 const terminalSessionRuntimeStateHonestyWhen = 1780718665310;
 const hostDaemonSessionObservabilityMigrationWhen = 1780719536955;
 const threadTypeRemovalMigrationWhen = 1780973302146;
+const eventLargeValuesMigrationWhen = 1781403656069;
 const queuedMessageSortKeyMigrationPath = resolve(
   __dirname,
   "..",
@@ -265,6 +293,7 @@ function dropPost0023Tables(db: DbConnection): void {
     "workflow_runs",
     "project_workflow_policies",
     "system_experiments",
+    "event_large_values",
   ]) {
     db.$client.prepare(`DROP TABLE IF EXISTS ${table}`).run();
   }
@@ -364,6 +393,102 @@ function runMigrationFile(args: RunMigrationFileArgs): void {
   for (const statement of statements) {
     args.db.$client.exec(statement);
   }
+}
+
+function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE event_large_values").run();
+  db.$client
+    .prepare<DeleteMigrationParameters>(
+      `
+        DELETE FROM __drizzle_migrations
+        WHERE created_at = ?
+      `,
+    )
+    .run(eventLargeValuesMigrationWhen);
+}
+
+function seedEventLargeValueBackfillThread(db: DbConnection): void {
+  db.$client.exec(`
+    INSERT INTO projects (id, name, created_at, updated_at)
+    VALUES ('proj_large_value_backfill', 'Large Value Backfill', 1000, 1000);
+
+    INSERT INTO threads (
+      id,
+      project_id,
+      provider_id,
+      latest_attention_at,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      'thr_large_value_backfill',
+      'proj_large_value_backfill',
+      'codex',
+      1000,
+      1000,
+      1000
+    );
+  `);
+}
+
+function seedEventLargeValueBackfillEvent(
+  db: DbConnection,
+  args: SeedEventLargeValueBackfillEventArgs,
+): void {
+  db.$client
+    .prepare<[string, number, string, string, string, string, number]>(
+      `
+        INSERT INTO events (
+          id,
+          thread_id,
+          scope_kind,
+          turn_id,
+          sequence,
+          type,
+          item_id,
+          item_kind,
+          data,
+          created_at
+        )
+        VALUES (
+          ?,
+          'thr_large_value_backfill',
+          'turn',
+          'turn_large_value_backfill',
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?
+        )
+      `,
+    )
+    .run(
+      args.id,
+      args.sequence,
+      args.type ?? "item/completed",
+      args.itemId,
+      args.itemKind,
+      args.data,
+      args.createdAt,
+    );
+}
+
+function readMigratedEventData(db: DbConnection, eventId: string): string {
+  const row = db.$client
+    .prepare<[string], MigratedEventDataRow>(
+      `
+        SELECT data
+        FROM events
+        WHERE id = ?
+      `,
+    )
+    .get(eventId);
+  if (!row) {
+    throw new Error(`Expected migrated event ${eventId}`);
+  }
+  return row.data;
 }
 
 function seedPre0017TerminalSessionMigration(
@@ -1593,9 +1718,7 @@ describe("migrate", () => {
         .run();
       db.$client.prepare("DROP TABLE thread_dynamic_context_file_states").run();
       db.$client.prepare("DROP TABLE IF EXISTS workflow_run_events").run();
-      db.$client
-        .prepare("DROP TABLE IF EXISTS workflow_run_operations")
-        .run();
+      db.$client.prepare("DROP TABLE IF EXISTS workflow_run_operations").run();
       db.$client.prepare("DROP TABLE IF EXISTS workflow_runs").run();
       db.$client
         .prepare("DROP TABLE IF EXISTS project_workflow_policies")
@@ -2532,6 +2655,240 @@ describe("migrate", () => {
         .all()
         .map((column) => column.name);
       expect(hostDaemonSessionColumns).not.toContain("last_heartbeat_at");
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("backfills legacy large event values before clearing inline payloads", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      seedEventLargeValueBackfillThread(db);
+
+      const commandOutput = "command output ".repeat(48);
+      const toolResult = { body: "tool result ".repeat(48) };
+      const toolResultJson = JSON.stringify(toolResult);
+      const webFetchResult = "web fetch result ".repeat(40);
+      const webSearchResult = "web search result ".repeat(40);
+      const firstDiff = "first diff ".repeat(60);
+      const secondDiff = "second diff ".repeat(60);
+
+      seedEventLargeValueBackfillEvent(db, {
+        id: "evt_large_command_output",
+        itemId: "cmd_large",
+        itemKind: "commandExecution",
+        sequence: 1,
+        createdAt: 2001,
+        data: JSON.stringify({
+          item: {
+            id: "cmd_large",
+            type: "commandExecution",
+            aggregatedOutput: commandOutput,
+          },
+        }),
+      });
+      seedEventLargeValueBackfillEvent(db, {
+        id: "evt_large_tool_result",
+        itemId: "tool_large",
+        itemKind: "toolCall",
+        sequence: 2,
+        createdAt: 2002,
+        data: JSON.stringify({
+          item: {
+            id: "tool_large",
+            type: "toolCall",
+            result: toolResult,
+          },
+        }),
+      });
+      seedEventLargeValueBackfillEvent(db, {
+        id: "evt_large_web_fetch",
+        itemId: "web_fetch_large",
+        itemKind: "webFetch",
+        sequence: 3,
+        createdAt: 2003,
+        data: JSON.stringify({
+          item: {
+            id: "web_fetch_large",
+            type: "webFetch",
+            resultText: webFetchResult,
+          },
+        }),
+      });
+      seedEventLargeValueBackfillEvent(db, {
+        id: "evt_large_web_search",
+        itemId: "web_search_large",
+        itemKind: "webSearch",
+        sequence: 4,
+        createdAt: 2004,
+        data: JSON.stringify({
+          item: {
+            id: "web_search_large",
+            type: "webSearch",
+            resultText: webSearchResult,
+          },
+        }),
+      });
+      seedEventLargeValueBackfillEvent(db, {
+        id: "evt_large_file_diffs",
+        itemId: "file_large",
+        itemKind: "fileChange",
+        sequence: 5,
+        createdAt: 2005,
+        data: JSON.stringify({
+          item: {
+            id: "file_large",
+            type: "fileChange",
+            changes: [
+              { path: "a.ts", diff: firstDiff },
+              { path: "b.ts", diff: "small diff" },
+              { path: "c.ts", diff: secondDiff },
+            ],
+          },
+        }),
+      });
+
+      markEventLargeValuesMigrationUnapplied(db);
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<[], MigratedEventLargeValueRow>(
+            `
+              SELECT
+                event_id AS eventId,
+                sequence,
+                item_id AS itemId,
+                item_kind AS itemKind,
+                value_kind AS valueKind,
+                json_path AS jsonPath,
+                storage_kind AS storageKind,
+                value,
+                original_length AS originalLength,
+                created_at AS createdAt
+              FROM event_large_values
+              ORDER BY sequence, json_path
+            `,
+          )
+          .all(),
+      ).toEqual([
+        {
+          eventId: "evt_large_command_output",
+          sequence: 1,
+          itemId: "cmd_large",
+          itemKind: "commandExecution",
+          valueKind: "command_aggregated_output",
+          jsonPath: "$.item.aggregatedOutput",
+          storageKind: "text",
+          value: commandOutput,
+          originalLength: commandOutput.length,
+          createdAt: 2001,
+        },
+        {
+          eventId: "evt_large_tool_result",
+          sequence: 2,
+          itemId: "tool_large",
+          itemKind: "toolCall",
+          valueKind: "tool_result",
+          jsonPath: "$.item.result",
+          storageKind: "json",
+          value: toolResultJson,
+          originalLength: toolResultJson.length,
+          createdAt: 2002,
+        },
+        {
+          eventId: "evt_large_web_fetch",
+          sequence: 3,
+          itemId: "web_fetch_large",
+          itemKind: "webFetch",
+          valueKind: "web_fetch_result_text",
+          jsonPath: "$.item.resultText",
+          storageKind: "text",
+          value: webFetchResult,
+          originalLength: webFetchResult.length,
+          createdAt: 2003,
+        },
+        {
+          eventId: "evt_large_web_search",
+          sequence: 4,
+          itemId: "web_search_large",
+          itemKind: "webSearch",
+          valueKind: "web_search_result_text",
+          jsonPath: "$.item.resultText",
+          storageKind: "text",
+          value: webSearchResult,
+          originalLength: webSearchResult.length,
+          createdAt: 2004,
+        },
+        {
+          eventId: "evt_large_file_diffs",
+          sequence: 5,
+          itemId: "file_large",
+          itemKind: "fileChange",
+          valueKind: "file_change_diff",
+          jsonPath: "$.item.changes[0].diff",
+          storageKind: "text",
+          value: firstDiff,
+          originalLength: firstDiff.length,
+          createdAt: 2005,
+        },
+        {
+          eventId: "evt_large_file_diffs",
+          sequence: 5,
+          itemId: "file_large",
+          itemKind: "fileChange",
+          valueKind: "file_change_diff",
+          jsonPath: "$.item.changes[2].diff",
+          storageKind: "text",
+          value: secondDiff,
+          originalLength: secondDiff.length,
+          createdAt: 2005,
+        },
+      ]);
+
+      const commandData = JSON.parse(
+        readMigratedEventData(db, "evt_large_command_output"),
+      );
+      expect(commandData.item.aggregatedOutput).toBe("");
+      expect(commandData.item.truncation.aggregatedOutput).toEqual({
+        originalLength: commandOutput.length,
+        retainedHeadLength: 0,
+        retainedTailLength: 0,
+        truncatedAt: 2001,
+      });
+
+      const toolData = JSON.parse(
+        readMigratedEventData(db, "evt_large_tool_result"),
+      );
+      expect(toolData.item.result).toBe("");
+      expect(toolData.item.truncation.result).toEqual({
+        originalLength: toolResultJson.length,
+        retainedHeadLength: 0,
+        retainedTailLength: 0,
+        truncatedAt: 2002,
+      });
+
+      const webFetchData = JSON.parse(
+        readMigratedEventData(db, "evt_large_web_fetch"),
+      );
+      expect(webFetchData.item.resultText).toBe("");
+      expect(webFetchData.item.truncation.resultText).toEqual({
+        originalLength: webFetchResult.length,
+        retainedHeadLength: 0,
+        retainedTailLength: 0,
+        truncatedAt: 2003,
+      });
+
+      const fileData = JSON.parse(
+        readMigratedEventData(db, "evt_large_file_diffs"),
+      );
+      expect(fileData.item.changes).toEqual([
+        { path: "a.ts", diff: "" },
+        { path: "b.ts", diff: "small diff" },
+        { path: "c.ts", diff: "" },
+      ]);
     } finally {
       closeConnection(db);
     }

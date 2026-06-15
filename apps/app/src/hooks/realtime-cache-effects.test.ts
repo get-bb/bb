@@ -24,7 +24,9 @@ import {
   threadQueryKey,
   threadTerminalsQueryKey,
   threadStorageFilePreviewQueryKey,
-  threadTimelineQueryKey,
+  threadTimelineFeedQueryKey,
+  threadTimelineRowDetailQueryKey,
+  threadTimelineTurnSummaryDetailsQueryKey,
 } from "./queries/query-keys";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
@@ -354,8 +356,9 @@ describe("createRealtimeCacheEffects", () => {
     const unsubscribeRootThreadList = rootThreadListObserver.subscribe(
       () => {},
     );
-    const unsubscribeChildThreadList =
-      childThreadListObserver.subscribe(() => {});
+    const unsubscribeChildThreadList = childThreadListObserver.subscribe(
+      () => {},
+    );
     const unsubscribeGlobalActiveThreadList =
       globalActiveThreadListObserver.subscribe(() => {});
     const unsubscribeGlobalRootThreadList =
@@ -636,7 +639,7 @@ describe("createRealtimeCacheEffects", () => {
 
   it("does not invalidate timeline queries for status-only thread changes", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const timelineKey = threadTimelineQueryKey("thr_1");
+    const timelineKey = threadTimelineFeedQueryKey("thr_1");
     queryClient.setQueryData(timelineKey, {
       rows: [],
       timelinePage: {
@@ -667,7 +670,7 @@ describe("createRealtimeCacheEffects", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadKey = threadQueryKey("thr_1");
-    const timelineKey = threadTimelineQueryKey("thr_1");
+    const timelineKey = threadTimelineFeedQueryKey("thr_1");
     const promptHistoryKey = threadPromptHistoryQueryKey("thr_1");
     queryClient.setQueryData(threadKey, { id: "thr_1" });
     queryClient.setQueryData(promptHistoryKey, []);
@@ -694,6 +697,58 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(threadKey)?.isInvalidated).not.toBe(true);
     expect(queryClient.getQueryState(promptHistoryKey)?.isInvalidated).not.toBe(
+      true,
+    );
+
+    effects.dispose();
+  });
+
+  it("keeps expanded timeline detail queries warm for appended events", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const timelineKey = threadTimelineFeedQueryKey("thr_1");
+    const rowDetailKey = threadTimelineRowDetailQueryKey({
+      detail: {
+        rowKey: "p_4_step",
+        source: { start: 4, end: 9 },
+        parts: ["children"],
+      },
+      parts: ["children"],
+      threadId: "thr_1",
+    });
+    const turnDetailKey = threadTimelineTurnSummaryDetailsQueryKey({
+      sourceSeqEnd: 30,
+      sourceSeqStart: 10,
+      threadId: "thr_1",
+      turnId: "turn-1",
+    });
+    queryClient.setQueryData(timelineKey, {
+      rows: [],
+      timelinePage: {
+        kind: "latest",
+        topLevelLimit: 100,
+        returnedOlderTopLevelRowCount: 0,
+        hasOlderRows: false,
+        olderCursor: null,
+      },
+    });
+    queryClient.setQueryData(rowDetailKey, { parts: {} });
+    queryClient.setQueryData(turnDetailKey, { rows: [] });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["item/completed"], projectId: "project-1" },
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(rowDetailKey)?.isInvalidated).not.toBe(
+      true,
+    );
+    expect(queryClient.getQueryState(turnDetailKey)?.isInvalidated).not.toBe(
       true,
     );
 
@@ -818,7 +873,7 @@ describe("createRealtimeCacheEffects", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadKey = threadQueryKey("thr_1");
-    const timelineKey = threadTimelineQueryKey("thr_1");
+    const timelineKey = threadTimelineFeedQueryKey("thr_1");
     const threadListKey = threadListQueryKey({
       archived: false,
       projectId: "project-1",
@@ -880,7 +935,7 @@ describe("createRealtimeCacheEffects", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadKey = threadQueryKey("thr_1");
-    const timelineKey = threadTimelineQueryKey("thr_1");
+    const timelineKey = threadTimelineFeedQueryKey("thr_1");
     const firstProjectThreadListKey = threadListQueryKey({
       archived: false,
       projectId: "project-1",

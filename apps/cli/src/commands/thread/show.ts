@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import {
-  formatThreadTimelineText,
+  formatThreadTimelineViewRowsText,
+  mapTimelineFeedRowsToViewRows,
   type ThreadTimelineTextFormat,
 } from "@bb/thread-view";
 import {
@@ -12,10 +13,7 @@ import {
   type WorkspaceStatus,
 } from "@bb/domain";
 import type { BbSdk } from "@bb/sdk";
-import type {
-  EnvironmentDiffQuery,
-  ThreadTimelineResponse,
-} from "@bb/server-contract";
+import type { EnvironmentDiffQuery } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
@@ -388,15 +386,20 @@ export function registerShowCommand(
           return;
         }
 
-        const timeline: ThreadTimelineResponse = await sdk.threads.timeline({
+        const timeline = await sdk.threads.timelineFeed({
           threadId,
-          ...(format === "verbose" ? { includeNestedRows: "true" } : {}),
         });
         const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
-        const text = formatThreadTimelineText(timeline.rows, {
-          verbose: format === "verbose",
-          color,
-        });
+        const text = formatThreadTimelineViewRowsText(
+          mapTimelineFeedRowsToViewRows({
+            rows: timeline.rows,
+            threadId,
+          }),
+          {
+            verbose: format === "verbose",
+            color,
+          },
+        );
         console.log(text);
       }),
     );
@@ -407,18 +410,20 @@ export function registerShowCommand(
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (id: string | undefined, opts: ThreadOutputCommandOptions) => {
-        const resolved = requireThreadIdWithLabelOrSelf(id, opts);
-        printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
-        const sdk = createCliBbSdk(getUrl());
-        const result = await sdk.threads.output({ threadId: resolved.id });
-        if (outputJson(opts, result)) return;
-        if (result.output) {
-          console.log(result.output);
-        } else {
-          console.log("(no output)");
-        }
-      }),
+      action(
+        async (id: string | undefined, opts: ThreadOutputCommandOptions) => {
+          const resolved = requireThreadIdWithLabelOrSelf(id, opts);
+          printContextLabel(resolved, "Thread", "BB_THREAD_ID", opts);
+          const sdk = createCliBbSdk(getUrl());
+          const result = await sdk.threads.output({ threadId: resolved.id });
+          if (outputJson(opts, result)) return;
+          if (result.output) {
+            console.log(result.output);
+          } else {
+            console.log("(no output)");
+          }
+        },
+      ),
     );
 }
 

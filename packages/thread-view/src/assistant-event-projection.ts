@@ -59,23 +59,53 @@ function createAssistantTextMessage(
 export function projectAssistantAndReasoningEvent(
   args: ProjectAssistantAndReasoningEventArgs,
 ): boolean {
-  const assistantIdentity = resolveBufferedTextIdentity({
-    decoded: args.decoded,
-    kind: "assistant",
-    parentToolCallId: args.eventParentToolCallId,
-    turnId: args.eventTurnId,
-  });
-  const reasoningIdentity = resolveBufferedTextIdentity({
-    decoded: args.decoded,
-    kind: "reasoning",
-    parentToolCallId: args.eventParentToolCallId,
-    turnId: args.eventTurnId,
-  });
+  if (
+    args.decoded.type === "item/agentMessage/delta" ||
+    (args.decoded.type === "item/completed" &&
+      args.decoded.item.type === "agentMessage")
+  ) {
+    const assistantIdentity = resolveBufferedTextIdentity({
+      decoded: args.decoded,
+      kind: "assistant",
+      parentToolCallId: args.eventParentToolCallId,
+      turnId: args.eventTurnId,
+    });
+
+    return projectBufferedTextEvent({
+      createMessage: (messageKey) =>
+        createAssistantTextMessage({
+          decoded: args.decoded,
+          eventParentToolCallId: args.eventParentToolCallId,
+          messageKey,
+          meta: args.meta,
+        }),
+      identity: assistantIdentity,
+      meta: args.meta,
+      mode: args.decoded.type === "item/agentMessage/delta" ? "delta" : "final",
+      refs: {
+        finalizedKeys: args.state.finalizedAssistantMessageKeys,
+        openMessages: args.state.openAssistantMessagesByKey,
+        textBuffers: args.state.assistantTextBuffersByKey,
+        visibleKeys: args.state.visibleAssistantMessageKeys,
+      },
+      state: args.state,
+      text:
+        args.decoded.type === "item/agentMessage/delta"
+          ? parseAssistantDeltaText(args.decoded)
+          : parseAssistantFinalText(args.decoded),
+    });
+  }
 
   if (
     args.decoded.type === "item/started" &&
     args.decoded.item.type === "reasoning"
   ) {
+    const reasoningIdentity = resolveBufferedTextIdentity({
+      decoded: args.decoded,
+      kind: "reasoning",
+      parentToolCallId: args.eventParentToolCallId,
+      turnId: args.eventTurnId,
+    });
     trackReasoningTurn(args.state, reasoningIdentity);
     if (args.shouldTrackActiveThinking) {
       upsertReasoningLifecycle({
@@ -84,63 +114,21 @@ export function projectAssistantAndReasoningEvent(
         state: args.state,
       });
     }
+    return false;
   }
 
   if (
-    projectBufferedTextEvent({
-      createMessage: (messageKey) =>
-        createAssistantTextMessage({
-          decoded: args.decoded,
-          eventParentToolCallId: args.eventParentToolCallId,
-          messageKey,
-          meta: args.meta,
-        }),
-      identity: assistantIdentity,
-      meta: args.meta,
-      mode: "delta",
-      refs: {
-        finalizedKeys: args.state.finalizedAssistantMessageKeys,
-        openMessages: args.state.openAssistantMessagesByKey,
-        textBuffers: args.state.assistantTextBuffersByKey,
-        visibleKeys: args.state.visibleAssistantMessageKeys,
-      },
-      state: args.state,
-      text: parseAssistantDeltaText(args.decoded),
-    })
+    args.decoded.type === "item/reasoning/summaryTextDelta" ||
+    args.decoded.type === "item/reasoning/textDelta" ||
+    (args.decoded.type === "item/completed" &&
+      args.decoded.item.type === "reasoning")
   ) {
-    return true;
-  }
-
-  if (
-    projectBufferedTextEvent({
-      createMessage: (messageKey) =>
-        createAssistantTextMessage({
-          decoded: args.decoded,
-          eventParentToolCallId: args.eventParentToolCallId,
-          messageKey,
-          meta: args.meta,
-        }),
-      identity: assistantIdentity,
-      meta: args.meta,
-      mode: "final",
-      refs: {
-        finalizedKeys: args.state.finalizedAssistantMessageKeys,
-        openMessages: args.state.openAssistantMessagesByKey,
-        textBuffers: args.state.assistantTextBuffersByKey,
-        visibleKeys: args.state.visibleAssistantMessageKeys,
-      },
-      state: args.state,
-      text: parseAssistantFinalText(args.decoded),
-    })
-  ) {
-    return true;
-  }
-
-  if (
-    (args.decoded.type === "item/reasoning/summaryTextDelta" ||
-      args.decoded.type === "item/reasoning/textDelta") &&
-    reasoningIdentity
-  ) {
+    const reasoningIdentity = resolveBufferedTextIdentity({
+      decoded: args.decoded,
+      kind: "reasoning",
+      parentToolCallId: args.eventParentToolCallId,
+      turnId: args.eventTurnId,
+    });
     trackReasoningTurn(args.state, reasoningIdentity);
     if (args.shouldTrackActiveThinking) {
       upsertReasoningLifecycle({
@@ -149,41 +137,29 @@ export function projectAssistantAndReasoningEvent(
         state: args.state,
       });
     }
-  }
 
-  if (
-    projectReasoningTextEvent({
-      identity: reasoningIdentity,
-      mode: "delta",
-      state: args.state,
-      text: parseReasoningDeltaText(args.decoded),
-    })
-  ) {
-    return true;
-  }
+    if (
+      args.decoded.type === "item/reasoning/summaryTextDelta" ||
+      args.decoded.type === "item/reasoning/textDelta"
+    ) {
+      return projectReasoningTextEvent({
+        identity: reasoningIdentity,
+        mode: "delta",
+        state: args.state,
+        text: parseReasoningDeltaText(args.decoded),
+      });
+    }
 
-  if (
-    projectReasoningTextEvent({
+    const projectedFinalReasoning = projectReasoningTextEvent({
       identity: reasoningIdentity,
       mode: "final",
       state: args.state,
       text: parseReasoningFinalText(args.decoded),
-    })
-  ) {
-    if (
-      args.decoded.type === "item/completed" &&
-      args.decoded.item.type === "reasoning"
-    ) {
-      finalizeReasoningLifecycle(args.state, reasoningIdentity);
-    }
-    return true;
-  }
-
-  if (
-    args.decoded.type === "item/completed" &&
-    args.decoded.item.type === "reasoning"
-  ) {
+    });
     finalizeReasoningLifecycle(args.state, reasoningIdentity);
+    if (projectedFinalReasoning) {
+      return true;
+    }
   }
 
   return false;

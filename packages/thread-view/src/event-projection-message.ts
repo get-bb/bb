@@ -133,6 +133,11 @@ export interface EventProjectionDelegationMetadata {
   description?: string;
 }
 
+export interface EventProjectionWorkOutputDetail {
+  fullLength: number;
+  previewLength: number;
+}
+
 export interface EventProjectionToolCallMessage extends EventProjectionMessageBase {
   kind: "tool-call";
   toolName: string;
@@ -140,6 +145,7 @@ export interface EventProjectionToolCallMessage extends EventProjectionMessageBa
   callId: string;
   parsedIntents: EventProjectionToolParsedIntent[];
   output: string;
+  outputDetail?: EventProjectionWorkOutputDetail;
   completedAt: number | null;
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
   status: Extract<
@@ -156,6 +162,7 @@ export interface EventProjectionCommandMessage extends EventProjectionMessageBas
   parsedIntents: EventProjectionToolParsedIntent[];
   source: string | null;
   output: string;
+  outputDetail?: EventProjectionWorkOutputDetail;
   exitCode: number | null;
   completedAt: number | null;
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
@@ -342,6 +349,7 @@ export interface EventProjectionDelegationMessage
   toolName: string;
   callId: string;
   output: string;
+  outputDetail?: EventProjectionWorkOutputDetail;
   completedAt: number | null;
   status: Extract<
     EventProjectionMessageStatus,

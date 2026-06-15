@@ -392,7 +392,7 @@ describe("completed turn summary rendering", () => {
     ).toEqual([["work:command"], ["work:command"]]);
   });
 
-  it("keeps summary rows on both sides of debug raw events", () => {
+  it("keeps default-quiet provider-unhandled events out of summary rows", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
 
     const timeline = renderCompletedTimeline({
@@ -419,15 +419,11 @@ describe("completed turn summary rendering", () => {
     });
 
     expect(rowSignatures(timeline.rows)).toEqual([
-      "turn:2-2",
-      "system:debug",
-      "turn:4-4",
+      "turn:1-6",
       "conversation:assistant",
     ]);
     expect(topLevelWorkRows(timeline.rows)).toHaveLength(0);
-    expect(turnRows(timeline.rows).map((row) => row.summaryCount)).toEqual([
-      1, 1,
-    ]);
+    expect(turnRows(timeline.rows).map((row) => row.summaryCount)).toEqual([2]);
   });
 
   it("does not synthesize empty summary rows for user-only completed turns", () => {

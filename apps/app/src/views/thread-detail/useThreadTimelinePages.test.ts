@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type {
-  ThreadTimelineResponse,
-  TimelineCommandWorkRow,
+  ThreadTimelineFeedResponse,
+  TimelineFeedRow,
   TimelinePaginationCursor,
-  TimelineRow,
-  TimelineTurnRow,
-  TimelineUserConversationRow,
 } from "@bb/server-contract";
 import {
   mergeLoadedTimelineWithLatest,
@@ -27,43 +24,55 @@ function timelineCursor(args: TimelineTestRowArgs): TimelinePaginationCursor {
   };
 }
 
-function userRow(args: TimelineTestRowArgs): TimelineUserConversationRow {
+function userRow(args: TimelineTestRowArgs): TimelineFeedRow {
   return {
-    id: args.id,
-    threadId: "thread-1",
+    key: args.id,
     turnId: "turn-1",
-    sourceSeqStart: args.sequence,
-    sourceSeqEnd: args.sequence,
+    source: {
+      start: args.sequence,
+      end: args.sequence,
+    },
     startedAt: args.sequence,
     createdAt: args.sequence,
+    detail: null,
     kind: "conversation",
     role: "user",
     initiator: "user",
     senderThreadId: null,
-    text: args.id,
+    textPreview: {
+      text: args.id,
+      fullLength: args.id.length,
+      complete: true,
+    },
     mentions: [],
     attachments: null,
     turnRequest: { kind: "message", status: "accepted" },
   };
 }
 
-function commandRow(args: TimelineTestRowArgs): TimelineCommandWorkRow {
+function commandRow(args: TimelineTestRowArgs): TimelineFeedRow {
   return {
-    id: args.id,
-    threadId: "thread-1",
+    key: args.id,
     turnId: "turn-1",
-    sourceSeqStart: args.sequence,
-    sourceSeqEnd: args.sequence,
+    source: {
+      start: args.sequence,
+      end: args.sequence,
+    },
     startedAt: args.sequence,
     createdAt: args.sequence,
+    detail: null,
     kind: "work",
     workKind: "command",
     status: "completed",
     callId: args.id,
     command: "pnpm test",
     cwd: null,
-    source: null,
-    output: "",
+    sourceLabel: null,
+    outputPreview: {
+      text: "",
+      fullLength: 0,
+      complete: true,
+    },
     exitCode: 0,
     completedAt: args.sequence,
     approvalStatus: null,
@@ -71,15 +80,17 @@ function commandRow(args: TimelineTestRowArgs): TimelineCommandWorkRow {
   };
 }
 
-function turnSummaryRow(args: TimelineTestRowArgs): TimelineTurnRow {
+function turnSummaryRow(args: TimelineTestRowArgs): TimelineFeedRow {
   return {
-    id: args.id,
-    threadId: "thread-1",
+    key: args.id,
     turnId: "turn-1",
-    sourceSeqStart: args.sequence,
-    sourceSeqEnd: args.sequence,
+    source: {
+      start: args.sequence,
+      end: args.sequence,
+    },
     startedAt: args.sequence,
     createdAt: args.sequence,
+    detail: null,
     kind: "turn",
     status: "completed",
     summaryCount: 1,
@@ -88,11 +99,42 @@ function turnSummaryRow(args: TimelineTestRowArgs): TimelineTurnRow {
   };
 }
 
-function makeTimelineResponse(
-  rows: TimelineRow[],
-  olderCursor: TimelinePaginationCursor | null,
-): ThreadTimelineResponse {
+function updateConversationRowText(
+  row: TimelineFeedRow,
+  text: string,
+): TimelineFeedRow {
+  if (row.kind !== "conversation") {
+    return row;
+  }
   return {
+    ...row,
+    textPreview: {
+      text,
+      fullLength: text.length,
+      complete: true,
+    },
+  };
+}
+
+function updateTimelineRowSourceEnd(
+  row: TimelineFeedRow,
+  sourceEnd: number,
+): TimelineFeedRow {
+  return {
+    ...row,
+    source: {
+      ...row.source,
+      end: sourceEnd,
+    },
+  };
+}
+
+function makeTimelineResponse(
+  rows: TimelineFeedRow[],
+  olderCursor: TimelinePaginationCursor | null,
+): ThreadTimelineFeedResponse {
+  return {
+    threadId: "thread-1",
     rows,
     activeThinking: null,
     pendingTodos: null,
@@ -107,7 +149,7 @@ function makeTimelineResponse(
 }
 
 function makeLoadedTimelineState(
-  rows: TimelineRow[],
+  rows: TimelineFeedRow[],
   olderCursor: TimelinePaginationCursor | null,
 ): LoadedTimelineState {
   return {
@@ -128,7 +170,7 @@ describe("timeline page row merging", () => {
       loadedRows: [latestUser],
     });
 
-    expect(rows.map((row) => row.id)).toEqual([
+    expect(rows.map((row) => row.key)).toEqual([
       "older-user",
       "older-command",
       "latest-user",
@@ -148,7 +190,7 @@ describe("timeline page row merging", () => {
       loadedRows: [latestUser],
     });
 
-    expect(rows.map((row) => row.id)).toEqual([
+    expect(rows.map((row) => row.key)).toEqual([
       "first-user",
       "worked-for-summary",
       "latest-user",
@@ -158,11 +200,7 @@ describe("timeline page row merging", () => {
   it("replaces the overlapping latest tail while preserving loaded history", () => {
     const olderUser = userRow({ id: "older-user", sequence: 1 });
     const oldTail = userRow({ id: "live-tail", sequence: 20 });
-    const updatedTail = {
-      ...oldTail,
-      sourceSeqEnd: oldTail.sourceSeqEnd + 1,
-      text: "updated tail",
-    };
+    const updatedTail = updateConversationRowText(oldTail, "updated tail");
     const newStreamingRow = commandRow({
       id: "new-streaming-row",
       sequence: 21,
@@ -173,12 +211,14 @@ describe("timeline page row merging", () => {
       latestRows: [updatedTail, newStreamingRow],
     });
 
-    expect(merge.rows.map((row) => row.id)).toEqual([
+    expect(merge.rows.map((row) => row.key)).toEqual([
       "older-user",
       "live-tail",
       "new-streaming-row",
     ]);
-    expect(merge.rows[1]).toMatchObject({ text: "updated tail" });
+    expect(merge.rows[1]).toMatchObject({
+      textPreview: { text: "updated tail" },
+    });
   });
 
   it("preserves unchanged overlapping row references after a latest refetch", () => {
@@ -201,11 +241,10 @@ describe("timeline page row merging", () => {
   it("replaces changed overlapping row references after a latest refetch", () => {
     const olderUser = userRow({ id: "older-user", sequence: 1 });
     const oldTail = userRow({ id: "live-tail", sequence: 20 });
-    const updatedTail = {
-      ...oldTail,
-      sourceSeqEnd: oldTail.sourceSeqEnd + 1,
-      text: "updated tail",
-    };
+    const updatedTail = updateConversationRowText(
+      updateTimelineRowSourceEnd(oldTail, oldTail.source.end + 1),
+      "updated tail",
+    );
 
     const merge = mergeLatestTimelineRows({
       loadedRows: [olderUser, oldTail],
@@ -217,7 +256,7 @@ describe("timeline page row merging", () => {
     expect(merge.rows[1]).toBe(updatedTail);
   });
 
-  it("keeps loaded rows and the oldest cursor when latest advances without overlap", () => {
+  it("resets to a pageable latest window when latest advances without overlap", () => {
     const oldestCursor = timelineCursor({ id: "oldest", sequence: 1 });
     const latestCursor = timelineCursor({ id: "latest-page", sequence: 40 });
     const current = makeLoadedTimelineState(
@@ -235,8 +274,8 @@ describe("timeline page row merging", () => {
       surfaceKey: "thread-1:default",
     });
 
-    expect(next.rows.map((row) => row.id)).toEqual(["oldest", "latest"]);
-    expect(next.olderCursor).toEqual(oldestCursor);
+    expect(next.rows.map((row) => row.key)).toEqual(["latest"]);
+    expect(next.olderCursor).toEqual(latestCursor);
   });
 
   it("recovers from a stale cursor with a fresh latest cursor without dropping loaded rows", () => {
@@ -244,11 +283,7 @@ describe("timeline page row merging", () => {
     const freshCursor = timelineCursor({ id: "fresh-cursor", sequence: 40 });
     const olderUser = userRow({ id: "older-user", sequence: 1 });
     const oldTail = userRow({ id: "live-tail", sequence: 20 });
-    const updatedTail = {
-      ...oldTail,
-      sourceSeqEnd: oldTail.sourceSeqEnd + 1,
-      text: "updated tail",
-    };
+    const updatedTail = updateConversationRowText(oldTail, "updated tail");
     const latestTimeline = makeTimelineResponse([updatedTail], freshCursor);
 
     const next = recoverLoadedTimelineAfterStaleCursor({
@@ -257,8 +292,13 @@ describe("timeline page row merging", () => {
       surfaceKey: "thread-1:default",
     });
 
-    expect(next.rows.map((row) => row.id)).toEqual(["older-user", "live-tail"]);
-    expect(next.rows[1]).toMatchObject({ text: "updated tail" });
+    expect(next.rows.map((row) => row.key)).toEqual([
+      "older-user",
+      "live-tail",
+    ]);
+    expect(next.rows[1]).toMatchObject({
+      textPreview: { text: "updated tail" },
+    });
     expect(next.olderCursor).toEqual(freshCursor);
   });
 });

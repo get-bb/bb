@@ -11,7 +11,7 @@ import type {
   ThreadEventWaitQuery,
   ThreadGetQuery,
   ThreadListQuery,
-  ThreadTimelineQuery,
+  ThreadTimelineFeedQuery,
   UpdateThreadScheduleConfigRequest,
   UpdateThreadScheduleEnabledRequest,
   UpdateThreadScheduleRequest,
@@ -71,8 +71,8 @@ export type ThreadEventWaitResult = PublicApiOutput<
   "/threads/:id/events/wait",
   "$get"
 >;
-export type ThreadTimelineResult = PublicApiOutput<
-  "/threads/:id/timeline",
+export type ThreadTimelineFeedResult = PublicApiOutput<
+  "/threads/:id/timeline/feed",
   "$get"
 >;
 export type ThreadArchiveResult = PublicApiOutput<
@@ -121,7 +121,7 @@ export interface ThreadEventWaitArgs {
   waitMs: string;
 }
 
-export interface ThreadTimelineArgs extends ThreadTimelineQuery {
+export interface ThreadTimelineFeedArgs extends ThreadTimelineFeedQuery {
   threadId: string;
 }
 
@@ -201,7 +201,7 @@ export interface ThreadsArea {
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
   stop(args: ThreadStatusArgs): Promise<ThreadStopResult>;
-  timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
+  timelineFeed(args: ThreadTimelineFeedArgs): Promise<ThreadTimelineFeedResult>;
   unarchive(args: ThreadStatusArgs): Promise<ThreadUnarchiveResult>;
   unpin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
   update(args: ThreadUpdateArgs): Promise<ThreadMutationResult>;
@@ -220,10 +220,14 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
 
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
   return {
-    title: args.title,
-    parentThreadId: args.parentThreadId,
-    model: args.model,
-    reasoningLevel: args.reasoningLevel,
+    ...(args.title !== undefined ? { title: args.title } : {}),
+    ...(args.parentThreadId !== undefined
+      ? { parentThreadId: args.parentThreadId }
+      : {}),
+    ...(args.model !== undefined ? { model: args.model } : {}),
+    ...(args.reasoningLevel !== undefined
+      ? { reasoningLevel: args.reasoningLevel }
+      : {}),
   };
 }
 
@@ -231,12 +235,22 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
   return {
     input: args.input,
     mode: args.mode,
-    model: args.model,
-    permissionMode: args.permissionMode,
-    reasoningLevel: args.reasoningLevel,
-    senderThreadId: args.senderThreadId,
-    serviceTier: args.serviceTier,
-    executionInputSources: args.executionInputSources,
+    ...(args.model !== undefined ? { model: args.model } : {}),
+    ...(args.permissionMode !== undefined
+      ? { permissionMode: args.permissionMode }
+      : {}),
+    ...(args.reasoningLevel !== undefined
+      ? { reasoningLevel: args.reasoningLevel }
+      : {}),
+    ...(args.senderThreadId !== undefined
+      ? { senderThreadId: args.senderThreadId }
+      : {}),
+    ...(args.serviceTier !== undefined
+      ? { serviceTier: args.serviceTier }
+      : {}),
+    ...(args.executionInputSources !== undefined
+      ? { executionInputSources: args.executionInputSources }
+      : {}),
   };
 }
 
@@ -248,7 +262,7 @@ function scheduleCreateJson(
     cron: args.cron,
     timezone: args.timezone,
     prompt: args.prompt,
-    enabled: args.enabled,
+    ...(args.enabled !== undefined ? { enabled: args.enabled } : {}),
   };
 }
 
@@ -259,10 +273,10 @@ function scheduleUpdateJson(
     return { enabled: args.enabled };
   }
   return {
-    name: args.name,
-    cron: args.cron,
-    timezone: args.timezone,
-    prompt: args.prompt,
+    ...(args.name !== undefined ? { name: args.name } : {}),
+    ...(args.cron !== undefined ? { cron: args.cron } : {}),
+    ...(args.timezone !== undefined ? { timezone: args.timezone } : {}),
+    ...(args.prompt !== undefined ? { prompt: args.prompt } : {}),
   };
 }
 
@@ -280,14 +294,11 @@ function eventWaitQuery(args: ThreadEventWaitArgs): ThreadEventWaitQuery {
   };
 }
 
-function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
+function timelineFeedQuery(
+  args: ThreadTimelineFeedArgs,
+): ThreadTimelineFeedQuery {
   return {
-    ...(args.includeNestedRows !== undefined
-      ? { includeNestedRows: args.includeNestedRows }
-      : {}),
-    ...(args.summaryOnly !== undefined
-      ? { summaryOnly: args.summaryOnly }
-      : {}),
+    ...(args.summaryOnly !== undefined ? { summaryOnly: args.summaryOnly } : {}),
     ...(args.segmentLimit !== undefined
       ? { segmentLimit: args.segmentLimit }
       : {}),
@@ -473,11 +484,11 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
       return { ok: true };
     },
-    async timeline(input) {
+    async timelineFeed(input) {
       return transport.readJson(
-        transport.api.v1.threads[":id"].timeline.$get({
+        transport.api.v1.threads[":id"].timeline.feed.$get({
           param: { id: input.threadId },
-          query: timelineQuery(input),
+          query: timelineFeedQuery(input),
         }),
       );
     },

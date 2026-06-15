@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
+import type {
+  ThreadTimelineFeedResponse,
+  TimelineFeedRow,
+} from "@bb/server-contract";
 import {
   formatTimelineRowKindsForDiagnostics,
   timelineHasAssistantConversation,
@@ -7,41 +10,40 @@ import {
 
 const ASSISTANT_ROW = {
   kind: "conversation",
-  id: "row_assistant",
-  threadId: "thr_test",
+  key: "row_assistant",
   turnId: "turn_test",
-  sourceSeqStart: 1,
-  sourceSeqEnd: 1,
+  source: { start: 1, end: 1 },
   startedAt: 1,
   createdAt: 1,
+  detail: null,
   role: "assistant",
-  text: "Done",
+  textPreview: { text: "Done", fullLength: 4, complete: true },
   attachments: null,
   turnRequest: null,
-} satisfies TimelineRow;
+} satisfies TimelineFeedRow;
 
 const USER_ROW = {
   kind: "conversation",
-  id: "row_user",
-  threadId: "thr_test",
+  key: "row_user",
   turnId: "turn_test",
-  sourceSeqStart: 2,
-  sourceSeqEnd: 2,
+  source: { start: 2, end: 2 },
   startedAt: 2,
   createdAt: 2,
+  detail: null,
   role: "user",
-  text: "Hello",
+  textPreview: { text: "Hello", fullLength: 5, complete: true },
   mentions: [],
   attachments: null,
   initiator: "user",
   senderThreadId: null,
   turnRequest: { kind: "message", status: "accepted" },
-} satisfies TimelineRow;
+} satisfies TimelineFeedRow;
 
 function makeTimelineResponse(
-  rows: ThreadTimelineResponse["rows"],
-): ThreadTimelineResponse {
+  rows: ThreadTimelineFeedResponse["rows"],
+): ThreadTimelineFeedResponse {
   return {
+    threadId: "thr_test",
     rows,
     activeThinking: null,
     pendingTodos: null,
@@ -60,13 +62,12 @@ describe("timeline response helpers", () => {
     const timeline = makeTimelineResponse([
       {
         kind: "turn",
-        id: "row_turn",
-        threadId: "thr_test",
+        key: "row_turn",
         turnId: "turn_test",
-        sourceSeqStart: 1,
-        sourceSeqEnd: 1,
+        source: { start: 1, end: 1 },
         startedAt: 1,
         createdAt: 1,
+        detail: null,
         status: "completed",
         summaryCount: 1,
         completedAt: null,
@@ -84,21 +85,21 @@ describe("timeline response helpers", () => {
     const timeline = makeTimelineResponse([
       {
         kind: "work",
-        id: "row_delegation",
-        threadId: "thr_test",
+        key: "row_delegation",
         turnId: "turn_test",
-        sourceSeqStart: 1,
-        sourceSeqEnd: 1,
+        source: { start: 1, end: 1 },
         startedAt: 1,
         createdAt: 1,
+        detail: null,
         status: "completed",
         workKind: "delegation",
         callId: "call_test",
         toolName: "spawnAgent",
         subagentType: null,
         description: null,
-        output: "",
+        outputPreview: { text: "", fullLength: 0, complete: true },
         completedAt: null,
+        childCount: 1,
         childRows: [ASSISTANT_ROW],
       },
     ]);

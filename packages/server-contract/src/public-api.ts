@@ -110,11 +110,15 @@ import type {
   ThreadStoragePathListResponse,
   ThreadStoragePathsQuery,
   ThreadTerminalListResponse,
-  ThreadTimelineQuery,
-  ThreadTimelineResponse,
+  ThreadTimelineFeedQuery,
+  ThreadTimelineFeedResponse,
+  TimelineRowDetailQuery,
+  TimelineRowDetailResponse,
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
+  TimelineWorkOutputDetailQuery,
+  TimelineWorkOutputDetailResponse,
   UpdateAutomationRequest,
   UpdateEnvironmentRequest,
   UpdateProjectRequest,
@@ -166,8 +170,10 @@ import {
   threadStorageContentQuerySchema,
   threadStorageFilesQuerySchema,
   threadStoragePathsQuerySchema,
-  threadTimelineQuerySchema,
+  threadTimelineFeedQuerySchema,
+  timelineRowDetailQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
+  timelineWorkOutputDetailQuerySchema,
   updateAutomationRequestSchema,
   updateEnvironmentRequestSchema,
   updateProjectRequestSchema,
@@ -181,6 +187,9 @@ import type { ApiError } from "./errors.js";
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
 type PathThreadInteractionId = {
   param: { id: string; interactionId: string };
+};
+type PathThreadTimelineRow = {
+  param: { id: string; rowKey: string };
 };
 
 export const publicApiRoutes = {
@@ -724,13 +733,21 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<TerminalSession>(),
     }),
-    timeline: defineRoute({
-      path: "/threads/:id/timeline",
+    timelineFeed: defineRoute({
+      path: "/threads/:id/timeline/feed",
       method: "get",
-      request: optionalQueryRequest<PathId, ThreadTimelineQuery>(
-        threadTimelineQuerySchema,
+      request: optionalQueryRequest<PathId, ThreadTimelineFeedQuery>(
+        threadTimelineFeedQuerySchema,
       ),
-      response: jsonResponse<ThreadTimelineResponse>(),
+      response: jsonResponse<ThreadTimelineFeedResponse>(),
+    }),
+    timelineRowDetail: defineRoute({
+      path: "/threads/:id/timeline/rows/:rowKey/detail",
+      method: "get",
+      request: queryRequest<PathThreadTimelineRow, TimelineRowDetailQuery>(
+        timelineRowDetailQuerySchema,
+      ),
+      response: jsonResponse<TimelineRowDetailResponse>(),
     }),
     timelineTurnSummaryDetails: defineRoute({
       path: "/threads/:id/timeline/turn-summary-details",
@@ -739,6 +756,14 @@ export const publicApiRoutes = {
         timelineTurnSummaryDetailsQuerySchema,
       ),
       response: jsonResponse<TimelineTurnSummaryDetailsResponse>(),
+    }),
+    timelineWorkOutputDetail: defineRoute({
+      path: "/threads/:id/timeline/work-output",
+      method: "get",
+      request: queryRequest<PathId, TimelineWorkOutputDetailQuery>(
+        timelineWorkOutputDetailQuerySchema,
+      ),
+      response: jsonResponse<TimelineWorkOutputDetailResponse>(),
     }),
     output: defineRoute({
       path: "/threads/:id/output",

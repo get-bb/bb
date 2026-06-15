@@ -1,16 +1,14 @@
 import type { ThreadEvent } from "@bb/domain";
 import { requireThreadEventScopeTurnId } from "@bb/domain";
 import { parseCompactionLifecycleEvent } from "./compaction-lifecycle.js";
-import {
-  parseBackgroundTaskLifecycleEvent,
-  upsertBackgroundTaskMessage,
-} from "./background-task-projection.js";
+import { upsertBackgroundTaskMessage } from "./background-task-projection.js";
 import {
   getEventParentToolCallId,
   getEventProviderThreadId,
   getEventTurnId,
 } from "./event-decode.js";
 import {
+  createExecLifecycleParseCache,
   parseExecLifecycleEvent,
   parseToolCallLifecycleEvent,
 } from "./exec-lifecycle.js";
@@ -24,7 +22,10 @@ import {
   isIgnoredItemCompletedEvent,
   appendDebugEvent,
 } from "./parse-error-message.js";
-import { isIgnoredNoiseType } from "./timeline-noise-events.js";
+import {
+  isDefaultQuietTimelineEventType,
+  isIgnoredNoiseType,
+} from "./timeline-noise-events.js";
 import {
   normalizeEventProjection,
   sortEventProjectionMessagesBySource,
@@ -230,6 +231,133 @@ function getToolCallReceiverThreadIds(decoded: ThreadEvent): string[] {
   );
 }
 
+function shouldParseToolCallStaticMetadata(
+  decoded: ThreadEvent,
+  state: ProjectionState,
+): boolean {
+  if (
+    decoded.type !== "item/completed" ||
+    decoded.item.type !== "toolCall" ||
+    !decoded.item.id
+  ) {
+    return true;
+  }
+  return !state.toolActivity.runningCallsById.has(decoded.item.id);
+}
+
+function canProjectAssistantAndReasoningEvent(decoded: ThreadEvent): boolean {
+  switch (decoded.type) {
+    case "item/agentMessage/delta":
+    case "item/reasoning/summaryTextDelta":
+    case "item/reasoning/textDelta":
+      return true;
+    case "item/started":
+      return decoded.item.type === "reasoning";
+    case "item/completed":
+      return (
+        decoded.item.type === "agentMessage" ||
+        decoded.item.type === "reasoning"
+      );
+    default:
+      return false;
+  }
+}
+
+function canProjectBackgroundTaskEvent(decoded: ThreadEvent): boolean {
+  switch (decoded.type) {
+    case "item/backgroundTask/progress":
+    case "item/backgroundTask/completed":
+      return true;
+    case "item/started":
+    case "item/completed":
+      return decoded.item.type === "backgroundTask";
+    default:
+      return false;
+  }
+}
+
+function canProjectCommandEvent(decoded: ThreadEvent): boolean {
+  switch (decoded.type) {
+    case "item/commandExecution/outputDelta":
+      return true;
+    case "item/started":
+    case "item/completed":
+      return decoded.item.type === "commandExecution";
+    default:
+      return false;
+  }
+}
+
+function canProjectToolCallEvent(decoded: ThreadEvent): boolean {
+  switch (decoded.type) {
+    case "item/toolCall/progress":
+    case "item/mcpToolCall/progress":
+      return true;
+    case "item/started":
+    case "item/completed":
+      return decoded.item.type === "toolCall";
+    default:
+      return false;
+  }
+}
+
+function canProjectWebActivityEvent(decoded: ThreadEvent): boolean {
+  if (decoded.type !== "item/started" && decoded.type !== "item/completed") {
+    return false;
+  }
+  switch (decoded.item.type) {
+    case "webSearch":
+    case "webFetch":
+    case "imageView":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function canProjectFileEditEvent(decoded: ThreadEvent): boolean {
+  switch (decoded.type) {
+    case "item/fileChange/outputDelta":
+      return true;
+    case "item/started":
+    case "item/completed":
+      return decoded.item.type === "fileChange";
+    default:
+      return false;
+  }
+}
+
+function canProjectCompactionEvent(decoded: ThreadEvent): boolean {
+  if (decoded.type === "thread/compacted") {
+    return true;
+  }
+  if (decoded.type !== "item/started" && decoded.type !== "item/completed") {
+    return false;
+  }
+  return decoded.item.type === "contextCompaction";
+}
+
+function canProjectOperationEvent(decoded: ThreadEvent): boolean {
+  switch (decoded.type) {
+    case "provider/unhandled":
+    case "provider/warning":
+    case "system/thread/interrupted":
+    case "system/provider-turn-watchdog":
+    case "system/thread-provisioning":
+    case "system/operation":
+    case "system/permissionGrant/lifecycle":
+    case "system/userQuestion/lifecycle":
+    case "thread/compacted":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function canProjectErrorEvent(decoded: ThreadEvent): boolean {
+  return decoded.type === "provider/error" || decoded.type === "system/error";
+}
+
 function getCompactionTurnFinalization(
   decoded: ThreadEvent,
 ): CompactionTurnFinalization | undefined {
@@ -264,6 +392,7 @@ function buildFlatProjectionData(
   const shouldTrackActiveThinking = args.includeActiveThinking;
 
   const orderedEvents = args.events;
+  const execLifecycleParseCache = createExecLifecycleParseCache();
   const acceptedClientRequestById = buildAcceptedClientRequestById({
     context: args.acceptedClientRequestContext,
     events: orderedEvents,
@@ -345,39 +474,42 @@ function buildFlatProjectionData(
       continue;
     }
 
-    const acceptedClientRequest =
-      decoded.type === "client/turn/requested"
-        ? acceptedClientRequestById.get(decoded.requestId)
-        : undefined;
-    const visibleProjectionAcceptedClientRequest =
-      acceptedClientRequest &&
-      decoded.type === "client/turn/requested" &&
-      canUseAcceptedClientRequestForVisibleProjection(
-        acceptedClientRequest,
+    if (decoded.type === "client/turn/requested") {
+      const acceptedClientRequest = acceptedClientRequestById.get(
+        decoded.requestId,
+      );
+      const visibleProjectionAcceptedClientRequest =
+        acceptedClientRequest &&
+        canUseAcceptedClientRequestForVisibleProjection(
+          acceptedClientRequest,
+          decoded,
+          selectedStartedTurnIds,
+        )
+          ? acceptedClientRequest
+          : undefined;
+      const userFromClientRequest = parseUserFromClientRequest({
+        acceptedClientRequest: visibleProjectionAcceptedClientRequest,
         decoded,
-        selectedStartedTurnIds,
-      )
-        ? acceptedClientRequest
-        : undefined;
-    const userFromClientRequest = parseUserFromClientRequest({
-      acceptedClientRequest: visibleProjectionAcceptedClientRequest,
-      decoded,
-      meta,
-      options: args.options,
-    });
-    if (userFromClientRequest) {
-      appendProjectedUserMessage(state, userFromClientRequest);
-      continue;
+        meta,
+        options: args.options,
+      });
+      if (userFromClientRequest) {
+        appendProjectedUserMessage(state, userFromClientRequest);
+        continue;
+      }
     }
 
-    const legacyUserMessage = parseLegacyUserMessage(decoded, meta);
-    if (legacyUserMessage) {
-      flushToolActivityBeforeNonToolMessage(state);
-      state.messages.push(legacyUserMessage);
-      continue;
+    if (decoded.type === "system/manager/user_message") {
+      const legacyUserMessage = parseLegacyUserMessage(decoded, meta);
+      if (legacyUserMessage) {
+        flushToolActivityBeforeNonToolMessage(state);
+        state.messages.push(legacyUserMessage);
+        continue;
+      }
     }
 
     if (
+      canProjectAssistantAndReasoningEvent(decoded) &&
       projectAssistantAndReasoningEvent({
         decoded,
         eventParentToolCallId,
@@ -390,202 +522,238 @@ function buildFlatProjectionData(
       continue;
     }
 
-    if (parseBackgroundTaskLifecycleEvent(decoded)) {
+    if (canProjectBackgroundTaskEvent(decoded)) {
       flushToolActivityBeforeNonToolMessage(state);
-      upsertBackgroundTaskMessage(state, meta, decoded);
-      continue;
-    }
-
-    const execEvent = parseExecLifecycleEvent(
-      decoded,
-      meta,
-      eventParentToolCallId,
-    );
-    if (execEvent) {
-      if (execEvent.kind === "begin") {
-        onExecBegin(state, meta, decoded.threadId, eventTurnId, execEvent.call);
-      } else if (execEvent.kind === "output") {
-        onExecOutput(
-          state,
-          meta,
-          execEvent.output,
-          execEvent.appendOutput,
-          execEvent.replaceOutput,
-        );
-      } else {
-        onExecEnd(state, meta, decoded.threadId, eventTurnId, execEvent.call);
+      if (upsertBackgroundTaskMessage(state, meta, decoded)) {
+        continue;
       }
+    }
+
+    if (canProjectCommandEvent(decoded)) {
+      const execEvent = parseExecLifecycleEvent({
+        cache: execLifecycleParseCache,
+        decoded,
+        meta,
+        parentToolCallIdOverride: eventParentToolCallId,
+      });
+      if (execEvent) {
+        if (execEvent.kind === "begin") {
+          onExecBegin(
+            state,
+            meta,
+            decoded.threadId,
+            eventTurnId,
+            execEvent.call,
+          );
+        } else if (execEvent.kind === "output") {
+          onExecOutput(
+            state,
+            meta,
+            execEvent.output,
+            execEvent.appendOutput,
+            execEvent.replaceOutput,
+          );
+        } else {
+          onExecEnd(state, meta, decoded.threadId, eventTurnId, execEvent.call);
+        }
+        continue;
+      }
+    }
+
+    if (
+      canProjectToolCallEvent(decoded) &&
+      shouldSuppressLowValueToolCall(decoded)
+    ) {
       continue;
     }
 
-    if (shouldSuppressLowValueToolCall(decoded)) {
-      continue;
-    }
-
-    const toolCallEvent = parseToolCallLifecycleEvent(
-      decoded,
-      meta,
-      eventParentToolCallId,
-    );
-    if (toolCallEvent) {
-      const toolCallName = getToolCallName(decoded);
-      const toolCallReceiverThreadIds = getToolCallReceiverThreadIds(decoded);
-      if (toolCallEvent.kind !== "output") {
-        if (
-          !toolCallEvent.call.parentToolCallId &&
-          toolCallName &&
-          PROVIDER_THREAD_CHILD_INTERACTION_TOOL_NAMES.has(toolCallName)
-        ) {
-          const inferredParentToolCallId = toolCallReceiverThreadIds
-            .map((receiverThreadId) =>
-              state.delegationParentToolCallIdsByProviderThreadId.get(
+    if (canProjectToolCallEvent(decoded)) {
+      const toolCallEvent = parseToolCallLifecycleEvent({
+        decoded,
+        meta,
+        includeStaticMetadata: shouldParseToolCallStaticMetadata(
+          decoded,
+          state,
+        ),
+        parentToolCallIdOverride: eventParentToolCallId,
+      });
+      if (toolCallEvent) {
+        const toolCallName = getToolCallName(decoded);
+        const toolCallReceiverThreadIds = getToolCallReceiverThreadIds(decoded);
+        if (toolCallEvent.kind !== "output") {
+          if (
+            !toolCallEvent.call.parentToolCallId &&
+            toolCallName &&
+            PROVIDER_THREAD_CHILD_INTERACTION_TOOL_NAMES.has(toolCallName)
+          ) {
+            const inferredParentToolCallId = toolCallReceiverThreadIds
+              .map((receiverThreadId) =>
+                state.delegationParentToolCallIdsByProviderThreadId.get(
+                  receiverThreadId,
+                ),
+              )
+              .find(
+                (parentToolCallId): parentToolCallId is string =>
+                  typeof parentToolCallId === "string" &&
+                  parentToolCallId.length > 0,
+              );
+            if (inferredParentToolCallId) {
+              toolCallEvent.call.parentToolCallId = inferredParentToolCallId;
+            }
+          }
+          if (
+            toolCallName &&
+            PROVIDER_THREAD_DELEGATION_TOOL_NAMES.has(toolCallName)
+          ) {
+            for (const receiverThreadId of toolCallReceiverThreadIds) {
+              state.delegationParentToolCallIdsByProviderThreadId.set(
                 receiverThreadId,
-              ),
-            )
-            .find(
-              (parentToolCallId): parentToolCallId is string =>
-                typeof parentToolCallId === "string" &&
-                parentToolCallId.length > 0,
-            );
-          if (inferredParentToolCallId) {
-            toolCallEvent.call.parentToolCallId = inferredParentToolCallId;
+                toolCallEvent.call.callId,
+              );
+            }
           }
+        }
+        if (toolCallEvent.kind === "begin") {
+          onExecBegin(
+            state,
+            meta,
+            decoded.threadId,
+            eventTurnId,
+            toolCallEvent.call,
+          );
+        } else if (toolCallEvent.kind === "output") {
+          onExecOutput(
+            state,
+            meta,
+            toolCallEvent.output,
+            toolCallEvent.appendOutput,
+            toolCallEvent.replaceOutput,
+          );
+        } else {
+          onExecEnd(
+            state,
+            meta,
+            decoded.threadId,
+            eventTurnId,
+            toolCallEvent.call,
+          );
+        }
+        continue;
+      }
+    }
+
+    if (canProjectWebActivityEvent(decoded)) {
+      const webActivityEvent = parseWebActivityLifecycleEvent(
+        decoded,
+        eventParentToolCallId,
+      );
+      if (webActivityEvent) {
+        if (webActivityEvent.kind === "begin") {
+          onWebActivityBegin(
+            state,
+            meta,
+            decoded.threadId,
+            eventTurnId,
+            webActivityEvent,
+          );
+        } else {
+          onWebActivityEnd(
+            state,
+            meta,
+            decoded.threadId,
+            eventTurnId,
+            webActivityEvent,
+          );
+        }
+        continue;
+      }
+    }
+
+    if (canProjectFileEditEvent(decoded)) {
+      const fileEdit = parseFileEditFromItemEvent(
+        decoded,
+        eventParentToolCallId,
+      );
+      if (fileEdit) {
+        flushToolActivityBeforeNonToolMessage(state);
+        upsertFileEdit(state, meta, decoded.threadId, eventTurnId, fileEdit);
+        continue;
+      }
+    }
+
+    if (canProjectCompactionEvent(decoded)) {
+      const compactionEvent = parseCompactionLifecycleEvent(decoded, meta);
+      if (compactionEvent) {
+        flushToolActivityBeforeNonToolMessage(state);
+        if (compactionEvent.kind === "begin") {
+          onCompactionBegin(
+            state,
+            meta,
+            decoded.threadId,
+            eventTurnId,
+            compactionEvent,
+          );
+        } else {
+          onCompactionEnd(
+            state,
+            meta,
+            decoded.threadId,
+            eventTurnId,
+            compactionEvent,
+          );
+        }
+        continue;
+      }
+    }
+
+    if (canProjectOperationEvent(decoded)) {
+      const operation = parseOperationMessage(decoded, meta, {
+        includeProviderUnhandledOperations:
+          args.options?.includeProviderUnhandledOperations,
+      });
+      if (operation) {
+        flushToolActivityBeforeNonToolMessage(state);
+        if (
+          operation.kind === "operation" &&
+          operation.opType === "thread-provisioning"
+        ) {
+          upsertProvisioningOperation(state, operation);
+          continue;
         }
         if (
-          toolCallName &&
-          PROVIDER_THREAD_DELEGATION_TOOL_NAMES.has(toolCallName)
+          operation.kind === "operation" &&
+          operation.opType === "operation"
         ) {
-          for (const receiverThreadId of toolCallReceiverThreadIds) {
-            state.delegationParentToolCallIdsByProviderThreadId.set(
-              receiverThreadId,
-              toolCallEvent.call.callId,
-            );
-          }
+          upsertThreadOperationMessage(state, operation);
+          continue;
         }
-      }
-      if (toolCallEvent.kind === "begin") {
-        onExecBegin(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          toolCallEvent.call,
-        );
-      } else if (toolCallEvent.kind === "output") {
-        onExecOutput(
-          state,
-          meta,
-          toolCallEvent.output,
-          toolCallEvent.appendOutput,
-          toolCallEvent.replaceOutput,
-        );
-      } else {
-        onExecEnd(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          toolCallEvent.call,
-        );
-      }
-      continue;
-    }
-
-    const webActivityEvent = parseWebActivityLifecycleEvent(
-      decoded,
-      eventParentToolCallId,
-    );
-    if (webActivityEvent) {
-      if (webActivityEvent.kind === "begin") {
-        onWebActivityBegin(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          webActivityEvent,
-        );
-      } else {
-        onWebActivityEnd(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          webActivityEvent,
-        );
-      }
-      continue;
-    }
-
-    const fileEdit = parseFileEditFromItemEvent(decoded, eventParentToolCallId);
-    if (fileEdit) {
-      flushToolActivityBeforeNonToolMessage(state);
-      upsertFileEdit(state, meta, decoded.threadId, eventTurnId, fileEdit);
-      continue;
-    }
-
-    const compactionEvent = parseCompactionLifecycleEvent(decoded, meta);
-    if (compactionEvent) {
-      flushToolActivityBeforeNonToolMessage(state);
-      if (compactionEvent.kind === "begin") {
-        onCompactionBegin(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          compactionEvent,
-        );
-      } else {
-        onCompactionEnd(
-          state,
-          meta,
-          decoded.threadId,
-          eventTurnId,
-          compactionEvent,
-        );
-      }
-      continue;
-    }
-
-    const operation = parseOperationMessage(decoded, meta, {
-      includeProviderUnhandledOperations:
-        args.options?.includeProviderUnhandledOperations,
-    });
-    if (operation) {
-      flushToolActivityBeforeNonToolMessage(state);
-      if (
-        operation.kind === "operation" &&
-        operation.opType === "thread-provisioning"
-      ) {
-        upsertProvisioningOperation(state, operation);
+        if (operation.kind === "permission-grant-lifecycle") {
+          upsertPermissionGrantLifecycleMessage(state, operation);
+          continue;
+        }
+        if (operation.kind === "user-question-lifecycle") {
+          upsertUserQuestionLifecycleMessage(state, operation);
+          continue;
+        }
+        state.messages.push(operation);
         continue;
       }
-      if (operation.kind === "operation" && operation.opType === "operation") {
-        upsertThreadOperationMessage(state, operation);
-        continue;
-      }
-      if (operation.kind === "permission-grant-lifecycle") {
-        upsertPermissionGrantLifecycleMessage(state, operation);
-        continue;
-      }
-      if (operation.kind === "user-question-lifecycle") {
-        upsertUserQuestionLifecycleMessage(state, operation);
-        continue;
-      }
-      state.messages.push(operation);
-      continue;
     }
 
-    const error = parseErrorMessage(decoded, meta);
-    if (error) {
-      flushToolActivityBeforeNonToolMessage(state);
-      state.messages.push(error);
-      continue;
+    if (canProjectErrorEvent(decoded)) {
+      const error = parseErrorMessage(decoded, meta);
+      if (error) {
+        flushToolActivityBeforeNonToolMessage(state);
+        state.messages.push(error);
+        continue;
+      }
     }
 
     if (includeDebugRawEvents) {
       const debugReason = isDuplicateEventType(eventType)
         ? "duplicate-event"
         : isIgnoredNoiseType(eventType) ||
+            isDefaultQuietTimelineEventType(eventType) ||
             isIgnoredItemStartEvent(decoded) ||
             isIgnoredItemCompletedEvent(decoded)
           ? "ignored-noise"

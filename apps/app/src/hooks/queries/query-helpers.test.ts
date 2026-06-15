@@ -14,7 +14,6 @@ import type {
   EnvironmentDiffResponse,
   EnvironmentStatusResponse,
   ProjectBranchesResponse,
-  ThreadTimelineResponse,
 } from "@bb/server-contract";
 import {
   getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys,
@@ -33,7 +32,6 @@ import {
   resolveEnvironmentWorkStatusPlaceholder,
   resolveProjectSourceBranchesPlaceholder,
   resolveThreadPlaceholder,
-  resolveThreadTimelinePlaceholder,
 } from "./query-placeholders";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { requireEnabledQueryArg } from "./query-helpers";
@@ -153,23 +151,6 @@ function makeThreadWithRuntime(
   };
 }
 
-function makeThreadTimelineResponse(
-  rows: ThreadTimelineResponse["rows"],
-): ThreadTimelineResponse {
-  return {
-    activeThinking: null,
-    pendingTodos: null,
-    rows,
-    timelinePage: {
-      kind: "latest",
-      segmentLimit: 20,
-      returnedSegmentCount: rows.length > 0 ? 1 : 0,
-      hasOlderRows: false,
-      olderCursor: null,
-    },
-  };
-}
-
 describe("resolveEnvironmentWorkStatusPlaceholder", () => {
   it("reuses previous work status only for the same thread query", () => {
     const previousStatus = makeStatusResponse("clean");
@@ -229,43 +210,6 @@ describe("resolveThreadPlaceholder", () => {
       resolveThreadPlaceholder(
         previousThread,
         ["thread", "thread-1"],
-        "thread-2",
-      ),
-    ).toBeUndefined();
-  });
-});
-
-describe("resolveThreadTimelinePlaceholder", () => {
-  it("reuses previous timeline rows only while the thread matches", () => {
-    const previousTimeline = makeThreadTimelineResponse([
-      {
-        id: "assistant-1",
-        kind: "conversation",
-        role: "assistant",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        text: "Done",
-        sourceSeqStart: 1,
-        sourceSeqEnd: 1,
-        startedAt: 1,
-        createdAt: 1,
-        attachments: null,
-        turnRequest: null,
-      },
-    ]);
-
-    expect(
-      resolveThreadTimelinePlaceholder(
-        previousTimeline,
-        ["threadTimeline", "thread-1"],
-        "thread-1",
-      ),
-    ).toBe(previousTimeline);
-
-    expect(
-      resolveThreadTimelinePlaceholder(
-        previousTimeline,
-        ["threadTimeline", "thread-1"],
         "thread-2",
       ),
     ).toBeUndefined();

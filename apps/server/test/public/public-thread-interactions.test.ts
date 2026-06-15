@@ -1161,7 +1161,7 @@ describe("public thread interaction routes", () => {
       expect(commandResultResponse.status).toBe(200);
 
       const timelineResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline`,
+        `/api/v1/threads/${thread.id}/timeline/feed`,
       );
       expect(timelineResponse.status).toBe(200);
       await expect(readJson(timelineResponse)).resolves.toEqual(
@@ -1243,7 +1243,7 @@ describe("public thread interaction routes", () => {
       expect(commandResultResponse.status).toBe(200);
 
       const timelineResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline`,
+        `/api/v1/threads/${thread.id}/timeline/feed`,
       );
       expect(timelineResponse.status).toBe(200);
       await expect(readJson(timelineResponse)).resolves.toEqual(
@@ -1306,7 +1306,7 @@ describe("public thread interaction routes", () => {
       }
 
       const timelineResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline`,
+        `/api/v1/threads/${thread.id}/timeline/feed`,
       );
       expect(timelineResponse.status).toBe(200);
       await expect(readJson(timelineResponse)).resolves.toEqual(
@@ -1372,7 +1372,7 @@ describe("public thread interaction routes", () => {
       }
 
       const timelineResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline`,
+        `/api/v1/threads/${thread.id}/timeline/feed`,
       );
       expect(timelineResponse.status).toBe(200);
       await expect(readJson(timelineResponse)).resolves.toEqual(

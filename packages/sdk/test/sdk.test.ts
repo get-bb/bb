@@ -159,6 +159,51 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("passes summary-only timeline feed queries through the HTTP transport", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          threadId: "thr_123",
+          rows: [],
+          activeThinking: null,
+          pendingTodos: null,
+          timelinePage: {
+            kind: "latest",
+            segmentLimit: 20,
+            returnedSegmentCount: 0,
+            hasOlderRows: false,
+            olderCursor: null,
+          },
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.timelineFeed({
+        threadId: "thr_123",
+        summaryOnly: "true",
+      }),
+    ).resolves.toMatchObject({
+      rows: [],
+      threadId: "thr_123",
+    });
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/threads/thr_123/timeline/feed?summaryOnly=true",
+      },
+    ]);
+  });
+
   it("rejects empty environment updates before sending a request", async () => {
     const queue = createFetchQueue([]);
     const sdk = createBbSdk({

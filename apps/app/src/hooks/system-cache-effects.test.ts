@@ -3,11 +3,11 @@ import { createAppQueryClient } from "@/lib/query-client";
 import {
   sidebarNavigationQueryKey,
   systemExecutionOptionsQueryKey,
-  threadDefaultExecutionOptionsQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
   threadQueuedMessagesQueryKey,
 } from "./queries/query-keys";
+import { threadDefaultExecutionOptionsQueryKey } from "./queries/thread-default-execution-options-query";
 import { invalidateRealtimeQueriesAfterServerReconnect } from "./cache-owners/system-cache-effects";
 
 function createCacheEffectQueryClient() {

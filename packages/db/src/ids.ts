@@ -52,6 +52,10 @@ export function createEventId(): string {
   return createId("evt");
 }
 
+export function createEventLargeValueId(): string {
+  return createId("elv");
+}
+
 export function createPromptHistoryEntryId(): string {
   return createId("phist");
 }

@@ -11,18 +11,18 @@ export interface FetchThreadPendingTodosArgs {
 }
 
 /**
- * Best-effort fetch — returns null if the timeline endpoint is unreachable or
- * fails. Pending TODOs are a context surface, not a primary signal, so a
- * failure here should not break the wrapping command.
+ * Best-effort fetch — returns null if the timeline feed endpoint is
+ * unreachable or fails. Pending TODOs are a context surface, not a primary
+ * signal, so a failure here should not break the wrapping command.
  *
- * Uses `summaryOnly=true` so the server skips row generation/serialization;
- * the CLI only consumes `pendingTodos`, not the full timeline.
+ * Uses `summaryOnly=true` so the response omits timeline rows; the CLI only
+ * consumes `pendingTodos`, not the full timeline.
  */
 export async function fetchThreadPendingTodos(
   args: FetchThreadPendingTodosArgs,
 ): Promise<ThreadTimelinePendingTodos | null> {
   try {
-    const response = await args.sdk.threads.timeline({
+    const response = await args.sdk.threads.timelineFeed({
       threadId: args.threadId,
       summaryOnly: "true",
     });

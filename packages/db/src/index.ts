@@ -15,6 +15,7 @@ export {
   createQueuedThreadMessageClaimToken,
   createQueuedThreadMessageId,
   createEnvironmentId,
+  createEventLargeValueId,
   createEventId,
   createEnvironmentProvisioningId,
   createHostDaemonSessionId,
@@ -30,6 +31,13 @@ export {
 } from "./ids.js";
 
 export { migrate } from "./migrate.js";
+export type {
+  StoredEventLargeValueItemKind,
+  StoredEventLargeValueJsonPath,
+  StoredEventLargeValueKind,
+  StoredEventLargeValueStorageKind,
+  StoredEventLargeValueTruncationPath,
+} from "./event-large-values.js";
 export { isSqliteUniqueConstraintOnColumns } from "./sqlite-errors.js";
 export type {
   FutureAppliedMigration,

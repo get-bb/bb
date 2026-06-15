@@ -15,9 +15,14 @@ import {
   threadQueuedMessageSchema,
   threadTimelinePendingTodosSchema,
   threadWithRuntimeSchema,
+  workflowProgressSnapshotSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
-import { timelineRowSchema } from "../thread-timeline.js";
+import {
+  timelineFeedDetailPartSchema,
+  timelineFeedRowSchema,
+  timelineRowSchema,
+} from "../thread-timeline.js";
 import {
   environmentArgsSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
@@ -288,18 +293,15 @@ export const timelinePageMetadataSchema = z
   })
   .strict();
 
-export const threadTimelineQuerySchema = z
+export const threadTimelineFeedQuerySchema = z
   .object({
-    includeNestedRows: z.enum(["true", "false"]),
     segmentLimit: z.string().regex(/^\d+$/),
     beforeAnchorSeq: z.string().regex(/^[1-9]\d*$/),
     beforeAnchorId: z.string().min(1),
     /**
-     * When `"true"`, the response omits row generation and returns
-     * `rows: []` with the tail-only fields (`activeThinking`, `pendingTodos`,
-     * `contextWindowUsage`) populated normally. Used by the CLI to read
-     * tail state without paying for the full row payload on every
-     * `bb status` invocation. Implies `latest` page semantics.
+     * When `"true"`, the feed omits rows and returns only tail-state fields
+     * (`activeThinking`, `pendingTodos`, `contextWindowUsage`). Used by CLI
+     * status surfaces that do not render timeline rows.
      */
     summaryOnly: z.enum(["true", "false"]),
   })
@@ -318,7 +320,9 @@ export const threadTimelineQuerySchema = z
       path: hasBeforeAnchorSeq ? ["beforeAnchorId"] : ["beforeAnchorSeq"],
     });
   });
-export type ThreadTimelineQuery = z.infer<typeof threadTimelineQuerySchema>;
+export type ThreadTimelineFeedQuery = z.infer<
+  typeof threadTimelineFeedQuerySchema
+>;
 
 export const timelineTurnSummaryDetailsQuerySchema = z.object({
   turnId: z.string().min(1),
@@ -327,6 +331,38 @@ export const timelineTurnSummaryDetailsQuerySchema = z.object({
 });
 export type TimelineTurnSummaryDetailsQuery = z.infer<
   typeof timelineTurnSummaryDetailsQuerySchema
+>;
+
+export const timelineWorkOutputDetailQuerySchema = z.object({
+  callId: z.string().min(1),
+  workKind: z.enum(["command", "tool"]),
+  sourceSeqStart: z.string().regex(/^\d+$/),
+  sourceSeqEnd: z.string().regex(/^\d+$/),
+});
+export type TimelineWorkOutputDetailQuery = z.infer<
+  typeof timelineWorkOutputDetailQuerySchema
+>;
+
+export const timelineRowDetailQuerySchema = z.object({
+  sourceSeqStart: z.string().regex(/^\d+$/),
+  sourceSeqEnd: z.string().regex(/^\d+$/),
+  parts: z
+    .string()
+    .min(1)
+    .superRefine((value, context) => {
+      for (const part of value.split(",")) {
+        if (timelineFeedDetailPartSchema.safeParse(part).success) {
+          continue;
+        }
+        context.addIssue({
+          code: "custom",
+          message: `Invalid timeline row detail part: ${part}`,
+        });
+      }
+    }),
+});
+export type TimelineRowDetailQuery = z.infer<
+  typeof timelineRowDetailQuerySchema
 >;
 
 export const threadEventsQuerySchema = z
@@ -399,15 +435,44 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
   typeof timelineTurnSummaryDetailsResponseSchema
 >;
 
-export const threadTimelineResponseSchema = z.object({
-  rows: z.array(timelineRowSchema),
+export const timelineWorkOutputDetailResponseSchema = z.object({
+  output: z.string(),
+});
+export type TimelineWorkOutputDetailResponse = z.infer<
+  typeof timelineWorkOutputDetailResponseSchema
+>;
+
+export const threadTimelineFeedResponseSchema = z.object({
+  threadId: z.string(),
+  rows: z.array(timelineFeedRowSchema),
   activeThinking: activeThinkingSchema.nullable(),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),
   timelinePage: timelinePageMetadataSchema,
 });
-export type ThreadTimelineResponse = z.infer<
-  typeof threadTimelineResponseSchema
+export type ThreadTimelineFeedResponse = z.infer<
+  typeof threadTimelineFeedResponseSchema
+>;
+
+export const timelineRowDetailResponseSchema = z.object({
+  rowKey: z.string(),
+  source: z.object({
+    start: z.number().int().nonnegative(),
+    end: z.number().int().nonnegative(),
+  }),
+  parts: z.object({
+    text: z.string().nullable(),
+    output: z.string().nullable(),
+    systemDetail: z.string().nullable(),
+    fileDiff: z.string().nullable(),
+    stdout: z.string().nullable(),
+    stderr: z.string().nullable(),
+    children: z.array(timelineFeedRowSchema).nullable(),
+    workflow: workflowProgressSnapshotSchema.nullable(),
+  }),
+});
+export type TimelineRowDetailResponse = z.infer<
+  typeof timelineRowDetailResponseSchema
 >;
 
 export const threadStorageFileListResponseSchema =
