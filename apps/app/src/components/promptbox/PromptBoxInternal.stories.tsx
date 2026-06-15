@@ -258,6 +258,16 @@ interface StoryMentionArgs {
   token: string;
 }
 
+interface StoryMentionSpec {
+  token: string;
+  resource: PromptMentionResource;
+}
+
+interface PromptPillsFixture {
+  text: string;
+  mentions: PromptTextMention[];
+}
+
 function storyMention({
   resource,
   text,
@@ -274,6 +284,18 @@ function storyMention({
   };
 }
 
+function buildPromptPillsFixture(
+  text: string,
+  mentionSpecs: readonly StoryMentionSpec[],
+): PromptPillsFixture {
+  return {
+    text,
+    mentions: mentionSpecs.map((spec) =>
+      storyMention({ resource: spec.resource, text, token: spec.token }),
+    ),
+  };
+}
+
 function useControlledValue(
   initial: string,
   initialMentions: PromptTextMention[] = [],
@@ -287,6 +309,35 @@ function useControlledValue(
   return { value, mentionRanges, onChange };
 }
 
+function PromptBoxStoryInstance({
+  fixture,
+  placeholder = "Review the prompt pills",
+}: {
+  fixture: PromptPillsFixture;
+  placeholder?: string;
+}) {
+  const { value, mentionRanges, onChange } = useControlledValue(
+    fixture.text,
+    fixture.mentions,
+  );
+  return (
+    <PromptBoxInternal
+      value={value}
+      mentionRanges={mentionRanges}
+      onChange={onChange}
+      onSubmit={noop}
+      placeholder={placeholder}
+      typeahead={makeTypeahead()}
+      mentionMenuPlacement="bottom"
+      attachments={makeAttachments()}
+      history={baseHistory}
+      submission={makeSubmission()}
+      voice={idleVoice}
+      footerStart={<ExecutionControls {...mockExecution} />}
+    />
+  );
+}
+
 function makeSubmission(
   overrides?: Partial<PromptBoxSubmissionConfig>,
 ): PromptBoxSubmissionConfig {
@@ -297,6 +348,232 @@ function makeSubmission(
     ...overrides,
   };
 }
+
+const mixedPromptPillsFixture = buildPromptPillsFixture(
+  [
+    "Use @apps/app/src/components/promptbox/PromptBoxInternal.tsx with",
+    "@apps/app/src/components/promptbox/mentions/ and @thread-storage:notes/status.md;",
+    "then ask @thread:thr_prompt_pills before running $github:gh-fix-ci or /frontend:component.",
+  ].join(" "),
+  [
+    {
+      token: "@apps/app/src/components/promptbox/PromptBoxInternal.tsx",
+      resource: {
+        kind: "path",
+        source: "workspace",
+        entryKind: "file",
+        path: "apps/app/src/components/promptbox/PromptBoxInternal.tsx",
+        label: "PromptBoxInternal.tsx",
+      },
+    },
+    {
+      token: "@apps/app/src/components/promptbox/mentions/",
+      resource: {
+        kind: "path",
+        source: "workspace",
+        entryKind: "directory",
+        path: "apps/app/src/components/promptbox/mentions",
+        label: "mentions",
+      },
+    },
+    {
+      token: "@thread-storage:notes/status.md",
+      resource: {
+        kind: "path",
+        source: "thread-storage",
+        entryKind: "file",
+        path: "notes/status.md",
+        label: "status.md",
+      },
+    },
+    {
+      token: "@thread:thr_prompt_pills",
+      resource: {
+        kind: "thread",
+        projectId: "proj_promptbox",
+        threadId: "thr_prompt_pills",
+        label: "Prompt pills QA",
+      },
+    },
+    {
+      token: "$github:gh-fix-ci",
+      resource: {
+        kind: "command",
+        trigger: "$",
+        name: "github:gh-fix-ci",
+        source: "skill",
+        origin: "user",
+        label: "github:gh-fix-ci",
+        argumentHint: null,
+      },
+    },
+    {
+      token: "/frontend:component",
+      resource: {
+        kind: "command",
+        trigger: "/",
+        name: "frontend:component",
+        source: "command",
+        origin: "project",
+        label: "frontend:component",
+        argumentHint: "$ARGUMENTS",
+      },
+    },
+  ],
+);
+
+const pathPromptPillsFixture = buildPromptPillsFixture(
+  [
+    "Workspace file @apps/app/src/components/promptbox/PromptBoxInternal.tsx",
+    "workspace folder @apps/app/src/components/promptbox/mentions/",
+    "and thread storage @thread-storage:runtime-attachments/summary.json.",
+  ].join(" "),
+  [
+    {
+      token: "@apps/app/src/components/promptbox/PromptBoxInternal.tsx",
+      resource: {
+        kind: "path",
+        source: "workspace",
+        entryKind: "file",
+        path: "apps/app/src/components/promptbox/PromptBoxInternal.tsx",
+        label: "PromptBoxInternal.tsx",
+      },
+    },
+    {
+      token: "@apps/app/src/components/promptbox/mentions/",
+      resource: {
+        kind: "path",
+        source: "workspace",
+        entryKind: "directory",
+        path: "apps/app/src/components/promptbox/mentions",
+        label: "mentions",
+      },
+    },
+    {
+      token: "@thread-storage:runtime-attachments/summary.json",
+      resource: {
+        kind: "path",
+        source: "thread-storage",
+        entryKind: "file",
+        path: "runtime-attachments/summary.json",
+        label: "summary.json",
+      },
+    },
+  ],
+);
+
+const threadPromptPillsFixture = buildPromptPillsFixture(
+  "Compare @thread:thr_prompt_pills with @thread:thr_parent_review.",
+  [
+    {
+      token: "@thread:thr_prompt_pills",
+      resource: {
+        kind: "thread",
+        projectId: "proj_promptbox",
+        threadId: "thr_prompt_pills",
+        label: "Prompt pills QA",
+      },
+    },
+    {
+      token: "@thread:thr_parent_review",
+      resource: {
+        kind: "thread",
+        threadId: "thr_parent_review",
+        label: "Parent review thread with a longer title",
+      },
+    },
+  ],
+);
+
+const commandPromptPillsFixture = buildPromptPillsFixture(
+  "Try $github:gh-fix-ci $browser:control-in-app-browser /frontend:component and $review.",
+  [
+    {
+      token: "$github:gh-fix-ci",
+      resource: {
+        kind: "command",
+        trigger: "$",
+        name: "github:gh-fix-ci",
+        source: "skill",
+        origin: "user",
+        label: "github:gh-fix-ci",
+        argumentHint: null,
+      },
+    },
+    {
+      token: "$browser:control-in-app-browser",
+      resource: {
+        kind: "command",
+        trigger: "$",
+        name: "browser:control-in-app-browser",
+        source: "skill",
+        origin: "user",
+        label: "browser:control-in-app-browser",
+        argumentHint: null,
+      },
+    },
+    {
+      token: "/frontend:component",
+      resource: {
+        kind: "command",
+        trigger: "/",
+        name: "frontend:component",
+        source: "command",
+        origin: "project",
+        label: "frontend:component",
+        argumentHint: "$ARGUMENTS",
+      },
+    },
+    {
+      token: "$review",
+      resource: {
+        kind: "command",
+        trigger: "$",
+        name: "review",
+        source: "command",
+        origin: "user",
+        label: "review",
+        argumentHint: "[target]",
+      },
+    },
+  ],
+);
+
+const skillArgumentHintFixture = buildPromptPillsFixture(
+  "$moss-hardening-review ",
+  [
+    {
+      token: "$moss-hardening-review",
+      resource: {
+        kind: "command",
+        trigger: "$",
+        name: "moss-hardening-review",
+        source: "skill",
+        origin: "user",
+        label: "moss-hardening-review",
+        argumentHint: "[branch | staged] [base=<ref>]",
+      },
+    },
+  ],
+);
+
+const projectCommandArgumentHintFixture = buildPromptPillsFixture(
+  "/frontend:component ",
+  [
+    {
+      token: "/frontend:component",
+      resource: {
+        kind: "command",
+        trigger: "/",
+        name: "frontend:component",
+        source: "command",
+        origin: "project",
+        label: "frontend:component",
+        argumentHint: "$ARGUMENTS",
+      },
+    },
+  ],
+);
 
 // ---------------------------------------------------------------------------
 // Story rows. Each row is its own controlled instance.
@@ -566,6 +843,49 @@ function RecordingProcessingRow() {
   );
 }
 
+export function AllPromptPills() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="mixed pills"
+        hint="file, folder, thread storage, thread, skill, and project command in one prompt"
+      >
+        <PromptBoxStoryInstance fixture={mixedPromptPillsFixture} />
+      </StoryRow>
+      <StoryRow
+        label="path pills"
+        hint="workspace file, workspace folder, and thread-storage file"
+      >
+        <PromptBoxStoryInstance fixture={pathPromptPillsFixture} />
+      </StoryRow>
+      <StoryRow
+        label="thread pills"
+        hint="thread mention pills with short and long labels"
+      >
+        <PromptBoxStoryInstance fixture={threadPromptPillsFixture} />
+      </StoryRow>
+      <StoryRow
+        label="command pills"
+        hint="skill commands, project commands, user commands, and both trigger styles"
+      >
+        <PromptBoxStoryInstance fixture={commandPromptPillsFixture} />
+      </StoryRow>
+      <StoryRow
+        label="skill arg hint"
+        hint="skill pill with non-editable argument hint placeholder after the caret"
+      >
+        <PromptBoxStoryInstance fixture={skillArgumentHintFixture} />
+      </StoryRow>
+      <StoryRow
+        label="project arg hint"
+        hint="project command pill with non-editable argument hint placeholder"
+      >
+        <PromptBoxStoryInstance fixture={projectCommandArgumentHintFixture} />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
 export function Overview() {
   return (
     <StoryCard>
@@ -586,13 +906,13 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="selected skill"
-        hint="skill command pill plus the SKILL.md argument hint text"
+        hint="skill command pill plus the SKILL.md argument hint placeholder"
       >
         <WithSkillPillRow />
       </StoryRow>
       <StoryRow
         label="live skills"
-        hint="type $ then select a skill; argument hints insert after the pill"
+        hint="type $ then select a skill; argument hints render as placeholders"
       >
         <WithLiveSkillsRow />
       </StoryRow>
