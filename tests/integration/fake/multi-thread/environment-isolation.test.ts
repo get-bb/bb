@@ -38,7 +38,7 @@ import {
 describe.sequential(
   "fake provider environment-isolation multi-thread integration",
   () => {
-    // Decision B* (plans/lifecycle-target-state.md): un-archive is decoupled
+    // plans/thread-lifecycle-state-review.md: un-archive is decoupled
     // from the environment lifecycle. Un-archiving a thread whose shared managed
     // environment was already destroyed is a pure record op — it never
     // resurrects the environment. The thread surfaces the "environment is gone"

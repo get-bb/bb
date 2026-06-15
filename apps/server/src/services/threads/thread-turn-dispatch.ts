@@ -101,7 +101,7 @@ export async function dispatchTurnDuringReprovision(
     return false;
   }
 
-  // The environment is gone (Decision B*, plans/lifecycle-target-state.md):
+  // The environment is gone (plans/thread-lifecycle-state-review.md):
   // nothing reprovisions a destroying/destroyed environment, so surface the
   // "environment is gone" condition the frontend banner keys off instead of
   // dispatching a reprovision. Error-recovery reprovision for an `error`-status

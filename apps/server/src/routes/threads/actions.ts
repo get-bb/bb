@@ -376,7 +376,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
   });
 
-  // Un-archive is a pure record op (Decision B*, plans/lifecycle-target-state.md):
+  // Un-archive is a pure record op (plans/thread-lifecycle-state-review.md):
   // it clears archivedAt and nothing else. It deliberately does not touch the
   // environment lifecycle — cleanup is monotonic and never cancelled, and a
   // thread whose environment is gone surfaces a read-only "environment is gone"

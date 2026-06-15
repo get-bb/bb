@@ -1,9 +1,9 @@
 # Lifecycle product simplification: retiring environments
 
-This plan supersedes the environment cleanup-intent portion of
-`plans/lifecycle-target-state.md` if adopted. The goal is to remove the extra
-`cleanupRequestedAt` dimension and make environment availability a single
-product state machine.
+This plan is the detailed environment cleanup-intent design for the lifecycle
+simplification work tracked in `plans/repo-simplification-roadmap.md`. The goal
+is to remove the extra `cleanupRequestedAt` dimension and make environment
+availability a single product state machine.
 
 ## Problem
 
