@@ -484,7 +484,7 @@ describe("thread schedule sweep", () => {
     });
   });
 
-  it("skips a due schedule for a thread with a stop in flight", async () => {
+  it("skips a due schedule for a stopping thread", async () => {
     await withTestHarness(async (harness) => {
       const { now, schedule, thread } = seedDueThreadScheduleFixture({
         harness,
@@ -493,21 +493,21 @@ describe("thread schedule sweep", () => {
       });
       harness.db
         .update(threads)
-        .set({ stopRequestedAt: now - 1, updatedAt: now - 1 })
+        .set({ status: "stopping", updatedAt: now - 1 })
         .where(eq(threads.id, thread.id))
         .run();
 
       await sweepDueThreadSchedules(harness.deps, { now });
 
-      // No turn is dispatched into the pending stop, and the thread is not
-      // reactivated — it stays idle until the stop settles.
+      // No turn is dispatched into the stopping thread, and it is not
+      // reactivated — it stays `stopping` until the stop settles.
       expect(
         listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toHaveLength(0);
       expect(
         harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
           ?.status,
-      ).toBe("idle");
+      ).toBe("stopping");
       // The occurrence is skip-advanced, not fired or disabled.
       const updatedSchedule = getThreadSchedule(harness.db, schedule.id);
       expect(updatedSchedule?.enabled).toBe(true);

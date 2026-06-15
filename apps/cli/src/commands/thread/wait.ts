@@ -176,6 +176,9 @@ function getThreadWaitUnreachableReason(
     case "provisioning":
     case "idle":
     case "active":
+    // A stopping thread is winding down toward a settled state; it can still
+    // reach idle by waiting (the stop settles to idle on completion).
+    case "stopping":
       return undefined;
     default:
       return assertNever(currentStatus);

@@ -26,7 +26,7 @@ interface ArchiveThreadWithLifecycleEffectsArgs {
     hostId: string;
     id: string;
   };
-  thread: Pick<Thread, "environmentId" | "id" | "status" | "stopRequestedAt">;
+  thread: Pick<Thread, "environmentId" | "id" | "status">;
 }
 
 interface ArchiveEnvironmentThreadsArgs {

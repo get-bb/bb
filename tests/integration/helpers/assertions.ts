@@ -169,10 +169,7 @@ export async function waitForThreadStatus(
             }),
           );
         }
-        if (
-          thread.status === status &&
-          (status !== "idle" || thread.stopRequestedAt === null)
-        ) {
+        if (thread.status === status) {
           return thread;
         }
         return null;

@@ -37,7 +37,6 @@ function hasOtherLiveThreadDependingOnEnvironmentProvision(
         inArray(threads.status, ["created", "provisioning", "active"]),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
-        isNull(threads.stopRequestedAt),
       ),
     )
     .limit(1)

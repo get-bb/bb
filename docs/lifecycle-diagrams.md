@@ -25,56 +25,65 @@ inventory lives in the headers of
 ```mermaid
 stateDiagram-v2
     [*] --> created
-    created --> active : turn.started ⟨notStopRequested⟩
+    created --> active : turn.started
     created --> idle : turn.completed
-    created --> error : turn.failed ⟨notStopRequested⟩
+    created --> error : turn.failed
     created --> idle : turn.interrupted
-    created --> error : runtime.exited ⟨notStopRequested⟩
-    created --> active : start.succeeded ⟨notArchived, notDeleted, notStopRequested⟩
+    created --> error : runtime.exited
+    created --> active : start.succeeded ⟨notArchived, notDeleted⟩
     created --> error : command.failed ⟨notDeleted⟩
     created --> error : provision.failed ⟨notDeleted⟩
     created --> error : workspace.lost ⟨notArchived, notDeleted⟩
-    created --> idle : stop.completed
+    created --> stopping : stop.requested
     created --> error : session.lost
-    created --> active : runtime.observed-active ⟨notDeleted, notStopRequested⟩
-    provisioning --> active : turn.started ⟨notStopRequested⟩
+    created --> active : runtime.observed-active ⟨notDeleted⟩
+    provisioning --> active : turn.started
     provisioning --> idle : turn.completed
-    provisioning --> error : turn.failed ⟨notStopRequested⟩
+    provisioning --> error : turn.failed
     provisioning --> idle : turn.interrupted
-    provisioning --> error : runtime.exited ⟨notStopRequested⟩
-    provisioning --> active : start.succeeded ⟨notArchived, notDeleted, notStopRequested⟩
+    provisioning --> error : runtime.exited
+    provisioning --> active : start.succeeded ⟨notArchived, notDeleted⟩
     provisioning --> error : command.failed ⟨notDeleted⟩
     provisioning --> error : provision.failed ⟨notDeleted⟩
     provisioning --> error : workspace.lost ⟨notArchived, notDeleted⟩
-    provisioning --> idle : stop.completed
+    provisioning --> stopping : stop.requested
     provisioning --> error : session.lost
-    provisioning --> active : runtime.observed-active ⟨notDeleted, notStopRequested⟩
-    idle --> active : turn.started ⟨notStopRequested⟩
-    idle --> error : turn.failed ⟨notStopRequested⟩
-    idle --> error : runtime.exited ⟨notStopRequested⟩
-    idle --> active : turn.dispatched ⟨notStopRequested⟩
+    provisioning --> active : runtime.observed-active ⟨notDeleted⟩
+    idle --> active : turn.started
+    idle --> error : turn.failed
+    idle --> error : runtime.exited
+    idle --> active : turn.dispatched
     idle --> provisioning : reprovision.started
-    idle --> active : start.succeeded ⟨notArchived, notDeleted, notStopRequested⟩
+    idle --> active : start.succeeded ⟨notArchived, notDeleted⟩
     idle --> error : command.failed ⟨notDeleted⟩
     idle --> error : provision.failed ⟨notDeleted⟩
     idle --> error : workspace.lost ⟨notArchived, notDeleted⟩
-    idle --> active : runtime.observed-active ⟨notDeleted, notStopRequested⟩
+    idle --> active : runtime.observed-active ⟨notDeleted⟩
     active --> idle : turn.completed
-    active --> error : turn.failed ⟨notStopRequested⟩
+    active --> error : turn.failed
     active --> idle : turn.interrupted
-    active --> error : runtime.exited ⟨notStopRequested⟩
+    active --> error : runtime.exited
     active --> error : command.failed ⟨notDeleted⟩
     active --> error : provision.failed ⟨notDeleted⟩
     active --> error : workspace.lost ⟨notArchived, notDeleted⟩
-    active --> idle : stop.completed
+    active --> stopping : stop.requested
     active --> error : session.lost
-    error --> active : turn.started ⟨notStopRequested⟩
+    stopping --> idle : stop.completed
+    stopping --> idle : turn.completed
+    stopping --> idle : turn.interrupted
+    stopping --> error : turn.failed
+    stopping --> error : runtime.exited
+    stopping --> error : provision.failed ⟨notDeleted⟩
+    stopping --> error : workspace.lost ⟨notArchived, notDeleted⟩
+    stopping --> error : command.failed ⟨notDeleted⟩
+    stopping --> idle : session.lost
+    error --> active : turn.started
     error --> idle : turn.completed
     error --> idle : turn.interrupted
-    error --> active : turn.dispatched ⟨notStopRequested⟩
+    error --> active : turn.dispatched
     error --> provisioning : reprovision.started
-    error --> active : start.succeeded ⟨notArchived, notDeleted, notStopRequested⟩
-    error --> active : runtime.observed-active ⟨notDeleted, notStopRequested⟩
+    error --> active : start.succeeded ⟨notArchived, notDeleted⟩
+    error --> active : runtime.observed-active ⟨notDeleted⟩
 ```
 
 ## Environment

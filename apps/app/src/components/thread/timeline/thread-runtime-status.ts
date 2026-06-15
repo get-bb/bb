@@ -9,6 +9,7 @@ export function isRunningThreadRuntimeDisplayStatus(
     case "created":
     case "host-reconnecting":
     case "provisioning":
+    case "stopping":
       return true;
     case "error":
     case "idle":

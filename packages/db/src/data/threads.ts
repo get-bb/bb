@@ -312,11 +312,6 @@ export interface ListNonDeletedChildThreadsArgs {
   parentThreadId: string;
 }
 
-export interface MarkThreadStopRequestedArgs {
-  requestedAt?: number;
-  threadId: string;
-}
-
 export interface MarkThreadDeletedArgs {
   deletedAt?: number;
   threadId: string;
@@ -335,20 +330,12 @@ export interface ListHostThreadIdsArgs {
   hostId: string;
 }
 
-export interface ListStopRequestedThreadsArgs {
-  limit: number;
+export interface ListTrackedThreadStorageTargetsOnHostArgs {
+  hostId: string;
 }
 
 export interface ThreadEnvironmentAssignmentRow {
   environmentId: string;
-  threadId: string;
-}
-
-export interface StopRequestedThreadRow {
-  environmentId: string;
-  hostId: string;
-  status: ThreadStatus;
-  stopRequestedAt: number | null;
   threadId: string;
 }
 
@@ -662,23 +649,30 @@ export function listHostThreadIds(
     .map((row) => row.id);
 }
 
-export function listStopRequestedThreads(
+/**
+ * Threads whose storage the daemon should track for a host. Archived
+ * and deleted thread storage can be reaped, so those rows must not trigger
+ * reprime work.
+ */
+export function listTrackedThreadStorageTargetsOnHost(
   db: DbConnection,
-  args: ListStopRequestedThreadsArgs,
-): StopRequestedThreadRow[] {
+  args: ListTrackedThreadStorageTargetsOnHostArgs,
+): ThreadEnvironmentAssignmentRow[] {
   return db
     .select({
-      environmentId: environments.id,
-      hostId: environments.hostId,
-      status: threads.status,
-      stopRequestedAt: threads.stopRequestedAt,
       threadId: threads.id,
+      environmentId: environments.id,
     })
     .from(threads)
     .innerJoin(environments, eq(threads.environmentId, environments.id))
-    .where(isNotNull(threads.stopRequestedAt))
-    .orderBy(asc(threads.stopRequestedAt), asc(threads.id))
-    .limit(args.limit)
+    .where(
+      and(
+        eq(environments.hostId, args.hostId),
+        ne(environments.status, "destroyed"),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
     .all();
 }
 
@@ -692,7 +686,7 @@ export function hasPendingThreadShutdownInEnvironment(
     .where(
       and(
         eq(threads.environmentId, args.environmentId),
-        isNotNull(threads.stopRequestedAt),
+        eq(threads.status, "stopping"),
       ),
     )
     .get();
@@ -1065,58 +1059,6 @@ export function deleteThread(
   });
   notifier.notifyProject(existing.projectId, ["threads-changed"]);
   return true;
-}
-
-export function markThreadStopRequested(
-  db: ThreadWriteConnection,
-  notifier: DbNotifier,
-  args: MarkThreadStopRequestedArgs,
-) {
-  const existing = getThread(db, args.threadId);
-  if (!existing) return null;
-
-  const now = Date.now();
-  const updated = db
-    .update(threads)
-    .set({
-      stopRequestedAt: existing.stopRequestedAt ?? args.requestedAt ?? now,
-      updatedAt: now,
-    })
-    .where(eq(threads.id, args.threadId))
-    .returning()
-    .get();
-
-  if (updated) {
-    notifier.notifyThread(args.threadId, ["status-changed"], {
-      projectId: updated.projectId,
-    });
-  }
-
-  return updated ?? null;
-}
-
-export function clearThreadStopRequested(
-  db: ThreadWriteConnection,
-  notifier: DbNotifier,
-  threadId: string,
-) {
-  const updated = db
-    .update(threads)
-    .set({
-      stopRequestedAt: null,
-      updatedAt: Date.now(),
-    })
-    .where(eq(threads.id, threadId))
-    .returning()
-    .get();
-
-  if (updated) {
-    notifier.notifyThread(threadId, ["status-changed"], {
-      projectId: updated.projectId,
-    });
-  }
-
-  return updated ?? null;
 }
 
 export function markThreadDeleted(

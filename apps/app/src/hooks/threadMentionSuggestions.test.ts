@@ -31,7 +31,6 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     parentThreadId: options.parentThreadId ?? null,
     archivedAt: null,
     pinnedAt: null,
-    stopRequestedAt: null,
     deletedAt: null,
     lastReadAt: null,
     latestAttentionAt: 1,

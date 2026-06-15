@@ -246,7 +246,7 @@ const longSystemMessage = buildMessage(
     "- @apps/server/test/threads/thread-stop-retry.test.ts",
     "",
     "Behavior summary:",
-    "- `stopRequestedAt` remains durable stop intent.",
+    "- The `stopping` status remains durable stop intent.",
     "- Live `thread.stop` RPC dedupe now uses a separate in-memory in-flight set.",
     "- Failed stop RPC clears the in-flight marker, so `stop-requested-thread-retry` can redeliver.",
     "- Sweep does not queue duplicate stop RPCs while one is already in flight.",

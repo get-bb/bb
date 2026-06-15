@@ -87,6 +87,7 @@ export function isUnreadDoneThread(thread: ThreadStatusShape): boolean {
     case "active":
     case "created":
     case "provisioning":
+    case "stopping":
       return false;
     default:
       return assertNever(thread.status);

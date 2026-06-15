@@ -21,7 +21,7 @@ export type ThreadEnvironmentStatusFields = Pick<Environment, "status">;
 
 export type ThreadWritableFields = Pick<
   Thread,
-  "archivedAt" | "deletedAt" | "status" | "stopRequestedAt"
+  "archivedAt" | "deletedAt" | "status"
 >;
 
 export type HostUnavailableStatus = 404 | 502;
@@ -83,7 +83,6 @@ export function threadNotWritableDetails(
   return {
     reason,
     archivedAt: thread.archivedAt,
-    stopRequestedAt: thread.stopRequestedAt,
     threadStatus: thread.status,
   };
 }
@@ -99,6 +98,8 @@ export function threadNotWritableReasonForStatus(
       return "not_active";
     case "active":
       return "already_active";
+    case "stopping":
+      return "stopping";
     case "error":
       return "errored";
   }

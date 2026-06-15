@@ -233,7 +233,6 @@ const descriptionCases: DescriptionCase[] = [
       details: {
         archivedAt: 10,
         reason: "archived",
-        stopRequestedAt: null,
         threadStatus: "idle",
       },
     },
@@ -251,8 +250,7 @@ const descriptionCases: DescriptionCase[] = [
       details: {
         archivedAt: null,
         reason: "stopping",
-        stopRequestedAt: 10,
-        threadStatus: "active",
+        threadStatus: "stopping",
       },
     },
     expected: {
@@ -269,7 +267,6 @@ const descriptionCases: DescriptionCase[] = [
       details: {
         archivedAt: null,
         reason: "deleted",
-        stopRequestedAt: null,
         threadStatus: "idle",
       },
     },
@@ -287,7 +284,6 @@ const descriptionCases: DescriptionCase[] = [
       details: {
         archivedAt: null,
         reason: "not_started",
-        stopRequestedAt: null,
         threadStatus: "created",
       },
     },
@@ -305,7 +301,6 @@ const descriptionCases: DescriptionCase[] = [
       details: {
         archivedAt: null,
         reason: "not_started",
-        stopRequestedAt: null,
         threadStatus: "provisioning",
       },
     },
@@ -323,7 +318,6 @@ const descriptionCases: DescriptionCase[] = [
       details: {
         archivedAt: null,
         reason: "not_active",
-        stopRequestedAt: null,
         threadStatus: "idle",
       },
     },
@@ -341,7 +335,6 @@ const descriptionCases: DescriptionCase[] = [
       details: {
         archivedAt: null,
         reason: "errored",
-        stopRequestedAt: null,
         threadStatus: "error",
       },
     },
@@ -359,7 +352,6 @@ const descriptionCases: DescriptionCase[] = [
       details: {
         archivedAt: null,
         reason: "already_active",
-        stopRequestedAt: null,
         threadStatus: "active",
       },
     },
@@ -377,7 +369,6 @@ const descriptionCases: DescriptionCase[] = [
       details: {
         archivedAt: null,
         reason: "still_starting",
-        stopRequestedAt: null,
         threadStatus: "provisioning",
       },
     },

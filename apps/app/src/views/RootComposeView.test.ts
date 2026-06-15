@@ -32,7 +32,6 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
-    stopRequestedAt: null,
     deletedAt: null,
     lastReadAt: 100,
     latestAttentionAt: 100,

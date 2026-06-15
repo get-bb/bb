@@ -2,7 +2,6 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { getThread, listEvents } from "@bb/db";
 import type { Environment, Thread } from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import { runStopRequestedThreadSweep } from "../../src/services/system/periodic-sweeps.js";
 import {
   finalizeStoppedThread,
   hasLiveThreadStopInFlight,
@@ -78,7 +77,7 @@ async function waitForStopRpcIdle(
 }
 
 describe("thread stop retry", () => {
-  it("redelivers persisted stop intent after a live stop failure", async () => {
+  it("re-dispatches the stop inline after a live stop RPC failure", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedActiveThreadStopFixture({
         harness,
@@ -93,18 +92,18 @@ describe("thread stop retry", () => {
           command.type === "thread.stop" && command.threadId === thread.id,
       );
       expect(hasLiveThreadStopInFlight(thread.id)).toBe(true);
+      // The stop is now the durable `stopping` status, not a side-field.
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        status: "stopping",
+      });
 
+      // A live stop RPC failure re-dispatches the stop inline (no sweep): the
+      // thread is still stopping and the daemon is still connected, so the
+      // command is sent again rather than dropped.
       await reportQueuedCommandError(harness, firstStopCommand, {
         errorCode: "test_thread_stop_failure",
         errorMessage: "Test live stop failure",
       });
-      await waitForStopRpcIdle({ threadId: thread.id });
-      expect(getThread(harness.db, thread.id)).toMatchObject({
-        status: "active",
-        stopRequestedAt: expect.any(Number),
-      });
-
-      await runStopRequestedThreadSweep(harness.deps);
 
       const retryStopCommand = await waitForQueuedCommandAfter(
         harness,
@@ -119,9 +118,9 @@ describe("thread stop retry", () => {
       });
 
       await reportQueuedCommandSuccess(harness, retryStopCommand, {});
+      await waitForStopRpcIdle({ threadId: thread.id });
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
     });
   });
@@ -148,11 +147,10 @@ describe("thread stop retry", () => {
       const settled = getThread(harness.db, thread.id);
       expect(settled).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
 
-      // Daemon reconnect reconciliation re-finalizes stop-requested threads;
-      // a second completion of the same stop must change nothing.
+      // Daemon reconnect reconciliation re-finalizes settling threads; a second
+      // completion of the same stop must change nothing.
       const finalized = finalizeStoppedThread(harness.deps, {
         threadId: thread.id,
       });
@@ -187,7 +185,9 @@ describe("thread stop retry", () => {
       );
       expect(hasLiveThreadStopInFlight(thread.id)).toBe(true);
 
-      await runStopRequestedThreadSweep(harness.deps);
+      // A second stop request while one is in flight is deduped by the
+      // process-local RPC guard, not re-queued.
+      requestThreadStopForCurrentState(harness.deps, thread, environment);
 
       expect(
         listQueuedThreadCommands(harness, "thread.stop", thread.id),

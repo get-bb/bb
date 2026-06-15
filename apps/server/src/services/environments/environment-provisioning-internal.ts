@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   events,
   type DbConnection,
@@ -146,13 +146,11 @@ interface LiveEnvironmentThread {
   environmentId: string | null;
   id: string;
   status: ThreadStatus;
-  stopRequestedAt: number | null;
 }
 
 interface StopRequestedEnvironmentProvisionThread {
   id: string;
   status: ThreadStatus;
-  stopRequestedAt: number | null;
 }
 
 interface AppendThreadProvisioningEventToEnvironmentThreadsArgs {
@@ -172,7 +170,6 @@ function listLiveEnvironmentThreads(
       environmentId: threads.environmentId,
       id: threads.id,
       status: threads.status,
-      stopRequestedAt: threads.stopRequestedAt,
     })
     .from(threads)
     .where(
@@ -189,18 +186,16 @@ function listStopRequestedEnvironmentProvisionThreads(
     .select({
       id: threads.id,
       status: threads.status,
-      stopRequestedAt: threads.stopRequestedAt,
     })
     .from(threads)
     .where(
       and(
         eq(threads.environmentId, environmentId),
-        inArray(threads.status, ["created", "provisioning"]),
-        // This settlement is for explicit user stop intent only. Archived and
-        // deleted threads continue through their existing cleanup paths.
+        // Explicit user stop intent only: the thread is `stopping`. Archived
+        // and deleted threads continue through their existing cleanup paths.
+        eq(threads.status, "stopping"),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
-        isNotNull(threads.stopRequestedAt),
       ),
     )
     .all();
@@ -308,7 +303,7 @@ function hasThreadProvisionCancellationIntent(
   deps: EnvironmentProvisionReadDeps,
   threadId: string,
 ): boolean {
-  return getThread(deps.db, threadId)?.stopRequestedAt !== null;
+  return getThread(deps.db, threadId)?.status === "stopping";
 }
 
 interface HasThreadProvisionCancellationOutcomeArgs {
@@ -382,7 +377,7 @@ function shouldPreserveThreadProvisionCancellationOutcome(
   args: ShouldPreserveThreadProvisionCancellationOutcomeArgs,
 ): boolean {
   return (
-    args.thread.stopRequestedAt !== null ||
+    args.thread.status === "stopping" ||
     hasThreadProvisionCancellationIntent(deps, args.thread.id) ||
     hasThreadProvisionCancellationOutcome(deps, {
       provisioningId: args.provisioningId,
@@ -784,7 +779,6 @@ export function settleEnvironmentProvisionCancelCommandResult(
                   environmentId: args.command.environmentId,
                   id: thread.id,
                   status: thread.status,
-                  stopRequestedAt: thread.stopRequestedAt,
                 },
                 {
                   hostId: environment.hostId,

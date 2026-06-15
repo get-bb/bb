@@ -113,6 +113,7 @@ export function shouldRenderClientRequestedInput(
     case "error":
     case "idle":
     case "active":
+    case "stopping":
       return true;
     default:
       return assertNever(threadStatus);
@@ -130,6 +131,7 @@ export function shouldPreservePendingMessages(
     case "created":
     case "error":
     case "idle":
+    case "stopping":
       return false;
     default:
       return assertNever(threadStatus);

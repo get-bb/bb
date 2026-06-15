@@ -5,6 +5,7 @@ export const threadStatusValues = [
   "provisioning",
   "idle",
   "active",
+  "stopping",
   "error",
 ] as const;
 export const threadStatusSchema = z.enum(threadStatusValues);

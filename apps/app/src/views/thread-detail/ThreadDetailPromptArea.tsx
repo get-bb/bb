@@ -294,7 +294,7 @@ export function ThreadDetailPromptArea({
   });
   const runtimeDisplayStatus = thread.runtime.displayStatus;
   const isStopRequested =
-    thread.stopRequestedAt !== null ||
+    thread.status === "stopping" ||
     (stopThread.isPending && stopThread.variables === thread.id);
   const activePendingInteraction =
     getLatestPendingInteraction(pendingInteractions);

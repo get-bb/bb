@@ -379,7 +379,7 @@ export async function sendNextQueuedMessageIfPresent(
     !thread ||
     thread.archivedAt !== null ||
     thread.deletedAt !== null ||
-    thread.stopRequestedAt !== null
+    thread.status === "stopping"
   ) {
     return false;
   }

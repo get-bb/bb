@@ -20,6 +20,8 @@ export function getFollowUpPromptPlaceholder(
       // Matches the timeline's provisioning operation title ("Provisioning
       // thread"), which is uniform across all threads.
       return "Provisioning thread...";
+    case "stopping":
+      return "Stopping thread...";
     case "waiting-for-host":
       return "Host disconnected";
     case "host-reconnecting":

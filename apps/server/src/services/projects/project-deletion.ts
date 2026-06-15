@@ -35,7 +35,6 @@ interface ProjectDeletionThread {
   environmentId: string | null;
   id: string;
   status: ThreadStatus;
-  stopRequestedAt: number | null;
 }
 
 type ProjectDeletionDeps = LoggedPendingInteractionWorkSessionDeps &
@@ -58,7 +57,6 @@ function listProjectDeletionThreads(
       environmentId: threads.environmentId,
       id: threads.id,
       status: threads.status,
-      stopRequestedAt: threads.stopRequestedAt,
     })
     .from(threads)
     .where(eq(threads.projectId, args.projectId))

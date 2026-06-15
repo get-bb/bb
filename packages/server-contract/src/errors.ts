@@ -67,7 +67,6 @@ export type ThreadNotWritableReason = z.infer<
 export const threadNotWritableErrorDetailsSchema = z.object({
   reason: threadNotWritableReasonSchema,
   archivedAt: z.number().int().nonnegative().nullable(),
-  stopRequestedAt: z.number().int().nonnegative().nullable(),
   threadStatus: threadStatusSchema,
 });
 export type ThreadNotWritableErrorDetails = z.infer<

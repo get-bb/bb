@@ -124,7 +124,6 @@ interface OperationBackfillEnvironmentRow {
 
 interface OperationBackfillThreadRow {
   status: string;
-  stopRequestedAt: number | null;
 }
 
 interface MigratedEventRow {
@@ -277,6 +276,18 @@ function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
 function restoreEnvironmentCleanupModeColumn(db: DbConnection): void {
   db.$client
     .prepare("ALTER TABLE environments ADD COLUMN cleanup_mode text")
+    .run();
+}
+
+/**
+ * stop_requested_at existed since the baseline and is dropped by 0031, so a
+ * forward replay from before 0031 must first restore it for 0031's DROP COLUMN
+ * to apply — and the legacy thread_operations stop backfill in migrate.ts
+ * writes it before the journal runs. Mirror of restoreEnvironmentCleanupModeColumn.
+ */
+function restoreThreadStopRequestedAtColumn(db: DbConnection): void {
+  db.$client
+    .prepare("ALTER TABLE threads ADD COLUMN stop_requested_at integer")
     .run();
 }
 
@@ -964,6 +975,7 @@ describe("migrate", () => {
         .run(threadTypeRemovalMigrationWhen);
       dropPost0023Tables(db);
       restoreEnvironmentCleanupModeColumn(db);
+      restoreThreadStopRequestedAtColumn(db);
 
       migrate(db);
 
@@ -1506,6 +1518,7 @@ describe("migrate", () => {
         );
       `);
       deleteDeferredCleanupMigrationRows(db);
+      restoreThreadStopRequestedAtColumn(db);
 
       migrate(db, { deferDestructiveLegacyCleanup: true });
 
@@ -1531,13 +1544,14 @@ describe("migrate", () => {
           .all()
           .map((row) => row.name),
       ).toEqual(expect.arrayContaining(["command_cursor"]));
+      // The legacy thread_operations stop backfill still drives the thread to
+      // error; stop_requested_at is no longer a column (dropped by 0031), so it
+      // can't be asserted — the durable stop intent is now the status itself.
       expect(
         db.$client
           .prepare<[], OperationBackfillThreadRow>(
             `
-              SELECT
-                status,
-                stop_requested_at AS stopRequestedAt
+              SELECT status
               FROM threads
               WHERE id = 'thr_deferred_cleanup'
             `,
@@ -1545,7 +1559,6 @@ describe("migrate", () => {
           .get(),
       ).toEqual({
         status: "error",
-        stopRequestedAt: 2_500,
       });
       expect(
         db.$client
@@ -2145,6 +2158,7 @@ describe("migrate", () => {
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
       restoreEnvironmentCleanupModeColumn(db);
+      restoreThreadStopRequestedAtColumn(db);
       dropPost0023Tables(db);
 
       expect(
@@ -2218,13 +2232,13 @@ describe("migrate", () => {
       expect(migrationCreatedAts).toContain(threadDynamicContextFileStatesWhen);
       expect(migrationCreatedAts).toContain(commandLookupIndexesWhen);
       expect(migrationCreatedAts).toContain(threadPinningMigrationWhen);
+      // The legacy thread_operations stop backfill still drives the thread to
+      // error; stop_requested_at is no longer a column (dropped by 0031).
       expect(
         db.$client
           .prepare<[], OperationBackfillThreadRow>(
             `
-            SELECT
-                status,
-                stop_requested_at AS stopRequestedAt
+            SELECT status
               FROM threads
               WHERE id = 'thr_legacy_operation_backfill'
             `,
@@ -2232,7 +2246,6 @@ describe("migrate", () => {
           .get(),
       ).toEqual({
         status: "error",
-        stopRequestedAt: 2_500,
       });
       const interruptedEvent = db.$client
         .prepare<[], MigratedEventRow>(
@@ -2413,6 +2426,7 @@ describe("migrate", () => {
       dropEnvironmentDestroyAttemptIdColumn(db);
       dropQueuedMessageSenderThreadIdColumn(db);
       restoreEnvironmentCleanupModeColumn(db);
+      restoreThreadStopRequestedAtColumn(db);
       dropPost0023Tables(db);
       db.$client
         .prepare(
@@ -2608,6 +2622,7 @@ describe("migrate", () => {
       dropEnvironmentDestroyAttemptIdColumn(db);
       dropQueuedMessageSenderThreadIdColumn(db);
       restoreEnvironmentCleanupModeColumn(db);
+      restoreThreadStopRequestedAtColumn(db);
       dropPost0023Tables(db);
 
       migrate(db);

@@ -194,8 +194,7 @@ function queueActiveParentSystemMessageInTransaction(
     currentThread.environmentId !== args.environment.id ||
     currentThread.status !== "active" ||
     currentThread.archivedAt !== null ||
-    currentThread.deletedAt !== null ||
-    currentThread.stopRequestedAt !== null
+    currentThread.deletedAt !== null
   ) {
     return { command: null, queued: false };
   }

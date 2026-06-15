@@ -632,7 +632,6 @@ describe("environment reprovisioning", () => {
 
       expect(getThread(harness.db, firstThread.id)).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
       expect(
         listQueuedEnvironmentCommands(
@@ -659,8 +658,7 @@ describe("environment reprovisioning", () => {
           command.environmentId === environment.id,
       );
       expect(getThread(harness.db, secondThread.id)).toMatchObject({
-        status: "provisioning",
-        stopRequestedAt: expect.any(Number),
+        status: "stopping",
       });
 
       await reportQueuedCommandError(harness, provisionCommand, {
@@ -693,11 +691,9 @@ describe("environment reprovisioning", () => {
 
       expect(getThread(harness.db, firstThread.id)).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
       expect(getThread(harness.db, secondThread.id)).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         status: "error",

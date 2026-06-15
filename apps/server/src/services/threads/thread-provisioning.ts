@@ -97,8 +97,7 @@ function getCurrentProvisioningFailureThread(
   }
   if (
     currentThread.status !== "provisioning" ||
-    currentThread.archivedAt !== null ||
-    currentThread.stopRequestedAt !== null
+    currentThread.archivedAt !== null
   ) {
     forgetActiveThreadProvisionContext(args.threadId);
     return null;
@@ -300,7 +299,7 @@ async function advanceThreadProvisioningOnce(
     });
     return;
   }
-  if (thread.archivedAt !== null || thread.stopRequestedAt !== null) {
+  if (thread.archivedAt !== null) {
     return;
   }
 

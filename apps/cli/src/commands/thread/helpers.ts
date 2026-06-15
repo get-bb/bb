@@ -34,6 +34,8 @@ export function statusText(status: ThreadStatus): string {
       return "idle";
     case "active":
       return "active";
+    case "stopping":
+      return "stopping";
     default:
       return assertNever(status);
   }

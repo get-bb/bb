@@ -44,7 +44,8 @@ interface ThreadTimelinePaneProps {
   resolveMentionLink: PromptMentionLinkResolver;
   showOngoingIndicator: boolean;
   ongoingIndicatorLabel?: string;
-  stopRequestedAt: number | null;
+  isStopping: boolean;
+  stoppingAnchorAt: number;
   timelineRows: TimelineRow[];
   threadId: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -59,28 +60,29 @@ export interface HostConnectionNotice {
 }
 
 interface BuildStopRequestedTimelineRowArgs {
-  stopRequestedAt: number;
+  stoppingAnchorAt: number;
   threadId: string;
 }
 
 interface UseTimelineRowsWithPendingStopArgs {
   rows: TimelineRow[];
-  stopRequestedAt: number | null;
+  isStopping: boolean;
+  stoppingAnchorAt: number;
   threadId: string;
 }
 
 function buildStopRequestedTimelineRow({
-  stopRequestedAt,
+  stoppingAnchorAt,
   threadId,
 }: BuildStopRequestedTimelineRowArgs): TimelineRow {
   return {
-    id: `${threadId}:pending-stop:${stopRequestedAt}`,
+    id: `${threadId}:pending-stop`,
     threadId,
     turnId: null,
     sourceSeqStart: 0,
     sourceSeqEnd: 0,
-    startedAt: stopRequestedAt,
-    createdAt: stopRequestedAt,
+    startedAt: stoppingAnchorAt,
+    createdAt: stoppingAnchorAt,
     kind: "system",
     systemKind: "operation",
     operationKind: "thread-interrupted",
@@ -91,37 +93,31 @@ function buildStopRequestedTimelineRow({
   };
 }
 
-function hasConfirmedStopRow(
-  rows: readonly TimelineRow[],
-  stopRequestedAt: number,
-): boolean {
+function hasConfirmedStopRow(rows: readonly TimelineRow[]): boolean {
   return rows.some(
     (row) =>
       row.kind === "system" &&
       row.systemKind === "operation" &&
-      row.operationKind === "thread-interrupted" &&
-      row.createdAt >= stopRequestedAt,
+      row.operationKind === "thread-interrupted",
   );
 }
 
 function useTimelineRowsWithPendingStop({
   rows,
-  stopRequestedAt,
+  isStopping,
+  stoppingAnchorAt,
   threadId,
 }: UseTimelineRowsWithPendingStopArgs): TimelineRow[] {
   return useMemo(() => {
-    if (
-      stopRequestedAt === null ||
-      hasConfirmedStopRow(rows, stopRequestedAt)
-    ) {
+    if (!isStopping || hasConfirmedStopRow(rows)) {
       return rows;
     }
 
     return [
       ...rows,
-      buildStopRequestedTimelineRow({ stopRequestedAt, threadId }),
+      buildStopRequestedTimelineRow({ stoppingAnchorAt, threadId }),
     ];
-  }, [rows, stopRequestedAt, threadId]);
+  }, [rows, isStopping, stoppingAnchorAt, threadId]);
 }
 
 export function ThreadTimelinePane({
@@ -141,7 +137,8 @@ export function ThreadTimelinePane({
   resolveMentionLink,
   showOngoingIndicator,
   ongoingIndicatorLabel,
-  stopRequestedAt,
+  isStopping,
+  stoppingAnchorAt,
   timelineRows,
   threadId,
   threadRuntimeDisplayStatus,
@@ -163,7 +160,8 @@ export function ThreadTimelinePane({
       : (ongoingIndicatorLabel ?? "working");
   const timelineRowsWithPendingStop = useTimelineRowsWithPendingStop({
     rows: timelineRows,
-    stopRequestedAt,
+    isStopping,
+    stoppingAnchorAt,
     threadId,
   });
 

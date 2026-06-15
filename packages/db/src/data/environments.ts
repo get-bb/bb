@@ -489,7 +489,7 @@ function applyEnvironmentLifecycleEventRecord(
       sql`NOT EXISTS (
         SELECT 1 FROM threads
         WHERE threads.environment_id = ${environments.id}
-        AND threads.stop_requested_at IS NOT NULL
+        AND threads.status = 'stopping'
       )`,
     );
   }

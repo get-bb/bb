@@ -12,7 +12,6 @@ import {
   createThread,
   getThread,
   markThreadDeleted,
-  markThreadStopRequested,
   requireThreadLifecycleEventApplied,
   ThreadLifecycleEventNotAppliedError,
 } from "../../src/data/threads.js";
@@ -146,27 +145,53 @@ describe("applyThreadLifecycleEvent", () => {
     expect(spy.notifyThread).not.toHaveBeenCalled();
   });
 
-  it("no-ops as superseded when a stop is requested", () => {
+  it("refuses to reactivate a stopping thread and settles it to idle", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      status: "idle",
-    });
-    markThreadStopRequested(db, noopNotifier, { threadId: thread.id });
-    const beforeRow = getThread(db, thread.id);
-
-    const outcome = applyThreadLifecycleEvent(db, noopNotifier, {
-      event: { type: "turn.started" },
-      threadId: thread.id,
+      status: "active",
     });
 
-    expect(outcome).toEqual({
-      applied: false,
-      detail: "stopRequestedAt set",
-      reason: "superseded",
-    });
-    expect(getThread(db, thread.id)).toEqual(beforeRow);
+    // Enter the stopping phase via the stop.requested event.
+    const stopping = requireThreadLifecycleEventApplied(
+      applyThreadLifecycleEvent(db, noopNotifier, {
+        event: { type: "stop.requested" },
+        threadId: thread.id,
+      }),
+    );
+    expect(stopping.status).toBe("stopping");
+    const stoppingRow = getThread(db, thread.id);
+
+    // A stopping thread structurally accepts no "begin new work" event: each is
+    // an illegal-transition no-op that leaves the row untouched. This is the
+    // replacement for the old notStopRequested supersession guard.
+    for (const event of [
+      { type: "turn.started" },
+      { type: "turn.dispatched" },
+      { type: "start.succeeded" },
+      { type: "runtime.observed-active" },
+    ] as const) {
+      const outcome = applyThreadLifecycleEvent(db, noopNotifier, {
+        event,
+        threadId: thread.id,
+      });
+      expect(outcome).toEqual({
+        applied: false,
+        detail: `no transition for ${event.type} from status stopping`,
+        reason: "illegal-transition",
+      });
+      expect(getThread(db, thread.id)).toEqual(stoppingRow);
+    }
+
+    // The stop landing settles the thread to idle.
+    const settled = requireThreadLifecycleEventApplied(
+      applyThreadLifecycleEvent(db, noopNotifier, {
+        event: { type: "stop.completed" },
+        threadId: thread.id,
+      }),
+    );
+    expect(settled.status).toBe("idle");
   });
 
   it("no-ops as not-found for a missing thread", () => {

@@ -309,7 +309,6 @@ describe("generated managed branch names", () => {
       });
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
 
       resolveMetadata({
@@ -319,7 +318,6 @@ describe("generated managed branch names", () => {
 
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
       const events = listEvents(harness.db, { threadId: thread.id });
       expect(events.map((event) => event.type)).not.toContain("system/error");

@@ -16,9 +16,11 @@ import {
   type CreateEnvironmentInput,
 } from "../../src/data/environments.js";
 import {
+  applyThreadLifecycleEvent,
   createThread,
+  getThread,
   markThreadDeleted,
-  markThreadStopRequested,
+  requireThreadLifecycleEventApplied,
 } from "../../src/data/threads.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
@@ -240,8 +242,14 @@ describe("applyEnvironmentLifecycleEvent", () => {
     });
     expect(getEnvironment(db, environment.id)?.status).toBe("ready");
 
-    // A stop-requested thread blocks the claim even after deletion intent.
-    markThreadStopRequested(db, noopNotifier, { threadId: thread.id });
+    // A stopping thread blocks the claim even after deletion intent.
+    requireThreadLifecycleEventApplied(
+      applyThreadLifecycleEvent(db, noopNotifier, {
+        event: { type: "stop.requested" },
+        threadId: thread.id,
+      }),
+    );
+    expect(getThread(db, thread.id)?.status).toBe("stopping");
     markThreadDeleted(db, noopNotifier, { threadId: thread.id });
     const blockedByStop = applyEnvironmentLifecycleEvent(db, noopNotifier, {
       environmentId: environment.id,

@@ -71,10 +71,14 @@ async function startLiveThreadStartRpc(
     path: `/tmp/live-start-handoff-${args.requestIdValue}`,
     status: "ready",
   });
+  // A thread with a live thread.start RPC in flight is pre-start: the row keeps
+  // its `created` status until start.succeeded flips it to `active`. Only a
+  // pre-start (or active) status has a stop.requested → stopping cell, so this
+  // is the realistic state for a stop racing an unsettled start.
   const thread = seedThread(args.harness.deps, {
     projectId: project.id,
     environmentId: environment.id,
-    status: "idle",
+    status: "created",
   });
 
   await requestThreadStart(args.harness.deps, {
@@ -132,9 +136,9 @@ describe("live thread start handoff", () => {
           environmentId: fixture.environment.id,
           threadId: fixture.thread.id,
         });
-        expect(
-          getThread(harness.db, fixture.thread.id)?.stopRequestedAt,
-        ).toEqual(expect.any(Number));
+        expect(getThread(harness.db, fixture.thread.id)?.status).toBe(
+          "stopping",
+        );
         await reportQueuedCommandSuccess(harness, stopCommand, {});
       } finally {
         await failLiveStartRpc({
@@ -245,7 +249,6 @@ describe("live thread start handoff", () => {
       await reportQueuedCommandSuccess(harness, stopCommand, {});
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
 
       await reportQueuedCommandSuccess(harness, fixture.startCommand, {
@@ -255,7 +258,6 @@ describe("live thread start handoff", () => {
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
         archivedAt: null,
         status: "idle",
-        stopRequestedAt: null,
       });
     });
   });
@@ -279,25 +281,23 @@ describe("live thread start handoff", () => {
           command.threadId === fixture.thread.id,
       );
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
-        status: "idle",
-        stopRequestedAt: expect.any(Number),
+        status: "stopping",
       });
 
-      // The start RPC settles before the stop RPC does: the pending stop
-      // request supersedes the activation and the row stays untouched.
+      // The start RPC settles before the stop RPC does: the `stopping` status
+      // has no start.succeeded cell, so the activation is a no-op and the row
+      // stays untouched.
       await reportQueuedCommandSuccess(harness, fixture.startCommand, {
         providerThreadId: "provider-stop-in-flight-late-start",
       });
 
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
-        status: "idle",
-        stopRequestedAt: expect.any(Number),
+        status: "stopping",
       });
 
       await reportQueuedCommandSuccess(harness, stopCommand, {});
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
     });
   });
@@ -363,7 +363,6 @@ describe("live thread start handoff", () => {
 
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
         status: "idle",
-        stopRequestedAt: null,
       });
     });
   });
@@ -390,7 +389,6 @@ describe("live thread start handoff", () => {
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
         archivedAt: expect.any(Number),
         status: "idle",
-        stopRequestedAt: null,
       });
 
       await reportQueuedCommandSuccess(harness, fixture.startCommand, {
@@ -400,7 +398,6 @@ describe("live thread start handoff", () => {
       expect(getThread(harness.db, fixture.thread.id)).toMatchObject({
         archivedAt: expect.any(Number),
         status: "idle",
-        stopRequestedAt: null,
       });
     });
   });

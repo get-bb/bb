@@ -141,7 +141,7 @@ export function ensureThreadIsWritable(thread: Thread): void {
   if (thread.archivedAt) {
     throwThreadNotWritable(thread, "archived", "Thread is archived");
   }
-  if (thread.stopRequestedAt !== null) {
+  if (thread.status === "stopping") {
     throwThreadNotWritable(thread, "stopping", "Thread is stopping");
   }
   if (thread.deletedAt !== null) {

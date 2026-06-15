@@ -112,7 +112,6 @@ describe("getMutationErrorMeta", () => {
         details: {
           archivedAt: null,
           reason: "not_started",
-          stopRequestedAt: null,
           threadStatus: "provisioning",
         },
       },

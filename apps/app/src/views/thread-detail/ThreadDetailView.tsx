@@ -1762,7 +1762,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           projectId,
           resolveMentionLink,
           showOngoingIndicator:
-            thread.stopRequestedAt === null &&
+            thread.status !== "stopping" &&
             // A pending interaction (question or approval) already renders its
             // own inline shimmer row, so the bottom indicator would just
             // duplicate it.
@@ -1775,7 +1775,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               ? "Waiting for reconnection"
               : undefined,
           timelineRows,
-          stopRequestedAt: thread.stopRequestedAt,
+          isStopping: thread.status === "stopping",
+          stoppingAnchorAt: thread.updatedAt,
           threadId: thread.id,
           threadRuntimeDisplayStatus: thread.runtime.displayStatus,
           unreadDividerAutoScroll: unreadDividerState.autoScroll,

@@ -164,7 +164,8 @@ const areThreadTimelinePanePropsEqual: ThreadTimelinePanePropsEqual = (
   previous.projectId === next.projectId &&
   previous.showOngoingIndicator === next.showOngoingIndicator &&
   previous.ongoingIndicatorLabel === next.ongoingIndicatorLabel &&
-  previous.stopRequestedAt === next.stopRequestedAt &&
+  previous.isStopping === next.isStopping &&
+  previous.stoppingAnchorAt === next.stoppingAnchorAt &&
   previous.timelineRows === next.timelineRows &&
   previous.threadId === next.threadId &&
   previous.threadRuntimeDisplayStatus === next.threadRuntimeDisplayStatus &&

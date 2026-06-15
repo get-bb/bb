@@ -12,7 +12,6 @@ import {
   setThreadExecutionOverride,
   hasPendingThreadShutdownInEnvironment,
   listHostThreadIds,
-  listStopRequestedThreads,
   listActiveVisiblePinnedThreadRoots,
   listThreadEnvironmentAssignmentsOnHost,
   listThreads,
@@ -20,10 +19,8 @@ import {
   updateThread,
   deleteThread,
   archiveThread,
-  clearThreadStopRequested,
   markThreadDeleted,
   markThreadAttentionRequested,
-  markThreadStopRequested,
   pinThread,
   reorderPinnedThread,
   unpinThread,
@@ -59,7 +56,6 @@ describe("threads", () => {
     expect(thread.id).toMatch(/^thr_/);
     expect(thread.status).toBe("created");
     expect(thread.projectId).toBe(project.id);
-    expect(thread.stopRequestedAt).toBeNull();
     expect(thread.deletedAt).toBeNull();
     expect(thread.lastReadAt).toBe(thread.latestAttentionAt);
 
@@ -806,7 +802,7 @@ describe("threads", () => {
     expect(unarchived?.latestAttentionAt).toBe(thread.latestAttentionAt);
   });
 
-  it("tracks stop requests independently from runtime status", () => {
+  it("moves an active thread to stopping on stop.requested and settles to idle on stop.completed", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -814,87 +810,23 @@ describe("threads", () => {
       status: "active",
     });
 
-    const stopRequested = markThreadStopRequested(db, noopNotifier, {
-      threadId: thread.id,
-      requestedAt: 123,
-    });
-    expect(stopRequested?.stopRequestedAt).toBe(123);
-    expect(getThread(db, thread.id)?.status).toBe("active");
-
-    const cleared = clearThreadStopRequested(db, noopNotifier, thread.id);
-    expect(cleared?.stopRequestedAt).toBeNull();
-  });
-
-  it("lists stop-requested threads in deterministic bounded batches", () => {
-    const { db, host, project } = setup();
-    const environment = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      path: "/tmp/thread-stop-requested-batch",
-      workspaceProvisionType: "unmanaged",
-      status: "ready",
-    });
-    const firstTie = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: environment.id,
-      providerId: "codex",
-      status: "active",
-    });
-    const secondTie = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: environment.id,
-      providerId: "codex",
-      status: "active",
-    });
-    const later = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: environment.id,
-      providerId: "codex",
-      status: "active",
-    });
-    const unrequested = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: environment.id,
-      providerId: "codex",
-      status: "active",
-    });
-
-    markThreadStopRequested(db, noopNotifier, {
-      threadId: firstTie.id,
-      requestedAt: 100,
-    });
-    markThreadStopRequested(db, noopNotifier, {
-      threadId: secondTie.id,
-      requestedAt: 100,
-    });
-    markThreadStopRequested(db, noopNotifier, {
-      threadId: later.id,
-      requestedAt: 200,
-    });
-
-    const expectedTieIds = [firstTie.id, secondTie.id].sort((a, b) =>
-      a.localeCompare(b),
-    );
-    const batch = listStopRequestedThreads(db, { limit: 2 });
-
-    expect(batch.map((thread) => thread.threadId)).toEqual(expectedTieIds);
-    expect(batch.map((thread) => thread.stopRequestedAt)).toEqual([100, 100]);
-    expect(batch).toEqual([
-      expect.objectContaining({
-        environmentId: environment.id,
-        hostId: host.id,
-        status: "active",
+    const stopping = requireThreadLifecycleEventApplied(
+      applyThreadLifecycleEvent(db, noopNotifier, {
+        event: { type: "stop.requested" },
+        threadId: thread.id,
       }),
-      expect.objectContaining({
-        environmentId: environment.id,
-        hostId: host.id,
-        status: "active",
-      }),
-    ]);
-    expect(batch.map((thread) => thread.threadId)).not.toContain(later.id);
-    expect(batch.map((thread) => thread.threadId)).not.toContain(
-      unrequested.id,
     );
+    expect(stopping.status).toBe("stopping");
+    expect(getThread(db, thread.id)?.status).toBe("stopping");
+
+    const settled = requireThreadLifecycleEventApplied(
+      applyThreadLifecycleEvent(db, noopNotifier, {
+        event: { type: "stop.completed" },
+        threadId: thread.id,
+      }),
+    );
+    expect(settled.status).toBe("idle");
+    expect(getThread(db, thread.id)?.status).toBe("idle");
   });
 
   it("counts only non-archived, non-deleted threads as live", () => {
@@ -1018,10 +950,13 @@ describe("threads", () => {
       environmentId: otherEnvironment.id,
       providerId: "codex",
     });
-    markThreadStopRequested(db, noopNotifier, {
-      threadId: stoppingThread.id,
-      requestedAt: 123,
-    });
+    requireThreadLifecycleEventApplied(
+      applyThreadLifecycleEvent(db, noopNotifier, {
+        event: { type: "stop.requested" },
+        threadId: stoppingThread.id,
+      }),
+    );
+    expect(getThread(db, stoppingThread.id)?.status).toBe("stopping");
 
     expect(listHostThreadIds(db, { hostId: host.id })).toEqual([
       activeThread.id,

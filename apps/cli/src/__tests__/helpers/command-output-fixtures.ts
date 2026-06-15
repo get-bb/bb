@@ -119,7 +119,6 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     parentThreadId: null,
     archivedAt: null,
     pinnedAt: null,
-    stopRequestedAt: null,
     deletedAt: null,
     lastReadAt: null,
     latestAttentionAt: Date.now(),

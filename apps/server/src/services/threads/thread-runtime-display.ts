@@ -58,6 +58,7 @@ function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
     case "provisioning":
     case "idle":
     case "active":
+    case "stopping":
     case "error":
       return {
         displayStatus: status,
@@ -94,7 +95,6 @@ function toPublicThread(thread: Thread): Thread {
     parentThreadId: thread.parentThreadId,
     archivedAt: thread.archivedAt,
     pinnedAt: thread.pinnedAt,
-    stopRequestedAt: thread.stopRequestedAt,
     deletedAt: thread.deletedAt,
     lastReadAt: thread.lastReadAt,
     latestAttentionAt: thread.latestAttentionAt,
