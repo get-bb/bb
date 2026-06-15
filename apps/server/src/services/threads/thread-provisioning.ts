@@ -20,6 +20,7 @@ import {
   attachedEnvironmentIdForContext,
   createMetadataPendingContext,
   createReprovisioningContext,
+  type ThreadForkDescriptor,
   type ThreadProvisionEnvironmentIntent,
   type ThreadProvisionContext,
   type ThreadProvisionProvisionableContext,
@@ -43,6 +44,10 @@ import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 interface RequestThreadProvisionArgs {
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
+  // Non-null ⇒ provision this child by cloning the parent's provider session
+  // (native fork) instead of starting fresh. null ⇒ not a fork. Resolved by the
+  // server at create time (childOrigin/provider capability/parent session/host).
+  fork: ThreadForkDescriptor | null;
   input: PromptInput[];
   // Non-null ⇒ the thread-start turn is attributed to another agent/thread and
   // the provider run is deferred until the user's first message (fork /
@@ -166,11 +171,12 @@ async function startThreadIfEnvironmentReady(
     throw new Error("Workspace ready event sequence was not recorded");
   }
 
-  if (args.context.request.seedWithoutRun) {
-    // Fork / side-chat anchor: the thread-start turn is already persisted and
-    // displayed (initiator agent/system). The started agent must wait for the
-    // user's first message, so we do not dispatch a provider run here — we land
-    // the thread in `idle`, ready to accept the user's turn.
+  if (args.context.request.seedWithoutRun && args.context.request.fork === null) {
+    // Non-fork seed anchor (side chat): the thread-start turn is already
+    // persisted and displayed (initiator agent/system). The started agent must
+    // wait for the user's first message, so we do not dispatch a provider run
+    // here — we land the thread in `idle`, ready to accept the user's turn. Its
+    // provider session is created lazily on the first turn.
     const seeded = tryTransition(deps.db, deps.hub, args.thread.id, "idle");
     if (!seeded) {
       // The thread left `provisioning` before we could seed it idle (e.g. a
@@ -185,6 +191,17 @@ async function startThreadIfEnvironmentReady(
     return;
   }
 
+  // A native fork must be provisioned eagerly: rather than the lazy idle
+  // short-circuit, we issue the real start carrying the fork descriptor so the
+  // child's provider session is cloned from the parent at its branch point now.
+  //
+  // The runtime starts no first turn only when the start input is empty (its
+  // no-input-no-turn guard). Today the app still sends the fork's seed input
+  // ([anchorText, ...contextSnapshot]) and we pass it through unchanged, so the
+  // forked session does run that input as its first turn. Dropping the seed (and
+  // making the input redundant against the cloned session) is Phase 5, once the
+  // app stops sending the snapshot; only then does seedWithoutRun mean "no first
+  // turn" for forks.
   await requestThreadStart(deps, {
     thread: args.thread,
     environment: {
@@ -195,6 +212,7 @@ async function startThreadIfEnvironmentReady(
       status: args.environment.status,
       workspaceProvisionType: args.environment.workspaceProvisionType,
     },
+    fork: args.context.request.fork,
     input: args.context.request.input,
     requestId: args.context.request.clientRequestId,
     execution: args.context.request.execution,

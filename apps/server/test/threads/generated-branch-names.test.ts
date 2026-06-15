@@ -277,6 +277,7 @@ describe("generated managed branch names", () => {
           workspaceProvisionType: "managed-worktree",
         },
         execution: THREAD_START_EXECUTION,
+        fork: null,
         input,
         startedOnBehalfOf: null,
         thread,

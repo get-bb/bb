@@ -384,6 +384,7 @@ describe("workflow run pending manager notifications", () => {
       await requestThreadStart(harness.deps, {
         thread,
         environment,
+        fork: null,
         input: textInput("kick off the manager"),
         requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
         execution,

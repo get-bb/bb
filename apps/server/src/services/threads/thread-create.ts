@@ -1,9 +1,14 @@
 import {
   deleteThread,
   findEnvironmentByHostPath,
+  getEnvironment,
   hasNonTerminalThreadInEnvironment,
 } from "@bb/db";
-import type { Project } from "@bb/domain";
+import type { Project, Thread } from "@bb/domain";
+import {
+  getBuiltInAgentProviderInfo,
+  isAgentProviderId,
+} from "@bb/agent-providers";
 import type { UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
@@ -12,6 +17,7 @@ import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { buildExecutionOptions } from "./thread-commands.js";
+import { getLastProviderThreadId } from "./thread-events.js";
 import {
   rememberProjectExecutionDefaultsForCreate,
   resolveProjectExecutionDefaultsForCreate,
@@ -37,6 +43,7 @@ import {
   requestThreadProvision,
 } from "./thread-provisioning.js";
 import type {
+  ThreadForkDescriptor,
   ThreadProvisionContext,
   ThreadProvisionEnvironmentIntent,
 } from "./thread-provisioning-context.js";
@@ -62,7 +69,68 @@ interface CreateProvisioningThreadArgs {
   executionDefaults: Parameters<
     typeof buildExecutionOptions
   >[2]["projectDefaults"];
+  fork: ThreadForkDescriptor | null;
   request: ThreadCreateServiceRequest;
+}
+
+interface ResolveForkDescriptorArgs {
+  childHostId: string | null;
+  childOrigin: ThreadCreateServiceRequest["childOrigin"];
+  parentThread: Thread | null;
+  providerId: string;
+}
+
+/**
+ * Resolve the native-fork descriptor for a child thread, or null when the child
+ * should not be provisioned as a fork. A fork clones the parent's provider
+ * session at its branch point, so it requires: a fork-origin child of a live
+ * parent, a provider that supports native fork, a parent that already has a
+ * provider session, and a child whose workspace lands on the same host as the
+ * parent (a cross-host clone of a provider session is not possible). Any miss
+ * falls back to the lazy text-snapshot seed (fork: null).
+ */
+function resolveForkDescriptor(
+  deps: Pick<ThreadCreateDeps, "db">,
+  args: ResolveForkDescriptorArgs,
+): ThreadForkDescriptor | null {
+  if (args.childOrigin !== "fork" || args.parentThread === null) {
+    return null;
+  }
+  if (
+    !isAgentProviderId(args.providerId) ||
+    !getBuiltInAgentProviderInfo(args.providerId).capabilities.supportsFork
+  ) {
+    return null;
+  }
+  const sourceProviderThreadId = getLastProviderThreadId(
+    deps,
+    args.parentThread.id,
+  );
+  if (sourceProviderThreadId === null) {
+    return null;
+  }
+  const parentEnvironmentId = args.parentThread.environmentId;
+  if (parentEnvironmentId === null || args.childHostId === null) {
+    return null;
+  }
+  const parentEnvironment = getEnvironment(deps.db, parentEnvironmentId);
+  if (parentEnvironment === null || parentEnvironment.hostId !== args.childHostId) {
+    return null;
+  }
+  return { sourceProviderThreadId };
+}
+
+function childHostIdForResolvedEnvironment(
+  resolvedEnvironment: ResolvedStableThreadRequestEnvironment,
+): string | null {
+  switch (resolvedEnvironment.type) {
+    case "reuse":
+      return resolvedEnvironment.environment.hostId;
+    case "host":
+      return resolvedEnvironment.hostId;
+    case "personal":
+      return resolvedEnvironment.hostId;
+  }
 }
 
 interface EnsureCreateHostOnlineArgs {
@@ -238,6 +306,7 @@ async function createProvisioningThread(
       thread,
       environmentIntent: args.environmentIntent,
       execution,
+      fork: args.fork,
       input: args.request.input,
       startedOnBehalfOf: args.request.startedOnBehalfOf,
       titleProvided: Boolean(args.request.title),
@@ -429,10 +498,18 @@ export async function createThreadFromRequest(
     }
   }
 
+  const fork = resolveForkDescriptor(deps, {
+    childHostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
+    childOrigin: request.childOrigin,
+    parentThread,
+    providerId: request.providerId,
+  });
+
   return createProvisioningThread(deps, {
     environmentId,
     environmentIntent,
     executionDefaults,
+    fork,
     request,
   });
 }
