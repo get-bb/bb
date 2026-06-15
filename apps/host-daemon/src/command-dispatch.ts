@@ -514,6 +514,22 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       };
     }
   },
+  "workspace.pull_request": async (command, options) => {
+    const resolution = await resolveWorkspaceForCommand({
+      dataDir: options.dataDir,
+      environmentId: command.environmentId,
+      requireGit: true,
+      requireManagedWorktree: true,
+      runtimeManager: options.runtimeManager,
+      workspaceContext: command.workspaceContext,
+    });
+    // Every failure mode collapses to "no PR": an unresolvable workspace, like
+    // a missing `gh` or absent PR, just means there is nothing to show.
+    if (!resolution.ok) {
+      return { pullRequest: null };
+    }
+    return { pullRequest: await resolution.entry.workspace.getPullRequest() };
+  },
 };
 
 export async function dispatchCommand<

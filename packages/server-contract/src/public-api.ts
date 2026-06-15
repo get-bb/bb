@@ -60,6 +60,7 @@ import type {
   EnvironmentArchiveThreadsResponse,
   EnvironmentStatusQuery,
   EnvironmentStatusResponse,
+  EnvironmentPullRequestResponse,
   ThreadArchiveAllResponse,
   ThreadStorageContentQuery,
   ThreadHostFileContentQuery,
@@ -440,6 +441,14 @@ export type PublicApiSchema = {
       PathId & { query: EnvironmentStatusQuery },
       EnvironmentStatusResponse
     >;
+  };
+  "/environments/:id/pull-request": {
+    /**
+     * Get the GitHub pull request for the environment's current branch.
+     * Proxies to `workspace.pull_request` and assembles the product state.
+     * `pullRequest` is `null` when there is no PR (or no detectable one).
+     */
+    $get: Endpoint<PathId, EnvironmentPullRequestResponse>;
   };
   "/environments/:id/diff": {
     /** Get git diff for an environment's workspace. Proxies to `workspace.diff`. */

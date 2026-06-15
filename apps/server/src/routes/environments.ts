@@ -45,6 +45,7 @@ import {
 import { parseFileListLimit } from "./file-list-query.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import { requireWorkspaceCommandTarget } from "../services/environments/workspace-command-target.js";
+import { assembleThreadPullRequest } from "../services/environments/pull-request.js";
 import {
   requireAvailableWorkspaceDiff,
   requireAvailableWorkspaceStatus,
@@ -281,6 +282,30 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       });
     },
   );
+
+  get("/environments/:id/pull-request", async (context) => {
+    const environment = requireReadyEnvironment(
+      deps.db,
+      context.req.param("id"),
+    );
+    // A non-git environment has no branch and therefore no PR; skip the daemon.
+    if (!environment.isGitRepo) {
+      return context.json({ pullRequest: null });
+    }
+    const target = requireWorkspaceCommandTarget(environment);
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: target.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "workspace.pull_request",
+        environmentId: target.environmentId,
+        workspaceContext: target.workspaceContext,
+      },
+    });
+    return context.json({
+      pullRequest: assembleThreadPullRequest(result.pullRequest),
+    });
+  });
 
   get(
     "/environments/:id/diff",

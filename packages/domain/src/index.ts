@@ -398,6 +398,9 @@ export {
 export type { Host, HostType } from "./host.js";
 
 export {
+  gitHostPullRequestSchema,
+  pullRequestStateSchema,
+  threadPullRequestSchema,
   threadQueuedMessageSchema,
   threadSchema,
   threadListEntrySchema,
@@ -419,8 +422,11 @@ export {
   workspaceWorkingTreeSchema,
 } from "./thread.js";
 export type {
+  GitHostPullRequest,
+  PullRequestState,
   Thread,
   ThreadListEntry,
+  ThreadPullRequest,
   ThreadQueuedMessage,
   ThreadRuntimeDisplayStatus,
   ThreadRuntimeState,

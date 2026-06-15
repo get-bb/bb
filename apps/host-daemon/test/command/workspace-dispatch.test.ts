@@ -95,6 +95,80 @@ describe("workspace command dispatch", () => {
     expect(harness.workspaceState.lastCommitMessage).toBe("Commit message");
   });
 
+  it("covers workspace.pull_request", async () => {
+    const harness = createHarness();
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    const pullRequest = {
+      number: 42,
+      title: "Add timeline polish",
+      state: "OPEN",
+      url: "https://github.com/bb/bb/pull/42",
+      isDraft: false,
+    } as const;
+    harness.workspaceState.pullRequest = pullRequest;
+
+    const presentResult = await dispatchOnlineRpcCommand(
+      {
+        type: "workspace.pull_request",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/env-1",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      harness.dispatchOptions(),
+    );
+    expect(presentResult).toEqual({ pullRequest });
+
+    harness.workspaceState.pullRequest = null;
+    const absentResult = await dispatchOnlineRpcCommand(
+      {
+        type: "workspace.pull_request",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/env-1",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      harness.dispatchOptions(),
+    );
+    expect(absentResult).toEqual({ pullRequest: null });
+  });
+
+  it("returns no pull request when the workspace is not a git repo", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/non-git-pr-env" });
+    harness.workspace.isGitRepo = false;
+    harness.workspaceState.pullRequest = {
+      number: 7,
+      title: "Should not surface",
+      state: "OPEN",
+      url: "https://github.com/bb/bb/pull/7",
+      isDraft: false,
+    };
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-non-git-pr",
+      workspacePath: "/tmp/non-git-pr-env",
+    });
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "workspace.pull_request",
+        environmentId: "env-non-git-pr",
+        workspaceContext: {
+          workspacePath: "/tmp/non-git-pr-env",
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      harness.dispatchOptions(),
+    );
+
+    expect(result).toEqual({ pullRequest: null });
+  });
+
   it("rehydrates a missing workspace runtime from workspaceContext", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-rehydrate" });
 
