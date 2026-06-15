@@ -388,6 +388,22 @@ export class ServerConnection {
       return;
     }
 
+    if (message.data.type === "watch-set.replace") {
+      const watchSetMessage = message.data;
+      void Promise.resolve(
+        this.options.onWatchSetReplace?.(watchSetMessage),
+      ).catch((error) => {
+        this.options.logger.warn(
+          {
+            generation: watchSetMessage.generation,
+            ...runtimeErrorLogFields(error),
+          },
+          "Watch set handler failed",
+        );
+      });
+      return;
+    }
+
     void Promise.resolve(this.options.onTerminalMessage?.(message.data)).catch(
       (error) => {
         this.options.logger.warn(

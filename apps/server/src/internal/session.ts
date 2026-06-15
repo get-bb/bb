@@ -1,7 +1,6 @@
 import {
   getLatestSessionForHost,
   listRetiredLoadedEnvironmentIdsOnHost,
-  listTrackedThreadStorageTargetsOnHost,
   openSession,
   upsertHost,
 } from "@bb/db";
@@ -86,13 +85,6 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
         previousSession,
       });
 
-      const trackedThreadTargets = listTrackedThreadStorageTargetsOnHost(
-        deps.db,
-        { hostId: daemon.hostId },
-      ).map((target) => ({
-        environmentId: target.environmentId,
-        threadId: target.threadId,
-      }));
       const retiredEnvironmentIds = listRetiredLoadedEnvironmentIdsOnHost(
         deps.db,
         {
@@ -108,7 +100,9 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
           sessionId: session.id,
           heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
           leaseTimeoutMs: LEASE_TIMEOUT_MS,
-          trackedThreadTargets,
+          watchSet: deps.watchInterests.reconcileWatchSetForHost(
+            daemon.hostId,
+          ),
           retiredEnvironmentIds,
         },
         201,

@@ -25,7 +25,7 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "thread", "thread-1");
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
     hub.notifyThread("thread-1", ["events-appended"]);
 
     expect(socket.messages).toHaveLength(1);
@@ -41,7 +41,7 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "thread", "thread-1");
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
     hub.notifyThread("thread-1", ["archived-changed"], {
       projectId: "project-1",
     });
@@ -60,7 +60,10 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "environment", "environment-1");
+    hub.subscribe(socket, {
+      kind: "environment-detail",
+      environmentId: "environment-1",
+    });
     hub.notifyEnvironment("environment-1", ["metadata-changed"]);
 
     expect(socket.messages).toHaveLength(1);
@@ -76,8 +79,8 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "thread", "thread-1");
-    hub.unsubscribe(socket, "thread", "thread-1");
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
+    hub.unsubscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
     hub.notifyThread("thread-1", ["status-changed"]);
 
     expect(socket.messages).toHaveLength(0);
@@ -87,8 +90,8 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "thread", "thread-1");
-    hub.subscribe(socket, "project", "project-1");
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(socket, { kind: "project-detail", projectId: "project-1" });
     hub.unregisterClient(socket);
     hub.notifyThread("thread-1", ["events-appended"]);
     hub.notifyProject("project-1", ["threads-changed"]);
@@ -134,9 +137,9 @@ describe("NotificationHub", () => {
     const socket2 = createMockHubSocket();
     const socket3 = createMockHubSocket();
 
-    hub.subscribe(socket1, "thread", "thread-1");
-    hub.subscribe(socket2, "thread", "thread-1");
-    hub.subscribe(socket3, "thread", "thread-2");
+    hub.subscribe(socket1, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(socket2, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(socket3, { kind: "thread-detail", threadId: "thread-2" });
     hub.notifyThread("thread-1", ["status-changed"]);
 
     expect(socket1.messages).toHaveLength(1);
@@ -291,10 +294,13 @@ describe("NotificationHub", () => {
     const socket = createMockHubSocket();
 
     for (let index = 0; index < 20; index += 1) {
-      hub.subscribe(socket, "thread", "thread-1");
-      hub.unsubscribe(socket, "thread", "thread-1");
+      hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
+      hub.unsubscribe(socket, {
+        kind: "thread-detail",
+        threadId: "thread-1",
+      });
     }
-    hub.subscribe(socket, "thread", "thread-1");
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
     hub.notifyThread("thread-1", ["events-appended"]);
 
     expect(socket.messages).toHaveLength(1);
@@ -312,7 +318,7 @@ describe("NotificationHub", () => {
     try {
       const hub = new NotificationHub();
       const socket = createMockHubSocket();
-      hub.subscribe(socket, "thread", "thread-1");
+      hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
 
       const changes: ThreadChangeKind[] = ["events-appended"];
       appendRawChangeKind(changes, "not-a-real-change-kind");
@@ -333,7 +339,7 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "system");
+    hub.subscribe(socket, { kind: "system" });
     hub.notifySystem(["config-changed"]);
 
     expect(socket.messages).toHaveLength(1);
@@ -344,15 +350,15 @@ describe("NotificationHub", () => {
     });
   });
 
-  it("delivers host notifications to entity-wide and id-scoped subscribers", () => {
+  it("delivers host notifications to list and detail subscribers", () => {
     const hub = new NotificationHub();
     const entityWideSocket = createMockHubSocket();
     const idScopedSocket = createMockHubSocket();
     const otherHostSocket = createMockHubSocket();
 
-    hub.subscribe(entityWideSocket, "host");
-    hub.subscribe(idScopedSocket, "host", "host-1");
-    hub.subscribe(otherHostSocket, "host", "host-2");
+    hub.subscribe(entityWideSocket, { kind: "host-list" });
+    hub.subscribe(idScopedSocket, { kind: "host-detail", hostId: "host-1" });
+    hub.subscribe(otherHostSocket, { kind: "host-detail", hostId: "host-2" });
     hub.notifyHost("host-1", ["host-connected"]);
 
     const expected = {
@@ -381,11 +387,17 @@ describe("NotificationHub", () => {
     const hostSocket = createMockHubSocket();
     const systemSocket = createMockHubSocket();
 
-    hub.subscribe(threadSocket, "thread", "thread-1");
-    hub.subscribe(projectSocket, "project", "project-1");
-    hub.subscribe(environmentSocket, "environment", "environment-1");
-    hub.subscribe(hostSocket, "host", "host-1");
-    hub.subscribe(systemSocket, "system");
+    hub.subscribe(threadSocket, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(projectSocket, {
+      kind: "project-detail",
+      projectId: "project-1",
+    });
+    hub.subscribe(environmentSocket, {
+      kind: "environment-detail",
+      environmentId: "environment-1",
+    });
+    hub.subscribe(hostSocket, { kind: "host-detail", hostId: "host-1" });
+    hub.subscribe(systemSocket, { kind: "system" });
 
     hub.notifyThread("thread-1", [...THREAD_CHANGE_KINDS]);
     hub.notifyProject("project-1", [...PROJECT_CHANGE_KINDS]);

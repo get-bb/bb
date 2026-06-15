@@ -15,7 +15,6 @@ import {
   listStopRequestedThreads,
   listActiveVisiblePinnedThreadRoots,
   listThreadEnvironmentAssignmentsOnHost,
-  listTrackedThreadStorageTargetsOnHost,
   listThreads,
   listThreadsWithPendingInteractionState,
   updateThread,
@@ -635,6 +634,38 @@ describe("threads", () => {
     );
   });
 
+  it("notifies when a thread environment changes", () => {
+    const { db, host, project } = setup();
+    const spy: DbNotifier = {
+      notifyThread: vi.fn(),
+      notifyEnvironment: vi.fn(),
+      notifyHost: vi.fn(),
+      notifyProject: vi.fn(),
+      notifySystem: vi.fn(),
+    };
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      path: "/tmp/test-workspace",
+      status: "ready",
+    });
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    updateThread(db, spy, thread.id, {
+      environmentId: environment.id,
+    });
+
+    expect(spy.notifyThread).toHaveBeenCalledWith(
+      thread.id,
+      ["environment-changed"],
+      { projectId: project.id },
+    );
+  });
+
   it("preserves read state when renaming a read thread", () => {
     vi.useFakeTimers();
     try {
@@ -1009,7 +1040,7 @@ describe("threads", () => {
     ).toBe(false);
   });
 
-  it("tracks storage targets only for live threads on non-destroyed environments", () => {
+  it("lists every host thread id including archived, deleted, and destroyed-environment threads", () => {
     const { db, project, host } = setup();
     const environment = createEnvironment(db, noopNotifier, {
       projectId: project.id,
@@ -1048,12 +1079,7 @@ describe("threads", () => {
     archiveThread(db, noopNotifier, archivedThread.id);
     markThreadDeleted(db, noopNotifier, { threadId: deletedThread.id });
 
-    expect(
-      listTrackedThreadStorageTargetsOnHost(db, { hostId: host.id }),
-    ).toEqual([{ threadId: activeThread.id, environmentId: environment.id }]);
-    expect(
-      [...listHostThreadIds(db, { hostId: host.id })].sort(),
-    ).toEqual(
+    expect([...listHostThreadIds(db, { hostId: host.id })].sort()).toEqual(
       [
         activeThread.id,
         archivedThread.id,

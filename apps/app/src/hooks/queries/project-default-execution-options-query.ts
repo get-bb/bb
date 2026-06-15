@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ProjectExecutionDefaults } from "@bb/domain";
 import { apiClient } from "@/lib/api-server";
 import { request } from "@/lib/api";
+import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { requireEnabledQueryArg } from "./query-helpers";
 
 export const PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
@@ -61,6 +62,9 @@ export function useProjectDefaultExecutionOptions(
   options?: QueryOptions,
 ) {
   const { projectId } = args;
+  const enabled = (options?.enabled ?? true) && Boolean(projectId);
+  useProjectDetailRealtimeSubscription(projectId, { enabled });
+
   return useQuery<ProjectExecutionDefaults | null>({
     queryKey: projectDefaultExecutionOptionsQueryKey({
       projectId: projectId ?? "",
@@ -72,7 +76,7 @@ export function useProjectDefaultExecutionOptions(
           "useProjectDefaultExecutionOptions",
         ),
       }),
-    enabled: (options?.enabled ?? true) && Boolean(projectId),
+    enabled,
     staleTime: 10_000,
     placeholderData: (previousData) => (projectId ? previousData : undefined),
   });

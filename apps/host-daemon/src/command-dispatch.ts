@@ -170,7 +170,6 @@ const commandHandlers: CommandHandlerMap = {
     // Stop completion finalizes server-side thread state. Flush provider
     // events first so buffered lifecycle events cannot arrive after that.
     await options.eventSink.flush();
-    options.runtimeManager.forgetThread(command.threadId);
     return {};
   },
   "thread.rename": async (command, options) => {
@@ -198,7 +197,6 @@ const commandHandlers: CommandHandlerMap = {
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
     });
-    options.runtimeManager.forgetThread(command.threadId);
     return {};
   },
   "thread.unarchive": async (command, options) => {

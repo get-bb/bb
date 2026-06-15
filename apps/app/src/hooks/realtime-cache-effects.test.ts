@@ -637,6 +637,56 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("refetches active thread storage preview queries when a thread environment changes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const storagePreviewKey = threadStorageFilePreviewQueryKey(
+      "thr_1",
+      "notes.md",
+    );
+    const initialStoragePreview = {
+      kind: "text",
+      content: "old",
+      mimeType: "text/plain",
+      path: "notes.md",
+      url: "/old",
+    };
+    const nextStoragePreview = {
+      kind: "text",
+      content: "new",
+      mimeType: "text/plain",
+      path: "notes.md",
+      url: "/new",
+    };
+    queryClient.setQueryData(storagePreviewKey, initialStoragePreview);
+    const storagePreviewQueryFn = vi.fn(async () => nextStoragePreview);
+    const storagePreviewObserver = new QueryObserver(queryClient, {
+      queryKey: storagePreviewKey,
+      queryFn: storagePreviewQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeStoragePreview = storagePreviewObserver.subscribe(
+      () => {},
+    );
+    storagePreviewQueryFn.mockClear();
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["environment-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(storagePreviewQueryFn).toHaveBeenCalledTimes(1);
+    expect(queryClient.getQueryData(storagePreviewKey)).toEqual(
+      nextStoragePreview,
+    );
+
+    unsubscribeStoragePreview();
+    effects.dispose();
+  });
+
   it("does not invalidate timeline queries for status-only thread changes", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const timelineKey = threadTimelineFeedQueryKey("thr_1");

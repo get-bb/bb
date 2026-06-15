@@ -28,6 +28,10 @@ import {
   getPopoutThreadRoutePath,
 } from "@/lib/route-paths";
 import {
+  useHostListRealtimeSubscription,
+  useProjectListRealtimeSubscription,
+} from "@/hooks/useRealtimeSubscription";
+import {
   HEIGHT_TRANSITION_DURATION_MS,
   HEIGHT_TRANSITION_EASE_CSS,
 } from "@/components/ui/height-transition";
@@ -236,6 +240,8 @@ function PopoutQuickAskRoute() {
 function PopoutThreadRoute() {
   const desktop = getBbDesktopInfo();
   const navigate = useNavigate();
+  useProjectListRealtimeSubscription();
+  useHostListRealtimeSubscription();
   const handleHide = useCallback(() => {
     desktop?.popout.toggle();
   }, [desktop]);

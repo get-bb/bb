@@ -29,6 +29,11 @@ import type { PathListOptions } from "@/lib/path-list-options";
 import type { ThreadStorageFileListOptions } from "@/lib/thread-storage-files";
 import * as api from "@/lib/api";
 import {
+  useProjectListRealtimeSubscription,
+  useThreadDetailRealtimeSubscription,
+  useThreadListRealtimeSubscription,
+} from "@/hooks/useRealtimeSubscription";
+import {
   getCachedSidebarNavigationThreads,
   getCachedThreadListPlaceholder,
 } from "../cache-owners/query-cache";
@@ -304,6 +309,7 @@ export function useArchivedThreads(
   const { projectId, kind } = filters;
   const enabled = (options?.enabled ?? true) && Boolean(projectId);
   const apiFilters = archivedThreadsKindToApiFilters(kind);
+  useThreadListRealtimeSubscription({ enabled });
 
   return useInfiniteQuery<
     ThreadListResponse,
@@ -342,6 +348,7 @@ export function useArchivedThreads(
 export function useThreads(filters: UseThreadsFilters, options?: QueryOptions) {
   const { projectId, ...rest } = filters;
   const enabled = (options?.enabled ?? true) && Boolean(projectId);
+  useThreadListRealtimeSubscription({ enabled });
   const queryKey =
     enabled && projectId
       ? threadListQueryKey({ ...rest, projectId })
@@ -369,6 +376,7 @@ export function useProjectThreadSubset({
 }: UseProjectThreadSubsetArgs): UseProjectThreadSubsetResult {
   const queryClient = useQueryClient();
   const enabled = (enabledOption ?? true) && Boolean(projectId);
+  useThreadListRealtimeSubscription({ enabled });
   const { hasParent, parentThreadId } = filters;
   const activeProjectThreadListQueryKey =
     enabled && projectId
@@ -433,6 +441,7 @@ export function useThreadMentionCandidates({
 }: UseThreadMentionCandidatesArgs): UseThreadMentionCandidatesResult {
   const queryClient = useQueryClient();
   const enabled = enabledOption ?? true;
+  useThreadListRealtimeSubscription({ enabled });
   const queryKey = enabled
     ? threadListQueryKey(THREAD_MENTION_CANDIDATE_FILTERS)
     : disabledThreadListQueryKey(THREAD_MENTION_CANDIDATE_FILTERS);
@@ -460,11 +469,13 @@ export function useThreadMentionCandidates({
 
 export function useThread(id: string, options?: QueryOptions) {
   const queryClient = useQueryClient();
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
 
   return useQuery<ThreadResponse>({
     queryKey: threadQueryKey(id),
     queryFn: () => api.getThread(requireThreadId(id, "useThread")),
-    enabled: (options?.enabled ?? true) && Boolean(id),
+    enabled,
     staleTime: 5_000,
     refetchOnMount: options?.refetchOnMount ?? true,
     placeholderData: (previousData, previousQuery) =>
@@ -478,6 +489,8 @@ export function useThreadDetailBootstrap(
   options?: ThreadDetailBootstrapQueryOptions,
 ) {
   const queryClient = useQueryClient();
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
 
   return useQuery<ThreadWithIncludesResponse>({
     queryKey: threadDetailBootstrapQueryKey(id),
@@ -493,7 +506,7 @@ export function useThreadDetailBootstrap(
       });
       return thread;
     },
-    enabled: (options?.enabled ?? true) && Boolean(id),
+    enabled,
     staleTime: Infinity,
   });
 }
@@ -502,13 +515,16 @@ export function useThreadQueuedMessages(
   id: string,
   options?: ThreadQueuedMessagesQueryOptions,
 ) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
   return useQuery<ThreadQueuedMessageListResponse>({
     queryKey: threadQueuedMessagesQueryKey(id),
     queryFn: () =>
       api.listThreadQueuedMessages(
         requireThreadId(id, "useThreadQueuedMessages"),
       ),
-    enabled: (options?.enabled ?? true) && Boolean(id),
+    enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,
     staleTime: options?.staleTime,
@@ -519,6 +535,9 @@ export function useThreadPromptHistory(
   id: string,
   options?: ThreadPromptHistoryQueryOptions,
 ) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
   return useQuery<PromptHistoryResponse>({
     queryKey: threadPromptHistoryQueryKey(id),
     queryFn: ({ signal }) =>
@@ -526,7 +545,7 @@ export function useThreadPromptHistory(
         requireThreadId(id, "useThreadPromptHistory"),
         signal,
       ),
-    enabled: (options?.enabled ?? true) && Boolean(id),
+    enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? PROMPT_HISTORY_STALE_TIME_MS,
   });
@@ -536,6 +555,9 @@ export function useThreadPendingInteractions(
   id: string,
   options?: ThreadPendingInteractionsQueryOptions,
 ) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
   return useQuery<ThreadPendingInteractionsResponse>({
     queryKey: threadPendingInteractionsQueryKey(id),
     queryFn: ({ signal }) =>
@@ -543,7 +565,7 @@ export function useThreadPendingInteractions(
         requireThreadId(id, "useThreadPendingInteractions"),
         signal,
       ),
-    enabled: (options?.enabled ?? true) && Boolean(id),
+    enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,
     staleTime: options?.staleTime,
@@ -555,6 +577,9 @@ export function useThreadStorageFiles(
   listOptions: ThreadStorageFileListOptions,
   options?: QueryOptions,
 ) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
   return useQuery<ThreadStorageFileListResponse>({
     queryKey: threadStorageFilesQueryKey(id, listOptions),
     queryFn: ({ signal }) =>
@@ -563,7 +588,10 @@ export function useThreadStorageFiles(
         options: listOptions,
         signal,
       }),
-    enabled: (options?.enabled ?? true) && Boolean(id),
+    enabled,
+    // Subscriptions can be absent while no UI is listening, so remount must
+    // establish a fresh baseline instead of trusting cached data.
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
 }
@@ -573,6 +601,9 @@ export function useThreadStoragePaths(
   listOptions: PathListOptions,
   options?: QueryOptions,
 ) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
   return useQuery<ThreadStoragePathListResponse>({
     queryKey: threadStoragePathsQueryKey(id, listOptions),
     queryFn: ({ signal }) =>
@@ -581,7 +612,8 @@ export function useThreadStoragePaths(
         options: listOptions,
         signal,
       }),
-    enabled: (options?.enabled ?? true) && Boolean(id),
+    enabled,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
     placeholderData: (previousData) => previousData,
   });
@@ -592,6 +624,9 @@ export function useThreadStorageFilePreview(
   path: string | null,
   options?: QueryOptions,
 ) {
+  const enabled = (options?.enabled ?? true) && Boolean(id) && Boolean(path);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
   return useQuery<FilePreview>({
     queryKey: threadStorageFilePreviewQueryKey(id, path),
     queryFn: ({ signal }) =>
@@ -600,16 +635,21 @@ export function useThreadStorageFilePreview(
         path ?? "",
         signal,
       ),
-    enabled: (options?.enabled ?? true) && Boolean(id) && Boolean(path),
+    enabled,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
 }
 
 export function useAutomationsOverview(options?: QueryOptions) {
+  const enabled = options?.enabled ?? true;
+  useProjectListRealtimeSubscription({ enabled });
+  useThreadListRealtimeSubscription({ enabled });
+
   return useQuery<AutomationsOverviewResponse>({
     queryKey: automationsOverviewQueryKey(),
     queryFn: ({ signal }) => api.listAutomationsOverview(signal),
-    enabled: options?.enabled ?? true,
+    enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,
     staleTime: options?.staleTime,
@@ -622,6 +662,13 @@ export function useThreadHostFilePreview(
   path: string | null,
   options?: QueryOptions,
 ) {
+  const enabled =
+    (options?.enabled ?? true) &&
+    Boolean(id) &&
+    Boolean(environmentId) &&
+    Boolean(path);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
   return useQuery<FilePreview>({
     queryKey: threadHostFilePreviewQueryKey(id, environmentId, path),
     queryFn: ({ signal }) =>
@@ -630,16 +677,15 @@ export function useThreadHostFilePreview(
         path ?? "",
         signal,
       ),
-    enabled:
-      (options?.enabled ?? true) &&
-      Boolean(id) &&
-      Boolean(environmentId) &&
-      Boolean(path),
+    enabled,
     refetchOnWindowFocus: false,
   });
 }
 
 export function useThreadSchedules(id: string, options?: QueryOptions) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
   return useQuery<ThreadSchedule[]>({
     queryKey: threadSchedulesQueryKey(id),
     queryFn: ({ signal }) =>
@@ -647,7 +693,7 @@ export function useThreadSchedules(id: string, options?: QueryOptions) {
         requireThreadId(id, "useThreadSchedules"),
         signal,
       ),
-    enabled: (options?.enabled ?? true) && Boolean(id),
+    enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,
     staleTime: options?.staleTime,
@@ -658,13 +704,16 @@ export function useThreadTimelineFeed(
   id: string,
   options?: ThreadTimelineFeedQueryOptions,
 ) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
   return useQuery<ThreadTimelineFeedResponse>({
     queryKey: threadTimelineFeedQueryKey(id),
     queryFn: () =>
       api.getThreadTimelineFeed({
         id: requireThreadId(id, "useThreadTimelineFeed"),
       }),
-    enabled: (options?.enabled ?? true) && Boolean(id),
+    enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     ...(options?.staleTime === undefined
       ? {}

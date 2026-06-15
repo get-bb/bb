@@ -521,7 +521,7 @@ function createPopoutConfigSync(serverUrl: string): PopoutConfigSync {
   const realtimeUrl = formatRealtimeUrl(serverUrl);
   const subscribeMessage: ClientMessage = {
     type: "subscribe",
-    entity: "system",
+    target: { kind: "system" },
   };
   let reconnectTimer: NodeJS.Timeout | null = null;
   let socket: WebSocket | null = null;

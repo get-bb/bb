@@ -7,6 +7,7 @@ import type {
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import * as api from "@/lib/api";
 import { fetchProviderCliStatus } from "@/lib/api-host-daemon";
+import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   localProviderCliStatusQueryKey,
   systemConfigQueryKey,
@@ -30,6 +31,8 @@ export function useSystemExecutionOptions(
 ) {
   const environmentId = args.environmentId ?? null;
   const providerId = args.providerId ?? null;
+  const enabled = args.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
 
   return useQuery<SystemExecutionOptionsResponse>({
     queryKey: systemExecutionOptionsQueryKey({ environmentId, providerId }),
@@ -38,16 +41,19 @@ export function useSystemExecutionOptions(
         environmentId: args.environmentId,
         providerId: args.providerId,
       }),
-    enabled: args.enabled ?? true,
+    enabled,
     staleTime: 60_000,
   });
 }
 
 export function useSystemConfig(options?: QueryOptions) {
+  const enabled = options?.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
+
   return useQuery<SystemConfigResponse>({
     queryKey: systemConfigQueryKey(),
     queryFn: () => api.getSystemConfig(),
-    enabled: options?.enabled ?? true,
+    enabled,
     staleTime: 60_000,
   });
 }

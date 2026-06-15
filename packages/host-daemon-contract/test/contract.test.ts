@@ -1749,7 +1749,6 @@ describe("host-daemon command schemas", () => {
         commitSha: "",
       }),
     ).toThrow();
-
   });
 
   it("includes discovered workspace properties in environment.provision result", () => {
@@ -1873,22 +1872,15 @@ describe("host-daemon session schemas", () => {
         sessionId: "session_123",
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
-        trackedThreadTargets: [
-          {
-            environmentId: "env_123",
-            threadId: "thr_123",
-          },
-        ],
       }),
     ).toMatchObject({
       sessionId: "session_123",
       retiredEnvironmentIds: [],
-      trackedThreadTargets: [
-        {
-          environmentId: "env_123",
-          threadId: "thr_123",
-        },
-      ],
+      watchSet: {
+        generation: 0,
+        workspaceTargets: [],
+        threadStorageTargets: [],
+      },
     });
 
     expect(() =>
@@ -1896,7 +1888,6 @@ describe("host-daemon session schemas", () => {
         sessionId: "session_123",
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
-        trackedThreadTargets: [],
         threadHighWaterMarks: { thr_123: 10 },
       }),
     ).toThrow();
@@ -2175,6 +2166,69 @@ describe("host-daemon session schemas", () => {
         bufferDepth: 0,
       }),
     ).toThrow();
+
+    expect(
+      hostDaemonServerWsMessageSchema.parse({
+        type: "host-rpc.request",
+        requestId: "rpc-1",
+        command: { type: "provider.list_models", providerId: "codex" },
+      }),
+    ).toEqual({
+      type: "host-rpc.request",
+      requestId: "rpc-1",
+      command: { type: "provider.list_models", providerId: "codex" },
+    });
+
+    expect(
+      hostDaemonServerWsMessageSchema.parse({
+        type: "watch-set.replace",
+        generation: 1,
+        workspaceTargets: [
+          {
+            environmentId: "env_123",
+            workspaceContext: {
+              workspacePath: "/tmp/env-123",
+              workspaceProvisionType: "unmanaged",
+            },
+          },
+        ],
+        threadStorageTargets: [
+          {
+            environmentId: "env_123",
+            threadId: "thr_123",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      type: "watch-set.replace",
+      generation: 1,
+      workspaceTargets: [
+        {
+          environmentId: "env_123",
+        },
+      ],
+      threadStorageTargets: [
+        {
+          threadId: "thr_123",
+        },
+      ],
+    });
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "host-rpc.response",
+        requestId: "rpc-1",
+        commandType: "provider.list_models",
+        ok: true,
+        result: ONLINE_RPC_RESPONSE_RESULT_FIXTURES["provider.list_models"],
+      }),
+    ).toEqual({
+      type: "host-rpc.response",
+      requestId: "rpc-1",
+      commandType: "provider.list_models",
+      ok: true,
+      result: ONLINE_RPC_RESPONSE_RESULT_FIXTURES["provider.list_models"],
+    });
 
     expect(
       hostDaemonDaemonWsMessageSchema.parse({

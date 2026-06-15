@@ -77,10 +77,6 @@ export async function startThread(
       disallowedTools: command.disallowedTools,
       instructionMode: command.instructionMode,
     });
-    options.runtimeManager.registerThreadStorageTarget({
-      environmentId: command.environmentId,
-      threadId: command.threadId,
-    });
     return result;
   } catch (error) {
     await cleanupAfterPostStagingFailure(staged.cleanup);
@@ -122,10 +118,6 @@ export async function ensureThreadRuntime(
       instructionMode: resumeContext.instructionMode,
     });
   }
-  options.runtimeManager.registerThreadStorageTarget({
-    environmentId: command.environmentId,
-    threadId: command.threadId,
-  });
   return entry;
 }
 

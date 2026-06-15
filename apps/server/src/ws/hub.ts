@@ -1,11 +1,13 @@
-import type {
-  ChangedMessage,
-  EnvironmentChangeKind,
-  HostChangeKind,
-  ProjectChangeKind,
-  SystemChangeKind,
-  ThreadChangeKind,
-  ThreadChangeMetadata,
+import {
+  realtimeSubscriptionTargetKey,
+  type RealtimeSubscriptionTarget,
+  type ChangedMessage,
+  type EnvironmentChangeKind,
+  type HostChangeKind,
+  type ProjectChangeKind,
+  type SystemChangeKind,
+  type ThreadChangeKind,
+  type ThreadChangeMetadata,
 } from "@bb/domain";
 import type { DbNotifier } from "@bb/db";
 import type {
@@ -23,6 +25,50 @@ import {
 interface HubSocket {
   close(code?: number, reason?: string): void;
   send(data: string): void;
+}
+
+type ChangedMessageListener = (message: ChangedMessage) => void;
+
+function subscriptionKey(target: RealtimeSubscriptionTarget): string {
+  return realtimeSubscriptionTargetKey(target);
+}
+
+function subscriptionKeysForMessage(message: ChangedMessage): string[] {
+  switch (message.entity) {
+    case "thread":
+      return message.id
+        ? [
+            subscriptionKey({ kind: "thread-list" }),
+            subscriptionKey({ kind: "thread-detail", threadId: message.id }),
+          ]
+        : [subscriptionKey({ kind: "thread-list" })];
+    case "project":
+      return message.id
+        ? [
+            subscriptionKey({ kind: "project-list" }),
+            subscriptionKey({ kind: "project-detail", projectId: message.id }),
+          ]
+        : [subscriptionKey({ kind: "project-list" })];
+    case "environment":
+      return message.id
+        ? [
+            subscriptionKey({ kind: "environment-list" }),
+            subscriptionKey({
+              kind: "environment-detail",
+              environmentId: message.id,
+            }),
+          ]
+        : [subscriptionKey({ kind: "environment-list" })];
+    case "host":
+      return message.id
+        ? [
+            subscriptionKey({ kind: "host-list" }),
+            subscriptionKey({ kind: "host-detail", hostId: message.id }),
+          ]
+        : [subscriptionKey({ kind: "host-list" })];
+    case "system":
+      return [subscriptionKey({ kind: "system" })];
+  }
 }
 
 interface ThreadEventWaiter {
@@ -72,10 +118,6 @@ export class HostOnlineRpcUnavailableError extends Error {
   }
 }
 
-function subKey(entity: string, id?: string): string {
-  return id ? `${entity}:${id}` : entity;
-}
-
 export class NotificationHub implements DbNotifier {
   private readonly clientKeysBySocket = new Map<HubSocket, Set<string>>();
   private readonly clientSocketsByKey = new Map<string, Set<HubSocket>>();
@@ -89,6 +131,7 @@ export class NotificationHub implements DbNotifier {
     string,
     HostOnlineRpcWaiter
   >();
+  private readonly changedMessageListeners = new Set<ChangedMessageListener>();
   private readonly pendingDaemonDisconnects = new Map<
     string,
     ReturnType<typeof setTimeout>
@@ -135,6 +178,13 @@ export class NotificationHub implements DbNotifier {
     }
 
     this.clientKeysBySocket.delete(socket);
+  }
+
+  onChangedMessage(listener: ChangedMessageListener): () => void {
+    this.changedMessageListeners.add(listener);
+    return () => {
+      this.changedMessageListeners.delete(listener);
+    };
   }
 
   registerTerminalClient(terminalId: string, socket: HubSocket): void {
@@ -210,9 +260,9 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
-  subscribe(socket: HubSocket, entity: string, id?: string): void {
+  subscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
     this.registerClient(socket);
-    const key = subKey(entity, id);
+    const key = subscriptionKey(target);
     this.clientKeysBySocket.get(socket)?.add(key);
 
     const sockets = this.clientSocketsByKey.get(key) ?? new Set<HubSocket>();
@@ -220,8 +270,8 @@ export class NotificationHub implements DbNotifier {
     this.clientSocketsByKey.set(key, sockets);
   }
 
-  unsubscribe(socket: HubSocket, entity: string, id?: string): void {
-    const key = subKey(entity, id);
+  unsubscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
+    const key = subscriptionKey(target);
     this.clientKeysBySocket.get(socket)?.delete(key);
 
     const sockets = this.clientSocketsByKey.get(key);
@@ -551,21 +601,13 @@ export class NotificationHub implements DbNotifier {
 
   private notifyClients(message: ChangedMessage): void {
     const sockets = new Set<HubSocket>();
-    const entitySockets = this.clientSocketsByKey.get(subKey(message.entity));
-    if (entitySockets) {
-      for (const socket of entitySockets) {
-        sockets.add(socket);
+    for (const key of subscriptionKeysForMessage(message)) {
+      const specificSockets = this.clientSocketsByKey.get(key);
+      if (!specificSockets) {
+        continue;
       }
-    }
-
-    if ("id" in message && message.id) {
-      const specificSockets = this.clientSocketsByKey.get(
-        subKey(message.entity, message.id),
-      );
-      if (specificSockets) {
-        for (const socket of specificSockets) {
-          sockets.add(socket);
-        }
+      for (const socket of specificSockets) {
+        sockets.add(socket);
       }
     }
 
@@ -576,6 +618,7 @@ export class NotificationHub implements DbNotifier {
     }
     const payload = JSON.stringify(parseResult.data);
     this.notifyClientsByKeySet(sockets, payload);
+    this.notifyChangedMessageListeners(message);
   }
 
   private notifyClientsByKeySet(
@@ -584,6 +627,12 @@ export class NotificationHub implements DbNotifier {
   ): void {
     for (const socket of sockets) {
       socket.send(payload);
+    }
+  }
+
+  private notifyChangedMessageListeners(message: ChangedMessage): void {
+    for (const listener of this.changedMessageListeners) {
+      listener(message);
     }
   }
 

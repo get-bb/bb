@@ -9,10 +9,7 @@ import {
 } from "@bb/host-daemon-contract";
 import type { HostWatcher } from "@bb/host-watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  createHostDaemonApp,
-  type HostDaemonApp,
-} from "./app.js";
+import { createHostDaemonApp, type HostDaemonApp } from "./app.js";
 import type { HostDaemonLogger } from "./logger.js";
 import type { CreateReconnectingWebSocket } from "./server-connection.js";
 import type { ReconnectingWebSocketLike } from "./server-connection-support.js";
@@ -102,7 +99,6 @@ function createFetchRecorder(
           sessionId: "session-app-test",
           heartbeatIntervalMs: 30000,
           leaseTimeoutMs: 90000,
-          trackedThreadTargets: [],
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
         },
         { status: 201 },
@@ -297,9 +293,7 @@ async function createAppFixture(
   };
 }
 
-
 describe("createHostDaemonApp", () => {
-
   it("forgets server-retired loaded environments when opening a session", async () => {
     const dataDir = await makeTempDir("bb-host-daemon-app-retired-");
     const workspacePath = await makeTempDir(
@@ -345,7 +339,7 @@ describe("createHostDaemonApp", () => {
       await app.connection.start();
 
       expect(app.runtimeManager.get("env-app-retired")).toBeUndefined();
-      expect(stopWatchingStatus).toHaveBeenCalledTimes(1);
+      expect(stopWatchingStatus).not.toHaveBeenCalled();
       expect(runtime.shutdown).toHaveBeenCalledTimes(1);
       const openSessionBody = fetchRecorder.requests
         .filter((request) => request.pathname === "/internal/session/open")

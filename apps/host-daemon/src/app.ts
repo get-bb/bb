@@ -22,6 +22,7 @@ import {
   RuntimeManager,
   type RuntimeManagerOptions,
 } from "./runtime-manager.js";
+import { WatchManager } from "./watch-manager.js";
 import {
   TerminalManager,
   type TerminalManagerOptions,
@@ -80,6 +81,7 @@ export interface HostDaemonApp {
   eventSink: EventSink;
   localApi: LocalApiServer | null;
   runtimeManager: RuntimeManager;
+  watchManager: WatchManager;
   terminalManager: TerminalManager;
   router: CommandRouter;
   connection: ServerConnection;
@@ -116,6 +118,7 @@ export async function createHostDaemonApp(
     PendingInteractiveInterruptRequest
   >();
   let runtimeManager: RuntimeManager;
+  let watchManager: WatchManager;
   let flushPendingInteractiveInterruptsPromise: Promise<void> | null = null;
   let interactiveInterruptRetryTimeout: ReturnType<typeof setTimeout> | null =
     null;
@@ -250,6 +253,46 @@ export async function createHostDaemonApp(
   });
 
   let sendServerMessage = (_message: HostDaemonDaemonWsMessage) => false;
+  watchManager = new WatchManager({
+    dataDir: options.dataDir,
+    hostWatcher: options.hostWatcher,
+    threadStorageRootPath,
+    onThreadStorageChanged: ({ environmentId }) => {
+      sendServerMessage({
+        type: "environment-change",
+        environmentId,
+        change: "thread-storage-changed",
+      });
+    },
+    onThreadStorageWatchError: ({ error }) => {
+      options.logger.warn(
+        {
+          rootPath: error.rootPath,
+          watchError: error.message,
+        },
+        "Thread storage watch unavailable; retrying in background",
+      );
+    },
+    onWorkspaceStatusChanged: ({ environmentId, changeKinds }) => {
+      for (const change of changeKinds) {
+        sendServerMessage({
+          type: "environment-change",
+          environmentId,
+          change,
+        });
+      }
+    },
+    onWorkspaceStatusWatchError: ({ error }) => {
+      options.logger.warn(
+        {
+          environmentId: error.environmentId,
+          rootPath: error.rootPath,
+          watchError: error.message,
+        },
+        "Workspace status watch unavailable; retrying in background",
+      );
+    },
+  });
   runtimeManager = new RuntimeManager({
     bridgeBundleDir: options.bridgeBundleDir,
     createRuntime: options.createRuntime,
@@ -279,13 +322,6 @@ export async function createHostDaemonApp(
         throw error;
       }
     },
-    onThreadStorageChanged: ({ environmentId }) => {
-      sendServerMessage({
-        type: "environment-change",
-        environmentId,
-        change: "thread-storage-changed",
-      });
-    },
     onInjectedSkillsChanged: (change) => {
       options.logger.debug(
         {
@@ -304,15 +340,6 @@ export async function createHostDaemonApp(
         "Data-dir skills watch unavailable",
       );
     },
-    onThreadStorageWatchError: ({ error }) => {
-      options.logger.warn(
-        {
-          rootPath: error.rootPath,
-          watchError: error.message,
-        },
-        "Thread storage watch unavailable",
-      );
-    },
     onWorkspaceStatusChanged: ({ environmentId, changeKinds }) => {
       for (const change of changeKinds) {
         sendServerMessage({
@@ -321,16 +348,6 @@ export async function createHostDaemonApp(
           change,
         });
       }
-    },
-    onWorkspaceStatusWatchError: ({ error }) => {
-      options.logger.warn(
-        {
-          environmentId: error.environmentId,
-          rootPath: error.rootPath,
-          watchError: error.message,
-        },
-        "Workspace status watch unavailable",
-      );
     },
     onToolCall:
       options.onToolCall ??
@@ -472,8 +489,20 @@ export async function createHostDaemonApp(
     getActiveThreads: () => runtimeManager.listActiveThreads(),
     getLoadedEnvironments: () => runtimeManager.listLoadedEnvironments(),
     onHostRpcRequest: async (message) => {
+      if (message.command.type === "environment.destroy") {
+        await watchManager.removeEnvironmentWorkspaceWatch(
+          message.command.environmentId,
+        );
+      }
       const response = await router.handleOnlineRpcRequest(message);
       sendServerMessage(response);
+    },
+    onWatchSetReplace: async (message) => {
+      await watchManager.replaceWatchSet({
+        generation: message.generation,
+        workspaceTargets: message.workspaceTargets,
+        threadStorageTargets: message.threadStorageTargets,
+      });
     },
     onTerminalMessage: (message) => terminalManager.handleMessage(message),
     onSessionOpened: async (session) => {
@@ -492,9 +521,7 @@ export async function createHostDaemonApp(
           "Retired locally loaded environments after session reconciliation",
         );
       }
-      runtimeManager.replaceTrackedThreadStorageTargets(
-        session.trackedThreadTargets,
-      );
+      await watchManager.replaceAuthoritativeWatchSet(session.watchSet);
       void eventSink.flush().catch((error) => {
         options.logger.warn(
           {
@@ -545,6 +572,7 @@ export async function createHostDaemonApp(
     shutdownRuntimes: async () => {
       eventLoopStallMonitor.stop();
       await localApi?.close();
+      await watchManager.shutdown();
       await terminalManager.shutdownAll();
       await runtimeManager.shutdownAll();
       await eventSink.flush();
@@ -569,6 +597,7 @@ export async function createHostDaemonApp(
     eventSink,
     localApi,
     runtimeManager,
+    watchManager,
     terminalManager,
     router,
     connection,

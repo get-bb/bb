@@ -23,6 +23,7 @@ import { resolveThreadStorageRootPath } from "./services/threads/thread-storage.
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { ServerRuntimeConfig } from "./types.js";
 import { NotificationHub } from "./ws/hub.js";
+import { WatchInterestCoordinator } from "./ws/watch-interests.js";
 
 export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const logger = createLogger({
@@ -31,6 +32,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   });
   const db = initDb(serverConfig.databasePath, { logger });
   const hub = new NotificationHub();
+  const watchInterests = new WatchInterestCoordinator({ db, hub });
   const terminalSessions = new TerminalSessionLifecycle({
     db,
     hub,
@@ -120,6 +122,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       pendingInteractions,
       telemetry,
       terminalSessions,
+      watchInterests,
     },
     { staticDir },
   );

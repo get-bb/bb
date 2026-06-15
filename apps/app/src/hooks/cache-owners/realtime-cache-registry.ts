@@ -60,6 +60,9 @@ import {
 } from "./thread-list-cache-data";
 import {
   allHostQueryKeyPrefix,
+  allThreadStorageFilePreviewQueryKeyPrefix,
+  allThreadStorageFilesQueryKeyPrefix,
+  allThreadStoragePathsQueryKeyPrefix,
   allThreadSchedulesQueryKeyPrefix,
   automationsOverviewQueryKey,
   allSystemExecutionOptionsQueryKeyPrefix,
@@ -172,6 +175,14 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     dirty: [
       dirtyThreadListQueries, // Sidebar grouping and child filters depend on parentThreadId.
       dirtyThreadDetailQueries, // Detail metadata and parent UI render parentThreadId.
+    ],
+  },
+  "environment-changed": {
+    flush: "immediate",
+    dirty: [
+      dirtyThreadListQueries, // Thread rows render environment/worktree metadata.
+      dirtyThreadDetailQueries, // Detail views use the attached environment for workspace UI.
+      dirtyThreadStorageQueriesForThread, // Thread storage is resolved through the attached environment.
     ],
   },
   "read-state-changed": {
@@ -511,6 +522,23 @@ function dirtyThreadTerminalQueries({
   return threadId
     ? [threadTerminalsQueryKey(threadId)]
     : [allThreadTerminalsQueryKeyPrefix()];
+}
+
+function dirtyThreadStorageQueriesForThread({
+  threadId,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  if (!threadId) {
+    return [
+      allThreadStorageFilesQueryKeyPrefix(),
+      allThreadStoragePathsQueryKeyPrefix(),
+      allThreadStorageFilePreviewQueryKeyPrefix(),
+    ];
+  }
+  return [
+    threadStorageFilesForThreadQueryKeyPrefix(threadId),
+    threadStoragePathsForThreadQueryKeyPrefix(threadId),
+    threadStorageFilePreviewQueryKeyPrefix(threadId),
+  ];
 }
 
 function dirtyProjectPromptHistoryQueries({

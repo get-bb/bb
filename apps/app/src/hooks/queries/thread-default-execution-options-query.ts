@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ResolvedThreadExecutionOptions } from "@bb/domain";
 import { apiClient } from "@/lib/api-server";
 import { request } from "@/lib/api";
+import { useThreadDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { requireEnabledQueryArg } from "./query-helpers";
 
 export const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
@@ -49,13 +50,16 @@ export function useThreadDefaultExecutionOptions(
   id: string,
   options?: ThreadDefaultExecutionOptionsQueryOptions,
 ) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
   return useQuery<ResolvedThreadExecutionOptions | null>({
     queryKey: threadDefaultExecutionOptionsQueryKey(id),
     queryFn: () =>
       fetchThreadDefaultExecutionOptions(
         requireThreadId(id, "useThreadDefaultExecutionOptions"),
       ),
-    enabled: (options?.enabled ?? true) && Boolean(id),
+    enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: false,
     staleTime: options?.staleTime,
