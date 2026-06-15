@@ -29,17 +29,24 @@ export type {
 export {
   WorkspaceError,
   detectGitRepo,
+  fetchRemoteBranches,
   getCheckoutRef,
   getCurrentBranch,
   getWorkspaceGitOperation,
+  getGitCommonDir,
   gitBlobSize,
   hasUncommittedChanges,
   listBranches,
   listRemoteBranches,
   readDefaultBranch,
+  readDefaultBranchRefs,
   readGitBlob,
 } from "./git.js";
-export type { ReadGitBlobResult } from "./git.js";
+export type {
+  DefaultBranchRefs,
+  FetchRemoteBranchesResult,
+  ReadGitBlobResult,
+} from "./git.js";
 
 export {
   getPullRequestForBranch,

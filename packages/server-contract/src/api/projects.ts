@@ -109,7 +109,11 @@ export const projectBranchesQuerySchema = branchListQuerySchema.extend({
 });
 export type ProjectBranchesQuery = z.infer<typeof projectBranchesQuerySchema>;
 
-export const projectBranchesResponseSchema = projectSourceCheckoutSchema;
+export const projectBranchesResponseSchema = projectSourceCheckoutSchema.extend(
+  {
+    defaultWorktreeBaseBranch: z.string().min(1).nullable(),
+  },
+);
 export type ProjectBranchesResponse = z.infer<
   typeof projectBranchesResponseSchema
 >;

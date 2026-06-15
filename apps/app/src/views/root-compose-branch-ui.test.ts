@@ -14,8 +14,10 @@ const cleanMainCheckout: ProjectSourceCheckout = {
     headSha: "abc123456789",
   },
   defaultBranch: "main",
+  defaultBranchRelation: null,
   hasUncommittedChanges: false,
   operation: { kind: "none" },
+  originDefaultBranch: null,
   remoteBranches: [],
   remoteBranchesTruncated: false,
   selectedBranch: null,
@@ -156,6 +158,28 @@ describe("buildRootComposeBranchUiState", () => {
       currentBranch: "main",
       currentOptionLabel: "main",
       triggerLabel: "Branch from: release/1.2",
+      mutationBlocker: null,
+    });
+  });
+
+  it("labels smart worktree defaults as the base branch", () => {
+    expect(
+      buildRootComposeBranchUiState({
+        checkout: {
+          ...cleanMainCheckout,
+          defaultWorktreeBaseBranch: "origin/main",
+          remoteBranches: ["origin/main"],
+        },
+        isFetching: false,
+        isLoading: false,
+        mode: "worktree",
+        selectedBranch: null,
+      }),
+    ).toMatchObject({
+      currentBranch: "origin/main",
+      currentOptionLabel: "origin/main",
+      triggerLabel: "Branch from: origin/main",
+      triggerTitle: "Branch from: origin/main",
       mutationBlocker: null,
     });
   });

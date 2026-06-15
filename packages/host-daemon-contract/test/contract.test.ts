@@ -175,10 +175,12 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       headSha: "abc123",
     },
     defaultBranch: "main",
+    defaultBranchRelation: "equal",
     hasUncommittedChanges: false,
     operation: {
       kind: "none",
     },
+    originDefaultBranch: "origin/main",
     remoteBranches: ["origin/main"],
     remoteBranchesTruncated: false,
     selectedBranch: {
@@ -1621,8 +1623,10 @@ describe("host-daemon command schemas", () => {
           headSha: "abc123",
         },
         defaultBranch: "main",
+        defaultBranchRelation: "equal",
         hasUncommittedChanges: true,
         operation: { kind: "merge", hasConflicts: true },
+        originDefaultBranch: "origin/main",
         remoteBranches: ["origin/main"],
         remoteBranchesTruncated: false,
         selectedBranch: { name: "origin/main", kind: "remote" },
