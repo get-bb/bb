@@ -244,9 +244,32 @@ export function Branch() {
           <BranchRow
             thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus({
+              checkout: {
+                kind: "branch",
+                branchName:
+                  "feat/sidebar-rail/extract-row-components-and-add-info-row-stories",
+                headSha: null,
+              },
               branch: {
                 currentBranch:
                   "feat/sidebar-rail/extract-row-components-and-add-info-row-stories",
+                defaultBranch: "main",
+              },
+            })}
+          />
+        </RowStage>
+      </StoryRow>
+      <StoryRow label="detached checkout">
+        <RowStage>
+          <BranchRow
+            thread={makeThread()}
+            workspaceStatus={makeWorkspaceStatus({
+              checkout: {
+                kind: "detached",
+                headSha: "abcdef1234567890",
+              },
+              branch: {
+                currentBranch: null,
                 defaultBranch: "main",
               },
             })}

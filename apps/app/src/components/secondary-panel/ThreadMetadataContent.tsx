@@ -19,6 +19,7 @@ import {
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
 import { cn } from "@/lib/utils";
+import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@/components/ui/button.js";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
@@ -348,19 +349,36 @@ export interface BranchRowProps {
 }
 
 export function BranchRow({ thread, workspaceStatus }: BranchRowProps) {
-  const branchName = workspaceStatus?.branch.currentBranch ?? null;
-  if (!branchName) return null;
+  const checkoutDisplay = workspaceStatus
+    ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
+    : null;
+  if (checkoutDisplay === null) return null;
   return (
     <DetailRow
-      label={<DetailRowIconLabel icon="GitBranch">Branch</DetailRowIconLabel>}
+      label={
+        <DetailRowIconLabel icon="GitBranch">
+          {checkoutDisplay.rowLabel}
+        </DetailRowIconLabel>
+      }
       valueClassName="min-w-0 truncate"
     >
-      <CopyableInlineLabel
-        text={branchName}
-        label="Copy branch name"
-        successMessage="Branch name copied"
-        errorMessage="Failed to copy branch name"
-      />
+      {checkoutDisplay.copyValue !== null ? (
+        <CopyableInlineLabel
+          text={checkoutDisplay.copyValue}
+          label={checkoutDisplay.copyLabel ?? "Copy checkout value"}
+          title={checkoutDisplay.title}
+          successMessage={checkoutDisplay.copySuccessMessage ?? "Value copied"}
+          errorMessage={
+            checkoutDisplay.copyErrorMessage ?? "Failed to copy value"
+          }
+        >
+          {checkoutDisplay.label}
+        </CopyableInlineLabel>
+      ) : (
+        <span className="block truncate" title={checkoutDisplay.title}>
+          {checkoutDisplay.label}
+        </span>
+      )}
     </DetailRow>
   );
 }

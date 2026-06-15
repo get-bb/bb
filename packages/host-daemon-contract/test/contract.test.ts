@@ -88,6 +88,11 @@ const WORKSPACE_STATUS_AVAILABLE_RESULT: JsonObject = {
       currentBranch: "feature/host-rpc",
       defaultBranch: "main",
     },
+    checkout: {
+      kind: "branch",
+      branchName: "feature/host-rpc",
+      headSha: null,
+    },
     mergeBase: {
       insertions: 5,
       deletions: 0,
@@ -1715,6 +1720,11 @@ describe("host-daemon command schemas", () => {
           branch: {
             currentBranch: "bb/env-123",
             defaultBranch: "main",
+          },
+          checkout: {
+            kind: "branch",
+            branchName: "bb/env-123",
+            headSha: null,
           },
           mergeBase: null,
         },

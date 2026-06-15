@@ -395,6 +395,11 @@ export function makeWorkspaceStatus(
       currentBranch: BRANCH_NAMES.feature,
       defaultBranch: BRANCH_NAMES.default,
     },
+    checkout: {
+      kind: "branch",
+      branchName: BRANCH_NAMES.feature,
+      headSha: null,
+    },
     mergeBase: {
       mergeBaseBranch: BRANCH_NAMES.default,
       baseRef: null,

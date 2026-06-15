@@ -80,6 +80,11 @@ const dirtyUncommittedStatus: WorkspaceStatus = {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
   },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
+  },
   mergeBase: null,
 };
 
@@ -117,6 +122,11 @@ const dirtyUncommittedManyStatus: WorkspaceStatus = {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
   },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
+  },
   mergeBase: null,
 };
 
@@ -145,6 +155,11 @@ const untrackedOnlyStatus: WorkspaceStatus = {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
   },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
+  },
   mergeBase: null,
 };
 
@@ -159,6 +174,11 @@ const committedUnmergedStatus: WorkspaceStatus = {
   branch: {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
+  },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
   },
   mergeBase: {
     mergeBaseBranch: "main",

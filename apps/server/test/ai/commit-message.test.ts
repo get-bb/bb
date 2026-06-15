@@ -280,6 +280,11 @@ describe("commit message generation", () => {
             currentBranch: "feature",
             defaultBranch: "main",
           },
+          checkout: {
+            kind: "branch",
+            branchName: "feature",
+            headSha: null,
+          },
           mergeBase: null,
           workingTree: {
             deletions: 0,
@@ -371,6 +376,11 @@ describe("commit message generation", () => {
           branch: {
             currentBranch: "feature",
             defaultBranch: "main",
+          },
+          checkout: {
+            kind: "branch",
+            branchName: "feature",
+            headSha: null,
           },
           mergeBase: null,
           workingTree: {
