@@ -3,15 +3,7 @@ import { listQueuedThreadMessages } from "@bb/db";
 import type { Hono } from "hono";
 import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
 import {
-  promptHistoryQuerySchema,
-  threadHostFileContentQuerySchema,
-  threadStorageContentQuerySchema,
-  threadStorageFilesQuerySchema,
-  threadStoragePathsQuerySchema,
-  threadEventWaitQuerySchema,
-  threadEventsQuerySchema,
-  threadTimelineQuerySchema,
-  timelineTurnSummaryDetailsQuerySchema,
+  publicApiRoutes,
   typedRoutes,
   type PublicApiSchema,
   type ThreadComposerBootstrapResponse,
@@ -100,7 +92,7 @@ async function buildThreadComposerBootstrapResponse(
     ? thread.environmentId
     : null;
   // Null when we deliberately skip resolution (archived / environment-less
-  // threads). Resolving hits the host via live provider.list + list_models
+  // threads). Resolving hits the host via live provider.list_models
   // RPCs, so we only pay that cost when the thread has a live environment whose
   // composer can actually use the list. Null (not an empty object) keeps
   // "not resolved" distinct from "resolved to nothing".
@@ -317,8 +309,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const { get } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
+  const routes = publicApiRoutes.threads;
 
-  get("/threads/:id/timeline", threadTimelineQuerySchema, (context, query) => {
+  get(routes.timeline, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
       buildThreadTimeline(deps.db, thread, {
@@ -330,36 +323,32 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(
-    "/threads/:id/timeline/turn-summary-details",
-    timelineTurnSummaryDetailsQuerySchema,
-    (context, query) => {
-      const thread = requirePublicThread(deps.db, context.req.param("id"));
-      return context.json(
-        buildTimelineTurnSummaryDetails(deps.db, thread, {
-          isDevelopment: deps.config.isDevelopment,
-          turnId: query.turnId,
-          sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
-          sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
-        }),
-      );
-    },
-  );
+  get(routes.timelineTurnSummaryDetails, (context, query) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    return context.json(
+      buildTimelineTurnSummaryDetails(deps.db, thread, {
+        isDevelopment: deps.config.isDevelopment,
+        turnId: query.turnId,
+        sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
+        sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+      }),
+    );
+  });
 
-  get("/threads/:id/output", (context) => {
+  get(routes.output, (context) => {
     requirePublicThread(deps.db, context.req.param("id"));
     return context.json({
       output: getLastThreadOutput(deps.db, context.req.param("id")),
     });
   });
 
-  get("/threads/:id/composer-bootstrap", async (context) =>
+  get(routes.composerBootstrap, async (context) =>
     context.json(
       await buildThreadComposerBootstrapResponse(deps, context.req.param("id")),
     ),
   );
 
-  get("/threads/:id/queued-messages", (context) => {
+  get(routes.queuedMessages, (context) => {
     const threadId = context.req.param("id");
     requirePublicThread(deps.db, threadId);
     return context.json(
@@ -367,29 +356,25 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(
-    "/threads/:id/prompt-history",
-    promptHistoryQuerySchema,
-    (context, query) => {
-      const threadId = context.req.param("id");
-      requirePublicThread(deps.db, threadId);
-      const limit = parseBoundedPositiveOptionalInteger({
-        defaultValue: PROMPT_HISTORY_ENTRY_LIMIT,
-        max: PROMPT_HISTORY_ENTRY_LIMIT,
-        name: "limit",
-        value: query.limit,
-      });
+  get(routes.promptHistory, (context, query) => {
+    const threadId = context.req.param("id");
+    requirePublicThread(deps.db, threadId);
+    const limit = parseBoundedPositiveOptionalInteger({
+      defaultValue: PROMPT_HISTORY_ENTRY_LIMIT,
+      max: PROMPT_HISTORY_ENTRY_LIMIT,
+      name: "limit",
+      value: query.limit,
+    });
 
-      return context.json(
-        listThreadPromptHistory(deps, {
-          threadId,
-          limit,
-        }),
-      );
-    },
-  );
+    return context.json(
+      listThreadPromptHistory(deps, {
+        threadId,
+        limit,
+      }),
+    );
+  });
 
-  get("/threads/:id/events", threadEventsQuerySchema, (context, query) => {
+  get(routes.events, (context, query) => {
     requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
       listThreadEventRows(deps.db, {
@@ -400,51 +385,47 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(
-    "/threads/:id/events/wait",
-    threadEventWaitQuerySchema,
-    async (context, query) => {
-      const threadId = context.req.param("id");
-      requirePublicThread(deps.db, threadId);
+  get(routes.eventWait, async (context, query) => {
+    const threadId = context.req.param("id");
+    requirePublicThread(deps.db, threadId);
 
-      const afterSeq = parseOptionalInteger(query.afterSeq, "afterSeq");
-      const waitMs = Math.min(
-        parseOptionalInteger(query.waitMs, "waitMs") ?? 30_000,
-        60_000,
-      );
-      const parsedEventType = threadEventTypeSchema.safeParse(query.type);
-      if (!parsedEventType.success) {
-        throw new ApiError(400, "invalid_request", "Invalid event type");
+    const afterSeq = parseOptionalInteger(query.afterSeq, "afterSeq");
+    const waitMs = Math.min(
+      parseOptionalInteger(query.waitMs, "waitMs") ?? 30_000,
+      60_000,
+    );
+    const parsedEventType = threadEventTypeSchema.safeParse(query.type);
+    if (!parsedEventType.success) {
+      throw new ApiError(400, "invalid_request", "Invalid event type");
+    }
+    const eventType = parsedEventType.data;
+
+    const findMatch = () =>
+      findThreadEvent(deps.db, { threadId, type: eventType, afterSeq });
+
+    const deadline = Date.now() + waitMs;
+    let match = findMatch();
+    while (!match) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      const waiter = deps.hub.registerThreadEventWaiter(threadId, remaining);
+      match = findMatch();
+      if (match) {
+        waiter.cancel();
+        break;
       }
-      const eventType = parsedEventType.data;
+      await waiter.promise;
+      match = findMatch();
+    }
 
-      const findMatch = () =>
-        findThreadEvent(deps.db, { threadId, type: eventType, afterSeq });
+    if (!match) {
+      return new Response(null, { status: 204 });
+    }
 
-      const deadline = Date.now() + waitMs;
-      let match = findMatch();
-      while (!match) {
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) break;
-        const waiter = deps.hub.registerThreadEventWaiter(threadId, remaining);
-        match = findMatch();
-        if (match) {
-          waiter.cancel();
-          break;
-        }
-        await waiter.promise;
-        match = findMatch();
-      }
+    return context.json(match);
+  });
 
-      if (!match) {
-        return new Response(null, { status: 204 });
-      }
-
-      return context.json(match);
-    },
-  );
-
-  get("/threads/:id/default-execution-options", async (context) => {
+  get(routes.defaultExecutionOptions, async (context) => {
     const threadId = context.req.param("id");
     requirePublicThread(deps.db, threadId);
     return context.json(
@@ -461,7 +442,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   // Generic iframe previews use path-shaped raw URLs so relative links resolve
   // beside the HTML file. These routes never inject app bridge globals.
   // `:filePath{.+}` matches across slashes; hono percent-decodes it once.
-  get("/threads/:id/worktree/files/:filePath{.+}", async (context) =>
+  get(routes.worktreeFile, async (context) =>
     serveThreadWorktreeRawFile(
       deps,
       context.req.param("id"),
@@ -469,45 +450,41 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     ),
   );
 
-  get(
-    "/threads/:id/thread-storage/files",
-    threadStorageFilesQuerySchema,
-    async (context, query) => {
-      const target = await requireThreadStorageTarget(deps, {
-        threadId: context.req.param("id"),
-      });
-      const limit = parseFileListLimit(query.limit);
+  get(routes.storageFiles, async (context, query) => {
+    const target = await requireThreadStorageTarget(deps, {
+      threadId: context.req.param("id"),
+    });
+    const limit = parseFileListLimit(query.limit);
 
-      try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.list_files",
-            path: target.storagePath,
-            ...(query.query ? { query: query.query } : {}),
-            limit,
-          },
-        });
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: target.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_files",
+          path: target.storagePath,
+          ...(query.query ? { query: query.query } : {}),
+          limit,
+        },
+      });
+      return context.json({
+        files: result.files,
+        truncated: result.truncated,
+        storageRootPath: target.storagePath,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.body.code === "ENOENT") {
         return context.json({
-          files: result.files,
-          truncated: result.truncated,
+          files: [],
+          truncated: false,
           storageRootPath: target.storagePath,
         });
-      } catch (error) {
-        if (error instanceof ApiError && error.body.code === "ENOENT") {
-          return context.json({
-            files: [],
-            truncated: false,
-            storageRootPath: target.storagePath,
-          });
-        }
-        throw error;
       }
-    },
-  );
+      throw error;
+    }
+  });
 
-  get("/threads/:id/thread-storage/files/:filePath{.+}", async (context) =>
+  get(routes.storageFile, async (context) =>
     serveThreadStorageRawFile(
       deps,
       context.req.param("id"),
@@ -515,101 +492,89 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     ),
   );
 
-  get(
-    "/threads/:id/thread-storage/paths",
-    threadStoragePathsQuerySchema,
-    async (context, query) => {
-      const target = await requireThreadStorageTarget(deps, {
-        threadId: context.req.param("id"),
-      });
-      const limit = parseFileListLimit(query.limit);
-      const inclusion = parsePathKindInclusion({
-        includeFiles: query.includeFiles,
-        includeDirectories: query.includeDirectories,
-      });
+  get(routes.storagePaths, async (context, query) => {
+    const target = await requireThreadStorageTarget(deps, {
+      threadId: context.req.param("id"),
+    });
+    const limit = parseFileListLimit(query.limit);
+    const inclusion = parsePathKindInclusion({
+      includeFiles: query.includeFiles,
+      includeDirectories: query.includeDirectories,
+    });
 
-      try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.list_paths",
-            path: target.storagePath,
-            ...(query.query ? { query: query.query } : {}),
-            limit,
-            includeFiles: inclusion.includeFiles,
-            includeDirectories: inclusion.includeDirectories,
-          },
-        });
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: target.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_paths",
+          path: target.storagePath,
+          ...(query.query ? { query: query.query } : {}),
+          limit,
+          includeFiles: inclusion.includeFiles,
+          includeDirectories: inclusion.includeDirectories,
+        },
+      });
+      return context.json({
+        paths: result.paths,
+        truncated: result.truncated,
+        storageRootPath: target.storagePath,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.body.code === "ENOENT") {
         return context.json({
-          paths: result.paths,
-          truncated: result.truncated,
+          paths: [],
+          truncated: false,
           storageRootPath: target.storagePath,
         });
-      } catch (error) {
-        if (error instanceof ApiError && error.body.code === "ENOENT") {
-          return context.json({
-            paths: [],
-            truncated: false,
-            storageRootPath: target.storagePath,
-          });
-        }
-        throw error;
       }
-    },
-  );
+      throw error;
+    }
+  });
 
-  get(
-    "/threads/:id/thread-storage/content",
-    threadStorageContentQuerySchema,
-    async (context, query) => {
-      validateFilePath(query.path);
-      const target = await requireThreadStorageTarget(deps, {
-        threadId: context.req.param("id"),
+  get(routes.storageContent, async (context, query) => {
+    validateFilePath(query.path);
+    const target = await requireThreadStorageTarget(deps, {
+      threadId: context.req.param("id"),
+    });
+
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: target.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.read_file",
+          path: path.join(target.storagePath, query.path),
+          rootPath: target.storagePath,
+        },
       });
+      return createDaemonFileContentResponse(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
 
-      try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.read_file",
-            path: path.join(target.storagePath, query.path),
-            rootPath: target.storagePath,
-          },
-        });
-        return createDaemonFileContentResponse(result);
-      } catch (error) {
-        return remapDaemonFileRouteError(error);
-      }
-    },
-  );
+  get(routes.hostFileContent, async (context, query) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    if (!thread.environmentId) {
+      throwThreadEnvironmentUnavailable(
+        threadEnvironmentUnavailableDetails("never_attached", null),
+      );
+    }
+    const environment = requireEnvironment(deps.db, thread.environmentId);
 
-  get(
-    "/threads/:id/host-files/content",
-    threadHostFileContentQuerySchema,
-    async (context, query) => {
-      const thread = requirePublicThread(deps.db, context.req.param("id"));
-      if (!thread.environmentId) {
-        throwThreadEnvironmentUnavailable(
-          threadEnvironmentUnavailableDetails("never_attached", null),
-        );
-      }
-      const environment = requireEnvironment(deps.db, thread.environmentId);
-
-      try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: environment.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.read_file",
-            path: query.path,
-          },
-        });
-        return createDaemonFileContentResponse(result);
-      } catch (error) {
-        return remapDaemonFileRouteError(error);
-      }
-    },
-  );
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: environment.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.read_file",
+          path: query.path,
+        },
+      });
+      return createDaemonFileContentResponse(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
 }

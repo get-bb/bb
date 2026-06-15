@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import type { HostDaemonCommandResult } from "@bb/host-daemon-contract";
 import { resolveContainedPath } from "@bb/process-utils";
 import type { RuntimeEntry } from "../runtime-manager.js";
@@ -12,6 +11,11 @@ import { stagePromptAttachments } from "./prompt-attachments.js";
 import { requireResolvedWorkspaceForCommand } from "../workspace-resolution.js";
 
 type TurnSubmitCommand = CommandOf<"turn.submit">;
+
+interface ResumeThreadRuntimeIfMissingArgs {
+  command: TurnSubmitCommand;
+  entry: RuntimeEntry;
+}
 
 function requireConfinedPath(rootPath: string, candidatePath: string): string {
   const resolved = resolveContainedPath({
@@ -27,16 +31,6 @@ function requireConfinedPath(rootPath: string, candidatePath: string): string {
   return resolved;
 }
 
-function resolveThreadStorageDir(
-  threadStorageRootPath: string,
-  threadId: string,
-): string {
-  return requireConfinedPath(
-    threadStorageRootPath,
-    path.join(threadStorageRootPath, threadId),
-  );
-}
-
 async function cleanupAfterPostStagingFailure(
   cleanup: () => Promise<void>,
 ): Promise<void> {
@@ -45,6 +39,34 @@ async function cleanupAfterPostStagingFailure(
   } catch {
     // Preserve the runtime/provisioning failure that triggered cleanup.
   }
+}
+
+async function resumeThreadRuntimeIfMissing(
+  args: ResumeThreadRuntimeIfMissingArgs,
+): Promise<void> {
+  const { command, entry } = args;
+  const { resumeContext } = command;
+  if (entry.runtime.hasThread(command.threadId)) {
+    return;
+  }
+  if (!resumeContext.providerThreadId) {
+    throw new CommandDispatchError(
+      "unknown_thread_runtime",
+      `No provider thread id available for thread ${command.threadId}`,
+    );
+  }
+  await entry.runtime.resumeThread({
+    environmentId: command.environmentId,
+    threadId: command.threadId,
+    projectId: resumeContext.projectId,
+    providerThreadId: resumeContext.providerThreadId,
+    providerId: resumeContext.providerId,
+    options: command.options,
+    instructions: resumeContext.instructions,
+    dynamicTools: resumeContext.dynamicTools,
+    disallowedTools: resumeContext.disallowedTools,
+    instructionMode: resumeContext.instructionMode,
+  });
 }
 
 export async function startThread(
@@ -88,10 +110,6 @@ export async function startThread(
       disallowedTools: command.disallowedTools,
       instructionMode: command.instructionMode,
     });
-    options.runtimeManager.registerThreadStorageTarget({
-      environmentId: command.environmentId,
-      threadId: command.threadId,
-    });
     return result;
   } catch (error) {
     await cleanupAfterPostStagingFailure(staged.cleanup);
@@ -113,30 +131,7 @@ export async function ensureThreadRuntime(
     workspaceContext: resumeContext.workspaceContext,
   });
 
-  if (!entry.runtime.hasThread(command.threadId)) {
-    if (!resumeContext.providerThreadId) {
-      throw new CommandDispatchError(
-        "unknown_thread_runtime",
-        `No provider thread id available for thread ${command.threadId}`,
-      );
-    }
-    await entry.runtime.resumeThread({
-      environmentId: command.environmentId,
-      threadId: command.threadId,
-      projectId: resumeContext.projectId,
-      providerThreadId: resumeContext.providerThreadId,
-      providerId: resumeContext.providerId,
-      options: command.options,
-      instructions: resumeContext.instructions,
-      dynamicTools: resumeContext.dynamicTools,
-      disallowedTools: resumeContext.disallowedTools,
-      instructionMode: resumeContext.instructionMode,
-    });
-  }
-  options.runtimeManager.registerThreadStorageTarget({
-    environmentId: command.environmentId,
-    threadId: command.threadId,
-  });
+  await resumeThreadRuntimeIfMissing({ command, entry });
   return entry;
 }
 
@@ -201,6 +196,7 @@ export async function submitTurn(
     input: staged.input,
   };
   try {
+    await resumeThreadRuntimeIfMissing({ command: stagedCommand, entry });
     switch (command.target.mode) {
       case "start":
         return await runSubmittedTurn(stagedCommand, entry);
@@ -227,16 +223,4 @@ export async function submitTurn(
     await cleanupAfterPostStagingFailure(staged.cleanup);
     throw error;
   }
-}
-
-export async function handleThreadDeleted(
-  command: CommandOf<"thread.deleted">,
-  options: CommandDispatchOptions,
-): Promise<HostDaemonCommandResult<"thread.deleted">> {
-  const threadDir = resolveThreadStorageDir(
-    options.threadStorageRootPath,
-    command.threadId,
-  );
-  await fs.rm(threadDir, { recursive: true, force: true });
-  return {};
 }

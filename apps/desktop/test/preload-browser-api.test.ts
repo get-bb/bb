@@ -6,7 +6,7 @@ import type {
   BbDesktopBrowserState,
   BbDesktopInfo,
   BbDesktopPopoutThreadChangedPayload,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,

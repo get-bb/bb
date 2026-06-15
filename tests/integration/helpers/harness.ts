@@ -38,6 +38,7 @@ import type {
   ServerRuntimeConfig,
 } from "../../../apps/server/src/types.js";
 import { NotificationHub } from "../../../apps/server/src/ws/hub.js";
+import { WatchInterestCoordinator } from "../../../apps/server/src/ws/watch-interests.js";
 import { createPublicApiClient } from "@bb/server-contract";
 import { waitForHostConnected } from "./assertions.js";
 import { createIntegrationFetch } from "./fetch.js";
@@ -214,6 +215,7 @@ async function startIntegrationServer(
 
   const db = initDb(":memory:");
   const hub = new NotificationHub();
+  const watchInterests = new WatchInterestCoordinator({ db, hub });
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: 50,
     db,
@@ -276,6 +278,7 @@ async function startIntegrationServer(
     pendingInteractions,
     telemetry,
     terminalSessions,
+    watchInterests,
   });
 
   let addressInfo: ListeningAddress | null = null;

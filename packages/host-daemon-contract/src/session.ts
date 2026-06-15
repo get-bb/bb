@@ -43,13 +43,34 @@ export type HostDaemonLoadedEnvironment = z.infer<
   typeof hostDaemonLoadedEnvironmentSchema
 >;
 
-export const hostDaemonTrackedThreadTargetSchema = z.object({
-  environmentId: z.string().min(1),
-  threadId: z.string().min(1),
-});
-export type HostDaemonTrackedThreadTarget = z.infer<
-  typeof hostDaemonTrackedThreadTargetSchema
+export const hostDaemonWatchSetWorkspaceTargetSchema = z
+  .object({
+    environmentId: z.string().min(1),
+    workspaceContext: workspaceContextSchema,
+  })
+  .strict();
+export type HostDaemonWatchSetWorkspaceTarget = z.infer<
+  typeof hostDaemonWatchSetWorkspaceTargetSchema
 >;
+
+export const hostDaemonWatchSetThreadStorageTargetSchema = z
+  .object({
+    environmentId: z.string().min(1),
+    threadId: z.string().min(1),
+  })
+  .strict();
+export type HostDaemonWatchSetThreadStorageTarget = z.infer<
+  typeof hostDaemonWatchSetThreadStorageTargetSchema
+>;
+
+export const hostDaemonWatchSetSchema = z
+  .object({
+    generation: z.number().int().nonnegative(),
+    workspaceTargets: z.array(hostDaemonWatchSetWorkspaceTargetSchema),
+    threadStorageTargets: z.array(hostDaemonWatchSetThreadStorageTargetSchema),
+  })
+  .strict();
+export type HostDaemonWatchSet = z.infer<typeof hostDaemonWatchSetSchema>;
 
 export const hostDaemonSessionOpenRequestSchema = z.object({
   hostId: z.string().min(1),
@@ -113,7 +134,11 @@ export const hostDaemonSessionOpenResponseSchema = z
     sessionId: z.string().min(1),
     heartbeatIntervalMs: z.number().int().positive(),
     leaseTimeoutMs: z.number().int().positive(),
-    trackedThreadTargets: z.array(hostDaemonTrackedThreadTargetSchema),
+    watchSet: hostDaemonWatchSetSchema.default({
+      generation: 0,
+      workspaceTargets: [],
+      threadStorageTargets: [],
+    }),
     retiredEnvironmentIds: z.array(z.string().min(1)).default([]),
   })
   .strict();
@@ -231,6 +256,15 @@ const hostDaemonOnlineRpcRequestMessageSchema = z
   })
   .strict();
 
+const hostDaemonWatchSetReplaceMessageSchema = hostDaemonWatchSetSchema
+  .extend({
+    type: z.literal("watch-set.replace"),
+  })
+  .strict();
+export type HostDaemonWatchSetReplaceMessage = z.infer<
+  typeof hostDaemonWatchSetReplaceMessageSchema
+>;
+
 const hostDaemonOnlineRpcResponseSuccessBaseSchema = z
   .object({
     type: z.literal("host-rpc.response"),
@@ -270,7 +304,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.list_branches"),
     onlineRpcResponseSuccessSchemaFor("host.read_file"),
     onlineRpcResponseSuccessSchemaFor("host.read_file_relative"),
-    onlineRpcResponseSuccessSchemaFor("provider.list"),
     onlineRpcResponseSuccessSchemaFor("provider.list_models"),
     onlineRpcResponseSuccessSchemaFor("environment.cleanup_preflight"),
     onlineRpcResponseSuccessSchemaFor("workspace.status"),
@@ -284,7 +317,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("thread.rename"),
     commandRpcResponseSuccessSchemaFor("thread.archive"),
     commandRpcResponseSuccessSchemaFor("thread.unarchive"),
-    commandRpcResponseSuccessSchemaFor("thread.deleted"),
     commandRpcResponseSuccessSchemaFor("interactive.resolve"),
     commandRpcResponseSuccessSchemaFor("codex.inference.complete"),
     commandRpcResponseSuccessSchemaFor("codex.voice.transcribe"),
@@ -381,6 +413,7 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   hostDaemonOnlineRpcRequestMessageSchema,
+  hostDaemonWatchSetReplaceMessageSchema,
   hostDaemonTerminalOpenMessageSchema,
   hostDaemonTerminalAttachMessageSchema,
   hostDaemonTerminalInputMessageSchema,

@@ -24,10 +24,12 @@ import {
   bbDesktopPopoutThreadRefSchema,
   bbDesktopThemeSchema,
   getDesktopThreadRoutePath,
-  serverMessageLenientSchema,
-  systemConfigResponseSchema,
   type BbDesktopInfo,
   type BbDesktopPopoutThreadRef,
+} from "@bb/desktop-contract";
+import {
+  serverMessageLenientSchema,
+  systemConfigResponseSchema,
   type ClientMessage,
 } from "@bb/server-contract";
 import { z } from "zod";
@@ -519,7 +521,7 @@ function createPopoutConfigSync(serverUrl: string): PopoutConfigSync {
   const realtimeUrl = formatRealtimeUrl(serverUrl);
   const subscribeMessage: ClientMessage = {
     type: "subscribe",
-    entity: "system",
+    target: { kind: "system" },
   };
   let reconnectTimer: NodeJS.Timeout | null = null;
   let socket: WebSocket | null = null;

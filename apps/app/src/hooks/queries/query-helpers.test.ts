@@ -76,6 +76,7 @@ function makeStatusResponse(
     outcome: "available",
     workspace: makeWorkspaceStatus({
       workingTree: makeWorkspaceWorkingTree({ state }),
+      checkout: { kind: "branch", branchName: "feature", headSha: null },
       branch: { currentBranch: "feature", defaultBranch: "main" },
       mergeBase: makeWorkspaceMergeBase({ baseRef: "origin/main" }),
     }),

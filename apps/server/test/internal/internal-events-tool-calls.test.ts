@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import {
+  closeSession,
   createAutomation,
   createEnvironment,
   createThread,
@@ -107,6 +108,39 @@ describe("internal event and tool-call routes", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toHaveLength(2);
+    });
+  });
+
+  it("logs inactive session details when daemon event posting uses a closed session", async () => {
+    await withTestHarness(async (harness) => {
+      const info = vi.fn();
+      harness.deps.logger.info = info;
+      const { session } = seedHostSession(harness.deps, { id: "host-1" });
+      closeSession(
+        harness.deps.db,
+        harness.deps.hub,
+        session.id,
+        "daemon-disconnect",
+      );
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [],
+      });
+
+      expect(response.status).toBe(401);
+      expect(info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          authenticatedHostId: session.hostId,
+          closeReason: "daemon-disconnect",
+          inactiveSessionReason: "closed",
+          sessionHostId: session.hostId,
+          sessionId: session.id,
+          sessionStatus: "closed",
+        }),
+        "Daemon event batch for inactive session",
+      );
     });
   });
 

@@ -7,7 +7,10 @@ import { ApiError } from "../errors.js";
 import { verifyAuthenticatedDaemon } from "../internal/auth.js";
 import type { AppDeps } from "../types.js";
 import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
-import { requireAuthorizedActiveSession } from "../internal/session-state.js";
+import {
+  getInactiveSessionLogFields,
+  requireAuthorizedActiveSession,
+} from "../internal/session-state.js";
 import { handleDaemonSocketClosed } from "../internal/session-owner-side-effects.js";
 import { notifyDaemonEnvironmentChange } from "../internal/environment-changes.js";
 import { decodeSocketPayload } from "./decode-payload.js";
@@ -158,7 +161,11 @@ export function onDaemonSocketMessage(
   } catch (error) {
     if (error instanceof ApiError && error.body.code === "inactive_session") {
       deps.logger.info(
-        { sessionId: args.sessionId },
+        getInactiveSessionLogFields(deps.db, {
+          authenticatedHostId: args.hostId,
+          now: Date.now(),
+          sessionId: args.sessionId,
+        }),
         "Daemon heartbeat for inactive session, closing socket",
       );
       args.socket.close(1008, "inactive-session");

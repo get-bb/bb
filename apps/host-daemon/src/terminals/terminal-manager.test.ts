@@ -222,6 +222,7 @@ function createFakeRuntime(): AgentRuntime {
     getActiveTurnId: vi.fn(() => null),
     waitForActiveTurn: vi.fn(async () => null),
     getProviderSession: vi.fn(() => null),
+    reapIdleProviderSessions: vi.fn(async () => ({ reapedSessions: [] })),
     hasThread: vi.fn(() => false),
     getActiveThreadIds: vi.fn(() => []),
     shutdown: vi.fn(async () => undefined),

@@ -1557,20 +1557,6 @@ describe("public thread data routes", () => {
       const providerResponder = registerProviderHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
-        providers: [
-          {
-            id: "codex",
-            displayName: "Codex",
-            capabilities: {
-              supportsArchive: true,
-              supportsRename: true,
-              supportsServiceTier: true,
-              supportsUserQuestion: true,
-              supportedPermissionModes: ["full", "workspace-write", "readonly"],
-            },
-            available: true,
-          },
-        ],
         modelsByProviderId: {
           codex: {
             models: [
@@ -1667,10 +1653,12 @@ describe("public thread data routes", () => {
           "expected resolved executionOptions for an environment-backed thread",
         );
       }
-      expect(executionOptions.providers).toHaveLength(1);
-      expect(
-        executionOptions.providers[0]?.capabilities.supportsUserQuestion,
-      ).toBe(true);
+      const codexProvider = executionOptions.providers.find(
+        (provider) => provider.id === "codex",
+      );
+      expect(codexProvider).toMatchObject({
+        id: "codex",
+      });
       expect(executionOptions.models[0]?.model).toBe("gpt-5.5");
       expect(bootstrap.queuedMessages[0]?.content).toEqual(
         textInput("Queued message"),
@@ -1685,7 +1673,6 @@ describe("public thread data routes", () => {
       expect(
         providerResponder.requests.map((request) => request.command),
       ).toEqual([
-        { type: "provider.list" },
         { type: "provider.list_models", providerId: "codex" },
       ]);
     });

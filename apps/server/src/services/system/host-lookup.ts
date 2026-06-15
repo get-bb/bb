@@ -1,4 +1,4 @@
-import type { SystemProvidersQuery } from "@bb/server-contract";
+import type { SystemExecutionOptionsQuery } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import {
   requireEnvironment,
@@ -10,7 +10,7 @@ import {
 } from "../hosts/primary-host.js";
 
 export type SystemHostLookupQuery = Pick<
-  SystemProvidersQuery,
+  SystemExecutionOptionsQuery,
   "environmentId" | "hostId"
 >;
 

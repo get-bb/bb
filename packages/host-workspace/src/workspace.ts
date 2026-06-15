@@ -14,6 +14,7 @@ import {
   createTempDir,
   detectGitRepo,
   ensureGitRepo,
+  getCheckoutRef,
   getCurrentBranch,
   hasRef,
   hasUncommittedChanges,
@@ -643,7 +644,7 @@ export class Workspace {
     const [
       statusOutput,
       diffOutput,
-      currentBranch,
+      checkout,
       defaultBranch,
       mergeBaseData,
     ] = await Promise.all([
@@ -660,7 +661,7 @@ export class Workspace {
         { cwd: this.path, timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS },
       ),
       readHeadNumstat(this.path, WORKSPACE_STATUS_GIT_TIMEOUT_MS),
-      getCurrentBranch(this.path, {
+      getCheckoutRef(this.path, {
         timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
       }),
       readDefaultBranch(this.path, {
@@ -728,9 +729,17 @@ export class Workspace {
         files,
       },
       branch: {
-        currentBranch: currentBranch ?? null,
-        defaultBranch: defaultBranch ?? currentBranch ?? "",
+        currentBranch:
+          checkout.kind === "branch" || checkout.kind === "unborn"
+            ? checkout.branchName
+            : null,
+        defaultBranch:
+          defaultBranch ??
+          (checkout.kind === "branch" || checkout.kind === "unborn"
+            ? (checkout.branchName ?? "")
+            : ""),
       },
+      checkout,
       mergeBase: mergeBaseData,
     };
   }
@@ -741,6 +750,7 @@ export class Workspace {
       this.getStatus(),
     ]);
     return JSON.stringify({
+      checkout: status.checkout,
       currentBranch: status.branch.currentBranch,
       headSha,
       workingTree: status.workingTree,

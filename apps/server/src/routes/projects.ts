@@ -16,21 +16,9 @@ import {
   type ReorderProjectResult,
 } from "@bb/db";
 import {
-  createProjectRequestSchema,
-  createProjectSourceRequestSchema,
-  projectAttachmentContentQuerySchema,
-  projectBranchesQuerySchema,
-  projectCommandsQuerySchema,
-  projectDefaultExecutionOptionsQuerySchema,
-  projectFilesQuerySchema,
-  projectPathsQuerySchema,
   projectListIncludeOptionSchema,
-  projectListQuerySchema,
-  promptHistoryQuerySchema,
-  reorderProjectRequestSchema,
+  publicApiRoutes,
   typedRoutes,
-  updateProjectRequestSchema,
-  updateProjectSourceRequestSchema,
   type ProjectListIncludeOption,
   type ProjectListQuery,
   type ProjectResponse,
@@ -324,8 +312,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
+  const routes = publicApiRoutes.projects;
 
-  get("/projects", projectListQuerySchema, (context, query) => {
+  get(routes.list, (context, query) => {
     const includes = parseProjectListIncludes(query);
     if (includes.has("threads")) {
       return context.json(buildProjectsWithThreadsResponse(deps));
@@ -333,11 +322,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(buildProjectResponses(deps));
   });
 
-  get("/sidebar-bootstrap", (context) =>
+  get(routes.sidebarBootstrap, (context) =>
     context.json(buildSidebarBootstrapResponse(deps)),
   );
 
-  post("/projects", createProjectRequestSchema, async (context, payload) => {
+  post(routes.create, async (context, payload) => {
     const { source } = payload;
     if (source.type === "local_path") {
       requireNonDestroyedHostWithStatus(deps.db, source.hostId);
@@ -350,85 +339,69 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(buildProjectResponses(deps, project.id)[0], 201);
   });
 
-  get("/projects/:id", (context) =>
+  get(routes.get, (context) =>
     context.json(buildProjectResponses(deps, context.req.param("id"))[0]),
   );
 
-  get(
-    "/projects/:id/default-execution-options",
-    projectDefaultExecutionOptionsQuerySchema,
-    (context, query) => {
-      const projectId = context.req.param("id");
-      requirePublicProject(deps.db, projectId);
-      const plan = resolveProjectCreateDefaultExecutionPlan(deps, {
+  get(routes.defaultExecutionOptions, (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+    const plan = resolveProjectCreateDefaultExecutionPlan(deps, {
+      projectId,
+    });
+    return context.json(plan.defaultView);
+  });
+
+  get(routes.promptHistory, (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicProject(deps.db, projectId);
+    const limit = parseBoundedPositiveOptionalInteger({
+      defaultValue: PROMPT_HISTORY_ENTRY_LIMIT,
+      max: PROMPT_HISTORY_ENTRY_LIMIT,
+      name: "limit",
+      value: query.limit,
+    });
+
+    return context.json(
+      listProjectPromptHistory(deps, {
         projectId,
-      });
-      return context.json(plan.defaultView);
-    },
-  );
+        limit,
+      }),
+    );
+  });
 
-  get(
-    "/projects/:id/prompt-history",
-    promptHistoryQuerySchema,
-    (context, query) => {
-      const projectId = context.req.param("id");
-      requirePublicProject(deps.db, projectId);
-      const limit = parseBoundedPositiveOptionalInteger({
-        defaultValue: PROMPT_HISTORY_ENTRY_LIMIT,
-        max: PROMPT_HISTORY_ENTRY_LIMIT,
-        name: "limit",
-        value: query.limit,
-      });
+  patch(routes.update, async (context, payload) => {
+    requirePublicStandardProject(deps.db, context.req.param("id"));
+    const project = updateProject(
+      deps.db,
+      deps.hub,
+      context.req.param("id"),
+      payload,
+    );
+    if (!project) {
+      throw new ApiError(404, "project_not_found", "Project not found");
+    }
+    return context.json(buildProjectResponses(deps, project.id)[0]);
+  });
 
-      return context.json(
-        listProjectPromptHistory(deps, {
+  patch(routes.reorder, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    return context.json(
+      toProjectOrderResponse(
+        deps,
+        reorderProject({
+          db: deps.db,
+          notifier: deps.hub,
           projectId,
-          limit,
+          previousProjectId: payload.previousProjectId,
+          nextProjectId: payload.nextProjectId,
         }),
-      );
-    },
-  );
+      ),
+    );
+  });
 
-  patch(
-    "/projects/:id",
-    updateProjectRequestSchema,
-    async (context, payload) => {
-      requirePublicStandardProject(deps.db, context.req.param("id"));
-      const project = updateProject(
-        deps.db,
-        deps.hub,
-        context.req.param("id"),
-        payload,
-      );
-      if (!project) {
-        throw new ApiError(404, "project_not_found", "Project not found");
-      }
-      return context.json(buildProjectResponses(deps, project.id)[0]);
-    },
-  );
-
-  patch(
-    "/projects/:id/order",
-    reorderProjectRequestSchema,
-    async (context, payload) => {
-      const projectId = context.req.param("id");
-      requirePublicStandardProject(deps.db, projectId);
-      return context.json(
-        toProjectOrderResponse(
-          deps,
-          reorderProject({
-            db: deps.db,
-            notifier: deps.hub,
-            projectId,
-            previousProjectId: payload.previousProjectId,
-            nextProjectId: payload.nextProjectId,
-          }),
-        ),
-      );
-    },
-  );
-
-  del("/projects/:id", async (context) => {
+  del(routes.delete, async (context) => {
     const id = context.req.param("id");
     const project = requireProject(deps.db, id);
     if (project.kind === "personal") {
@@ -443,59 +416,51 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ ok: true });
   });
 
-  post(
-    "/projects/:id/sources",
-    createProjectSourceRequestSchema,
-    async (context, payload) => {
-      requirePublicStandardProject(deps.db, context.req.param("id"));
-      if (payload.type === "local_path") {
-        requireNonDestroyedHostWithStatus(deps.db, payload.hostId);
-        assertPrimaryHostId(deps, { hostId: payload.hostId });
-      }
-      const source = createProjectSource(deps.db, deps.hub, {
-        projectId: context.req.param("id"),
-        ...payload,
-      });
-      return context.json(source, 201);
-    },
-  );
+  post(routes.createSource, async (context, payload) => {
+    requirePublicStandardProject(deps.db, context.req.param("id"));
+    if (payload.type === "local_path") {
+      requireNonDestroyedHostWithStatus(deps.db, payload.hostId);
+      assertPrimaryHostId(deps, { hostId: payload.hostId });
+    }
+    const source = createProjectSource(deps.db, deps.hub, {
+      projectId: context.req.param("id"),
+      ...payload,
+    });
+    return context.json(source, 201);
+  });
 
-  patch(
-    "/projects/:id/sources/:sourceId",
-    updateProjectSourceRequestSchema,
-    async (context, payload) => {
-      requirePublicStandardProject(deps.db, context.req.param("id"));
-      const existing = requireProjectSource(deps, {
-        projectId: context.req.param("id"),
-        sourceId: context.req.param("sourceId"),
-      });
-      if (existing.type === "local_path") {
-        assertPrimaryHostId(deps, { hostId: existing.hostId });
-      }
-      if (payload.type !== existing.type) {
-        throw new ApiError(
-          400,
-          "invalid_request",
-          `Source type mismatch: source is ${existing.type} but request specifies ${payload.type}`,
-        );
-      }
-      const source = updateProjectSource(
-        deps.db,
-        deps.hub,
-        context.req.param("sourceId"),
-        {
-          ...(payload.path ? { path: payload.path } : {}),
-          ...(payload.isDefault ? { isDefault: payload.isDefault } : {}),
-        },
+  patch(routes.updateSource, async (context, payload) => {
+    requirePublicStandardProject(deps.db, context.req.param("id"));
+    const existing = requireProjectSource(deps, {
+      projectId: context.req.param("id"),
+      sourceId: context.req.param("sourceId"),
+    });
+    if (existing.type === "local_path") {
+      assertPrimaryHostId(deps, { hostId: existing.hostId });
+    }
+    if (payload.type !== existing.type) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        `Source type mismatch: source is ${existing.type} but request specifies ${payload.type}`,
       );
-      if (!source) {
-        throw new ApiError(404, "invalid_request", "Project source not found");
-      }
-      return context.json(source);
-    },
-  );
+    }
+    const source = updateProjectSource(
+      deps.db,
+      deps.hub,
+      context.req.param("sourceId"),
+      {
+        ...(payload.path ? { path: payload.path } : {}),
+        ...(payload.isDefault ? { isDefault: payload.isDefault } : {}),
+      },
+    );
+    if (!source) {
+      throw new ApiError(404, "invalid_request", "Project source not found");
+    }
+    return context.json(source);
+  });
 
-  del("/projects/:id/sources/:sourceId", (context) => {
+  del(routes.deleteSource, (context) => {
     const projectId = context.req.param("id");
     requirePublicStandardProject(deps.db, projectId);
     requireProjectSource(deps, {
@@ -521,147 +486,131 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ ok: true });
   });
 
-  get(
-    "/projects/:id/files",
-    projectFilesQuerySchema,
-    async (context, query) => {
-      const projectId = context.req.param("id");
-      requirePublicStandardProject(deps.db, projectId);
+  get(routes.files, async (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
 
-      const limit = parseFileListLimit(query.limit);
+    const limit = parseFileListLimit(query.limit);
 
-      // Both branches dispatch host.list_files against the resolved path —
-      // env-scoped requests narrow to a specific environment's workspace
-      // (e.g. a thread's worktree), pre-env requests fall back to the
-      // project's default source.
-      const target =
-        query.environmentId !== null
-          ? resolveEnvironmentPath(deps, {
-              projectId,
-              environmentId: query.environmentId,
-            })
-          : resolveProjectSourcePath(deps, { projectId, hostId: null });
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: target.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_files",
-          path: target.path,
-          ...(query.query ? { query: query.query } : {}),
-          limit,
-        },
-      });
-      return context.json({ files: result.files, truncated: result.truncated });
-    },
-  );
+    // Both branches dispatch host.list_files against the resolved path —
+    // env-scoped requests narrow to a specific environment's workspace
+    // (e.g. a thread's worktree), pre-env requests fall back to the
+    // project's default source.
+    const target =
+      query.environmentId !== null
+        ? resolveEnvironmentPath(deps, {
+            projectId,
+            environmentId: query.environmentId,
+          })
+        : resolveProjectSourcePath(deps, { projectId, hostId: null });
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: target.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.list_files",
+        path: target.path,
+        ...(query.query ? { query: query.query } : {}),
+        limit,
+      },
+    });
+    return context.json({ files: result.files, truncated: result.truncated });
+  });
 
-  get(
-    "/projects/:id/paths",
-    projectPathsQuerySchema,
-    async (context, query) => {
-      const projectId = context.req.param("id");
-      requirePublicStandardProject(deps.db, projectId);
+  get(routes.paths, async (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
 
-      const limit = parseFileListLimit(query.limit);
+    const limit = parseFileListLimit(query.limit);
 
-      // Project-source listing only: used by the new-thread compose box before
-      // any environment exists. Once a thread has an environment, workspace
-      // path search goes through `GET /environments/:id/paths` instead.
-      const target = resolveProjectSourcePath(deps, {
-        projectId,
-        hostId: null,
-      });
-      const inclusion = parsePathKindInclusion({
-        includeFiles: query.includeFiles,
-        includeDirectories: query.includeDirectories,
-      });
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: target.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_paths",
-          path: target.path,
-          ...(query.query ? { query: query.query } : {}),
-          limit,
-          includeFiles: inclusion.includeFiles,
-          includeDirectories: inclusion.includeDirectories,
-        },
-      });
-      return context.json({ paths: result.paths, truncated: result.truncated });
-    },
-  );
+    // Project-source listing only: used by the new-thread compose box before
+    // any environment exists. Once a thread has an environment, workspace
+    // path search goes through `GET /environments/:id/paths` instead.
+    const target = resolveProjectSourcePath(deps, {
+      projectId,
+      hostId: null,
+    });
+    const inclusion = parsePathKindInclusion({
+      includeFiles: query.includeFiles,
+      includeDirectories: query.includeDirectories,
+    });
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: target.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.list_paths",
+        path: target.path,
+        ...(query.query ? { query: query.query } : {}),
+        limit,
+        includeFiles: inclusion.includeFiles,
+        includeDirectories: inclusion.includeDirectories,
+      },
+    });
+    return context.json({ paths: result.paths, truncated: result.truncated });
+  });
 
-  get(
-    "/projects/:id/commands",
-    projectCommandsQuerySchema,
-    async (context, query) => {
-      const projectId = context.req.param("id");
-      requirePublicStandardProject(deps.db, projectId);
+  get(routes.commands, async (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
 
-      // Providers without a command surface (pi, anything unknown) have no
-      // typeahead entries, so skip the daemon roundtrip entirely.
-      if (!providerHasCommandSurface(query.provider)) {
-        return context.json({ commands: [], truncated: false });
-      }
+    // Providers without a command surface (pi, anything unknown) have no
+    // typeahead entries, so skip the daemon roundtrip entirely.
+    if (!providerHasCommandSurface(query.provider)) {
+      return context.json({ commands: [], truncated: false });
+    }
 
-      const limit = parseBoundedPositiveOptionalInteger({
-        defaultValue: PROVIDER_COMMAND_DEFAULT_LIMIT,
-        max: PROVIDER_COMMAND_LIMIT_MAX,
-        name: "limit",
-        value: query.limit,
-      });
-      const workspace = resolveCommandWorkspace(deps, {
-        environmentId: query.environmentId,
-        projectId,
-      });
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: workspace.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_commands",
-          providerId: query.provider,
-          cwd: workspace.cwd,
-        },
-      });
-      return context.json(
-        buildCommandListResponse({
-          commands: result.commands,
-          limit,
-          query: query.query,
-        }),
-      );
-    },
-  );
+    const limit = parseBoundedPositiveOptionalInteger({
+      defaultValue: PROVIDER_COMMAND_DEFAULT_LIMIT,
+      max: PROVIDER_COMMAND_LIMIT_MAX,
+      name: "limit",
+      value: query.limit,
+    });
+    const workspace = resolveCommandWorkspace(deps, {
+      environmentId: query.environmentId,
+      projectId,
+    });
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: workspace.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.list_commands",
+        providerId: query.provider,
+        cwd: workspace.cwd,
+      },
+    });
+    return context.json(
+      buildCommandListResponse({
+        commands: result.commands,
+        limit,
+        query: query.query,
+      }),
+    );
+  });
 
-  get(
-    "/projects/:id/branches",
-    projectBranchesQuerySchema,
-    async (context, query) => {
-      const projectId = context.req.param("id");
-      requirePublicStandardProject(deps.db, projectId);
+  get(routes.branches, async (context, query) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
 
-      const source = resolveProjectSourcePath(deps, {
-        projectId,
-        hostId: query.hostId,
-      });
-      const branchQuery = normalizeBranchQuery(query.query);
-      const selectedBranch = normalizeBranchQuery(query.selectedBranch);
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId: source.hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_branches",
-          path: source.path,
-          ...(branchQuery ? { query: branchQuery } : {}),
-          ...(selectedBranch ? { selectedBranch } : {}),
-          limit: parseBranchListLimit(query.limit),
-        },
-      });
-      return context.json(result);
-    },
-  );
+    const source = resolveProjectSourcePath(deps, {
+      projectId,
+      hostId: query.hostId,
+    });
+    const branchQuery = normalizeBranchQuery(query.query);
+    const selectedBranch = normalizeBranchQuery(query.selectedBranch);
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: source.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.list_branches",
+        path: source.path,
+        ...(branchQuery ? { query: branchQuery } : {}),
+        ...(selectedBranch ? { selectedBranch } : {}),
+        limit: parseBranchListLimit(query.limit),
+      },
+    });
+    return context.json(result);
+  });
 
-  post("/projects/:id/attachments", async (context) => {
+  post(routes.uploadAttachment, async (context) => {
     requirePublicProject(deps.db, context.req.param("id"));
     const formData = await context.req.formData();
     const file = formData.get("file");
@@ -674,22 +623,18 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(
-    "/projects/:id/attachments/content",
-    projectAttachmentContentQuerySchema,
-    async (context, query) => {
-      requirePublicProject(deps.db, context.req.param("id"));
-      const attachment = await readAttachment(
-        deps.config.dataDir,
-        context.req.param("id"),
-        query.path,
-      );
-      return new Response(new Uint8Array(attachment.content), {
-        status: 200,
-        headers: {
-          "content-type": attachment.mimeType ?? "application/octet-stream",
-        } as HeadersInit,
-      });
-    },
-  );
+  get(routes.attachmentContent, async (context, query) => {
+    requirePublicProject(deps.db, context.req.param("id"));
+    const attachment = await readAttachment(
+      deps.config.dataDir,
+      context.req.param("id"),
+      query.path,
+    );
+    return new Response(new Uint8Array(attachment.content), {
+      status: 200,
+      headers: {
+        "content-type": attachment.mimeType ?? "application/octet-stream",
+      } as HeadersInit,
+    });
+  });
 }

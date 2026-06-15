@@ -7,6 +7,7 @@ import type {
   WorkspacePathListResponse,
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
+import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   projectCommandsQueryKey,
   projectPathsQueryKey,
@@ -86,6 +87,7 @@ export function useProjectSourceBranches(
 ) {
   const enabled =
     (options?.enabled ?? true) && Boolean(projectId) && Boolean(hostId);
+  useProjectDetailRealtimeSubscription(projectId, { enabled });
   const query = options?.query?.trim() ?? "";
   const limit = options?.limit ?? PROJECT_SOURCE_BRANCHES_LIMIT;
   const selectedBranch = options?.selectedBranch?.trim() ?? "";
@@ -129,6 +131,9 @@ export function useProjectPromptHistory(
   projectId: string | undefined,
   options?: QueryOptions,
 ) {
+  const enabled = (options?.enabled ?? true) && Boolean(projectId);
+  useProjectDetailRealtimeSubscription(projectId, { enabled });
+
   return useQuery<PromptHistoryResponse>({
     queryKey: projectPromptHistoryQueryKey(projectId),
     queryFn: ({ signal }) =>
@@ -136,7 +141,7 @@ export function useProjectPromptHistory(
         requireProjectId(projectId, "useProjectPromptHistory"),
         signal,
       ),
-    enabled: (options?.enabled ?? true) && Boolean(projectId),
+    enabled,
     staleTime: PROMPT_HISTORY_STALE_TIME_MS,
   });
 }
@@ -150,6 +155,8 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
     includeDirectories,
   } = args;
   const trimmedQuery = query?.trim() ?? "";
+  const enabled = Boolean(projectId) && trimmedQuery.length > 0;
+  useProjectDetailRealtimeSubscription(projectId, { enabled });
 
   return useQuery<WorkspacePathListResponse>({
     queryKey: projectPathsQueryKey(
@@ -167,7 +174,7 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
         includeFiles,
         includeDirectories,
       }),
-    enabled: Boolean(projectId) && trimmedQuery.length > 0,
+    enabled,
     staleTime: 15_000,
     retry: false,
     refetchOnWindowFocus: false,
@@ -187,6 +194,12 @@ export function useProjectCommands(
   args: UseProjectCommandsArgs,
   options?: QueryOptions,
 ) {
+  const enabled =
+    (options?.enabled ?? true) &&
+    Boolean(args.projectId) &&
+    Boolean(args.providerId);
+  useProjectDetailRealtimeSubscription(args.projectId, { enabled });
+
   return useQuery<CommandListResponse>({
     queryKey: projectCommandsQueryKey(
       args.projectId,
@@ -202,10 +215,7 @@ export function useProjectCommands(
         query: args.query,
         limit: args.limit,
       }),
-    enabled:
-      (options?.enabled ?? true) &&
-      Boolean(args.projectId) &&
-      Boolean(args.providerId),
+    enabled,
     staleTime: 15_000,
     retry: false,
     refetchOnWindowFocus: false,

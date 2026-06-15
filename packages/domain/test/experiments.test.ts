@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { experimentsSchema, isValidElectronAccelerator } from "./experiments.js";
+import {
+  experimentsSchema,
+  isValidElectronAccelerator,
+} from "../src/experiments.js";
 
 describe("experimentsSchema", () => {
   it("requires a bounded Electron accelerator with at least one modifier", () => {

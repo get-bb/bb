@@ -1,20 +1,12 @@
-import type {
-  Thread,
-  ThreadStatus,
-  ThreadTimelinePendingTodos,
-} from "@bb/domain";
-import type {
-  ProjectResponse,
-  ThreadTimelineResponse,
-} from "@bb/server-contract";
-import type { CreateSdkAreaArgs } from "./common.js";
+import type { ThreadStatus, ThreadTimelinePendingTodos } from "@bb/domain";
+import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
 
 export interface StatusGetArgs {
   projectId?: string;
   threadId?: string;
 }
 
-export interface StatusThreadResponse {
+export interface StatusThreadSummary {
   environmentId: string | null;
   id: string;
   parentThreadId: string | null;
@@ -24,15 +16,20 @@ export interface StatusThreadResponse {
   title: string | null;
 }
 
-export interface StatusGetResponse {
-  childThreads: Thread[] | null;
+export type StatusProject = PublicApiOutput<"/projects/:id", "$get">;
+export type StatusSourceThread = PublicApiOutput<"/threads/:id", "$get">;
+export type StatusChildThreads = PublicApiOutput<"/threads", "$get">;
+export type StatusTimeline = PublicApiOutput<"/threads/:id/timeline", "$get">;
+
+export interface StatusResult {
+  childThreads: StatusChildThreads | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
-  project: ProjectResponse | null;
-  thread: StatusThreadResponse | null;
+  project: StatusProject | null;
+  thread: StatusThreadSummary | null;
 }
 
 export interface StatusArea {
-  get(args?: StatusGetArgs): Promise<StatusGetResponse>;
+  get(args?: StatusGetArgs): Promise<StatusResult>;
 }
 
 async function fetchSilent<TValue>(
@@ -45,7 +42,7 @@ async function fetchSilent<TValue>(
   }
 }
 
-function summarizeThread(thread: Thread): StatusThreadResponse {
+function summarizeThread(thread: StatusSourceThread): StatusThreadSummary {
   return {
     environmentId: thread.environmentId ?? null,
     id: thread.id,
@@ -87,7 +84,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
         thread === null
           ? null
           : await fetchSilent(async () => {
-              const timeline: ThreadTimelineResponse = await transport.readJson(
+              const timeline: StatusTimeline = await transport.readJson(
                 transport.api.v1.threads[":id"].timeline.$get({
                   param: { id: thread.id },
                   query: { summaryOnly: "true" },

@@ -430,10 +430,14 @@ export async function ensureGitRepo(
   );
 }
 
-async function readHeadSha(cwd: string): Promise<string | null> {
+async function readHeadSha(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<string | null> {
   const result = await runGit(["rev-parse", "--verify", "HEAD"], {
     cwd,
     allowFailure: true,
+    timeoutMs: options.timeoutMs,
   });
   if (result.exitCode !== 0) {
     return null;
@@ -464,8 +468,11 @@ export async function getCurrentBranch(
   return branchName || undefined;
 }
 
-export async function getCheckoutRef(cwd: string): Promise<GitCheckoutRef> {
-  if (!(await detectGitRepo(cwd))) {
+export async function getCheckoutRef(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<GitCheckoutRef> {
+  if (!(await detectGitRepo(cwd, options))) {
     return { kind: "unknown", reason: "Path is not a git repository" };
   }
 
@@ -473,8 +480,9 @@ export async function getCheckoutRef(cwd: string): Promise<GitCheckoutRef> {
     runGit(["symbolic-ref", "--quiet", "--short", "HEAD"], {
       cwd,
       allowFailure: true,
+      timeoutMs: options.timeoutMs,
     }),
-    readHeadSha(cwd),
+    readHeadSha(cwd, options),
   ]);
 
   const branchName = trimOutput(symbolicRef.stdout);

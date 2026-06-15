@@ -7,7 +7,6 @@ import type {
   HostDaemonSettledCommandType,
   WorkspaceResolutionFailure,
 } from "@bb/host-daemon-contract";
-import { listAvailableProviders } from "@bb/agent-runtime";
 import {
   defaultListModels,
   ExpectedCommandDispatchError,
@@ -35,7 +34,6 @@ import {
 } from "./codex-chatgpt-client.js";
 import {
   ensureThreadRuntime,
-  handleThreadDeleted,
   startThread,
   submitTurn,
 } from "./command-handlers/thread.js";
@@ -172,7 +170,6 @@ const commandHandlers: CommandHandlerMap = {
     // Stop completion finalizes server-side thread state. Flush provider
     // events first so buffered lifecycle events cannot arrive after that.
     await options.eventSink.flush();
-    options.runtimeManager.forgetThread(command.threadId);
     return {};
   },
   "thread.rename": async (command, options) => {
@@ -200,7 +197,6 @@ const commandHandlers: CommandHandlerMap = {
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
     });
-    options.runtimeManager.forgetThread(command.threadId);
     return {};
   },
   "thread.unarchive": async (command, options) => {
@@ -215,7 +211,6 @@ const commandHandlers: CommandHandlerMap = {
     });
     return {};
   },
-  "thread.deleted": handleThreadDeleted,
   "interactive.resolve": resolveInteractiveRequest,
   "codex.inference.complete": completeCodexInference,
   "codex.voice.transcribe": transcribeCodexVoice,
@@ -270,9 +265,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,
-  "provider.list": async () => ({
-    providers: listAvailableProviders(),
-  }),
   "provider.list_models": async (command, options) =>
     (options.listModels ?? defaultListModels)({
       providerId: command.providerId,

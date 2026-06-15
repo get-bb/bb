@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { BbDesktopBrowserApi } from "@bb/server-contract";
+import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
 import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
 import {
   createBrowserViewVisibilityCoordinator,
@@ -132,9 +132,7 @@ describe("browserViewVisibilityCoordinator", () => {
       threadId: "thread-a",
     });
 
-    expect(visibility).toEqual([
-      { tabId: "thread-a-tab", visible: false },
-    ]);
+    expect(visibility).toEqual([{ tabId: "thread-a-tab", visible: false }]);
     expect(detachments).toEqual(["thread-a-tab"]);
   });
 
@@ -156,9 +154,7 @@ describe("browserViewVisibilityCoordinator", () => {
       environmentId: "environment-b",
     });
 
-    expect(visibility).toEqual([
-      { tabId: "thread-b-tab", visible: false },
-    ]);
+    expect(visibility).toEqual([{ tabId: "thread-b-tab", visible: false }]);
     expect(detachments).toEqual(["thread-b-tab"]);
   });
 });

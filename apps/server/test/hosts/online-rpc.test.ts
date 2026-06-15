@@ -83,19 +83,19 @@ describe("host online RPC retry semantics", () => {
         hub: harness.hub,
         requests,
         sessionId: session.id,
-        successResult: { providers: [] },
+        successResult: { models: [], selectedOnlyModels: [] },
       });
 
       await expect(
         callHostRetryableOnlineRpc(harness.deps, {
           hostId: host.id,
           timeoutMs: 1_000,
-          command: { type: "provider.list" },
+          command: { type: "provider.list_models", providerId: "codex" },
         }),
-      ).resolves.toEqual({ providers: [] });
+      ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
       expect(requests.map((request) => request.command.type)).toEqual([
-        "provider.list",
-        "provider.list",
+        "provider.list_models",
+        "provider.list_models",
       ]);
     });
   });
@@ -111,14 +111,14 @@ describe("host online RPC retry semantics", () => {
         hub: harness.hub,
         requests,
         sessionId: session.id,
-        successResult: { providers: [] },
+        successResult: { models: [], selectedOnlyModels: [] },
       });
 
       try {
         await callHostOnlineRpc(harness.deps, {
           hostId: host.id,
           timeoutMs: 1_000,
-          command: { type: "provider.list" },
+          command: { type: "provider.list_models", providerId: "codex" },
         });
         throw new Error("Expected host RPC to fail");
       } catch (error) {
@@ -129,7 +129,7 @@ describe("host online RPC retry semantics", () => {
         expect(error.body.code).toBe("host_unavailable");
       }
       expect(requests.map((request) => request.command.type)).toEqual([
-        "provider.list",
+        "provider.list_models",
       ]);
     });
   });

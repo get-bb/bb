@@ -10,6 +10,7 @@ import type { TelemetryService } from "./services/system/telemetry.js";
 import type { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import type { LifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { NotificationHub } from "./ws/hub.js";
+import type { WatchInterestCoordinator } from "./ws/watch-interests.js";
 
 export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
@@ -40,6 +41,7 @@ export interface AppDeps {
   pendingInteractions: PendingInteractionLifecycle;
   telemetry: TelemetryService;
   terminalSessions: TerminalSessionLifecycle;
+  watchInterests: WatchInterestCoordinator;
 }
 
 export interface ServerAppDeps extends AppDeps {

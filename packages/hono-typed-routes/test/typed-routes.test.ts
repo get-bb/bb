@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Endpoint } from "../src/endpoint.js";
-import { typedRoutes } from "../src/typed-routes.js";
+import {
+  defineRoute,
+  jsonResponse,
+  optionalQueryRequest,
+  typedRoutes,
+  type ApiSchemaFromRouteDescriptors,
+} from "../src/index.js";
 
 type TestSchema = {
   "/search": {
@@ -12,6 +18,19 @@ type TestSchema = {
     $get: Endpoint<{}, { ok: true }>;
   };
 };
+
+const testRoutes = {
+  search: defineRoute({
+    path: "/search",
+    method: "get",
+    request: optionalQueryRequest<Record<never, never>, { q: string }>(
+      z.object({ q: z.string().min(1) }),
+    ),
+    response: jsonResponse<{ q: string }>(),
+  }),
+};
+
+type DescriptorTestSchema = ApiSchemaFromRouteDescriptors<typeof testRoutes>;
 
 function createApp() {
   const app = new Hono();
@@ -52,5 +71,22 @@ describe("typedRoutes", () => {
     const response = await app.request("/ping");
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
+  });
+
+  it("registers descriptor routes with their request schema", async () => {
+    const app = createApp();
+    const { get } = typedRoutes<DescriptorTestSchema>(app, {
+      onValidationError: (message) => new Error(message),
+    });
+
+    get(testRoutes.search, (context, query) => context.json({ q: query.q }));
+
+    const success = await app.request("/search?q=needle");
+    expect(success.status).toBe(200);
+    expect(await success.json()).toEqual({ q: "needle" });
+
+    const missingQuery = await app.request("/search", { method: "GET" });
+    expect(missingQuery.status).toBe(400);
+    expect(await missingQuery.json()).toEqual({ message: "Required" });
   });
 });

@@ -35,7 +35,7 @@ describe("internal environment change websocket hints", () => {
         message: {
           type: "host-rpc.request",
           requestId: "rpc-protocol-session-scoped",
-          command: { type: "provider.list" },
+          command: { type: "provider.list_models", providerId: "codex" },
         },
       });
       let resolved = false;
@@ -52,9 +52,9 @@ describe("internal environment change websocket hints", () => {
         raw: JSON.stringify({
           type: "host-rpc.response",
           requestId: "rpc-protocol-session-scoped",
-          commandType: "provider.list",
+          commandType: "provider.list_models",
           ok: true,
-          result: { providers: [] },
+          result: { models: [], selectedOnlyModels: [] },
         }),
       });
 
@@ -69,18 +69,18 @@ describe("internal environment change websocket hints", () => {
         raw: JSON.stringify({
           type: "host-rpc.response",
           requestId: "rpc-protocol-session-scoped",
-          commandType: "provider.list",
+          commandType: "provider.list_models",
           ok: true,
-          result: { providers: [] },
+          result: { models: [], selectedOnlyModels: [] },
         }),
       });
 
       await expect(observed).resolves.toEqual({
         type: "host-rpc.response",
         requestId: "rpc-protocol-session-scoped",
-        commandType: "provider.list",
+        commandType: "provider.list_models",
         ok: true,
-        result: { providers: [] },
+        result: { models: [], selectedOnlyModels: [] },
       });
       expect(socket.close).not.toHaveBeenCalled();
     });

@@ -3,7 +3,7 @@ import {
   POPOUT_ROUTE_PATH,
   getDesktopPopoutThreadRoutePath,
   type BbDesktopPopoutThreadRef,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 import { matchPath } from "react-router-dom";
 
 export { POPOUT_ROUTE_PATH };

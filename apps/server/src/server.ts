@@ -267,8 +267,8 @@ export function createApp(
     upgradeWebSocket(() => ({
       onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
       onMessage: (event, socket) =>
-        onClientSocketMessage(deps.hub, socket, event.data),
-      onClose: (_event, socket) => onClientSocketClose(deps.hub, socket),
+        onClientSocketMessage(deps, socket, event.data),
+      onClose: (_event, socket) => onClientSocketClose(deps, socket),
     })),
   );
 

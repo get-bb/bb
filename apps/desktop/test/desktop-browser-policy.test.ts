@@ -7,7 +7,7 @@ import {
   bbDesktopPopoutMouseEventsIgnoredRequestSchema,
   bbDesktopPopoutThreadChangedPayloadSchema,
   bbDesktopPopoutThreadRefSchema,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,

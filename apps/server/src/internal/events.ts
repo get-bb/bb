@@ -55,7 +55,11 @@ import {
 import { isPreStartThreadStatus } from "../services/threads/thread-status.js";
 import { tryTransition } from "../services/threads/thread-transitions.js";
 import { applyTurnCompletedEvent } from "./turn-completed-events.js";
-import { requireAuthenticatedDaemonSession } from "./session-state.js";
+import {
+  getInactiveSessionLogFields,
+  requireAuthenticatedDaemonSession,
+} from "./session-state.js";
+import { getAuthenticatedDaemon } from "./auth.js";
 
 interface ToStoredEventArgs {
   envelope: HostDaemonEventEnvelope;
@@ -754,11 +758,26 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
     "/session/events",
     hostDaemonEventBatchRequestSchema,
     async (context, payload) => {
-      const session = requireAuthenticatedDaemonSession({
-        context,
-        db: deps.db,
-        sessionId: payload.sessionId,
-      });
+      let session: ReturnType<typeof requireAuthenticatedDaemonSession>;
+      try {
+        session = requireAuthenticatedDaemonSession({
+          context,
+          db: deps.db,
+          sessionId: payload.sessionId,
+        });
+      } catch (error) {
+        if (error instanceof ApiError && error.body.code === "inactive_session") {
+          deps.logger.info(
+            getInactiveSessionLogFields(deps.db, {
+              authenticatedHostId: getAuthenticatedDaemon(context).hostId,
+              now: Date.now(),
+              sessionId: payload.sessionId,
+            }),
+            "Daemon event batch for inactive session",
+          );
+        }
+        throw error;
+      }
       const { entries, rejectedEvents } = resolvePostableEventBatchEntries(
         deps,
         {
