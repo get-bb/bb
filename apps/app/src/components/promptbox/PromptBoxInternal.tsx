@@ -1250,17 +1250,12 @@ export function PromptBoxInternal({
         "\n",
         "\n",
       );
-      const argumentHintText = item.argumentHint?.trim()
-        ? ` ${item.argumentHint.trim()}`
-        : "";
       const trailingText = /^\s/u.test(followingText) ? "" : " ";
-      const textAfterPill = `${argumentHintText}${trailingText}`;
       triggerKeyRef.current = "";
-      // Command dismissed-range uses the inserted pill atom plus any visible
-      // argument hint text so Escape remains quiet while the caret stays there.
+      // Argument hints render as placeholder decorations, not editor text.
       dismissedTriggerRef.current = {
         start: activeTrigger.from,
-        end: activeTrigger.from + 2 + textAfterPill.length,
+        end: activeTrigger.from + 2 + trailingText.length,
         hasLeftRange: false,
       };
       isRestoringAppliedMentionRef.current = true;
@@ -1282,7 +1277,7 @@ export function PromptBoxInternal({
                 serializedText,
               },
             },
-            ...(textAfterPill ? [{ type: "text", text: textAfterPill }] : []),
+            ...(trailingText ? [{ type: "text", text: trailingText }] : []),
           ])
           .run();
       } finally {

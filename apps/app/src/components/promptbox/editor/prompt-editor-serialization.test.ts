@@ -30,8 +30,8 @@ describe("prompt editor serialization", () => {
     });
   });
 
-  it("serializes a selected skill as a pill plus editable argument hint text", () => {
-    const text = "$review <files>";
+  it("serializes a selected skill as a pill without materializing argument hint text", () => {
+    const text = "$review";
     const mentions: PromptTextMention[] = [
       {
         start: 0,
@@ -56,7 +56,6 @@ describe("prompt editor serialization", () => {
           serializedText: "$review",
         },
       },
-      { type: "text", text: " <files>" },
     ]);
   });
 });
