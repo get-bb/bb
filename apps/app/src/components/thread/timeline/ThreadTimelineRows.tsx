@@ -9,7 +9,12 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import { QueryClientContext, type QueryClient } from "@tanstack/react-query";
+import {
+  notifyManager,
+  QueryClientContext,
+  type QueryCacheNotifyEvent,
+  type QueryClient,
+} from "@tanstack/react-query";
 import type { ThreadRuntimeDisplayStatus, ThreadWithRuntime } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import {
@@ -516,6 +521,19 @@ function buildSenderThreadMetadataById({
   return metadataById;
 }
 
+function shouldSyncSenderThreadMetadata(
+  event: QueryCacheNotifyEvent,
+): boolean {
+  if (event.type !== "updated") {
+    return false;
+  }
+
+  return (
+    event.query.queryKey[0] === THREADS_QUERY_KEY ||
+    event.query.queryKey[0] === THREAD_QUERY_KEY
+  );
+}
+
 function useSenderThreadMetadataById({
   queryClient,
 }: UseSenderThreadMetadataByIdArgs): ReadonlyMap<
@@ -537,17 +555,30 @@ function useSenderThreadMetadataById({
       return;
     }
 
+    let subscribed = true;
+    const syncMetadataById = () => {
+      if (!subscribed) {
+        return;
+      }
+      setMetadataById(buildSenderThreadMetadataById({ queryClient }));
+    };
+
     // Sender titles are derived from React Query caches. Subscribe to thread
     // list and detail updates so title changes still refresh rows without
-    // rebuilding a fresh Map every render.
-    return queryClient.getQueryCache().subscribe((event) => {
-      if (
-        event.query.queryKey[0] === THREADS_QUERY_KEY ||
-        event.query.queryKey[0] === THREAD_QUERY_KEY
-      ) {
-        setMetadataById(buildSenderThreadMetadataById({ queryClient }));
+    // rebuilding a fresh Map every render. QueryCache subscribers run
+    // synchronously, including when React Query creates observers during another
+    // component's render, so schedule the React state update through TanStack's
+    // notifier like React Query's own hooks do.
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (shouldSyncSenderThreadMetadata(event)) {
+        notifyManager.schedule(syncMetadataById);
       }
     });
+
+    return () => {
+      subscribed = false;
+      unsubscribe();
+    };
   }, [queryClient]);
 
   return metadataById;
