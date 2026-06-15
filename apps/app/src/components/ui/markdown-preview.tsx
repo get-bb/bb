@@ -1,8 +1,6 @@
 import {
   memo,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   type ComponentPropsWithoutRef,
   type Dispatch,
@@ -84,11 +82,6 @@ interface MarkdownImageRendererArgs {
 interface ResolveMarkdownSourceMediaArgs {
   media: MarkdownSourceMedia;
   preferredTheme: Theme;
-}
-
-interface SetMarkdownContentWidthVariableArgs {
-  element: HTMLElement;
-  width: number;
 }
 
 interface AreMarkdownAbsoluteLocalFileLinkRoutingsEqualArgs {
@@ -495,7 +488,7 @@ function MarkdownTable({ children }: MarkdownTableProps) {
       <div
         className="w-max max-w-full overflow-x-auto"
         style={{
-          minWidth: `min(var(${MARKDOWN_CONTENT_WIDTH_VARIABLE}), 100%)`,
+          minWidth: `min(var(${MARKDOWN_CONTENT_WIDTH_VARIABLE}, 100%), 100%)`,
         }}
       >
         <table className="border border-border">{children}</table>
@@ -631,51 +624,6 @@ function buildMarkdownComponents({
   };
 }
 
-function setMarkdownContentWidthVariable({
-  element,
-  width,
-}: SetMarkdownContentWidthVariableArgs): void {
-  if (width <= 0) {
-    return;
-  }
-  element.style.setProperty(MARKDOWN_CONTENT_WIDTH_VARIABLE, `${width}px`);
-}
-
-function useMarkdownContentWidthVariable() {
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    const element = contentRef.current;
-    if (!element) {
-      return;
-    }
-
-    setMarkdownContentWidthVariable({
-      element,
-      width: element.getBoundingClientRect().width,
-    });
-
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) {
-        return;
-      }
-      setMarkdownContentWidthVariable({
-        element,
-        width: entry.contentRect.width,
-      });
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  return contentRef;
-}
-
 function MarkdownPreviewComponent({
   allowHtml = false,
   className,
@@ -686,7 +634,6 @@ function MarkdownPreviewComponent({
   urlTransform,
 }: MarkdownPreviewProps) {
   const preferredTheme = usePreferredTheme();
-  const contentRef = useMarkdownContentWidthVariable();
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
   const localFileRouting = linkRouting?.localFile;
   const normalizeLocalFileLinks = localFileRouting !== undefined;
@@ -720,7 +667,6 @@ function MarkdownPreviewComponent({
   return (
     <>
       <div
-        ref={contentRef}
         className={cn(
           "max-w-none break-words text-sm leading-relaxed text-foreground",
           className,

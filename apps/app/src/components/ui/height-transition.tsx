@@ -23,6 +23,18 @@ interface SnapState {
   restoreFrame: number | null;
 }
 
+interface IntrinsicHeightResizeState {
+  restoreTimerId: number | null;
+  usingIntrinsicHeight: boolean;
+}
+
+interface ScheduleIntrinsicHeightRestoreArgs {
+  inner: HTMLElement;
+  snapState: SnapState;
+  target: HTMLElement;
+  resizeState: IntrinsicHeightResizeState;
+}
+
 function enterSnapMode(target: HTMLElement, state: SnapState): void {
   if (state.savedDuration === null) {
     state.savedDuration = target.style.transitionDuration;
@@ -77,6 +89,48 @@ function cleanupSnapState(target: HTMLElement | null, state: SnapState): void {
     target.style.transitionDuration = state.savedDuration;
     state.savedDuration = null;
   }
+}
+
+function enterIntrinsicHeightMode(
+  target: HTMLElement,
+  resizeState: IntrinsicHeightResizeState,
+  snapState: SnapState,
+): void {
+  enterSnapMode(target, snapState);
+  if (resizeState.usingIntrinsicHeight) {
+    return;
+  }
+  target.style.height = "auto";
+  resizeState.usingIntrinsicHeight = true;
+}
+
+function scheduleIntrinsicHeightRestore({
+  inner,
+  resizeState,
+  snapState,
+  target,
+}: ScheduleIntrinsicHeightRestoreArgs): void {
+  if (resizeState.restoreTimerId !== null) {
+    window.clearTimeout(resizeState.restoreTimerId);
+  }
+  resizeState.restoreTimerId = window.setTimeout(() => {
+    resizeState.restoreTimerId = null;
+    if (!resizeState.usingIntrinsicHeight) {
+      return;
+    }
+    resizeState.usingIntrinsicHeight = false;
+    applyHeight(target, `${inner.offsetHeight}px`, true, snapState);
+  }, AUTO_HEIGHT_WIDTH_RESIZE_SETTLE_MS);
+}
+
+function cancelIntrinsicHeightRestore(
+  resizeState: IntrinsicHeightResizeState,
+): void {
+  if (resizeState.restoreTimerId === null) {
+    return;
+  }
+  window.clearTimeout(resizeState.restoreTimerId);
+  resizeState.restoreTimerId = null;
 }
 
 export interface HeightTransitionProps {
@@ -207,6 +261,10 @@ export interface AutoHeightContainerProps {
 // is invisible; once the inner has been quiet for the window, subsequent
 // changes (streaming) animate as designed.
 const AUTO_HEIGHT_INITIAL_SETTLE_MS = 250;
+// During a window/panel width resize, text and markdown rewrap every frame.
+// Let the wrapper use natural height for the resize burst instead of writing a
+// fresh whole-timeline pixel height on each ResizeObserver tick.
+const AUTO_HEIGHT_WIDTH_RESIZE_SETTLE_MS = 120;
 
 export function AutoHeightContainer({
   children,
@@ -228,6 +286,19 @@ export function AutoHeightContainer({
       initialSettleComplete = true;
     }, AUTO_HEIGHT_INITIAL_SETTLE_MS);
     const snapState: SnapState = { savedDuration: null, restoreFrame: null };
+    const resizeState: IntrinsicHeightResizeState = {
+      restoreTimerId: null,
+      usingIntrinsicHeight: false,
+    };
+    const deferInitialSettleComplete = () => {
+      if (initialSettleComplete) {
+        return;
+      }
+      window.clearTimeout(initialSettleTimerId);
+      initialSettleTimerId = window.setTimeout(() => {
+        initialSettleComplete = true;
+      }, AUTO_HEIGHT_INITIAL_SETTLE_MS);
+    };
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
@@ -246,13 +317,19 @@ export function AutoHeightContainer({
         layoutAnimationActive;
       pendingVisibilitySnap = false;
       lastWidth = width;
-      applyHeight(wrapper, `${height}px`, snap, snapState);
-      if (!initialSettleComplete) {
-        window.clearTimeout(initialSettleTimerId);
-        initialSettleTimerId = window.setTimeout(() => {
-          initialSettleComplete = true;
-        }, AUTO_HEIGHT_INITIAL_SETTLE_MS);
+      if (widthChanged || resizeState.usingIntrinsicHeight) {
+        enterIntrinsicHeightMode(wrapper, resizeState, snapState);
+        scheduleIntrinsicHeightRestore({
+          inner,
+          resizeState,
+          snapState,
+          target: wrapper,
+        });
+        deferInitialSettleComplete();
+        return;
       }
+      applyHeight(wrapper, `${height}px`, snap, snapState);
+      deferInitialSettleComplete();
     });
     observer.observe(inner);
     // See HeightTransition's matching block: a hidden tab pauses observer
@@ -263,6 +340,8 @@ export function AutoHeightContainer({
     const onVisibility = () => {
       if (document.visibilityState !== "visible") return;
       pendingVisibilitySnap = true;
+      cancelIntrinsicHeightRestore(resizeState);
+      resizeState.usingIntrinsicHeight = false;
       applyHeight(wrapper, `${inner.offsetHeight}px`, true, snapState);
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -270,6 +349,7 @@ export function AutoHeightContainer({
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
       window.clearTimeout(initialSettleTimerId);
+      cancelIntrinsicHeightRestore(resizeState);
       cleanupSnapState(wrapper, snapState);
     };
   }, [store]);
