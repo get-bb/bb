@@ -72,7 +72,7 @@ const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   supportsRename: false,
   supportsServiceTier: false,
   supportsUserQuestion: true,
-  supportsFork: false,
+  supportsFork: true,
   supportedPermissionModes: ["full", "workspace-write", "readonly"],
 };
 
