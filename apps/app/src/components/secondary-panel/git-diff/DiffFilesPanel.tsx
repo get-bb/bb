@@ -166,9 +166,14 @@ export function DiffFilesPanel({
               key={entry.path}
               data-index={item.index}
               ref={virtualizer.measureElement}
-              className="absolute left-0 top-0 w-full"
+              // Position with `top` rather than `transform: translateY` so the
+              // card's `position: sticky` file header can pin to the scroll
+              // container — a transformed ancestor becomes the header's
+              // containing block and breaks sticky (the header would scroll away
+              // with the card instead of staying put through the file's diff).
+              className="absolute left-0 w-full"
               style={{
-                transform: `translateY(${item.start}px)`,
+                top: item.start,
                 paddingBottom: DIFF_FILES_GAP_PX,
               }}
             >
