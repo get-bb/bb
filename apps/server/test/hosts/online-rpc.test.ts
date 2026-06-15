@@ -100,10 +100,10 @@ describe("host online RPC retry semantics", () => {
     });
   });
 
-  it("does not retry development replay mutations after websocket unavailability", async () => {
+  it("does not retry non-retry host RPC calls after websocket unavailability", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
-        id: "host-online-rpc-replay-no-retry",
+        id: "host-online-rpc-no-retry",
       });
       const requests: HostDaemonOnlineRpcRequestMessage[] = [];
       registerDropThenReplaceSocket({
@@ -111,20 +111,16 @@ describe("host online RPC retry semantics", () => {
         hub: harness.hub,
         requests,
         sessionId: session.id,
-        successResult: {},
+        successResult: { providers: [] },
       });
 
       try {
         await callHostOnlineRpc(harness.deps, {
           hostId: host.id,
           timeoutMs: 1_000,
-          command: {
-            type: "development.replay",
-            operation: "capture-delete",
-            captureId: "rcap_abc123",
-          },
+          command: { type: "provider.list" },
         });
-        throw new Error("Expected development replay RPC to fail");
+        throw new Error("Expected host RPC to fail");
       } catch (error) {
         if (!(error instanceof ApiError)) {
           throw error;
@@ -133,7 +129,7 @@ describe("host online RPC retry semantics", () => {
         expect(error.body.code).toBe("host_unavailable");
       }
       expect(requests.map((request) => request.command.type)).toEqual([
-        "development.replay",
+        "provider.list",
       ]);
     });
   });
@@ -199,70 +195,6 @@ describe("host online RPC retry semantics", () => {
         {
           type: "host.file_metadata",
           path: filePath,
-        },
-      ]);
-      expect(closes).toEqual([{ code: 1008, reason: "invalid-message" }]);
-    });
-  });
-
-  it("rejects replay responses with provider-shaped results at the daemon websocket boundary", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-online-rpc-boundary-rejects-replay-provider-shape",
-      });
-      const requests: HostDaemonOnlineRpcRequestMessage[] = [];
-      const closes: DaemonSocketCloseRecord[] = [];
-      const socket: TestHostRpcSocket = {
-        close(code, reason) {
-          closes.push({ code, reason });
-        },
-        send(data) {
-          const request = parseHostRpcRequest(data);
-          requests.push(request);
-          feedRawDaemonWebSocketMessage({
-            harness,
-            hostId: host.id,
-            sessionId: session.id,
-            socket,
-            rawMessage: {
-              type: "host-rpc.response",
-              requestId: request.requestId,
-              commandType: "development.replay",
-              ok: true,
-              result: {
-                providers: [],
-              },
-            },
-          });
-        },
-      };
-      harness.hub.unregisterDaemon(session.id);
-      harness.hub.registerDaemon(session.id, host.id, socket);
-
-      try {
-        await callHostOnlineRpc(harness.deps, {
-          hostId: host.id,
-          timeoutMs: 25,
-          command: {
-            type: "development.replay",
-            operation: "capture-delete",
-            captureId: "rcap_abc123",
-          },
-        });
-        throw new Error("Expected malformed daemon response to time out");
-      } catch (error) {
-        if (!(error instanceof ApiError)) {
-          throw error;
-        }
-        expect(error.status).toBe(504);
-        expect(error.body.code).toBe("command_timeout");
-      }
-
-      expect(requests.map((request) => request.command)).toEqual([
-        {
-          type: "development.replay",
-          operation: "capture-delete",
-          captureId: "rcap_abc123",
         },
       ]);
       expect(closes).toEqual([{ code: 1008, reason: "invalid-message" }]);

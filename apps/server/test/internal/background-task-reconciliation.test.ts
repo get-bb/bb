@@ -27,14 +27,13 @@ function backgroundTaskItemData(args: {
   itemId: string;
   taskStatus: string;
   status: string;
-  taskType?: string;
 }): Record<string, unknown> {
   return {
     providerThreadId: "claude-session-1",
     item: {
       id: args.itemId,
       type: "backgroundTask",
-      taskType: args.taskType ?? "local_workflow",
+      taskType: "local_workflow",
       description: "fixture workflow",
       status: args.status,
       taskStatus: args.taskStatus,
@@ -271,44 +270,6 @@ describe("settleDanglingBackgroundTasks", () => {
     });
   });
 
-  it("skips bb_workflow items (workflow-lifecycle-owned) while settling local_workflow items on the same host (criterion h shape)", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, thread, environment } = seedOpenBackgroundTaskThread(
-        harness,
-        { itemId: "task:local-1" },
-      );
-      // An open bb workflow anchor item on the same thread: paused is
-      // resumable, so the generic settle backstop must never touch it.
-      seedStoredEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 4,
-        type: "item/backgroundTask/progress",
-        scope: threadScope(),
-        itemId: "wfr_anchor_1",
-        itemKind: "backgroundTask",
-        data: backgroundTaskItemData({
-          itemId: "wfr_anchor_1",
-          status: "pending",
-          taskStatus: "paused",
-          taskType: "bb_workflow",
-        }),
-      });
-
-      settleDanglingBackgroundTasks(harness.deps, { hostId: host.id });
-
-      const completed = listEvents(harness.deps.db, {
-        threadId: thread.id,
-      }).filter((row) => row.type === "item/backgroundTask/completed");
-      expect(completed).toHaveLength(1);
-      const data = JSON.parse(completed[0]!.data) as {
-        item: { id: string; taskType: string };
-      };
-      expect(data.item.id).toBe("task:local-1");
-      expect(data.item.taskType).toBe("local_workflow");
-    });
-  });
-
   it("preserves an already-finished task status instead of stomping it to interrupted", async () => {
     await withTestHarness(async (harness) => {
       // The task_updated "completed" patch was flushed as a progress snapshot,
@@ -360,7 +321,6 @@ describe("background-task lifecycle reconciliation triggers", () => {
           dataDir: "/tmp/host-daemon-task-settle-restart",
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
-          activeWorkflowRunIds: [],
         }),
       });
 
@@ -398,7 +358,6 @@ describe("background-task lifecycle reconciliation triggers", () => {
           dataDir: "/tmp/host-daemon-task-settle-same-instance",
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
-          activeWorkflowRunIds: [],
         }),
       });
 
@@ -471,7 +430,6 @@ describe("active thread disconnect reconciliation triggers", () => {
           dataDir: "/tmp/host-daemon-active-same-instance",
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [{ threadId: thread.id }],
-          activeWorkflowRunIds: [],
         }),
       });
 
@@ -505,7 +463,6 @@ describe("active thread disconnect reconciliation triggers", () => {
           dataDir: "/tmp/host-daemon-active-restarted-instance",
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
-          activeWorkflowRunIds: [],
         }),
       });
 

@@ -4,6 +4,8 @@ import {
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
+  bbDesktopPopoutMouseEventsIgnoredRequestSchema,
+  bbDesktopPopoutThreadChangedPayloadSchema,
   type BbDesktopApi,
   type BbDesktopBrowserApi,
   type BbDesktopBrowserOpenTabHandler,
@@ -13,6 +15,10 @@ import {
   type BbDesktopInfo,
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,
+  type BbDesktopPopoutApi,
+  type BbDesktopPopoutThreadChangedPayload,
+  type BbDesktopPopoutThreadChangedHandler,
+  type BbDesktopPopoutUnsubscribe,
   type BbDesktopTheme,
 } from "@bb/server-contract";
 import {
@@ -37,6 +43,15 @@ import {
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
 } from "./desktop-browser-ipc.js";
+import {
+  BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
+  BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
+  BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
+  BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
+  BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
+  BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+  BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
+} from "./popout-ipc.js";
 
 function getDesktopVersion(version: string | undefined): string {
   if (version === undefined || version.length === 0) {
@@ -96,6 +111,8 @@ async function invokeInstallUpdate(): Promise<void> {
 const browserStateListeners = new Set<BbDesktopBrowserStateHandler>();
 const browserOpenTabListeners = new Set<BbDesktopBrowserOpenTabHandler>();
 const browserSnapshotListeners = new Set<BbDesktopBrowserSnapshotHandler>();
+const popoutThreadChangedListeners =
+  new Set<BbDesktopPopoutThreadChangedHandler>();
 
 const bbBrowserApi: BbDesktopBrowserApi = {
   attach(request): void {
@@ -145,8 +162,53 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
 };
 
+const bbPopoutApi: BbDesktopPopoutApi = {
+  async getCurrentThread(): Promise<BbDesktopPopoutThreadChangedPayload> {
+    try {
+      const payload: unknown = await ipcRenderer.invoke(
+        BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
+      );
+      const parsed =
+        bbDesktopPopoutThreadChangedPayloadSchema.safeParse(payload);
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  },
+  toggle(): void {
+    ipcRenderer.send(BB_DESKTOP_POPOUT_TOGGLE_CHANNEL);
+  },
+  setThread(thread): void {
+    ipcRenderer.send(BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL, thread);
+  },
+  stateChanged(thread): void {
+    ipcRenderer.send(BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL, thread);
+  },
+  openInMain(thread): void {
+    ipcRenderer.send(BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL, thread);
+  },
+  setMouseEventsIgnored(request): void {
+    const parsed =
+      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse(request);
+    if (!parsed.success) {
+      return;
+    }
+    ipcRenderer.send(
+      BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
+      parsed.data,
+    );
+  },
+  onThreadChanged(listener): BbDesktopPopoutUnsubscribe {
+    popoutThreadChangedListeners.add(listener);
+    return () => {
+      popoutThreadChangedListeners.delete(listener);
+    };
+  },
+};
+
 const bbDesktopApi: BbDesktopApi = {
   browser: bbBrowserApi,
+  popout: bbPopoutApi,
   get lastCheckedAt() {
     return currentInfo.lastCheckedAt;
   },
@@ -222,6 +284,19 @@ ipcRenderer.on(
       return;
     }
     for (const listener of browserSnapshotListeners) {
+      listener(parsed.data);
+    }
+  },
+);
+
+ipcRenderer.on(
+  BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+  (_event, payload: unknown) => {
+    const parsed = bbDesktopPopoutThreadChangedPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    for (const listener of popoutThreadChangedListeners) {
       listener(parsed.data);
     }
   },

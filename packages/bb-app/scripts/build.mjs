@@ -57,10 +57,5 @@ await copyBuildOutput({
   label: "@bb/host-daemon dist",
   to: resolve(packageRoot, "host-daemon", "dist"),
 });
-await copyBuildOutput({
-  from: resolve(workspaceRoot, "packages", "workflow-runtime", "builtins"),
-  label: "@bb/workflow-runtime builtins",
-  to: resolve(packageRoot, "host-daemon", "builtins"),
-});
 
 process.stdout.write("bb-app: built package assets\n");

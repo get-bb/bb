@@ -6,18 +6,9 @@
     "declaration": false,
     "declarationMap": false,
     "outDir": "dist",
-    "paths": {
-      "@bb/domain": ["packages/domain/src/index.ts"],
-      "@bb/host-daemon/test": ["apps/host-daemon/src/test/index.ts"],
-      "@bb/test-helpers": ["packages/test-helpers/src/index.ts"]
-    },
     "rootDir": "../..",
     "sourceMap": false,
     "types": ["node"]
   },
-  "include": [
-    "./**/*.ts",
-    "../../apps/host-daemon/src/**/*.d.ts",
-    "../../vitest.workspace-aliases.ts"
-  ]
+  "include": ["./**/*.ts", "../../apps/host-daemon/src/**/*.d.ts"]
 }

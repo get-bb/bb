@@ -51,53 +51,6 @@ interface OnlineRpcResponseRoundTripCase {
   result: JsonObject;
 }
 
-const RESOLVED_REPLAY_EXECUTION_OPTIONS: JsonObject = {
-  model: "test/model",
-  serviceTier: "default",
-  reasoningLevel: "medium",
-  permissionMode: "workspace-write",
-  source: "client/turn/requested",
-};
-
-const REPLAY_CAPTURE_SUMMARY_RESULT: JsonObject = {
-  captureId: "cap_lx0_abcdefgh",
-  capturedAt: 1_700_000_000_000,
-  completedAt: 1_700_000_000_100,
-  providerId: "codex",
-  projectId: "proj_123",
-  environmentId: "env_123",
-  threadId: "thr_123",
-  title: "Replay capture",
-  kind: "turn-start",
-  userInputPreview: "Run the test",
-  execution: RESOLVED_REPLAY_EXECUTION_OPTIONS,
-  eventCounts: {
-    rawProviderEvents: 2,
-    droppedRecords: 0,
-  },
-  errorMessage: null,
-};
-
-const REPLAY_CAPTURE_MANIFEST_RESULT: JsonObject = {
-  ...REPLAY_CAPTURE_SUMMARY_RESULT,
-  schemaVersion: 3,
-  source: "live-dev-capture",
-  providerThreadId: "provider-thread-123",
-  turns: [
-    {
-      turnId: "turn_123",
-      userInput: [
-        {
-          type: "text",
-          text: "Run the test",
-          mentions: [],
-        },
-      ],
-      createdAt: 1_700_000_000_010,
-    },
-  ],
-};
-
 const WORKSPACE_UNAVAILABLE_RESULT: JsonObject = {
   outcome: "unavailable",
   failure: {
@@ -169,7 +122,6 @@ const WORKSPACE_DIFF_AVAILABLE_RESULT: JsonObject = {
 };
 
 const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
-  "development.replay": {},
   "host.list_files": {
     files: [
       {
@@ -279,32 +231,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "environment.cleanup_preflight": {
     outcome: "safe_to_destroy",
   },
-  "workflow.list": {
-    workflows: [
-      {
-        name: "deep-research",
-        description: "Fan out research agents and synthesize a report.",
-        whenToUse: "Multi-source research questions.",
-        defaultProvider: "codex",
-        defaultModel: "fake-model",
-        defaultSandbox: "read-only",
-        tier: "builtin",
-      },
-      {
-        name: "code-review",
-        description: "Adversarial multi-agent code review.",
-        tier: "project",
-      },
-    ],
-  },
-  "workflow.prune": {
-    pruned: true,
-  },
-  "workflow.resolve": {
-    name: "deep-research",
-    content: "export const meta = { name: 'deep-research' };\n",
-    sha256: "ab12cd34",
-  },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
@@ -350,18 +276,6 @@ const WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT: JsonObject = {
 
 const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTripCase[] =
   [
-    {
-      name: "development.replay capture-list result",
-      commandType: "development.replay",
-      result: {
-        captures: [REPLAY_CAPTURE_SUMMARY_RESULT],
-      },
-    },
-    {
-      name: "development.replay capture-get manifest result",
-      commandType: "development.replay",
-      result: REPLAY_CAPTURE_MANIFEST_RESULT,
-    },
     {
       name: "workspace.status available result",
       commandType: "workspace.status",
@@ -419,14 +333,7 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
     },
   },
   {
-    name: "development.replay command with a provider-list result",
-    commandType: "development.replay",
-    result: {
-      providers: [],
-    },
-  },
-  {
-    name: "provider.list command with a replay-list result",
+    name: "provider.list command with unrelated collection result",
     commandType: "provider.list",
     result: {
       captures: [],
@@ -471,8 +378,6 @@ function terminalDataBase64(byteLength: number): string {
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
-  "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
-    "Optional for legacy command compatibility; the server fills the current app setting before dispatching new runtime work.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
   "hostDaemonOnlineRpcCommandSchema.query":
@@ -487,6 +392,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
   "hostDaemonCommandSchema.disallowedTools":
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
+  "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
+    "thread runtime options may omit mock CLI traffic settings unless the server explicitly enables Claude traffic replay.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
 };
@@ -872,44 +779,6 @@ describe("host-daemon command schemas", () => {
     });
 
     expect(
-      hostDaemonCommandSchema.parse({
-        type: "host.write_file_relative",
-        rootPath: "/tmp/bb-data/apps/demo/data",
-        path: "state.json",
-        dotfiles: "deny",
-        content: "[1,2,3]\n",
-        contentEncoding: "utf8",
-      }),
-    ).toMatchObject({
-      type: "host.write_file_relative",
-      path: "state.json",
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "host.delete_file_relative",
-        rootPath: "/tmp/bb-data/apps/demo/data",
-        path: "state.json",
-        dotfiles: "deny",
-      }),
-    ).toMatchObject({
-      type: "host.delete_file_relative",
-      path: "state.json",
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "host.delete_path_relative",
-        rootPath: "/tmp/bb-data/thread-storage/thread-123/apps",
-        path: "demo",
-        dotfiles: "deny",
-      }),
-    ).toMatchObject({
-      type: "host.delete_path_relative",
-      path: "demo",
-    });
-
-    expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
@@ -1191,7 +1060,6 @@ describe("host-daemon command schemas", () => {
         instructionMode: "append",
         requestId: CLIENT_REQUEST_ID,
         input: [{ type: "text", text: "hello", mentions: [] }],
-        sessionKind: "thread",
       }),
     ).toThrow();
 
@@ -1227,7 +1095,7 @@ describe("host-daemon command schemas", () => {
     ).toThrow();
   });
 
-  it("parses thread.start with workspacePath and sessionKind", () => {
+  it("parses thread.start with workspacePath", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "thread.start",
@@ -1259,235 +1127,41 @@ describe("host-daemon command schemas", () => {
         ],
         injectedSkillSources: [],
         instructionMode: "replace",
-        sessionKind: "thread",
       }),
     ).toMatchObject({
       type: "thread.start",
-      sessionKind: "thread",
       workspaceContext: {
         workspacePath: "/tmp/workspace",
         workspaceProvisionType: "unmanaged",
       },
     });
-
-    // workflowAgent sessionKind is also valid
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "thread.start",
-        environmentId: "env_123",
-        threadId: "thr_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
-        },
-        projectId: "proj_123",
-        providerId: "codex",
-        requestId: CLIENT_REQUEST_ID,
-        input: [{ type: "text", text: "hello", mentions: [] }],
-        options: {
-          model: "gpt-5",
-          serviceTier: "default",
-          reasoningLevel: "medium",
-          workflowsEnabled: false,
-          permissionMode: "full",
-          permissionEscalation: null,
-        },
-        instructions: "Be a workflow agent.",
-        dynamicTools: [],
-        injectedSkillSources: [],
-        instructionMode: "replace",
-        sessionKind: "workflowAgent",
-      }),
-    ).toMatchObject({
-      type: "thread.start",
-      sessionKind: "workflowAgent",
-    });
-
-    // missing sessionKind should fail (strict)
-    expect(() =>
-      hostDaemonCommandSchema.parse({
-        type: "thread.start",
-        environmentId: "env_123",
-        threadId: "thr_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "unmanaged",
-        },
-        projectId: "proj_123",
-        providerId: "codex",
-        requestId: CLIENT_REQUEST_ID,
-        input: [{ type: "text", text: "hello", mentions: [] }],
-        options: {
-          model: "gpt-5",
-          serviceTier: "default",
-          reasoningLevel: "medium",
-          workflowsEnabled: false,
-          permissionMode: "full",
-          permissionEscalation: null,
-        },
-        instructions: "Be a helpful thread.",
-        dynamicTools: [],
-        injectedSkillSources: [],
-        instructionMode: "replace",
-      }),
-    ).toThrow();
   });
 
-  it("parses workflow.start and workflow.cancel commands", () => {
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "workflow.start",
-        runId: "wfr_abc123",
-        projectId: "proj_123",
-        script: {
-          name: "deep-research",
-          content: "export const meta = { name: 'deep-research' };\n",
-          hash: "sha256hash",
-        },
-        argsJson: null,
-        seed: 42,
-        keyVersion: "v1",
-        baseTimeMs: 1_700_000_000_000,
-        defaults: {
-          providerId: "codex",
-          model: null,
-          effort: "medium",
-          sandbox: "read-only",
-          concurrency: 4,
-          maxAgents: 100,
-          maxFanout: 10,
-          budgetOutputTokens: null,
-        },
-        sandboxCeiling: "workspace-write",
-        workspacePath: "/tmp/workspace",
-        execTimeoutMs: 3_600_000,
-        resume: null,
-      }),
-    ).toMatchObject({
-      type: "workflow.start",
-      runId: "wfr_abc123",
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "workflow.start",
-        runId: "wfr_abc123",
-        projectId: "proj_123",
-        script: {
-          name: "deep-research",
-          content: "export const meta = { name: 'deep-research' };\n",
-          hash: "sha256hash",
-        },
-        argsJson: '{"topic":"AI"}',
-        seed: 0,
-        keyVersion: "v1",
-        baseTimeMs: 1_700_000_000_000,
-        defaults: {
-          providerId: "codex",
-          model: "gpt-5",
-          effort: "high",
-          sandbox: "workspace-write",
-          concurrency: 2,
-          maxAgents: 50,
-          maxFanout: 5,
-          budgetOutputTokens: 10000,
-        },
-        sandboxCeiling: "danger-full-access",
-        workspacePath: "/tmp/workspace",
-        execTimeoutMs: null,
-        resume: { nonce: "nonce-abc" },
-      }),
-    ).toMatchObject({
-      type: "workflow.start",
-      resume: { nonce: "nonce-abc" },
-    });
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "workflow.cancel",
-        runId: "wfr_abc123",
-      }),
-    ).toMatchObject({
-      type: "workflow.cancel",
-      runId: "wfr_abc123",
-    });
-  });
-
-  it("parses workflow.start and workflow.cancel result schemas", () => {
-    expect(
-      hostDaemonCommandResultSchemaByType["workflow.start"].parse({
-        accepted: true,
-      }),
-    ).toEqual({ accepted: true });
-
-    expect(() =>
-      hostDaemonCommandResultSchemaByType["workflow.start"].parse({
-        accepted: false,
-      }),
-    ).toThrow();
-
-    expect(
-      hostDaemonCommandResultSchemaByType["workflow.cancel"].parse({
-        accepted: true,
-      }),
-    ).toEqual({ accepted: true });
-
-    expect(
-      hostDaemonCommandResultSchemaByType["workflow.cancel"].parse({
-        accepted: false,
-      }),
-    ).toEqual({ accepted: false });
-  });
-
-  it("parses every injected skill source variant and pins applicationId rules", () => {
+  it("parses every injected skill source variant", () => {
     const base = {
-      name: "building-bb-apps",
-      description: "Use when building bb apps.",
-      sourceRootPath: "/srv/builtin-skills/building-bb-apps",
-      skillFilePath: "/srv/builtin-skills/building-bb-apps/SKILL.md",
+      name: "workflow-help",
+      description: "Use when building workflows.",
+      sourceRootPath: "/srv/builtin-skills/workflow-help",
+      skillFilePath: "/srv/builtin-skills/workflow-help/SKILL.md",
     };
 
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
         sourceType: "builtin",
-        applicationId: null,
       }),
-    ).toMatchObject({ sourceType: "builtin", applicationId: null });
+    ).toMatchObject({ sourceType: "builtin" });
     expect(
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
         sourceType: "data-dir",
-        applicationId: null,
       }),
-    ).toMatchObject({ sourceType: "data-dir", applicationId: null });
-    expect(
-      hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
-        sourceType: "global-app",
-        applicationId: "tasks",
-      }),
-    ).toMatchObject({ sourceType: "global-app", applicationId: "tasks" });
+    ).toMatchObject({ sourceType: "data-dir" });
 
     expect(() =>
       hostDaemonInjectedSkillSourceSchema.parse({
         ...base,
-        sourceType: "builtin",
-        applicationId: "tasks",
-      }),
-    ).toThrow();
-    expect(() =>
-      hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
-        sourceType: "global-app",
-        applicationId: null,
-      }),
-    ).toThrow();
-    expect(() =>
-      hostDaemonInjectedSkillSourceSchema.parse({
-        ...base,
         sourceType: "bundled",
-        applicationId: null,
       }),
     ).toThrow();
   });
@@ -1648,7 +1322,6 @@ describe("host-daemon command schemas", () => {
         },
         instructions: "Be concise.",
         dynamicTools: [],
-        sessionKind: "thread",
       }),
     ).toThrow();
   });
@@ -1680,7 +1353,6 @@ describe("host-daemon command schemas", () => {
         dynamicTools: [],
         injectedSkillSources: [],
         instructionMode: "append",
-        sessionKind: "thread",
       }),
     ).toThrow();
 
@@ -2001,16 +1673,6 @@ describe("host-daemon command schemas", () => {
     });
 
     expect(
-      hostDaemonCommandResultSchemaByType["host.delete_path_relative"].parse({
-        path: "demo",
-        deleted: true,
-      }),
-    ).toEqual({
-      path: "demo",
-      deleted: true,
-    });
-
-    expect(
       hostDaemonOnlineRpcResultSchemaByType[
         "environment.cleanup_preflight"
       ].parse({
@@ -2089,34 +1751,6 @@ describe("host-daemon command schemas", () => {
       }),
     ).toThrow();
 
-    // workflow online RPC results
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType["workflow.list"].parse({
-        workflows: [
-          {
-            name: "deep-research",
-            description: "Fan out research agents.",
-            tier: "builtin",
-          },
-        ],
-      }),
-    ).toMatchObject({
-      workflows: [{ name: "deep-research", tier: "builtin" }],
-    });
-
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType["workflow.resolve"].parse({
-        name: "deep-research",
-        content: "export const meta = { name: 'deep-research' };\n",
-        sha256: "abcdef1234",
-      }),
-    ).toMatchObject({ name: "deep-research" });
-
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType["workflow.prune"].parse({
-        pruned: false,
-      }),
-    ).toEqual({ pruned: false });
   });
 
   it("includes discovered workspace properties in environment.provision result", () => {
@@ -2146,7 +1780,7 @@ describe("host-daemon command schemas", () => {
 
 describe("host-daemon session schemas", () => {
   it("documents the current protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(35);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(36);
   });
 
   it("parses valid session open and event batch payloads", () => {
@@ -2163,13 +1797,11 @@ describe("host-daemon session schemas", () => {
             threadId: "thr_123",
           },
         ],
-        activeWorkflowRunIds: [],
       }),
     ).toMatchObject({
       hostId: "host_123",
       hostType: "persistent",
       loadedEnvironments: [],
-      activeWorkflowRunIds: [],
     });
 
     expect(
@@ -2181,7 +1813,6 @@ describe("host-daemon session schemas", () => {
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [],
-        activeWorkflowRunIds: ["wfr_abc123", "wfr_def456"],
         loadedEnvironments: [
           {
             environmentId: "env_123",
@@ -2189,7 +1820,6 @@ describe("host-daemon session schemas", () => {
         ],
       }),
     ).toMatchObject({
-      activeWorkflowRunIds: ["wfr_abc123", "wfr_def456"],
       loadedEnvironments: [
         {
           environmentId: "env_123",
@@ -2197,7 +1827,6 @@ describe("host-daemon session schemas", () => {
       ],
     });
 
-    // Missing activeWorkflowRunIds should fail
     expect(() =>
       hostDaemonSessionOpenRequestSchema.parse({
         hostId: "host_123",
@@ -2223,7 +1852,6 @@ describe("host-daemon session schemas", () => {
         dataDir: "/tmp/bb-data",
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
         activeThreads: [],
-        activeWorkflowRunIds: [],
       }),
     ).toMatchObject({
       protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
@@ -2238,7 +1866,6 @@ describe("host-daemon session schemas", () => {
         dataDir: "/tmp/bb-data",
         protocolVersion: 0,
         activeThreads: [],
-        activeWorkflowRunIds: [],
       }),
     ).toThrow();
 
@@ -2253,7 +1880,6 @@ describe("host-daemon session schemas", () => {
             threadId: "thr_123",
           },
         ],
-        trackedApplicationDataTargets: [],
       }),
     ).toMatchObject({
       sessionId: "session_123",
@@ -2424,77 +2050,6 @@ describe("host-daemon session schemas", () => {
     });
 
     expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-storage-changed",
-      }),
-    ).toEqual({
-      type: "application-storage-changed",
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "status",
-      }),
-    ).toEqual({
-      type: "application-content-changed",
-      applicationId: "status",
-    });
-
-    expect(
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-        path: "state.json",
-        value: { workers: [] },
-        deleted: false,
-        version: "next-hash",
-      }),
-    ).toEqual({
-      sessionId: "session_123",
-      applicationId: "status",
-      path: "state.json",
-      value: { workers: [] },
-      deleted: false,
-      version: "next-hash",
-    });
-
-    expect(
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-        path: "state.json",
-        value: null,
-        deleted: true,
-        version: null,
-      }),
-    ).toMatchObject({
-      deleted: true,
-      version: null,
-    });
-
-    expect(() =>
-      contract.hostDaemonAppDataChangeRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-        path: "state.json",
-        value: { workers: [] },
-        deleted: false,
-        version: null,
-      }),
-    ).toThrow();
-
-    expect(
-      contract.hostDaemonAppDataResyncRequestSchema.parse({
-        sessionId: "session_123",
-        applicationId: "status",
-      }),
-    ).toEqual({
-      sessionId: "session_123",
-      applicationId: "status",
-    });
-
-    expect(
       hostDaemonInteractiveRequestSchema.parse({
         sessionId: "session_123",
         interaction: {
@@ -2573,93 +2128,6 @@ describe("host-daemon session schemas", () => {
     });
   });
 
-  it("parses workflow run event batch and journal schemas", () => {
-    expect(
-      contract.hostDaemonWorkflowRunEventBatchRequestSchema.parse({
-        sessionId: "session_123",
-        events: [
-          {
-            producerEventId: "pevt_abc123",
-            runId: "wfr_abc123",
-            event: {
-              type: "run/started",
-              runId: "wfr_abc123",
-            },
-          },
-        ],
-      }),
-    ).toMatchObject({
-      sessionId: "session_123",
-      events: [{ runId: "wfr_abc123" }],
-    });
-
-    expect(
-      contract.hostDaemonWorkflowRunEventBatchResponseSchema.parse({
-        acceptedEvents: [
-          {
-            producerEventId: "pevt_abc123",
-            runId: "wfr_abc123",
-            sequence: 0,
-          },
-        ],
-        rejectedEvents: [],
-      }),
-    ).toMatchObject({
-      acceptedEvents: [{ runId: "wfr_abc123", sequence: 0 }],
-      rejectedEvents: [],
-    });
-
-    expect(
-      contract.hostDaemonWorkflowRunEventBatchResponseSchema.parse({
-        acceptedEvents: [],
-        rejectedEvents: [
-          {
-            producerEventId: "pevt_def456",
-            runId: "wfr_gone",
-            reason: "run_not_owned_by_host",
-          },
-        ],
-      }),
-    ).toMatchObject({
-      rejectedEvents: [
-        {
-          runId: "wfr_gone",
-          reason: "run_not_owned_by_host",
-        },
-      ],
-    });
-
-    // unknown rejection reason fails
-    expect(() =>
-      contract.hostDaemonWorkflowRunEventBatchResponseSchema.parse({
-        acceptedEvents: [],
-        rejectedEvents: [
-          {
-            producerEventId: "pevt_def456",
-            runId: "wfr_gone",
-            reason: "unknown_reason",
-          },
-        ],
-      }),
-    ).toThrow();
-
-    expect(
-      contract.hostDaemonWorkflowRunJournalQuerySchema.parse({
-        sessionId: "session_123",
-        runId: "wfr_abc123",
-      }),
-    ).toEqual({
-      sessionId: "session_123",
-      runId: "wfr_abc123",
-    });
-
-    expect(
-      contract.hostDaemonWorkflowRunJournalResponseSchema.parse({
-        entries: [],
-      }),
-    ).toEqual({ entries: [] });
-  });
-
   it("restricts daemon websocket control and RPC messages", () => {
     expect(
       hostDaemonServerWsMessageSchema.safeParse({
@@ -2706,27 +2174,6 @@ describe("host-daemon session schemas", () => {
       hostDaemonDaemonWsMessageSchema.parse({
         type: "heartbeat",
         bufferDepth: 0,
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "status",
-        path: "public/index.html",
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-      }),
-    ).toThrow();
-
-    expect(() =>
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "application-content-changed",
-        applicationId: "Not A Slug",
       }),
     ).toThrow();
 
@@ -2966,17 +2413,5 @@ describe("host-daemon session schemas", () => {
     const client = createHostDaemonClient("http://localhost:3334", "secret");
 
     expect(client.session.open.$url().pathname).toBe("/internal/session/open");
-    expect(client.session["app-data-change"].$url().pathname).toBe(
-      "/internal/session/app-data-change",
-    );
-    expect(client.session["app-data-resync"].$url().pathname).toBe(
-      "/internal/session/app-data-resync",
-    );
-    expect(client.session["workflow-run-events"].$url().pathname).toBe(
-      "/internal/session/workflow-run-events",
-    );
-    expect(client.session["workflow-run-journal"].$url().pathname).toBe(
-      "/internal/session/workflow-run-journal",
-    );
   });
 });

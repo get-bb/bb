@@ -44,7 +44,6 @@ import {
   FileEmpty02Icon,
   FileQuestionMarkIcon,
   FileXIcon,
-  FlowConnectionIcon,
   Folder02Icon,
   FolderAddIcon,
   FolderGitTwoIcon,
@@ -64,7 +63,6 @@ import {
   MessageQuestionIcon,
   Mic02Icon,
   MoreHorizontalIcon,
-  PauseIcon,
   PlusMinusSquare01Icon,
   PlusSignIcon,
   Refresh01Icon,
@@ -76,11 +74,14 @@ import {
   SidebarRightIcon,
   SourceCodeIcon,
   SquareIcon,
+  TextWrapIcon,
   Tick02Icon,
   Unarchive03Icon,
   UserAdd01Icon,
   UserIcon,
   ZapIcon,
+  ZoomInAreaIcon,
+  ZoomOutAreaIcon,
 } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 
@@ -152,7 +153,6 @@ const ICON_MAP = {
   PanelLeft: SidebarLeftIcon,
   PanelRight: SidebarRightIcon,
   Paperclip: AttachmentIcon,
-  Pause: PauseIcon,
   Plus: PlusSignIcon,
   RotateCcw: Refresh01Icon,
   Rows2: LayoutTwoRowIcon,
@@ -162,12 +162,14 @@ const ICON_MAP = {
   Spinner: DashedLineCircleIcon,
   Square: SquareIcon,
   Terminal: ComputerTerminal01Icon,
+  TextWrap: TextWrapIcon,
   Trash2: Delete02Icon,
   UserRound: UserIcon,
   UserRoundPlus: UserAdd01Icon,
-  Workflow: FlowConnectionIcon,
   X: Cancel01Icon,
   Zap: ZapIcon,
+  ZoomIn: ZoomInAreaIcon,
+  ZoomOut: ZoomOutAreaIcon,
 } as const satisfies Record<string, IconSvgElement>;
 
 export type IconName = keyof typeof ICON_MAP;

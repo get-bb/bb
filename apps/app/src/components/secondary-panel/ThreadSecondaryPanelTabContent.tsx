@@ -32,7 +32,7 @@ import {
 
 const GIT_DIFF_SKELETON_FILE_COUNT = 3;
 const PANEL_SCROLL_SLOT_CLASS =
-  "min-h-0 flex-1 overflow-x-hidden overflow-y-auto";
+  "min-h-0 flex-1 overflow-x-auto overflow-y-auto";
 
 interface ThreadDiffSkeletonProps {
   count?: number;
@@ -66,6 +66,7 @@ export interface WorkspaceFilePreviewTabContentProps {
 
 export interface HostFilePreviewTabContentProps {
   activePath: string;
+  copyPath: string;
   environmentId?: string | null;
   lineRange: FilePreviewLineRange | null;
   markdownLinkRouting?: MarkdownLinkRouting;
@@ -268,9 +269,7 @@ export function ThreadInfoTabContent({
   metadataContent,
 }: ThreadInfoTabContentProps) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col pb-3">
-      {metadataContent}
-    </div>
+    <div className="flex min-h-0 flex-1 flex-col pb-3">{metadataContent}</div>
   );
 }
 
@@ -313,6 +312,7 @@ export function WorkspaceFilePreviewTabContent({
 
 export function HostFilePreviewTabContent({
   activePath,
+  copyPath,
   environmentId,
   lineRange,
   markdownLinkRouting,
@@ -328,6 +328,7 @@ export function HostFilePreviewTabContent({
   return (
     <SecondaryPanelFilePreview
       activePath={activePath}
+      copyPath={copyPath}
       error={hostFilePreviewError}
       filePreview={hostFilePreview}
       htmlPreviewUrl={buildRawFilesystemHtmlContentUrl(threadId, activePath)}

@@ -64,11 +64,7 @@ import {
 } from "../../services/lib/validation.js";
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
 import { parseFileListLimit } from "../file-list-query.js";
-import {
-  extractRoutePath,
-  parseSafeRelativeRoutePath,
-  type SafeRelativeRoutePath,
-} from "../relative-route-path.js";
+import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 
 interface ThreadComposerExecutionOptionsSource {
   archivedAt: number | null;
@@ -148,10 +144,6 @@ interface RequireThreadStorageTargetArgs {
   threadId: string;
 }
 
-type RawFileRoutePath = SafeRelativeRoutePath;
-
-const THREAD_STORAGE_FILE_ROUTE_SEGMENT = "/thread-storage/files/";
-const THREAD_WORKTREE_FILE_ROUTE_SEGMENT = "/worktree/files/";
 const RAW_FILE_NO_STORE_CACHE_CONTROL = "no-store";
 const RAW_FILE_HTML_CONTENT_TYPE = "text/html; charset=utf-8";
 const RAW_FILE_CONTENT_TYPE_OPTIONS = "nosniff";
@@ -238,24 +230,6 @@ export async function requireThreadStorageTarget(
   };
 }
 
-function parseRawFileRoutePath(rawPath: string): RawFileRoutePath {
-  return parseSafeRelativeRoutePath({
-    rawPath,
-    dotfileSegmentPolicy: "allow",
-    invalidPathMessage: "Invalid file path",
-  });
-}
-
-function extractRawFileRoutePath(
-  requestUrl: string,
-  routeSegment: string,
-): string {
-  return extractRoutePath({
-    requestUrl,
-    routeSegment,
-  });
-}
-
 function isHtmlPreviewPath(relativePath: string): boolean {
   return relativePath.toLowerCase().endsWith(".html");
 }
@@ -292,7 +266,7 @@ async function serveThreadStorageRawFile(
   threadId: string,
   rawPath: string,
 ): Promise<Response> {
-  const filePath = parseRawFileRoutePath(rawPath);
+  const filePath = parseSafeRelativeRoutePath(rawPath);
   const target = await requireThreadStorageTarget(deps, { threadId });
 
   try {
@@ -316,7 +290,7 @@ async function serveThreadWorktreeRawFile(
   threadId: string,
   rawPath: string,
 ): Promise<Response> {
-  const filePath = parseRawFileRoutePath(rawPath);
+  const filePath = parseSafeRelativeRoutePath(rawPath);
   const thread = requirePublicThread(deps.db, threadId);
   if (!thread.environmentId) {
     throw new ApiError(409, "invalid_request", "Thread has no environment");
@@ -486,14 +460,12 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   // Generic iframe previews use path-shaped raw URLs so relative links resolve
   // beside the HTML file. These routes never inject app bridge globals.
-  app.get("/threads/:id/worktree/files/*", async (context) =>
+  // `:filePath{.+}` matches across slashes; hono percent-decodes it once.
+  get("/threads/:id/worktree/files/:filePath{.+}", async (context) =>
     serveThreadWorktreeRawFile(
       deps,
       context.req.param("id"),
-      extractRawFileRoutePath(
-        context.req.url,
-        THREAD_WORKTREE_FILE_ROUTE_SEGMENT,
-      ),
+      context.req.param("filePath"),
     ),
   );
 
@@ -535,14 +507,11 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     },
   );
 
-  app.get("/threads/:id/thread-storage/files/*", async (context) =>
+  get("/threads/:id/thread-storage/files/:filePath{.+}", async (context) =>
     serveThreadStorageRawFile(
       deps,
       context.req.param("id"),
-      extractRawFileRoutePath(
-        context.req.url,
-        THREAD_STORAGE_FILE_ROUTE_SEGMENT,
-      ),
+      context.req.param("filePath"),
     ),
   );
 

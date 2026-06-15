@@ -53,9 +53,14 @@ describe("createAgentRuntime process lifecycle", () => {
       additionalWorkspaceWriteRoots: [],
       adapterFactory: () => createNoopInitializeAdapter(args.scriptPath),
       bridgeBundleDir: undefined,
+      captureThreadExitState: (threadId) => ({
+        activeTurnId: null,
+        providerThreadId:
+          identityRegistry.getProviderThreadId(threadId) ?? null,
+        threadId,
+      }),
       createProviderIdentityState: (providerId) =>
         identityRegistry.createProviderState({ providerId }),
-      emitCapture: () => undefined,
       env: args.env,
       getNextRequestId: () => nextRequestId++,
       handleStdoutLine: () => undefined,
@@ -104,7 +109,6 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -139,7 +143,6 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime2.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -211,7 +214,6 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -364,7 +366,6 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -517,7 +518,6 @@ describe("createAgentRuntime process lifecycle", () => {
     try {
       await expect(
         runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId: "t1",
           projectId: "p1",
@@ -528,7 +528,6 @@ describe("createAgentRuntime process lifecycle", () => {
       expect(runtime.listRunningProviders()).not.toContain("codex");
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t2",
         projectId: "p1",
@@ -624,7 +623,6 @@ describe("createAgentRuntime process lifecycle", () => {
       });
 
       const started = runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -682,7 +680,6 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -741,7 +738,6 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",

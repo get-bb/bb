@@ -1704,44 +1704,6 @@ describe("codex provider adapter", () => {
         approvalPolicy: "never",
       },
     });
-    expect(cmd.params).not.toHaveProperty("outputSchema");
-  });
-
-  it("buildCommand turn/start passes the structured output schema to the app server", () => {
-    const adapter = createCodexProviderAdapter();
-    const outputSchema = {
-      type: "object",
-      properties: { answer: { type: "string" } },
-      required: ["answer"],
-    };
-    const cmd = adapter.buildCommandPlan({
-      type: "turn/start",
-      clientRequestId: "creq_222222229a",
-      threadId: "t1",
-      providerThreadId: "codex-1",
-      input: [{ type: "text", text: "extract", mentions: [] }],
-      options: fullProviderExecutionContext,
-      outputSchema,
-    });
-    expect(cmd).toMatchObject({
-      method: "turn/start",
-      params: { threadId: "codex-1", outputSchema },
-    });
-  });
-
-  it("buildCommand thread/start rejects session-level output schemas", () => {
-    const adapter = createCodexProviderAdapter();
-    expect(() =>
-      adapter.buildCommandPlan({
-        type: "thread/start",
-        cwd: "/tmp/worktree",
-        threadId: "t1",
-        input: [{ type: "text", text: "hello", mentions: [] }],
-        instructionMode: "append",
-        options: fullProviderExecutionContext,
-        outputSchema: { type: "object" },
-      }),
-    ).toThrow(/does not support session-level output schemas/);
   });
 
   it("buildCommand turn/start maps workspace-write permissions to on-request approvals", () => {

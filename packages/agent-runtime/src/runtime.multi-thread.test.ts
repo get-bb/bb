@@ -75,7 +75,6 @@ describe("createAgentRuntime multi-thread routing", () => {
     });
 
     const r1 = await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -83,7 +82,6 @@ describe("createAgentRuntime multi-thread routing", () => {
       options: fullRuntimeOptions,
     });
     const r2 = await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t2",
       projectId: "p1",
@@ -160,7 +158,6 @@ describe("createAgentRuntime multi-thread routing", () => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -168,7 +165,6 @@ describe("createAgentRuntime multi-thread routing", () => {
       options: fullRuntimeOptions,
     });
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t2",
       projectId: "p1",
@@ -239,7 +235,6 @@ describe("createAgentRuntime multi-thread routing", () => {
     });
 
     const { providerThreadId } = await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "my-thread",
       projectId: "p1",
@@ -285,7 +280,6 @@ describe("createAgentRuntime multi-thread routing", () => {
     });
 
     const r1 = await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -293,7 +287,6 @@ describe("createAgentRuntime multi-thread routing", () => {
       options: fullRuntimeOptions,
     });
     const r2 = await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t2",
       projectId: "p1",
@@ -409,7 +402,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -417,7 +409,6 @@ rl.on("line", (line) => {
       options: fullRuntimeOptions,
     });
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t2",
       projectId: "p1",
@@ -528,7 +519,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -536,7 +526,6 @@ rl.on("line", (line) => {
       options: fullRuntimeOptions,
     });
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t2",
       projectId: "p1",
@@ -614,7 +603,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -622,7 +610,6 @@ rl.on("line", (line) => {
       options: fullRuntimeOptions,
     });
     await runtime.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t2",
       projectId: "p1",
@@ -681,7 +668,6 @@ rl.on("line", (line) => {
     });
 
     const { providerThreadId } = await runtime1.startThread({
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",

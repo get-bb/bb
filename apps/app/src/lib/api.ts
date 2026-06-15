@@ -4,10 +4,7 @@ import type {
   Experiments,
   Host,
   PendingInteraction,
-  ProjectExecutionDefaults,
   ProjectSource,
-  ResolvedThreadExecutionOptions,
-  ThreadEventRow,
   ThreadQueuedMessage,
   WorkspaceDiffTarget,
 } from "@bb/domain";
@@ -33,7 +30,6 @@ import type {
   CreateThreadTerminalRequest,
   ProjectBranchesResponse,
   ProjectResponse,
-  SidebarBootstrapResponse,
   PromptHistoryResponse,
   ReorderPinnedThreadRequest,
   ReorderProjectRequest,
@@ -49,7 +45,6 @@ import type {
   SystemVoiceTranscriptionResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
-  ThreadComposerBootstrapResponse,
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
@@ -78,19 +73,6 @@ import type {
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
   WorkspacePathListResponse,
-  ReplayCaptureListResponse,
-  ReplayRunRequest,
-  ReplayRunResponse,
-  AddAppSourceRequest,
-  AppDetail,
-  AppSourceStatus,
-  AppSummary,
-  CreateWorkflowRunRequest,
-  WorkflowListResponse,
-  WorkflowRunEventsResponse,
-  WorkflowRunListQuery,
-  WorkflowRunListResponse,
-  WorkflowRunResponse,
 } from "@bb/server-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
 import {
@@ -101,7 +83,6 @@ import {
   type FilePreviewTarget,
 } from "./file-preview";
 import {
-  buildAppPublicFileUrl,
   buildThreadHostFileContentUrl,
   buildThreadStorageContentUrl,
 } from "./file-content-urls";
@@ -140,10 +121,6 @@ export type ProjectBranchListRequest = EnvironmentBranchListRequest;
 
 export type AppCreateThreadRequest = Omit<CreateThreadRequest, "origin">;
 
-export interface GetProjectDefaultExecutionOptionsRequest {
-  projectId: string;
-}
-
 const HTML_DOCUMENT_PATTERN = /<!doctype html|<html[\s>]/i;
 const ERROR_EXTRACT_OPTS = {
   legacyKeys: ["detail"] as const,
@@ -153,7 +130,7 @@ function normalizeErrorText(raw: string): string {
   return raw.replace(/\s+/g, " ").trim();
 }
 
-function requestOptions(signal?: AbortSignal) {
+export function requestOptions(signal?: AbortSignal) {
   return signal ? { init: { signal } } : undefined;
 }
 
@@ -297,7 +274,9 @@ async function throwHttpError(res: Response): Promise<never> {
   });
 }
 
-async function request<T>(responsePromise: Promise<Response>): Promise<T> {
+export async function request<T>(
+  responsePromise: Promise<Response>,
+): Promise<T> {
   const res = await requestResponse(responsePromise);
   const text = await res.text();
   return JSON.parse(text) as T;
@@ -471,32 +450,6 @@ async function postMultipart<T>(
   return JSON.parse(text) as T;
 }
 
-export async function listReplayCaptures(): Promise<ReplayCaptureListResponse> {
-  return request<ReplayCaptureListResponse>(
-    apiClient["development-only"].replay.captures.$get(),
-  );
-}
-
-export async function startReplayRun(
-  id: string,
-  req: ReplayRunRequest,
-): Promise<ReplayRunResponse> {
-  return request<ReplayRunResponse>(
-    apiClient["development-only"].replay.captures[":id"].runs.$post({
-      param: { id },
-      json: req,
-    }),
-  );
-}
-
-export async function deleteReplayCapture(id: string): Promise<void> {
-  await requestVoid(
-    apiClient["development-only"].replay.captures[":id"].$delete({
-      param: { id },
-    }),
-  );
-}
-
 export async function createProject(
   req: CreateProjectRequest,
 ): Promise<ProjectResponse> {
@@ -521,14 +474,6 @@ export async function reorderProject(
   );
 }
 
-export async function listProjectsWithThreads(
-  signal?: AbortSignal,
-): Promise<SidebarBootstrapResponse> {
-  return request<SidebarBootstrapResponse>(
-    apiClient["sidebar-bootstrap"].$get(undefined, requestOptions(signal)),
-  );
-}
-
 export async function listAutomationsOverview(
   signal?: AbortSignal,
 ): Promise<AutomationsOverviewResponse> {
@@ -546,17 +491,6 @@ export async function listProjectPromptHistory(
       { param: { id: projectId } },
       requestOptions(signal),
     ),
-  );
-}
-
-export async function getProjectDefaultExecutionOptions(
-  args: GetProjectDefaultExecutionOptionsRequest,
-): Promise<ProjectExecutionDefaults | null> {
-  return request<ProjectExecutionDefaults | null>(
-    apiClient.projects[":id"]["default-execution-options"].$get({
-      param: { id: args.projectId },
-      query: {},
-    }),
   );
 }
 
@@ -943,71 +877,6 @@ export async function getThreadStorageFilePreview(
   );
 }
 
-export async function listApps(signal?: AbortSignal): Promise<AppSummary[]> {
-  return request<AppSummary[]>(apiClient.apps.$get({}, requestOptions(signal)));
-}
-
-export async function listAppSources(
-  signal?: AbortSignal,
-): Promise<AppSourceStatus[]> {
-  return request<AppSourceStatus[]>(
-    apiClient["app-sources"].$get({}, requestOptions(signal)),
-  );
-}
-
-export async function addAppSource(
-  req: AddAppSourceRequest,
-): Promise<AppSourceStatus> {
-  return request<AppSourceStatus>(
-    apiClient["app-sources"].$post({ json: req }),
-  );
-}
-
-export async function syncAppSource(
-  name: string,
-  force: boolean,
-): Promise<AppSourceStatus> {
-  return request<AppSourceStatus>(
-    apiClient["app-sources"][":name"].sync.$post({
-      param: { name },
-      json: { force },
-    }),
-  );
-}
-
-export async function removeAppSource(name: string): Promise<void> {
-  await requestVoid(
-    apiClient["app-sources"][":name"].$delete({ param: { name } }),
-  );
-}
-
-export async function getApp(
-  applicationId: string,
-  signal?: AbortSignal,
-): Promise<AppDetail> {
-  return request<AppDetail>(
-    apiClient.apps[":applicationId"].$get(
-      { param: { applicationId } },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function getAppMarkdownPreview(
-  applicationId: string,
-  path: string,
-  signal?: AbortSignal,
-): Promise<FilePreview> {
-  return loadFilePreview(
-    {
-      name: path.split("/").at(-1),
-      path,
-      url: buildAppPublicFileUrl(applicationId, path),
-    },
-    signal,
-  );
-}
-
 export async function getThreadHostFilePreview(
   id: string,
   path: string,
@@ -1029,16 +898,6 @@ export async function updateThread(
 ): Promise<ThreadResponse> {
   return request<ThreadResponse>(
     apiClient.threads[":id"].$patch({ param: { id }, json: req }),
-  );
-}
-
-export async function getThreadDefaultExecutionOptions(
-  id: string,
-): Promise<ResolvedThreadExecutionOptions | null> {
-  return request<ResolvedThreadExecutionOptions | null>(
-    apiClient.threads[":id"]["default-execution-options"].$get({
-      param: { id },
-    }),
   );
 }
 
@@ -1110,14 +969,6 @@ export async function createThreadQueuedMessage(
       param: { id },
       json: req,
     }),
-  );
-}
-
-export async function getThreadComposerBootstrap(
-  id: string,
-): Promise<ThreadComposerBootstrapResponse> {
-  return request<ThreadComposerBootstrapResponse>(
-    apiClient.threads[":id"]["composer-bootstrap"].$get({ param: { id } }),
   );
 }
 
@@ -1252,10 +1103,7 @@ export async function markThreadUnread(id: string): Promise<ThreadResponse> {
   );
 }
 
-export async function getHost(
-  id: string,
-  signal?: AbortSignal,
-): Promise<Host> {
+export async function getHost(id: string, signal?: AbortSignal): Promise<Host> {
   return request<Host>(
     apiClient.hosts[":id"].$get({ param: { id } }, requestOptions(signal)),
   );
@@ -1539,15 +1387,6 @@ export async function getSystemConfig(): Promise<SystemConfigResponse> {
   return request<SystemConfigResponse>(apiClient.system.config.$get());
 }
 
-export async function listHosts(): Promise<Host[]> {
-  return request<Host[]>(apiClient.hosts.$get());
-}
-
-/**
- * Replace the user's opt-in experiments (full object — no partial updates).
- * The server broadcasts system `config-changed`, so other windows re-read
- * `/system/config` and re-gate their surfaces.
- */
 export async function updateExperiments(
   experiments: Experiments,
 ): Promise<Experiments> {
@@ -1556,92 +1395,6 @@ export async function updateExperiments(
   );
 }
 
-interface GetWorkflowRunAgentEventsArgs {
-  /** Journal-stable 1-based display index (snapshot `agent.index`). */
-  agentIndex: number;
-  runId: string;
-}
-
-/**
- * Workflow definitions across the registry tiers (project > user > builtin)
- * from the project's default source root. Requires the source host online —
- * 502 `host_unavailable` otherwise; 409 when the project has no default
- * source. (The route accepts an explicit `hostId` for CLI/SDK callers; the
- * SPA lists the default source only — host choice is launch-time-only.)
- */
-export async function listWorkflows(
-  projectId: string,
-): Promise<WorkflowListResponse> {
-  return request<WorkflowListResponse>(
-    apiClient.workflows.$get({ query: { projectId } }),
-  );
-}
-
-export async function listWorkflowRuns(
-  query: WorkflowRunListQuery,
-): Promise<WorkflowRunListResponse> {
-  return request<WorkflowRunListResponse>(
-    apiClient["workflow-runs"].$get({ query }),
-  );
-}
-
-export async function createWorkflowRun(
-  req: CreateWorkflowRunRequest,
-): Promise<WorkflowRunResponse> {
-  return request<WorkflowRunResponse>(
-    apiClient["workflow-runs"].$post({ json: req }),
-  );
-}
-
-export async function getWorkflowRun(id: string): Promise<WorkflowRunResponse> {
-  return request<WorkflowRunResponse>(
-    apiClient["workflow-runs"][":id"].$get({ param: { id } }),
-  );
-}
-
-export async function getWorkflowRunEvents(
-  id: string,
-): Promise<WorkflowRunEventsResponse> {
-  return request<WorkflowRunEventsResponse>(
-    apiClient["workflow-runs"][":id"].events.$get({ param: { id } }),
-  );
-}
-
-/**
- * Per-agent provider-event log, proxied from the run's host. 404 when the log
- * does not exist (agent not started or run dir pruned); 502 `host_unavailable`
- * when the daemon is offline — both surface as `HttpError`s for the drill-in
- * UI to render as distinct non-error states.
- */
-export async function getWorkflowRunAgentEvents({
-  agentIndex,
-  runId,
-}: GetWorkflowRunAgentEventsArgs): Promise<ThreadEventRow[]> {
-  return request<ThreadEventRow[]>(
-    apiClient["workflow-runs"][":id"].agents[":index"].events.$get({
-      param: { id: runId, index: String(agentIndex) },
-    }),
-  );
-}
-
-export async function cancelWorkflowRun(id: string): Promise<void> {
-  await requestVoid(
-    apiClient["workflow-runs"][":id"].cancel.$post({ param: { id } }),
-  );
-}
-
-export async function resumeWorkflowRun(id: string): Promise<void> {
-  await requestVoid(
-    apiClient["workflow-runs"][":id"].resume.$post({ param: { id } }),
-  );
-}
-
-export async function archiveWorkflowRun(id: string): Promise<void> {
-  await requestVoid(
-    apiClient["workflow-runs"][":id"].archive.$post({ param: { id } }),
-  );
-}
-
-export async function deleteWorkflowRun(id: string): Promise<void> {
-  await requestVoid(apiClient["workflow-runs"][":id"].$delete({ param: { id } }));
+export async function listHosts(): Promise<Host[]> {
+  return request<Host[]>(apiClient.hosts.$get());
 }

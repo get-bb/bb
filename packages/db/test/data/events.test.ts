@@ -2855,7 +2855,6 @@ describe("events", () => {
       notifyHost: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
-      notifyWorkflowRun: vi.fn(),
     };
 
     insertEvents(db, spy, [

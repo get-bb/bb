@@ -16,7 +16,6 @@ import {
   type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
-  type ThreadPromptWorkflowsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import type {
   WorkspaceChangedFileSelection,
@@ -29,6 +28,7 @@ import {
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
@@ -42,10 +42,10 @@ import {
 } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   getLatestPendingInteraction,
-  useThreadDefaultExecutionOptions,
   useThreadQueuedMessages,
   useThreadPromptHistory,
 } from "@/hooks/queries/thread-queries";
+import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { promptDraftToInput } from "@/lib/prompt-draft";
@@ -83,6 +83,7 @@ interface ThreadDetailPromptAreaProps {
   environmentIcon?: IconName;
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
+  onEscapeEmptyPrompt?: () => void;
   isEnvironmentActionPending: boolean;
   pendingInteractions: readonly PendingInteraction[];
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
@@ -114,8 +115,6 @@ interface ThreadDetailPromptAreaProps {
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
   childThreadsSection: ThreadPromptChildThreadsSection | null;
-  /** Actively running workflow runs anchored to this thread. Null when none. */
-  workflowsSection: ThreadPromptWorkflowsSection | null;
   sendMessage: SendMessageMutationLike;
   thread: ThreadWithRuntime;
 }
@@ -137,6 +136,7 @@ export function ThreadDetailPromptArea({
   environmentIcon,
   environmentLabel,
   onCreateNewThreadInWorktree,
+  onEscapeEmptyPrompt,
   isEnvironmentActionPending,
   pendingInteractions,
   onChangedFileClick,
@@ -149,7 +149,6 @@ export function ThreadDetailPromptArea({
   pendingTodos,
   parentThreadSection,
   childThreadsSection,
-  workflowsSection,
   sendMessage,
   thread,
 }: ThreadDetailPromptAreaProps) {
@@ -343,6 +342,18 @@ export function ThreadDetailPromptArea({
     [currentPromptDraft],
   );
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
+  const isPromptEmpty = useCallback(
+    () => !hasPromptDraftInput,
+    [hasPromptDraftInput],
+  );
+  const hideEmptyPrompt = useCallback(() => {
+    onEscapeEmptyPrompt?.();
+  }, [onEscapeEmptyPrompt]);
+  useEscapeToHide({
+    enabled: onEscapeEmptyPrompt !== undefined,
+    isEmpty: isPromptEmpty,
+    onHide: hideEmptyPrompt,
+  });
   const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
     hasPromptDraftInput,
     isFollowUpSubmitting,
@@ -848,7 +859,6 @@ export function ThreadDetailPromptArea({
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
-          workflowsSection={workflowsSection}
           gitSection={
             workspaceChangedFilesSection
               ? {
@@ -895,7 +905,6 @@ export function ThreadDetailPromptArea({
       isQueueMutationPending,
       parentThreadSection,
       childThreadsSection,
-      workflowsSection,
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessages,

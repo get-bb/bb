@@ -7,7 +7,6 @@ import { toOptionalString } from "@bb/config/strings";
 import { createLogger } from "@bb/logger";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
-import { migrateAppDataLayout } from "./services/apps/app-data-layout-migration.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "./services/machine-auth.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
@@ -18,6 +17,7 @@ import {
   runPeriodicSweeps,
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
+import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { resolveThreadStorageRootPath } from "./services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
@@ -30,7 +30,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     dataDir: serverConfig.BB_DATA_DIR,
   });
   const db = initDb(serverConfig.databasePath, { logger });
-  await migrateAppDataLayout({ dataDir: serverConfig.BB_DATA_DIR, logger });
   const hub = new NotificationHub();
   const terminalSessions = new TerminalSessionLifecycle({
     db,
@@ -61,8 +60,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     serverPort: serverConfig.BB_SERVER_PORT,
     threadStorageRootPath,
     transcriptionModel: serverConfig.BB_TRANSCRIPTION,
-    workflowMaxConcurrentRunsPerHost:
-      serverConfig.BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST,
   };
 
   if (appUrl !== undefined) {
@@ -74,6 +71,16 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config: runtimeConfig,
     hub,
+    logger,
+  });
+
+  // Telemetry only operates in production runs (the bb-app launcher and the
+  // desktop app both set NODE_ENV=production); dev/source runs never send.
+  const telemetry = await createTelemetryService({
+    apiKey: serverConfig.BB_POSTHOG_API_KEY,
+    appVersion: serverConfig.BB_APP_VERSION,
+    dataDir: serverConfig.BB_DATA_DIR,
+    enabled: serverConfig.BB_TELEMETRY && isProduction,
     logger,
   });
 
@@ -90,6 +97,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     lifecycleDedupers,
     logger,
     machineAuth,
+    telemetry,
     terminalSessions,
   });
   pendingInteractions.start();
@@ -110,6 +118,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       logger,
       machineAuth,
       pendingInteractions,
+      telemetry,
       terminalSessions,
     },
     { staticDir },
@@ -124,6 +133,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
     machineAuth,
     pendingInteractions,
+    telemetry,
     terminalSessions,
   };
   await runStartupRecoverySweep(sweepDeps).catch((error) => {
@@ -143,6 +153,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     },
     "Server listening",
   );
+  telemetry.capture({ name: "app_started" });
 
   const sweepInterval = setInterval(() => {
     void runPeriodicSweeps(sweepDeps);

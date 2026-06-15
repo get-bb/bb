@@ -1,13 +1,11 @@
 import type {
   ChangedMessage,
-  ApplicationId,
   EnvironmentChangeKind,
   HostChangeKind,
   ProjectChangeKind,
   SystemChangeKind,
   ThreadChangeKind,
   ThreadChangeMetadata,
-  WorkflowRunChangeKind,
 } from "@bb/domain";
 import type { DbNotifier } from "@bb/db";
 import type {
@@ -19,7 +17,6 @@ import type {
 import {
   serverMessageSchema,
   terminalServerMessageSchema,
-  type AppDataBroadcastMessage,
   type TerminalServerMessage,
 } from "@bb/server-contract";
 
@@ -35,12 +32,6 @@ interface ThreadEventWaiter {
 }
 
 interface HostEventWaiter {
-  reject: (reason?: Error) => void;
-  resolve: (notified: boolean) => void;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
-interface WorkflowRunWaiter {
   reject: (reason?: Error) => void;
   resolve: (notified: boolean) => void;
   timeout: ReturnType<typeof setTimeout>;
@@ -117,10 +108,6 @@ export class NotificationHub implements DbNotifier {
   private readonly threadEventWaiters = new Map<
     string,
     Set<ThreadEventWaiter>
-  >();
-  private readonly workflowRunWaiters = new Map<
-    string,
-    Set<WorkflowRunWaiter>
   >();
 
   registerClient(socket: HubSocket): void {
@@ -270,13 +257,6 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
-  /**
-   * Whether the host's daemon currently has a live hub websocket. An active
-   * session ROW does not imply this: /internal/session/open creates the row
-   * before the daemon attaches its socket, so work that would fail without a
-   * socket (e.g. deferred workflow manager notifications) gates on this in
-   * addition to the session row.
-   */
   hasDaemonForHost(hostId: string): boolean {
     const sessionId = this.daemonSessionIdsByHost.get(hostId);
     return sessionId !== undefined && this.daemonSessions.has(sessionId);
@@ -450,38 +430,6 @@ export class NotificationHub implements DbNotifier {
     return { promise, cancel };
   }
 
-  /**
-   * Wakeup for the `/workflow-runs/:id/wait` long-poll: resolves on the next
-   * `notifyWorkflowRun` for the run (`run-updated` or `events-appended` — the
-   * route re-checks the row either way). Same register-then-recheck contract
-   * as `registerThreadEventWaiter`.
-   */
-  registerWorkflowRunWaiter(
-    workflowRunId: string,
-    timeoutMs: number,
-  ): { promise: Promise<boolean>; cancel: () => void } {
-    let waiter: WorkflowRunWaiter;
-    const promise = new Promise<boolean>((resolve, reject) => {
-      waiter = {
-        reject,
-        resolve: (notified) => resolve(notified),
-        timeout: setTimeout(() => {
-          this.deleteWorkflowRunWaiter(workflowRunId, waiter);
-          resolve(false);
-        }, timeoutMs),
-      };
-      const waiters =
-        this.workflowRunWaiters.get(workflowRunId) ??
-        new Set<WorkflowRunWaiter>();
-      waiters.add(waiter);
-      this.workflowRunWaiters.set(workflowRunId, waiters);
-    });
-    const cancel = () => {
-      this.deleteWorkflowRunWaiter(workflowRunId, waiter!);
-    };
-    return { promise, cancel };
-  }
-
   notifyThread(
     threadId: string,
     changes: ThreadChangeKind[],
@@ -503,39 +451,6 @@ export class NotificationHub implements DbNotifier {
       }
       this.threadEventWaiters.delete(threadId);
     }
-  }
-
-  notifyAppData(message: AppDataBroadcastMessage): void {
-    this.notifyClientsByKey(
-      subKey("app", `${message.applicationId}:data`),
-      JSON.stringify(serverMessageSchema.parse(message)),
-    );
-  }
-
-  /**
-   * List-level (id-less) app broadcast — some app was installed, updated, or
-   * removed. App-scoped changes go through `notifyAppContentChanged` instead.
-   */
-  notifyAppsChanged(): void {
-    this.notifyClients({
-      type: "changed",
-      entity: "app",
-      changes: ["apps-changed"],
-    });
-  }
-
-  /**
-   * App-scoped signal that an app's served `public/` content changed on disk.
-   * Carries the application id (unlike the list-level `apps-changed`
-   * broadcast) so clients can reload just that app's open surfaces.
-   */
-  notifyAppContentChanged(applicationId: ApplicationId): void {
-    this.notifyClients({
-      type: "changed",
-      entity: "app",
-      id: applicationId,
-      changes: ["content-changed"],
-    });
   }
 
   notifyProject(projectId: string, changes: ProjectChangeKind[]): void {
@@ -587,27 +502,6 @@ export class NotificationHub implements DbNotifier {
     });
   }
 
-  notifyWorkflowRun(
-    workflowRunId: string,
-    changes: WorkflowRunChangeKind[],
-  ): void {
-    this.notifyClients({
-      type: "changed",
-      entity: "workflow-run",
-      id: workflowRunId,
-      changes,
-    });
-
-    const workflowRunWaiters = this.workflowRunWaiters.get(workflowRunId);
-    if (workflowRunWaiters) {
-      for (const waiter of workflowRunWaiters) {
-        clearTimeout(waiter.timeout);
-        waiter.resolve(true);
-      }
-      this.workflowRunWaiters.delete(workflowRunId);
-    }
-  }
-
   private deleteThreadEventWaiter(
     threadId: string,
     waiter: ThreadEventWaiter,
@@ -620,21 +514,6 @@ export class NotificationHub implements DbNotifier {
     waiters.delete(waiter);
     if (waiters.size === 0) {
       this.threadEventWaiters.delete(threadId);
-    }
-  }
-
-  private deleteWorkflowRunWaiter(
-    workflowRunId: string,
-    waiter: WorkflowRunWaiter,
-  ): void {
-    const waiters = this.workflowRunWaiters.get(workflowRunId);
-    if (!waiters) {
-      return;
-    }
-    clearTimeout(waiter.timeout);
-    waiters.delete(waiter);
-    if (waiters.size === 0) {
-      this.workflowRunWaiters.delete(workflowRunId);
     }
   }
 
@@ -696,14 +575,6 @@ export class NotificationHub implements DbNotifier {
       return;
     }
     const payload = JSON.stringify(parseResult.data);
-    this.notifyClientsByKeySet(sockets, payload);
-  }
-
-  private notifyClientsByKey(key: string, payload: string): void {
-    const sockets = this.clientSocketsByKey.get(key);
-    if (!sockets) {
-      return;
-    }
     this.notifyClientsByKeySet(sockets, payload);
   }
 

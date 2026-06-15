@@ -20,6 +20,7 @@ import {
   type ThreadTimelineUnreadDividerPlacement,
   type TimelineTitleActionResolver,
 } from "@/components/thread/timeline";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { TimelineStatusIndicator } from "@/components/thread/timeline";
 import { TimelineWorkingIndicator } from "@/components/thread/timeline";
 import { Skeleton } from "@/components/ui/skeleton.js";
@@ -40,6 +41,7 @@ interface ThreadTimelinePaneProps {
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
+  resolveMentionLink: PromptMentionLinkResolver;
   showOngoingIndicator: boolean;
   ongoingIndicatorLabel?: string;
   stopRequestedAt: number | null;
@@ -136,6 +138,7 @@ export function ThreadTimelinePane({
   onOpenLocalFileLink,
   onTitleAction,
   projectId,
+  resolveMentionLink,
   showOngoingIndicator,
   ongoingIndicatorLabel,
   stopRequestedAt,
@@ -197,6 +200,7 @@ export function ThreadTimelinePane({
               onOpenLocalFileLink={onOpenLocalFileLink}
               onTitleAction={onTitleAction}
               projectId={projectId}
+              resolveMentionLink={resolveMentionLink}
               resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
               themeType={preferredTheme}
               timelineRows={timelineRowsWithPendingStop}

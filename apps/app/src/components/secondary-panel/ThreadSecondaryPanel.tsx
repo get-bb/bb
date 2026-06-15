@@ -30,6 +30,10 @@ import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thre
 import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
+import {
+  DEFAULT_CODE_OVERFLOW_MODE,
+  type CodeOverflowMode,
+} from "@/lib/code-overflow-mode";
 import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
 import {
@@ -69,7 +73,7 @@ const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
 // size/max are lifted to the full width of the horizontal group.
 const CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT = 100;
 const PANEL_SCROLL_SLOT_CLASS =
-  "min-h-0 flex-1 overflow-x-hidden overflow-y-auto";
+  "min-h-0 flex-1 overflow-x-auto overflow-y-auto";
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
   pointerEvents: "auto",
 };
@@ -162,7 +166,6 @@ function resolveActiveFixedPanel({
     case "workspace-file-preview":
     case "host-file-preview":
     case "thread-storage-file-preview":
-    case "app":
     case "browser":
     case "terminal":
     case "new-tab":
@@ -239,6 +242,7 @@ export function ThreadSecondaryPanel({
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
   const isDiffPanelActive = activeFixedPanel === "git-diff";
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
+  const shouldRenderFileTabContent = isOpen;
   const {
     gitDiffTarget,
     gitDiffSelectOptions,
@@ -292,15 +296,18 @@ export function ThreadSecondaryPanel({
     threadSecondaryPanelResizingAtom,
   );
   const [desktopInfo] = useState(getBbDesktopInfo);
+  const [gitDiffLineOverflowMode, setGitDiffLineOverflowMode] =
+    useState<CodeOverflowMode>(DEFAULT_CODE_OVERFLOW_MODE);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const preferredTheme = usePreferredTheme();
   const gitDiffViewOptions = useMemo(
     () => ({
       ...GIT_DIFF_VIEW_BASE_OPTIONS,
       diffStyle: gitDiffDisplayMode,
+      overflow: gitDiffLineOverflowMode,
       themeType: preferredTheme,
     }),
-    [gitDiffDisplayMode, preferredTheme],
+    [gitDiffDisplayMode, gitDiffLineOverflowMode, preferredTheme],
   );
   const handlePanelFocusCapture = (event: FocusEvent<HTMLElement>) => {
     const previousTarget = event.relatedTarget;
@@ -450,6 +457,8 @@ export function ThreadSecondaryPanel({
             onToggleAllCollapsed={toggleAllCollapsed}
             displayMode={gitDiffDisplayMode}
             onDisplayModeChange={handleGitDiffDisplayModeChange}
+            lineOverflowMode={gitDiffLineOverflowMode}
+            onLineOverflowModeChange={setGitDiffLineOverflowMode}
           />
         ) : null}
       </div>
@@ -472,11 +481,13 @@ export function ThreadSecondaryPanel({
               isTerminalTabActive ? undefined : ""
             }
           >
-            {fileTabContent ?? (
-              <EmptyStatePanel className="mx-4 rounded-lg">
-                No file preview content provided.
-              </EmptyStatePanel>
-            )}
+            {shouldRenderFileTabContent
+              ? (fileTabContent ?? (
+                  <EmptyStatePanel className="mx-4 rounded-lg">
+                    No file preview content provided.
+                  </EmptyStatePanel>
+                ))
+              : null}
           </div>
         ) : isDiffPanelActive ? (
           <GitDiffTabContent
@@ -545,10 +556,7 @@ interface NewTabButtonProps {
   usesDesktopChrome: boolean;
 }
 
-function NewTabButton({
-  onOpenNewTab,
-  usesDesktopChrome,
-}: NewTabButtonProps) {
+function NewTabButton({ onOpenNewTab, usesDesktopChrome }: NewTabButtonProps) {
   return (
     <Button
       type="button"

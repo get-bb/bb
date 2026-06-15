@@ -103,7 +103,6 @@ function createFetchRecorder(
           heartbeatIntervalMs: 30000,
           leaseTimeoutMs: 90000,
           trackedThreadTargets: [],
-          trackedApplicationDataTargets: [],
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
         },
         { status: 201 },
@@ -198,6 +197,21 @@ function createFakeRuntime(): AgentRuntime {
     listRunningProviders() {
       return [];
     },
+    getActiveTurnId() {
+      return null;
+    },
+    async waitForActiveTurn() {
+      return null;
+    },
+    getProviderSession() {
+      return null;
+    },
+    hasThread() {
+      return false;
+    },
+    getActiveThreadIds() {
+      return [];
+    },
     async shutdown() {},
   };
 }
@@ -264,7 +278,6 @@ async function createAppFixture(
     hostId: "host-app-test",
     hostName: "App Test Host",
     instanceId: "instance-app-test",
-    maxLiveWorkflowProviderProcesses: 8,
     logger,
     releaseLock: async () => undefined,
     localApiConfig: null,
@@ -302,7 +315,6 @@ describe("createHostDaemonApp", () => {
       shutdown: vi.fn(async () => undefined),
     } satisfies AgentRuntime;
     const hostWatcher = {
-      watchApplicationStorageRoot: vi.fn(() => () => undefined),
       watchWorkspace: vi.fn(() => stopWatchingStatus),
       watchThreadStorageRoot: vi.fn(() => () => undefined),
     } satisfies HostWatcher;
@@ -314,7 +326,6 @@ describe("createHostDaemonApp", () => {
       hostId: "host-retired-env",
       hostName: "Retired Environment Host",
       instanceId: "instance-retired-env",
-      maxLiveWorkflowProviderProcesses: 8,
       logger,
       releaseLock: async () => undefined,
       localApiConfig: null,
@@ -364,7 +375,13 @@ describe("createHostDaemonApp", () => {
 
       options.onProcessExit({
         providerId: "codex",
-        threadIds: ["thr_provider_exit_log"],
+        threads: [
+          {
+            threadId: "thr_provider_exit_log",
+            activeTurnId: null,
+            providerThreadId: null,
+          },
+        ],
         code: 1,
         expected: false,
         signal: null,
@@ -416,7 +433,13 @@ describe("createHostDaemonApp", () => {
       );
       options.onProcessExit({
         providerId: "codex",
-        threadIds: [request.threadId],
+        threads: [
+          {
+            threadId: request.threadId,
+            activeTurnId: request.turnId,
+            providerThreadId: request.providerThreadId,
+          },
+        ],
         code: null,
         expected: true,
         signal: "SIGTERM",

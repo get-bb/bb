@@ -75,15 +75,3 @@ export function createHostDaemonSessionId(): string {
 export function createTerminalSessionId(): string {
   return createId("term");
 }
-
-export function createWorkflowRunId(): string {
-  return createId("wfr");
-}
-
-export function createWorkflowRunOperationId(): string {
-  return createId("wfop");
-}
-
-export function createWorkflowRunEventId(): string {
-  return createId("wfev");
-}

@@ -13,10 +13,10 @@ import {
   destroyPersistedBrowserViewsForThread,
 } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { collapsedProjectIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
-import { getRootComposeRoutePath } from "@/lib/app-route-paths";
+import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
-import { useAppRoute } from "../useAppRoute";
+import { useRouteState } from "../useRouteState";
 import { getCachedThreadProjectId } from "./thread-detail-cache-owner";
 
 export type DeletedResourceRouteChangeHandler = (
@@ -58,7 +58,7 @@ export function useDeletedResourceRouteOwner(): DeletedResourceRouteChangeHandle
   const queryClient = useQueryClient();
   const setCollapsedProjectIdList = useSetAtom(collapsedProjectIdsAtom);
   const setRootComposeProjectId = useSetRootComposeProjectId();
-  const { projectId: routeProjectId, threadId: routeThreadId } = useAppRoute();
+  const { projectId: routeProjectId, threadId: routeThreadId } = useRouteState();
 
   return useCallback(
     (message: ChangedMessage) => {

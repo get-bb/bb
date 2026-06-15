@@ -47,9 +47,6 @@ describe("builtin skills copy", () => {
       targetPath,
     );
     await expect(
-      readFile(path.join(targetPath, "building-bb-apps", "SKILL.md"), "utf8"),
-    ).resolves.toBe(await readBuiltinSkill("building-bb-apps"));
-    await expect(
       readFile(path.join(targetPath, "bb-cli", "SKILL.md"), "utf8"),
     ).resolves.toBe(await readBuiltinSkill("bb-cli"));
   });

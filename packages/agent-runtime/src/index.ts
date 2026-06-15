@@ -1,5 +1,4 @@
 export { createAgentRuntime } from "./runtime.js";
-export { ProviderProcessExitedError } from "./runtime-provider-process.js";
 export {
   createProviderForId,
   listAvailableProviderInfos as listAvailableProviders,
@@ -12,8 +11,8 @@ export type {
   AgentRuntimeOptions,
   AgentRuntimePiSkillRoot,
   AgentRuntimeProcessExitInfo,
-  AgentRuntimeSessionKind,
-  AgentRuntimeShellEnvironment,
+  AgentRuntimeProcessExitThreadState,
+  AgentRuntimeProviderSession,
   AgentRuntimeSkillRoot,
   EnsureProviderArgs,
   ListModelsArgs,
@@ -25,17 +24,10 @@ export type {
   StartThreadResult,
   SteerTurnArgs,
   StopThreadArgs,
+  WaitForActiveTurnArgs,
 } from "./types.js";
 export type {
   ProviderRawEventCoverage,
   ProviderRawEventDescription,
   ProviderVisibilityMetadata,
 } from "./provider-visibility.js";
-
-export {
-  createReplayRawProviderEventTranslator,
-  replayRawProviderEvents,
-  type ReplayRawProviderEventTranslator,
-  type ReplayRawProviderEventTranslatorArgs,
-  type ReplayRawProviderEventsArgs,
-} from "./replay-translation.js";

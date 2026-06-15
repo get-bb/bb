@@ -5,6 +5,7 @@ import type {
   BbDesktopBrowserSnapshot,
   BbDesktopBrowserState,
   BbDesktopInfo,
+  BbDesktopPopoutThreadChangedPayload,
 } from "@bb/server-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
@@ -12,6 +13,15 @@ import {
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "../src/desktop-update-ipc.js";
+import {
+  BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
+  BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
+  BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
+  BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
+  BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
+  BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+  BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
+} from "../src/popout-ipc.js";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
@@ -52,6 +62,7 @@ const electronMock = vi.hoisted(() => {
   const invokeCalls: string[] = [];
   const listeners = new Map<string, IpcRendererListener>();
   const sendCalls: SendCall[] = [];
+  let currentPopoutThread: BbDesktopPopoutThreadChangedPayload = null;
   let exposedApi: BbDesktopApi | null = null;
   let exposedName: string | null = null;
 
@@ -71,6 +82,10 @@ const electronMock = vi.hoisted(() => {
       invokeCalls.length = 0;
       listeners.clear();
       sendCalls.length = 0;
+      currentPopoutThread = null;
+    },
+    setCurrentPopoutThread(thread: BbDesktopPopoutThreadChangedPayload): void {
+      currentPopoutThread = thread;
     },
     contextBridge: {
       exposeInMainWorld(name: string, api: BbDesktopApi): void {
@@ -79,8 +94,13 @@ const electronMock = vi.hoisted(() => {
       },
     },
     ipcRenderer: {
-      invoke(channel: string): Promise<BbDesktopInfo> {
+      invoke(
+        channel: string,
+      ): Promise<BbDesktopInfo | BbDesktopPopoutThreadChangedPayload> {
         invokeCalls.push(channel);
+        if (channel === "bb-desktop:popout:get-current-thread") {
+          return Promise.resolve(currentPopoutThread);
+        }
         return Promise.resolve(desktopInfo);
       },
       on(channel: string, listener: IpcRendererListener): void {
@@ -162,6 +182,15 @@ describe("desktop preload browser API", () => {
       "setVisible",
       "stop",
     ]);
+    expect(Object.keys(api.popout).sort()).toEqual([
+      "getCurrentThread",
+      "onThreadChanged",
+      "openInMain",
+      "setMouseEventsIgnored",
+      "setThread",
+      "stateChanged",
+      "toggle",
+    ]);
     expect(api.browser).not.toHaveProperty("send");
     expect(api.browser).not.toHaveProperty("invoke");
 
@@ -174,6 +203,21 @@ describe("desktop preload browser API", () => {
     api.browser.stop("browser:a");
     api.browser.setBounds(boundsRequest);
     api.browser.setVisible(visibleRequest);
+    api.popout.toggle();
+    api.popout.setThread({ projectId: "proj_a", threadId: "thr_a" });
+    api.popout.stateChanged({ projectId: "proj_a", threadId: "thr_a" });
+    api.popout.openInMain({ projectId: "proj_a", threadId: "thr_a" });
+    api.popout.setMouseEventsIgnored({ ignore: true });
+    electronMock.setCurrentPopoutThread({
+      projectId: "proj_a",
+      threadId: "thr_a",
+    });
+    await expect(api.popout.getCurrentThread()).resolves.toEqual({
+      projectId: "proj_a",
+      threadId: "thr_a",
+    });
+    electronMock.setCurrentPopoutThread(null);
+    await expect(api.popout.getCurrentThread()).resolves.toBeNull();
     api.setTheme("dark");
     await api.checkForUpdates();
     await api.installUpdate();
@@ -212,6 +256,26 @@ describe("desktop preload browser API", () => {
         channel: BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
         payload: visibleRequest,
       },
+      {
+        channel: BB_DESKTOP_POPOUT_TOGGLE_CHANNEL,
+        payload: undefined,
+      },
+      {
+        channel: BB_DESKTOP_POPOUT_SET_THREAD_CHANNEL,
+        payload: { projectId: "proj_a", threadId: "thr_a" },
+      },
+      {
+        channel: BB_DESKTOP_POPOUT_STATE_CHANGED_CHANNEL,
+        payload: { projectId: "proj_a", threadId: "thr_a" },
+      },
+      {
+        channel: BB_DESKTOP_POPOUT_OPEN_IN_MAIN_CHANNEL,
+        payload: { projectId: "proj_a", threadId: "thr_a" },
+      },
+      {
+        channel: BB_DESKTOP_POPOUT_SET_MOUSE_EVENTS_IGNORED_CHANNEL,
+        payload: { ignore: true },
+      },
       { channel: BB_DESKTOP_SET_THEME_CHANNEL, payload: "dark" },
     ]);
     expect(electronMock.invokeCalls).toContain(BB_DESKTOP_GET_INFO_CHANNEL);
@@ -221,13 +285,17 @@ describe("desktop preload browser API", () => {
     expect(electronMock.invokeCalls).toContain(
       BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
     );
-  });
+    expect(electronMock.invokeCalls).toContain(
+      BB_DESKTOP_POPOUT_GET_CURRENT_THREAD_CHANNEL,
+    );
+  }, 10_000);
 
   it("validates browser event payloads before notifying renderer listeners", async () => {
     const api = await loadPreload();
     const states: BbDesktopBrowserState[] = [];
     const openTabs: BbDesktopBrowserOpenTabRequest[] = [];
     const snapshots: BbDesktopBrowserSnapshot[] = [];
+    const popoutThreads: BbDesktopPopoutThreadChangedPayload[] = [];
     const state: BbDesktopBrowserState = {
       tabId: "browser:a",
       url: "https://example.com/",
@@ -254,6 +322,9 @@ describe("desktop preload browser API", () => {
     api.browser.onSnapshot?.((nextSnapshot) => {
       snapshots.push(nextSnapshot);
     });
+    api.popout.onThreadChanged((thread) => {
+      popoutThreads.push(thread);
+    });
 
     emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_STATE_CHANNEL,
@@ -279,9 +350,25 @@ describe("desktop preload browser API", () => {
       channel: BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
       payload: snapshot,
     });
+    emitIpcPayload({
+      channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+      payload: { projectId: "proj_a", threadId: "thr_a", extra: true },
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+      payload: { projectId: "proj_a", threadId: "thr_a" },
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL,
+      payload: null,
+    });
 
     expect(states).toEqual([state]);
     expect(openTabs).toEqual([openTab]);
     expect(snapshots).toEqual([snapshot]);
+    expect(popoutThreads).toEqual([
+      { projectId: "proj_a", threadId: "thr_a" },
+      null,
+    ]);
   });
 });

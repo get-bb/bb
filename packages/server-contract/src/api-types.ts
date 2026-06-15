@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   availableModelSchema,
   getProjectPathValidationMessage,
@@ -36,34 +37,15 @@ import {
   threadPullRequestSchema,
   workspaceStatusSchema,
   workspaceDiffTargetSchema,
-  jsonValueSchema,
-  appDataPathSchema,
-  applicationIdSchema,
-  appSourceNameSchema,
   changedMessageSchema,
   changedMessageLenientSchema,
   callerExecutionInputSourceSchema,
   projectExecutionDefaultsSchema,
-  workflowProgressSnapshotSchema,
-  workflowRunEventSchema,
-  workflowRunRetentionSchema,
-  workflowRunSourceTierSchema,
-  workflowRunStatusSchema,
-  workflowSandboxSchema,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
-import {
-  hostDaemonWorkflowListingSchema,
-  workspaceResolutionFailureSchema,
-} from "@bb/host-daemon-contract";
-import type {
-  AppDataPath,
-  ApplicationId,
-  CallerExecutionInputSource,
-  GitBranchName,
-  JsonValue,
-} from "@bb/domain";
+import { workspaceResolutionFailureSchema } from "@bb/host-daemon-contract";
+import type { CallerExecutionInputSource, GitBranchName } from "@bb/domain";
 import { apiErrorSchema } from "./errors.js";
 import { timelineRowSchema } from "./thread-timeline.js";
 
@@ -160,6 +142,12 @@ export interface BbDesktopApi extends BbDesktopInfo {
    * construction.
    */
   browser: BbDesktopBrowserApi;
+  /**
+   * Control surface for the desktop-only popout chat window. The Electron main
+   * process owns the native window and global hotkey; the renderer only sends
+   * typed commands over the preload bridge.
+   */
+  popout: BbDesktopPopoutApi;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   installUpdate(): Promise<void>;
@@ -427,6 +415,74 @@ export interface BbDesktopBrowserApi {
   onSnapshot?(
     listener: BbDesktopBrowserSnapshotHandler,
   ): BbDesktopBrowserUnsubscribe;
+}
+
+// --- Desktop popout chat surface ---
+
+export const BB_DESKTOP_POPOUT_ID_MAX_LENGTH = 200;
+export const POPOUT_ROUTE_PATH = "/popout";
+export const POPOUT_WINDOW_WIDTH = 480;
+export const POPOUT_WINDOW_HEIGHT = 620;
+export const POPOUT_QUICK_ASK_HEIGHT = 220;
+
+export const bbDesktopPopoutThreadRefSchema = z
+  .object({
+    projectId: z.string().min(1).max(BB_DESKTOP_POPOUT_ID_MAX_LENGTH),
+    threadId: z.string().min(1).max(BB_DESKTOP_POPOUT_ID_MAX_LENGTH),
+  })
+  .strict();
+export type BbDesktopPopoutThreadRef = z.infer<
+  typeof bbDesktopPopoutThreadRefSchema
+>;
+
+export function getDesktopThreadRoutePath(
+  thread: BbDesktopPopoutThreadRef,
+): string {
+  return thread.projectId === PERSONAL_PROJECT_ID
+    ? `/threads/${thread.threadId}`
+    : `/projects/${thread.projectId}/threads/${thread.threadId}`;
+}
+
+export function getDesktopPopoutThreadRoutePath(
+  thread: BbDesktopPopoutThreadRef,
+): string {
+  return thread.projectId === PERSONAL_PROJECT_ID
+    ? `${POPOUT_ROUTE_PATH}/threads/${thread.threadId}`
+    : `${POPOUT_ROUTE_PATH}/projects/${thread.projectId}/threads/${thread.threadId}`;
+}
+
+export const bbDesktopPopoutThreadChangedPayloadSchema =
+  bbDesktopPopoutThreadRefSchema.nullable();
+export type BbDesktopPopoutThreadChangedPayload = z.infer<
+  typeof bbDesktopPopoutThreadChangedPayloadSchema
+>;
+
+export const bbDesktopPopoutMouseEventsIgnoredRequestSchema = z
+  .object({
+    ignore: z.boolean(),
+  })
+  .strict();
+export type BbDesktopPopoutMouseEventsIgnoredRequest = z.infer<
+  typeof bbDesktopPopoutMouseEventsIgnoredRequestSchema
+>;
+
+export type BbDesktopPopoutThreadChangedHandler = (
+  payload: BbDesktopPopoutThreadChangedPayload,
+) => void;
+export type BbDesktopPopoutUnsubscribe = () => void;
+
+export interface BbDesktopPopoutApi {
+  getCurrentThread(): Promise<BbDesktopPopoutThreadChangedPayload>;
+  toggle(): void;
+  setThread(thread: BbDesktopPopoutThreadRef): void;
+  stateChanged(thread: BbDesktopPopoutThreadChangedPayload): void;
+  openInMain(thread: BbDesktopPopoutThreadRef): void;
+  setMouseEventsIgnored(
+    request: BbDesktopPopoutMouseEventsIgnoredRequest,
+  ): void;
+  onThreadChanged(
+    listener: BbDesktopPopoutThreadChangedHandler,
+  ): BbDesktopPopoutUnsubscribe;
 }
 
 // --- Thread creation: environment + workspace discriminated unions ---
@@ -1466,408 +1522,14 @@ export type ThreadHostFileContentQuery = z.infer<
   typeof threadHostFileContentQuerySchema
 >;
 
-// Keep app path limits in sync with packages/domain/src/apps.ts and the
-// injected app client validator in app-client-script.ts.
-const appEntryPathSegmentPattern = /^[A-Za-z0-9._-]{1,120}$/u;
+export const threadFilesRawQuerySchema = z.object({
+  /** Absolute filesystem path of an HTML file on the thread's host. */
+  path: z.string().min(1),
+});
+export type ThreadFilesRawQuery = z.infer<typeof threadFilesRawQuerySchema>;
 
-function isValidAppEntryPath(value: string): boolean {
-  if (
-    value.length === 0 ||
-    value.length > 512 ||
-    value.includes("\0") ||
-    value.includes("\\") ||
-    value.startsWith("/") ||
-    value.endsWith("/")
-  ) {
-    return false;
-  }
-
-  const segments = value.split("/");
-  return segments.every(
-    (segment) =>
-      segment !== "." &&
-      segment !== ".." &&
-      !segment.startsWith(".") &&
-      appEntryPathSegmentPattern.test(segment),
-  );
-}
-
-export const appIconNameValues = [
-  "AlertCircle",
-  "AlertTriangle",
-  "AlignLeft",
-  "Archive",
-  "ArchiveRestore",
-  "ArrowDown",
-  "ArrowRight",
-  "ArrowUp",
-  "AudioLines",
-  "Check",
-  "ChevronDown",
-  "ChevronLeft",
-  "ChevronRight",
-  "ChevronUp",
-  "ChevronsDown",
-  "ChevronsUp",
-  "Circle",
-  "CircleCheck",
-  "CircleDashed",
-  "CircleX",
-  "Columns2",
-  "Container",
-  "Copy",
-  "CornerDownLeft",
-  "CornerDownRight",
-  "Edit",
-  "ExternalLink",
-  "FileDiff",
-  "File",
-  "FileQuestion",
-  "FileX2",
-  "Folder",
-  "FolderOpen",
-  "FolderMinus",
-  "FolderPlus",
-  "GitBranch",
-  "GitMerge",
-  "GridView",
-  "Info",
-  "Laptop",
-  "ListTodo",
-  "Maximize2",
-  "MessageSquarePlus",
-  "MessageSquare",
-  "Mic",
-  "Minimize2",
-  "MoreHorizontal",
-  "PanelBottom",
-  "PanelLeft",
-  "PanelRight",
-  "Paperclip",
-  "Plus",
-  "RotateCcw",
-  "Rows2",
-  "Search",
-  "Settings",
-  "Spinner",
-  "Square",
-  "Terminal",
-  "Trash2",
-  "UserRound",
-  "UserRoundPlus",
-  "X",
-  "Zap",
-] as const;
-export const appIconNameSchema = z.enum(appIconNameValues);
-
-export const appEntryKindSchema = z.enum(["html", "md"]);
-
-export const appEntryPathSchema = z
-  .string()
-  .refine(isValidAppEntryPath, "Invalid app entry path");
-
-export const appEntrySchema = z
-  .object({
-    path: appEntryPathSchema,
-    kind: appEntryKindSchema,
-  })
-  .strict();
-export type AppEntry = z.infer<typeof appEntrySchema>;
-
-/**
- * Inert reserved metadata. Capabilities are NOT enforced anywhere: every
- * served app page receives the full `window.bb` runtime regardless of what
- * the manifest declares (app iframes are same-origin with the public API, so
- * a manifest gate was never a security boundary). The field stays in the
- * strict manifest schema so existing manifests on disk that declare it keep
- * loading; it is echoed verbatim in app summaries.
- */
-export const appCapabilitySchema = z.enum(["data", "message"]);
-export type AppCapability = z.infer<typeof appCapabilitySchema>;
-
-const appDisplayNameSchema = z.string().max(80);
-
-export const appManifestSchema = z
-  .object({
-    manifestVersion: z.literal(1).default(1),
-    id: applicationIdSchema,
-    name: appDisplayNameSchema.optional(),
-    icon: appIconNameSchema.optional(),
-    entry: appEntryPathSchema.optional(),
-    /** Inert reserved metadata — see {@link appCapabilitySchema}. */
-    capabilities: z.array(appCapabilitySchema).default([]),
-  })
-  .strict()
-  .transform((manifest) => ({
-    ...manifest,
-    name:
-      manifest.name === undefined || manifest.name.trim().length === 0
-        ? manifest.id
-        : manifest.name,
-  }));
-export type AppManifest = z.infer<typeof appManifestSchema>;
-
-export const appIconSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("builtin"),
-      name: appIconNameSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("logo"),
-      url: z.string().min(1),
-    })
-    .strict(),
-]);
-export type AppIcon = z.infer<typeof appIconSchema>;
-
-/**
- * Provenance of an externally sourced app. `null` means the app is locally
- * managed (created or edited in place, not tracked against an app source).
- */
-export const appSourceRefSchema = z
-  .object({
-    name: appSourceNameSchema,
-    commitSha: z.string().min(1),
-  })
-  .strict();
-export type AppSourceRef = z.infer<typeof appSourceRefSchema>;
-
-export const appSummarySchema = z
-  .object({
-    applicationId: applicationIdSchema,
-    name: z.string().min(1).max(80),
-    entry: appEntrySchema,
-    capabilities: z.array(appCapabilitySchema),
-    icon: appIconSchema,
-    source: appSourceRefSchema.nullable(),
-  })
-  .strict();
-export type AppSummary = z.infer<typeof appSummarySchema>;
-
-export const appDetailSchema = appSummarySchema
-  .extend({
-    appsRootPath: z.string().min(1),
-    appRootPath: z.string().min(1),
-    appDataPath: z.string().min(1),
-  })
-  .strict();
-export type AppDetail = z.infer<typeof appDetailSchema>;
-
-export const createAppRequestSchema = z
-  .object({
-    applicationId: applicationIdSchema.optional(),
-    name: appDisplayNameSchema.optional(),
-  })
-  .strict()
-  .superRefine((request, context) => {
-    const hasName =
-      request.name !== undefined && request.name.trim().length > 0;
-    if (request.applicationId === undefined && !hasName) {
-      context.addIssue({
-        code: "custom",
-        message: "Provide applicationId or name",
-      });
-    }
-  });
-export type CreateAppRequest = z.infer<typeof createAppRequestSchema>;
-
-/**
- * A git remote URL or local path. Rejecting a leading `-` keeps the value out
- * of git's option namespace: passed in an argv position git scans for flags, a
- * `-`-prefixed value could be parsed as an option (e.g. an injected
- * `--upload-pack`). No real origin or git ref begins with a dash.
- */
-export const appSourceOriginSchema = z
-  .string()
-  .min(1)
-  .refine((value) => !value.startsWith("-"), "Origin cannot begin with '-'");
-
-/** A branch, tag, or commit pin. Rejects option-like values — see {@link appSourceOriginSchema}. */
-export const appSourceGitRefSchema = z
-  .string()
-  .min(1)
-  .refine((value) => !value.startsWith("-"), "Ref cannot begin with '-'");
-
-/**
- * User intent for one app source: a git repo (or local path) whose top-level
- * directories containing a valid manifest.json are installed as global apps.
- * `ref: null` tracks the remote default branch; otherwise a branch, tag, or
- * commit pin.
- */
-export const appSourceConfigSchema = z
-  .object({
-    name: appSourceNameSchema,
-    origin: appSourceOriginSchema,
-    ref: appSourceGitRefSchema.nullable(),
-  })
-  .strict();
-export type AppSourceConfig = z.infer<typeof appSourceConfigSchema>;
-
-/**
- * Per-app outcome of the latest sync. `installed` apps match the source;
- * `modified` apps have local edits and are never overwritten without force;
- * `conflict` ids are owned by a local app or another source; `invalid` apps
- * failed manifest validation in the source checkout.
- */
-export const appSourceAppStatusSchema = z.enum([
-  "installed",
-  "modified",
-  "conflict",
-  "invalid",
-]);
-export type AppSourceAppStatus = z.infer<typeof appSourceAppStatusSchema>;
-
-export const appSourceAppStateSchema = z
-  .object({
-    applicationId: applicationIdSchema,
-    status: appSourceAppStatusSchema,
-    error: z.string().nullable(),
-  })
-  .strict();
-export type AppSourceAppState = z.infer<typeof appSourceAppStateSchema>;
-
-/**
- * Machine-owned sync progress, persisted per source and rewritten whole on
- * every sync. `lastCommitSha`/`lastSyncedAt` describe the last successful
- * sync and survive failed attempts; `lastError` is null after a success.
- */
-export const appSourceSyncStateSchema = z
-  .object({
-    lastSyncStartedAt: isoUtcDateTimeSchema.nullable(),
-    lastSyncedAt: isoUtcDateTimeSchema.nullable(),
-    lastCommitSha: z.string().min(1).nullable(),
-    lastError: z.string().nullable(),
-    apps: z.array(appSourceAppStateSchema),
-  })
-  .strict();
-export type AppSourceSyncState = z.infer<typeof appSourceSyncStateSchema>;
-
-/**
- * Public per-source status: config + sync progress, minus the internal-only
- * `lastSyncStartedAt` (a progress marker no client consumes).
- */
-export const appSourceStatusSchema = appSourceConfigSchema
-  .extend({
-    ...appSourceSyncStateSchema.omit({ lastSyncStartedAt: true }).shape,
-    syncing: z.boolean(),
-  })
-  .strict();
-export type AppSourceStatus = z.infer<typeof appSourceStatusSchema>;
-
-export const addAppSourceRequestSchema = z
-  .object({
-    origin: appSourceOriginSchema,
-    /** Absent: derived from the origin's trailing repo name. */
-    name: appSourceNameSchema.optional(),
-    /** Absent: track the remote default branch. */
-    ref: appSourceGitRefSchema.optional(),
-  })
-  .strict();
-export type AddAppSourceRequest = z.infer<typeof addAppSourceRequestSchema>;
-
-export const syncAppSourceRequestSchema = z
-  .object({
-    /** Re-materializes diverged apps, discarding their local edits. */
-    force: z.boolean(),
-  })
-  .strict();
-export type SyncAppSourceRequest = z.infer<typeof syncAppSourceRequestSchema>;
-
-export const appDataEntrySchema = z
-  .object({
-    path: appDataPathSchema,
-    value: jsonValueSchema,
-    version: z.string().min(1),
-    sizeBytes: z.number().int().nonnegative(),
-    modifiedAtMs: z.number().nonnegative(),
-  })
-  .strict();
-export type AppDataEntry = z.infer<typeof appDataEntrySchema>;
-
-export const appDataReadResponseSchema = appDataEntrySchema;
-export type AppDataReadResponse = z.infer<typeof appDataReadResponseSchema>;
-
-export const appDataListQuerySchema = z
-  .object({
-    prefix: appDataPathSchema.or(z.literal("")),
-  })
-  .partial();
-export type AppDataListQuery = z.infer<typeof appDataListQuerySchema>;
-
-export const appDataListResponseSchema = z
-  .object({
-    entries: z.array(appDataEntrySchema),
-  })
-  .strict();
-export type AppDataListResponse = z.infer<typeof appDataListResponseSchema>;
-
-export const appDataWriteRequestSchema = z
-  .object({
-    value: jsonValueSchema,
-  })
-  .strict();
-export type AppDataWriteRequest = z.infer<typeof appDataWriteRequestSchema>;
-
-export const appMessageRequestSchema = z
-  .object({
-    payload: jsonValueSchema,
-    appSessionToken: z
-      .string()
-      .regex(/^appsess_[A-Za-z0-9_-]+$/u)
-      .optional(),
-    targetThreadId: z.string().min(1).optional(),
-  })
-  .strict();
-export type AppMessageRequest = z.infer<typeof appMessageRequestSchema>;
-
-export const appDataChangedBroadcastMessageSchema = z
-  .object({
-    type: z.literal("app-data.changed"),
-    applicationId: applicationIdSchema,
-    path: appDataPathSchema,
-    value: jsonValueSchema.nullable(),
-    deleted: z.boolean(),
-    version: z.string().min(1).nullable(),
-  })
-  .strict();
-
-export const appDataResyncBroadcastMessageSchema = z
-  .object({
-    type: z.literal("app-data.resync"),
-    applicationId: applicationIdSchema,
-  })
-  .strict();
-
-export const appDataBroadcastMessageSchema = z.discriminatedUnion("type", [
-  appDataChangedBroadcastMessageSchema,
-  appDataResyncBroadcastMessageSchema,
-]);
-export type AppDataBroadcastMessage = z.infer<
-  typeof appDataBroadcastMessageSchema
->;
-
-export const serverMessageSchema = z.union([
-  changedMessageSchema,
-  appDataBroadcastMessageSchema,
-]);
+export const serverMessageSchema = changedMessageSchema;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
-
-const appDataChangedBroadcastMessageLenientSchema = z.object({
-  type: z.literal("app-data.changed"),
-  applicationId: applicationIdSchema,
-  path: appDataPathSchema,
-  value: jsonValueSchema.nullable(),
-  deleted: z.boolean(),
-  version: z.string().min(1).nullable(),
-});
-
-const appDataResyncBroadcastMessageLenientSchema = z.object({
-  type: z.literal("app-data.resync"),
-  applicationId: applicationIdSchema,
-});
 
 /**
  * Lenient counterpart of {@link serverMessageSchema} for INBOUND parsing on
@@ -1877,85 +1539,7 @@ const appDataResyncBroadcastMessageLenientSchema = z.object({
  * dropping whole messages on additive server changes. Output stays assignable
  * to {@link ServerMessage}.
  */
-export const serverMessageLenientSchema = z.union([
-  changedMessageLenientSchema,
-  appDataChangedBroadcastMessageLenientSchema,
-  appDataResyncBroadcastMessageLenientSchema,
-]);
-
-export interface BbDataEntry {
-  path: AppDataPath;
-  value: JsonValue;
-}
-
-export interface BbDataReadArgs {
-  path: AppDataPath;
-}
-
-export interface BbDataWriteArgs extends BbDataReadArgs {
-  value: JsonValue;
-}
-
-export interface BbDataDeleteArgs extends BbDataReadArgs {}
-
-export interface BbDataListArgs {
-  prefix?: AppDataPath | "";
-}
-
-export interface BbDataChangeEvent {
-  path: AppDataPath;
-  value: JsonValue | undefined;
-  deleted: boolean;
-}
-
-export type BbDataChangeCallback = (event: BbDataChangeEvent) => void;
-
-export interface BbDataOnChangeArgs {
-  callback: BbDataChangeCallback;
-  prefix?: AppDataPath | "";
-}
-
-export interface BbData {
-  entries(args?: BbDataListArgs): Promise<AppDataEntry[]>;
-  read(args: BbDataReadArgs): Promise<JsonValue | undefined>;
-  write(args: BbDataWriteArgs): Promise<void>;
-  delete(args: BbDataDeleteArgs): Promise<void>;
-  list(args?: BbDataListArgs): Promise<BbDataEntry[]>;
-  onChange(args: BbDataOnChangeArgs): () => void;
-}
-
-export interface BbMessageSendArgs {
-  payload: JsonValue;
-  targetThreadId?: string;
-}
-
-export interface BbMessage {
-  send(args: BbMessageSendArgs): Promise<void>;
-}
-
-/**
- * Contract for the `window.bb` runtime that the server injects into served
- * app pages. The injected object is the full SDK surface — `@bb/sdk`'s
- * `InjectedAppWindowBb` (app-window.ts) is the source of truth and declares
- * the realtime `on(...)` surface in addition to the fields here; this type
- * mirrors the app-facing core so contract consumers can type `window.bb`
- * without depending on `@bb/sdk`. The runtime always knows which app it
- * serves, so both id fields are required; `window.bb` itself is optional
- * because pages outside the app iframe never receive the runtime.
- */
-export interface Bb {
-  /** @deprecated Alias of `applicationId`. */
-  appId: ApplicationId;
-  applicationId: ApplicationId;
-  data: BbData;
-  message: BbMessage;
-}
-
-declare global {
-  interface Window {
-    bb?: Bb;
-  }
-}
+export const serverMessageLenientSchema = changedMessageLenientSchema;
 
 export const systemExecutionOptionsQuerySchema = z
   .object({
@@ -2418,11 +2002,11 @@ export type ProjectResponse = z.infer<typeof projectResponseSchema>;
 export const projectWithThreadsResponseSchema = projectResponseSchema.extend({
   threads: z.array(threadListEntrySchema),
   /**
-   * Project's stored execution defaults (provider/model/reasoning/permission/
-   * tier). `null` when the project has never had a thread created in the app
-   * UI. Inlined here so the new-thread composer can seed its picker without a
-   * second round-trip per visit — the value comes from the sidebar bootstrap
-   * the page is already loading.
+   * Resolved provider/model/reasoning/permission/tier defaults for creating a
+   * root thread in this project. Inlined so the new-thread composer can render
+   * exactly what the server will use without a second round-trip per visit.
+   * `null` means the server cannot form concrete defaults for the current
+   * policy/provider combination.
    */
   defaultExecutionOptions: projectExecutionDefaultsSchema.nullable(),
 });
@@ -2663,210 +2247,3 @@ export type UploadedPromptAttachment = z.infer<
 export type EnvironmentStatusResponse = z.infer<
   typeof environmentStatusResponseSchema
 >;
-
-export {
-  replayCaptureDetailSchema,
-  replayCaptureListResponseSchema,
-  replayCaptureHostSummarySchema,
-  replayCaptureSummarySchema,
-  replayRunRequestSchema,
-  replayRunResponseSchema,
-  replaySpeedSchema,
-} from "@bb/replay-capture/schema";
-export type {
-  ReplayCaptureDetail,
-  ReplayCaptureHostSummary,
-  ReplayCaptureListResponse,
-  ReplayCaptureSummary,
-  ReplayRunRequest,
-  ReplayRunResponse,
-  ReplayRunSpeed,
-} from "@bb/replay-capture/schema";
-
-// ─── Workflows ─────────────────────────────────────────────────────────
-
-export const workflowListQuerySchema = z.object({
-  projectId: z.string().min(1),
-  /** Omitted = resolve the listing root from the project's default source. */
-  hostId: z.string().min(1).optional(),
-});
-export type WorkflowListQuery = z.infer<typeof workflowListQuerySchema>;
-
-/** Winners-only registry listings (project > user > builtin) from the resolved source root. */
-export const workflowListResponseSchema = z.array(
-  hostDaemonWorkflowListingSchema,
-);
-export type WorkflowListResponse = z.infer<typeof workflowListResponseSchema>;
-
-/** Inline launches carry the script source verbatim; the server validates and snapshots it. */
-const inlineWorkflowRunSourceSchema = z.object({
-  type: z.literal("inline"),
-  script: z.string().min(1),
-});
-
-/** Named launches resolve `name` through the host registry tiers (project > user > builtin). */
-const namedWorkflowRunSourceSchema = z.object({
-  type: z.literal("named"),
-  name: z.string().min(1),
-});
-
-export const createWorkflowRunSourceSchema = z.discriminatedUnion("type", [
-  inlineWorkflowRunSourceSchema,
-  namedWorkflowRunSourceSchema,
-]);
-export type CreateWorkflowRunSource = z.infer<
-  typeof createWorkflowRunSourceSchema
->;
-
-/**
- * The per-project workflow policy (plan M7): `sandboxCeiling` is the most
- * permissive sandbox the project's workflow launches — and per-call
- * `agent({sandbox})` specs — may use; "danger-full-access" must be granted
- * here before a launch can resolve it. `defaultBudgetOutputTokens` fills the
- * run budget when a launch carries no override; null = no budget default
- * (unbounded). GET returns the built-in defaults when the project has never
- * set a policy; PUT replaces the whole policy (both fields required — a null
- * budget means "no budget default", never "keep the old value"). Every run
- * snapshots its ceiling at create time, and each `workflow.start` queue
- * clamps that snapshot to the project's CURRENT effective ceiling — so
- * raising the ceiling never loosens an existing run, while LOWERING it (grant
- * revocation) takes effect the next time a held run starts or an interrupted
- * run resumes. Budget changes apply to future launches only.
- */
-export const projectWorkflowPolicySchema = z
-  .object({
-    sandboxCeiling: workflowSandboxSchema,
-    defaultBudgetOutputTokens: z.number().int().positive().nullable(),
-  })
-  .strict();
-export type ProjectWorkflowPolicyResponse = z.infer<
-  typeof projectWorkflowPolicySchema
->;
-export const updateProjectWorkflowPolicyRequestSchema =
-  projectWorkflowPolicySchema;
-export type UpdateProjectWorkflowPolicyRequest = ProjectWorkflowPolicyResponse;
-
-/**
- * Launch a workflow run. Optionality always carries real semantics:
- * `hostId` omitted = inherit `{hostId, workspacePath}` from the anchor
- * thread's environment when `anchorThreadId` is set (409
- * `thread_environment_unavailable`/`environment_not_ready` when the anchor
- * has no usable environment — never a silent fallback to the project
- * source), else the project's default source (409 when none); explicit
- * `hostId` always wins and 404s when that host has no local-path source;
- * `anchorThreadId` omitted = unanchored run; `args` omitted = launched
- * without args (distinct from `args: null`, which is JSON null args); the
- * override fields omitted = fall through to the workflow meta default, then
- * server policy; `clientRequestId` omitted = no launch replay protection (a
- * replayed `clientRequestId` returns the original run without re-creating
- * anything).
- */
-export const createWorkflowRunRequestSchema = z.object({
-  projectId: z.string().min(1),
-  source: createWorkflowRunSourceSchema,
-  hostId: z.string().min(1).optional(),
-  anchorThreadId: z.string().min(1).optional(),
-  args: jsonValueSchema.optional(),
-  clientRequestId: z.string().min(1).max(200).optional(),
-  providerId: z.string().min(1).optional(),
-  model: z.string().min(1).optional(),
-  effort: reasoningLevelSchema.optional(),
-  sandbox: workflowSandboxSchema.optional(),
-  budgetOutputTokens: z.number().int().positive().optional(),
-});
-export type CreateWorkflowRunRequest = z.infer<
-  typeof createWorkflowRunRequestSchema
->;
-
-export const workflowRunUsageSchema = z.object({
-  inputTokens: z.number().int().nonnegative(),
-  outputTokens: z.number().int().nonnegative(),
-  toolUses: z.number().int().nonnegative(),
-  durationMs: z.number().int().nonnegative(),
-});
-export type WorkflowRunUsage = z.infer<typeof workflowRunUsageSchema>;
-
-/**
- * The canonical public workflow-run projection (detail and list rows share
- * it). Deliberately excludes `scriptSource` — the snapshot is a potentially
- * large blob kept for resume/audit, not for client rendering; `scriptHash`
- * identifies it.
- */
-export const workflowRunResponseSchema = z.object({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
-  hostId: z.string().min(1),
-  workspacePath: z.string().min(1),
-  anchorThreadId: z.string().min(1).nullable(),
-  workflowName: z.string().min(1),
-  sourceTier: workflowRunSourceTierSchema,
-  scriptHash: z.string().min(1),
-  argsJson: z.string().nullable(),
-  seed: z.number().int(),
-  keyVersion: z.string().min(1),
-  providerId: z.string().min(1),
-  model: z.string().nullable(),
-  effort: reasoningLevelSchema,
-  sandbox: workflowSandboxSchema,
-  concurrency: z.number().int(),
-  maxAgents: z.number().int(),
-  maxFanout: z.number().int(),
-  budgetOutputTokens: z.number().int().nullable(),
-  status: workflowRunStatusSchema,
-  failureReason: z.string().nullable(),
-  progressSnapshot: workflowProgressSnapshotSchema.nullable(),
-  usage: workflowRunUsageSchema,
-  resultJson: z.string().nullable(),
-  retention: workflowRunRetentionSchema,
-  createdAt: z.number().int(),
-  startedAt: z.number().int().nullable(),
-  settledAt: z.number().int().nullable(),
-  updatedAt: z.number().int(),
-});
-export type WorkflowRunResponse = z.infer<typeof workflowRunResponseSchema>;
-
-export const workflowRunListQuerySchema = z.object({
-  /** Omitted = runs across all projects (the sidebar's recent-runs list). */
-  projectId: z.string().min(1).optional(),
-  limit: z.string().regex(/^\d+$/).optional(),
-});
-export type WorkflowRunListQuery = z.infer<typeof workflowRunListQuerySchema>;
-
-export const workflowRunListResponseSchema = z.array(workflowRunResponseSchema);
-export type WorkflowRunListResponse = z.infer<
-  typeof workflowRunListResponseSchema
->;
-
-export const workflowRunEventsQuerySchema = z
-  .object({
-    afterSeq: z.string().regex(/^\d+$/),
-  })
-  .partial();
-export type WorkflowRunEventsQuery = z.infer<
-  typeof workflowRunEventsQuerySchema
->;
-
-/** One durable run-event row with its payload parsed (`event.type` discriminates). */
-export const workflowRunEventRowResponseSchema = z.object({
-  sequence: z.number().int().positive(),
-  agentIndex: z.number().int().nullable(),
-  createdAt: z.number().int(),
-  event: workflowRunEventSchema,
-});
-export type WorkflowRunEventRowResponse = z.infer<
-  typeof workflowRunEventRowResponseSchema
->;
-
-export const workflowRunEventsResponseSchema = z.array(
-  workflowRunEventRowResponseSchema,
-);
-export type WorkflowRunEventsResponse = z.infer<
-  typeof workflowRunEventsResponseSchema
->;
-
-export const workflowRunWaitQuerySchema = z
-  .object({
-    waitMs: z.string().regex(/^\d+$/),
-  })
-  .partial();
-export type WorkflowRunWaitQuery = z.infer<typeof workflowRunWaitQuerySchema>;

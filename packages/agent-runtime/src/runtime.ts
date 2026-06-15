@@ -4,7 +4,6 @@ import {
   toProviderExternalThreadName,
 } from "@bb/domain";
 import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
-import type { AgentRuntimeCaptureEntry } from "./capture-types.js";
 import type {
   AdapterCommand,
   ProviderAdapterFactory,
@@ -19,7 +18,6 @@ import {
 import {
   getJsonRpcStringParam,
   ignoredJsonRpcResultSchema,
-  type JsonRpcMessage,
   type JsonRpcObject,
   parseJsonRpcLine,
   type SendJsonRpcRequestArgs,
@@ -50,8 +48,6 @@ import type {
   AgentRuntime,
   AgentRuntimeExecutionOptions,
   AgentRuntimeOptions,
-  AgentRuntimeSessionKind,
-  AgentRuntimeShellEnvironment,
   AgentRuntimeSkillRoot,
 } from "./types.js";
 import { buildThreadShellEnvironment } from "./thread-shell-environment.js";
@@ -101,7 +97,6 @@ interface ThreadRuntimeConfig {
   options: AgentRuntimeExecutionOptions;
   projectId?: string;
   providerId: string;
-  sessionKind: AgentRuntimeSessionKind;
   skillRoots: readonly AgentRuntimeSkillRoot[];
   workspacePath: string;
 }
@@ -115,34 +110,16 @@ interface RuntimeJsonRpcResponseArgs extends RuntimeParsedMessageArgs {
   parsedId: string | number;
 }
 
-interface RuntimeProviderNotificationArgs extends RuntimeParsedMessageArgs {
-  line: string;
-  notificationMethod: string;
-}
-
 interface EmitTranslatedEventsArgs {
   events: ThreadEvent[];
   proc: ProviderProcess;
-  providerId: string;
-  rawCaptureId?: string;
-  rawMethod?: string;
-  sourceThreadId?: string;
-}
-
-interface EmitRuntimeEventArgs {
-  event: ThreadEvent;
-  proc: ProviderProcess;
-  providerId: string;
-  rawMethod?: string;
   sourceThreadId?: string;
 }
 
 interface EmitAcceptedCommandEventsArgs {
   command: AdapterCommand;
   proc: ProviderProcess;
-  providerId: string;
   providerThreadId?: string;
-  rawMethod: string;
   sourceThreadId?: string;
 }
 
@@ -186,29 +163,23 @@ function createAgentRuntimeInternal(
     skillRoots: options.skillRoots,
   });
   let nextRequestId = 1;
-  let nextCaptureId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
   const turnState = new RuntimeTurnState();
   const turnReplayFilter = new RuntimeTurnReplayFilter();
 
-  function createCaptureId(): string {
-    const captureId = `capture-${nextCaptureId}`;
-    nextCaptureId += 1;
-    return captureId;
-  }
-
-  function emitCapture(entry: AgentRuntimeCaptureEntry): void {
-    options.onCapture?.(entry);
-  }
-
   const providerProcesses = new RuntimeProviderProcessManager({
     additionalWorkspaceWriteRoots,
     adapterFactory: options.adapterFactory,
     bridgeBundleDir: options.bridgeBundleDir,
+    captureThreadExitState: (threadId) => ({
+      activeTurnId: turnState.getActiveTurnId(threadId),
+      providerThreadId:
+        threadIdentityRegistry.getProviderThreadId(threadId) ?? null,
+      threadId,
+    }),
     createProviderIdentityState: (providerId) =>
       threadIdentityRegistry.createProviderState({ providerId }),
-    emitCapture,
     env: options.env,
     getNextRequestId: () => nextRequestId++,
     handleStdoutLine: (args) =>
@@ -229,8 +200,6 @@ function createAgentRuntimeInternal(
         emitTranslatedEvents({
           events: detachEvents,
           proc: providerProcess,
-          providerId: providerProcess.adapter.id,
-          rawMethod: "runtime/thread-detached",
           sourceThreadId: threadId,
         });
       }
@@ -328,16 +297,6 @@ function createAgentRuntimeInternal(
     );
   }
 
-  function resolveBaseShellEnv(
-    sessionKind: AgentRuntimeSessionKind,
-  ): AgentRuntimeShellEnvironment | undefined {
-    // Workflow agents never fall back to the full thread env — the restricted
-    // env is the whole point of the session kind.
-    return sessionKind === "workflowAgent"
-      ? options.workflowAgentShellEnv
-      : options.shellEnv;
-  }
-
   function setThreadRuntimeConfig(
     threadId: string,
     config: ThreadRuntimeConfig,
@@ -371,6 +330,24 @@ function createAgentRuntimeInternal(
       threadId,
       timeoutMs,
     });
+  }
+
+  /**
+   * Removes one thread's runtime state while its provider process keeps
+   * running: identity, execution config, turn state (resolving pending
+   * active-turn waiters with `null`), and replay-filter state.
+   */
+  function forgetThreadRuntimeState(
+    proc: ProviderProcess,
+    threadId: string,
+  ): void {
+    threadIdentityRegistry.forgetThread({
+      providerState: proc.identity,
+      threadId,
+    });
+    clearThreadRuntimeConfig(threadId);
+    turnState.clearThread(threadId);
+    turnReplayFilter.clearThread(threadId);
   }
 
   function requireProviderThreadId(threadId: string): string {
@@ -435,10 +412,13 @@ function createAgentRuntimeInternal(
     emitAcceptedCommandEvents({
       command: adapterCommand,
       proc,
-      providerId,
-      rawMethod: cmd.method,
       sourceThreadId: threadId,
     });
+    if (commandType === "thread/archive") {
+      // An archived thread is no longer live in the runtime; the next turn
+      // must resume it (after unarchive) instead of reusing stale state.
+      forgetThreadRuntimeState(proc, threadId);
+    }
   }
 
   async function reconfigureThreadIfNeeded(
@@ -465,10 +445,9 @@ function createAgentRuntimeInternal(
     const proc = requireProviderProcess(currentConfig.providerId);
     const providerSkillRoots = currentConfig.skillRoots;
     const envVars = buildThreadShellEnvironment({
-      baseShellEnv: resolveBaseShellEnv(currentConfig.sessionKind),
+      baseShellEnv: options.shellEnv,
       environmentId: currentConfig.environmentId,
       projectId: currentConfig.projectId,
-      sessionKind: currentConfig.sessionKind,
       threadStoragePath: resolveThreadStoragePath({
         options,
         threadId: args.threadId,
@@ -508,9 +487,7 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId: currentConfig.providerId,
         ...(providerThreadId !== undefined ? { providerThreadId } : {}),
-        rawMethod: plan.method,
         sourceThreadId: args.threadId,
       });
     }
@@ -592,29 +569,8 @@ function createAgentRuntimeInternal(
         replayResult.event,
       );
       turnState.observe(normalizedEvent);
-      emitRuntimeEvent({
-        event: normalizedEvent,
-        proc: args.proc,
-        providerId: args.providerId,
-        rawCaptureId: args.rawCaptureId,
-        rawMethod: args.rawMethod,
-        sourceThreadId: args.sourceThreadId,
-      });
+      options.onEvent(normalizedEvent);
     }
-  }
-
-  function emitRuntimeEvent(
-    args: EmitRuntimeEventArgs & { rawCaptureId?: string },
-  ): void {
-    emitCapture({
-      kind: "translated-thread-event",
-      capturedAt: Date.now(),
-      providerId: args.providerId,
-      rawCaptureId: args.rawCaptureId,
-      rawMethod: args.rawMethod,
-      event: args.event,
-    });
-    options.onEvent(args.event);
   }
 
   function emitAcceptedCommandEvents(
@@ -632,43 +588,18 @@ function createAgentRuntimeInternal(
     emitTranslatedEvents({
       events,
       proc: args.proc,
-      providerId: args.providerId,
-      rawMethod: `${args.rawMethod}/result`,
       sourceThreadId: args.sourceThreadId,
     });
   }
 
-  function handleProviderNotification(
-    args: RuntimeProviderNotificationArgs,
-  ): void {
+  function handleProviderNotification(args: RuntimeParsedMessageArgs): void {
     const sourceThreadId = getJsonRpcStringParam(args.parsed, "threadId");
-    const rawCaptureId = createCaptureId();
-    const rawEvent: JsonRpcMessage = {
-      jsonrpc: "2.0",
-      method: args.notificationMethod,
-      ...(Object.hasOwn(args.parsed, "params")
-        ? { params: args.parsed.params }
-        : {}),
-    };
-    const providerId = args.proc.adapter.id;
-    emitCapture({
-      kind: "raw-provider-event",
-      captureId: rawCaptureId,
-      capturedAt: Date.now(),
-      providerId,
-      rawLine: args.line,
-      rawEvent,
-      sourceThreadId,
-    });
     emitTranslatedEvents({
       events: args.proc.adapter.translateEvent(args.parsed, {
         threadId: sourceThreadId,
       }),
       proc: args.proc,
-      providerId,
       sourceThreadId,
-      rawCaptureId,
-      rawMethod: rawEvent.method,
     });
   }
 
@@ -693,12 +624,9 @@ function createAgentRuntimeInternal(
 
     if (parsedLine.kind === "request") {
       handleRuntimeProviderRequest({
-        createCaptureId,
-        emitCapture,
         getActiveTurnId: (threadId) => turnState.getActiveTurnId(threadId),
         getThreadExecutionOptions: (threadId) =>
           threadRuntimeConfigs.get(threadId)?.options,
-        line,
         onInteractiveRequest: options.onInteractiveRequest,
         onToolCall: options.onToolCall,
         parsedId: parsedLine.parsedId,
@@ -719,8 +647,6 @@ function createAgentRuntimeInternal(
     // own wire format (codex sends direct notifications, bridges wrap
     // SDK messages in sdk/message envelopes, etc.).
     handleProviderNotification({
-      line,
-      notificationMethod: parsedLine.notificationMethod,
       parsed: parsedLine.parsed,
       proc,
     });
@@ -740,7 +666,6 @@ function createAgentRuntimeInternal(
       threadId,
       projectId,
       providerId,
-      sessionKind,
       clientRequestId,
       input,
       options: execOpts,
@@ -748,7 +673,6 @@ function createAgentRuntimeInternal(
       dynamicTools,
       disallowedTools,
       instructionMode = "append",
-      outputSchema,
     }) {
       await runtime.ensureProvider({ providerId });
 
@@ -774,16 +698,14 @@ function createAgentRuntimeInternal(
         options: execOpts,
         projectId,
         providerId,
-        sessionKind,
         skillRoots: providerSkillRoots,
         workspacePath: options.workspacePath,
       });
 
       const envVars = buildThreadShellEnvironment({
-        baseShellEnv: resolveBaseShellEnv(sessionKind),
+        baseShellEnv: options.shellEnv,
         environmentId,
         projectId,
-        sessionKind,
         threadStoragePath: resolveThreadStoragePath({
           options,
           threadId,
@@ -804,7 +726,6 @@ function createAgentRuntimeInternal(
         dynamicTools,
         disallowedTools,
         instructionMode,
-        ...(outputSchema !== undefined ? { outputSchema } : {}),
       };
       const cmd = requireProviderRequestPlan({
         commandType: adapterCommand.type,
@@ -827,9 +748,7 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId,
         ...(providerThreadId !== undefined ? { providerThreadId } : {}),
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
 
@@ -874,17 +793,6 @@ function createAgentRuntimeInternal(
       disallowedTools,
       instructionMode = "append",
     }) {
-      // Structural no-nesting guard: resuming a workflowAgent-kind thread
-      // through this interactive-thread path would rebuild the FULL thread env
-      // (BB_SERVER_URL, bb-on-PATH, BB_THREAD_ID) — exactly the hole the
-      // session kind exists to close. Workflow agent sessions are ephemeral
-      // and are never resumed.
-      const existingConfig = threadRuntimeConfigs.get(threadId);
-      if (existingConfig?.sessionKind === "workflowAgent") {
-        throw new Error(
-          `Workflow agent sessions are ephemeral and cannot be resumed: ${threadId}`,
-        );
-      }
       await runtime.ensureProvider({ providerId });
 
       const proc = requireProviderProcess(providerId);
@@ -909,9 +817,6 @@ function createAgentRuntimeInternal(
         options: execOpts,
         projectId,
         providerId,
-        // Resume is an interactive-thread operation; workflowAgent-kind
-        // threads were rejected above.
-        sessionKind: "thread",
         skillRoots: providerSkillRoots,
         workspacePath: options.workspacePath,
       });
@@ -924,7 +829,6 @@ function createAgentRuntimeInternal(
         baseShellEnv: options.shellEnv,
         environmentId,
         projectId,
-        sessionKind: "thread",
         threadStoragePath: resolveThreadStoragePath({
           options,
           threadId,
@@ -977,9 +881,7 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId,
         providerThreadId: resolvedId,
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
 
@@ -992,7 +894,6 @@ function createAgentRuntimeInternal(
       clientRequestId,
       options: execOpts,
       instructions,
-      outputSchema,
     }) {
       const pid = resolveProviderForThread(threadId);
       const proc = requireProviderProcess(pid);
@@ -1018,7 +919,6 @@ function createAgentRuntimeInternal(
           execOpts,
           instructions,
         }),
-        ...(outputSchema !== undefined ? { outputSchema } : {}),
       };
       const cmd = requireProviderRequestPlan({
         commandType: adapterCommand.type,
@@ -1039,8 +939,6 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId: pid,
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
     },
@@ -1068,7 +966,7 @@ function createAgentRuntimeInternal(
         );
         return {
           status: "stale",
-          activeTurnId: activeTurnId ?? null,
+          activeTurnId,
         };
       }
 
@@ -1104,8 +1002,6 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId: pid,
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
       return { status: "steered" };
@@ -1120,7 +1016,7 @@ function createAgentRuntimeInternal(
         type: "thread/stop",
         threadId,
         providerThreadId,
-        activeTurnId: activeTurnId ?? null,
+        activeTurnId,
       };
       const cmd = proc.adapter.buildCommandPlan(adapterCommand);
 
@@ -1130,7 +1026,7 @@ function createAgentRuntimeInternal(
             `Adapter "${pid}" returned no provider request for thread/stop with active turn: ${cmd.reason}`,
           );
         }
-        turnReplayFilter.clearThread(threadId);
+        forgetThreadRuntimeState(proc, threadId);
         return;
       }
 
@@ -1142,12 +1038,9 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId: pid,
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
-      turnState.clearThread(threadId);
-      turnReplayFilter.clearThread(threadId);
+      forgetThreadRuntimeState(proc, threadId);
     },
 
     async renameThread({ threadId, title }) {
@@ -1176,8 +1069,6 @@ function createAgentRuntimeInternal(
       emitAcceptedCommandEvents({
         command: adapterCommand,
         proc,
-        providerId: pid,
-        rawMethod: cmd.method,
         sourceThreadId: threadId,
       });
     },
@@ -1218,6 +1109,29 @@ function createAgentRuntimeInternal(
 
     listRunningProviders() {
       return providerProcesses.listRunningProviders();
+    },
+
+    getActiveTurnId(threadId) {
+      return turnState.getActiveTurnId(threadId);
+    },
+
+    waitForActiveTurn(threadId, args) {
+      return turnState.waitForActiveTurn({
+        threadId,
+        timeoutMs: args.timeoutMs,
+      });
+    },
+
+    getProviderSession(threadId) {
+      return threadIdentityRegistry.getProviderSession(threadId);
+    },
+
+    hasThread(threadId) {
+      return threadIdentityRegistry.getProviderSession(threadId) !== null;
+    },
+
+    getActiveThreadIds() {
+      return turnState.getActiveThreadIds();
     },
 
     async shutdown() {

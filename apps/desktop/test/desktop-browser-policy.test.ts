@@ -4,6 +4,9 @@ import {
   bbDesktopBrowserAttachRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserStateSchema,
+  bbDesktopPopoutMouseEventsIgnoredRequestSchema,
+  bbDesktopPopoutThreadChangedPayloadSchema,
+  bbDesktopPopoutThreadRefSchema,
 } from "@bb/server-contract";
 import {
   evaluatePopupRate,
@@ -155,6 +158,56 @@ describe("browser IPC payload schemas", () => {
         url: longUrl,
         bounds: { x: 0, y: 0, width: 800, height: 600 },
         visible: true,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("popout IPC payload schemas", () => {
+  it("accepts only strict thread references and nullable thread changes", () => {
+    const threadRef = {
+      projectId: "proj_abc",
+      threadId: "thr_abc",
+    };
+
+    expect(bbDesktopPopoutThreadRefSchema.safeParse(threadRef).success).toBe(
+      true,
+    );
+    expect(
+      bbDesktopPopoutThreadChangedPayloadSchema.safeParse(threadRef).success,
+    ).toBe(true);
+    expect(
+      bbDesktopPopoutThreadChangedPayloadSchema.safeParse(null).success,
+    ).toBe(true);
+    expect(
+      bbDesktopPopoutThreadRefSchema.safeParse({
+        ...threadRef,
+        extra: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopPopoutThreadRefSchema.safeParse({
+        projectId: "",
+        threadId: "thr_abc",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only strict mouse passthrough requests", () => {
+    expect(
+      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse({
+        ignore: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse({
+        ignore: true,
+        extra: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopPopoutMouseEventsIgnoredRequestSchema.safeParse({
+        ignore: "true",
       }).success,
     ).toBe(false);
   });

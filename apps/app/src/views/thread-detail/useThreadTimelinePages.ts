@@ -32,7 +32,7 @@ export interface LoadedTimelineState {
 }
 
 interface BuildLoadedTimelineStateArgs {
-  latestRows: readonly TimelineRow[];
+  latestRows: TimelineRow[];
   olderCursor: NullableTimelinePaginationCursor;
   surfaceKey: string;
 }
@@ -44,12 +44,27 @@ interface AreTimelinePaginationCursorsEqualArgs {
 
 export interface MergeLatestTimelineRowsArgs {
   latestRows: readonly TimelineRow[];
-  loadedRows: readonly TimelineRow[];
+  loadedRows: TimelineRow[];
 }
 
 interface MergeLatestTimelineRowsResult {
   hasLatestOverlap: boolean;
   rows: TimelineRow[];
+}
+
+interface TimelineRowIdentityEntry {
+  row: TimelineRow;
+  signature: string;
+}
+
+interface PreserveTimelineRowIdentityArgs {
+  nextRows: readonly TimelineRow[];
+  previousRows: readonly TimelineRow[];
+}
+
+interface AreTimelineRowReferencesEqualArgs {
+  left: readonly TimelineRow[];
+  right: readonly TimelineRow[];
 }
 
 export interface PrependOlderTimelineRowsArgs {
@@ -80,7 +95,7 @@ function buildLoadedTimelineState({
 }: BuildLoadedTimelineStateArgs): LoadedTimelineState {
   return {
     olderCursor,
-    rows: [...latestRows],
+    rows: latestRows,
     surfaceKey,
   };
 }
@@ -109,6 +124,57 @@ function appendTimelineRowsPreservingOrder(
   }
 }
 
+function timelineRowIdentitySignature(row: TimelineRow): string {
+  return [
+    row.kind,
+    row.id,
+    row.threadId,
+    row.turnId ?? "<null>",
+    row.sourceSeqStart,
+    row.sourceSeqEnd,
+    row.startedAt,
+    row.createdAt,
+  ].join("\u001f");
+}
+
+function buildTimelineRowIdentityMap(
+  rows: readonly TimelineRow[],
+): ReadonlyMap<string, TimelineRowIdentityEntry> {
+  const rowsById = new Map<string, TimelineRowIdentityEntry>();
+  for (const row of rows) {
+    rowsById.set(row.id, {
+      row,
+      signature: timelineRowIdentitySignature(row),
+    });
+  }
+  return rowsById;
+}
+
+function preserveTimelineRowIdentity({
+  nextRows,
+  previousRows,
+}: PreserveTimelineRowIdentityArgs): TimelineRow[] {
+  const previousRowsById = buildTimelineRowIdentityMap(previousRows);
+  return nextRows.map((row) => {
+    const previous = previousRowsById.get(row.id);
+    if (
+      previous &&
+      previous.signature === timelineRowIdentitySignature(row)
+    ) {
+      return previous.row;
+    }
+    return row;
+  });
+}
+
+function areTimelineRowReferencesEqual({
+  left,
+  right,
+}: AreTimelineRowReferencesEqualArgs): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((row, index) => row === right[index]);
+}
+
 export function prependOlderTimelineRows({
   loadedRows,
   olderRows,
@@ -123,10 +189,15 @@ export function mergeLatestTimelineRows({
   latestRows,
   loadedRows,
 }: MergeLatestTimelineRowsArgs): MergeLatestTimelineRowsResult {
+  const identityPreservedLatestRows = preserveTimelineRowIdentity({
+    nextRows: latestRows,
+    previousRows: loadedRows,
+  });
+
   if (loadedRows.length === 0) {
     return {
       hasLatestOverlap: false,
-      rows: [...latestRows],
+      rows: identityPreservedLatestRows,
     };
   }
 
@@ -136,16 +207,33 @@ export function mergeLatestTimelineRows({
   );
   if (firstLatestOverlapIndex === -1) {
     const rows = [...loadedRows];
-    appendTimelineRowsPreservingOrder(rows, latestRows);
+    appendTimelineRowsPreservingOrder(rows, identityPreservedLatestRows);
+    if (areTimelineRowReferencesEqual({ left: loadedRows, right: rows })) {
+      return {
+        hasLatestOverlap: false,
+        rows: loadedRows,
+      };
+    }
     return {
       hasLatestOverlap: false,
       rows,
     };
   }
 
+  const rows = [
+    ...loadedRows.slice(0, firstLatestOverlapIndex),
+    ...identityPreservedLatestRows,
+  ];
+  if (areTimelineRowReferencesEqual({ left: loadedRows, right: rows })) {
+    return {
+      hasLatestOverlap: true,
+      rows: loadedRows,
+    };
+  }
+
   return {
     hasLatestOverlap: true,
-    rows: [...loadedRows.slice(0, firstLatestOverlapIndex), ...latestRows],
+    rows,
   };
 }
 
@@ -215,6 +303,7 @@ export function useThreadTimelinePages({
 }: UseThreadTimelinePagesArgs): UseThreadTimelinePagesResult {
   const latestTimelineQuery = useThreadTimeline(threadId, {
     refetchOnMount: true,
+    staleTime: Infinity,
   });
   const surfaceKey = buildSurfaceKey({ threadId });
   const [loadedTimeline, setLoadedTimeline] = useState<LoadedTimelineState>(

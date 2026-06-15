@@ -1,8 +1,6 @@
-import { useState } from "react";
 import {
   NewTabActions,
   NewTabFileSearch,
-  type CreateAppPromptPrefillHandler,
   type NewTabFileSearchProps,
   type OpenBrowserHandler,
   type StartTerminalHandler,
@@ -10,11 +8,10 @@ import {
 
 type NewTabPageFileSearchProps = Omit<
   NewTabFileSearchProps,
-  "onSearchActiveChange"
+  "idleActions"
 >;
 
 export interface NewTabPageProps extends NewTabPageFileSearchProps {
-  onCreateAppPromptPrefill?: CreateAppPromptPrefillHandler;
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
 }
@@ -29,16 +26,11 @@ export function NewTabPage({
   environmentId,
   focusRequest,
   initialQuery,
-  onCreateAppPromptPrefill,
   onOpenBrowser,
   onSelect,
   onStartTerminal,
   projectId,
 }: NewTabPageProps) {
-  const [isSearchActive, setIsSearchActive] = useState(
-    () => (initialQuery ?? "").trim().length > 0,
-  );
-
   return (
     <div className="flex min-h-full flex-col gap-3 px-4 pb-3 pt-1">
       <NewTabFileSearch
@@ -46,20 +38,15 @@ export function NewTabPage({
         environmentId={environmentId}
         currentThreadId={currentThreadId}
         focusRequest={focusRequest}
+        idleActions={
+          <NewTabActions
+            onOpenBrowser={onOpenBrowser}
+            onStartTerminal={onStartTerminal}
+          />
+        }
         initialQuery={initialQuery}
-        onSearchActiveChange={setIsSearchActive}
         onSelect={onSelect}
       />
-      {isSearchActive ? null : (
-        <NewTabActions
-          projectId={projectId}
-          currentThreadId={currentThreadId}
-          onSelect={onSelect}
-          onCreateAppPromptPrefill={onCreateAppPromptPrefill}
-          onOpenBrowser={onOpenBrowser}
-          onStartTerminal={onStartTerminal}
-        />
-      )}
     </div>
   );
 }

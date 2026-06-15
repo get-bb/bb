@@ -10,17 +10,6 @@ import { registerGuideCommand } from "../../commands/guide.js";
 describe("bb guide command output", () => {
   setupCommandOutputTestEnvironment();
 
-  it("bb guide styling redirects to the app chapter", async () => {
-    await runCommand(["guide", "styling"], registerGuideCommand);
-
-    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
-    expect(output.trim().length).toBeGreaterThan(0);
-    expect(output).toContain("Apps");
-    expect(output).toContain("Styling:");
-    expect(output).toContain("https://cdn.tailwindcss.com");
-    expect(output).toContain("@media (prefers-color-scheme: dark)");
-  });
-
   it("bb guide schedules prints the thread schedules chapter", async () => {
     await runCommand(["guide", "schedules"], registerGuideCommand);
 
@@ -39,22 +28,7 @@ describe("bb guide command output", () => {
     expect(output).toContain("bb thread schedule create");
   });
 
-  it("bb guide app prints the app chapter", async () => {
-    await runCommand(["guide", "app"], registerGuideCommand);
-
-    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
-    expect(output.trim().length).toBeGreaterThan(0);
-    expect(output).toContain("Apps");
-    expect(output).toContain("<dataDir>/apps/<applicationId>/");
-    expect(output).toContain("window.bb.data");
-    expect(output).toContain("window.bb.message.send");
-    expect(output).toContain("bb app current --json");
-    expect(output).toContain("Vite + React + TypeScript Todo app");
-    expect(output).toContain("pnpm build");
-    expect(output).toContain("skills/add-todos/SKILL.md");
-  });
-
-  it("bb guide unknown chapter lists styling in available chapters", async () => {
+  it("bb guide unknown chapter lists available chapters", async () => {
     await expect(
       runCommand(["guide", "missing"], registerGuideCommand),
     ).rejects.toThrow("process.exit:1");
@@ -62,7 +36,7 @@ describe("bb guide command output", () => {
     const errorOutput = collectLogLines(vi.mocked(console.error)).join("\n");
     expect(errorOutput).toContain("Unknown guide chapter 'missing'");
     expect(errorOutput).toContain(
-      "Available: threads, environments, app, providers, projects, styling, schedules, async.",
+      "Available: threads, environments, providers, projects, schedules, async.",
     );
   });
 });

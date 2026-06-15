@@ -1,4 +1,8 @@
-import type { BbDesktopApi, BbDesktopBrowserApi } from "@bb/server-contract";
+import type {
+  BbDesktopApi,
+  BbDesktopBrowserApi,
+  BbDesktopPopoutApi,
+} from "@bb/server-contract";
 
 // The macOS traffic-light cluster sits in a fixed strip on the left of the
 // frameless window. In-flow chrome clears it with left padding; the pinned
@@ -93,4 +97,12 @@ export function getDesktopBrowserApi(): BbDesktopBrowserApi | null {
 
 export function isDesktopBrowserAvailable(): boolean {
   return getDesktopBrowserApi() !== null;
+}
+
+export function getDesktopPopoutApi(): BbDesktopPopoutApi | null {
+  return getBbDesktopInfo()?.popout ?? null;
+}
+
+export function isDesktopPopoutAvailable(): boolean {
+  return getDesktopPopoutApi() !== null;
 }

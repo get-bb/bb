@@ -13,7 +13,8 @@ describe("experiments settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
         claudeCodeMockCliTraffic: false,
-        workflows: false,
+        popoutChat: false,
+        popoutChatHotkey: "Alt+Space",
       });
     });
   });
@@ -25,17 +26,20 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           claudeCodeMockCliTraffic: true,
-          workflows: true,
+          popoutChat: true,
+          popoutChatHotkey: "CommandOrControl+Shift+P",
         }),
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         claudeCodeMockCliTraffic: true,
-        workflows: true,
+        popoutChat: true,
+        popoutChatHotkey: "CommandOrControl+Shift+P",
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
-        workflows: true,
+        popoutChat: true,
+        popoutChatHotkey: "CommandOrControl+Shift+P",
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -43,7 +47,8 @@ describe("experiments settings", () => {
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
         claudeCodeMockCliTraffic: true,
-        workflows: true,
+        popoutChat: true,
+        popoutChatHotkey: "CommandOrControl+Shift+P",
       });
     });
   });

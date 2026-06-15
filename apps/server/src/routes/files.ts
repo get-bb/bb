@@ -1,6 +1,11 @@
 import path from "node:path";
 import type { Hono } from "hono";
 import mimeTypes from "mime-types";
+import {
+  threadFilesRawQuerySchema,
+  typedRoutes,
+  type PublicApiSchema,
+} from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../types.js";
@@ -12,7 +17,6 @@ import {
 } from "../services/hosts/daemon-file-response.js";
 import { requirePublicThreadEnvironment } from "../services/lib/entity-lookup.js";
 
-const FILES_RAW_PATH_QUERY_KEY = "path";
 const HTML_PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
 const HTML_PREVIEW_CONTENT_TYPE = "text/html; charset=utf-8";
 const HTML_PREVIEW_CSP = "sandbox allow-scripts";
@@ -42,13 +46,8 @@ function createRawFilesystemPathUnsupportedError(): ApiError {
   );
 }
 
-function parseRawFilesystemPath(rawPath: string | undefined): string {
-  if (
-    rawPath === undefined ||
-    rawPath.length === 0 ||
-    rawPath.includes("\0") ||
-    !path.isAbsolute(rawPath)
-  ) {
+function parseRawFilesystemPath(rawPath: string): string {
+  if (rawPath.includes("\0") || !path.isAbsolute(rawPath)) {
     throw createRawFilesystemPathInvalidError();
   }
   return path.resolve(rawPath);
@@ -94,7 +93,7 @@ function createRawFilesystemHtmlPreviewResponse(
 async function serveRawFilesystemHtmlFile(
   deps: LoggedWorkSessionDeps,
   threadId: string,
-  rawPath: string | undefined,
+  rawPath: string,
 ): Promise<Response> {
   const filePath = parseRawFilesystemPath(rawPath);
   assertHtmlPreviewPath(filePath);
@@ -115,16 +114,14 @@ async function serveRawFilesystemHtmlFile(
 }
 
 export function registerFileRoutes(app: Hono, deps: AppDeps): void {
-  // Contract-private, not network-private: this endpoint is intentionally
-  // outside @bb/server-contract because it serves local user-authored HTML
-  // bytes for the desktop/dev app shell, scoped to the clicked thread's host.
-  // It must remain protected by bb's local-only deployment assumptions; do
-  // not expose /api/v1 on public HTTP without adding an auth boundary.
-  app.get("/threads/:id/files/raw", async (context) =>
-    serveRawFilesystemHtmlFile(
-      deps,
-      context.req.param("id"),
-      context.req.query(FILES_RAW_PATH_QUERY_KEY),
-    ),
+  const { get } = typedRoutes<PublicApiSchema>(app, {
+    onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
+  });
+
+  get(
+    "/threads/:id/files/raw",
+    threadFilesRawQuerySchema,
+    async (context, query) =>
+      serveRawFilesystemHtmlFile(deps, context.req.param("id"), query.path),
   );
 }

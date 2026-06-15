@@ -58,6 +58,7 @@ export interface EnvironmentPickerUIProps {
   reuseDisabled?: boolean;
   /** Render with the dim, hover-to-foreground treatment used inside the prompt box. */
   muted?: boolean;
+  className?: string;
   /** Render with the menu open on mount. Story-only escape hatch. */
   defaultOpen?: boolean;
   /** Whether the menu blocks page interaction. Defaults to Radix's true; pass false in stories. */
@@ -72,6 +73,7 @@ export function EnvironmentPickerUI({
   isLocal,
   reuseDisabled,
   muted,
+  className,
   defaultOpen,
   modal,
 }: EnvironmentPickerUIProps) {
@@ -153,6 +155,7 @@ export function EnvironmentPickerUI({
             OPTION_BASE_CLASS_NAME,
             OPTION_INTERACTIVE_CLASS_NAME,
             muted && OPTION_MUTED_CLASS_NAME,
+            className,
           )}
         >
           <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME}>

@@ -79,6 +79,30 @@ describe("host.list_branches dispatch", () => {
     ]);
   });
 
+  it("pins origin default branch first in remote branch results", async () => {
+    const repoPath = await initBranchRepo();
+    const remotePath = await makeTempDir("bb-host-branches-origin-");
+    await runGitCommand(["init", "--bare"], { cwd: remotePath });
+    await runGitCommand(["remote", "add", "origin", remotePath], {
+      cwd: repoPath,
+    });
+    await runGitCommand(["branch", "bb/aardvark"], { cwd: repoPath });
+    await runGitCommand(["push", "origin", "bb/aardvark", "main"], {
+      cwd: repoPath,
+    });
+    await runGitCommand(["fetch", "origin"], { cwd: repoPath });
+    const harness = createHarness();
+
+    const result = await dispatchOnlineRpcCommand(
+      { type: "host.list_branches", path: repoPath, limit: 1 },
+      harness.dispatchOptions(),
+    );
+
+    expect(result.defaultBranch).toBe("main");
+    expect(result.remoteBranches).toEqual(["origin/main"]);
+    expect(result.remoteBranchesTruncated).toBe(true);
+  });
+
   it("classifies a selected branch before filtering and pagination", async () => {
     const repoPath = await initBranchRepo();
     const remotePath = await makeTempDir("bb-host-branches-remote-");

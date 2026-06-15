@@ -43,6 +43,19 @@ function createStoryDesktopApi(): BbDesktopApi {
   return {
     ...STORY_DESKTOP_INFO,
     browser: createStoryDesktopBrowserApi(),
+    popout: {
+      getCurrentThread() {
+        return Promise.resolve(null);
+      },
+      toggle() {},
+      setThread() {},
+      stateChanged() {},
+      openInMain() {},
+      setMouseEventsIgnored() {},
+      onThreadChanged() {
+        return () => {};
+      },
+    },
     async checkForUpdates() {
       return STORY_DESKTOP_INFO;
     },

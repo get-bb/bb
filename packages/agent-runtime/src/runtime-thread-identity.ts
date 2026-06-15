@@ -1,4 +1,5 @@
 import type { ThreadEvent } from "@bb/domain";
+import type { AgentRuntimeProviderSession } from "./types.js";
 
 interface PendingIdentityWaiter {
   resolve: (providerThreadId: string | null) => void;
@@ -38,6 +39,11 @@ export interface WaitForProviderThreadIdentityArgs {
   providerState: RuntimeProviderIdentityState;
   threadId: string;
   timeoutMs: number;
+}
+
+export interface ForgetThreadArgs {
+  providerState: RuntimeProviderIdentityState;
+  threadId: string;
 }
 
 export interface ResolveProviderEventThreadIdArgs {
@@ -85,6 +91,15 @@ export class RuntimeThreadIdentityRegistry {
 
   getProviderThreadId(threadId: string): string | undefined {
     return this.threadToProviderThread.get(threadId);
+  }
+
+  getProviderSession(threadId: string): AgentRuntimeProviderSession | null {
+    const providerId = this.threadToProvider.get(threadId);
+    const providerThreadId = this.threadToProviderThread.get(threadId);
+    if (!providerId || !providerThreadId) {
+      return null;
+    }
+    return { providerId, providerThreadId };
   }
 
   recordProviderThreadIdentity(args: RecordProviderThreadIdentityArgs): void {
@@ -184,6 +199,28 @@ export class RuntimeThreadIdentityRegistry {
   clearThread(threadId: string): void {
     this.threadToProvider.delete(threadId);
     this.threadToProviderThread.delete(threadId);
+  }
+
+  /**
+   * Fully detaches one thread from a still-running provider process: clears
+   * the identity maps, drops the thread from the provider's bookkeeping, and
+   * resolves any pending identity waiter with `null`. Used when a thread ends
+   * its residency (stop/archive) while the provider process keeps serving
+   * other threads.
+   */
+  forgetThread(args: ForgetThreadArgs): void {
+    args.providerState.threadIds.delete(args.threadId);
+    args.providerState.pendingIdentityThreadIds =
+      args.providerState.pendingIdentityThreadIds.filter(
+        (pendingThreadId) => pendingThreadId !== args.threadId,
+      );
+    const waiter = args.providerState.identityWaiters.get(args.threadId);
+    if (waiter) {
+      clearTimeout(waiter.timeout);
+      args.providerState.identityWaiters.delete(args.threadId);
+      waiter.resolve(null);
+    }
+    this.clearThread(args.threadId);
   }
 
   clearProviderState(providerState: RuntimeProviderIdentityState): void {

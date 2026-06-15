@@ -13,7 +13,6 @@ import {
   reorderProject,
   updateProject,
   updateProjectSource,
-  upsertProjectWorkflowPolicy,
   type ReorderProjectResult,
 } from "@bb/db";
 import {
@@ -32,7 +31,6 @@ import {
   typedRoutes,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
-  updateProjectWorkflowPolicyRequestSchema,
   type ProjectListIncludeOption,
   type ProjectListQuery,
   type ProjectResponse,
@@ -55,10 +53,9 @@ import {
   requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
 import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
+import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
-import {
-  toThreadListEntryResponses,
-} from "../services/threads/thread-runtime-display.js";
+import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
@@ -73,7 +70,6 @@ import {
   requestProjectDeletionAdvance,
 } from "../services/projects/project-deletion.js";
 import { listProjectPromptHistory } from "../services/prompt-history.js";
-import { getEffectiveProjectWorkflowPolicy } from "../services/workflows/workflow-run-policy.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import {
   normalizeBranchQuery,
@@ -211,7 +207,9 @@ function buildProjectsWithThreadsResponseFromRows(
   return projects.map((project) => ({
     ...project,
     threads: threadsByProjectId.get(project.id) ?? [],
-    defaultExecutionOptions: defaultsByProjectId.get(project.id) ?? null,
+    defaultExecutionOptions: resolveCreateThreadExecutionDefaults({
+      storedDefaults: defaultsByProjectId.get(project.id) ?? null,
+    }).executionDefaults,
   }));
 }
 
@@ -323,7 +321,7 @@ function resolveProjectSourcePath(
 }
 
 export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
-  const { get, post, patch, put, del } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
 
@@ -523,30 +521,6 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ ok: true });
   });
 
-  get("/projects/:id/workflow-policy", (context) => {
-    requirePublicProject(deps.db, context.req.param("id"));
-    return context.json(
-      getEffectiveProjectWorkflowPolicy(deps.db, context.req.param("id")),
-    );
-  });
-
-  put(
-    "/projects/:id/workflow-policy",
-    updateProjectWorkflowPolicyRequestSchema,
-    (context, payload) => {
-      const projectId = context.req.param("id");
-      requirePublicProject(deps.db, projectId);
-      upsertProjectWorkflowPolicy(deps.db, {
-        projectId,
-        sandboxCeiling: payload.sandboxCeiling,
-        defaultBudgetOutputTokens: payload.defaultBudgetOutputTokens,
-      });
-      return context.json(
-        getEffectiveProjectWorkflowPolicy(deps.db, projectId),
-      );
-    },
-  );
-
   get(
     "/projects/:id/files",
     projectFilesQuerySchema,
@@ -593,7 +567,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       // Project-source listing only: used by the new-thread compose box before
       // any environment exists. Once a thread has an environment, workspace
       // path search goes through `GET /environments/:id/paths` instead.
-      const target = resolveProjectSourcePath(deps, { projectId, hostId: null });
+      const target = resolveProjectSourcePath(deps, {
+        projectId,
+        hostId: null,
+      });
       const inclusion = parsePathKindInclusion({
         includeFiles: query.includeFiles,
         includeDirectories: query.includeDirectories,

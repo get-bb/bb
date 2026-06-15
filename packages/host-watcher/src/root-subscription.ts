@@ -16,7 +16,8 @@ type ParcelWatcherAsyncSubscription = Awaited<
 type ParcelWatcherError = Parameters<ParcelWatcherCallback>[0];
 
 export type ParcelWatcherEventBatch = Parameters<ParcelWatcherCallback>[1];
-export type ParcelWatcherSubscribeOptions = Parameters<ParcelWatcherSubscribe>[2];
+export type ParcelWatcherSubscribeOptions =
+  Parameters<ParcelWatcherSubscribe>[2];
 
 export interface RootSubscriptionArgs {
   rootPath: string;
@@ -49,10 +50,10 @@ function isDroppedEventsRescanRequiredMessage(message: string): boolean {
 
 /**
  * Owns the full lifecycle of a single Parcel subscription on one root path:
- * existence gating before subscribe, exponential-backoff retry, warn-once error
- * reporting, dropped-events recovery, and disposal that drains in-flight
- * start/stop work. Callers compose one (single-root watchers) or many (keyed by
- * root path) and layer their own change aggregation on top.
+ * existence gating before subscribe, startup retry, warn-once error reporting,
+ * dropped-events recovery, and disposal that drains in-flight start/stop work.
+ * Callers compose one (single-root watchers) or many (keyed by root path) and
+ * layer their own change aggregation on top.
  */
 export class RootSubscription {
   private disposed = false;
@@ -94,9 +95,7 @@ export class RootSubscription {
     }
   }
 
-  private stopSubscription(
-    subscription: ParcelWatcherAsyncSubscription,
-  ): void {
+  private stopSubscription(subscription: ParcelWatcherAsyncSubscription): void {
     const pendingStop = subscription
       .unsubscribe()
       .catch(() => {
@@ -138,7 +137,7 @@ export class RootSubscription {
     );
   }
 
-  private handleSubscriptionFailure(): void {
+  private handleRecoverableSubscriptionFailure(): void {
     if (this.subscription !== null) {
       const subscription = this.subscription;
       this.subscription = null;
@@ -164,6 +163,8 @@ export class RootSubscription {
     }
 
     try {
+      let recoverableFailureObserved = false;
+      let terminalFailureObserved = false;
       const subscription = await parcelWatcher.subscribe(
         this.args.rootPath,
         (error: ParcelWatcherError, events: ParcelWatcherEventBatch) => {
@@ -173,13 +174,20 @@ export class RootSubscription {
           if (error) {
             const message = toErrorMessage(error);
             if (isDroppedEventsRescanRequiredMessage(message)) {
+              recoverableFailureObserved = true;
               this.recoveryPending = true;
               this.args.onDroppedEvents();
-              this.handleSubscriptionFailure();
+              this.handleRecoverableSubscriptionFailure();
               return;
             }
+            terminalFailureObserved = true;
             this.reportWatchError(message);
-            this.handleSubscriptionFailure();
+            // Parcel has already cleared the callback for runtime backend
+            // errors. On Linux, retrying after an inotify backend poll/read
+            // error creates a fresh native backend while the failed one may
+            // still hold its fd/thread state. Leave the subscription unavailable
+            // until the owner recreates it or the process restarts.
+            this.subscription = null;
             return;
           }
           this.args.onEvents(events);
@@ -187,7 +195,16 @@ export class RootSubscription {
         this.args.subscribeOptions,
       );
       if (this.disposed) {
+        if (!terminalFailureObserved) {
+          this.stopSubscription(subscription);
+        }
+        return;
+      }
+      if (recoverableFailureObserved) {
         this.stopSubscription(subscription);
+        return;
+      }
+      if (terminalFailureObserved) {
         return;
       }
       this.warned = false;

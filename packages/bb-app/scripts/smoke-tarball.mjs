@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -14,6 +14,9 @@ const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptsDir, "..");
 const tempRoot = await mkdtemp(join(tmpdir(), "bb-app-tarball-"));
+const smokeProcessEnv = {
+  BB_TELEMETRY: "false",
+};
 
 function delay(ms) {
   return new Promise((resolvePromise) => {
@@ -64,6 +67,7 @@ async function runCommand({ args, command, env = {}, label }) {
     env: {
       ...process.env,
       ...env,
+      ...smokeProcessEnv,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -85,6 +89,7 @@ function spawnManagedProcess({ args, command, env = {}, label }) {
     env: {
       ...process.env,
       ...env,
+      ...smokeProcessEnv,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -358,23 +363,6 @@ async function smokeProviderBridgeBundles(tarballPath) {
   });
 }
 
-async function smokeBuiltinWorkflows(tarballPath) {
-  const packageDir = await extractTarball(tarballPath);
-  for (const name of ["deep-research", "code-review"]) {
-    const builtinPath = join(
-      packageDir,
-      "host-daemon",
-      "builtins",
-      `${name}.workflow.js`,
-    );
-    try {
-      await access(builtinPath);
-    } catch {
-      throw new Error(`Missing builtin workflow in tarball: ${builtinPath}`);
-    }
-  }
-}
-
 async function smokeHelpCommands(tarballPath) {
   await runCommand({
     args: createNpxArgs(tarballPath, "bb-app", ["--help"]),
@@ -556,7 +544,6 @@ async function smokeDaemonJoin(tarballPath) {
 try {
   const tarballPath = await packTarball();
   await smokeProviderBridgeBundles(tarballPath);
-  await smokeBuiltinWorkflows(tarballPath);
   await smokeHelpCommands(tarballPath);
   await smokeConfigCommand(tarballPath);
   await smokeFullStack(tarballPath);

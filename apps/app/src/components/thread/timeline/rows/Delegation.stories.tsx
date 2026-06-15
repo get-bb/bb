@@ -23,8 +23,8 @@ const baseProps = {
 //
 //   1. toolu_01LKp2KK7kaTCi5vi15VZYvw — Correctness review (14 toolCalls,
 //      4 commandExecutions)
-//   2. toolu_012rpTKMPCmiRnZnYXLA5Vy9 — Maintainability and AGENTS.md
-//      compliance review (12 toolCalls, 10 commandExecutions)
+//   2. toolu_012rpTKMPCmiRnZnYXLA5Vy9 — Maintainability and
+//      repo-guidance review (12 toolCalls, 10 commandExecutions)
 //   3. toolu_01VfaFeGbfjGckpp9LZNpd5a — Test quality review (19 toolCalls,
 //      3 commandExecutions)
 //
@@ -270,7 +270,7 @@ const correctnessChild08: TimelineRow = {
     limit: 200,
   },
   output:
-    '1\timport type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";\n2\timport type { AgentRuntimeCaptureEntry } from "./capture-types.js";\n3\timport type {\n4\t  AdapterCommand,\n5\t  ProviderAdapterFactory,\n6\t  ProviderCommandPlan,\n7\t  ProviderRequestCommandPlan,\n8\t} from "./provider-adapter.j... [truncated]',
+    '1\timport type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";\n2\timport type {\n3\t  AdapterCommand,\n4\t  ProviderAdapterFactory,\n5\t  ProviderCommandPlan,\n6\t  ProviderRequestCommandPlan,\n7\t} from "./provider-adapter.j... [truncated]',
   completedAt: 1778174307849,
   approvalStatus: null,
   activityIntents: [
@@ -334,7 +334,7 @@ const correctnessChild10: TimelineRow = {
     limit: 100,
   },
   output:
-    '195\t    } satisfies JsonRpcMessage;\n196\t\n197\t    try {\n198\t      handleRuntimeProviderRequest({\n199\t        createCaptureId: () => "cap-1",\n200\t        emitCapture: (entry) => captures.push(entry),\n201\t        getActiveTurnId: () => undefined,\n202\t        getThreadExecutionOptions: () => undefined,\n... [truncated]',
+    '195\t    } satisfies JsonRpcMessage;\n196\t\n197\t    try {\n198\t      handleRuntimeProviderRequest({\n199\t        getActiveTurnId: () => undefined,\n200\t        getThreadExecutionOptions: () => undefined,\n201\t        onInteractiveRequest: async () => ({\n202\t          decision: "deny",\n... [truncated]',
   completedAt: 1778174320120,
   approvalStatus: null,
   activityIntents: [
@@ -561,7 +561,7 @@ const correctnessChild17: TimelineRow = {
       "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
   },
   output:
-    "1\t# Code Review Checklist\n2\t\n3\tThis document defines the dimensions of a thorough code review. Each section is designed to be evaluated independently — reviewers may delegate sections to separate agents working in parallel.\n4\t\n5\t## Unbiased Review Protocol\n6\t\n7\tA code review must be unbiased. Do not... [truncated]",
+    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. The best review usually asks: what will break, and what is the smallest correction?\n4\t\n5\t## Scope\n6\t\n7\t- Stay inside the changed behavior.\n8\t- Expand only to prove a concrete correctness... [truncated]",
   completedAt: 1778174324388,
   approvalStatus: null,
   activityIntents: [
@@ -645,7 +645,7 @@ const completedDelegation: TimelineRow = {
 };
 
 // =============================================================================
-// Dispatch 2 — toolu_012rpTKMPCmiRnZnYXLA5Vy9, "Maintainability and AGENTS.md compliance review".
+// Dispatch 2 — toolu_012rpTKMPCmiRnZnYXLA5Vy9, "Maintainability and repo-guidance review".
 // SYNTHESIZED STATUS — real dispatch toolu_012rpTKMPCmiRnZnYXLA5Vy9 completed;
 // lifecycle synthesized for the running variant. childRows are real.
 // startedAt/createdAt use Date.now() so "running for N seconds" stays plausible.
@@ -1094,7 +1094,7 @@ const maintainabilityChild16: TimelineRow = {
     limit: 200,
   },
   output:
-    "1\t# Code Review Checklist\n2\t\n3\tThis document defines the dimensions of a thorough code review. Each section is designed to be evaluated independently — reviewers may delegate sections to separate agents working in parallel.\n4\t\n5\t## Unbiased Review Protocol\n6\t\n7\tA code review must be unbiased. Do not... [truncated]",
+    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. The best review usually asks: what will break, and what is the smallest correction?\n4\t\n5\t## Scope\n6\t\n7\t- Stay inside the changed behavior.\n8\t- Expand only to prove a concrete correctness... [truncated]",
   completedAt: 1778174337233,
   approvalStatus: null,
   activityIntents: [
@@ -1308,7 +1308,7 @@ const runningDelegation: TimelineRow = {
   callId: "toolu_012rpTKMPCmiRnZnYXLA5Vy9",
   toolName: "Agent",
   subagentType: "Explore",
-  description: "Maintainability and AGENTS.md compliance review",
+  description: "Maintainability and repo-guidance review",
   output: "",
   completedAt: null,
   childRows: [
@@ -1440,7 +1440,7 @@ const testQualityChild04: TimelineRow = {
     limit: 50,
   },
   output:
-    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      args.emitCapture({\n360\t        kind: "interactive-result",\n361\t        capturedAt: Date.now(),\n362\t        providerId,\n363\t        requestCaptureId: captureId,\n364\t        requestId: scopedI... [truncated]',
+    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      const result = buildInteractiveResponse({\n360\t        request: resolvedInteractiveReq,\n361\t        resolution,\n362\t      });\n363\t      sendJsonRpcResult({\n364\t        child: args.pro... [truncated]',
   completedAt: 1778174320120,
   approvalStatus: null,
   activityIntents: [
@@ -1473,7 +1473,7 @@ const testQualityChild05: TimelineRow = {
     limit: 30,
   },
   output:
-    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      args.emitCapture({\n360\t        kind: "interactive-result",\n361\t        capturedAt: Date.now(),\n362\t        providerId,\n363\t        requestCaptureId: captureId,\n364\t        requestId: scopedI... [truncated]',
+    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      const result = buildInteractiveResponse({\n360\t        request: resolvedInteractiveReq,\n361\t        resolution,\n362\t      });\n363\t      sendJsonRpcResult({\n364\t        child: args.pro... [truncated]',
   completedAt: 1778174320120,
   approvalStatus: null,
   activityIntents: [
@@ -2018,7 +2018,7 @@ const testQualityChild22: TimelineRow = {
     limit: 150,
   },
   output:
-    "1\t# Code Review Checklist\n2\t\n3\tThis document defines the dimensions of a thorough code review. Each section is designed to be evaluated independently — reviewers may delegate sections to separate agents working in parallel.\n4\t\n5\t## Unbiased Review Protocol\n6\t\n7\tA code review must be unbiased. Do not... [truncated]",
+    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. The best review usually asks: what will break, and what is the smallest correction?\n4\t\n5\t## Scope\n6\t\n7\t- Stay inside the changed behavior.\n8\t- Expand only to prove a concrete correctness... [truncated]",
   completedAt: 1778174351117,
   approvalStatus: null,
   activityIntents: [
@@ -2137,7 +2137,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="running"
-        hint="maintainability + AGENTS.md compliance review (real dispatch, status synthesized as pending)"
+        hint="maintainability + repo-guidance review (real dispatch, status synthesized as pending)"
       >
         <TimelineStage>
           <ThreadTimelineRows

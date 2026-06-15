@@ -56,7 +56,7 @@ import type { CollapsedChildActivity } from "@/lib/thread-activity";
 import { cn } from "@/lib/utils";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { getProjectSettingsRoutePath } from "@/lib/app-route-paths";
+import { getProjectSettingsRoutePath } from "@/lib/route-paths";
 import { appToast } from "@/components/ui/app-toast";
 import {
   ThreadRow,

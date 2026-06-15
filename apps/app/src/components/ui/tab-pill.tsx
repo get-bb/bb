@@ -46,7 +46,7 @@ export function TabPill({
   return (
     <div
       className={cn(
-        "group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md transition-colors",
+        "group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md transition-colors max-md:pointer-coarse:h-9",
         COARSE_POINTER_TEXT_SM_CLASS,
         isActive
           ? "bg-muted text-foreground"

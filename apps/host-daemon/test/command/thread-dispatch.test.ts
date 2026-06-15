@@ -1,10 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { AgentRuntimeOptions } from "@bb/agent-runtime";
+import {
+  listAvailableProviders,
+  type AgentRuntimeOptions,
+} from "@bb/agent-runtime";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import {
   encodeClientTurnRequestIdNumber,
-  turnScope,
   type ClientTurnRequestId,
   type PromptInput,
 } from "@bb/domain";
@@ -55,7 +57,6 @@ describe("thread command dispatch", () => {
 
     const command: Extract<HostDaemonCommand, { type: "thread.start" }> = {
       type: "thread.start",
-      sessionKind: "thread",
       environmentId: "env-loaded",
       threadId: "thread-stale-start",
       workspaceContext: {
@@ -166,7 +167,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-attachments",
         threadId: "thread-attachments",
         workspaceContext: {
@@ -351,7 +351,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-no-stage-attachments",
         threadId: "thread-no-stage-attachments",
         workspaceContext: {
@@ -414,7 +413,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-restage-attachments",
         threadId: "thread-restage-attachments",
         workspaceContext: {
@@ -472,7 +470,6 @@ describe("thread command dispatch", () => {
       await dispatchCommand(
         {
           type: "thread.start",
-          sessionKind: "thread",
           environmentId: "env-failed-stage-attachments",
           threadId: "thread-failed-stage-attachments",
           workspaceContext: {
@@ -539,7 +536,6 @@ describe("thread command dispatch", () => {
       dispatchCommand(
         {
           type: "thread.start",
-          sessionKind: "thread",
           environmentId: "env-oversized-stage-attachments",
           threadId: "thread-oversized-stage-attachments",
           workspaceContext: {
@@ -605,7 +601,6 @@ describe("thread command dispatch", () => {
       dispatchCommand(
         {
           type: "thread.start",
-          sessionKind: "thread",
           environmentId: "env-runtime-failed-start-attachments",
           threadId: "thread-runtime-failed-start-attachments",
           workspaceContext: {
@@ -715,7 +710,6 @@ describe("thread command dispatch", () => {
     const startResult = await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "thread-1",
         workspaceContext: {
@@ -804,8 +798,71 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.unarchivedProviderThreadId).toBe(
       "provider-thread-1",
     );
-    expect(harness.runtimeState.stoppedThreadId).toBe("thread-1");
+    // The archive removed the thread from the runtime, so the later stop is
+    // an idempotent no-op that never reaches the provider.
+    expect(harness.runtimeState.stoppedThreadId).toBeUndefined();
     expect(harness.manager.listActiveThreads()).toEqual([]);
+  });
+
+  it("stops a hosted thread through the runtime", async () => {
+    const harness = createHarness();
+
+    await dispatchCommand(
+      {
+        type: "thread.start",
+        environmentId: "env-1",
+        threadId: "thread-stop",
+        workspaceContext: {
+          workspacePath: "/tmp/env-1",
+          workspaceProvisionType: "unmanaged",
+        },
+        projectId: "project-1",
+        providerId: "fake",
+        requestId: nextClientRequestId(),
+        input: [textPromptInput("work until stopped")],
+        options: {
+          model: "gpt-5",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          workflowsEnabled: false,
+          permissionMode: "full",
+          permissionEscalation: null,
+        },
+        instructions: "Be a helpful coding agent.",
+        dynamicTools: [],
+        injectedSkillSources: [],
+        instructionMode: "append",
+      },
+      harness.dispatchOptions(),
+    );
+    expect(harness.runtime.hasThread("thread-stop")).toBe(true);
+
+    const stopResult = await dispatchCommand(
+      {
+        type: "thread.stop",
+        environmentId: "env-1",
+        threadId: "thread-stop",
+      },
+      harness.dispatchOptions(),
+    );
+
+    expect(stopResult).toEqual({});
+    expect(harness.runtimeState.stoppedThreadId).toBe("thread-stop");
+    expect(harness.runtime.hasThread("thread-stop")).toBe(false);
+
+    // A second stop is an idempotent no-op that never reaches the provider.
+    harness.runtimeState.stoppedThreadId = undefined;
+    await expect(
+      dispatchCommand(
+        {
+          type: "thread.stop",
+          environmentId: "env-1",
+          threadId: "thread-stop",
+        },
+        harness.dispatchOptions(),
+      ),
+    ).resolves.toEqual({});
+    expect(harness.runtimeState.stoppedThreadId).toBeUndefined();
   });
 
   it("creates the environment runtime for archive commands when needed", async () => {
@@ -847,7 +904,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-resume-after-archive",
         threadId: "thread-resume-after-archive",
         workspaceContext: {
@@ -888,12 +944,9 @@ describe("thread command dispatch", () => {
       },
       harness.dispatchOptions(),
     );
-    expect(
-      harness.manager.hasThread(
-        "env-resume-after-archive",
-        "thread-resume-after-archive",
-      ),
-    ).toBe(false);
+    expect(harness.runtime.hasThread("thread-resume-after-archive")).toBe(
+      false,
+    );
 
     await dispatchCommand(
       {
@@ -976,7 +1029,10 @@ describe("thread command dispatch", () => {
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
-    harness.manager.markThreadActive("env-1", "thread-1", "provider-1", null);
+    harness.threadControls.setProviderSession("thread-1", {
+      providerId: "fake",
+      providerThreadId: "provider-1",
+    });
 
     const runResult = await dispatchCommand(
       {
@@ -1054,39 +1110,16 @@ describe("thread command dispatch", () => {
     );
   });
 
-  it("marks a known thread active for the next turn after runtime completion made it idle", async () => {
-    const { runtime, state } = createFakeRuntime();
-    const { workspace } = createFakeWorkspace("/tmp/env-1");
-    let runtimeOptions: AgentRuntimeOptions | undefined;
-    let completedTurns = 0;
-    runtime.runTurn = async (args) => {
-      const firstInput = args.input[0];
-      state.ranTurnText =
-        firstInput?.type === "text" ? firstInput.text : undefined;
-      completedTurns += 1;
-      if (completedTurns === 1) {
-        runtimeOptions?.onEvent?.({
-          type: "turn/completed",
-          threadId: "thread-1",
-          providerThreadId: "provider-1",
-          scope: turnScope(`turn-${completedTurns}`),
-          status: "completed",
-        });
-      }
-    };
-    const manager = new RuntimeManager({
-      provisionWorkspace: async () => workspace,
-      createRuntime: (options) => {
-        runtimeOptions = options;
-        return runtime;
-      },
-    });
-
-    await manager.ensureEnvironment({
+  it("reports a resident thread idle after its turn completes and active again on the next turn.submit", async () => {
+    const harness = createHarness();
+    await harness.manager.ensureEnvironment({
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
-    manager.markThreadActive("env-1", "thread-1", "provider-1", null);
+    harness.threadControls.setProviderSession("thread-1", {
+      providerId: "fake",
+      providerThreadId: "provider-1",
+    });
 
     await dispatchCommand(
       {
@@ -1118,10 +1151,11 @@ describe("thread command dispatch", () => {
         },
         target: { mode: "start" },
       },
-      makeDispatchOptions({ runtimeManager: manager }),
+      harness.dispatchOptions(),
     );
-
-    expect(manager.listActiveThreads()).toEqual([]);
+    // The provider finishes the turn; the runtime clears its active turn.
+    harness.threadControls.endActiveTurn("thread-1");
+    expect(harness.manager.listActiveThreads()).toEqual([]);
 
     const result = await dispatchCommand(
       {
@@ -1153,27 +1187,27 @@ describe("thread command dispatch", () => {
         },
         target: { mode: "start" },
       },
-      makeDispatchOptions({ runtimeManager: manager }),
+      harness.dispatchOptions(),
     );
 
     expect(result).toEqual({ appliedAs: "new-turn" });
-    expect(state.ranTurnText).toBe("resume work");
-    expect(manager.listActiveThreads()).toEqual([
+    expect(harness.runtimeState.ranTurnText).toBe("resume work");
+    // The runtime still hosts the thread, so no resume round-trip happens.
+    expect(harness.runtimeState.resumedThreadId).toBeUndefined();
+    expect(harness.manager.listActiveThreads()).toEqual([
       {
         threadId: "thread-1",
       },
     ]);
   });
 
-  it("marks known idle threads active when dispatching auto turn.submit", async () => {
+  it("keeps an active thread active when auto turn.submit steers its turn", async () => {
     const harness = createHarness();
     await harness.manager.ensureEnvironment({
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
-    harness.manager.markThreadActive("env-1", "thread-1", "provider-1", null);
-    harness.manager.markThreadInactive("env-1", "thread-1");
-    expect(harness.manager.listActiveThreads()).toEqual([]);
+    harness.threadControls.setActiveTurn("thread-1", "turn-1");
 
     const result = await dispatchCommand(
       {
@@ -1224,7 +1258,10 @@ describe("thread command dispatch", () => {
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
-    harness.manager.markThreadActive("env-1", "thread-1", "provider-1", null);
+    harness.threadControls.setProviderSession("thread-1", {
+      providerId: "fake",
+      providerThreadId: "provider-1",
+    });
     harness.runtime.steerTurn = async (args) => {
       harness.runtimeState.steeredTurnId = args.expectedTurnId;
       harness.runtimeState.steeredClientRequestId = args.clientRequestId;
@@ -1281,7 +1318,10 @@ describe("thread command dispatch", () => {
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
-    harness.manager.markThreadActive("env-1", "thread-1", "provider-1", null);
+    harness.threadControls.setProviderSession("thread-1", {
+      providerId: "fake",
+      providerThreadId: "provider-1",
+    });
     harness.runtime.steerTurn = async (args) => ({
       status: "stale",
       activeTurnId: args.expectedTurnId,
@@ -1332,7 +1372,10 @@ describe("thread command dispatch", () => {
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
-    harness.manager.markThreadActive("env-1", "thread-1", "provider-1", null);
+    harness.threadControls.setProviderSession("thread-1", {
+      providerId: "fake",
+      providerThreadId: "provider-1",
+    });
 
     const result = await dispatchCommand(
       {
@@ -1423,16 +1466,24 @@ describe("thread command dispatch", () => {
   });
 
   it("re-resolves thread runtime after provider exit clears known threads", async () => {
-    const { runtime, state } = createFakeRuntime();
+    const exitedFake = createFakeRuntime();
+    const replacementFake = createFakeRuntime();
+    const fakes = [exitedFake, replacementFake];
     const { workspace } = createFakeWorkspace("/tmp/env-exit");
+    let createRuntimeCalls = 0;
     let onProcessExit:
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
       provisionWorkspace: async () => workspace,
       createRuntime: (options) => {
+        const fake = fakes[createRuntimeCalls];
+        createRuntimeCalls += 1;
+        if (!fake) {
+          throw new Error("Unexpected extra runtime creation");
+        }
         onProcessExit = options.onProcessExit;
-        return runtime;
+        return fake.runtime;
       },
     });
 
@@ -1440,10 +1491,19 @@ describe("thread command dispatch", () => {
       environmentId: "env-exit",
       workspacePath: "/tmp/env-exit",
     });
-    manager.markThreadActive("env-exit", "thread-1", "provider-1", null);
+    exitedFake.threadControls.setProviderSession("thread-1", {
+      providerId: "fake",
+      providerThreadId: "provider-1",
+    });
     onProcessExit?.({
       providerId: "fake",
-      threadIds: ["thread-1"],
+      threads: [
+        {
+          activeTurnId: null,
+          providerThreadId: "provider-1",
+          threadId: "thread-1",
+        },
+      ],
       code: 1,
       expected: false,
       signal: null,
@@ -1484,8 +1544,11 @@ describe("thread command dispatch", () => {
     );
 
     expect(result).toEqual({ appliedAs: "new-turn" });
-    expect(state.resumedThreadId).toBe("thread-1");
-    expect(state.ranTurnText).toBe("after exit");
+    // The exit dropped the environment entry, so the dispatch creates a fresh
+    // runtime and resumes the thread there instead of reusing the dead one.
+    expect(createRuntimeCalls).toBe(2);
+    expect(replacementFake.state.resumedThreadId).toBe("thread-1");
+    expect(replacementFake.state.ranTurnText).toBe("after exit");
   });
 
   it("covers provider.list", async () => {
@@ -1495,41 +1558,11 @@ describe("thread command dispatch", () => {
       {
         type: "provider.list",
       },
-      {
-        ...harness.dispatchOptions(),
-        listProviders: () => [
-          {
-            id: "fake",
-            displayName: "Fake Provider",
-            capabilities: {
-              supportsArchive: false,
-              supportsRename: false,
-              supportsServiceTier: false,
-              supportsUserQuestion: true,
-              supportedPermissionModes: ["full", "workspace-write", "readonly"],
-            },
-            available: true,
-          },
-        ],
-      },
+      harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({
-      providers: [
-        {
-          id: "fake",
-          displayName: "Fake Provider",
-          capabilities: {
-            supportsArchive: false,
-            supportsRename: false,
-            supportsServiceTier: false,
-            supportsUserQuestion: true,
-            supportedPermissionModes: ["full", "workspace-write", "readonly"],
-          },
-          available: true,
-        },
-      ],
-    });
+    expect(result).toEqual({ providers: listAvailableProviders() });
+    expect(result.providers.length).toBeGreaterThan(0);
   });
 
   it("covers provider.list_models", async () => {
@@ -1609,7 +1642,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-parent",
         threadId: "thread-parent",
         workspaceContext: {
@@ -1666,7 +1698,6 @@ describe("thread command dispatch", () => {
     await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "thread-1",
         workspaceContext: {
@@ -1704,7 +1735,6 @@ describe("thread command dispatch", () => {
     const result = await dispatchCommand(
       {
         type: "thread.start",
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "thread-1",
         workspaceContext: {
@@ -1816,7 +1846,6 @@ describe("thread command dispatch", () => {
       dispatchCommand(
         {
           type: "thread.start",
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId: "thread-1",
           workspaceContext: {

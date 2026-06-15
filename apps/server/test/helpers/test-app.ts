@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
-import { DEFAULTS } from "@bb/config/defaults";
 import type { DbConnection } from "@bb/db";
 import { defaultFeatureFlags, type HostType } from "@bb/domain";
 import { initDb } from "../../src/db.js";
@@ -15,6 +14,7 @@ import {
   type AppVersionService,
 } from "../../src/services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
+import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
 import { resolveThreadStorageRootPath } from "../../src/services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
@@ -136,8 +136,6 @@ export async function createTestAppHarness(
       env: {},
     }),
     transcriptionModel: "test/mock-transcription",
-    workflowMaxConcurrentRunsPerHost:
-      DEFAULTS.workflowMaxConcurrentRunsPerHost,
     appUrl: "https://bb.example.test",
     ...configOverrides,
   };
@@ -146,6 +144,7 @@ export async function createTestAppHarness(
     hub,
     logger: testLogger,
   });
+  const telemetry = createNoopTelemetryService();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,
@@ -153,6 +152,7 @@ export async function createTestAppHarness(
     lifecycleDedupers,
     logger: testLogger,
     machineAuth: testMachineAuth,
+    telemetry,
     terminalSessions,
   });
   pendingInteractions.start();
@@ -172,6 +172,7 @@ export async function createTestAppHarness(
     logger: testLogger,
     machineAuth: testMachineAuth,
     pendingInteractions,
+    telemetry,
     terminalSessions,
   };
   const { app } = createApp(deps);

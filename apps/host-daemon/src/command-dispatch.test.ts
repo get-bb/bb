@@ -27,7 +27,7 @@ interface BusySkillCatalogFixture {
   dataDir: string;
   manager: RuntimeManager;
   originalCatalogHash: string | null;
-  runtime: AgentRuntime;
+  runtime: FakeDispatchRuntime;
   source: HostDaemonInjectedSkillSource;
 }
 
@@ -67,7 +67,6 @@ async function writeInjectedSkillSource(
   );
   return {
     sourceType: "data-dir",
-    applicationId: null,
     name: "release-notes",
     description: "Use release-notes when command dispatch tests run.",
     sourceRootPath,
@@ -101,12 +100,7 @@ async function setupBusySkillCatalogEnvironment(args: {
     injectedSkillSources: [source],
     workspacePath: WORKSPACE_PATH,
   });
-  manager.markThreadActive(
-    "env-1",
-    args.activeThreadId,
-    "provider-thread-1",
-    null,
-  );
+  runtime.setActiveTurn(args.activeThreadId, "turn-busy-1");
   await writeInjectedSkillSource({ dataDir, token: "second-token" });
   return {
     createRuntimeSpy,
@@ -158,16 +152,30 @@ function createWorkspace(): HostWorkspace {
   };
 }
 
-function createRuntime(): AgentRuntime {
+interface FakeDispatchRuntime extends AgentRuntime {
+  /** Test-only mutator for the runtime-owned per-thread turn state. */
+  setActiveTurn: (threadId: string, turnId: string) => void;
+}
+
+function createRuntime(): FakeDispatchRuntime {
+  const activeTurnsByThreadId = new Map<string, string>();
+  const hostedThreadIds = new Set<string>();
   return {
     ensureProvider: vi.fn(async () => undefined),
-    startThread: vi.fn(async () => ({ providerThreadId: "provider-thread-1" })),
-    resumeThread: vi.fn(async () => ({
-      providerThreadId: "provider-thread-1",
-    })),
+    startThread: vi.fn(async (args: { threadId: string }) => {
+      hostedThreadIds.add(args.threadId);
+      return { providerThreadId: "provider-thread-1" };
+    }),
+    resumeThread: vi.fn(async (args: { threadId: string }) => {
+      hostedThreadIds.add(args.threadId);
+      return { providerThreadId: "provider-thread-1" };
+    }),
     runTurn: vi.fn(async () => undefined),
     steerTurn: vi.fn(async () => ({ status: "steered" as const })),
-    stopThread: vi.fn(async () => undefined),
+    stopThread: vi.fn(async (args: { threadId: string }) => {
+      activeTurnsByThreadId.delete(args.threadId);
+      hostedThreadIds.delete(args.threadId);
+    }),
     renameThread: vi.fn(async () => undefined),
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),
@@ -176,7 +184,20 @@ function createRuntime(): AgentRuntime {
       selectedOnlyModels: [],
     })),
     listRunningProviders: vi.fn(() => ["fake"]),
+    getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
+    waitForActiveTurn: async (threadId) =>
+      activeTurnsByThreadId.get(threadId) ?? null,
+    getProviderSession: (threadId) =>
+      hostedThreadIds.has(threadId)
+        ? { providerId: "fake", providerThreadId: "provider-thread-1" }
+        : null,
+    hasThread: (threadId) => hostedThreadIds.has(threadId),
+    getActiveThreadIds: () => [...activeTurnsByThreadId.keys()],
     shutdown: vi.fn(async () => undefined),
+    setActiveTurn: (threadId, turnId) => {
+      hostedThreadIds.add(threadId);
+      activeTurnsByThreadId.set(threadId, turnId);
+    },
   };
 }
 
@@ -191,13 +212,7 @@ describe("dispatchCommand", () => {
       environmentId: "env-1",
       workspacePath: "/tmp/bb-command-dispatch-test",
     });
-    manager.markThreadActive("env-1", "thread-1", "provider-thread-1", null);
-    manager.markThreadTurnStarted(
-      "env-1",
-      "thread-1",
-      "provider-thread-1",
-      "turn-1",
-    );
+    runtime.setActiveTurn("thread-1", "turn-1");
 
     const flushDeferred = createDeferred<void>();
     const flush = vi.fn(async () => flushDeferred.promise);
@@ -227,46 +242,12 @@ describe("dispatchCommand", () => {
       expect(flush).toHaveBeenCalledTimes(1);
     });
     expect(resolved).toBe(false);
-    expect(manager.hasThread("env-1", "thread-1")).toBe(true);
 
     flushDeferred.resolve(undefined);
     await dispatchPromise;
 
     expect(resolved).toBe(true);
-    expect(manager.hasThread("env-1", "thread-1")).toBe(false);
-  });
-
-  it("aborts a replay task before falling through to the runtime thread.stop path", async () => {
-    const manager = new RuntimeManager({
-      createRuntime: () => createRuntime(),
-      provisionWorkspace: async () => createWorkspace(),
-    });
-    const abort = new AbortController();
-    const replayTasks = new Map([
-      ["thread-1", { abort, done: Promise.resolve() }],
-    ]);
-    const command: CommandOf<"thread.stop"> = {
-      type: "thread.stop",
-      environmentId: "env-1",
-      threadId: "thread-1",
-    };
-
-    const result = await dispatchCommand(command, {
-      dataDir: "/tmp/bb-data",
-      eventSink: {
-        emit: vi.fn(),
-        flush: vi.fn(async () => undefined),
-      },
-      fetchProjectAttachment: async () => {
-        throw new Error("Unexpected project attachment fetch");
-      },
-      replayTasks,
-      runtimeManager: manager,
-      threadStorageRootPath: "/tmp/bb-thread-storage",
-    });
-
-    expect(result).toEqual({});
-    expect(abort.signal.aborted).toBe(true);
+    expect(runtime.hasThread("thread-1")).toBe(false);
   });
 
   it("treats thread.rename as best-effort when the runtime is not loaded", async () => {
@@ -310,7 +291,6 @@ describe("dispatchCommand", () => {
     });
     const command: CommandOf<"thread.start"> = {
       type: "thread.start",
-      sessionKind: "thread",
       environmentId: "env-1",
       threadId: "thread-1",
       workspaceContext: {

@@ -116,6 +116,7 @@ describe("pending interaction lifecycle", () => {
         lifecycleDedupers: harness.deps.lifecycleDedupers,
         logger,
         machineAuth: harness.deps.machineAuth,
+        telemetry: harness.deps.telemetry,
         terminalSessions: harness.deps.terminalSessions,
       });
       const { host } = seedHostSession(harness.deps, {
@@ -501,7 +502,6 @@ describe("pending interaction lifecycle", () => {
       const replacementSession = seedSession(harness.deps, host.id);
       await handleHostSessionOpened(harness.deps, {
         activeThreads: [],
-        activeWorkflowRunIds: [],
         hostId: host.id,
         openedSession: replacementSession,
         previousSession: session,
@@ -1216,6 +1216,7 @@ describe("pending interaction lifecycle", () => {
         lifecycleDedupers: harness.deps.lifecycleDedupers,
         logger: harness.deps.logger,
         machineAuth: harness.deps.machineAuth,
+        telemetry: harness.deps.telemetry,
         terminalSessions: harness.deps.terminalSessions,
       });
       const { host } = seedHostSession(harness.deps, {

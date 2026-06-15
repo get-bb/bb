@@ -8,17 +8,8 @@ import {
   allEnvironmentQueryKeyPrefix,
   allEnvironmentWorkStatusQueryKeyPrefix,
   allHostQueryKeyPrefix,
-  allWorkflowRunAgentEventsQueryKeyPrefix,
-  allWorkflowRunEventsQueryKeyPrefix,
-  allWorkflowRunQueryKeyPrefix,
-  allWorkflowRunsQueryKeyPrefix,
-  allWorkflowsQueryKeyPrefix,
   allProjectPathsQueryKeyPrefix,
   allSystemExecutionOptionsQueryKeyPrefix,
-  allThreadDefaultExecutionOptionsQueryKeyPrefix,
-  allAppMarkdownPreviewQueryKeyPrefix,
-  allAppQueryKeyPrefix,
-  allAppsQueryKeyPrefix,
   allThreadQueuedMessagesQueryKeyPrefix,
   allThreadPendingInteractionsQueryKeyPrefix,
   allThreadQueryKeyPrefix,
@@ -30,7 +21,6 @@ import {
   hostsQueryKey,
   localPathExistenceQueryKeyPrefix,
   projectsQueryKey,
-  replayCapturesQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
@@ -38,6 +28,7 @@ import {
   threadPromptHistoryQueryKeyPrefix,
   threadsQueryKey,
 } from "../queries/query-keys";
+import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/thread-default-execution-options-query";
 import type { QueryClientArg } from "../cache-effect-types";
 import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
 import {
@@ -101,12 +92,6 @@ export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
   queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
 }
 
-export function invalidateReplayCaptures({
-  queryClient,
-}: QueryClientArg): void {
-  queryClient.invalidateQueries({ queryKey: replayCapturesQueryKey() });
-}
-
 function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
   return [
     hostsQueryKey(),
@@ -122,9 +107,6 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     threadPromptHistoryQueryKeyPrefix(),
     allThreadPendingInteractionsQueryKeyPrefix(),
     allThreadDefaultExecutionOptionsQueryKeyPrefix(),
-    allAppsQueryKeyPrefix(),
-    allAppQueryKeyPrefix(),
-    allAppMarkdownPreviewQueryKeyPrefix(),
     allThreadStorageFilesQueryKeyPrefix(),
     allThreadStoragePathsQueryKeyPrefix(),
     allThreadStorageFilePreviewQueryKeyPrefix(),
@@ -140,14 +122,5 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     localPathExistenceQueryKeyPrefix(),
     systemProvidersQueryKey(),
     allSystemExecutionOptionsQueryKeyPrefix(),
-    // Workflow runs are realtime-fed: messages emitted while the socket was
-    // down are lost, and a run that reached terminal during the gap emits
-    // nothing afterward — without this, a focused run page or Workflows tab
-    // renders the run frozen at its pre-disconnect state indefinitely.
-    allWorkflowRunQueryKeyPrefix(),
-    allWorkflowRunsQueryKeyPrefix(),
-    allWorkflowRunEventsQueryKeyPrefix(),
-    allWorkflowRunAgentEventsQueryKeyPrefix(),
-    allWorkflowsQueryKeyPrefix(),
   ];
 }

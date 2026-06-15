@@ -8,9 +8,11 @@ import {
 } from "../threadSecondaryPanelAtoms";
 import { type GitDiffSelectionOption } from "../ThreadSecondaryPanel";
 import {
+  ALL_GIT_DIFF_SELECTION,
   buildGitDiffSelectionOptions,
   buildGitDiffTarget,
-  shouldResetSelectedGitDiffCommit,
+  shouldResetSelectedGitDiffSelection,
+  type GitDiffSelectionValue,
 } from "./gitDiffPanelHelpers";
 
 interface UseGitDiffPanelStateParams {
@@ -20,15 +22,16 @@ interface UseGitDiffPanelStateParams {
 }
 
 /**
- * Owns the diff tab's *target selection* — the merge-base branch, the chosen
- * commit (or "all changes" / "uncommitted"), and the derived
- * {@link buildGitDiffTarget} that the TOC + patch fetches key on. The diff body
- * ({@link GitDiffTabContent}) and the per-file cards do all diff fetching,
- * parsing, virtualization, and collapse state themselves; this hook holds none
- * of that. It reacts to the info-tab / prompt-banner intents
- * (`pendingGitDiffCommitSha` to scope to a commit, `pendingGitDiffScrollPath` to
- * reset the diff to all-changes so the opened file is in the slice) and resets a
- * stale commit selection when the workspace's commit list changes.
+ * Owns the diff tab's *target selection* — the merge-base branch and the chosen
+ * selection (all changes / committed changes / uncommitted changes / a specific
+ * commit) — and the derived {@link buildGitDiffTarget} that the TOC + patch
+ * fetches key on. The diff body ({@link GitDiffTabContent}) and the per-file
+ * cards do all diff fetching, parsing, virtualization, and collapse state
+ * themselves; this hook holds none of that. It reacts to the info-tab /
+ * prompt-banner intents (`pendingGitDiffCommitSha` to scope to a commit,
+ * `pendingGitDiffScrollPath` to reset the diff to all-changes so the opened file
+ * is in the slice) and resets a stale selection when the workspace's commit list
+ * changes.
  */
 export function useGitDiffPanelState({
   environmentId,
@@ -40,16 +43,15 @@ export function useGitDiffPanelState({
   const setPendingGitDiffScrollPath = useSetAtom(pendingGitDiffScrollPathAtom);
   const pendingGitDiffCommitSha = useAtomValue(pendingGitDiffCommitShaAtom);
   const setPendingGitDiffCommitSha = useSetAtom(pendingGitDiffCommitShaAtom);
-  const [selectedGitDiffCommitSha, setSelectedGitDiffCommitSha] = useState<
-    string | null
-  >(null);
+  const [selectedGitDiffSelection, setSelectedGitDiffSelection] =
+    useState<GitDiffSelectionValue>(null);
 
   const effectiveMergeBaseBranch =
     selectedMergeBaseBranch ?? defaultMergeBaseBranch;
   const gitDiffTarget = useMemo(
     () =>
-      buildGitDiffTarget(selectedGitDiffCommitSha, effectiveMergeBaseBranch),
-    [effectiveMergeBaseBranch, selectedGitDiffCommitSha],
+      buildGitDiffTarget(selectedGitDiffSelection, effectiveMergeBaseBranch),
+    [effectiveMergeBaseBranch, selectedGitDiffSelection],
   );
   const { data: gitDiffWorkspaceStatus } = useEnvironmentWorkStatus(
     environmentId ?? "",
@@ -69,7 +71,7 @@ export function useGitDiffPanelState({
   // --- Reset on environment change ---
 
   useEffect(() => {
-    setSelectedGitDiffCommitSha(null);
+    setSelectedGitDiffSelection(null);
   }, [environmentId]);
 
   useEffect(() => {
@@ -88,7 +90,7 @@ export function useGitDiffPanelState({
 
   useEffect(() => {
     if (pendingGitDiffScrollPath) {
-      setSelectedGitDiffCommitSha(null);
+      setSelectedGitDiffSelection(null);
       setPendingGitDiffScrollPath(null);
     }
   }, [pendingGitDiffScrollPath, setPendingGitDiffScrollPath]);
@@ -97,7 +99,7 @@ export function useGitDiffPanelState({
 
   useEffect(() => {
     if (pendingGitDiffCommitSha) {
-      setSelectedGitDiffCommitSha(pendingGitDiffCommitSha);
+      setSelectedGitDiffSelection(pendingGitDiffCommitSha);
       setPendingGitDiffCommitSha(null);
     }
   }, [pendingGitDiffCommitSha, setPendingGitDiffCommitSha]);
@@ -107,17 +109,17 @@ export function useGitDiffPanelState({
 
   useEffect(() => {
     if (
-      shouldResetSelectedGitDiffCommit(
-        selectedGitDiffCommitSha,
+      shouldResetSelectedGitDiffSelection(
+        selectedGitDiffSelection,
         workspaceStatus?.mergeBase?.commits ?? [],
         { hasUncommittedChanges },
       )
     ) {
-      setSelectedGitDiffCommitSha(null);
+      setSelectedGitDiffSelection(null);
     }
   }, [
     hasUncommittedChanges,
-    selectedGitDiffCommitSha,
+    selectedGitDiffSelection,
     workspaceStatus?.mergeBase?.commits,
   ]);
 
@@ -127,14 +129,16 @@ export function useGitDiffPanelState({
     () => workspaceStatus?.mergeBase?.commits ?? [],
     [workspaceStatus?.mergeBase?.commits],
   );
-  const gitDiffSelectValue = selectedGitDiffCommitSha ?? "all";
+  const gitDiffSelectValue = selectedGitDiffSelection ?? ALL_GIT_DIFF_SELECTION;
   const gitDiffSelectOptions: GitDiffSelectionOption[] = useMemo(
     () => buildGitDiffSelectionOptions(diffCommits, { hasUncommittedChanges }),
     [diffCommits, hasUncommittedChanges],
   );
 
   const onGitDiffSelectionChange = useCallback((value: string) => {
-    setSelectedGitDiffCommitSha(value === "all" ? null : value);
+    setSelectedGitDiffSelection(
+      value === ALL_GIT_DIFF_SELECTION ? null : value,
+    );
   }, []);
 
   return {

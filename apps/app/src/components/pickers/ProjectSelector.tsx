@@ -74,6 +74,8 @@ export function ProjectSelector({
   const createProjectLabel = createProjectAction?.isCreating
     ? "Creating..."
     : "New project";
+  const showActionSeparator =
+    projects.length > 0 && (Boolean(createProjectAction) || allowNoProject);
 
   return (
     <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
@@ -136,7 +138,7 @@ export function ProjectSelector({
             />
           </DropdownMenuItem>
         ))}
-        {createProjectAction && projects.length > 0 ? (
+        {showActionSeparator ? (
           <DropdownMenuSeparator />
         ) : null}
         {createProjectAction ? (
@@ -152,28 +154,23 @@ export function ProjectSelector({
             {createProjectLabel}
           </DropdownMenuItem>
         ) : null}
-        {allowNoProject && (projects.length > 0 || createProjectAction) ? (
-          <DropdownMenuSeparator />
-        ) : null}
         {allowNoProject ? (
-          <>
-            <DropdownMenuItem onSelect={() => onChange(null)}>
-              <Icon
-                name="FolderMinus"
-                className="size-4 text-muted-foreground"
-                aria-hidden
-              />
-              Don&apos;t work in a project
-              <Icon
-                name="Check"
-                className={cn(
-                  "ml-auto size-4",
-                  value === null ? "opacity-100" : "opacity-0",
-                )}
-                aria-hidden
-              />
-            </DropdownMenuItem>
-          </>
+          <DropdownMenuItem onSelect={() => onChange(null)}>
+            <Icon
+              name="FolderMinus"
+              className="size-4 text-muted-foreground"
+              aria-hidden
+            />
+            Don&apos;t work in a project
+            <Icon
+              name="Check"
+              className={cn(
+                "ml-auto size-4",
+                value === null ? "opacity-100" : "opacity-0",
+              )}
+              aria-hidden
+            />
+          </DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>

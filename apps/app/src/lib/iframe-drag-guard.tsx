@@ -6,7 +6,7 @@ export interface IframeDragGuardOverlayProps {
  * Transparent, viewport-filling overlay shown only while a panel or the sidebar
  * is being drag-resized.
  *
- * Embedded app iframes are separate documents: when the pointer crosses one
+ * Embedded iframes are separate documents: when the pointer crosses one
  * mid-drag, pointer events route into the iframe and the parent's drag tracking
  * freezes. The tempting fix — toggling the iframe's own `pointer-events` to
  * `none` during the drag — detaches the iframe's compositor scroll node in

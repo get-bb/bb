@@ -165,7 +165,6 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
       return joinSignatureParts([
         ...baseParts,
         row.itemId,
-        row.taskType,
         row.taskStatus,
         row.workflowName,
         row.description,
@@ -182,7 +181,6 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
                   agent.label,
                   agent.state,
                   agent.attempt,
-                  agent.cached,
                   agent.tokens ?? null,
                   agent.toolCalls ?? null,
                   agent.durationMs ?? null,

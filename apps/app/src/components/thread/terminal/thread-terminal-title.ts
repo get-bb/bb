@@ -1,12 +1,7 @@
 const TERMINAL_TITLE_MAX_LENGTH = 200;
-const TERMINAL_TITLE_PATH_SEGMENT_COUNT = 3;
 
 interface NormalizeTerminalTitleArgs {
   title: string;
-}
-
-interface FormatTerminalPathTitleArgs {
-  path: string;
 }
 
 interface IsPathLikeTerminalTitlePathArgs {
@@ -33,9 +28,7 @@ export function normalizeTerminalTitle({
 
   const pathTitle = parseShellPathTitle({ title: trimmedTitle });
   if (pathTitle !== null) {
-    return formatTerminalPathTitle({
-      path: pathTitle.path,
-    }).slice(0, TERMINAL_TITLE_MAX_LENGTH);
+    return null;
   }
 
   return trimmedTitle.slice(0, TERMINAL_TITLE_MAX_LENGTH);
@@ -45,7 +38,7 @@ function parseShellPathTitle({
   title,
 }: ParseShellPathTitleArgs): ShellPathTitleParts | null {
   const match = /^[^@\s:]+@[^:\s]+:(.+)$/u.exec(title);
-  const path = match?.[1];
+  const path = match?.[1]?.trimStart();
   if (!path || !isPathLikeTerminalTitlePath({ path })) {
     return null;
   }
@@ -62,19 +55,4 @@ function isPathLikeTerminalTitlePath({
     path.startsWith("/") ||
     path.startsWith("./")
   );
-}
-
-function formatTerminalPathTitle({
-  path,
-}: FormatTerminalPathTitleArgs): string {
-  if (path === "/" || path === "~" || path === ".") {
-    return path;
-  }
-
-  const segments = path.split("/").filter((segment) => segment.length > 0);
-  if (segments.length <= TERMINAL_TITLE_PATH_SEGMENT_COUNT) {
-    return path;
-  }
-
-  return `.../${segments.slice(-TERMINAL_TITLE_PATH_SEGMENT_COUNT).join("/")}`;
 }

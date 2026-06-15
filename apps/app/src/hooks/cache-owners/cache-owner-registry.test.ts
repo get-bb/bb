@@ -71,7 +71,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadsQueryKey",
   ],
   "hooks/cache-owners/composer-cache-owner.ts": [
-    "threadDefaultExecutionOptionsQueryKey",
     "threadPendingInteractionsQueryKey",
     "threadPromptHistoryQueryKey",
     "threadQueuedMessagesQueryKey",
@@ -83,7 +82,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentPathsQueryKeyPrefix",
     "environmentWorkStatusQueryKeyPrefix",
     "systemExecutionOptionsEnvironmentQueryKeyPrefix",
-    "threadComposerBootstrapEnvironmentQueryKeyPrefix",
   ],
   "hooks/cache-owners/environment-diff-patch-cache-owner.ts": [
     "environmentDiffPatchQueryKey",
@@ -92,11 +90,8 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentQueryKey",
   ],
   "hooks/cache-owners/mutation-cache-effects.ts": [
-    "allAppsQueryKeyPrefix",
-    "appSourcesQueryKey",
     "projectPathsQueryKeyPrefix",
     "sidebarNavigationQueryKey",
-    "threadDefaultExecutionOptionsQueryKey",
     "threadPromptHistoryQueryKey",
     "threadQueryKey",
     "threadQueuedMessagesQueryKey",
@@ -132,15 +127,9 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
   ],
   "hooks/cache-owners/realtime-cache-registry.ts": [
     "allHostQueryKeyPrefix",
-    "allAppMarkdownPreviewQueryKeyPrefix",
-    "allAppQueryKeyPrefix",
-    "allAppsQueryKeyPrefix",
     "allSystemExecutionOptionsQueryKeyPrefix",
     "allThreadSchedulesQueryKeyPrefix",
     "automationsOverviewQueryKey",
-    "appMarkdownPreviewQueryKeyPrefix",
-    "appQueryKey",
-    "appSourcesQueryKey",
     "allThreadQueryKeyPrefix",
     "allThreadTerminalsQueryKeyPrefix",
     "environmentDiffFilesQueryKeyPrefix",
@@ -156,13 +145,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadStoragePathsForThreadQueryKeyPrefix",
     "threadTerminalsQueryKey",
     "threadsQueryKey",
-    "allWorkflowRunAgentEventsQueryKeyPrefix",
-    "allWorkflowRunEventsQueryKeyPrefix",
-    "allWorkflowRunQueryKeyPrefix",
-    "allWorkflowRunsQueryKeyPrefix",
-    "workflowRunAgentEventsQueryKeyPrefix",
-    "workflowRunEventsQueryKey",
-    "workflowRunQueryKey",
   ],
   "hooks/cache-owners/system-cache-effects.ts": [
     "allEnvironmentDiffFilesQueryKeyPrefix",
@@ -172,12 +154,8 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "allEnvironmentQueryKeyPrefix",
     "allEnvironmentWorkStatusQueryKeyPrefix",
     "allHostQueryKeyPrefix",
-    "allAppMarkdownPreviewQueryKeyPrefix",
-    "allAppQueryKeyPrefix",
-    "allAppsQueryKeyPrefix",
     "allProjectPathsQueryKeyPrefix",
     "allSystemExecutionOptionsQueryKeyPrefix",
-    "allThreadDefaultExecutionOptionsQueryKeyPrefix",
     "allThreadPendingInteractionsQueryKeyPrefix",
     "allThreadQueryKeyPrefix",
     "allThreadQueuedMessagesQueryKeyPrefix",
@@ -189,18 +167,12 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "hostsQueryKey",
     "localPathExistenceQueryKeyPrefix",
     "projectsQueryKey",
-    "replayCapturesQueryKey",
     "sidebarNavigationQueryKey",
     "systemConfigQueryKey",
     "systemExecutionOptionsQueryKey",
     "systemProvidersQueryKey",
     "threadPromptHistoryQueryKeyPrefix",
     "threadsQueryKey",
-    "allWorkflowRunAgentEventsQueryKeyPrefix",
-    "allWorkflowRunEventsQueryKeyPrefix",
-    "allWorkflowRunQueryKeyPrefix",
-    "allWorkflowRunsQueryKeyPrefix",
-    "allWorkflowsQueryKeyPrefix",
   ],
   "hooks/cache-owners/system-config-cache-owner.ts": ["systemConfigQueryKey"],
   "hooks/cache-owners/terminal-cache-owner.ts": ["threadTerminalsQueryKey"],
@@ -212,7 +184,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentQueryKey",
     "hostQueryKey",
     "hostsQueryKey",
-    "threadComposerBootstrapQueryKey",
     "threadQueryKey",
     "threadTimelineQueryKey",
   ],
@@ -237,14 +208,9 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "threadQueryKey",
     "threadsQueryKey",
   ],
-  "hooks/cache-owners/workflow-run-cache-owner.ts": [
-    "allWorkflowRunsQueryKeyPrefix",
-    "workflowRunQueryKey",
-    "workflowRunsQueryKey",
-  ],
 };
 
-function getAppSourceRoot(): string {
+function getSourceRoot(): string {
   return path.resolve(new URL("../../", import.meta.url).pathname);
 }
 
@@ -265,7 +231,7 @@ function collectSourceFilePaths(directoryPath: string): string[] {
 }
 
 function toAppRelativePath(filePath: string): string {
-  return path.relative(getAppSourceRoot(), filePath).split(path.sep).join("/");
+  return path.relative(getSourceRoot(), filePath).split(path.sep).join("/");
 }
 
 function isTestOrStoryFile(relativePath: string): boolean {
@@ -339,7 +305,7 @@ function compareSourceFileViolations(
 
 function collectRawCacheWriteViolations(): SourceFileViolation[] {
   const violations: SourceFileViolation[] = [];
-  for (const filePath of collectSourceFilePaths(getAppSourceRoot())) {
+  for (const filePath of collectSourceFilePaths(getSourceRoot())) {
     const relativePath = toAppRelativePath(filePath);
     if (isTestOrStoryFile(relativePath) || isCacheOwnerFile(relativePath)) {
       continue;
@@ -385,7 +351,7 @@ function collectCacheOwnerQueryKeyImportViolations(): SourceFileViolation[] {
   const actualImportsByFile = new Map<string, Set<string>>();
   const cacheOwnerSourceFiles = new Map<string, ts.SourceFile>();
 
-  for (const filePath of collectSourceFilePaths(getAppSourceRoot())) {
+  for (const filePath of collectSourceFilePaths(getSourceRoot())) {
     const relativePath = toAppRelativePath(filePath);
     if (isTestOrStoryFile(relativePath) || !isCacheOwnerFile(relativePath)) {
       continue;
@@ -505,7 +471,7 @@ function collectCacheOwnerQueryKeyImportViolations(): SourceFileViolation[] {
 
 function collectCacheImportBoundaryViolations(): SourceFileViolation[] {
   const violations: SourceFileViolation[] = [];
-  for (const filePath of collectSourceFilePaths(getAppSourceRoot())) {
+  for (const filePath of collectSourceFilePaths(getSourceRoot())) {
     const relativePath = toAppRelativePath(filePath);
     if (
       isTestOrStoryFile(relativePath) ||
@@ -553,7 +519,7 @@ function resolveAppImportModulePath(
 
 function collectDeprecatedCacheShimImportViolations(): SourceFileViolation[] {
   const violations: SourceFileViolation[] = [];
-  for (const filePath of collectSourceFilePaths(getAppSourceRoot())) {
+  for (const filePath of collectSourceFilePaths(getSourceRoot())) {
     const relativePath = toAppRelativePath(filePath);
     const sourceFile = parseSourceFile(filePath);
     sourceFile.forEachChild((node) => {
@@ -586,7 +552,7 @@ function collectDeprecatedCacheShimImportViolations(): SourceFileViolation[] {
 }
 
 describe("cache owner boundaries", () => {
-  it("keeps raw app-domain cache writes inside cache owners", () => {
+  it("keeps raw frontend-domain cache writes inside cache owners", () => {
     expect(collectRawCacheWriteViolations()).toEqual([]);
   });
 

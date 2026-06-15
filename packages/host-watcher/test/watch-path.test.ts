@@ -256,6 +256,46 @@ describe.sequential("watchPathChanges", () => {
     }
   });
 
+  it("does not retry or unsubscribe after Parcel inotify poll interruptions", async () => {
+    const threadStorageRoot = path.join("/tmp", "bb-watch-path-poll");
+    const onWatchError = vi.fn();
+    const { callbacks, subscribeCallCount, unsubscribe, watchPathChanges } =
+      await importWatchPathWithMockedWatcher({
+        pathExistsImplementation: async () => true,
+      });
+
+    const stopWatching = watchPathChanges(threadStorageRoot, {
+      onChange: () => undefined,
+      onWatchError,
+    });
+
+    try {
+      const [callback] = await waitFor(
+        () => callbacks,
+        (currentCallbacks) => currentCallbacks.length === 1,
+      );
+
+      callback(new Error("Unable to poll: Interrupted system call"), []);
+
+      await waitFor(
+        () => onWatchError.mock.calls.length,
+        (callCount) => callCount === 1,
+      );
+      await sleep(600);
+
+      expect(onWatchError).toHaveBeenCalledWith({
+        message: "Unable to poll: Interrupted system call",
+        rootPath: threadStorageRoot,
+      });
+      expect(subscribeCallCount()).toBe(1);
+      expect(unsubscribe).not.toHaveBeenCalled();
+    } finally {
+      await stopWatching();
+    }
+
+    expect(unsubscribe).not.toHaveBeenCalled();
+  });
+
   it("waits for late startup unsubscribe when disposed during startup", async () => {
     const threadStorageRoot = path.join("/tmp", "bb-watch-path-late");
     const subscriptionDeferred =

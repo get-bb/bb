@@ -24,7 +24,6 @@ describe("internal session protocol version", () => {
           dataDir: "/tmp/host-protocol-data",
           protocolVersion: staleProtocolVersion,
           activeThreads: [],
-          activeWorkflowRunIds: [],
         },
       });
 

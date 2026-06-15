@@ -1,12 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import path from "node:path";
-import {
-  resolveApplicationManifestPath,
-  resolveApplicationPath,
-  resolveApplicationPublicPath,
-} from "@bb/config/app-storage-paths";
 import { getEnvironment } from "@bb/db";
-import type { AppManifest } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import { onDaemonSocketMessage } from "../../src/ws/daemon-protocol.js";
 import {
@@ -15,7 +7,6 @@ import {
   seedProjectWithSource,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
-import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 interface TestDaemonSocket {
   close: (code?: number, reason?: string) => void;
@@ -27,38 +18,6 @@ function createTestDaemonSocket(): TestDaemonSocket {
     close: vi.fn(),
     send: vi.fn(),
   };
-}
-
-async function waitFor(
-  predicate: () => boolean,
-  timeoutMs = 1_000,
-): Promise<void> {
-  const startedAt = Date.now();
-  while (!predicate()) {
-    if (Date.now() - startedAt > timeoutMs) {
-      throw new Error("Timed out waiting for condition");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}
-
-async function writeApplication(
-  dataDir: string,
-  manifest: AppManifest,
-): Promise<void> {
-  await mkdir(resolveApplicationPublicPath(dataDir, manifest.id), {
-    recursive: true,
-  });
-  await writeFile(
-    resolveApplicationManifestPath(dataDir, manifest.id),
-    `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf8",
-  );
-  await writeFile(
-    path.join(resolveApplicationPublicPath(dataDir, manifest.id), "index.html"),
-    "<!doctype html><title>External App</title>",
-    "utf8",
-  );
 }
 
 describe("internal environment change websocket hints", () => {
@@ -262,112 +221,4 @@ describe("internal environment change websocket hints", () => {
     });
   });
 
-  it("notifies app list clients when a daemon watcher reports an externally added app", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-app-added",
-      });
-      const notifySystemSpy = vi.spyOn(harness.hub, "notifySystem");
-      const socket = createTestDaemonSocket();
-
-      await writeApplication(harness.config.dataDir, {
-        manifestVersion: 1,
-        id: "external-added",
-        name: "External Added",
-        entry: "index.html",
-        capabilities: [],
-      });
-
-      onDaemonSocketMessage(harness.deps, {
-        hostId: host.id,
-        sessionId: session.id,
-        socket,
-        raw: JSON.stringify({
-          type: "application-storage-changed",
-        }),
-      });
-
-      await waitFor(() =>
-        notifySystemSpy.mock.calls.some(([changes]) =>
-          changes.includes("apps-changed"),
-        ),
-      );
-      expect(socket.close).not.toHaveBeenCalled();
-    });
-  });
-
-  it("notifies app list clients when a daemon watcher reports an externally removed app", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-app-removed",
-      });
-      await writeApplication(harness.config.dataDir, {
-        manifestVersion: 1,
-        id: "external-removed",
-        name: "External Removed",
-        entry: "index.html",
-        capabilities: [],
-      });
-      const notifySystemSpy = vi.spyOn(harness.hub, "notifySystem");
-      const socket = createTestDaemonSocket();
-
-      await rm(
-        resolveApplicationPath(harness.config.dataDir, "external-removed"),
-        { recursive: true, force: true },
-      );
-      onDaemonSocketMessage(harness.deps, {
-        hostId: host.id,
-        sessionId: session.id,
-        socket,
-        raw: JSON.stringify({
-          type: "application-storage-changed",
-        }),
-      });
-
-      await waitFor(() =>
-        notifySystemSpy.mock.calls.some(([changes]) =>
-          changes.includes("apps-changed"),
-        ),
-      );
-      expect(socket.close).not.toHaveBeenCalled();
-    });
-  });
-
-  it("broadcasts app-scoped content changes from a daemon watcher without an apps-changed system hint", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-app-content-changed",
-      });
-      const notifySystemSpy = vi.spyOn(harness.hub, "notifySystem");
-      const clientSocket = createMockHubSocket();
-      harness.hub.subscribe(clientSocket, "app");
-      const socket = createTestDaemonSocket();
-
-      onDaemonSocketMessage(harness.deps, {
-        hostId: host.id,
-        sessionId: session.id,
-        socket,
-        raw: JSON.stringify({
-          type: "application-content-changed",
-          applicationId: "external-content",
-        }),
-      });
-
-      expect(
-        clientSocket.messages.map((message) => JSON.parse(message)),
-      ).toEqual([
-        {
-          type: "changed",
-          entity: "app",
-          id: "external-content",
-          changes: ["content-changed"],
-        },
-      ]);
-      // Give any erroneously triggered async app-list refresh a chance to run
-      // before asserting no system-level apps-changed broadcast happened.
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      expect(notifySystemSpy).not.toHaveBeenCalled();
-      expect(socket.close).not.toHaveBeenCalled();
-    });
-  });
 });

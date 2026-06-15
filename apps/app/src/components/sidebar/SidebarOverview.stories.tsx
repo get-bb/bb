@@ -16,10 +16,7 @@ import {
   ProjectListNavigationLoadingState,
   ProjectListShell,
 } from "./ProjectList";
-import {
-  appsQueryKey,
-  sidebarNavigationQueryKey,
-} from "@/hooks/queries/query-keys";
+import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
 export default {
@@ -31,9 +28,7 @@ interface SidebarFrameProps {
 }
 
 const noop = () => {};
-const EMPTY_APPS: readonly [] = [];
 const SIDEBAR_NAVIGATION_STORY_QUERY_KEY = sidebarNavigationQueryKey();
-const APPS_STORY_QUERY_KEY = appsQueryKey();
 
 const bbProject = makeProject({
   id: "proj_story_bb",
@@ -167,8 +162,8 @@ function SidebarFrame({ children }: SidebarFrameProps) {
           <div className="shrink-0 border-t border-sidebar-border/70 px-2 py-2">
             <button
               type="button"
-              aria-label="App settings"
-              title="App settings"
+              aria-label="Settings"
+              title="Settings"
               className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2"
             >
               <Icon name="Settings" className="size-4" />
@@ -197,16 +192,11 @@ function LoadedSidebar() {
       SIDEBAR_NAVIGATION_STORY_QUERY_KEY,
       loadedSidebarNavigation,
     );
-    queryClient.setQueryData(APPS_STORY_QUERY_KEY, EMPTY_APPS);
     setIsSeeded(true);
 
     return () => {
       queryClient.removeQueries({
         queryKey: SIDEBAR_NAVIGATION_STORY_QUERY_KEY,
-        exact: true,
-      });
-      queryClient.removeQueries({
-        queryKey: APPS_STORY_QUERY_KEY,
         exact: true,
       });
     };

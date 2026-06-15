@@ -17,13 +17,6 @@ export interface EncodeClientTurnRequestIdNumberArgs {
   value: number;
 }
 
-export const hostDaemonProducerEventIdSchema = z
-  .string()
-  .regex(/^hdevt_[23456789abcdefghijkmnpqrstuvwxyz]{20}$/u);
-export type HostDaemonProducerEventId = z.infer<
-  typeof hostDaemonProducerEventIdSchema
->;
-
 export const clientTurnRequestIdSchema = z
   .string()
   .regex(/^creq_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/u);

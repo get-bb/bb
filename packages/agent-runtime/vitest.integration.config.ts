@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { defineConfig } from "vitest/config";
-import { workspaceTestAliases } from "../../vitest.workspace-aliases";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
 function loadDotEnv(): Record<string, string> {
   try {
@@ -24,11 +23,7 @@ function loadDotEnv(): Record<string, string> {
 
 const dotEnv = loadDotEnv();
 
-export default defineConfig({
-  resolve: {
-    conditions: ["source"],
-    alias: workspaceTestAliases,
-  },
+export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
     name: "@bb/agent-runtime:integration",

@@ -11,22 +11,17 @@ import {
 import type { AppDeps, ServerAppDeps } from "./types.js";
 import { ApiError, errorToResponse } from "./errors.js";
 import { registerAutomationRoutes } from "./routes/automations.js";
-import { registerGlobalAppRoutes } from "./routes/apps.js";
 import { registerEnvironmentRoutes } from "./routes/environments.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerHostRoutes } from "./routes/hosts.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerSystemRoutes } from "./routes/system.js";
-import { registerDevelopmentOnlyReplayRoutes } from "./routes/internal-replay.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
-import { registerWorkflowRunRoutes } from "./routes/workflow-runs.js";
-import { registerInternalAppDataChangeRoutes } from "./internal/app-data-changes.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
 import { registerInternalSessionRoutes } from "./internal/session.js";
 import { registerInternalToolCallRoutes } from "./internal/tool-calls.js";
-import { registerInternalWorkflowRunRoutes } from "./internal/workflow-runs.js";
 import {
   setAuthenticatedDaemon,
   verifyAuthenticatedDaemon,
@@ -247,16 +242,13 @@ export function createApp(
     return next();
   });
   const publicApi = new Hono();
-  registerGlobalAppRoutes(publicApi, deps);
   registerProjectRoutes(publicApi, deps);
   registerAutomationRoutes(publicApi, deps);
   registerFileRoutes(publicApi, deps);
   registerHostRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
-  registerWorkflowRunRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps);
-  registerDevelopmentOnlyReplayRoutes(publicApi, deps);
   app.route("/api/v1", publicApi);
   app.use("/api/v1/*", () => {
     throw new ApiError(404, "not_found", "Not found");
@@ -265,11 +257,9 @@ export function createApp(
   const internalApi = new Hono();
   registerInternalHostRoutes(internalApi, deps);
   registerInternalSessionRoutes(internalApi, deps);
-  registerInternalAppDataChangeRoutes(internalApi, deps);
   registerInternalEventRoutes(internalApi, deps);
   registerInternalToolCallRoutes(internalApi, deps);
   registerInternalInteractiveRequestRoutes(internalApi, deps);
-  registerInternalWorkflowRunRoutes(internalApi, deps);
   app.route("/internal", internalApi);
 
   app.get(

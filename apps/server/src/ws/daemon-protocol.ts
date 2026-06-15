@@ -10,8 +10,6 @@ import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
 import { requireAuthorizedActiveSession } from "../internal/session-state.js";
 import { handleDaemonSocketClosed } from "../internal/session-owner-side-effects.js";
 import { notifyDaemonEnvironmentChange } from "../internal/environment-changes.js";
-import { notifyGlobalAppsChanged } from "../routes/apps.js";
-import { scheduleWorkflowRunPendingNotificationDelivery } from "../services/workflows/workflow-run-pending-notifications.js";
 import { decodeSocketPayload } from "./decode-payload.js";
 
 interface DaemonSocket {
@@ -71,6 +69,7 @@ export function onDaemonSocketOpen(
     | "logger"
     | "machineAuth"
     | "pendingInteractions"
+    | "telemetry"
     | "terminalSessions"
   >,
   args: { hostId: string; sessionId: string; socket: DaemonSocket },
@@ -84,12 +83,6 @@ export function onDaemonSocketOpen(
     daemonSessionId: args.sessionId,
     hostId: args.hostId,
   });
-  // First moment a pending workflow-run manager notification becomes
-  // deliverable after a reconnect: session-open reconciliation recorded the
-  // intent BEFORE this socket attached (manager pushes need the hub socket
-  // for the preferences RPC), so drain it now rather than waiting out the
-  // periodic sweep.
-  scheduleWorkflowRunPendingNotificationDelivery(deps);
 }
 
 export function onDaemonSocketMessage(
@@ -126,24 +119,6 @@ export function onDaemonSocketMessage(
         environmentId: result.data.environmentId,
         change: result.data.change,
       });
-      return;
-    }
-    if (result.data.type === "application-storage-changed") {
-      void notifyGlobalAppsChanged(deps).catch((error) => {
-        deps.logger.warn(
-          {
-            ...runtimeErrorLogFields(deps.config, error),
-          },
-          "Failed to refresh global app list after daemon storage change",
-        );
-      });
-      return;
-    }
-    if (result.data.type === "application-content-changed") {
-      // Host-observed content change under the app's public/ tree. Content
-      // edits never alter the app list, so this broadcasts a per-app
-      // content-changed hint directly and open app surfaces live-reload.
-      deps.hub.notifyAppContentChanged(result.data.applicationId);
       return;
     }
     if (result.data.type === "host-rpc.response") {

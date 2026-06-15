@@ -17,6 +17,7 @@ import type {
   PathId,
   PathProjectAutomationId,
   PathProjectId,
+  PathThreadAndFilePath,
   PathThreadAndQueuedMessage,
   PathThreadScheduleId,
   PathThreadAndTerminal,
@@ -24,17 +25,6 @@ import type {
 import type {
   Automation,
   AutomationsOverviewResponse,
-  AppDataListQuery,
-  AppDataListResponse,
-  AppDataReadResponse,
-  AppDataWriteRequest,
-  AddAppSourceRequest,
-  AppDetail,
-  AppMessageRequest,
-  AppSourceStatus,
-  AppSummary,
-  CreateAppRequest,
-  SyncAppSourceRequest,
   CreateAutomationRequest,
   CreateQueuedMessageRequest,
   CreateProjectRequest,
@@ -63,6 +53,7 @@ import type {
   EnvironmentPullRequestResponse,
   ThreadArchiveAllResponse,
   ThreadStorageContentQuery,
+  ThreadFilesRawQuery,
   ThreadHostFileContentQuery,
   ThreadStorageFilesQuery,
   ProjectAttachmentContentQuery,
@@ -71,8 +62,6 @@ import type {
   ProjectDefaultExecutionOptionsQuery,
   ProjectAttachmentUploadForm,
   ProjectFilesQuery,
-  ProjectWorkflowPolicyResponse,
-  UpdateProjectWorkflowPolicyRequest,
   ProjectPathsQuery,
   ProjectListQuery,
   PromptHistoryQuery,
@@ -129,123 +118,11 @@ import type {
   CommandListResponse,
   WorkspaceFileListResponse,
   WorkspacePathListResponse,
-  ReplayCaptureListResponse,
-  ReplayRunRequest,
-  ReplayRunResponse,
-  CreateWorkflowRunRequest,
-  WorkflowListQuery,
-  WorkflowListResponse,
-  WorkflowRunEventsQuery,
-  WorkflowRunEventsResponse,
-  WorkflowRunListQuery,
-  WorkflowRunListResponse,
-  WorkflowRunResponse,
-  WorkflowRunWaitQuery,
 } from "./api-types.js";
 import type { ApiError } from "./errors.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
-type PathApplicationApp = { param: { applicationId: string } };
-type PathAppSourceName = { param: { name: string } };
-type PathWorkflowRunAgentIndex = { param: { id: string; index: string } };
-
 export type PublicApiSchema = {
-  // ─── Development Only ────────────────────────────────────────────────
-
-  "/development-only/replay/captures": {
-    $get: Endpoint<EmptyInput, ReplayCaptureListResponse>;
-  };
-  "/development-only/replay/captures/:id": {
-    $delete: Endpoint<PathId, { ok: true }>;
-  };
-  "/development-only/replay/captures/:id/runs": {
-    $post: Endpoint<
-      PathId & { json: ReplayRunRequest },
-      ReplayRunResponse,
-      201
-    >;
-  };
-
-  // ─── Apps ────────────────────────────────────────────────────────────
-
-  "/apps": {
-    /** List global local-host apps by scanning valid manifests in the app root. */
-    $get: Endpoint<EmptyInput, AppSummary[]>;
-    /** Create one global local-host app with a slug applicationId, derived from name when omitted. */
-    $post: Endpoint<{ json: CreateAppRequest }, AppDetail, 201>;
-  };
-  "/apps/:applicationId": {
-    /** Resolve one global app manifest and canonical storage paths. */
-    $get: Endpoint<PathApplicationApp, AppDetail>;
-    /** Delete one global app folder, including assets and data. */
-    $delete: Endpoint<PathApplicationApp, { ok: true }>;
-  };
-  "/apps/:applicationId/data": {
-    /** List JSON value files at or below an app data prefix. */
-    $get: Endpoint<
-      PathApplicationApp & { query?: AppDataListQuery },
-      AppDataListResponse
-    >;
-  };
-  "/apps/:applicationId/data/*": {
-    /**
-     * Read, write, or delete one app data JSON file. The wildcard suffix is
-     * validated by the route because hono-typed-routes only types named params.
-     */
-    $get: Endpoint<PathApplicationApp, AppDataReadResponse>;
-    $put: Endpoint<
-      PathApplicationApp & { json: AppDataWriteRequest },
-      AppDataReadResponse
-    >;
-    $delete: Endpoint<PathApplicationApp, { ok: true }>;
-  };
-  "/apps/:applicationId/message": {
-    /** Send a message from a global app to an explicit thread target context. */
-    $post: Endpoint<
-      PathApplicationApp & { json: AppMessageRequest },
-      { ok: true },
-      202
-    >;
-  };
-  "/apps/:applicationId/detach": {
-    /**
-     * Detach a source-managed app into local management: removes the
-     * provenance marker so the owning source stops syncing it (it reports a
-     * conflict for the id from then on) and the app delete guard lifts.
-     */
-    $post: Endpoint<PathApplicationApp, { ok: true }>;
-  };
-
-  // ─── App Sources ─────────────────────────────────────────────────────
-
-  "/app-sources": {
-    $get: Endpoint<EmptyInput, AppSourceStatus[]>;
-    /**
-     * Register a git repo (or local path) of apps and run its first sync
-     * inline, so the response reports which apps were installed. A failed
-     * first sync still registers the source, with lastError set.
-     */
-    $post: Endpoint<{ json: AddAppSourceRequest }, AppSourceStatus, 201>;
-  };
-  "/app-sources/:name": {
-    /**
-     * Remove the source, its checkout, and its managed apps. App data stays
-     * in the app-data root and reattaches if the apps are reinstalled.
-     */
-    $delete: Endpoint<PathAppSourceName, { ok: true }>;
-  };
-  "/app-sources/:name/sync": {
-    /**
-     * Fetch the origin and reconcile installed apps. Coalesces with an
-     * in-flight sync; `force: true` re-materializes diverged apps,
-     * discarding local edits.
-     */
-    $post: Endpoint<
-      PathAppSourceName & { json: SyncAppSourceRequest },
-      AppSourceStatus
-    >;
-  };
-
   // ─── Automations ─────────────────────────────────────────────────────
 
   "/automations": {
@@ -281,7 +158,7 @@ export type PublicApiSchema = {
     >;
   };
   "/projects/:id/default-execution-options": {
-    /** Returns the last remembered provider and execution options for the project and thread type. */
+    /** Returns resolved provider and execution defaults for creating a root thread in the project. */
     $get: Endpoint<
       PathProjectId & { query: ProjectDefaultExecutionOptionsQuery },
       ProjectExecutionDefaults | null
@@ -306,15 +183,6 @@ export type PublicApiSchema = {
       ProjectSource
     >;
     $delete: Endpoint<PathProjectSourceId, { ok: true }>;
-  };
-  "/projects/:id/workflow-policy": {
-    /** Effective policy: built-in defaults when the project has never set one. */
-    $get: Endpoint<PathProjectId, ProjectWorkflowPolicyResponse>;
-    /** Full replace; applies to future launches only (runs snapshot their ceiling). */
-    $put: Endpoint<
-      PathProjectId & { json: UpdateProjectWorkflowPolicyRequest },
-      ProjectWorkflowPolicyResponse
-    >;
   };
   "/projects/:id/automations": {
     $get: Endpoint<PathProjectId, Automation[]>;
@@ -780,6 +648,16 @@ export type PublicApiSchema = {
       ThreadStorageFileListResponse
     >;
   };
+  "/threads/:id/thread-storage/files/:filePath{.+}": {
+    /**
+     * Serve one thread storage file addressed by path suffix (`filePath` may
+     * contain slashes). Path-shaped rather than `?path=` so relative asset
+     * links inside iframe-previewed HTML resolve beside the file. HTML
+     * responses are capped at 5 MB and served with a `sandbox allow-scripts`
+     * CSP; app bridge globals are never injected.
+     */
+    $get: Endpoint<PathThreadAndFilePath, Uint8Array, 200, "binary">;
+  };
   "/threads/:id/thread-storage/paths": {
     /**
      * List files and/or folders in durable thread storage for a thread
@@ -816,97 +694,32 @@ export type PublicApiSchema = {
       "binary"
     >;
   };
-
-  // ─── Workflows ───────────────────────────────────────────────────────
-
-  "/workflows": {
+  "/threads/:id/worktree/files/:filePath{.+}": {
     /**
-     * List workflow definitions visible from the project's resolved source
-     * root, across the registry tiers (project > user > builtin), via the
-     * daemon `workflow.list` RPC. Host offline → 502 `host_unavailable`.
+     * Serve one file from the thread's ready environment workspace addressed
+     * by path suffix (`filePath` may contain slashes). Path-shaped rather
+     * than `?path=` so relative asset links inside iframe-previewed HTML
+     * resolve beside the file. HTML responses are capped at 5 MB and served
+     * with a `sandbox allow-scripts` CSP; app bridge globals are never
+     * injected.
      */
-    $get: Endpoint<{ query: WorkflowListQuery }, WorkflowListResponse>;
+    $get: Endpoint<PathThreadAndFilePath, Uint8Array, 200, "binary">;
   };
-  "/workflow-runs": {
+  "/threads/:id/files/raw": {
     /**
-     * List workflow runs, newest first (`limit` caps the page). `projectId`
-     * scopes to one project; omitted = all projects. User-archived and
-     * user-deleted runs are always excluded.
-     */
-    $get: Endpoint<{ query: WorkflowRunListQuery }, WorkflowRunListResponse>;
-    /**
-     * Launch a workflow run: validate/resolve the source, snapshot it with
-     * all defaults filled at the boundary, insert the run, and request the
-     * start. Honors `clientRequestId` idempotency (a replay returns the
-     * original run; a replay of a still-`created` run re-requests its start).
-     * Inline source validates with no host round-trip (422 on findings);
-     * named source resolution requires the host online (404 unknown name).
-     * Launch target: explicit `hostId` wins; anchored launches without one
-     * inherit the anchor thread environment's `{hostId, workspacePath}`;
-     * unanchored launches resolve the project's default source.
-     */
-    $post: Endpoint<{ json: CreateWorkflowRunRequest }, WorkflowRunResponse, 201>;
-  };
-  "/workflow-runs/:id": {
-    $get: Endpoint<PathId, WorkflowRunResponse>;
-    /**
-     * Soft-delete a settled run: it disappears from lists and 404s by id;
-     * the retention sweeps still clean up journal payloads and the daemon
-     * run dir. Active runs 409 `workflow_run_not_settled` (cancel first).
-     */
-    $delete: Endpoint<PathId, { ok: true }>;
-  };
-  "/workflow-runs/:id/archive": {
-    /**
-     * Hide a settled run from list surfaces (it stays reachable by id).
-     * Idempotent. Active runs 409 `workflow_run_not_settled` (cancel first).
-     * Distinct from journal-payload retention, which the sweep owns.
-     */
-    $post: Endpoint<PathId, { ok: true }>;
-  };
-  "/workflow-runs/:id/events": {
-    /** Get durable run events with parsed payloads. `afterSeq` returns strictly-greater sequences. */
-    $get: Endpoint<
-      PathId & { query?: WorkflowRunEventsQuery },
-      WorkflowRunEventsResponse
-    >;
-  };
-  "/workflow-runs/:id/wait": {
-    /**
-     * Long-poll until the run reaches a terminal status
-     * (`completed|failed|cancelled`). Returns the terminal run (200) or 204
-     * when it stays unsettled within `waitMs` (capped at 60s) — `interrupted`
-     * is not terminal (a resume may still revive it), so callers loop.
+     * Serve one absolute-path HTML file from the thread's host for sandboxed
+     * iframe previews. `text/html` only (415 otherwise), capped at 5 MB, and
+     * served with a `sandbox allow-scripts` CSP, `nosniff`, and `no-store`;
+     * app bridge globals are never injected. Serves local user-authored
+     * bytes — do not expose `/api/v1` on public HTTP without adding an auth
+     * boundary.
      */
     $get: Endpoint<
-      PathId & { query?: WorkflowRunWaitQuery },
-      WorkflowRunResponse | null
+      PathId & { query: ThreadFilesRawQuery },
+      Uint8Array,
+      200,
+      "binary"
     >;
-  };
-  "/workflow-runs/:id/cancel": {
-    /**
-     * Request cancellation. Terminal runs no-op; `created`/`interrupted`
-     * runs settle `cancelled` server-side; live runs get a durable
-     * `workflow.cancel`; archived runs 409 `workflow_run_archived`.
-     */
-    $post: Endpoint<PathId, { ok: true }>;
-  };
-  "/workflow-runs/:id/resume": {
-    /**
-     * Request an explicit resume. Gated to `interrupted` runs only (409
-     * `workflow_run_not_resumable` otherwise, 409 `workflow_run_archived`
-     * for archived runs); the completed journal prefix replays free.
-     */
-    $post: Endpoint<PathId, { ok: true }>;
-  };
-  "/workflow-runs/:id/agents/:index/events": {
-    /**
-     * Per-agent provider-event log (the bb thread-timeline event rows the
-     * workflow agent emitted), proxied from the run dir on the run's host
-     * via `host.read_file_relative`. 404 when the log does not exist on the
-     * host; 502 `host_unavailable` when the daemon is offline.
-     */
-    $get: Endpoint<PathWorkflowRunAgentIndex, ThreadEventRow[]>;
   };
 
   // ─── System ──────────────────────────────────────────────────────────

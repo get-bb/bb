@@ -24,10 +24,7 @@ import {
 } from "./command-dispatch.js";
 import { isExpectedOnlineRpcFailureError } from "./command-dispatch-support.js";
 import type { HostDaemonLogger } from "./logger.js";
-import {
-  RuntimeManager,
-  type RuntimeThreadProviderSession,
-} from "./runtime-manager.js";
+import { RuntimeManager } from "./runtime-manager.js";
 
 interface CommandRouterLogger extends Pick<HostDaemonLogger, "warn"> {
   debug?: HostDaemonLogger["debug"];
@@ -89,15 +86,6 @@ interface InFlightThreadProviderLane {
   lane: ProviderExecutionLane;
 }
 
-type FileWriteLaneCommand = Extract<
-  HostDaemonCommand,
-  {
-    type:
-      | "host.write_file_relative"
-      | "host.delete_file_relative"
-      | "host.delete_path_relative";
-  }
->;
 type CommandRouterTask = Promise<HostDaemonCommandResultForCommand>;
 
 export interface CommandRouterOptions {
@@ -105,14 +93,9 @@ export interface CommandRouterOptions {
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
   runtimeManager: RuntimeManager;
   terminalManager?: CommandDispatchOptions["terminalManager"];
-  workflowRunManager?: CommandDispatchOptions["workflowRunManager"];
-  fetchWorkflowRunJournal?: CommandDispatchOptions["fetchWorkflowRunJournal"];
   eventSink: CommandDispatchOptions["eventSink"];
   listModels?: CommandDispatchOptions["listModels"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
-  recordReplayCaptureThreadMetadata?: CommandDispatchOptions["recordReplayCaptureThreadMetadata"];
-  recordReplayCaptureTurnRequest?: CommandDispatchOptions["recordReplayCaptureTurnRequest"];
-  replayTasks?: CommandDispatchOptions["replayTasks"];
   threadStorageRootPath: string;
   logger: CommandRouterLogger;
 }
@@ -130,7 +113,6 @@ function elapsedMs(startedAtMs: number): number {
 export class CommandRouter {
   private readonly logger;
   private readonly environmentLanes = new Map<string, ReadWriteLaneState>();
-  private readonly fileWriteLaneTails = new Map<string, Promise<void>>();
   // Per-thread barrier keyed by threadId. A turn submission
   // (turn.submit/thread.start) waits for an in-flight thread.unarchive of the
   // same thread so it cannot resume a still-archived provider session.
@@ -224,24 +206,16 @@ export class CommandRouter {
   private executeLiveDaemonCommand(
     command: HostDaemonCommand,
   ): Promise<HostDaemonCommandResultForCommand> {
-    let task: Promise<HostDaemonCommandResultForCommand>;
-    const fileWriteLaneKey = this.getFileWriteLaneKey(command);
     const environmentLaneMode = this.getEnvironmentLaneMode(command);
     const providerLane = this.resolveProviderLane(command);
-    const runCommand = () =>
-      this.runAfterThreadUnarchiveBarrier(command, () =>
-        this.runInExecutionLanes(
-          command,
-          environmentLaneMode,
-          providerLane,
-          () => this.executeLiveDaemonCommandBody(command),
-        ),
-      );
-    if (fileWriteLaneKey) {
-      task = this.runInFileWriteLane(fileWriteLaneKey, runCommand);
-    } else {
-      task = runCommand();
-    }
+    const task = this.runAfterThreadUnarchiveBarrier(command, () =>
+      this.runInExecutionLanes(
+        command,
+        environmentLaneMode,
+        providerLane,
+        () => this.executeLiveDaemonCommandBody(command),
+      ),
+    );
     this.registerThreadUnarchiveBarrier(command, task);
     this.registerInFlightThreadProviderLane(command, task);
     return task;
@@ -310,17 +284,10 @@ export class CommandRouter {
       fetchProjectAttachment: this.options.fetchProjectAttachment,
       runtimeManager: this.options.runtimeManager,
       terminalManager: this.options.terminalManager,
-      workflowRunManager: this.options.workflowRunManager,
-      fetchWorkflowRunJournal: this.options.fetchWorkflowRunJournal,
       dataDir: this.options.dataDir,
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
-      recordReplayCaptureThreadMetadata:
-        this.options.recordReplayCaptureThreadMetadata,
-      recordReplayCaptureTurnRequest:
-        this.options.recordReplayCaptureTurnRequest,
-      replayTasks: this.options.replayTasks,
       threadStorageRootPath: this.options.threadStorageRootPath,
     };
   }
@@ -401,17 +368,6 @@ export class CommandRouter {
       if (this.threadUnarchiveBarriers.get(threadId) === barrier) {
         this.threadUnarchiveBarriers.delete(threadId);
       }
-    });
-  }
-
-  private runInFileWriteLane<T>(
-    key: string,
-    work: () => Promise<T>,
-  ): Promise<T> {
-    return this.runInSerialLane({
-      key,
-      lanes: this.fileWriteLaneTails,
-      work,
     });
   }
 
@@ -509,23 +465,6 @@ export class CommandRouter {
     });
   }
 
-  private getFileWriteLaneKey(command: HostDaemonCommand): string | null {
-    if (!this.isFileWriteLaneCommand(command)) {
-      return null;
-    }
-    return `${command.rootPath}\0${command.path}`;
-  }
-
-  private isFileWriteLaneCommand(
-    command: HostDaemonCommand,
-  ): command is FileWriteLaneCommand {
-    return (
-      command.type === "host.write_file_relative" ||
-      command.type === "host.delete_file_relative" ||
-      command.type === "host.delete_path_relative"
-    );
-  }
-
   private getProviderProcessLaneKey(
     environmentId: string,
     providerId: string | null,
@@ -580,12 +519,6 @@ export class CommandRouter {
       providerId: identity.providerId,
       sessionId,
     });
-  }
-
-  private providerLaneForThreadStop(
-    session: RuntimeThreadProviderSession,
-  ): ProviderExecutionLane {
-    return this.createThreadProviderExecutionLane(session, "write");
   }
 
   private createInFlightThreadStopLane(
@@ -665,11 +598,6 @@ export class CommandRouter {
   ): ProviderExecutionLane | null {
     switch (command.type) {
       case "thread.start":
-        this.options.runtimeManager.recordThreadProviderStart({
-          environmentId: command.environmentId,
-          providerId: command.providerId,
-          threadId: command.threadId,
-        });
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
           processMode: "read",
@@ -684,12 +612,6 @@ export class CommandRouter {
           sessionId: `provider-thread:${command.resumeContext.providerThreadId}`,
         });
       case "thread.archive":
-        this.options.runtimeManager.recordThreadProviderSession({
-          environmentId: command.environmentId,
-          providerId: command.providerId,
-          providerThreadId: command.providerThreadId,
-          threadId: command.threadId,
-        });
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
           processMode: "read",
@@ -697,12 +619,6 @@ export class CommandRouter {
           sessionId: `provider-thread:${command.providerThreadId}`,
         });
       case "interactive.resolve":
-        this.options.runtimeManager.recordThreadProviderSession({
-          environmentId: command.environmentId,
-          providerId: command.providerId,
-          providerThreadId: command.providerThreadId,
-          threadId: command.threadId,
-        });
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
           processMode: "read",
@@ -710,13 +626,21 @@ export class CommandRouter {
           sessionId: `provider-thread:${command.providerThreadId}`,
         });
       case "thread.stop": {
-        const session = this.options.runtimeManager.getThreadProviderSession(
-          command.environmentId,
-          command.threadId,
-        );
-        return session
-          ? this.providerLaneForThreadStop(session)
-          : this.getInFlightThreadStopProviderLane(command);
+        const session = this.options.runtimeManager
+          .get(command.environmentId)
+          ?.runtime.getProviderSession(command.threadId);
+        if (session) {
+          return this.createThreadProviderExecutionLane(
+            {
+              environmentId: command.environmentId,
+              providerId: session.providerId,
+              providerThreadId: session.providerThreadId,
+              threadId: command.threadId,
+            },
+            "write",
+          );
+        }
+        return this.getInFlightThreadStopProviderLane(command);
       }
       default:
         return null;
