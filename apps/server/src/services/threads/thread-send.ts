@@ -441,13 +441,17 @@ export async function sendThreadMessage(
           thread,
         });
         const currentThread = getThread(tx, thread.id);
-        // The error arm is dispatch routing, not just transition protection:
-        // an errored thread re-activates optimistically even when the
-        // dispatch is a thread.start, while an idle thread.start dispatch
-        // stays non-active until the daemon reports back.
+        // Dispatching a turn IS the thread becoming active. A warm
+        // `turn.submit` and a cold `thread.start` are the same event from the
+        // thread's view, so an `idle` cold-start activates exactly like an
+        // `error` cold-start — a failed start walks either back through
+        // `command.failed`. (Other statuses fall through unchanged: pre-start
+        // threads are already rejected by `ensureThreadCanStartRequest`, and a
+        // `stopping`/superseded thread must not be reactivated here.)
         if (
           dispatchKind === "turn.submit" ||
-          currentThread?.status === "error"
+          currentThread?.status === "error" ||
+          currentThread?.status === "idle"
         ) {
           requireThreadLifecycleEventApplied(
             applyLoggedThreadLifecycleEventInTransaction(

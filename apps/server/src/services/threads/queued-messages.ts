@@ -285,9 +285,17 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         { db: tx, logger: deps.logger },
         { event: { type: "turn.dispatched" }, threadId: thread.id },
       );
-      if (outcome.applied) {
-        deps.hub.notifyThread(thread.id, ["status-changed"]);
+      if (!outcome.applied) {
+        // The thread was deleted, archived, or began stopping in the race
+        // window between the auto-send entry guard and this dispatch:
+        // turn.dispatched is superseded by its notDeleted/notArchived
+        // predicate (and is structurally absent from `stopping`). Roll back
+        // the claim consumption and the queued client/turn/requested append
+        // so the message stays queued and no host command is sent — the entry
+        // guard skips the thread on the next sweep tick.
+        throw createQueuedMessageClaimLostError();
       }
+      deps.hub.notifyThread(thread.id, ["status-changed"]);
       return command;
     },
     { behavior: "immediate" },
