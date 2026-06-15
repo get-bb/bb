@@ -77,7 +77,9 @@ async function pushRemoteMainCommit(remotePath: string) {
   );
   tempDirs.push(cloneParent);
   const clonePath = path.join(cloneParent, "repo");
-  await runGit(["clone", remotePath, clonePath], { cwd: cloneParent });
+  await runGit(["clone", "--branch", "main", remotePath, clonePath], {
+    cwd: cloneParent,
+  });
   await runGit(["config", "user.name", "BB Tests"], { cwd: clonePath });
   await runGit(["config", "user.email", "bb@example.com"], {
     cwd: clonePath,
