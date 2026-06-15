@@ -1,7 +1,6 @@
 import type { TimelineActivityIntent } from "@bb/server-contract";
 import {
   assertNever,
-  isTimelineFeedSummaryViewRow,
   type ThreadTimelineViewRow,
   type TimelineViewWorkRow,
 } from "@bb/thread-view";
@@ -107,8 +106,6 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.exitCode,
         row.completedAt,
         row.approvalStatus,
-        row.outputDetail?.fullLength,
-        row.outputDetail?.previewLength,
         activityIntentsSignature(row.activityIntents),
       ]);
     case "tool":
@@ -118,8 +115,6 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.toolName,
         row.completedAt,
         row.approvalStatus,
-        row.outputDetail?.fullLength,
-        row.outputDetail?.previewLength,
         activityIntentsSignature(row.activityIntents),
       ]);
     case "file-change":
@@ -198,11 +193,7 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.workflow
           ? row.workflow.phases
               .map((phase) =>
-                joinSignatureParts([
-                  phase.index,
-                  phase.title,
-                  phase.kind ?? null,
-                ]),
+                joinSignatureParts([phase.index, phase.title, phase.kind ?? null]),
               )
               .join("\u001e")
           : null,
@@ -317,17 +308,6 @@ function computeTimelineRowRenderSignature(row: ThreadTimelineViewRow): string {
       ]);
     case "bundle-summary":
     case "step-summary":
-      if (isTimelineFeedSummaryViewRow(row)) {
-        return joinSignatureParts([
-          baseSignature,
-          row.status,
-          row.feedSummary.title,
-          row.feedSummary.childCount,
-          row.feedDetail?.rowKey,
-          row.feedDetail?.source.start,
-          row.feedDetail?.source.end,
-        ]);
-      }
       return joinSignatureParts([
         baseSignature,
         row.status,

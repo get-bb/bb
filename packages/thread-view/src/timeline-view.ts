@@ -679,7 +679,7 @@ function summarizeRange(
   };
 }
 
-export function isSummarizableWorkRow(
+function isSummarizableWorkRow(
   row: ThreadTimelineViewRow,
 ): row is TimelineViewWorkRow {
   return (
@@ -823,7 +823,7 @@ function buildBundleSummaryRow(
  * (Q1) and tags it with `inClosedStep` so the renderer applies the closed-
  * step muted treatment without a wrapper row.
  */
-export function closeOpenStepAtBoundary(
+function closeOpenStepAtBoundary(
   work: TimelineViewWorkRow[],
 ): ThreadTimelineViewRow[] {
   if (work.length === 0) return [];
@@ -838,7 +838,7 @@ export function closeOpenStepAtBoundary(
  * consecutive leaves group into bundles; the bundle whose concept is the
  * step's most recent activity is `active-latest`. Single leaves stay as leaves.
  */
-export function flushOpenStepAsBundles(
+function flushOpenStepAsBundles(
   work: TimelineViewWorkRow[],
 ): ThreadTimelineViewRow[] {
   if (work.length === 0) return [];
@@ -884,11 +884,6 @@ export type TimelineViewRowsCache = WeakMap<
 
 export function createTimelineViewRowsCache(): TimelineViewRowsCache {
   return new WeakMap();
-}
-
-export interface TimelineViewRowsBuilder {
-  appendRows(rows: readonly TimelineRow[]): void;
-  finish(): ThreadTimelineViewRow[];
 }
 
 function toTimelineViewWorkRow(
@@ -955,53 +950,6 @@ export interface BuildTimelineViewRowsOptions {
   cache?: TimelineViewRowsCache;
 }
 
-export function createTimelineViewRowsBuilder(
-  options: BuildTimelineViewRowsOptions = {},
-): TimelineViewRowsBuilder {
-  const childCache = options.cache ?? createTimelineViewRowsCache();
-  const result: ThreadTimelineViewRow[] = [];
-  let openStep: TimelineViewWorkRow[] = [];
-
-  function appendViewRow(row: ThreadTimelineViewRow): void {
-    if (isSummarizableWorkRow(row)) {
-      openStep.push(row);
-      return;
-    }
-    if (isTimelineStepBoundary(row)) {
-      // Assistant or accepted-user message closes the previous step into a
-      // step-summary (multi-item) or keeps the lone leaf as-is (single-item).
-      result.push(...closeOpenStepAtBoundary(openStep));
-      openStep = [];
-      result.push(row);
-      return;
-    }
-    // Other non-boundary rows (pending steer, system, turn, approval) flush
-    // the open step as bundles + leaves without merging into a step-summary.
-    result.push(...flushOpenStepAsBundles(openStep));
-    openStep = [];
-    result.push(row);
-  }
-
-  return {
-    appendRows(rows) {
-      for (const row of rows) {
-        appendViewRow(toTimelineViewRow(row, childCache));
-      }
-    },
-    finish() {
-      // End of input: closed scopes collapse trailing work into a step-summary;
-      // open scopes keep bundles + leaves visible so active work stays expanded.
-      if (options.closedScope) {
-        result.push(...closeOpenStepAtBoundary(openStep));
-      } else {
-        result.push(...flushOpenStepAsBundles(openStep));
-      }
-      openStep = [];
-      return result;
-    },
-  };
-}
-
 export function buildTimelineViewRows(
   rows: readonly TimelineRow[],
   options: BuildTimelineViewRowsOptions = {},
@@ -1011,9 +959,37 @@ export function buildTimelineViewRows(
     const cached = cache.get(rows);
     if (cached) return cached;
   }
-  const builder = createTimelineViewRowsBuilder(options);
-  builder.appendRows(rows);
-  const result = builder.finish();
+  const childCache = cache ?? createTimelineViewRowsCache();
+  const viewRows = rows.map((row) => toTimelineViewRow(row, childCache));
+  const result: ThreadTimelineViewRow[] = [];
+  let openStep: TimelineViewWorkRow[] = [];
+
+  for (const row of viewRows) {
+    if (isSummarizableWorkRow(row)) {
+      openStep.push(row);
+      continue;
+    }
+    if (isTimelineStepBoundary(row)) {
+      // Assistant or accepted-user message closes the previous step into a
+      // step-summary (multi-item) or keeps the lone leaf as-is (single-item).
+      result.push(...closeOpenStepAtBoundary(openStep));
+      openStep = [];
+      result.push(row);
+      continue;
+    }
+    // Other non-boundary rows (pending steer, system, turn, approval) flush
+    // the open step as bundles + leaves without merging into a step-summary.
+    result.push(...flushOpenStepAsBundles(openStep));
+    openStep = [];
+    result.push(row);
+  }
+  // End of input: closed scopes collapse trailing work into a step-summary;
+  // open scopes keep bundles + leaves visible so active work stays expanded.
+  if (options.closedScope) {
+    result.push(...closeOpenStepAtBoundary(openStep));
+  } else {
+    result.push(...flushOpenStepAsBundles(openStep));
+  }
   if (cache) {
     cache.set(rows, result);
   }

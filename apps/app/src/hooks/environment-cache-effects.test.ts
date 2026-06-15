@@ -3,8 +3,8 @@ import { createAppQueryClient } from "@/lib/query-client";
 import {
   environmentWorkStatusQueryKey,
   systemExecutionOptionsQueryKey,
+  threadComposerBootstrapQueryKey,
 } from "./queries/query-keys";
-import { threadComposerBootstrapQueryKey } from "./queries/thread-composer-bootstrap-query";
 import { removeEnvironmentScopedQueries } from "./cache-owners/environment-cache-effects";
 
 interface ScopedSystemExecutionOptionsKeyArgs {

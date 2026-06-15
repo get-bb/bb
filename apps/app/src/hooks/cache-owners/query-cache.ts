@@ -5,7 +5,11 @@ import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
-import type { SidebarBootstrapResponse } from "@bb/server-contract";
+import type {
+  SidebarBootstrapResponse,
+  ThreadTimelineResponse,
+  TimelineRow,
+} from "@bb/server-contract";
 import {
   ARCHIVED_THREADS_LIST_KIND,
   ENVIRONMENT_GIT_DIFF_QUERY_KEY,
@@ -21,11 +25,25 @@ import {
   THREADS_QUERY_KEY,
   threadQueryKey,
   threadsQueryKey,
+  threadTimelineQueryKeyPrefix,
   type EnvironmentGitDiffQueryKey,
   type EnvironmentWorkStatusQueryKey,
   type ArchivedThreadsListFilters,
   type ThreadListQueryFilters,
 } from "../queries/query-keys";
+
+type TimelineRowsUpdater = (
+  rows: readonly TimelineRow[],
+) => readonly TimelineRow[] | null;
+
+type TimelineRowsUpdatePredicate = (queryKey: QueryKey) => boolean;
+
+interface UpdateCachedTimelineRowsArgs {
+  queryClient: QueryClient;
+  shouldUpdate: TimelineRowsUpdatePredicate;
+  threadId: string;
+  updater: TimelineRowsUpdater;
+}
 
 export interface EnvironmentInvalidationParams {
   environmentId: string;
@@ -496,6 +514,67 @@ export function optimisticallyInsertThread(
       ...data,
     ]);
   }
+}
+
+const updateEveryTimelineQuery: TimelineRowsUpdatePredicate = () => true;
+
+function updateCachedTimelineRows({
+  queryClient,
+  shouldUpdate,
+  threadId,
+  updater,
+}: UpdateCachedTimelineRowsArgs): void {
+  const timelineQueries = queryClient.getQueriesData<ThreadTimelineResponse>({
+    queryKey: threadTimelineQueryKeyPrefix(threadId),
+  });
+
+  for (const [queryKey, response] of timelineQueries) {
+    if (!response) {
+      continue;
+    }
+    if (!shouldUpdate(queryKey)) {
+      continue;
+    }
+
+    const nextRows = updater(response.rows);
+    if (nextRows === null) {
+      continue;
+    }
+
+    queryClient.setQueryData<ThreadTimelineResponse>(queryKey, {
+      ...response,
+      rows: [...nextRows],
+    });
+  }
+}
+
+export function insertOptimisticTimelineRow(
+  queryClient: QueryClient,
+  threadId: string,
+  row: TimelineRow,
+): void {
+  updateCachedTimelineRows({
+    queryClient,
+    shouldUpdate: updateEveryTimelineQuery,
+    threadId,
+    updater: (rows) => [...rows, row],
+  });
+}
+
+export function removeOptimisticTimelineRow(
+  queryClient: QueryClient,
+  threadId: string,
+  rowId: string,
+): void {
+  updateCachedTimelineRows({
+    queryClient,
+    shouldUpdate: updateEveryTimelineQuery,
+    threadId,
+    updater: (rows) => {
+      const nextRows = rows.filter((row) => row.id !== rowId);
+      return nextRows.length === rows.length ? null : nextRows;
+    },
+  });
 }
 
 export function updateCachedThreadListPendingInteractionState(

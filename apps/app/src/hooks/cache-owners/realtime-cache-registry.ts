@@ -87,11 +87,11 @@ import {
   getProjectPromptHistoryInvalidationQueryKeys,
   getProjectSourceDependentInvalidationQueryKeys,
   getThreadDetailInvalidationQueryKeys,
-  getThreadTimelineFeedInvalidationQueryKeys,
   getThreadListInvalidationQueryKeys,
   getThreadPendingInteractionInvalidationQueryKeys,
   getThreadPromptHistoryInvalidationQueryKeys,
   getThreadQueueContentInvalidationQueryKeys,
+  getThreadTimelineInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
 
 interface CollectCachedThreadIdsForEnvironmentArgs {
@@ -491,7 +491,7 @@ function dirtyThreadDetailQueries({
 function dirtyThreadTimelineQueries({
   threadId,
 }: ThreadRealtimeDirtyContext): QueryKey[] {
-  return getThreadTimelineFeedInvalidationQueryKeys({ threadId });
+  return getThreadTimelineInvalidationQueryKeys({ threadId });
 }
 
 function dirtyThreadQueueContentQueries({

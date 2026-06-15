@@ -19,10 +19,7 @@ export interface StatusThreadSummary {
 export type StatusProject = PublicApiOutput<"/projects/:id", "$get">;
 export type StatusSourceThread = PublicApiOutput<"/threads/:id", "$get">;
 export type StatusChildThreads = PublicApiOutput<"/threads", "$get">;
-export type StatusTimeline = PublicApiOutput<
-  "/threads/:id/timeline/feed",
-  "$get"
->;
+export type StatusTimeline = PublicApiOutput<"/threads/:id/timeline", "$get">;
 
 export interface StatusResult {
   childThreads: StatusChildThreads | null;
@@ -88,7 +85,7 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
           ? null
           : await fetchSilent(async () => {
               const timeline: StatusTimeline = await transport.readJson(
-                transport.api.v1.threads[":id"].timeline.feed.$get({
+                transport.api.v1.threads[":id"].timeline.$get({
                   param: { id: thread.id },
                   query: { summaryOnly: "true" },
                 }),

@@ -1,4 +1,5 @@
 import type { TimelinePaginationCursor, TimelineRow } from "@bb/server-contract";
+import { ApiError } from "../../errors.js";
 
 export type ThreadTimelinePageKind = "latest" | "older";
 
@@ -30,24 +31,6 @@ export interface PaginatedTimelineRowsResult {
   rows: TimelineRow[];
   segmentLimit: number;
 }
-
-export interface TryPaginateTimelineRowsArgs {
-  page: ThreadTimelinePageRequest;
-  rows: readonly TimelineRow[];
-}
-
-export interface PaginateTimelineRowsSuccess {
-  kind: "success";
-  page: PaginatedTimelineRowsResult;
-}
-
-export interface PaginateTimelineRowsMissingCursor {
-  kind: "missing-cursor";
-}
-
-export type TryPaginateTimelineRowsResult =
-  | PaginateTimelineRowsSuccess
-  | PaginateTimelineRowsMissingCursor;
 
 function isTimelineSegmentAnchorRow(row: TimelineRow): boolean {
   return (
@@ -97,51 +80,51 @@ function buildTimelineLogicalSegments(
   return segments;
 }
 
-function findTimelineSegmentCursorIndex(
+function requireTimelineSegmentCursorIndex(
   segments: readonly TimelineLogicalSegment[],
   cursor: TimelinePaginationCursor,
-): number | null {
+): number {
   const index = segments.findIndex(
     (segment) =>
       segment.cursor.anchorSeq === cursor.anchorSeq &&
       segment.cursor.anchorId === cursor.anchorId,
   );
-  return index === -1 ? null : index;
-}
-
-export function tryPaginateTimelineRows({
-  page,
-  rows,
-}: TryPaginateTimelineRowsArgs): TryPaginateTimelineRowsResult {
-  const segments = buildTimelineLogicalSegments(rows);
-  const cursorIndex =
-    page.kind === "latest"
-      ? null
-      : findTimelineSegmentCursorIndex(segments, page.beforeCursor);
-  if (page.kind === "older" && cursorIndex === null) {
-    return {
-      kind: "missing-cursor",
-    };
+  if (index !== -1) {
+    return index;
   }
 
+  throw new ApiError(
+    400,
+    "invalid_request",
+    "Timeline pagination cursor is no longer available",
+  );
+}
+
+export function paginateTimelineRows(
+  rows: readonly TimelineRow[],
+  page: ThreadTimelinePageRequest,
+): PaginatedTimelineRowsResult {
+  const segments = buildTimelineLogicalSegments(rows);
   const candidateSegments =
-    page.kind === "latest" ? segments : segments.slice(0, cursorIndex ?? 0);
+    page.kind === "latest"
+      ? segments
+      : segments.slice(
+          0,
+          requireTimelineSegmentCursorIndex(segments, page.beforeCursor),
+        );
   const selectedSegments = candidateSegments.slice(-page.segmentLimit);
   const hasOlderRows = candidateSegments.length > selectedSegments.length;
   const oldestSelectedSegment = selectedSegments[0];
 
   return {
-    kind: "success",
-    page: {
-      hasOlderRows,
-      kind: page.kind,
-      olderCursor:
-        hasOlderRows && oldestSelectedSegment
-          ? oldestSelectedSegment.cursor
-          : null,
-      returnedSegmentCount: selectedSegments.length,
-      rows: selectedSegments.flatMap((segment) => segment.rows),
-      segmentLimit: page.segmentLimit,
-    },
+    hasOlderRows,
+    kind: page.kind,
+    olderCursor:
+      hasOlderRows && oldestSelectedSegment
+        ? oldestSelectedSegment.cursor
+        : null,
+    returnedSegmentCount: selectedSegments.length,
+    rows: selectedSegments.flatMap((segment) => segment.rows),
+    segmentLimit: page.segmentLimit,
   };
 }

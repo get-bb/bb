@@ -23,7 +23,6 @@ import {
   backgroundTaskUsageSchema,
   workflowProgressSnapshotSchema,
 } from "./background-task.js";
-import { findLegacyClientRequestSequenceIssues } from "./thread-event-legacy.js";
 
 export const threadEventItemStatusSchema = z.enum([
   "pending",
@@ -623,14 +622,35 @@ export const systemEventSchema = unscopedSystemEventSchema.and(
   scopedEventDataSchema,
 );
 
+const eventPropertyBagSchema = z.record(z.string(), z.unknown());
+const legacyClientRequestKey = ["clientRequest", "Sequence"].join("");
 const rejectLegacyClientRequestSequenceSchema = z
   .unknown()
   .superRefine((value, ctx) => {
-    for (const issue of findLegacyClientRequestSequenceIssues(value)) {
+    const eventResult = eventPropertyBagSchema.safeParse(value);
+    if (!eventResult.success) {
+      return;
+    }
+
+    if (Object.hasOwn(eventResult.data, legacyClientRequestKey)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: issue.message,
-        path: issue.path,
+        message: "legacy request sequence field is no longer accepted",
+        path: [legacyClientRequestKey],
+      });
+    }
+
+    const itemResult = eventPropertyBagSchema.safeParse(eventResult.data.item);
+    if (
+      itemResult.success &&
+      itemResult.data.type === "userMessage" &&
+      Object.hasOwn(itemResult.data, legacyClientRequestKey)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "legacy user-message request sequence field is no longer accepted",
+        path: ["item", legacyClientRequestKey],
       });
     }
   });

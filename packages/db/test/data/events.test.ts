@@ -16,15 +16,11 @@ import {
   getLastStoredTurnRequestEvent,
   getLatestThreadOutputEventRow,
   getLatestThreadSequence,
-  getThreadEventRevision,
-  getTimelineFileChangeDiffLargeValue,
-  getTimelineWorkOutputLargeValue,
   insertEvents,
   listContextWindowUsageRows,
   listCompletedTurnsByThreadIds,
   listEvents,
   listRecentStoredEventRows,
-  listTimelineFileChangeDiffLargeValueMetadata,
   listTimelineSegmentAnchorsDescending,
   findTimelineSegmentAnchorSequenceAfter,
   getTimelineSegmentAnchorAtSequence,
@@ -32,7 +28,6 @@ import {
   listStoredEventRows,
   listStoredEventRowsInRange,
   listStoredThreadProvisioningRowsByProvisioningId,
-  listStoredTimelineFeedWindowEventRows,
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   MissingStoredTurnStartedError,
@@ -97,27 +92,6 @@ function createTurnEventFields(args: CreateTurnEventFieldsArgs) {
 
 function textInput(text: string): PromptInput[] {
   return [{ type: "text", text, mentions: [] }];
-}
-
-interface EventRowWithSequence {
-  sequence: number;
-}
-
-interface RequireEventRowBySequenceArgs<TRow extends EventRowWithSequence> {
-  rows: readonly TRow[];
-  sequence: number;
-}
-
-function requireEventRowBySequence<TRow extends EventRowWithSequence>(
-  args: RequireEventRowBySequenceArgs<TRow>,
-): TRow {
-  const row = args.rows.find(
-    (candidate) => candidate.sequence === args.sequence,
-  );
-  if (!row) {
-    throw new Error(`Expected event row at sequence ${args.sequence}`);
-  }
-  return row;
 }
 
 interface CreateTokenUsageDataArgs {
@@ -1011,290 +985,6 @@ describe("events", () => {
     ).toEqual([2, 3]);
   });
 
-  it("loads feed timeline windows with redacted payload metadata", () => {
-    const { db, thread } = setup();
-    const commandOutput = "command-output ".repeat(512);
-    const toolResult = "tool-result ".repeat(512);
-    const webResult = "web-result ".repeat(512);
-    const fileDiff = "diff --git a/file.ts b/file.ts\n+added line\n".repeat(128);
-    const secondCommandOutput = "second-output ".repeat(512);
-
-    insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 1,
-        type: "item/commandExecution/outputDelta",
-        ...createTurnEventFields({ turnId: "turn-1" }),
-        itemId: "cmd-1",
-        itemKind: null,
-        data: JSON.stringify({ itemId: "cmd-1", delta: "first chunk" }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 2,
-        type: "item/completed",
-        ...createTurnEventFields({ turnId: "turn-1" }),
-        itemId: "cmd-1",
-        itemKind: "commandExecution",
-        data: JSON.stringify({
-          item: {
-            id: "cmd-1",
-            type: "commandExecution",
-            command: "printf output",
-            cwd: "/workspace",
-            status: "completed",
-            approvalStatus: null,
-            aggregatedOutput: commandOutput,
-            exitCode: 0,
-          },
-        }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 3,
-        type: "item/completed",
-        ...createTurnEventFields({ turnId: "turn-1" }),
-        itemId: "tool-1",
-        itemKind: "toolCall",
-        data: JSON.stringify({
-          item: {
-            id: "tool-1",
-            type: "toolCall",
-            tool: "Read",
-            arguments: { file_path: "/workspace/a.ts" },
-            status: "completed",
-            result: toolResult,
-          },
-        }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 4,
-        type: "item/completed",
-        ...createTurnEventFields({ turnId: "turn-1" }),
-        itemId: "task-1",
-        itemKind: "toolCall",
-        data: JSON.stringify({
-          item: {
-            id: "task-1",
-            type: "toolCall",
-            tool: "TaskCreate",
-            arguments: { subject: "Keep pending todo data" },
-            status: "completed",
-            result: {
-              task: {
-                id: "task-a",
-                subject: "Task result must stay parseable",
-              },
-            },
-          },
-        }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 5,
-        type: "item/completed",
-        ...createTurnEventFields({ turnId: "turn-1" }),
-        itemId: "web-1",
-        itemKind: "webSearch",
-        data: JSON.stringify({
-          item: {
-            id: "web-1",
-            type: "webSearch",
-            queries: ["timeline performance"],
-            resultText: webResult,
-          },
-        }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 6,
-        type: "item/commandExecution/outputDelta",
-        ...createTurnEventFields({ turnId: "turn-2" }),
-        itemId: "cmd-2",
-        itemKind: null,
-        data: JSON.stringify({ itemId: "cmd-2", delta: "pending chunk" }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 7,
-        type: "item/completed",
-        ...createTurnEventFields({ turnId: "turn-2" }),
-        itemId: "cmd-2",
-        itemKind: "commandExecution",
-        data: JSON.stringify({
-          item: {
-            id: "cmd-2",
-            type: "commandExecution",
-            command: "printf second",
-            cwd: "/workspace",
-            status: "completed",
-            approvalStatus: null,
-            aggregatedOutput: secondCommandOutput,
-            exitCode: 0,
-          },
-        }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 8,
-        type: "item/started",
-        ...createTurnEventFields({ turnId: "turn-2" }),
-        itemId: "file-1",
-        itemKind: "fileChange",
-        data: JSON.stringify({
-          item: {
-            id: "file-1",
-            type: "fileChange",
-            status: "pending",
-            approvalStatus: null,
-            changes: [
-              {
-                path: "/workspace/file.ts",
-                kind: "update",
-                diff: fileDiff,
-              },
-            ],
-          },
-        }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 9,
-        type: "item/completed",
-        ...createTurnEventFields({ turnId: "turn-2" }),
-        itemId: "file-1",
-        itemKind: "fileChange",
-        data: JSON.stringify({
-          item: {
-            id: "file-1",
-            type: "fileChange",
-            status: "completed",
-            approvalStatus: null,
-            changes: [
-              {
-                path: "/workspace/file.ts",
-                kind: "update",
-                diff: fileDiff,
-              },
-            ],
-          },
-        }),
-      },
-    ]);
-
-    const feedRows = listStoredTimelineFeedWindowEventRows(db, {
-      sequenceStart: 1,
-      threadId: thread.id,
-    });
-    expect(feedRows.map((row) => row.sequence)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9,
-    ]);
-    expect(
-      requireEventRowBySequence({ rows: feedRows, sequence: 1 })
-        .timelineFeedDeltaCompletionItemKind,
-    ).toBe("commandExecution");
-    expect(
-      requireEventRowBySequence({ rows: feedRows, sequence: 2 })
-        .timelineFeedHasReplayableCompletionBody,
-    ).toBe(1);
-    expect(requireEventRowBySequence({ rows: feedRows, sequence: 2 }).data).not
-      .toContain(commandOutput);
-    expect(requireEventRowBySequence({ rows: feedRows, sequence: 2 }).data)
-      .toContain('"aggregatedOutput":""');
-    expect(requireEventRowBySequence({ rows: feedRows, sequence: 2 }).data)
-      .toContain('"originalLength":');
-    expect(requireEventRowBySequence({ rows: feedRows, sequence: 3 }).data).not
-      .toContain(toolResult);
-    expect(
-      requireEventRowBySequence({ rows: feedRows, sequence: 4 }).data,
-    ).toContain("Task result must stay parseable");
-    expect(requireEventRowBySequence({ rows: feedRows, sequence: 5 }).data).not
-      .toContain(webResult);
-    expect(requireEventRowBySequence({ rows: feedRows, sequence: 8 }).data).not
-      .toContain(fileDiff);
-    expect(requireEventRowBySequence({ rows: feedRows, sequence: 8 }).data)
-      .toContain('"diff":""');
-    expect(requireEventRowBySequence({ rows: feedRows, sequence: 9 }).data).not
-      .toContain(fileDiff);
-
-    expect(
-      listStoredTimelineFeedWindowEventRows(db, {
-        beforeSequence: 7,
-        sequenceStart: 1,
-        threadId: thread.id,
-      }).map((row) => row.sequence),
-    ).toEqual([1, 2, 3, 4, 5, 6]);
-
-    const fullRows = listStoredTimelineWindowEventRows(db, {
-      sequenceStart: 1,
-      threadId: thread.id,
-    });
-    expect(fullRows.map((row) => row.sequence)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9,
-    ]);
-    expect(requireEventRowBySequence({ rows: fullRows, sequence: 2 }).data).not
-      .toContain(commandOutput);
-    expect(requireEventRowBySequence({ rows: fullRows, sequence: 3 }).data).not
-      .toContain(toolResult);
-    expect(requireEventRowBySequence({ rows: fullRows, sequence: 5 }).data).not
-      .toContain(webResult);
-    expect(requireEventRowBySequence({ rows: fullRows, sequence: 8 }).data).not
-      .toContain(fileDiff);
-
-    expect(
-      getTimelineWorkOutputLargeValue(db, {
-        callId: "cmd-1",
-        seqEnd: 2,
-        seqStart: 2,
-        threadId: thread.id,
-        workKind: "command",
-      })?.value,
-    ).toBe(commandOutput);
-    expect(
-      getTimelineWorkOutputLargeValue(db, {
-        callId: "tool-1",
-        seqEnd: 3,
-        seqStart: 3,
-        threadId: thread.id,
-        workKind: "tool",
-      })?.value,
-    ).toBe(toolResult);
-    expect(
-      listTimelineFileChangeDiffLargeValueMetadata(db, {
-        seqEnd: 9,
-        seqStart: 9,
-        threadId: thread.id,
-      }),
-    ).toEqual([
-      {
-        itemId: "file-1",
-        jsonPath: "$.item.changes[0].diff",
-        originalLength: fileDiff.length,
-        sequence: 9,
-      },
-    ]);
-    expect(
-      getTimelineFileChangeDiffLargeValue(db, {
-        callId: "file-1",
-        changeIndex: 0,
-        seqEnd: 8,
-        seqStart: 8,
-        threadId: thread.id,
-      })?.value,
-    ).toBe(fileDiff);
-    expect(
-      db.$client
-        .prepare(
-          "SELECT value FROM event_large_values WHERE event_id = ? AND json_path = ?",
-        )
-        .get(
-          requireEventRowBySequence({ rows: fullRows, sequence: 5 }).id,
-          "$.item.resultText",
-        ),
-    ).toEqual({ value: webResult });
-  });
-
   it("lists accepted input rows for requested client turn sequences", () => {
     const { db, thread } = setup();
 
@@ -1921,43 +1611,6 @@ describe("events", () => {
     ]);
 
     expect(getLatestThreadSequence(db, { threadId: thread.id })).toBe(5);
-  });
-
-  it("returns event revision count and latest sequence for a thread", () => {
-    const { db, project, thread } = setup();
-    const otherThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-
-    insertEvents(db, noopNotifier, [
-      {
-        threadId: thread.id,
-        sequence: 2,
-        type: "system/error",
-        ...threadEventFields,
-        data: "{}",
-      },
-      {
-        threadId: thread.id,
-        sequence: 5,
-        type: "system/error",
-        ...threadEventFields,
-        data: "{}",
-      },
-      {
-        threadId: otherThread.id,
-        sequence: 9,
-        type: "system/error",
-        ...threadEventFields,
-        data: "{}",
-      },
-    ]);
-
-    expect(getThreadEventRevision(db, { threadId: thread.id })).toEqual({
-      count: 2,
-      maxSequence: 5,
-    });
   });
 
   it("prunes event types before a sequence cutoff and keeps recent rows", () => {

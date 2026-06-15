@@ -7,11 +7,9 @@ import type {
 } from "@bb/domain";
 import type {
   ThreadSchedule,
-  ThreadTimelineFeedResponse,
-  TimelineFeedRow,
+  ThreadTimelineResponse,
   TimelineRow,
   TimelineRowBase,
-  TimelineTextPreview,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
 
@@ -68,10 +66,10 @@ export function makeTimelineBase(args: TimelineBaseArgs): TimelineRowBase {
 }
 
 /**
- * Mock for the `GET /threads/:id/timeline/feed` endpoint used by `bb thread
- * show` and `bb status` to read `pendingTodos`. Tests should add this
- * alongside their `:id.$get` mock so contract drift on the timeline lane
- * fails loudly instead of silently degrading to `pendingTodos: null`.
+ * Mock for the `GET /threads/:id/timeline` endpoint used by `bb thread show`
+ * and `bb status` to read `pendingTodos`. Tests should add this alongside
+ * their `:id.$get` mock so contract drift on the timeline lane fails loudly
+ * instead of silently degrading to `pendingTodos: null`.
  */
 export function makeEmptyTimelineGetMock() {
   return vi.fn(async () => makeTimelineResponse([]));
@@ -79,10 +77,9 @@ export function makeEmptyTimelineGetMock() {
 
 export function makeTimelineResponse(
   rows: TimelineRow[],
-): ThreadTimelineFeedResponse {
+): ThreadTimelineResponse {
   return {
-    threadId: "thread-log",
-    rows: rows.map(timelineRowToFeedRow),
+    rows,
     activeThinking: null,
     pendingTodos: null,
     timelinePage: {
@@ -93,160 +90,6 @@ export function makeTimelineResponse(
       olderCursor: null,
     },
   };
-}
-
-function textPreview(text: string): TimelineTextPreview {
-  return {
-    text,
-    fullLength: text.length,
-    complete: true,
-  };
-}
-
-function timelineRowBaseToFeedRowBase(
-  row: TimelineRow,
-): Pick<
-  TimelineFeedRow,
-  "createdAt" | "detail" | "key" | "source" | "startedAt" | "turnId"
-> {
-  return {
-    key: row.id,
-    turnId: row.turnId,
-    source: {
-      start: row.sourceSeqStart,
-      end: row.sourceSeqEnd,
-    },
-    startedAt: row.startedAt,
-    createdAt: row.createdAt,
-    detail: null,
-  };
-}
-
-function timelineRowToFeedRow(row: TimelineRow): TimelineFeedRow {
-  const base = timelineRowBaseToFeedRowBase(row);
-  switch (row.kind) {
-    case "conversation":
-      if (row.role === "user") {
-        return {
-          ...base,
-          kind: "conversation",
-          role: "user",
-          textPreview: textPreview(row.text),
-          attachments: row.attachments,
-          initiator: row.initiator,
-          senderThreadId: row.senderThreadId,
-          turnRequest: row.turnRequest,
-          mentions: row.mentions,
-        };
-      }
-      return {
-        ...base,
-        kind: "conversation",
-        role: "assistant",
-        textPreview: textPreview(row.text),
-        attachments: row.attachments,
-        turnRequest: null,
-      };
-    case "system":
-      if (row.systemKind === "operation") {
-        if (row.operationKind === "parent-change") {
-          return {
-            ...base,
-            kind: "system",
-            systemKind: "operation",
-            operationKind: "parent-change",
-            title: row.title,
-            detailPreview: row.detail === null ? null : textPreview(row.detail),
-            status: row.status,
-            parentChange: row.parentChange,
-            completedAt: row.completedAt,
-          };
-        }
-        return {
-          ...base,
-          kind: "system",
-          systemKind: "operation",
-          operationKind: row.operationKind,
-          title: row.title,
-          detailPreview: row.detail === null ? null : textPreview(row.detail),
-          status: row.status,
-          completedAt: row.completedAt,
-        };
-      }
-      return {
-        ...base,
-        kind: "system",
-        systemKind: row.systemKind,
-        title: row.title,
-        detailPreview: row.detail === null ? null : textPreview(row.detail),
-        status: row.status,
-      };
-    case "turn":
-      return {
-        ...base,
-        kind: "turn",
-        turnId: row.turnId,
-        status: row.status,
-        summaryCount: row.summaryCount,
-        completedAt: row.completedAt,
-        children:
-          row.children === null ? null : row.children.map(timelineRowToFeedRow),
-      };
-    case "work":
-      switch (row.workKind) {
-        case "command":
-          return {
-            ...base,
-            kind: "work",
-            workKind: "command",
-            status: row.status,
-            callId: row.callId,
-            command: row.command,
-            cwd: row.cwd,
-            sourceLabel: row.source,
-            outputPreview: textPreview(row.output),
-            exitCode: row.exitCode,
-            completedAt: row.completedAt,
-            approvalStatus: row.approvalStatus,
-            activityIntents: row.activityIntents,
-          };
-        case "file-change":
-          return {
-            ...base,
-            kind: "work",
-            workKind: "file-change",
-            status: row.status,
-            callId: row.callId,
-            change: {
-              path: row.change.path,
-              kind: row.change.kind,
-              movePath: row.change.movePath,
-              diffPreview:
-                row.change.diff === null ? null : textPreview(row.change.diff),
-              diffStats: row.change.diffStats,
-            },
-            stdoutPreview: row.stdout === null ? null : textPreview(row.stdout),
-            stderrPreview: row.stderr === null ? null : textPreview(row.stderr),
-            approvalStatus: row.approvalStatus,
-          };
-        case "tool":
-          return {
-            ...base,
-            kind: "work",
-            workKind: "tool",
-            status: row.status,
-            callId: row.callId,
-            toolName: row.toolName,
-            toolArgs: row.toolArgs,
-            outputPreview: textPreview(row.output),
-            completedAt: row.completedAt,
-            approvalStatus: row.approvalStatus,
-            activityIntents: row.activityIntents,
-          };
-        default:
-          throw new Error(`Unsupported test timeline row: ${row.workKind}`);
-      }
-  }
 }
 
 export function makePendingSteerTimelineRow(): TimelineUserConversationRow {

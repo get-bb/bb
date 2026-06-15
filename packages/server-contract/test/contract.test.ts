@@ -238,18 +238,19 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Timeline feed queries may omit pagination flags to request the latest full feed page with server defaults.",
+      "Timeline queries may omit pagination and rendering flags to request the latest full timeline page with server defaults.",
     fields: [
-      "threadTimelineFeedQuerySchema.segmentLimit",
-      "threadTimelineFeedQuerySchema.beforeAnchorSeq",
-      "threadTimelineFeedQuerySchema.beforeAnchorId",
-      "threadTimelineFeedQuerySchema.summaryOnly",
+      "threadTimelineQuerySchema.includeNestedRows",
+      "threadTimelineQuerySchema.segmentLimit",
+      "threadTimelineQuerySchema.beforeAnchorSeq",
+      "threadTimelineQuerySchema.beforeAnchorId",
+      "threadTimelineQuerySchema.summaryOnly",
     ],
   },
   {
     reason:
-      "Timeline feed responses omit context-window usage when the provider did not report it.",
-    fields: ["threadTimelineFeedResponseSchema.contextWindowUsage"],
+      "Timeline responses omit context-window usage when the provider did not report it.",
+    fields: ["threadTimelineResponseSchema.contextWindowUsage"],
   },
   {
     reason:
@@ -1189,22 +1190,6 @@ describe("server-contract clients", () => {
       }).pathname,
     ).toBe("/api/v1/projects/proj_123/automations/auto_123");
     expect(
-      publicClient.threads[":id"].timeline.feed.$url({
-        param: { id: "thr_123" },
-        query: { segmentLimit: "20" },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/timeline/feed");
-    expect(
-      publicClient.threads[":id"].timeline.rows[":rowKey"].detail.$url({
-        param: { id: "thr_123", rowKey: "row_123" },
-        query: {
-          parts: "output",
-          sourceSeqStart: "1",
-          sourceSeqEnd: "2",
-        },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/timeline/rows/row_123/detail");
-    expect(
       publicClient.threads[":id"].timeline["turn-summary-details"].$url({
         param: { id: "thr_123" },
         query: {
@@ -1214,17 +1199,6 @@ describe("server-contract clients", () => {
         },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/timeline/turn-summary-details");
-    expect(
-      publicClient.threads[":id"].timeline["work-output"].$url({
-        param: { id: "thr_123" },
-        query: {
-          callId: "call_123",
-          workKind: "command",
-          sourceSeqStart: "1",
-          sourceSeqEnd: "2",
-        },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/timeline/work-output");
     expect(
       publicClient.threads[":id"]["thread-storage"].files.$url({
         param: { id: "thr_123" },
@@ -1322,16 +1296,10 @@ describe("server-contract clients", () => {
       }),
     ).toThrow();
     expect(() =>
-      contract.threadTimelineFeedQuerySchema.parse({
+      contract.threadTimelineQuerySchema.parse({
         beforeAnchorSeq: "0",
         beforeAnchorId: "row-1",
       }),
-    ).toThrow();
-    expect(
-      contract.threadTimelineFeedQuerySchema.parse({ summaryOnly: "true" }),
-    ).toEqual({ summaryOnly: "true" });
-    expect(() =>
-      contract.threadTimelineFeedQuerySchema.parse({ summaryOnly: "yes" }),
     ).toThrow();
   });
 
@@ -1414,9 +1382,8 @@ describe("server-contract clients", () => {
       threadListQuerySchema: contract.threadListQuerySchema,
       threadPendingInteractionsResponseSchema:
         contract.threadPendingInteractionsResponseSchema,
-      threadTimelineFeedQuerySchema: contract.threadTimelineFeedQuerySchema,
-      threadTimelineFeedResponseSchema:
-        contract.threadTimelineFeedResponseSchema,
+      threadTimelineQuerySchema: contract.threadTimelineQuerySchema,
+      threadTimelineResponseSchema: contract.threadTimelineResponseSchema,
       timelineTurnSummaryDetailsQuerySchema:
         contract.timelineTurnSummaryDetailsQuerySchema,
       timelineTurnSummaryDetailsRequestSchema:

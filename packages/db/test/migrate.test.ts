@@ -146,19 +146,6 @@ interface MigratedEventDataRow {
   data: string;
 }
 
-interface MigratedEventLargeValueRow {
-  createdAt: number;
-  eventId: string;
-  itemId: string | null;
-  itemKind: string;
-  jsonPath: string;
-  originalLength: number;
-  sequence: number;
-  storageKind: string;
-  value: string;
-  valueKind: string;
-}
-
 interface MigratedPendingInteractionStatusRow {
   id: string;
   resolvedAt: number | null;
@@ -241,6 +228,7 @@ const terminalSessionRuntimeStateHonestyWhen = 1780718665310;
 const hostDaemonSessionObservabilityMigrationWhen = 1780719536955;
 const threadTypeRemovalMigrationWhen = 1780973302146;
 const eventLargeValuesMigrationWhen = 1781403656069;
+const eventLargeValuesRestoreMigrationWhen = 1781557200000;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -398,7 +386,7 @@ function runMigrationFile(args: RunMigrationFileArgs): void {
 }
 
 function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
-  db.$client.prepare("DROP TABLE event_large_values").run();
+  db.$client.prepare("DROP TABLE IF EXISTS event_large_values").run();
   db.$client
     .prepare<DeleteMigrationParameters>(
       `
@@ -407,6 +395,14 @@ function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
       `,
     )
     .run(eventLargeValuesMigrationWhen);
+  db.$client
+    .prepare<DeleteMigrationParameters>(
+      `
+        DELETE FROM __drizzle_migrations
+        WHERE created_at = ?
+      `,
+    )
+    .run(eventLargeValuesRestoreMigrationWhen);
 }
 
 function seedEventLargeValueBackfillThread(db: DbConnection): void {
@@ -2662,7 +2658,7 @@ describe("migrate", () => {
     }
   });
 
-  it("backfills legacy large event values before clearing inline payloads", () => {
+  it("restores legacy large event values to inline payloads", () => {
     const db = createConnection(":memory:");
 
     try {
@@ -2671,7 +2667,6 @@ describe("migrate", () => {
 
       const commandOutput = "command output ".repeat(48);
       const toolResult = { body: "tool result ".repeat(48) };
-      const toolResultJson = JSON.stringify(toolResult);
       const webFetchResult = "web fetch result ".repeat(40);
       const webSearchResult = "web search result ".repeat(40);
       const firstDiff = "first diff ".repeat(60);
@@ -2755,141 +2750,42 @@ describe("migrate", () => {
       markEventLargeValuesMigrationUnapplied(db);
       migrate(db);
 
-      expect(
-        db.$client
-          .prepare<[], MigratedEventLargeValueRow>(
-            `
-              SELECT
-                event_id AS eventId,
-                sequence,
-                item_id AS itemId,
-                item_kind AS itemKind,
-                value_kind AS valueKind,
-                json_path AS jsonPath,
-                storage_kind AS storageKind,
-                value,
-                original_length AS originalLength,
-                created_at AS createdAt
-              FROM event_large_values
-              ORDER BY sequence, json_path
-            `,
-          )
-          .all(),
-      ).toEqual([
-        {
-          eventId: "evt_large_command_output",
-          sequence: 1,
-          itemId: "cmd_large",
-          itemKind: "commandExecution",
-          valueKind: "command_aggregated_output",
-          jsonPath: "$.item.aggregatedOutput",
-          storageKind: "text",
-          value: commandOutput,
-          originalLength: commandOutput.length,
-          createdAt: 2001,
-        },
-        {
-          eventId: "evt_large_tool_result",
-          sequence: 2,
-          itemId: "tool_large",
-          itemKind: "toolCall",
-          valueKind: "tool_result",
-          jsonPath: "$.item.result",
-          storageKind: "json",
-          value: toolResultJson,
-          originalLength: toolResultJson.length,
-          createdAt: 2002,
-        },
-        {
-          eventId: "evt_large_web_fetch",
-          sequence: 3,
-          itemId: "web_fetch_large",
-          itemKind: "webFetch",
-          valueKind: "web_fetch_result_text",
-          jsonPath: "$.item.resultText",
-          storageKind: "text",
-          value: webFetchResult,
-          originalLength: webFetchResult.length,
-          createdAt: 2003,
-        },
-        {
-          eventId: "evt_large_web_search",
-          sequence: 4,
-          itemId: "web_search_large",
-          itemKind: "webSearch",
-          valueKind: "web_search_result_text",
-          jsonPath: "$.item.resultText",
-          storageKind: "text",
-          value: webSearchResult,
-          originalLength: webSearchResult.length,
-          createdAt: 2004,
-        },
-        {
-          eventId: "evt_large_file_diffs",
-          sequence: 5,
-          itemId: "file_large",
-          itemKind: "fileChange",
-          valueKind: "file_change_diff",
-          jsonPath: "$.item.changes[0].diff",
-          storageKind: "text",
-          value: firstDiff,
-          originalLength: firstDiff.length,
-          createdAt: 2005,
-        },
-        {
-          eventId: "evt_large_file_diffs",
-          sequence: 5,
-          itemId: "file_large",
-          itemKind: "fileChange",
-          valueKind: "file_change_diff",
-          jsonPath: "$.item.changes[2].diff",
-          storageKind: "text",
-          value: secondDiff,
-          originalLength: secondDiff.length,
-          createdAt: 2005,
-        },
-      ]);
+      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(
+        eventLargeValuesRestoreMigrationWhen,
+      );
+      expect(readTableNames(db)).not.toContain("event_large_values");
 
       const commandData = JSON.parse(
         readMigratedEventData(db, "evt_large_command_output"),
       );
-      expect(commandData.item.aggregatedOutput).toBe("");
-      expect(commandData.item.truncation.aggregatedOutput).toEqual({
-        originalLength: commandOutput.length,
-        retainedHeadLength: 0,
-        retainedTailLength: 0,
-        truncatedAt: 2001,
-      });
+      expect(commandData.item.aggregatedOutput).toBe(commandOutput);
+      expect(commandData.item.truncation).toBeUndefined();
 
       const toolData = JSON.parse(
         readMigratedEventData(db, "evt_large_tool_result"),
       );
-      expect(toolData.item.result).toBe("");
-      expect(toolData.item.truncation.result).toEqual({
-        originalLength: toolResultJson.length,
-        retainedHeadLength: 0,
-        retainedTailLength: 0,
-        truncatedAt: 2002,
-      });
+      expect(toolData.item.result).toEqual(toolResult);
+      expect(toolData.item.truncation).toBeUndefined();
 
       const webFetchData = JSON.parse(
         readMigratedEventData(db, "evt_large_web_fetch"),
       );
-      expect(webFetchData.item.resultText).toBe("");
-      expect(webFetchData.item.truncation.resultText).toEqual({
-        originalLength: webFetchResult.length,
-        retainedHeadLength: 0,
-        retainedTailLength: 0,
-        truncatedAt: 2003,
-      });
+      expect(webFetchData.item.resultText).toBe(webFetchResult);
+      expect(webFetchData.item.truncation).toBeUndefined();
+
+      const webSearchData = JSON.parse(
+        readMigratedEventData(db, "evt_large_web_search"),
+      );
+      expect(webSearchData.item.resultText).toBe(webSearchResult);
+      expect(webSearchData.item.truncation).toBeUndefined();
 
       const fileData = JSON.parse(
         readMigratedEventData(db, "evt_large_file_diffs"),
       );
       expect(fileData.item.changes).toEqual([
-        { path: "a.ts", diff: "" },
+        { path: "a.ts", diff: firstDiff },
         { path: "b.ts", diff: "small diff" },
-        { path: "c.ts", diff: "" },
+        { path: "c.ts", diff: secondDiff },
       ]);
     } finally {
       closeConnection(db);

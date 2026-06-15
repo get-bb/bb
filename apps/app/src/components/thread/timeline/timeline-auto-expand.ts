@@ -1,9 +1,7 @@
 import {
   assertNever,
   findTimelineFrontierRow,
-  hasTimelineFeedDetailPart,
   hasTimelineExplorationIntent,
-  isTimelineFeedSummaryViewRow,
   type ThreadTimelineViewRow,
   type TimelineViewWorkRow,
 } from "@bb/thread-view";
@@ -37,21 +35,13 @@ export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
     case "file-change":
       return true;
     case "delegation":
-      return (
-        row.childRows.length > 0 ||
-        row.output.trim().length > 0 ||
-        hasTimelineFeedDetailPart(row, "children") ||
-        hasTimelineFeedDetailPart(row, "output")
-      );
+      return row.childRows.length > 0 || row.output.trim().length > 0;
     case "workflow":
       // The phase/agent tree (or terminal summary/error) lives in the body; a
       // degraded row with none of them stays title-only. Matches the
       // body-collapse rule in WorkflowWorkRowBody.
       return (
-        row.workflow !== null ||
-        row.summary !== null ||
-        row.error !== null ||
-        hasTimelineFeedDetailPart(row, "workflow")
+        row.workflow !== null || row.summary !== null || row.error !== null
       );
     default:
       return assertNever(row);
@@ -63,15 +53,10 @@ export function isRowExpandable(row: ThreadTimelineViewRow): boolean {
     case "conversation":
       return false;
     case "system":
-      return (
-        (row.detail !== null && row.detail.trim().length > 0) ||
-        hasTimelineFeedDetailPart(row, "system-detail")
-      );
+      return row.detail !== null && row.detail.trim().length > 0;
     case "bundle-summary":
     case "step-summary":
-      return isTimelineFeedSummaryViewRow(row)
-        ? row.feedSummary.childCount > 0
-        : row.children.length > 0;
+      return row.children.length > 0;
     case "turn":
       return true;
     case "work":

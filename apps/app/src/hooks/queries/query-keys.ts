@@ -1,8 +1,4 @@
 import type { ThreadListFilters } from "@/lib/api";
-import type {
-  TimelineFeedDetailPart,
-  TimelineFeedDetailRef,
-} from "@bb/server-contract";
 import type { EnvironmentFilePreviewSource } from "@/lib/file-preview";
 import {
   DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
@@ -27,6 +23,9 @@ export const THREADS_QUERY_KEY = "threads";
 export const THREADS_DISABLED_QUERY_KEY = "threadsDisabled";
 export const THREAD_QUERY_KEY = "thread";
 export const THREAD_DETAIL_BOOTSTRAP_QUERY_KEY = "threadDetailBootstrap";
+export const THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY = "threadComposerBootstrap";
+export const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
+  "threadDefaultExecutionOptions";
 export const THREAD_QUEUED_MESSAGES_QUERY_KEY = "threadQueuedMessages";
 export const THREAD_PROMPT_HISTORY_QUERY_KEY = "threadPromptHistory";
 export const THREAD_PENDING_INTERACTIONS_QUERY_KEY =
@@ -47,12 +46,9 @@ export const ENVIRONMENT_GIT_DIFF_QUERY_KEY = "environmentGitDiff";
 export const ENVIRONMENT_DIFF_FILE_QUERY_KEY = "environmentDiffFile";
 export const ENVIRONMENT_FILE_PREVIEW_QUERY_KEY = "environmentFilePreview";
 export const ENVIRONMENT_PATHS_QUERY_KEY = "environmentPaths";
-export const THREAD_TIMELINE_FEED_QUERY_KEY = "threadTimelineFeed";
-export const THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY = "threadTimelineRowDetail";
+export const THREAD_TIMELINE_QUERY_KEY = "threadTimeline";
 export const THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY =
   "threadTimelineTurnSummaryDetails";
-export const THREAD_TIMELINE_WORK_OUTPUT_DETAIL_QUERY_KEY =
-  "threadTimelineWorkOutputDetail";
 export const SYSTEM_PROVIDERS_QUERY_KEY = "systemProviders";
 export const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
@@ -146,6 +142,22 @@ export type ThreadQueryKeyPrefix = readonly [typeof THREAD_QUERY_KEY];
 export type ThreadQueryKey = readonly [typeof THREAD_QUERY_KEY, string];
 export type ThreadDetailBootstrapQueryKey = readonly [
   typeof THREAD_DETAIL_BOOTSTRAP_QUERY_KEY,
+  string,
+];
+export type ThreadComposerBootstrapQueryKey = readonly [
+  typeof THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY,
+  string | null,
+  string,
+];
+export type ThreadComposerBootstrapEnvironmentQueryKeyPrefix = readonly [
+  typeof THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY,
+  string | null,
+];
+export type ThreadDefaultExecutionOptionsQueryKeyPrefix = readonly [
+  typeof THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
+];
+export type ThreadDefaultExecutionOptionsQueryKey = readonly [
+  typeof THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
   string,
 ];
 export type ThreadQueuedMessagesQueryKeyPrefix = readonly [
@@ -267,49 +279,15 @@ export type EnvironmentMergeBaseBranchesQueryKeyPrefix = readonly [
   typeof ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
   string,
 ];
-export type ThreadTimelineFeedQueryKey = readonly [
-  typeof THREAD_TIMELINE_FEED_QUERY_KEY,
+export type ThreadTimelineQueryKey = readonly [
+  typeof THREAD_TIMELINE_QUERY_KEY,
   string,
-];
-export type ThreadTimelineFeedQueryKeyPrefix = readonly [
-  typeof THREAD_TIMELINE_FEED_QUERY_KEY,
-  string,
-];
-export type AllThreadTimelineFeedQueryKeyPrefix = readonly [
-  typeof THREAD_TIMELINE_FEED_QUERY_KEY,
-];
-export interface ThreadTimelineRowDetailQueryIdentity {
-  detail: TimelineFeedDetailRef;
-  parts: readonly TimelineFeedDetailPart[];
-  threadId: string;
-}
-export type ThreadTimelineRowDetailQueryKey = readonly [
-  typeof THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY,
-  string,
-  string,
-  number,
-  number,
-  string,
-];
-export type ThreadTimelineRowDetailQueryKeyPrefix = readonly [
-  typeof THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY,
-  string,
-];
-export type AllThreadTimelineRowDetailQueryKeyPrefix = readonly [
-  typeof THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY,
 ];
 export interface ThreadTimelineTurnSummaryDetailsQueryIdentity {
   sourceSeqEnd: number;
   sourceSeqStart: number;
   threadId: string;
   turnId: string;
-}
-export interface ThreadTimelineWorkOutputDetailQueryIdentity {
-  callId: string;
-  sourceSeqEnd: number;
-  sourceSeqStart: number;
-  threadId: string;
-  workKind: "command" | "tool";
 }
 export type ThreadTimelineTurnSummaryDetailsQueryKey = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
@@ -318,13 +296,12 @@ export type ThreadTimelineTurnSummaryDetailsQueryKey = readonly [
   number,
   number,
 ];
-export type ThreadTimelineWorkOutputDetailQueryKey = readonly [
-  typeof THREAD_TIMELINE_WORK_OUTPUT_DETAIL_QUERY_KEY,
+export type ThreadTimelineQueryKeyPrefix = readonly [
+  typeof THREAD_TIMELINE_QUERY_KEY,
   string,
-  string,
-  "command" | "tool",
-  number,
-  number,
+];
+export type AllThreadTimelineQueryKeyPrefix = readonly [
+  typeof THREAD_TIMELINE_QUERY_KEY,
 ];
 export type ThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
@@ -564,8 +541,31 @@ export function threadDetailBootstrapQueryKey(
   return [THREAD_DETAIL_BOOTSTRAP_QUERY_KEY, threadId];
 }
 
+export function threadComposerBootstrapQueryKey(
+  threadId: string,
+  environmentId: string | null,
+): ThreadComposerBootstrapQueryKey {
+  return [THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY, environmentId, threadId];
+}
+
+export function threadComposerBootstrapEnvironmentQueryKeyPrefix(
+  environmentId: string | null,
+): ThreadComposerBootstrapEnvironmentQueryKeyPrefix {
+  return [THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY, environmentId];
+}
+
 export function allThreadQueryKeyPrefix(): ThreadQueryKeyPrefix {
   return [THREAD_QUERY_KEY];
+}
+
+export function threadDefaultExecutionOptionsQueryKey(
+  threadId: string,
+): ThreadDefaultExecutionOptionsQueryKey {
+  return [THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY, threadId];
+}
+
+export function allThreadDefaultExecutionOptionsQueryKeyPrefix(): ThreadDefaultExecutionOptionsQueryKeyPrefix {
+  return [THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY];
 }
 
 export function threadQueuedMessagesQueryKey(
@@ -750,25 +750,10 @@ export function environmentMergeBaseBranchesQueryKeyPrefix(
   return [ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY, environmentId];
 }
 
-export function threadTimelineFeedQueryKey(
+export function threadTimelineQueryKey(
   threadId: string,
-): ThreadTimelineFeedQueryKey {
-  return [THREAD_TIMELINE_FEED_QUERY_KEY, threadId];
-}
-
-export function threadTimelineRowDetailQueryKey({
-  detail,
-  parts,
-  threadId,
-}: ThreadTimelineRowDetailQueryIdentity): ThreadTimelineRowDetailQueryKey {
-  return [
-    THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY,
-    threadId,
-    detail.rowKey,
-    detail.source.start,
-    detail.source.end,
-    parts.join(","),
-  ];
+): ThreadTimelineQueryKey {
+  return [THREAD_TIMELINE_QUERY_KEY, threadId];
 }
 
 export function threadTimelineTurnSummaryDetailsQueryKey({
@@ -786,41 +771,14 @@ export function threadTimelineTurnSummaryDetailsQueryKey({
   ];
 }
 
-export function threadTimelineWorkOutputDetailQueryKey({
-  callId,
-  sourceSeqEnd,
-  sourceSeqStart,
-  threadId,
-  workKind,
-}: ThreadTimelineWorkOutputDetailQueryIdentity): ThreadTimelineWorkOutputDetailQueryKey {
-  return [
-    THREAD_TIMELINE_WORK_OUTPUT_DETAIL_QUERY_KEY,
-    threadId,
-    callId,
-    workKind,
-    sourceSeqStart,
-    sourceSeqEnd,
-  ];
-}
-
-export function threadTimelineFeedQueryKeyPrefix(
+export function threadTimelineQueryKeyPrefix(
   threadId: string,
-): ThreadTimelineFeedQueryKeyPrefix {
-  return [THREAD_TIMELINE_FEED_QUERY_KEY, threadId];
+): ThreadTimelineQueryKeyPrefix {
+  return [THREAD_TIMELINE_QUERY_KEY, threadId];
 }
 
-export function threadTimelineRowDetailQueryKeyPrefix(
-  threadId: string,
-): ThreadTimelineRowDetailQueryKeyPrefix {
-  return [THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY, threadId];
-}
-
-export function allThreadTimelineFeedQueryKeyPrefix(): AllThreadTimelineFeedQueryKeyPrefix {
-  return [THREAD_TIMELINE_FEED_QUERY_KEY];
-}
-
-export function allThreadTimelineRowDetailQueryKeyPrefix(): AllThreadTimelineRowDetailQueryKeyPrefix {
-  return [THREAD_TIMELINE_ROW_DETAIL_QUERY_KEY];
+export function allThreadTimelineQueryKeyPrefix(): AllThreadTimelineQueryKeyPrefix {
+  return [THREAD_TIMELINE_QUERY_KEY];
 }
 
 export function threadTimelineTurnSummaryDetailsQueryKeyPrefix(

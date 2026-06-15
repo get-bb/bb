@@ -1,7 +1,8 @@
 import type {
   ThreadContextWindowUsage,
+  TimelineActivityIntent,
   TimelineConversationAttachments,
-  TimelineFeedRow,
+  TimelineFileChange,
   TimelineParentChange,
   TimelineRow,
   TimelineRowBase,
@@ -11,7 +12,6 @@ import type {
   TimelineSystemRow,
   TimelineTurnRow,
   TimelineUserConversationRow,
-  ThreadTimelineFeedResponse,
 } from "@bb/server-contract";
 import {
   readTerminalOutputLines,
@@ -21,9 +21,11 @@ import {
 } from "@bb/domain";
 import type {
   EventProjectionErrorMessage,
+  EventProjectionFileEditChange,
   EventProjectionMessage,
   EventProjection,
   EventProjectionProvisioningTranscriptEntry,
+  EventProjectionToolParsedIntent,
   EventProjectionTurn,
 } from "./event-projection-types.js";
 import { assertNever } from "./assert-never.js";
@@ -31,6 +33,7 @@ import {
   durationToCompactString,
   getMessageStartedAt,
 } from "./format-helpers.js";
+import { getFileChangeDiffStats } from "./file-change-summary.js";
 import { getEventProjectionMessageScopeTurnId } from "./message-scope.js";
 import {
   buildEventProjection,
@@ -50,21 +53,6 @@ import {
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
-import {
-  buildTimelineFeedRows,
-  type TimelineFeedFileDiffLookupFactory,
-  type TimelineFeedRowKeyBuilder,
-} from "./timeline-feed.js";
-import {
-  tryPaginateTimelineRows,
-  type ThreadTimelinePageKind,
-  type ThreadTimelinePageRequest,
-} from "./timeline-pagination.js";
-import {
-  buildTimelineWorkRowsFromMessage,
-  type BuildDelegationChildRowsArgs,
-  type TimelineDelegationChildRowsMode,
-} from "./timeline-work-row-builders.js";
 
 export type ThreadTimelineTurnMessageDetail = "summary" | "full";
 
@@ -106,40 +94,6 @@ export interface ThreadTimelineFromEventsResult {
   rows: TimelineRow[];
 }
 
-export interface ThreadTimelineFeedFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
-  fileDiffLookupForRows: TimelineFeedFileDiffLookupFactory;
-  paginationPage: ThreadTimelinePageRequest;
-  responsePageKind: ThreadTimelinePageKind;
-  rowKeyForRow: TimelineFeedRowKeyBuilder;
-  summaryOnly: boolean;
-}
-
-export interface BuildThreadTimelineFeedFromEventsArgs {
-  acceptedClientRequestContext: AcceptedClientRequestContext;
-  contextWindowEvents: ThreadEventWithMeta[];
-  events: ThreadEventWithMeta[];
-  options: ThreadTimelineFeedFromEventsOptions;
-}
-
-export interface ThreadTimelineFeedFromEventsSuccess {
-  activeThinking: ActiveThinking | null;
-  contextWindowUsage: ThreadContextWindowUsage | undefined;
-  kind: "success";
-  pendingTodos: ThreadTimelinePendingTodos | null;
-  projectedRowCount: number;
-  responseRowCount: number;
-  rows: TimelineFeedRow[];
-  timelinePage: ThreadTimelineFeedResponse["timelinePage"];
-}
-
-export interface ThreadTimelineFeedFromEventsMissingCursor {
-  kind: "missing-cursor";
-}
-
-export type ThreadTimelineFeedFromEventsResult =
-  | ThreadTimelineFeedFromEventsSuccess
-  | ThreadTimelineFeedFromEventsMissingCursor;
-
 export interface ThreadTimelineSourceSeqRange {
   sourceSeqEnd: number;
   sourceSeqStart: number;
@@ -148,7 +102,6 @@ export interface ThreadTimelineSourceSeqRange {
 export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
   includeProviderUnhandledOperations: boolean;
   threadStatus: Thread["status"];
-  turnId: string;
   /** See {@link ThreadTimelineFromEventsBaseOptions.workspaceRoot}. */
   workspaceRoot: string | null;
 }
@@ -172,7 +125,6 @@ export type ThreadTimelineTurnDetailsFromEventsResult =
     };
 
 interface BuildTurnRowsArgs {
-  delegationChildRows: TimelineDelegationChildRowsMode;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   turn: EventProjectionTurn;
@@ -199,7 +151,6 @@ interface BuildTurnSummaryRowArgs {
 }
 
 interface BuildCompletedTurnSummaryRowsArgs {
-  delegationChildRows: TimelineDelegationChildRowsMode;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   summaryItems: CompletedTurnSummaryItem[];
@@ -208,7 +159,6 @@ interface BuildCompletedTurnSummaryRowsArgs {
 }
 
 interface BuildTimelineRowsOptions {
-  delegationChildRows: TimelineDelegationChildRowsMode;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   workspaceRoot: string | null;
@@ -363,6 +313,78 @@ function toConversationAttachments(
   };
 }
 
+function convertActivityIntent(
+  intent: EventProjectionToolParsedIntent,
+): TimelineActivityIntent {
+  switch (intent.type) {
+    case "read":
+      return {
+        type: "read",
+        command: intent.cmd,
+        name: intent.name,
+        path: intent.path,
+      };
+    case "list_files":
+      return {
+        type: "list_files",
+        command: intent.cmd,
+        path: intent.path,
+      };
+    case "search":
+      return {
+        type: "search",
+        command: intent.cmd,
+        query: intent.query,
+        path: intent.path,
+      };
+    case "unknown":
+      return {
+        type: "unknown",
+        command: intent.cmd,
+      };
+    default:
+      return assertNever(intent);
+  }
+}
+
+/**
+ * File-edit tool calls persist the path the provider reported, which is
+ * absolute (e.g. `/Users/.../worktrees/env_x/bb/src/app.ts`). The timeline
+ * contract promises a workspace-relative path so it matches the repo-relative
+ * names produced by `git diff` in the diff panel, lets `open-file-diff` focus
+ * the right card, and keeps the inline diff header readable. Relativize once
+ * here at the projection boundary so every downstream consumer sees one
+ * canonical workspace-relative path.
+ */
+function relativizeWorkspacePath(
+  path: string,
+  workspaceRoot: string | null,
+): string {
+  if (!workspaceRoot) return path;
+  const normalizedRoot = workspaceRoot.replace(/\/+$/u, "");
+  if (normalizedRoot.length === 0) return path;
+  if (path.startsWith(`${normalizedRoot}/`)) {
+    return path.slice(normalizedRoot.length + 1);
+  }
+  return path;
+}
+
+function toTimelineFileChange(
+  change: EventProjectionFileEditChange,
+  workspaceRoot: string | null,
+): TimelineFileChange {
+  return {
+    path: relativizeWorkspacePath(change.path, workspaceRoot),
+    kind: change.kind ?? null,
+    movePath:
+      change.movePath == null
+        ? null
+        : relativizeWorkspacePath(change.movePath, workspaceRoot),
+    diff: change.diff ?? null,
+    diffStats: getFileChangeDiffStats(change),
+  };
+}
+
 function formatProvisioningTranscriptEntryText(
   entry: EventProjectionProvisioningTranscriptEntry,
 ): string {
@@ -440,19 +462,6 @@ function buildTimelineOperationDetail(
   return lines.length > 0 ? lines.join("\n") : null;
 }
 
-function buildDelegationChildRows({
-  projection,
-  rowIdPrefix,
-  workspaceRoot,
-}: BuildDelegationChildRowsArgs): TimelineRow[] {
-  return buildTimelineRows(projection, {
-    delegationChildRows: "all",
-    includeNestedRows: true,
-    rowIdPrefix,
-    workspaceRoot,
-  });
-}
-
 function convertMessage(
   message: EventProjectionMessage,
   options: BuildTimelineRowsOptions,
@@ -484,21 +493,184 @@ function convertMessage(
         },
       ];
     case "command":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "command",
+          status: message.status,
+          callId: message.callId,
+          command: message.command,
+          cwd: message.cwd,
+          source: message.source,
+          output: message.output,
+          exitCode: message.exitCode,
+          completedAt: message.completedAt,
+          approvalStatus: message.approvalStatus,
+          activityIntents: message.parsedIntents.map(convertActivityIntent),
+        },
+      ];
     case "tool-call":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "tool",
+          status: message.status,
+          callId: message.callId,
+          toolName: message.toolName,
+          toolArgs: message.toolArgs,
+          output: message.output,
+          completedAt: message.completedAt,
+          approvalStatus: message.approvalStatus,
+          activityIntents: message.parsedIntents.map(convertActivityIntent),
+        },
+      ];
     case "file-edit":
-    case "web-search":
-    case "web-fetch":
-    case "image-view":
-    case "delegation":
-    case "workflow":
-    case "permission-grant-lifecycle":
-    case "user-question-lifecycle":
-      return buildTimelineWorkRowsFromMessage({
-        base: buildTimelineRowBase(message, options.rowIdPrefix),
-        buildDelegationChildRows,
-        message,
-        options,
+      if (message.changes.length === 0 && message.approvalStatus !== null) {
+        return [
+          {
+            ...buildTimelineRowBase(message, options.rowIdPrefix),
+            kind: "work",
+            workKind: "approval",
+            status: message.status,
+            interactionId: message.callId,
+            approvalKind: "file-edit",
+            lifecycle:
+              message.approvalStatus === "denied" ? "denied" : "waiting",
+            target: {
+              itemId: message.callId,
+              toolName: null,
+            },
+          },
+        ];
+      }
+      return message.changes.map((change, index) => {
+        const base = buildTimelineRowBase(message, options.rowIdPrefix);
+        return {
+          ...base,
+          id: `${base.id}:file-change:${index}`,
+          kind: "work",
+          workKind: "file-change",
+          status: message.status,
+          callId: message.callId,
+          change: toTimelineFileChange(change, options.workspaceRoot),
+          stdout: message.stdout ?? null,
+          stderr: message.stderr ?? null,
+          approvalStatus: message.approvalStatus,
+        };
       });
+    case "web-search":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "web-search",
+          status: message.status,
+          callId: message.callId,
+          queries: message.queries,
+          completedAt: message.completedAt,
+        },
+      ];
+    case "web-fetch":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "web-fetch",
+          status: message.status,
+          callId: message.callId,
+          url: message.url,
+          prompt: message.prompt,
+          pattern: message.pattern,
+          completedAt: message.completedAt,
+        },
+      ];
+    case "image-view":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "image-view",
+          status: message.status,
+          callId: message.callId,
+          path: message.path,
+          completedAt: message.completedAt,
+        },
+      ];
+    case "delegation": {
+      const base = buildTimelineRowBase(message, options.rowIdPrefix);
+      return [
+        {
+          ...base,
+          kind: "work",
+          workKind: "delegation",
+          status: message.status,
+          callId: message.callId,
+          toolName: message.toolName,
+          subagentType: message.subagentType ?? null,
+          description: message.description ?? null,
+          output: message.output,
+          completedAt: message.completedAt,
+          childRows: buildTimelineRows(message.childProjection, {
+            includeNestedRows: true,
+            rowIdPrefix: `${base.id}:child:`,
+            workspaceRoot: options.workspaceRoot,
+          }),
+        },
+      ];
+    }
+    case "workflow":
+      // Ambient/housekeeping tasks stay out of the inline transcript.
+      if (message.skipTranscript) {
+        return [];
+      }
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "workflow",
+          status: message.status,
+          itemId: message.itemId,
+          workflowName: message.workflowName,
+          description: message.description,
+          taskStatus: message.taskStatus,
+          workflow: message.workflow,
+          usage: message.usage,
+          summary: message.summary,
+          error: message.error,
+          completedAt: message.completedAt,
+        },
+      ];
+    case "permission-grant-lifecycle":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "approval",
+          status: message.status,
+          interactionId: message.interactionId,
+          approvalKind: "permission-grant",
+          lifecycle: message.lifecycle,
+          grantScope: message.grantScope,
+          statusReason: message.statusReason,
+          target: message.approvalTarget,
+        },
+      ];
+    case "user-question-lifecycle":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "question",
+          status: message.status,
+          interactionId: message.interactionId,
+          lifecycle: message.lifecycle,
+          questions: message.questions,
+          answers: message.answers,
+          statusReason: message.statusReason,
+        },
+      ];
     case "operation": {
       const parentChange = parentChangeForMessage(message);
       const operationKind = operationKindForMessage(message, parentChange);
@@ -758,7 +930,6 @@ function buildTurnSummaryRow({
 }
 
 function buildCompletedTurnSummaryRows({
-  delegationChildRows,
   includeNestedRows,
   rowIdPrefix,
   summaryItems,
@@ -770,7 +941,6 @@ function buildCompletedTurnSummaryRows({
     if (item.kind === "ungrouped-message") {
       rows.push(
         ...convertMessage(item.message, {
-          delegationChildRows,
           includeNestedRows,
           rowIdPrefix,
           workspaceRoot,
@@ -782,7 +952,6 @@ function buildCompletedTurnSummaryRows({
     const sourceRows = includeNestedRows
       ? item.sourceMessages.flatMap((message) =>
           convertMessage(message, {
-            delegationChildRows,
             includeNestedRows,
             rowIdPrefix,
             workspaceRoot,
@@ -808,7 +977,6 @@ function buildCompletedTurnSummaryRows({
 }
 
 function buildTurnRows({
-  delegationChildRows,
   includeNestedRows,
   rowIdPrefix,
   turn,
@@ -821,7 +989,6 @@ function buildTurnRows({
   if (!isCompletedTurn) {
     return messages.flatMap((message) =>
       convertMessage(message, {
-        delegationChildRows,
         includeNestedRows,
         rowIdPrefix,
         workspaceRoot,
@@ -832,23 +999,12 @@ function buildTurnRows({
   const { summaryItems, terminalMessages, trailingMessages } =
     groupCompletedTurnMessages(turn);
   const terminalRows = terminalMessages.flatMap((message) =>
-    convertMessage(message, {
-      delegationChildRows,
-      includeNestedRows,
-      rowIdPrefix,
-      workspaceRoot,
-    }),
+    convertMessage(message, { includeNestedRows, rowIdPrefix, workspaceRoot }),
   );
   const trailingRows = trailingMessages.flatMap((message) =>
-    convertMessage(message, {
-      delegationChildRows,
-      includeNestedRows,
-      rowIdPrefix,
-      workspaceRoot,
-    }),
+    convertMessage(message, { includeNestedRows, rowIdPrefix, workspaceRoot }),
   );
   const summaryRows = buildCompletedTurnSummaryRows({
-    delegationChildRows,
     includeNestedRows,
     rowIdPrefix,
     summaryItems,
@@ -860,44 +1016,18 @@ function buildTurnRows({
 
 type TimelineTurnSummaryRow = Extract<TimelineRow, { kind: "turn" }>;
 
-interface TimelineTurnSummaryMatch {
-  overlapSize: number;
-  row: TimelineTurnSummaryRow;
-}
-
-function timelineRangeOverlapSize(
-  left: ThreadTimelineSourceSeqRange,
-  right: ThreadTimelineSourceSeqRange,
-): number {
-  const start = Math.max(left.sourceSeqStart, right.sourceSeqStart);
-  const end = Math.min(left.sourceSeqEnd, right.sourceSeqEnd);
-  return Math.max(0, end - start + 1);
-}
-
 function findMatchingTurnSummaryRow(
   rows: TimelineRow[],
-  options: BuildThreadTimelineTurnDetailsFromEventsOptions,
+  range: ThreadTimelineSourceSeqRange,
 ): TimelineTurnSummaryRow | null {
-  let bestOverlap: TimelineTurnSummaryMatch | null = null;
-  for (const row of rows) {
-    if (row.kind !== "turn" || row.turnId !== options.turnId) {
-      continue;
-    }
-    if (
-      row.sourceSeqStart === options.sourceSeqStart &&
-      row.sourceSeqEnd === options.sourceSeqEnd
-    ) {
-      return row;
-    }
-    const overlapSize = timelineRangeOverlapSize(row, options);
-    if (
-      overlapSize > 0 &&
-      (bestOverlap === null || overlapSize > bestOverlap.overlapSize)
-    ) {
-      bestOverlap = { overlapSize, row };
-    }
-  }
-  return bestOverlap?.row ?? null;
+  return (
+    rows.find(
+      (row): row is TimelineTurnSummaryRow =>
+        row.kind === "turn" &&
+        row.sourceSeqStart === range.sourceSeqStart &&
+        row.sourceSeqEnd === range.sourceSeqEnd,
+    ) ?? null
+  );
 }
 
 function hasTurnSummaryRows(rows: TimelineRow[]): boolean {
@@ -920,7 +1050,6 @@ function buildTimelineRows(
         appendRows(
           rows,
           buildTurnRows({
-            delegationChildRows: options.delegationChildRows,
             turn: entry.turn,
             includeNestedRows,
             rowIdPrefix: options.rowIdPrefix,
@@ -951,7 +1080,6 @@ export function buildThreadTimelineFromEvents(
 
   const rows = [
     ...buildTimelineRows(projection, {
-      delegationChildRows: "all",
       includeNestedRows: args.options.includeNestedRows,
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
       workspaceRoot: args.options.workspaceRoot,
@@ -978,76 +1106,6 @@ export function buildThreadTimelineFromEvents(
   };
 }
 
-export function buildThreadTimelineFeedFromEvents(
-  args: BuildThreadTimelineFeedFromEventsArgs,
-): ThreadTimelineFeedFromEventsResult {
-  const projection = buildEventProjection(args.events, {
-    acceptedClientRequestContext: args.acceptedClientRequestContext,
-    includeDebugRawEvents: args.options.includeDebugRawEvents,
-    includeProviderUnhandledOperations:
-      args.options.includeProviderUnhandledOperations,
-    threadStatus: args.options.threadStatus,
-    turnMessageDetail: "summary",
-  });
-  const rows = [
-    ...buildTimelineRows(projection, {
-      delegationChildRows: "pending-only",
-      includeNestedRows: false,
-      rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
-      workspaceRoot: args.options.workspaceRoot,
-    }),
-    ...buildPendingSteerRowsFromEvents(
-      args.acceptedClientRequestContext,
-      args.events,
-      args.options,
-    ),
-  ];
-  const paginatedTimeline = tryPaginateTimelineRows({
-    page: args.options.paginationPage,
-    rows,
-  });
-  if (paginatedTimeline.kind === "missing-cursor") {
-    return {
-      kind: "missing-cursor",
-    };
-  }
-
-  const responseRows = args.options.summaryOnly
-    ? []
-    : paginatedTimeline.page.rows;
-
-  return {
-    activeThinking: args.options.isLatestPage
-      ? projection.state.activeThinking
-      : null,
-    contextWindowUsage: args.options.isLatestPage
-      ? (extractThreadContextWindowUsage(args.contextWindowEvents) ??
-        undefined)
-      : undefined,
-    kind: "success",
-    pendingTodos: !args.options.isLatestPage
-      ? null
-      : extractThreadTimelinePendingTodos(
-          args.options.threadStatus,
-          args.events,
-        ),
-    projectedRowCount: rows.length,
-    responseRowCount: paginatedTimeline.page.rows.length,
-    rows: buildTimelineFeedRows({
-      fileDiffLookup: args.options.fileDiffLookupForRows(responseRows),
-      rowKeyForRow: args.options.rowKeyForRow,
-      rows: responseRows,
-    }),
-    timelinePage: {
-      kind: args.options.responsePageKind,
-      segmentLimit: paginatedTimeline.page.segmentLimit,
-      returnedSegmentCount: paginatedTimeline.page.returnedSegmentCount,
-      hasOlderRows: paginatedTimeline.page.hasOlderRows,
-      olderCursor: paginatedTimeline.page.olderCursor,
-    },
-  };
-}
-
 export function buildThreadTimelineTurnDetailsFromEvents(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
 ): ThreadTimelineTurnDetailsFromEventsResult {
@@ -1059,7 +1117,6 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     turnMessageDetail: "full",
   });
   const nestedRows = buildTimelineRows(projection, {
-    delegationChildRows: "all",
     includeNestedRows: true,
     rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
     workspaceRoot: args.options.workspaceRoot,

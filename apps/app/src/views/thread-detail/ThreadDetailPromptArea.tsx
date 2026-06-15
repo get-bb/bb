@@ -8,7 +8,7 @@ import type {
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
 } from "@bb/domain";
-import type { ThreadTimelineFeedResponse } from "@bb/server-contract";
+import type { ThreadTimelineResponse } from "@bb/server-contract";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   ThreadPromptContextBanner,
@@ -78,7 +78,7 @@ interface ThreadDetailPromptAreaProps {
   canUseGitUi: boolean;
   composerQueriesEnabled: boolean;
   composerQueriesStaleTime?: number;
-  contextWindowUsage?: ThreadTimelineFeedResponse["contextWindowUsage"];
+  contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
   environmentIcon?: IconName;

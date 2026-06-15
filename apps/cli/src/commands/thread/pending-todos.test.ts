@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ThreadTimelinePendingTodos } from "@bb/domain";
-import type { ThreadTimelineFeedResponse } from "@bb/server-contract";
+import type { ThreadTimelineResponse } from "@bb/server-contract";
 import {
   createNodeBbSdk,
   type BbSdk,
@@ -103,9 +103,8 @@ describe("printPendingTodos", () => {
 describe("fetchThreadPendingTodos", () => {
   function makeTimelineResponse(
     pendingTodos: ThreadTimelinePendingTodos | null,
-  ): ThreadTimelineFeedResponse {
+  ): ThreadTimelineResponse {
     return {
-      threadId: "thread-1",
       activeThinking: null,
       pendingTodos,
       rows: [],
@@ -139,7 +138,7 @@ describe("fetchThreadPendingTodos", () => {
     };
   }
 
-  it("requests timeline feed metadata and returns its pendingTodos field", async () => {
+  it("requests a summary-only timeline and returns its pendingTodos field", async () => {
     const snapshot: ThreadTimelinePendingTodos = {
       sourceSeq: 7,
       updatedAt: 7,
@@ -154,11 +153,11 @@ describe("fetchThreadPendingTodos", () => {
     });
     expect(result).toEqual(snapshot);
     expect(requestUrls).toEqual([
-      "http://bb.test/api/v1/threads/thread-1/timeline/feed?summaryOnly=true",
+      "http://bb.test/api/v1/threads/thread-1/timeline?summaryOnly=true",
     ]);
   });
 
-  it("returns null when the timeline feed request fails at the network level (best-effort contract)", async () => {
+  it("returns null when the timeline request fails at the network level (best-effort contract)", async () => {
     const { sdk } = makeSdkOverHttpBoundary(async () => {
       throw new Error("network down");
     });
@@ -169,7 +168,7 @@ describe("fetchThreadPendingTodos", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null when the timeline feed responds with an HTTP error (best-effort contract)", async () => {
+  it("returns null when the server responds with an HTTP error (best-effort contract)", async () => {
     const { sdk } = makeSdkOverHttpBoundary(async () =>
       Response.json({ message: "Thread not found" }, { status: 404 }),
     );

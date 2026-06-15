@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import type { ActiveThinking, ThreadRuntimeDisplayStatus } from "@bb/domain";
-import type { TimelineFeedRow } from "@bb/server-contract";
+import type { TimelineRow } from "@bb/server-contract";
 import { Button } from "@/components/ui/button.js";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
@@ -36,7 +36,7 @@ interface ThreadTimelinePaneProps {
   isLoadingOlderTimelineRows: boolean;
   isThreadTimelinePending: boolean;
   timelineError: boolean;
-  onLoadOlderRows: () => Promise<void> | void;
+  onLoadOlderRows: () => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
@@ -45,7 +45,7 @@ interface ThreadTimelinePaneProps {
   showOngoingIndicator: boolean;
   ongoingIndicatorLabel?: string;
   stopRequestedAt: number | null;
-  timelineRows: readonly TimelineFeedRow[];
+  timelineRows: TimelineRow[];
   threadId: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   unreadDividerAutoScroll: boolean;
@@ -64,7 +64,7 @@ interface BuildStopRequestedTimelineRowArgs {
 }
 
 interface UseTimelineRowsWithPendingStopArgs {
-  rows: readonly TimelineFeedRow[];
+  rows: TimelineRow[];
   stopRequestedAt: number | null;
   threadId: string;
 }
@@ -72,29 +72,27 @@ interface UseTimelineRowsWithPendingStopArgs {
 function buildStopRequestedTimelineRow({
   stopRequestedAt,
   threadId,
-}: BuildStopRequestedTimelineRowArgs): TimelineFeedRow {
+}: BuildStopRequestedTimelineRowArgs): TimelineRow {
   return {
-    key: `pending-stop_${threadId}_${stopRequestedAt}`,
+    id: `${threadId}:pending-stop:${stopRequestedAt}`,
+    threadId,
     turnId: null,
-    source: {
-      start: 0,
-      end: 0,
-    },
+    sourceSeqStart: 0,
+    sourceSeqEnd: 0,
     startedAt: stopRequestedAt,
     createdAt: stopRequestedAt,
-    detail: null,
     kind: "system",
     systemKind: "operation",
     operationKind: "thread-interrupted",
     title: "Stop requested",
-    detailPreview: null,
+    detail: null,
     status: "pending",
     completedAt: null,
   };
 }
 
 function hasConfirmedStopRow(
-  rows: readonly TimelineFeedRow[],
+  rows: readonly TimelineRow[],
   stopRequestedAt: number,
 ): boolean {
   return rows.some(
@@ -110,7 +108,7 @@ function useTimelineRowsWithPendingStop({
   rows,
   stopRequestedAt,
   threadId,
-}: UseTimelineRowsWithPendingStopArgs): readonly TimelineFeedRow[] {
+}: UseTimelineRowsWithPendingStopArgs): TimelineRow[] {
   return useMemo(() => {
     if (
       stopRequestedAt === null ||
@@ -205,7 +203,7 @@ export function ThreadTimelinePane({
               resolveMentionLink={resolveMentionLink}
               resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
               themeType={preferredTheme}
-              timelineFeedRows={timelineRowsWithPendingStop}
+              timelineRows={timelineRowsWithPendingStop}
               threadId={threadId}
               threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
               unreadDividerAutoScroll={unreadDividerAutoScroll}
@@ -242,15 +240,12 @@ function LoadOlderMessagesButton({
   onLoadOlderRows,
 }: {
   isLoadingOlderTimelineRows: boolean;
-  onLoadOlderRows: () => Promise<void> | void;
+  onLoadOlderRows: () => void;
 }) {
   const bottomAnchor = useBottomAnchoredScroll();
   const handleClick = useCallback(() => {
-    if (bottomAnchor) {
-      void bottomAnchor.preserveScrollAnchorDuring(onLoadOlderRows);
-      return;
-    }
-    void onLoadOlderRows();
+    bottomAnchor?.captureScrollAnchor();
+    onLoadOlderRows();
   }, [bottomAnchor, onLoadOlderRows]);
 
   return (

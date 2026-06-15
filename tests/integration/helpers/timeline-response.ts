@@ -1,10 +1,10 @@
 import type {
-  ThreadTimelineFeedResponse,
-  TimelineFeedRow,
+  ThreadTimelineResponse,
+  TimelineRow,
 } from "@bb/server-contract";
 
 export function timelineHasAssistantConversation(
-  timeline: ThreadTimelineFeedResponse,
+  timeline: ThreadTimelineResponse,
 ): boolean {
   return flattenTimelineRows(timeline.rows).some(
     (row) => row.kind === "conversation" && row.role === "assistant",
@@ -12,13 +12,13 @@ export function timelineHasAssistantConversation(
 }
 
 export function formatTimelineRowKindsForDiagnostics(
-  timeline: ThreadTimelineFeedResponse,
+  timeline: ThreadTimelineResponse,
 ): string {
   return flattenTimelineRows(timeline.rows).map(formatTimelineRowKind).join(", ");
 }
 
-function flattenTimelineRows(rows: readonly TimelineFeedRow[]): TimelineFeedRow[] {
-  const flattened: TimelineFeedRow[] = [];
+function flattenTimelineRows(rows: readonly TimelineRow[]): TimelineRow[] {
+  const flattened: TimelineRow[] = [];
   for (const row of rows) {
     flattened.push(row);
     switch (row.kind) {
@@ -40,7 +40,7 @@ function flattenTimelineRows(rows: readonly TimelineFeedRow[]): TimelineFeedRow[
   return flattened;
 }
 
-function formatTimelineRowKind(row: TimelineFeedRow): string {
+function formatTimelineRowKind(row: TimelineRow): string {
   switch (row.kind) {
     case "conversation":
       return `conversation:${row.role}`;
@@ -50,9 +50,5 @@ function formatTimelineRowKind(row: TimelineFeedRow): string {
       return "turn";
     case "system":
       return `system:${row.systemKind}`;
-    case "bundle-summary":
-      return "bundle-summary";
-    case "step-summary":
-      return "step-summary";
   }
 }

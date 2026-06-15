@@ -1,22 +1,14 @@
 import { z } from "zod";
 import { resolvedThreadExecutionOptionsSchema } from "./shared-types.js";
+import { threadEventSchema, threadEventTypeSchema } from "./provider-event.js";
 import {
-  providerEventSchema,
-  providerEventTypeValues,
-  systemEventSchema,
-  threadEventTypeSchema,
-} from "./provider-event.js";
-import {
-  systemEventTypeValues,
   turnRequestEventDataSchema,
   turnRequestTargetSchema,
 } from "./thread-events.js";
 import {
   threadEventScopeSchema,
-  validateThreadEventScope,
   type ThreadEventScope,
 } from "./thread-event-scope.js";
-import { findLegacyClientRequestSequenceIssues } from "./thread-event-legacy.js";
 import type { ThreadEvent, ThreadEventType } from "./provider-event.js";
 import type { TurnRequestTarget } from "./thread-events.js";
 
@@ -88,12 +80,6 @@ const threadEventRowInputSchema = z.object({
 const storedTurnRequestTypeSet = new Set<ThreadEventType>([
   "client/turn/requested",
 ]);
-const providerThreadEventTypeSet: ReadonlySet<string> = new Set(
-  providerEventTypeValues,
-);
-const systemThreadEventTypeSet: ReadonlySet<string> = new Set(
-  systemEventTypeValues,
-);
 
 const LEGACY_TURN_REQUEST_TARGET = {
   kind: "new-turn",
@@ -130,45 +116,6 @@ function omitStoredScopeFields(
   return rest;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function assertNoLegacyClientRequestSequence(
-  data: Record<string, unknown>,
-): void {
-  const [issue] = findLegacyClientRequestSequenceIssues(data);
-  if (issue) {
-    throw new Error(issue.message);
-  }
-}
-
-function validateStoredThreadEventScope(event: ThreadEvent): void {
-  const result = validateThreadEventScope({
-    type: event.type,
-    scope: event.scope,
-  });
-  if (!result.valid) {
-    throw new Error(result.message ?? "Invalid thread event scope");
-  }
-}
-
-function parseKnownStoredThreadEventType(value: unknown): ThreadEvent {
-  const eventType = threadEventTypeSchema.parse(
-    isRecord(value) ? value.type : undefined,
-  );
-  const event = providerThreadEventTypeSet.has(eventType)
-    ? providerEventSchema.parse(value)
-    : systemThreadEventTypeSet.has(eventType)
-      ? systemEventSchema.parse(value)
-      : null;
-  if (event === null) {
-    throw new Error(`Unknown thread event type: ${eventType}`);
-  }
-  validateStoredThreadEventScope(event);
-  return event;
-}
-
 export function parseStoredThreadEvent(
   args: StoredThreadEventParseArgs,
 ): ThreadEvent {
@@ -181,8 +128,7 @@ export function parseStoredThreadEvent(
     ? parseStoredTurnRequestEventData(args)
     : args.data;
 
-  assertNoLegacyClientRequestSequence(eventData);
-  return parseKnownStoredThreadEventType({
+  return threadEventSchema.parse({
     ...omitStoredScopeFields(eventData),
     ...(args.providerThreadId != null
       ? { providerThreadId: args.providerThreadId }

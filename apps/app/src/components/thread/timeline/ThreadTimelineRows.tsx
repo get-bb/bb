@@ -16,31 +16,19 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import type { ThreadRuntimeDisplayStatus, ThreadWithRuntime } from "@bb/domain";
-import type {
-  TimelineFeedDetailPart,
-  TimelineFeedRow,
-  TimelineRow,
-} from "@bb/server-contract";
+import type { TimelineRow } from "@bb/server-contract";
 import {
   assertNever,
   buildTimelineActivityIntentTitles,
   buildTimelineRowTitle,
   buildTimelineViewRows,
-  createTimelineFeedViewRowsCache,
   createTimelineViewRowsCache,
   findActiveLatestBundleId,
-  getTimelineFeedDetail,
-  hasTimelineFeedDetailPart,
-  isTimelineFeedSummaryViewRow,
-  mapTimelineFeedRowsToViewRows,
   type BuildTimelineRowTitleOptions,
   type BuildTimelineViewRowsOptions,
   type ThreadTimelineViewRow,
-  type TimelineFeedSummaryViewRow,
-  type TimelineFeedViewRowsCache,
   type TimelineActivityIntentTitle,
   type TimelineTitle,
-  type TimelineTitleSegment,
   type TimelineViewTurnRow,
   type TimelineViewWorkRow,
 } from "@bb/thread-view";
@@ -84,10 +72,7 @@ import {
 } from "./timelineRowSignatures.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import {
-  useThreadTimelineRowDetail,
-  useThreadTimelineTurnSummaryDetails,
-} from "@/hooks/queries/thread-queries";
+import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
 import {
   allThreadQueryKeyPrefix,
   THREAD_QUERY_KEY,
@@ -100,7 +85,7 @@ import {
   iterateThreadListCacheEntries,
 } from "@/hooks/cache-owners/thread-list-cache-data";
 
-export interface ThreadTimelineRowsBaseProps {
+export interface ThreadTimelineRowsProps {
   /**
    * Row ids to start expanded on first render. Non-recursive: an id only
    * applies to the row it names — bundle/step/turn children are unaffected.
@@ -116,6 +101,7 @@ export interface ThreadTimelineRowsBaseProps {
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   themeType?: ThreadTimelineTheme;
+  timelineRows: TimelineRow[];
   threadId?: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   /** Omit for standalone initial-unread rendering, pass false for live updates. */
@@ -128,11 +114,6 @@ export interface ThreadTimelineRowsBaseProps {
    * only when the environment hasn't loaded yet.
    */
   workspaceRootPath: string | undefined;
-}
-
-export interface ThreadTimelineRowsProps extends ThreadTimelineRowsBaseProps {
-  timelineFeedRows?: readonly TimelineFeedRow[];
-  timelineRows?: readonly TimelineRow[];
 }
 
 /**
@@ -231,18 +212,6 @@ interface TimelineExpandableBodyProps {
   row: ThreadTimelineViewRow;
 }
 
-interface TimelineFeedSummaryBodyProps {
-  activeLatestBundleId: string | null;
-  compactActivityIntents: boolean;
-  row: TimelineFeedSummaryViewRow;
-}
-
-interface TimelineSummaryRowsBodyProps {
-  activeLatestBundleId: string | null;
-  compactActivityIntents: boolean;
-  rows: readonly ThreadTimelineViewRow[];
-}
-
 interface TurnRowBodyProps {
   compactActivityIntents: boolean;
   row: TimelineViewTurnRow;
@@ -250,28 +219,9 @@ interface TurnRowBodyProps {
 
 type LazyTurnRowBodyProps = TurnRowBodyProps;
 
-interface DelegationRowBodyProps {
-  compactActivityIntents: boolean;
-  row: Extract<TimelineViewWorkRow, { workKind: "delegation" }>;
-}
-
 interface TimelineSystemDetailBlockProps {
   detail: string;
   streaming: boolean;
-}
-
-interface TimelineSystemRowBodyProps {
-  row: Extract<ThreadTimelineViewRow, { kind: "system" }>;
-}
-
-interface TimelineFeedRowDetailQueryArgs {
-  parts: readonly TimelineFeedDetailPart[];
-  row: ThreadTimelineViewRow;
-}
-
-interface TimelineRowDetailRetryProps {
-  label: string;
-  onRetry: () => void;
 }
 
 interface BuildTimelineRowsListItemsArgs {
@@ -302,24 +252,6 @@ interface TimelineRowTitleRenderStateArgs extends ActiveSummaryTreatmentArgs {
 
 interface TimelineRowTitleOptionsArgs extends ActiveSummaryTreatmentArgs {}
 
-interface BuildTimelineFeedSummaryTitleArgs {
-  activeLatestBundleId: string | null;
-  row: TimelineFeedSummaryViewRow;
-  scopeActive: boolean;
-}
-
-interface TimelineFeedSummaryTitleParts {
-  rest: string;
-  verb: string;
-}
-
-interface TimelineFeedSummaryTitleSegmentOptions {
-  accent?: TimelineTitleSegment["accent"];
-  em?: boolean;
-  shimmer?: boolean;
-  truncate?: boolean;
-}
-
 interface TimelineRowTitleRenderStateCache {
   key: string;
   state: TimelineRowTitleRenderState;
@@ -331,6 +263,11 @@ interface BuildTurnSummaryDetailsIdentityArgs {
   rowThreadId: TimelineViewTurnRow["threadId"];
   rowTurnId: TimelineViewTurnRow["turnId"];
   threadId: string | undefined;
+}
+
+interface TimelineRowsOwnerKeyArgs {
+  threadId: string | undefined;
+  timelineRows: readonly TimelineRow[];
 }
 
 type TimelineConversationViewRow = Extract<
@@ -372,7 +309,6 @@ const TimelineRendererStaticContext =
   createContext<TimelineRendererStaticContextValue | null>(null);
 const TimelineTurnStateContext =
   createContext<TimelineTurnStateContextValue | null>(null);
-const EMPTY_TIMELINE_ROWS: readonly TimelineRow[] = [];
 
 function useTimelineRendererStaticContext(): TimelineRendererStaticContextValue {
   const context = useContext(TimelineRendererStaticContext);
@@ -388,17 +324,6 @@ function useTimelineTurnStateContext(): TimelineTurnStateContextValue {
     throw new Error("Thread timeline turn-state context is missing");
   }
   return context;
-}
-
-function useTimelineFeedRowDetail({
-  parts,
-  row,
-}: TimelineFeedRowDetailQueryArgs) {
-  return useThreadTimelineRowDetail({
-    detail: getTimelineFeedDetail(row),
-    parts,
-    threadId: row.threadId,
-  });
 }
 
 function timelineRowTitleRenderStateKey({
@@ -432,17 +357,6 @@ function buildTimelineRowTitleRenderState({
     }
   }
 
-  if (isTimelineFeedSummaryViewRow(row)) {
-    return {
-      kind: "row-title",
-      title: buildTimelineFeedSummaryTitle({
-        activeLatestBundleId,
-        row,
-        scopeActive,
-      }),
-    };
-  }
-
   const title = buildTimelineRowTitle(
     row,
     timelineRowTitleOptions({
@@ -473,93 +387,6 @@ function useTimelineRowTitleRenderState(
     state,
   };
   return state;
-}
-
-function collapseTimelineTitleNewlines(text: string): string {
-  return text.replace(/[\r\n]+/gu, " ");
-}
-
-function timelineFeedSummaryTitleSegment(
-  text: string,
-  options: TimelineFeedSummaryTitleSegmentOptions,
-): TimelineTitleSegment {
-  return {
-    text: collapseTimelineTitleNewlines(text),
-    em: options.em ?? false,
-    shimmer: options.shimmer ?? false,
-    truncate: options.truncate ?? false,
-    ...(options.accent === undefined ? {} : { accent: options.accent }),
-  };
-}
-
-function splitTimelineFeedSummaryTitle(
-  title: string,
-): TimelineFeedSummaryTitleParts {
-  const normalizedTitle = title.trim();
-  const spaceIndex = normalizedTitle.indexOf(" ");
-  if (spaceIndex === -1) {
-    return {
-      rest: "",
-      verb: normalizedTitle,
-    };
-  }
-  return {
-    rest: normalizedTitle.slice(spaceIndex + 1),
-    verb: normalizedTitle.slice(0, spaceIndex),
-  };
-}
-
-function buildTimelineFeedSummaryTitle({
-  activeLatestBundleId,
-  row,
-  scopeActive,
-}: BuildTimelineFeedSummaryTitleArgs): TimelineTitle {
-  const plain = collapseTimelineTitleNewlines(row.feedSummary.title.trim());
-  if (row.kind === "step-summary") {
-    return {
-      segments: [
-        timelineFeedSummaryTitleSegment(plain, {
-          truncate: true,
-        }),
-      ],
-      decorations: [],
-      tone: "summary",
-      action: null,
-      plain,
-    };
-  }
-
-  const isActive =
-    scopeActive &&
-    row.kind === "bundle-summary" &&
-    row.id === activeLatestBundleId;
-  const settledAccent: TimelineTitleSegment["accent"] = isActive
-    ? undefined
-    : "subtle";
-  const { verb, rest } = splitTimelineFeedSummaryTitle(plain);
-  const verbSegment = timelineFeedSummaryTitleSegment(verb, {
-    accent: settledAccent,
-    shimmer: isActive,
-    truncate: rest.length === 0,
-  });
-  const segments =
-    rest.length === 0
-      ? [verbSegment]
-      : [
-          verbSegment,
-          timelineFeedSummaryTitleSegment(rest, {
-            accent: settledAccent,
-            em: true,
-            truncate: true,
-          }),
-        ];
-  return {
-    segments,
-    decorations: [],
-    tone: "default",
-    action: null,
-    plain,
-  };
 }
 
 function areTimelineRowViewPropsEqual(
@@ -635,19 +462,12 @@ function buildTurnSummaryDetailsIdentity({
   };
 }
 
-function hasThreadTimelineFeedRowsProps(
-  props: ThreadTimelineRowsProps,
-): props is ThreadTimelineRowsProps & {
-  timelineFeedRows: readonly TimelineFeedRow[];
-} {
-  return props.timelineFeedRows !== undefined;
-}
-
-function timelineRowsOwnerKey(props: ThreadTimelineRowsProps): string {
-  if (hasThreadTimelineFeedRowsProps(props)) {
-    return props.threadId ?? props.timelineFeedRows[0]?.key ?? "";
-  }
-  return props.threadId ?? props.timelineRows?.[0]?.threadId ?? "";
+function timelineRowsOwnerKey({
+  threadId,
+  timelineRows,
+}: TimelineRowsOwnerKeyArgs): string {
+  const ownerThreadId = threadId ?? timelineRows[0]?.threadId ?? "";
+  return ownerThreadId;
 }
 
 function senderThreadTitle(source: SenderThreadTitleSource): string | null {
@@ -676,10 +496,7 @@ function addSenderThreadMetadata(
 
 function buildSenderThreadMetadataById({
   queryClient,
-}: BuildSenderThreadMetadataByIdArgs): ReadonlyMap<
-  string,
-  SenderThreadMetadata
-> {
+}: BuildSenderThreadMetadataByIdArgs): ReadonlyMap<string, SenderThreadMetadata> {
   const metadataById = new Map<string, SenderThreadMetadata>();
   if (queryClient === null) {
     return metadataById;
@@ -719,7 +536,10 @@ function shouldSyncSenderThreadMetadata(
 
 function useSenderThreadMetadataById({
   queryClient,
-}: UseSenderThreadMetadataByIdArgs): ReadonlyMap<string, SenderThreadMetadata> {
+}: UseSenderThreadMetadataByIdArgs): ReadonlyMap<
+  string,
+  SenderThreadMetadata
+> {
   const [metadataById, setMetadataById] = useState(() =>
     buildSenderThreadMetadataById({ queryClient }),
   );
@@ -780,11 +600,6 @@ function useTimelineViewRowsCache(): GetTimelineViewRows {
       buildTimelineViewRows(rawRows, { ...options, cache: cacheRef.current }),
     [],
   );
-}
-
-function useTimelineFeedViewRowsCache(): TimelineFeedViewRowsCache {
-  const cacheRef = useRef(createTimelineFeedViewRowsCache());
-  return cacheRef.current;
 }
 
 function shouldRenderCompactActivityIntentRows(
@@ -880,11 +695,6 @@ function ConversationRow({ row }: ConversationRowProps) {
     resolveUserAttachmentImageSrc,
     senderThreadMetadataById,
   } = useTimelineRendererStaticContext();
-  const textDetailQuery = useTimelineFeedRowDetail({
-    row,
-    parts: ["text"],
-  });
-  const text = textDetailQuery.data?.parts.text ?? row.text;
   if (row.role === "user") {
     const senderThreadMetadata =
       row.senderThreadId === null
@@ -903,7 +713,7 @@ function ConversationRow({ row }: ConversationRowProps) {
         resolveSegmentLinkHref={resolveSegmentLinkHref}
         senderThreadId={row.senderThreadId}
         senderThreadTitle={senderThreadMetadata?.title ?? null}
-        text={text}
+        text={row.text}
         turnRequest={row.turnRequest}
       />
     );
@@ -916,7 +726,7 @@ function ConversationRow({ row }: ConversationRowProps) {
       projectId={projectId}
       resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
       role="assistant"
-      text={text}
+      text={row.text}
       turnRequest={row.turnRequest}
     />
   );
@@ -986,257 +796,60 @@ function TimelineSystemDetailBlock({
   );
 }
 
-function TimelineRowDetailRetry({
-  label,
-  onRetry,
-}: TimelineRowDetailRetryProps) {
-  return (
-    <div className="flex items-center gap-2 text-sm text-destructive-text">
-      <span>{label}</span>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={onRetry}
-        className="h-7 border-destructive px-2 text-destructive hover:text-destructive"
-      >
-        <Icon name="RotateCcw" />
-        Retry
-      </Button>
-    </div>
-  );
-}
-
-function timelineViewWorkRows(
-  rows: readonly ThreadTimelineViewRow[],
-): TimelineViewWorkRow[] | null {
-  const workRows: TimelineViewWorkRow[] = [];
-  for (const row of rows) {
-    if (row.kind !== "work") {
-      return null;
-    }
-    workRows.push(row);
-  }
-  return workRows;
-}
-
-function TimelineSummaryRowsBody({
-  activeLatestBundleId,
-  compactActivityIntents,
-  rows,
-}: TimelineSummaryRowsBodyProps) {
-  const list = (
-    <TimelineRowsList
-      rows={rows}
-      scopeActive={false}
-      compactActivityIntents={compactActivityIntents}
-      spacing="bundle"
-      unreadDividerAutoScroll={false}
-      unreadDividerPlacement={null}
-    />
-  );
-  const workRows = timelineViewWorkRows(rows);
-  if (workRows === null || !isNonExpandableSummary(workRows)) {
-    return list;
-  }
-  return (
-    <TimelineDetailScroll
-      size="summary"
-      streaming={activeLatestBundleId !== null}
-      contentKey={timelineRowsSignature(rows)}
-    >
-      {list}
-    </TimelineDetailScroll>
-  );
-}
-
-function TimelineFeedSummaryBody({
-  activeLatestBundleId,
-  compactActivityIntents,
-  row,
-}: TimelineFeedSummaryBodyProps) {
-  const detailQuery = useTimelineFeedRowDetail({
-    row,
-    parts: ["children"],
-  });
-  const rows = useMemo(
-    () =>
-      detailQuery.data?.parts.children
-        ? mapTimelineFeedRowsToViewRows({
-            rows: detailQuery.data.parts.children,
-            threadId: row.threadId,
-          })
-        : null,
-    [detailQuery.data, row.threadId],
-  );
-  const handleRetry = useCallback((): void => {
-    void detailQuery.refetch();
-  }, [detailQuery]);
-
-  if (rows) {
-    return (
-      <TimelineSummaryRowsBody
-        activeLatestBundleId={activeLatestBundleId}
-        compactActivityIntents={compactActivityIntents}
-        rows={rows}
-      />
-    );
-  }
-  if (detailQuery.isError) {
-    return (
-      <TimelineRowDetailRetry
-        label="Failed to load summary details."
-        onRetry={handleRetry}
-      />
-    );
-  }
-  return (
-    <div className="text-sm text-muted-foreground">
-      Loading summary details...
-    </div>
-  );
-}
-
-function TimelineSystemRowBody({ row }: TimelineSystemRowBodyProps) {
-  const detailQuery = useTimelineFeedRowDetail({
-    row,
-    parts: ["system-detail"],
-  });
-  const detail = detailQuery.data?.parts.systemDetail ?? row.detail;
-  const handleRetry = useCallback((): void => {
-    void detailQuery.refetch();
-  }, [detailQuery]);
-
-  if (detail !== null && detail.trim().length > 0) {
-    return (
-      <TimelineSystemDetailBlock
-        detail={detail}
-        streaming={row.status === "pending"}
-      />
-    );
-  }
-  if (detailQuery.isError) {
-    return (
-      <TimelineRowDetailRetry
-        label="Failed to load system details."
-        onRetry={handleRetry}
-      />
-    );
-  }
-  if (hasTimelineFeedDetailPart(row, "system-detail")) {
-    return (
-      <div className="text-sm text-muted-foreground">
-        Loading system details...
-      </div>
-    );
-  }
-  return null;
-}
-
-function DelegationRowBody({
-  compactActivityIntents,
-  row,
-}: DelegationRowBodyProps) {
-  const {
-    onOpenLink,
-    onOpenLocalFileLink,
-    projectId,
-    resolveUserAttachmentImageSrc,
-  } = useTimelineRendererStaticContext();
-  const detailQuery = useTimelineFeedRowDetail({
-    row,
-    parts: ["children", "output"],
-  });
-  const childRows = useMemo(
-    () =>
-      detailQuery.data?.parts.children
-        ? mapTimelineFeedRowsToViewRows({
-            rows: detailQuery.data.parts.children,
-            threadId: row.threadId,
-          })
-        : row.childRows,
-    [detailQuery.data, row.childRows, row.threadId],
-  );
-  const output = detailQuery.data?.parts.output ?? row.output;
-  const handleRetry = useCallback((): void => {
-    void detailQuery.refetch();
-  }, [detailQuery]);
-  const delegationActive = row.status === "pending";
-
-  if (detailQuery.isError && childRows.length === 0 && output.length === 0) {
-    return (
-      <TimelineRowDetailRetry
-        label="Failed to load subagent details."
-        onRetry={handleRetry}
-      />
-    );
-  }
-
-  return (
-    <TimelineDetailScroll
-      size="delegation"
-      streaming={delegationActive}
-      contentKey={`${timelineRowsSignature(childRows)}|${output.length}`}
-      className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
-    >
-      <div className="flex flex-col gap-3">
-        {childRows.length > 0 ? (
-          <TimelineRowsList
-            rows={childRows}
-            scopeActive={delegationActive}
-            compactActivityIntents={compactActivityIntents}
-            spacing="nested"
-            unreadDividerAutoScroll={false}
-            unreadDividerPlacement={null}
-          />
-        ) : null}
-        {output.trim().length > 0 ? (
-          <ConversationMessageContent
-            attachments={null}
-            onOpenLink={onOpenLink}
-            onOpenLocalFileLink={onOpenLocalFileLink}
-            projectId={projectId}
-            resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
-            role="assistant"
-            text={output}
-            turnRequest={null}
-          />
-        ) : null}
-      </div>
-    </TimelineDetailScroll>
-  );
-}
-
 function TimelineExpandableBody({
   activeLatestBundleId,
   compactActivityIntents,
   row,
 }: TimelineExpandableBodyProps) {
-  const { themeType, workspaceRootPath, resolveImageViewSrc } =
-    useTimelineRendererStaticContext();
+  const {
+    onOpenLink,
+    onOpenLocalFileLink,
+    projectId,
+    resolveUserAttachmentImageSrc,
+    themeType,
+    workspaceRootPath,
+    resolveImageViewSrc,
+  } = useTimelineRendererStaticContext();
 
   switch (row.kind) {
     case "bundle-summary":
     case "step-summary": {
-      if (isTimelineFeedSummaryViewRow(row)) {
-        return (
-          <TimelineFeedSummaryBody
-            activeLatestBundleId={activeLatestBundleId}
-            compactActivityIntents={true}
-            row={row}
-          />
-        );
-      }
-      return (
-        <TimelineSummaryRowsBody
-          activeLatestBundleId={
-            row.kind === "bundle-summary" && row.id === activeLatestBundleId
-              ? activeLatestBundleId
-              : null
-          }
-          compactActivityIntents={true}
+      const list = (
+        <TimelineRowsList
           rows={row.children}
+          scopeActive={false}
+          compactActivityIntents={true}
+          spacing="bundle"
+          unreadDividerAutoScroll={false}
+          unreadDividerPlacement={null}
         />
+      );
+      // Summaries whose children are themselves expandable (commands, tools
+      // without exploration intents, file-changes, delegations, or any mix
+      // including those) leave the cap off — capping would force a child's
+      // own scroll body to live inside a parent scroll, and nested
+      // scrollbars are bad UX. Only summaries whose children are all flat
+      // and non-expandable (exploration intent listings, web search/fetch)
+      // keep the base cap with overflow fades.
+      if (!isNonExpandableSummary(row.children)) {
+        return list;
+      }
+      // Streaming follows the agent's frontier rather than the bundle's
+      // reduced child status. A bundle that's still being appended to may
+      // momentarily look "completed" between events (replays compress this
+      // window to zero), so deriving sticky-bottom from `row.status` would
+      // miss most updates. `activeLatestBundleId` is null once the timeline
+      // settles past a non-bundle frontier, so streaming naturally shuts off.
+      const isFrontier =
+        row.kind === "bundle-summary" && row.id === activeLatestBundleId;
+      return (
+        <TimelineDetailScroll
+          size="summary"
+          streaming={isFrontier}
+          contentKey={timelineRowsSignature(row.children)}
+        >
+          {list}
+        </TimelineDetailScroll>
       );
     }
     case "turn":
@@ -1248,7 +861,40 @@ function TimelineExpandableBody({
       );
     case "work":
       if (row.workKind === "delegation") {
-        return <DelegationRowBody row={row} compactActivityIntents={false} />;
+        const delegationActive = row.status === "pending";
+        return (
+          <TimelineDetailScroll
+            size="delegation"
+            streaming={delegationActive}
+            contentKey={`${timelineRowsSignature(row.childRows)}|${row.output.length}`}
+            className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
+          >
+            <div className="flex flex-col gap-3">
+              {row.childRows.length > 0 ? (
+                <TimelineRowsList
+                  rows={row.childRows}
+                  scopeActive={delegationActive}
+                  compactActivityIntents={false}
+                  spacing="nested"
+                  unreadDividerAutoScroll={false}
+                  unreadDividerPlacement={null}
+                />
+              ) : null}
+              {row.output.trim().length > 0 ? (
+                <ConversationMessageContent
+                  attachments={null}
+                  onOpenLink={onOpenLink}
+                  onOpenLocalFileLink={onOpenLocalFileLink}
+                  projectId={projectId}
+                  resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
+                  role="assistant"
+                  text={row.output}
+                  turnRequest={null}
+                />
+              ) : null}
+            </div>
+          </TimelineDetailScroll>
+        );
       }
       return (
         <WorkRowBody
@@ -1259,7 +905,12 @@ function TimelineExpandableBody({
         />
       );
     case "system":
-      return <TimelineSystemRowBody row={row} />;
+      return row.detail ? (
+        <TimelineSystemDetailBlock
+          detail={row.detail}
+          streaming={row.status === "pending"}
+        />
+      ) : null;
     case "conversation":
       return null;
     default:
@@ -1310,7 +961,13 @@ function LazyTurnRowBody({
         rowTurnId,
         threadId,
       }),
-    [rowSourceSeqEnd, rowSourceSeqStart, rowThreadId, rowTurnId, threadId],
+    [
+      rowSourceSeqEnd,
+      rowSourceSeqStart,
+      rowThreadId,
+      rowTurnId,
+      threadId,
+    ],
   );
   const {
     data: detail,
@@ -1685,31 +1342,20 @@ function TimelineRowsList({
 }
 
 function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
-  const ownerKey = timelineRowsOwnerKey(props);
+  const ownerKey = timelineRowsOwnerKey({
+    threadId: props.threadId,
+    timelineRows: props.timelineRows,
+  });
   return <ThreadTimelineRowsForTimelineView key={ownerKey} {...props} />;
 }
 
 function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const queryClient = useContext(QueryClientContext) ?? null;
   const getViewRows = useTimelineViewRowsCache();
-  const feedViewRowsCache = useTimelineFeedViewRowsCache();
-  const timelineFeedRows = hasThreadTimelineFeedRowsProps(props)
-    ? props.timelineFeedRows
-    : undefined;
-  const timelineRows = hasThreadTimelineFeedRowsProps(props)
-    ? undefined
-    : props.timelineRows;
-  const threadId = props.threadId;
-  const rows = useMemo(() => {
-    if (timelineFeedRows !== undefined) {
-      return mapTimelineFeedRowsToViewRows({
-        cache: feedViewRowsCache,
-        rows: timelineFeedRows,
-        threadId: threadId ?? "",
-      });
-    }
-    return getViewRows(timelineRows ?? EMPTY_TIMELINE_ROWS);
-  }, [feedViewRowsCache, getViewRows, threadId, timelineFeedRows, timelineRows]);
+  const rows = useMemo(
+    () => getViewRows(props.timelineRows),
+    [getViewRows, props.timelineRows],
+  );
   const scopeActive = isRunningThreadRuntimeDisplayStatus(
     props.threadRuntimeDisplayStatus,
   );

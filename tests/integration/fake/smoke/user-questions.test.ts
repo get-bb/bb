@@ -5,22 +5,14 @@ import {
   type PendingInteractionResolution,
   type UserQuestionPendingInteractionPayload,
 } from "@bb/domain";
-import type {
-  TimelineFeedRow,
-  TimelineFeedWorkRow,
-  TimelineRow,
-  TimelineWorkRow,
-} from "@bb/server-contract";
+import type { TimelineQuestionWorkRow, TimelineRow } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   getThreadOutput,
   getThreadTimeline,
-  getThreadTimelineRowDetail,
-  getThreadTimelineTurnSummaryDetails,
   listThreadInteractions,
   resolveThreadInteraction,
   sendTextMessage,
-  type PublicApiClient,
 } from "../../helpers/api.js";
 import {
   waitForEventType,
@@ -37,92 +29,26 @@ interface UserQuestionInteraction extends PendingInteraction {
   payload: UserQuestionPendingInteractionPayload;
 }
 
-type TimelineFeedQuestionWorkRow = Extract<
-  TimelineFeedWorkRow,
-  { workKind: "question" }
->;
-type TimelineQuestionWorkRow = Extract<TimelineWorkRow, { workKind: "question" }>;
-type TimelineQuestionRow = TimelineFeedQuestionWorkRow | TimelineQuestionWorkRow;
-type TimelineQuestionSearchRow = TimelineFeedRow | TimelineRow;
-
-interface CollectQuestionRowsArgs {
-  api: PublicApiClient;
-  rows: readonly TimelineQuestionSearchRow[];
-  threadId: string;
-}
-
 function isUserQuestionInteraction(
   interaction: PendingInteraction,
 ): interaction is UserQuestionInteraction {
   return isUserQuestionPendingInteractionPayload(interaction.payload);
 }
 
-function isQuestionWorkRow(
-  row: TimelineQuestionSearchRow,
-): row is TimelineQuestionRow {
+function isQuestionWorkRow(row: TimelineRow): row is TimelineQuestionWorkRow {
   return row.kind === "work" && row.workKind === "question";
 }
 
-function isTimelineFeedRow(row: TimelineQuestionSearchRow): row is TimelineFeedRow {
-  return "key" in row;
-}
-
-function timelineRowSourceSeqStart(row: TimelineQuestionSearchRow): number {
-  return isTimelineFeedRow(row) ? row.source.start : row.sourceSeqStart;
-}
-
-function timelineRowSourceSeqEnd(row: TimelineQuestionSearchRow): number {
-  return isTimelineFeedRow(row) ? row.source.end : row.sourceSeqEnd;
-}
-
-async function collectQuestionRows({
-  api,
-  rows,
-  threadId,
-}: CollectQuestionRowsArgs): Promise<TimelineQuestionRow[]> {
-  const questionRows: TimelineQuestionRow[] = [];
+function collectQuestionRows(
+  rows: readonly TimelineRow[],
+): TimelineQuestionWorkRow[] {
+  const questionRows: TimelineQuestionWorkRow[] = [];
   for (const row of rows) {
     if (isQuestionWorkRow(row)) {
       questionRows.push(row);
     }
     if (row.kind === "turn" && row.children) {
-      questionRows.push(
-        ...(await collectQuestionRows({ api, rows: row.children, threadId })),
-      );
-    }
-    if (row.kind === "work" && row.workKind === "delegation") {
-      questionRows.push(
-        ...(await collectQuestionRows({ api, rows: row.childRows, threadId })),
-      );
-    }
-    if (row.kind === "turn" && row.children === null && row.summaryCount > 0) {
-      const detail = await getThreadTimelineTurnSummaryDetails({
-        api,
-        sourceSeqEnd: timelineRowSourceSeqEnd(row),
-        sourceSeqStart: timelineRowSourceSeqStart(row),
-        threadId,
-        turnId: row.turnId,
-      });
-      questionRows.push(
-        ...(await collectQuestionRows({ api, rows: detail.rows, threadId })),
-      );
-    }
-    if (isTimelineFeedRow(row) && row.detail?.parts.includes("children")) {
-      const detail = await getThreadTimelineRowDetail({
-        api,
-        detail: row.detail,
-        parts: ["children"],
-        threadId,
-      });
-      if (detail.parts.children) {
-        questionRows.push(
-          ...(await collectQuestionRows({
-            api,
-            rows: detail.parts.children,
-            threadId,
-          })),
-        );
-      }
+      questionRows.push(...collectQuestionRows(row.children));
     }
   }
   return questionRows;
@@ -218,14 +144,9 @@ describe.sequential("fake provider user-question integration", () => {
         ).resolves.toContain("Question answered: staging, Use staging first.");
 
         const timeline = await getThreadTimeline(harness.api, thread.id, {
-          segmentLimit: 100,
+          includeNestedRows: true,
         });
-        const questionRows = await collectQuestionRows({
-          api: harness.api,
-          rows: timeline.rows,
-          threadId: thread.id,
-        });
-        const questionRow = questionRows.find(
+        const questionRow = collectQuestionRows(timeline.rows).find(
           (row) => row.interactionId === interaction.id,
         );
         expect(questionRow).toMatchObject({

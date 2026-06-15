@@ -1,6 +1,5 @@
 import {
   and,
-  count,
   desc,
   eq,
   gt,
@@ -37,412 +36,11 @@ import type {
 } from "../connection.js";
 import { alias } from "drizzle-orm/sqlite-core";
 import type { DbNotifier } from "../notifier.js";
-import { environments, eventLargeValues, events, threads } from "../schema.js";
-import { createEventId, createEventLargeValueId } from "../ids.js";
+import { environments, events, threads } from "../schema.js";
+import { createEventId } from "../ids.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
-import type {
-  StoredEventLargeValueItemKind,
-  StoredEventLargeValueJsonPath,
-  StoredEventLargeValueKind,
-  StoredEventLargeValueStorageKind,
-  StoredEventLargeValueTruncationPath,
-} from "../event-large-values.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
-const STORED_EVENT_LARGE_VALUE_THRESHOLD_CHARS = 512;
-const STORED_EVENT_LARGE_VALUE_RETAINED_CHARS = 0;
-
-interface PreparedStoredEventLargeValue {
-  itemId: string | null;
-  itemKind: StoredEventLargeValueItemKind;
-  jsonPath: StoredEventLargeValueJsonPath;
-  originalLength: number;
-  storageKind: StoredEventLargeValueStorageKind;
-  value: string;
-  valueKind: StoredEventLargeValueKind;
-}
-
-interface PreparedStoredEventData {
-  data: string;
-  largeValues: PreparedStoredEventLargeValue[];
-}
-
-interface PrepareStoredEventDataArgs {
-  createdAt: number;
-  data: string;
-  itemId: string | null;
-  itemKind: ThreadEventItemType | null;
-  type: ThreadEventType;
-}
-
-interface InsertPreparedEventLargeValuesArgs {
-  createdAt: number;
-  eventId: string;
-  largeValues: readonly PreparedStoredEventLargeValue[];
-  sequence: number;
-  threadId: string;
-}
-
-interface JsonTextExtractionTarget {
-  itemKind: StoredEventLargeValueItemKind;
-  jsonPath: StoredEventLargeValueJsonPath;
-  outputPath: StoredEventLargeValueTruncationPath;
-  valueKind: StoredEventLargeValueKind;
-}
-
-interface JsonObjectExtractionTarget extends JsonTextExtractionTarget {
-  field: string;
-}
-
-interface SetStoredEventLargeValueTruncationArgs {
-  item: Record<string, unknown>;
-  originalLength: number;
-  outputPath: StoredEventLargeValueTruncationPath;
-  truncatedAt: number;
-}
-
-interface CanExtractStoredEventLargeValuesArgs {
-  itemKind: ThreadEventItemType | null;
-  type: ThreadEventType;
-}
-
-interface GetTimelineFileChangeDiffLargeValueArgs {
-  callId: string;
-  changeIndex: number;
-  seqEnd: number;
-  seqStart: number;
-  threadId: string;
-}
-
-export interface ListTimelineFileChangeDiffLargeValueMetadataArgs {
-  seqEnd: number;
-  seqStart: number;
-  threadId: string;
-}
-
-export interface TimelineFileChangeDiffLargeValueMetadataListRow
-  extends TimelineFileChangeDiffLargeValueMetadataRow {
-  itemId: string | null;
-  jsonPath: string;
-}
-
-export interface TimelineFileChangeDiffLargeValueMetadataRow {
-  originalLength: number;
-  sequence: number;
-}
-
-export interface TimelineFileChangeDiffLargeValueRow
-  extends TimelineFileChangeDiffLargeValueMetadataRow {
-  value: string;
-}
-
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseStoredEventDataObject(
-  data: string,
-): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(data);
-    return isJsonObject(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function stringifyJsonValue(value: unknown): string | null {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value === undefined || value === null) {
-    return null;
-  }
-  return JSON.stringify(value) ?? null;
-}
-
-function jsonValueStorageKind(
-  value: unknown,
-): StoredEventLargeValueStorageKind {
-  return typeof value === "string" ? "text" : "json";
-}
-
-function ensureJsonObjectField(
-  target: Record<string, unknown>,
-  field: string,
-): Record<string, unknown> {
-  const existing = target[field];
-  if (isJsonObject(existing)) {
-    return existing;
-  }
-  const next: Record<string, unknown> = {};
-  target[field] = next;
-  return next;
-}
-
-function setStoredEventLargeValueTruncation({
-  item,
-  originalLength,
-  outputPath,
-  truncatedAt,
-}: SetStoredEventLargeValueTruncationArgs): void {
-  const truncation = ensureJsonObjectField(item, "truncation");
-  truncation[outputPath] = {
-    originalLength,
-    retainedHeadLength: STORED_EVENT_LARGE_VALUE_RETAINED_CHARS,
-    retainedTailLength: STORED_EVENT_LARGE_VALUE_RETAINED_CHARS,
-    truncatedAt,
-  };
-}
-
-function hasStoredEventLargeValueTruncation(
-  item: Record<string, unknown>,
-  outputPath: StoredEventLargeValueTruncationPath,
-): boolean {
-  const truncation = item.truncation;
-  return isJsonObject(truncation) && truncation[outputPath] !== undefined;
-}
-
-function shouldStoreLargeValue(value: string): boolean {
-  return value.length > STORED_EVENT_LARGE_VALUE_THRESHOLD_CHARS;
-}
-
-function canExtractStoredEventLargeValues({
-  itemKind,
-  type,
-}: CanExtractStoredEventLargeValuesArgs): boolean {
-  if (itemKind === null) {
-    return false;
-  }
-  if (itemKind === "fileChange") {
-    return type === "item/started" || type === "item/completed";
-  }
-  return type === "item/completed";
-}
-
-function fileChangeDiffJsonPath(
-  changeIndex: number,
-): StoredEventLargeValueJsonPath {
-  return `$.item.changes[${changeIndex}].diff`;
-}
-
-function extractTextStoredEventLargeValue(
-  item: Record<string, unknown>,
-  target: JsonObjectExtractionTarget,
-  args: PrepareStoredEventDataArgs,
-): PreparedStoredEventLargeValue | null {
-  const value = item[target.field];
-  if (typeof value !== "string" || !shouldStoreLargeValue(value)) {
-    return null;
-  }
-  if (hasStoredEventLargeValueTruncation(item, target.outputPath)) {
-    return null;
-  }
-
-  item[target.field] = "";
-  setStoredEventLargeValueTruncation({
-    item,
-    originalLength: value.length,
-    outputPath: target.outputPath,
-    truncatedAt: args.createdAt,
-  });
-
-  return {
-    itemId: args.itemId,
-    itemKind: target.itemKind,
-    jsonPath: target.jsonPath,
-    originalLength: value.length,
-    storageKind: "text",
-    value,
-    valueKind: target.valueKind,
-  };
-}
-
-function extractToolResultStoredEventLargeValue(
-  item: Record<string, unknown>,
-  args: PrepareStoredEventDataArgs,
-): PreparedStoredEventLargeValue | null {
-  if (hasStoredEventLargeValueTruncation(item, "result")) {
-    return null;
-  }
-
-  const result = item.result;
-  const value = stringifyJsonValue(result);
-  if (value === null || !shouldStoreLargeValue(value)) {
-    return null;
-  }
-
-  item.result = "";
-  setStoredEventLargeValueTruncation({
-    item,
-    originalLength: value.length,
-    outputPath: "result",
-    truncatedAt: args.createdAt,
-  });
-
-  return {
-    itemId: args.itemId,
-    itemKind: "toolCall",
-    jsonPath: "$.item.result",
-    originalLength: value.length,
-    storageKind: jsonValueStorageKind(result),
-    value,
-    valueKind: "tool_result",
-  };
-}
-
-function extractFileChangeDiffStoredEventLargeValues(
-  item: Record<string, unknown>,
-  args: PrepareStoredEventDataArgs,
-): PreparedStoredEventLargeValue[] {
-  const changes = item.changes;
-  if (!Array.isArray(changes)) {
-    return [];
-  }
-
-  const largeValues: PreparedStoredEventLargeValue[] = [];
-  changes.forEach((change, changeIndex) => {
-    if (!isJsonObject(change)) {
-      return;
-    }
-    const diff = change.diff;
-    if (typeof diff !== "string" || !shouldStoreLargeValue(diff)) {
-      return;
-    }
-
-    change.diff = "";
-    largeValues.push({
-      itemId: args.itemId,
-      itemKind: "fileChange",
-      jsonPath: fileChangeDiffJsonPath(changeIndex),
-      originalLength: diff.length,
-      storageKind: "text",
-      value: diff,
-      valueKind: "file_change_diff",
-    });
-  });
-  return largeValues;
-}
-
-function prepareStoredEventDataForLargeValueStorage(
-  args: PrepareStoredEventDataArgs,
-): PreparedStoredEventData {
-  if (
-    !canExtractStoredEventLargeValues(args) ||
-    args.data.length <= STORED_EVENT_LARGE_VALUE_THRESHOLD_CHARS
-  ) {
-    return { data: args.data, largeValues: [] };
-  }
-
-  const parsed = parseStoredEventDataObject(args.data);
-  if (parsed === null || !isJsonObject(parsed.item)) {
-    return { data: args.data, largeValues: [] };
-  }
-
-  const item = parsed.item;
-  const largeValues: PreparedStoredEventLargeValue[] = [];
-  switch (args.itemKind) {
-    case "commandExecution": {
-      const value = extractTextStoredEventLargeValue(
-        item,
-        {
-          field: "aggregatedOutput",
-          itemKind: "commandExecution",
-          jsonPath: "$.item.aggregatedOutput",
-          outputPath: "aggregatedOutput",
-          valueKind: "command_aggregated_output",
-        },
-        args,
-      );
-      if (value !== null) {
-        largeValues.push(value);
-      }
-      break;
-    }
-    case "toolCall": {
-      const value = extractToolResultStoredEventLargeValue(item, args);
-      if (value !== null) {
-        largeValues.push(value);
-      }
-      break;
-    }
-    case "webFetch": {
-      const value = extractTextStoredEventLargeValue(
-        item,
-        {
-          field: "resultText",
-          itemKind: "webFetch",
-          jsonPath: "$.item.resultText",
-          outputPath: "resultText",
-          valueKind: "web_fetch_result_text",
-        },
-        args,
-      );
-      if (value !== null) {
-        largeValues.push(value);
-      }
-      break;
-    }
-    case "webSearch": {
-      const value = extractTextStoredEventLargeValue(
-        item,
-        {
-          field: "resultText",
-          itemKind: "webSearch",
-          jsonPath: "$.item.resultText",
-          outputPath: "resultText",
-          valueKind: "web_search_result_text",
-        },
-        args,
-      );
-      if (value !== null) {
-        largeValues.push(value);
-      }
-      break;
-    }
-    case "fileChange": {
-      largeValues.push(...extractFileChangeDiffStoredEventLargeValues(item, args));
-      break;
-    }
-    case "agentMessage":
-    case "backgroundTask":
-    case "contextCompaction":
-    case "imageView":
-    case "plan":
-    case "reasoning":
-    case "userMessage":
-      return { data: args.data, largeValues: [] };
-  }
-
-  return largeValues.length === 0
-    ? { data: args.data, largeValues }
-    : { data: JSON.stringify(parsed), largeValues };
-}
-
-function insertPreparedEventLargeValues(
-  db: DbQueryConnection,
-  args: InsertPreparedEventLargeValuesArgs,
-): void {
-  for (const largeValue of args.largeValues) {
-    db.insert(eventLargeValues)
-      .values({
-        id: createEventLargeValueId(),
-        eventId: args.eventId,
-        threadId: args.threadId,
-        sequence: args.sequence,
-        itemId: largeValue.itemId,
-        itemKind: largeValue.itemKind,
-        valueKind: largeValue.valueKind,
-        jsonPath: largeValue.jsonPath,
-        storageKind: largeValue.storageKind,
-        value: largeValue.value,
-        originalLength: largeValue.originalLength,
-        createdAt: args.createdAt,
-      })
-      .onConflictDoNothing()
-      .run();
-  }
-}
 
 export interface InsertEventInput {
   threadId: string;
@@ -567,25 +165,11 @@ export function insertEvents(
     const id = createEventId();
     const createdAt = input.createdAt ?? Date.now();
     const turnId = getThreadEventScopeTurnId(input.scope) ?? null;
-    const preparedData = prepareStoredEventDataForLargeValueStorage({
-      createdAt,
-      data: input.data,
-      itemId: input.itemId,
-      itemKind: input.itemKind,
-      type: input.type,
-    });
     const result = db.run(
       sql`INSERT OR IGNORE INTO events (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, data, created_at)
-          VALUES (${id}, ${input.threadId}, ${input.environmentId ?? null}, ${input.scope.kind}, ${turnId}, ${input.providerThreadId ?? null}, ${input.sequence}, ${input.type}, ${input.itemId}, ${input.itemKind}, ${preparedData.data}, ${createdAt})`,
+          VALUES (${id}, ${input.threadId}, ${input.environmentId ?? null}, ${input.scope.kind}, ${turnId}, ${input.providerThreadId ?? null}, ${input.sequence}, ${input.type}, ${input.itemId}, ${input.itemKind}, ${input.data}, ${createdAt})`,
     );
     if (result.changes > 0) {
-      insertPreparedEventLargeValues(db, {
-        createdAt,
-        eventId: id,
-        largeValues: preparedData.largeValues,
-        sequence: input.sequence,
-        threadId: input.threadId,
-      });
       insertedCount++;
       insertedInputIndexes.push(index);
       const eventTypes = eventTypesByThreadId.get(input.threadId);
@@ -747,19 +331,11 @@ export function appendDaemonEventsInTransaction(
       throw new Error(`Missing event sequence for thread: ${input.threadId}`);
     }
     const turnId = getThreadEventScopeTurnId(input.scope) ?? null;
-    const eventId = createEventId();
-    const preparedData = prepareStoredEventDataForLargeValueStorage({
-      createdAt: now,
-      data: input.data,
-      itemId: input.itemId,
-      itemKind: input.itemKind,
-      type: input.type,
-    });
     db.run(
       sql`INSERT INTO events
         (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, data, created_at)
         VALUES (
-          ${eventId},
+          ${createEventId()},
           ${input.threadId},
           ${input.environmentId},
           ${input.scope.kind},
@@ -769,17 +345,10 @@ export function appendDaemonEventsInTransaction(
           ${input.type},
           ${input.itemId},
           ${input.itemKind},
-          ${preparedData.data},
+          ${input.data},
           ${now}
         )`,
     );
-    insertPreparedEventLargeValues(db, {
-      createdAt: now,
-      eventId,
-      largeValues: preparedData.largeValues,
-      sequence,
-      threadId: input.threadId,
-    });
 
     const acceptedEvent: AcceptedDaemonEvent = {
       sequence,
@@ -854,21 +423,12 @@ export function appendStoredThreadEventsInTransaction(
       itemId: "itemId" in args.data ? args.data.itemId : undefined,
     });
     const turnId = getThreadEventScopeTurnId(args.scope) ?? null;
-    const eventId = createEventId();
-    const data = JSON.stringify(args.data);
-    const preparedData = prepareStoredEventDataForLargeValueStorage({
-      createdAt: now,
-      data,
-      itemId: itemFields.itemId,
-      itemKind: itemFields.itemKind,
-      type: args.type,
-    });
 
     db.run(
       sql`INSERT INTO events
         (id, thread_id, environment_id, scope_kind, turn_id, provider_thread_id, sequence, type, item_id, item_kind, data, created_at)
         VALUES (
-          ${eventId},
+          ${createEventId()},
           ${args.threadId},
           ${args.environmentId ?? null},
           ${args.scope.kind},
@@ -878,17 +438,10 @@ export function appendStoredThreadEventsInTransaction(
           ${args.type},
           ${itemFields.itemId},
           ${itemFields.itemKind},
-          ${preparedData.data},
+          ${JSON.stringify(args.data)},
           ${now}
         )`,
     );
-    insertPreparedEventLargeValues(db, {
-      createdAt: now,
-      eventId,
-      largeValues: preparedData.largeValues,
-      sequence,
-      threadId: args.threadId,
-    });
 
     sequences.push(sequence);
     nextSequencesByThreadId.set(args.threadId, sequence + 1);
@@ -967,11 +520,6 @@ export interface ListEventsOptions {
   limit?: number;
 }
 
-export interface ThreadEventRevision {
-  count: number;
-  maxSequence: number;
-}
-
 const storedEventRowFields = {
   createdAt: events.createdAt,
   data: events.data,
@@ -990,55 +538,6 @@ export type StoredEventRow = Pick<
   typeof events.$inferSelect,
   keyof typeof storedEventRowFields
 >;
-
-export type TimelineWorkOutputLargeValueWorkKind = "command" | "tool";
-
-export interface TimelineWorkOutputLargeValueRow {
-  itemKind: ThreadEventItemType;
-  originalLength: number;
-  sequence: number;
-  value: string;
-  valueKind: StoredEventLargeValueKind;
-}
-
-export interface GetTimelineWorkOutputLargeValueArgs {
-  callId: string;
-  seqEnd: number;
-  seqStart: number;
-  threadId: string;
-  workKind: TimelineWorkOutputLargeValueWorkKind;
-}
-
-type TimelineFeedRedundantDeltaEventType = Extract<
-  ThreadEventType,
-  | "item/agentMessage/delta"
-  | "item/commandExecution/outputDelta"
-  | "item/reasoning/summaryTextDelta"
-  | "item/reasoning/textDelta"
->;
-
-export type TimelineFeedRedundantDeltaCompletionItemKind = Extract<
-  ThreadEventItemType,
-  "agentMessage" | "commandExecution" | "reasoning"
->;
-
-const timelineFeedRedundantDeltaCompletionItemKinds = {
-  "item/agentMessage/delta": "agentMessage",
-  "item/commandExecution/outputDelta": "commandExecution",
-  "item/reasoning/summaryTextDelta": "reasoning",
-  "item/reasoning/textDelta": "reasoning",
-} satisfies Record<
-  TimelineFeedRedundantDeltaEventType,
-  TimelineFeedRedundantDeltaCompletionItemKind
->;
-
-export interface StoredTimelineFeedEventRow extends StoredEventRow {
-  timelineFeedDeltaCompletionItemKind:
-    | TimelineFeedRedundantDeltaCompletionItemKind
-    | null;
-  timelineFeedHasReplayableCompletionBody: number;
-  timelineFeedParentToolCallId: string;
-}
 
 export interface ListStoredEventRowsArgs {
   afterSequence?: number;
@@ -1115,9 +614,6 @@ export interface ListStoredTimelineWindowEventRowsArgs {
   sequenceStart: number;
   threadId: string;
 }
-
-export type ListStoredTimelineFeedWindowEventRowsArgs =
-  ListStoredTimelineWindowEventRowsArgs;
 
 export interface ListContextWindowUsageRowsArgs {
   threadId: string;
@@ -1671,185 +1167,6 @@ export function listStoredTimelineWindowEventRows(
     .all();
 }
 
-export function getTimelineWorkOutputLargeValue(
-  db: DbConnection,
-  args: GetTimelineWorkOutputLargeValueArgs,
-): TimelineWorkOutputLargeValueRow | null {
-  const itemKind =
-    args.workKind === "command"
-      ? ("commandExecution" satisfies StoredEventLargeValueItemKind)
-      : ("toolCall" satisfies StoredEventLargeValueItemKind);
-  const valueKind =
-    args.workKind === "command"
-      ? ("command_aggregated_output" satisfies StoredEventLargeValueKind)
-      : ("tool_result" satisfies StoredEventLargeValueKind);
-
-  return (
-    db
-      .select({
-        itemKind: eventLargeValues.itemKind,
-        originalLength: eventLargeValues.originalLength,
-        sequence: eventLargeValues.sequence,
-        value: eventLargeValues.value,
-        valueKind: eventLargeValues.valueKind,
-      })
-      .from(eventLargeValues)
-      .where(
-        and(
-          eq(eventLargeValues.threadId, args.threadId),
-          eq(eventLargeValues.itemId, args.callId),
-          eq(eventLargeValues.itemKind, itemKind),
-          eq(eventLargeValues.valueKind, valueKind),
-          gte(eventLargeValues.sequence, args.seqStart),
-          lte(eventLargeValues.sequence, args.seqEnd),
-        ),
-      )
-      .orderBy(desc(eventLargeValues.sequence))
-      .limit(1)
-      .get() ?? null
-  );
-}
-
-export function listTimelineFileChangeDiffLargeValueMetadata(
-  db: DbConnection,
-  args: ListTimelineFileChangeDiffLargeValueMetadataArgs,
-): TimelineFileChangeDiffLargeValueMetadataListRow[] {
-  return db
-    .select({
-      itemId: eventLargeValues.itemId,
-      jsonPath: eventLargeValues.jsonPath,
-      originalLength: eventLargeValues.originalLength,
-      sequence: eventLargeValues.sequence,
-    })
-    .from(eventLargeValues)
-    .where(
-      and(
-        eq(eventLargeValues.threadId, args.threadId),
-        eq(
-          eventLargeValues.itemKind,
-          "fileChange" satisfies StoredEventLargeValueItemKind,
-        ),
-        eq(
-          eventLargeValues.valueKind,
-          "file_change_diff" satisfies StoredEventLargeValueKind,
-        ),
-        gte(eventLargeValues.sequence, args.seqStart),
-        lte(eventLargeValues.sequence, args.seqEnd),
-      ),
-    )
-    .orderBy(desc(eventLargeValues.sequence))
-    .all();
-}
-
-export function getTimelineFileChangeDiffLargeValue(
-  db: DbConnection,
-  args: GetTimelineFileChangeDiffLargeValueArgs,
-): TimelineFileChangeDiffLargeValueRow | null {
-  return (
-    db
-      .select({
-        originalLength: eventLargeValues.originalLength,
-        sequence: eventLargeValues.sequence,
-        value: eventLargeValues.value,
-      })
-      .from(eventLargeValues)
-      .where(
-        and(
-          eq(eventLargeValues.threadId, args.threadId),
-          eq(eventLargeValues.itemId, args.callId),
-          eq(
-            eventLargeValues.itemKind,
-            "fileChange" satisfies StoredEventLargeValueItemKind,
-          ),
-          eq(
-            eventLargeValues.valueKind,
-            "file_change_diff" satisfies StoredEventLargeValueKind,
-          ),
-          eq(eventLargeValues.jsonPath, fileChangeDiffJsonPath(args.changeIndex)),
-          gte(eventLargeValues.sequence, args.seqStart),
-          lte(eventLargeValues.sequence, args.seqEnd),
-        ),
-      )
-      .orderBy(desc(eventLargeValues.sequence))
-      .limit(1)
-      .get() ?? null
-  );
-}
-
-function timelineFeedDeltaCompletionItemKind(): SQL<
-  TimelineFeedRedundantDeltaCompletionItemKind | null
-> {
-  return sql<TimelineFeedRedundantDeltaCompletionItemKind | null>`CASE
-    WHEN ${events.type} = ${"item/agentMessage/delta" satisfies TimelineFeedRedundantDeltaEventType}
-      THEN ${timelineFeedRedundantDeltaCompletionItemKinds["item/agentMessage/delta"]}
-    WHEN ${events.type} = ${"item/commandExecution/outputDelta" satisfies TimelineFeedRedundantDeltaEventType}
-      THEN ${timelineFeedRedundantDeltaCompletionItemKinds["item/commandExecution/outputDelta"]}
-    WHEN ${events.type} = ${"item/reasoning/summaryTextDelta" satisfies TimelineFeedRedundantDeltaEventType}
-      THEN ${timelineFeedRedundantDeltaCompletionItemKinds["item/reasoning/summaryTextDelta"]}
-    WHEN ${events.type} = ${"item/reasoning/textDelta" satisfies TimelineFeedRedundantDeltaEventType}
-      THEN ${timelineFeedRedundantDeltaCompletionItemKinds["item/reasoning/textDelta"]}
-    ELSE NULL
-  END`;
-}
-
-function timelineFeedParentToolCallId(): SQL<string> {
-  return sql<string>`COALESCE(
-    CASE
-      WHEN ${events.type} = ${"item/completed" satisfies ThreadEventType}
-        THEN json_extract(${events.data}, '$.item.parentToolCallId')
-      ELSE json_extract(${events.data}, '$.parentToolCallId')
-    END,
-    ''
-  )`;
-}
-
-function timelineFeedHasReplayableCompletionBody(): SQL<number> {
-  return sql<number>`CASE
-    WHEN ${events.type} = ${"item/completed" satisfies ThreadEventType}
-      AND ${events.itemKind} IN (
-        ${"agentMessage" satisfies ThreadEventItemType},
-        ${"reasoning" satisfies ThreadEventItemType}
-      )
-      THEN 1
-    WHEN ${events.type} = ${"item/completed" satisfies ThreadEventType}
-      AND ${events.itemKind} = ${"commandExecution" satisfies ThreadEventItemType}
-      AND json_type(${events.data}, '$.item.aggregatedOutput') IS NOT NULL
-      THEN 1
-    ELSE 0
-  END`;
-}
-
-const timelineFeedStoredEventRowFields = {
-  ...storedEventRowFields,
-  timelineFeedDeltaCompletionItemKind: timelineFeedDeltaCompletionItemKind(),
-  timelineFeedHasReplayableCompletionBody:
-    timelineFeedHasReplayableCompletionBody(),
-  timelineFeedParentToolCallId: timelineFeedParentToolCallId(),
-};
-
-export function listStoredTimelineFeedWindowEventRows(
-  db: DbConnection,
-  args: ListStoredTimelineFeedWindowEventRowsArgs,
-): StoredTimelineFeedEventRow[] {
-  const conditions: SQL[] = [
-    eq(events.threadId, args.threadId),
-    gte(events.sequence, args.sequenceStart),
-  ];
-  if (args.beforeSequence !== undefined) {
-    conditions.push(lt(events.sequence, args.beforeSequence));
-  }
-  if (args.excludedTypes && args.excludedTypes.length > 0) {
-    conditions.push(notInArray(events.type, [...args.excludedTypes]));
-  }
-
-  return db
-    .select(timelineFeedStoredEventRowFields)
-    .from(events)
-    .where(and(...conditions))
-    .orderBy(events.sequence)
-    .all();
-}
-
 function listLatestRowsForContextWindowUsage(
   db: DbConnection,
   args: {
@@ -1963,25 +1280,6 @@ export function getLatestThreadSequence(
     .get();
 
   return row?.maxSequence ?? 0;
-}
-
-export function getThreadEventRevision(
-  db: DbConnection,
-  args: GetLatestThreadSequenceArgs,
-): ThreadEventRevision {
-  const row = db
-    .select({
-      count: count(),
-      maxSequence: max(events.sequence),
-    })
-    .from(events)
-    .where(eq(events.threadId, args.threadId))
-    .get();
-
-  return {
-    count: row?.count ?? 0,
-    maxSequence: row?.maxSequence ?? 0,
-  };
 }
 
 export function getActiveStoredTurnId(

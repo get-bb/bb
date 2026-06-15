@@ -29,10 +29,6 @@ import type {
   WorkspaceProvisionType,
   ProjectKind,
 } from "@bb/domain";
-import type {
-  StoredEventLargeValueKind,
-  StoredEventLargeValueStorageKind,
-} from "./event-large-values.js";
 
 export const authUsers = sqliteTable(
   "user",
@@ -440,47 +436,6 @@ export const events = sqliteTable(
         OR
         (${table.scopeKind} = 'thread' AND ${table.turnId} IS NULL)
       )`,
-    ),
-  ],
-);
-
-export const eventLargeValues = sqliteTable(
-  "event_large_values",
-  {
-    id: text("id").primaryKey(),
-    eventId: text("event_id")
-      .notNull()
-      .references(() => events.id, { onDelete: "cascade" }),
-    threadId: text("thread_id")
-      .notNull()
-      .references(() => threads.id, { onDelete: "cascade" }),
-    sequence: integer("sequence").notNull(),
-    itemId: text("item_id"),
-    itemKind: text("item_kind").$type<ThreadEventItemType>().notNull(),
-    valueKind: text("value_kind").$type<StoredEventLargeValueKind>().notNull(),
-    jsonPath: text("json_path").notNull(),
-    storageKind: text("storage_kind")
-      .$type<StoredEventLargeValueStorageKind>()
-      .notNull(),
-    value: text("value").notNull(),
-    originalLength: integer("original_length").notNull(),
-    createdAt: integer("created_at").notNull(),
-  },
-  (table) => [
-    uniqueIndex("event_large_values_event_path_idx").on(
-      table.eventId,
-      table.jsonPath,
-    ),
-    index("event_large_values_thread_sequence_idx").on(
-      table.threadId,
-      table.sequence,
-    ),
-    index("event_large_values_thread_item_idx").on(
-      table.threadId,
-      table.itemId,
-      table.itemKind,
-      table.valueKind,
-      table.sequence,
     ),
   ],
 );

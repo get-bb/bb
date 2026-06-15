@@ -57,13 +57,9 @@ import type {
   ThreadStoragePathsQuery,
   TerminalSession,
   ThreadTerminalListResponse,
-  ThreadTimelineFeedResponse,
-  TimelineFeedDetailPart,
-  TimelineFeedDetailRef,
-  TimelineRowDetailResponse,
+  ThreadTimelineResponse,
   TimelineTurnSummaryDetailsRequest,
   TimelineTurnSummaryDetailsResponse,
-  TimelineWorkOutputDetailResponse,
   CloseThreadTerminalRequest,
   ResolvePendingInteractionRequest,
   UpdateEnvironmentRequest,
@@ -92,28 +88,15 @@ import type { ThreadStorageFileListOptions } from "./thread-storage-files";
 import type { PathListOptions } from "./path-list-options";
 export type { FilePreview } from "./file-preview";
 
-interface GetThreadTimelineFeedArgs {
+interface GetThreadTimelineArgs {
   beforeCursor?: TimelinePaginationCursor;
   id: string;
+  includeNestedRows?: boolean;
   segmentLimit?: number;
-}
-
-interface GetThreadTimelineRowDetailArgs {
-  detail: TimelineFeedDetailRef;
-  id: string;
-  parts: readonly TimelineFeedDetailPart[];
 }
 
 interface GetThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsRequest {
   id: string;
-}
-
-interface GetThreadTimelineWorkOutputDetailArgs {
-  callId: string;
-  id: string;
-  sourceSeqEnd: number;
-  sourceSeqStart: number;
-  workKind: "command" | "tool";
 }
 
 interface GetEnvironmentFilePreviewArgs {
@@ -1204,15 +1187,17 @@ export async function archiveEnvironmentThreads(
   );
 }
 
-export async function getThreadTimelineFeed({
+export async function getThreadTimeline({
   beforeCursor,
   id,
+  includeNestedRows = false,
   segmentLimit,
-}: GetThreadTimelineFeedArgs): Promise<ThreadTimelineFeedResponse> {
-  return request<ThreadTimelineFeedResponse>(
-    apiClient.threads[":id"].timeline.feed.$get({
+}: GetThreadTimelineArgs): Promise<ThreadTimelineResponse> {
+  return request<ThreadTimelineResponse>(
+    apiClient.threads[":id"].timeline.$get({
       param: { id },
       query: {
+        ...(includeNestedRows ? { includeNestedRows: "true" } : {}),
         ...(segmentLimit !== undefined
           ? { segmentLimit: String(segmentLimit) }
           : {}),
@@ -1222,23 +1207,6 @@ export async function getThreadTimelineFeed({
               beforeAnchorId: beforeCursor.anchorId,
             }
           : {}),
-      },
-    }),
-  );
-}
-
-export async function getThreadTimelineRowDetail({
-  detail,
-  id,
-  parts,
-}: GetThreadTimelineRowDetailArgs): Promise<TimelineRowDetailResponse> {
-  return request<TimelineRowDetailResponse>(
-    apiClient.threads[":id"].timeline.rows[":rowKey"].detail.$get({
-      param: { id, rowKey: detail.rowKey },
-      query: {
-        sourceSeqStart: String(detail.source.start),
-        sourceSeqEnd: String(detail.source.end),
-        parts: parts.join(","),
       },
     }),
   );
@@ -1255,26 +1223,6 @@ export async function getThreadTimelineTurnSummaryDetails({
       param: { id },
       query: {
         turnId,
-        sourceSeqStart: String(sourceSeqStart),
-        sourceSeqEnd: String(sourceSeqEnd),
-      },
-    }),
-  );
-}
-
-export async function getThreadTimelineWorkOutputDetail({
-  callId,
-  id,
-  sourceSeqEnd,
-  sourceSeqStart,
-  workKind,
-}: GetThreadTimelineWorkOutputDetailArgs): Promise<TimelineWorkOutputDetailResponse> {
-  return request<TimelineWorkOutputDetailResponse>(
-    apiClient.threads[":id"].timeline["work-output"].$get({
-      param: { id },
-      query: {
-        callId,
-        workKind,
         sourceSeqStart: String(sourceSeqStart),
         sourceSeqEnd: String(sourceSeqEnd),
       },

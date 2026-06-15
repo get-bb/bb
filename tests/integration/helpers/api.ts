@@ -28,12 +28,8 @@ import type {
   ResolvePendingInteractionRequest,
   SendMessageRequest,
   ThreadPendingInteractionsResponse,
-  ThreadTimelineFeedResponse,
+  ThreadTimelineResponse,
   ThreadResponse,
-  TimelineFeedDetailPart,
-  TimelineFeedDetailRef,
-  TimelineRowDetailResponse,
-  TimelineTurnSummaryDetailsResponse,
   UpdateEnvironmentRequest,
   UpdateThreadRequest,
   WorkspaceArgs,
@@ -48,9 +44,7 @@ import {
   systemExecutionOptionsResponseSchema,
   threadPendingInteractionsResponseSchema,
   threadResponseSchema,
-  threadTimelineFeedResponseSchema,
-  timelineRowDetailResponseSchema,
-  timelineTurnSummaryDetailsResponseSchema,
+  threadTimelineResponseSchema,
 } from "@bb/server-contract";
 
 export interface CreateHostThreadOptions {
@@ -89,16 +83,16 @@ export interface SendTextMessageOptions {
   text: string;
 }
 
+export interface GetThreadTimelineOptions {
+  includeNestedRows?: boolean;
+}
+
 export interface GetAvailableModelsOptions {
   hostId?: string;
   providerId?: string;
 }
 
-export interface GetThreadTimelineOptions {
-  segmentLimit?: number;
-}
-
-export type PublicApiClient = ReturnType<typeof createPublicApiClient>;
+type PublicApiClient = ReturnType<typeof createPublicApiClient>;
 const DEFAULT_THREAD_BOOTSTRAP_TEXT =
   "Reply with exactly READY and nothing else.";
 const DEFAULT_PUBLIC_TEST_THREAD_ORIGIN = "app";
@@ -108,21 +102,6 @@ interface ResolveThreadInteractionArgs {
   interactionId: string;
   resolution: ResolvePendingInteractionRequest;
   threadId: string;
-}
-
-interface GetThreadTimelineRowDetailArgs {
-  api: PublicApiClient;
-  detail: TimelineFeedDetailRef;
-  parts: readonly TimelineFeedDetailPart[];
-  threadId: string;
-}
-
-interface GetThreadTimelineTurnSummaryDetailsArgs {
-  api: PublicApiClient;
-  sourceSeqEnd: number;
-  sourceSeqStart: number;
-  threadId: string;
-  turnId: string;
 }
 
 async function expectStatus(
@@ -395,66 +374,17 @@ export async function getThreadOutput(
 export async function getThreadTimeline(
   api: PublicApiClient,
   threadId: string,
-  options?: GetThreadTimelineOptions,
-): Promise<ThreadTimelineFeedResponse> {
-  const response = await api.threads[":id"].timeline.feed.$get({
+  options: GetThreadTimelineOptions = {},
+): Promise<ThreadTimelineResponse> {
+  const response = await api.threads[":id"].timeline.$get({
     param: { id: threadId },
     query:
-      options?.segmentLimit === undefined
+      options.includeNestedRows === undefined
         ? {}
-        : { segmentLimit: String(options.segmentLimit) },
+        : { includeNestedRows: options.includeNestedRows ? "true" : "false" },
   });
   await expectStatus(response, 200, `get thread timeline ${threadId}`);
-  return threadTimelineFeedResponseSchema.parse(await response.json());
-}
-
-export async function getThreadTimelineRowDetail({
-  api,
-  detail,
-  parts,
-  threadId,
-}: GetThreadTimelineRowDetailArgs): Promise<TimelineRowDetailResponse> {
-  const response = await api.threads[":id"].timeline.rows[":rowKey"].detail.$get(
-    {
-      param: { id: threadId, rowKey: detail.rowKey },
-      query: {
-        sourceSeqStart: String(detail.source.start),
-        sourceSeqEnd: String(detail.source.end),
-        parts: parts.join(","),
-      },
-    },
-  );
-  await expectStatus(
-    response,
-    200,
-    `get thread timeline row detail ${threadId}/${detail.rowKey}`,
-  );
-  return timelineRowDetailResponseSchema.parse(await response.json());
-}
-
-export async function getThreadTimelineTurnSummaryDetails({
-  api,
-  sourceSeqEnd,
-  sourceSeqStart,
-  threadId,
-  turnId,
-}: GetThreadTimelineTurnSummaryDetailsArgs): Promise<TimelineTurnSummaryDetailsResponse> {
-  const response = await api.threads[":id"].timeline[
-    "turn-summary-details"
-  ].$get({
-    param: { id: threadId },
-    query: {
-      turnId,
-      sourceSeqStart: String(sourceSeqStart),
-      sourceSeqEnd: String(sourceSeqEnd),
-    },
-  });
-  await expectStatus(
-    response,
-    200,
-    `get thread timeline turn summary details ${threadId}/${turnId}`,
-  );
-  return timelineTurnSummaryDetailsResponseSchema.parse(await response.json());
+  return threadTimelineResponseSchema.parse(await response.json());
 }
 
 export async function listThreadInteractions(

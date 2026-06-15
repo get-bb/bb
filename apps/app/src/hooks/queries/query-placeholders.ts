@@ -5,7 +5,7 @@ import type {
   EnvironmentDiffResponse,
   EnvironmentStatusResponse,
   ProjectBranchesResponse,
-  ThreadTimelineFeedResponse,
+  ThreadTimelineResponse,
 } from "@bb/server-contract";
 import {
   ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
@@ -13,14 +13,14 @@ import {
   ENVIRONMENT_WORK_STATUS_QUERY_KEY,
   PROJECT_SOURCE_BRANCHES_QUERY_KEY,
   THREAD_QUERY_KEY,
-  THREAD_TIMELINE_FEED_QUERY_KEY,
+  THREAD_TIMELINE_QUERY_KEY,
 } from "./query-keys";
 
 type ThreadScopedQueryKeyPrefix =
   | typeof THREAD_QUERY_KEY
   | typeof ENVIRONMENT_WORK_STATUS_QUERY_KEY
   | typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY
-  | typeof THREAD_TIMELINE_FEED_QUERY_KEY;
+  | typeof THREAD_TIMELINE_QUERY_KEY;
 
 interface ResolveProjectSourceBranchesPlaceholderArgs {
   previousData: ProjectBranchesResponse | undefined;
@@ -167,19 +167,21 @@ export function resolveThreadPlaceholder(
   );
 }
 
-export function resolveThreadTimelineFeedPlaceholder(
-  previousData: ThreadTimelineFeedResponse | undefined,
+export function resolveThreadTimelinePlaceholder(
+  previousData: ThreadTimelineResponse | undefined,
   previousQueryKey: QueryKey | undefined,
   nextThreadId: string,
-): ThreadTimelineFeedResponse | undefined {
+): ThreadTimelineResponse | undefined {
   if (previousData === undefined) {
     return undefined;
   }
 
   const previousThreadId = extractThreadIdFromThreadScopedQueryKey(
     previousQueryKey,
-    THREAD_TIMELINE_FEED_QUERY_KEY,
+    THREAD_TIMELINE_QUERY_KEY,
   );
 
-  return previousThreadId === nextThreadId ? previousData : undefined;
+  return previousThreadId === nextThreadId
+    ? previousData
+    : undefined;
 }
