@@ -550,7 +550,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.commands, async (context, query) => {
     const projectId = context.req.param("id");
-    requirePublicStandardProject(deps.db, projectId);
+    requirePublicProject(deps.db, projectId);
 
     // Providers without a command surface (pi, anything unknown) have no
     // typeahead entries, so skip the daemon roundtrip entirely.

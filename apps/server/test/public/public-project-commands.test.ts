@@ -1,3 +1,4 @@
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   HostProviderCommand,
   HostDaemonOnlineRpcRequestMessage,
@@ -346,6 +347,35 @@ describe("public project command typeahead route", () => {
       expect(stub.requests[0]?.command).toEqual({
         type: "host.list_commands",
         providerId: "claude-code",
+        cwd: null,
+      });
+    });
+  });
+
+  it("lists user-home commands for the personal project", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-commands-personal",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const stub = registerCommandRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        commands: [skill("home-skill", "user")],
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${PERSONAL_PROJECT_ID}/commands?provider=codex&environmentId=`,
+      );
+
+      expect(response.status).toBe(200);
+      const body = commandListResponseSchema.parse(await readJson(response));
+      expect(body.commands.map((command) => command.name)).toEqual([
+        "home-skill",
+      ]);
+      expect(stub.requests[0]?.command).toEqual({
+        type: "host.list_commands",
+        providerId: "codex",
         cwd: null,
       });
     });
