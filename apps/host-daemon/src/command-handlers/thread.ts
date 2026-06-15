@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import type { HostDaemonCommandResult } from "@bb/host-daemon-contract";
 import { resolveContainedPath } from "@bb/process-utils";
 import type { RuntimeEntry } from "../runtime-manager.js";
@@ -25,16 +24,6 @@ function requireConfinedPath(rootPath: string, candidatePath: string): string {
     );
   }
   return resolved;
-}
-
-function resolveThreadStorageDir(
-  threadStorageRootPath: string,
-  threadId: string,
-): string {
-  return requireConfinedPath(
-    threadStorageRootPath,
-    path.join(threadStorageRootPath, threadId),
-  );
 }
 
 async function cleanupAfterPostStagingFailure(
@@ -227,16 +216,4 @@ export async function submitTurn(
     await cleanupAfterPostStagingFailure(staged.cleanup);
     throw error;
   }
-}
-
-export async function handleThreadDeleted(
-  command: CommandOf<"thread.deleted">,
-  options: CommandDispatchOptions,
-): Promise<HostDaemonCommandResult<"thread.deleted">> {
-  const threadDir = resolveThreadStorageDir(
-    options.threadStorageRootPath,
-    command.threadId,
-  );
-  await fs.rm(threadDir, { recursive: true, force: true });
-  return {};
 }

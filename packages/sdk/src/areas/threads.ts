@@ -1,30 +1,23 @@
 import {
   parseThreadEventRow,
-  type PendingInteraction,
   type PendingInteractionResolution,
-  type Thread,
-  type ThreadEventRow,
 } from "@bb/domain";
 import type {
   CreateThreadScheduleRequest,
   CreateThreadRequest,
   DeleteThreadRequest,
   SendMessageRequest,
-  ThreadSchedule,
   ThreadEventsQuery,
   ThreadEventWaitQuery,
   ThreadGetQuery,
   ThreadListQuery,
-  ThreadResponse,
   ThreadTimelineQuery,
-  ThreadTimelineResponse,
-  ThreadWithIncludesResponse,
   UpdateThreadScheduleConfigRequest,
   UpdateThreadScheduleEnabledRequest,
   UpdateThreadScheduleRequest,
   UpdateThreadRequest,
 } from "@bb/server-contract";
-import type { CreateSdkAreaArgs, OkResponse } from "./common.js";
+import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
 
 export interface ThreadListArgs {
   archived?: boolean;
@@ -38,7 +31,65 @@ export interface ThreadGetArgs {
   threadId: string;
 }
 
-export type ThreadGetResult = ThreadResponse | ThreadWithIncludesResponse;
+export type ThreadGetResult = PublicApiOutput<"/threads/:id", "$get">;
+export type ThreadListResult = PublicApiOutput<"/threads", "$get">;
+export type ThreadOutputResponse = PublicApiOutput<
+  "/threads/:id/output",
+  "$get"
+>;
+export type ThreadMutationResult = PublicApiOutput<"/threads/:id", "$patch">;
+export type ThreadSpawnResult = PublicApiOutput<"/threads", "$post">;
+export type ThreadScheduleCreateResult = PublicApiOutput<
+  "/threads/:id/schedules",
+  "$post"
+>;
+export type ThreadScheduleListResult = PublicApiOutput<
+  "/threads/:id/schedules",
+  "$get"
+>;
+export type ThreadScheduleUpdateResult = PublicApiOutput<
+  "/threads/:id/schedules/:scheduleId",
+  "$patch"
+>;
+export type ThreadInteractionGetResult = PublicApiOutput<
+  "/threads/:id/interactions/:interactionId",
+  "$get"
+>;
+export type ThreadInteractionListResult = PublicApiOutput<
+  "/threads/:id/interactions",
+  "$get"
+>;
+export type ThreadInteractionResolveResult = PublicApiOutput<
+  "/threads/:id/interactions/:interactionId/resolve",
+  "$post"
+>;
+export type ThreadEventsListResult = PublicApiOutput<
+  "/threads/:id/events",
+  "$get"
+>;
+export type ThreadEventWaitResult = PublicApiOutput<
+  "/threads/:id/events/wait",
+  "$get"
+>;
+export type ThreadTimelineResult = PublicApiOutput<
+  "/threads/:id/timeline",
+  "$get"
+>;
+export type ThreadArchiveResult = PublicApiOutput<
+  "/threads/:id/archive",
+  "$post"
+>;
+export type ThreadDeleteResult = PublicApiOutput<"/threads/:id", "$delete">;
+export type ThreadScheduleDeleteResult = PublicApiOutput<
+  "/threads/:id/schedules/:scheduleId",
+  "$delete"
+>;
+export type ThreadSendResult = PublicApiOutput<"/threads/:id/send", "$post">;
+export type ThreadStopResult = PublicApiOutput<"/threads/:id/stop", "$post">;
+export type ThreadUnarchiveResult = PublicApiOutput<
+  "/threads/:id/unarchive",
+  "$post"
+>;
 
 export interface ThreadSpawnArgs extends CreateThreadRequest {}
 
@@ -78,10 +129,6 @@ export interface ThreadOutputArgs {
   threadId: string;
 }
 
-export interface ThreadOutputResponse {
-  output: string | null;
-}
-
 export interface ThreadScheduleListArgs {
   threadId: string;
 }
@@ -90,14 +137,12 @@ export interface ThreadScheduleCreateArgs extends CreateThreadScheduleRequest {
   threadId: string;
 }
 
-export interface ThreadScheduleConfigUpdateArgs
-  extends UpdateThreadScheduleConfigRequest {
+export interface ThreadScheduleConfigUpdateArgs extends UpdateThreadScheduleConfigRequest {
   scheduleId: string;
   threadId: string;
 }
 
-export interface ThreadScheduleEnabledUpdateArgs
-  extends UpdateThreadScheduleEnabledRequest {
+export interface ThreadScheduleEnabledUpdateArgs extends UpdateThreadScheduleEnabledRequest {
   scheduleId: string;
   threadId: string;
 }
@@ -112,10 +157,10 @@ export interface ThreadScheduleDeleteArgs {
 }
 
 export interface ThreadSchedulesArea {
-  create(args: ThreadScheduleCreateArgs): Promise<ThreadSchedule>;
-  delete(args: ThreadScheduleDeleteArgs): Promise<OkResponse>;
-  list(args: ThreadScheduleListArgs): Promise<ThreadSchedule[]>;
-  update(args: ThreadScheduleUpdateArgs): Promise<ThreadSchedule>;
+  create(args: ThreadScheduleCreateArgs): Promise<ThreadScheduleCreateResult>;
+  delete(args: ThreadScheduleDeleteArgs): Promise<ThreadScheduleDeleteResult>;
+  list(args: ThreadScheduleListArgs): Promise<ThreadScheduleListResult>;
+  update(args: ThreadScheduleUpdateArgs): Promise<ThreadScheduleUpdateResult>;
 }
 
 export interface ThreadInteractionListArgs {
@@ -126,39 +171,40 @@ export interface ThreadInteractionGetArgs extends ThreadInteractionListArgs {
   interactionId: string;
 }
 
-export interface ThreadInteractionResolveArgs
-  extends ThreadInteractionGetArgs {
+export interface ThreadInteractionResolveArgs extends ThreadInteractionGetArgs {
   resolution: PendingInteractionResolution;
 }
 
 export interface ThreadInteractionsArea {
-  get(args: ThreadInteractionGetArgs): Promise<PendingInteraction>;
-  list(args: ThreadInteractionListArgs): Promise<PendingInteraction[]>;
-  resolve(args: ThreadInteractionResolveArgs): Promise<PendingInteraction>;
+  get(args: ThreadInteractionGetArgs): Promise<ThreadInteractionGetResult>;
+  list(args: ThreadInteractionListArgs): Promise<ThreadInteractionListResult>;
+  resolve(
+    args: ThreadInteractionResolveArgs,
+  ): Promise<ThreadInteractionResolveResult>;
 }
 
 export interface ThreadEventsArea {
-  list(args: ThreadEventsListArgs): Promise<ThreadEventRow[]>;
-  wait(args: ThreadEventWaitArgs): Promise<ThreadEventRow | null>;
+  list(args: ThreadEventsListArgs): Promise<ThreadEventsListResult>;
+  wait(args: ThreadEventWaitArgs): Promise<ThreadEventWaitResult>;
 }
 
 export interface ThreadsArea {
-  archive(args: ThreadStatusArgs): Promise<OkResponse>;
-  delete(args: ThreadDeleteArgs): Promise<OkResponse>;
+  archive(args: ThreadStatusArgs): Promise<ThreadArchiveResult>;
+  delete(args: ThreadDeleteArgs): Promise<ThreadDeleteResult>;
   events: ThreadEventsArea;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
   interactions: ThreadInteractionsArea;
-  list(args?: ThreadListArgs): Promise<Thread[]>;
+  list(args?: ThreadListArgs): Promise<ThreadListResult>;
   output(args: ThreadOutputArgs): Promise<ThreadOutputResponse>;
-  pin(args: ThreadStatusArgs): Promise<Thread>;
+  pin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
   schedules: ThreadSchedulesArea;
-  send(args: ThreadSendArgs): Promise<OkResponse>;
-  spawn(args: ThreadSpawnArgs): Promise<Thread>;
-  stop(args: ThreadStatusArgs): Promise<OkResponse>;
-  timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResponse>;
-  unarchive(args: ThreadStatusArgs): Promise<OkResponse>;
-  unpin(args: ThreadStatusArgs): Promise<Thread>;
-  update(args: ThreadUpdateArgs): Promise<Thread>;
+  send(args: ThreadSendArgs): Promise<ThreadSendResult>;
+  spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
+  stop(args: ThreadStatusArgs): Promise<ThreadStopResult>;
+  timeline(args: ThreadTimelineArgs): Promise<ThreadTimelineResult>;
+  unarchive(args: ThreadStatusArgs): Promise<ThreadUnarchiveResult>;
+  unpin(args: ThreadStatusArgs): Promise<ThreadMutationResult>;
+  update(args: ThreadUpdateArgs): Promise<ThreadMutationResult>;
 }
 
 function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
@@ -174,14 +220,10 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
 
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
   return {
-    ...(args.title !== undefined ? { title: args.title } : {}),
-    ...(args.parentThreadId !== undefined
-      ? { parentThreadId: args.parentThreadId }
-      : {}),
-    ...(args.model !== undefined ? { model: args.model } : {}),
-    ...(args.reasoningLevel !== undefined
-      ? { reasoningLevel: args.reasoningLevel }
-      : {}),
+    title: args.title,
+    parentThreadId: args.parentThreadId,
+    model: args.model,
+    reasoningLevel: args.reasoningLevel,
   };
 }
 
@@ -189,20 +231,12 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
   return {
     input: args.input,
     mode: args.mode,
-    ...(args.model !== undefined ? { model: args.model } : {}),
-    ...(args.permissionMode !== undefined
-      ? { permissionMode: args.permissionMode }
-      : {}),
-    ...(args.reasoningLevel !== undefined
-      ? { reasoningLevel: args.reasoningLevel }
-      : {}),
-    ...(args.senderThreadId !== undefined
-      ? { senderThreadId: args.senderThreadId }
-      : {}),
-    ...(args.serviceTier !== undefined ? { serviceTier: args.serviceTier } : {}),
-    ...(args.executionInputSources !== undefined
-      ? { executionInputSources: args.executionInputSources }
-      : {}),
+    model: args.model,
+    permissionMode: args.permissionMode,
+    reasoningLevel: args.reasoningLevel,
+    senderThreadId: args.senderThreadId,
+    serviceTier: args.serviceTier,
+    executionInputSources: args.executionInputSources,
   };
 }
 
@@ -214,7 +248,7 @@ function scheduleCreateJson(
     cron: args.cron,
     timezone: args.timezone,
     prompt: args.prompt,
-    ...(args.enabled !== undefined ? { enabled: args.enabled } : {}),
+    enabled: args.enabled,
   };
 }
 
@@ -225,10 +259,10 @@ function scheduleUpdateJson(
     return { enabled: args.enabled };
   }
   return {
-    ...(args.name !== undefined ? { name: args.name } : {}),
-    ...(args.cron !== undefined ? { cron: args.cron } : {}),
-    ...(args.timezone !== undefined ? { timezone: args.timezone } : {}),
-    ...(args.prompt !== undefined ? { prompt: args.prompt } : {}),
+    name: args.name,
+    cron: args.cron,
+    timezone: args.timezone,
+    prompt: args.prompt,
   };
 }
 
@@ -251,8 +285,12 @@ function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
     ...(args.includeNestedRows !== undefined
       ? { includeNestedRows: args.includeNestedRows }
       : {}),
-    ...(args.summaryOnly !== undefined ? { summaryOnly: args.summaryOnly } : {}),
-    ...(args.segmentLimit !== undefined ? { segmentLimit: args.segmentLimit } : {}),
+    ...(args.summaryOnly !== undefined
+      ? { summaryOnly: args.summaryOnly }
+      : {}),
+    ...(args.segmentLimit !== undefined
+      ? { segmentLimit: args.segmentLimit }
+      : {}),
     ...(args.beforeAnchorSeq !== undefined
       ? { beforeAnchorSeq: args.beforeAnchorSeq }
       : {}),

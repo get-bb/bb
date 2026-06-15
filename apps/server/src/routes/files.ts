@@ -2,7 +2,7 @@ import path from "node:path";
 import type { Hono } from "hono";
 import mimeTypes from "mime-types";
 import {
-  threadFilesRawQuerySchema,
+  publicApiRoutes,
   typedRoutes,
   type PublicApiSchema,
 } from "@bb/server-contract";
@@ -117,11 +117,9 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   const { get } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
+  const routes = publicApiRoutes.threads;
 
-  get(
-    "/threads/:id/files/raw",
-    threadFilesRawQuerySchema,
-    async (context, query) =>
-      serveRawFilesystemHtmlFile(deps, context.req.param("id"), query.path),
+  get(routes.rawFile, async (context, query) =>
+    serveRawFilesystemHtmlFile(deps, context.req.param("id"), query.path),
   );
 }

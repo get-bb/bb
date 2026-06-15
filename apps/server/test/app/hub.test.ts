@@ -176,7 +176,7 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list" },
+        command: { type: "provider.list_models", providerId: "codex" },
       },
     });
 
@@ -184,16 +184,16 @@ describe("NotificationHub", () => {
       {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list" },
+        command: { type: "provider.list_models", providerId: "codex" },
       },
     ]);
     const disposition = hub.recordHostOnlineRpcResponse({
       message: {
         type: "host-rpc.response",
         requestId: "rpc-1",
-        commandType: "provider.list",
+        commandType: "provider.list_models",
         ok: true,
-        result: { providers: [] },
+        result: { models: [], selectedOnlyModels: [] },
       },
       sessionId: "session-1",
     });
@@ -202,9 +202,9 @@ describe("NotificationHub", () => {
     await expect(wait).resolves.toEqual({
       type: "host-rpc.response",
       requestId: "rpc-1",
-      commandType: "provider.list",
+      commandType: "provider.list_models",
       ok: true,
-      result: { providers: [] },
+      result: { models: [], selectedOnlyModels: [] },
     });
   });
 
@@ -220,7 +220,7 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-session-scoped",
-        command: { type: "provider.list" },
+        command: { type: "provider.list_models", providerId: "codex" },
       },
     });
     let resolved = false;
@@ -233,9 +233,9 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.response",
         requestId: "rpc-session-scoped",
-        commandType: "provider.list",
+        commandType: "provider.list_models",
         ok: true,
-        result: { providers: [] },
+        result: { models: [], selectedOnlyModels: [] },
       },
       sessionId: "session-2",
     });
@@ -251,9 +251,9 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.response",
         requestId: "rpc-session-scoped",
-        commandType: "provider.list",
+        commandType: "provider.list_models",
         ok: true,
-        result: { providers: [] },
+        result: { models: [], selectedOnlyModels: [] },
       },
       sessionId: "session-1",
     });
@@ -261,9 +261,9 @@ describe("NotificationHub", () => {
     await expect(observed).resolves.toEqual({
       type: "host-rpc.response",
       requestId: "rpc-session-scoped",
-      commandType: "provider.list",
+      commandType: "provider.list_models",
       ok: true,
-      result: { providers: [] },
+      result: { models: [], selectedOnlyModels: [] },
     });
   });
 
@@ -278,7 +278,7 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list" },
+        command: { type: "provider.list_models", providerId: "codex" },
       },
     });
     hub.unregisterDaemon("session-1");

@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@bb/config": "workspace:*",
+    "@bb/desktop-contract": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/tsconfig": "workspace:*",

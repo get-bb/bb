@@ -5,6 +5,7 @@ import * as contract from "../src/index.js";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
+  HOST_DAEMON_SETTLED_COMMAND_TYPES,
   TERMINAL_COLS_MAX,
   TERMINAL_DATA_MAX_BASE64_LENGTH,
   TERMINAL_DATA_MAX_BYTES,
@@ -24,18 +25,24 @@ import {
   hostDaemonInteractiveRequestSchema,
   hostDaemonOnlineRpcCommandSchema,
   type HostDaemonOnlineRpcCommandType,
+  type HostDaemonRpcCommandType,
   hostDaemonOnlineRpcResponseMessageSchema,
   hostDaemonOnlineRpcResultSchemaByType,
   hostDaemonServerWsMessageSchema,
   hostDaemonSessionOpenRequestSchema,
   hostDaemonSessionOpenResponseSchema,
   hostDaemonTerminalOutputChunkSchema,
+  type HostDaemonSettledCommandType,
 } from "../src/index.js";
 
 const CLIENT_REQUEST_ID = "creq_23456789ab";
 
 type OnlineRpcResponseResultFixtures = Record<
   HostDaemonOnlineRpcCommandType,
+  JsonObject
+>;
+type SettledResponseResultFixtures = Record<
+  HostDaemonSettledCommandType,
   JsonObject
 >;
 
@@ -193,22 +200,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     mimeType: "image/png",
     sizeBytes: 8,
   },
-  "provider.list": {
-    providers: [
-      {
-        id: "codex",
-        displayName: "Codex",
-        capabilities: {
-          supportsArchive: true,
-          supportsRename: true,
-          supportsServiceTier: true,
-          supportsUserQuestion: true,
-          supportedPermissionModes: ["workspace-write"],
-        },
-        available: true,
-      },
-    ],
-  },
   "provider.list_models": {
     models: [
       {
@@ -241,6 +232,56 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       url: "https://github.com/acme/bb/pull/42",
       isDraft: false,
     },
+  },
+};
+
+const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
+  "thread.start": {
+    providerThreadId: "provider-thread-123",
+  },
+  "turn.submit": {
+    appliedAs: "new-turn",
+  },
+  "thread.stop": {},
+  "thread.rename": {},
+  "thread.archive": {},
+  "thread.unarchive": {},
+  "interactive.resolve": {},
+  "codex.inference.complete": {
+    model: "gpt-5",
+    value: { title: "Short title" },
+  },
+  "codex.voice.transcribe": {
+    model: "gpt-5-transcribe",
+    text: "hello world",
+  },
+  "environment.provision": {
+    path: "/tmp/env",
+    isGitRepo: true,
+    isWorktree: true,
+    branchName: "bb/env-123",
+    defaultBranch: "main",
+    transcript: [
+      {
+        type: "step",
+        key: "setup",
+        text: "/bin/bash .bb-env-setup.sh",
+        status: "completed",
+      },
+    ],
+  },
+  "environment.provision.cancel": {
+    aborted: true,
+  },
+  "environment.destroy": {},
+  "workspace.commit": {
+    commitSha: "abcdef123456",
+    commitSubject: "Checkpoint work",
+  },
+  "workspace.squash_merge": {
+    commitSha: "abcdef123456",
+    commitSubject: "Merge feature",
+    merged: true,
   },
 };
 
@@ -285,16 +326,15 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
     },
   },
   {
-    name: "provider.list command with a provider-model result",
-    commandType: "provider.list",
+    name: "provider.list_models command with a provider-list result",
+    commandType: "provider.list_models",
     result: {
-      models: [],
-      selectedOnlyModels: [],
+      providers: [],
     },
   },
   {
-    name: "provider.list command with unrelated collection result",
-    commandType: "provider.list",
+    name: "provider.list_models command with unrelated collection result",
+    commandType: "provider.list_models",
     result: {
       captures: [],
     },
@@ -302,7 +342,7 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
 ];
 
 function buildHostRpcResponseMessage(
-  commandType: HostDaemonOnlineRpcCommandType,
+  commandType: HostDaemonRpcCommandType,
   result: JsonObject,
 ): JsonObject {
   return {
@@ -315,7 +355,7 @@ function buildHostRpcResponseMessage(
 }
 
 function expectHostRpcResponseRoundTrip(
-  commandType: HostDaemonOnlineRpcCommandType,
+  commandType: HostDaemonRpcCommandType,
   result: JsonObject,
   name: string,
 ): void {
@@ -864,7 +904,6 @@ describe("host-daemon command schemas", () => {
         path: "README.md",
         dotfiles: "deny",
       },
-      { type: "provider.list" },
       { type: "provider.list_models", providerId: "codex" },
       {
         type: "environment.cleanup_preflight",
@@ -2138,34 +2177,6 @@ describe("host-daemon session schemas", () => {
     ).toThrow();
 
     expect(
-      hostDaemonServerWsMessageSchema.parse({
-        type: "host-rpc.request",
-        requestId: "rpc-1",
-        command: { type: "provider.list" },
-      }),
-    ).toEqual({
-      type: "host-rpc.request",
-      requestId: "rpc-1",
-      command: { type: "provider.list" },
-    });
-
-    expect(
-      hostDaemonDaemonWsMessageSchema.parse({
-        type: "host-rpc.response",
-        requestId: "rpc-1",
-        commandType: "provider.list",
-        ok: true,
-        result: { providers: [] },
-      }),
-    ).toEqual({
-      type: "host-rpc.response",
-      requestId: "rpc-1",
-      commandType: "provider.list",
-      ok: true,
-      result: { providers: [] },
-    });
-
-    expect(
       hostDaemonDaemonWsMessageSchema.parse({
         type: "host-rpc.response",
         requestId: "rpc-1",
@@ -2229,9 +2240,9 @@ describe("host-daemon session schemas", () => {
       hostDaemonDaemonWsMessageSchema.safeParse({
         type: "host-rpc.response",
         requestId: "rpc-1",
-        commandType: "provider.list",
+        commandType: "provider.list_models",
         ok: true,
-        result: { models: [], selectedOnlyModels: [] },
+        result: { providers: [] },
       }).success,
     ).toBe(false);
   });
@@ -2256,6 +2267,22 @@ describe("host-daemon session schemas", () => {
         testCase.commandType,
         testCase.result,
         testCase.name,
+      );
+    }
+  });
+
+  it("round-trips every settled command response success variant through daemon websocket schemas", () => {
+    // Keep this table-driven instead of inspecting Zod internals: the exported
+    // schema behavior is stable API, while union internals are not.
+    expect(Object.keys(SETTLED_RESPONSE_RESULT_FIXTURES).sort()).toEqual(
+      [...HOST_DAEMON_SETTLED_COMMAND_TYPES].sort(),
+    );
+
+    for (const commandType of HOST_DAEMON_SETTLED_COMMAND_TYPES) {
+      expectHostRpcResponseRoundTrip(
+        commandType,
+        SETTLED_RESPONSE_RESULT_FIXTURES[commandType],
+        commandType,
       );
     }
   });

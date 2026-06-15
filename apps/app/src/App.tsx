@@ -25,7 +25,7 @@ import {
   THREAD_DETAIL_ROUTE_PATH,
 } from "./lib/route-paths";
 import { Icon } from "./components/ui/icon";
-import { POPOUT_QUICK_ASK_HEIGHT } from "@bb/server-contract";
+import { POPOUT_QUICK_ASK_HEIGHT } from "@bb/desktop-contract";
 
 const ThreadDetailRoute = lazy(
   () => import("./views/thread-detail/ThreadDetailRoute"),

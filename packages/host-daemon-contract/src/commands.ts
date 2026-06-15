@@ -8,7 +8,6 @@ import {
   projectSourceCheckoutSchema,
   threadGitDiffResponseSchema,
   workspaceProvisionTypeSchema,
-  providerInfoSchema,
   runtimeThreadExecutionOptionsSchema,
   provisioningTranscriptEntrySchema,
   workspaceDiffTargetSchema,
@@ -34,43 +33,6 @@ export {
 } from "@bb/domain";
 const INJECTED_SKILL_NAME_PATTERN =
   /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
-
-// Settled commands run over live host RPC, but their results use command-result
-// semantics because server-owned lifecycle/effects may depend on settlement.
-// They are not persisted to the legacy host_daemon_commands table.
-export const HOST_DAEMON_SETTLED_COMMAND_TYPES = [
-  "thread.start",
-  "turn.submit",
-  "thread.stop",
-  "thread.rename",
-  "thread.archive",
-  "thread.unarchive",
-  "thread.deleted",
-  "interactive.resolve",
-  "codex.inference.complete",
-  "codex.voice.transcribe",
-  "environment.provision",
-  "environment.provision.cancel",
-  "environment.destroy",
-  "workspace.commit",
-  "workspace.squash_merge",
-] as const;
-export const hostDaemonSettledCommandTypeSchema = z.enum(
-  HOST_DAEMON_SETTLED_COMMAND_TYPES,
-);
-export type HostDaemonSettledCommandType = z.infer<
-  typeof hostDaemonSettledCommandTypeSchema
->;
-
-const hostDaemonSettledCommandTypes = new Set<string>(
-  HOST_DAEMON_SETTLED_COMMAND_TYPES,
-);
-
-export function isHostDaemonSettledCommandType(
-  type: string,
-): type is HostDaemonSettledCommandType {
-  return hostDaemonSettledCommandTypes.has(type);
-}
 
 export const workspaceContextSchema = z.object({
   workspacePath: z.string().min(1),
@@ -249,12 +211,6 @@ const threadUnarchiveCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict();
 
-const threadDeletedCommandSchema = hostDaemonThreadTargetSchema
-  .extend({
-    type: z.literal("thread.deleted"),
-  })
-  .strict();
-
 const interactiveResolveCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("interactive.resolve"),
@@ -428,10 +384,6 @@ const hostListBranchesCommandSchema = z.object({
   limit: z.number().int().positive().max(BRANCH_LIST_LIMIT_MAX),
 });
 
-const providerListCommandSchema = z.object({
-  type: z.literal("provider.list"),
-});
-
 const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
@@ -588,76 +540,6 @@ const workspacePullRequestCommandSchema =
     type: z.literal("workspace.pull_request"),
   });
 
-export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES = [
-  "host.list_files",
-  "host.list_paths",
-  "host.list_commands",
-  "host.list_branches",
-  "host.file_metadata",
-  "host.read_file",
-  "host.read_file_relative",
-  "provider.list",
-  "provider.list_models",
-  "environment.cleanup_preflight",
-  "workspace.status",
-  "workspace.diff",
-  "workspace.pull_request",
-] as const;
-export const hostDaemonOnlineRpcCommandTypeSchema = z.enum(
-  HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
-);
-const hostDaemonOnlineRpcCommandTypes = new Set<string>(
-  HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
-);
-
-export function isHostDaemonOnlineRpcCommandType(
-  type: string,
-): type is HostDaemonOnlineRpcCommandType {
-  return hostDaemonOnlineRpcCommandTypes.has(type);
-}
-
-export const hostDaemonOnlineRpcCommandSchema = z.union([
-  hostListFilesCommandSchema,
-  hostListPathsCommandSchema,
-  hostListCommandsCommandSchema,
-  hostListBranchesCommandSchema,
-  hostFileMetadataCommandSchema,
-  hostReadFileCommandSchema,
-  hostReadFileRelativeCommandSchema,
-  providerListCommandSchema,
-  providerListModelsCommandSchema,
-  environmentCleanupPreflightCommandSchema,
-  workspaceStatusCommandSchema,
-  workspaceDiffCommandSchema,
-  workspacePullRequestCommandSchema,
-]);
-export type HostDaemonOnlineRpcCommand = z.infer<
-  typeof hostDaemonOnlineRpcCommandSchema
->;
-export type HostDaemonOnlineRpcCommandType = z.infer<
-  typeof hostDaemonOnlineRpcCommandTypeSchema
->;
-
-// Retry-on-unavailable is limited to idempotent host reads.
-export const hostDaemonRetryableOnlineRpcCommandSchema = z.union([
-  hostListFilesCommandSchema,
-  hostListPathsCommandSchema,
-  hostListCommandsCommandSchema,
-  hostListBranchesCommandSchema,
-  hostFileMetadataCommandSchema,
-  hostReadFileCommandSchema,
-  hostReadFileRelativeCommandSchema,
-  providerListCommandSchema,
-  providerListModelsCommandSchema,
-  environmentCleanupPreflightCommandSchema,
-  workspaceStatusCommandSchema,
-  workspaceDiffCommandSchema,
-  workspacePullRequestCommandSchema,
-]);
-export type HostDaemonRetryableOnlineRpcCommand = z.infer<
-  typeof hostDaemonRetryableOnlineRpcCommandSchema
->;
-
 const workspaceCommitCommandSchema = hostDaemonWorkspaceTargetSchema
   .extend({
     type: z.literal("workspace.commit"),
@@ -672,73 +554,6 @@ const workspaceSquashMergeCommandSchema = hostDaemonWorkspaceTargetSchema
     commitMessage: z.string().min(1),
   })
   .strict();
-
-const hostDaemonNonProvisionCommandSchema = z.discriminatedUnion("type", [
-  threadStartCommandSchema,
-  turnSubmitCommandSchema,
-  threadStopCommandSchema,
-  threadRenameCommandSchema,
-  threadArchiveCommandSchema,
-  threadUnarchiveCommandSchema,
-  threadDeletedCommandSchema,
-  interactiveResolveCommandSchema,
-  codexInferenceCompleteCommandSchema,
-  codexVoiceTranscribeCommandSchema,
-  environmentProvisionCancelCommandSchema,
-  environmentDestroyCommandSchema,
-  workspaceCommitCommandSchema,
-  workspaceSquashMergeCommandSchema,
-]);
-export const hostDaemonCommandSchema = z.union([
-  hostDaemonNonProvisionCommandSchema,
-  environmentProvisionCommandSchema,
-]);
-export type HostDaemonCommand = z.infer<typeof hostDaemonCommandSchema>;
-
-export const hostDaemonRpcCommandSchema = z.union([
-  hostDaemonOnlineRpcCommandSchema,
-  hostDaemonCommandSchema,
-]);
-export type HostDaemonRpcCommand = z.infer<typeof hostDaemonRpcCommandSchema>;
-export const hostDaemonRpcCommandTypeSchema = z.union([
-  hostDaemonOnlineRpcCommandTypeSchema,
-  hostDaemonSettledCommandTypeSchema,
-]);
-export type HostDaemonRpcCommandType = z.infer<
-  typeof hostDaemonRpcCommandTypeSchema
->;
-
-export function isHostDaemonCommand(
-  command: HostDaemonRpcCommand,
-): command is HostDaemonCommand {
-  return isHostDaemonSettledCommandType(command.type);
-}
-
-export function shouldFlushEventsBeforeReportingCommandResult(
-  command: HostDaemonCommand,
-): boolean {
-  switch (command.type) {
-    case "thread.start":
-    case "turn.submit":
-    case "thread.stop":
-    case "interactive.resolve":
-      return true;
-    case "environment.provision":
-      return command.initiator !== null;
-    case "environment.provision.cancel":
-      return true;
-    case "environment.destroy":
-    case "codex.inference.complete":
-    case "thread.deleted":
-    case "thread.archive":
-    case "thread.rename":
-    case "thread.unarchive":
-    case "codex.voice.transcribe":
-    case "workspace.commit":
-    case "workspace.squash_merge":
-      return false;
-  }
-}
 
 const fileReadResultSchema = z.object({
   path: z.string(),
@@ -841,57 +656,511 @@ const commandListResultSchema = z.object({
   commands: z.array(hostProviderCommandSchema),
 });
 
-const providerListResultSchema = z.object({
-  providers: z.array(providerInfoSchema),
-});
-
 const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
   selectedOnlyModels: z.array(availableModelSchema),
 });
 
-export const hostDaemonCommandResultSchemaByType = {
-  "thread.start": z.object({
-    providerThreadId: z.string().min(1),
-  }),
-  "turn.submit": z.object({
-    appliedAs: z.enum(["new-turn", "steer"]),
-  }),
-  "thread.stop": z.object({}),
-  "thread.rename": z.object({}),
-  "thread.archive": z.object({}),
-  "thread.unarchive": z.object({}),
-  "thread.deleted": z.object({}),
-  "interactive.resolve": z.object({}),
-  "codex.inference.complete": z.object({
-    model: z.string().min(1),
-    value: jsonObjectSchema,
-  }),
-  "codex.voice.transcribe": z.object({
-    model: z.string().min(1),
-    text: z.string(),
-  }),
-  "environment.provision": discoveredWorkspacePropertiesSchema.extend({
+const threadStartResultSchema = z.object({
+  providerThreadId: z.string().min(1),
+});
+const turnSubmitResultSchema = z.object({
+  appliedAs: z.enum(["new-turn", "steer"]),
+});
+const emptyCommandResultSchema = z.object({});
+const codexInferenceCompleteResultSchema = z.object({
+  model: z.string().min(1),
+  value: jsonObjectSchema,
+});
+const codexVoiceTranscribeResultSchema = z.object({
+  model: z.string().min(1),
+  text: z.string(),
+});
+const environmentProvisionResultSchema =
+  discoveredWorkspacePropertiesSchema.extend({
     transcript: z.array(provisioningTranscriptEntrySchema),
+  });
+const environmentProvisionCancelResultSchema = z.object({
+  aborted: z.boolean(),
+});
+const workspaceCommitResultSchema = z.object({
+  commitSha: z.string().min(1),
+  commitSubject: z.string().min(1),
+});
+const workspaceSquashMergeResultSchema = workspaceCommitResultSchema.extend({
+  merged: z.boolean(),
+});
+
+type HostDaemonCommandTransport = "settled" | "onlineRpc";
+export type HostDaemonCommandEnvironmentLane = "read" | "write";
+type HostDaemonFlushEventsBeforeResult = boolean | "when-initiated";
+
+interface HostDaemonCommandDescriptor<
+  Type extends string,
+  Schema extends z.ZodTypeAny,
+  ResultSchema extends z.ZodTypeAny,
+  Transport extends HostDaemonCommandTransport,
+  Retryable extends boolean,
+> {
+  type: Type;
+  schema: Schema;
+  resultSchema: ResultSchema;
+  transport: Transport;
+  retryable: Retryable;
+  flushEventsBeforeResult: HostDaemonFlushEventsBeforeResult;
+  envLane: HostDaemonCommandEnvironmentLane | null;
+}
+
+function defineHostDaemonCommandDescriptor<
+  const Type extends string,
+  Schema extends z.ZodTypeAny,
+  ResultSchema extends z.ZodTypeAny,
+  const Transport extends HostDaemonCommandTransport,
+  const Retryable extends boolean,
+>(
+  descriptor: HostDaemonCommandDescriptor<
+    Type,
+    Schema,
+    ResultSchema,
+    Transport,
+    Retryable
+  >,
+): HostDaemonCommandDescriptor<
+  Type,
+  Schema,
+  ResultSchema,
+  Transport,
+  Retryable
+> {
+  return descriptor;
+}
+
+export const hostDaemonCommandRegistry = {
+  "thread.start": defineHostDaemonCommandDescriptor({
+    type: "thread.start",
+    schema: threadStartCommandSchema,
+    resultSchema: threadStartResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
   }),
-  "environment.provision.cancel": z.object({
-    aborted: z.boolean(),
+  "turn.submit": defineHostDaemonCommandDescriptor({
+    type: "turn.submit",
+    schema: turnSubmitCommandSchema,
+    resultSchema: turnSubmitResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
   }),
-  "environment.destroy": z.object({}),
-  "workspace.commit": z.object({
-    commitSha: z.string().min(1),
-    commitSubject: z.string().min(1),
+  "thread.stop": defineHostDaemonCommandDescriptor({
+    type: "thread.stop",
+    schema: threadStopCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: null,
   }),
-  "workspace.squash_merge": z.object({
-    merged: z.boolean(),
-    commitSha: z.string().min(1),
-    commitSubject: z.string().min(1),
+  "thread.rename": defineHostDaemonCommandDescriptor({
+    type: "thread.rename",
+    schema: threadRenameCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
   }),
-} as const satisfies Record<HostDaemonSettledCommandType, z.ZodTypeAny>;
+  "thread.archive": defineHostDaemonCommandDescriptor({
+    type: "thread.archive",
+    schema: threadArchiveCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: "write",
+  }),
+  "thread.unarchive": defineHostDaemonCommandDescriptor({
+    type: "thread.unarchive",
+    schema: threadUnarchiveCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: "write",
+  }),
+  "interactive.resolve": defineHostDaemonCommandDescriptor({
+    type: "interactive.resolve",
+    schema: interactiveResolveCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: null,
+  }),
+  "codex.inference.complete": defineHostDaemonCommandDescriptor({
+    type: "codex.inference.complete",
+    schema: codexInferenceCompleteCommandSchema,
+    resultSchema: codexInferenceCompleteResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "codex.voice.transcribe": defineHostDaemonCommandDescriptor({
+    type: "codex.voice.transcribe",
+    schema: codexVoiceTranscribeCommandSchema,
+    resultSchema: codexVoiceTranscribeResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "environment.provision": defineHostDaemonCommandDescriptor({
+    type: "environment.provision",
+    schema: environmentProvisionCommandSchema,
+    resultSchema: environmentProvisionResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: "when-initiated",
+    envLane: "write",
+  }),
+  "environment.provision.cancel": defineHostDaemonCommandDescriptor({
+    type: "environment.provision.cancel",
+    schema: environmentProvisionCancelCommandSchema,
+    resultSchema: environmentProvisionCancelResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: null,
+  }),
+  "environment.destroy": defineHostDaemonCommandDescriptor({
+    type: "environment.destroy",
+    schema: environmentDestroyCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: "write",
+  }),
+  "workspace.commit": defineHostDaemonCommandDescriptor({
+    type: "workspace.commit",
+    schema: workspaceCommitCommandSchema,
+    resultSchema: workspaceCommitResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: "write",
+  }),
+  "workspace.squash_merge": defineHostDaemonCommandDescriptor({
+    type: "workspace.squash_merge",
+    schema: workspaceSquashMergeCommandSchema,
+    resultSchema: workspaceSquashMergeResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: "write",
+  }),
+  "host.list_files": defineHostDaemonCommandDescriptor({
+    type: "host.list_files",
+    schema: hostListFilesCommandSchema,
+    resultSchema: fileListResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.list_paths": defineHostDaemonCommandDescriptor({
+    type: "host.list_paths",
+    schema: hostListPathsCommandSchema,
+    resultSchema: pathListResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.list_commands": defineHostDaemonCommandDescriptor({
+    type: "host.list_commands",
+    schema: hostListCommandsCommandSchema,
+    resultSchema: commandListResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.list_branches": defineHostDaemonCommandDescriptor({
+    type: "host.list_branches",
+    schema: hostListBranchesCommandSchema,
+    resultSchema: projectSourceCheckoutSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.file_metadata": defineHostDaemonCommandDescriptor({
+    type: "host.file_metadata",
+    schema: hostFileMetadataCommandSchema,
+    resultSchema: fileMetadataResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.read_file": defineHostDaemonCommandDescriptor({
+    type: "host.read_file",
+    schema: hostReadFileCommandSchema,
+    resultSchema: fileReadResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.read_file_relative": defineHostDaemonCommandDescriptor({
+    type: "host.read_file_relative",
+    schema: hostReadFileRelativeCommandSchema,
+    resultSchema: fileReadResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.list_models": defineHostDaemonCommandDescriptor({
+    type: "provider.list_models",
+    schema: providerListModelsCommandSchema,
+    resultSchema: providerListModelsResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "environment.cleanup_preflight": defineHostDaemonCommandDescriptor({
+    type: "environment.cleanup_preflight",
+    schema: environmentCleanupPreflightCommandSchema,
+    resultSchema: environmentCleanupPreflightResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: "read",
+  }),
+  "workspace.status": defineHostDaemonCommandDescriptor({
+    type: "workspace.status",
+    schema: workspaceStatusCommandSchema,
+    resultSchema: workspaceStatusResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: "read",
+  }),
+  "workspace.diff": defineHostDaemonCommandDescriptor({
+    type: "workspace.diff",
+    schema: workspaceDiffCommandSchema,
+    resultSchema: workspaceDiffResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: "read",
+  }),
+  "workspace.pull_request": defineHostDaemonCommandDescriptor({
+    type: "workspace.pull_request",
+    schema: workspacePullRequestCommandSchema,
+    resultSchema: workspacePullRequestResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+};
+
+type HostDaemonCommandRegistry = typeof hostDaemonCommandRegistry;
+type AnyHostDaemonCommandDescriptor =
+  HostDaemonCommandRegistry[keyof HostDaemonCommandRegistry];
+type HostDaemonCommandDescriptorForTransport<
+  Transport extends HostDaemonCommandTransport,
+> = Extract<AnyHostDaemonCommandDescriptor, { transport: Transport }>;
+type HostDaemonRetryableOnlineRpcCommandDescriptor = Extract<
+  HostDaemonCommandDescriptorForTransport<"onlineRpc">,
+  { retryable: true }
+>;
+type HostDaemonCommandTypeForTransport<
+  Transport extends HostDaemonCommandTransport,
+> = HostDaemonCommandDescriptorForTransport<Transport>["type"];
+type HostDaemonSchemaForTransport<
+  Transport extends HostDaemonCommandTransport,
+> = HostDaemonCommandDescriptorForTransport<Transport>["schema"];
+type HostDaemonRetryableOnlineRpcCommandSchema =
+  HostDaemonRetryableOnlineRpcCommandDescriptor["schema"];
+
+type HostDaemonResultSchemaMapForTransport<
+  Transport extends HostDaemonCommandTransport,
+> = {
+  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+};
+
+type HostDaemonCommandResultSchemaMap =
+  HostDaemonResultSchemaMapForTransport<"settled">;
+type HostDaemonOnlineRpcResultSchemaMap =
+  HostDaemonResultSchemaMapForTransport<"onlineRpc">;
+
+export type HostDaemonSettledCommandType =
+  HostDaemonCommandTypeForTransport<"settled">;
+export type HostDaemonOnlineRpcCommandType =
+  HostDaemonCommandTypeForTransport<"onlineRpc">;
+export type HostDaemonRpcCommandType =
+  | HostDaemonSettledCommandType
+  | HostDaemonOnlineRpcCommandType;
+
+export type HostDaemonCommand = z.infer<
+  HostDaemonSchemaForTransport<"settled">
+>;
+export type HostDaemonOnlineRpcCommand = z.infer<
+  HostDaemonSchemaForTransport<"onlineRpc">
+>;
+export type HostDaemonRetryableOnlineRpcCommand =
+  z.infer<HostDaemonRetryableOnlineRpcCommandSchema>;
+export type HostDaemonRpcCommand =
+  | HostDaemonCommand
+  | HostDaemonOnlineRpcCommand;
+
+function hostDaemonCommandDescriptorsForTransport<
+  const Transport extends HostDaemonCommandTransport,
+>(transport: Transport): HostDaemonCommandDescriptorForTransport<Transport>[] {
+  return Object.values(hostDaemonCommandRegistry).filter(
+    (
+      descriptor,
+    ): descriptor is HostDaemonCommandDescriptorForTransport<Transport> =>
+      descriptor.transport === transport,
+  );
+}
+
+function hostDaemonCommandDescriptorsForRetryableOnlineRpc(): HostDaemonRetryableOnlineRpcCommandDescriptor[] {
+  return hostDaemonCommandDescriptorsForTransport("onlineRpc").filter(
+    (descriptor): descriptor is HostDaemonRetryableOnlineRpcCommandDescriptor =>
+      descriptor.retryable,
+  );
+}
+
+function hostDaemonCommandTypesForTransport<
+  const Transport extends HostDaemonCommandTransport,
+>(transport: Transport): HostDaemonCommandTypeForTransport<Transport>[] {
+  return hostDaemonCommandDescriptorsForTransport(transport).map(
+    (descriptor) => descriptor.type,
+  ) as HostDaemonCommandTypeForTransport<Transport>[];
+}
+
+function hostDaemonCommandSchemaForTransport<
+  const Transport extends HostDaemonCommandTransport,
+>(
+  transport: Transport,
+): z.ZodType<z.infer<HostDaemonSchemaForTransport<Transport>>> {
+  const schemas = hostDaemonCommandDescriptorsForTransport(transport).map(
+    (descriptor) => descriptor.schema,
+  );
+  return z.union(
+    schemas as [
+      HostDaemonSchemaForTransport<Transport>,
+      HostDaemonSchemaForTransport<Transport>,
+      ...HostDaemonSchemaForTransport<Transport>[],
+    ],
+  );
+}
+
+function hostDaemonRetryableOnlineRpcCommandUnionSchema(): z.ZodType<HostDaemonRetryableOnlineRpcCommand> {
+  const schemas = hostDaemonCommandDescriptorsForRetryableOnlineRpc().map(
+    (descriptor) => descriptor.schema,
+  );
+  return z.union(
+    schemas as [
+      HostDaemonRetryableOnlineRpcCommandSchema,
+      HostDaemonRetryableOnlineRpcCommandSchema,
+      ...HostDaemonRetryableOnlineRpcCommandSchema[],
+    ],
+  );
+}
+
+function hostDaemonResultSchemaByTypeForTransport<
+  const Transport extends HostDaemonCommandTransport,
+>(transport: Transport): HostDaemonResultSchemaMapForTransport<Transport> {
+  return Object.fromEntries(
+    hostDaemonCommandDescriptorsForTransport(transport).map((descriptor) => [
+      descriptor.type,
+      descriptor.resultSchema,
+    ]),
+  ) as HostDaemonResultSchemaMapForTransport<Transport>;
+}
+
+export const HOST_DAEMON_SETTLED_COMMAND_TYPES =
+  hostDaemonCommandTypesForTransport("settled");
+export const HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES =
+  hostDaemonCommandTypesForTransport("onlineRpc");
+
+const hostDaemonSettledCommandTypes = new Set<string>(
+  HOST_DAEMON_SETTLED_COMMAND_TYPES,
+);
+const hostDaemonOnlineRpcCommandTypes = new Set<string>(
+  HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
+);
+
+export function isHostDaemonSettledCommandType(
+  type: string,
+): type is HostDaemonSettledCommandType {
+  return hostDaemonSettledCommandTypes.has(type);
+}
+
+export function isHostDaemonOnlineRpcCommandType(
+  type: string,
+): type is HostDaemonOnlineRpcCommandType {
+  return hostDaemonOnlineRpcCommandTypes.has(type);
+}
+
+function isHostDaemonSettledCommandTypeValue(
+  value: unknown,
+): value is HostDaemonSettledCommandType {
+  return typeof value === "string" && isHostDaemonSettledCommandType(value);
+}
+
+function isHostDaemonOnlineRpcCommandTypeValue(
+  value: unknown,
+): value is HostDaemonOnlineRpcCommandType {
+  return typeof value === "string" && isHostDaemonOnlineRpcCommandType(value);
+}
+
+export const hostDaemonSettledCommandTypeSchema =
+  z.custom<HostDaemonSettledCommandType>(isHostDaemonSettledCommandTypeValue);
+export const hostDaemonOnlineRpcCommandTypeSchema =
+  z.custom<HostDaemonOnlineRpcCommandType>(
+    isHostDaemonOnlineRpcCommandTypeValue,
+  );
+
+export const hostDaemonCommandSchema =
+  hostDaemonCommandSchemaForTransport("settled");
+export const hostDaemonOnlineRpcCommandSchema =
+  hostDaemonCommandSchemaForTransport("onlineRpc");
+export const hostDaemonRetryableOnlineRpcCommandSchema =
+  hostDaemonRetryableOnlineRpcCommandUnionSchema();
+export const hostDaemonRpcCommandSchema = z.union([
+  hostDaemonOnlineRpcCommandSchema,
+  hostDaemonCommandSchema,
+]);
+export const hostDaemonRpcCommandTypeSchema = z.union([
+  hostDaemonOnlineRpcCommandTypeSchema,
+  hostDaemonSettledCommandTypeSchema,
+]);
+
+export function isHostDaemonCommand(
+  command: HostDaemonRpcCommand,
+): command is HostDaemonCommand {
+  return isHostDaemonSettledCommandType(command.type);
+}
+
+export const hostDaemonCommandResultSchemaByType =
+  hostDaemonResultSchemaByTypeForTransport("settled");
+export const hostDaemonOnlineRpcResultSchemaByType =
+  hostDaemonResultSchemaByTypeForTransport("onlineRpc");
 
 export type HostDaemonCommandResultByType = {
-  [K in keyof typeof hostDaemonCommandResultSchemaByType]: z.infer<
-    (typeof hostDaemonCommandResultSchemaByType)[K]
+  [K in keyof HostDaemonCommandResultSchemaMap]: z.infer<
+    HostDaemonCommandResultSchemaMap[K]
   >;
 };
 
@@ -899,31 +1168,32 @@ export type HostDaemonCommandResult<
   TType extends HostDaemonSettledCommandType = HostDaemonSettledCommandType,
 > = HostDaemonCommandResultByType[TType];
 
-export const hostDaemonOnlineRpcResultSchemaByType = {
-  "host.list_files": fileListResultSchema,
-  "host.list_paths": pathListResultSchema,
-  "host.list_commands": commandListResultSchema,
-  "host.file_metadata": fileMetadataResultSchema,
-  "host.list_branches": projectSourceCheckoutSchema,
-  "host.read_file": fileReadResultSchema,
-  "host.read_file_relative": fileReadResultSchema,
-  "provider.list": providerListResultSchema,
-  "provider.list_models": providerListModelsResultSchema,
-  "environment.cleanup_preflight": environmentCleanupPreflightResultSchema,
-  "workspace.status": workspaceStatusResultSchema,
-  "workspace.diff": workspaceDiffResultSchema,
-  "workspace.pull_request": workspacePullRequestResultSchema,
-} as const satisfies Record<HostDaemonOnlineRpcCommandType, z.ZodTypeAny>;
-
 export type HostDaemonOnlineRpcResultByType = {
-  [K in keyof typeof hostDaemonOnlineRpcResultSchemaByType]: z.infer<
-    (typeof hostDaemonOnlineRpcResultSchemaByType)[K]
+  [K in keyof HostDaemonOnlineRpcResultSchemaMap]: z.infer<
+    HostDaemonOnlineRpcResultSchemaMap[K]
   >;
 };
 
 export type HostDaemonOnlineRpcResult<
   TType extends HostDaemonOnlineRpcCommandType = HostDaemonOnlineRpcCommandType,
 > = HostDaemonOnlineRpcResultByType[TType];
+
+export function hostDaemonEnvironmentLaneForCommand(
+  command: HostDaemonRpcCommand,
+): HostDaemonCommandEnvironmentLane | null {
+  return hostDaemonCommandRegistry[command.type].envLane;
+}
+
+export function shouldFlushEventsBeforeReportingCommandResult(
+  command: HostDaemonCommand,
+): boolean {
+  const policy =
+    hostDaemonCommandRegistry[command.type].flushEventsBeforeResult;
+  if (policy === "when-initiated") {
+    return "initiator" in command && command.initiator !== null;
+  }
+  return policy;
+}
 
 export type HostDaemonOnlineRpcResultForCommand<
   TCommand extends HostDaemonOnlineRpcCommand = HostDaemonOnlineRpcCommand,

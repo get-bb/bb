@@ -14,7 +14,7 @@ import {
   POPOUT_QUICK_ASK_HEIGHT,
   POPOUT_WINDOW_HEIGHT,
   type BbDesktopPopoutThreadChangedPayload,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 import { RootComposeView } from "./RootComposeView";
 import { useRouteState } from "@/hooks/useRouteState";

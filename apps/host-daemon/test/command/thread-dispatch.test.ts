@@ -1,9 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  listAvailableProviders,
-  type AgentRuntimeOptions,
-} from "@bb/agent-runtime";
+import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import {
   encodeClientTurnRequestIdNumber,
@@ -257,14 +254,10 @@ describe("thread command dispatch", () => {
     );
     expect((await fs.stat(stagedFile.path)).mode & 0o777).toBe(0o600);
 
-    await dispatchCommand(
-      {
-        type: "thread.deleted",
-        environmentId: "env-attachments",
-        threadId: "thread-attachments",
-      },
-      harness.dispatchOptions({ threadStorageRootPath }),
-    );
+    await fs.rm(path.join(threadStorageRootPath, "thread-attachments"), {
+      recursive: true,
+      force: true,
+    });
     await expect(
       fs.stat(path.join(threadStorageRootPath, "thread-attachments")),
     ).rejects.toThrow();
@@ -1551,20 +1544,6 @@ describe("thread command dispatch", () => {
     expect(replacementFake.state.ranTurnText).toBe("after exit");
   });
 
-  it("covers provider.list", async () => {
-    const harness = createHarness();
-
-    const result = await dispatchOnlineRpcCommand(
-      {
-        type: "provider.list",
-      },
-      harness.dispatchOptions(),
-    );
-
-    expect(result).toEqual({ providers: listAvailableProviders() });
-    expect(result.providers.length).toBeGreaterThan(0);
-  });
-
   it("covers provider.list_models", async () => {
     const harness = createHarness();
 
@@ -1762,80 +1741,6 @@ describe("thread command dispatch", () => {
     );
 
     expect(result).toEqual({ providerThreadId: "provider-thread-1" });
-  });
-
-  it("removes thread storage directory on thread.deleted", async () => {
-    const tempDir = await makeTempDir("bb-thread-storage-delete-");
-    const threadDir = path.join(tempDir, "thr_del123");
-    await fs.mkdir(threadDir);
-    await fs.writeFile(path.join(threadDir, "notes.md"), "notes");
-
-    const harness = createHarness();
-
-    const result = await dispatchCommand(
-      {
-        type: "thread.deleted",
-        environmentId: "env-1",
-        threadId: "thr_del123",
-      },
-      harness.dispatchOptions({ threadStorageRootPath: tempDir }),
-    );
-
-    expect(result).toEqual({});
-    await expect(fs.stat(threadDir)).rejects.toThrow();
-  });
-
-  it("succeeds on thread.deleted when directory does not exist", async () => {
-    const tempDir = await makeTempDir("bb-thread-storage-delete-noop-");
-    const harness = createHarness();
-
-    const result = await dispatchCommand(
-      {
-        type: "thread.deleted",
-        environmentId: "env-1",
-        threadId: "thr_missing",
-      },
-      harness.dispatchOptions({ threadStorageRootPath: tempDir }),
-    );
-
-    expect(result).toEqual({});
-  });
-
-  it("rejects thread.deleted when threadId escapes storage root", async () => {
-    const tempDir = await makeTempDir("bb-thread-storage-traversal-");
-    const harness = createHarness();
-
-    await expect(
-      dispatchCommand(
-        {
-          type: "thread.deleted",
-          environmentId: "env-1",
-          threadId: "../../etc",
-        },
-        harness.dispatchOptions({ threadStorageRootPath: tempDir }),
-      ),
-    ).rejects.toMatchObject({
-      code: "invalid_path",
-      message: expect.stringContaining("escapes"),
-    });
-  });
-
-  it("rejects thread.deleted when threadId resolves to the root itself", async () => {
-    const tempDir = await makeTempDir("bb-thread-storage-root-");
-    const harness = createHarness();
-
-    await expect(
-      dispatchCommand(
-        {
-          type: "thread.deleted",
-          environmentId: "env-1",
-          threadId: ".",
-        },
-        harness.dispatchOptions({ threadStorageRootPath: tempDir }),
-      ),
-    ).rejects.toMatchObject({
-      code: "invalid_path",
-    });
   });
 
   it("rejects thread.start when threadStoragePath escapes storage root", async () => {

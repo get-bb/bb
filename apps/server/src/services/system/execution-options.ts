@@ -3,6 +3,7 @@ import type {
   SystemExecutionOptionsModelLoadError,
   SystemExecutionOptionsResponse,
 } from "@bb/server-contract";
+import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import type { CustomProviderModel } from "@bb/config/bb-app-managed-config";
 import {
   reasoningEffortsForLevels,
@@ -119,11 +120,7 @@ export async function resolveSystemExecutionOptions(
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
   const hostId = resolveSystemLookupHostId(deps, query);
-  const { providers } = await callHostRetryableOnlineRpc(deps, {
-    hostId,
-    timeoutMs: COMMAND_TIMEOUT_MS,
-    command: { type: "provider.list" },
-  });
+  const providers = listBuiltInAgentProviderInfos();
   const requestedProvider = query.providerId
     ? providers.find((provider) => provider.id === query.providerId)
     : undefined;

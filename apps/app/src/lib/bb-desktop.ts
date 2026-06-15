@@ -2,7 +2,7 @@ import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
   BbDesktopPopoutApi,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 
 // The macOS traffic-light cluster sits in a fixed strip on the left of the
 // frameless window. In-flow chrome clears it with left padding; the pinned

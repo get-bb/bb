@@ -7,9 +7,11 @@ import type {
   HostDaemonCommandResultForCommand,
   HostDaemonRpcCommand,
   HostDaemonRpcResultForCommand,
+  HostDaemonCommandEnvironmentLane,
 } from "@bb/host-daemon-contract";
 import { performance } from "node:perf_hooks";
 import {
+  hostDaemonEnvironmentLaneForCommand,
   hostDaemonOnlineRpcResponseMessageSchema,
   isHostDaemonCommand,
   parseHostDaemonCommandResultForCommand,
@@ -30,7 +32,7 @@ interface CommandRouterLogger extends Pick<HostDaemonLogger, "warn"> {
   debug?: HostDaemonLogger["debug"];
 }
 
-type EnvironmentLaneMode = "read" | "write";
+type EnvironmentLaneMode = HostDaemonCommandEnvironmentLane;
 type ThreadStartCommand = Extract<HostDaemonCommand, { type: "thread.start" }>;
 type ThreadStopCommand = Extract<HostDaemonCommand, { type: "thread.stop" }>;
 type TurnSubmitCommand = Extract<HostDaemonCommand, { type: "turn.submit" }>;
@@ -209,11 +211,8 @@ export class CommandRouter {
     const environmentLaneMode = this.getEnvironmentLaneMode(command);
     const providerLane = this.resolveProviderLane(command);
     const task = this.runAfterThreadUnarchiveBarrier(command, () =>
-      this.runInExecutionLanes(
-        command,
-        environmentLaneMode,
-        providerLane,
-        () => this.executeLiveDaemonCommandBody(command),
+      this.runInExecutionLanes(command, environmentLaneMode, providerLane, () =>
+        this.executeLiveDaemonCommandBody(command),
       ),
     );
     this.registerThreadUnarchiveBarrier(command, task);
@@ -650,28 +649,6 @@ export class CommandRouter {
   private getEnvironmentLaneMode(
     command: HostDaemonCommand | HostDaemonOnlineRpcCommand,
   ): EnvironmentLaneMode | null {
-    // Execution lanes protect per-environment workspace mutation ordering.
-    // `shouldFlushEventsBeforeReportingCommandResult` is a separate
-    // event-before-result ordering policy in the host-daemon contract.
-    switch (command.type) {
-      case "environment.cleanup_preflight":
-      case "thread.start":
-      case "turn.submit":
-      case "workspace.status":
-      case "workspace.diff":
-        return "read";
-      case "environment.provision":
-      case "environment.destroy":
-      case "thread.archive":
-      case "thread.unarchive":
-      case "workspace.commit":
-      case "workspace.squash_merge":
-        return "write";
-      case "environment.provision.cancel":
-        // Cancel must bypass the write lane held by the provision it aborts.
-        return null;
-      default:
-        return null;
-    }
+    return hostDaemonEnvironmentLaneForCommand(command);
   }
 }

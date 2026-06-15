@@ -3,7 +3,7 @@ import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
   BbDesktopInfo,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 
 // A minimal, inert desktop bridge for stories that need the desktop-only browser
 // surface to register as available. The browser methods are no-ops: the native

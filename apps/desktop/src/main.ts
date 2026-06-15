@@ -24,10 +24,12 @@ import {
   bbDesktopPopoutThreadRefSchema,
   bbDesktopThemeSchema,
   getDesktopThreadRoutePath,
-  serverMessageLenientSchema,
-  systemConfigResponseSchema,
   type BbDesktopInfo,
   type BbDesktopPopoutThreadRef,
+} from "@bb/desktop-contract";
+import {
+  serverMessageLenientSchema,
+  systemConfigResponseSchema,
   type ClientMessage,
 } from "@bb/server-contract";
 import { z } from "zod";
