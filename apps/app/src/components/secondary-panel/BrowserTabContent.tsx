@@ -416,8 +416,7 @@ export function BrowserTabContent({
       tabId,
       url: mountUrl,
       bounds: initialBounds,
-      // Only the active tab's view starts visible; background tabs attach hidden
-      // (their page still loads) until activated.
+      // The active tab's view starts visible only while the panel is open.
       visible: isActiveRef.current && mountUrl.length > 0,
     });
 

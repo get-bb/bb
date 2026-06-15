@@ -97,10 +97,8 @@ export interface ThreadSecondaryPanelProps {
   fileTabContent?: ReactNode;
   onFileTabReorder: SecondaryPanelTabReorderHandler;
   /**
-   * The persistent browser-tab deck. Rendered in the content region and kept
-   * mounted across tab switches so each browser tab's native view (and page)
-   * survives deactivation; it self-manages visibility, collapsing to
-   * `display:none` when no browser tab is active. Absent on the web build / in
+   * The browser-tab deck slot. Rendered in the content region so the deck can
+   * own browser-view visibility and retention; absent on the web build / in
    * tests with no browser tabs.
    */
   browserDeck?: ReactNode;
@@ -453,10 +451,9 @@ export function ThreadSecondaryPanel({
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         {/*
-          The browser deck stays mounted regardless of the active tab so its
-          native views survive switching away; it shows itself only when a
-          browser tab is active. The normal content slot is suppressed in that
-          case (the deck fills the region).
+          The browser deck owns native-view visibility/retention and renders
+          content only when a browser tab is active. The normal content slot is
+          suppressed in that case because the deck fills the region.
         */}
         {browserDeck}
         {isBrowserTabActive ? null : hasActiveFileTab ? (

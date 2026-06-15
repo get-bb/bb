@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
-import { cn } from "@/lib/utils";
 import { BrowserTabContent } from "./BrowserTabContent";
 import {
   createBrowserViewVisibilityCoordinator,
@@ -35,17 +34,18 @@ function buildBrowserTabIdSet({
 }
 
 /**
- * Renders every open browser tab at once, keeping each tab's native
- * `WebContentsView` mounted (and its page + scroll intact) for the tab's whole
- * lifetime. Only the active tab is laid out and visible; the rest are
- * `display:none` with their views hidden — so switching tabs is a visibility
- * toggle, never a destroy/recreate + reload. A tab's view is torn down when it
- * leaves this thread's open-tab list; thread navigation only unmounts this deck,
- * so retained views stay alive for when the user returns.
+ * Mounts only the active browser tab's content. Inactive persisted tabs remain
+ * tab metadata until selected, so restoring a thread never eagerly creates and
+ * loads a batch of hidden native `WebContentsView`s from stale persisted URLs.
  *
- * Mounted regardless of which panel tab is active so the views survive switching
- * to a non-browser tab; the whole deck collapses to `display:none` when no
- * browser tab is active.
+ * The native view manager keeps already-created views keyed by tab id, so
+ * switching away unmounts the React content and hides the native view without
+ * destroying the page. A tab's view is torn down when it leaves this thread's
+ * open-tab list; thread navigation only unmounts this deck, so retained views
+ * stay alive for when the user returns.
+ *
+ * When no browser tab is the active panel tab, React content unmounts but the
+ * native views remain retained and hidden by their component cleanup.
  */
 export function BrowserTabDeck({
   browserTabs,
@@ -85,33 +85,26 @@ export function BrowserTabDeck({
   if (browserTabs.length === 0) {
     return null;
   }
-  const isBrowserTabActive = activeBrowserTabId !== null;
+  const activeBrowserTab =
+    activeBrowserTabId === null
+      ? null
+      : (browserTabs.find((tab) => tab.id === activeBrowserTabId) ?? null);
+  if (activeBrowserTab === null) {
+    return null;
+  }
+
   return (
-    <div
-      className={cn(
-        "min-h-0 flex-1",
-        isBrowserTabActive ? "flex flex-col" : "hidden",
-      )}
-    >
-      {browserTabs.map((tab) => {
-        const isActive = tab.id === activeBrowserTabId;
-        return (
-          <div
-            key={tab.id}
-            className={cn(isActive ? "flex min-h-0 flex-1 flex-col" : "hidden")}
-          >
-            <BrowserTabContent
-              tabId={tab.id}
-              initialUrl={tab.url}
-              isActive={isActive && isPanelOpen}
-              visibilityCoordinator={visibilityCoordinator}
-              environmentId={environmentId}
-              threadId={threadId}
-              onUpdate={onUpdate}
-            />
-          </div>
-        );
-      })}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <BrowserTabContent
+        key={activeBrowserTab.id}
+        tabId={activeBrowserTab.id}
+        initialUrl={activeBrowserTab.url}
+        isActive={isPanelOpen}
+        visibilityCoordinator={visibilityCoordinator}
+        environmentId={environmentId}
+        threadId={threadId}
+        onUpdate={onUpdate}
+      />
     </div>
   );
 }
