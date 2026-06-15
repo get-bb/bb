@@ -1,13 +1,27 @@
 /**
  * ENVIRONMENT LIFECYCLE INVENTORY (step 5 of plans/server-lifecycle-transition-core.md)
  *
- * Every environment-status transition call site, classified.
- * ENVIRONMENT_LIFECYCLE and ENVIRONMENT_LIFECYCLE_EVENT_PREDICATES in
- * src/environment-lifecycle.ts are derived from — and behavior-neutral with
- * respect to — this inventory. Environments had no transition table before
- * this work, so "any" in the from column means the write was completely
- * unguarded: every from-status was permitted and is recorded as a cell
- * (`// observed:` marks the ones that look wrong).
+ * Every environment-status transition call site, classified. The original
+ * inventory below recorded the unguarded pre-table behavior; the live
+ * ENVIRONMENT_LIFECYCLE in src/environment-lifecycle.ts is now the *designed*
+ * B* table, no longer behavior-neutral with respect to that inventory. The
+ * decoupling (Decision D, plans/lifecycle-target-state.md) deleted the
+ * unguarded-provision cluster: provision settlement (provision.succeeded /
+ * provision.failed) now fires only from `provisioning`, and `provision.requested`
+ * no longer revives a `destroying` or `destroyed` row — nothing reprovisions a
+ * dying environment, so a settlement can never collide with a destroy. The
+ * removed cells are the ones marked E1/E2/E4/E5/E7/E8 in the audit:
+ *   E1/E2/E4/E5 — provision.succeeded / provision.failed from
+ *     ready / error / destroying / destroyed (settlement now provisioning-only);
+ *   E7/E8 — provision.requested / provision.succeeded from destroyed
+ *     (destroyed is terminal).
+ * The remaining `error` reprovision cell (provision.requested) is the
+ * legitimate error-recovery retry — that environment still exists.
+ *
+ * Environments had no transition table before this work, so "any" in the from
+ * column means the write was completely unguarded: every from-status was
+ * permitted and was originally recorded as a cell (`// observed:` marks the
+ * ones that look wrong — those are the cells the B* decoupling deleted).
  *
  * ## Status write sites (8 in packages/db/src/data/environments.ts pre-change)
  *
@@ -201,7 +215,7 @@ describe("ENVIRONMENT_LIFECYCLE table", () => {
     );
   });
 
-  it("matches the inventoried transitions exactly", () => {
+  it("matches the designed B* transitions exactly", () => {
     expect(ENVIRONMENT_LIFECYCLE).toEqual({
       provisioning: {
         "provision.succeeded": "ready",
@@ -213,19 +227,19 @@ describe("ENVIRONMENT_LIFECYCLE table", () => {
       },
       ready: {
         "provision.requested": "provisioning",
-        "provision.failed": "error",
         "destroy.dispatched": "destroying",
         "cleanup.completed": "destroyed",
       },
       error: {
+        // Error-recovery reprovision only: the record still exists. Provision
+        // settlement no longer revives error (E4) — it fires from provisioning.
         "provision.requested": "provisioning",
-        "provision.succeeded": "ready",
         "cleanup.completed": "destroyed",
       },
       destroying: {
-        "provision.requested": "provisioning",
-        "provision.succeeded": "ready",
-        "provision.failed": "error",
+        // No provision.* cells (E2/E5 deleted): nothing reprovisions a
+        // destroying environment, so a destroy runs to completion without a
+        // colliding provision settlement.
         "destroy.succeeded": "destroyed",
         "destroy.failed": {
           withWorkspacePath: "ready",
@@ -237,10 +251,8 @@ describe("ENVIRONMENT_LIFECYCLE table", () => {
         },
         "cleanup.completed": "destroyed",
       },
-      destroyed: {
-        "provision.requested": "provisioning",
-        "provision.succeeded": "ready",
-      },
+      // Terminal (E7/E8 deleted): a destroyed environment is never revived.
+      destroyed: {},
     });
   });
 

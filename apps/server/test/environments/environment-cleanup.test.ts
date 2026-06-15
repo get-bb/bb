@@ -1,12 +1,6 @@
-import { getEnvironment, getThread, listEvents } from "@bb/db";
-import {
-  applyEnvironmentLifecycleEvent,
-  recordEnvironmentCleanupRequest,
-  requireEnvironmentLifecycleEventApplied,
-} from "@bb/db/internal-environment-lifecycle";
+import { getEnvironment } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import {
-  cancelPendingEnvironmentCleanup,
   requestEnvironmentCleanup,
   runEnvironmentCleanupAdvance,
 } from "../../src/services/environments/environment-cleanup-internal.js";
@@ -24,62 +18,24 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("environment cleanup", () => {
-  it("does not cancel cleanup after destroy is in progress", async () => {
+  it("does not reprovision a destroying environment and finishes the destroy", async () => {
+    // Decision B*: nothing reprovisions a dying environment, so a destroy runs
+    // to completion. The ENVIRONMENT_LIFECYCLE table has no provision cell from
+    // `destroying`, so a reprovision dispatch is a structural no-op — the race
+    // between a stale provision settlement and a destroy is gone by
+    // construction.
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
-        id: "host-cleanup-destroying",
+        id: "host-destroy-no-revive",
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
+        path: "/tmp/destroy-no-revive-project",
       });
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         managed: true,
-        projectId: project.id,
-        status: "ready",
-        workspaceProvisionType: "managed-worktree",
-      });
-      recordEnvironmentCleanupRequest(
-        harness.db,
-        harness.hub,
-        environment.id,
-        {},
-      );
-      requireEnvironmentLifecycleEventApplied(
-        applyEnvironmentLifecycleEvent(harness.db, harness.hub, {
-          environmentId: environment.id,
-          event: {
-            type: "destroy.dispatched",
-            destroyAttemptId: "rpc_test_destroy",
-          },
-        }),
-      );
-
-      const result = cancelPendingEnvironmentCleanup(harness.deps, {
-        environmentId: environment.id,
-      });
-
-      expect(result).toBe("in_progress");
-      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        cleanupRequestedAt: expect.any(Number),
-        status: "destroying",
-      });
-    });
-  });
-
-  it("ignores a late destroy success after the environment was revived", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-destroy-after-revive",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/destroy-after-revive-project",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        managed: true,
-        path: "/tmp/destroy-after-revive",
+        path: "/tmp/destroy-no-revive",
         projectId: project.id,
         status: "ready",
         workspaceProvisionType: "personal",
@@ -97,47 +53,39 @@ describe("environment cleanup", () => {
           command.type === "environment.destroy" &&
           command.environmentId === environment.id,
       );
-      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+      const destroyingEnvironment = getEnvironment(harness.db, environment.id);
+      expect(destroyingEnvironment).toMatchObject({
         destroyAttemptId: expect.any(String),
         status: "destroying",
       });
+      if (!destroyingEnvironment) {
+        throw new Error("Expected destroying environment");
+      }
 
-      // A new thread revives the environment while the destroy RPC is still
-      // in flight.
+      // A reprovision dispatch against the destroying environment no-ops: the
+      // provision.requested transition has no cell from `destroying`, so the
+      // row is untouched.
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
         status: "provisioning",
       });
-      const destroyingEnvironment = getEnvironment(harness.db, environment.id);
-      if (!destroyingEnvironment) {
-        throw new Error("Expected destroying environment");
-      }
       await dispatchManagedEnvironmentReprovision(harness.deps, {
         environment: destroyingEnvironment,
         projectId: project.id,
         provisionEventSequence: 1,
-        provisioningId: "tpv-destroy-after-revive",
+        provisioningId: "tpv-destroy-no-revive",
         threadId: thread.id,
       });
-      const revived = getEnvironment(harness.db, environment.id);
-      expect(revived).toMatchObject({ status: "provisioning" });
-
-      await reportQueuedCommandSuccess(harness, destroyCommand, {});
-
-      // destroy.succeeded has no ENVIRONMENT_LIFECYCLE cell for
-      // "provisioning": the late success is an illegal-transition no-op, the
-      // environment row is untouched, and the revived thread is not marked
-      // as having lost its workspace.
-      expect(getEnvironment(harness.db, environment.id)).toEqual(revived);
-      expect(getThread(harness.db, thread.id)).toMatchObject({
-        status: "provisioning",
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        status: "destroying",
       });
-      expect(
-        listEvents(harness.db, { threadId: thread.id }).map(
-          (event) => event.type,
-        ),
-      ).not.toContain("system/error");
+
+      // The destroy completes and the environment becomes terminal.
+      await reportQueuedCommandSuccess(harness, destroyCommand, {});
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        status: "destroyed",
+      });
     });
   });
 });

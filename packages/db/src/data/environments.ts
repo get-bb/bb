@@ -337,16 +337,6 @@ export function recordEnvironmentCleanupRequest(
   });
 }
 
-export function clearEnvironmentCleanupRequestRecord(
-  db: EnvironmentWriteConnection,
-  notifier: DbNotifier,
-  id: string,
-) {
-  return updateEnvironmentCleanupRecord(db, notifier, id, {
-    cleanupRequestedAt: null,
-  });
-}
-
 export interface ListStaleDestroyingManagedEnvironmentsArgs {
   updatedBefore: number;
 }

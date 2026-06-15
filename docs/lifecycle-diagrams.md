@@ -96,21 +96,14 @@ stateDiagram-v2
     provisioning --> ready : provision.cancelled (workspace on disk)
     provisioning --> error : provision.cancelled (no workspace)
     ready --> provisioning : provision.requested
-    ready --> error : provision.failed
     ready --> destroying : destroy.dispatched ⟨cleanupRequested, managed, workspacePathPresent⟩
     ready --> destroyed : cleanup.completed ⟨cleanupRequested, managed, workspacePathAbsent⟩
     error --> provisioning : provision.requested
-    error --> ready : provision.succeeded
     error --> destroyed : cleanup.completed ⟨cleanupRequested, managed, workspacePathAbsent⟩
-    destroying --> provisioning : provision.requested
-    destroying --> ready : provision.succeeded
-    destroying --> error : provision.failed
     destroying --> destroyed : destroy.succeeded
     destroying --> ready : destroy.failed ⟨matchingDestroyAttempt⟩ (workspace on disk)
     destroying --> error : destroy.failed ⟨matchingDestroyAttempt⟩ (no workspace)
     destroying --> ready : destroy.lost ⟨cleanupRequested⟩ (workspace on disk)
     destroying --> destroyed : destroy.lost ⟨cleanupRequested⟩ (no workspace)
     destroying --> destroyed : cleanup.completed ⟨cleanupRequested, managed, workspacePathAbsent⟩
-    destroyed --> provisioning : provision.requested
-    destroyed --> ready : provision.succeeded
 ```

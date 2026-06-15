@@ -9,6 +9,7 @@ import type {
   ThreadWithRuntime,
 } from "@bb/domain";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
+import { ThreadEnvironmentGoneBanner } from "@/components/thread/ThreadEnvironmentGoneBanner";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   ThreadPromptContextBanner,
@@ -81,6 +82,12 @@ interface ThreadDetailPromptAreaProps {
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
+  /**
+   * True when the thread's environment is gone (status `destroying` or
+   * `destroyed`). Replaces the composer with a read-only "environment is gone"
+   * banner — the thread can no longer run work (Decision B*).
+   */
+  isEnvironmentGone: boolean;
   environmentIcon?: IconName;
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
@@ -134,6 +141,7 @@ export function ThreadDetailPromptArea({
   contextWindowUsage,
   environmentCheckout,
   environmentCompactLabel,
+  isEnvironmentGone,
   environmentIcon,
   environmentLabel,
   onCreateNewThreadInWorktree,
@@ -924,6 +932,10 @@ export function ThreadDetailPromptArea({
       workspaceStatusPending,
     ],
   );
+
+  if (isEnvironmentGone) {
+    return <ThreadEnvironmentGoneBanner />;
+  }
 
   if (activePendingInteraction) {
     return (

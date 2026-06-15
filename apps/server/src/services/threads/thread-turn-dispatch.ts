@@ -15,7 +15,11 @@ import {
   MANAGED_REPROVISION_STARTED,
 } from "../environments/environment-provisioning-internal.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
-import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
+import {
+  goneThreadEnvironmentDetails,
+  throwEnvironmentNotReady,
+  throwThreadEnvironmentUnavailable,
+} from "../lib/lifecycle-api-errors.js";
 import {
   appendThreadProvisioningEvent,
   getLastProviderThreadId,
@@ -86,6 +90,16 @@ export async function dispatchTurnDuringReprovision(
 ): Promise<boolean> {
   if (args.environment.status === "ready" && args.environment.path) {
     return false;
+  }
+
+  // The environment is gone (Decision B*, plans/lifecycle-target-state.md):
+  // nothing reprovisions a destroying/destroyed environment, so surface the
+  // "environment is gone" condition the frontend banner keys off instead of
+  // dispatching a reprovision. Error-recovery reprovision for an `error`-status
+  // environment is still legitimate (that record exists) and falls through.
+  const goneDetails = goneThreadEnvironmentDetails(args.environment);
+  if (goneDetails) {
+    throwThreadEnvironmentUnavailable(goneDetails);
   }
 
   if (!args.environment.managed || args.environment.status === "provisioning") {

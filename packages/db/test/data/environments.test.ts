@@ -4,7 +4,6 @@ import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
-  clearEnvironmentCleanupRequestRecord,
   createEnvironment,
   listRetiredLoadedEnvironmentIdsOnHost,
   recordEnvironmentCleanupRequest,
@@ -152,7 +151,7 @@ describe("environments", () => {
     ]);
   });
 
-  it("records cleanup intent through the lifecycle write path", () => {
+  it("records cleanup intent once and is idempotent (cleanup is monotonic)", () => {
     const { db, host, project } = setup();
     const notifier = createNotifierSpy();
     const environment = createEnvironment(db, noopNotifier, {
@@ -171,6 +170,9 @@ describe("environments", () => {
         requestedAt: 123,
       },
     );
+    // Under Decision B* cleanup intent is monotonic: once recorded it is never
+    // cancelled, and a repeated request keeps the original timestamp without a
+    // second write or notification.
     const requestedAgain = recordEnvironmentCleanupRequest(
       db,
       notifier,
@@ -178,11 +180,6 @@ describe("environments", () => {
       {
         requestedAt: 456,
       },
-    );
-    const cleared = clearEnvironmentCleanupRequestRecord(
-      db,
-      notifier,
-      environment.id,
     );
 
     expect(requested).toMatchObject({
@@ -192,20 +189,10 @@ describe("environments", () => {
       cleanupRequestedAt: 123,
       updatedAt: requested?.updatedAt,
     });
-    expect(cleared).toMatchObject({
-      cleanupRequestedAt: null,
-    });
-    expect(notifier.notifyEnvironment).toHaveBeenNthCalledWith(
-      1,
+    expect(notifier.notifyEnvironment).toHaveBeenCalledExactlyOnceWith(
       environment.id,
       ["metadata-changed"],
     );
-    expect(notifier.notifyEnvironment).toHaveBeenNthCalledWith(
-      2,
-      environment.id,
-      ["metadata-changed"],
-    );
-    expect(notifier.notifyEnvironment).toHaveBeenCalledTimes(2);
   });
 
   it("lists loaded environments that no longer belong to the host as live records", () => {

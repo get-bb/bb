@@ -101,12 +101,12 @@ export type EnvironmentLifecycleTarget =
   | EnvironmentLifecyclePathDependentTarget;
 
 /**
- * Behavior-neutral first pass: each cell encodes a (from, event, to) triple
- * observed at an existing transition call site (or permitted there because
- * the site had no from-status guard at all). Cells that look wrong are kept
- * and marked `// observed:` — tightening is a separate, reviewable follow-up.
- * Absent cell = the event is a no-op in that status (previously a caller
- * guard skipping the write).
+ * The environment state machine. Two structural properties (the B* decoupling):
+ * provision settlement only ever fires from `provisioning` — every path that
+ * reprovisioned a dying environment was removed, so a settlement can no longer
+ * collide with a destroy — and `destroyed` is terminal: a thread whose
+ * environment is gone gets a fresh environment, it never resurrects the
+ * destroyed row. Absent cell = the event is a no-op in that status.
  */
 export const ENVIRONMENT_LIFECYCLE: Record<
   EnvironmentStatus,
@@ -122,29 +122,19 @@ export const ENVIRONMENT_LIFECYCLE: Record<
   },
   ready: {
     "provision.requested": "provisioning",
-    // observed: an environment-level provisioning failure errors a settled
-    // ready environment (the failure recorder only excluded destroyed/error).
-    "provision.failed": "error",
     "destroy.dispatched": "destroying",
     "cleanup.completed": "destroyed",
   },
   error: {
+    // Error-recovery reprovision: the environment record still exists and a
+    // retry is valid. (Provision settlement no longer revives error — a
+    // settlement only fires from provisioning.)
     "provision.requested": "provisioning",
-    // observed: provision settlement is unguarded, so a late success revives
-    // an errored environment.
-    "provision.succeeded": "ready",
     "cleanup.completed": "destroyed",
   },
   destroying: {
-    // observed: reprovision requests never excluded an in-flight destroy and
-    // leave the stale destroyAttemptId in place.
-    "provision.requested": "provisioning",
-    // observed: unguarded provision settlement overrides an in-flight
-    // destroy.
-    "provision.succeeded": "ready",
-    // observed: an environment-level provisioning failure also errors a
-    // destroying environment (see "ready").
-    "provision.failed": "error",
+    // No provision.* here: nothing reprovisions a destroying environment, so a
+    // destroy runs to completion without a colliding provision settlement.
     "destroy.succeeded": "destroyed",
     "destroy.failed": {
       withWorkspacePath: "ready",
@@ -154,18 +144,13 @@ export const ENVIRONMENT_LIFECYCLE: Record<
       withWorkspacePath: "ready",
       withoutWorkspacePath: "destroyed",
     },
-    // observed: the pathless cleanup advance finalizes a destroying
-    // environment directly, without a destroy RPC round trip.
+    // The pathless cleanup advance finalizes a destroying environment directly,
+    // without a destroy RPC round trip.
     "cleanup.completed": "destroyed",
   },
-  destroyed: {
-    // observed: reprovision requests never excluded destroyed rows, so a
-    // late request resurrects a destroyed record.
-    "provision.requested": "provisioning",
-    // observed: unguarded provision settlement resurrects a destroyed
-    // record.
-    "provision.succeeded": "ready",
-  },
+  // Terminal: a destroyed environment is never revived. A thread that needs an
+  // environment again gets a fresh record (future "Provision environment").
+  destroyed: {},
 };
 
 /** The environment-row fields supersession predicates evaluate against. */

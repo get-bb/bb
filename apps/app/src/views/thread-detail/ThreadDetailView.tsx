@@ -1505,6 +1505,12 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
     : undefined;
   const isWorkspaceDeleted = environment?.status === "destroyed";
+  // Decision B*: a thread whose environment is gone (being torn down or already
+  // destroyed) is read-only — un-archive never resurrects it, so the composer is
+  // replaced with the "environment is gone" banner instead of allowing a send.
+  const isThreadEnvironmentGone =
+    environment?.status === "destroying" ||
+    environment?.status === "destroyed";
   const threadGitStatusDisplay = getGitStatusDisplay(workspaceStatus, {
     mergeBaseBranch,
     showBranchComparison: showBranchComparisonUi,
@@ -1581,6 +1587,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       environmentIcon={threadEnvironmentIcon ?? undefined}
       environmentLabel={threadEnvironmentDisplay?.modeLabel}
       environmentCompactLabel={threadEnvironmentDisplay?.compactModeLabel}
+      isEnvironmentGone={isThreadEnvironmentGone}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
       onEscapeEmptyPrompt={

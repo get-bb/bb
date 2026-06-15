@@ -1,7 +1,6 @@
 export {
   applyEnvironmentLifecycleEvent,
   applyEnvironmentLifecycleEventInTransaction,
-  clearEnvironmentCleanupRequestRecord,
   EnvironmentLifecycleEventNotAppliedError,
   listStaleDestroyingManagedEnvironments,
   recordEnvironmentCleanupRequest,

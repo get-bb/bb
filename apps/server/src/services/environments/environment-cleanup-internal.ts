@@ -7,12 +7,10 @@ import {
   hasPendingThreadShutdownInEnvironment,
   listLiveThreadsInEnvironment,
   type DbNotifier,
-  type DbConnection,
   type DbQueryConnection,
   type DbTransaction,
 } from "@bb/db";
 import {
-  clearEnvironmentCleanupRequestRecord,
   listStaleDestroyingManagedEnvironments,
   recordEnvironmentCleanupRequest,
 } from "@bb/db/internal-environment-lifecycle";
@@ -33,7 +31,6 @@ import {
   startLiveHostCommand,
 } from "../hosts/live-command.js";
 import { deferAfterResponse } from "../lib/response-deferral.js";
-import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { appendSystemErrorEventInTransaction } from "../threads/thread-events.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
 import {
@@ -70,15 +67,6 @@ export interface RecoverOrphanedEnvironmentDestroyRequestsResult {
   restored: number;
 }
 
-interface CancelPendingEnvironmentCleanupArgs {
-  environmentId: string | null | undefined;
-}
-
-type CancelPendingEnvironmentCleanupResult =
-  | "cancelled"
-  | "in_progress"
-  | "not_requested";
-
 type EnvironmentDestroyCommand =
   HostDaemonCommandForType<"environment.destroy">;
 type EnvironmentDestroyCommandResultReport =
@@ -105,13 +93,6 @@ interface EnvironmentCleanupWriteDeps extends EnvironmentCleanupReadDeps {
 }
 
 type EnvironmentCleanupRecoveryDeps = Pick<AppDeps, "db" | "hub" | "logger">;
-
-interface EnvironmentCleanupCancellationDeps extends Omit<
-  EnvironmentCleanupWriteDeps,
-  "db"
-> {
-  db: DbConnection;
-}
 
 interface EnvironmentCleanupSettlementDeps extends EnvironmentCleanupWriteDeps {
   db: DbTransaction;
@@ -321,45 +302,6 @@ export function requestEnvironmentCleanup(
   }
 
   recordEnvironmentCleanupRequest(deps.db, deps.hub, environment.id, {});
-}
-
-export function cancelPendingEnvironmentCleanup(
-  deps: EnvironmentCleanupCancellationDeps,
-  args: CancelPendingEnvironmentCleanupArgs,
-): CancelPendingEnvironmentCleanupResult {
-  if (!args.environmentId) {
-    return "not_requested";
-  }
-
-  const environmentId = args.environmentId;
-  const notificationBuffer = new NotificationBuffer();
-  const result = deps.db.transaction(
-    (tx) => {
-      const environment = getEnvironment(tx, environmentId);
-      if (!environment) {
-        return "not_requested";
-      }
-
-      if (environment.status === "destroying") {
-        return "in_progress";
-      }
-
-      if (environment.cleanupRequestedAt === null) {
-        return "not_requested";
-      }
-
-      clearEnvironmentCleanupRequestRecord(
-        tx,
-        notificationBuffer,
-        environment.id,
-      );
-      return "cancelled";
-    },
-    { behavior: "immediate" },
-  );
-
-  notificationBuffer.flushInto(deps.hub);
-  return result;
 }
 
 function dispatchEnvironmentDestroy(

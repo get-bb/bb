@@ -65,6 +65,28 @@ export function destroyedThreadEnvironmentDetails(
   return threadEnvironmentUnavailableDetails("destroyed", environment.status);
 }
 
+/**
+ * The single definition of "the environment is gone" under Decision B*: an
+ * environment being torn down (`destroying`) or already gone (`destroyed`) is
+ * never reprovisioned, so any work request against it is rejected with the
+ * "environment is gone" surface the frontend banner keys off. Returns null for
+ * a still-usable environment.
+ */
+export function goneThreadEnvironmentDetails(
+  environment: ThreadEnvironmentStatusFields,
+): ThreadEnvironmentUnavailableErrorDetails | null {
+  if (
+    environment.status !== "destroying" &&
+    environment.status !== "destroyed"
+  ) {
+    return null;
+  }
+  return threadEnvironmentUnavailableDetails(
+    environment.status,
+    environment.status,
+  );
+}
+
 export function throwThreadEnvironmentUnavailable(
   details: ThreadEnvironmentUnavailableErrorDetails,
 ): never {
