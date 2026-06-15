@@ -108,6 +108,12 @@ interface ShouldApplyEventEffectArgs {
   insertedEventIndexLookup: Set<number>;
 }
 
+interface ListCompletedTurnKeysForStartedEventsArgs {
+  batchEvents: HostDaemonEventEnvelope[];
+  db: AppDeps["db"];
+  insertedEventIndexLookup: ReadonlySet<number>;
+}
+
 interface TurnKeyArgs {
   threadId: string;
   turnId: string;
@@ -312,7 +318,7 @@ async function applyEventEffects(
           continue;
         }
         applyLoggedThreadLifecycleEvent(deps, {
-          event: { type: "turn.started" },
+          event: { type: "run.started" },
           threadId: entry.threadId,
         });
         continue;
@@ -388,7 +394,7 @@ async function applyEventEffects(
             "Provider process exited while awaiting user interaction; retry the thread to continue",
         });
         applyLoggedThreadLifecycleEvent(deps, {
-          event: { type: "runtime.exited" },
+          event: { type: "run.failed" },
           threadId: entry.threadId,
         });
         continue;
@@ -558,13 +564,12 @@ function hasThreadStopBeforeTurnStarted(
 }
 
 function listCompletedTurnKeysForStartedEvents(
-  db: AppDeps["db"],
-  batchEvents: HostDaemonEventEnvelope[],
+  args: ListCompletedTurnKeysForStartedEventsArgs,
 ): Set<string> {
   const startedTurnKeys = new Set<string>();
   const threadIds = new Set<string>();
 
-  for (const entry of batchEvents) {
+  for (const entry of args.batchEvents) {
     if (entry.event.type !== "turn/started") {
       continue;
     }
@@ -585,7 +590,7 @@ function listCompletedTurnKeysForStartedEvents(
   }
 
   const completedTurnKeys = new Set<string>();
-  for (const row of listCompletedTurnsByThreadIds(db, [...threadIds])) {
+  for (const row of listCompletedTurnsByThreadIds(args.db, [...threadIds])) {
     const turnKey = toTurnKey({
       threadId: row.threadId,
       turnId: row.turnId,
@@ -593,6 +598,24 @@ function listCompletedTurnKeysForStartedEvents(
     if (startedTurnKeys.has(turnKey)) {
       completedTurnKeys.add(turnKey);
     }
+  }
+
+  for (const [index, entry] of args.batchEvents.entries()) {
+    if (
+      !args.insertedEventIndexLookup.has(index) ||
+      entry.event.type !== "turn/completed"
+    ) {
+      continue;
+    }
+    completedTurnKeys.delete(
+      toTurnKey({
+        threadId: entry.threadId,
+        turnId: requireThreadEventScopeTurnId({
+          type: entry.event.type,
+          scope: entry.event.scope,
+        }),
+      }),
+    );
   }
   return completedTurnKeys;
 }
@@ -625,10 +648,11 @@ function resolveEventsToApply(
   args: ResolveEventsToApplyArgs,
 ): HostDaemonEventEnvelope[] {
   const insertedEventIndexLookup = new Set(args.insertedEventIndexes);
-  const completedTurnKeyLookup = listCompletedTurnKeysForStartedEvents(
-    args.db,
-    args.events,
-  );
+  const completedTurnKeyLookup = listCompletedTurnKeysForStartedEvents({
+    batchEvents: args.events,
+    db: args.db,
+    insertedEventIndexLookup,
+  });
 
   return args.events.filter((entry, index) =>
     shouldApplyEventEffect({

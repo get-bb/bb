@@ -39,7 +39,7 @@ function setup() {
     projectId: project.id,
     environmentId: environment.id,
     providerId: "codex",
-    status: "provisioning",
+    status: "starting",
   });
   const hub = new NotificationHub();
   return { db, environment, host, thread, hub };

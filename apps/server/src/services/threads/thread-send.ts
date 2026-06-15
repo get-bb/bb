@@ -1,4 +1,8 @@
-import { getThread, requireThreadLifecycleEventApplied } from "@bb/db";
+import {
+  getEnvironment,
+  getThread,
+  requireThreadLifecycleEventApplied,
+} from "@bb/db";
 import type { DbConnection, DbTransaction } from "@bb/db";
 import type {
   ClientTurnRequestId,
@@ -394,7 +398,9 @@ export async function sendThreadMessage(
   ) {
     return;
   }
-  const readyEnvironment = requireReadyThreadEnvironment(environment);
+  const readyEnvironment = requireReadyThreadEnvironment(
+    getEnvironment(deps.db, environment.id) ?? environment,
+  );
   let target: TurnRequestTarget;
   if (mode === "start") {
     target = { kind: "new-turn" };
@@ -417,7 +423,6 @@ export async function sendThreadMessage(
       environment: {
         id: readyEnvironment.id,
         hostId: readyEnvironment.hostId,
-        cleanupRequestedAt: readyEnvironment.cleanupRequestedAt,
         path: readyEnvironment.path,
         status: readyEnvironment.status,
         workspaceProvisionType: readyEnvironment.workspaceProvisionType,
@@ -445,7 +450,7 @@ export async function sendThreadMessage(
         // `turn.submit` and a cold `thread.start` are the same event from the
         // thread's view, so an `idle` cold-start activates exactly like an
         // `error` cold-start — a failed start walks either back through
-        // `command.failed`. (Other statuses fall through unchanged: pre-start
+        // `run.failed`. (Other statuses fall through unchanged: pre-start
         // threads are already rejected by `ensureThreadCanStartRequest`, and a
         // `stopping`/superseded thread must not be reactivated here.)
         if (
@@ -456,7 +461,7 @@ export async function sendThreadMessage(
           requireThreadLifecycleEventApplied(
             applyLoggedThreadLifecycleEventInTransaction(
               { db: tx, logger: deps.logger },
-              { event: { type: "turn.dispatched" }, threadId: thread.id },
+              { event: { type: "run.started" }, threadId: thread.id },
             ),
           );
           return { threadBecameActive: true };
@@ -507,7 +512,6 @@ export async function sendThreadMessage(
     environment: {
       id: readyEnvironment.id,
       hostId: readyEnvironment.hostId,
-      cleanupRequestedAt: readyEnvironment.cleanupRequestedAt,
       path: readyEnvironment.path,
       status: readyEnvironment.status,
       workspaceProvisionType: readyEnvironment.workspaceProvisionType,

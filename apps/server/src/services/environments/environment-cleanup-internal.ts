@@ -10,10 +10,7 @@ import {
   type DbQueryConnection,
   type DbTransaction,
 } from "@bb/db";
-import {
-  listStaleDestroyingManagedEnvironments,
-  recordEnvironmentCleanupRequest,
-} from "@bb/db/internal-environment-lifecycle";
+import { listStaleDestroyingManagedEnvironments } from "@bb/db/internal-environment-lifecycle";
 import { type HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import {
   emptyCommandResultSideEffects,
@@ -64,7 +61,7 @@ interface RecoverOrphanedEnvironmentDestroyRequestsArgs {
 
 export interface RecoverOrphanedEnvironmentDestroyRequestsResult {
   destroyed: number;
-  restored: number;
+  errored: number;
 }
 
 type EnvironmentDestroyCommand =
@@ -90,6 +87,7 @@ interface EnvironmentCleanupReadDeps {
 
 interface EnvironmentCleanupWriteDeps extends EnvironmentCleanupReadDeps {
   hub: DbNotifier;
+  logger: AppDeps["logger"];
 }
 
 type EnvironmentCleanupRecoveryDeps = Pick<AppDeps, "db" | "hub" | "logger">;
@@ -135,13 +133,13 @@ async function workspaceCanBeSafelyCleaned(
   environmentId: string,
 ): Promise<boolean> {
   const environment = getEnvironment(deps.db, environmentId);
-  // Not lifecycle: preflight precondition — only a settled ready workspace is
-  // eligible for a destroy probe; the destroy.dispatched claim re-asserts the
-  // row state atomically when the destroy is actually dispatched.
+  // Not lifecycle: preflight precondition — only a cleanup-owned workspace is
+  // eligible for a destroy probe; the destroy.started claim re-asserts the
+  // row state atomically when the destroy actually starts.
   if (
     !environment ||
     !environment.managed ||
-    environment.status !== "ready" ||
+    (environment.status !== "retiring" && environment.status !== "error") ||
     !environment.path
   ) {
     return false;
@@ -179,20 +177,17 @@ async function workspaceCanBeSafelyCleaned(
 function canRequestCleanup(
   environment: NonNullable<ReturnType<typeof getEnvironment>>,
 ): boolean {
-  // Not lifecycle: intent-recording eligibility — cleanup intent is metadata,
-  // and recording it on a destroyed row would be dead state.
-  return environment.managed && environment.status !== "destroyed";
+  return environment.managed && environment.status === "ready";
 }
 
-function isDestroyRequested(
+function canAdvanceCleanup(
   deps: EnvironmentCleanupReadDeps,
   environmentId: string,
 ): boolean {
   const environment = getEnvironment(deps.db, environmentId);
   return (
     environment !== null &&
-    (environment.cleanupRequestedAt !== null ||
-      environment.status === "destroying")
+    (environment.status === "retiring" || environment.status === "error")
   );
 }
 
@@ -211,7 +206,7 @@ function markLiveThreadsErroredAfterDestroySuccess(
       scope: threadScope(),
     });
     const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
-      event: { type: "workspace.lost" },
+      event: { type: "run.failed" },
       threadId: thread.id,
     });
     if (outcome.applied) {
@@ -255,7 +250,7 @@ export function settleEnvironmentDestroyCommandResult(
       args.deps,
       {
         environmentId: args.command.environmentId,
-        event: { type: "destroy.succeeded" },
+        event: { type: "destroy.completed" },
       },
     );
     if (!outcome.applied) {
@@ -301,7 +296,10 @@ export function requestEnvironmentCleanup(
     return;
   }
 
-  recordEnvironmentCleanupRequest(deps.db, deps.hub, environment.id, {});
+  applyLoggedEnvironmentLifecycleEvent(deps, {
+    environmentId: environment.id,
+    event: { type: "retire.requested" },
+  });
 }
 
 function dispatchEnvironmentDestroy(
@@ -357,7 +355,7 @@ export function recoverOrphanedEnvironmentDestroyRequests(
   });
 
   let destroyed = 0;
-  let restored = 0;
+  let errored = 0;
   for (const environment of staleEnvironments) {
     const outcome = applyLoggedEnvironmentLifecycleEvent(deps, {
       environmentId: environment.id,
@@ -369,11 +367,11 @@ export function recoverOrphanedEnvironmentDestroyRequests(
     if (outcome.environment.status === "destroyed") {
       destroyed += 1;
     } else {
-      restored += 1;
+      errored += 1;
     }
   }
 
-  return { destroyed, restored };
+  return { destroyed, errored };
 }
 
 async function advanceEnvironmentCleanup(
@@ -381,14 +379,13 @@ async function advanceEnvironmentCleanup(
   args: AdvanceEnvironmentCleanupArgs,
 ): Promise<void> {
   const environment = getEnvironment(deps.db, args.environmentId);
-  // Not lifecycle: advance routing — "destroyed" is terminal, so there is
-  // nothing left to clean; the transition itself is owned by the
-  // destroy.dispatched claim below.
+  // Not lifecycle: advance routing — "destroyed" is terminal, and stale
+  // destroying rows are owned by the orphan-destroy recovery sweep.
   if (
     !environment ||
     !environment.managed ||
     environment.status === "destroyed" ||
-    !isDestroyRequested(deps, args.environmentId)
+    !canAdvanceCleanup(deps, args.environmentId)
   ) {
     return;
   }
@@ -409,12 +406,17 @@ async function advanceEnvironmentCleanup(
   }
 
   if (!environment.path) {
-    // No workspace to remove: cleanup finishes without a destroy RPC. The
-    // table has no provisioning cell, so an in-flight provision is left
-    // alone.
+    const execution = createLiveHostCommandExecution(environment.hostId);
+    const startOutcome = applyLoggedEnvironmentLifecycleEvent(deps, {
+      environmentId: environment.id,
+      event: { type: "destroy.started", destroyAttemptId: execution.id },
+    });
+    if (!startOutcome.applied) {
+      return;
+    }
     applyLoggedEnvironmentLifecycleEvent(deps, {
       environmentId: environment.id,
-      event: { type: "cleanup.completed" },
+      event: { type: "destroy.completed" },
     });
     return;
   }
@@ -425,14 +427,14 @@ async function advanceEnvironmentCleanup(
   }
 
   // Stronger caller-side guard kept: the preflight RPC above awaited, so the
-  // world may have moved on. The destroy.dispatched event re-asserts all of
+  // world may have moved on. The destroy.started event re-asserts all of
   // this atomically; the recheck only avoids burning an execution record and
   // a noisy no-op log on an obviously stale advance.
   const refreshedEnvironment = getEnvironment(deps.db, environment.id);
   if (
     !refreshedEnvironment ||
-    refreshedEnvironment.status !== "ready" ||
-    !refreshedEnvironment.path
+    (refreshedEnvironment.status !== "retiring" &&
+      refreshedEnvironment.status !== "error")
   ) {
     return;
   }
@@ -456,13 +458,17 @@ async function advanceEnvironmentCleanup(
   const execution = createLiveHostCommandExecution(refreshedEnvironment.hostId);
   const claimOutcome = applyLoggedEnvironmentLifecycleEvent(deps, {
     environmentId: refreshedEnvironment.id,
-    event: { type: "destroy.dispatched", destroyAttemptId: execution.id },
+    event: { type: "destroy.started", destroyAttemptId: execution.id },
   });
   if (!claimOutcome.applied) {
     return;
   }
   const claimedEnvironment = claimOutcome.environment;
   if (!claimedEnvironment.path) {
+    applyLoggedEnvironmentLifecycleEvent(deps, {
+      environmentId: claimedEnvironment.id,
+      event: { type: "destroy.completed" },
+    });
     return;
   }
 

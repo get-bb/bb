@@ -85,8 +85,7 @@ export function isUnreadDoneThread(thread: ThreadStatusShape): boolean {
     case "idle":
       return !isThreadRead(thread);
     case "active":
-    case "created":
-    case "provisioning":
+    case "starting":
     case "stopping":
       return false;
     default:

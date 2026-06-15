@@ -108,8 +108,7 @@ export function shouldRenderClientRequestedInput(
 ): boolean {
   if (!threadStatus) return false;
   switch (threadStatus) {
-    case "created":
-    case "provisioning":
+    case "starting":
     case "error":
     case "idle":
     case "active":
@@ -125,10 +124,9 @@ export function shouldPreservePendingMessages(
 ): boolean {
   if (!threadStatus) return false;
   switch (threadStatus) {
-    case "provisioning":
+    case "starting":
     case "active":
       return true;
-    case "created":
     case "error":
     case "idle":
     case "stopping":

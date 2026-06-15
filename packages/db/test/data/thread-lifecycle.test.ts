@@ -50,11 +50,11 @@ describe("applyThreadLifecycleEvent", () => {
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      status: "created",
+      status: "starting",
     });
 
     const outcome = applyThreadLifecycleEvent(db, spy, {
-      event: { type: "turn.started" },
+      event: { type: "run.started" },
       threadId: thread.id,
     });
 
@@ -80,7 +80,7 @@ describe("applyThreadLifecycleEvent", () => {
 
     const outcome = db.transaction((tx) =>
       applyThreadLifecycleEventInTransaction(tx, {
-        event: { type: "turn.completed" },
+        event: { type: "run.succeeded" },
         threadId: thread.id,
       }),
     );
@@ -102,15 +102,15 @@ describe("applyThreadLifecycleEvent", () => {
       });
 
       vi.setSystemTime(2_000);
-      // idle has no turn.completed cell.
+      // idle has no run.succeeded cell.
       const outcome = applyThreadLifecycleEvent(db, spy, {
-        event: { type: "turn.completed" },
+        event: { type: "run.succeeded" },
         threadId: thread.id,
       });
 
       expect(outcome).toEqual({
         applied: false,
-        detail: "no transition for turn.completed from status idle",
+        detail: "no transition for run.succeeded from status idle",
         reason: "illegal-transition",
       });
       expect(getThread(db, thread.id)).toEqual(thread);
@@ -126,13 +126,13 @@ describe("applyThreadLifecycleEvent", () => {
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      status: "provisioning",
+      status: "starting",
     });
     markThreadDeleted(db, noopNotifier, { threadId: thread.id });
     const beforeRow = getThread(db, thread.id);
 
     const outcome = applyThreadLifecycleEvent(db, spy, {
-      event: { type: "start.succeeded" },
+      event: { type: "run.started" },
       threadId: thread.id,
     });
 
@@ -163,31 +163,23 @@ describe("applyThreadLifecycleEvent", () => {
     expect(stopping.status).toBe("stopping");
     const stoppingRow = getThread(db, thread.id);
 
-    // A stopping thread structurally accepts no "begin new work" event: each is
-    // an illegal-transition no-op that leaves the row untouched. This is the
-    // replacement for the old notStopRequested supersession guard.
-    for (const event of [
-      { type: "turn.started" },
-      { type: "turn.dispatched" },
-      { type: "start.succeeded" },
-      { type: "runtime.observed-active" },
-    ] as const) {
-      const outcome = applyThreadLifecycleEvent(db, noopNotifier, {
-        event,
-        threadId: thread.id,
-      });
-      expect(outcome).toEqual({
-        applied: false,
-        detail: `no transition for ${event.type} from status stopping`,
-        reason: "illegal-transition",
-      });
-      expect(getThread(db, thread.id)).toEqual(stoppingRow);
-    }
+    // A stopping thread structurally accepts no "begin new work" event. This
+    // is the replacement for the old notStopRequested supersession guard.
+    const outcome = applyThreadLifecycleEvent(db, noopNotifier, {
+      event: { type: "run.started" },
+      threadId: thread.id,
+    });
+    expect(outcome).toEqual({
+      applied: false,
+      detail: "no transition for run.started from status stopping",
+      reason: "illegal-transition",
+    });
+    expect(getThread(db, thread.id)).toEqual(stoppingRow);
 
     // The stop landing settles the thread to idle.
     const settled = requireThreadLifecycleEventApplied(
       applyThreadLifecycleEvent(db, noopNotifier, {
-        event: { type: "stop.completed" },
+        event: { type: "stop.settled" },
         threadId: thread.id,
       }),
     );
@@ -197,7 +189,7 @@ describe("applyThreadLifecycleEvent", () => {
   it("no-ops as not-found for a missing thread", () => {
     const { db } = setup();
     const outcome = applyThreadLifecycleEvent(db, noopNotifier, {
-      event: { type: "turn.started" },
+      event: { type: "run.started" },
       threadId: "thr_nonexistent",
     });
     expect(outcome).toEqual({
@@ -212,22 +204,22 @@ describe("applyThreadLifecycleEvent", () => {
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      status: "created",
+      status: "starting",
     });
 
     const first = applyThreadLifecycleEvent(db, noopNotifier, {
-      event: { type: "turn.started" },
+      event: { type: "run.started" },
       threadId: thread.id,
     });
     const second = applyThreadLifecycleEvent(db, noopNotifier, {
-      event: { type: "turn.started" },
+      event: { type: "run.started" },
       threadId: thread.id,
     });
 
     expect(first.applied).toBe(true);
     expect(second).toEqual({
       applied: false,
-      detail: "no transition for turn.started from status active",
+      detail: "no transition for run.started from status active",
       reason: "illegal-transition",
     });
     expect(getThread(db, thread.id)?.status).toBe("active");
@@ -238,29 +230,29 @@ describe("applyThreadLifecycleEvent", () => {
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      status: "created",
+      status: "starting",
     });
 
     const outcome = db.transaction((tx: DbTransaction) => {
       const interleaved = withWriteAfterFirstRead(tx, () => {
         tx.update(threads)
-          .set({ status: "provisioning" })
+          .set({ status: "idle" })
           .where(eq(threads.id, thread.id))
           .run();
       });
       return applyThreadLifecycleEventInTransaction(interleaved, {
-        event: { type: "turn.started" },
+        event: { type: "run.started" },
         threadId: thread.id,
       });
     });
 
     expect(outcome).toEqual({
       applied: false,
-      detail: "status changed from created while applying turn.started",
+      detail: "status changed from starting while applying run.started",
       reason: "cas-conflict",
     });
     // The interleaved writer's value survives; the event's target does not.
-    expect(getThread(db, thread.id)?.status).toBe("provisioning");
+    expect(getThread(db, thread.id)?.status).toBe("idle");
   });
 
   it("sets latestAttentionAt only on attention-worthy transitions", () => {
@@ -273,7 +265,7 @@ describe("applyThreadLifecycleEvent", () => {
         // active → idle on a root thread requires attention.
         {
           attention: true,
-          event: { type: "turn.completed" },
+          event: { type: "run.succeeded" },
           parent: false,
           status: "active",
           target: "idle",
@@ -281,25 +273,25 @@ describe("applyThreadLifecycleEvent", () => {
         // active → idle on a child thread does not.
         {
           attention: false,
-          event: { type: "turn.completed" },
+          event: { type: "run.succeeded" },
           parent: true,
           status: "active",
           target: "idle",
         },
-        // created → active never requires attention.
+        // starting → active never requires attention.
         {
           attention: false,
-          event: { type: "turn.started" },
+          event: { type: "run.started" },
           parent: false,
-          status: "created",
+          status: "starting",
           target: "active",
         },
-        // provisioning → error requires attention.
+        // starting → error requires attention.
         {
           attention: true,
-          event: { type: "provision.failed" },
+          event: { type: "run.failed" },
           parent: false,
-          status: "provisioning",
+          status: "starting",
           target: "error",
         },
       ] as const;
@@ -353,7 +345,7 @@ describe("requireThreadLifecycleEventApplied", () => {
 
     const updated = requireThreadLifecycleEventApplied(
       applyThreadLifecycleEvent(db, noopNotifier, {
-        event: { type: "turn.dispatched" },
+        event: { type: "run.started" },
         threadId: thread.id,
       }),
     );
@@ -369,7 +361,7 @@ describe("requireThreadLifecycleEventApplied", () => {
     });
 
     const outcome = applyThreadLifecycleEvent(db, noopNotifier, {
-      event: { type: "turn.completed" },
+      event: { type: "run.succeeded" },
       threadId: thread.id,
     });
     let caught: ThreadLifecycleEventNotAppliedError | null = null;
@@ -382,7 +374,7 @@ describe("requireThreadLifecycleEventApplied", () => {
     }
     expect(caught?.reason).toBe("illegal-transition");
     expect(caught?.detail).toBe(
-      "no transition for turn.completed from status idle",
+      "no transition for run.succeeded from status idle",
     );
   });
 });

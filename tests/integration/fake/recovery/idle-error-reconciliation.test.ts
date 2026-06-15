@@ -45,7 +45,7 @@ describe.sequential(
 
         requireThreadLifecycleEventApplied(
           applyThreadLifecycleEvent(harness.db, harness.hub, {
-            event: { type: "command.failed" },
+            event: { type: "run.failed" },
             threadId: thread.id,
           }),
         );

@@ -118,10 +118,7 @@ export function buildFollowUpSubmitMode({
   if (hasPendingInteraction) {
     return { kind: "blocked", reason: "pending-interaction" };
   }
-  if (
-    runtimeDisplayStatus === "created" ||
-    runtimeDisplayStatus === "provisioning"
-  ) {
+  if (runtimeDisplayStatus === "starting") {
     return { kind: "stop-only", onStop };
   }
   if (isDefaultExecutionOptionsLoading) {

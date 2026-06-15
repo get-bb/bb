@@ -169,7 +169,7 @@ describe("automations", () => {
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      status: "created",
+      status: "starting",
       automationId: automation.id,
     });
 
@@ -293,7 +293,7 @@ describe("automations", () => {
     createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "codex",
-      status: "created",
+      status: "starting",
       automationId: automation.id,
     });
 

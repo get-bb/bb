@@ -278,7 +278,7 @@ export function loadActiveThreadProvisionContext(
     !thread ||
     thread.deletedAt !== null ||
     !context ||
-    thread.status !== "provisioning" ||
+    thread.status !== "starting" ||
     (context.state.environmentId !== null &&
       thread.environmentId !== context.state.environmentId)
   ) {
@@ -318,7 +318,7 @@ function ensureWorkspaceReadyEventRecord(
     !thread ||
     thread.deletedAt !== null ||
     !context ||
-    thread.status !== "provisioning" ||
+    thread.status !== "starting" ||
     (context.state.environmentId !== null &&
       context.state.environmentId !== args.environmentId)
   ) {
@@ -377,7 +377,7 @@ export function failThreadProvisioning(
     scope: threadScope(),
   });
   applyLoggedThreadLifecycleEvent(deps, {
-    event: { type: "provision.failed" },
+    event: { type: "run.failed" },
     threadId: args.thread.id,
   });
 }
@@ -594,7 +594,7 @@ function createProvisioningEnvironment(
       const activeContext = getActiveThreadProvisionContext(args.thread.id);
       if (
         !activeThread ||
-        activeThread.status !== "provisioning" ||
+        activeThread.status !== "starting" ||
         !activeContext ||
         activeContext.state.provisioningId !== args.context.state.provisioningId
       ) {
@@ -670,7 +670,7 @@ function createPreparedProvisioningEnvironment(
       const activeContext = getActiveThreadProvisionContext(args.thread.id);
       if (
         !activeThread ||
-        activeThread.status !== "provisioning" ||
+        activeThread.status !== "starting" ||
         !activeContext ||
         activeContext.state.provisioningId !== args.context.state.provisioningId
       ) {
@@ -937,7 +937,7 @@ function requestCheckoutUnmanagedEnvironmentProvision(
       const activeContext = getActiveThreadProvisionContext(args.thread.id);
       if (
         !activeThread ||
-        activeThread.status !== "provisioning" ||
+        activeThread.status !== "starting" ||
         !activeContext ||
         !isProvisionableContext(activeContext) ||
         activeContext.state.environmentId !== args.environment.id ||
@@ -1050,7 +1050,7 @@ async function requestPreparedEnvironmentProvision(
       const activeContext = getActiveThreadProvisionContext(args.thread.id);
       if (
         !activeThread ||
-        activeThread.status !== "provisioning" ||
+        activeThread.status !== "starting" ||
         !activeContext ||
         !isEnvironmentPreparedContext(activeContext) ||
         activeContext.state.environmentId !==

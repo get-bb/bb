@@ -67,7 +67,7 @@ export function createThread(
       providerId: input.providerId,
       title: input.title ?? null,
       titleFallback: input.titleFallback ?? null,
-      status: input.status ?? "created",
+      status: input.status ?? "starting",
       parentThreadId: input.parentThreadId ?? null,
       lastReadAt: now,
       latestAttentionAt: now,
@@ -348,8 +348,7 @@ export interface HasNonTerminalThreadInEnvironmentArgs {
 }
 
 const NON_TERMINAL_THREAD_STATUSES: readonly ThreadStatus[] = [
-  "created",
-  "provisioning",
+  "starting",
   "idle",
   "active",
 ];
@@ -370,7 +369,7 @@ function statusTransitionNeedsAttention(args: StatusTransition): boolean {
   }
 
   return (
-    args.currentStatus === "active" || args.currentStatus === "provisioning"
+    args.currentStatus === "active" || args.currentStatus === "starting"
   );
 }
 

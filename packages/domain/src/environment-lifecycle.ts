@@ -7,40 +7,43 @@ import type { EnvironmentStatus } from "./environment.js";
  * declares which row-level signals supersede each event.
  *
  * Unlike thread events, two destroy events carry a `destroyAttemptId`
- * payload: the db writer stamps it on dispatch and the evaluator compares it
+ * payload: the db writer stamps it on start and the evaluator compares it
  * on failure settlement, replacing the old per-attempt CAS in
  * restoreEnvironmentAfterDestroyAttemptFailure.
  *
  * Vocabulary (sources are the call sites inventoried in
  * packages/domain/test/environment-lifecycle.test.ts):
- * - `provision.requested` — server requested (re)provisioning of an existing
- *   environment record (checkout reuse, prepared env, managed reprovision).
- * - `provision.succeeded` — environment.provision RPC settled ok.
- * - `provision.failed` — provisioning failed (RPC failure, interrupted
- *   recovery, or an initiator-less settlement).
+ * - `provision.requested` — (re)provisioning starts for an existing
+ *   environment record.
+ * - `provision.succeeded` — provisioning completed and the workspace is ready.
+ * - `provision.failed` — provisioning failed.
  * - `provision.cancelled` — provisioning was abandoned because every
- *   dependent thread stopped or cancelled; the environment returns to its
- *   settled state (ready with a workspace, error without one).
- * - `destroy.dispatched` — the cleanup advance claimed the environment for a
- *   destroy RPC (stamps destroyAttemptId).
- * - `destroy.succeeded` — environment.destroy RPC settled ok.
- * - `destroy.failed` — environment.destroy RPC failed; the matching attempt
- *   restores the settled state.
- * - `destroy.lost` — the sweep recovered a stale destroying row whose RPC
- *   result was lost (restores with a workspace, finalizes without one).
- * - `cleanup.completed` — requested cleanup finished without a destroy RPC
- *   because the environment has no workspace path to remove.
+ *   dependent thread stopped or cancelled; the environment returns to ready
+ *   when a workspace exists, or enters destroy when there is no workspace.
+ * - `retire.requested` — the environment became cleanup-eligible and is now
+ *   scheduled for cleanup, but destroy has not started yet.
+ * - `retire.cancelled` — a work request revived a retiring environment before
+ *   cleanup started destroy.
+ * - `destroy.started` — cleanup started destroying a retiring/error
+ *   environment (stamps destroyAttemptId).
+ * - `destroy.completed` — destroy completed; the workspace is gone or no
+ *   workspace existed.
+ * - `destroy.failed` — destroy failed; the matching attempt restores cleanup
+ *   intent for retry.
+ * - `destroy.lost` — destroy result was lost and workspace existence is
+ *   unknown.
  */
 export type EnvironmentLifecycleEvent =
   | { type: "provision.requested" }
   | { type: "provision.succeeded" }
   | { type: "provision.failed" }
   | { type: "provision.cancelled" }
-  | { type: "destroy.dispatched"; destroyAttemptId: string }
-  | { type: "destroy.succeeded" }
+  | { type: "retire.requested" }
+  | { type: "retire.cancelled" }
+  | { type: "destroy.started"; destroyAttemptId: string }
+  | { type: "destroy.completed" }
   | { type: "destroy.failed"; destroyAttemptId: string }
-  | { type: "destroy.lost" }
-  | { type: "cleanup.completed" };
+  | { type: "destroy.lost" };
 
 export type EnvironmentLifecycleEventType = EnvironmentLifecycleEvent["type"];
 
@@ -55,11 +58,8 @@ export type EnvironmentLifecycleEventType = EnvironmentLifecycleEvent["type"];
  * may only be declared on events that carry one.
  */
 export interface EnvironmentLifecycleSupersessionPredicates {
-  cleanupRequested?: true;
   managed?: true;
   matchingDestroyAttempt?: true;
-  workspacePathAbsent?: true;
-  workspacePathPresent?: true;
 }
 
 export const ENVIRONMENT_LIFECYCLE_EVENT_PREDICATES: Record<
@@ -70,26 +70,18 @@ export const ENVIRONMENT_LIFECYCLE_EVENT_PREDICATES: Record<
   "provision.succeeded": {},
   "provision.failed": {},
   "provision.cancelled": {},
-  "destroy.dispatched": {
-    cleanupRequested: true,
-    managed: true,
-    workspacePathPresent: true,
-  },
-  "destroy.succeeded": {},
+  "retire.requested": { managed: true },
+  "retire.cancelled": {},
+  "destroy.started": { managed: true },
+  "destroy.completed": {},
   "destroy.failed": { matchingDestroyAttempt: true },
-  "destroy.lost": { cleanupRequested: true },
-  "cleanup.completed": {
-    cleanupRequested: true,
-    managed: true,
-    workspacePathAbsent: true,
-  },
+  "destroy.lost": {},
 };
 
 /**
- * Some events return the environment to its settled state, which depends on
- * whether a workspace exists on disk: ready with a path, error (or destroyed
- * for the lost-destroy sweep) without one. The evaluator resolves the branch
- * against the row's `path`.
+ * Some events return the environment to its settled provisioning state, which
+ * depends on whether a workspace exists on disk: ready with a path, error
+ * without one. The evaluator resolves the branch against the row's `path`.
  */
 export interface EnvironmentLifecyclePathDependentTarget {
   withWorkspacePath: EnvironmentStatus;
@@ -117,36 +109,30 @@ export const ENVIRONMENT_LIFECYCLE: Record<
     "provision.failed": "error",
     "provision.cancelled": {
       withWorkspacePath: "ready",
-      withoutWorkspacePath: "error",
+      withoutWorkspacePath: "destroying",
     },
   },
   ready: {
     "provision.requested": "provisioning",
-    "destroy.dispatched": "destroying",
-    "cleanup.completed": "destroyed",
+    "retire.requested": "retiring",
+  },
+  retiring: {
+    "retire.cancelled": "ready",
+    "destroy.started": "destroying",
   },
   error: {
     // Error-recovery reprovision: the environment record still exists and a
     // retry is valid. (Provision settlement no longer revives error — a
     // settlement only fires from provisioning.)
     "provision.requested": "provisioning",
-    "cleanup.completed": "destroyed",
+    "destroy.started": "destroying",
   },
   destroying: {
     // No provision.* here: nothing reprovisions a destroying environment, so a
     // destroy runs to completion without a colliding provision settlement.
-    "destroy.succeeded": "destroyed",
-    "destroy.failed": {
-      withWorkspacePath: "ready",
-      withoutWorkspacePath: "error",
-    },
-    "destroy.lost": {
-      withWorkspacePath: "ready",
-      withoutWorkspacePath: "destroyed",
-    },
-    // The pathless cleanup advance finalizes a destroying environment directly,
-    // without a destroy RPC round trip.
-    "cleanup.completed": "destroyed",
+    "destroy.completed": "destroyed",
+    "destroy.failed": "retiring",
+    "destroy.lost": "error",
   },
   // Terminal: a destroyed environment is never revived. A thread that needs an
   // environment again gets a fresh record (future "Provision environment").
@@ -155,7 +141,6 @@ export const ENVIRONMENT_LIFECYCLE: Record<
 
 /** The environment-row fields supersession predicates evaluate against. */
 export interface EnvironmentLifecycleRowState {
-  cleanupRequestedAt: number | null;
   destroyAttemptId: string | null;
   managed: boolean;
   path: string | null;
@@ -190,15 +175,6 @@ export function evaluateEnvironmentLifecycleEvent(
   const predicates = ENVIRONMENT_LIFECYCLE_EVENT_PREDICATES[event.type];
   if (predicates.managed && !environment.managed) {
     return { noop: "superseded", detail: "environment is not managed" };
-  }
-  if (predicates.cleanupRequested && environment.cleanupRequestedAt === null) {
-    return { noop: "superseded", detail: "cleanupRequestedAt cleared" };
-  }
-  if (predicates.workspacePathPresent && environment.path === null) {
-    return { noop: "superseded", detail: "workspace path missing" };
-  }
-  if (predicates.workspacePathAbsent && environment.path !== null) {
-    return { noop: "superseded", detail: "workspace path present" };
   }
   if (
     predicates.matchingDestroyAttempt &&

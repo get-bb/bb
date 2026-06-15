@@ -582,7 +582,6 @@ describe("thread runtime config", () => {
         {
           thread,
           environment: {
-            cleanupRequestedAt: environment.cleanupRequestedAt,
             hostId: environment.hostId,
             id: environment.id,
             path: environment.path,

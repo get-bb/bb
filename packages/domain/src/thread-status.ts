@@ -1,9 +1,8 @@
 import { z } from "zod";
 
 export const threadStatusValues = [
-  "created",
-  "provisioning",
   "idle",
+  "starting",
   "active",
   "stopping",
   "error",

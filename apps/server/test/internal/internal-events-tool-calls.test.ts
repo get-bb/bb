@@ -503,7 +503,7 @@ describe("internal event and tool-call routes", () => {
       });
 
       expect(response.status).toBe(200);
-      // turn.completed has no THREAD_LIFECYCLE cell for "idle": the
+      // run.succeeded has no THREAD_LIFECYCLE cell for "idle": the
       // redelivered completion is an illegal-transition no-op and the thread
       // row is untouched.
       expect(

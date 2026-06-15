@@ -54,8 +54,7 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
 
 function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
   switch (status) {
-    case "created":
-    case "provisioning":
+    case "starting":
     case "idle":
     case "active":
     case "stopping":

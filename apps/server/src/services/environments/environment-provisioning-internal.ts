@@ -106,6 +106,11 @@ interface EnvironmentProvisionTransactionDeps extends EnvironmentProvisionWriteD
   pendingInteractions: AppDeps["pendingInteractions"];
 }
 
+interface CompletePathlessDestroyInTransactionArgs {
+  environment: Pick<Environment, "path" | "status">;
+  environmentId: string;
+}
+
 interface AdvanceEnvironmentProvisioningArgs {
   environmentId: string | null | undefined;
   request?: EnvironmentProvisionRequest | null;
@@ -430,9 +435,32 @@ function restoreProvisioningEnvironmentAfterCancelledProvisioningOutcomeInTransa
   });
   if (outcome.applied) {
     deps.hub.notifyEnvironment(args.environment.id, outcome.changes);
+    completePathlessDestroyInTransaction(deps, {
+      environmentId: args.environment.id,
+      environment: outcome.environment,
+    });
   }
 
   return true;
+}
+
+function completePathlessDestroyInTransaction(
+  deps: EnvironmentProvisionTransactionDeps,
+  args: CompletePathlessDestroyInTransactionArgs,
+): void {
+  if (args.environment.status !== "destroying" || args.environment.path) {
+    return;
+  }
+  const completedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+    deps,
+    {
+      environmentId: args.environmentId,
+      event: { type: "destroy.completed" },
+    },
+  );
+  if (completedOutcome.applied) {
+    deps.hub.notifyEnvironment(args.environmentId, completedOutcome.changes);
+  }
 }
 
 interface ProvisionedEnvironmentBranchMetadata {
@@ -523,7 +551,7 @@ function recordEnvironmentProvisioningFailureInTransaction(
       scope: threadScope(),
     });
     const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
-      event: { type: "provision.failed" },
+      event: { type: "run.failed" },
       threadId: thread.id,
     });
     if (outcome.applied) {
@@ -662,7 +690,7 @@ export function settleEnvironmentProvisionCommandResult(
           threadId: thread.id,
           environmentId: args.command.environmentId,
           provisioningId: environmentProvisioningId,
-          status: thread.status === "provisioning" ? "active" : "completed",
+          status: thread.status === "starting" ? "active" : "completed",
           entries,
         });
         args.deps.hub.notifyThread(thread.id, ["events-appended"], {
@@ -806,6 +834,10 @@ export function settleEnvironmentProvisionCancelCommandResult(
       args.command.environmentId,
       cancelledOutcome.changes,
     );
+    completePathlessDestroyInTransaction(args.deps, {
+      environmentId: args.command.environmentId,
+      environment: cancelledOutcome.environment,
+    });
   }
 
   let finalizedThread = false;

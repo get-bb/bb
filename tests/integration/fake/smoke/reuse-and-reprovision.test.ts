@@ -181,7 +181,6 @@ describe.sequential("fake provider smoke reuse integration", () => {
       await expect(response.json()).resolves.toMatchObject({
         code: "environment_not_ready",
         details: {
-          cleanupRequestedAt: null,
           environmentStatus: "error",
           hasPath: false,
         },

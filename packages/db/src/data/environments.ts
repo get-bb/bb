@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql, lt, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, ne, sql, lt } from "drizzle-orm";
 import type {
   DiscoveredWorkspaceProperties,
   EnvironmentChangeKind,
@@ -18,7 +18,6 @@ type EnvironmentWriteConnection = DbConnection | DbTransaction;
 type EnvironmentRow = typeof environments.$inferSelect;
 
 export interface CreateEnvironmentInput {
-  cleanupRequestedAt?: number | null;
   name?: string | null;
   projectId: string;
   hostId: string;
@@ -56,7 +55,6 @@ export function createEnvironment(
       baseBranch: input.baseBranch ?? null,
       defaultBranch: input.defaultBranch ?? null,
       mergeBaseBranch: input.mergeBaseBranch ?? null,
-      cleanupRequestedAt: input.cleanupRequestedAt ?? null,
       workspaceProvisionType: input.workspaceProvisionType,
       status: input.status ?? "provisioning",
       createdAt: now,
@@ -125,28 +123,15 @@ interface EnvironmentMetadataUpdateColumns {
   path?: string | null;
 }
 
-interface EnvironmentCleanupUpdateColumns {
-  cleanupRequestedAt: number | null;
-}
-
 interface EnvironmentMetadataChangeArgs {
   existing: EnvironmentRow;
   metadata: EnvironmentMetadataUpdateColumns;
   updated: EnvironmentRow;
 }
 
-interface EnvironmentCleanupChangeArgs {
-  existing: EnvironmentRow;
-  updated: EnvironmentRow;
-}
-
 export interface UpdateEnvironmentMetadataInput {
   mergeBaseBranch?: string | null;
   name?: string | null;
-}
-
-export interface RequestEnvironmentCleanupInput {
-  requestedAt?: number;
 }
 
 export interface ListRetiredLoadedEnvironmentIdsOnHostArgs {
@@ -219,10 +204,6 @@ function environmentMetadataChanged(
   );
 }
 
-function environmentCleanupChanged(args: EnvironmentCleanupChangeArgs): boolean {
-  return args.updated.cleanupRequestedAt !== args.existing.cleanupRequestedAt;
-}
-
 function updateEnvironmentMetadataRecord(
   db: EnvironmentWriteConnection,
   notifier: DbNotifier,
@@ -245,33 +226,6 @@ function updateEnvironmentMetadataRecord(
   }
 
   if (environmentMetadataChanged({ existing, metadata, updated })) {
-    notifier.notifyEnvironment(id, ["metadata-changed"]);
-  }
-
-  return updated;
-}
-
-function updateEnvironmentCleanupRecord(
-  db: EnvironmentWriteConnection,
-  notifier: DbNotifier,
-  id: string,
-  cleanup: EnvironmentCleanupUpdateColumns,
-) {
-  const existing = getEnvironment(db, id);
-  if (!existing) return null;
-
-  const updated = db
-    .update(environments)
-    .set({ ...cleanup, updatedAt: Date.now() })
-    .where(eq(environments.id, id))
-    .returning()
-    .get();
-
-  if (!updated) {
-    return null;
-  }
-
-  if (environmentCleanupChanged({ existing, updated })) {
     notifier.notifyEnvironment(id, ["metadata-changed"]);
   }
 
@@ -316,35 +270,13 @@ export function recordProvisionedEnvironmentWorkspace(
   });
 }
 
-export function recordEnvironmentCleanupRequest(
-  db: EnvironmentWriteConnection,
-  notifier: DbNotifier,
-  id: string,
-  input: RequestEnvironmentCleanupInput,
-) {
-  const existing = getEnvironment(db, id);
-  if (!existing) {
-    return null;
-  }
-
-  if (existing.cleanupRequestedAt !== null) {
-    return existing;
-  }
-
-  return updateEnvironmentCleanupRecord(db, notifier, id, {
-    cleanupRequestedAt:
-      existing.cleanupRequestedAt ?? input.requestedAt ?? Date.now(),
-  });
-}
-
 export interface ListStaleDestroyingManagedEnvironmentsArgs {
   updatedBefore: number;
 }
 
 /**
- * Managed environments stuck in "destroying" with cleanup intent whose
- * destroy RPC result was presumably lost. The sweep applies `destroy.lost`
- * to each.
+ * Managed environments stuck in "destroying" whose destroy RPC result was
+ * presumably lost. The sweep applies `destroy.lost` to each.
  */
 export function listStaleDestroyingManagedEnvironments(
   db: DbConnection,
@@ -357,7 +289,6 @@ export function listStaleDestroyingManagedEnvironments(
       and(
         eq(environments.managed, true),
         eq(environments.status, "destroying"),
-        isNotNull(environments.cleanupRequestedAt),
         lt(environments.updatedAt, args.updatedBefore),
       ),
     )
@@ -448,14 +379,13 @@ function applyEnvironmentLifecycleEventRecord(
     status: evaluation.to,
     updatedAt: Date.now(),
   };
-  if (args.event.type === "destroy.dispatched") {
+  if (args.event.type === "destroy.started") {
     set.destroyAttemptId = args.event.destroyAttemptId;
   }
   if (args.event.type === "destroy.failed" || args.event.type === "destroy.lost") {
     set.destroyAttemptId = null;
   }
   if (evaluation.to === "destroyed") {
-    set.cleanupRequestedAt = null;
     set.destroyAttemptId = null;
   }
 
@@ -468,7 +398,7 @@ function applyEnvironmentLifecycleEventRecord(
     eq(environments.id, args.environmentId),
     eq(environments.status, environment.status),
   ];
-  if (args.event.type === "destroy.dispatched") {
+  if (args.event.type === "destroy.started") {
     conditions.push(
       sql`NOT EXISTS (
         SELECT 1 FROM threads
@@ -498,19 +428,14 @@ function applyEnvironmentLifecycleEventRecord(
     };
   }
 
-  const changes: EnvironmentChangeKind[] = ["status-changed"];
-  if (updated.cleanupRequestedAt !== environment.cleanupRequestedAt) {
-    changes.push("metadata-changed");
-  }
-  return { applied: true, changes, environment: updated };
+  return { applied: true, changes: ["status-changed"], environment: updated };
 }
 
 /**
  * Single writer for environment lifecycle events: loads the row, evaluates
  * the event against ENVIRONMENT_LIFECYCLE and its supersession predicates,
  * applies the transition with a status compare-and-set, and stamps or clears
- * the per-event columns (destroyAttemptId on dispatch/settlement, cleanup
- * intent on destroyed) — all in one transaction. Never throws on stale or
+ * destroyAttemptId on start/settlement — all in one transaction. Never throws on stale or
  * illegal events; returns a typed outcome for the caller to log. Use
  * applyEnvironmentLifecycleEventInTransaction from inside an existing
  * transaction (the caller then owns notification of `outcome.changes`).

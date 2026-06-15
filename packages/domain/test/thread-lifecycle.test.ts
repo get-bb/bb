@@ -5,19 +5,17 @@
  * stop intent is now the `stopping` *status*, not a `stopRequestedAt`
  * side-field. The two axes are:
  *
- * - Execution status (one column): created → provisioning → active →
- *   stopping → idle | error. Both the "working" intent (`active`) and the
- *   "stopping" intent (`stopping`) are real states here.
+ * - Execution status (one column): idle → starting → active → stopping →
+ *   idle | error. Both the "working" intent (`active`) and the "stopping"
+ *   intent (`stopping`) are real states here.
  * - Record fields (orthogonal): deletedAt, archivedAt — surfaced as the only
  *   supersession predicates (`notDeleted`, `notArchived`).
  *
- * `stop.requested` (active/created/provisioning → stopping) replaces the old
- * `markThreadStopRequested` field write. A `stopping` row has NO
- * turn.dispatched / turn.started / start.succeeded / runtime.observed-active
- * cell: dispatching new work into it is structurally impossible, which is the
- * table form of the old `notStopRequested` guard. A settled stop lands on
- * `idle` (stop.completed / turn.completed / turn.interrupted / session.lost) or
- * `error` (turn.failed / runtime.exited / etc). THREAD_LIFECYCLE and
+ * `stop.requested` replaces the old `markThreadStopRequested` field write. A
+ * `stopping` row has NO run.started cell: dispatching new work into it is
+ * structurally impossible, which is the table form of the old
+ * `notStopRequested` guard. A settled stop lands on `idle` (`stop.settled` or
+ * `run.succeeded`) or `error` (`run.failed`). THREAD_LIFECYCLE and
  * THREAD_LIFECYCLE_EVENT_PREDICATES in src/thread-lifecycle.ts are the source
  * of truth; these assertions pin them.
  */
@@ -35,21 +33,12 @@ import {
 } from "../src/thread-status.js";
 
 const allEventTypes: readonly ThreadLifecycleEventType[] = [
-  "turn.started",
-  "turn.completed",
-  "turn.failed",
-  "turn.interrupted",
-  "runtime.exited",
-  "turn.dispatched",
-  "reprovision.started",
-  "start.succeeded",
-  "command.failed",
-  "provision.failed",
-  "workspace.lost",
+  "run.preparing",
+  "run.started",
+  "run.succeeded",
+  "run.failed",
   "stop.requested",
-  "stop.completed",
-  "session.lost",
-  "runtime.observed-active",
+  "stop.settled",
 ];
 
 function rowState(
@@ -89,100 +78,40 @@ describe("THREAD_LIFECYCLE table", () => {
 
   it("matches the designed two-axis transitions exactly", () => {
     expect(THREAD_LIFECYCLE).toEqual({
-      created: {
-        "turn.started": "active",
-        "turn.completed": "idle",
-        "turn.failed": "error",
-        "turn.interrupted": "idle",
-        "runtime.exited": "error",
-        "start.succeeded": "active",
-        "command.failed": "error",
-        "provision.failed": "error",
-        "workspace.lost": "error",
-        "stop.requested": "stopping",
-        "session.lost": "error",
-        "runtime.observed-active": "active",
-      },
-      provisioning: {
-        "turn.started": "active",
-        "turn.completed": "idle",
-        "turn.failed": "error",
-        "turn.interrupted": "idle",
-        "runtime.exited": "error",
-        "start.succeeded": "active",
-        "command.failed": "error",
-        "provision.failed": "error",
-        "workspace.lost": "error",
-        "stop.requested": "stopping",
-        "session.lost": "error",
-        "runtime.observed-active": "active",
-      },
       idle: {
-        "turn.started": "active",
-        "turn.failed": "error",
-        "runtime.exited": "error",
-        "turn.dispatched": "active",
-        "reprovision.started": "provisioning",
-        "start.succeeded": "active",
-        "command.failed": "error",
-        "provision.failed": "error",
-        "workspace.lost": "error",
-        "runtime.observed-active": "active",
+        "run.preparing": "starting",
+        "run.started": "active",
+      },
+      starting: {
+        "run.started": "active",
+        "run.failed": "error",
+        "stop.requested": "stopping",
       },
       active: {
-        "turn.completed": "idle",
-        "turn.failed": "error",
-        "turn.interrupted": "idle",
-        "runtime.exited": "error",
-        "command.failed": "error",
-        "provision.failed": "error",
-        "workspace.lost": "error",
+        "run.succeeded": "idle",
+        "run.failed": "error",
         "stop.requested": "stopping",
-        "session.lost": "error",
       },
       stopping: {
-        "stop.completed": "idle",
-        "turn.completed": "idle",
-        "turn.interrupted": "idle",
-        "turn.failed": "error",
-        "runtime.exited": "error",
-        "provision.failed": "error",
-        "workspace.lost": "error",
-        "command.failed": "error",
-        "session.lost": "idle",
+        "run.succeeded": "idle",
+        "run.failed": "error",
+        "stop.settled": "idle",
       },
       error: {
-        "turn.started": "active",
-        "turn.completed": "idle",
-        "turn.interrupted": "idle",
-        "turn.dispatched": "active",
-        "reprovision.started": "provisioning",
-        "start.succeeded": "active",
-        "runtime.observed-active": "active",
+        "run.preparing": "starting",
+        "run.started": "active",
       },
     });
   });
 
   it("matches the designed predicates exactly", () => {
     expect(THREAD_LIFECYCLE_EVENT_PREDICATES).toEqual({
-      "turn.started": {},
-      "turn.completed": {},
-      "turn.failed": {},
-      "turn.interrupted": {},
-      "runtime.exited": {},
-      "turn.dispatched": { notArchived: true, notDeleted: true },
-      "reprovision.started": {},
-      "start.succeeded": {
-        notArchived: true,
-        notDeleted: true,
-      },
-      "command.failed": { notDeleted: true },
-      "provision.failed": { notDeleted: true },
-      "workspace.lost": { notArchived: true, notDeleted: true },
+      "run.preparing": { notArchived: true, notDeleted: true },
+      "run.started": { notArchived: true, notDeleted: true },
+      "run.succeeded": {},
+      "run.failed": { notDeleted: true },
       "stop.requested": {},
-      "stop.completed": {},
-      "session.lost": {},
-      "runtime.observed-active": { notDeleted: true },
+      "stop.settled": {},
     });
   });
 
@@ -269,39 +198,32 @@ describe("evaluateThreadLifecycleEvent", () => {
     }
   });
 
-  it("settles a stopping thread to idle when its turn completes on its own", () => {
+  it("settles a stopping thread to idle when its work completes on its own", () => {
     expect(
       evaluateThreadLifecycleEvent({
-        event: { type: "turn.completed" },
+        event: { type: "run.succeeded" },
         thread: rowState("stopping"),
       }),
     ).toEqual({ to: "idle" });
   });
 
   it("does not reactivate a stopping thread on dispatched/started work", () => {
-    for (const eventType of [
-      "turn.dispatched",
-      "turn.started",
-      "start.succeeded",
-      "runtime.observed-active",
-    ] as const) {
-      expect(
-        evaluateThreadLifecycleEvent({
-          event: { type: eventType },
-          thread: rowState("stopping"),
-        }),
-      ).toEqual({
-        noop: "illegal-transition",
-        detail: `no transition for ${eventType} from status stopping`,
-      });
-    }
+    expect(
+      evaluateThreadLifecycleEvent({
+        event: { type: "run.started" },
+        thread: rowState("stopping"),
+      }),
+    ).toEqual({
+      noop: "illegal-transition",
+      detail: "no transition for run.started from status stopping",
+    });
   });
 
   it("reports superseded before illegal-transition", () => {
-    // start.succeeded has no cell for "active", but the deleted row must win.
+    // run.started has no cell for "active", but the deleted row must win.
     expect(
       evaluateThreadLifecycleEvent({
-        event: { type: "start.succeeded" },
+        event: { type: "run.started" },
         thread: rowState("active", { deletedAt: 1_000 }),
       }),
     ).toEqual({ noop: "superseded", detail: "deletedAt set" });
@@ -310,8 +232,8 @@ describe("evaluateThreadLifecycleEvent", () => {
   it("checks deleted, then archived", () => {
     expect(
       evaluateThreadLifecycleEvent({
-        event: { type: "start.succeeded" },
-        thread: rowState("created", {
+        event: { type: "run.started" },
+        thread: rowState("starting", {
           archivedAt: 1_000,
           deletedAt: 1_000,
         }),
@@ -319,8 +241,8 @@ describe("evaluateThreadLifecycleEvent", () => {
     ).toEqual({ noop: "superseded", detail: "deletedAt set" });
     expect(
       evaluateThreadLifecycleEvent({
-        event: { type: "start.succeeded" },
-        thread: rowState("created", {
+        event: { type: "run.started" },
+        thread: rowState("starting", {
           archivedAt: 1_000,
         }),
       }),

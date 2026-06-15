@@ -1,4 +1,9 @@
-import type { DbConnection, DbNotifier, DbTransaction } from "@bb/db";
+import type {
+  DbConnection,
+  DbNotifier,
+  DbQueryConnection,
+  DbTransaction,
+} from "@bb/db";
 import {
   applyEnvironmentLifecycleEvent,
   applyEnvironmentLifecycleEventInTransaction,
@@ -8,7 +13,7 @@ import {
 import type { ServerLogger } from "../../types.js";
 
 interface ApplyLoggedEnvironmentLifecycleEventDeps {
-  db: DbConnection;
+  db: DbQueryConnection;
   hub: DbNotifier;
   logger: ServerLogger;
 }
@@ -37,16 +42,25 @@ function logUnappliedEnvironmentLifecycleEvent(
   );
 }
 
+function isDbConnection(db: DbQueryConnection): db is DbConnection {
+  return "$client" in db;
+}
+
 /**
- * Applies an environment lifecycle event in its own transaction (the db
- * writer notifies `outcome.changes` when applied) and logs every non-applied
- * outcome so stale events are observable instead of silently swallowed.
+ * Applies an environment lifecycle event, reusing an existing transaction when
+ * the caller is already inside one. Logs every non-applied outcome so stale
+ * events are observable instead of silently swallowed.
  */
 export function applyLoggedEnvironmentLifecycleEvent(
   deps: ApplyLoggedEnvironmentLifecycleEventDeps,
   args: ApplyEnvironmentLifecycleEventArgs,
 ): ApplyEnvironmentLifecycleEventOutcome {
-  const outcome = applyEnvironmentLifecycleEvent(deps.db, deps.hub, args);
+  const outcome = isDbConnection(deps.db)
+    ? applyEnvironmentLifecycleEvent(deps.db, deps.hub, args)
+    : applyEnvironmentLifecycleEventInTransaction(deps.db, args);
+  if (!isDbConnection(deps.db) && outcome.applied) {
+    deps.hub.notifyEnvironment(args.environmentId, outcome.changes);
+  }
   logUnappliedEnvironmentLifecycleEvent(deps.logger, args, outcome);
   return outcome;
 }

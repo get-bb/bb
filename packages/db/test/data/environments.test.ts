@@ -6,7 +6,6 @@ import type { DbNotifier } from "../../src/notifier.js";
 import {
   createEnvironment,
   listRetiredLoadedEnvironmentIdsOnHost,
-  recordEnvironmentCleanupRequest,
   recordProvisionedEnvironmentWorkspace,
   updateEnvironmentMetadata,
 } from "../../src/data/environments.js";
@@ -149,50 +148,6 @@ describe("environments", () => {
     expect(notifier.notifyEnvironment).toHaveBeenCalledWith(environment.id, [
       "metadata-changed",
     ]);
-  });
-
-  it("records cleanup intent once and is idempotent (cleanup is monotonic)", () => {
-    const { db, host, project } = setup();
-    const notifier = createNotifierSpy();
-    const environment = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      workspaceProvisionType: "managed-worktree",
-      managed: true,
-      status: "ready",
-    });
-
-    const requested = recordEnvironmentCleanupRequest(
-      db,
-      notifier,
-      environment.id,
-      {
-        requestedAt: 123,
-      },
-    );
-    // Under Decision B* cleanup intent is monotonic: once recorded it is never
-    // cancelled, and a repeated request keeps the original timestamp without a
-    // second write or notification.
-    const requestedAgain = recordEnvironmentCleanupRequest(
-      db,
-      notifier,
-      environment.id,
-      {
-        requestedAt: 456,
-      },
-    );
-
-    expect(requested).toMatchObject({
-      cleanupRequestedAt: 123,
-    });
-    expect(requestedAgain).toMatchObject({
-      cleanupRequestedAt: 123,
-      updatedAt: requested?.updatedAt,
-    });
-    expect(notifier.notifyEnvironment).toHaveBeenCalledExactlyOnceWith(
-      environment.id,
-      ["metadata-changed"],
-    );
   });
 
   it("lists loaded environments that no longer belong to the host as live records", () => {

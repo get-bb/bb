@@ -16,7 +16,6 @@ function makeEnvironment(overrides: Partial<Environment> = {}): Environment {
   return {
     baseBranch: null,
     branchName: "feature/test",
-    cleanupRequestedAt: null,
     createdAt: 1,
     defaultBranch: "main",
     hostId: "host-1",

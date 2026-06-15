@@ -201,7 +201,6 @@ export const environments = sqliteTable(
     baseBranch: text("base_branch"),
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
-    cleanupRequestedAt: integer("cleanup_requested_at"),
     destroyAttemptId: text("destroy_attempt_id"),
     workspaceProvisionType: text("workspace_provision_type")
       .$type<WorkspaceProvisionType>()
@@ -216,7 +215,6 @@ export const environments = sqliteTable(
   (table) => [
     uniqueIndex("environments_host_path_idx").on(table.hostId, table.path),
     index("environments_project_idx").on(table.projectId),
-    index("environments_cleanup_requested_idx").on(table.cleanupRequestedAt),
     index("environments_status_idx").on(table.status),
   ],
 );
@@ -278,7 +276,7 @@ export const threads = sqliteTable(
     titleFallback: text("title_fallback"),
     status: text("status", { enum: threadStatusValues })
       .notNull()
-      .default("created"),
+      .default("starting"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },

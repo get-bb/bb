@@ -1,4 +1,5 @@
 import {
+  getEnvironment,
   getThread,
   requireThreadLifecycleEventApplied,
   type DbTransaction,
@@ -254,7 +255,6 @@ async function queueActiveParentSystemMessage(
     environment: {
       id: args.environment.id,
       hostId: args.environment.hostId,
-      cleanupRequestedAt: args.environment.cleanupRequestedAt,
       path: args.environment.path,
       status: args.environment.status,
       workspaceProvisionType: args.environment.workspaceProvisionType,
@@ -314,7 +314,6 @@ async function queueReadyParentSystemMessage(
     environment: {
       id: args.environment.id,
       hostId: args.environment.hostId,
-      cleanupRequestedAt: args.environment.cleanupRequestedAt,
       path: args.environment.path,
       status: args.environment.status,
       workspaceProvisionType: args.environment.workspaceProvisionType,
@@ -348,7 +347,7 @@ async function queueReadyParentSystemMessage(
         requireThreadLifecycleEventApplied(
           applyLoggedThreadLifecycleEventInTransaction(
             { db: tx, logger: deps.logger },
-            { event: { type: "turn.dispatched" }, threadId: args.thread.id },
+            { event: { type: "run.started" }, threadId: args.thread.id },
           ),
         );
         transitioned = true;
@@ -420,7 +419,9 @@ export async function queueParentSystemMessage(
     return true;
   }
 
-  const readyEnvironment = requireReadyThreadEnvironment(environment);
+  const readyEnvironment = requireReadyThreadEnvironment(
+    getEnvironment(deps.db, environment.id) ?? environment,
+  );
   return await queueReadyParentSystemMessage(deps, {
     thread: parentThread,
     input: args.input,

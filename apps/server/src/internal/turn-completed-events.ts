@@ -20,12 +20,12 @@ function lifecycleEventForTurnCompletion(
   status: Extract<ThreadEvent, { type: "turn/completed" }>["status"],
 ): ThreadLifecycleEvent {
   if (status === "failed") {
-    return { type: "turn.failed" };
+    return { type: "run.failed" };
   }
   if (status === "interrupted") {
-    return { type: "turn.interrupted" };
+    return { type: "stop.settled" };
   }
-  return { type: "turn.completed" };
+  return { type: "run.succeeded" };
 }
 
 export function applyTurnCompletedEvent(

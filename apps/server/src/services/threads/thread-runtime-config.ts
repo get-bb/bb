@@ -30,7 +30,6 @@ const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
   {},
 );
 export interface ThreadRuntimeCommandEnvironment {
-  cleanupRequestedAt: number | null;
   hostId: string;
   id: string;
   path: string | null;

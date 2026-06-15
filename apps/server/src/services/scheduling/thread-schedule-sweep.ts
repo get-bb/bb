@@ -232,7 +232,7 @@ function advanceSkippedThreadSchedule(
 function canQueueScheduleForThread(thread: ScheduledThread): boolean {
   // A thread that is `stopping` is winding down its turn; it is neither idle
   // nor active, so it is excluded here structurally. The lifecycle table backs
-  // this up — `stopping` has no turn.dispatched cell — so a scheduled turn
+  // this up — `stopping` has no run.started cell — so a scheduled turn
   // cannot reactivate a stopping thread even if this early-skip is bypassed.
   return thread.status === "idle" || thread.status === "active";
 }
@@ -470,7 +470,6 @@ async function prepareDueThreadSchedule(
       environment: {
         id: environment.id,
         hostId: environment.hostId,
-        cleanupRequestedAt: environment.cleanupRequestedAt,
         path: environment.path,
         status: environment.status,
         workspaceProvisionType: environment.workspaceProvisionType,
@@ -630,7 +629,7 @@ async function runDueThreadSchedule(
   });
   if (preparation.targetIntent.kind === "start") {
     applyLoggedThreadLifecycleEvent(deps, {
-      event: { type: "turn.dispatched" },
+      event: { type: "run.started" },
       threadId: preparation.thread.id,
     });
   }

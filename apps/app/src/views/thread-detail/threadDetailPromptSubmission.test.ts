@@ -232,10 +232,9 @@ describe("threadDetailPromptSubmission", () => {
       "host-reconnecting",
     ];
     const immediateStatuses: ThreadRuntimeDisplayStatus[] = [
-      "created",
       "error",
       "idle",
-      "provisioning",
+      "starting",
       "waiting-for-host",
     ];
 
@@ -247,12 +246,9 @@ describe("threadDetailPromptSubmission", () => {
     }
   });
 
-  it("offers stop-only mode while a thread is created or provisioning", () => {
+  it("offers stop-only mode while a thread is starting", () => {
     const onStop = () => undefined;
-    const stoppableStatuses: ThreadRuntimeDisplayStatus[] = [
-      "created",
-      "provisioning",
-    ];
+    const stoppableStatuses: ThreadRuntimeDisplayStatus[] = ["starting"];
 
     for (const runtimeDisplayStatus of stoppableStatuses) {
       expect(
@@ -267,7 +263,7 @@ describe("threadDetailPromptSubmission", () => {
     }
   });
 
-  it("keeps stopping and pending interactions blocked before provisioning stop-only mode", () => {
+  it("keeps stopping and pending interactions blocked before starting stop-only mode", () => {
     const onStop = () => undefined;
     expect(
       buildFollowUpSubmitMode({
@@ -275,7 +271,7 @@ describe("threadDetailPromptSubmission", () => {
         isDefaultExecutionOptionsLoading: false,
         isStopRequested: true,
         onStop,
-        runtimeDisplayStatus: "provisioning",
+        runtimeDisplayStatus: "starting",
       }),
     ).toEqual({ kind: "blocked", reason: "stopping" });
     expect(
@@ -284,7 +280,7 @@ describe("threadDetailPromptSubmission", () => {
         isDefaultExecutionOptionsLoading: false,
         isStopRequested: false,
         onStop,
-        runtimeDisplayStatus: "provisioning",
+        runtimeDisplayStatus: "starting",
       }),
     ).toEqual({ kind: "blocked", reason: "pending-interaction" });
   });

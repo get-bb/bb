@@ -32,7 +32,6 @@ const descriptionCases: DescriptionCase[] = [
       code: "environment_not_ready",
       message: "Environment unavailable",
       details: {
-        cleanupRequestedAt: null,
         environmentStatus: "provisioning",
         hasPath: false,
       },
@@ -49,7 +48,6 @@ const descriptionCases: DescriptionCase[] = [
       code: "environment_not_ready",
       message: "Environment unavailable",
       details: {
-        cleanupRequestedAt: null,
         environmentStatus: "ready",
         hasPath: false,
       },
@@ -66,7 +64,6 @@ const descriptionCases: DescriptionCase[] = [
       code: "environment_not_ready",
       message: "Environment unavailable",
       details: {
-        cleanupRequestedAt: null,
         environmentStatus: "ready",
         hasPath: true,
       },
@@ -83,7 +80,6 @@ const descriptionCases: DescriptionCase[] = [
       code: "environment_not_ready",
       message: "Environment unavailable",
       details: {
-        cleanupRequestedAt: null,
         environmentStatus: "error",
         hasPath: false,
       },
@@ -95,12 +91,27 @@ const descriptionCases: DescriptionCase[] = [
     },
   },
   {
+    name: "environment_not_ready retiring",
+    body: {
+      code: "environment_not_ready",
+      message: "Environment unavailable",
+      details: {
+        environmentStatus: "retiring",
+        hasPath: true,
+      },
+    },
+    expected: {
+      title: "Workspace cleaning up",
+      body: "Workspace is being cleaned up.",
+      severity: "info",
+    },
+  },
+  {
     name: "environment_not_ready destroying",
     body: {
       code: "environment_not_ready",
       message: "Environment unavailable",
       details: {
-        cleanupRequestedAt: 12,
         environmentStatus: "destroying",
         hasPath: true,
       },
@@ -117,7 +128,6 @@ const descriptionCases: DescriptionCase[] = [
       code: "environment_not_ready",
       message: "Environment unavailable",
       details: {
-        cleanupRequestedAt: 12,
         environmentStatus: "destroyed",
         hasPath: false,
       },
@@ -134,7 +144,6 @@ const descriptionCases: DescriptionCase[] = [
       code: "environment_not_ready",
       message: "Environment unavailable",
       details: {
-        cleanupRequestedAt: 12,
         environmentStatus: "destroyed",
         hasPath: false,
       },
@@ -277,31 +286,14 @@ const descriptionCases: DescriptionCase[] = [
     },
   },
   {
-    name: "thread_not_writable not started",
+    name: "thread_not_writable not started while starting",
     body: {
       code: "thread_not_writable",
       message: "Thread is not active",
       details: {
         archivedAt: null,
         reason: "not_started",
-        threadStatus: "created",
-      },
-    },
-    expected: {
-      title: "Thread not started",
-      body: "The thread has not started yet.",
-      severity: "info",
-    },
-  },
-  {
-    name: "thread_not_writable not started while provisioning",
-    body: {
-      code: "thread_not_writable",
-      message: "Thread is not active",
-      details: {
-        archivedAt: null,
-        reason: "not_started",
-        threadStatus: "provisioning",
+        threadStatus: "starting",
       },
     },
     expected: {
@@ -369,7 +361,7 @@ const descriptionCases: DescriptionCase[] = [
       details: {
         archivedAt: null,
         reason: "still_starting",
-        threadStatus: "provisioning",
+        threadStatus: "starting",
       },
     },
     expected: {
@@ -600,7 +592,6 @@ describe("parseLifecycleError", () => {
       code: "environment_not_ready",
       message: "Environment unavailable",
       details: {
-        cleanupRequestedAt: null,
         environmentStatus: "provisioning",
         hasPath: false,
       },
@@ -643,7 +634,6 @@ describe("describeLifecycleError", () => {
       code: "environment_not_ready",
       message: "Environment unavailable",
       details: {
-        cleanupRequestedAt: null,
         environmentStatus: "destroyed",
         hasPath: false,
       },

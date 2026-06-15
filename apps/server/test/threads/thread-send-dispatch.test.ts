@@ -107,7 +107,7 @@ describe("queued message dispatch gate", () => {
 
       // The thread is archived AFTER the message is queued but still `idle`:
       // this is exactly the race window the manual send path must defend
-      // against. The structural `turn.dispatched` gate is what catches it; the
+      // against. The structural `run.started` gate is what catches it; the
       // auto-sweep entry guard would otherwise have skipped an archived thread.
       archiveThread(harness.db, harness.hub, thread.id);
       expect(getThread(harness.db, thread.id)).toMatchObject({
@@ -201,7 +201,7 @@ describe("idle cold-start activation", () => {
 
       // The dispatch IS the activation: an idle cold-start flips to `active`
       // synchronously on the dispatch transaction, before the daemon ever
-      // reports start.succeeded. (A turn.submit and an `error` cold-start
+      // reports run.started. (A turn.submit and an `error` cold-start
       // already did this; an `idle` cold-start now matches.)
       expect(getThread(harness.db, thread.id)).toMatchObject({
         status: "active",

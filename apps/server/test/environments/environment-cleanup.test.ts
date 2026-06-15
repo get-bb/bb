@@ -68,7 +68,7 @@ describe("environment cleanup", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        status: "provisioning",
+        status: "starting",
       });
       await dispatchManagedEnvironmentReprovision(harness.deps, {
         environment: destroyingEnvironment,

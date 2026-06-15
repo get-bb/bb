@@ -34,7 +34,7 @@ function hasOtherLiveThreadDependingOnEnvironmentProvision(
       and(
         eq(threads.environmentId, args.environmentId),
         ne(threads.id, args.threadId),
-        inArray(threads.status, ["created", "provisioning", "active"]),
+        inArray(threads.status, ["starting", "active"]),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
       ),

@@ -268,7 +268,7 @@ describe("generated managed branch names", () => {
       });
       const thread = seedThread(harness.deps, {
         projectId: project.id,
-        status: "provisioning",
+        status: "starting",
         title: null,
         titleFallback: "Stop during metadata inference",
       });
@@ -430,7 +430,7 @@ describe("generated managed branch names", () => {
         preparedThread.environmentId,
       );
       expect(sweptEnvironment?.status).toBe("ready");
-      expect(getThread(harness.db, thread.id)?.status).toBe("provisioning");
+      expect(getThread(harness.db, thread.id)?.status).toBe("starting");
       expect(
         listEvents(harness.db, { threadId: thread.id }).map(
           (event) => event.type,
@@ -731,7 +731,7 @@ describe("generated managed branch names", () => {
         projectId: project.id,
         environmentId: environment.id,
         providerId: "codex",
-        status: "provisioning",
+        status: "starting",
         title: null,
         titleFallback: "Idle late title rename",
       });
@@ -855,7 +855,7 @@ describe("generated managed branch names", () => {
         projectId: project.id,
         environmentId: environment.id,
         providerId: "codex",
-        status: "provisioning",
+        status: "starting",
         title: null,
         titleFallback: "Errored late title no rename",
       });

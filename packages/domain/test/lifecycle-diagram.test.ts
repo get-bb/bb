@@ -9,23 +9,26 @@ import {
 } from "../src/index.js";
 
 describe("renderLifecycleMermaid", () => {
-  it("renders one edge per table cell with predicate labels", () => {
+  it("groups parallel edges with predicate labels", () => {
     const diagram = renderLifecycleMermaid({
       initial: "a",
-      predicateNames: { go: ["notDeleted"], halt: [] },
+      predicateNames: { go: ["notDeleted"], halt: [], retry: [] },
       table: {
-        a: { go: "b" },
+        a: { go: "b", retry: "b" },
         b: { halt: "a", go: "b" },
       },
     });
 
     expect(diagram).toBe(
       [
-        "stateDiagram-v2",
-        "    [*] --> a",
-        "    a --> b : go ⟨notDeleted⟩",
-        "    b --> a : halt",
-        "    b --> b : go ⟨notDeleted⟩",
+        "flowchart LR",
+        "    __start((start))",
+        '    a["a"]',
+        '    b["b"]',
+        "    __start --> a",
+        '    a -->|"go ⟨notDeleted⟩<br/>retry"| b',
+        '    b -->|"halt"| a',
+        '    b -->|"go ⟨notDeleted⟩"| b',
         "",
       ].join("\n"),
     );
@@ -47,11 +50,14 @@ describe("renderLifecycleMermaid", () => {
 
     expect(diagram).toBe(
       [
-        "stateDiagram-v2",
-        "    [*] --> a",
-        "    a --> b : settle (workspace on disk)",
-        "    a --> c : settle (no workspace)",
-        "    a --> b : same",
+        "flowchart LR",
+        "    __start((start))",
+        '    a["a"]',
+        '    b["b"]',
+        '    c["c"]',
+        "    __start --> a",
+        '    a -->|"settle (workspace on disk)<br/>same"| b',
+        '    a -->|"settle (no workspace)"| c',
         "",
       ].join("\n"),
     );
@@ -72,22 +78,20 @@ describe("docs/lifecycle-diagrams.md", () => {
       "transition tables consumed by the CAS single-writers in `@bb/db`",
       "(`applyThreadLifecycleEvent` / `applyEnvironmentLifecycleEvent`).",
       "",
-      "How to read these: an edge label is `event ⟨supersession predicates⟩`;",
-      "the predicates are checked against the loaded row inside the writer's",
-      "transaction, and a failing predicate makes the event a logged no-op.",
+      "How to read these: each edge groups all events that transition between",
+      "the same two statuses. An event label is",
+      "`event ⟨supersession predicates⟩`; the predicates are checked against",
+      "the loaded row inside the writer's transaction, and a failing predicate",
+      "makes the event a logged no-op.",
       "An **absent** edge means the event is a no-op in that status (the",
-      "writer returns `illegal-transition`). The tables are behavior-neutral",
-      "with the pre-table code; questionable-but-preserved transitions are",
-      "annotated `// observed:` in the source files, and the per-call-site",
-      "inventory lives in the headers of",
-      "`packages/domain/test/thread-lifecycle.test.ts` and",
-      "`packages/domain/test/environment-lifecycle.test.ts`.",
+      "writer returns `illegal-transition`). Recovery and callback-ordering",
+      "policy should be handled before events reach these tables.",
       "",
       "## Thread",
       "",
       "```mermaid",
       `${renderLifecycleMermaid({
-        initial: "created",
+        initial: "starting",
         predicateNames: lifecyclePredicateNames(
           THREAD_LIFECYCLE_EVENT_PREDICATES,
         ),

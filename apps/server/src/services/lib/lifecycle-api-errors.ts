@@ -14,7 +14,7 @@ import { ApiError } from "../../errors.js";
 
 export type EnvironmentReadinessFields = Pick<
   Environment,
-  "cleanupRequestedAt" | "path" | "status"
+  "path" | "status"
 >;
 
 export type ThreadEnvironmentStatusFields = Pick<Environment, "status">;
@@ -37,7 +37,6 @@ export function environmentNotReadyDetails(
   return {
     environmentStatus: environment.status,
     hasPath: environment.path !== null && environment.path.length > 0,
-    cleanupRequestedAt: environment.cleanupRequestedAt,
   };
 }
 
@@ -66,11 +65,11 @@ export function destroyedThreadEnvironmentDetails(
 }
 
 /**
- * The single definition of "the environment is gone" under Decision B*: an
- * environment being torn down (`destroying`) or already gone (`destroyed`) is
- * never reprovisioned, so any work request against it is rejected with the
- * "environment is gone" surface the frontend banner keys off. Returns null for
- * a still-usable environment.
+ * The single definition of "the environment is gone": an environment with a
+ * destroy RPC in flight (`destroying`) or already gone (`destroyed`) is never
+ * reprovisioned, so any work request against it is rejected with the
+ * "environment is gone" surface the frontend banner keys off. `retiring` is
+ * deliberately absent because it is revivable before destroy starts.
  */
 export function goneThreadEnvironmentDetails(
   environment: ThreadEnvironmentStatusFields,
@@ -113,8 +112,7 @@ export function threadNotWritableReasonForStatus(
   status: ThreadStatus,
 ): ThreadNotWritableReason {
   switch (status) {
-    case "created":
-    case "provisioning":
+    case "starting":
       return "not_started";
     case "idle":
       return "not_active";

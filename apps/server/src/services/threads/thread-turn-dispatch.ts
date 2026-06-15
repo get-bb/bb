@@ -26,6 +26,7 @@ import {
 } from "./thread-events.js";
 import { requestThreadReprovision } from "./thread-provisioning.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
+import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 
 export interface ReadyThreadEnvironment extends Environment {
   path: string;
@@ -92,6 +93,14 @@ export async function dispatchTurnDuringReprovision(
     return false;
   }
 
+  if (args.environment.status === "retiring") {
+    applyLoggedEnvironmentLifecycleEvent(args.deps, {
+      environmentId: args.environment.id,
+      event: { type: "retire.cancelled" },
+    });
+    return false;
+  }
+
   // The environment is gone (Decision B*, plans/lifecycle-target-state.md):
   // nothing reprovisions a destroying/destroyed environment, so surface the
   // "environment is gone" condition the frontend banner keys off instead of
@@ -120,7 +129,7 @@ export async function dispatchTurnDuringReprovision(
     hostId: args.environment.hostId,
   });
 
-  // Stronger than the reprovision.started table cell on purpose: an errored
+  // Stronger than the run.preparing table cell on purpose: an errored
   // thread may reprovision only when it never started (no provider thread id),
   // an event-log condition the thread row cannot express.
   if (
@@ -128,7 +137,7 @@ export async function dispatchTurnDuringReprovision(
     canRecoverPreStartErroredThread(args.deps, args.thread)
   ) {
     applyLoggedThreadLifecycleEvent(args.deps, {
-      event: { type: "reprovision.started" },
+      event: { type: "run.preparing" },
       threadId: args.thread.id,
     });
   }

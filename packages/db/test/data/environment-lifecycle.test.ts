@@ -128,7 +128,6 @@ describe("applyEnvironmentLifecycleEvent", () => {
     const { db, seedEnvironment } = setup();
     const spy = spyNotifier();
     const environment = seedEnvironment({
-      cleanupRequestedAt: 1_000,
       path: "/tmp/destroy-failed",
       status: "destroying",
     });
@@ -168,24 +167,23 @@ describe("applyEnvironmentLifecycleEvent", () => {
   it("no-ops the second of two sequential destroy settlements once the first applied", () => {
     const { db, seedEnvironment } = setup();
     const environment = seedEnvironment({
-      cleanupRequestedAt: 1_000,
       path: "/tmp/double-destroy",
       status: "destroying",
     });
 
     const first = applyEnvironmentLifecycleEvent(db, noopNotifier, {
       environmentId: environment.id,
-      event: { type: "destroy.succeeded" },
+      event: { type: "destroy.completed" },
     });
     const second = applyEnvironmentLifecycleEvent(db, noopNotifier, {
       environmentId: environment.id,
-      event: { type: "destroy.succeeded" },
+      event: { type: "destroy.completed" },
     });
 
     expect(first.applied).toBe(true);
     expect(second).toEqual({
       applied: false,
-      detail: "no transition for destroy.succeeded from status destroyed",
+      detail: "no transition for destroy.completed from status destroyed",
       reason: "illegal-transition",
     });
     expect(getEnvironment(db, environment.id)?.status).toBe("destroyed");
@@ -217,13 +215,12 @@ describe("applyEnvironmentLifecycleEvent", () => {
     expect(getEnvironment(db, environment.id)?.status).toBe("error");
   });
 
-  it("stamps destroyAttemptId on dispatch and refuses while live threads exist", () => {
+  it("stamps destroyAttemptId on destroy start and refuses while live threads exist", () => {
     const { db, project, seedEnvironment } = setup();
     const environment = seedEnvironment({
-      cleanupRequestedAt: 1_000,
       managed: true,
       path: "/tmp/destroy-claim",
-      status: "ready",
+      status: "retiring",
     });
     const thread = createThread(db, noopNotifier, {
       environmentId: environment.id,
@@ -233,14 +230,14 @@ describe("applyEnvironmentLifecycleEvent", () => {
 
     const blocked = applyEnvironmentLifecycleEvent(db, noopNotifier, {
       environmentId: environment.id,
-      event: { type: "destroy.dispatched", destroyAttemptId: "rpc_claim" },
+      event: { type: "destroy.started", destroyAttemptId: "rpc_claim" },
     });
     expect(blocked).toEqual({
       applied: false,
-      detail: "state changed while applying destroy.dispatched from status ready",
+      detail: "state changed while applying destroy.started from status retiring",
       reason: "cas-conflict",
     });
-    expect(getEnvironment(db, environment.id)?.status).toBe("ready");
+    expect(getEnvironment(db, environment.id)?.status).toBe("retiring");
 
     // A stopping thread blocks the claim even after deletion intent.
     requireThreadLifecycleEventApplied(
@@ -253,14 +250,14 @@ describe("applyEnvironmentLifecycleEvent", () => {
     markThreadDeleted(db, noopNotifier, { threadId: thread.id });
     const blockedByStop = applyEnvironmentLifecycleEvent(db, noopNotifier, {
       environmentId: environment.id,
-      event: { type: "destroy.dispatched", destroyAttemptId: "rpc_claim" },
+      event: { type: "destroy.started", destroyAttemptId: "rpc_claim" },
     });
     expect(blockedByStop.applied).toBe(false);
 
     db.delete(threads).where(eq(threads.id, thread.id)).run();
     const claimed = applyEnvironmentLifecycleEvent(db, noopNotifier, {
       environmentId: environment.id,
-      event: { type: "destroy.dispatched", destroyAttemptId: "rpc_claim" },
+      event: { type: "destroy.started", destroyAttemptId: "rpc_claim" },
     });
     expect(claimed.applied).toBe(true);
     expect(getEnvironment(db, environment.id)).toMatchObject({
@@ -269,11 +266,10 @@ describe("applyEnvironmentLifecycleEvent", () => {
     });
   });
 
-  it("clears cleanup intent and the destroy attempt when reaching destroyed", () => {
+  it("clears the destroy attempt when reaching destroyed", () => {
     const { db, seedEnvironment } = setup();
     const spy = spyNotifier();
     const environment = seedEnvironment({
-      cleanupRequestedAt: 1_000,
       managed: true,
       path: "/tmp/destroyed-clears",
       status: "destroying",
@@ -285,25 +281,23 @@ describe("applyEnvironmentLifecycleEvent", () => {
 
     const outcome = applyEnvironmentLifecycleEvent(db, spy, {
       environmentId: environment.id,
-      event: { type: "destroy.succeeded" },
+      event: { type: "destroy.completed" },
     });
 
     expect(outcome.applied).toBe(true);
     expect(getEnvironment(db, environment.id)).toMatchObject({
-      cleanupRequestedAt: null,
       destroyAttemptId: null,
       status: "destroyed",
     });
     expect(spy.notifyEnvironment).toHaveBeenCalledExactlyOnceWith(
       environment.id,
-      ["status-changed", "metadata-changed"],
+      ["status-changed"],
     );
   });
 
   it("restores the settled state and clears the attempt on a matching destroy failure", () => {
     const { db, seedEnvironment } = setup();
     const environment = seedEnvironment({
-      cleanupRequestedAt: 1_000,
       managed: true,
       path: "/tmp/destroy-restore",
       status: "destroying",
@@ -320,10 +314,8 @@ describe("applyEnvironmentLifecycleEvent", () => {
 
     expect(outcome.applied).toBe(true);
     expect(getEnvironment(db, environment.id)).toMatchObject({
-      // Cleanup intent survives so the sweep can retry the destroy.
-      cleanupRequestedAt: 1_000,
       destroyAttemptId: null,
-      status: "ready",
+      status: "retiring",
     });
   });
 });

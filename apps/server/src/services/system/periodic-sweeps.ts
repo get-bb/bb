@@ -452,7 +452,7 @@ export async function runThreadProvisioningOrphanCleanupSweep(
       status: threads.status,
     })
     .from(threads)
-    .where(and(eq(threads.status, "provisioning"), isNull(threads.deletedAt)))
+    .where(and(eq(threads.status, "starting"), isNull(threads.deletedAt)))
     .all();
 
   for (const thread of provisioningThreads) {

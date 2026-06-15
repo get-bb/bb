@@ -2,6 +2,7 @@ import { z } from "zod";
 export const environmentStatusValues = [
   "provisioning",
   "ready",
+  "retiring",
   "error",
   "destroying",
   "destroyed",
@@ -81,7 +82,6 @@ export const environmentSchema = z.object({
   baseBranch: z.string().nullable(),
   defaultBranch: z.string().nullable(),
   mergeBaseBranch: z.string().nullable(),
-  cleanupRequestedAt: z.number().nullable(),
   status: environmentStatusSchema,
   createdAt: z.number(),
   updatedAt: z.number(),

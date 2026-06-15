@@ -96,7 +96,7 @@ function getCurrentProvisioningFailureThread(
     return null;
   }
   if (
-    currentThread.status !== "provisioning" ||
+    currentThread.status !== "starting" ||
     currentThread.archivedAt !== null
   ) {
     forgetActiveThreadProvisionContext(args.threadId);
@@ -164,7 +164,6 @@ async function startThreadIfEnvironmentReady(
     environment: {
       id: args.environment.id,
       hostId: args.environment.hostId,
-      cleanupRequestedAt: args.environment.cleanupRequestedAt,
       path: args.environment.path,
       status: args.environment.status,
       workspaceProvisionType: args.environment.workspaceProvisionType,
@@ -285,7 +284,7 @@ async function advanceThreadProvisioningOnce(
   if (!thread || thread.deletedAt !== null) {
     return;
   }
-  if (thread.status !== "provisioning") {
+  if (thread.status !== "starting") {
     forgetActiveThreadProvisionContext(thread.id);
     return;
   }

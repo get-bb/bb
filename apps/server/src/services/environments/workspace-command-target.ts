@@ -3,7 +3,6 @@ import type { WorkspaceContext } from "@bb/host-daemon-contract";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 
 interface WorkspaceCommandTargetEnvironment {
-  cleanupRequestedAt: number | null;
   hostId: string;
   id: string;
   path: string | null;

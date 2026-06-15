@@ -317,13 +317,13 @@ function lifecycleEventForInterruptedThread(
 ): ThreadLifecycleEvent {
   switch (reason) {
     case "manual-stop":
-      return { type: "stop.completed" };
+      return { type: "stop.settled" };
     case "host-daemon-restarted":
-      return { type: "session.lost" };
+      return { type: "run.failed" };
     // Legacy persisted watchdog interruption; no current producer. Lands on
     // "error" like a lost session.
     case "provider-turn-idle":
-      return { type: "session.lost" };
+      return { type: "run.failed" };
     default:
       return assertNever(reason);
   }
@@ -501,7 +501,7 @@ function appendThreadInterruptedEventIfMissingInTransaction(
 
 /**
  * Transitions the thread to `stopping` via the stop.requested lifecycle event
- * (active/created/provisioning → stopping) and records the interruption event.
+ * (active/starting → stopping) and records the interruption event.
  * A no-op when the thread is already `stopping` or in a status with no
  * stop.requested cell (idle/error). Returns whether the transition was applied.
  */
@@ -653,8 +653,8 @@ function hasProviderTurnCompletedEventAtOrAfter(
  * Event-log staleness the thread row cannot express: an interruption or a
  * provider turn completion recorded since the start command was issued means
  * the activation is stale. Row-level staleness (deleted/archived) and
- * from-status legality are the start.succeeded event's predicates and table
- * cells — and a thread that entered `stopping` has no start.succeeded cell, so
+ * from-status legality are the run.started event's predicates and table
+ * cells — and a thread that entered `stopping` has no run.started cell, so
  * a stop concurrent with the start is rejected structurally.
  */
 function isThreadStartActivationStale(
@@ -694,7 +694,7 @@ function settleThreadCommandFailure(
     scope: getThreadFailureCommandErrorScope(args.command),
   });
   const outcome = applyLoggedThreadLifecycleEventInTransaction(args.deps, {
-    event: { type: "command.failed" },
+    event: { type: "run.failed" },
     threadId: thread.id,
   });
   if (outcome.applied) {
@@ -768,7 +768,7 @@ export function settleThreadStartCommandResult(
     })
   ) {
     const outcome = applyLoggedThreadLifecycleEventInTransaction(args.deps, {
-      event: { type: "start.succeeded" },
+      event: { type: "run.started" },
       threadId: currentThread.id,
     });
     if (outcome.applied) {
@@ -926,10 +926,11 @@ function dispatchThreadStartFromRequest(
   const result: DispatchThreadStartFromRequestResult = deps.db.transaction(
     (tx) => {
       const currentThread = getThread(tx, args.threadId);
-      const isProvisionHandoff = args.sourceThreadStatus === "provisioning";
-      const activeProvisionContext = isProvisionHandoff
-        ? getActiveThreadProvisionContext(args.threadId)
-        : null;
+      const activeProvisionContext =
+        args.sourceThreadStatus === "starting"
+          ? getActiveThreadProvisionContext(args.threadId)
+          : null;
+      const isProvisionHandoff = activeProvisionContext !== null;
       if (
         !currentThread ||
         currentThread.deletedAt !== null ||
@@ -944,8 +945,7 @@ function dispatchThreadStartFromRequest(
 
       if (
         isProvisionHandoff &&
-        (!isPreStartThreadStatus(currentThread.status) ||
-          activeProvisionContext === null)
+        !isPreStartThreadStatus(currentThread.status)
       ) {
         return {
           completedProvisionSequence: null,
@@ -1127,7 +1127,7 @@ function requestPreStartThreadStop(
       }
 
       const hasProvisioningContext =
-        currentThread.status === "provisioning" &&
+        currentThread.status === "starting" &&
         hasActiveThreadProvisioningContext(currentThread.id);
       // Accept pre-start threads, threads still holding a provisioning context,
       // and threads already `stopping` (a pre-start cancel being retried after
@@ -1608,10 +1608,9 @@ export async function reconcileDaemonReportedThreads(
         eq(environments.hostId, args.hostId),
         inArray(threads.status, [
           "active",
-          "created",
           "idle",
           "error",
-          "provisioning",
+          "starting",
           "stopping",
         ]),
         or(isNotNull(threads.deletedAt), eq(threads.status, "stopping")),
@@ -1652,7 +1651,7 @@ export async function reconcileDaemonReportedThreads(
 
     for (const thread of erroredThreads) {
       applyLoggedThreadLifecycleEvent(deps, {
-        event: { type: "runtime.observed-active" },
+        event: { type: "run.started" },
         threadId: thread.id,
       });
     }
@@ -1691,12 +1690,12 @@ export async function reconcileDaemonReportedThreads(
     .from(threads)
     .innerJoin(environments, eq(threads.environmentId, environments.id))
     .where(
-      and(
-        eq(environments.hostId, args.hostId),
-        inArray(threads.status, ["created", "provisioning", "idle"]),
-        isNull(threads.deletedAt),
-        inArray(threads.id, [...args.activeThreadIds]),
-      ),
+        and(
+          eq(environments.hostId, args.hostId),
+          inArray(threads.status, ["starting", "idle"]),
+          isNull(threads.deletedAt),
+          inArray(threads.id, [...args.activeThreadIds]),
+        ),
     )
     .all();
 
@@ -1711,7 +1710,7 @@ export async function reconcileDaemonReportedThreads(
       continue;
     }
     applyLoggedThreadLifecycleEvent(deps, {
-      event: { type: "runtime.observed-active" },
+      event: { type: "run.started" },
       threadId: thread.id,
     });
     completeThreadStart(deps, {

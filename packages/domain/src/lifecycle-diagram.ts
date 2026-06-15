@@ -1,8 +1,8 @@
 /**
- * Renders a lifecycle transition table as a Mermaid `stateDiagram-v2` so the
- * state machine is reviewable visually — GitHub renders Mermaid in Markdown,
- * so the committed output shows the full machine in the repo and in PR
- * diffs whenever a transition changes.
+ * Renders a lifecycle transition table as a Mermaid flowchart so the state
+ * machine is reviewable visually. GitHub renders Mermaid in Markdown, so the
+ * committed output shows the full machine in the repo and in PR diffs whenever
+ * a transition changes.
  *
  * The generated document lives at docs/lifecycle-diagrams.md and is kept in
  * sync by a file-snapshot test (packages/domain/test/lifecycle-diagram.test.ts).
@@ -12,28 +12,77 @@
  * (the shape of EnvironmentLifecyclePathDependentTarget, accepted
  * structurally) rendered as two annotated edges.
  */
+export interface LifecycleDiagramPathDependentTarget {
+  withWorkspacePath: string;
+  withoutWorkspacePath: string;
+}
+
 export type LifecycleDiagramTarget =
   | string
-  | { withWorkspacePath: string; withoutWorkspacePath: string };
+  | LifecycleDiagramPathDependentTarget;
+
+export type LifecycleDiagramRow = Readonly<
+  Partial<Record<string, LifecycleDiagramTarget>>
+>;
+
+export type LifecycleDiagramTable = Readonly<Record<string, LifecycleDiagramRow>>;
+
+export type LifecycleDiagramPredicateNames = Readonly<
+  Record<string, readonly string[]>
+>;
+
+export type LifecyclePredicateRecord = Readonly<Record<string, object>>;
+
+interface LifecycleDiagramTransitionGroup {
+  from: string;
+  labels: string[];
+  to: string;
+}
+
+interface LifecycleDiagramTransition {
+  from: string;
+  label: string;
+  to: string;
+}
 
 export interface RenderLifecycleMermaidArgs {
-  /** Status assigned at row creation; rendered as the `[*]` entry edge. */
+  /** Status assigned at row creation; rendered from the synthetic start node. */
   initial: string;
   /**
    * Supersession predicate names per event, shown in the edge label as
-   * `event ⟨notDeleted, notStopRequested⟩`. Events without predicates render
+   * `event ⟨notArchived, notDeleted⟩`. Events without predicates render
    * as the bare event name.
    */
-  predicateNames: Readonly<Record<string, readonly string[]>>;
-  table: Readonly<
-    Record<string, Readonly<Partial<Record<string, LifecycleDiagramTarget>>>>
-  >;
+  predicateNames: LifecycleDiagramPredicateNames;
+  table: LifecycleDiagramTable;
 }
 
 export function renderLifecycleMermaid(
   args: RenderLifecycleMermaidArgs,
 ): string {
-  const lines = ["stateDiagram-v2", `    [*] --> ${args.initial}`];
+  const lines = ["flowchart LR", "    __start((start))"];
+  for (const status of Object.keys(args.table)) {
+    lines.push(`    ${status}["${status}"]`);
+  }
+  lines.push(`    __start --> ${args.initial}`);
+  for (const group of createLifecycleDiagramTransitionGroups(args)) {
+    lines.push(
+      `    ${group.from} -->|${quoteMermaidEdgeLabel(
+        group.labels.join("<br/>"),
+      )}| ${group.to}`,
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function quoteMermaidEdgeLabel(label: string): string {
+  return `"${label.replaceAll('"', "#quot;")}"`;
+}
+
+function createLifecycleDiagramTransitionGroups(
+  args: RenderLifecycleMermaidArgs,
+): LifecycleDiagramTransitionGroup[] {
+  const groups: LifecycleDiagramTransitionGroup[] = [];
   for (const [from, row] of Object.entries(args.table)) {
     for (const [event, to] of Object.entries(row)) {
       if (to === undefined) {
@@ -43,18 +92,59 @@ export function renderLifecycleMermaid(
       const label =
         predicates.length > 0 ? `${event} ⟨${predicates.join(", ")}⟩` : event;
       if (typeof to === "string") {
-        lines.push(`    ${from} --> ${to} : ${label}`);
+        appendLifecycleDiagramTransitionGroup({
+          groups,
+          transition: { from, label, to },
+        });
       } else if (to.withWorkspacePath === to.withoutWorkspacePath) {
-        lines.push(`    ${from} --> ${to.withWorkspacePath} : ${label}`);
+        appendLifecycleDiagramTransitionGroup({
+          groups,
+          transition: { from, label, to: to.withWorkspacePath },
+        });
       } else {
-        lines.push(
-          `    ${from} --> ${to.withWorkspacePath} : ${label} (workspace on disk)`,
-          `    ${from} --> ${to.withoutWorkspacePath} : ${label} (no workspace)`,
-        );
+        appendLifecycleDiagramTransitionGroup({
+          groups,
+          transition: {
+            from,
+            label: `${label} (workspace on disk)`,
+            to: to.withWorkspacePath,
+          },
+        });
+        appendLifecycleDiagramTransitionGroup({
+          groups,
+          transition: {
+            from,
+            label: `${label} (no workspace)`,
+            to: to.withoutWorkspacePath,
+          },
+        });
       }
     }
   }
-  return `${lines.join("\n")}\n`;
+  return groups;
+}
+
+interface AppendLifecycleDiagramTransitionGroupArgs {
+  groups: LifecycleDiagramTransitionGroup[];
+  transition: LifecycleDiagramTransition;
+}
+
+function appendLifecycleDiagramTransitionGroup({
+  groups,
+  transition,
+}: AppendLifecycleDiagramTransitionGroupArgs): void {
+  const existingGroup = groups.find(
+    (group) => group.from === transition.from && group.to === transition.to,
+  );
+  if (existingGroup) {
+    existingGroup.labels.push(transition.label);
+    return;
+  }
+  groups.push({
+    from: transition.from,
+    labels: [transition.label],
+    to: transition.to,
+  });
 }
 
 /**
@@ -63,8 +153,8 @@ export function renderLifecycleMermaid(
  * for use as RenderLifecycleMermaidArgs.predicateNames.
  */
 export function lifecyclePredicateNames(
-  predicates: Readonly<Record<string, object>>,
-): Record<string, readonly string[]> {
+  predicates: LifecyclePredicateRecord,
+): LifecycleDiagramPredicateNames {
   return Object.fromEntries(
     Object.entries(predicates).map(([event, flags]) => [
       event,

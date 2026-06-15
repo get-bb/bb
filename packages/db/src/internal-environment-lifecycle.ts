@@ -3,7 +3,6 @@ export {
   applyEnvironmentLifecycleEventInTransaction,
   EnvironmentLifecycleEventNotAppliedError,
   listStaleDestroyingManagedEnvironments,
-  recordEnvironmentCleanupRequest,
   recordProvisionedEnvironmentWorkspace,
   requireEnvironmentLifecycleEventApplied,
 } from "./data/environments.js";

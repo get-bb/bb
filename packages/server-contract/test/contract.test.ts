@@ -602,7 +602,6 @@ describe("server-contract canonical schemas", () => {
         details: {
           environmentStatus: "destroyed",
           hasPath: false,
-          cleanupRequestedAt: 123,
         },
       }),
     ).toMatchObject({

@@ -377,7 +377,6 @@ export function makeEnvironment(
     baseBranch: BRANCH_NAMES.default,
     defaultBranch: BRANCH_NAMES.default,
     mergeBaseBranch: null,
-    cleanupRequestedAt: null,
     status: "ready",
     createdAt: 0,
     updatedAt: 100,

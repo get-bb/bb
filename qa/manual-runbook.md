@@ -426,7 +426,7 @@ bb thread archive "$DIRTY_ARCHIVE_THREAD_ID"
 
 curl -fsS "$BB_SERVER_URL/api/v1/threads/$DIRTY_ARCHIVE_THREAD_ID" | jq -e '.archivedAt != null'
 curl -fsS "$BB_SERVER_URL/api/v1/environments/$DIRTY_ARCHIVE_ENV_ID" \
-  | jq -e '(.cleanupRequestedAt | type == "number") and .status == "ready"'
+  | jq -e '.status == "retiring"'
 test -d "$DIRTY_ARCHIVE_ENV_PATH"
 test -f "$DIRTY_ARCHIVE_ENV_PATH/dirty-archive.txt"
 ```
@@ -438,7 +438,7 @@ Expected result:
 - `bb environment commit` succeeds with helper-generated commit text without requiring `OPENAI_API_KEY`.
 - Environment merge-base metadata can be set, reflected by `bb environment show`, used by thread status/diff output, and cleared.
 - Archiving blocks `bb thread tell`; unarchiving restores normal operation.
-- Dirty isolated managed worktree archive succeeds, records safe cleanup intent, and keeps the worktree intact while uncommitted or unmerged work remains.
+- Dirty isolated managed worktree archive succeeds, marks the environment `retiring`, and keeps the worktree intact while uncommitted or unmerged work remains.
 
 ## Automations API Lifecycle
 

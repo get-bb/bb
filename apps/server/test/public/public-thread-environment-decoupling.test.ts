@@ -1,7 +1,6 @@
 import { archiveThread, getEnvironment, getThread } from "@bb/db";
 import {
   applyEnvironmentLifecycleEvent,
-  recordEnvironmentCleanupRequest,
   requireEnvironmentLifecycleEventApplied,
 } from "@bb/db/internal-environment-lifecycle";
 import type { EnvironmentStatus } from "@bb/domain";
@@ -22,7 +21,7 @@ import { withTestHarness } from "../helpers/test-app.js";
  * "environment is gone" condition instead of reprovisioning.
  */
 describe("thread environment decoupling (B*)", () => {
-  it("un-archives without touching a pending environment cleanup", async () => {
+  it("un-archives without touching a retiring environment", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-unarchive-pure",
@@ -34,7 +33,7 @@ describe("thread environment decoupling (B*)", () => {
         hostId: host.id,
         managed: true,
         projectId: project.id,
-        status: "ready",
+        status: "retiring",
         workspaceProvisionType: "managed-worktree",
       });
       const thread = seedThread(harness.deps, {
@@ -43,10 +42,6 @@ describe("thread environment decoupling (B*)", () => {
         status: "idle",
       });
       archiveThread(harness.db, harness.hub, thread.id);
-      // A deferred cleanup is pending on the (still-ready) environment.
-      recordEnvironmentCleanupRequest(harness.db, harness.hub, environment.id, {
-        requestedAt: 1_000,
-      });
 
       const response = await harness.app.request(
         `/api/v1/threads/${thread.id}/unarchive`,
@@ -56,11 +51,9 @@ describe("thread environment decoupling (B*)", () => {
       expect(response.status).toBe(200);
       // The thread is un-archived (pure record op)...
       expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
-      // ...and the cleanup intent is left untouched — cleanup is monotonic and
-      // un-archive never cancels it.
+      // ...and the retiring environment lifecycle is left untouched.
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        cleanupRequestedAt: 1_000,
-        status: "ready",
+        status: "retiring",
       });
     });
   });
@@ -78,7 +71,7 @@ describe("thread environment decoupling (B*)", () => {
         managed: true,
         projectId: project.id,
         path: "/tmp/unarchive-destroying",
-        status: "ready",
+        status: "retiring",
         workspaceProvisionType: "managed-worktree",
       });
       const thread = seedThread(harness.deps, {
@@ -87,14 +80,11 @@ describe("thread environment decoupling (B*)", () => {
         status: "idle",
       });
       archiveThread(harness.db, harness.hub, thread.id);
-      recordEnvironmentCleanupRequest(harness.db, harness.hub, environment.id, {
-        requestedAt: 1_000,
-      });
       requireEnvironmentLifecycleEventApplied(
         applyEnvironmentLifecycleEvent(harness.db, harness.hub, {
           environmentId: environment.id,
           event: {
-            type: "destroy.dispatched",
+            type: "destroy.started",
             destroyAttemptId: "rpc_unarchive_destroying",
           },
         }),
@@ -115,6 +105,46 @@ describe("thread environment decoupling (B*)", () => {
       expect(getEnvironment(harness.db, environment.id)?.status).toBe(
         "destroying",
       );
+    });
+  });
+
+  it("revives a retiring environment when a user sends a follow-up", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-send-retiring",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        managed: true,
+        projectId: project.id,
+        path: "/tmp/send-retiring",
+        status: "retiring",
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "auto",
+            model: "gpt-5",
+            input: [{ type: "text", text: "Revive retiring env" }],
+          }),
+        },
+      );
+
+      expect(response.status, await response.text()).toBe(200);
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe("ready");
     });
   });
 

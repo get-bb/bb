@@ -79,7 +79,6 @@ describe("entity lookup lifecycle errors", () => {
         workspaceProvisionType: "managed-worktree",
         path: null,
         status: "destroyed",
-        cleanupRequestedAt: 123,
       });
 
       const error = captureApiError(() => {
@@ -93,7 +92,6 @@ describe("entity lookup lifecycle errors", () => {
         details: {
           environmentStatus: "destroyed",
           hasPath: false,
-          cleanupRequestedAt: 123,
         },
       });
     } finally {

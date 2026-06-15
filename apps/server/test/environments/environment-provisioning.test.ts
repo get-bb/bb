@@ -402,7 +402,7 @@ describe("environment reprovisioning", () => {
     });
   });
 
-  it("preserves a stopped pre-start thread when stale provision failure settles", async () => {
+    it("preserves a stopped pre-start thread when stale provision failure settles", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-pre-start-provision-cancel",
@@ -468,7 +468,7 @@ describe("environment reprovisioning", () => {
         status: "idle",
       });
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        cleanupRequestedAt: expect.any(Number),
+        status: "destroyed",
       });
       const events = listEvents(harness.db, { threadId: thread.id });
       expect(events.map((event) => event.type)).not.toContain("system/error");
@@ -618,7 +618,7 @@ describe("environment reprovisioning", () => {
       });
       expect(getThread(harness.db, secondThread.id)).toMatchObject({
         environmentId: environment.id,
-        status: "provisioning",
+        status: "starting",
       });
 
       const currentFirstThread = getThread(harness.db, firstThread.id);
@@ -667,8 +667,7 @@ describe("environment reprovisioning", () => {
       });
 
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        status: "error",
-        cleanupRequestedAt: expect.any(Number),
+        status: "destroyed",
       });
       for (const threadId of [firstThread.id, secondThread.id]) {
         const events = listEvents(harness.db, { threadId });
@@ -696,8 +695,7 @@ describe("environment reprovisioning", () => {
         status: "idle",
       });
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        status: "error",
-        cleanupRequestedAt: expect.any(Number),
+        status: "destroyed",
       });
     });
   });
@@ -720,7 +718,7 @@ describe("environment reprovisioning", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        status: "provisioning",
+        status: "starting",
       });
       await runStartupRecoverySweep(harness.deps);
 

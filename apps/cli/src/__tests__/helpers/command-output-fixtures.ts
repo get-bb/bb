@@ -158,7 +158,6 @@ export function makeEnvironment(overrides: MakeEnvironmentArgs): Environment {
     defaultBranch: "main",
     baseBranch: null,
     mergeBaseBranch: null,
-    cleanupRequestedAt: null,
     status: "ready",
     createdAt: Date.now(),
     updatedAt: Date.now(),

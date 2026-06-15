@@ -47,14 +47,14 @@ function makeRecentThread({
 const recentThreads: ThreadListEntry[] = [
   makeRecentThread({
     overrides: {
-      id: "thr_mobile_just_created",
+      id: "thr_mobile_just_starting",
       title: "Trace mobile thread creation feedback",
       titleFallback: "Trace mobile thread creation feedback",
-      status: "created",
+      status: "starting",
       createdAt: 300,
       latestAttentionAt: 300,
       runtime: {
-        displayStatus: "created",
+        displayStatus: "starting",
         hostReconnectGraceExpiresAt: null,
       },
     },
@@ -140,10 +140,10 @@ const projectNamesById = new Map<string, string>([
 export function Overview() {
   return (
     <StoryCard labelWidth="170px">
-      <StoryRow label="just created">
+      <StoryRow label="just starting">
         <MobileStage>
           <RootComposeMobileRecents
-            highlightedThreadId="thr_mobile_just_created"
+            highlightedThreadId="thr_mobile_just_starting"
             projectNamesById={projectNamesById}
             showCreatingRow={false}
             threads={recentThreads}

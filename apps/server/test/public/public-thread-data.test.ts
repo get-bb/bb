@@ -2168,7 +2168,7 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("keeps queued messages when send is attempted while a created thread is still starting", async () => {
+  it("keeps queued messages when send is attempted while a starting thread is still starting", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-queued-message-created-thread-send",
@@ -2208,7 +2208,7 @@ describe("public thread data routes", () => {
       const createdThread = threadSchema.parse(
         await readJson(createThreadResponse),
       );
-      expect(createdThread.status).toBe("provisioning");
+      expect(createdThread.status).toBe("starting");
 
       const createQueuedThreadMessageResponse = await harness.app.request(
         `/api/v1/threads/${createdThread.id}/queued-messages`,
@@ -2248,7 +2248,7 @@ describe("public thread data routes", () => {
         code: "thread_not_writable",
         details: {
           reason: "still_starting",
-          threadStatus: "provisioning",
+          threadStatus: "starting",
         },
       });
       expect(
@@ -2470,7 +2470,7 @@ describe("public thread data routes", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        status: "provisioning",
+        status: "starting",
       });
       const threadStoragePath = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`;
 

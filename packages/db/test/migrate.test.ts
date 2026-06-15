@@ -269,8 +269,8 @@ function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
 }
 
 /**
- * cleanup_mode existed since the baseline and is dropped by 0030, so a forward
- * replay from before 0030 must first restore it for 0030's DROP COLUMN to apply
+ * cleanup_mode existed since the baseline and is dropped by 0033, so a forward
+ * replay from before 0033 must first restore it for 0033's DROP COLUMN to apply
  * — the mirror of the post-ADD-COLUMN drops above.
  */
 function restoreEnvironmentCleanupModeColumn(db: DbConnection): void {
@@ -280,8 +280,30 @@ function restoreEnvironmentCleanupModeColumn(db: DbConnection): void {
 }
 
 /**
- * stop_requested_at existed since the baseline and is dropped by 0031, so a
- * forward replay from before 0031 must first restore it for 0031's DROP COLUMN
+ * cleanup_requested_at existed since the baseline and is dropped by 0035.
+ * Tests that rewind migration history from a current schema need to restore it
+ * so Drizzle can replay the historical DROP COLUMN migration.
+ */
+function restoreEnvironmentCleanupRequestedAtColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+    .all()
+    .map((row) => row.name);
+  if (!columns.includes("cleanup_requested_at")) {
+    db.$client
+      .prepare("ALTER TABLE environments ADD COLUMN cleanup_requested_at integer")
+      .run();
+  }
+  db.$client
+    .prepare(
+      "CREATE INDEX IF NOT EXISTS environments_cleanup_requested_idx ON environments (cleanup_requested_at)",
+    )
+    .run();
+}
+
+/**
+ * stop_requested_at existed since the baseline and is dropped by 0034, so a
+ * forward replay from before 0034 must first restore it for 0034's DROP COLUMN
  * to apply — and the legacy thread_operations stop backfill in migrate.ts
  * writes it before the journal runs. Mirror of restoreEnvironmentCleanupModeColumn.
  */
@@ -373,6 +395,20 @@ function readLatestAppliedMigrationCreatedAt(db: DbConnection): number {
   return createdAt;
 }
 
+function readAppliedMigrationCreatedAts(db: DbConnection): number[] {
+  return db.$client
+    .prepare<[], MigrationCreatedAtRow>(
+      `
+        SELECT created_at AS createdAt
+        FROM __drizzle_migrations
+        WHERE created_at IS NOT NULL
+        ORDER BY created_at
+      `,
+    )
+    .all()
+    .map((row) => row.createdAt);
+}
+
 function replaceAppliedMigrationHash(
   args: ReplaceAppliedMigrationHashArgs,
 ): void {
@@ -409,22 +445,17 @@ function runMigrationFile(args: RunMigrationFileArgs): void {
 
 function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS event_large_values").run();
+  restoreEnvironmentCleanupModeColumn(db);
+  restoreEnvironmentCleanupRequestedAtColumn(db);
+  restoreThreadStopRequestedAtColumn(db);
   db.$client
     .prepare<DeleteMigrationParameters>(
       `
         DELETE FROM __drizzle_migrations
-        WHERE created_at = ?
+        WHERE created_at >= ?
       `,
     )
     .run(eventLargeValuesMigrationWhen);
-  db.$client
-    .prepare<DeleteMigrationParameters>(
-      `
-        DELETE FROM __drizzle_migrations
-        WHERE created_at = ?
-      `,
-    )
-    .run(eventLargeValuesRestoreMigrationWhen);
 }
 
 function seedEventLargeValueBackfillThread(db: DbConnection): void {
@@ -975,6 +1006,7 @@ describe("migrate", () => {
         .run(threadTypeRemovalMigrationWhen);
       dropPost0023Tables(db);
       restoreEnvironmentCleanupModeColumn(db);
+      restoreEnvironmentCleanupRequestedAtColumn(db);
       restoreThreadStopRequestedAtColumn(db);
 
       migrate(db);
@@ -1518,6 +1550,7 @@ describe("migrate", () => {
         );
       `);
       deleteDeferredCleanupMigrationRows(db);
+      restoreEnvironmentCleanupRequestedAtColumn(db);
       restoreThreadStopRequestedAtColumn(db);
 
       migrate(db, { deferDestructiveLegacyCleanup: true });
@@ -2158,6 +2191,7 @@ describe("migrate", () => {
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
       restoreEnvironmentCleanupModeColumn(db);
+      restoreEnvironmentCleanupRequestedAtColumn(db);
       restoreThreadStopRequestedAtColumn(db);
       dropPost0023Tables(db);
 
@@ -2426,6 +2460,7 @@ describe("migrate", () => {
       dropEnvironmentDestroyAttemptIdColumn(db);
       dropQueuedMessageSenderThreadIdColumn(db);
       restoreEnvironmentCleanupModeColumn(db);
+      restoreEnvironmentCleanupRequestedAtColumn(db);
       restoreThreadStopRequestedAtColumn(db);
       dropPost0023Tables(db);
       db.$client
@@ -2622,6 +2657,7 @@ describe("migrate", () => {
       dropEnvironmentDestroyAttemptIdColumn(db);
       dropQueuedMessageSenderThreadIdColumn(db);
       restoreEnvironmentCleanupModeColumn(db);
+      restoreEnvironmentCleanupRequestedAtColumn(db);
       restoreThreadStopRequestedAtColumn(db);
       dropPost0023Tables(db);
 
@@ -2780,7 +2816,7 @@ describe("migrate", () => {
       markEventLargeValuesMigrationUnapplied(db);
       migrate(db);
 
-      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(
+      expect(readAppliedMigrationCreatedAts(db)).toContain(
         eventLargeValuesRestoreMigrationWhen,
       );
       expect(readTableNames(db)).not.toContain("event_large_values");

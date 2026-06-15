@@ -218,7 +218,7 @@ async function createProvisioningThread(
   const thread = createThreadRecord(deps, {
     request: args.request,
     environmentId: args.environmentId,
-    status: "provisioning",
+    status: "starting",
   });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   let context: ThreadProvisionContext;
