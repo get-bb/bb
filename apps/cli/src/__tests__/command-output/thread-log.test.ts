@@ -106,7 +106,7 @@ describe("bb thread log command output", () => {
     );
     stubServerApi({
       "v1.threads.:id.events.$get": getEvents,
-      "v1.threads.:id.timeline.$get": getTimeline,
+      "v1.threads.:id.timeline.feed.$get": getTimeline,
     });
 
     await runCommand(
@@ -127,7 +127,7 @@ describe("bb thread log command output", () => {
     );
     stubServerApi({
       "v1.threads.:id.events.$get": getEvents,
-      "v1.threads.:id.timeline.$get": getTimeline,
+      "v1.threads.:id.timeline.feed.$get": getTimeline,
     });
 
     await runCommand(
@@ -140,7 +140,7 @@ describe("bb thread log command output", () => {
     expect(output).toContain("steer pending");
     expect(getTimeline).toHaveBeenCalledWith({
       param: { id: "thread-log" },
-      query: { includeNestedRows: "true" },
+      query: {},
     });
     expect(getEvents).not.toHaveBeenCalled();
   });
@@ -152,7 +152,7 @@ describe("bb thread log command output", () => {
     );
     stubServerApi({
       "v1.threads.:id.events.$get": getEvents,
-      "v1.threads.:id.timeline.$get": getTimeline,
+      "v1.threads.:id.timeline.feed.$get": getTimeline,
     });
 
     await runCommand(["thread", "log", "thread-log"], register);
@@ -213,7 +213,7 @@ describe("bb thread log command output", () => {
     );
     stubServerApi({
       "v1.threads.:id.events.$get": getEvents,
-      "v1.threads.:id.timeline.$get": getTimeline,
+      "v1.threads.:id.timeline.feed.$get": getTimeline,
     });
 
     await runCommand(
@@ -237,7 +237,7 @@ describe("bb thread log command output", () => {
     const getTimeline = vi.fn(async () => fixtures.makeTimelineResponse([]));
     stubServerApi({
       "v1.threads.:id.events.$get": getEvents,
-      "v1.threads.:id.timeline.$get": getTimeline,
+      "v1.threads.:id.timeline.feed.$get": getTimeline,
     });
 
     await runCommand(["thread", "log", "--self"], register);

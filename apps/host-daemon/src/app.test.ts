@@ -2,7 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
-import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
+import {
+  turnScope,
+  type PendingInteractionCreate,
+  type ToolCallRequest,
+} from "@bb/domain";
 import {
   hostDaemonInteractiveInterruptRequestSchema,
   type HostDaemonInteractiveRequestResponse,
@@ -11,9 +15,14 @@ import type { HostWatcher } from "@bb/host-watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createHostDaemonApp,
+  startIdleProviderSessionReaper,
   type HostDaemonApp,
 } from "./app.js";
 import type { HostDaemonLogger } from "./logger.js";
+import type {
+  RuntimeManagerReapIdleProviderSessionsArgs,
+  RuntimeManagerReapIdleProviderSessionsResult,
+} from "./runtime-manager.js";
 import type { CreateReconnectingWebSocket } from "./server-connection.js";
 import type { ReconnectingWebSocketLike } from "./server-connection-support.js";
 
@@ -29,9 +38,11 @@ interface FetchRecorder {
 }
 
 interface CreateFetchRecorderArgs {
+  inactiveSessionOnFirstEventPost?: boolean;
   interactiveRequestError?: Error;
   interactiveRequestResponse?: HostDaemonInteractiveRequestResponse;
   retiredEnvironmentIds?: string[];
+  sessionIds?: string[];
 }
 
 interface RuntimeOptionsRef {
@@ -45,6 +56,16 @@ interface HostDaemonAppFixture {
   runtimeOptions: RuntimeOptionsRef;
 }
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  reject(error: Error): void;
+  resolve(value: T): void;
+}
+
+type StartIdleProviderSessionReaperArgsForTest = Parameters<
+  typeof startIdleProviderSessionReaper
+>[0];
+
 const tempDirs: string[] = [];
 
 function createLogger() {
@@ -54,6 +75,23 @@ function createLogger() {
     warn: vi.fn(),
     error: vi.fn(),
   } satisfies HostDaemonLogger;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolveFn: ((value: T) => void) | null = null;
+  let rejectFn: ((error: Error) => void) | null = null;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolveFn = resolve;
+    rejectFn = reject;
+  });
+  if (!resolveFn || !rejectFn) {
+    throw new Error("Failed to create deferred promise");
+  }
+  return {
+    promise,
+    reject: rejectFn,
+    resolve: resolveFn,
+  };
 }
 
 async function makeTempDir(prefix: string): Promise<string> {
@@ -87,6 +125,8 @@ function createFetchRecorder(
   args: CreateFetchRecorderArgs = {},
 ): FetchRecorder {
   const requests: RecordedFetchRequest[] = [];
+  let eventPostCount = 0;
+  let sessionOpenCount = 0;
   const fetchFn: typeof fetch = async (input, init) => {
     const url = readFetchUrl(input);
     const request = {
@@ -97,19 +137,33 @@ function createFetchRecorder(
     requests.push(request);
 
     if (url.pathname === "/internal/session/open") {
+      const sessionId =
+        args.sessionIds?.[sessionOpenCount] ??
+        args.sessionIds?.at(-1) ??
+        "session-app-test";
+      sessionOpenCount += 1;
       return Response.json(
         {
-          sessionId: "session-app-test",
+          sessionId,
           heartbeatIntervalMs: 30000,
           leaseTimeoutMs: 90000,
-          trackedThreadTargets: [],
-          trackedApplicationDataTargets: [],
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
         },
         { status: 201 },
       );
     }
     if (url.pathname === "/internal/session/events") {
+      eventPostCount += 1;
+      if (args.inactiveSessionOnFirstEventPost && eventPostCount === 1) {
+        return Response.json(
+          {
+            code: "inactive_session",
+            message: "Session is not active",
+            retryable: false,
+          },
+          { status: 401 },
+        );
+      }
       return Response.json({
         acceptedEvents: [],
         rejectedEvents: [],
@@ -162,12 +216,19 @@ function createOpeningWebSocket(): CreateReconnectingWebSocket {
       }),
       reconnect: vi.fn(),
     };
-    void urlProvider().then(() => {
+    const openSocket = async () => {
+      await urlProvider();
       queueMicrotask(() => {
         readyState = 1;
         socket.onopen?.({ type: "open" });
       });
+    };
+    socket.reconnect = vi.fn(() => {
+      readyState = 3;
+      socket.onclose?.({ code: 1000, reason: "test-reconnect" });
+      void openSocket();
     });
+    void openSocket();
     return socket;
   };
 }
@@ -196,6 +257,24 @@ function createFakeRuntime(): AgentRuntime {
       };
     },
     listRunningProviders() {
+      return [];
+    },
+    getActiveTurnId() {
+      return null;
+    },
+    async waitForActiveTurn() {
+      return null;
+    },
+    getProviderSession() {
+      return null;
+    },
+    async reapIdleProviderSessions() {
+      return { reapedSessions: [] };
+    },
+    hasThread() {
+      return false;
+    },
+    getActiveThreadIds() {
       return [];
     },
     async shutdown() {},
@@ -239,6 +318,12 @@ function createToolCallRequest(): ToolCallRequest {
   };
 }
 
+async function settleReaperPromiseChain(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 afterEach(async () => {
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -264,7 +349,6 @@ async function createAppFixture(
     hostId: "host-app-test",
     hostName: "App Test Host",
     instanceId: "instance-app-test",
-    maxLiveWorkflowProviderProcesses: 8,
     logger,
     releaseLock: async () => undefined,
     localApiConfig: null,
@@ -284,8 +368,163 @@ async function createAppFixture(
   };
 }
 
-
 describe("createHostDaemonApp", () => {
+  it("runs the idle provider session reaper on a non-overlapping interval", async () => {
+    const logger = createLogger();
+    const firstReap =
+      createDeferred<RuntimeManagerReapIdleProviderSessionsResult>();
+    const failure = new Error("reaper failed");
+    const queuedReaps: Array<
+      () => Promise<RuntimeManagerReapIdleProviderSessionsResult>
+    > = [
+      () => firstReap.promise,
+      async () => {
+        throw failure;
+      },
+    ];
+    const reapIdleProviderSessions = vi.fn(
+      (
+        _args: RuntimeManagerReapIdleProviderSessionsArgs,
+      ): Promise<RuntimeManagerReapIdleProviderSessionsResult> => {
+        const next = queuedReaps.shift();
+        return next
+          ? next()
+          : Promise.resolve({
+              reapedSessions: [],
+            });
+      },
+    );
+    let nowMs = 1_000;
+    let intervalCallback: (() => void) | null = null;
+    let cleared = false;
+    const timer: ReturnType<
+      StartIdleProviderSessionReaperArgsForTest["setIntervalFn"]
+    > = {
+      clear: vi.fn(() => {
+        cleared = true;
+      }),
+      unref: vi.fn(),
+    };
+    const setIntervalFn = vi.fn<
+      StartIdleProviderSessionReaperArgsForTest["setIntervalFn"]
+    >((callback, _intervalMs) => {
+      intervalCallback = callback;
+      return timer;
+    });
+    const triggerTick = (): void => {
+      if (!intervalCallback || cleared) {
+        return;
+      }
+      intervalCallback();
+    };
+
+    const reaper = startIdleProviderSessionReaper({
+      logger,
+      nowMs: () => nowMs,
+      runtimeManager: {
+        reapIdleProviderSessions,
+      },
+      setIntervalFn,
+    });
+
+    expect(setIntervalFn).toHaveBeenCalledWith(expect.any(Function), 300_000);
+    expect(timer.unref).toHaveBeenCalledTimes(1);
+
+    triggerTick();
+    expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
+    expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(1, {
+      idleForMs: 1_800_000,
+      nowMs: 1_000,
+    });
+
+    nowMs = 2_000;
+    triggerTick();
+    expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
+
+    firstReap.resolve({
+      reapedSessions: [
+        {
+          environmentId: "env-reaped",
+          idleForMs: 1_900_000,
+          providerId: "codex",
+          providerThreadId: "provider-thread-reaped",
+          threadId: "thread-reaped",
+        },
+      ],
+    });
+    await settleReaperPromiseChain();
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        count: 1,
+        sessions: [
+          {
+            environmentId: "env-reaped",
+            idleForMs: 1_900_000,
+            providerId: "codex",
+            threadId: "thread-reaped",
+          },
+        ],
+      },
+      "Reaped idle provider sessions",
+    );
+
+    triggerTick();
+    await settleReaperPromiseChain();
+    expect(reapIdleProviderSessions).toHaveBeenCalledTimes(2);
+    expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(2, {
+      idleForMs: 1_800_000,
+      nowMs: 2_000,
+    });
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        err: failure,
+      },
+      "Idle provider session reaper failed",
+    );
+
+    reaper.stop();
+    expect(timer.clear).toHaveBeenCalledTimes(1);
+    triggerTick();
+    expect(reapIdleProviderSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("reconnects through the server connection when event posting sees an inactive session", async () => {
+    const { app, fetchRecorder, logger } = await createAppFixture({
+      inactiveSessionOnFirstEventPost: true,
+      sessionIds: ["session-app-test-1", "session-app-test-2"],
+    });
+    try {
+      await app.connection.start();
+
+      app.eventSink.emit({
+        threadId: "thr_app_inactive_session",
+        event: {
+          type: "turn/started",
+          threadId: "thr_app_inactive_session",
+          providerThreadId: "provider-thread-app-inactive-session",
+          scope: turnScope("turn-app-inactive-session"),
+        },
+      });
+
+      await vi.waitFor(() => {
+        expect(
+          fetchRecorder.requests.filter(
+            (request) => request.pathname === "/internal/session/open",
+          ),
+        ).toHaveLength(2);
+      });
+      expect(logger.info).toHaveBeenCalledWith(
+        {
+          code: "inactive_session",
+          sessionId: "session-app-test-1",
+          source: "postEvents",
+        },
+        "Server reported inactive daemon session; reconnecting",
+      );
+    } finally {
+      await app.daemon.shutdown("test");
+    }
+  });
 
   it("forgets server-retired loaded environments when opening a session", async () => {
     const dataDir = await makeTempDir("bb-host-daemon-app-retired-");
@@ -302,7 +541,6 @@ describe("createHostDaemonApp", () => {
       shutdown: vi.fn(async () => undefined),
     } satisfies AgentRuntime;
     const hostWatcher = {
-      watchApplicationStorageRoot: vi.fn(() => () => undefined),
       watchWorkspace: vi.fn(() => stopWatchingStatus),
       watchThreadStorageRoot: vi.fn(() => () => undefined),
     } satisfies HostWatcher;
@@ -314,7 +552,6 @@ describe("createHostDaemonApp", () => {
       hostId: "host-retired-env",
       hostName: "Retired Environment Host",
       instanceId: "instance-retired-env",
-      maxLiveWorkflowProviderProcesses: 8,
       logger,
       releaseLock: async () => undefined,
       localApiConfig: null,
@@ -334,7 +571,7 @@ describe("createHostDaemonApp", () => {
       await app.connection.start();
 
       expect(app.runtimeManager.get("env-app-retired")).toBeUndefined();
-      expect(stopWatchingStatus).toHaveBeenCalledTimes(1);
+      expect(stopWatchingStatus).not.toHaveBeenCalled();
       expect(runtime.shutdown).toHaveBeenCalledTimes(1);
       const openSessionBody = fetchRecorder.requests
         .filter((request) => request.pathname === "/internal/session/open")
@@ -364,7 +601,13 @@ describe("createHostDaemonApp", () => {
 
       options.onProcessExit({
         providerId: "codex",
-        threadIds: ["thr_provider_exit_log"],
+        threads: [
+          {
+            threadId: "thr_provider_exit_log",
+            activeTurnId: null,
+            providerThreadId: null,
+          },
+        ],
         code: 1,
         expected: false,
         signal: null,
@@ -416,7 +659,13 @@ describe("createHostDaemonApp", () => {
       );
       options.onProcessExit({
         providerId: "codex",
-        threadIds: [request.threadId],
+        threads: [
+          {
+            threadId: request.threadId,
+            activeTurnId: request.turnId,
+            providerThreadId: request.providerThreadId,
+          },
+        ],
         code: null,
         expected: true,
         signal: "SIGTERM",

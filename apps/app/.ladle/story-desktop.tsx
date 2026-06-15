@@ -3,7 +3,7 @@ import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
   BbDesktopInfo,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 
 // A minimal, inert desktop bridge for stories that need the desktop-only browser
 // surface to register as available. The browser methods are no-ops: the native
@@ -43,6 +43,19 @@ function createStoryDesktopApi(): BbDesktopApi {
   return {
     ...STORY_DESKTOP_INFO,
     browser: createStoryDesktopBrowserApi(),
+    popout: {
+      getCurrentThread() {
+        return Promise.resolve(null);
+      },
+      toggle() {},
+      setThread() {},
+      stateChanged() {},
+      openInMain() {},
+      setMouseEventsIgnored() {},
+      onThreadChanged() {
+        return () => {};
+      },
+    },
     async checkForUpdates() {
       return STORY_DESKTOP_INFO;
     },

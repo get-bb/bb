@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { BbDesktopBrowserApi } from "@bb/server-contract";
+import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
 import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
 import {
   createBrowserViewVisibilityCoordinator,
   destroyPersistedBrowserViewsForEnvironment,
   destroyPersistedBrowserViewsForThread,
-  getBrowserViewVisibilityCoordinator,
   registerBrowserView,
   resetBrowserViewPersistence,
 } from "./browserViewVisibilityCoordinator";
@@ -101,18 +100,16 @@ describe("browserViewVisibilityCoordinator", () => {
     ]);
   });
 
-  it("shares visibility ownership across browser decks in one renderer window", () => {
+  it("keeps visibility ownership local to each browser deck", () => {
     const { api, visibility } = createRecordingApi();
-    const firstDeckCoordinator = getBrowserViewVisibilityCoordinator(api);
-    const secondDeckCoordinator = getBrowserViewVisibilityCoordinator(api);
+    const firstDeckCoordinator = createBrowserViewVisibilityCoordinator(api);
+    const secondDeckCoordinator = createBrowserViewVisibilityCoordinator(api);
 
     firstDeckCoordinator.show("thread-a-tab", () => {});
     secondDeckCoordinator.show("thread-b-tab", () => {});
 
-    expect(secondDeckCoordinator).toBe(firstDeckCoordinator);
     expect(visibility).toEqual([
       { tabId: "thread-a-tab", visible: true },
-      { tabId: "thread-a-tab", visible: false },
       { tabId: "thread-b-tab", visible: true },
     ]);
   });
@@ -135,9 +132,7 @@ describe("browserViewVisibilityCoordinator", () => {
       threadId: "thread-a",
     });
 
-    expect(visibility).toEqual([
-      { tabId: "thread-a-tab", visible: false },
-    ]);
+    expect(visibility).toEqual([{ tabId: "thread-a-tab", visible: false }]);
     expect(detachments).toEqual(["thread-a-tab"]);
   });
 
@@ -159,9 +154,7 @@ describe("browserViewVisibilityCoordinator", () => {
       environmentId: "environment-b",
     });
 
-    expect(visibility).toEqual([
-      { tabId: "thread-b-tab", visible: false },
-    ]);
+    expect(visibility).toEqual([{ tabId: "thread-b-tab", visible: false }]);
     expect(detachments).toEqual(["thread-b-tab"]);
   });
 });

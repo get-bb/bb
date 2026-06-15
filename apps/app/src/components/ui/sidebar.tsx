@@ -62,6 +62,14 @@ function useIsSidebarShowing() {
   return isCompactViewport ? openMobile : state === "expanded";
 }
 
+function useOptionalIsSidebarShowing() {
+  const context = React.useContext(SidebarContext);
+  if (context === null) {
+    return null;
+  }
+  return context.isCompactViewport ? context.openMobile : context.state === "expanded";
+}
+
 /**
  * Stable callback that closes the mobile sidebar drawer. Every navigation
  * triggered from inside the sidebar must call this so the destination view is
@@ -878,5 +886,6 @@ export {
   SidebarTrigger,
   useCloseMobileSidebar,
   useIsSidebarShowing,
+  useOptionalIsSidebarShowing,
   useSidebar,
 };

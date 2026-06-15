@@ -52,8 +52,8 @@ function runThreadSearchMigrationFiles(
   db: ReturnType<typeof createConnection>,
 ): void {
   for (const migrationFile of [
-    "0027_thread_search.sql",
-    "0028_thread_search_rowid_fts.sql",
+    "0032_thread_search.sql",
+    "0033_thread_search_rowid_fts.sql",
   ]) {
     const migrationSql = readFileSync(
       resolve(__dirname, "../../drizzle", migrationFile),

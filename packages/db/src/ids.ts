@@ -52,6 +52,10 @@ export function createEventId(): string {
   return createId("evt");
 }
 
+export function createEventLargeValueId(): string {
+  return createId("elv");
+}
+
 export function createPromptHistoryEntryId(): string {
   return createId("phist");
 }
@@ -74,16 +78,4 @@ export function createHostDaemonSessionId(): string {
 
 export function createTerminalSessionId(): string {
   return createId("term");
-}
-
-export function createWorkflowRunId(): string {
-  return createId("wfr");
-}
-
-export function createWorkflowRunOperationId(): string {
-  return createId("wfop");
-}
-
-export function createWorkflowRunEventId(): string {
-  return createId("wfev");
 }

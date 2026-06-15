@@ -385,10 +385,19 @@ export async function createThreadFromRequest(
     }
   }
 
-  return createProvisioningThread(deps, {
+  const thread = await createProvisioningThread(deps, {
     environmentId,
     environmentIntent,
     executionDefaults,
     request,
   });
+  deps.telemetry.capture({
+    name: "thread_created",
+    properties: {
+      is_automation: requestInput.automationId !== null,
+      is_child_thread: parentThread !== null,
+      provider: request.providerId,
+    },
+  });
+  return thread;
 }

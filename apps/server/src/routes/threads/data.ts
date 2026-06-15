@@ -3,19 +3,13 @@ import { listQueuedThreadMessages } from "@bb/db";
 import type { Hono } from "hono";
 import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
 import {
-  promptHistoryQuerySchema,
-  threadHostFileContentQuerySchema,
-  threadStorageContentQuerySchema,
-  threadStorageFilesQuerySchema,
-  threadStoragePathsQuerySchema,
-  threadEventWaitQuerySchema,
-  threadEventsQuerySchema,
-  threadTimelineQuerySchema,
-  timelineTurnSummaryDetailsQuerySchema,
+  publicApiRoutes,
+  timelineFeedDetailPartSchema,
   typedRoutes,
   type PublicApiSchema,
   type ThreadComposerBootstrapResponse,
-  type ThreadTimelineQuery,
+  type TimelineFeedDetailPart,
+  type ThreadTimelineFeedQuery,
 } from "@bb/server-contract";
 import type {
   AppDeps,
@@ -42,8 +36,10 @@ import {
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
-  buildThreadTimeline,
+  buildThreadTimelineFeed,
+  buildTimelineRowDetail,
   buildTimelineTurnSummaryDetails,
+  buildTimelineWorkOutputDetail,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
   type ThreadTimelinePageKind,
@@ -64,11 +60,7 @@ import {
 } from "../../services/lib/validation.js";
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
 import { parseFileListLimit } from "../file-list-query.js";
-import {
-  extractRoutePath,
-  parseSafeRelativeRoutePath,
-  type SafeRelativeRoutePath,
-} from "../relative-route-path.js";
+import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 
 interface ThreadComposerExecutionOptionsSource {
   archivedAt: number | null;
@@ -104,7 +96,7 @@ async function buildThreadComposerBootstrapResponse(
     ? thread.environmentId
     : null;
   // Null when we deliberately skip resolution (archived / environment-less
-  // threads). Resolving hits the host via live provider.list + list_models
+  // threads). Resolving hits the host via live provider.list_models
   // RPCs, so we only pay that cost when the thread has a live environment whose
   // composer can actually use the list. Null (not an empty object) keeps
   // "not resolved" distinct from "resolved to nothing".
@@ -148,10 +140,6 @@ interface RequireThreadStorageTargetArgs {
   threadId: string;
 }
 
-type RawFileRoutePath = SafeRelativeRoutePath;
-
-const THREAD_STORAGE_FILE_ROUTE_SEGMENT = "/thread-storage/files/";
-const THREAD_WORKTREE_FILE_ROUTE_SEGMENT = "/worktree/files/";
 const RAW_FILE_NO_STORE_CACHE_CONTROL = "no-store";
 const RAW_FILE_HTML_CONTENT_TYPE = "text/html; charset=utf-8";
 const RAW_FILE_CONTENT_TYPE_OPTIONS = "nosniff";
@@ -181,9 +169,16 @@ function parseThreadTimelineSegmentLimit(
 }
 
 function parseThreadTimelinePage(
-  query: ThreadTimelineQuery,
+  query: ThreadTimelineFeedQuery,
 ): ThreadTimelinePageRequest {
   const hasBeforeAnchorSeq = query.beforeAnchorSeq !== undefined;
+  if (query.summaryOnly === "true" && hasBeforeAnchorSeq) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "summaryOnly cannot be used with older timeline pagination",
+    );
+  }
   const kind: ThreadTimelinePageKind = hasBeforeAnchorSeq ? "older" : "latest";
   const segmentLimit = parseThreadTimelineSegmentLimit(
     THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
@@ -218,6 +213,19 @@ function parseThreadTimelinePage(
   };
 }
 
+function parseTimelineRowDetailParts(
+  rawParts: string,
+): TimelineFeedDetailPart[] {
+  const parts: TimelineFeedDetailPart[] = [];
+  for (const rawPart of rawParts.split(",")) {
+    const part = timelineFeedDetailPartSchema.parse(rawPart);
+    if (!parts.includes(part)) {
+      parts.push(part);
+    }
+  }
+  return parts;
+}
+
 export async function requireThreadStorageTarget(
   deps: WorkSessionDeps,
   args: RequireThreadStorageTargetArgs,
@@ -236,24 +244,6 @@ export async function requireThreadStorageTarget(
       threadId: thread.id,
     }),
   };
-}
-
-function parseRawFileRoutePath(rawPath: string): RawFileRoutePath {
-  return parseSafeRelativeRoutePath({
-    rawPath,
-    dotfileSegmentPolicy: "allow",
-    invalidPathMessage: "Invalid file path",
-  });
-}
-
-function extractRawFileRoutePath(
-  requestUrl: string,
-  routeSegment: string,
-): string {
-  return extractRoutePath({
-    requestUrl,
-    routeSegment,
-  });
 }
 
 function isHtmlPreviewPath(relativePath: string): boolean {
@@ -292,7 +282,7 @@ async function serveThreadStorageRawFile(
   threadId: string,
   rawPath: string,
 ): Promise<Response> {
-  const filePath = parseRawFileRoutePath(rawPath);
+  const filePath = parseSafeRelativeRoutePath(rawPath);
   const target = await requireThreadStorageTarget(deps, { threadId });
 
   try {
@@ -316,7 +306,7 @@ async function serveThreadWorktreeRawFile(
   threadId: string,
   rawPath: string,
 ): Promise<Response> {
-  const filePath = parseRawFileRoutePath(rawPath);
+  const filePath = parseSafeRelativeRoutePath(rawPath);
   const thread = requirePublicThread(deps.db, threadId);
   if (!thread.environmentId) {
     throw new ApiError(409, "invalid_request", "Thread has no environment");
@@ -343,49 +333,71 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   const { get } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
+  const routes = publicApiRoutes.threads;
 
-  get("/threads/:id/timeline", threadTimelineQuerySchema, (context, query) => {
+  get(routes.timelineFeed, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
-      buildThreadTimeline(deps.db, thread, {
+      buildThreadTimelineFeed(deps.db, thread, {
         isDevelopment: deps.config.isDevelopment,
-        includeNestedRows: query.includeNestedRows === "true",
         page: parseThreadTimelinePage(query),
         summaryOnly: query.summaryOnly === "true",
       }),
     );
   });
 
-  get(
-    "/threads/:id/timeline/turn-summary-details",
-    timelineTurnSummaryDetailsQuerySchema,
-    (context, query) => {
-      const thread = requirePublicThread(deps.db, context.req.param("id"));
-      return context.json(
-        buildTimelineTurnSummaryDetails(deps.db, thread, {
-          isDevelopment: deps.config.isDevelopment,
-          turnId: query.turnId,
-          sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
-          sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
-        }),
-      );
-    },
-  );
+  get(routes.timelineRowDetail, (context, query) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    return context.json(
+      buildTimelineRowDetail(deps.db, thread, {
+        isDevelopment: deps.config.isDevelopment,
+        parts: parseTimelineRowDetailParts(query.parts),
+        rowKey: context.req.param("rowKey"),
+        sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
+        sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+      }),
+    );
+  });
 
-  get("/threads/:id/output", (context) => {
+  get(routes.timelineTurnSummaryDetails, (context, query) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    return context.json(
+      buildTimelineTurnSummaryDetails(deps.db, thread, {
+        isDevelopment: deps.config.isDevelopment,
+        turnId: query.turnId,
+        sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
+        sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+      }),
+    );
+  });
+
+  get(routes.timelineWorkOutputDetail, (context, query) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    return context.json(
+      buildTimelineWorkOutputDetail(deps.db, thread, {
+        callId: query.callId,
+        isDevelopment: deps.config.isDevelopment,
+        sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
+        sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+        workKind: query.workKind,
+      }),
+    );
+  });
+
+  get(routes.output, (context) => {
     requirePublicThread(deps.db, context.req.param("id"));
     return context.json({
       output: getLastThreadOutput(deps.db, context.req.param("id")),
     });
   });
 
-  get("/threads/:id/composer-bootstrap", async (context) =>
+  get(routes.composerBootstrap, async (context) =>
     context.json(
       await buildThreadComposerBootstrapResponse(deps, context.req.param("id")),
     ),
   );
 
-  get("/threads/:id/queued-messages", (context) => {
+  get(routes.queuedMessages, (context) => {
     const threadId = context.req.param("id");
     requirePublicThread(deps.db, threadId);
     return context.json(
@@ -393,29 +405,25 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(
-    "/threads/:id/prompt-history",
-    promptHistoryQuerySchema,
-    (context, query) => {
-      const threadId = context.req.param("id");
-      requirePublicThread(deps.db, threadId);
-      const limit = parseBoundedPositiveOptionalInteger({
-        defaultValue: PROMPT_HISTORY_ENTRY_LIMIT,
-        max: PROMPT_HISTORY_ENTRY_LIMIT,
-        name: "limit",
-        value: query.limit,
-      });
+  get(routes.promptHistory, (context, query) => {
+    const threadId = context.req.param("id");
+    requirePublicThread(deps.db, threadId);
+    const limit = parseBoundedPositiveOptionalInteger({
+      defaultValue: PROMPT_HISTORY_ENTRY_LIMIT,
+      max: PROMPT_HISTORY_ENTRY_LIMIT,
+      name: "limit",
+      value: query.limit,
+    });
 
-      return context.json(
-        listThreadPromptHistory(deps, {
-          threadId,
-          limit,
-        }),
-      );
-    },
-  );
+    return context.json(
+      listThreadPromptHistory(deps, {
+        threadId,
+        limit,
+      }),
+    );
+  });
 
-  get("/threads/:id/events", threadEventsQuerySchema, (context, query) => {
+  get(routes.events, (context, query) => {
     requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
       listThreadEventRows(deps.db, {
@@ -426,51 +434,47 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(
-    "/threads/:id/events/wait",
-    threadEventWaitQuerySchema,
-    async (context, query) => {
-      const threadId = context.req.param("id");
-      requirePublicThread(deps.db, threadId);
+  get(routes.eventWait, async (context, query) => {
+    const threadId = context.req.param("id");
+    requirePublicThread(deps.db, threadId);
 
-      const afterSeq = parseOptionalInteger(query.afterSeq, "afterSeq");
-      const waitMs = Math.min(
-        parseOptionalInteger(query.waitMs, "waitMs") ?? 30_000,
-        60_000,
-      );
-      const parsedEventType = threadEventTypeSchema.safeParse(query.type);
-      if (!parsedEventType.success) {
-        throw new ApiError(400, "invalid_request", "Invalid event type");
+    const afterSeq = parseOptionalInteger(query.afterSeq, "afterSeq");
+    const waitMs = Math.min(
+      parseOptionalInteger(query.waitMs, "waitMs") ?? 30_000,
+      60_000,
+    );
+    const parsedEventType = threadEventTypeSchema.safeParse(query.type);
+    if (!parsedEventType.success) {
+      throw new ApiError(400, "invalid_request", "Invalid event type");
+    }
+    const eventType = parsedEventType.data;
+
+    const findMatch = () =>
+      findThreadEvent(deps.db, { threadId, type: eventType, afterSeq });
+
+    const deadline = Date.now() + waitMs;
+    let match = findMatch();
+    while (!match) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      const waiter = deps.hub.registerThreadEventWaiter(threadId, remaining);
+      match = findMatch();
+      if (match) {
+        waiter.cancel();
+        break;
       }
-      const eventType = parsedEventType.data;
+      await waiter.promise;
+      match = findMatch();
+    }
 
-      const findMatch = () =>
-        findThreadEvent(deps.db, { threadId, type: eventType, afterSeq });
+    if (!match) {
+      return new Response(null, { status: 204 });
+    }
 
-      const deadline = Date.now() + waitMs;
-      let match = findMatch();
-      while (!match) {
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) break;
-        const waiter = deps.hub.registerThreadEventWaiter(threadId, remaining);
-        match = findMatch();
-        if (match) {
-          waiter.cancel();
-          break;
-        }
-        await waiter.promise;
-        match = findMatch();
-      }
+    return context.json(match);
+  });
 
-      if (!match) {
-        return new Response(null, { status: 204 });
-      }
-
-      return context.json(match);
-    },
-  );
-
-  get("/threads/:id/default-execution-options", async (context) => {
+  get(routes.defaultExecutionOptions, async (context) => {
     const threadId = context.req.param("id");
     requirePublicThread(deps.db, threadId);
     return context.json(
@@ -486,161 +490,140 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   // Generic iframe previews use path-shaped raw URLs so relative links resolve
   // beside the HTML file. These routes never inject app bridge globals.
-  app.get("/threads/:id/worktree/files/*", async (context) =>
+  // `:filePath{.+}` matches across slashes; hono percent-decodes it once.
+  get(routes.worktreeFile, async (context) =>
     serveThreadWorktreeRawFile(
       deps,
       context.req.param("id"),
-      extractRawFileRoutePath(
-        context.req.url,
-        THREAD_WORKTREE_FILE_ROUTE_SEGMENT,
-      ),
+      context.req.param("filePath"),
     ),
   );
 
-  get(
-    "/threads/:id/thread-storage/files",
-    threadStorageFilesQuerySchema,
-    async (context, query) => {
-      const target = await requireThreadStorageTarget(deps, {
-        threadId: context.req.param("id"),
-      });
-      const limit = parseFileListLimit(query.limit);
+  get(routes.storageFiles, async (context, query) => {
+    const target = await requireThreadStorageTarget(deps, {
+      threadId: context.req.param("id"),
+    });
+    const limit = parseFileListLimit(query.limit);
 
-      try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.list_files",
-            path: target.storagePath,
-            ...(query.query ? { query: query.query } : {}),
-            limit,
-          },
-        });
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: target.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_files",
+          path: target.storagePath,
+          ...(query.query ? { query: query.query } : {}),
+          limit,
+        },
+      });
+      return context.json({
+        files: result.files,
+        truncated: result.truncated,
+        storageRootPath: target.storagePath,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.body.code === "ENOENT") {
         return context.json({
-          files: result.files,
-          truncated: result.truncated,
+          files: [],
+          truncated: false,
           storageRootPath: target.storagePath,
         });
-      } catch (error) {
-        if (error instanceof ApiError && error.body.code === "ENOENT") {
-          return context.json({
-            files: [],
-            truncated: false,
-            storageRootPath: target.storagePath,
-          });
-        }
-        throw error;
       }
-    },
-  );
+      throw error;
+    }
+  });
 
-  app.get("/threads/:id/thread-storage/files/*", async (context) =>
+  get(routes.storageFile, async (context) =>
     serveThreadStorageRawFile(
       deps,
       context.req.param("id"),
-      extractRawFileRoutePath(
-        context.req.url,
-        THREAD_STORAGE_FILE_ROUTE_SEGMENT,
-      ),
+      context.req.param("filePath"),
     ),
   );
 
-  get(
-    "/threads/:id/thread-storage/paths",
-    threadStoragePathsQuerySchema,
-    async (context, query) => {
-      const target = await requireThreadStorageTarget(deps, {
-        threadId: context.req.param("id"),
-      });
-      const limit = parseFileListLimit(query.limit);
-      const inclusion = parsePathKindInclusion({
-        includeFiles: query.includeFiles,
-        includeDirectories: query.includeDirectories,
-      });
+  get(routes.storagePaths, async (context, query) => {
+    const target = await requireThreadStorageTarget(deps, {
+      threadId: context.req.param("id"),
+    });
+    const limit = parseFileListLimit(query.limit);
+    const inclusion = parsePathKindInclusion({
+      includeFiles: query.includeFiles,
+      includeDirectories: query.includeDirectories,
+    });
 
-      try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.list_paths",
-            path: target.storagePath,
-            ...(query.query ? { query: query.query } : {}),
-            limit,
-            includeFiles: inclusion.includeFiles,
-            includeDirectories: inclusion.includeDirectories,
-          },
-        });
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: target.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.list_paths",
+          path: target.storagePath,
+          ...(query.query ? { query: query.query } : {}),
+          limit,
+          includeFiles: inclusion.includeFiles,
+          includeDirectories: inclusion.includeDirectories,
+        },
+      });
+      return context.json({
+        paths: result.paths,
+        truncated: result.truncated,
+        storageRootPath: target.storagePath,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.body.code === "ENOENT") {
         return context.json({
-          paths: result.paths,
-          truncated: result.truncated,
+          paths: [],
+          truncated: false,
           storageRootPath: target.storagePath,
         });
-      } catch (error) {
-        if (error instanceof ApiError && error.body.code === "ENOENT") {
-          return context.json({
-            paths: [],
-            truncated: false,
-            storageRootPath: target.storagePath,
-          });
-        }
-        throw error;
       }
-    },
-  );
+      throw error;
+    }
+  });
 
-  get(
-    "/threads/:id/thread-storage/content",
-    threadStorageContentQuerySchema,
-    async (context, query) => {
-      validateFilePath(query.path);
-      const target = await requireThreadStorageTarget(deps, {
-        threadId: context.req.param("id"),
+  get(routes.storageContent, async (context, query) => {
+    validateFilePath(query.path);
+    const target = await requireThreadStorageTarget(deps, {
+      threadId: context.req.param("id"),
+    });
+
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: target.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.read_file",
+          path: path.join(target.storagePath, query.path),
+          rootPath: target.storagePath,
+        },
       });
+      return createDaemonFileContentResponse(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
 
-      try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: target.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.read_file",
-            path: path.join(target.storagePath, query.path),
-            rootPath: target.storagePath,
-          },
-        });
-        return createDaemonFileContentResponse(result);
-      } catch (error) {
-        return remapDaemonFileRouteError(error);
-      }
-    },
-  );
+  get(routes.hostFileContent, async (context, query) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    if (!thread.environmentId) {
+      throwThreadEnvironmentUnavailable(
+        threadEnvironmentUnavailableDetails("never_attached", null),
+      );
+    }
+    const environment = requireEnvironment(deps.db, thread.environmentId);
 
-  get(
-    "/threads/:id/host-files/content",
-    threadHostFileContentQuerySchema,
-    async (context, query) => {
-      const thread = requirePublicThread(deps.db, context.req.param("id"));
-      if (!thread.environmentId) {
-        throwThreadEnvironmentUnavailable(
-          threadEnvironmentUnavailableDetails("never_attached", null),
-        );
-      }
-      const environment = requireEnvironment(deps.db, thread.environmentId);
-
-      try {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: environment.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.read_file",
-            path: query.path,
-          },
-        });
-        return createDaemonFileContentResponse(result);
-      } catch (error) {
-        return remapDaemonFileRouteError(error);
-      }
-    },
-  );
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: environment.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.read_file",
+          path: query.path,
+        },
+      });
+      return createDaemonFileContentResponse(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
 }

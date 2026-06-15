@@ -6,14 +6,16 @@ import type {
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { getCachedThreadListPlaceholder } from "./query-cache";
-import { fetchAndHydrateThreadComposerBootstrap } from "./composer-cache-owner";
+import {
+  fetchAndHydrateThreadComposerBootstrap,
+  threadComposerBootstrapQueryKey,
+} from "../queries/thread-composer-bootstrap-query";
 import {
   environmentQueryKey,
   hostQueryKey,
   hostsQueryKey,
-  threadComposerBootstrapQueryKey,
   threadQueryKey,
-  threadTimelineQueryKey,
+  threadTimelineFeedQueryKey,
 } from "../queries/query-keys";
 
 type HostList = Host[];
@@ -88,9 +90,9 @@ export function ingestThreadDetailBootstrap({
 
   if (timelinePrefetch) {
     void queryClient.prefetchQuery({
-      queryKey: threadTimelineQueryKey(thread.id),
+      queryKey: threadTimelineFeedQueryKey(thread.id),
       queryFn: () =>
-        api.getThreadTimeline({
+        api.getThreadTimelineFeed({
           id: thread.id,
         }),
     });

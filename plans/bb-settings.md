@@ -187,4 +187,3 @@ Validation:
 - Should regex settings reject invalid regexes at write time, or store invalid
   text and report invalid state in the UI?
 - Which existing localStorage preferences are worth migrating with this change?
-- Should settings changes be included in replay captures?

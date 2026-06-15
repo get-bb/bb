@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { appToast } from "@/components/ui/app-toast";
-import type { BbDesktopApi, BbDesktopInfo } from "@bb/server-contract";
+import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { useSystemVersion } from "./queries/system-queries";
 

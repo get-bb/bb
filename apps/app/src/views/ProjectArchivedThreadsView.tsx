@@ -11,7 +11,7 @@ import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import type { ArchivedThreadsKindFilter } from "@/hooks/queries/query-keys";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 
 interface FilterOption {
   value: ArchivedThreadsKindFilter;

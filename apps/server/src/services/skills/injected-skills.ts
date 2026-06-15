@@ -2,15 +2,8 @@ import type { Dirent } from "node:fs";
 import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
-import {
-  resolveApplicationManifestPath,
-  resolveApplicationPath,
-  resolveAppsRootPath,
-  resolveDataDirSkillsRootPath,
-} from "@bb/config/app-storage-paths";
-import { applicationIdSchema, type ApplicationId } from "@bb/domain";
+import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
-import { appManifestSchema } from "@bb/server-contract";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
 
@@ -43,7 +36,6 @@ export interface ResolveInjectedSkillSourcesArgs {
 }
 
 interface SkillCandidateSource {
-  applicationId: ApplicationId | null;
   sourceType: HostDaemonInjectedSkillSource["sourceType"];
 }
 
@@ -70,18 +62,6 @@ interface SkillCollisionLogArgs {
   name: string;
 }
 
-interface ReadValidApplicationIdsArgs {
-  appsRootPath: string;
-  dataDir: string;
-  logger: ServerLogger;
-}
-
-interface ApplicationManifestReadArgs {
-  applicationId: ApplicationId;
-  dataDir: string;
-  logger: ServerLogger;
-}
-
 function isFsErrorWithCode(error: Error, code: string): boolean {
   return "code" in error && error.code === code;
 }
@@ -103,7 +83,6 @@ function hasSupportedFrontmatterDelimiter(content: string): boolean {
 function logInvalidSkill(args: InvalidSkillLogArgs): void {
   args.logger.warn(
     {
-      applicationId: args.applicationId,
       candidatePath: args.candidatePath,
       reason: args.reason,
       sourceType: args.sourceType,
@@ -116,7 +95,6 @@ function logSkillCollision(args: SkillCollisionLogArgs): void {
   for (const source of args.colliding) {
     args.logger.warn(
       {
-        applicationId: source.applicationId,
         name: args.name,
         sourceRootPath: source.sourceRootPath,
         sourceType: source.sourceType,
@@ -210,7 +188,6 @@ function readSkillCandidate(
   if (args.sourceType === "builtin") {
     return {
       sourceType: "builtin",
-      applicationId: null,
       name: frontmatter.data.name,
       description: frontmatter.data.description,
       sourceRootPath: args.candidatePath,
@@ -221,7 +198,6 @@ function readSkillCandidate(
   if (args.sourceType === "data-dir") {
     return {
       sourceType: "data-dir",
-      applicationId: null,
       name: frontmatter.data.name,
       description: frontmatter.data.description,
       sourceRootPath: args.candidatePath,
@@ -229,17 +205,7 @@ function readSkillCandidate(
     };
   }
 
-  if (args.applicationId === null) {
-    throw new Error("Global app skill source requires an applicationId");
-  }
-  return {
-    sourceType: "global-app",
-    applicationId: args.applicationId,
-    name: frontmatter.data.name,
-    description: frontmatter.data.description,
-    sourceRootPath: args.candidatePath,
-    skillFilePath,
-  };
+  throw new Error(`Unsupported injected skill source type: ${args.sourceType}`);
 }
 
 function readSkillsRoot(
@@ -258,7 +224,6 @@ function readSkillsRoot(
   if (rootStat.isSymbolicLink()) {
     args.logger.warn(
       {
-        applicationId: args.applicationId,
         skillsRootPath: args.skillsRootPath,
         sourceType: args.sourceType,
       },
@@ -269,7 +234,6 @@ function readSkillsRoot(
   if (!rootStat.isDirectory()) {
     args.logger.warn(
       {
-        applicationId: args.applicationId,
         skillsRootPath: args.skillsRootPath,
         sourceType: args.sourceType,
       },
@@ -302,7 +266,6 @@ function readSkillsRoot(
       continue;
     }
     const source = readSkillCandidate({
-      applicationId: args.applicationId,
       candidatePath,
       directoryName: entry.name,
       logger: args.logger,
@@ -316,112 +279,15 @@ function readSkillsRoot(
   return sources;
 }
 
-function hasValidApplicationManifest(
-  args: ApplicationManifestReadArgs,
-): boolean {
-  let parsedJson;
-  try {
-    parsedJson = JSON.parse(
-      fs.readFileSync(
-        resolveApplicationManifestPath(args.dataDir, args.applicationId),
-        "utf8",
-      ),
-    );
-  } catch (error) {
-    args.logger.warn(
-      {
-        applicationId: args.applicationId,
-        manifestPath: resolveApplicationManifestPath(
-          args.dataDir,
-          args.applicationId,
-        ),
-        reason:
-          error instanceof Error && error.message.trim().length > 0
-            ? error.message
-            : "Invalid app manifest",
-      },
-      "Skipping invalid global app manifest for injected skills",
-    );
-    return false;
-  }
-
-  const manifest = appManifestSchema.safeParse(parsedJson);
-  if (!manifest.success) {
-    args.logger.warn(
-      {
-        applicationId: args.applicationId,
-        issues: compactZodIssues(manifest.error.issues),
-        manifestPath: resolveApplicationManifestPath(
-          args.dataDir,
-          args.applicationId,
-        ),
-      },
-      "Skipping invalid global app manifest for injected skills",
-    );
-    return false;
-  }
-
-  if (manifest.data.id !== args.applicationId) {
-    args.logger.warn(
-      {
-        applicationId: args.applicationId,
-        manifestId: manifest.data.id,
-        manifestPath: resolveApplicationManifestPath(
-          args.dataDir,
-          args.applicationId,
-        ),
-      },
-      "Skipping global app skills because manifest id does not match directory",
-    );
-    return false;
-  }
-
-  return true;
-}
-
-function readValidApplicationIds(
-  args: ReadValidApplicationIdsArgs,
-): ApplicationId[] {
-  let entries: Dirent[];
-  try {
-    entries = fs.readdirSync(args.appsRootPath, { withFileTypes: true });
-  } catch (error) {
-    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
-      return [];
-    }
-    throw error;
-  }
-
-  const applicationIds: ApplicationId[] = [];
-  for (const entry of entries.sort(sortDirentsByName)) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    const parsed = applicationIdSchema.safeParse(entry.name);
-    if (!parsed.success) {
-      continue;
-    }
-    const isValid = hasValidApplicationManifest({
-      applicationId: parsed.data,
-      dataDir: args.dataDir,
-      logger: args.logger,
-    });
-    if (isValid) {
-      applicationIds.push(parsed.data);
-    }
-  }
-  return applicationIds;
-}
-
 interface ExcludeOverriddenBuiltinsArgs {
   builtinSources: readonly HostDaemonInjectedSkillSource[];
   userSources: readonly HostDaemonInjectedSkillSource[];
 }
 
 /**
- * A data-dir or global-app skill that reuses a built-in skill's name
- * overrides the built-in copy, even when the user sources later collide
- * each other out: a user touching a name always silences the built-in.
+ * A data-dir skill that reuses a built-in skill's name overrides the built-in
+ * copy, even when user sources later collide each other out: a user touching a
+ * name always silences the built-in.
  */
 function excludeOverriddenBuiltins(
   logger: ServerLogger,
@@ -476,11 +342,10 @@ function excludeCollisions(
 }
 
 /**
- * Discovers the injected skills for a thread command from three roots:
- * built-in skills bundled with the server, data-dir skills under
- * `<dataDir>/skills`, and app-local skills under each valid global app.
- * User (data-dir/global-app) skills override same-named built-ins; name
- * collisions among user sources drop all colliding user sources.
+ * Discovers the injected skills for a thread command from built-in skills
+ * bundled with the server and data-dir skills under `<dataDir>/skills`.
+ * User data-dir skills override same-named built-ins; name collisions among
+ * user sources drop all colliding user sources.
  *
  * All source paths are server-machine paths that the local host daemon reads
  * from its filesystem.
@@ -490,41 +355,18 @@ export function resolveInjectedSkillSources(
   args: ResolveInjectedSkillSourcesArgs,
 ): HostDaemonInjectedSkillSource[] {
   const builtinSources = readSkillsRoot({
-    applicationId: null,
     logger,
     skillsRootPath: args.builtinSkillsRootPath,
     sourceType: "builtin",
   });
 
   const dataDirSources = readSkillsRoot({
-    applicationId: null,
     logger,
     skillsRootPath: resolveDataDirSkillsRootPath(args.dataDir),
     sourceType: "data-dir",
   });
 
-  const appSources: HostDaemonInjectedSkillSource[] = [];
-  const appsRootPath = resolveAppsRootPath(args.dataDir);
-  const applicationIds = readValidApplicationIds({
-    appsRootPath,
-    dataDir: args.dataDir,
-    logger,
-  });
-  for (const applicationId of applicationIds) {
-    appSources.push(
-      ...readSkillsRoot({
-        applicationId,
-        logger,
-        skillsRootPath: path.join(
-          resolveApplicationPath(args.dataDir, applicationId),
-          "skills",
-        ),
-        sourceType: "global-app",
-      }),
-    );
-  }
-
-  const userSources = [...dataDirSources, ...appSources];
+  const userSources = dataDirSources;
   const activeBuiltinSources = excludeOverriddenBuiltins(logger, {
     builtinSources,
     userSources,

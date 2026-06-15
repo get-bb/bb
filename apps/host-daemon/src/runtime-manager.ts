@@ -1,44 +1,31 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import {
   createAgentRuntime,
   type AgentRuntime,
   type AgentRuntimeOptions,
   type AgentRuntimeSkillRoot,
   type AgentRuntimeProcessExitInfo,
+  type ReapedIdleProviderSession,
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
 import type {
-  AppDataPath,
-  ApplicationId,
   PendingInteractionCreate,
   PendingInteractionResolution,
   ThreadEvent,
   WorkspaceProvisionType,
 } from "@bb/domain";
-import {
-  requireThreadEventScopeTurnId,
-  threadScope,
-  turnScope,
-} from "@bb/domain";
+import { turnScope } from "@bb/domain";
 import type {
   HostDaemonActiveThread,
   HostDaemonEnvironmentChange,
   HostDaemonLoadedEnvironment,
-  HostDaemonTrackedApplicationDataTarget,
-  HostDaemonTrackedThreadTarget,
   HostDaemonInjectedSkillSource,
 } from "@bb/host-daemon-contract";
 import type {
-  ApplicationDataWatchTarget,
-  ApplicationStorageWatchError,
   DataDirSkillsWatchError,
   HostWatcher,
   InjectedSkillsObservedChange,
-  ThreadStorageWatchError,
-  WorkspaceWatchError,
-  WorkspaceStatusWatchChangeKind,
 } from "@bb/host-watcher";
 import {
   provisionWorkspace,
@@ -52,71 +39,23 @@ import {
   stageInjectedSkillSources,
   type InjectedSkillsLogger,
 } from "./injected-skills.js";
+import { reconnectProvisionArgs } from "./workspace-provision-target.js";
 
 type StopWatching = () => void | Promise<void>;
 
 const STOP_WATCHING: StopWatching = () => undefined;
 const PROVIDER_MAINTENANCE_WORKSPACE_DIR = "provider-maintenance-workspace";
 const PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH = 4000;
-const LOCAL_WORKSPACE_WATCH_CHANGE_KINDS: readonly WorkspaceStatusWatchChangeKind[] =
-  ["workspace-content-changed", "workspace-git-changed"];
-
-interface RuntimeThreadState {
-  activeTurnId: string | null;
-  providerId: string | null;
-  providerThreadId: string | null;
-  status: "active" | "idle";
-}
-
-interface ThreadStorageTarget {
-  environmentId: string;
-  threadId: string;
-}
-
-interface ThreadRuntimeTargetArgs {
-  environmentId: string;
-  threadId: string;
-}
-
-interface WaitForThreadActiveTurnArgs extends ThreadRuntimeTargetArgs {
-  timeoutMs: number;
-}
-
-interface UpsertTrackedThreadStateArgs {
-  entry: RuntimeEntry;
-  environmentId: string;
-  state: RuntimeThreadState;
-  threadId: string;
-}
-
-interface ApplicationDataTarget {
-  applicationId: ApplicationId;
-  appDataPath: string;
-}
-
-interface WorkspaceWatchState {
-  lastLocalFingerprint: string | null;
-  lastSharedRefsFingerprint: string | null;
-  pendingKinds: Set<WorkspaceStatusWatchChangeKind>;
-  processing: Promise<void> | null;
-}
-
-interface BuildUnexpectedProviderExitEventsArgs {
-  environmentId: string;
-  info: AgentRuntimeProcessExitInfo;
-  threads: Map<string, RuntimeThreadState>;
-}
 
 interface RuntimeSkillConfig {
   catalogHash: string;
   skillRoots: readonly AgentRuntimeSkillRoot[];
 }
 
-interface CreateEntryArgs
-  extends Omit<
-    EnsureEnvironmentArgs,
-    "injectedSkillSources" | "targetThreadId"
-  > {
+interface CreateEntryArgs extends Omit<
+  EnsureEnvironmentArgs,
+  "injectedSkillSources" | "targetThreadId"
+> {
   provisionSignal: AbortSignal;
   skillConfig: RuntimeSkillConfig | null;
 }
@@ -162,41 +101,6 @@ export class SkillCatalogConflictError extends Error {
   }
 }
 
-function lazyProvisionOpts(
-  environmentId: string,
-  workspacePath: string,
-  workspaceProvisionType: WorkspaceProvisionType,
-  personalWorkspaceRoot?: string,
-): ProvisionWorkspaceArgs {
-  switch (workspaceProvisionType) {
-    case "unmanaged":
-      return { workspaceProvisionType: "unmanaged", path: workspacePath };
-    case "managed-worktree":
-      return {
-        workspaceProvisionType: "reconnect-managed-worktree",
-        path: workspacePath,
-      };
-    case "personal":
-      if (!personalWorkspaceRoot) {
-        throw new Error(
-          "Personal workspace root is required to reconnect a personal workspace",
-        );
-      }
-      return {
-        workspaceProvisionType: "personal",
-        environmentId,
-        personalWorkspaceRoot,
-        targetPath: workspacePath,
-      };
-  }
-}
-
-function toErrorMessage(error: Error): string {
-  return error.message.trim().length > 0
-    ? error.message
-    : "Unknown workspace watch error";
-}
-
 function formatProviderProcessExitStatus(
   info: AgentRuntimeProcessExitInfo,
 ): string {
@@ -224,20 +128,6 @@ function buildProviderProcessExitDetail(
   return `stderr:\n${info.stderr.slice(-PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH)}`;
 }
 
-function workspaceWatchKindsIncludeLocalState(
-  changeKinds: readonly WorkspaceStatusWatchChangeKind[],
-): boolean {
-  return changeKinds.some((changeKind) =>
-    LOCAL_WORKSPACE_WATCH_CHANGE_KINDS.includes(changeKind),
-  );
-}
-
-function workspaceWatchKindsIncludeSharedRefs(
-  changeKinds: readonly WorkspaceStatusWatchChangeKind[],
-): boolean {
-  return changeKinds.includes("shared-git-refs-changed");
-}
-
 export interface RuntimeEntry {
   environmentId: string;
   runtime: AgentRuntime;
@@ -254,45 +144,9 @@ export interface RuntimeEntry {
   workspace: HostWorkspace;
   path: string;
   terminals: Set<string>;
-  threads: Map<string, RuntimeThreadState>;
-}
-
-export interface RuntimeThreadProviderSession {
-  environmentId: string;
-  providerId: string | null;
-  providerThreadId: string | null;
-  threadId: string;
-}
-
-export interface RecordThreadProviderSessionArgs {
-  environmentId: string;
-  providerId: string;
-  providerThreadId: string;
-  threadId: string;
-}
-
-export interface RecordThreadProviderStartArgs {
-  environmentId: string;
-  providerId: string;
-  threadId: string;
-}
-
-export interface ApplicationDataChangedNotification {
-  applicationId: ApplicationId;
-  appDataPath: string;
-  path: AppDataPath;
-}
-
-export interface ApplicationDataResyncNotification {
-  applicationId: ApplicationId;
-}
-
-export interface ApplicationContentChangedNotification {
-  applicationId: ApplicationId;
 }
 
 export interface InjectedSkillsChangedNotification {
-  applicationId: ApplicationId | null;
   changedPaths: string[];
   sourceType: InjectedSkillsObservedChange["sourceType"];
 }
@@ -335,35 +189,15 @@ export interface RuntimeManagerOptions {
   ) => Promise<HostWorkspace>;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
   onEvent?: (args: { environmentId: string; event: ThreadEvent }) => void;
-  onCapture?: AgentRuntimeOptions["onCapture"];
   threadStorageRootPath?: string | null;
-  onThreadStorageChanged?: (args: {
-    environmentId: string;
-    threadId: string;
-  }) => void;
-  appsRootPath?: string | null;
-  appDataRootPath?: string | null;
   onInjectedSkillsChanged?: (args: InjectedSkillsChangedNotification) => void;
-  onApplicationStorageTargetsChanged?: () => void;
-  onApplicationDataChanged?: (args: ApplicationDataChangedNotification) => void;
-  onApplicationDataResync?: (args: ApplicationDataResyncNotification) => void;
-  onApplicationContentChanged?: (
-    args: ApplicationContentChangedNotification,
-  ) => void;
-  onApplicationStorageWatchError?: (args: {
-    error: ApplicationStorageWatchError;
-  }) => void;
   onDataDirSkillsWatchError?: (args: {
     error: DataDirSkillsWatchError;
-  }) => void;
-  onThreadStorageWatchError?: (args: {
-    error: ThreadStorageWatchError;
   }) => void;
   onWorkspaceStatusChanged?: (args: {
     changeKinds: HostDaemonEnvironmentChange[];
     environmentId: string;
   }) => void;
-  onWorkspaceStatusWatchError?: (args: { error: WorkspaceWatchError }) => void;
   onInteractiveRequest?: (
     request: PendingInteractionCreate,
   ) => Promise<PendingInteractionResolution>;
@@ -372,8 +206,21 @@ export interface RuntimeManagerOptions {
   onProcessExit?: AgentRuntimeOptions["onProcessExit"];
 }
 
+export interface RuntimeManagerReapIdleProviderSessionsArgs {
+  idleForMs: number;
+  nowMs: number;
+}
+
+export interface RuntimeManagerReapedIdleProviderSession
+  extends ReapedIdleProviderSession {
+  environmentId: string;
+}
+
+export interface RuntimeManagerReapIdleProviderSessionsResult {
+  reapedSessions: RuntimeManagerReapedIdleProviderSession[];
+}
+
 interface RuntimeWorkspaceWriteRootsArgs {
-  appsRootPath: string | null | undefined;
   threadStorageRootPath: string | null | undefined;
   workspaceRoots: readonly string[];
 }
@@ -399,28 +246,17 @@ export class RuntimeManager {
     string,
     PendingEnvironmentProvision
   >();
-  private readonly trackedThreadStorageTargets = new Map<
-    string,
-    ThreadStorageTarget
-  >();
-  private readonly trackedApplicationDataTargets = new Map<
-    ApplicationId,
-    ApplicationDataTarget
-  >();
   private providerMaintenanceRuntime: AgentRuntime | null = null;
   private pendingProviderMaintenanceRuntime: Promise<AgentRuntime> | null =
     null;
   private managedShellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {};
-  private stopWatchingApplicationStorageRoot: StopWatching = STOP_WATCHING;
   private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
-  private stopWatchingThreadStorageRoot: StopWatching = STOP_WATCHING;
 
   constructor(private readonly options: RuntimeManagerOptions = {}) {
     this.createRuntime = options.createRuntime ?? createAgentRuntime;
     this.hostWatcher = options.hostWatcher;
     this.provisionWorkspace = options.provisionWorkspace ?? provisionWorkspace;
     this.baseShellEnv = { ...(options.shellEnv ?? {}) };
-    this.ensureApplicationStorageWatcher();
     this.ensureDataDirSkillsWatcher();
   }
 
@@ -428,9 +264,6 @@ export class RuntimeManager {
     args: RuntimeWorkspaceWriteRootsArgs,
   ): string[] {
     const roots = [...args.workspaceRoots];
-    if (args.appsRootPath) {
-      roots.push(args.appsRootPath);
-    }
     if (args.threadStorageRootPath) {
       // Provider runtimes are environment-scoped and may host multiple threads.
       // BB_THREAD_STORAGE still points agents at their own thread subdirectory;
@@ -438,120 +271,6 @@ export class RuntimeManager {
       roots.push(args.threadStorageRootPath);
     }
     return [...new Set(roots)];
-  }
-
-  private async createWorkspaceWatchState(
-    workspace: HostWorkspace,
-  ): Promise<WorkspaceWatchState> {
-    if (!workspace.isGitRepo) {
-      return {
-        lastLocalFingerprint: null,
-        lastSharedRefsFingerprint: null,
-        pendingKinds: new Set(),
-        processing: null,
-      };
-    }
-
-    const [lastLocalFingerprint, lastSharedRefsFingerprint] = await Promise.all(
-      [
-        workspace.getLocalStateFingerprint(),
-        workspace.getSharedGitRefsFingerprint(),
-      ],
-    );
-    return {
-      lastLocalFingerprint,
-      lastSharedRefsFingerprint,
-      pendingKinds: new Set(),
-      processing: null,
-    };
-  }
-
-  private queueWorkspaceWatchChange(args: {
-    changeKinds: readonly WorkspaceStatusWatchChangeKind[];
-    environmentId: string;
-    workspace: HostWorkspace;
-    workspacePath: string;
-    workspaceWatchState: WorkspaceWatchState;
-  }): void {
-    for (const changeKind of args.changeKinds) {
-      args.workspaceWatchState.pendingKinds.add(changeKind);
-    }
-    if (args.workspaceWatchState.processing) {
-      return;
-    }
-    this.flushWorkspaceWatchChanges(args);
-  }
-
-  private flushWorkspaceWatchChanges(args: {
-    environmentId: string;
-    workspace: HostWorkspace;
-    workspacePath: string;
-    workspaceWatchState: WorkspaceWatchState;
-  }): void {
-    const processing = this.processWorkspaceWatchChanges(args).finally(() => {
-      if (args.workspaceWatchState.processing === processing) {
-        args.workspaceWatchState.processing = null;
-      }
-      if (args.workspaceWatchState.pendingKinds.size > 0) {
-        this.flushWorkspaceWatchChanges(args);
-      }
-    });
-    args.workspaceWatchState.processing = processing;
-  }
-
-  private async processWorkspaceWatchChanges(args: {
-    environmentId: string;
-    workspace: HostWorkspace;
-    workspacePath: string;
-    workspaceWatchState: WorkspaceWatchState;
-  }): Promise<void> {
-    const pendingKinds = Array.from(args.workspaceWatchState.pendingKinds);
-    args.workspaceWatchState.pendingKinds.clear();
-
-    try {
-      const changeKinds: HostDaemonEnvironmentChange[] = [];
-      if (workspaceWatchKindsIncludeLocalState(pendingKinds)) {
-        const nextLocalFingerprint =
-          await args.workspace.getLocalStateFingerprint();
-        if (
-          args.workspaceWatchState.lastLocalFingerprint !== nextLocalFingerprint
-        ) {
-          args.workspaceWatchState.lastLocalFingerprint = nextLocalFingerprint;
-          changeKinds.push("work-status-changed");
-        }
-      }
-      if (workspaceWatchKindsIncludeSharedRefs(pendingKinds)) {
-        const nextSharedRefsFingerprint =
-          await args.workspace.getSharedGitRefsFingerprint();
-        if (
-          args.workspaceWatchState.lastSharedRefsFingerprint !==
-          nextSharedRefsFingerprint
-        ) {
-          args.workspaceWatchState.lastSharedRefsFingerprint =
-            nextSharedRefsFingerprint;
-          changeKinds.push("git-refs-changed");
-        }
-      }
-      if (changeKinds.length === 0) {
-        return;
-      }
-      this.options.onWorkspaceStatusChanged?.({
-        changeKinds,
-        environmentId: args.environmentId,
-      });
-    } catch (error) {
-      this.options.onWorkspaceStatusWatchError?.({
-        error: {
-          environmentId: args.environmentId,
-          kind: "workspace-watch-error",
-          message:
-            error instanceof Error
-              ? toErrorMessage(error)
-              : "Unknown workspace watch error",
-          rootPath: args.workspacePath,
-        },
-      });
-    }
   }
 
   get(environmentId: string): RuntimeEntry | undefined {
@@ -572,168 +291,6 @@ export class RuntimeManager {
     return undefined;
   }
 
-  hasThread(environmentId: string, threadId: string): boolean {
-    return this.entries.get(environmentId)?.threads.has(threadId) ?? false;
-  }
-
-  getThreadActiveTurnId(args: ThreadRuntimeTargetArgs): string | null {
-    return (
-      this.entries.get(args.environmentId)?.threads.get(args.threadId)
-        ?.activeTurnId ?? null
-    );
-  }
-
-  async waitForThreadActiveTurn(
-    args: WaitForThreadActiveTurnArgs,
-  ): Promise<string | null> {
-    const deadline = Date.now() + args.timeoutMs;
-    while (Date.now() < deadline) {
-      const thread = this.entries
-        .get(args.environmentId)
-        ?.threads.get(args.threadId);
-      if (!thread || thread.status === "idle") {
-        return null;
-      }
-      if (thread.activeTurnId !== null) {
-        return thread.activeTurnId;
-      }
-      await delay(Math.min(25, Math.max(0, deadline - Date.now())));
-    }
-    return this.getThreadActiveTurnId(args);
-  }
-
-  markThreadActive(
-    environmentId: string,
-    threadId: string,
-    providerThreadId: string,
-    providerId: string | null,
-  ): void {
-    const entry = this.entries.get(environmentId);
-    if (!entry) {
-      return;
-    }
-
-    const current = entry.threads.get(threadId);
-    this.upsertTrackedThreadState({
-      entry,
-      environmentId,
-      state: {
-        activeTurnId: current?.activeTurnId ?? null,
-        providerId: providerId ?? current?.providerId ?? null,
-        providerThreadId,
-        status: "active",
-      },
-      threadId,
-    });
-  }
-
-  markThreadInactive(environmentId: string, threadId: string): void {
-    const current = this.entries.get(environmentId)?.threads.get(threadId);
-    if (!current) {
-      return;
-    }
-
-    this.entries.get(environmentId)?.threads.set(threadId, {
-      ...current,
-      activeTurnId: null,
-      status: "idle",
-    });
-  }
-
-  recordThreadProviderStart(args: RecordThreadProviderStartArgs): void {
-    const entry = this.entries.get(args.environmentId);
-    if (!entry) {
-      return;
-    }
-
-    const current = entry.threads.get(args.threadId);
-    this.upsertTrackedThreadState({
-      entry,
-      environmentId: args.environmentId,
-      state: {
-        activeTurnId: current?.activeTurnId ?? null,
-        providerId: args.providerId,
-        providerThreadId: current?.providerThreadId ?? null,
-        status: current?.status ?? "idle",
-      },
-      threadId: args.threadId,
-    });
-  }
-
-  recordThreadProviderSession(args: RecordThreadProviderSessionArgs): void {
-    const entry = this.entries.get(args.environmentId);
-    if (!entry) {
-      return;
-    }
-
-    const current = entry.threads.get(args.threadId);
-    this.upsertTrackedThreadState({
-      entry,
-      environmentId: args.environmentId,
-      state: {
-        activeTurnId: current?.activeTurnId ?? null,
-        providerId: args.providerId,
-        providerThreadId: args.providerThreadId,
-        status: current?.status ?? "idle",
-      },
-      threadId: args.threadId,
-    });
-  }
-
-  getThreadProviderSession(
-    environmentId: string,
-    threadId: string,
-  ): RuntimeThreadProviderSession | null {
-    const thread = this.entries.get(environmentId)?.threads.get(threadId);
-    if (!thread) {
-      return null;
-    }
-
-    return {
-      environmentId,
-      providerId: thread.providerId,
-      providerThreadId: thread.providerThreadId,
-      threadId,
-    };
-  }
-
-  markThreadTurnStarted(
-    environmentId: string,
-    threadId: string,
-    providerThreadId: string,
-    turnId: string,
-  ): void {
-    const entry = this.entries.get(environmentId);
-    if (!entry) {
-      return;
-    }
-    this.upsertTrackedThreadState({
-      entry,
-      environmentId,
-      state: {
-        activeTurnId: turnId,
-        providerId: entry.threads.get(threadId)?.providerId ?? null,
-        providerThreadId,
-        status: "active",
-      },
-      threadId,
-    });
-  }
-
-  private upsertTrackedThreadState({
-    entry,
-    environmentId,
-    state,
-    threadId,
-  }: UpsertTrackedThreadStateArgs): void {
-    entry.threads.set(threadId, state);
-    this.trackedThreadStorageTargets.set(threadId, {
-      environmentId,
-      threadId,
-    });
-    this.ensureThreadStorageWatcher();
-  }
-
   markTerminalActive(environmentId: string, terminalId: string): void {
     this.entries.get(environmentId)?.terminals.add(terminalId);
   }
@@ -742,19 +299,10 @@ export class RuntimeManager {
     this.entries.get(environmentId)?.terminals.delete(terminalId);
   }
 
-  forgetThread(environmentId: string, threadId: string): void {
-    this.entries.get(environmentId)?.threads.delete(threadId);
-    this.trackedThreadStorageTargets.delete(threadId);
-    this.stopWatchingThreadStorageIfNoTrackedThreads();
-  }
-
   listActiveThreads(): HostDaemonActiveThread[] {
     const activeThreads: HostDaemonActiveThread[] = [];
     for (const entry of this.entries.values()) {
-      for (const [threadId, thread] of entry.threads) {
-        if (thread.status !== "active") {
-          continue;
-        }
+      for (const threadId of entry.runtime.getActiveThreadIds()) {
         activeThreads.push({
           threadId,
         });
@@ -767,6 +315,22 @@ export class RuntimeManager {
     return [...this.entries.keys()].map((environmentId) => ({
       environmentId,
     }));
+  }
+
+  async reapIdleProviderSessions(
+    args: RuntimeManagerReapIdleProviderSessionsArgs,
+  ): Promise<RuntimeManagerReapIdleProviderSessionsResult> {
+    const reapedSessions: RuntimeManagerReapedIdleProviderSession[] = [];
+    for (const entry of this.entries.values()) {
+      const result = await entry.runtime.reapIdleProviderSessions(args);
+      for (const session of result.reapedSessions) {
+        reapedSessions.push({
+          ...session,
+          environmentId: entry.environmentId,
+        });
+      }
+    }
+    return { reapedSessions };
   }
 
   getShellEnv(): NonNullable<AgentRuntimeOptions["shellEnv"]> {
@@ -803,15 +367,10 @@ export class RuntimeManager {
   }
 
   private entryHasActiveRuntimeWork(entry: RuntimeEntry): boolean {
-    if (entry.terminals.size > 0) {
-      return true;
-    }
-    for (const thread of entry.threads.values()) {
-      if (thread.status === "active") {
-        return true;
-      }
-    }
-    return false;
+    return (
+      entry.terminals.size > 0 ||
+      entry.runtime.getActiveThreadIds().length > 0
+    );
   }
 
   /**
@@ -862,10 +421,6 @@ export class RuntimeManager {
     }
 
     this.entries.delete(args.entry.environmentId);
-    this.removeTrackedThreadStorageTargetsForEnvironment(
-      args.entry.environmentId,
-    );
-    this.stopWatchingThreadStorageIfNoTrackedThreads();
     await this.stopWatchingStatus(args.entry);
     await args.entry.runtime.shutdown();
     await this.cleanupUnusedInjectedSkillStagingDirs([
@@ -926,36 +481,6 @@ export class RuntimeManager {
     shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
   ): void {
     this.managedShellEnv = { ...shellEnv };
-  }
-
-  replaceTrackedThreadStorageTargets(
-    targets: readonly HostDaemonTrackedThreadTarget[],
-  ): void {
-    this.trackedThreadStorageTargets.clear();
-    for (const target of targets) {
-      this.trackedThreadStorageTargets.set(target.threadId, {
-        environmentId: target.environmentId,
-        threadId: target.threadId,
-      });
-    }
-    if (this.trackedThreadStorageTargets.size > 0) {
-      this.ensureThreadStorageWatcher();
-      return;
-    }
-    this.stopWatchingThreadStorageIfNoTrackedThreads();
-  }
-
-  replaceTrackedApplicationDataTargets(
-    targets: readonly HostDaemonTrackedApplicationDataTarget[],
-  ): void {
-    this.trackedApplicationDataTargets.clear();
-    for (const target of targets) {
-      this.trackedApplicationDataTargets.set(target.applicationId, {
-        applicationId: target.applicationId,
-        appDataPath: target.appDataPath,
-      });
-    }
-    this.ensureApplicationStorageWatcher();
   }
 
   async openWorkspace(path: string): Promise<HostWorkspace> {
@@ -1145,9 +670,7 @@ export class RuntimeManager {
     }
 
     this.entries.delete(environmentId);
-    this.removeTrackedThreadStorageTargetsForEnvironment(environmentId);
     await this.stopWatchingStatus(entry);
-    this.stopWatchingThreadStorageIfNoTrackedThreads();
     await entry.runtime.shutdown();
     await entry.workspace.destroy();
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
@@ -1164,9 +687,6 @@ export class RuntimeManager {
         entry = undefined;
       }
     }
-
-    this.removeTrackedThreadStorageTargetsForEnvironment(environmentId);
-    this.stopWatchingThreadStorageIfNoTrackedThreads();
 
     if (!entry) {
       return;
@@ -1186,12 +706,9 @@ export class RuntimeManager {
       return [];
     }
 
-    const idleEntries = [...this.entries.values()].filter((entry) => {
-      const hasActiveThread = [...entry.threads.values()].some(
-        (thread) => thread.status === "active",
-      );
-      return !hasActiveThread && entry.terminals.size === 0;
-    });
+    const idleEntries = [...this.entries.values()].filter(
+      (entry) => !this.entryHasActiveRuntimeWork(entry),
+    );
 
     for (const entry of idleEntries) {
       await this.stopWatchingStatus(entry);
@@ -1228,8 +745,6 @@ export class RuntimeManager {
     }
     this.entries.clear();
     this.pendingEntries.clear();
-    this.trackedThreadStorageTargets.clear();
-    this.trackedApplicationDataTargets.clear();
 
     for (const entry of entries) {
       await this.stopWatchingStatus(entry);
@@ -1248,49 +763,42 @@ export class RuntimeManager {
     if (providerMaintenanceRuntime) {
       await providerMaintenanceRuntime.shutdown();
     }
-    await this.stopWatchingThreadStorageRoot();
-    this.stopWatchingThreadStorageRoot = STOP_WATCHING;
-    await this.stopWatchingApplicationStorageRoot();
-    this.stopWatchingApplicationStorageRoot = STOP_WATCHING;
     await this.stopWatchingDataDirSkillsRoot();
     this.stopWatchingDataDirSkillsRoot = STOP_WATCHING;
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
   }
 
+  /**
+   * Synthesizes failure events for threads that were mid-turn when their
+   * provider process died, from the runtime's final per-thread snapshot.
+   * Threads without an active turn need no synthesized events: in-flight
+   * RPCs fail through the command result path, and idle resident threads
+   * simply resume on their next turn.
+   */
   private buildUnexpectedProviderExitEvents(
-    args: BuildUnexpectedProviderExitEventsArgs,
+    info: AgentRuntimeProcessExitInfo,
   ): ThreadEvent[] {
-    const message = buildProviderProcessExitMessage(args.info);
-    const detail = buildProviderProcessExitDetail(args.info);
+    const message = buildProviderProcessExitMessage(info);
+    const detail = buildProviderProcessExitDetail(info);
     const events: ThreadEvent[] = [];
 
-    for (const threadId of args.info.threadIds) {
-      const thread = args.threads.get(threadId);
-      if (!thread || thread.status !== "active") {
+    for (const thread of info.threads) {
+      if (thread.activeTurnId === null || thread.providerThreadId === null) {
         continue;
       }
 
-      if (thread.activeTurnId !== null) {
-        if (thread.providerThreadId === null) {
-          continue;
-        }
-        events.push({
-          type: "turn/completed",
-          threadId,
-          providerThreadId: thread.providerThreadId,
-          scope: turnScope(thread.activeTurnId),
-          status: "failed",
-          error: { message },
-        });
-      }
-
+      events.push({
+        type: "turn/completed",
+        threadId: thread.threadId,
+        providerThreadId: thread.providerThreadId,
+        scope: turnScope(thread.activeTurnId),
+        status: "failed",
+        error: { message },
+      });
       events.push({
         type: "system/error",
-        threadId,
-        scope:
-          thread.activeTurnId !== null
-            ? turnScope(thread.activeTurnId)
-            : threadScope(),
+        threadId: thread.threadId,
+        scope: turnScope(thread.activeTurnId),
         code: "provider_process_exited",
         message,
         ...(detail ? { detail } : {}),
@@ -1312,13 +820,10 @@ export class RuntimeManager {
     let runtime: AgentRuntime | null = null;
     runtime = this.createRuntime({
       workspacePath,
-      additionalWorkspaceWriteRoots: this.options.appsRootPath
-        ? [this.options.appsRootPath]
-        : [],
+      additionalWorkspaceWriteRoots: [],
       shellEnv: this.getShellEnv(),
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
-      onCapture: this.options.onCapture,
       onEvent: (event) => {
         this.options.onStderr?.(
           `Dropping provider maintenance event ${event.type}; no environment owns provider-only maintenance commands.`,
@@ -1351,12 +856,14 @@ export class RuntimeManager {
     const provision =
       args.provision ??
       (args.workspacePath
-        ? lazyProvisionOpts(
-            args.environmentId,
-            args.workspacePath,
-            args.workspaceProvisionType ?? "unmanaged",
-            args.personalWorkspaceRoot,
-          )
+        ? reconnectProvisionArgs({
+            environmentId: args.environmentId,
+            ...(args.personalWorkspaceRoot !== undefined
+              ? { personalWorkspaceRoot: args.personalWorkspaceRoot }
+              : {}),
+            workspacePath: args.workspacePath,
+            workspaceProvisionType: args.workspaceProvisionType ?? "unmanaged",
+          })
         : null);
 
     if (!provision) {
@@ -1369,125 +876,64 @@ export class RuntimeManager {
       ...provision,
       signal: args.provisionSignal,
     });
-    const [workspaceWatchState, workspaceWriteRoots] = await Promise.all([
-      this.createWorkspaceWatchState(workspace),
-      workspace.getAdditionalWorkspaceWriteRoots(),
-    ]);
+    const workspaceWriteRoots =
+      await workspace.getAdditionalWorkspaceWriteRoots();
     const additionalWorkspaceWriteRoots = this.runtimeWorkspaceWriteRoots({
-      appsRootPath: this.options.appsRootPath,
       threadStorageRootPath: this.options.threadStorageRootPath,
       workspaceRoots: workspaceWriteRoots,
     });
-    const stopWatchingStatus = this.hostWatcher
-      ? this.hostWatcher.watchWorkspace({
-          environmentId: args.environmentId,
-          workspacePath: workspace.path,
-          onChange: (event) => {
-            this.queueWorkspaceWatchChange({
-              changeKinds: event.changeKinds,
-              environmentId: args.environmentId,
-              workspace,
-              workspacePath: workspace.path,
-              workspaceWatchState,
-            });
-          },
-          onWatchError: (error) => {
-            this.options.onWorkspaceStatusWatchError?.({
-              error,
-            });
-          },
-        })
-      : () => undefined;
-    const threads = new Map<string, RuntimeThreadState>();
     let runtime: AgentRuntime | null = null;
-    try {
-      runtime = this.createRuntime({
-        workspacePath: workspace.path,
-        additionalWorkspaceWriteRoots,
-        ...(args.skillConfig
-          ? { skillRoots: args.skillConfig.skillRoots }
-          : {}),
-        shellEnv: this.getShellEnv(),
-        threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
-        bridgeBundleDir: this.options.bridgeBundleDir,
-        onCapture: this.options.onCapture,
-        onEvent: (event) => {
-          if (event.type === "thread/identity") {
-            this.markThreadActive(
-              args.environmentId,
-              event.threadId,
-              event.providerThreadId,
-              null,
-            );
-          } else if (event.type === "turn/started") {
-            this.markThreadTurnStarted(
-              args.environmentId,
-              event.threadId,
-              event.providerThreadId,
-              requireThreadEventScopeTurnId({
-                type: event.type,
-                scope: event.scope,
-              }),
-            );
-          } else if (event.type === "turn/completed") {
-            this.markThreadInactive(args.environmentId, event.threadId);
-          }
-          this.options.onEvent?.({
-            environmentId: args.environmentId,
-            event,
-          });
-        },
-        onToolCall:
-          this.options.onToolCall ??
-          (async () => ({
-            contentItems: [],
-            success: true,
-          })),
-        onInteractiveRequest: this.options.onInteractiveRequest,
-        onStderr: this.options.onStderr,
-        onProcessExit: (info) => {
-          if (!info.expected) {
-            for (const event of this.buildUnexpectedProviderExitEvents({
+    runtime = this.createRuntime({
+      workspacePath: workspace.path,
+      additionalWorkspaceWriteRoots,
+      ...(args.skillConfig ? { skillRoots: args.skillConfig.skillRoots } : {}),
+      shellEnv: this.getShellEnv(),
+      threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
+      bridgeBundleDir: this.options.bridgeBundleDir,
+      onEvent: (event) => {
+        this.options.onEvent?.({
+          environmentId: args.environmentId,
+          event,
+        });
+      },
+      onToolCall:
+        this.options.onToolCall ??
+        (async () => ({
+          contentItems: [],
+          success: true,
+        })),
+      onInteractiveRequest: this.options.onInteractiveRequest,
+      onStderr: this.options.onStderr,
+      onProcessExit: (info) => {
+        if (!info.expected) {
+          for (const event of this.buildUnexpectedProviderExitEvents(info)) {
+            this.options.onEvent?.({
               environmentId: args.environmentId,
-              info,
-              threads,
-            })) {
-              this.options.onEvent?.({
-                environmentId: args.environmentId,
-                event,
-              });
-            }
+              event,
+            });
           }
-          for (const threadId of info.threadIds) {
-            threads.delete(threadId);
-          }
-          const current = this.entries.get(args.environmentId);
-          if (
-            current?.runtime === runtime &&
-            runtime?.listRunningProviders().length === 0
-          ) {
-            void this.stopWatchingStatus(current);
-            this.entries.delete(args.environmentId);
-            this.stopWatchingThreadStorageIfNoTrackedThreads();
-          }
-          this.options.onProcessExit?.(info);
-        },
-      });
-    } catch (error) {
-      await stopWatchingStatus();
-      throw error;
-    }
+        }
+        const current = this.entries.get(args.environmentId);
+        if (
+          !info.expected &&
+          current?.runtime === runtime &&
+          runtime.listRunningProviders().length === 0
+        ) {
+          this.entries.delete(args.environmentId);
+        }
+        this.options.onProcessExit?.(info);
+      },
+    });
 
     return {
       environmentId: args.environmentId,
       runtime,
       skillCatalogHash: args.skillConfig?.catalogHash ?? null,
       lastWarnedStaleSkillCatalogHash: null,
-      stopWatchingStatus,
+      stopWatchingStatus: STOP_WATCHING,
       terminals: new Set<string>(),
       workspace,
       path: workspace.path,
-      threads,
     };
   }
 
@@ -1495,97 +941,6 @@ export class RuntimeManager {
     const stopWatchingStatus = entry.stopWatchingStatus;
     entry.stopWatchingStatus = STOP_WATCHING;
     await stopWatchingStatus();
-  }
-
-  private ensureThreadStorageWatcher(): void {
-    if (
-      !this.hostWatcher ||
-      this.stopWatchingThreadStorageRoot !== STOP_WATCHING
-    ) {
-      return;
-    }
-
-    const threadStorageRootPath = this.options.threadStorageRootPath;
-    if (!threadStorageRootPath) {
-      return;
-    }
-
-    this.stopWatchingThreadStorageRoot =
-      this.hostWatcher.watchThreadStorageRoot({
-        threadStorageRootPath,
-        resolveThreadTarget: (threadId) =>
-          this.findTrackedThreadTarget(threadId),
-        onChange: (event) => {
-          if (event.kind === "thread-storage-changed") {
-            this.options.onThreadStorageChanged?.({
-              environmentId: event.environmentId,
-              threadId: event.threadId,
-            });
-          }
-        },
-        onWatchError: (error) => {
-          this.options.onThreadStorageWatchError?.({
-            error,
-          });
-        },
-      });
-  }
-
-  private ensureApplicationStorageWatcher(): void {
-    if (
-      !this.hostWatcher ||
-      this.stopWatchingApplicationStorageRoot !== STOP_WATCHING
-    ) {
-      return;
-    }
-
-    const appsRootPath = this.options.appsRootPath;
-    const appDataRootPath = this.options.appDataRootPath;
-    if (!appsRootPath || !appDataRootPath) {
-      return;
-    }
-
-    this.stopWatchingApplicationStorageRoot =
-      this.hostWatcher.watchApplicationStorageRoot({
-        appsRootPath,
-        appDataRootPath,
-        resolveApplicationTarget: (applicationId) =>
-          this.findTrackedApplicationDataTarget(applicationId),
-        onChange: (event) => {
-          if (event.kind === "application-storage-targets-changed") {
-            this.options.onApplicationStorageTargetsChanged?.();
-          }
-          if (event.kind === "application-data-changed") {
-            this.options.onApplicationDataChanged?.({
-              applicationId: event.applicationId,
-              appDataPath: event.appDataPath,
-              path: event.path,
-            });
-          }
-          if (event.kind === "application-data-resync") {
-            this.options.onApplicationDataResync?.({
-              applicationId: event.applicationId,
-            });
-          }
-          if (event.kind === "application-content-changed") {
-            this.options.onApplicationContentChanged?.({
-              applicationId: event.applicationId,
-            });
-          }
-          if (event.kind === "injected-skills-changed") {
-            this.options.onInjectedSkillsChanged?.({
-              applicationId: event.applicationId,
-              changedPaths: event.changedPaths,
-              sourceType: event.sourceType,
-            });
-          }
-        },
-        onWatchError: (error) => {
-          this.options.onApplicationStorageWatchError?.({
-            error,
-          });
-        },
-      });
   }
 
   private ensureDataDirSkillsWatcher(): void {
@@ -1606,7 +961,6 @@ export class RuntimeManager {
         dataDirSkillsRootPath,
         onChange: (event) => {
           this.options.onInjectedSkillsChanged?.({
-            applicationId: event.applicationId,
             changedPaths: event.changedPaths,
             sourceType: event.sourceType,
           });
@@ -1617,36 +971,5 @@ export class RuntimeManager {
           });
         },
       });
-  }
-
-  private findTrackedThreadTarget(
-    threadId: string,
-  ): ThreadStorageTarget | null {
-    return this.trackedThreadStorageTargets.get(threadId) ?? null;
-  }
-
-  private findTrackedApplicationDataTarget(
-    applicationId: ApplicationId,
-  ): ApplicationDataWatchTarget | null {
-    return this.trackedApplicationDataTargets.get(applicationId) ?? null;
-  }
-
-  private removeTrackedThreadStorageTargetsForEnvironment(
-    environmentId: string,
-  ): void {
-    for (const [threadId, target] of this.trackedThreadStorageTargets) {
-      if (target.environmentId === environmentId) {
-        this.trackedThreadStorageTargets.delete(threadId);
-      }
-    }
-  }
-
-  private stopWatchingThreadStorageIfNoTrackedThreads(): void {
-    if (this.trackedThreadStorageTargets.size > 0) {
-      return;
-    }
-    const stopWatchingThreadStorageRoot = this.stopWatchingThreadStorageRoot;
-    this.stopWatchingThreadStorageRoot = STOP_WATCHING;
-    void stopWatchingThreadStorageRoot();
   }
 }

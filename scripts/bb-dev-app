@@ -112,7 +112,6 @@ const instanceId = `${sanitized}-${hash.slice(0, 12)}`;
 const dataDir = path.join(homeDir, ".bb-dev", instanceId);
 const values = {
   BB_DEV_APP_PORT: 11000 + offset,
-  BB_DEV_ENV_PORT: 43000 + offset,
   BB_HOST_DAEMON_PORT: 27000 + offset,
   BB_SERVER_PORT: 19000 + offset,
   BB_SERVER_URL: `http://localhost:${19000 + offset}`,
@@ -176,7 +175,6 @@ stop_dev_app() {
   pids+=("${(@f)$(port_listener_pids "${BB_DEV_APP_PORT}")}")
   pids+=("${(@f)$(port_listener_pids "${BB_SERVER_PORT}")}")
   pids+=("${(@f)$(port_listener_pids "${BB_HOST_DAEMON_PORT}")}")
-  pids+=("${(@f)$(port_listener_pids "${BB_DEV_ENV_PORT}")}")
   pids+=("${(@f)$(desktop_pids)}")
   pids=("${(@u)pids}")
 
@@ -320,7 +318,6 @@ status() {
   printf 'App: http://localhost:%s\n' "${BB_DEV_APP_PORT}"
   printf 'Server: %s\n' "${BB_SERVER_URL}"
   printf 'Host daemon: http://127.0.0.1:%s\n' "${BB_HOST_DAEMON_PORT}"
-  printf 'Dev-env: http://127.0.0.1:%s\n' "${BB_DEV_ENV_PORT}"
   printf 'Desktop user data: %s\n' "${DESKTOP_USER_DATA_DIR}"
   printf 'Dev session: %s\n' "$(screen_session_exists "${DEV_SESSION}" && echo running || echo stopped)"
   printf 'Desktop session: %s\n' "$(screen_session_exists "${DESKTOP_SESSION}" && echo running || echo stopped)"

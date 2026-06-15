@@ -593,7 +593,6 @@ describe("sweepExpiredLeases", () => {
       notifyProject: vi.fn(),
       notifyHost: vi.fn(),
       notifySystem: vi.fn(),
-      notifyWorkflowRun: vi.fn(),
     };
 
     const result = sweepExpiredLeases(db, spy);
@@ -855,7 +854,6 @@ describe("pruneDestroyedEnvironments", () => {
       notifyHost: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
-      notifyWorkflowRun: vi.fn(),
     };
 
     const result = pruneDestroyedEnvironments(db, spy, now);
@@ -896,7 +894,6 @@ describe("pruneDestroyedEnvironments", () => {
       notifyHost: vi.fn(),
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
-      notifyWorkflowRun: vi.fn(),
     };
 
     const result = pruneDestroyedEnvironments(db, spy, now);

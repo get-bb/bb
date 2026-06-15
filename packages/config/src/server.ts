@@ -5,21 +5,23 @@ import {
   type LoadCommonConfigArgs,
 } from "./common.js";
 import { loadDatabaseConfig, type DatabaseConfig } from "./database.js";
-import { loadDevEnvConfig } from "./dev-env.js";
+import { loadDevAppConfig } from "./dev-app.js";
 import { readEnvVarWithDefault, resolveEnvLoader } from "./env.js";
 import {
   BB_APP_URL_ENV,
   BB_APP_VERSION_ENV,
   BB_EXTERNAL_URL_ENV,
   BB_INFERENCE_ENV,
+  BB_POSTHOG_API_KEY_ENV,
+  BB_TELEMETRY_ENV,
   BB_TRANSCRIPTION_ENV,
-  BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_VERSION,
   DEFAULT_BB_EXTERNAL_URL,
   DEFAULT_BB_INFERENCE,
+  DEFAULT_BB_POSTHOG_API_KEY,
+  DEFAULT_BB_TELEMETRY,
   DEFAULT_BB_TRANSCRIPTION,
-  DEFAULT_BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST,
   DEFAULT_OPENAI_API_KEY,
   OPENAI_API_KEY_ENV,
 } from "./env-vars.js";
@@ -36,8 +38,9 @@ export interface ServerConfig
   BB_EXTERNAL_URL: string;
   BB_HOST_DAEMON_PORT: number;
   BB_INFERENCE: string;
+  BB_POSTHOG_API_KEY: string;
+  BB_TELEMETRY: boolean;
   BB_TRANSCRIPTION: string;
-  BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST: number;
   OPENAI_API_KEY: string;
   featureFlags: FeatureFlags;
 }
@@ -67,7 +70,7 @@ export function loadServerConfig(
     mode: loader.mode,
     repoRoot: args.repoRoot,
   });
-  const devEnvConfig = loadDevEnvConfig({
+  const devAppConfig = loadDevAppConfig({
     env: loader.env,
     homeDir: loader.context.homeDir,
     mode: loader.mode,
@@ -106,16 +109,22 @@ export function loadServerConfig(
       definition: BB_INFERENCE_ENV,
       env: loader.env,
     }),
+    BB_POSTHOG_API_KEY: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_POSTHOG_API_KEY,
+      definition: BB_POSTHOG_API_KEY_ENV,
+      env: loader.env,
+    }),
+    BB_TELEMETRY: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_TELEMETRY,
+      definition: BB_TELEMETRY_ENV,
+      env: loader.env,
+    }),
     BB_TRANSCRIPTION: readEnvVarWithDefault({
       context: loader.context,
       defaultValue: DEFAULT_BB_TRANSCRIPTION,
       definition: BB_TRANSCRIPTION_ENV,
-      env: loader.env,
-    }),
-    BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST,
-      definition: BB_WORKFLOW_MAX_CONCURRENT_RUNS_PER_HOST_ENV,
       env: loader.env,
     }),
     OPENAI_API_KEY: readEnvVarWithDefault({
@@ -134,7 +143,7 @@ export function loadServerConfig(
   assignIfDefined({
     key: "BB_DEV_APP_PORT",
     target: config,
-    value: devEnvConfig.BB_DEV_APP_PORT,
+    value: devAppConfig.BB_DEV_APP_PORT,
   });
 
   return config;

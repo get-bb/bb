@@ -5,7 +5,7 @@ import {
   type HostDaemonOnlineRpcResponseMessage,
   type HostDaemonRpcResultForCommand,
 } from "@bb/host-daemon-contract";
-import type { AvailableModel, ProviderInfo } from "@bb/domain";
+import type { AvailableModel } from "@bb/domain";
 import type { TestAppHarness } from "./test-app.js";
 
 interface TestHostRpcSocket {
@@ -27,7 +27,6 @@ export interface RegisterProviderHostRpcArgs {
   hostId: string;
   modelErrorsByProviderId?: Record<string, ProviderModelError>;
   modelsByProviderId?: Record<string, ProviderModelResponse>;
-  providers: ProviderInfo[];
   sessionId: string;
 }
 
@@ -82,15 +81,6 @@ function buildProviderRpcResponse(
   args: RegisterProviderHostRpcArgs,
   request: HostDaemonOnlineRpcRequestMessage,
 ): HostDaemonOnlineRpcResponseMessage {
-  if (request.command.type === "provider.list") {
-    return {
-      type: "host-rpc.response",
-      requestId: request.requestId,
-      commandType: request.command.type,
-      ok: true,
-      result: { providers: args.providers },
-    };
-  }
   if (request.command.type !== "provider.list_models") {
     throw new Error(`Unexpected provider RPC command ${request.command.type}`);
   }

@@ -48,6 +48,10 @@ export interface ResolveThreadLocalWorkspaceRootPathArgs {
   threadEnvironmentIsLocal: boolean;
 }
 
+export interface ResolveThreadWorkspacePreviewRootPathArgs {
+  environment: Environment | null | undefined;
+}
+
 export type WorkspaceChangedFileOpenTarget =
   | { kind: "diff" }
   | {
@@ -99,6 +103,17 @@ export function resolveThreadLocalWorkspaceRootPath(
     return null;
   }
 
+  return args.environment?.path ?? null;
+}
+
+/**
+ * Workspace previews are served by the thread host through the server, so path
+ * containment should use the environment's host path even when the browser
+ * cannot use that path for local editor integration.
+ */
+export function resolveThreadWorkspacePreviewRootPath(
+  args: ResolveThreadWorkspacePreviewRootPathArgs,
+): string | null {
   return args.environment?.path ?? null;
 }
 

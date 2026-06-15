@@ -1,132 +1,124 @@
-// @vitest-environment jsdom
-
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   AutomationsOverviewProject,
   AutomationsOverviewThread,
   AutomationsOverviewThreadSchedule,
   ThreadSchedule,
 } from "@bb/server-contract";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { AutomationsOverview } from "./AutomationsView";
 
-type ThreadScheduleOverrides = Partial<ThreadSchedule>;
-type OverviewThreadOverrides = Partial<AutomationsOverviewThread>;
-
-const project: AutomationsOverviewProject = {
-  id: "proj_bb",
-  name: "bb",
-};
-
-function makeOverviewThread(
-  overrides: OverviewThreadOverrides = {},
-): AutomationsOverviewThread {
-  const thread: AutomationsOverviewThread = {
-    id: "thr_audit",
-    projectId: project.id,
-    title: "Audit recurring permission failures",
-    titleFallback: "Audit recurring permission failures",
-  };
-
-  return { ...thread, ...overrides };
+interface MakeProjectArgs {
+  id: string;
+  name: string;
 }
 
-function makeThreadSchedule(
-  overrides: ThreadScheduleOverrides = {},
-): AutomationsOverviewThreadSchedule {
-  const schedule: ThreadSchedule = {
-    id: "sched_standup",
-    projectId: project.id,
-    threadId: "thr_audit",
-    name: "Daily standup nudge",
+interface MakeThreadArgs {
+  id: string;
+  projectId: string;
+  title: string;
+}
+
+interface MakeScheduleArgs {
+  id: string;
+  projectId: string;
+  threadId: string;
+  name: string;
+}
+
+function makeProject(args: MakeProjectArgs): AutomationsOverviewProject {
+  return {
+    id: args.id,
+    name: args.name,
+  };
+}
+
+function makeThread(args: MakeThreadArgs): AutomationsOverviewThread {
+  return {
+    id: args.id,
+    projectId: args.projectId,
+    title: args.title,
+    titleFallback: args.title,
+  };
+}
+
+function makeSchedule(args: MakeScheduleArgs): ThreadSchedule {
+  return {
+    id: args.id,
+    projectId: args.projectId,
+    threadId: args.threadId,
+    name: args.name,
     enabled: true,
     kind: "cron",
-    cron: "0 8 * * 1-5",
+    cron: "0 9 * * 1-5",
     timezone: "America/Los_Angeles",
-    prompt: "Summarize what changed since yesterday.",
-    nextFireAt: Date.parse("2026-06-08T15:00:00.000Z"),
+    prompt: "Summarize recent changes.",
+    nextFireAt: 1_700_003_600_000,
     lastFiredAt: null,
-    createdAt: 1,
-    updatedAt: 1,
-  };
-
-  const mergedSchedule = { ...schedule, ...overrides };
-
-  return {
-    project,
-    schedule: mergedSchedule,
-    thread: makeOverviewThread({ id: mergedSchedule.threadId }),
+    createdAt: 0,
+    updatedAt: 100,
   };
 }
 
-function renderOverview(schedules: AutomationsOverviewThreadSchedule[]) {
-  return render(
+function renderAutomationsOverview(
+  schedules: readonly AutomationsOverviewThreadSchedule[],
+): string {
+  return renderToStaticMarkup(
     <MemoryRouter>
-      <div className="h-[480px]">
-        <AutomationsOverview
-          hasInitialLoadError={false}
-          schedules={schedules}
-          isLoading={false}
-        />
-      </div>
+      <AutomationsOverview
+        hasInitialLoadError={false}
+        schedules={schedules}
+        isLoading={false}
+      />
     </MemoryRouter>,
   );
 }
 
-afterEach(() => {
-  cleanup();
-});
-
 describe("AutomationsOverview", () => {
-  // Exercises groupSchedulesByThread: schedules sharing a thread collapse into
-  // one group, distinct threads keep their first-seen order, and a schedule
-  // never leaks into another thread's group.
-  it("groups schedules under distinct threads in first-seen order", () => {
-    const auditFirst = makeThreadSchedule({
-      id: "sched_audit",
-      name: "Audit nudge",
-      threadId: "thr_audit",
+  it("omits the personal project label for projectless scheduled threads", () => {
+    const projectlessThread = makeThread({
+      id: "thr_projectless",
+      projectId: PERSONAL_PROJECT_ID,
+      title: "Projectless schedule",
     });
-    const releaseSchedule = {
-      ...makeThreadSchedule({
-        id: "sched_release",
-        name: "Release nudge",
-        threadId: "thr_release",
-      }),
-      thread: makeOverviewThread({
-        id: "thr_release",
-        title: "Prepare release notes",
-        titleFallback: "Prepare release notes",
-      }),
-    };
-    const auditSecond = makeThreadSchedule({
-      id: "sched_audit_cleanup",
-      name: "Audit cleanup",
-      threadId: "thr_audit",
+    const projectThread = makeThread({
+      id: "thr_project",
+      projectId: "proj_app",
+      title: "Project schedule",
     });
 
-    renderOverview([auditFirst, releaseSchedule, auditSecond]);
-
-    const threadLinks = screen.getAllByRole("link");
-    expect(threadLinks.map((link) => link.textContent)).toEqual([
-      "Audit recurring permission failures",
-      "Prepare release notes",
+    const markup = renderAutomationsOverview([
+      {
+        project: makeProject({
+          id: PERSONAL_PROJECT_ID,
+          name: "Personal",
+        }),
+        thread: projectlessThread,
+        schedule: makeSchedule({
+          id: "sched_projectless",
+          projectId: PERSONAL_PROJECT_ID,
+          threadId: projectlessThread.id,
+          name: "Projectless schedule",
+        }),
+      },
+      {
+        project: makeProject({
+          id: "proj_app",
+          name: "App",
+        }),
+        thread: projectThread,
+        schedule: makeSchedule({
+          id: "sched_project",
+          projectId: "proj_app",
+          threadId: projectThread.id,
+          name: "Project schedule",
+        }),
+      },
     ]);
 
-    const auditGroup = threadLinks[0]?.closest("section");
-    const releaseGroup = threadLinks[1]?.closest("section");
-    if (
-      !(auditGroup instanceof HTMLElement) ||
-      !(releaseGroup instanceof HTMLElement)
-    ) {
-      throw new Error("Expected schedule groups to render as sections");
-    }
-
-    expect(within(auditGroup).getByText("Audit nudge")).not.toBeNull();
-    expect(within(auditGroup).getByText("Audit cleanup")).not.toBeNull();
-    expect(within(auditGroup).queryByText("Release nudge")).toBeNull();
-    expect(within(releaseGroup).getByText("Release nudge")).not.toBeNull();
-    expect(within(releaseGroup).queryByText("Audit nudge")).toBeNull();
+    expect(markup).not.toContain(">Personal<");
+    expect(markup).toContain(">App<");
   });
 });

@@ -12,20 +12,28 @@ describe("terminal title normalization", () => {
     );
   });
 
-  it("collapses long shell path titles to their final path segments", () => {
+  it("ignores shell path titles without changing the terminal title", () => {
     expect(
       normalizeTerminalTitle({
         title:
           "michael@Michaels-MacBook-Pro:~/.bb-dev/worktrees/env_gj4ep9emi8/bb",
       }),
-    ).toBe(".../worktrees/env_gj4ep9emi8/bb");
+    ).toBeNull();
   });
 
-  it("keeps short shell path titles readable", () => {
+  it("ignores shell path titles with whitespace after the host separator", () => {
+    expect(
+      normalizeTerminalTitle({
+        title: "root@do-1: ~/.bb/worktrees/env_4gfkk8evua/bb",
+      }),
+    ).toBeNull();
+  });
+
+  it("ignores short shell path titles", () => {
     expect(
       normalizeTerminalTitle({
         title: "michael@host:~/bb",
       }),
-    ).toBe("~/bb");
+    ).toBeNull();
   });
 });

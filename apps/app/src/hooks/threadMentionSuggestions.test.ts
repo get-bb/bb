@@ -1,4 +1,4 @@
-import type { Thread } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { buildThreadMentionSuggestions } from "./threadMentionSuggestions";
 
@@ -301,6 +301,49 @@ describe("buildThreadMentionSuggestions", () => {
         projectId: "proj-2",
         projectName: "Docs Site",
         threadId: "thr_second_project",
+      },
+    ]);
+  });
+
+  it("does not add the personal project name to projectless thread suggestions", () => {
+    const suggestions = buildThreadMentionSuggestions({
+      threads: [
+        makeThread({
+          id: "thr_personal",
+          projectId: PERSONAL_PROJECT_ID,
+          title: "Shared context",
+        }),
+        makeThread({
+          id: "thr_project",
+          projectId: "proj-2",
+          title: "Shared context",
+        }),
+      ],
+      query: "shared",
+      currentProjectId: "proj-1",
+      projectNamesById: new Map([
+        [PERSONAL_PROJECT_ID, "Personal"],
+        ["proj-2", "Docs Site"],
+      ]),
+      limit: 8,
+    });
+
+    expect(
+      suggestions.map((suggestion) => ({
+        projectId: suggestion.projectId,
+        projectName: suggestion.projectName,
+        threadId: suggestion.threadId,
+      })),
+    ).toEqual([
+      {
+        projectId: PERSONAL_PROJECT_ID,
+        projectName: undefined,
+        threadId: "thr_personal",
+      },
+      {
+        projectId: "proj-2",
+        projectName: "Docs Site",
+        threadId: "thr_project",
       },
     ]);
   });

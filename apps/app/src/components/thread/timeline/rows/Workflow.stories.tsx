@@ -1,8 +1,4 @@
-import type { TimelineRow, TimelineWorkflowWorkRow } from "@bb/server-contract";
-import {
-  BB_WORKFLOW_TASK_TYPE,
-  LOCAL_WORKFLOW_TASK_TYPE,
-} from "@bb/domain";
+import type { TimelineRow } from "@bb/server-contract";
 import type { WorkflowProgressSnapshot } from "@bb/domain";
 import { ThreadTimelineRows } from "@/components/thread/timeline";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
@@ -120,7 +116,6 @@ const workflowRowBaseArgs = {
   startedAt: 1780540127710,
   createdAt: 1780540131011,
   itemId: "task:wu7ol9ras",
-  taskType: LOCAL_WORKFLOW_TASK_TYPE,
   workflowName: "fixture-mini",
   description: "Tiny fixture workflow for BB capture",
   summary: null,
@@ -183,36 +178,7 @@ const degradedWorkflow: TimelineRow = workflowRow({
   durationMs: 3_301,
 });
 
-// A bb workflow run anchored to the thread: taskType bb_workflow + the wfr_
-// run id in itemId make the title deep-link to /workflows/runs/<itemId>.
-const bbRunWorkflow: TimelineRow = workflowRow({
-  ...workflowRowBaseArgs,
-  id: "thr_fixture:workflow:wfr_storyrun01:running",
-  itemId: "wfr_storyrun01",
-  taskType: BB_WORKFLOW_TASK_TYPE,
-  status: "pending",
-  taskStatus: "running",
-  workflow: runningSnapshot,
-  usage: { totalTokens: 17773, toolUses: 0, durationMs: 1772 },
-  durationMs: null,
-});
-
-// Interrupted-but-resumable: taskStatus "paused" keeps item status "pending"
-// (a paused run is resumable). Renders "Paused workflow:" without shimmer and
-// paused (not stopped) agents — distinct from the settled interrupted row.
-const pausedWorkflow: TimelineWorkflowWorkRow = workflowRow({
-  ...workflowRowBaseArgs,
-  id: "thr_fixture:workflow:wfr_storyrun01:paused",
-  itemId: "wfr_storyrun01",
-  taskType: BB_WORKFLOW_TASK_TYPE,
-  status: "pending",
-  taskStatus: "paused",
-  workflow: runningSnapshot,
-  usage: { totalTokens: 17773, toolUses: 0, durationMs: 1772 },
-  durationMs: null,
-});
-
-const noPhasesWorkflow: TimelineWorkflowWorkRow = workflowRow({
+const noPhasesWorkflow: TimelineRow = workflowRow({
   ...workflowRowBaseArgs,
   id: "thr_fixture:workflow:task:wu7ol9ras:no-phases",
   status: "pending",
@@ -265,31 +231,6 @@ export function Overview() {
             {...baseProps}
             initialExpanded={new Set([failedWorkflow.id])}
             timelineRows={[failedWorkflow]}
-          />
-        </TimelineStage>
-      </StoryRow>
-      <StoryRow
-        label="bb run (deep link)"
-        hint="taskType bb_workflow: the title links to /workflows/runs/<wfr_ id>"
-      >
-        <TimelineStage>
-          <ThreadTimelineRows
-            {...baseProps}
-            threadRuntimeDisplayStatus="active"
-            initialExpanded={new Set([bbRunWorkflow.id])}
-            timelineRows={[bbRunWorkflow]}
-          />
-        </TimelineStage>
-      </StoryRow>
-      <StoryRow
-        label="paused"
-        hint="interrupted-but-resumable bb run: no shimmer, agents paused (not stopped)"
-      >
-        <TimelineStage>
-          <ThreadTimelineRows
-            {...baseProps}
-            initialExpanded={new Set([pausedWorkflow.id])}
-            timelineRows={[pausedWorkflow]}
           />
         </TimelineStage>
       </StoryRow>

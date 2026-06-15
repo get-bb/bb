@@ -1,0 +1,36 @@
+{
+  "name": "@bb/landing",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build --logLevel warn",
+    "preview": "vite preview",
+    "clean": "rimraf dist",
+    "lint": "eslint src --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
+    "@tanstack/react-router": "^1.170.15",
+    "@tanstack/react-start": "^1.168.25",
+    "posthog-js": "^1.386.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@typescript-eslint/parser": "^8.56.1",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.39.3",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.0",
+    "vite": "^8.0.12",
+    "wrangler": "^4.100.0"
+  }
+}

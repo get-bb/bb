@@ -1,4 +1,3 @@
-import type { AppDataPath, ApplicationId } from "@bb/domain";
 import type { WorkspaceStatusWatchChangeKind } from "./watch-status-types.js";
 
 export type HostObservedChange =
@@ -14,27 +13,9 @@ export type HostObservedChange =
       threadId: string;
     }
   | {
-      kind: "application-storage-targets-changed";
-    }
-  | {
-      kind: "application-data-changed";
-      applicationId: ApplicationId;
-      appDataPath: string;
-      path: AppDataPath;
-    }
-  | {
-      kind: "application-data-resync";
-      applicationId: ApplicationId;
-    }
-  | {
-      kind: "application-content-changed";
-      applicationId: ApplicationId;
-    }
-  | {
       kind: "injected-skills-changed";
-      applicationId: ApplicationId | null;
       changedPaths: string[];
-      sourceType: "data-dir" | "global-app";
+      sourceType: "data-dir";
     };
 
 export type WorkspaceObservedChange = Extract<
@@ -46,18 +27,6 @@ export type ThreadStorageObservedChange = Extract<
   HostObservedChange,
   {
     kind: "thread-storage-changed";
-  }
->;
-
-export type ApplicationStorageObservedChange = Extract<
-  HostObservedChange,
-  {
-    kind:
-      | "application-storage-targets-changed"
-      | "application-data-changed"
-      | "application-data-resync"
-      | "application-content-changed"
-      | "injected-skills-changed";
   }
 >;
 
@@ -83,12 +52,6 @@ export interface ThreadStorageWatchError {
   threadId?: string;
 }
 
-export interface ApplicationStorageWatchError {
-  kind: "application-storage-watch-error";
-  rootPath: string;
-  message: string;
-}
-
 export interface DataDirSkillsWatchError {
   kind: "data-dir-skills-watch-error";
   rootPath: string;
@@ -98,7 +61,6 @@ export interface DataDirSkillsWatchError {
 export type HostWatchError =
   | WorkspaceWatchError
   | ThreadStorageWatchError
-  | ApplicationStorageWatchError
   | DataDirSkillsWatchError;
 
 export interface ThreadStorageWatchTarget {
@@ -120,23 +82,6 @@ export interface WatchThreadStorageRootArgs {
   onWatchError: (error: ThreadStorageWatchError) => void;
 }
 
-export interface ApplicationDataWatchTarget {
-  applicationId: ApplicationId;
-  appDataPath: string;
-}
-
-export interface WatchApplicationStorageRootArgs {
-  /** App code (manifest, public/, skills/) lives here. */
-  appsRootPath: string;
-  /** Runtime app data lives here, outside the app folders. */
-  appDataRootPath: string;
-  resolveApplicationTarget: (
-    applicationId: ApplicationId,
-  ) => ApplicationDataWatchTarget | null;
-  onChange: (event: ApplicationStorageObservedChange) => void;
-  onWatchError: (error: ApplicationStorageWatchError) => void;
-}
-
 export interface WatchDataDirSkillsRootArgs {
   dataDirSkillsRootPath: string;
   onChange: (event: InjectedSkillsObservedChange) => void;
@@ -147,9 +92,6 @@ export interface HostWatcher {
   watchWorkspace(args: WatchWorkspaceArgs): () => void | Promise<void>;
   watchThreadStorageRoot(
     args: WatchThreadStorageRootArgs,
-  ): () => void | Promise<void>;
-  watchApplicationStorageRoot(
-    args: WatchApplicationStorageRootArgs,
   ): () => void | Promise<void>;
   watchDataDirSkillsRoot?(
     args: WatchDataDirSkillsRootArgs,

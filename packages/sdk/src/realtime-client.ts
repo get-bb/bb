@@ -1,18 +1,13 @@
-import {
-  appDataPathSchema,
-  applicationIdSchema,
-  type AppDataPath,
-  type ApplicationId,
-  type ChangedMessage,
-  type ClientMessage,
-  type RealtimeEntity,
+import type {
+  ChangedMessage,
+  ClientMessage,
+  RealtimeSubscriptionTarget,
 } from "@bb/domain";
+import { realtimeSubscriptionTargetKey } from "@bb/domain";
 import {
   serverMessageLenientSchema,
   type ServerMessage,
 } from "@bb/server-contract";
-import { requireCurrentApplicationId } from "./areas/common.js";
-import { cloneJsonValue } from "./json-clone.js";
 import { resolveRealtimeUrl } from "./realtime-url.js";
 import type {
   BbRealtime,
@@ -20,22 +15,15 @@ import type {
   BbRealtimeConnectionEvent,
   BbRealtimeEventMap,
   BbRealtimeEventName,
-  BbRealtimeListAppDataEntries,
   BbRealtimeOnArgs,
   BbRealtimeOnArgsUnion,
   BbRealtimeUnsubscribe,
-  AppDataChangedRealtimeEvent,
-  AppDataChangedRealtimeOnArgs,
-  AppDataResyncRealtimeEvent,
-  AppDataResyncRealtimeOnArgs,
-  AppRealtimeEvent,
   SystemRealtimeEvent,
 } from "./realtime-types.js";
 import type {
   BbRealtimeSocket,
   BbRealtimeSocketFactory,
   BbRealtimeSocketMessageEvent,
-  BbSdkContext,
   BbSdkTransport,
 } from "./transport.js";
 
@@ -46,23 +34,12 @@ const MAX_RECONNECT_DELAY_MS = 30_000;
 const RECONNECT_DELAY_MULTIPLIER = 1.5;
 
 interface CreateBbRealtimeClientArgs {
-  context: BbSdkContext;
-  listAppDataEntries: BbRealtimeListAppDataEntries;
   transport: BbSdkTransport;
 }
 
-interface RealtimeTarget {
-  entity: RealtimeEntity;
-  id?: string;
-}
-
-interface TargetSubscription extends RealtimeTarget {
+interface TargetSubscription {
   count: number;
-}
-
-interface PathMatchesPrefixArgs {
-  path: AppDataPath;
-  prefix: AppDataPath | "";
+  target: RealtimeSubscriptionTarget;
 }
 
 interface OptionalTargetIdMatchesArgs {
@@ -76,11 +53,7 @@ type IdScopedChangedEventName =
   | "environment:changed"
   | "host:changed";
 
-type UnscopedChangedEventName =
-  | "system:changed"
-  | "system:config-changed"
-  | "system:apps-changed"
-  | "app:changed";
+type UnscopedChangedEventName = "system:changed" | "system:config-changed";
 
 /**
  * Listener for an entity-changed event that may be scoped to one entity id:
@@ -93,7 +66,7 @@ interface IdScopedChangedListenerRecord<
   callback: BbRealtimeCallback<TEventName>;
   event: TEventName;
   selectorId?: string;
-  target: RealtimeTarget;
+  target: RealtimeSubscriptionTarget;
 }
 
 interface UnscopedChangedListenerRecord<
@@ -102,7 +75,7 @@ interface UnscopedChangedListenerRecord<
   active: boolean;
   callback: BbRealtimeCallback<TEventName>;
   event: TEventName;
-  target: RealtimeTarget;
+  target: RealtimeSubscriptionTarget;
 }
 
 type ChangedListenerRecord =
@@ -113,26 +86,6 @@ type ChangedListenerRecord =
       [TEventName in UnscopedChangedEventName]: UnscopedChangedListenerRecord<TEventName>;
     }[UnscopedChangedEventName];
 
-interface AppDataChangedListenerRecord {
-  active: boolean;
-  applicationId: ApplicationId;
-  bufferedEvents: AppDataChangedRealtimeEvent[];
-  callback: BbRealtimeCallback<"app-data:changed">;
-  event: "app-data:changed";
-  prefix: AppDataPath | "";
-  replaying: boolean;
-  replayPromise: Promise<void> | null;
-  target: RealtimeTarget;
-}
-
-interface AppDataResyncListenerRecord {
-  active: boolean;
-  applicationId: ApplicationId;
-  callback: BbRealtimeCallback<"app-data:resync">;
-  event: "app-data:resync";
-  target: RealtimeTarget;
-}
-
 interface ConnectionListenerRecord {
   active: boolean;
   callback: BbRealtimeCallback<"realtime:connection">;
@@ -141,48 +94,42 @@ interface ConnectionListenerRecord {
 
 type RealtimeListenerRecord =
   | ChangedListenerRecord
-  | AppDataChangedListenerRecord
-  | AppDataResyncListenerRecord
   | ConnectionListenerRecord;
 
-function targetKey(target: RealtimeTarget): string {
-  return target.id ? `${target.entity}:${target.id}` : target.entity;
+function targetKey(target: RealtimeSubscriptionTarget): string {
+  return realtimeSubscriptionTargetKey(target);
 }
 
-function appDataTarget(applicationId: ApplicationId): RealtimeTarget {
-  return {
-    entity: "app",
-    id: `${applicationId}:data`,
-  };
+function threadRealtimeTarget(
+  threadId: string | undefined,
+): RealtimeSubscriptionTarget {
+  return threadId
+    ? { kind: "thread-detail", threadId }
+    : { kind: "thread-list" };
 }
 
-function realtimeTarget(
-  entity: RealtimeEntity,
-  id: string | undefined,
-): RealtimeTarget {
-  return id ? { entity, id } : { entity };
+function projectRealtimeTarget(
+  projectId: string | undefined,
+): RealtimeSubscriptionTarget {
+  return projectId
+    ? { kind: "project-detail", projectId }
+    : { kind: "project-list" };
 }
 
-function pathMatchesPrefix(args: PathMatchesPrefixArgs): boolean {
-  return (
-    args.prefix === "" ||
-    args.path === args.prefix ||
-    args.path.startsWith(`${args.prefix}/`)
-  );
+function environmentRealtimeTarget(
+  environmentId: string | undefined,
+): RealtimeSubscriptionTarget {
+  return environmentId
+    ? { kind: "environment-detail", environmentId }
+    : { kind: "environment-list" };
 }
 
-function prefixPath(input: AppDataPath | "" | undefined): AppDataPath | "" {
-  const value = input ?? "";
-  if (value === "") {
-    return "";
-  }
-  return appDataPathSchema.parse(value);
-}
-
-function cloneAppDataChangedEvent(
-  event: AppDataChangedRealtimeEvent,
-): AppDataChangedRealtimeEvent {
-  return { ...event, value: cloneJsonValue(event.value) };
+function hostRealtimeTarget(
+  hostId: string | undefined,
+): RealtimeSubscriptionTarget {
+  return hostId
+    ? { kind: "host-detail", hostId }
+    : { kind: "host-list" };
 }
 
 function optionalTargetIdMatches(args: OptionalTargetIdMatchesArgs): boolean {
@@ -242,8 +189,6 @@ function isIdScopedChangedListenerFor<
 }
 
 export class BbRealtimeClient implements BbRealtime {
-  private readonly context: BbSdkContext;
-  private readonly listAppDataEntries: BbRealtimeListAppDataEntries;
   private readonly listeners = new Set<RealtimeListenerRecord>();
   private readonly targetSubscriptions = new Map<string, TargetSubscription>();
   private readonly transport: BbSdkTransport;
@@ -257,8 +202,6 @@ export class BbRealtimeClient implements BbRealtime {
   private socketReadyPromise: Promise<void> | null = null;
 
   constructor(args: CreateBbRealtimeClientArgs) {
-    this.context = args.context;
-    this.listAppDataEntries = args.listAppDataEntries;
     this.transport = args.transport;
   }
 
@@ -276,7 +219,7 @@ export class BbRealtimeClient implements BbRealtime {
           callback: args.callback,
           event: args.event,
           selectorId: args.threadId,
-          target: realtimeTarget("thread", args.threadId),
+          target: threadRealtimeTarget(args.threadId),
         });
       case "project:changed":
         return this.addChangedListener({
@@ -284,7 +227,7 @@ export class BbRealtimeClient implements BbRealtime {
           callback: args.callback,
           event: args.event,
           selectorId: args.projectId,
-          target: realtimeTarget("project", args.projectId),
+          target: projectRealtimeTarget(args.projectId),
         });
       case "environment:changed":
         return this.addChangedListener({
@@ -292,7 +235,7 @@ export class BbRealtimeClient implements BbRealtime {
           callback: args.callback,
           event: args.event,
           selectorId: args.environmentId,
-          target: realtimeTarget("environment", args.environmentId),
+          target: environmentRealtimeTarget(args.environmentId),
         });
       case "host:changed":
         return this.addChangedListener({
@@ -300,40 +243,22 @@ export class BbRealtimeClient implements BbRealtime {
           callback: args.callback,
           event: args.event,
           selectorId: args.hostId,
-          target: realtimeTarget("host", args.hostId),
+          target: hostRealtimeTarget(args.hostId),
         });
       case "system:changed":
         return this.addChangedListener({
           active: true,
           callback: args.callback,
           event: args.event,
-          target: { entity: "system" },
+          target: { kind: "system" },
         });
       case "system:config-changed":
         return this.addChangedListener({
           active: true,
           callback: args.callback,
           event: args.event,
-          target: { entity: "system" },
+          target: { kind: "system" },
         });
-      case "system:apps-changed":
-        return this.addChangedListener({
-          active: true,
-          callback: args.callback,
-          event: args.event,
-          target: { entity: "system" },
-        });
-      case "app:changed":
-        return this.addChangedListener({
-          active: true,
-          callback: args.callback,
-          event: args.event,
-          target: { entity: "app" },
-        });
-      case "app-data:changed":
-        return this.addAppDataChangedListener(args);
-      case "app-data:resync":
-        return this.addAppDataResyncListener(args);
       case "realtime:connection":
         return this.addConnectionListener({
           active: true,
@@ -347,39 +272,6 @@ export class BbRealtimeClient implements BbRealtime {
     listener: ChangedListenerRecord,
   ): BbRealtimeUnsubscribe {
     return this.activateListener(listener);
-  }
-
-  private addAppDataChangedListener(
-    args: AppDataChangedRealtimeOnArgs,
-  ): BbRealtimeUnsubscribe {
-    const applicationId = this.resolveApplicationId(args.applicationId);
-    const listener: AppDataChangedListenerRecord = {
-      active: true,
-      applicationId,
-      bufferedEvents: [],
-      callback: args.callback,
-      event: args.event,
-      prefix: prefixPath(args.prefix),
-      replaying: false,
-      replayPromise: null,
-      target: appDataTarget(applicationId),
-    };
-    const unsubscribe = this.activateListener(listener);
-    void this.replayExistingAppData(listener);
-    return unsubscribe;
-  }
-
-  private addAppDataResyncListener(
-    args: AppDataResyncRealtimeOnArgs,
-  ): BbRealtimeUnsubscribe {
-    const applicationId = this.resolveApplicationId(args.applicationId);
-    return this.activateListener({
-      active: true,
-      applicationId,
-      callback: args.callback,
-      event: args.event,
-      target: appDataTarget(applicationId),
-    });
   }
 
   private addConnectionListener(
@@ -425,9 +317,6 @@ export class BbRealtimeClient implements BbRealtime {
       return;
     }
     listener.active = false;
-    if (listener.event === "app-data:changed") {
-      listener.bufferedEvents = [];
-    }
     this.listeners.delete(listener);
     if (isTargetedListener(listener)) {
       this.removeTarget(listener.target);
@@ -435,20 +324,20 @@ export class BbRealtimeClient implements BbRealtime {
     this.closeSocketIfIdle();
   }
 
-  private addTarget(target: RealtimeTarget): void {
+  private addTarget(target: RealtimeSubscriptionTarget): void {
     const key = targetKey(target);
     const existing = this.targetSubscriptions.get(key);
     if (existing) {
       existing.count += 1;
       return;
     }
-    this.targetSubscriptions.set(key, { ...target, count: 1 });
+    this.targetSubscriptions.set(key, { count: 1, target });
     if (this.socket?.readyState === SOCKET_OPEN) {
       this.sendTargetMessage("subscribe", target);
     }
   }
 
-  private removeTarget(target: RealtimeTarget): void {
+  private removeTarget(target: RealtimeSubscriptionTarget): void {
     const key = targetKey(target);
     const existing = this.targetSubscriptions.get(key);
     if (!existing) {
@@ -516,8 +405,8 @@ export class BbRealtimeClient implements BbRealtime {
       const openedAfterReconnect = this.reconnectingAfterUnexpectedClose;
       this.reconnectingAfterUnexpectedClose = false;
       this.reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
-      for (const target of this.targetSubscriptions.values()) {
-        this.sendTargetMessage("subscribe", target);
+      for (const subscription of this.targetSubscriptions.values()) {
+        this.sendTargetMessage("subscribe", subscription.target);
       }
       this.resolveSocketReadyPromise();
       this.closeSocketIfIdle();
@@ -525,24 +414,11 @@ export class BbRealtimeClient implements BbRealtime {
         return;
       }
       if (openedAfterReconnect) {
-        // Broadcasts may have been missed while disconnected: tell resync
-        // subscribers to re-read, then self-heal app-data:changed listeners
-        // via replay before announcing the reconnect.
-        this.notifyAppDataResyncListeners();
-        void this.replayActiveAppDataListeners()
-          .catch((error) => {
-            console.error("bb realtime reconnect replay failed", error);
-          })
-          .then(() => {
-            if (this.socket !== socket) {
-              return;
-            }
-            this.emitConnection({
-              state: "connected",
-              reconnected: true,
-              reconnectDelayMs: null,
-            });
-          });
+        this.emitConnection({
+          state: "connected",
+          reconnected: true,
+          reconnectDelayMs: null,
+        });
         return;
       }
       this.emitConnection({
@@ -689,17 +565,7 @@ export class BbRealtimeClient implements BbRealtime {
   }
 
   private dispatchMessage(message: ServerMessage): void {
-    switch (message.type) {
-      case "changed":
-        this.dispatchChangedMessage(message);
-        break;
-      case "app-data.changed":
-        this.dispatchAppDataChangedMessage(message);
-        break;
-      case "app-data.resync":
-        this.dispatchAppDataResyncMessage(message);
-        break;
-    }
+    this.dispatchChangedMessage(message);
   }
 
   private dispatchChangedMessage(message: ChangedMessage): void {
@@ -718,9 +584,6 @@ export class BbRealtimeClient implements BbRealtime {
         break;
       case "system":
         this.dispatchSystemChangedMessage(message);
-        break;
-      case "app":
-        this.dispatchAppChangedMessage(message);
         break;
     }
   }
@@ -757,169 +620,7 @@ export class BbRealtimeClient implements BbRealtime {
       ) {
         this.callListener(listener.callback, message);
       }
-      if (
-        listener.event === "system:apps-changed" &&
-        message.changes.includes("apps-changed")
-      ) {
-        this.callListener(listener.callback, message);
-      }
     }
-  }
-
-  private dispatchAppChangedMessage(message: AppRealtimeEvent): void {
-    for (const listener of this.listenerSnapshot()) {
-      if (listener.event !== "app:changed" || !listener.active) {
-        continue;
-      }
-      this.callListener(listener.callback, message);
-    }
-  }
-
-  private dispatchAppDataChangedMessage(
-    message: AppDataChangedRealtimeEvent,
-  ): void {
-    for (const listener of this.listenerSnapshot()) {
-      if (
-        listener.event !== "app-data:changed" ||
-        !listener.active ||
-        listener.applicationId !== message.applicationId ||
-        !pathMatchesPrefix({ path: message.path, prefix: listener.prefix })
-      ) {
-        continue;
-      }
-      if (listener.replaying) {
-        listener.bufferedEvents.push(cloneAppDataChangedEvent(message));
-        continue;
-      }
-      this.callListener(listener.callback, cloneAppDataChangedEvent(message));
-    }
-  }
-
-  private dispatchAppDataResyncMessage(
-    message: AppDataResyncRealtimeEvent,
-  ): void {
-    for (const listener of this.listenerSnapshot()) {
-      if (!listener.active) {
-        continue;
-      }
-      if (
-        listener.event === "app-data:resync" &&
-        listener.applicationId === message.applicationId
-      ) {
-        this.callListener(listener.callback, message);
-      }
-      if (
-        listener.event === "app-data:changed" &&
-        listener.applicationId === message.applicationId
-      ) {
-        void this.replayExistingAppData(listener);
-      }
-    }
-  }
-
-  private notifyAppDataResyncListeners(): void {
-    for (const listener of this.listenerSnapshot()) {
-      if (listener.event !== "app-data:resync" || !listener.active) {
-        continue;
-      }
-      this.callListener(listener.callback, {
-        type: "app-data.resync",
-        applicationId: listener.applicationId,
-      });
-    }
-  }
-
-  private async replayActiveAppDataListeners(): Promise<void> {
-    const replayPromises: Promise<void>[] = [];
-    for (const listener of this.listenerSnapshot()) {
-      if (listener.event === "app-data:changed" && listener.active) {
-        replayPromises.push(this.replayExistingAppData(listener));
-      }
-    }
-    await Promise.all(replayPromises);
-  }
-
-  private replayExistingAppData(
-    listener: AppDataChangedListenerRecord,
-  ): Promise<void> {
-    if (!listener.active) {
-      return Promise.resolve();
-    }
-    listener.replayPromise = (listener.replayPromise ?? Promise.resolve())
-      .then(async () => {
-        if (!listener.active) {
-          return;
-        }
-        listener.replaying = true;
-        listener.bufferedEvents = [];
-        await this.connectSocket();
-        if (!listener.active) {
-          return;
-        }
-        const entries = await this.listAppDataEntries({
-          applicationId: listener.applicationId,
-          prefix: listener.prefix,
-        });
-        const replayedVersions = new Map<string, string>();
-        for (const entry of entries) {
-          if (!listener.active) {
-            return;
-          }
-          replayedVersions.set(entry.path, entry.version);
-          this.callListener(listener.callback, {
-            type: "app-data.changed",
-            applicationId: listener.applicationId,
-            path: entry.path,
-            value: cloneJsonValue(entry.value),
-            deleted: false,
-            version: entry.version,
-          });
-        }
-        // Per-path flush rule: when the replay snapshot already delivered the
-        // FINAL buffered state of a path, skip all of that path's buffered
-        // events — delivering any of them would resurface an older value
-        // after the newest one. Versions are content hashes (not orderable),
-        // so dedupe can only key off the last buffered event per path.
-        const lastBufferedVersionByPath = new Map<string, string | null>();
-        for (const event of listener.bufferedEvents) {
-          lastBufferedVersionByPath.set(
-            event.path,
-            event.deleted ? null : event.version,
-          );
-        }
-        for (const event of listener.bufferedEvents) {
-          if (!listener.active) {
-            return;
-          }
-          const lastVersion = lastBufferedVersionByPath.get(event.path);
-          if (
-            typeof lastVersion === "string" &&
-            replayedVersions.get(event.path) === lastVersion
-          ) {
-            continue;
-          }
-          this.callListener(listener.callback, cloneAppDataChangedEvent(event));
-        }
-      })
-      .finally(() => {
-        listener.replaying = false;
-        listener.bufferedEvents = [];
-      })
-      .catch((error) => {
-        if (!listener.active) {
-          return;
-        }
-        console.error("bb realtime app-data replay failed", error);
-      });
-    return listener.replayPromise;
-  }
-
-  private resolveApplicationId(
-    input: ApplicationId | undefined,
-  ): ApplicationId {
-    return applicationIdSchema.parse(
-      input ?? requireCurrentApplicationId(this.context),
-    );
   }
 
   private ensureSocketReadyPromise(): Promise<void> {
@@ -967,14 +668,12 @@ export class BbRealtimeClient implements BbRealtime {
 
   private sendTargetMessage(
     type: "subscribe" | "unsubscribe",
-    target: RealtimeTarget,
+    target: RealtimeSubscriptionTarget,
   ): void {
     if (!this.socket || this.socket.readyState !== SOCKET_OPEN) {
       return;
     }
-    const message: ClientMessage = target.id
-      ? { type, entity: target.entity, id: target.id }
-      : { type, entity: target.entity };
+    const message: ClientMessage = { type, target };
     this.socket.send(JSON.stringify(message));
   }
 
@@ -990,8 +689,7 @@ export class BbRealtimeClient implements BbRealtime {
 
   /**
    * Dispatch iterates a snapshot: a listener registered from inside a
-   * callback must not receive the in-flight event (for app-data listeners
-   * that would deliver a live event before their replay snapshot).
+   * callback must not receive the in-flight event.
    */
   private listenerSnapshot(): RealtimeListenerRecord[] {
     return [...this.listeners];

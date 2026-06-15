@@ -1,64 +1,25 @@
 import path from "node:path";
 import { ApiError } from "../errors.js";
 
-export type DotfileSegmentPolicy = "allow" | "not-found";
-
 export interface SafeRelativeRoutePath {
   relativePath: string;
 }
 
-export interface ParseSafeRelativeRoutePathArgs {
-  dotfileSegmentPolicy: DotfileSegmentPolicy;
-  invalidPathMessage: string;
-  rawPath: string;
-  directoryIndexPath?: string;
-}
-
-export interface DecodeRoutePathArgs {
-  invalidPathMessage: string;
-  rawPath: string;
-}
-
-export interface ExtractRoutePathArgs {
-  requestUrl: string;
-  routeSegment: string;
-}
-
-function createInvalidPathError(message: string): ApiError {
-  return new ApiError(400, "invalid_path", message);
-}
-
-function createNotFoundError(relativePath: string): ApiError {
-  return new ApiError(404, "ENOENT", `Path does not exist: ${relativePath}`);
-}
-
-export function decodeRoutePath(args: DecodeRoutePathArgs): string {
-  try {
-    return decodeURIComponent(args.rawPath);
-  } catch {
-    throw createInvalidPathError(args.invalidPathMessage);
-  }
-}
-
+/**
+ * Validate a workspace-relative path captured by a `:filePath{.+}` route
+ * param (already percent-decoded by hono). Rejects absolute paths, NUL
+ * bytes, backslashes, and empty/`.`/`..` segments with a 400.
+ */
 export function parseSafeRelativeRoutePath(
-  args: ParseSafeRelativeRoutePathArgs,
+  relativePath: string,
 ): SafeRelativeRoutePath {
-  const decodedPath = decodeRoutePath({
-    rawPath: args.rawPath,
-    invalidPathMessage: args.invalidPathMessage,
-  });
-  const relativePath =
-    args.directoryIndexPath !== undefined && decodedPath.endsWith("/")
-      ? `${decodedPath}${args.directoryIndexPath}`
-      : decodedPath;
-
   if (
     relativePath.length === 0 ||
     relativePath.includes("\0") ||
     relativePath.includes("\\") ||
     path.posix.isAbsolute(relativePath)
   ) {
-    throw createInvalidPathError(args.invalidPathMessage);
+    throw new ApiError(400, "invalid_path", "Invalid file path");
   }
 
   const segments = relativePath.split("/");
@@ -67,26 +28,8 @@ export function parseSafeRelativeRoutePath(
       (segment) => segment.length === 0 || segment === "." || segment === "..",
     )
   ) {
-    throw createInvalidPathError(args.invalidPathMessage);
+    throw new ApiError(400, "invalid_path", "Invalid file path");
   }
 
-  if (
-    args.dotfileSegmentPolicy === "not-found" &&
-    segments.some((segment) => segment.startsWith("."))
-  ) {
-    throw createNotFoundError(relativePath);
-  }
-
-  return {
-    relativePath: segments.join("/"),
-  };
-}
-
-export function extractRoutePath(args: ExtractRoutePathArgs): string {
-  const requestPath = new URL(args.requestUrl).pathname;
-  const routeSegmentIndex = requestPath.indexOf(args.routeSegment);
-  if (routeSegmentIndex === -1) {
-    return "";
-  }
-  return requestPath.slice(routeSegmentIndex + args.routeSegment.length);
+  return { relativePath };
 }

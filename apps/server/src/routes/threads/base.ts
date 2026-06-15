@@ -12,13 +12,8 @@ import {
 } from "@bb/db";
 import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
 import {
-  createThreadRequestSchema,
-  deleteThreadRequestSchema,
-  threadGetQuerySchema,
   threadIncludeOptionSchema,
-  threadListQuerySchema,
-  threadSearchQuerySchema,
-  updateThreadRequestSchema,
+  publicApiRoutes,
   typedRoutes,
   type ThreadGetQuery,
   type ThreadIncludeOption,
@@ -186,8 +181,9 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
+  const routes = publicApiRoutes.threads;
 
-  get("/threads", threadListQuerySchema, (context, query) => {
+  get(routes.list, (context, query) => {
     const limit = parseOptionalInteger(query.limit, "limit");
     if (limit !== undefined && limit <= 0) {
       throw new ApiError(400, "invalid_request", "limit must be positive");
@@ -214,7 +210,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get("/threads/search", threadSearchQuerySchema, (context, query) => {
+  get(routes.search, (context, query) => {
     const searchQuery = query.query.trim();
     if (countNonWhitespaceChars(searchQuery) < 2) {
       throw new ApiError(
@@ -234,7 +230,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  post("/threads", createThreadRequestSchema, async (context, payload) => {
+  post(routes.create, async (context, payload) => {
     const thread = await createThreadFromRequest(deps, {
       ...payload,
       automationId: null,
@@ -243,7 +239,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
 
-  get("/threads/:id", threadGetQuerySchema, (context, query) => {
+  get(routes.get, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
       buildThreadResponse(deps, {
@@ -262,12 +258,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     };
   }
 
-  get("/threads/:id/child-summary", (context) => {
+  get(routes.childSummary, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(getThreadChildSummary(thread.id));
   });
 
-  patch("/threads/:id", updateThreadRequestSchema, async (context, payload) => {
+  patch(routes.update, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     if (payload.parentThreadId) {
       assertValidParentThread(deps, {
@@ -340,7 +336,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     return context.json(toThreadResponseFromThread(deps, { thread: updated }));
   });
 
-  del("/threads/:id", deleteThreadRequestSchema, async (context, payload) => {
+  del(routes.delete, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     requireChildThreadsConfirmation({
       action: "delete",

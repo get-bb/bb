@@ -169,6 +169,18 @@ export function SecondaryPanelFilePreview({
     );
   }
 
+  if (filePreview.kind === "video") {
+    return (
+      <FilePreviewSurface
+        path={activePath}
+        copyPath={copyPath}
+        onOpenInEditor={onOpenInEditor}
+        statusLabel={statusLabel}
+        state={{ kind: "video", url: filePreview.url }}
+      />
+    );
+  }
+
   return (
     <FilePreviewSurface
       path={activePath}

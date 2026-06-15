@@ -37,6 +37,7 @@ import {
 export interface OperationProjectionState {
   messages: EventProjectionMessage[];
   fileEditsByCallId: Map<string, EventProjectionFileEditMessage[]>;
+  fileEditMessageStartIndexByCallId: Map<string, number>;
   fileEditStdoutBuffersByCallId: Map<string, VisibleTextBuffer>;
   openCompactionsByKey: Map<string, EventProjectionOperationMessage>;
   finalizedCompactionKeys: Set<string>;
@@ -64,6 +65,7 @@ export function createOperationProjectionState(
     userQuestionsByInteractionId: new Map(),
     threadOperationsById: new Map(),
     fileEditsByCallId: new Map(),
+    fileEditMessageStartIndexByCallId: new Map(),
     fileEditStdoutBuffersByCallId: new Map(),
   };
 }
@@ -99,6 +101,13 @@ type EventProjectionMessageScopeFields = ReturnType<
 interface OperationDetailMergeArgs {
   existing: string | undefined;
   incoming: string | undefined;
+}
+
+interface ShiftFileEditMessageIndexesArgs {
+  callId: string;
+  delta: number;
+  startIndex: number;
+  state: OperationProjectionState;
 }
 
 interface UpsertKeyedLifecycleMessageArgs<
@@ -544,18 +553,75 @@ function replaceFileEditMessagesForCall(
   callId: string,
   nextRows: readonly EventProjectionFileEditMessage[],
 ): void {
-  const insertionIndex = state.messages.findIndex(
-    (message) => message.kind === "file-edit" && message.callId === callId,
-  );
-  const messagesWithoutCallRows = state.messages.filter(
-    (message) => message.kind !== "file-edit" || message.callId !== callId,
-  );
+  const indexedStart = state.fileEditMessageStartIndexByCallId.get(callId);
+  const insertionIndex =
+    indexedStart !== undefined &&
+    isFileEditMessageForCall(state.messages[indexedStart], callId)
+      ? indexedStart
+      : state.messages.findIndex(
+          (message) =>
+            message.kind === "file-edit" && message.callId === callId,
+        );
   if (insertionIndex === -1) {
-    messagesWithoutCallRows.push(...nextRows);
-  } else {
-    messagesWithoutCallRows.splice(insertionIndex, 0, ...nextRows);
+    if (nextRows.length > 0) {
+      state.fileEditMessageStartIndexByCallId.set(
+        callId,
+        state.messages.length,
+      );
+      state.messages.push(...nextRows);
+    }
+    return;
   }
-  state.messages = messagesWithoutCallRows;
+
+  let deleteCount = 0;
+  while (
+    isFileEditMessageForCall(
+      state.messages[insertionIndex + deleteCount],
+      callId,
+    )
+  ) {
+    deleteCount += 1;
+  }
+
+  state.messages.splice(insertionIndex, deleteCount, ...nextRows);
+  if (nextRows.length > 0) {
+    state.fileEditMessageStartIndexByCallId.set(callId, insertionIndex);
+  } else {
+    state.fileEditMessageStartIndexByCallId.delete(callId);
+  }
+  shiftFileEditMessageIndexes({
+    callId,
+    delta: nextRows.length - deleteCount,
+    startIndex: insertionIndex,
+    state,
+  });
+}
+
+function isFileEditMessageForCall(
+  message: EventProjectionMessage | undefined,
+  callId: string,
+): message is EventProjectionFileEditMessage {
+  return message?.kind === "file-edit" && message.callId === callId;
+}
+
+function shiftFileEditMessageIndexes({
+  callId,
+  delta,
+  startIndex,
+  state,
+}: ShiftFileEditMessageIndexesArgs): void {
+  if (delta === 0) {
+    return;
+  }
+  for (const [
+    indexedCallId,
+    index,
+  ] of state.fileEditMessageStartIndexByCallId) {
+    if (indexedCallId === callId || index <= startIndex) {
+      continue;
+    }
+    state.fileEditMessageStartIndexByCallId.set(indexedCallId, index + delta);
+  }
 }
 
 function updateFileEditMessage(
@@ -688,9 +754,7 @@ export function upsertFileEdit(
   }
 
   const changes =
-    existingRows.length > 0
-        ? existingRows.map(() => null)
-        : [null];
+    existingRows.length > 0 ? existingRows.map(() => null) : [null];
 
   for (const [changeIndex, change] of changes.entries()) {
     const existing = existingRows[changeIndex];
@@ -717,6 +781,12 @@ export function upsertFileEdit(
       threadId,
     });
     existingRows.push(message);
+    if (!state.fileEditMessageStartIndexByCallId.has(partial.callId)) {
+      state.fileEditMessageStartIndexByCallId.set(
+        partial.callId,
+        state.messages.length,
+      );
+    }
     state.messages.push(message);
   }
 

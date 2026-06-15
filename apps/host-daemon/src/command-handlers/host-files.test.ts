@@ -1,5 +1,4 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,9 +13,6 @@ import {
   readHostFile,
   readHostFileMetadata,
   readHostRelativeFile,
-  writeHostRelativeFile,
-  deleteHostRelativeFile,
-  deleteHostRelativePath,
 } from "./host-files.js";
 
 const execFileAsync = promisify(execFile);
@@ -238,168 +234,6 @@ describe("readHostFileMetadata", () => {
     ).rejects.toMatchObject({
       code: "invalid_path",
       message: expect.stringContaining("escapes read root"),
-    });
-  });
-});
-
-describe("writeHostRelativeFile and deleteHostRelativeFile", () => {
-  it("writes JSON bytes beneath the root and returns a content hash", async () => {
-    const rootPath = await makeTempDir("bb-host-relative-write-");
-    const content = '{"ok":true}\n';
-    const result = await writeHostRelativeFile({
-      type: "host.write_file_relative",
-      rootPath,
-      path: "data/state.json",
-      dotfiles: "deny",
-      content,
-      contentEncoding: "utf8",
-    });
-
-    expect(result).toMatchObject({
-      path: "data/state.json",
-      hash: createHash("sha256").update(content).digest("hex"),
-      sizeBytes: Buffer.byteLength(content),
-    });
-    await expect(
-      fs.readFile(path.join(rootPath, "data/state.json"), "utf8"),
-    ).resolves.toBe(content);
-  });
-
-  it("rejects traversal, dotfiles, directories, and symlink targets", async () => {
-    const rootPath = await makeTempDir("bb-host-relative-invalid-");
-    await fs.mkdir(path.join(rootPath, "nested"));
-    await fs.writeFile(path.join(rootPath, "outside.json"), "outside", "utf8");
-    await fs.symlink(
-      path.join(rootPath, "outside.json"),
-      path.join(rootPath, "nested", "link.json"),
-    );
-
-    await expect(
-      writeHostRelativeFile({
-        type: "host.write_file_relative",
-        rootPath,
-        path: "../escape.json",
-        dotfiles: "deny",
-        content: "{}\n",
-        contentEncoding: "utf8",
-      }),
-    ).rejects.toMatchObject({ code: "invalid_path" });
-
-    await expect(
-      writeHostRelativeFile({
-        type: "host.write_file_relative",
-        rootPath,
-        path: ".hidden.json",
-        dotfiles: "deny",
-        content: "{}\n",
-        contentEncoding: "utf8",
-      }),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-
-    await expect(
-      writeHostRelativeFile({
-        type: "host.write_file_relative",
-        rootPath,
-        path: "nested",
-        dotfiles: "deny",
-        content: "{}\n",
-        contentEncoding: "utf8",
-      }),
-    ).rejects.toMatchObject({ code: "invalid_path" });
-
-    await expect(
-      writeHostRelativeFile({
-        type: "host.write_file_relative",
-        rootPath,
-        path: "nested/link.json",
-        dotfiles: "deny",
-        content: "{}\n",
-        contentEncoding: "utf8",
-      }),
-    ).rejects.toMatchObject({ code: "invalid_path" });
-  });
-
-  it("deletes files idempotently", async () => {
-    const rootPath = await makeTempDir("bb-host-relative-delete-");
-    const written = await writeHostRelativeFile({
-      type: "host.write_file_relative",
-      rootPath,
-      path: "tasks.json",
-      dotfiles: "deny",
-      content: "[]\n",
-      contentEncoding: "utf8",
-    });
-
-    const deleted = await deleteHostRelativeFile({
-      type: "host.delete_file_relative",
-      rootPath,
-      path: "tasks.json",
-      dotfiles: "deny",
-    });
-    expect(deleted).toEqual({
-      path: "tasks.json",
-      deleted: true,
-      previousHash: written.hash,
-    });
-    await expect(
-      fs.stat(path.join(rootPath, "tasks.json")),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-
-    await expect(
-      deleteHostRelativeFile({
-        type: "host.delete_file_relative",
-        rootPath,
-        path: "tasks.json",
-        dotfiles: "deny",
-      }),
-    ).resolves.toEqual({
-      path: "tasks.json",
-      deleted: false,
-      previousHash: null,
-    });
-  });
-
-  it("deletes directories recursively beneath the root", async () => {
-    const rootPath = await makeTempDir("bb-host-relative-delete-dir-");
-    await fs.mkdir(path.join(rootPath, "apps", "demo", "assets"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(rootPath, "apps", "demo", "manifest.json"),
-      "{}\n",
-      "utf8",
-    );
-    await fs.writeFile(
-      path.join(rootPath, "apps", "demo", "assets", "index.html"),
-      "<h1>Demo</h1>",
-      "utf8",
-    );
-
-    await expect(
-      deleteHostRelativePath({
-        type: "host.delete_path_relative",
-        rootPath: path.join(rootPath, "apps"),
-        path: "demo",
-        dotfiles: "deny",
-      }),
-    ).resolves.toEqual({
-      path: "demo",
-      deleted: true,
-    });
-    await expect(
-      fs.stat(path.join(rootPath, "apps", "demo")),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-
-    await expect(
-      deleteHostRelativePath({
-        type: "host.delete_path_relative",
-        rootPath: path.join(rootPath, "apps"),
-        path: "demo",
-        dotfiles: "deny",
-      }),
-    ).resolves.toEqual({
-      path: "demo",
-      deleted: false,
     });
   });
 });

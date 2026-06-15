@@ -95,9 +95,8 @@ export interface WorkspaceChangedFileSelection {
  * the result has at most one entry.
  *
  * Each section carries its own stats so callers don't have to re-derive
- * which bucket the numbers came from. Untracked-only state surfaces
- * working-tree stats (insertions/deletions are expected to be 0 there —
- * git diff doesn't count untracked content).
+ * which bucket the numbers came from. Untracked-only state surfaces the
+ * working-tree stats synthesized by the workspace status command.
  */
 export function selectWorkspaceChangedFilesSections(
   workspaceStatus: WorkspaceStatus | undefined,

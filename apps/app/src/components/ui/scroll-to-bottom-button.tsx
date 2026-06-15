@@ -29,18 +29,14 @@ export function ScrollToBottomButton({
         aria-label={ariaLabel}
         type="button"
       >
-        {active ? <TypingDots /> : <Icon name="ArrowDown" className="size-4" />}
+        {/* One control — the down-arrow. While the thread is active it shimmers
+            (like the "Thinking..." indicator) to signal live content below;
+            idle is the static arrow. */}
+        <Icon
+          name="ArrowDown"
+          className={cn("size-4", active && "animate-shine-icon")}
+        />
       </button>
     </div>
-  );
-}
-
-function TypingDots() {
-  return (
-    <span className="flex items-center gap-0.5" aria-hidden>
-      <span className="size-1 animate-typing-dot rounded-full bg-current [animation-delay:-240ms]" />
-      <span className="size-1 animate-typing-dot rounded-full bg-current [animation-delay:-120ms]" />
-      <span className="size-1 animate-typing-dot rounded-full bg-current" />
-    </span>
   );
 }

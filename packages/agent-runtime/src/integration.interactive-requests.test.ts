@@ -84,7 +84,6 @@ describe("interactive request scenarios", () => {
           preset: "full",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -156,7 +155,6 @@ describe("interactive request scenarios", () => {
           preset: "workspace-write-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -229,7 +227,6 @@ describe("interactive request scenarios", () => {
           preset: "workspace-write-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -286,7 +283,6 @@ describe("interactive request scenarios", () => {
           preset: "workspace-write-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -345,7 +341,6 @@ describe("interactive request scenarios", () => {
           preset: "workspace-write-deny",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -402,7 +397,6 @@ describe("interactive request scenarios", () => {
           preset: "workspace-write-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -463,7 +457,6 @@ describe("interactive request scenarios", () => {
           preset: "workspace-write-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -529,7 +522,6 @@ describe("interactive request scenarios", () => {
           preset: "readonly-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -594,7 +586,6 @@ describe("interactive request scenarios", () => {
           preset: "readonly-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -711,7 +702,6 @@ describe("interactive request scenarios", () => {
           preset: "readonly-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -779,7 +769,6 @@ describe("interactive request scenarios", () => {
           preset: "readonly-deny",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -834,7 +823,6 @@ describe("interactive request scenarios", () => {
           preset: "readonly-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -916,7 +904,6 @@ describe("interactive request scenarios", () => {
           preset: "readonly-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -999,7 +986,6 @@ describe("interactive request scenarios", () => {
           preset: "readonly-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -1080,7 +1066,6 @@ describe("interactive request scenarios", () => {
           preset: "readonly-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -1197,7 +1182,6 @@ describe("interactive request scenarios", () => {
           preset: "readonly-ask",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",
@@ -1265,7 +1249,6 @@ describe("interactive request scenarios", () => {
           preset: "readonly-deny",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId,
           projectId: "test-project",

@@ -4,11 +4,13 @@ import {
   buildGitDiffParsePlan,
   buildGitDiffSelectionOptions,
   buildGitDiffTarget,
+  COMMITTED_GIT_DIFF_SELECTION,
   GIT_DIFF_PARSE_BATCH_THRESHOLD,
   reconcileGitDiffCollapsedFileKeys,
   resolveGitDiffPreparationState,
   shouldCollapseGitDiffFileByDefault,
-  shouldResetSelectedGitDiffCommit,
+  shouldResetSelectedGitDiffSelection,
+  UNCOMMITTED_GIT_DIFF_SELECTION,
 } from "./gitDiffPanelHelpers";
 import {
   buildParsedGitDiffFileEntries,
@@ -71,15 +73,26 @@ function buildEntries(diff: string): ParsedGitDiffFileEntry[] {
 }
 
 describe("gitDiffPanelHelpers", () => {
-  it("builds git diff targets from commit, uncommitted, and merge-base selections", () => {
+  it("builds git diff targets from commit, committed, uncommitted, and merge-base selections", () => {
     expect(buildGitDiffTarget("commit-sha", "main")).toEqual({
       sha: "commit-sha",
       type: "commit",
     });
-    expect(buildGitDiffTarget("uncommitted", "main")).toEqual({
+    expect(
+      buildGitDiffTarget(COMMITTED_GIT_DIFF_SELECTION, "main"),
+    ).toEqual({
+      mergeBaseBranch: "main",
+      type: "branch_committed",
+    });
+    expect(
+      buildGitDiffTarget(COMMITTED_GIT_DIFF_SELECTION, undefined),
+    ).toBeUndefined();
+    expect(buildGitDiffTarget(UNCOMMITTED_GIT_DIFF_SELECTION, "main")).toEqual({
       type: "uncommitted",
     });
-    expect(buildGitDiffTarget("uncommitted", undefined)).toEqual({
+    expect(
+      buildGitDiffTarget(UNCOMMITTED_GIT_DIFF_SELECTION, undefined),
+    ).toEqual({
       type: "uncommitted",
     });
     expect(buildGitDiffTarget(null, "main")).toEqual({
@@ -105,6 +118,7 @@ describe("gitDiffPanelHelpers", () => {
 
     expect(buildGitDiffSelectionOptions(commits)).toEqual([
       { value: "all", label: "All changes" },
+      { value: "branch_committed", label: "Committed changes" },
       { value: "abc123", label: "Initial change", monoPrefix: "abc123" },
       { value: "def456", label: "Follow-up", monoPrefix: "def456" },
     ]);
@@ -112,6 +126,7 @@ describe("gitDiffPanelHelpers", () => {
       buildGitDiffSelectionOptions(commits, { hasUncommittedChanges: true }),
     ).toEqual([
       { value: "all", label: "All changes" },
+      { value: "branch_committed", label: "Committed changes" },
       { value: "uncommitted", label: "Uncommitted changes" },
       { value: "abc123", label: "Initial change", monoPrefix: "abc123" },
       { value: "def456", label: "Follow-up", monoPrefix: "def456" },
@@ -122,16 +137,28 @@ describe("gitDiffPanelHelpers", () => {
       { value: "all", label: "All changes" },
       { value: "uncommitted", label: "Uncommitted changes" },
     ]);
-    expect(shouldResetSelectedGitDiffCommit("missing", commits)).toBe(true);
-    expect(shouldResetSelectedGitDiffCommit("abc123", commits)).toBe(false);
-    expect(shouldResetSelectedGitDiffCommit(null, commits)).toBe(false);
     expect(
-      shouldResetSelectedGitDiffCommit("uncommitted", [], {
+      buildGitDiffSelectionOptions([], { hasUncommittedChanges: false }),
+    ).toEqual([{ value: "all", label: "All changes" }]);
+    expect(shouldResetSelectedGitDiffSelection("missing", commits)).toBe(true);
+    expect(shouldResetSelectedGitDiffSelection("abc123", commits)).toBe(false);
+    expect(shouldResetSelectedGitDiffSelection(null, commits)).toBe(false);
+    expect(
+      shouldResetSelectedGitDiffSelection(
+        COMMITTED_GIT_DIFF_SELECTION,
+        commits,
+      ),
+    ).toBe(false);
+    expect(
+      shouldResetSelectedGitDiffSelection(COMMITTED_GIT_DIFF_SELECTION, []),
+    ).toBe(true);
+    expect(
+      shouldResetSelectedGitDiffSelection(UNCOMMITTED_GIT_DIFF_SELECTION, [], {
         hasUncommittedChanges: true,
       }),
     ).toBe(false);
     expect(
-      shouldResetSelectedGitDiffCommit("uncommitted", [], {
+      shouldResetSelectedGitDiffSelection(UNCOMMITTED_GIT_DIFF_SELECTION, [], {
         hasUncommittedChanges: false,
       }),
     ).toBe(true);

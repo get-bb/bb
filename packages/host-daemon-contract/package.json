@@ -23,7 +23,6 @@
   "dependencies": {
     "@bb/domain": "workspace:*",
     "@bb/hono-typed-routes": "workspace:*",
-    "@bb/replay-capture": "workspace:*",
     "hono": "^4.7.0",
     "zod": "^4.3.6"
   },

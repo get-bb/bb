@@ -4,7 +4,10 @@ import { dirname, join, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { DbConnection } from "./connection.js";
-import { publishedMigrationWhensByTag } from "./migration-history.js";
+import {
+  compatibleMigrationHashes,
+  publishedMigrationWhensByTag,
+} from "./migration-history.js";
 
 export interface ResolveMigrationsFolderForModuleDirArgs {
   moduleDir: string;
@@ -124,11 +127,6 @@ interface ExistingTableRow {
   name: string;
 }
 
-interface CompatibleMigrationHash {
-  hash: string;
-  tag: string;
-}
-
 interface PendingInteractionProviderRequestDuplicateRow {
   duplicateCount: number;
   providerId: string;
@@ -154,12 +152,6 @@ const deferredDestructiveCleanupMigrationTags = [
   "0017_terminal_session_runtime_state_honesty",
   "0018_natural_crusher_hogan",
 ] as const satisfies readonly DeferredDestructiveCleanupMigrationTag[];
-const compatibleMigrationHashes: readonly CompatibleMigrationHash[] = [
-  {
-    tag: "0027_thread_search",
-    hash: "025358fe89253aec7f5bd970dc3eb88d0e834f0d58fb9d75329a5d39899340f4",
-  },
-];
 const pendingInteractionColumns: ExpectedColumn[] = [
   { name: "id", type: "text", notNull: true, primaryKey: true },
   { name: "thread_id", type: "text", notNull: true, primaryKey: false },
@@ -579,17 +571,15 @@ function hasCompatibleMigrationHash(
   expectedMigration: ExpectedAppliedMigration,
   appliedMigrations: AppliedMigrationIdentityRow[],
 ): boolean {
-  const hashes = compatibleMigrationHashes
-    .filter((entry) => entry.tag === expectedMigration.tag)
-    .map((entry) => entry.hash);
-  if (hashes.length === 0) {
-    return false;
-  }
-
-  return appliedMigrations.some(
-    (appliedMigration) =>
-      appliedMigration.createdAt === expectedMigration.createdAt &&
-      hashes.includes(appliedMigration.hash),
+  return compatibleMigrationHashes.some(
+    (compatibleMigration) =>
+      compatibleMigration.tag === expectedMigration.tag &&
+      compatibleMigration.when === expectedMigration.createdAt &&
+      appliedMigrations.some(
+        (appliedMigration) =>
+          appliedMigration.createdAt === expectedMigration.createdAt &&
+          appliedMigration.hash === compatibleMigration.hash,
+      ),
   );
 }
 

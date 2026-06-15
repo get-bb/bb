@@ -25,7 +25,7 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "thread", "thread-1");
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
     hub.notifyThread("thread-1", ["events-appended"]);
 
     expect(socket.messages).toHaveLength(1);
@@ -41,7 +41,7 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "thread", "thread-1");
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
     hub.notifyThread("thread-1", ["archived-changed"], {
       projectId: "project-1",
     });
@@ -60,7 +60,10 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "environment", "environment-1");
+    hub.subscribe(socket, {
+      kind: "environment-detail",
+      environmentId: "environment-1",
+    });
     hub.notifyEnvironment("environment-1", ["metadata-changed"]);
 
     expect(socket.messages).toHaveLength(1);
@@ -76,137 +79,19 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "thread", "thread-1");
-    hub.unsubscribe(socket, "thread", "thread-1");
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
+    hub.unsubscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
     hub.notifyThread("thread-1", ["status-changed"]);
 
     expect(socket.messages).toHaveLength(0);
-  });
-
-  it("subscribes clients and delivers app data broadcasts", () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-
-    hub.subscribe(socket, "app", "status:data");
-    hub.notifyAppData({
-      type: "app-data.changed",
-      applicationId: "status",
-      path: "state.json",
-      value: { workers: [] },
-      deleted: false,
-      version: "version-1",
-    });
-
-    expect(socket.messages).toHaveLength(1);
-    expect(JSON.parse(socket.messages[0])).toEqual({
-      type: "app-data.changed",
-      applicationId: "status",
-      path: "state.json",
-      value: { workers: [] },
-      deleted: false,
-      version: "version-1",
-    });
-  });
-
-  it("delivers app list changes to entity-wide app subscribers", () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-
-    hub.subscribe(socket, "app");
-    hub.notifyAppsChanged();
-
-    expect(socket.messages).toHaveLength(1);
-    expect(JSON.parse(socket.messages[0])).toEqual({
-      type: "changed",
-      entity: "app",
-      changes: ["apps-changed"],
-    });
-  });
-
-  it("delivers app content-changed broadcasts to entity-wide app subscribers", () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-
-    hub.subscribe(socket, "app");
-    hub.notifyAppContentChanged("some-app");
-
-    expect(socket.messages).toHaveLength(1);
-    expect(JSON.parse(socket.messages[0])).toEqual({
-      type: "changed",
-      entity: "app",
-      id: "some-app",
-      changes: ["content-changed"],
-    });
-  });
-
-  it("delivers app content-changed broadcasts to the matching app id only", () => {
-    const hub = new NotificationHub();
-    const idScopedSocket = createMockHubSocket();
-    const appDataSocket = createMockHubSocket();
-    const otherAppSocket = createMockHubSocket();
-
-    hub.subscribe(idScopedSocket, "app", "some-app");
-    hub.subscribe(appDataSocket, "app", "some-app:data");
-    hub.subscribe(otherAppSocket, "app", "other-app");
-    hub.notifyAppContentChanged("some-app");
-
-    expect(
-      idScopedSocket.messages.map((message) => JSON.parse(message)),
-    ).toEqual([
-      {
-        type: "changed",
-        entity: "app",
-        id: "some-app",
-        changes: ["content-changed"],
-      },
-    ]);
-    expect(appDataSocket.messages).toHaveLength(0);
-    expect(otherAppSocket.messages).toHaveLength(0);
-  });
-
-  it("does not deliver app data broadcasts to entity-wide app subscribers", () => {
-    const hub = new NotificationHub();
-    const entityWideSocket = createMockHubSocket();
-    const appDataSocket = createMockHubSocket();
-
-    hub.subscribe(entityWideSocket, "app");
-    hub.subscribe(appDataSocket, "app", "status:data");
-    hub.notifyAppData({
-      type: "app-data.changed",
-      applicationId: "status",
-      path: "state.json",
-      value: { workers: [] },
-      deleted: false,
-      version: "version-1",
-    });
-
-    expect(entityWideSocket.messages).toHaveLength(0);
-    expect(appDataSocket.messages).toHaveLength(1);
-  });
-
-  it("delivers app data resync broadcasts", () => {
-    const hub = new NotificationHub();
-    const socket = createMockHubSocket();
-
-    hub.subscribe(socket, "app", "status:data");
-    hub.notifyAppData({
-      type: "app-data.resync",
-      applicationId: "status",
-    });
-
-    expect(socket.messages).toHaveLength(1);
-    expect(JSON.parse(socket.messages[0])).toEqual({
-      type: "app-data.resync",
-      applicationId: "status",
-    });
   });
 
   it("cleans up subscriptions on client disconnect", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "thread", "thread-1");
-    hub.subscribe(socket, "project", "project-1");
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(socket, { kind: "project-detail", projectId: "project-1" });
     hub.unregisterClient(socket);
     hub.notifyThread("thread-1", ["events-appended"]);
     hub.notifyProject("project-1", ["threads-changed"]);
@@ -252,9 +137,9 @@ describe("NotificationHub", () => {
     const socket2 = createMockHubSocket();
     const socket3 = createMockHubSocket();
 
-    hub.subscribe(socket1, "thread", "thread-1");
-    hub.subscribe(socket2, "thread", "thread-1");
-    hub.subscribe(socket3, "thread", "thread-2");
+    hub.subscribe(socket1, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(socket2, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(socket3, { kind: "thread-detail", threadId: "thread-2" });
     hub.notifyThread("thread-1", ["status-changed"]);
 
     expect(socket1.messages).toHaveLength(1);
@@ -294,7 +179,7 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list" },
+        command: { type: "provider.list_models", providerId: "codex" },
       },
     });
 
@@ -302,16 +187,16 @@ describe("NotificationHub", () => {
       {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list" },
+        command: { type: "provider.list_models", providerId: "codex" },
       },
     ]);
     const disposition = hub.recordHostOnlineRpcResponse({
       message: {
         type: "host-rpc.response",
         requestId: "rpc-1",
-        commandType: "provider.list",
+        commandType: "provider.list_models",
         ok: true,
-        result: { providers: [] },
+        result: { models: [], selectedOnlyModels: [] },
       },
       sessionId: "session-1",
     });
@@ -320,9 +205,9 @@ describe("NotificationHub", () => {
     await expect(wait).resolves.toEqual({
       type: "host-rpc.response",
       requestId: "rpc-1",
-      commandType: "provider.list",
+      commandType: "provider.list_models",
       ok: true,
-      result: { providers: [] },
+      result: { models: [], selectedOnlyModels: [] },
     });
   });
 
@@ -338,7 +223,7 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-session-scoped",
-        command: { type: "provider.list" },
+        command: { type: "provider.list_models", providerId: "codex" },
       },
     });
     let resolved = false;
@@ -351,9 +236,9 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.response",
         requestId: "rpc-session-scoped",
-        commandType: "provider.list",
+        commandType: "provider.list_models",
         ok: true,
-        result: { providers: [] },
+        result: { models: [], selectedOnlyModels: [] },
       },
       sessionId: "session-2",
     });
@@ -369,9 +254,9 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.response",
         requestId: "rpc-session-scoped",
-        commandType: "provider.list",
+        commandType: "provider.list_models",
         ok: true,
-        result: { providers: [] },
+        result: { models: [], selectedOnlyModels: [] },
       },
       sessionId: "session-1",
     });
@@ -379,9 +264,9 @@ describe("NotificationHub", () => {
     await expect(observed).resolves.toEqual({
       type: "host-rpc.response",
       requestId: "rpc-session-scoped",
-      commandType: "provider.list",
+      commandType: "provider.list_models",
       ok: true,
-      result: { providers: [] },
+      result: { models: [], selectedOnlyModels: [] },
     });
   });
 
@@ -396,7 +281,7 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list" },
+        command: { type: "provider.list_models", providerId: "codex" },
       },
     });
     hub.unregisterDaemon("session-1");
@@ -409,10 +294,13 @@ describe("NotificationHub", () => {
     const socket = createMockHubSocket();
 
     for (let index = 0; index < 20; index += 1) {
-      hub.subscribe(socket, "thread", "thread-1");
-      hub.unsubscribe(socket, "thread", "thread-1");
+      hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
+      hub.unsubscribe(socket, {
+        kind: "thread-detail",
+        threadId: "thread-1",
+      });
     }
-    hub.subscribe(socket, "thread", "thread-1");
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
     hub.notifyThread("thread-1", ["events-appended"]);
 
     expect(socket.messages).toHaveLength(1);
@@ -430,7 +318,7 @@ describe("NotificationHub", () => {
     try {
       const hub = new NotificationHub();
       const socket = createMockHubSocket();
-      hub.subscribe(socket, "thread", "thread-1");
+      hub.subscribe(socket, { kind: "thread-detail", threadId: "thread-1" });
 
       const changes: ThreadChangeKind[] = ["events-appended"];
       appendRawChangeKind(changes, "not-a-real-change-kind");
@@ -451,26 +339,26 @@ describe("NotificationHub", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();
 
-    hub.subscribe(socket, "system");
-    hub.notifySystem(["apps-changed"]);
+    hub.subscribe(socket, { kind: "system" });
+    hub.notifySystem(["config-changed"]);
 
     expect(socket.messages).toHaveLength(1);
     expect(JSON.parse(socket.messages[0])).toEqual({
       type: "changed",
       entity: "system",
-      changes: ["apps-changed"],
+      changes: ["config-changed"],
     });
   });
 
-  it("delivers host notifications to entity-wide and id-scoped subscribers", () => {
+  it("delivers host notifications to list and detail subscribers", () => {
     const hub = new NotificationHub();
     const entityWideSocket = createMockHubSocket();
     const idScopedSocket = createMockHubSocket();
     const otherHostSocket = createMockHubSocket();
 
-    hub.subscribe(entityWideSocket, "host");
-    hub.subscribe(idScopedSocket, "host", "host-1");
-    hub.subscribe(otherHostSocket, "host", "host-2");
+    hub.subscribe(entityWideSocket, { kind: "host-list" });
+    hub.subscribe(idScopedSocket, { kind: "host-detail", hostId: "host-1" });
+    hub.subscribe(otherHostSocket, { kind: "host-detail", hostId: "host-2" });
     hub.notifyHost("host-1", ["host-connected"]);
 
     const expected = {
@@ -499,11 +387,17 @@ describe("NotificationHub", () => {
     const hostSocket = createMockHubSocket();
     const systemSocket = createMockHubSocket();
 
-    hub.subscribe(threadSocket, "thread", "thread-1");
-    hub.subscribe(projectSocket, "project", "project-1");
-    hub.subscribe(environmentSocket, "environment", "environment-1");
-    hub.subscribe(hostSocket, "host", "host-1");
-    hub.subscribe(systemSocket, "system");
+    hub.subscribe(threadSocket, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(projectSocket, {
+      kind: "project-detail",
+      projectId: "project-1",
+    });
+    hub.subscribe(environmentSocket, {
+      kind: "environment-detail",
+      environmentId: "environment-1",
+    });
+    hub.subscribe(hostSocket, { kind: "host-detail", hostId: "host-1" });
+    hub.subscribe(systemSocket, { kind: "system" });
 
     hub.notifyThread("thread-1", [...THREAD_CHANGE_KINDS]);
     hub.notifyProject("project-1", [...PROJECT_CHANGE_KINDS]);

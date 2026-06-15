@@ -167,6 +167,41 @@ function SubmittingRow() {
   );
 }
 
+function LoadingModelsRow() {
+  const { value, mentionRanges, onChange } = useControlledValue(
+    "Investigate the timeline pagination flicker.",
+  );
+  return (
+    <PromptStage>
+      <NewThreadPromptBoxUI
+        id="story-new-thread-loading-models"
+        value={value}
+        mentionRanges={mentionRanges}
+        onChange={onChange}
+        onSubmit={noop}
+        isSubmitting={false}
+        disabled
+        zenModeStorageKey="bb.story.new-thread.loading-models"
+        history={baseHistory}
+        typeahead={makeTypeahead()}
+        attachments={makeAttachments()}
+        modeConfig={baseModeConfig}
+        project={baseProject}
+        execution={{
+          ...baseExecution,
+          model: {
+            ...baseExecution.model,
+            active: null,
+            selected: "",
+            options: [],
+            isLoading: true,
+          },
+        }}
+      />
+    </PromptStage>
+  );
+}
+
 function ClaudeProviderRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   return (
@@ -196,6 +231,7 @@ function ClaudeProviderRow() {
               { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
               { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
             ],
+            isLoading: false,
             onChange: noop,
           },
           serviceTier: { ...baseExecution.serviceTier!, supported: false },
@@ -271,6 +307,12 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="submitting" hint="create-thread mutation in flight">
         <SubmittingRow />
+      </StoryRow>
+      <StoryRow
+        label="loading models"
+        hint="model options are loading; submit is disabled"
+      >
+        <LoadingModelsRow />
       </StoryRow>
       <StoryRow label="claude-code provider" hint="no fast mode toggle">
         <ClaudeProviderRow />

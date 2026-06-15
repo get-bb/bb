@@ -40,6 +40,19 @@ interface ServerMessagePayloadSummary {
   payloadTruncated: boolean;
 }
 
+export type ServerSessionInvalidationSource =
+  | "callTool"
+  | "fetchProjectAttachment"
+  | "interruptInteractiveRequests"
+  | "postEvents"
+  | "registerInteractiveRequest";
+
+export interface HandleServerSessionInvalidatedArgs {
+  code: "inactive_session";
+  observedSessionId: string;
+  source: ServerSessionInvalidationSource;
+}
+
 const SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS = 512;
 
 /**
@@ -56,10 +69,6 @@ function recoverableMessageKey(
   switch (message.type) {
     case "environment-change":
       return `environment-change\u0000${message.environmentId}\u0000${message.change}`;
-    case "application-storage-changed":
-      return "application-storage-changed";
-    case "application-content-changed":
-      return `application-content-changed\u0000${message.applicationId}`;
     default:
       return null;
   }
@@ -93,9 +102,11 @@ export class ServerConnection {
   private session: HostDaemonSessionOpenResponse | null = null;
   private websocket: ReconnectingWebSocketLike | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private lastHeartbeatTickAt: number | null = null;
   private stopped = false;
   private sessionCloseHandler: ServerConnectionOptions["onSessionClose"];
   private fatalConnectError: ServerResponseError | null = null;
+  private sessionInvalidationInProgress = false;
   private readonly pendingRecoverableMessages = new Map<
     string,
     HostDaemonDaemonWsMessage
@@ -134,6 +145,7 @@ export class ServerConnection {
   async shutdown(): Promise<void> {
     this.stopped = true;
     this.pendingRecoverableMessages.clear();
+    this.sessionInvalidationInProgress = false;
     this.clearHeartbeat();
     this.clearSession();
 
@@ -169,6 +181,29 @@ export class ServerConnection {
     this.sessionCloseHandler = handler;
   }
 
+  handleSessionInvalidated(args: HandleServerSessionInvalidatedArgs): void {
+    if (this.stopped || this.sessionInvalidationInProgress) {
+      return;
+    }
+    const session = this.session;
+    if (!session || session.sessionId !== args.observedSessionId) {
+      return;
+    }
+
+    this.sessionInvalidationInProgress = true;
+    this.options.logger.info(
+      {
+        code: args.code,
+        sessionId: args.observedSessionId,
+        source: args.source,
+      },
+      "Server reported inactive daemon session; reconnecting",
+    );
+    this.clearHeartbeat();
+    this.clearSession();
+    this.websocket?.reconnect(1000, "inactive-session");
+  }
+
   private async openSession(): Promise<HostDaemonSessionOpenResponse> {
     this.fatalConnectError = null;
     try {
@@ -179,7 +214,6 @@ export class ServerConnection {
         hostType: this.options.hostType,
         dataDir: this.options.dataDir,
         activeThreads: this.options.getActiveThreads?.() ?? [],
-        activeWorkflowRunIds: this.options.getActiveWorkflowRunIds?.() ?? [],
         loadedEnvironments: this.options.getLoadedEnvironments?.() ?? [],
       });
       this.session = session;
@@ -274,6 +308,7 @@ export class ServerConnection {
 
         const handleOpen = async () => {
           hasOpened = true;
+          this.sessionInvalidationInProgress = false;
           this.clearTimeoutFn(startupTimer);
           this.resetHeartbeat();
           this.options.setSession?.(session);
@@ -393,6 +428,22 @@ export class ServerConnection {
       return;
     }
 
+    if (message.data.type === "watch-set.replace") {
+      const watchSetMessage = message.data;
+      void Promise.resolve(
+        this.options.onWatchSetReplace?.(watchSetMessage),
+      ).catch((error) => {
+        this.options.logger.warn(
+          {
+            generation: watchSetMessage.generation,
+            ...runtimeErrorLogFields(error),
+          },
+          "Watch set handler failed",
+        );
+      });
+      return;
+    }
+
     void Promise.resolve(this.options.onTerminalMessage?.(message.data)).catch(
       (error) => {
         this.options.logger.warn(
@@ -463,7 +514,32 @@ export class ServerConnection {
       return;
     }
 
+    this.lastHeartbeatTickAt = Date.now();
     this.heartbeatInterval = this.setIntervalFn(() => {
+      const session = this.session;
+      if (!session) {
+        return;
+      }
+      const now = Date.now();
+      const lastTickAt = this.lastHeartbeatTickAt;
+      if (lastTickAt !== null) {
+        const gapMs = now - lastTickAt;
+        const thresholdMs = session.leaseTimeoutMs / 2;
+        if (gapMs > thresholdMs) {
+          this.options.logger.warn(
+            {
+              gapMs,
+              heartbeatIntervalMs: session.heartbeatIntervalMs,
+              leaseTimeoutMs: session.leaseTimeoutMs,
+              sessionId: session.sessionId,
+              websocketReadyState: this.websocket?.readyState ?? null,
+            },
+            "Host daemon heartbeat timer delayed",
+          );
+        }
+      }
+      this.lastHeartbeatTickAt = now;
+
       if (!this.websocket || this.websocket.readyState !== OPEN_READY_STATE) {
         return;
       }
@@ -478,6 +554,7 @@ export class ServerConnection {
     }
     this.clearIntervalFn(this.heartbeatInterval);
     this.heartbeatInterval = null;
+    this.lastHeartbeatTickAt = null;
   }
 
   private clearSession(): void {

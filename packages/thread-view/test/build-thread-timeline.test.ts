@@ -4,6 +4,7 @@ import type {
   JsonObject,
   OwnershipChangeOperationAction,
   ProviderErrorInfo,
+  ThreadEventRow,
   ThreadEventFileChange,
   ThreadEventItemStatus,
   UserQuestionPendingInteractionResolution,
@@ -11,6 +12,8 @@ import type {
 import type {
   TimelineApprovalWorkRow,
   ThreadContextWindowUsage,
+  TimelineFeedDelegationWorkRow,
+  TimelineFeedRow,
   TimelineFileChangeWorkRow,
   TimelineImageViewWorkRow,
   TimelineParentChange,
@@ -21,7 +24,9 @@ import type {
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
+  buildThreadTimelineFeedFromEvents,
   buildThreadTimelineFromEvents,
+  decodeThreadEventRow,
   EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
   type ThreadEventWithMeta,
 } from "../src/index.js";
@@ -557,6 +562,36 @@ function buildTimelineRows(
   }).rows;
 }
 
+function buildTimelineFeedRowsFromEventRows(
+  events: ThreadEventRow[],
+  threadStatus: BuildTimelineRowsThreadStatus = "idle",
+): TimelineFeedRow[] {
+  const feed = buildThreadTimelineFeedFromEvents({
+    acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+    contextWindowEvents: [],
+    events: events.map((row) => decodeThreadEventRow(row)),
+    options: {
+      fileDiffLookupForRows: () => null,
+      includeDebugRawEvents: false,
+      includeProviderUnhandledOperations: false,
+      isLatestPage: true,
+      paginationPage: {
+        kind: "latest",
+        segmentLimit: 20,
+      },
+      responsePageKind: "latest",
+      rowKeyForRow: (row) => row.id,
+      summaryOnly: false,
+      threadStatus,
+      workspaceRoot: null,
+    },
+  });
+  if (feed.kind === "missing-cursor") {
+    throw new Error("Unexpected missing timeline cursor");
+  }
+  return feed.rows;
+}
+
 function buildTimelineRowsWithAcceptedContext(
   events: ThreadEventWithMeta[],
   acceptedClientRequestEvents: ThreadEventWithMeta[],
@@ -623,6 +658,42 @@ function collectToolRows(rows: readonly TimelineRow[]): TimelineToolWorkRow[] {
     }
   }
   return toolRows;
+}
+
+function collectDelegationRows(
+  rows: readonly TimelineRow[],
+): Array<Extract<TimelineRow, { kind: "work"; workKind: "delegation" }>> {
+  const delegationRows: Array<
+    Extract<TimelineRow, { kind: "work"; workKind: "delegation" }>
+  > = [];
+  for (const row of rows) {
+    if (row.kind === "work" && row.workKind === "delegation") {
+      delegationRows.push(row);
+      delegationRows.push(...collectDelegationRows(row.childRows));
+      continue;
+    }
+    if (row.kind === "turn" && row.children) {
+      delegationRows.push(...collectDelegationRows(row.children));
+    }
+  }
+  return delegationRows;
+}
+
+function collectFeedDelegationRows(
+  rows: readonly TimelineFeedRow[],
+): TimelineFeedDelegationWorkRow[] {
+  const delegationRows: TimelineFeedDelegationWorkRow[] = [];
+  for (const row of rows) {
+    if (row.kind === "work" && row.workKind === "delegation") {
+      delegationRows.push(row);
+      delegationRows.push(...collectFeedDelegationRows(row.childRows));
+      continue;
+    }
+    if (row.kind === "turn" && row.children) {
+      delegationRows.push(...collectFeedDelegationRows(row.children));
+    }
+  }
+  return delegationRows;
 }
 
 function collectApprovalRows(
@@ -1918,5 +1989,103 @@ describe("buildThreadTimelineFromEvents", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0]?.change.path).toBe("/etc/hosts");
+  });
+
+  it("omits completed delegation child rows from feed rows and keeps them lazy-loadable", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const eventRows = [
+      event.turnStarted(),
+      event.toolCallCompleted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Review the branch",
+          receiverThreadIds: ["child-provider"],
+        },
+        result: "Child result",
+      }),
+      event.commandCompleted({
+        providerThreadId: "child-provider",
+        itemId: "child-command-1",
+        command: "echo child",
+        aggregatedOutput: "child\n",
+      }),
+      event.assistantCompleted({
+        providerThreadId: "child-provider",
+        itemId: "child-assistant-1",
+        text: "Child done.",
+      }),
+    ];
+
+    const fullRows = buildTimelineRows(
+      eventRows.map((row) => decodeThreadEventRow(row)),
+      "active",
+    );
+    const fullDelegation = collectDelegationRows(fullRows)[0];
+    expect(fullDelegation).toBeDefined();
+    expect(fullDelegation?.childRows.length).toBeGreaterThan(0);
+    expect(fullDelegation?.childRowsOmitted).toBeUndefined();
+
+    const feedRows = buildTimelineFeedRowsFromEventRows(eventRows, "active");
+    const feedDelegation = collectFeedDelegationRows(feedRows)[0];
+    expect(feedDelegation).toBeDefined();
+    expect(feedDelegation?.childRows).toEqual([]);
+    expect(feedDelegation?.detail?.parts).toContain("children");
+  });
+
+  it("keeps provider-unhandled events quiet unless explicitly included", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "provider-thread-1",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const events = [
+      decodeThreadEventRow(event.turnStarted()),
+      decodeThreadEventRow(event.providerUnhandled()),
+    ];
+
+    const quietRows = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events,
+      options: {
+        includeDebugRawEvents: true,
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        threadStatus: "idle",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    }).rows;
+
+    expect(quietRows).toEqual([]);
+
+    const developmentRows = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events,
+      options: {
+        includeDebugRawEvents: true,
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: true,
+        isLatestPage: true,
+        threadStatus: "idle",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    }).rows;
+
+    expect(collectSystemRows(developmentRows)).toMatchObject([
+      {
+        kind: "system",
+        systemKind: "operation",
+        operationKind: "provider-unhandled",
+      },
+    ]);
   });
 });

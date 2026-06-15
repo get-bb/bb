@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { buildPathMentionSuggestions } from "./pathMentionSuggestions";
-import { useSidebarNavigation } from "./queries/project-queries";
+import { useSidebarNavigation } from "./queries/sidebar-navigation-query";
 import { useThreadMentionCandidates } from "./queries/thread-queries";
 import { buildThreadMentionSuggestions } from "./threadMentionSuggestions";
 import { usePathSuggestions } from "./usePathSuggestions";
@@ -45,10 +45,6 @@ function buildProjectNamesById(
     return projectNamesById;
   }
 
-  projectNamesById.set(
-    sidebarNavigation.personalProject.id,
-    sidebarNavigation.personalProject.name,
-  );
   for (const project of sidebarNavigation.projects) {
     projectNamesById.set(project.id, project.name);
   }

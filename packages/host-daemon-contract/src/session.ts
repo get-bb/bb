@@ -3,19 +3,14 @@ import { hc } from "hono/client";
 import {
   ENVIRONMENT_CHANGE_KINDS,
   hostTypeSchema,
-  jsonValueSchema,
   pendingInteractionCreateSchema,
   pendingInteractionStatusSchema,
-  appDataPathSchema,
-  applicationIdSchema,
   terminalColsSchema,
   terminalDataBase64Schema,
   terminalRowsSchema,
   threadEventSchema,
   toolCallRequestSchema,
   toolCallResponseSchema,
-  workflowRunEventSchema,
-  workflowRunJournalEntrySchema,
 } from "@bb/domain";
 import { z } from "zod";
 import type { Endpoint } from "./common.js";
@@ -48,21 +43,34 @@ export type HostDaemonLoadedEnvironment = z.infer<
   typeof hostDaemonLoadedEnvironmentSchema
 >;
 
-export const hostDaemonTrackedThreadTargetSchema = z.object({
-  environmentId: z.string().min(1),
-  threadId: z.string().min(1),
-});
-export type HostDaemonTrackedThreadTarget = z.infer<
-  typeof hostDaemonTrackedThreadTargetSchema
+export const hostDaemonWatchSetWorkspaceTargetSchema = z
+  .object({
+    environmentId: z.string().min(1),
+    workspaceContext: workspaceContextSchema,
+  })
+  .strict();
+export type HostDaemonWatchSetWorkspaceTarget = z.infer<
+  typeof hostDaemonWatchSetWorkspaceTargetSchema
 >;
 
-export const hostDaemonTrackedApplicationDataTargetSchema = z.object({
-  applicationId: applicationIdSchema,
-  appDataPath: z.string().min(1),
-});
-export type HostDaemonTrackedApplicationDataTarget = z.infer<
-  typeof hostDaemonTrackedApplicationDataTargetSchema
+export const hostDaemonWatchSetThreadStorageTargetSchema = z
+  .object({
+    environmentId: z.string().min(1),
+    threadId: z.string().min(1),
+  })
+  .strict();
+export type HostDaemonWatchSetThreadStorageTarget = z.infer<
+  typeof hostDaemonWatchSetThreadStorageTargetSchema
 >;
+
+export const hostDaemonWatchSetSchema = z
+  .object({
+    generation: z.number().int().nonnegative(),
+    workspaceTargets: z.array(hostDaemonWatchSetWorkspaceTargetSchema),
+    threadStorageTargets: z.array(hostDaemonWatchSetThreadStorageTargetSchema),
+  })
+  .strict();
+export type HostDaemonWatchSet = z.infer<typeof hostDaemonWatchSetSchema>;
 
 export const hostDaemonSessionOpenRequestSchema = z.object({
   hostId: z.string().min(1),
@@ -74,15 +82,6 @@ export const hostDaemonSessionOpenRequestSchema = z.object({
   // actionable protocol mismatch instead of an opaque validation failure.
   protocolVersion: z.number().int().positive(),
   activeThreads: z.array(hostDaemonActiveThreadSchema),
-  /**
-   * Live workflow run ids, recomputed per (re)connect for reconnect
-   * reconciliation. Trustworthy across daemon restarts: a run is reported
-   * iff the daemon holds a live runner handle OR its run-dir heartbeat is
-   * fresh. Required like `activeThreads`: omission has no semantic meaning
-   * (and a defaulted-absent field would read as "interrupt every running
-   * run on this host" — the most destructive possible misreading).
-   */
-  activeWorkflowRunIds: z.array(z.string().min(1)),
   loadedEnvironments: z.array(hostDaemonLoadedEnvironmentSchema).default([]),
 });
 export type HostDaemonSessionOpenRequest = z.input<
@@ -135,10 +134,11 @@ export const hostDaemonSessionOpenResponseSchema = z
     sessionId: z.string().min(1),
     heartbeatIntervalMs: z.number().int().positive(),
     leaseTimeoutMs: z.number().int().positive(),
-    trackedThreadTargets: z.array(hostDaemonTrackedThreadTargetSchema),
-    trackedApplicationDataTargets: z.array(
-      hostDaemonTrackedApplicationDataTargetSchema,
-    ),
+    watchSet: hostDaemonWatchSetSchema.default({
+      generation: 0,
+      workspaceTargets: [],
+      threadStorageTargets: [],
+    }),
     retiredEnvironmentIds: z.array(z.string().min(1)).default([]),
   })
   .strict();
@@ -207,97 +207,6 @@ export type HostDaemonEventBatchResponse = z.infer<
   typeof hostDaemonEventBatchResponseSchema
 >;
 
-/**
- * One spooled workflow run event as posted by the daemon's durable
- * workflow-event spool (producer-idempotent: the server re-acks duplicates by
- * producerEventId with their original sequence).
- */
-export const hostDaemonWorkflowRunEventEnvelopeSchema = z
-  .object({
-    producerEventId: z.string().min(1),
-    runId: z.string().min(1),
-    event: workflowRunEventSchema,
-  })
-  .strict();
-export type HostDaemonWorkflowRunEventEnvelope = z.infer<
-  typeof hostDaemonWorkflowRunEventEnvelopeSchema
->;
-
-export const hostDaemonWorkflowRunEventBatchRequestSchema = z.object({
-  sessionId: z.string().min(1),
-  events: z.array(hostDaemonWorkflowRunEventEnvelopeSchema),
-});
-export type HostDaemonWorkflowRunEventBatchRequest = z.infer<
-  typeof hostDaemonWorkflowRunEventBatchRequestSchema
->;
-
-/**
- * The only rejection is ownership (unknown run id or a run owned by another
- * host) — never run status. Rejection is settlement daemon-side (logged and
- * discarded), so new reasons must not be added casually.
- */
-export const hostDaemonWorkflowRunEventRejectionReasonSchema = z.enum([
-  "run_not_owned_by_host",
-]);
-export type HostDaemonWorkflowRunEventRejectionReason = z.infer<
-  typeof hostDaemonWorkflowRunEventRejectionReasonSchema
->;
-
-export const hostDaemonRejectedWorkflowRunEventSchema = z
-  .object({
-    producerEventId: z.string().min(1),
-    runId: z.string().min(1),
-    reason: hostDaemonWorkflowRunEventRejectionReasonSchema,
-  })
-  .strict();
-export type HostDaemonRejectedWorkflowRunEvent = z.infer<
-  typeof hostDaemonRejectedWorkflowRunEventSchema
->;
-
-export const hostDaemonAcceptedWorkflowRunEventSchema = z
-  .object({
-    producerEventId: z.string().min(1),
-    runId: z.string().min(1),
-    sequence: z.number().int().nonnegative(),
-  })
-  .strict();
-export type HostDaemonAcceptedWorkflowRunEvent = z.infer<
-  typeof hostDaemonAcceptedWorkflowRunEventSchema
->;
-
-export const hostDaemonWorkflowRunEventBatchResponseSchema = z
-  .object({
-    acceptedEvents: z.array(hostDaemonAcceptedWorkflowRunEventSchema),
-    rejectedEvents: z.array(hostDaemonRejectedWorkflowRunEventSchema),
-  })
-  .strict();
-export type HostDaemonWorkflowRunEventBatchResponse = z.infer<
-  typeof hostDaemonWorkflowRunEventBatchResponseSchema
->;
-
-export const hostDaemonWorkflowRunJournalQuerySchema = z.object({
-  sessionId: z.string().min(1),
-  runId: z.string().min(1),
-});
-export type HostDaemonWorkflowRunJournalQuery = z.infer<
-  typeof hostDaemonWorkflowRunJournalQuerySchema
->;
-
-/**
- * The resume journal rebuilt from `workflow_run_events`: every settled
- * agent() entry — completed AND failed/interrupted (failed entries pin agent
- * display indexes and billed usage; a completed-only rebuild would shift
- * indexes and under-bill on resume).
- */
-export const hostDaemonWorkflowRunJournalResponseSchema = z
-  .object({
-    entries: z.array(workflowRunJournalEntrySchema),
-  })
-  .strict();
-export type HostDaemonWorkflowRunJournalResponse = z.infer<
-  typeof hostDaemonWorkflowRunJournalResponseSchema
->;
-
 export const hostDaemonEnvironmentChangeSchema = z
   .enum(ENVIRONMENT_CHANGE_KINDS)
   .extract([
@@ -315,77 +224,6 @@ export const hostDaemonEnvironmentChangePayloadSchema = z.object({
 });
 export type HostDaemonEnvironmentChangePayload = z.infer<
   typeof hostDaemonEnvironmentChangePayloadSchema
->;
-
-const hostDaemonAppDataChangePayloadBaseSchema = z
-  .object({
-    applicationId: applicationIdSchema,
-    path: appDataPathSchema,
-    value: jsonValueSchema.nullable(),
-    deleted: z.boolean(),
-    version: z.string().min(1).nullable(),
-  })
-  .strict();
-type HostDaemonAppDataChangePayloadBase = z.infer<
-  typeof hostDaemonAppDataChangePayloadBaseSchema
->;
-
-function validateHostDaemonAppDataChangePayload(
-  payload: HostDaemonAppDataChangePayloadBase,
-  context: z.RefinementCtx,
-): void {
-  if (payload.deleted && payload.version !== null) {
-    context.addIssue({
-      code: "custom",
-      path: ["version"],
-      message: "version must be null for deleted app data changes",
-    });
-  }
-  if (!payload.deleted && payload.version === null) {
-    context.addIssue({
-      code: "custom",
-      path: ["version"],
-      message: "version is required for non-deleted app data changes",
-    });
-  }
-}
-
-export const hostDaemonAppDataChangePayloadSchema =
-  hostDaemonAppDataChangePayloadBaseSchema.superRefine(
-    validateHostDaemonAppDataChangePayload,
-  );
-export type HostDaemonAppDataChangePayload = z.infer<
-  typeof hostDaemonAppDataChangePayloadSchema
->;
-
-export const hostDaemonAppDataChangeRequestSchema = z
-  .object({
-    sessionId: z.string().min(1),
-    ...hostDaemonAppDataChangePayloadBaseSchema.shape,
-  })
-  .strict()
-  .superRefine(validateHostDaemonAppDataChangePayload);
-export type HostDaemonAppDataChangeRequest = z.infer<
-  typeof hostDaemonAppDataChangeRequestSchema
->;
-
-export const hostDaemonAppDataResyncPayloadSchema = z
-  .object({
-    applicationId: applicationIdSchema,
-  })
-  .strict();
-export type HostDaemonAppDataResyncPayload = z.infer<
-  typeof hostDaemonAppDataResyncPayloadSchema
->;
-
-export const hostDaemonAppDataResyncRequestSchema =
-  hostDaemonAppDataResyncPayloadSchema
-    .extend({
-      sessionId: z.string().min(1),
-    })
-    .strict();
-export type HostDaemonAppDataResyncRequest = z.infer<
-  typeof hostDaemonAppDataResyncRequestSchema
 >;
 
 export const hostDaemonSessionCloseReasonSchema = z.enum([
@@ -417,6 +255,15 @@ const hostDaemonOnlineRpcRequestMessageSchema = z
     command: hostDaemonRpcCommandSchema,
   })
   .strict();
+
+const hostDaemonWatchSetReplaceMessageSchema = hostDaemonWatchSetSchema
+  .extend({
+    type: z.literal("watch-set.replace"),
+  })
+  .strict();
+export type HostDaemonWatchSetReplaceMessage = z.infer<
+  typeof hostDaemonWatchSetReplaceMessageSchema
+>;
 
 const hostDaemonOnlineRpcResponseSuccessBaseSchema = z
   .object({
@@ -450,7 +297,6 @@ function commandRpcResponseSuccessSchemaFor<
 const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
   "commandType",
   [
-    onlineRpcResponseSuccessSchemaFor("development.replay"),
     onlineRpcResponseSuccessSchemaFor("host.list_files"),
     onlineRpcResponseSuccessSchemaFor("host.list_paths"),
     onlineRpcResponseSuccessSchemaFor("host.list_commands"),
@@ -458,34 +304,25 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.list_branches"),
     onlineRpcResponseSuccessSchemaFor("host.read_file"),
     onlineRpcResponseSuccessSchemaFor("host.read_file_relative"),
-    onlineRpcResponseSuccessSchemaFor("provider.list"),
     onlineRpcResponseSuccessSchemaFor("provider.list_models"),
     onlineRpcResponseSuccessSchemaFor("environment.cleanup_preflight"),
-    onlineRpcResponseSuccessSchemaFor("workflow.list"),
-    onlineRpcResponseSuccessSchemaFor("workflow.prune"),
-    onlineRpcResponseSuccessSchemaFor("workflow.resolve"),
     onlineRpcResponseSuccessSchemaFor("workspace.status"),
     onlineRpcResponseSuccessSchemaFor("workspace.diff"),
+    onlineRpcResponseSuccessSchemaFor("workspace.pull_request"),
     commandRpcResponseSuccessSchemaFor("thread.start"),
     commandRpcResponseSuccessSchemaFor("turn.submit"),
     commandRpcResponseSuccessSchemaFor("thread.stop"),
     commandRpcResponseSuccessSchemaFor("thread.rename"),
     commandRpcResponseSuccessSchemaFor("thread.archive"),
     commandRpcResponseSuccessSchemaFor("thread.unarchive"),
-    commandRpcResponseSuccessSchemaFor("thread.deleted"),
     commandRpcResponseSuccessSchemaFor("interactive.resolve"),
     commandRpcResponseSuccessSchemaFor("codex.inference.complete"),
     commandRpcResponseSuccessSchemaFor("codex.voice.transcribe"),
-    commandRpcResponseSuccessSchemaFor("host.write_file_relative"),
-    commandRpcResponseSuccessSchemaFor("host.delete_file_relative"),
-    commandRpcResponseSuccessSchemaFor("host.delete_path_relative"),
     commandRpcResponseSuccessSchemaFor("environment.provision"),
     commandRpcResponseSuccessSchemaFor("environment.provision.cancel"),
     commandRpcResponseSuccessSchemaFor("environment.destroy"),
     commandRpcResponseSuccessSchemaFor("workspace.commit"),
     commandRpcResponseSuccessSchemaFor("workspace.squash_merge"),
-    commandRpcResponseSuccessSchemaFor("workflow.start"),
-    commandRpcResponseSuccessSchemaFor("workflow.cancel"),
   ],
 );
 
@@ -574,6 +411,7 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   hostDaemonOnlineRpcRequestMessageSchema,
+  hostDaemonWatchSetReplaceMessageSchema,
   hostDaemonTerminalOpenMessageSchema,
   hostDaemonTerminalAttachMessageSchema,
   hostDaemonTerminalInputMessageSchema,
@@ -596,19 +434,6 @@ const hostDaemonEnvironmentChangeMessageSchema =
       type: z.literal("environment-change"),
     })
     .strict();
-
-const hostDaemonApplicationStorageChangedMessageSchema = z
-  .object({
-    type: z.literal("application-storage-changed"),
-  })
-  .strict();
-
-const hostDaemonApplicationContentChangedMessageSchema = z
-  .object({
-    type: z.literal("application-content-changed"),
-    applicationId: applicationIdSchema,
-  })
-  .strict();
 
 const hostDaemonTerminalOpenedMessageSchema = z
   .object({
@@ -663,8 +488,6 @@ const hostDaemonTerminalErrorMessageSchema = z
 export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonHeartbeatMessageSchema,
   hostDaemonEnvironmentChangeMessageSchema,
-  hostDaemonApplicationStorageChangedMessageSchema,
-  hostDaemonApplicationContentChangedMessageSchema,
   hostDaemonTerminalOpenedMessageSchema,
   hostDaemonTerminalOutputMessageSchema,
   hostDaemonTerminalReplayMessageSchema,
@@ -786,28 +609,6 @@ export type HostDaemonInternalSchema = {
       { json: HostDaemonEventBatchRequest },
       HostDaemonEventBatchResponse
     >;
-  };
-  "/session/workflow-run-events": {
-    /** Used by the daemon's workflow-event spool: producer-idempotent, append-always run-event ingestion. */
-    $post: Endpoint<
-      { json: HostDaemonWorkflowRunEventBatchRequest },
-      HostDaemonWorkflowRunEventBatchResponse
-    >;
-  };
-  "/session/workflow-run-journal": {
-    /** Used by the daemon on workflow resume to rebuild the runner journal from the authoritative server event log. */
-    $get: Endpoint<
-      { query: HostDaemonWorkflowRunJournalQuery },
-      HostDaemonWorkflowRunJournalResponse
-    >;
-  };
-  "/session/app-data-change": {
-    /** Used by the daemon to report host-local app data file changes for server websocket fan-out. */
-    $post: Endpoint<{ json: HostDaemonAppDataChangeRequest }, { ok: true }>;
-  };
-  "/session/app-data-resync": {
-    /** Used by the daemon to request client-side app data resync after reconnect reconciliation. */
-    $post: Endpoint<{ json: HostDaemonAppDataResyncRequest }, { ok: true }>;
   };
   "/session/tool-call": {
     /** Used by the daemon to execute server-side tool calls requested by a provider. */

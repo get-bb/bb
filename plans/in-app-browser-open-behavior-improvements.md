@@ -92,7 +92,7 @@ Scope:
   default browser behavior.
 - Audit remaining direct `window.open` / `target="_blank"` surfaces and decide
   explicitly whether each belongs in this feature. Likely candidates:
-  `ConversationAttachments`, model-load error links, and internal replay links.
+  `ConversationAttachments` and model-load error links.
 
 Exit criteria:
 

@@ -44,13 +44,22 @@ function isKeyboardInputElement(element: Element): element is HTMLElement {
  * drawer, mobile Safari can restore the soft keyboard during the picker
  * interaction. Blur only text-editing targets, and only before opening.
  */
-export function blurActiveKeyboardInputBeforeOverlayOpen(): void {
+export function blurActiveKeyboardInputWithin(container: Element | null): void {
   if (typeof document === "undefined") return;
 
   const activeElement = document.activeElement;
   if (!activeElement || !isKeyboardInputElement(activeElement)) return;
+  if (container !== null && !container.contains(activeElement)) return;
 
   activeElement.blur();
+}
+
+export function blurActiveKeyboardInputBeforeOverlayOpen(): void {
+  blurActiveKeyboardInputWithin(null);
+}
+
+export function blurActiveKeyboardInputBeforeOverlayClose(): void {
+  blurActiveKeyboardInputWithin(null);
 }
 
 /**

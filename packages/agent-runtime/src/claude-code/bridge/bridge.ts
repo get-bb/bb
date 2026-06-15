@@ -29,7 +29,6 @@ import type {
   CanUseTool,
   PermissionResult,
   SDKMessage,
-  SDKResultMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import {
@@ -104,15 +103,6 @@ const promptInputItemSchema = z.discriminatedUnion("type", [
     mimeType: z.string().optional(),
   }),
 ]);
-
-// Claude Agent SDK 0.2.111 types stale resume failures as generic
-// SDKResultError.errors. The bundled Claude Code CLI can also emit the same
-// text on a legacy result field; keep that compatibility at this boundary.
-const legacyClaudeErrorResultTextSchema = z
-  .object({
-    result: z.string(),
-  })
-  .passthrough();
 
 interface JsonRpcResponse {
   jsonrpc: "2.0";
@@ -195,13 +185,13 @@ interface ThreadSession {
   sessionOptions: SdkSessionOptions;
   sessionSerial: number;
   closing: boolean;
+  streamEnded: boolean;
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   pendingToolCalls: Map<string | number, PendingToolCall>;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   providerThreadId?: string;
-  resumeRecovery: ClaudeResumeRecoveryState | null;
   sessionPermissionGrants: ClaudeSessionPermissionGrant[];
   threadIdRef: ThreadIdRef;
 }
@@ -212,32 +202,14 @@ interface CloseThreadSessionArgs {
   threadId: string;
 }
 
-interface ClaudeResumeRecoveryState {
-  acceptedInputTexts: string[];
-  attemptedProviderThreadId: string;
-  retryAttempted: boolean;
-}
-
 interface CreateThreadSessionArgs {
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   providerThreadId?: string;
-  resumeRecovery: ClaudeResumeRecoveryState | null;
   sessionOptions: SdkSessionOptions;
   sessionPermissionGrants?: ClaudeSessionPermissionGrant[];
   threadIdRef: ThreadIdRef;
-}
-
-interface RecoverStaleResumeArgs {
-  message: SDKMessage;
-  threadId: string;
-  threadSession: ThreadSession;
-}
-
-interface StartFreshSessionAfterStaleResumeArgs {
-  threadId: string;
-  threadSession: ThreadSession;
 }
 
 interface PreparedSessionEnv {
@@ -252,14 +224,17 @@ interface PrepareSessionEnvParams {
 }
 
 interface ReplaceThreadSessionArgs {
-  acceptedInputTexts: string[];
   providerThreadId: string;
   replacementSession: ThreadSession;
+  reason: string;
   threadId: string;
   threadSession: ThreadSession;
 }
 
-type StaleResumeRecoveryOutcome = "forward" | "suppress";
+interface ReplaceEndedThreadSessionArgs {
+  threadId: string;
+  threadSession: ThreadSession;
+}
 
 interface ClaudeCodeThreadStopResult {
   ok: true;
@@ -467,6 +442,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionOptions: args.sessionOptions,
     sessionSerial,
     closing: false,
+    streamEnded: false,
     mockCliTrafficProxy: args.mockCliTrafficProxy,
     pendingToolCalls: new Map(),
     pendingInteractiveRequests: new Map(),
@@ -475,92 +451,15 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     ...(args.providerThreadId
       ? { providerThreadId: args.providerThreadId }
       : {}),
-    resumeRecovery: args.resumeRecovery,
     sessionPermissionGrants: [...(args.sessionPermissionGrants ?? [])],
     threadIdRef: args.threadIdRef,
   };
 }
 
-function readLegacyClaudeErrorResultText(
-  message: SDKResultMessage,
-): string | null {
-  const parsed = legacyClaudeErrorResultTextSchema.safeParse(message);
-  return parsed.success ? parsed.data.result : null;
-}
-
-function readSingleClaudeErrorText(message: SDKResultMessage): string | null {
-  if (message.subtype !== "error_during_execution") {
-    return null;
-  }
-  const typedErrorText =
-    Array.isArray(message.errors) && message.errors.length === 1
-      ? message.errors[0]
-      : null;
-  const legacyResultText =
-    !Array.isArray(message.errors) || message.errors.length === 0
-      ? readLegacyClaudeErrorResultText(message)
-      : null;
-  return typedErrorText ?? legacyResultText;
-}
-
-function readExactClaudeStaleResumeError(
-  args: Pick<ClaudeResumeRecoveryState, "attemptedProviderThreadId"> & {
-    message: SDKMessage;
-  },
-): string | null {
-  const expectedMessage = `No conversation found with session ID: ${args.attemptedProviderThreadId}`;
-  const { message } = args;
-  if (message.type !== "result") {
-    return null;
-  }
-  if (message.is_error !== true) {
-    return null;
-  }
-  const errorText = readSingleClaudeErrorText(message);
-  if (errorText !== expectedMessage) {
-    return null;
-  }
-  return expectedMessage;
-}
-
-function startFreshSessionAfterStaleResume(
-  args: StartFreshSessionAfterStaleResumeArgs,
-): void {
-  const providerThreadId = randomUUID();
-  const replacementOptions: SdkSessionOptions = {
-    ...args.threadSession.sessionOptions,
-    sessionId: providerThreadId,
-  };
-  const acceptedInputTexts = [
-    ...(args.threadSession.resumeRecovery?.acceptedInputTexts ?? []),
-  ];
-  const replacementSession = createThreadSession({
-    mockCliTrafficProxy: args.threadSession.mockCliTrafficProxy,
-    permissionEscalation: args.threadSession.permissionEscalation,
-    permissionMode: args.threadSession.permissionMode,
-    providerThreadId,
-    resumeRecovery: null,
-    sessionOptions: replacementOptions,
-    sessionPermissionGrants: args.threadSession.sessionPermissionGrants,
-    threadIdRef: args.threadSession.threadIdRef,
-  });
-
-  replaceThreadSession({
-    acceptedInputTexts,
-    providerThreadId,
-    replacementSession,
-    threadId: args.threadId,
-    threadSession: args.threadSession,
-  });
-}
-
 function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
   args.threadSession.closing = true;
   args.threadSession.mockCliTrafficProxy = null;
-  resolvePendingSessionWork(
-    args.threadSession,
-    "Thread session replaced after stale Claude resume",
-  );
+  resolvePendingSessionWork(args.threadSession, args.reason);
   args.threadSession.session.stop();
 
   // This is not a user-requested thread close: the thread remains active and
@@ -568,41 +467,49 @@ function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
   // external stop/replace requests, so a stop after this point should target
   // the replacement, not wait on the poisoned resume session.
   sessions.set(args.threadId, args.replacementSession);
-  args.replacementSession.session.start();
+  args.replacementSession.session.start(args.providerThreadId);
   sendThreadIdentity(args.threadId, args.providerThreadId);
-
-  for (const inputText of args.acceptedInputTexts) {
-    ignoreInputConsumption(
-      args.replacementSession.session.pushInput(inputText),
-    );
-  }
 }
 
-function handleStaleResumeRecovery(
-  args: RecoverStaleResumeArgs,
-): StaleResumeRecoveryOutcome {
-  const { resumeRecovery } = args.threadSession;
-  if (!resumeRecovery || resumeRecovery.retryAttempted) {
-    return "forward";
+function replaceEndedThreadSession(
+  args: ReplaceEndedThreadSessionArgs,
+): ThreadSession | undefined {
+  const providerThreadId =
+    args.threadSession.providerThreadId ??
+    args.threadSession.session.getSessionId();
+  if (!providerThreadId) {
+    return undefined;
   }
 
-  const staleErrorMessage = readExactClaudeStaleResumeError({
-    attemptedProviderThreadId: resumeRecovery.attemptedProviderThreadId,
-    message: args.message,
+  const replacementSession = createThreadSession({
+    mockCliTrafficProxy: args.threadSession.mockCliTrafficProxy,
+    permissionEscalation: args.threadSession.permissionEscalation,
+    permissionMode: args.threadSession.permissionMode,
+    providerThreadId,
+    sessionOptions: args.threadSession.sessionOptions,
+    sessionPermissionGrants: args.threadSession.sessionPermissionGrants,
+    threadIdRef: args.threadSession.threadIdRef,
   });
-  if (!staleErrorMessage) {
-    if (args.message.type === "result") {
-      args.threadSession.resumeRecovery = null;
-    }
-    return "forward";
-  }
 
-  resumeRecovery.retryAttempted = true;
-  startFreshSessionAfterStaleResume({
+  replaceThreadSession({
+    providerThreadId,
+    replacementSession,
+    reason: "Thread session replaced after Claude SDK stream ended",
     threadId: args.threadId,
     threadSession: args.threadSession,
   });
-  return "suppress";
+  return replacementSession;
+}
+
+function getWritableThreadSession(threadId: string): ThreadSession | undefined {
+  const threadSession = sessions.get(threadId);
+  if (!threadSession || threadSession.closing) {
+    return undefined;
+  }
+  if (!threadSession.streamEnded) {
+    return threadSession;
+  }
+  return replaceEndedThreadSession({ threadId, threadSession });
 }
 
 function getCurrentThreadSession(
@@ -628,14 +535,6 @@ function createOnSdkMessage(
       threadId: args.threadIdRef.current,
     });
     if (!threadSession) return;
-    const recoveryOutcome = handleStaleResumeRecovery({
-      message,
-      threadId: args.threadIdRef.current,
-      threadSession,
-    });
-    if (recoveryOutcome === "suppress") {
-      return;
-    }
     const providerThreadId = message.session_id?.trim() ?? "";
     if (
       providerThreadId.length > 0 &&
@@ -652,12 +551,19 @@ function createOnSdkDone(
   args: CreateSdkCallbackArgs,
 ): (error?: unknown) => void {
   return (error?: unknown) => {
-    if (!error) return;
     const threadSession = getCurrentThreadSession({
       sessionSerial: args.sessionSerial,
       threadId: args.threadIdRef.current,
     });
     if (!threadSession) return;
+
+    threadSession.streamEnded = true;
+    resolvePendingSessionWork(
+      threadSession,
+      "Claude SDK stream ended before pending work completed",
+    );
+
+    if (!error) return;
 
     const message = error instanceof Error ? error.message : String(error);
 
@@ -1285,7 +1191,6 @@ async function handleThreadStart(
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     providerThreadId,
-    resumeRecovery: null,
     sessionOptions,
     sessionPermissionGrants: [],
     threadIdRef,
@@ -1332,13 +1237,6 @@ async function handleThreadResume(
     ...(requestedProviderThreadId
       ? { providerThreadId: requestedProviderThreadId }
       : {}),
-    resumeRecovery: requestedProviderThreadId
-      ? {
-          acceptedInputTexts: [],
-          attemptedProviderThreadId: requestedProviderThreadId,
-          retryAttempted: false,
-        }
-      : null,
     sessionOptions,
     sessionPermissionGrants: [],
     threadIdRef,
@@ -1353,19 +1251,18 @@ async function handleThreadResume(
 }
 
 function handleTurnStart(id: string | number, params: TurnStartParams): void {
-  const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.closing) {
-    sendError(id, -32000, "No active session");
-    return;
-  }
-
   const input = buildPromptText(params.input);
   if (!input) {
     sendError(id, -32602, "Missing input text");
     return;
   }
 
-  threadSession.resumeRecovery?.acceptedInputTexts.push(input);
+  const threadSession = getWritableThreadSession(params.threadId);
+  if (!threadSession) {
+    sendError(id, -32000, "No active session");
+    return;
+  }
+
   ignoreInputConsumption(threadSession.session.pushInput(input));
   sendResult(id, { threadId: params.threadId });
 }
@@ -1374,21 +1271,20 @@ async function handleTurnSteer(
   id: string | number,
   params: TurnSteerParams,
 ): Promise<void> {
-  const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.closing) {
-    sendError(id, -32000, "No active session");
-    return;
-  }
-
   const input = buildPromptText(params.input);
   if (!input) {
     sendError(id, -32602, "Missing input text");
     return;
   }
 
+  const threadSession = getWritableThreadSession(params.threadId);
+  if (!threadSession) {
+    sendError(id, -32000, "No active session");
+    return;
+  }
+
   try {
     await threadSession.session.pushInput(input);
-    threadSession.resumeRecovery?.acceptedInputTexts.push(input);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

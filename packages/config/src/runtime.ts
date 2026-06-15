@@ -6,7 +6,6 @@ export type BbRuntimeMode = "dev" | "prod";
 
 export interface DevPortSet {
   appPort: number;
-  devEnvPort: number;
   hostDaemonPort: number;
   serverPort: number;
 }
@@ -83,7 +82,6 @@ const DEV_PORT_BUCKETS = 8_000;
 const DEV_APP_PORT_BASE = 11_000;
 const DEV_SERVER_PORT_BASE = 19_000;
 const DEV_HOST_DAEMON_PORT_BASE = 27_000;
-const DEV_ENV_PORT_BASE = 43_000;
 const DEV_PROCESS_STRIPPED_ENV_KEYS: readonly string[] = [
   "BB_ENVIRONMENT_ID",
   "BB_THREAD_ID",
@@ -132,7 +130,6 @@ function resolvePorts(repoRootPath: string): DevPortSet {
   const offset = resolvePortOffset(repoRootPath);
   return {
     appPort: DEV_APP_PORT_BASE + offset,
-    devEnvPort: DEV_ENV_PORT_BASE + offset,
     hostDaemonPort: DEV_HOST_DAEMON_PORT_BASE + offset,
     serverPort: DEV_SERVER_PORT_BASE + offset,
   };
@@ -277,7 +274,6 @@ export function toDevProcessEnv(args: DevProcessEnvArgs): NodeJS.ProcessEnv {
     ...env,
     BB_DATA_DIR: args.config.dataDir,
     BB_DEV_APP_PORT: String(args.config.ports.appPort),
-    BB_DEV_ENV_PORT: String(args.config.ports.devEnvPort),
     BB_HOST_DAEMON_PORT: String(args.config.ports.hostDaemonPort),
     BB_SERVER_PORT: String(args.config.ports.serverPort),
     BB_SERVER_URL: args.config.serverUrl,

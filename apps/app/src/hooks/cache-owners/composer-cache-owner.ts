@@ -1,8 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ThreadComposerBootstrapResponse } from "@bb/server-contract";
-import * as api from "@/lib/api";
+import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
 import {
-  threadDefaultExecutionOptionsQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
   threadQueuedMessagesQueryKey,
@@ -11,13 +10,6 @@ import { seedSystemExecutionOptionsCache } from "./system-cache-effects";
 
 interface ThreadComposerBootstrapHydrationArgs {
   bootstrap: ThreadComposerBootstrapResponse;
-  environmentId: string | null;
-  providerId: string | null;
-  queryClient: QueryClient;
-  threadId: string;
-}
-
-interface FetchAndHydrateThreadComposerBootstrapArgs {
   environmentId: string | null;
   providerId: string | null;
   queryClient: QueryClient;
@@ -63,21 +55,4 @@ export function hydrateThreadComposerBootstrap({
       queryClient,
     });
   }
-}
-
-export async function fetchAndHydrateThreadComposerBootstrap({
-  environmentId,
-  providerId,
-  queryClient,
-  threadId,
-}: FetchAndHydrateThreadComposerBootstrapArgs): Promise<ThreadComposerBootstrapResponse> {
-  const bootstrap = await api.getThreadComposerBootstrap(threadId);
-  hydrateThreadComposerBootstrap({
-    bootstrap,
-    environmentId,
-    providerId,
-    queryClient,
-    threadId,
-  });
-  return bootstrap;
 }

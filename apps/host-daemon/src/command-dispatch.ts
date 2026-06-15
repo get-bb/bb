@@ -1,17 +1,12 @@
 import type {
   HostDaemonCommand,
   HostDaemonCommandResult,
-  HostDaemonSettledCommandType,
   HostDaemonOnlineRpcCommand,
   HostDaemonOnlineRpcCommandType,
   HostDaemonOnlineRpcResult,
+  HostDaemonSettledCommandType,
   WorkspaceResolutionFailure,
 } from "@bb/host-daemon-contract";
-import type {
-  ResolvedThreadExecutionOptions,
-  RuntimeThreadExecutionOptions,
-} from "@bb/domain";
-import { listAvailableProviders } from "@bb/agent-runtime";
 import {
   defaultListModels,
   ExpectedCommandDispatchError,
@@ -28,38 +23,21 @@ import { listHostCommands } from "./command-handlers/list-commands.js";
 import {
   listHostFiles,
   listHostPaths,
-  deleteHostRelativeFile,
-  deleteHostRelativePath,
   readHostFile,
   readHostFileMetadata,
   readHostRelativeFile,
-  writeHostRelativeFile,
 } from "./command-handlers/host-files.js";
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
-import {
-  getReplayCapture,
-  listReplayCaptures,
-  removeReplayCapture,
-  runReplay,
-} from "./command-handlers/replay.js";
 import {
   completeCodexInference,
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
 import {
   ensureThreadRuntime,
-  handleThreadDeleted,
   startThread,
   submitTurn,
 } from "./command-handlers/thread.js";
 import { WorkspaceError } from "@bb/host-workspace";
-import {
-  cancelWorkflowRun,
-  listWorkflows,
-  pruneWorkflowRun,
-  resolveWorkflow,
-  startWorkflowRun,
-} from "./command-handlers/workflow.js";
 import { squashMerge } from "./command-handlers/workspace.js";
 import {
   requireResolvedWorkspaceForCommand,
@@ -75,76 +53,6 @@ export {
   noopEventSink,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";
-
-function recordReplayThreadMetadata(
-  command:
-    | Extract<HostDaemonCommand, { type: "thread.start" }>
-    | Extract<HostDaemonCommand, { type: "turn.submit" }>,
-  options: CommandDispatchOptions,
-): void {
-  if (!options.recordReplayCaptureThreadMetadata) {
-    return;
-  }
-  const runtimeContext =
-    command.type === "thread.start" ? command : command.resumeContext;
-  options.recordReplayCaptureThreadMetadata({
-    environmentId: command.environmentId,
-    projectId: runtimeContext.projectId,
-    providerId: runtimeContext.providerId,
-    threadId: command.threadId,
-    title: null,
-  });
-}
-
-/**
- * Translate runtime-shape execution options (which carry permissionEscalation
- * details and no source field) into the server-shape used by stored client
- * turn-request events, which is what the manifest persists for replay.
- */
-function toReplayCaptureExecution(
-  options: RuntimeThreadExecutionOptions,
-): ResolvedThreadExecutionOptions {
-  return {
-    model: options.model,
-    serviceTier: options.serviceTier,
-    reasoningLevel: options.reasoningLevel,
-    permissionMode: options.permissionMode,
-    source: "client/turn/requested",
-  };
-}
-
-function recordReplayTurnRequest(
-  command:
-    | Extract<HostDaemonCommand, { type: "thread.start" }>
-    | Extract<HostDaemonCommand, { type: "turn.submit" }>,
-  options: CommandDispatchOptions,
-): void {
-  if (!options.recordReplayCaptureTurnRequest) {
-    return;
-  }
-  if (command.type === "thread.start") {
-    options.recordReplayCaptureTurnRequest({
-      threadId: command.threadId,
-      kind: "thread-start",
-      input: command.input,
-      execution: toReplayCaptureExecution(command.options),
-    });
-    return;
-  }
-  // Only "start" guarantees a new turn (and thus a turn/started event that
-  // consumes the buffered request). "auto" and "steer" may resolve to a steer
-  // that emits no turn/started — leaving a stale request that would mislabel
-  // a later capture. Skip them.
-  if (command.target.mode !== "start") {
-    return;
-  }
-  options.recordReplayCaptureTurnRequest({
-    threadId: command.threadId,
-    kind: "turn-start",
-    input: command.input,
-    execution: toReplayCaptureExecution(command.options),
-  });
-}
 
 type CommandHandlerMap = {
   [TType in HostDaemonSettledCommandType]: (
@@ -237,46 +145,31 @@ async function environmentCleanupPreflight(
 
 const commandHandlers: CommandHandlerMap = {
   "thread.start": async (command, options) => {
-    recordReplayThreadMetadata(command, options);
-    recordReplayTurnRequest(command, options);
     return startThread(command, options);
   },
   "turn.submit": async (command, options) => {
-    recordReplayThreadMetadata(command, options);
-    recordReplayTurnRequest(command, options);
     const entry = await ensureThreadRuntime(command, options);
     return submitTurn(command, entry, options);
   },
   "thread.stop": async (command, options) => {
-    const replayTask = options.replayTasks?.get(command.threadId);
-    if (replayTask) {
-      replayTask.abort.abort();
-      return {};
-    }
     const entry = await requireExistingEnvironment(
       command.environmentId,
       options.runtimeManager,
     );
-    if (
-      options.runtimeManager.getThreadActiveTurnId({
-        environmentId: command.environmentId,
-        threadId: command.threadId,
-      }) === null
-    ) {
-      await options.runtimeManager.waitForThreadActiveTurn({
-        environmentId: command.environmentId,
-        threadId: command.threadId,
+    if (entry.runtime.hasThread(command.threadId)) {
+      // Stop can be dispatched while the start/submit RPC is still in flight
+      // and the turn/started event has not been observed yet. Wait for the
+      // runtime to learn the active turn (event-driven, resolves null on
+      // timeout or when the thread goes idle) so the provider stop carries
+      // the right turn id.
+      await entry.runtime.waitForActiveTurn(command.threadId, {
         timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
       });
+      await entry.runtime.stopThread({ threadId: command.threadId });
     }
-    await entry.runtime.stopThread({ threadId: command.threadId });
     // Stop completion finalizes server-side thread state. Flush provider
     // events first so buffered lifecycle events cannot arrive after that.
     await options.eventSink.flush();
-    options.runtimeManager.forgetThread(
-      command.environmentId,
-      command.threadId,
-    );
     return {};
   },
   "thread.rename": async (command, options) => {
@@ -304,10 +197,6 @@ const commandHandlers: CommandHandlerMap = {
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
     });
-    options.runtimeManager.forgetThread(
-      command.environmentId,
-      command.threadId,
-    );
     return {};
   },
   "thread.unarchive": async (command, options) => {
@@ -322,13 +211,9 @@ const commandHandlers: CommandHandlerMap = {
     });
     return {};
   },
-  "thread.deleted": handleThreadDeleted,
   "interactive.resolve": resolveInteractiveRequest,
   "codex.inference.complete": completeCodexInference,
   "codex.voice.transcribe": transcribeCodexVoice,
-  "host.write_file_relative": writeHostRelativeFile,
-  "host.delete_file_relative": deleteHostRelativeFile,
-  "host.delete_path_relative": deleteHostRelativePath,
   "environment.provision": provisionEnvironment,
   "environment.provision.cancel": cancelEnvironmentProvision,
   "environment.destroy": async (command, options) => {
@@ -370,12 +255,9 @@ const commandHandlers: CommandHandlerMap = {
     });
   },
   "workspace.squash_merge": squashMerge,
-  "workflow.start": startWorkflowRun,
-  "workflow.cancel": cancelWorkflowRun,
 };
 
 const onlineRpcHandlers: OnlineRpcHandlerMap = {
-  "development.replay": dispatchDevelopmentReplayCommand,
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
   "host.list_commands": listHostCommands,
@@ -383,17 +265,11 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,
-  "provider.list": async (_command, options) => ({
-    providers: (options.listProviders ?? listAvailableProviders)(),
-  }),
   "provider.list_models": async (command, options) =>
     (options.listModels ?? defaultListModels)({
       providerId: command.providerId,
     }),
   "environment.cleanup_preflight": environmentCleanupPreflight,
-  "workflow.list": listWorkflows,
-  "workflow.prune": pruneWorkflowRun,
-  "workflow.resolve": resolveWorkflow,
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,
@@ -454,6 +330,22 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       };
     }
   },
+  "workspace.pull_request": async (command, options) => {
+    const resolution = await resolveWorkspaceForCommand({
+      dataDir: options.dataDir,
+      environmentId: command.environmentId,
+      requireGit: true,
+      requireManagedWorktree: true,
+      runtimeManager: options.runtimeManager,
+      workspaceContext: command.workspaceContext,
+    });
+    // Every failure mode collapses to "no PR": an unresolvable workspace, like
+    // a missing `gh` or absent PR, just means there is nothing to show.
+    if (!resolution.ok) {
+      return { pullRequest: null };
+    }
+    return { pullRequest: await resolution.entry.workspace.getPullRequest() };
+  },
 };
 
 export async function dispatchCommand<
@@ -464,31 +356,6 @@ export async function dispatchCommand<
 ): Promise<HostDaemonCommandResult<TType>> {
   try {
     return await commandHandlers[command.type](command, options);
-  } catch (error) {
-    throwExpectedWorkspacePathNotFoundOrRethrow(error);
-  }
-}
-
-type DevelopmentReplayCommand = Extract<
-  HostDaemonOnlineRpcCommand,
-  { type: "development.replay" }
->;
-
-export async function dispatchDevelopmentReplayCommand(
-  command: DevelopmentReplayCommand,
-  options: CommandDispatchOptions,
-): Promise<HostDaemonOnlineRpcResult<"development.replay">> {
-  try {
-    switch (command.operation) {
-      case "capture-list":
-        return await listReplayCaptures(options);
-      case "capture-get":
-        return await getReplayCapture(command, options);
-      case "capture-delete":
-        return await removeReplayCapture(command, options);
-      case "run":
-        return await runReplay(command, options);
-    }
   } catch (error) {
     throwExpectedWorkspacePathNotFoundOrRethrow(error);
   }

@@ -1,13 +1,14 @@
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   changedMessageLenientSchema,
-  REALTIME_ENTITIES,
+  realtimeSubscriptionTargetKey,
 } from "@bb/server-contract";
 import type {
   ClientMessage,
   ChangedMessage,
-  RealtimeEntity,
+  RealtimeSubscriptionTarget,
 } from "@bb/server-contract";
+import { buildDevWebSocketUrl } from "./dev-websocket-url";
 
 type ChangeCallback = (message: ChangedMessage) => void;
 type ConnectedCallback = (event: { reconnected: boolean }) => void;
@@ -17,13 +18,14 @@ export type WebSocketConnectionState =
   | "connected"
   | "reconnecting";
 
+interface ActiveSubscription {
+  count: number;
+  target: RealtimeSubscriptionTarget;
+}
+
 export class WebSocketManager {
   private socket: ReconnectingWebSocket | null = null;
-  // Refcounted per key: independent surfaces can subscribe to the same
-  // entity/id (e.g. the sidebar Workflows section and the project Workflows
-  // tab both subscribe entity-wide to "workflow-run"), and one unmounting
-  // must not drop the other's subscription.
-  private subscriptions = new Map<string, number>();
+  private subscriptions = new Map<string, ActiveSubscription>();
   private callbacks = new Set<ChangeCallback>();
   private connectedCallbacks = new Set<ConnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
@@ -34,19 +36,11 @@ export class WebSocketManager {
     if (this.socket) return;
 
     // In dev mode, connect directly to the server to bypass Vite's WS proxy
-    // which does not handle reconnection after backend restarts. The baked
-    // URL targets localhost; rehost it onto the page's hostname so remote
-    // devices (BB_DEV_APP_HOST=0.0.0.0, e.g. over tailscale) reach the same
-    // server, which listens on all interfaces.
+    // which does not handle reconnection after backend restarts.
     // In production, use the same origin (server serves the app).
-    let url: string;
-    if (typeof __BB_DEV_WS_URL__ === "string") {
-      const devUrl = new URL(__BB_DEV_WS_URL__);
-      devUrl.hostname = window.location.hostname;
-      url = devUrl.toString();
-    } else {
-      url = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
-    }
+    const url =
+      buildDevWebSocketUrl({ path: "/ws" }) ??
+      `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
 
     this.socket = new ReconnectingWebSocket(url, undefined, {
       minReconnectionDelay: 1000,
@@ -61,14 +55,8 @@ export class WebSocketManager {
       this.hasConnected = true;
       this.setConnectionState("connected");
       // Re-subscribe to all active subscriptions
-      for (const key of this.subscriptions.keys()) {
-        const parsed = parseSubKey(key);
-        if (!parsed) continue;
-        this.sendMessage({
-          type: "subscribe",
-          entity: parsed.entity,
-          id: parsed.id,
-        });
+      for (const subscription of this.subscriptions.values()) {
+        this.sendMessage({ type: "subscribe", target: subscription.target });
       }
       for (const callback of this.connectedCallbacks) {
         callback({ reconnected });
@@ -111,27 +99,34 @@ export class WebSocketManager {
     this.setConnectionState("connecting");
   }
 
-  subscribe(entity: RealtimeEntity, id?: string): void {
-    const key = subKey(entity, id);
-    const count = this.subscriptions.get(key) ?? 0;
-    this.subscriptions.set(key, count + 1);
-    // The hub holds one subscription per key per connection, so only the
-    // 0 → 1 transition needs a message.
-    if (count === 0 && this.socket?.readyState === WebSocket.OPEN) {
-      this.sendMessage({ type: "subscribe", entity, id });
+  subscribe(target: RealtimeSubscriptionTarget): void {
+    const key = realtimeSubscriptionTargetKey(target);
+    const existing = this.subscriptions.get(key);
+    if (existing) {
+      existing.count += 1;
+      return;
+    }
+
+    this.subscriptions.set(key, { count: 1, target });
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.sendMessage({ type: "subscribe", target });
     }
   }
 
-  unsubscribe(entity: RealtimeEntity, id?: string): void {
-    const key = subKey(entity, id);
-    const count = this.subscriptions.get(key) ?? 0;
-    if (count > 1) {
-      this.subscriptions.set(key, count - 1);
+  unsubscribe(target: RealtimeSubscriptionTarget): void {
+    const key = realtimeSubscriptionTargetKey(target);
+    const existing = this.subscriptions.get(key);
+    if (!existing) {
       return;
     }
+    if (existing.count > 1) {
+      existing.count -= 1;
+      return;
+    }
+
     this.subscriptions.delete(key);
-    if (count === 1 && this.socket?.readyState === WebSocket.OPEN) {
-      this.sendMessage({ type: "unsubscribe", entity, id });
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.sendMessage({ type: "unsubscribe", target });
     }
   }
 
@@ -175,28 +170,6 @@ export class WebSocketManager {
       callback();
     }
   }
-}
-
-function subKey(entity: RealtimeEntity, id?: string): string {
-  return id ? `${entity}:${id}` : entity;
-}
-
-const realtimeEntitySet: ReadonlySet<string> = new Set(REALTIME_ENTITIES);
-
-function isRealtimeEntity(value: string): value is RealtimeEntity {
-  return realtimeEntitySet.has(value);
-}
-
-export function parseSubKey(
-  key: string,
-): { entity: RealtimeEntity; id?: string } | null {
-  const idx = key.indexOf(":");
-  const entity = idx === -1 ? key : key.slice(0, idx);
-  if (!isRealtimeEntity(entity)) {
-    return null;
-  }
-  const id = idx === -1 ? undefined : key.slice(idx + 1);
-  return id ? { entity, id } : { entity };
 }
 
 // Singleton instance — preserved across Vite HMR so the WebSocket connection

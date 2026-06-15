@@ -22,6 +22,32 @@ export type TerminalSessionStatus = z.infer<
   typeof terminalSessionStatusSchema
 >;
 
+export function isActiveTerminalSessionStatus(
+  status: TerminalSessionStatus,
+): boolean {
+  switch (status) {
+    case "starting":
+    case "running":
+      return true;
+    case "disconnected":
+    case "exited":
+      return false;
+  }
+}
+
+export function isVisibleTerminalSessionStatus(
+  status: TerminalSessionStatus,
+): boolean {
+  switch (status) {
+    case "starting":
+    case "running":
+    case "disconnected":
+      return true;
+    case "exited":
+      return false;
+  }
+}
+
 export const terminalSessionCloseReasonValues = [
   "user",
   "process-exit",

@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { defaultExperiments, type Experiments } from "@bb/domain";
 import type {
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
@@ -8,6 +7,7 @@ import type {
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
 import * as api from "@/lib/api";
 import { fetchProviderCliStatus } from "@/lib/api-host-daemon";
+import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   localProviderCliStatusQueryKey,
   systemConfigQueryKey,
@@ -31,6 +31,8 @@ export function useSystemExecutionOptions(
 ) {
   const environmentId = args.environmentId ?? null;
   const providerId = args.providerId ?? null;
+  const enabled = args.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
 
   return useQuery<SystemExecutionOptionsResponse>({
     queryKey: systemExecutionOptionsQueryKey({ environmentId, providerId }),
@@ -39,28 +41,21 @@ export function useSystemExecutionOptions(
         environmentId: args.environmentId,
         providerId: args.providerId,
       }),
-    enabled: args.enabled ?? true,
+    enabled,
     staleTime: 60_000,
   });
 }
 
 export function useSystemConfig(options?: QueryOptions) {
+  const enabled = options?.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
+
   return useQuery<SystemConfigResponse>({
     queryKey: systemConfigQueryKey(),
     queryFn: () => api.getSystemConfig(),
-    enabled: options?.enabled ?? true,
+    enabled,
     staleTime: 60_000,
   });
-}
-
-/**
- * The user's opt-in experiments from `/system/config`. Falls back to
- * `defaultExperiments` (everything off) while loading or on error, so gated
- * surfaces fail closed.
- */
-export function useExperiments(): Experiments {
-  const systemConfigQuery = useSystemConfig();
-  return systemConfigQuery.data?.experiments ?? defaultExperiments;
 }
 
 const SYSTEM_VERSION_STALE_TIME_MS = 60 * 60 * 1000;

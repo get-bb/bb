@@ -58,6 +58,7 @@ export const baseProps: ThreadMetadataContentProps = {
   environmentDisplayHost: localEnvironmentDisplayHost,
   workspaceStatus: makeWorkspaceStatus(),
   workspaceStatusError: null,
+  pullRequest: null,
   selectedMergeBaseBranch: undefined,
   mergeBaseBranchOptions: ["main", "develop", "release/2026-04"],
   isLoadingMergeBaseBranchOptions: false,

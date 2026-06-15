@@ -8,7 +8,7 @@ import type {
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
 } from "@bb/domain";
-import type { ThreadTimelineResponse } from "@bb/server-contract";
+import type { ThreadTimelineFeedResponse } from "@bb/server-contract";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   ThreadPromptContextBanner,
@@ -16,7 +16,6 @@ import {
   type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
-  type ThreadPromptWorkflowsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import type {
   WorkspaceChangedFileSelection,
@@ -28,7 +27,9 @@ import {
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
@@ -42,10 +43,10 @@ import {
 } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   getLatestPendingInteraction,
-  useThreadDefaultExecutionOptions,
   useThreadQueuedMessages,
   useThreadPromptHistory,
 } from "@/hooks/queries/thread-queries";
+import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { promptDraftToInput } from "@/lib/prompt-draft";
@@ -77,12 +78,13 @@ interface ThreadDetailPromptAreaProps {
   canUseGitUi: boolean;
   composerQueriesEnabled: boolean;
   composerQueriesStaleTime?: number;
-  contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
-  environmentBranchName?: string;
+  contextWindowUsage?: ThreadTimelineFeedResponse["contextWindowUsage"];
+  environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
   environmentIcon?: IconName;
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
+  onEscapeEmptyPrompt?: () => void;
   isEnvironmentActionPending: boolean;
   pendingInteractions: readonly PendingInteraction[];
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
@@ -114,8 +116,6 @@ interface ThreadDetailPromptAreaProps {
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
   childThreadsSection: ThreadPromptChildThreadsSection | null;
-  /** Actively running workflow runs anchored to this thread. Null when none. */
-  workflowsSection: ThreadPromptWorkflowsSection | null;
   sendMessage: SendMessageMutationLike;
   thread: ThreadWithRuntime;
 }
@@ -132,11 +132,12 @@ export function ThreadDetailPromptArea({
   composerQueriesEnabled,
   composerQueriesStaleTime,
   contextWindowUsage,
-  environmentBranchName,
+  environmentCheckout,
   environmentCompactLabel,
   environmentIcon,
   environmentLabel,
   onCreateNewThreadInWorktree,
+  onEscapeEmptyPrompt,
   isEnvironmentActionPending,
   pendingInteractions,
   onChangedFileClick,
@@ -149,7 +150,6 @@ export function ThreadDetailPromptArea({
   pendingTodos,
   parentThreadSection,
   childThreadsSection,
-  workflowsSection,
   sendMessage,
   thread,
 }: ThreadDetailPromptAreaProps) {
@@ -272,6 +272,7 @@ export function ThreadDetailPromptArea({
     setPermissionMode,
     activeModel,
     modelOptions,
+    isLoadingModels,
     modelLoadError,
     reasoningOptions,
     permissionModeOptions,
@@ -343,6 +344,18 @@ export function ThreadDetailPromptArea({
     [currentPromptDraft],
   );
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
+  const isPromptEmpty = useCallback(
+    () => !hasPromptDraftInput,
+    [hasPromptDraftInput],
+  );
+  const hideEmptyPrompt = useCallback(() => {
+    onEscapeEmptyPrompt?.();
+  }, [onEscapeEmptyPrompt]);
+  useEscapeToHide({
+    enabled: onEscapeEmptyPrompt !== undefined,
+    isEmpty: isPromptEmpty,
+    onHide: hideEmptyPrompt,
+  });
   const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
     hasPromptDraftInput,
     isFollowUpSubmitting,
@@ -735,6 +748,7 @@ export function ThreadDetailPromptArea({
         active: activeModel,
         selected: selectedModel,
         options: modelOptions,
+        isLoading: isLoadingModels,
         loadError: modelLoadError,
         onChange: setSelectedModel,
       },
@@ -753,6 +767,7 @@ export function ThreadDetailPromptArea({
     [
       activeModel,
       hasMultipleProviders,
+      isLoadingModels,
       modelLoadError,
       modelOptions,
       providerOptions,
@@ -824,12 +839,12 @@ export function ThreadDetailPromptArea({
           environmentLabel={environmentLabel}
           environmentCompactLabel={environmentCompactLabel}
           environmentIcon={environmentIcon}
-          environmentBranchName={environmentBranchName}
+          environmentCheckout={environmentCheckout}
           onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
         />
       ) : null,
     [
-      environmentBranchName,
+      environmentCheckout,
       environmentCompactLabel,
       environmentIcon,
       environmentLabel,
@@ -848,7 +863,6 @@ export function ThreadDetailPromptArea({
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
-          workflowsSection={workflowsSection}
           gitSection={
             workspaceChangedFilesSection
               ? {
@@ -895,7 +909,6 @@ export function ThreadDetailPromptArea({
       isQueueMutationPending,
       parentThreadSection,
       childThreadsSection,
-      workflowsSection,
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessages,

@@ -1,4 +1,3 @@
-import { useAtomValue } from "jotai";
 import { useCallback, useMemo } from "react";
 import {
   hostDaemonPortAtom,
@@ -8,6 +7,7 @@ import {
   localHostStatusAtom,
 } from "@/lib/system-config-atoms";
 import { pickFolder as daemonPickFolder } from "@/lib/api-host-daemon";
+import { useAsyncAtomValue } from "@/lib/use-async-atom-value";
 
 /**
  * Hook for host daemon operations.
@@ -21,11 +21,14 @@ import { pickFolder as daemonPickFolder } from "@/lib/api-host-daemon";
  * - `pickFolder()` — open native folder picker (null if unavailable)
  */
 export function useHostDaemon() {
-  const localHostDaemonReachable = useAtomValue(localHostDaemonReachableAtom);
-  const localDaemonHostId = useAtomValue(localHostDaemonHostIdAtom);
-  const localHostStatus = useAtomValue(localHostStatusAtom);
-  const localHostId = useAtomValue(localHostIdAtom);
-  const daemonPort = useAtomValue(hostDaemonPortAtom);
+  const localHostDaemonReachable = useAsyncAtomValue(
+    localHostDaemonReachableAtom,
+    false,
+  );
+  const localDaemonHostId = useAsyncAtomValue(localHostDaemonHostIdAtom, null);
+  const localHostStatus = useAsyncAtomValue(localHostStatusAtom, null);
+  const localHostId = useAsyncAtomValue(localHostIdAtom, null);
+  const daemonPort = useAsyncAtomValue(hostDaemonPortAtom, null);
 
   const hasDaemon = localHostDaemonReachable;
   const supportsNativeFolderPicker =

@@ -133,6 +133,11 @@ export interface EventProjectionDelegationMetadata {
   description?: string;
 }
 
+export interface EventProjectionWorkOutputDetail {
+  fullLength: number;
+  previewLength: number;
+}
+
 export interface EventProjectionToolCallMessage extends EventProjectionMessageBase {
   kind: "tool-call";
   toolName: string;
@@ -140,6 +145,7 @@ export interface EventProjectionToolCallMessage extends EventProjectionMessageBa
   callId: string;
   parsedIntents: EventProjectionToolParsedIntent[];
   output: string;
+  outputDetail?: EventProjectionWorkOutputDetail;
   completedAt: number | null;
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
   status: Extract<
@@ -156,6 +162,7 @@ export interface EventProjectionCommandMessage extends EventProjectionMessageBas
   parsedIntents: EventProjectionToolParsedIntent[];
   source: string | null;
   output: string;
+  outputDetail?: EventProjectionWorkOutputDetail;
   exitCode: number | null;
   completedAt: number | null;
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
@@ -342,6 +349,7 @@ export interface EventProjectionDelegationMessage
   toolName: string;
   callId: string;
   output: string;
+  outputDetail?: EventProjectionWorkOutputDetail;
   completedAt: number | null;
   status: Extract<
     EventProjectionMessageStatus,
@@ -358,13 +366,6 @@ export interface EventProjectionDelegationMessage
 export interface EventProjectionWorkflowMessage extends EventProjectionMessageBase {
   kind: "workflow";
   itemId: string;
-  /**
-   * Raw task-type discriminant from the item (`bb_workflow` for server-owned
-   * workflow runs whose `itemId` is the `wfr_` run id, `local_workflow` for
-   * provider-native dynamic workflows). Renderers gate run-page deep links on
-   * it.
-   */
-  taskType: string;
   workflowName: string | null;
   description: string;
   status: Extract<

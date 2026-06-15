@@ -8,7 +8,7 @@ import type {
   BbDesktopInfo,
   BbDesktopInfoChangeHandler,
   BbDesktopInfoUnsubscribe,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 import {
   DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS,
   DESKTOP_UPDATE_CHECK_INTERVAL_MS,

@@ -1,8 +1,5 @@
 import path from "node:path";
-import type {
-  HostDaemonCommandResult,
-  HostDaemonOnlineRpcResult,
-} from "@bb/host-daemon-contract";
+import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import { CommandDispatchError } from "../command-dispatch-support.js";
 import type { CommandOf } from "../command-dispatch-support.js";
 import { isFsErrorWithCode } from "../fs-errors.js";
@@ -18,11 +15,6 @@ import {
   readFileMetadataForTransport,
   readRootRelativeFileForTransport,
 } from "./file-read.js";
-import {
-  deleteRootRelativeFile,
-  deleteRootRelativePath,
-  writeRootRelativeFile,
-} from "./file-write.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
 /**
@@ -163,38 +155,6 @@ export async function readHostRelativeFile(
   command: CommandOf<"host.read_file_relative">,
 ): Promise<HostDaemonOnlineRpcResult<"host.read_file_relative">> {
   return readRootRelativeFileForTransport({
-    rootPath: command.rootPath,
-    relativePath: command.path,
-    dotfiles: command.dotfiles,
-  });
-}
-
-export async function writeHostRelativeFile(
-  command: CommandOf<"host.write_file_relative">,
-): Promise<HostDaemonCommandResult<"host.write_file_relative">> {
-  return writeRootRelativeFile({
-    rootPath: command.rootPath,
-    relativePath: command.path,
-    dotfiles: command.dotfiles,
-    content: command.content,
-    contentEncoding: command.contentEncoding,
-  });
-}
-
-export async function deleteHostRelativeFile(
-  command: CommandOf<"host.delete_file_relative">,
-): Promise<HostDaemonCommandResult<"host.delete_file_relative">> {
-  return deleteRootRelativeFile({
-    rootPath: command.rootPath,
-    relativePath: command.path,
-    dotfiles: command.dotfiles,
-  });
-}
-
-export async function deleteHostRelativePath(
-  command: CommandOf<"host.delete_path_relative">,
-): Promise<HostDaemonCommandResult<"host.delete_path_relative">> {
-  return deleteRootRelativePath({
     rootPath: command.rootPath,
     relativePath: command.path,
     dotfiles: command.dotfiles,

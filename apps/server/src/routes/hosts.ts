@@ -1,4 +1,8 @@
-import { typedRoutes, type PublicApiSchema } from "@bb/server-contract";
+import {
+  publicApiRoutes,
+  typedRoutes,
+  type PublicApiSchema,
+} from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
@@ -12,10 +16,13 @@ export function registerHostRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (message) =>
       new ApiError(400, "invalid_request", message),
   });
+  const routes = publicApiRoutes.hosts;
 
-  get("/hosts", (context) => context.json(listPublicHostsWithStatus(deps.db)));
+  get(routes.list, (context) =>
+    context.json(listPublicHostsWithStatus(deps.db)),
+  );
 
-  get("/hosts/:id", (context) =>
+  get(routes.get, (context) =>
     context.json(
       requireNonDestroyedHostWithStatus(deps.db, context.req.param("id")),
     ),

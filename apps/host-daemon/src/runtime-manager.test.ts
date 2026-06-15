@@ -5,16 +5,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import type { ThreadEvent } from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
+import { turnScope } from "@bb/domain";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
-import type {
-  HostWatcher,
-  WatchApplicationStorageRootArgs,
-  ThreadStorageWatchError,
-  WatchThreadStorageRootArgs,
-  WatchWorkspaceArgs,
-  WorkspaceWatchError,
-} from "@bb/host-watcher";
+import type { HostWatcher } from "@bb/host-watcher";
 import {
   provisionWorkspace,
   type HostWorkspace,
@@ -50,17 +43,6 @@ type SteerTurnArgs = Parameters<AgentRuntime["steerTurn"]>[0];
 type StopThreadArgs = Parameters<AgentRuntime["stopThread"]>[0];
 type RenameThreadArgs = Parameters<AgentRuntime["renameThread"]>[0];
 type ListModelsArgs = Parameters<AgentRuntime["listModels"]>[0];
-type StopWatchingStatus = () => void | Promise<void>;
-type StopWatchingPathChanges = () => void | Promise<void>;
-type WatchWorkspaceImplementation = (
-  args: WatchWorkspaceArgs,
-) => StopWatchingStatus;
-type WatchThreadStorageRootImplementation = (
-  args: WatchThreadStorageRootArgs,
-) => StopWatchingPathChanges;
-type WatchApplicationStorageRootImplementation = (
-  args: WatchApplicationStorageRootArgs,
-) => StopWatchingPathChanges;
 interface RunGitOptions {
   cwd: string;
 }
@@ -125,7 +107,6 @@ async function writeInjectedSkillSource(
   );
   return {
     sourceType: "data-dir",
-    applicationId: null,
     name: args.name,
     description: `Use ${args.name} when runtime manager tests run.`,
     sourceRootPath,
@@ -203,6 +184,7 @@ function createFakeWorkspace(path: string) {
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
     getStatus: vi.fn(async () => status),
     getDiff: vi.fn(async () => diff),
+    getPullRequest: vi.fn(async () => null),
     listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
     commit: vi.fn(async (..._args: CommitArgs) => ({
@@ -242,39 +224,14 @@ function createFakeWorkspace(path: string) {
   return workspace;
 }
 
-function createFakeHostWatcher(
-  args: {
-    watchApplicationStorageRootImplementation?: WatchApplicationStorageRootImplementation;
-    watchThreadStorageRootImplementation?: WatchThreadStorageRootImplementation;
-    watchWorkspaceImplementation?: WatchWorkspaceImplementation;
-  } = {},
-) {
-  const watchWorkspace = vi.fn<WatchWorkspaceImplementation>(
-    args.watchWorkspaceImplementation ?? ((_args) => () => undefined),
-  );
-  const watchThreadStorageRoot = vi.fn<WatchThreadStorageRootImplementation>(
-    args.watchThreadStorageRootImplementation ?? ((_args) => () => undefined),
-  );
-  const watchApplicationStorageRoot =
-    vi.fn<WatchApplicationStorageRootImplementation>(
-      args.watchApplicationStorageRootImplementation ??
-        ((_args) => () => undefined),
-    );
-  const hostWatcher = {
-    watchApplicationStorageRoot,
-    watchWorkspace,
-    watchThreadStorageRoot,
-  } satisfies HostWatcher;
-
-  return {
-    hostWatcher,
-    watchApplicationStorageRoot,
-    watchThreadStorageRoot,
-    watchWorkspace,
-  };
+interface FakeAgentRuntime extends AgentRuntime {
+  /** Test-only mutators for the runtime-owned per-thread turn state. */
+  endActiveTurn: (threadId: string) => void;
+  setActiveTurn: (threadId: string, turnId: string) => void;
 }
 
 function createFakeRuntime() {
+  const activeTurnsByThreadId = new Map<string, string>();
   return {
     ensureProvider: vi.fn(async (_args: EnsureProviderArgs) => undefined),
     startThread: vi.fn(async (_args: StartThreadArgs) => ({
@@ -296,8 +253,23 @@ function createFakeRuntime() {
       selectedOnlyModels: [],
     })),
     listRunningProviders: vi.fn((): string[] => []),
+    getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
+    waitForActiveTurn: async (threadId) =>
+      activeTurnsByThreadId.get(threadId) ?? null,
+    getProviderSession: () => null,
+    reapIdleProviderSessions: vi.fn<AgentRuntime["reapIdleProviderSessions"]>(
+      async () => ({ reapedSessions: [] }),
+    ),
+    hasThread: (threadId) => activeTurnsByThreadId.has(threadId),
+    getActiveThreadIds: () => [...activeTurnsByThreadId.keys()],
     shutdown: vi.fn(async () => undefined),
-  } satisfies AgentRuntime;
+    endActiveTurn: (threadId) => {
+      activeTurnsByThreadId.delete(threadId);
+    },
+    setActiveTurn: (threadId, turnId) => {
+      activeTurnsByThreadId.set(threadId, turnId);
+    },
+  } satisfies FakeAgentRuntime;
 }
 
 function createProvisionWorkspaceMock(path: string) {
@@ -323,6 +295,81 @@ describe("RuntimeManager", () => {
     expect(provisionWorkspace).toHaveBeenCalledTimes(1);
     expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(entry.path).toBe("/tmp/env-1");
+  });
+
+  it("reaps idle provider sessions from loaded runtimes", async () => {
+    const firstRuntime = createFakeRuntime();
+    const secondRuntime = createFakeRuntime();
+    firstRuntime.reapIdleProviderSessions.mockResolvedValue({
+      reapedSessions: [
+        {
+          idleForMs: 1_500,
+          providerId: "codex",
+          providerThreadId: "provider-thread-1",
+          threadId: "thread-1",
+        },
+      ],
+    });
+    secondRuntime.reapIdleProviderSessions.mockResolvedValue({
+      reapedSessions: [
+        {
+          idleForMs: 2_500,
+          providerId: "codex",
+          providerThreadId: "provider-thread-2",
+          threadId: "thread-2",
+        },
+      ],
+    });
+    const runtimes = [firstRuntime, secondRuntime];
+    const createRuntime = vi.fn(() => {
+      const runtime = runtimes.shift();
+      if (!runtime) {
+        throw new Error("Unexpected runtime creation");
+      }
+      return runtime;
+    });
+    const manager = new RuntimeManager({
+      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
+      createRuntime,
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-2",
+      workspacePath: "/tmp/env-2",
+    });
+
+    await expect(
+      manager.reapIdleProviderSessions({ idleForMs: 1_000, nowMs: 5_000 }),
+    ).resolves.toEqual({
+      reapedSessions: [
+        {
+          environmentId: "env-1",
+          idleForMs: 1_500,
+          providerId: "codex",
+          providerThreadId: "provider-thread-1",
+          threadId: "thread-1",
+        },
+        {
+          environmentId: "env-2",
+          idleForMs: 2_500,
+          providerId: "codex",
+          providerThreadId: "provider-thread-2",
+          threadId: "thread-2",
+        },
+      ],
+    });
+    expect(firstRuntime.reapIdleProviderSessions).toHaveBeenCalledWith({
+      idleForMs: 1_000,
+      nowMs: 5_000,
+    });
+    expect(secondRuntime.reapIdleProviderSessions).toHaveBeenCalledWith({
+      idleForMs: 1_000,
+      nowMs: 5_000,
+    });
   });
 
   it("passes staged injected skill roots to created runtimes", async () => {
@@ -435,7 +482,12 @@ describe("RuntimeManager", () => {
       token: "first-token",
     });
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
-    const createRuntime = vi.fn(() => createFakeRuntime());
+    const runtimes: ReturnType<typeof createFakeRuntime>[] = [];
+    const createRuntime = vi.fn(() => {
+      const runtime = createFakeRuntime();
+      runtimes.push(runtime);
+      return runtime;
+    });
     const manager = new RuntimeManager({
       dataDir,
       provisionWorkspace,
@@ -448,7 +500,7 @@ describe("RuntimeManager", () => {
       workspacePath: "/tmp/env-1",
     });
     const firstCatalogHash = firstEntry.skillCatalogHash;
-    manager.markThreadActive("env-skills", "thread-1", "provider-1", null);
+    runtimes[0]?.setActiveTurn("thread-1", "turn-1");
     await writeInjectedSkillSource({
       dataDir,
       name: "release-notes",
@@ -467,7 +519,7 @@ describe("RuntimeManager", () => {
     expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(firstEntry.runtime.shutdown).not.toHaveBeenCalled();
 
-    manager.markThreadInactive("env-skills", "thread-1");
+    runtimes[0]?.endActiveTurn("thread-1");
     const idleEntry = await manager.ensureEnvironment({
       environmentId: "env-skills",
       injectedSkillSources: [source],
@@ -502,8 +554,6 @@ describe("RuntimeManager", () => {
       injectedSkillSources: [source],
       workspacePath: "/tmp/env-1",
     });
-    manager.markThreadActive("env-skills", "thread-1", "provider-1", null);
-    manager.markThreadInactive("env-skills", "thread-1");
     await writeInjectedSkillSource({
       dataDir,
       name: "release-notes",
@@ -546,7 +596,8 @@ describe("RuntimeManager", () => {
       token: "first-token",
     });
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
-    const createRuntime = vi.fn(() => createFakeRuntime());
+    const runtime = createFakeRuntime();
+    const createRuntime = vi.fn(() => runtime);
     const manager = new RuntimeManager({
       dataDir,
       provisionWorkspace,
@@ -558,7 +609,7 @@ describe("RuntimeManager", () => {
       injectedSkillSources: [source],
       workspacePath: "/tmp/env-1",
     });
-    manager.markThreadActive("env-skills", "other-thread", "provider-1", null);
+    runtime.setActiveTurn("other-thread", "turn-1");
     await writeInjectedSkillSource({
       dataDir,
       name: "release-notes",
@@ -621,7 +672,8 @@ describe("RuntimeManager", () => {
       token: "first-token",
     });
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
-    const createRuntime = vi.fn(() => createFakeRuntime());
+    const runtime = createFakeRuntime();
+    const createRuntime = vi.fn(() => runtime);
     const manager = new RuntimeManager({
       dataDir,
       provisionWorkspace,
@@ -633,7 +685,7 @@ describe("RuntimeManager", () => {
       injectedSkillSources: [source],
       workspacePath: "/tmp/env-1",
     });
-    manager.markThreadActive("env-skills", "thread-1", "provider-1", null);
+    runtime.setActiveTurn("thread-1", "turn-1");
     await writeInjectedSkillSource({
       dataDir,
       name: "release-notes",
@@ -996,7 +1048,7 @@ describe("RuntimeManager", () => {
   });
 
   it("evicts only idle environments and keeps their workspaces intact", async () => {
-    const runtimes: AgentRuntime[] = [];
+    const runtimes: ReturnType<typeof createFakeRuntime>[] = [];
     const workspaces: HostWorkspace[] = [];
     const createRuntime = vi.fn(() => {
       const runtime = createFakeRuntime();
@@ -1025,12 +1077,7 @@ describe("RuntimeManager", () => {
       environmentId: "env-active",
       workspacePath: "/tmp/env-active",
     });
-    manager.markThreadActive(
-      "env-active",
-      "thr-active",
-      "provider-thread-active",
-      null,
-    );
+    runtimes[1]?.setActiveTurn("thr-active", "turn-active");
 
     await expect(manager.evictIdleEnvironments()).resolves.toEqual([
       "env-idle",
@@ -1068,14 +1115,9 @@ describe("RuntimeManager", () => {
   });
 
   it("shuts down the runtime and destroys the workspace", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
     const workspace = createFakeWorkspace("/tmp/env-1");
-    const { hostWatcher, watchWorkspace } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (_args) => stopWatchingStatus,
-    });
     const runtime = createFakeRuntime();
     const manager = new RuntimeManager({
-      hostWatcher,
       provisionWorkspace:
         createProvisionWorkspaceMock("/tmp/env-1").mockResolvedValue(workspace),
       createRuntime: vi.fn(() => runtime),
@@ -1088,54 +1130,13 @@ describe("RuntimeManager", () => {
     await manager.destroyEnvironment("env-1");
 
     expect(runtime.shutdown).toHaveBeenCalledTimes(1);
-    expect(watchWorkspace).toHaveBeenCalledTimes(1);
-    expect(stopWatchingStatus).toHaveBeenCalledTimes(1);
-    expect(workspace.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  it("waits for workspace watcher teardown before destroying the workspace", async () => {
-    const watcherStopped = createDeferred<void>();
-    const stopWatchingStatus = vi.fn(async () => watcherStopped.promise);
-    const workspace = createFakeWorkspace("/tmp/env-1");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (_args) => stopWatchingStatus,
-    });
-    const runtime = createFakeRuntime();
-    const manager = new RuntimeManager({
-      hostWatcher,
-      provisionWorkspace:
-        createProvisionWorkspaceMock("/tmp/env-1").mockResolvedValue(workspace),
-      createRuntime: vi.fn(() => runtime),
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-1",
-      workspacePath: "/tmp/env-1",
-    });
-    const destroyPromise = manager.destroyEnvironment("env-1");
-
-    await vi.waitFor(() => {
-      expect(stopWatchingStatus).toHaveBeenCalledTimes(1);
-    });
-    expect(runtime.shutdown).not.toHaveBeenCalled();
-    expect(workspace.destroy).not.toHaveBeenCalled();
-
-    watcherStopped.resolve(undefined);
-    await destroyPromise;
-
-    expect(runtime.shutdown).toHaveBeenCalledTimes(1);
     expect(workspace.destroy).toHaveBeenCalledTimes(1);
   });
 
   it("forgets a retired environment without destroying its workspace", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
     const workspace = createFakeWorkspace("/tmp/env-retired");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (_args) => stopWatchingStatus,
-    });
     const runtime = createFakeRuntime();
     const manager = new RuntimeManager({
-      hostWatcher,
       provisionWorkspace:
         createProvisionWorkspaceMock("/tmp/env-retired").mockResolvedValue(
           workspace,
@@ -1150,364 +1151,35 @@ describe("RuntimeManager", () => {
     await manager.forgetEnvironment("env-retired");
 
     expect(manager.get("env-retired")).toBeUndefined();
-    expect(stopWatchingStatus).toHaveBeenCalledTimes(1);
     expect(runtime.shutdown).toHaveBeenCalledTimes(1);
     expect(workspace.destroy).not.toHaveBeenCalled();
   });
 
-  it("installs the workspace status watcher once and reports workspace status changes", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
-    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
-    const workspace = createFakeWorkspace("/tmp/env-watch");
-    const { hostWatcher, watchWorkspace } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (args) => {
-        watchWorkspaceArgs = args;
-        return stopWatchingStatus;
-      },
-    });
-    const onWorkspaceStatusChanged = vi.fn();
+  it("does not start a workspace watcher when loading an environment", async () => {
+    const hostWatcher = {
+      watchWorkspace: vi.fn(() => () => undefined),
+      watchThreadStorageRoot: vi.fn(() => () => undefined),
+    } satisfies HostWatcher;
     const manager = new RuntimeManager({
       hostWatcher,
-      provisionWorkspace:
-        createProvisionWorkspaceMock("/tmp/env-watch").mockResolvedValue(
-          workspace,
-        ),
+      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-read"),
       createRuntime: vi.fn(() => createFakeRuntime()),
-      onWorkspaceStatusChanged,
     });
 
     await manager.ensureEnvironment({
-      environmentId: "env-watch",
-      workspacePath: "/tmp/env-watch",
+      environmentId: "env-read",
+      workspacePath: "/tmp/env-read",
     });
-    workspace.setLocalStateFingerprint("local:/tmp/env-watch:changed");
-    await manager.ensureEnvironment({
-      environmentId: "env-watch",
-      workspacePath: "/tmp/env-watch",
-    });
-    watchWorkspaceArgs?.onChange({
-      changedPaths: ["/tmp/env-watch/README.md"],
-      changeKinds: ["workspace-content-changed"],
-      kind: "workspace-status-changed",
-      environmentId: "env-watch",
-    });
-    await Promise.resolve();
-    await Promise.resolve();
 
-    expect(watchWorkspace).toHaveBeenCalledTimes(1);
-    expect(watchWorkspace).toHaveBeenCalledWith(
-      expect.objectContaining({
-        environmentId: "env-watch",
-        workspacePath: "/tmp/env-watch",
-      }),
-    );
-    expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
-      changeKinds: ["work-status-changed"],
-      environmentId: "env-watch",
-    });
-    expect(stopWatchingStatus).not.toHaveBeenCalled();
+    expect(hostWatcher.watchWorkspace).not.toHaveBeenCalled();
+    expect(hostWatcher.watchThreadStorageRoot).not.toHaveBeenCalled();
   });
 
-  it("suppresses workspace change notifications when the local fingerprint is unchanged", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
-    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
-    const workspace = createFakeWorkspace("/tmp/env-watch");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (args) => {
-        watchWorkspaceArgs = args;
-        return stopWatchingStatus;
-      },
-    });
-    const onWorkspaceStatusChanged = vi.fn();
-    const manager = new RuntimeManager({
-      hostWatcher,
-      provisionWorkspace:
-        createProvisionWorkspaceMock("/tmp/env-watch").mockResolvedValue(
-          workspace,
-        ),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      onWorkspaceStatusChanged,
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-watch",
-      workspacePath: "/tmp/env-watch",
-    });
-
-    watchWorkspaceArgs?.onChange({
-      changedPaths: ["/tmp/env-watch/README.md"],
-      changeKinds: ["workspace-content-changed"],
-      kind: "workspace-status-changed",
-      environmentId: "env-watch",
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(onWorkspaceStatusChanged).not.toHaveBeenCalled();
-  });
-
-  it("reports shared git ref changes separately from local workspace changes", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
-    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
-    const workspace = createFakeWorkspace("/tmp/env-watch");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (args) => {
-        watchWorkspaceArgs = args;
-        return stopWatchingStatus;
-      },
-    });
-    const onWorkspaceStatusChanged = vi.fn();
-    const manager = new RuntimeManager({
-      hostWatcher,
-      provisionWorkspace:
-        createProvisionWorkspaceMock("/tmp/env-watch").mockResolvedValue(
-          workspace,
-        ),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      onWorkspaceStatusChanged,
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-watch",
-      workspacePath: "/tmp/env-watch",
-    });
-    workspace.setSharedGitRefsFingerprint("refs:/tmp/env-watch:changed");
-
-    watchWorkspaceArgs?.onChange({
-      changedPaths: ["/tmp/shared/.git/refs/heads/main"],
-      changeKinds: ["shared-git-refs-changed"],
-      kind: "workspace-status-changed",
-      environmentId: "env-watch",
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
-      changeKinds: ["git-refs-changed"],
-      environmentId: "env-watch",
-    });
-  });
-
-  it("reports shared git ref changes from single-dir git watcher events", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
-    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
-    const workspace = createFakeWorkspace("/tmp/env-watch");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (args) => {
-        watchWorkspaceArgs = args;
-        return stopWatchingStatus;
-      },
-    });
-    const onWorkspaceStatusChanged = vi.fn();
-    const manager = new RuntimeManager({
-      hostWatcher,
-      provisionWorkspace:
-        createProvisionWorkspaceMock("/tmp/env-watch").mockResolvedValue(
-          workspace,
-        ),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      onWorkspaceStatusChanged,
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-watch",
-      workspacePath: "/tmp/env-watch",
-    });
-    workspace.setSharedGitRefsFingerprint("refs:/tmp/env-watch:changed");
-
-    watchWorkspaceArgs?.onChange({
-      changedPaths: ["/tmp/env-watch/.git/refs/heads/feature"],
-      changeKinds: ["workspace-git-changed", "shared-git-refs-changed"],
-      kind: "workspace-status-changed",
-      environmentId: "env-watch",
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
-      changeKinds: ["git-refs-changed"],
-      environmentId: "env-watch",
-    });
-  });
-
-  it("reports local fingerprint recomputation failures and recovers on the next change", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
-    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
-    const workspace = createFakeWorkspace("/tmp/env-watch");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (args) => {
-        watchWorkspaceArgs = args;
-        return stopWatchingStatus;
-      },
-    });
-    const onWorkspaceStatusChanged = vi.fn();
-    const onWorkspaceStatusWatchError = vi.fn();
-    const manager = new RuntimeManager({
-      hostWatcher,
-      provisionWorkspace:
-        createProvisionWorkspaceMock("/tmp/env-watch").mockResolvedValue(
-          workspace,
-        ),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      onWorkspaceStatusChanged,
-      onWorkspaceStatusWatchError,
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-watch",
-      workspacePath: "/tmp/env-watch",
-    });
-
-    workspace.setLocalStateFingerprintError(new Error("workspace vanished"));
-    watchWorkspaceArgs?.onChange({
-      changedPaths: ["/tmp/env-watch/README.md"],
-      changeKinds: ["workspace-content-changed"],
-      kind: "workspace-status-changed",
-      environmentId: "env-watch",
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(onWorkspaceStatusChanged).not.toHaveBeenCalled();
-    expect(onWorkspaceStatusWatchError).toHaveBeenCalledWith({
-      error: {
-        environmentId: "env-watch",
-        kind: "workspace-watch-error",
-        message: "workspace vanished",
-        rootPath: "/tmp/env-watch",
-      },
-    });
-
-    workspace.setLocalStateFingerprintError(null);
-    workspace.setLocalStateFingerprint("local:/tmp/env-watch:changed");
-    watchWorkspaceArgs?.onChange({
-      changedPaths: ["/tmp/env-watch/src/index.ts"],
-      changeKinds: ["workspace-content-changed"],
-      kind: "workspace-status-changed",
-      environmentId: "env-watch",
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
-      changeKinds: ["work-status-changed"],
-      environmentId: "env-watch",
-    });
-  });
-
-  it("reports shared git ref fingerprint recomputation failures and recovers on the next change", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
-    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
-    const workspace = createFakeWorkspace("/tmp/env-watch");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (args) => {
-        watchWorkspaceArgs = args;
-        return stopWatchingStatus;
-      },
-    });
-    const onWorkspaceStatusChanged = vi.fn();
-    const onWorkspaceStatusWatchError = vi.fn();
-    const manager = new RuntimeManager({
-      hostWatcher,
-      provisionWorkspace:
-        createProvisionWorkspaceMock("/tmp/env-watch").mockResolvedValue(
-          workspace,
-        ),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      onWorkspaceStatusChanged,
-      onWorkspaceStatusWatchError,
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-watch",
-      workspacePath: "/tmp/env-watch",
-    });
-
-    workspace.setSharedGitRefsFingerprintError(new Error("refs unavailable"));
-    watchWorkspaceArgs?.onChange({
-      changedPaths: ["/tmp/shared/.git/refs/heads/main"],
-      changeKinds: ["shared-git-refs-changed"],
-      kind: "workspace-status-changed",
-      environmentId: "env-watch",
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(onWorkspaceStatusChanged).not.toHaveBeenCalled();
-    expect(onWorkspaceStatusWatchError).toHaveBeenCalledWith({
-      error: {
-        environmentId: "env-watch",
-        kind: "workspace-watch-error",
-        message: "refs unavailable",
-        rootPath: "/tmp/env-watch",
-      },
-    });
-
-    workspace.setSharedGitRefsFingerprintError(null);
-    workspace.setSharedGitRefsFingerprint("refs:/tmp/env-watch:changed");
-    watchWorkspaceArgs?.onChange({
-      changedPaths: ["/tmp/shared/.git/refs/heads/feature"],
-      changeKinds: ["shared-git-refs-changed"],
-      kind: "workspace-status-changed",
-      environmentId: "env-watch",
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
-      changeKinds: ["git-refs-changed"],
-      environmentId: "env-watch",
-    });
-  });
-
-  it("forwards workspace watch startup failures with the environment id", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
-    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
-    const workspace = createFakeWorkspace("/tmp/env-watch");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (args) => {
-        watchWorkspaceArgs = args;
-        return stopWatchingStatus;
-      },
-    });
-    const onWorkspaceStatusWatchError = vi.fn();
-    const manager = new RuntimeManager({
-      hostWatcher,
-      provisionWorkspace:
-        createProvisionWorkspaceMock("/tmp/env-watch").mockResolvedValue(
-          workspace,
-        ),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      onWorkspaceStatusWatchError,
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-watch",
-      workspacePath: "/tmp/env-watch",
-    });
-
-    watchWorkspaceArgs?.onWatchError({
-      kind: "workspace-watch-error",
-      environmentId: "env-watch",
-      message: "Error starting FSEvents stream",
-      rootPath: "/tmp/env-watch",
-    } satisfies WorkspaceWatchError);
-
-    expect(onWorkspaceStatusWatchError).toHaveBeenCalledWith({
-      error: {
-        kind: "workspace-watch-error",
-        environmentId: "env-watch",
-        message: "Error starting FSEvents stream",
-        rootPath: "/tmp/env-watch",
-      },
-    });
-    expect(stopWatchingStatus).not.toHaveBeenCalled();
-  });
-
-  it("tracks active threads for session reconciliation", async () => {
+  it("lists the runtimes' active threads for session reconciliation", async () => {
+    const runtime = createFakeRuntime();
     const manager = new RuntimeManager({
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
-      createRuntime: vi.fn(() => createFakeRuntime()),
+      createRuntime: vi.fn(() => runtime),
     });
 
     await manager.ensureEnvironment({
@@ -1515,324 +1187,24 @@ describe("RuntimeManager", () => {
       workspacePath: "/tmp/env-1",
     });
 
-    manager.markThreadActive("env-1", "thread-1", "provider-1", null);
+    runtime.setActiveTurn("thread-1", "turn-1");
     expect(manager.listActiveThreads()).toEqual([
       {
         threadId: "thread-1",
       },
     ]);
 
-    manager.markThreadInactive("env-1", "thread-1");
+    runtime.endActiveTurn("thread-1");
     expect(manager.listActiveThreads()).toEqual([]);
-  });
-
-  it("remembers known threads after a turn completes so follow-ups reuse the runtime", async () => {
-    const manager = new RuntimeManager({
-      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-1",
-      workspacePath: "/tmp/env-1",
-    });
-
-    manager.markThreadActive("env-1", "thread-1", "provider-1", null);
-    manager.markThreadInactive("env-1", "thread-1");
-
-    expect(manager.hasThread("env-1", "thread-1")).toBe(true);
-    expect(manager.listActiveThreads()).toEqual([]);
-
-    manager.markThreadActive("env-1", "thread-1", "provider-1", null);
-    expect(manager.listActiveThreads()).toEqual([
-      {
-        threadId: "thread-1",
-      },
-    ]);
-  });
-
-  it("forgets stopped threads so follow-ups resume the provider session", async () => {
-    const manager = new RuntimeManager({
-      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-1",
-      workspacePath: "/tmp/env-1",
-    });
-
-    manager.markThreadActive("env-1", "thread-1", "provider-1", null);
-    manager.forgetThread("env-1", "thread-1");
-
-    expect(manager.hasThread("env-1", "thread-1")).toBe(false);
-    expect(manager.listActiveThreads()).toEqual([]);
-  });
-
-  it("installs one shared thread storage root watcher for tracked threads", async () => {
-    const stopWatchingPathChanges = vi.fn(() => undefined);
-    let watchThreadStorageRootArgs: WatchThreadStorageRootArgs | undefined;
-    const { hostWatcher, watchThreadStorageRoot } = createFakeHostWatcher({
-      watchThreadStorageRootImplementation: (args) => {
-        watchThreadStorageRootArgs = args;
-        return stopWatchingPathChanges;
-      },
-    });
-    const onThreadStorageChanged = vi.fn();
-    const manager = new RuntimeManager({
-      hostWatcher,
-      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-storage"),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      onThreadStorageChanged,
-      threadStorageRootPath: "/tmp/bb-data/thread-storage",
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-storage",
-      workspacePath: "/tmp/env-storage",
-    });
-
-    manager.markThreadActive("env-storage", "thread-1", "provider-1", null);
-    manager.markThreadActive("env-storage", "thread-2", "provider-2", null);
-    watchThreadStorageRootArgs?.onChange({
-      kind: "thread-storage-changed",
-      environmentId: "env-storage",
-      threadId: "thread-1",
-    });
-    watchThreadStorageRootArgs?.onChange({
-      kind: "thread-storage-changed",
-      environmentId: "env-storage",
-      threadId: "thread-2",
-    });
-    expect(watchThreadStorageRoot).toHaveBeenCalledTimes(1);
-    expect(watchThreadStorageRoot).toHaveBeenCalledWith(
-      expect.objectContaining({
-        threadStorageRootPath: "/tmp/bb-data/thread-storage",
-      }),
-    );
-    expect(onThreadStorageChanged).toHaveBeenNthCalledWith(1, {
-      environmentId: "env-storage",
-      threadId: "thread-1",
-    });
-    expect(onThreadStorageChanged).toHaveBeenNthCalledWith(2, {
-      environmentId: "env-storage",
-      threadId: "thread-2",
-    });
-    expect(onThreadStorageChanged).toHaveBeenCalledTimes(2);
-    expect(stopWatchingPathChanges).not.toHaveBeenCalled();
-
-    await manager.destroyEnvironment("env-storage");
-
-    expect(stopWatchingPathChanges).toHaveBeenCalledTimes(1);
-  });
-
-  it("installs one shared application storage root watcher for app data", async () => {
-    const stopWatchingPathChanges = vi.fn(() => undefined);
-    let watchApplicationStorageRootArgs:
-      | WatchApplicationStorageRootArgs
-      | undefined;
-    const { hostWatcher, watchApplicationStorageRoot } = createFakeHostWatcher({
-      watchApplicationStorageRootImplementation: (args) => {
-        watchApplicationStorageRootArgs = args;
-        return stopWatchingPathChanges;
-      },
-    });
-    const onApplicationStorageTargetsChanged = vi.fn();
-    const onApplicationDataChanged = vi.fn();
-    const onApplicationDataResync = vi.fn();
-    const onApplicationContentChanged = vi.fn();
-    const manager = new RuntimeManager({
-      appsRootPath: "/tmp/bb-data/apps",
-      appDataRootPath: "/tmp/bb-data/app-data",
-      hostWatcher,
-      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-storage"),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      onApplicationStorageTargetsChanged,
-      onApplicationDataChanged,
-      onApplicationDataResync,
-      onApplicationContentChanged,
-    });
-
-    manager.replaceTrackedApplicationDataTargets([
-      {
-        applicationId: "status",
-        appDataPath: "/tmp/bb-data/app-data/status",
-      },
-    ]);
-
-    expect(watchApplicationStorageRoot).toHaveBeenCalledTimes(1);
-    expect(watchApplicationStorageRoot).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appsRootPath: "/tmp/bb-data/apps",
-        appDataRootPath: "/tmp/bb-data/app-data",
-      }),
-    );
-    expect(
-      watchApplicationStorageRootArgs?.resolveApplicationTarget("status"),
-    ).toEqual({
-      applicationId: "status",
-      appDataPath: "/tmp/bb-data/app-data/status",
-    });
-
-    watchApplicationStorageRootArgs?.onChange({
-      kind: "application-storage-targets-changed",
-    });
-    watchApplicationStorageRootArgs?.onChange({
-      kind: "application-data-changed",
-      applicationId: "status",
-      appDataPath: "/tmp/bb-data/app-data/status",
-      path: "state.json",
-    });
-    watchApplicationStorageRootArgs?.onChange({
-      kind: "application-data-resync",
-      applicationId: "status",
-    });
-    watchApplicationStorageRootArgs?.onChange({
-      kind: "application-content-changed",
-      applicationId: "status",
-    });
-
-    expect(onApplicationStorageTargetsChanged).toHaveBeenCalledTimes(1);
-    expect(onApplicationDataChanged).toHaveBeenCalledWith({
-      applicationId: "status",
-      appDataPath: "/tmp/bb-data/app-data/status",
-      path: "state.json",
-    });
-    expect(onApplicationDataResync).toHaveBeenCalledWith({
-      applicationId: "status",
-    });
-    expect(onApplicationContentChanged).toHaveBeenCalledTimes(1);
-    expect(onApplicationContentChanged).toHaveBeenCalledWith({
-      applicationId: "status",
-    });
-
-    await manager.shutdownAll();
-
-    expect(stopWatchingPathChanges).toHaveBeenCalledTimes(1);
-  });
-
-  it("watches tracked thread storage targets restored from session state", async () => {
-    let watchThreadStorageRootArgs: WatchThreadStorageRootArgs | undefined;
-    const { hostWatcher, watchThreadStorageRoot } = createFakeHostWatcher({
-      watchThreadStorageRootImplementation: (args) => {
-        watchThreadStorageRootArgs = args;
-        return () => undefined;
-      },
-    });
-    const onThreadStorageChanged = vi.fn();
-    const manager = new RuntimeManager({
-      hostWatcher,
-      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-storage"),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      onThreadStorageChanged,
-      threadStorageRootPath: "/tmp/bb-data/thread-storage",
-    });
-
-    manager.replaceTrackedThreadStorageTargets([
-      {
-        environmentId: "env-storage",
-        threadId: "thread-1",
-      },
-    ]);
-
-    expect(watchThreadStorageRoot).toHaveBeenCalledTimes(1);
-    watchThreadStorageRootArgs?.onChange({
-      kind: "thread-storage-changed",
-      environmentId: "env-storage",
-      threadId: "thread-1",
-    });
-
-    expect(onThreadStorageChanged).toHaveBeenCalledWith({
-      environmentId: "env-storage",
-      threadId: "thread-1",
-    });
-  });
-
-  it("forwards thread storage watch failures for the shared root watcher", async () => {
-    let watchThreadStorageRootArgs: WatchThreadStorageRootArgs | undefined;
-    const { hostWatcher } = createFakeHostWatcher({
-      watchThreadStorageRootImplementation: (args) => {
-        watchThreadStorageRootArgs = args;
-        return () => undefined;
-      },
-    });
-    const onThreadStorageWatchError = vi.fn();
-    const manager = new RuntimeManager({
-      hostWatcher,
-      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-storage"),
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      onThreadStorageWatchError,
-      threadStorageRootPath: "/tmp/bb-data/thread-storage",
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-storage",
-      workspacePath: "/tmp/env-storage",
-    });
-
-    manager.markThreadActive("env-storage", "thread-1", "provider-1", null);
-    watchThreadStorageRootArgs?.onWatchError({
-      kind: "thread-storage-watch-error",
-      message: "watch failed",
-      rootPath: "/tmp/bb-data/thread-storage",
-    } satisfies ThreadStorageWatchError);
-
-    expect(onThreadStorageWatchError).toHaveBeenCalledWith({
-      error: {
-        kind: "thread-storage-watch-error",
-        message: "watch failed",
-        rootPath: "/tmp/bb-data/thread-storage",
-      },
-    });
-  });
-
-  it("keeps the shared thread storage watcher running while other environments still have tracked threads", async () => {
-    const stopWatchingPathChanges = vi.fn(() => undefined);
-    const { hostWatcher } = createFakeHostWatcher({
-      watchThreadStorageRootImplementation: (_args) => stopWatchingPathChanges,
-    });
-    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-a");
-    provisionWorkspace
-      .mockResolvedValueOnce(createFakeWorkspace("/tmp/env-a"))
-      .mockResolvedValueOnce(createFakeWorkspace("/tmp/env-b"));
-    const manager = new RuntimeManager({
-      hostWatcher,
-      provisionWorkspace,
-      createRuntime: vi.fn(() => createFakeRuntime()),
-      threadStorageRootPath: "/tmp/bb-data/thread-storage",
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-a",
-      workspacePath: "/tmp/env-a",
-    });
-    await manager.ensureEnvironment({
-      environmentId: "env-b",
-      workspacePath: "/tmp/env-b",
-    });
-
-    manager.markThreadActive("env-a", "thread-a", "provider-a", null);
-    manager.markThreadActive("env-b", "thread-b", "provider-b", null);
-
-    await manager.destroyEnvironment("env-a");
-    expect(stopWatchingPathChanges).not.toHaveBeenCalled();
-
-    await manager.destroyEnvironment("env-b");
-    expect(stopWatchingPathChanges).toHaveBeenCalledTimes(1);
   });
 
   it("removes stale entries when the provider process exits", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
     const workspace = createFakeWorkspace("/tmp/env-exit");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (_args) => stopWatchingStatus,
-    });
     const runtime = createFakeRuntime();
     let onProcessExit:
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
-      hostWatcher,
       provisionWorkspace:
         createProvisionWorkspaceMock("/tmp/env-exit").mockResolvedValue(
           workspace,
@@ -1847,11 +1219,12 @@ describe("RuntimeManager", () => {
       environmentId: "env-exit",
       workspacePath: "/tmp/env-exit",
     });
-    manager.markThreadActive("env-exit", "thread-1", "provider-1", null);
 
     onProcessExit?.({
       providerId: "fake",
-      threadIds: ["thread-1"],
+      threads: [
+        { threadId: "thread-1", activeTurnId: null, providerThreadId: null },
+      ],
       code: 1,
       expected: false,
       signal: null,
@@ -1859,17 +1232,11 @@ describe("RuntimeManager", () => {
     });
 
     expect(manager.get("env-exit")).toBeUndefined();
-    expect(manager.hasThread("env-exit", "thread-1")).toBe(false);
-    expect(stopWatchingStatus).toHaveBeenCalledTimes(1);
     expect(runtime.shutdown).not.toHaveBeenCalled();
   });
 
   it("keeps sibling provider threads running when one provider exits", async () => {
-    const stopWatchingStatus = vi.fn(() => undefined);
     const workspace = createFakeWorkspace("/tmp/env-shared");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: (_args) => stopWatchingStatus,
-    });
     const runtime = createFakeRuntime();
     let runningProviders = ["fake-alpha", "fake-beta"];
     runtime.listRunningProviders.mockImplementation(() => runningProviders);
@@ -1877,7 +1244,6 @@ describe("RuntimeManager", () => {
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
-      hostWatcher,
       provisionWorkspace:
         createProvisionWorkspaceMock("/tmp/env-shared").mockResolvedValue(
           workspace,
@@ -1892,13 +1258,12 @@ describe("RuntimeManager", () => {
       environmentId: "env-shared",
       workspacePath: "/tmp/env-shared",
     });
-    manager.markThreadActive("env-shared", "thread-a", "provider-a", null);
-    manager.markThreadActive("env-shared", "thread-b", "provider-b", null);
-
     runningProviders = ["fake-beta"];
     onProcessExit?.({
       providerId: "fake-alpha",
-      threadIds: ["thread-a"],
+      threads: [
+        { threadId: "thread-a", activeTurnId: null, providerThreadId: null },
+      ],
       code: 1,
       expected: false,
       signal: null,
@@ -1906,9 +1271,6 @@ describe("RuntimeManager", () => {
     });
 
     expect(manager.get("env-shared")).toBeDefined();
-    expect(manager.hasThread("env-shared", "thread-a")).toBe(false);
-    expect(manager.hasThread("env-shared", "thread-b")).toBe(true);
-    expect(stopWatchingStatus).not.toHaveBeenCalled();
     expect(runtime.shutdown).not.toHaveBeenCalled();
   });
 
@@ -1958,7 +1320,13 @@ describe("RuntimeManager", () => {
 
     onProcessExit({
       providerId: "codex",
-      threadIds: ["thread-1"],
+      threads: [
+        {
+          threadId: "thread-1",
+          activeTurnId: "turn-1",
+          providerThreadId: "provider-1",
+        },
+      ],
       code: 1,
       expected: false,
       signal: null,
@@ -2008,22 +1376,20 @@ describe("RuntimeManager", () => {
     ]);
   });
 
-  it("preserves the active turn when thread identity arrives after turn start", async () => {
+  it("does not synthesize failure events for exited threads without an active turn", async () => {
     const emittedEvents: Array<{
       environmentId: string;
       event: ThreadEvent;
     }> = [];
     const runtime = createFakeRuntime();
-    let onRuntimeEvent: AgentRuntimeOptions["onEvent"] | undefined;
     let onProcessExit:
       | NonNullable<AgentRuntimeOptions["onProcessExit"]>
       | undefined;
     const manager = new RuntimeManager({
       provisionWorkspace: createProvisionWorkspaceMock(
-        "/tmp/env-identity-after-turn",
-      ).mockResolvedValue(createFakeWorkspace("/tmp/env-identity-after-turn")),
+        "/tmp/env-idle-exit",
+      ).mockResolvedValue(createFakeWorkspace("/tmp/env-idle-exit")),
       createRuntime: vi.fn((options) => {
-        onRuntimeEvent = options.onEvent;
         onProcessExit = options.onProcessExit;
         return runtime;
       }),
@@ -2033,60 +1399,29 @@ describe("RuntimeManager", () => {
     });
 
     await manager.ensureEnvironment({
-      environmentId: "env-identity-after-turn",
-      workspacePath: "/tmp/env-identity-after-turn",
+      environmentId: "env-idle-exit",
+      workspacePath: "/tmp/env-idle-exit",
     });
-    if (!onRuntimeEvent || !onProcessExit) {
+    if (!onProcessExit) {
       throw new Error("Expected runtime callbacks to be captured");
     }
-    onRuntimeEvent({
-      type: "turn/started",
-      threadId: "thread-1",
-      providerThreadId: "provider-before-identity",
-      scope: turnScope("turn-1"),
-    });
-    onRuntimeEvent({
-      type: "thread/identity",
-      threadId: "thread-1",
-      providerThreadId: "provider-after-identity",
-      scope: threadScope(),
-    });
-    emittedEvents.splice(0, emittedEvents.length);
 
     onProcessExit({
       providerId: "codex",
-      threadIds: ["thread-1"],
+      threads: [
+        {
+          threadId: "thread-idle",
+          activeTurnId: null,
+          providerThreadId: "provider-idle",
+        },
+      ],
       code: 1,
       expected: false,
       signal: null,
       stderr: null,
     });
 
-    expect(emittedEvents).toEqual([
-      {
-        environmentId: "env-identity-after-turn",
-        event: {
-          type: "turn/completed",
-          threadId: "thread-1",
-          providerThreadId: "provider-after-identity",
-          scope: turnScope("turn-1"),
-          status: "failed",
-          error: {
-            message: 'Provider "codex" exited unexpectedly with code 1',
-          },
-        },
-      },
-      {
-        environmentId: "env-identity-after-turn",
-        event: {
-          type: "system/error",
-          threadId: "thread-1",
-          scope: turnScope("turn-1"),
-          code: "provider_process_exited",
-          message: 'Provider "codex" exited unexpectedly with code 1',
-        },
-      },
-    ]);
+    expect(emittedEvents).toEqual([]);
   });
 
   it("does not emit failure events for expected provider exits", async () => {
@@ -2130,7 +1465,13 @@ describe("RuntimeManager", () => {
 
     onProcessExit({
       providerId: "codex",
-      threadIds: ["thread-1"],
+      threads: [
+        {
+          threadId: "thread-1",
+          activeTurnId: "turn-1",
+          providerThreadId: "provider-1",
+        },
+      ],
       code: null,
       expected: true,
       signal: "SIGTERM",
@@ -2138,19 +1479,12 @@ describe("RuntimeManager", () => {
     });
 
     expect(emittedEvents).toEqual([]);
+    expect(manager.get("env-expected-exit")).toBeDefined();
   });
 
   it("shuts down all tracked environments", async () => {
-    const stopWatchingStatusA = vi.fn(() => undefined);
-    const stopWatchingStatusB = vi.fn(() => undefined);
     const workspaceA = createFakeWorkspace("/tmp/env-a");
     const workspaceB = createFakeWorkspace("/tmp/env-b");
-    const { hostWatcher } = createFakeHostWatcher({
-      watchWorkspaceImplementation: vi
-        .fn<WatchWorkspaceImplementation>()
-        .mockImplementationOnce((_args) => stopWatchingStatusA)
-        .mockImplementationOnce((_args) => stopWatchingStatusB),
-    });
     const runtimeA = createFakeRuntime();
     const runtimeB = createFakeRuntime();
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-a")
@@ -2161,7 +1495,6 @@ describe("RuntimeManager", () => {
       .mockReturnValueOnce(runtimeA)
       .mockReturnValueOnce(runtimeB);
     const manager = new RuntimeManager({
-      hostWatcher,
       provisionWorkspace,
       createRuntime,
     });
@@ -2179,8 +1512,6 @@ describe("RuntimeManager", () => {
 
     expect(runtimeA.shutdown).toHaveBeenCalledTimes(1);
     expect(runtimeB.shutdown).toHaveBeenCalledTimes(1);
-    expect(stopWatchingStatusA).toHaveBeenCalledTimes(1);
-    expect(stopWatchingStatusB).toHaveBeenCalledTimes(1);
     // shutdownAll does NOT destroy workspaces — the server owns managed
     // workspace lifecycle via explicit environment.destroy commands
     expect(workspaceA.destroy).not.toHaveBeenCalled();

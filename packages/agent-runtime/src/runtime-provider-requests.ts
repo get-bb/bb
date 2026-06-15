@@ -10,7 +10,6 @@ import type {
   ToolCallRequest,
 } from "@bb/domain";
 import { isApprovalPendingInteractionPayload } from "@bb/domain";
-import type { AgentRuntimeCaptureEntry } from "./capture-types.js";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import {
   type JsonRpcMessage,
@@ -38,7 +37,6 @@ export interface ResolveRuntimeProviderRequestThreadIdArgs {
 }
 
 export interface RuntimeProviderRequestArgs {
-  line: string;
   parsedId: string | number;
   parsedMethod: string;
   providerProcess: RuntimeProviderRequestProcess;
@@ -46,9 +44,7 @@ export interface RuntimeProviderRequestArgs {
 }
 
 export interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
-  createCaptureId: () => string;
-  emitCapture: (entry: AgentRuntimeCaptureEntry) => void;
-  getActiveTurnId: (threadId: string) => string | undefined;
+  getActiveTurnId: (threadId: string) => string | null;
   getThreadExecutionOptions: (
     threadId: string,
   ) => AgentRuntimeExecutionOptions | undefined;
@@ -143,7 +139,7 @@ function resolveRuntimeProviderRequestTurnId(
   }
 
   const activeTurnId = args.getActiveTurnId(args.resolvedThreadId);
-  if (activeTurnId !== undefined) {
+  if (activeTurnId !== null) {
     return activeTurnId;
   }
 
@@ -158,7 +154,6 @@ function resolveRuntimeProviderRequestTurnId(
 function handleToolCallProviderRequest(
   args: HandleRuntimeProviderRequestArgs,
 ): boolean {
-  const providerId = args.providerProcess.adapter.id;
   let toolCallReq: ReturnType<ProviderAdapter["decodeToolCallRequest"]>;
   try {
     toolCallReq = args.providerProcess.adapter.decodeToolCallRequest(
@@ -210,28 +205,9 @@ function handleToolCallProviderRequest(
       ? { arguments: toolCallReq.arguments }
       : {}),
   };
-  const captureId = args.createCaptureId();
-  args.emitCapture({
-    kind: "tool-call-request",
-    captureId,
-    capturedAt: Date.now(),
-    providerId,
-    rawLine: args.line,
-    rawRequest: args.rawRequest,
-    request: scopedToolCallReq,
-  });
   void args
     .onToolCall(scopedToolCallReq)
     .then((response) => {
-      args.emitCapture({
-        kind: "tool-call-result",
-        capturedAt: Date.now(),
-        providerId,
-        requestCaptureId: captureId,
-        requestId: scopedToolCallReq.requestId,
-        success: true,
-        response,
-      });
       sendJsonRpcResult({
         child: args.providerProcess.child,
         id: args.parsedId,
@@ -239,15 +215,6 @@ function handleToolCallProviderRequest(
       });
     })
     .catch((err) => {
-      args.emitCapture({
-        kind: "tool-call-result",
-        capturedAt: Date.now(),
-        providerId,
-        requestCaptureId: captureId,
-        requestId: scopedToolCallReq.requestId,
-        success: false,
-        errorMessage: err instanceof Error ? err.message : String(err),
-      });
       sendJsonRpcError({
         child: args.providerProcess.child,
         id: args.parsedId,
@@ -330,16 +297,6 @@ function handleInteractiveProviderRequest(
     ),
     payload: interactiveReq.payload,
   };
-  const captureId = args.createCaptureId();
-  args.emitCapture({
-    kind: "interactive-request",
-    captureId,
-    capturedAt: Date.now(),
-    providerId,
-    rawLine: args.line,
-    rawRequest: args.rawRequest,
-    request: scopedInteractiveReq,
-  });
 
   const executionOptions = args.getThreadExecutionOptions(resolvedThreadId);
   const isApprovalRequest = isApprovalPendingInteractionPayload(
@@ -360,30 +317,12 @@ function handleInteractiveProviderRequest(
         request: resolvedInteractiveReq,
         resolution,
       });
-      args.emitCapture({
-        kind: "interactive-result",
-        capturedAt: Date.now(),
-        providerId,
-        requestCaptureId: captureId,
-        requestId: scopedInteractiveReq.providerRequestId,
-        success: true,
-        resolution,
-      });
       sendJsonRpcResult({
         child: args.providerProcess.child,
         id: args.parsedId,
         result,
       });
     } catch (error) {
-      args.emitCapture({
-        kind: "interactive-result",
-        capturedAt: Date.now(),
-        providerId,
-        requestCaptureId: captureId,
-        requestId: scopedInteractiveReq.providerRequestId,
-        success: false,
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
       if (
         sendProviderResponseEncodeErrorIfKnown({
           child: args.providerProcess.child,
@@ -403,21 +342,11 @@ function handleInteractiveProviderRequest(
   }
 
   if (!args.onInteractiveRequest) {
-    const errorMessage =
-      "No interactive request handler is configured for user-question interactions";
-    args.emitCapture({
-      kind: "interactive-result",
-      capturedAt: Date.now(),
-      providerId,
-      requestCaptureId: captureId,
-      requestId: scopedInteractiveReq.providerRequestId,
-      success: false,
-      errorMessage,
-    });
     sendJsonRpcError({
       child: args.providerProcess.child,
       id: args.parsedId,
-      message: errorMessage,
+      message:
+        "No interactive request handler is configured for user-question interactions",
     });
     return true;
   }
@@ -425,15 +354,6 @@ function handleInteractiveProviderRequest(
   void args
     .onInteractiveRequest(scopedInteractiveReq)
     .then((resolution) => {
-      args.emitCapture({
-        kind: "interactive-result",
-        capturedAt: Date.now(),
-        providerId,
-        requestCaptureId: captureId,
-        requestId: scopedInteractiveReq.providerRequestId,
-        success: true,
-        resolution,
-      });
       const result = buildInteractiveResponse({
         request: resolvedInteractiveReq,
         resolution,
@@ -445,15 +365,6 @@ function handleInteractiveProviderRequest(
       });
     })
     .catch((err) => {
-      args.emitCapture({
-        kind: "interactive-result",
-        capturedAt: Date.now(),
-        providerId,
-        requestCaptureId: captureId,
-        requestId: scopedInteractiveReq.providerRequestId,
-        success: false,
-        errorMessage: err instanceof Error ? err.message : String(err),
-      });
       if (
         sendProviderResponseEncodeErrorIfKnown({
           child: args.providerProcess.child,

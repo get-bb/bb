@@ -5,8 +5,10 @@ import { Link } from "react-router-dom";
 import type {
   Environment,
   GitBranchRefClassification,
+  PullRequestState,
   Thread,
   ThreadListEntry,
+  ThreadPullRequest,
   WorkspaceCommitSummary,
   WorkspaceStatus,
 } from "@bb/domain";
@@ -17,6 +19,7 @@ import {
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
 import { cn } from "@/lib/utils";
+import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@/components/ui/button.js";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
@@ -59,7 +62,7 @@ import {
 import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { useUnarchiveThread } from "../../hooks/mutations/thread-state-mutations";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 
 // ---------------------------------------------------------------------------
 // Each row of the Info tab is a function component that owns its own raw
@@ -323,7 +326,12 @@ export function WorkspacePathRow({
   if (!display) return null;
 
   return (
-    <DetailRow label={display.rowLabel} valueClassName="min-w-0">
+    <DetailRow
+      label={
+        <DetailRowIconLabel icon="FolderGit">{display.rowLabel}</DetailRowIconLabel>
+      }
+      valueClassName="min-w-0"
+    >
       <CopyableInlineLabel
         text={environment.path}
         label={display.copyLabel}
@@ -341,19 +349,91 @@ export interface BranchRowProps {
 }
 
 export function BranchRow({ thread, workspaceStatus }: BranchRowProps) {
-  const branchName = workspaceStatus?.branch.currentBranch ?? null;
-  if (!branchName) return null;
+  const checkoutDisplay = workspaceStatus
+    ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
+    : null;
+  if (checkoutDisplay === null) return null;
   return (
     <DetailRow
-      label={<DetailRowIconLabel icon="GitBranch">Branch</DetailRowIconLabel>}
+      label={
+        <DetailRowIconLabel icon="GitBranch">
+          {checkoutDisplay.rowLabel}
+        </DetailRowIconLabel>
+      }
       valueClassName="min-w-0 truncate"
     >
-      <CopyableInlineLabel
-        text={branchName}
-        label="Copy branch name"
-        successMessage="Branch name copied"
-        errorMessage="Failed to copy branch name"
-      />
+      {checkoutDisplay.copyValue !== null ? (
+        <CopyableInlineLabel
+          text={checkoutDisplay.copyValue}
+          label={checkoutDisplay.copyLabel ?? "Copy checkout value"}
+          title={checkoutDisplay.title}
+          successMessage={checkoutDisplay.copySuccessMessage ?? "Value copied"}
+          errorMessage={
+            checkoutDisplay.copyErrorMessage ?? "Failed to copy value"
+          }
+        >
+          {checkoutDisplay.label}
+        </CopyableInlineLabel>
+      ) : (
+        <span className="block truncate" title={checkoutDisplay.title}>
+          {checkoutDisplay.label}
+        </span>
+      )}
+    </DetailRow>
+  );
+}
+
+interface PullRequestStateDisplay {
+  label: string;
+  /** Background utility for the leading state dot. */
+  dotClass: string;
+}
+
+const PULL_REQUEST_STATE_DISPLAY: Record<
+  PullRequestState,
+  PullRequestStateDisplay
+> = {
+  open: { label: "Open", dotClass: "bg-success" },
+  draft: { label: "Draft", dotClass: "bg-muted-foreground" },
+  merged: { label: "Merged", dotClass: "bg-pr-merged" },
+  closed: { label: "Closed", dotClass: "bg-destructive" },
+};
+
+export interface PullRequestRowProps {
+  pullRequest: ThreadPullRequest | null;
+}
+
+export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
+  if (!pullRequest) return null;
+  const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
+  return (
+    <DetailRow
+      label={<DetailRowIconLabel icon="GitMerge">Pull request</DetailRowIconLabel>}
+      valueClassName="min-w-0"
+    >
+      <a
+        href={pullRequest.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={pullRequest.title}
+        className="inline-flex max-w-full min-w-0 items-center gap-1.5 text-xs text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2"
+      >
+        <span className="shrink-0">PR #{pullRequest.number}</span>
+        <span className="shrink-0 text-muted-foreground">·</span>
+        <span
+          aria-hidden
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            stateDisplay.dotClass,
+          )}
+        />
+        <span className="min-w-0 truncate">{stateDisplay.label}</span>
+        <Icon
+          name="ExternalLink"
+          aria-hidden
+          className="size-3 shrink-0 text-muted-foreground"
+        />
+      </a>
     </DetailRow>
   );
 }
@@ -364,7 +444,6 @@ export interface MergeBaseRowProps {
   selectedMergeBaseBranch: string | undefined;
   mergeBaseBranchRef?: GitBranchRefClassification | null;
   mergeBaseBranchOptions: readonly string[] | undefined;
-  mergeBaseBranchOptionsTruncated?: boolean;
   mergeBaseRemoteBranchOptions?: readonly string[];
   isLoadingMergeBaseBranchOptions: boolean;
   onMergeBaseBranchChange: (branch: string) => void;
@@ -380,7 +459,6 @@ export function MergeBaseRow({
   selectedMergeBaseBranch,
   mergeBaseBranchRef,
   mergeBaseBranchOptions,
-  mergeBaseBranchOptionsTruncated,
   mergeBaseRemoteBranchOptions,
   isLoadingMergeBaseBranchOptions,
   onMergeBaseBranchChange,
@@ -444,7 +522,6 @@ export function MergeBaseRow({
           options={mergeBaseCandidates}
           remoteOptions={remoteMergeBaseCandidates}
           selectedOptionKind={mergeBaseCandidateGroups.selectedOptionKind}
-          optionsTruncated={mergeBaseBranchOptionsTruncated}
           variant="minimal"
           loading={
             isLoadingMergeBaseBranchOptions || canRequestMergeBaseOptions
@@ -502,14 +579,11 @@ export function GitStatusRow({
     workspaceUnavailable,
     workspaceDeleted: isWorkspaceDeleted,
   });
-  // Dirty reads as the timeline error color; a clean tree reads green. Other
-  // states (Untracked / Ahead / Behind / Diverged) stay neutral.
+  // Dirty reads as the timeline error color — the one actionable state. Every
+  // other status, including a clean "Up to date" tree, stays neutral: the
+  // expected state shouldn't spend color drawing the eye.
   const labelClass =
-    display.label === "Dirty"
-      ? "text-destructive"
-      : display.label === "Clean" || display.label === "Up to date"
-        ? "text-success"
-        : "text-foreground";
+    display.label === "Dirty" ? "text-destructive" : "text-foreground";
 
   return (
     <DetailRow
@@ -761,10 +835,10 @@ export interface ThreadMetadataContentProps {
   workspaceStatus: WorkspaceStatus | undefined;
   workspaceStatusError: Error | null;
   workspaceUnavailable?: WorkspaceResolutionFailure;
+  pullRequest: ThreadPullRequest | null;
   selectedMergeBaseBranch: string | undefined;
   mergeBaseBranchRef?: GitBranchRefClassification | null;
   mergeBaseBranchOptions: readonly string[] | undefined;
-  mergeBaseBranchOptionsTruncated?: boolean;
   mergeBaseRemoteBranchOptions?: readonly string[];
   isLoadingMergeBaseBranchOptions: boolean;
   threadSchedules: readonly ThreadSchedule[];
@@ -790,6 +864,7 @@ export function hasAnyThreadMetadata({
   workspaceStatus,
   workspaceStatusError,
   workspaceUnavailable,
+  pullRequest,
   threadSchedules,
 }: Pick<
   ThreadMetadataContentProps,
@@ -799,6 +874,7 @@ export function hasAnyThreadMetadata({
   | "workspaceStatus"
   | "workspaceStatusError"
   | "workspaceUnavailable"
+  | "pullRequest"
   | "threadSchedules"
 >): boolean {
   const parentThreadId = thread.parentThreadId ?? undefined;
@@ -818,6 +894,7 @@ export function hasAnyThreadMetadata({
     parentThreadId ||
     environment ||
     branchName ||
+    pullRequest ||
     showWorkspaceStatus ||
     showThreadChangedFiles ||
     threadSchedules.length > 0 ||
@@ -864,10 +941,10 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     workspaceStatus,
     workspaceStatusError,
     workspaceUnavailable,
+    pullRequest,
     selectedMergeBaseBranch,
     mergeBaseBranchRef,
     mergeBaseBranchOptions,
-    mergeBaseBranchOptionsTruncated,
     mergeBaseRemoteBranchOptions,
     isLoadingMergeBaseBranchOptions,
     threadSchedules,
@@ -906,7 +983,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         selectedMergeBaseBranch={selectedMergeBaseBranch}
         mergeBaseBranchRef={mergeBaseBranchRef}
         mergeBaseBranchOptions={mergeBaseBranchOptions}
-        mergeBaseBranchOptionsTruncated={mergeBaseBranchOptionsTruncated}
         mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
         isLoadingMergeBaseBranchOptions={isLoadingMergeBaseBranchOptions}
         onMergeBaseBranchChange={onMergeBaseBranchChange}
@@ -921,6 +997,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         workspaceUnavailable={workspaceUnavailable}
         selectedMergeBaseBranch={selectedMergeBaseBranch}
       />
+      <PullRequestRow pullRequest={pullRequest} />
       <ArchivedRow thread={thread} />
       <ThreadSchedulesRow schedules={threadSchedules} />
       <ThreadCommitsRow

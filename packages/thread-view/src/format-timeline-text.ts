@@ -19,6 +19,7 @@ import {
   findActiveLatestBundleId,
   type BuildTimelineRowTitleOptions,
 } from "./timeline-row-title.js";
+import { isTimelineFeedSummaryViewRow } from "./timeline-feed-view.js";
 import type {
   ThreadTimelineViewRow,
   TimelineWorkSummaryRow,
@@ -323,10 +324,7 @@ function formatWorkBody(
       if (row.childRows.length > 0) {
         lines.push(
           indentBlock(
-            formatRows(
-              row.childRows,
-              nestedContext(context, row.childRows),
-            ),
+            formatRows(row.childRows, nestedContext(context, row.childRows)),
             "  ",
           ),
         );
@@ -413,9 +411,10 @@ function formatWorkSummary(
 ): string {
   const isActive =
     row.kind === "bundle-summary" && row.id === context.activeLatestBundleId;
-  const lines = [
-    rowHeader(buildTimelineWorkSummaryLabel(row, { active: isActive }), context),
-  ];
+  const summaryLabel = isTimelineFeedSummaryViewRow(row)
+    ? row.feedSummary.title
+    : buildTimelineWorkSummaryLabel(row, { active: isActive });
+  const lines = [rowHeader(summaryLabel, context)];
   if (context.verbose || row.kind === "bundle-summary") {
     const details = formatWorkSummaryDetails(row, context);
     if (details.length > 0) {
@@ -510,11 +509,18 @@ export function formatThreadTimelineText(
   options?: ThreadTimelineTextOptions,
 ): string {
   const viewRows = buildTimelineViewRows(rows);
-  return formatRows(viewRows, {
+  return formatThreadTimelineViewRowsText(viewRows, options);
+}
+
+export function formatThreadTimelineViewRowsText(
+  rows: readonly ThreadTimelineViewRow[],
+  options?: ThreadTimelineTextOptions,
+): string {
+  return formatRows(rows, {
     verbose: options?.verbose ?? false,
     color: options?.color ?? false,
     depth: 0,
     truncateForAudit: options?.truncateForAudit ?? false,
-    activeLatestBundleId: findActiveLatestBundleId(viewRows),
+    activeLatestBundleId: findActiveLatestBundleId(rows),
   });
 }

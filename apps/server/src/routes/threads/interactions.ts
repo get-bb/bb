@@ -1,5 +1,5 @@
 import {
-  resolvePendingInteractionRequestSchema,
+  publicApiRoutes,
   typedRoutes,
   type PublicApiSchema,
 } from "@bb/server-contract";
@@ -33,15 +33,16 @@ export function registerThreadInteractionRoutes(
   const { get, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
+  const routes = publicApiRoutes.threads;
 
-  get("/threads/:id/interactions", (context) => {
+  get(routes.interactions, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
       deps.pendingInteractions.listPendingThreadInteractions(thread.id),
     );
   });
 
-  get("/threads/:id/interactions/:interactionId", (context) => {
+  get(routes.interaction, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
       deps.pendingInteractions.getThreadInteraction({
@@ -53,20 +54,16 @@ export function registerThreadInteractionRoutes(
     );
   });
 
-  post(
-    "/threads/:id/interactions/:interactionId/resolve",
-    resolvePendingInteractionRequestSchema,
-    (context, payload) => {
-      const thread = requirePublicThread(deps.db, context.req.param("id"));
-      return context.json(
-        deps.pendingInteractions.resolvePendingInteraction({
-          threadId: thread.id,
-          interactionId: parsePendingInteractionId(
-            context.req.param("interactionId"),
-          ),
-          resolution: payload,
-        }),
-      );
-    },
-  );
+  post(routes.resolveInteraction, (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    return context.json(
+      deps.pendingInteractions.resolvePendingInteraction({
+        threadId: thread.id,
+        interactionId: parsePendingInteractionId(
+          context.req.param("interactionId"),
+        ),
+        resolution: payload,
+      }),
+    );
+  });
 }

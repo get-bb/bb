@@ -5,7 +5,6 @@ import type {
   EnvironmentChangeKind,
   HostChangeKind,
   SystemChangeKind,
-  WorkflowRunChangeKind,
 } from "@bb/domain";
 
 export interface DbNotifier {
@@ -21,10 +20,6 @@ export interface DbNotifier {
   ): void;
   notifyHost(hostId: string, changes: HostChangeKind[]): void;
   notifySystem(changes: SystemChangeKind[]): void;
-  notifyWorkflowRun(
-    workflowRunId: string,
-    changes: WorkflowRunChangeKind[],
-  ): void;
 }
 
 export const noopNotifier: DbNotifier = {
@@ -33,5 +28,4 @@ export const noopNotifier: DbNotifier = {
   notifyEnvironment() {},
   notifyHost() {},
   notifySystem() {},
-  notifyWorkflowRun() {},
 };

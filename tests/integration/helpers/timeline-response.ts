@@ -1,39 +1,24 @@
 import type {
-  ThreadTimelineResponse,
-  TimelineRow,
-  TimelineWorkflowWorkRow,
+  ThreadTimelineFeedResponse,
+  TimelineFeedRow,
 } from "@bb/server-contract";
 
 export function timelineHasAssistantConversation(
-  timeline: ThreadTimelineResponse,
+  timeline: ThreadTimelineFeedResponse,
 ): boolean {
   return flattenTimelineRows(timeline.rows).some(
     (row) => row.kind === "conversation" && row.role === "assistant",
   );
 }
 
-/**
- * Every workflow work row in the timeline (nested rows included) — the
- * thread-view projection's fold of the anchor `item/backgroundTask/*` rows,
- * which the M5 anchor criteria assert collapses to exactly ONE row per run.
- */
-export function listWorkflowTimelineRows(
-  timeline: ThreadTimelineResponse,
-): TimelineWorkflowWorkRow[] {
-  return flattenTimelineRows(timeline.rows).filter(
-    (row): row is TimelineWorkflowWorkRow =>
-      row.kind === "work" && row.workKind === "workflow",
-  );
-}
-
 export function formatTimelineRowKindsForDiagnostics(
-  timeline: ThreadTimelineResponse,
+  timeline: ThreadTimelineFeedResponse,
 ): string {
   return flattenTimelineRows(timeline.rows).map(formatTimelineRowKind).join(", ");
 }
 
-function flattenTimelineRows(rows: readonly TimelineRow[]): TimelineRow[] {
-  const flattened: TimelineRow[] = [];
+function flattenTimelineRows(rows: readonly TimelineFeedRow[]): TimelineFeedRow[] {
+  const flattened: TimelineFeedRow[] = [];
   for (const row of rows) {
     flattened.push(row);
     switch (row.kind) {
@@ -55,7 +40,7 @@ function flattenTimelineRows(rows: readonly TimelineRow[]): TimelineRow[] {
   return flattened;
 }
 
-function formatTimelineRowKind(row: TimelineRow): string {
+function formatTimelineRowKind(row: TimelineFeedRow): string {
   switch (row.kind) {
     case "conversation":
       return `conversation:${row.role}`;
@@ -65,5 +50,9 @@ function formatTimelineRowKind(row: TimelineRow): string {
       return "turn";
     case "system":
       return `system:${row.systemKind}`;
+    case "bundle-summary":
+      return "bundle-summary";
+    case "step-summary":
+      return "step-summary";
   }
 }
