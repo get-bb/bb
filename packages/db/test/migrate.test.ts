@@ -241,6 +241,8 @@ const terminalSessionRuntimeStateHonestyWhen = 1780718665310;
 const hostDaemonSessionObservabilityMigrationWhen = 1780719536955;
 const threadTypeRemovalMigrationWhen = 1780973302146;
 const eventLargeValuesMigrationWhen = 1781403656069;
+const eventLargeValuesPreOptimizationHash =
+  "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
   __dirname,
   "..",
@@ -2925,6 +2927,23 @@ describe("migrate", () => {
         db,
         createdAt: closedSessionPruneIndexesWhen,
         hash: "published-0002-historical-hash",
+      });
+
+      expect(() => migrate(db)).not.toThrow();
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("accepts the pre-optimization event large values migration hash", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      replaceAppliedMigrationHash({
+        db,
+        createdAt: eventLargeValuesMigrationWhen,
+        hash: eventLargeValuesPreOptimizationHash,
       });
 
       expect(() => migrate(db)).not.toThrow();

@@ -233,62 +233,70 @@ WHERE events.type IN ('item/started', 'item/completed')
   AND events.item_kind = 'fileChange'
   AND json_type(changes.value, '$.diff') = 'text'
   AND length(json_extract(changes.value, '$.diff')) > 512;--> statement-breakpoint
+CREATE TEMP TABLE IF NOT EXISTS event_large_value_file_diff_backfill_targets (
+  event_id text NOT NULL,
+  patch_index integer NOT NULL,
+  json_path text NOT NULL,
+  PRIMARY KEY (event_id, patch_index)
+) WITHOUT ROWID;--> statement-breakpoint
+DELETE FROM event_large_value_file_diff_backfill_targets;--> statement-breakpoint
+INSERT INTO event_large_value_file_diff_backfill_targets (
+  event_id,
+  patch_index,
+  json_path
+)
+SELECT
+  event_id,
+  row_number() OVER (
+    PARTITION BY event_id
+    ORDER BY json_path
+  ) AS patch_index,
+  json_path
+FROM event_large_values
+WHERE item_kind = 'fileChange'
+  AND value_kind = 'file_change_diff';--> statement-breakpoint
 WITH RECURSIVE
-  target_file_diffs AS (
-    SELECT
-      events.id AS event_id,
-      '$.item.changes[' || changes.key || '].diff' AS json_path
-    FROM events, json_each(events.data, '$.item.changes') AS changes
-    WHERE events.type IN ('item/started', 'item/completed')
-      AND events.item_kind = 'fileChange'
-      AND json_type(changes.value, '$.diff') = 'text'
-      AND length(json_extract(changes.value, '$.diff')) > 512
-      AND EXISTS (
-        SELECT 1
-        FROM event_large_values
-        WHERE event_large_values.event_id = events.id
-          AND event_large_values.json_path = '$.item.changes[' || changes.key || '].diff'
-      )
-  ),
-  ranked_file_diffs AS (
-    SELECT
-      event_id,
-      json_path,
-      row_number() OVER (
-        PARTITION BY event_id
-        ORDER BY json_path
-      ) AS patch_index
-    FROM target_file_diffs
-  ),
   patched_events(event_id, patch_index, data) AS (
     SELECT
       events.id,
       0,
       events.data
     FROM events
-    WHERE events.id IN (
-      SELECT event_id
-      FROM target_file_diffs
+    WHERE EXISTS (
+      SELECT 1
+      FROM event_large_value_file_diff_backfill_targets AS targets
+      WHERE targets.event_id = events.id
+        AND targets.patch_index = 1
     )
     UNION ALL
     SELECT
       patched_events.event_id,
-      ranked_file_diffs.patch_index,
-      json_set(patched_events.data, ranked_file_diffs.json_path, '')
+      targets.patch_index,
+      json_set(patched_events.data, targets.json_path, '')
     FROM patched_events
-    JOIN ranked_file_diffs
-      ON ranked_file_diffs.event_id = patched_events.event_id
-     AND ranked_file_diffs.patch_index = patched_events.patch_index + 1
+    JOIN event_large_value_file_diff_backfill_targets AS targets
+      ON targets.event_id = patched_events.event_id
+     AND targets.patch_index = patched_events.patch_index + 1
+  ),
+  final_patched_events AS (
+    SELECT
+      patched_events.event_id,
+      patched_events.data
+    FROM patched_events
+    LEFT JOIN event_large_value_file_diff_backfill_targets AS next_targets
+      ON next_targets.event_id = patched_events.event_id
+     AND next_targets.patch_index = patched_events.patch_index + 1
+    WHERE patched_events.patch_index > 0
+      AND next_targets.event_id IS NULL
   )
 UPDATE events
 SET data = (
-  SELECT patched_events.data
-  FROM patched_events
-  WHERE patched_events.event_id = events.id
-  ORDER BY patched_events.patch_index DESC
-  LIMIT 1
+  SELECT final_patched_events.data
+  FROM final_patched_events
+  WHERE final_patched_events.event_id = events.id
 )
 WHERE events.id IN (
   SELECT event_id
-  FROM target_file_diffs
-);
+  FROM final_patched_events
+);--> statement-breakpoint
+DROP TABLE event_large_value_file_diff_backfill_targets;
