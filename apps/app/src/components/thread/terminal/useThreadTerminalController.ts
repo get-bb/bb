@@ -153,24 +153,17 @@ export function useThreadTerminalController({
     if (!canCreateTerminal || createTerminal.isPending) {
       return;
     }
-    createTerminal.mutate(
-      {
+    void createTerminal
+      .mutateAsync({
         threadId,
         cols: DEFAULT_TERMINAL_COLS,
         rows: DEFAULT_TERMINAL_ROWS,
-      },
-      {
-        onSuccess: (session) => {
-          setActiveFixedTerminal(session.id);
-        },
-      },
-    );
-  }, [
-    canCreateTerminal,
-    createTerminal,
-    setActiveFixedTerminal,
-    threadId,
-  ]);
+      })
+      .then((session) => {
+        setActiveFixedTerminal(session.id);
+      })
+      .catch(() => undefined);
+  }, [canCreateTerminal, createTerminal, setActiveFixedTerminal, threadId]);
 
   const replaceDisconnectedTerminal = useCallback(
     (terminalId: string) => {
