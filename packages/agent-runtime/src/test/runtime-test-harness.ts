@@ -208,6 +208,7 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: false,
+      supportsFork: false,
       supportedPermissionModes: ["full", "workspace-write", "readonly"],
     },
     process: {
@@ -244,6 +245,7 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
             },
           };
         case "thread/resume":
+        case "thread/fork":
         case "skills/configure":
         case "turn/steer":
         case "thread/stop":
@@ -317,6 +319,7 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: false,
+      supportsFork: false,
       supportedPermissionModes: ["full", "workspace-write", "readonly"],
     },
     process: {
@@ -345,6 +348,7 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
             },
           };
         case "thread/resume":
+        case "thread/fork":
         case "skills/configure":
         case "turn/start":
         case "turn/steer":

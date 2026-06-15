@@ -28,6 +28,7 @@ function stubClaudeCodeCatalog(
           supportsRename: false,
           supportsServiceTier: true,
           supportsUserQuestion: true,
+          supportsFork: false,
           supportedPermissionModes: ["full", "workspace-write", "readonly"],
         },
         available: true,

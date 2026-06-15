@@ -108,6 +108,7 @@ const systemExecutionOptions = {
         supportsRename: true,
         supportsServiceTier: false,
         supportsUserQuestion: true,
+        supportsFork: true,
         supportedPermissionModes: ["full", "workspace-write"],
       },
     },

@@ -1195,6 +1195,8 @@ export function createClaudeCodeProviderAdapter(
               input: command.input,
             },
           };
+        case "thread/fork":
+          throw new Error("fork not supported for claude-code");
         case "thread/stop":
           finishOpenProviderTurn({
             registry: turnState,

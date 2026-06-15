@@ -43,6 +43,7 @@ function makeProviderInfo(id: string, displayName: string): ProviderInfo {
       supportsRename: true,
       supportsServiceTier: false,
       supportsUserQuestion: true,
+      supportsFork: false,
       supportedPermissionModes: ["workspace-write"],
     },
     available: true,

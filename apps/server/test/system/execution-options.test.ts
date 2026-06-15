@@ -185,6 +185,7 @@ describe("resolveSystemExecutionOptions", () => {
       supportsRename: true,
       supportsServiceTier: false,
       supportsUserQuestion: true,
+      supportsFork: false,
       supportedPermissionModes: ["full"],
     },
     available: true,

@@ -30,6 +30,7 @@ import type { ServerNotification as CodexServerNotification } from "./generated/
 import type { SandboxPolicy } from "./generated/codex-app-server/schema/v2/SandboxPolicy.js";
 import type { DynamicToolSpec } from "./generated/codex-app-server/schema/v2/DynamicToolSpec.js";
 import type { SandboxMode as CodexSandboxMode } from "./generated/codex-app-server/schema/v2/SandboxMode.js";
+import type { ThreadForkParams } from "./generated/codex-app-server/schema/v2/ThreadForkParams.js";
 import type { ThreadResumeParams } from "./generated/codex-app-server/schema/v2/ThreadResumeParams.js";
 import type { ThreadStartParams } from "./generated/codex-app-server/schema/v2/ThreadStartParams.js";
 import type { TurnStartParams } from "./generated/codex-app-server/schema/v2/TurnStartParams.js";
@@ -184,7 +185,7 @@ type GitHeadState =
 
 type CodexInstructionCommand = Extract<
   AdapterCommand,
-  { type: "thread/start" | "thread/resume" }
+  { type: "thread/start" | "thread/resume" | "thread/fork" }
 >;
 
 interface CodexInstructionOverrides {
@@ -1408,6 +1409,25 @@ export function createCodexProviderAdapter(
             params,
           };
         }
+        case "thread/fork": {
+          const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
+          const params: ThreadForkParams = {
+            threadId: command.sourceProviderThreadId,
+            approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
+            sandbox: preparedGitRoots.permissionSettings.sandbox,
+            cwd: command.cwd,
+            ...resolveCodexInstructionOverrides(command),
+            model: command.options?.model ?? undefined,
+            serviceTier: toCodexServiceTier(command.options?.serviceTier),
+            config: preparedGitRoots.config ?? undefined,
+            persistExtendedHistory: false,
+          };
+          return {
+            kind: "request",
+            method: "thread/fork",
+            params,
+          };
+        }
         case "turn/start": {
           const writableRoots =
             workspaceWriteGitWritableRootsByThreadId.get(command.threadId) ??
@@ -1515,7 +1535,9 @@ export function createCodexProviderAdapter(
 
     translateAcceptedCommand({ command, providerThreadId }) {
       if (
-        (command.type === "thread/start" || command.type === "thread/resume") &&
+        (command.type === "thread/start" ||
+          command.type === "thread/resume" ||
+          command.type === "thread/fork") &&
         providerThreadId
       ) {
         activateThreadGitWritableRoots({

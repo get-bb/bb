@@ -173,6 +173,7 @@ describe("claude-code provider adapter", () => {
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: true,
+      supportsFork: false,
       supportedPermissionModes: ["full", "workspace-write", "readonly"],
     });
   });

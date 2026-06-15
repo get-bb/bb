@@ -1619,6 +1619,7 @@ describe("public thread data routes", () => {
               supportsRename: true,
               supportsServiceTier: true,
               supportsUserQuestion: true,
+              supportsFork: true,
               supportedPermissionModes: ["full", "workspace-write", "readonly"],
             },
             available: true,

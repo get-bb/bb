@@ -216,6 +216,9 @@ export const threadStartCommandSchema = hostDaemonThreadTargetSchema
      *  thread.start). The daemon passes it through to the runtime's shell
      *  environment selection. */
     sessionKind: agentSessionKindSchema,
+    /** Present means fork the new thread from this source provider session
+     *  instead of starting fresh; absent means a normal start. */
+    fork: z.object({ sourceProviderThreadId: z.string().min(1) }).optional(),
   })
   .strict();
 

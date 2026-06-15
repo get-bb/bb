@@ -280,6 +280,7 @@ describe("useThreadCreationOptions", () => {
             supportsRename: false,
             supportsServiceTier: false,
             supportsUserQuestion: false,
+            supportsFork: false,
             supportedPermissionModes: ["full"],
           },
           displayName: "Pi",

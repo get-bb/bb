@@ -13,6 +13,7 @@ const DEFAULT_CAPABILITIES: TestSystemProviderCapabilities = {
   supportsRename: true,
   supportsServiceTier: false,
   supportsUserQuestion: false,
+  supportsFork: false,
   supportedPermissionModes: ["full", "workspace-write", "readonly"],
 };
 

@@ -146,6 +146,11 @@ export interface StartThreadArgs {
    *  query creation); other adapters reject it. Absent means no structured
    *  output. */
   outputSchema?: JsonObject;
+  /**
+   * Present means fork the new thread from this source provider session
+   * instead of starting fresh; absent means a normal start.
+   */
+  fork?: { sourceProviderThreadId: string };
 }
 
 export interface StartThreadResult {

@@ -251,6 +251,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
           supportsRename: true,
           supportsServiceTier: true,
           supportsUserQuestion: true,
+          supportsFork: true,
           supportedPermissionModes: ["workspace-write"],
         },
         available: true,

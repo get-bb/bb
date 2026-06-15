@@ -88,6 +88,7 @@ export async function startThread(
       dynamicTools: command.dynamicTools,
       disallowedTools: command.disallowedTools,
       instructionMode: command.instructionMode,
+      ...(command.fork ? { fork: command.fork } : {}),
     });
     options.runtimeManager.markThreadActive(
       command.environmentId,

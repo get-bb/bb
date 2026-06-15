@@ -24,6 +24,7 @@ const EXISTING_EXECUTION_OPTIONS: SystemExecutionOptionsResponse = {
         supportsRename: true,
         supportsServiceTier: true,
         supportsUserQuestion: true,
+        supportsFork: true,
         supportedPermissionModes: ["full", "workspace-write", "readonly"],
       },
     },

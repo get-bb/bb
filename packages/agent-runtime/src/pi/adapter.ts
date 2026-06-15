@@ -1352,6 +1352,8 @@ export function createPiProviderAdapter(
               input: command.input,
             },
           };
+        case "thread/fork":
+          throw new Error("fork not supported for pi");
         case "thread/stop":
           finishOpenProviderTurn({
             registry: turnState,

@@ -280,6 +280,7 @@ describe("codex provider adapter", () => {
       supportsRename: true,
       supportsServiceTier: true,
       supportsUserQuestion: false,
+      supportsFork: true,
       supportedPermissionModes: ["full", "workspace-write", "readonly"],
     });
   });
