@@ -1,12 +1,16 @@
 import { z } from "zod";
 import {
   promptMentionResourceSchema,
+  type PromptMentionCommandTrigger,
   type PromptMentionResource,
   type PromptTextMention,
 } from "@bb/domain";
 import type { JSONContent } from "@tiptap/react";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import type { PromptMentionSuggestion } from "@/components/promptbox/mentions/types";
+import type {
+  PromptMentionSuggestion,
+  ProviderCommandSuggestion,
+} from "@/components/promptbox/mentions/types";
 
 export interface PromptEditorValue {
   text: string;
@@ -182,5 +186,25 @@ export function promptMentionResourceFromSuggestion(
     entryKind: suggestion.entryKind,
     path: suggestion.path,
     label: suggestion.name,
+  };
+}
+
+interface PromptCommandResourceFromSuggestionArgs {
+  suggestion: ProviderCommandSuggestion;
+  trigger: PromptMentionCommandTrigger;
+}
+
+export function promptCommandResourceFromSuggestion({
+  suggestion,
+  trigger,
+}: PromptCommandResourceFromSuggestionArgs): PromptMentionResource {
+  return {
+    kind: "command",
+    trigger,
+    name: suggestion.name,
+    source: suggestion.source,
+    origin: suggestion.origin,
+    label: suggestion.name,
+    argumentHint: suggestion.argumentHint,
   };
 }

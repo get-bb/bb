@@ -33,6 +33,7 @@ export const THREAD_PENDING_INTERACTIONS_QUERY_KEY =
 export const THREAD_SCHEDULES_QUERY_KEY = "threadSchedules";
 export const THREAD_TERMINALS_QUERY_KEY = "threadTerminals";
 export const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
+export const PROJECT_COMMANDS_PAGES_QUERY_KEY = "projectCommandsPages";
 export const THREAD_STORAGE_FILES_QUERY_KEY = "threadStorageFiles";
 export const THREAD_STORAGE_PATHS_QUERY_KEY = "threadStoragePaths";
 export const THREAD_STORAGE_FILE_PREVIEW_QUERY_KEY = "threadStorageFilePreview";
@@ -201,6 +202,16 @@ export type ProjectCommandsQueryKey = readonly [
   string | undefined,
   string | null,
   string,
+  number,
+  number,
+];
+export type ProjectCommandsPagesQueryKey = readonly [
+  typeof PROJECT_COMMANDS_PAGES_QUERY_KEY,
+  string | undefined,
+  string | undefined,
+  string | null,
+  string,
+  number,
 ];
 export type ThreadStorageFilesQueryKey = readonly [
   typeof THREAD_STORAGE_FILES_QUERY_KEY,
@@ -623,6 +634,8 @@ export function projectCommandsQueryKey(
   providerId: string | undefined,
   environmentId: string | null,
   query: string,
+  offset: number,
+  limit: number,
 ): ProjectCommandsQueryKey {
   return [
     PROJECT_COMMANDS_QUERY_KEY,
@@ -630,6 +643,25 @@ export function projectCommandsQueryKey(
     providerId,
     environmentId,
     query,
+    offset,
+    limit,
+  ];
+}
+
+export function projectCommandsPagesQueryKey(
+  projectId: string | undefined,
+  providerId: string | undefined,
+  environmentId: string | null,
+  query: string,
+  limit: number,
+): ProjectCommandsPagesQueryKey {
+  return [
+    PROJECT_COMMANDS_PAGES_QUERY_KEY,
+    projectId,
+    providerId,
+    environmentId,
+    query,
+    limit,
   ];
 }
 

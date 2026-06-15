@@ -403,7 +403,7 @@ describe("public project command typeahead route", () => {
     });
   });
 
-  it("honors limit and reports truncation; empty query returns the full capped list", async () => {
+  it("honors limit, offset, and reports truncation; empty query returns the full capped list", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-limit",
@@ -440,6 +440,19 @@ describe("public project command typeahead route", () => {
         "bravo",
       ]);
       expect(limited.truncated).toBe(true);
+
+      const nextPageResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}&limit=2&offset=2`,
+      );
+      expect(nextPageResponse.status).toBe(200);
+      const nextPage = commandListResponseSchema.parse(
+        await readJson(nextPageResponse),
+      );
+      expect(nextPage.commands.map((command) => command.name)).toEqual([
+        "charlie",
+        "delta",
+      ]);
+      expect(nextPage.truncated).toBe(false);
 
       const fullResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}`,

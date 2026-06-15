@@ -56,6 +56,7 @@ import {
 } from "./editor/prompt-mention-link";
 import { PromptMentionExtension } from "./editor/prompt-mention-extension";
 import {
+  promptCommandResourceFromSuggestion,
   promptEditorContentFromValue,
   promptEditorInlineContentFromValue,
   promptEditorValueFromDoc,
@@ -169,6 +170,9 @@ export interface TypeaheadCommandConfig {
   suggestions: readonly ProviderCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  loadMore: () => void;
   /** Called whenever the active command query changes; null when no command trigger is active. */
   onQueryChange: (query: string | null) => void;
 }
@@ -195,6 +199,9 @@ export const INERT_TYPEAHEAD_COMMAND_CONFIG: TypeaheadCommandConfig = {
   suggestions: [],
   isLoading: false,
   isError: false,
+  hasMore: false,
+  isLoadingMore: false,
+  loadMore: () => {},
   onQueryChange: () => {},
 };
 
@@ -1070,6 +1077,9 @@ export function PromptBoxInternal({
   const hasSubmittableInput = trimmedValue.length > 0 || hasAttachments;
 
   const activeTriggerKind = activeTrigger?.kind ?? null;
+  const commandHasMore = typeahead.command.hasMore;
+  const commandIsLoadingMore = typeahead.command.isLoadingMore;
+  const loadMoreCommands = typeahead.command.loadMore;
   // The suggestion list driving keyboard nav + Enter/Tab apply for whichever
   // trigger is active. Empty when no trigger is open. Memoized so the keyboard
   // handler's useCallback identity is stable across renders.
@@ -1122,6 +1132,28 @@ export function PromptBoxInternal({
       setSelectedIndex(0);
     }
   }, [activeSuggestions.length, selectedIndex]);
+
+  useEffect(() => {
+    if (
+      activeTriggerKind !== "command" ||
+      !commandHasMore ||
+      commandIsLoadingMore ||
+      activeSuggestions.length === 0
+    ) {
+      return;
+    }
+    const prefetchIndex = Math.max(0, activeSuggestions.length - 3);
+    if (selectedIndex >= prefetchIndex) {
+      loadMoreCommands();
+    }
+  }, [
+    activeSuggestions.length,
+    activeTriggerKind,
+    commandHasMore,
+    commandIsLoadingMore,
+    loadMoreCommands,
+    selectedIndex,
+  ]);
 
   // After applying any suggestion the editor content changed outside React's
   // controlled flow; emit the controlled change, then re-focus, re-sync the
@@ -1205,17 +1237,30 @@ export function PromptBoxInternal({
     (item: ProviderCommandSuggestion) => {
       const currentEditor = editorRef.current;
       if (!currentEditor || activeTrigger === null) return;
+      if (activeTrigger.char !== "/" && activeTrigger.char !== "$") return;
 
-      // Commands insert the provider-native token as PLAIN TEXT (no pill):
-      // `<char><name> ` with a trailing space, caret after it.
-      const tokenText = `${activeTrigger.char}${item.name} `;
+      const serializedText = `${activeTrigger.char}${item.name}`;
+      const resource = promptCommandResourceFromSuggestion({
+        suggestion: item,
+        trigger: activeTrigger.char,
+      });
+      const followingText = currentEditor.state.doc.textBetween(
+        activeTrigger.to,
+        Math.min(activeTrigger.to + 1, currentEditor.state.doc.content.size),
+        "\n",
+        "\n",
+      );
+      const argumentHintText = item.argumentHint?.trim()
+        ? ` ${item.argumentHint.trim()}`
+        : "";
+      const trailingText = /^\s/u.test(followingText) ? "" : " ";
+      const textAfterPill = `${argumentHintText}${trailingText}`;
       triggerKeyRef.current = "";
-      // Command dismissed-range is the typed token span (variable length), so an
-      // Escape after applying still suppresses re-trigger across the whole
-      // inserted token while the caret stays inside it.
+      // Command dismissed-range uses the inserted pill atom plus any visible
+      // argument hint text so Escape remains quiet while the caret stays there.
       dismissedTriggerRef.current = {
         start: activeTrigger.from,
-        end: activeTrigger.from + tokenText.length,
+        end: activeTrigger.from + 2 + textAfterPill.length,
         hasLeftRange: false,
       };
       isRestoringAppliedMentionRef.current = true;
@@ -1229,7 +1274,16 @@ export function PromptBoxInternal({
           .chain()
           .focus()
           .deleteRange({ from: activeTrigger.from, to: activeTrigger.to })
-          .insertContent(tokenText)
+          .insertContent([
+            {
+              type: "mention",
+              attrs: {
+                resource,
+                serializedText,
+              },
+            },
+            ...(textAfterPill ? [{ type: "text", text: textAfterPill }] : []),
+          ])
           .run();
       } finally {
         skipEditorChangeRef.current = false;
@@ -1472,6 +1526,16 @@ export function PromptBoxInternal({
           activeSuggestions.length > 0
         ) {
           event.preventDefault();
+          if (
+            activeTriggerKind === "command" &&
+            selectedIndex >= activeSuggestions.length - 1 &&
+            (commandHasMore || commandIsLoadingMore)
+          ) {
+            if (commandHasMore && !commandIsLoadingMore) {
+              loadMoreCommands();
+            }
+            return true;
+          }
           setSelectedIndex((prev) => (prev + 1) % activeSuggestions.length);
           return true;
         }
@@ -1586,11 +1650,15 @@ export function PromptBoxInternal({
       activeHistoryIndex,
       activeSuggestions,
       activeTrigger,
+      activeTriggerKind,
       applyHistoryDraft,
       applyTrigger,
       canSubmitWithEnterKey,
+      commandHasMore,
+      commandIsLoadingMore,
       history,
       isZenMode,
+      loadMoreCommands,
       onCommandQueryChange,
       onMentionQueryChange,
       onModifierSubmit,

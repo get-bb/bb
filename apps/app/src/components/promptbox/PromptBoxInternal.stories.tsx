@@ -320,6 +320,40 @@ function WithMentionsRow() {
   );
 }
 
+function WithSkillPillRow() {
+  const initialValue = "$moss-hardening-review <changed-note-or-path>";
+  const { value, mentionRanges, onChange } = useControlledValue(initialValue, [
+    storyMention({
+      text: initialValue,
+      token: "$moss-hardening-review",
+      resource: {
+        kind: "command",
+        trigger: "$",
+        name: "moss-hardening-review",
+        source: "skill",
+        origin: "user",
+        label: "moss-hardening-review",
+        argumentHint: "<changed-note-or-path>",
+      },
+    }),
+  ]);
+  return (
+    <PromptBoxInternal
+      value={value}
+      mentionRanges={mentionRanges}
+      onChange={onChange}
+      onSubmit={noop}
+      typeahead={makeTypeahead()}
+      mentionMenuPlacement="bottom"
+      attachments={makeAttachments()}
+      history={baseHistory}
+      submission={makeSubmission()}
+      voice={idleVoice}
+      footerStart={<ExecutionControls {...mockExecution} />}
+    />
+  );
+}
+
 function WithLiveMentionsRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   const [query, setQuery] = useState<string | null>(null);
@@ -449,6 +483,12 @@ export function Overview() {
         hint="thread and file mentions render as editor pills"
       >
         <WithMentionsRow />
+      </StoryRow>
+      <StoryRow
+        label="selected skill"
+        hint="skill command pill plus the SKILL.md argument hint text"
+      >
+        <WithSkillPillRow />
       </StoryRow>
       <StoryRow
         label="live mentions"

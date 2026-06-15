@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type {
   CommandListResponse,
   ProjectBranchesResponse,
@@ -10,6 +10,7 @@ import * as api from "@/lib/api";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   projectCommandsQueryKey,
+  projectCommandsPagesQueryKey,
   projectPathsQueryKey,
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKey,
@@ -44,6 +45,7 @@ interface UseProjectCommandsArgs {
   environmentId: string | null;
   query: string;
   limit: number;
+  offset: number;
 }
 
 const PROJECT_SOURCE_BRANCHES_STALE_TIME_MS = 5_000;
@@ -206,6 +208,8 @@ export function useProjectCommands(
       args.providerId,
       args.environmentId,
       args.query,
+      args.offset,
+      args.limit,
     ),
     queryFn: () =>
       api.listProjectCommands({
@@ -214,11 +218,49 @@ export function useProjectCommands(
         environmentId: args.environmentId,
         query: args.query,
         limit: args.limit,
+        offset: args.offset,
       }),
     enabled,
     staleTime: 15_000,
     retry: false,
     refetchOnWindowFocus: false,
     placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useProjectCommandsPages(
+  args: Omit<UseProjectCommandsArgs, "offset">,
+  options?: QueryOptions,
+) {
+  return useInfiniteQuery({
+    queryKey: projectCommandsPagesQueryKey(
+      args.projectId,
+      args.providerId,
+      args.environmentId,
+      args.query,
+      args.limit,
+    ),
+    queryFn: ({ pageParam }) =>
+      api.listProjectCommands({
+        projectId: requireProjectId(args.projectId, "useProjectCommandsPages"),
+        providerId: requireProviderId(
+          args.providerId,
+          "useProjectCommandsPages",
+        ),
+        environmentId: args.environmentId,
+        query: args.query,
+        limit: args.limit,
+        offset: pageParam,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, _allPages, lastPageParam) =>
+      lastPage.truncated ? lastPageParam + args.limit : undefined,
+    enabled:
+      (options?.enabled ?? true) &&
+      Boolean(args.projectId) &&
+      Boolean(args.providerId),
+    staleTime: 15_000,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 }

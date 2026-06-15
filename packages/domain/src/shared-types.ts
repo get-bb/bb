@@ -123,6 +123,33 @@ export type PromptMentionPathEntryKind = z.infer<
   typeof promptMentionPathEntryKindSchema
 >;
 
+export const promptMentionCommandTriggerValues = ["/", "$"] as const;
+export const promptMentionCommandTriggerSchema = z.enum(
+  promptMentionCommandTriggerValues,
+);
+export type PromptMentionCommandTrigger = z.infer<
+  typeof promptMentionCommandTriggerSchema
+>;
+
+export const promptMentionCommandSourceValues = [
+  "skill",
+  "command",
+] as const;
+export const promptMentionCommandSourceSchema = z.enum(
+  promptMentionCommandSourceValues,
+);
+export type PromptMentionCommandSource = z.infer<
+  typeof promptMentionCommandSourceSchema
+>;
+
+export const promptMentionCommandOriginValues = ["project", "user"] as const;
+export const promptMentionCommandOriginSchema = z.enum(
+  promptMentionCommandOriginValues,
+);
+export type PromptMentionCommandOrigin = z.infer<
+  typeof promptMentionCommandOriginSchema
+>;
+
 export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("thread"),
@@ -136,6 +163,15 @@ export const promptMentionResourceSchema = z.discriminatedUnion("kind", [
     entryKind: promptMentionPathEntryKindSchema,
     path: z.string(),
     label: z.string(),
+  }),
+  z.object({
+    kind: z.literal("command"),
+    trigger: promptMentionCommandTriggerSchema,
+    name: z.string(),
+    source: promptMentionCommandSourceSchema,
+    origin: promptMentionCommandOriginSchema,
+    label: z.string(),
+    argumentHint: z.string().nullable(),
   }),
 ]);
 export type PromptMentionResource = z.infer<typeof promptMentionResourceSchema>;
