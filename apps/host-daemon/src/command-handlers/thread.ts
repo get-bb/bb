@@ -12,6 +12,11 @@ import { requireResolvedWorkspaceForCommand } from "../workspace-resolution.js";
 
 type TurnSubmitCommand = CommandOf<"turn.submit">;
 
+interface ResumeThreadRuntimeIfMissingArgs {
+  command: TurnSubmitCommand;
+  entry: RuntimeEntry;
+}
+
 function requireConfinedPath(rootPath: string, candidatePath: string): string {
   const resolved = resolveContainedPath({
     rootPath,
@@ -34,6 +39,34 @@ async function cleanupAfterPostStagingFailure(
   } catch {
     // Preserve the runtime/provisioning failure that triggered cleanup.
   }
+}
+
+async function resumeThreadRuntimeIfMissing(
+  args: ResumeThreadRuntimeIfMissingArgs,
+): Promise<void> {
+  const { command, entry } = args;
+  const { resumeContext } = command;
+  if (entry.runtime.hasThread(command.threadId)) {
+    return;
+  }
+  if (!resumeContext.providerThreadId) {
+    throw new CommandDispatchError(
+      "unknown_thread_runtime",
+      `No provider thread id available for thread ${command.threadId}`,
+    );
+  }
+  await entry.runtime.resumeThread({
+    environmentId: command.environmentId,
+    threadId: command.threadId,
+    projectId: resumeContext.projectId,
+    providerThreadId: resumeContext.providerThreadId,
+    providerId: resumeContext.providerId,
+    options: command.options,
+    instructions: resumeContext.instructions,
+    dynamicTools: resumeContext.dynamicTools,
+    disallowedTools: resumeContext.disallowedTools,
+    instructionMode: resumeContext.instructionMode,
+  });
 }
 
 export async function startThread(
@@ -98,26 +131,7 @@ export async function ensureThreadRuntime(
     workspaceContext: resumeContext.workspaceContext,
   });
 
-  if (!entry.runtime.hasThread(command.threadId)) {
-    if (!resumeContext.providerThreadId) {
-      throw new CommandDispatchError(
-        "unknown_thread_runtime",
-        `No provider thread id available for thread ${command.threadId}`,
-      );
-    }
-    await entry.runtime.resumeThread({
-      environmentId: command.environmentId,
-      threadId: command.threadId,
-      projectId: resumeContext.projectId,
-      providerThreadId: resumeContext.providerThreadId,
-      providerId: resumeContext.providerId,
-      options: command.options,
-      instructions: resumeContext.instructions,
-      dynamicTools: resumeContext.dynamicTools,
-      disallowedTools: resumeContext.disallowedTools,
-      instructionMode: resumeContext.instructionMode,
-    });
-  }
+  await resumeThreadRuntimeIfMissing({ command, entry });
   return entry;
 }
 
@@ -182,6 +196,7 @@ export async function submitTurn(
     input: staged.input,
   };
   try {
+    await resumeThreadRuntimeIfMissing({ command: stagedCommand, entry });
     switch (command.target.mode) {
       case "start":
         return await runSubmittedTurn(stagedCommand, entry);

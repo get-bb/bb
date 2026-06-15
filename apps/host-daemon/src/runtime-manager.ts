@@ -6,6 +6,7 @@ import {
   type AgentRuntimeOptions,
   type AgentRuntimeSkillRoot,
   type AgentRuntimeProcessExitInfo,
+  type ReapedIdleProviderSession,
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
 import type {
@@ -205,6 +206,20 @@ export interface RuntimeManagerOptions {
   onProcessExit?: AgentRuntimeOptions["onProcessExit"];
 }
 
+export interface RuntimeManagerReapIdleProviderSessionsArgs {
+  idleForMs: number;
+  nowMs: number;
+}
+
+export interface RuntimeManagerReapedIdleProviderSession
+  extends ReapedIdleProviderSession {
+  environmentId: string;
+}
+
+export interface RuntimeManagerReapIdleProviderSessionsResult {
+  reapedSessions: RuntimeManagerReapedIdleProviderSession[];
+}
+
 interface RuntimeWorkspaceWriteRootsArgs {
   threadStorageRootPath: string | null | undefined;
   workspaceRoots: readonly string[];
@@ -300,6 +315,22 @@ export class RuntimeManager {
     return [...this.entries.keys()].map((environmentId) => ({
       environmentId,
     }));
+  }
+
+  async reapIdleProviderSessions(
+    args: RuntimeManagerReapIdleProviderSessionsArgs,
+  ): Promise<RuntimeManagerReapIdleProviderSessionsResult> {
+    const reapedSessions: RuntimeManagerReapedIdleProviderSession[] = [];
+    for (const entry of this.entries.values()) {
+      const result = await entry.runtime.reapIdleProviderSessions(args);
+      for (const session of result.reapedSessions) {
+        reapedSessions.push({
+          ...session,
+          environmentId: entry.environmentId,
+        });
+      }
+    }
+    return { reapedSessions };
   }
 
   getShellEnv(): NonNullable<AgentRuntimeOptions["shellEnv"]> {
@@ -884,6 +915,7 @@ export class RuntimeManager {
         }
         const current = this.entries.get(args.environmentId);
         if (
+          !info.expected &&
           current?.runtime === runtime &&
           runtime.listRunningProviders().length === 0
         ) {

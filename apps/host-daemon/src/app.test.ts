@@ -9,8 +9,16 @@ import {
 } from "@bb/host-daemon-contract";
 import type { HostWatcher } from "@bb/host-watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createHostDaemonApp, type HostDaemonApp } from "./app.js";
+import {
+  createHostDaemonApp,
+  startIdleProviderSessionReaper,
+  type HostDaemonApp,
+} from "./app.js";
 import type { HostDaemonLogger } from "./logger.js";
+import type {
+  RuntimeManagerReapIdleProviderSessionsArgs,
+  RuntimeManagerReapIdleProviderSessionsResult,
+} from "./runtime-manager.js";
 import type { CreateReconnectingWebSocket } from "./server-connection.js";
 import type { ReconnectingWebSocketLike } from "./server-connection-support.js";
 
@@ -42,6 +50,16 @@ interface HostDaemonAppFixture {
   runtimeOptions: RuntimeOptionsRef;
 }
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  reject(error: Error): void;
+  resolve(value: T): void;
+}
+
+type StartIdleProviderSessionReaperArgsForTest = Parameters<
+  typeof startIdleProviderSessionReaper
+>[0];
+
 const tempDirs: string[] = [];
 
 function createLogger() {
@@ -51,6 +69,23 @@ function createLogger() {
     warn: vi.fn(),
     error: vi.fn(),
   } satisfies HostDaemonLogger;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolveFn: ((value: T) => void) | null = null;
+  let rejectFn: ((error: Error) => void) | null = null;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolveFn = resolve;
+    rejectFn = reject;
+  });
+  if (!resolveFn || !rejectFn) {
+    throw new Error("Failed to create deferred promise");
+  }
+  return {
+    promise,
+    reject: rejectFn,
+    resolve: resolveFn,
+  };
 }
 
 async function makeTempDir(prefix: string): Promise<string> {
@@ -202,6 +237,9 @@ function createFakeRuntime(): AgentRuntime {
     getProviderSession() {
       return null;
     },
+    async reapIdleProviderSessions() {
+      return { reapedSessions: [] };
+    },
     hasThread() {
       return false;
     },
@@ -249,6 +287,12 @@ function createToolCallRequest(): ToolCallRequest {
   };
 }
 
+async function settleReaperPromiseChain(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 afterEach(async () => {
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -294,6 +338,125 @@ async function createAppFixture(
 }
 
 describe("createHostDaemonApp", () => {
+  it("runs the idle provider session reaper on a non-overlapping interval", async () => {
+    const logger = createLogger();
+    const firstReap =
+      createDeferred<RuntimeManagerReapIdleProviderSessionsResult>();
+    const failure = new Error("reaper failed");
+    const queuedReaps: Array<
+      () => Promise<RuntimeManagerReapIdleProviderSessionsResult>
+    > = [
+      () => firstReap.promise,
+      async () => {
+        throw failure;
+      },
+    ];
+    const reapIdleProviderSessions = vi.fn(
+      (
+        _args: RuntimeManagerReapIdleProviderSessionsArgs,
+      ): Promise<RuntimeManagerReapIdleProviderSessionsResult> => {
+        const next = queuedReaps.shift();
+        return next
+          ? next()
+          : Promise.resolve({
+              reapedSessions: [],
+            });
+      },
+    );
+    let nowMs = 1_000;
+    let intervalCallback: (() => void) | null = null;
+    let cleared = false;
+    const timer: ReturnType<
+      StartIdleProviderSessionReaperArgsForTest["setIntervalFn"]
+    > = {
+      clear: vi.fn(() => {
+        cleared = true;
+      }),
+      unref: vi.fn(),
+    };
+    const setIntervalFn = vi.fn<
+      StartIdleProviderSessionReaperArgsForTest["setIntervalFn"]
+    >((callback, _intervalMs) => {
+      intervalCallback = callback;
+      return timer;
+    });
+    const triggerTick = (): void => {
+      if (!intervalCallback || cleared) {
+        return;
+      }
+      intervalCallback();
+    };
+
+    const reaper = startIdleProviderSessionReaper({
+      logger,
+      nowMs: () => nowMs,
+      runtimeManager: {
+        reapIdleProviderSessions,
+      },
+      setIntervalFn,
+    });
+
+    expect(setIntervalFn).toHaveBeenCalledWith(expect.any(Function), 300_000);
+    expect(timer.unref).toHaveBeenCalledTimes(1);
+
+    triggerTick();
+    expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
+    expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(1, {
+      idleForMs: 1_800_000,
+      nowMs: 1_000,
+    });
+
+    nowMs = 2_000;
+    triggerTick();
+    expect(reapIdleProviderSessions).toHaveBeenCalledTimes(1);
+
+    firstReap.resolve({
+      reapedSessions: [
+        {
+          environmentId: "env-reaped",
+          idleForMs: 1_900_000,
+          providerId: "codex",
+          providerThreadId: "provider-thread-reaped",
+          threadId: "thread-reaped",
+        },
+      ],
+    });
+    await settleReaperPromiseChain();
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        count: 1,
+        sessions: [
+          {
+            environmentId: "env-reaped",
+            idleForMs: 1_900_000,
+            providerId: "codex",
+            threadId: "thread-reaped",
+          },
+        ],
+      },
+      "Reaped idle provider sessions",
+    );
+
+    triggerTick();
+    await settleReaperPromiseChain();
+    expect(reapIdleProviderSessions).toHaveBeenCalledTimes(2);
+    expect(reapIdleProviderSessions).toHaveBeenNthCalledWith(2, {
+      idleForMs: 1_800_000,
+      nowMs: 2_000,
+    });
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        err: failure,
+      },
+      "Idle provider session reaper failed",
+    );
+
+    reaper.stop();
+    expect(timer.clear).toHaveBeenCalledTimes(1);
+    triggerTick();
+    expect(reapIdleProviderSessions).toHaveBeenCalledTimes(2);
+  });
+
   it("forgets server-retired loaded environments when opening a session", async () => {
     const dataDir = await makeTempDir("bb-host-daemon-app-retired-");
     const workspacePath = await makeTempDir(

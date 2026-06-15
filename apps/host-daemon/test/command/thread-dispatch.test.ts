@@ -336,6 +336,80 @@ describe("thread command dispatch", () => {
     );
   });
 
+  it("resumes turn.submit again when attachment staging loses the hosted thread", async () => {
+    const threadStorageRootPath = await makeTempDir(
+      "bb-turn-submit-reaped-during-staging-",
+    );
+    const harness = createHarness({
+      workspacePath: "/tmp/env-reaped-during-staging",
+    });
+    const threadId = "thread-reaped-during-staging";
+    const providerThreadId = "provider-reaped-during-staging";
+    harness.threadControls.setProviderSession(threadId, {
+      providerId: "fake",
+      providerThreadId,
+    });
+    const originalRunTurn = harness.runtime.runTurn;
+    harness.runtime.runTurn = async (args) => {
+      expect(harness.runtime.hasThread(args.threadId)).toBe(true);
+      await originalRunTurn(args);
+    };
+    const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(
+      async (args) => {
+        expect(args.path).toBe("follow-up-uploaded.txt");
+        expect(harness.runtime.hasThread(threadId)).toBe(true);
+        expect(harness.runtimeState.resumedThreadId).toBeUndefined();
+        harness.threadControls.clearProviderSession(threadId);
+        return {
+          bytes: Buffer.from("content:follow-up-uploaded.txt"),
+        };
+      },
+    );
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "turn.submit",
+          environmentId: "env-reaped-during-staging",
+          threadId,
+          requestId: nextClientRequestId(),
+          input: [{ type: "localFile", path: "follow-up-uploaded.txt" }],
+          options: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            workflowsEnabled: false,
+            permissionMode: "full",
+            permissionEscalation: null,
+          },
+          resumeContext: {
+            workspaceContext: {
+              workspacePath: "/tmp/env-reaped-during-staging",
+              workspaceProvisionType: "unmanaged",
+            },
+            projectId: "project-reaped-during-staging",
+            providerId: "fake",
+            providerThreadId,
+            instructions: "Be a helpful coding agent.",
+            dynamicTools: [],
+            injectedSkillSources: [],
+            instructionMode: "append",
+          },
+          target: { mode: "start" },
+        },
+        {
+          ...harness.dispatchOptions({ threadStorageRootPath }),
+          fetchProjectAttachment,
+        },
+      ),
+    ).resolves.toEqual({ appliedAs: "new-turn" });
+
+    expect(fetchProjectAttachment).toHaveBeenCalledTimes(1);
+    expect(harness.runtimeState.resumedThreadId).toBe(threadId);
+    expect(harness.runtimeState.resumedProviderThreadId).toBe(providerThreadId);
+    expect(harness.runtimeState.ranTurnInput?.[0]?.type).toBe("localFile");
+  });
+
   it("leaves runtime-readable attachment paths unstaged", async () => {
     const threadStorageRootPath = await makeTempDir("bb-no-stage-attachments-");
     const harness = createHarness();

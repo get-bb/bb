@@ -189,6 +189,7 @@ function createRuntime(): FakeDispatchRuntime {
       hostedThreadIds.has(threadId)
         ? { providerId: "fake", providerThreadId: "provider-thread-1" }
         : null,
+    reapIdleProviderSessions: vi.fn(async () => ({ reapedSessions: [] })),
     hasThread: (threadId) => hostedThreadIds.has(threadId),
     getActiveThreadIds: () => [...activeTurnsByThreadId.keys()],
     shutdown: vi.fn(async () => undefined),

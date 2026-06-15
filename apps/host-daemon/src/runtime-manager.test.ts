@@ -257,6 +257,9 @@ function createFakeRuntime() {
     waitForActiveTurn: async (threadId) =>
       activeTurnsByThreadId.get(threadId) ?? null,
     getProviderSession: () => null,
+    reapIdleProviderSessions: vi.fn<AgentRuntime["reapIdleProviderSessions"]>(
+      async () => ({ reapedSessions: [] }),
+    ),
     hasThread: (threadId) => activeTurnsByThreadId.has(threadId),
     getActiveThreadIds: () => [...activeTurnsByThreadId.keys()],
     shutdown: vi.fn(async () => undefined),
@@ -292,6 +295,81 @@ describe("RuntimeManager", () => {
     expect(provisionWorkspace).toHaveBeenCalledTimes(1);
     expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(entry.path).toBe("/tmp/env-1");
+  });
+
+  it("reaps idle provider sessions from loaded runtimes", async () => {
+    const firstRuntime = createFakeRuntime();
+    const secondRuntime = createFakeRuntime();
+    firstRuntime.reapIdleProviderSessions.mockResolvedValue({
+      reapedSessions: [
+        {
+          idleForMs: 1_500,
+          providerId: "codex",
+          providerThreadId: "provider-thread-1",
+          threadId: "thread-1",
+        },
+      ],
+    });
+    secondRuntime.reapIdleProviderSessions.mockResolvedValue({
+      reapedSessions: [
+        {
+          idleForMs: 2_500,
+          providerId: "codex",
+          providerThreadId: "provider-thread-2",
+          threadId: "thread-2",
+        },
+      ],
+    });
+    const runtimes = [firstRuntime, secondRuntime];
+    const createRuntime = vi.fn(() => {
+      const runtime = runtimes.shift();
+      if (!runtime) {
+        throw new Error("Unexpected runtime creation");
+      }
+      return runtime;
+    });
+    const manager = new RuntimeManager({
+      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
+      createRuntime,
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-2",
+      workspacePath: "/tmp/env-2",
+    });
+
+    await expect(
+      manager.reapIdleProviderSessions({ idleForMs: 1_000, nowMs: 5_000 }),
+    ).resolves.toEqual({
+      reapedSessions: [
+        {
+          environmentId: "env-1",
+          idleForMs: 1_500,
+          providerId: "codex",
+          providerThreadId: "provider-thread-1",
+          threadId: "thread-1",
+        },
+        {
+          environmentId: "env-2",
+          idleForMs: 2_500,
+          providerId: "codex",
+          providerThreadId: "provider-thread-2",
+          threadId: "thread-2",
+        },
+      ],
+    });
+    expect(firstRuntime.reapIdleProviderSessions).toHaveBeenCalledWith({
+      idleForMs: 1_000,
+      nowMs: 5_000,
+    });
+    expect(secondRuntime.reapIdleProviderSessions).toHaveBeenCalledWith({
+      idleForMs: 1_000,
+      nowMs: 5_000,
+    });
   });
 
   it("passes staged injected skill roots to created runtimes", async () => {
@@ -1401,6 +1479,7 @@ describe("RuntimeManager", () => {
     });
 
     expect(emittedEvents).toEqual([]);
+    expect(manager.get("env-expected-exit")).toBeDefined();
   });
 
   it("shuts down all tracked environments", async () => {

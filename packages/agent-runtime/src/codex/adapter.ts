@@ -628,7 +628,6 @@ function toCodexPermissionSettings(
 
 export type CodexEvent = CodexServerNotification;
 
-
 function toCodexServiceTier(tier: ServiceTier | undefined): "fast" | undefined {
   return tier === "fast" ? "fast" : undefined;
 }
@@ -1319,8 +1318,9 @@ export function createCodexProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
-    // One Codex app-server process is shared by all loaded threads in an
-    // environment, so thread stops must remain turn-scoped.
+    // Codex app-server connections are owned by the runtime process manager.
+    // BB runs live Codex threads on thread-scoped app-server processes, while
+    // provider-only probes can still use a provider-scoped maintenance process.
     process: {
       command: opts?.processCommand ?? "codex",
       args: opts?.processArgs ?? ["app-server"],

@@ -111,8 +111,13 @@ export interface AgentRuntimeOptions {
 // ---------------------------------------------------------------------------
 
 export interface EnsureProviderArgs {
-  providerId: string;
+  /**
+   * Providers with thread-scoped processes use this to start the process for a
+   * specific bb thread. Omit it for provider-scoped maintenance work such as
+   * model listing.
+   */
   forThreadId?: string;
+  providerId: string;
 }
 
 export interface StartThreadArgs {
@@ -191,6 +196,22 @@ export interface WaitForActiveTurnArgs {
   timeoutMs: number;
 }
 
+export interface ReapIdleProviderSessionsArgs {
+  idleForMs: number;
+  nowMs: number;
+}
+
+export interface ReapedIdleProviderSession {
+  idleForMs: number;
+  providerId: string;
+  providerThreadId: string;
+  threadId: string;
+}
+
+export interface ReapIdleProviderSessionsResult {
+  reapedSessions: ReapedIdleProviderSession[];
+}
+
 export interface RenameThreadArgs {
   threadId: string;
   title: string;
@@ -260,6 +281,15 @@ export interface AgentRuntime {
 
   /** Provider identity for a hosted thread, or `null` when not hosted. */
   getProviderSession(threadId: string): AgentRuntimeProviderSession | null;
+
+  /**
+   * Stops idle live provider sessions without deleting bb thread state or
+   * provider history. The next turn must resume from the persisted provider
+   * thread id.
+   */
+  reapIdleProviderSessions(
+    args: ReapIdleProviderSessionsArgs,
+  ): Promise<ReapIdleProviderSessionsResult>;
 
   /** Whether the runtime currently hosts the thread (turns can run on it). */
   hasThread(threadId: string): boolean;
