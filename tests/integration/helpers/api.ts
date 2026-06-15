@@ -23,6 +23,8 @@ import type {
   EnvironmentActionRequest,
   EnvironmentActionResponse,
   EnvironmentDiffBranchesResponse,
+  EnvironmentDiffFilesResponse,
+  EnvironmentDiffPatchResponse,
   EnvironmentStatusResponse,
   ProjectResponse,
   ResolvePendingInteractionRequest,
@@ -38,6 +40,8 @@ import {
   createPublicApiClient,
   environmentActionResponseSchema,
   environmentDiffBranchesResponseSchema,
+  environmentDiffFilesResponseSchema,
+  environmentDiffPatchResponseSchema,
   environmentDiffResponseSchema,
   environmentStatusResponseSchema,
   projectResponseSchema,
@@ -289,6 +293,41 @@ export async function getEnvironmentDiff(
     throw new Error(diffResponse.message);
   }
   throw new Error(diffResponse.failure.message);
+}
+
+export async function getEnvironmentDiffFiles(
+  api: PublicApiClient,
+  environmentId: string,
+): Promise<EnvironmentDiffFilesResponse> {
+  const response = await api.environments[":id"].diff.files.$get({
+    param: { id: environmentId },
+    query: { target: "uncommitted" },
+  });
+  await expectStatus(
+    response,
+    200,
+    `get environment diff files ${environmentId}`,
+  );
+  return environmentDiffFilesResponseSchema.parse(await response.json());
+}
+
+export async function getEnvironmentDiffPatch(
+  api: PublicApiClient,
+  environmentId: string,
+  paths: string[],
+): Promise<EnvironmentDiffPatchResponse> {
+  // The patch route takes the domain diff target in its body (POST), unlike
+  // the flat `target` query string the GET diff routes use.
+  const response = await api.environments[":id"].diff.patch.$post({
+    param: { id: environmentId },
+    json: { target: { type: "uncommitted" }, paths },
+  });
+  await expectStatus(
+    response,
+    200,
+    `get environment diff patch ${environmentId}`,
+  );
+  return environmentDiffPatchResponseSchema.parse(await response.json());
 }
 
 export async function getEnvironmentStatus(
