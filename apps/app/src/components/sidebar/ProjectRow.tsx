@@ -643,9 +643,10 @@ function EnvironmentThreadGroupHeader({
       {parentLineDepth === undefined ? null : (
         <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
       )}
-      {/* Caret + folder both toggle (the disclosure cluster), each in the same
-          fixed columns threads use so the label aligns flush with sibling
-          threads; the label itself stays inert. */}
+      {/* Only the caret toggles (with its own hover style) — the folder is a
+          decorative grouping glyph, not a click target, matching the other
+          header types. Both sit in the fixed columns threads use so the label
+          aligns flush with sibling threads. */}
       <span className="relative z-10 -ml-1 inline-flex shrink-0">
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
@@ -656,23 +657,18 @@ function EnvironmentThreadGroupHeader({
           onToggle={() => onToggleCollapsed(environmentId)}
         />
       </span>
-      <button
-        type="button"
+      <span
+        className="pointer-events-none relative z-10 inline-flex w-4 shrink-0 items-center justify-center text-subtle-foreground/70"
         aria-hidden="true"
-        tabIndex={-1}
-        onClick={() => onToggleCollapsed(environmentId)}
-        className="relative z-10 inline-flex w-4 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground transition-colors hover:text-foreground"
       >
-        <Icon name={iconName} className="size-3.5" aria-hidden="true" />
-      </button>
+        <Icon name={iconName} className="size-3.5" />
+      </span>
       {/*
-        Subtle (non-navigable chrome) label + leading disclosure caret mark this
-        row as a container, not a navigable thread: clicking it expands/collapses
-        the worktree group rather than opening a thread. The subtle tier matches
-        the section labels — every collapse/expand-only header reads one tier
-        dimmer than the foreground threads, which open on click.
+        A worktree group header is pure UI grouping, not a navigable thread, so
+        its label reads lighter than the worktree THREAD rows (which open on
+        click). Clicking it does nothing — only the caret toggles.
       */}
-      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground">
+      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/70">
         <span className="min-w-0 truncate">
           {environmentName ? (
             <>
@@ -1185,19 +1181,15 @@ function ProjectRowComponent({
                 onToggle={handleProjectRowToggle}
               />
             </span>
-            <button
-              type="button"
+            <span
+              className="pointer-events-none relative z-10 inline-flex w-4 shrink-0 items-center justify-center text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground"
               aria-hidden="true"
-              tabIndex={-1}
-              onClick={handleProjectRowToggle}
-              className="relative z-10 inline-flex w-4 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground"
             >
               <Icon
                 name={isCollapsed ? "Folder" : "FolderOpen"}
                 className="size-3.5"
-                aria-hidden="true"
               />
-            </button>
+            </span>
             <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
               <span className="min-w-0 truncate">{project.name}</span>
             </span>
