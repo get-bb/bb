@@ -11,7 +11,12 @@ import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import {
   getThreadConversationCollapsedAtom,
 } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip.js";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
 import {
@@ -112,6 +117,38 @@ function ThreadDraftIndicator() {
       className="pointer-events-none size-3.5 shrink-0 text-muted-foreground"
       aria-hidden="true"
     />
+  );
+}
+
+interface SidebarLeadingGlyphProps {
+  iconName: IconName;
+  label: string;
+  slotClassName: string;
+}
+
+// The leading identity glyph (fork / worktree / no-project) with a hover
+// tooltip naming it. `relative z-10` lifts the glyph above the row's absolute
+// NavLink overlay so it actually receives the hover (the overlay otherwise
+// swallows it); clicking the small glyph is inert, navigation stays on the
+// title.
+function SidebarLeadingGlyph({
+  iconName,
+  label,
+  slotClassName,
+}: SidebarLeadingGlyphProps) {
+  return (
+    <Tooltip delayDuration={500}>
+      <TooltipTrigger asChild>
+        <span className={cn(slotClassName, "relative z-10")}>
+          <Icon
+            name={iconName}
+            className="size-3.5 text-muted-foreground"
+            aria-label={label}
+          />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -406,32 +443,23 @@ function ThreadRowComponent({
           so it lands flush with a fork sibling's leading icon.
         */}
         {thread.childOrigin === "fork" ? (
-          <span className={leadingGlyphSlotClass} title="Forked thread">
-            <Icon
-              name="Fork"
-              className="size-3.5 text-muted-foreground"
-              aria-label="Forked thread"
-            />
-          </span>
+          <SidebarLeadingGlyph
+            iconName="Fork"
+            label="Forked thread"
+            slotClassName={leadingGlyphSlotClass}
+          />
         ) : leadingWorktreeIcon ? (
-          <span
-            className={leadingGlyphSlotClass}
-            title={leadingWorktreeIconLabel ?? undefined}
-          >
-            <Icon
-              name={leadingWorktreeIcon}
-              className="size-3.5 text-muted-foreground"
-              aria-label={leadingWorktreeIconLabel ?? undefined}
-            />
-          </span>
+          <SidebarLeadingGlyph
+            iconName={leadingWorktreeIcon}
+            label={leadingWorktreeIconLabel ?? "Worktree"}
+            slotClassName={leadingGlyphSlotClass}
+          />
         ) : showNoProjectIcon ? (
-          <span className={leadingGlyphSlotClass} title="Not in a project">
-            <Icon
-              name="FolderMinus"
-              className="size-3.5 text-muted-foreground"
-              aria-label="Not in a project"
-            />
-          </span>
+          <SidebarLeadingGlyph
+            iconName="FolderMinus"
+            label="Not in a project"
+            slotClassName={leadingGlyphSlotClass}
+          />
         ) : null}
         <span
           className={cn(
