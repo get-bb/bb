@@ -223,6 +223,12 @@ describe("prompt draft quotes", () => {
     expect(state.quotes[0]?.id).toEqual(expect.any(String));
   });
 
+  it("ignores an empty or whitespace-only quote", () => {
+    const base = emptyPromptDraftState();
+    expect(addQuoteToDraft(base, "").quotes).toEqual([]);
+    expect(addQuoteToDraft(base, "   \n  ").quotes).toEqual([]);
+  });
+
   it("removes a quote by id without mutating the input state", () => {
     const added = addQuoteToDraft(emptyPromptDraftState(), "keep me");
     const id = added.quotes[0]?.id ?? "";

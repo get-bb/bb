@@ -1,25 +1,15 @@
 import { useEffect, type MouseEvent } from "react";
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "../../ui/icon.js";
-import {
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-} from "../../ui/popover.js";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../../ui/tooltip.js";
+import { Popover, PopoverAnchor, PopoverContent } from "../../ui/popover.js";
 import { preventOverlayTriggerSelection } from "../../ui/overlay-trigger.js";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 
-// Compact icon button matching the timeline hover-action affordance, but
-// always visible while the menu is open (the floating menu is the affordance,
-// so its buttons are not hover-revealed).
+// Labeled horizontal action button for the floating selection menu. Unlike the
+// hover-revealed icon-only `MessageActionBar` buttons, the floating menu IS the
+// affordance, so each action shows its label (matching the approved mock).
 const SELECTION_ACTION_BUTTON_CLASS =
-  "inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-recessed hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none";
+  "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none";
 
 interface SelectionAction {
   icon: IconName;
@@ -42,24 +32,21 @@ function ActionButton({
   text: string;
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label={action.label}
-          className={SELECTION_ACTION_BUTTON_CLASS}
-          // Keep the text selection alive through the click so the action
-          // still receives the selected text (and the menu stays anchored).
-          onMouseDown={(event: MouseEvent) =>
-            preventOverlayTriggerSelection(event)
-          }
-          onClick={() => action.onSelect(text)}
-        >
-          <Icon name={action.icon} className="size-4" aria-hidden="true" />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>{action.label}</TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      className={SELECTION_ACTION_BUTTON_CLASS}
+      // Keep the text selection alive through the click so the action still
+      // receives the selected text (and the menu stays anchored).
+      onMouseDown={(event: MouseEvent) => preventOverlayTriggerSelection(event)}
+      onClick={() => action.onSelect(text)}
+    >
+      <Icon
+        name={action.icon}
+        className="size-4 text-muted-foreground"
+        aria-hidden="true"
+      />
+      {action.label}
+    </button>
   );
 }
 
@@ -94,7 +81,7 @@ export function TimelineSelectionMenu({
   const actions: SelectionAction[] = [
     { icon: "MessageSquarePlus", label: "Add to chat", onSelect: onAddToChat },
     {
-      icon: "MessageSquare",
+      icon: "SideChat",
       label: "Reply in side chat",
       onSelect: onReplyInSideChat,
     },
@@ -127,8 +114,8 @@ export function TimelineSelectionMenu({
         align="center"
         sideOffset={6}
         mobileTitle="Selection actions"
-        // Tight, horizontal, content-width row — override the default
-        // wide popover padding/width.
+        // Tight, horizontal, content-width row — override the default wide
+        // popover padding/width.
         className={cn(
           "flex w-auto items-center gap-0.5 rounded-md border bg-popover p-1 shadow-md",
         )}
@@ -136,11 +123,14 @@ export function TimelineSelectionMenu({
         onEscapeKeyDown={() => onDismiss()}
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
-        <TooltipProvider delayDuration={300}>
-          {actions.map((action) => (
-            <ActionButton key={action.label} action={action} text={text} />
-          ))}
-        </TooltipProvider>
+        {actions.map((action, index) => (
+          <div key={action.label} className="flex items-center">
+            {index > 0 ? (
+              <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
+            ) : null}
+            <ActionButton action={action} text={text} />
+          </div>
+        ))}
       </PopoverContent>
     </Popover>
   );

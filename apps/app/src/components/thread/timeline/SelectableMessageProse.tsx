@@ -86,9 +86,16 @@ export function SelectableMessageProse({
     if (typeof window === "undefined") return;
 
     let frame: number | null = null;
+    // `selectionchange` fires globally, so every mounted message would report
+    // `null` on each tick. Only emit `null` once, after this node had reported
+    // a real selection, so N messages don't thrash a shared controller.
+    let hadSelection = false;
     const report = () => {
       frame = null;
-      onSelectRef.current?.(readSelectionWithinNode(nodeRef.current));
+      const next = readSelectionWithinNode(nodeRef.current);
+      if (next === null && !hadSelection) return;
+      hadSelection = next !== null;
+      onSelectRef.current?.(next);
     };
     const schedule = () => {
       if (frame !== null) return;

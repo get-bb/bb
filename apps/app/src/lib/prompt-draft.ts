@@ -74,13 +74,17 @@ export function addQuoteToDraft(
   state: PromptDraftState,
   text: string,
 ): PromptDraftState {
+  // Guard the boundary: an empty/whitespace-only selection would otherwise
+  // emit a bare "> " block and make an empty draft look dirty.
+  const trimmed = text.trim();
+  if (trimmed === "") return state;
   return {
     ...state,
     quotes: [
       ...state.quotes,
       {
         id: crypto.randomUUID(),
-        text: text.trim(),
+        text: trimmed,
       },
     ],
   };
@@ -241,6 +245,11 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
   return input;
 }
 
+// Note: quotes are write-once at submit. `promptDraftToInput` flattens them
+// into a leading `> ...` text part, and this reverse path intentionally does
+// NOT reconstruct quote identity — a draft rebuilt from `PromptInput[]` (e.g.
+// prompt history / edit-last-message) surfaces the quote as inline body text,
+// not a removable chip. localStorage persistence preserves quotes separately.
 export function promptInputToDraft(
   input: readonly PromptInput[],
 ): PromptDraftState {
