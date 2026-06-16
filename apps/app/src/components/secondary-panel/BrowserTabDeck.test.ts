@@ -117,58 +117,59 @@ describe("buildBrowserTabIdSet", () => {
 });
 
 describe("restoring a thread with persisted browser tabs", () => {
-  it("only the active tab's view is created and shown; inactive tabs stay metadata", () => {
-    // Simulate restore: several persisted browser tabs, one active.
+  it("drives one real attach + show through the coordinator for the restored active tab", () => {
+    // On restore the deck mounts only the tab selectActiveBrowserTab returns;
+    // the single mounted BrowserTabContent attaches its view at the persisted
+    // url and asks the coordinator to show it. This exercises the real
+    // coordinator (not a hand-rolled driver) for the no-other-view-visible-yet
+    // case: with nothing previously visible, show emits exactly one setVisible
+    // true and no spurious hide.
     const browserTabs = [
       makeBrowserTab("tab-a", "https://a.example"),
       makeBrowserTab("tab-b", "https://b.example"),
       makeBrowserTab("tab-c", "https://c.example"),
     ];
-    const activeBrowserTabId = "tab-b";
-
-    const { api, attachments, navigations, visibility } = createRecordingApi();
-    const coordinator = createBrowserViewVisibilityCoordinator(api);
-
-    // The deck mounts ONLY the tab selectActiveBrowserTab returns. Drive the
-    // desktop browser api exactly the way that single mounted BrowserTabContent
-    // would on restore: attach its view at its persisted url and show it.
-    const activeBrowserTab = selectActiveBrowserTab(
-      browserTabs,
-      activeBrowserTabId,
-    );
+    const activeBrowserTab = selectActiveBrowserTab(browserTabs, "tab-b");
     expect(activeBrowserTab).not.toBeNull();
     if (activeBrowserTab === null) {
       throw new Error("expected an active browser tab");
     }
 
+    const { api, attachments, visibility } = createRecordingApi();
+    const coordinator = createBrowserViewVisibilityCoordinator(api);
+
+    let syncBoundsCalls = 0;
     api.attach({
       tabId: activeBrowserTab.id,
       url: activeBrowserTab.url,
       bounds: { x: 0, y: 0, width: 800, height: 600 },
       visible: true,
     });
-    coordinator.show(activeBrowserTab.id, () => {});
+    coordinator.show(activeBrowserTab.id, () => {
+      syncBoundsCalls += 1;
+    });
 
-    const inactiveTabIds = browserTabs
-      .filter((tab) => tab.id !== activeBrowserTabId)
-      .map((tab) => tab.id);
-
-    // The no-eager-loading guarantee of #154: across the whole restore, only
-    // the active tab's view is ever attached or made visible. The inactive
-    // persisted tabs ("tab-a", "tab-c") never trigger an attach, navigate, or
-    // setVisible — they remain pure metadata until the user selects them.
-    expect(attachments).toEqual([
-      { tabId: "tab-b", url: "https://b.example" },
-    ]);
+    expect(attachments).toEqual([{ tabId: "tab-b", url: "https://b.example" }]);
+    // First show from a clean coordinator: bounds synced, the tab shown, and no
+    // hide (there was no previously-visible view to hide). This assertion fails
+    // if show stops syncing bounds before showing or emits a spurious hide.
+    expect(syncBoundsCalls).toBe(1);
     expect(visibility).toEqual([{ tabId: "tab-b", visible: true }]);
+  });
 
-    const touchedTabIds = new Set([
-      ...attachments.map((call) => call.tabId),
-      ...navigations.map((call) => call.tabId),
-      ...visibility.map((call) => call.tabId),
+  it("hides the previously-shown tab before showing the next when the user switches", () => {
+    // The coordinator's core invariant: switching the visible tab hides the old
+    // native view BEFORE showing the new one, regardless of mount/effect order.
+    const { api, visibility } = createRecordingApi();
+    const coordinator = createBrowserViewVisibilityCoordinator(api);
+
+    coordinator.show("tab-b", () => {});
+    coordinator.show("tab-a", () => {});
+
+    expect(visibility).toEqual([
+      { tabId: "tab-b", visible: true },
+      { tabId: "tab-b", visible: false },
+      { tabId: "tab-a", visible: true },
     ]);
-    for (const inactiveTabId of inactiveTabIds) {
-      expect(touchedTabIds.has(inactiveTabId)).toBe(false);
-    }
   });
 });

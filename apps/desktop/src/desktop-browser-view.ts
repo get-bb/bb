@@ -407,6 +407,17 @@ function buildBrowserState(
   };
 }
 
+/**
+ * The single browser-session permission we allow. `clipboard-sanitized-write`
+ * is write-only: an in-page copy button calling `navigator.clipboard.writeText()`
+ * can put sanitized text on the system clipboard, but the page can NOT read the
+ * clipboard (`clipboard-read` stays denied). Every other device/capability
+ * permission (camera, mic, geolocation, notifications, MIDI, …) stays denied.
+ */
+export function isAllowedBrowserPermission(permission: string): boolean {
+  return permission === "clipboard-sanitized-write";
+}
+
 export function createDesktopBrowserViewManager(
   args: CreateDesktopBrowserViewManagerArgs = {},
 ): DesktopBrowserViewManager {
@@ -475,11 +486,17 @@ export function createDesktopBrowserViewManager(
     }
     const browserSession = session.fromPartition(partition);
     // Deny every device/capability permission by default in v1 (camera, mic,
-    // geolocation, notifications, MIDI, …). A prompt UI is a later phase.
-    browserSession.setPermissionRequestHandler((_wc, _permission, callback) => {
-      callback(false);
+    // geolocation, notifications, MIDI, …). The single exception is
+    // `clipboard-sanitized-write`, allowed so in-page copy buttons (e.g.
+    // GitHub) that call `navigator.clipboard.writeText()` work; this is
+    // write-only, so `clipboard-read` stays denied. A prompt UI is a later
+    // phase.
+    browserSession.setPermissionRequestHandler((_wc, permission, callback) => {
+      callback(isAllowedBrowserPermission(permission));
     });
-    browserSession.setPermissionCheckHandler(() => false);
+    browserSession.setPermissionCheckHandler((_wc, permission) =>
+      isAllowedBrowserPermission(permission),
+    );
     // Downloads are denied in v1 (lowest file-surface risk).
     browserSession.on("will-download", (event) => {
       event.preventDefault();
@@ -784,8 +801,11 @@ export function createDesktopBrowserViewManager(
   return {
     attach({ hostWindow, request }) {
       const key = browserViewKey(hostWindow, request.tabId);
+      const existing = entries.get(key) ?? null;
+      // A freshly-created entry starts hidden, so its prior visibility is false.
+      const wasVisible = existing?.visible ?? false;
       const entry =
-        entries.get(key) ??
+        existing ??
         createEntry({
           desiredBounds: request.bounds,
           hostWindow,
@@ -794,6 +814,16 @@ export function createDesktopBrowserViewManager(
       setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
       entry.visible = request.visible;
       applyEntryVisibility(entry, hostWindow);
+      // Focus on a real not-visible → visible transition so a freshly-mounted
+      // active tab (shown via attach, not setVisible) wires the Edit-menu
+      // copy/cut/paste roles and Cmd+C to this view's webContents.
+      if (
+        request.visible &&
+        !wasVisible &&
+        !entry.view.webContents.isDestroyed()
+      ) {
+        entry.view.webContents.focus();
+      }
       loadIfNeeded(entry, request.url);
       pushState(hostWindow, request.tabId);
     },

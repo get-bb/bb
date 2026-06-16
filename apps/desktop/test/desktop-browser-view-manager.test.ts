@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopBrowserViewBounds } from "@bb/server-contract";
 import {
   createDesktopBrowserViewManager,
+  isAllowedBrowserPermission,
   type DesktopBrowserViewManager,
   type DesktopBrowserHostContentBounds,
   type DesktopBrowserHostContentView,
@@ -134,6 +135,17 @@ interface FakeSessionEvent {
 
 type FakeSessionListener = (event: FakeSessionEvent) => void;
 
+type FakePermissionRequestHandler = (
+  webContents: unknown,
+  permission: string,
+  callback: (granted: boolean) => void,
+) => void;
+
+type FakePermissionCheckHandler = (
+  webContents: unknown,
+  permission: string,
+) => boolean;
+
 interface FakeWindowOpenDetails {
   url: string;
 }
@@ -210,6 +222,7 @@ const electronMock = vi.hoisted(() => {
     public canGoBackResult = false;
     public canGoForwardResult = false;
     public destroyed = false;
+    public focusCalls = 0;
     public readonly goBackCalls: string[] = [];
     public readonly goForwardCalls: string[] = [];
     public historyEntries: Array<{ title: string; url: string }> = [];
@@ -265,7 +278,9 @@ const electronMock = vi.hoisted(() => {
       this.destroyed = true;
     }
 
-    focus(): void {}
+    focus(): void {
+      this.focusCalls += 1;
+    }
 
     getTitle(): string {
       return this.title;
@@ -399,6 +414,8 @@ const electronMock = vi.hoisted(() => {
   class FakeSession {
     public readonly willDownloadListeners: FakeSessionListener[] = [];
     public beforeRequestListener: FakeOnBeforeRequestListener | null = null;
+    public permissionCheckHandler: FakePermissionCheckHandler | null = null;
+    public permissionRequestHandler: FakePermissionRequestHandler | null = null;
     public readonly webRequest = {
       onBeforeRequest: (listener: FakeOnBeforeRequestListener | null): void => {
         this.beforeRequestListener = listener;
@@ -409,9 +426,13 @@ const electronMock = vi.hoisted(() => {
       this.willDownloadListeners.push(listener);
     }
 
-    setPermissionCheckHandler(): void {}
+    setPermissionCheckHandler(handler: FakePermissionCheckHandler): void {
+      this.permissionCheckHandler = handler;
+    }
 
-    setPermissionRequestHandler(): void {}
+    setPermissionRequestHandler(handler: FakePermissionRequestHandler): void {
+      this.permissionRequestHandler = handler;
+    }
   }
 
   const fakeSessions: FakeSession[] = [];
@@ -1540,5 +1561,176 @@ describe("DesktopBrowserViewManager", () => {
 
     expect(view.boundsCalls).toHaveLength(1);
     expect(view.visible).toBe(false);
+  });
+
+  it("focuses a freshly-attached active tab so Cmd+C targets its webContents", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 70,
+    });
+
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        url: "",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: true,
+      },
+    });
+
+    const view = requireFakeView(0);
+    expect(view.webContents.focusCalls).toBe(1);
+  });
+
+  it("does not focus a freshly-attached inactive tab", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 71,
+    });
+
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        url: "",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: false,
+      },
+    });
+
+    const view = requireFakeView(0);
+    expect(view.webContents.focusCalls).toBe(0);
+  });
+
+  it("focuses on a real hidden → visible setVisible transition only once", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 72,
+    });
+
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        url: "",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: false,
+      },
+    });
+
+    const view = requireFakeView(0);
+    expect(view.webContents.focusCalls).toBe(0);
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: true },
+    });
+    expect(view.webContents.focusCalls).toBe(1);
+
+    // A redundant re-show must not yank focus back from the address bar.
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: true },
+    });
+    expect(view.webContents.focusCalls).toBe(1);
+  });
+
+  it("re-focuses after a hide → show cycle", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 73,
+    });
+
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        url: "",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: true,
+      },
+    });
+
+    const view = requireFakeView(0);
+    expect(view.webContents.focusCalls).toBe(1);
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: false },
+    });
+    expect(view.webContents.focusCalls).toBe(1);
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: true },
+    });
+    expect(view.webContents.focusCalls).toBe(2);
+  });
+
+  it("allows clipboard-sanitized-write but denies clipboard-read and device permissions", () => {
+    // Write-only clipboard lets in-page copy buttons work; read and every
+    // device/capability permission stay denied.
+    expect(isAllowedBrowserPermission("clipboard-sanitized-write")).toBe(true);
+    expect(isAllowedBrowserPermission("clipboard-read")).toBe(false);
+    expect(isAllowedBrowserPermission("media")).toBe(false);
+    expect(isAllowedBrowserPermission("notifications")).toBe(false);
+    expect(isAllowedBrowserPermission("geolocation")).toBe(false);
+
+    // The same decision flows through the handlers the session registers.
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 74,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+
+    const fakeSession = electronMock.fakeSessions.at(-1);
+    expect(fakeSession).toBeDefined();
+    if (fakeSession === undefined) {
+      throw new Error("Expected a browser session to be created.");
+    }
+    const checkHandler = fakeSession.permissionCheckHandler;
+    const requestHandler = fakeSession.permissionRequestHandler;
+    expect(checkHandler).not.toBeNull();
+    expect(requestHandler).not.toBeNull();
+    if (checkHandler === null || requestHandler === null) {
+      throw new Error("Expected permission handlers to be registered.");
+    }
+
+    expect(checkHandler(null, "clipboard-sanitized-write")).toBe(true);
+    expect(checkHandler(null, "clipboard-read")).toBe(false);
+    expect(checkHandler(null, "media")).toBe(false);
+
+    const requestGrants: boolean[] = [];
+    requestHandler(null, "clipboard-sanitized-write", (granted) => {
+      requestGrants.push(granted);
+    });
+    requestHandler(null, "clipboard-read", (granted) => {
+      requestGrants.push(granted);
+    });
+    requestHandler(null, "media", (granted) => {
+      requestGrants.push(granted);
+    });
+    expect(requestGrants).toEqual([true, false, false]);
   });
 });
