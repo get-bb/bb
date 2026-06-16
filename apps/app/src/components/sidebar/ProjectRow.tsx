@@ -57,6 +57,7 @@ import { cn } from "@/lib/utils";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { getProjectSettingsRoutePath } from "@/lib/route-paths";
+import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
 import {
   ThreadRow,
@@ -229,6 +230,7 @@ interface UseArchiveEnvironmentThreadGroupActionArgs {
   environmentId: string;
   projectId: string;
   selectedThreadId?: string;
+  threads: readonly ThreadListEntry[];
 }
 
 interface UseArchiveEnvironmentThreadGroupActionResult {
@@ -251,6 +253,28 @@ interface UseEnvironmentThreadGroupRenameActionResult {
   renameDialogTarget: EnvironmentRenameDialogTarget | null;
   renameEnvironmentErrorMessage: string | null;
   renameEnvironmentPending: boolean;
+}
+
+interface FormatArchivedEnvironmentThreadsToastTitleArgs {
+  archivedThreadIds: readonly string[];
+  threads: readonly Pick<ThreadListEntry, "id" | "title" | "titleFallback">[];
+}
+
+export function formatArchivedEnvironmentThreadsToastTitle({
+  archivedThreadIds,
+  threads,
+}: FormatArchivedEnvironmentThreadsToastTitleArgs): string {
+  if (archivedThreadIds.length !== 1) {
+    return `Archived ${archivedThreadIds.length} threads`;
+  }
+
+  const archivedThread = threads.find(
+    (thread) => thread.id === archivedThreadIds[0],
+  );
+  if (!archivedThread) {
+    return "Archived 1 thread";
+  }
+  return `Archived ${getThreadDisplayTitle(archivedThread)}`;
 }
 
 function getProjectThreadTreeEmptyStateIcon(
@@ -423,46 +447,46 @@ function ProjectThreadTreeGroup({
   );
 }
 
-function formatArchivedWorktreeThreadMessage(threadCount: number): string {
-  return threadCount === 1
-    ? "Archived 1 worktree thread"
-    : `Archived ${threadCount} worktree threads`;
-}
-
 function useArchiveEnvironmentThreadGroupAction({
   environmentId,
   projectId,
   selectedThreadId,
+  threads,
 }: UseArchiveEnvironmentThreadGroupActionArgs): UseArchiveEnvironmentThreadGroupActionResult {
   const navigate = useNavigate();
   const archiveEnvironmentThreads = useArchiveEnvironmentThreads();
   const {
     isPending: archiveThreadsIsPending,
-    mutate: archiveThreads,
+    mutateAsync: archiveThreads,
     variables,
   } = archiveEnvironmentThreads;
   const archiveThreadsPending =
     archiveThreadsIsPending && variables?.id === environmentId;
   const onArchiveThreads = useCallback(() => {
-    archiveThreads(
-      { id: environmentId },
-      {
-        onSuccess: (response) => {
-          appToast.success(
-            formatArchivedWorktreeThreadMessage(
-              response.archivedThreadIds.length,
-            ),
-          );
-          if (
-            selectedThreadId &&
-            response.archivedThreadIds.includes(selectedThreadId)
-          ) {
-            navigate(`/projects/${projectId}`);
-          }
-        },
-      },
-    );
-  }, [archiveThreads, environmentId, navigate, projectId, selectedThreadId]);
+    void archiveThreads({ id: environmentId })
+      .then((response) => {
+        appToast.success(
+          formatArchivedEnvironmentThreadsToastTitle({
+            archivedThreadIds: response.archivedThreadIds,
+            threads,
+          }),
+        );
+        if (
+          selectedThreadId &&
+          response.archivedThreadIds.includes(selectedThreadId)
+        ) {
+          navigate(`/projects/${projectId}`);
+        }
+      })
+      .catch(() => undefined);
+  }, [
+    archiveThreads,
+    environmentId,
+    navigate,
+    projectId,
+    selectedThreadId,
+    threads,
+  ]);
 
   return {
     archiveThreadsPending,
@@ -782,11 +806,13 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     projectId,
     environmentId,
   });
+  const threads = useMemo(() => nodes.map((node) => node.thread), [nodes]);
   const { archiveThreadsPending, onArchiveThreads } =
     useArchiveEnvironmentThreadGroupAction({
       environmentId,
       projectId,
       selectedThreadId,
+      threads,
     });
   const handleCreateNewThread = useCallback(() => {
     onProjectSelect?.();
