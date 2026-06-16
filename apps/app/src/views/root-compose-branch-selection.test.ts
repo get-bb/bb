@@ -1,43 +1,69 @@
 import { describe, expect, it } from "vitest";
-import { resolveSelectedBranch } from "./root-compose-branch-selection";
+import {
+  carryBranchSelectionAcrossScope,
+  getBranchSelectionScopeKey,
+} from "./root-compose-branch-selection";
 
-describe("resolveSelectedBranch", () => {
-  it("hydrates remembered worktree base branches", () => {
+describe("getBranchSelectionScopeKey", () => {
+  it("returns null until both project and environment are present", () => {
     expect(
-      resolveSelectedBranch({
-        rememberedBranchName: "origin/main",
-        rememberSelection: true,
-        selectedBranch: null,
+      getBranchSelectionScopeKey({
+        environmentValue: "host:host_1:worktree",
+        projectId: undefined,
       }),
-    ).toEqual({
-      name: "origin/main",
-      isNew: false,
-    });
-  });
-
-  it("keeps branch remembering opt-in", () => {
+    ).toBeNull();
     expect(
-      resolveSelectedBranch({
-        rememberedBranchName: "origin/main",
-        rememberSelection: false,
-        selectedBranch: null,
-      }),
+      getBranchSelectionScopeKey({ environmentValue: "", projectId: "proj_1" }),
     ).toBeNull();
   });
 
-  it("prefers the current in-memory selection", () => {
-    expect(
-      resolveSelectedBranch({
-        rememberedBranchName: "origin/main",
-        rememberSelection: true,
-        selectedBranch: {
-          name: "release/1.2",
-          isNew: true,
-        },
-      }),
-    ).toEqual({
-      name: "release/1.2",
-      isNew: true,
+  it("distinguishes worktree and local modes within the same project", () => {
+    const worktree = getBranchSelectionScopeKey({
+      environmentValue: "host:host_1:worktree",
+      projectId: "proj_1",
     });
+    const local = getBranchSelectionScopeKey({
+      environmentValue: "host:host_1:local",
+      projectId: "proj_1",
+    });
+    expect(worktree).not.toBeNull();
+    expect(worktree).not.toBe(local);
+  });
+});
+
+describe("carryBranchSelectionAcrossScope", () => {
+  it("keeps the pick while the scope is unchanged", () => {
+    const selectedBranch = { name: "origin/feature", isNew: false };
+    expect(
+      carryBranchSelectionAcrossScope({
+        previousScopeKey: "proj_1\u0000host:host_1:worktree",
+        currentScopeKey: "proj_1\u0000host:host_1:worktree",
+        selectedBranch,
+      }),
+    ).toBe(selectedBranch);
+  });
+
+  it("re-seeds the fresh default when toggling New Worktree -> Working Locally -> New Worktree", () => {
+    const worktreeKey = "proj_1\u0000host:host_1:worktree";
+    const localKey = "proj_1\u0000host:host_1:local";
+    const picked = { name: "origin/feature", isNew: true };
+
+    // Switching to Working Locally drops the worktree pick.
+    const afterLeavingWorktree = carryBranchSelectionAcrossScope({
+      previousScopeKey: worktreeKey,
+      currentScopeKey: localKey,
+      selectedBranch: picked,
+    });
+    expect(afterLeavingWorktree).toBeNull();
+
+    // Returning to New Worktree does not restore it — the picker re-seeds from
+    // the fresh smart default instead.
+    expect(
+      carryBranchSelectionAcrossScope({
+        previousScopeKey: localKey,
+        currentScopeKey: worktreeKey,
+        selectedBranch: afterLeavingWorktree,
+      }),
+    ).toBeNull();
   });
 });

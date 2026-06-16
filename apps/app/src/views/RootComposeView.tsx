@@ -417,7 +417,6 @@ export function RootComposeView(props: RootComposeViewProps) {
   } = useScopedBranchSelection({
     environmentValue: effectiveEnvironmentValue,
     projectId,
-    rememberSelection: branchEnvironmentMode === "worktree",
   });
   const selectedBranchName = selectedBranch?.name ?? "";
   const hostBranchesQuery = useProjectSourceBranches(
