@@ -66,11 +66,8 @@ export interface ThreadListQueryFilters {
   limit?: number;
 }
 
-export type ArchivedThreadsKindFilter = "all" | "root" | "child";
-
 export interface ArchivedThreadsListFilters {
   projectId: string;
-  kind: ArchivedThreadsKindFilter;
 }
 
 export const ARCHIVED_THREADS_LIST_KIND = "archivedList";

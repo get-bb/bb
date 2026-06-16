@@ -209,7 +209,6 @@ describe("createRealtimeCacheEffects", () => {
       projectId: "project-1",
     });
     const firstProjectArchivedThreadListKey = archivedThreadsListQueryKey({
-      kind: "all",
       projectId: "project-1",
     });
     const secondProjectThreadListKey = threadListQueryKey({
@@ -311,7 +310,6 @@ describe("createRealtimeCacheEffects", () => {
       hasParent: false,
     });
     const archivedThreadListKey = archivedThreadsListQueryKey({
-      kind: "all",
       projectId: "project-1",
     });
     queryClient.setQueryData(activeProjectThreadListKey, []);

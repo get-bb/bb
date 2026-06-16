@@ -155,14 +155,6 @@ function isArchivedThreadsListFilters(
   if (!("projectId" in candidate) || typeof candidate.projectId !== "string") {
     return false;
   }
-  if (
-    !("kind" in candidate) ||
-    (candidate.kind !== "all" &&
-      candidate.kind !== "root" &&
-      candidate.kind !== "child")
-  ) {
-    return false;
-  }
 
   return true;
 }

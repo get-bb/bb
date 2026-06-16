@@ -64,7 +64,6 @@ import {
   threadTimelineTurnSummaryDetailsQueryKey,
   threadsQueryKey,
   type ThreadTimelineTurnSummaryDetailsQueryIdentity,
-  type ArchivedThreadsKindFilter,
 } from "./query-keys";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import { ingestThreadDetailBootstrap } from "../cache-owners/thread-detail-cache-owner";
@@ -234,28 +233,14 @@ function getThreadMentionCandidatePlaceholder({
 
 export interface UseArchivedThreadsFilters {
   projectId: string | undefined;
-  kind: ArchivedThreadsKindFilter;
-}
-
-interface ArchivedThreadsApiFilters {
-  hasParent?: ThreadListFilters["hasParent"];
-}
-
-function archivedThreadsKindToApiFilters(
-  kind: ArchivedThreadsKindFilter,
-): ArchivedThreadsApiFilters {
-  if (kind === "root") return { hasParent: false };
-  if (kind === "child") return { hasParent: true };
-  return {};
 }
 
 export function useArchivedThreads(
   filters: UseArchivedThreadsFilters,
   options?: QueryOptions,
 ) {
-  const { projectId, kind } = filters;
+  const { projectId } = filters;
   const enabled = (options?.enabled ?? true) && Boolean(projectId);
-  const apiFilters = archivedThreadsKindToApiFilters(kind);
   useThreadListRealtimeSubscription({ enabled });
 
   return useInfiniteQuery<
@@ -267,14 +252,12 @@ export function useArchivedThreads(
   >({
     queryKey: archivedThreadsListQueryKey({
       projectId: projectId ?? "",
-      kind,
     }),
     queryFn: ({ pageParam, signal }) =>
       api.listThreads(
         {
           projectId: requireThreadId(projectId ?? "", "useArchivedThreads"),
           archived: true,
-          ...apiFilters,
           limit: ARCHIVED_THREADS_PAGE_SIZE,
           offset: pageParam,
         },
