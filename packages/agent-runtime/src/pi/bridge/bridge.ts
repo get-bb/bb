@@ -6,6 +6,7 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
+  rmSync,
 } from "node:fs";
 import { dirname, extname } from "node:path";
 import { resolve } from "node:path";
@@ -738,18 +739,18 @@ async function handleThreadFork(
     threadId: params.threadId,
   });
 
+  const bridgeSessionDir = resolvePiBridgeSessionDir({ env: process.env });
+  const forked = SessionManager.forkFrom(
+    sourceSessionFile,
+    params.cwd,
+    bridgeSessionDir,
+  );
+  const forkedFile = forked.getSessionFile();
+  if (!forkedFile) {
+    sendError(id, -32000, "Cannot fork: forked pi session was not persisted");
+    return;
+  }
   try {
-    const bridgeSessionDir = resolvePiBridgeSessionDir({ env: process.env });
-    const forked = SessionManager.forkFrom(
-      sourceSessionFile,
-      params.cwd,
-      bridgeSessionDir,
-    );
-    const forkedFile = forked.getSessionFile();
-    if (!forkedFile) {
-      sendError(id, -32000, "Cannot fork: forked pi session was not persisted");
-      return;
-    }
     const targetDir = dirname(targetSessionFile);
     if (!existsSync(targetDir)) {
       mkdirSync(targetDir, { recursive: true });
@@ -758,6 +759,10 @@ async function handleThreadFork(
       renameSync(forkedFile, targetSessionFile);
     }
   } catch (error) {
+    // forkFrom already wrote the forked session to its own filename; if moving
+    // it onto the target path fails, that file would be orphaned in the bridge
+    // session dir. Best-effort remove it before surfacing the error.
+    rmSync(forkedFile, { force: true });
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
     return;

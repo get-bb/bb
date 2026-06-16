@@ -82,18 +82,22 @@ interface ResolveForkDescriptorArgs {
 
 /**
  * Resolve the native-fork descriptor for a child thread, or null when the child
- * should not be provisioned as a fork. A fork clones the parent's provider
- * session at its branch point, so it requires: a fork-origin child of a live
- * parent, a provider that supports native fork, a parent that already has a
- * provider session, and a child whose workspace lands on the same host as the
- * parent (a cross-host clone of a provider session is not possible). Any miss
- * falls back to the lazy text-snapshot seed (fork: null).
+ * cannot be provisioned as a fork. Both forks and side chats are native forks:
+ * they clone the parent's provider session at its branch point so the child
+ * carries the full conversation history (a fork then waits idle; a side chat
+ * runs its question turn). Forking requires: a child of a live parent (any
+ * non-null childOrigin), a provider that supports native fork, a parent that
+ * already has a provider session, and a child whose workspace lands on the same
+ * host as the parent (a cross-host clone of a provider session is not possible).
+ * Returns null when the child is not a child thread (no parent) or the parent's
+ * session cannot be cloned; the consumer treats a null descriptor for an
+ * empty-input child as an unforkable error rather than a silent fresh start.
  */
 function resolveForkDescriptor(
   deps: Pick<ThreadCreateDeps, "db">,
   args: ResolveForkDescriptorArgs,
 ): ThreadForkDescriptor | null {
-  if (args.childOrigin !== "fork" || args.parentThread === null) {
+  if (args.childOrigin === null || args.parentThread === null) {
     return null;
   }
   if (
@@ -504,6 +508,25 @@ export async function createThreadFromRequest(
     parentThread,
     providerId: request.providerId,
   });
+
+  // A fork/side-chat must clone the parent's provider session. When that clone
+  // could not be resolved (parent has no active session, provider lacks fork
+  // support, or a cross-host mismatch) AND there is no input to run a fresh
+  // turn, starting the thread would dispatch an empty, session-less start that
+  // the daemon rejects and that would land as a history-less dead end. Forks
+  // are sent with empty input, so they hit this; side chats carry the user's
+  // question, so they do not. Fail the create with an actionable error instead.
+  if (
+    request.childOrigin !== null &&
+    fork === null &&
+    request.input.length === 0
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "Cannot fork: parent has no active session to clone",
+    );
+  }
 
   return createProvisioningThread(deps, {
     environmentId,

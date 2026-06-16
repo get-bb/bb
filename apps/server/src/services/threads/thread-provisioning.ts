@@ -172,11 +172,15 @@ async function startThreadIfEnvironmentReady(
   }
 
   if (args.context.request.seedWithoutRun && args.context.request.fork === null) {
-    // Non-fork seed anchor (side chat): the thread-start turn is already
-    // persisted and displayed (initiator agent/system). The started agent must
-    // wait for the user's first message, so we do not dispatch a provider run
-    // here — we land the thread in `idle`, ready to accept the user's turn. Its
-    // provider session is created lazily on the first turn.
+    // Non-fork seed anchor: the thread-start turn is already persisted and
+    // displayed (initiator agent/system) but no provider session was cloned.
+    // The started agent must wait for the user's first message, so we do not
+    // dispatch a provider run here — we land the thread in `idle`, ready to
+    // accept the user's turn. Its provider session is created lazily on the
+    // first turn. (Both forks and side chats now clone the parent's session
+    // natively, so they carry a fork descriptor and take the eager-start path
+    // below; this lazy-seed branch is the fallback for a seed-without-run anchor
+    // whose session could not be cloned.)
     const seeded = tryTransition(deps.db, deps.hub, args.thread.id, "idle");
     if (!seeded) {
       // The thread left `provisioning` before we could seed it idle (e.g. a

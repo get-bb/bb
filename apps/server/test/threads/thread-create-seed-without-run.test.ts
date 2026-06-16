@@ -17,6 +17,7 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
@@ -379,6 +380,95 @@ describe("thread creation child-thread boundary validation", () => {
         expect(getThread(harness.db, fork.id)?.childOrigin).toBe("fork");
         expect(getThread(harness.db, fork.id)?.parentThreadId).toBe(
           sourceThreadId,
+        );
+      },
+    );
+  });
+
+  it("forks a side chat from the parent's provider session and runs its question", async () => {
+    await withChildBoundaryHarness(
+      "side-chat-native-fork",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        // Give the parent a live provider session so the side chat clones it.
+        seedTurnStarted(harness.deps, {
+          threadId: sourceThreadId,
+          turnId: "turn-parent",
+          providerThreadId: "provider-parent-session",
+        });
+
+        const sideChat = await createThreadFromRequest(harness.deps, {
+          automationId: null,
+          childOrigin: "side-chat",
+          environment: {
+            type: "host",
+            hostId,
+            workspace: { type: "unmanaged", path },
+          },
+          input: textInput("What did this code do?"),
+          origin: "app",
+          parentThreadId: sourceThreadId,
+          projectId,
+          providerId: "codex",
+          startedOnBehalfOf: null,
+        });
+
+        // The side chat is provisioned as a native fork: the dispatched
+        // thread.start carries the parent's provider session id so the child
+        // clones the full history, AND it still carries the user's question so
+        // the question turn runs immediately.
+        const queuedStart = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" &&
+            command.threadId === sideChat.id,
+        );
+        if (queuedStart.command.type !== "thread.start") {
+          throw new Error("Expected a thread.start command");
+        }
+        expect(queuedStart.command.fork).toEqual({
+          sourceProviderThreadId: "provider-parent-session",
+        });
+        const startInputText = queuedStart.command.input
+          .filter((entry) => entry.type === "text")
+          .map((entry) => entry.text)
+          .join("\n");
+        expect(startInputText).toContain("What did this code do?");
+      },
+    );
+  });
+
+  it("rejects a fork when the parent has no active provider session", async () => {
+    await withChildBoundaryHarness(
+      "fork-no-parent-session",
+      async ({ harness, hostId, path, projectId, sourceThreadId }) => {
+        // Parent has no turn/started ⇒ no provider session to clone. A fork is
+        // sent with empty input, so there is nothing to run a fresh turn with
+        // either. The create must fail rather than dispatch an empty,
+        // session-less start.
+        const error = await captureCreateError(() =>
+          createThreadFromRequest(harness.deps, {
+            automationId: null,
+            childOrigin: "fork",
+            environment: {
+              type: "host",
+              hostId,
+              workspace: { type: "unmanaged", path },
+            },
+            input: [],
+            origin: "app",
+            parentThreadId: sourceThreadId,
+            projectId,
+            providerId: "codex",
+            startedOnBehalfOf: {
+              initiator: "agent",
+              senderThreadId: sourceThreadId,
+            },
+          }),
+        );
+        expect(error.status).toBe(400);
+        expect(error.body.code).toBe("invalid_request");
+        expect(error.body.message).toBe(
+          "Cannot fork: parent has no active session to clone",
         );
       },
     );
