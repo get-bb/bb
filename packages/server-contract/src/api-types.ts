@@ -568,22 +568,36 @@ export const startedOnBehalfOfSchema = z.object({
 });
 export type StartedOnBehalfOf = z.infer<typeof startedOnBehalfOfSchema>;
 
-export const createThreadRequestSchema = z.object({
-  projectId: z.string().min(1),
-  providerId: z.string().min(1).optional(),
-  origin: threadCreateOriginSchema,
-  title: z.string().min(1).optional(),
-  input: z.array(promptInputSchema).min(1),
-  model: z.string().min(1).optional(),
-  serviceTier: serviceTierSchema.optional(),
-  reasoningLevel: reasoningLevelSchema.optional(),
-  permissionMode: permissionModeSchema.optional(),
-  executionInputSources: createExecutionInputSourcesSchema.optional(),
-  environment: environmentArgsSchema,
-  parentThreadId: z.string().min(1).optional(),
-  startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
-  childOrigin: threadChildOriginSchema.nullable().default(null),
-});
+export const createThreadRequestSchema = z
+  .object({
+    projectId: z.string().min(1),
+    providerId: z.string().min(1).optional(),
+    origin: threadCreateOriginSchema,
+    title: z.string().min(1).optional(),
+    // A native fork establishes the cloned provider session with an empty
+    // timeline and lets the user steer the first turn, so it carries no input.
+    // Every other start (normal thread, side chat) requires at least one input,
+    // enforced by the refinement below rather than a blanket `.min(1)`.
+    input: z.array(promptInputSchema),
+    model: z.string().min(1).optional(),
+    serviceTier: serviceTierSchema.optional(),
+    reasoningLevel: reasoningLevelSchema.optional(),
+    permissionMode: permissionModeSchema.optional(),
+    executionInputSources: createExecutionInputSourcesSchema.optional(),
+    environment: environmentArgsSchema,
+    parentThreadId: z.string().min(1).optional(),
+    startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
+    childOrigin: threadChildOriginSchema.nullable().default(null),
+  })
+  .superRefine((value, ctx) => {
+    if (value.childOrigin !== "fork" && value.input.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "input must contain at least one entry",
+        path: ["input"],
+      });
+    }
+  });
 export type CreateThreadRequest = z.infer<typeof createThreadRequestSchema>;
 
 const automationThreadRequestSchema = z.object({

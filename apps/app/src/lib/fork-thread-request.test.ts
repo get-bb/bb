@@ -1,38 +1,6 @@
 import type { Environment, Thread } from "@bb/domain";
-import type { TimelineConversationRow } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { buildForkThreadRequest, isThreadForkable } from "./fork-thread-request";
-
-let nextRowSeq = 0;
-
-function conversationRow(
-  role: TimelineConversationRow["role"],
-  text: string,
-): TimelineConversationRow {
-  const seq = (nextRowSeq += 1);
-  const base = {
-    id: `row_${seq}`,
-    threadId: "thr_source",
-    turnId: "turn_1",
-    sourceSeqStart: seq,
-    sourceSeqEnd: seq,
-    startedAt: seq,
-    createdAt: seq,
-    kind: "conversation" as const,
-    text,
-    attachments: null,
-  };
-  return role === "user"
-    ? {
-        ...base,
-        role: "user",
-        initiator: "user",
-        senderThreadId: null,
-        turnRequest: { kind: "message", status: "accepted" },
-        mentions: [],
-      }
-    : { ...base, role: "assistant", turnRequest: null };
-}
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   const base: Thread = {
@@ -89,8 +57,6 @@ describe("buildForkThreadRequest", () => {
       sourceEnvironment: makeEnvironment({
         branchName: "feature/source-branch",
       }),
-      anchorMessageText: "Here is the failing stack trace.",
-      sourceTimelineRows: [],
       model: "gpt-5",
       permissionMode: "readonly",
     });
@@ -116,8 +82,6 @@ describe("buildForkThreadRequest", () => {
         projectId: "proj_personal",
         workspaceProvisionType: "personal",
       }),
-      anchorMessageText: "Reply only with ok.",
-      sourceTimelineRows: [],
       model: "gpt-5",
       permissionMode: "readonly",
     });
@@ -130,12 +94,10 @@ describe("buildForkThreadRequest", () => {
     });
   });
 
-  it("carries lineage, anchor input, provider and execution options", () => {
+  it("carries lineage, provider and execution options with empty input (native fork)", () => {
     const request = buildForkThreadRequest({
       sourceThread: makeThread({ id: "thr_source", providerId: "codex" }),
       sourceEnvironment: makeEnvironment(),
-      anchorMessageText: "Anchor text",
-      sourceTimelineRows: [],
       model: "gpt-5",
       permissionMode: "workspace-write",
     });
@@ -147,26 +109,19 @@ describe("buildForkThreadRequest", () => {
       permissionMode: "workspace-write",
       parentThreadId: "thr_source",
       childOrigin: "fork",
-      startedOnBehalfOf: {
-        initiator: "agent",
-        senderThreadId: "thr_source",
-      },
+      // The fork is linked purely via childOrigin + parentThreadId; the server
+      // gates the native fork on those, not on startedOnBehalfOf.
+      startedOnBehalfOf: null,
     });
-    expect(request?.input).toEqual([
-      { type: "text", text: "Anchor text", mentions: [] },
-    ]);
-    // The boundary requires senderThreadId === parentThreadId for a fork.
-    expect(request?.startedOnBehalfOf?.senderThreadId).toBe(
-      request?.parentThreadId,
-    );
+    // Empty input: a native fork establishes the cloned session idle (no first
+    // turn) and the user steers the first turn. No anchor seed, no snapshot.
+    expect(request?.input).toEqual([]);
   });
 
   it("omits the title so the fork auto-titles from its first turn (no \"(fork)\" suffix)", () => {
     const request = buildForkThreadRequest({
       sourceThread: makeThread({ title: "Investigate flaky test" }),
       sourceEnvironment: makeEnvironment(),
-      anchorMessageText: "x",
-      sourceTimelineRows: [],
       model: "gpt-5",
       permissionMode: "readonly",
     });
@@ -174,39 +129,10 @@ describe("buildForkThreadRequest", () => {
     expect(request?.title).toBeUndefined();
   });
 
-  it("seeds an agent-only lead-up snapshot before the anchor when the source has prior messages", () => {
-    const anchor = "Here's the plan I'd go with.";
-    const request = buildForkThreadRequest({
-      sourceThread: makeThread(),
-      sourceEnvironment: makeEnvironment(),
-      anchorMessageText: anchor,
-      sourceTimelineRows: [
-        conversationRow("user", "What approach should we take?"),
-        conversationRow("assistant", anchor),
-      ],
-      model: "gpt-5",
-      permissionMode: "readonly",
-    });
-
-    // The visible anchor seed comes first; an agent-only context snapshot follows.
-    expect(request?.input[0]).toEqual({
-      type: "text",
-      text: anchor,
-      mentions: [],
-    });
-    const snapshot = request?.input[1];
-    expect(snapshot).toMatchObject({ type: "text", visibility: "agent-only" });
-    expect(snapshot?.type === "text" ? snapshot.text : "").toContain(
-      "bb thread show thr_source",
-    );
-  });
-
   it("falls back to the source's default branch when no current branch is known", () => {
     const request = buildForkThreadRequest({
       sourceThread: makeThread(),
       sourceEnvironment: makeEnvironment({ branchName: null }),
-      anchorMessageText: "x",
-      sourceTimelineRows: [],
       model: "gpt-5",
       permissionMode: "readonly",
     });
@@ -224,8 +150,6 @@ describe("buildForkThreadRequest", () => {
     const request = buildForkThreadRequest({
       sourceThread: makeThread({ environmentId: null }),
       sourceEnvironment: null,
-      anchorMessageText: "x",
-      sourceTimelineRows: [],
       model: "gpt-5",
       permissionMode: "readonly",
     });
@@ -251,9 +175,7 @@ describe("isThreadForkable", () => {
       buildForkThreadRequest({
         sourceThread: makeThread({ environmentId: null }),
         sourceEnvironment: null,
-        anchorMessageText: "x",
-        sourceTimelineRows: [],
-      model: "gpt-5",
+        model: "gpt-5",
         permissionMode: "readonly",
       }),
     ).toBeNull();

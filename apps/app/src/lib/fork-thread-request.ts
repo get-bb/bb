@@ -1,8 +1,6 @@
 import type { Environment, PermissionMode, Thread } from "@bb/domain";
-import type { TimelineRow } from "@bb/server-contract";
 import type { AppCreateThreadRequest } from "@/lib/api";
 import { resolveChildThreadEnvironment } from "@/lib/child-thread-environment";
-import { buildConversationContextSnapshot } from "@/lib/conversation-context-snapshot";
 
 /**
  * Inputs for building a fork's create-thread request. The source thread
@@ -15,10 +13,6 @@ export interface BuildForkThreadRequestArgs {
   sourceThread: Thread;
   /** Source thread's environment, or null when not yet loaded / personal. */
   sourceEnvironment: Environment | null;
-  /** The forked agent message's visible text (the anchor / seed). */
-  anchorMessageText: string;
-  /** The source thread's timeline rows — snapshotted as the fork's lead-up context. */
-  sourceTimelineRows: readonly TimelineRow[];
   /** Resolved model the fork inherits from the source thread. */
   model: string;
   /** Resolved permission mode the fork inherits from the source thread. */
@@ -41,9 +35,19 @@ export function isThreadForkable(
 }
 
 /**
- * Builds the create-thread request for forking a thread from one of its agent
- * messages (Approach A: the thread is created immediately with the anchor as a
- * seed-without-run thread-start turn; the user steers the first executed turn).
+ * Builds the create-thread request for forking a thread. A fork establishes the
+ * cloned provider session — the server clones the parent's session at its branch
+ * point because the request carries `childOrigin: "fork"` + a forkable
+ * same-host parent — and lands the new thread idle with an empty timeline. The
+ * user steers the first executed turn; the "Forked from <parent>" banner conveys
+ * lineage. The request therefore carries empty input (no anchor seed, no context
+ * snapshot): the runtime's no-input-no-turn guard runs no first turn, so the
+ * cloned session is established without dispatching a run.
+ *
+ * `startedOnBehalfOf` is null: the fork is linked purely via `childOrigin` +
+ * `parentThreadId` (the server gates the native fork on those, not on
+ * `startedOnBehalfOf`), and with empty input there is no first turn to attribute
+ * to the parent.
  *
  * Returns `null` when the source has no resolvable host (e.g. a personal-only
  * source with no environment): a fork always runs in a fresh managed worktree,
@@ -55,26 +59,12 @@ export function isThreadForkable(
 export function buildForkThreadRequest({
   sourceThread,
   sourceEnvironment,
-  anchorMessageText,
-  sourceTimelineRows,
   model,
   permissionMode,
 }: BuildForkThreadRequestArgs): AppCreateThreadRequest | null {
   if (!isThreadForkable(sourceEnvironment)) {
     return null;
   }
-
-  const environment = resolveChildThreadEnvironment(sourceEnvironment);
-
-  // The anchor renders as the fork's visible seed-without-run row; the agent-only
-  // snapshot gives the fork the lead-up that produced it (without cluttering its
-  // timeline) and points it at the full parent thread for anything earlier.
-  const contextSnapshot = buildConversationContextSnapshot({
-    rows: sourceTimelineRows,
-    sourceMessageText: anchorMessageText,
-    parentThreadId: sourceThread.id,
-    scope: "fork",
-  });
 
   return {
     projectId: sourceThread.projectId,
@@ -83,16 +73,12 @@ export function buildForkThreadRequest({
     permissionMode,
     // No title: a fresh fork auto-titles from its first real turn (distinct from
     // the source) rather than echoing the source name with a "(fork)" suffix.
-    input: [
-      { type: "text", text: anchorMessageText, mentions: [] },
-      ...contextSnapshot,
-    ],
-    environment,
+    // Empty input: a native fork is established idle with an empty timeline (the
+    // runtime starts no first turn), and the user steers the first turn.
+    input: [],
+    environment: resolveChildThreadEnvironment(sourceEnvironment),
     parentThreadId: sourceThread.id,
-    startedOnBehalfOf: {
-      initiator: "agent",
-      senderThreadId: sourceThread.id,
-    },
+    startedOnBehalfOf: null,
     childOrigin: "fork",
   };
 }

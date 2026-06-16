@@ -46,10 +46,10 @@ import {
   useCreateThread,
   useSendThreadMessage,
 } from "@/hooks/mutations/thread-runtime-mutations";
-import { buildConversationContextSnapshot } from "@/lib/conversation-context-snapshot";
 import {
   SIDE_CHAT_PERMISSION_MODE,
   buildSideChatCreateRequest,
+  resolveSideChatReplyReference,
 } from "@/lib/side-chat-create-request";
 import { HttpError } from "@/lib/api";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
@@ -92,7 +92,10 @@ export interface SideChatTabContentProps {
    * / for a personal-project source. Resolves the side chat's own workspace.
    */
   sourceEnvironment: Environment | null;
-  /** The main thread's timeline rows, snapshotted into the first turn. */
+  /**
+   * The main thread's timeline rows. Used to resolve the anchored-message reply
+   * reference (whether the anchor is the parent's last conversation message).
+   */
   sourceTimelineRows: readonly TimelineRow[];
   onSetThreadId: SetSideChatThreadId;
 }
@@ -228,6 +231,21 @@ export function SideChatTabContent({
     [],
   );
 
+  // The anchored-message reply reference: present only when the anchor is NOT
+  // the parent's last conversation message (the most recent exchange needs no
+  // explicit pointer). When present it both renders as a "Replying to" quote
+  // above the conversation and is carried into the first turn as agent-only
+  // context. Captured at the parent's current timeline because the side-chat
+  // anchor is fixed at open time.
+  const replyReference = useMemo(
+    () =>
+      resolveSideChatReplyReference({
+        anchorMessageText: tab.sourceMessageText,
+        sourceTimelineRows,
+      }),
+    [sourceTimelineRows, tab.sourceMessageText],
+  );
+
   const submitText = useCallback(
     (text: string) => {
       if (childThreadId !== null) {
@@ -253,18 +271,12 @@ export function SideChatTabContent({
       if (sourceThread.environmentId !== null && sourceEnvironment === null) {
         return;
       }
-      const contextSnapshot = buildConversationContextSnapshot({
-        rows: sourceTimelineRows,
-        sourceMessageText: tab.sourceMessageText,
-        parentThreadId: sourceThread.id,
-        scope: "side-chat",
-      });
       const request = buildSideChatCreateRequest({
         projectId: sourceThread.projectId,
         sourceThreadId: sourceThread.id,
         sourceEnvironment,
         question: text,
-        contextSnapshot,
+        replyReference,
         providerId: sourceThread.providerId,
         model: executionOptions.model,
         title: tab.title,
@@ -284,15 +296,14 @@ export function SideChatTabContent({
       createThread,
       executionOptionsQuery.data,
       onSetThreadId,
+      replyReference,
       sendThreadMessage,
       sourceEnvironment,
       sourceThread.environmentId,
       sourceThread.id,
       sourceThread.projectId,
       sourceThread.providerId,
-      sourceTimelineRows,
       tab.id,
-      tab.sourceMessageText,
       tab.title,
     ],
   );
@@ -478,6 +489,20 @@ export function SideChatTabContent({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3">
+        {replyReference !== null ? (
+          // The anchored message the side chat replies to, shown as a quote so
+          // it is clear which earlier message is in focus (the most recent
+          // message is omitted — it needs no pointer). Mirrors the agent-only
+          // reply reference carried into the first turn.
+          <figure className="mx-1 mb-3 border-l-2 border-border pl-2.5">
+            <figcaption className="text-xs font-medium text-subtle-foreground">
+              Replying to
+            </figcaption>
+            <blockquote className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">
+              {replyReference}
+            </blockquote>
+          </figure>
+        ) : null}
         {childThreadId === null ? (
           <EmptyStatePanel className="flex min-h-24 flex-1 items-center justify-center">
             <div className="flex max-w-64 items-center justify-center gap-1.5">

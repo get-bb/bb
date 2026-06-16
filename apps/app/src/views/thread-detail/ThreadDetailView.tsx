@@ -565,14 +565,10 @@ export function ThreadDetailView() {
   const forkThreadFromMessage = useForkThreadFromMessage({
     sourceThread: thread ?? null,
     sourceEnvironment: environment ?? null,
-    sourceTimelineRows: timelineRows,
   });
-  const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(
-    (target) => {
-      void forkThreadFromMessage(target);
-    },
-    [forkThreadFromMessage],
-  );
+  const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(() => {
+    void forkThreadFromMessage();
+  }, [forkThreadFromMessage]);
   // A fork always runs in a fresh managed worktree branched off the source's
   // host. Drop the Fork handler (not just disable it) for a host-less source
   // (a personal-project thread with no environment) — matching the

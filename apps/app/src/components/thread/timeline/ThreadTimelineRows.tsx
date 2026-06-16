@@ -743,14 +743,11 @@ function ConversationRow({ row }: ConversationRowProps) {
       />
     );
   }
-  // Fork anchors on the exact agent row: the handler keys on this row's text,
-  // so a click forks the active thread from this message. Omit the handler
+  // Fork clones the whole thread (native session fork), so the button forks the
+  // active thread regardless of which agent row it sits on. Omit the handler
   // entirely when no host can fork, which keeps the Fork button out of the
   // action bar rather than rendering it dead.
-  const onFork =
-    onForkMessage === undefined
-      ? undefined
-      : () => onForkMessage({ messageText: row.text });
+  const onFork = onForkMessage === undefined ? undefined : onForkMessage;
   // Side chat anchors on the same agent row text; both actions share the
   // canSpawnChild depth guard (both spawn a child thread off the active thread).
   const onSideChat =

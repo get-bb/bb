@@ -2,32 +2,25 @@ import { useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Environment, Thread } from "@bb/domain";
-import type { TimelineRow } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { getThreadRoutePath } from "@/lib/app-route-paths";
 import { buildForkThreadRequest } from "@/lib/fork-thread-request";
 import { threadDefaultExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 
-export interface ForkThreadFromMessageArgs {
-  /** The forked agent message's visible text (rendered as the fork anchor). */
-  messageText: string;
-}
-
 export interface UseForkThreadFromMessageArgs {
   /** Source thread the fork branches from. Null until the thread loads. */
   sourceThread: Thread | null;
   /** Source thread's environment. Null until it loads / for personal threads. */
   sourceEnvironment: Environment | null;
-  /** Source thread's timeline rows — snapshotted as the fork's lead-up context. */
-  sourceTimelineRows: readonly TimelineRow[];
 }
 
 /**
  * Builds the fork create-thread request, creates the forked thread, and
- * navigates to it (Approach A: the thread is seeded with the anchor as a
- * display-only thread-start turn and waits for the user's first message). Focus
- * is handled by the thread-detail composer, which auto-focuses on mount keyed on
+ * navigates to it. A native fork clones the parent's provider session at its
+ * branch point, so the new thread opens with an empty timeline and the full
+ * forked history behind it; the user steers the first executed turn. Focus is
+ * handled by the thread-detail composer, which auto-focuses on mount keyed on
  * the new thread id — no explicit focus signal is threaded here.
  *
  * Returns a no-op handler while the source thread/environment are unresolved or
@@ -37,10 +30,7 @@ export interface UseForkThreadFromMessageArgs {
 export function useForkThreadFromMessage({
   sourceThread,
   sourceEnvironment,
-  sourceTimelineRows,
-}: UseForkThreadFromMessageArgs): (
-  args: ForkThreadFromMessageArgs,
-) => Promise<void> {
+}: UseForkThreadFromMessageArgs): () => Promise<void> {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const createThread = useCreateThread();
@@ -50,60 +40,48 @@ export function useForkThreadFromMessage({
   // and cleared in `finally`, closing that window.
   const forkInFlightRef = useRef(false);
 
-  return useCallback(
-    async ({ messageText }: ForkThreadFromMessageArgs) => {
-      if (
-        sourceThread === null ||
-        createThread.isPending ||
-        forkInFlightRef.current
-      ) {
+  return useCallback(async () => {
+    if (
+      sourceThread === null ||
+      createThread.isPending ||
+      forkInFlightRef.current
+    ) {
+      return;
+    }
+
+    forkInFlightRef.current = true;
+    try {
+      // model / permissionMode are not on the thread row; resolve the source's
+      // effective execution options (cached if already fetched by the composer).
+      const executionOptions = await queryClient.fetchQuery({
+        queryKey: threadDefaultExecutionOptionsQueryKey(sourceThread.id),
+        queryFn: () => api.getThreadDefaultExecutionOptions(sourceThread.id),
+      });
+      if (executionOptions === null) {
         return;
       }
 
-      forkInFlightRef.current = true;
-      try {
-        // model / permissionMode are not on the thread row; resolve the source's
-        // effective execution options (cached if already fetched by the composer).
-        const executionOptions = await queryClient.fetchQuery({
-          queryKey: threadDefaultExecutionOptionsQueryKey(sourceThread.id),
-          queryFn: () => api.getThreadDefaultExecutionOptions(sourceThread.id),
-        });
-        if (executionOptions === null) {
-          return;
-        }
-
-        const request = buildForkThreadRequest({
-          sourceThread,
-          sourceEnvironment,
-          anchorMessageText: messageText,
-          sourceTimelineRows,
-          model: executionOptions.model,
-          permissionMode: executionOptions.permissionMode,
-        });
-        if (request === null) {
-          return;
-        }
-
-        const thread = await createThread.mutateAsync(request);
-        navigate(
-          getThreadRoutePath({
-            projectId: thread.projectId,
-            threadId: thread.id,
-          }),
-        );
-      } catch {
-        // Global mutation error handling already surfaced the failure.
-      } finally {
-        forkInFlightRef.current = false;
+      const request = buildForkThreadRequest({
+        sourceThread,
+        sourceEnvironment,
+        model: executionOptions.model,
+        permissionMode: executionOptions.permissionMode,
+      });
+      if (request === null) {
+        return;
       }
-    },
-    [
-      createThread,
-      navigate,
-      queryClient,
-      sourceEnvironment,
-      sourceThread,
-      sourceTimelineRows,
-    ],
-  );
+
+      const thread = await createThread.mutateAsync(request);
+      navigate(
+        getThreadRoutePath({
+          projectId: thread.projectId,
+          threadId: thread.id,
+        }),
+      );
+    } catch {
+      // Global mutation error handling already surfaced the failure.
+    } finally {
+      forkInFlightRef.current = false;
+    }
+  }, [createThread, navigate, queryClient, sourceEnvironment, sourceThread]);
 }

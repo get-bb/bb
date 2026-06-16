@@ -195,13 +195,10 @@ async function startThreadIfEnvironmentReady(
   // short-circuit, we issue the real start carrying the fork descriptor so the
   // child's provider session is cloned from the parent at its branch point now.
   //
-  // The runtime starts no first turn only when the start input is empty (its
-  // no-input-no-turn guard). Today the app still sends the fork's seed input
-  // ([anchorText, ...contextSnapshot]) and we pass it through unchanged, so the
-  // forked session does run that input as its first turn. Dropping the seed (and
-  // making the input redundant against the cloned session) is Phase 5, once the
-  // app stops sending the snapshot; only then does seedWithoutRun mean "no first
-  // turn" for forks.
+  // The app sends a fork with empty input, and the runtime starts no first turn
+  // when the start input is empty (its no-input-no-turn guard). So the forked
+  // session is established and the thread lands idle with an empty timeline; the
+  // user steers the first executed turn.
   await requestThreadStart(deps, {
     thread: args.thread,
     environment: {
