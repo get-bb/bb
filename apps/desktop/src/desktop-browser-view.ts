@@ -1,4 +1,4 @@
-import { WebContentsView, session, type Session } from "electron";
+import { Menu, WebContentsView, session, type Session } from "electron";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
@@ -622,6 +622,38 @@ export function createDesktopBrowserViewManager(
       return { action: "deny" };
     });
 
+    // Right-click menu for the untrusted browser view. Built from this view's
+    // own webContents so the standard editing roles act on it (not the host
+    // React surface), giving Copy parity even when focus is elsewhere. Only
+    // plain editing roles are exposed — no dev tools, reload, or bb-bridge
+    // surface — keeping the untrusted-content posture.
+    webContents.on("context-menu", (_event, params) => {
+      if (webContents.isDestroyed()) {
+        return;
+      }
+      const { editFlags } = params;
+      const menu = Menu.buildFromTemplate([
+        {
+          role: "cut",
+          enabled: editFlags.canCut,
+        },
+        {
+          role: "copy",
+          enabled: editFlags.canCopy && params.selectionText.length > 0,
+        },
+        {
+          role: "paste",
+          enabled: editFlags.canPaste,
+        },
+        { type: "separator" },
+        {
+          role: "selectAll",
+          enabled: editFlags.canSelectAll,
+        },
+      ]);
+      menu.popup();
+    });
+
     const refresh = () => pushState(hostWindow, tabId);
     webContents.on("did-start-loading", refresh);
     webContents.on("did-stop-loading", refresh);
@@ -810,8 +842,20 @@ export function createDesktopBrowserViewManager(
     },
     setVisible({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        const wasVisible = entry.visible;
         entry.visible = request.visible;
         applyEntryVisibility(entry, hostWindow);
+        // Focus the view only on a real not-visible → visible transition so the
+        // Edit-menu copy/cut/paste roles and Cmd+C target this view's
+        // webContents (the focused one). Skip redundant re-syncs so we never
+        // yank focus away from the React address bar mid-interaction.
+        if (
+          request.visible &&
+          !wasVisible &&
+          !entry.view.webContents.isDestroyed()
+        ) {
+          entry.view.webContents.focus();
+        }
       });
     },
     beginWindowResize(hostWindow) {
