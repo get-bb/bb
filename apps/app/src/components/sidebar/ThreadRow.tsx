@@ -317,6 +317,15 @@ function ThreadRowComponent({
     thread.projectId === PERSONAL_PROJECT_ID &&
     thread.childOrigin !== "fork" &&
     leadingWorktreeIcon === null;
+  // A row nested under an indent guide (a thread child, or a worktree-group
+  // member) keeps the glyph column reserved even when it has no glyph, so its
+  // title clears the divider and lines up with a fork sibling's title instead
+  // of sitting cramped against the guide. Top-level rows don't reserve it.
+  const reserveGlyphColumn =
+    !showNoProjectIcon &&
+    thread.childOrigin !== "fork" &&
+    leadingWorktreeIcon === null &&
+    (thread.parentThreadId !== null || options.isEnvGrouped);
   const parentDragBindings = parentOptions?.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -385,11 +394,11 @@ function ThreadRowComponent({
           />
         )}
         {/*
-          Identity glyph (fork / worktree), rendered only when present. An empty
-          column is NOT reserved: a glyph-less row's title sits right after the
-          caret (no dead gap), and a worktree-group child — which suppresses its
-          glyph — lands in the same column as a sibling fork's leading icon
-          rather than being pushed a column further right.
+          Identity glyph (fork / worktree / no-project). A top-level glyph-less
+          row reserves nothing — its title sits right after the caret (no dead
+          gap). A glyph-less row nested under an indent guide instead keeps the
+          column reserved (see reserveGlyphColumn) so its title clears the guide
+          and aligns with a fork sibling's title.
         */}
         {thread.childOrigin === "fork" ? (
           <span
@@ -424,6 +433,8 @@ function ThreadRowComponent({
               aria-label="Not in a project"
             />
           </span>
+        ) : reserveGlyphColumn ? (
+          <span className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS} aria-hidden="true" />
         ) : null}
         <span className="min-w-0 truncate">{threadTitle}</span>
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
