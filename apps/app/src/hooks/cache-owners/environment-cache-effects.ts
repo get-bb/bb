@@ -3,7 +3,6 @@ import {
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
   removeEnvironmentDiffPatchQueries,
 } from "./query-cache";
-import { forgetDiffPatchEvictionGeneration } from "./environment-diff-patch-cache-owner";
 import {
   environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
@@ -37,9 +36,6 @@ export function removeEnvironmentScopedQueries({
     queryKey: environmentDiffFilesQueryKeyPrefix(environmentId),
   });
   removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
-  // The environment is gone, so drop its eviction counter too (the
-  // removeEnvironmentDiffPatchQueries above only removes queries + bumps it).
-  forgetDiffPatchEvictionGeneration(environmentId);
   queryClient.removeQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),
   });

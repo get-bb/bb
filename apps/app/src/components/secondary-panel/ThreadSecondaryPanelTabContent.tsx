@@ -139,6 +139,7 @@ export function GitDiffTabContent({
     data: diffFilesResponse,
     dataUpdatedAt: diffFilesUpdatedAt,
     isLoading: isDiffFilesLoading,
+    isPlaceholderData: isDiffFilesPlaceholder,
     error: diffFilesError,
   } = useEnvironmentDiffFiles(environmentId ?? "", {
     enabled: isQueryEnabled,
@@ -270,6 +271,7 @@ export function GitDiffTabContent({
       filesUpdatedAt={diffFilesUpdatedAt}
       diffViewOptions={gitDiffViewOptions}
       filePathRoot={workspaceRootPath}
+      isPlaceholderData={isDiffFilesPlaceholder}
       scrollToPath={pendingGitDiffScrollPath}
       onScrolledToPath={clearPendingGitDiffScrollPath}
       onOpenFileInEditor={onOpenFileInEditor}

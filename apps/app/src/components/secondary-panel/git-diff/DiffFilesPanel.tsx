@@ -46,6 +46,12 @@ export interface DiffFilesPanelProps {
   diffViewOptions: Record<string, string | boolean | number>;
   filePathRoot?: string | null;
   /**
+   * True while the TOC query is serving cross-target placeholder data (the
+   * previous diff target's slice). The scroll-to-file effect waits for the real
+   * slice so it never lands on a stale index.
+   */
+  isPlaceholderData?: boolean;
+  /**
    * A changed-file path requested from the info tab / prompt banner. Once it
    * appears in the current slice, the panel scrolls that file's card to the top
    * and calls {@link onScrolledToPath} so the pending request is cleared.
@@ -73,6 +79,7 @@ export function DiffFilesPanel({
   filesUpdatedAt,
   diffViewOptions,
   filePathRoot,
+  isPlaceholderData,
   scrollToPath,
   onScrolledToPath,
   onOpenFileInEditor,
@@ -160,12 +167,14 @@ export function DiffFilesPanel({
   }, [requestPaths, visibleKey, overscanKey, filesUpdatedAt]);
 
   // Scroll a file requested from the info tab / prompt banner to the top of the
-  // panel. The request persists until the path is in `files`: opening a file
-  // first resets the selection to all-changes, and that slice may still be
-  // settling, so we scroll + clear only once the path actually appears (a path
+  // panel. The request persists until the path is in the *real* slice: opening a
+  // file first resets the selection to all-changes, and during that refetch the
+  // panel renders the previous target's files as placeholder — scrolling against
+  // that stale slice would land on the wrong index, so we wait for
+  // `!isPlaceholderData`. We scroll + clear only once the path appears (a path
   // never in the diff is left for the env-change reset / next request to clear).
   useEffect(() => {
-    if (!scrollToPath) {
+    if (!scrollToPath || isPlaceholderData) {
       return;
     }
     const index = files.findIndex((file) => file.path === scrollToPath);
@@ -174,7 +183,7 @@ export function DiffFilesPanel({
     }
     virtualizer.scrollToIndex(index, { align: "start" });
     onScrolledToPath?.();
-  }, [scrollToPath, files, virtualizer, onScrolledToPath]);
+  }, [scrollToPath, files, isPlaceholderData, virtualizer, onScrolledToPath]);
 
   return (
     <div ref={scrollRef} className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
