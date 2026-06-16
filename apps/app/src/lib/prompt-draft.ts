@@ -14,7 +14,6 @@ export type PromptDraftAttachment = UploadedPromptAttachment;
 export interface PromptQuote {
   id: string;
   text: string;
-  sourceMessageId?: string;
 }
 
 export interface PromptDraftState {
@@ -27,7 +26,6 @@ export interface PromptDraftState {
 const promptQuoteSchema = z.object({
   id: z.string(),
   text: z.string(),
-  sourceMessageId: z.string().optional(),
 });
 
 const promptDraftStorageSchema = z.object({
