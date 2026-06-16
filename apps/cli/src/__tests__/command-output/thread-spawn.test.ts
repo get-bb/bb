@@ -355,7 +355,7 @@ describe("bb thread spawn command output", () => {
       id: "thread-2",
       projectId: "proj-1",
       providerId: "codex",
-      status: "created",
+      status: "starting",
       parentThreadId: "thread-context-parent",
       createdAt: 1,
       updatedAt: 1,
