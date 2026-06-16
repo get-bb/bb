@@ -38,7 +38,12 @@ function ActionButton({
       // Keep the text selection alive through the click so the action still
       // receives the selected text (and the menu stays anchored).
       onMouseDown={(event: MouseEvent) => preventOverlayTriggerSelection(event)}
-      onClick={() => action.onSelect(text)}
+      onClick={() => {
+        action.onSelect(text);
+        // Clear the lingering highlight so the source text doesn't read as
+        // "still selected" after the quote/side-chat has been created.
+        window.getSelection()?.removeAllRanges();
+      }}
     >
       <Icon
         name={action.icon}
