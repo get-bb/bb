@@ -125,7 +125,16 @@ function SideChatConversation({
   const preferredTheme = usePreferredTheme();
   const threadQuery = useThread(threadId);
   const timelineQuery = useThreadTimeline(threadId);
-  const rows = timelineQuery.data?.rows ?? [];
+  // Hide the worktree-provisioning transcript from the side-chat timeline — it's
+  // setup noise in a focused reply view. The main thread still shows it.
+  const rows = (timelineQuery.data?.rows ?? []).filter(
+    (row) =>
+      !(
+        row.kind === "system" &&
+        row.systemKind === "operation" &&
+        row.operationKind === "thread-provisioning"
+      ),
+  );
   const displayStatus = threadQuery.data?.runtime.displayStatus ?? "idle";
 
   // A persisted side-chat tab can outlive its child thread (the thread was
