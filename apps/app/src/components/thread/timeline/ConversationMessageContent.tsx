@@ -30,7 +30,9 @@ import {
 } from "./GeneratedConversationMessage.js";
 import {
   clipMentionTextToVisibleRange,
+  messageBodyHasQuote,
   renderMentionTextSegments,
+  renderMessageBodyWithQuotes,
   shiftMentionsToTextRange,
 } from "./ConversationMessageMentions.js";
 import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits.js";
@@ -235,22 +237,39 @@ function CollapsibleMessageText({
           {prefixText}
         </span>
       ) : null}
-      <p
-        ref={textRef}
-        className={cn(
-          "whitespace-pre-wrap break-words",
-          !isExpanded && "line-clamp-[15]",
-        )}
-      >
-        {renderMentionTextSegments({
-          mentions: safeRenderedBody.mentions,
-          resolveMentionLink,
-          text: safeRenderedBody.text,
-        })}
-        {isExpanded && isTruncated ? (
-          <span className="text-muted-foreground"> [truncated]</span>
-        ) : null}
-      </p>
+      {messageBodyHasQuote(safeRenderedBody.text) ? (
+        // Quote-containing bodies render as blocks (paragraphs + styled
+        // blockquotes), so `> ` reads like a quote rather than literal text.
+        // `renderedBody` is already line-sliced when collapsed, so the toggle
+        // (driven by line count) still works without a CSS line clamp.
+        <div className="break-words">
+          {renderMessageBodyWithQuotes({
+            mentions: safeRenderedBody.mentions,
+            resolveMentionLink,
+            text: safeRenderedBody.text,
+          })}
+          {isExpanded && isTruncated ? (
+            <span className="text-muted-foreground"> [truncated]</span>
+          ) : null}
+        </div>
+      ) : (
+        <p
+          ref={textRef}
+          className={cn(
+            "whitespace-pre-wrap break-words",
+            !isExpanded && "line-clamp-[15]",
+          )}
+        >
+          {renderMentionTextSegments({
+            mentions: safeRenderedBody.mentions,
+            resolveMentionLink,
+            text: safeRenderedBody.text,
+          })}
+          {isExpanded && isTruncated ? (
+            <span className="text-muted-foreground"> [truncated]</span>
+          ) : null}
+        </p>
+      )}
       {showToggle ? (
         <ConversationMessageOverflowToggle
           expanded={isExpanded}
