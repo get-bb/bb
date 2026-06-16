@@ -522,6 +522,39 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     storageFiles: threadStorageFiles?.files,
     terminalSessions: terminalsListQuery.data?.sessions,
   });
+  const browserDeckThreadId = thread?.id ?? null;
+  const browserDeckEnvironmentId = thread?.environmentId ?? null;
+  // Browser tabs are not rendered through the single `fileTabContent` slot:
+  // each one keeps a live native view that must persist across tab switches, so
+  // the deck stays mounted independently of which tab is active.
+  const renderBrowserDeck = useCallback(
+    ({
+      canShowNativeBrowserView,
+    }: {
+      canShowNativeBrowserView: boolean;
+    }) => {
+      if (browserDeckThreadId === null) {
+        return null;
+      }
+      return (
+        <BrowserTabDeck
+          browserTabs={browserTabs}
+          activeBrowserTabId={activeBrowserTab?.id ?? null}
+          environmentId={browserDeckEnvironmentId}
+          canShowNativeBrowserView={canShowNativeBrowserView}
+          threadId={browserDeckThreadId}
+          onUpdate={updateBrowserTab}
+        />
+      );
+    },
+    [
+      activeBrowserTab?.id,
+      browserTabs,
+      browserDeckEnvironmentId,
+      browserDeckThreadId,
+      updateBrowserTab,
+    ],
+  );
   const openPersistedWorkspaceFile =
     useCallback<ThreadSecondaryPanelWorkspaceFileOpenHandler>(
       (file) => openTab({ kind: "workspace-file-preview", tab: file }),
@@ -1669,33 +1702,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       threadId={thread.id}
     />
   ) : undefined;
-  // Browser tabs are not rendered through the single `fileTabContent` slot:
-  // each one keeps a live native view that must persist across tab switches, so
-  // the deck stays mounted independently of which tab is active.
   const isBrowserTabActive = activeBrowserTab !== null;
-  const renderBrowserDeck = useCallback(
-    ({
-      canShowNativeBrowserView,
-    }: {
-      canShowNativeBrowserView: boolean;
-    }) => (
-      <BrowserTabDeck
-        browserTabs={browserTabs}
-        activeBrowserTabId={activeBrowserTab?.id ?? null}
-        environmentId={thread.environmentId}
-        canShowNativeBrowserView={canShowNativeBrowserView}
-        threadId={thread.id}
-        onUpdate={updateBrowserTab}
-      />
-    ),
-    [
-      activeBrowserTab?.id,
-      browserTabs,
-      thread.environmentId,
-      thread.id,
-      updateBrowserTab,
-    ],
-  );
 
   return (
     <>
