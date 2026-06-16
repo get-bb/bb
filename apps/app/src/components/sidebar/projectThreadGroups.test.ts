@@ -135,7 +135,7 @@ describe("buildProjectThreadGroups", () => {
     expect(findNode(rootItems, "manager-grandchild")?.depth).toBe(3);
   });
 
-  it("excludes side-chat children from the tree but keeps forks nested", () => {
+  it("renders forks as top-level rows and excludes side-chat children", () => {
     const items = buildProjectThreadGroups([
       createThread({ id: "thr_parent", createdAt: 10 }),
       createThread({
@@ -152,11 +152,9 @@ describe("buildProjectThreadGroups", () => {
       }),
     ]);
 
-    // The fork nests under its parent; the side chat (panel-only) never appears
-    // in the sidebar tree.
-    expect(summarizeItems(items)).toEqual([
-      { id: "thr_parent", children: ["thr_fork"] },
-    ]);
+    // A fork is a top-level row, not nested under its parent; the side chat
+    // (panel-only) never appears in the sidebar tree.
+    expect(summarizeItems(items)).toEqual(["thr_fork", "thr_parent"]);
     expect(findNode(items, "thr_sidechat")).toBeNull();
   });
 

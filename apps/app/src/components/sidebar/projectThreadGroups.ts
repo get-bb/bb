@@ -215,12 +215,21 @@ function buildThreadNode({
   };
 }
 
+// A fork is a sibling, not a child: it branches off its parent's history but
+// reads as its own top-level conversation, so it renders as a root rather than
+// nesting under the parent (matching delegated children, which do nest).
+function isForkThread(thread: ThreadListEntry): boolean {
+  return thread.childOrigin === "fork";
+}
+
 function isRootThread(
   thread: ThreadListEntry,
   projectThreadIds: ReadonlySet<string>,
 ): boolean {
   return (
-    thread.parentThreadId === null || !projectThreadIds.has(thread.parentThreadId)
+    thread.parentThreadId === null ||
+    !projectThreadIds.has(thread.parentThreadId) ||
+    isForkThread(thread)
   );
 }
 
@@ -241,6 +250,8 @@ export function buildProjectThreadGroups(
   for (const thread of projectThreads) {
     if (thread.parentThreadId === null) continue;
     if (!projectThreadIds.has(thread.parentThreadId)) continue;
+    // Forks render as roots, so they never join a parent's child list.
+    if (isForkThread(thread)) continue;
 
     const children = childrenByParentId.get(thread.parentThreadId);
     if (children) {

@@ -58,9 +58,9 @@ const loadedSidebarNavigation = {
         createdAt: 85,
         updatedAt: 85,
       }),
-      // A projectless parent + fork: exercises the no-project glyph, depth-0
-      // alignment with the project headers, and the indent guide under an
-      // expanded projectless thread.
+      // A projectless parent + delegated child: exercises depth-0 alignment
+      // with the project headers and the indent guide under an expanded
+      // projectless thread.
       makeThreadListEntry({
         id: "thr_story_personal_parent",
         projectId: PERSONAL_PROJECT_ID,
@@ -71,10 +71,9 @@ const loadedSidebarNavigation = {
         updatedAt: 80,
       }),
       makeThreadListEntry({
-        id: "thr_story_personal_fork",
+        id: "thr_story_personal_child",
         projectId: PERSONAL_PROJECT_ID,
         parentThreadId: "thr_story_personal_parent",
-        childOrigin: "fork",
         title: "Add Mutex to Watcher",
         titleFallback: "Add Mutex to Watcher",
         latestAttentionAt: 75,
@@ -123,9 +122,9 @@ const loadedSidebarNavigation = {
           createdAt: 180,
           updatedAt: 180,
         }),
-        // Three levels of ancestry: a root thread → fork (child) → fork
-        // (grandchild). Renders at project depth 1/2/3; the middle node carries
-        // both the disclosure chevron and the fork glyph.
+        // A delegated parent → child pair: renders at project depth 1/2 with
+        // the disclosure chevron after the parent title and the indent guide
+        // running under the expanded child.
         makeThreadListEntry({
           id: "thr_story_ancestor",
           projectId: bbProject.id,
@@ -139,23 +138,11 @@ const loadedSidebarNavigation = {
           id: "thr_story_ancestor_child",
           projectId: bbProject.id,
           parentThreadId: "thr_story_ancestor",
-          childOrigin: "fork",
-          title: "Fork: async command loading",
-          titleFallback: "Fork: async command loading",
+          title: "Wire async command loading",
+          titleFallback: "Wire async command loading",
           latestAttentionAt: 175,
           createdAt: 175,
           updatedAt: 175,
-        }),
-        makeThreadListEntry({
-          id: "thr_story_ancestor_grandchild",
-          projectId: bbProject.id,
-          parentThreadId: "thr_story_ancestor_child",
-          childOrigin: "fork",
-          title: "Fork: prefetch results on hover",
-          titleFallback: "Fork: prefetch results on hover",
-          latestAttentionAt: 174,
-          createdAt: 174,
-          updatedAt: 174,
         }),
         makeThreadListEntry({
           id: "thr_story_worktree_a",

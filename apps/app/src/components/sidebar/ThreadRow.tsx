@@ -7,16 +7,11 @@ import {
   type ReactNode,
 } from "react";
 import { useSetAtom } from "jotai";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import type { ThreadListEntry } from "@bb/domain";
 import {
   getThreadConversationCollapsedAtom,
 } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { Icon, type IconName } from "@/components/ui/icon.js";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip.js";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
 import {
@@ -46,9 +41,10 @@ import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 import {
-  SIDEBAR_CARET_BOX_CLASS,
-  SIDEBAR_LEADING_CLUSTER_CLASS,
-  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
+  getEnvironmentWorkspaceDisplayIconLabel,
+  getEnvironmentWorkspaceDisplayIconName,
+} from "@/lib/environment-workspace-display";
+import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
@@ -56,10 +52,6 @@ import {
   getSidebarThreadRowPaddingLeft,
   type SidebarUnreadDotTone,
 } from "./sidebarRowClasses";
-import {
-  getEnvironmentWorkspaceDisplayIconLabel,
-  getEnvironmentWorkspaceDisplayIconName,
-} from "@/lib/environment-workspace-display";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
@@ -67,9 +59,6 @@ import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 interface ThreadRowBaseOptions {
   depth: number;
   isCompact: boolean;
-  // True when this row is nested under a worktree group header (2+ threads share
-  // the env). The header already shows the worktree glyph, so the row suppresses
-  // its own leading worktree glyph to avoid repeating it.
   isEnvGrouped: boolean;
 }
 
@@ -117,38 +106,6 @@ function ThreadDraftIndicator() {
       className="pointer-events-none size-3.5 shrink-0 text-muted-foreground"
       aria-hidden="true"
     />
-  );
-}
-
-interface SidebarLeadingGlyphProps {
-  iconName: IconName;
-  label: string;
-  slotClassName: string;
-}
-
-// The leading identity glyph (fork / worktree / no-project) with a hover
-// tooltip naming it. `relative z-10` lifts the glyph above the row's absolute
-// NavLink overlay so it actually receives the hover (the overlay otherwise
-// swallows it); clicking the small glyph is inert, navigation stays on the
-// title.
-function SidebarLeadingGlyph({
-  iconName,
-  label,
-  slotClassName,
-}: SidebarLeadingGlyphProps) {
-  return (
-    <Tooltip delayDuration={500}>
-      <TooltipTrigger asChild>
-        <span className={cn(slotClassName, "relative z-10")}>
-          <Icon
-            name={iconName}
-            className="size-3.5 text-muted-foreground"
-            aria-label={label}
-          />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
   );
 }
 
@@ -255,33 +212,67 @@ function getThreadUnreadBadgeLabel({
     : "Unread thread requires attention";
 }
 
-// The right edge of a thread row is reserved for status (pending/busy/unread).
-// Worktree identity is conveyed by the leading environment-group header, never
-// a trailing icon, so the row reads one way regardless of grouping.
+interface ThreadTrailingIndicatorProps extends ThreadStatusGlyphProps {
+  environmentIcon: IconName | null;
+  environmentIconLabel: string | null;
+}
+
+// The right edge of a thread row shows status (pending/busy/unread) when there
+// is any, otherwise the worktree/environment icon so the row's workspace reads
+// at a glance. Env-grouped rows pass a null icon since their group header
+// already names the worktree.
 function ThreadTrailingIndicator({
+  environmentIcon,
+  environmentIconLabel,
   hasPendingInteraction,
   isBusy,
   showUnreadBadge,
   unreadBadgeTone,
-}: ThreadStatusGlyphProps) {
+}: ThreadTrailingIndicatorProps) {
   const showStatusGlyph = hasPendingInteraction || isBusy || showUnreadBadge;
 
-  if (!showStatusGlyph) {
-    return null;
+  if (showStatusGlyph) {
+    return (
+      <span
+        className={cn(
+          SIDEBAR_ROW_GLYPH_SLOT_CLASS,
+          COARSE_POINTER_GLYPH_BOX_CLASS,
+        )}
+      >
+        <ThreadStatusGlyph
+          hasPendingInteraction={hasPendingInteraction}
+          isBusy={isBusy}
+          showUnreadBadge={showUnreadBadge}
+          unreadBadgeTone={unreadBadgeTone}
+        />
+      </span>
+    );
   }
 
   return (
-    <span
-      className={cn(SIDEBAR_ROW_GLYPH_SLOT_CLASS, COARSE_POINTER_GLYPH_BOX_CLASS)}
-    >
-      <ThreadStatusGlyph
-        hasPendingInteraction={hasPendingInteraction}
-        isBusy={isBusy}
-        showUnreadBadge={showUnreadBadge}
-        unreadBadgeTone={unreadBadgeTone}
-      />
-    </span>
+    <ThreadTrailingIcon
+      environmentIcon={environmentIcon}
+      environmentIconLabel={environmentIconLabel}
+    />
   );
+}
+
+interface ThreadTrailingIconProps {
+  environmentIcon: IconName | null;
+  environmentIconLabel: string | null;
+}
+
+function ThreadTrailingIcon({
+  environmentIcon,
+  environmentIconLabel,
+}: ThreadTrailingIconProps) {
+  return environmentIcon ? (
+    <Icon
+      name={environmentIcon}
+      className={cn("text-muted-foreground", COARSE_POINTER_ICON_SIZE_CLASS)}
+      aria-label={environmentIconLabel ?? undefined}
+    />
+  ) : null;
 }
 
 function ThreadRowComponent({
@@ -329,45 +320,19 @@ function ThreadRowComponent({
   const linkLabel = hasComposerDraft
     ? `Open ${threadTitle} (unsubmitted draft)`
     : `Open ${threadTitle}`;
-  // A lone worktree thread (not nested under a worktree group header) carries a
-  // leading worktree glyph so its environment reads at a glance, keeping the
-  // worktree indicator in the same leading position as the group header. Forks
-  // already lead with the Fork glyph, so they don't also show it.
-  const leadingWorktreeIcon =
-    options.isEnvGrouped || thread.childOrigin === "fork"
-      ? null
-      : getEnvironmentWorkspaceDisplayIconName(
-          thread.environmentWorkspaceDisplayKind,
-        );
-  const leadingWorktreeIconLabel =
-    leadingWorktreeIcon === null
-      ? null
-      : getEnvironmentWorkspaceDisplayIconLabel(
-          thread.environmentWorkspaceDisplayKind,
-        );
-  // A thread that lives in no project (the "Threads" section) leads with the
-  // "Don't work in a project" glyph the composer uses, so its lack of a project
-  // reads at a glance — shown only when no fork/worktree glyph already occupies
-  // the leading slot.
-  const showNoProjectIcon =
-    thread.projectId === PERSONAL_PROJECT_ID &&
-    thread.childOrigin !== "fork" &&
-    leadingWorktreeIcon === null;
-  const hasLeadingGlyph =
-    thread.childOrigin === "fork" ||
-    leadingWorktreeIcon !== null ||
-    showNoProjectIcon;
-  // A row nested under an indent guide (a thread child, or a worktree-group
-  // member) pads its leading column right so the glyph / title clears the
-  // divider instead of sitting cramped against it. A glyph-less row gets the
-  // pad on its title, so the title lines up flush with a fork sibling's leading
-  // icon. Top-level rows have no divider beside them and pad nothing.
-  const underDividerPadClass =
-    thread.parentThreadId !== null || options.isEnvGrouped ? "ml-2" : null;
-  const leadingGlyphSlotClass = cn(
-    SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
-    underDividerPadClass,
-  );
+  const linkTitle = linkLabel;
+  // Env-grouped children sit under a header that already shows the
+  // worktree branch + icon, so suppress the redundant trailing icon.
+  const environmentIcon = options.isEnvGrouped
+    ? null
+    : getEnvironmentWorkspaceDisplayIconName(
+        thread.environmentWorkspaceDisplayKind,
+      );
+  const environmentIconLabel = options.isEnvGrouped
+    ? null
+    : getEnvironmentWorkspaceDisplayIconLabel(
+        thread.environmentWorkspaceDisplayKind,
+      );
   const parentDragBindings = parentOptions?.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -408,65 +373,21 @@ function ThreadRowComponent({
           onProjectSelect?.();
         }}
         aria-label={linkLabel}
+        title={linkTitle}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
-      <span className={SIDEBAR_LEADING_CLUSTER_CLASS}>
-        {/*
-          Leading disclosure slot, unified with every other expandable row: the
-          caret toggles children (the row body still navigates). Leaves get an
-          equal-width spacer so all titles align in one column, file-tree style.
-        */}
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="min-w-0 truncate">{threadTitle}</span>
         {parentOptions && hasChildren ? (
-          <span className="relative z-10 inline-flex shrink-0">
-            <SidebarChildToggleChevron
-              isCollapsed={isParentCollapsed}
-              expandLabel={`Expand ${threadTitle} threads`}
-              collapseLabel={`Collapse ${threadTitle} threads`}
-              expandTitle="Expand child threads"
-              collapseTitle="Collapse child threads"
-              onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-              revealOnHover={!isParentCollapsed}
-            />
-          </span>
-        ) : (
-          <span
-            className={cn(SIDEBAR_CARET_BOX_CLASS, "shrink-0")}
-            aria-hidden="true"
-          />
-        )}
-        {/*
-          Identity glyph (fork / worktree / no-project), rendered only when
-          present. Under an indent guide the slot is padded left so the icon
-          clears the divider; a glyph-less row carries that same pad on its title
-          so it lands flush with a fork sibling's leading icon.
-        */}
-        {thread.childOrigin === "fork" ? (
-          <SidebarLeadingGlyph
-            iconName="Fork"
-            label="Forked thread"
-            slotClassName={leadingGlyphSlotClass}
-          />
-        ) : leadingWorktreeIcon ? (
-          <SidebarLeadingGlyph
-            iconName={leadingWorktreeIcon}
-            label={leadingWorktreeIconLabel ?? "Worktree"}
-            slotClassName={leadingGlyphSlotClass}
-          />
-        ) : showNoProjectIcon ? (
-          <SidebarLeadingGlyph
-            iconName="FolderMinus"
-            label="Not in a project"
-            slotClassName={leadingGlyphSlotClass}
+          <SidebarChildToggleChevron
+            isCollapsed={isParentCollapsed}
+            expandLabel={`Expand ${threadTitle} threads`}
+            collapseLabel={`Collapse ${threadTitle} threads`}
+            expandTitle="Expand child threads"
+            collapseTitle="Collapse child threads"
+            onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
           />
         ) : null}
-        <span
-          className={cn(
-            "min-w-0 truncate",
-            !hasLeadingGlyph && underDividerPadClass,
-          )}
-        >
-          {threadTitle}
-        </span>
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
       <span
@@ -489,6 +410,8 @@ function ThreadRowComponent({
             )}
           >
             <ThreadTrailingIndicator
+              environmentIcon={environmentIcon}
+              environmentIconLabel={environmentIconLabel}
               hasPendingInteraction={trailingHasPendingInteraction}
               isBusy={trailingIsBusy}
               showUnreadBadge={trailingShowUnreadBadge}

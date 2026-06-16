@@ -65,14 +65,6 @@ const childOption: ThreadRowOptions = {
   isCompact: true,
   isEnvGrouped: false,
 };
-// A leaf at the third level of ancestry: project root (depth 1) → child
-// (depth 2) → grandchild (depth 3).
-const grandchildOption: ThreadRowOptions = {
-  kind: "default",
-  depth: 3,
-  isCompact: true,
-  isEnvGrouped: false,
-};
 // Projectless threads are top-level rows (depth 0), flush with project headers.
 const projectlessOption: ThreadRowOptions = {
   kind: "default",
@@ -108,30 +100,10 @@ const childThread = makeThread({
   titleFallback: "UI And Stories Consolidation",
 });
 
-// A three-generation chain (root → fork child → fork grandchild) for the
-// 3-levels-of-ancestry row.
-const ancestorRootThread = makeThread({
-  id: "thr_ancestor_root",
-  title: "Rework the command palette",
-  titleFallback: "Rework the command palette",
-});
-const ancestorForkThread = makeThread({
-  id: "thr_ancestor_fork",
-  childOrigin: "fork",
-  title: "Fork: async command loading",
-  titleFallback: "Fork: async command loading",
-});
-const ancestorGrandchildThread = makeThread({
-  id: "thr_ancestor_grandchild",
-  childOrigin: "fork",
-  title: "Fork: prefetch results on hover",
-  titleFallback: "Fork: prefetch results on hover",
-});
-
 export function Overview() {
   return (
     <StoryCard>
-      <StoryRow label="idle" hint="quiet thread, no leading icon">
+      <StoryRow label="idle" hint="quiet thread, title then trailing slot">
         <SidebarStage>
           <StoryThreadRow
             projectId="proj_demo"
@@ -141,23 +113,9 @@ export function Overview() {
           />
         </SidebarStage>
       </StoryRow>
-      <StoryRow label="fork" hint="forked thread — leading fork glyph">
-        <SidebarStage>
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={makeThread({
-              childOrigin: "fork",
-              title: "Fork Context Summary",
-              titleFallback: "Fork Context Summary",
-            })}
-            isActive={false}
-            options={defaultOption}
-          />
-        </SidebarStage>
-      </StoryRow>
       <StoryRow
         label="projectless"
-        hint="no project (Threads section): leads with the 'Don't work in a project' glyph, otherwise a normal navigable row"
+        hint="no project (Threads section): a normal navigable row at depth 0"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -185,24 +143,6 @@ export function Overview() {
               titleFallback: "Sketch launch checklist",
             })}
             isActive
-            options={projectlessOption}
-          />
-        </SidebarStage>
-      </StoryRow>
-      <StoryRow
-        label="projectless fork"
-        hint="a fork with no project keeps the fork glyph, not the no-project glyph"
-      >
-        <SidebarStage>
-          <StoryThreadRow
-            projectId={PERSONAL_PROJECT_ID}
-            thread={makeThread({
-              projectId: PERSONAL_PROJECT_ID,
-              childOrigin: "fork",
-              title: "Add Mutex to Watcher",
-              titleFallback: "Add Mutex to Watcher",
-            })}
-            isActive={false}
             options={projectlessOption}
           />
         </SidebarStage>
@@ -405,7 +345,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="parent, no children"
-        hint="leading user icon, no chevron"
+        hint="no disclosure chevron when there are no children"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -417,8 +357,8 @@ export function Overview() {
         </SidebarStage>
       </StoryRow>
       <StoryRow
-        label="parent, expanded with child"
-        hint="parent row above its child — user icon swaps to a rotated chevron on hover, child text aligns with the parent title"
+        label="parent, expanded with delegated child"
+        hint="parent row above its delegated child — the disclosure chevron sits after the title and rotates open"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -435,31 +375,6 @@ export function Overview() {
             thread={childThread}
             isActive={false}
             options={childOption}
-          />
-        </SidebarStage>
-      </StoryRow>
-      <StoryRow
-        label="3 levels of ancestry"
-        hint="root → fork (child) → fork (grandchild); the middle node carries both the disclosure chevron and the fork glyph, and titles stay aligned down the chain"
-      >
-        <SidebarStage>
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={ancestorRootThread}
-            isActive={false}
-            options={parentOption({ childCount: 1 })}
-          />
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={ancestorForkThread}
-            isActive={false}
-            options={parentOption({ depth: 2, isCompact: true, childCount: 1 })}
-          />
-          <StoryThreadRow
-            projectId="proj_demo"
-            thread={ancestorGrandchildThread}
-            isActive={false}
-            options={grandchildOption}
           />
         </SidebarStage>
       </StoryRow>
