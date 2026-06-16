@@ -200,6 +200,40 @@ describe("managed environment cleanup recovery sweep", () => {
     });
   });
 
+  it("destroys retiring git environments without merge-base metadata", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = createEnvironment(harness.db, harness.hub, {
+        hostId: host.id,
+        isGitRepo: true,
+        managed: true,
+        path: "/tmp/git-cleanup-without-merge-base",
+        projectId: project.id,
+        status: "retiring",
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      await runEnvironmentCleanupAdvance(harness.deps, {
+        environmentId: environment.id,
+      });
+
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        destroyAttemptId: expect.any(String),
+        status: "destroying",
+      });
+      expect(
+        listQueuedEnvironmentCommands(
+          harness,
+          "environment.destroy",
+          environment.id,
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
   it("marks stale destroying cleanup requests without paths as error", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);

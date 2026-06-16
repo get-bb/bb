@@ -515,13 +515,6 @@ const environmentDestroyCommandSchema = hostDaemonWorkspaceTargetSchema
   })
   .strict();
 
-const environmentCleanupPreflightCommandSchema = hostDaemonWorkspaceTargetSchema
-  .extend({
-    type: z.literal("environment.cleanup_preflight"),
-    mergeBaseBranch: gitBranchNameSchema,
-  })
-  .strict();
-
 const workspaceStatusCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   type: z.literal("workspace.status"),
   mergeBaseBranch: gitBranchNameSchema.optional(),
@@ -582,37 +575,6 @@ const fileMetadataResultSchema = z.object({
   modifiedAtMs: z.number().nonnegative(),
   sizeBytes: z.number().int().nonnegative(),
 });
-
-const environmentCleanupPreflightResultSchema = z.discriminatedUnion(
-  "outcome",
-  [
-    z.object({ outcome: z.literal("safe_to_destroy") }).strict(),
-    z
-      .object({
-        outcome: z.literal("blocked_by_changes"),
-        message: z.string().min(1),
-      })
-      .strict(),
-    z
-      .object({
-        outcome: z.literal("already_missing"),
-        failure: workspaceResolutionFailureSchema,
-      })
-      .strict(),
-    z
-      .object({
-        outcome: z.literal("not_inspectable"),
-        failure: workspaceResolutionFailureSchema,
-      })
-      .strict(),
-    z
-      .object({
-        outcome: z.literal("probe_failed"),
-        failure: workspaceResolutionFailureSchema,
-      })
-      .strict(),
-  ],
-);
 
 const workspaceStatusResultSchema = z.discriminatedUnion("outcome", [
   z
@@ -986,15 +948,6 @@ export const hostDaemonCommandRegistry = {
     retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
-  }),
-  "environment.cleanup_preflight": defineHostDaemonCommandDescriptor({
-    type: "environment.cleanup_preflight",
-    schema: environmentCleanupPreflightCommandSchema,
-    resultSchema: environmentCleanupPreflightResultSchema,
-    transport: "onlineRpc",
-    retryable: true,
-    flushEventsBeforeResult: false,
-    envLane: "read",
   }),
   "workspace.status": defineHostDaemonCommandDescriptor({
     type: "workspace.status",

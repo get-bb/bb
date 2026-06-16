@@ -1,5 +1,5 @@
 import type { WorkspaceProvisionType } from "@bb/domain";
-import { resolveEnvironmentMergeBaseBranch, threadScope } from "@bb/domain";
+import { threadScope } from "@bb/domain";
 import {
   countLiveThreadsInEnvironment,
   getEnvironment,
@@ -11,7 +11,6 @@ import {
   type DbTransaction,
 } from "@bb/db";
 import { listStaleDestroyingManagedEnvironments } from "@bb/db/internal-environment-lifecycle";
-import { type HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import {
   emptyCommandResultSideEffects,
   type CommandResultReportForType,
@@ -21,7 +20,6 @@ import {
   type HostDaemonCommandForType,
 } from "../../internal/command-result-side-effects.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import {
   createLiveHostCommandExecution,
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
@@ -99,8 +97,6 @@ interface EnvironmentCleanupSettlementDeps extends EnvironmentCleanupWriteDeps {
 
 type EnvironmentCleanupDecisionDeps = Pick<AppDeps, "db">;
 type EnvironmentCleanupHostConnectionDeps = Pick<AppDeps, "db" | "hub">;
-type EnvironmentCleanupPreflightResult =
-  HostDaemonOnlineRpcResult<"environment.cleanup_preflight">;
 
 function hasConnectedHostDaemon(
   deps: EnvironmentCleanupHostConnectionDeps,
@@ -114,28 +110,14 @@ function hasConnectedHostDaemon(
   );
 }
 
-function cleanupPreflightAllowsDestroy(
-  result: EnvironmentCleanupPreflightResult,
-): boolean {
-  switch (result.outcome) {
-    case "safe_to_destroy":
-    case "already_missing":
-    case "not_inspectable":
-      return true;
-    case "blocked_by_changes":
-    case "probe_failed":
-      return false;
-  }
-}
-
-async function workspaceCanBeSafelyCleaned(
+function workspaceCanBeDestroyedNow(
   deps: LoggedWorkSessionDeps,
   environmentId: string,
-): Promise<boolean> {
+): boolean {
   const environment = getEnvironment(deps.db, environmentId);
-  // Not lifecycle: preflight precondition — only a cleanup-owned workspace is
-  // eligible for a destroy probe; the destroy.started claim re-asserts the
-  // row state atomically when the destroy actually starts.
+  // Not lifecycle: destroy precondition — only a cleanup-owned workspace is
+  // eligible for a destroy command; destroy.started re-asserts the row state
+  // atomically when the destroy actually starts.
   if (
     !environment ||
     !environment.managed ||
@@ -149,29 +131,7 @@ async function workspaceCanBeSafelyCleaned(
     return false;
   }
 
-  if (!environment.isGitRepo) {
-    return true;
-  }
-
-  const mergeBaseBranch = resolveEnvironmentMergeBaseBranch(environment);
-  if (!mergeBaseBranch) {
-    return false;
-  }
-
-  const result = await callHostRetryableOnlineRpc(deps, {
-    hostId: environment.hostId,
-    timeoutMs: 30_000,
-    command: {
-      type: "environment.cleanup_preflight",
-      environmentId: environment.id,
-      workspaceContext: workspaceContextFromPath({
-        path: environment.path,
-        workspaceProvisionType: environment.workspaceProvisionType,
-      }),
-      mergeBaseBranch,
-    },
-  });
-  return cleanupPreflightAllowsDestroy(result);
+  return true;
 }
 
 function canRequestCleanup(
@@ -421,14 +381,13 @@ async function advanceEnvironmentCleanup(
     return;
   }
 
-  const canDestroyNow = await workspaceCanBeSafelyCleaned(deps, environment.id);
+  const canDestroyNow = workspaceCanBeDestroyedNow(deps, environment.id);
   if (!canDestroyNow) {
     return;
   }
 
-  // Stronger caller-side guard kept: the preflight RPC above awaited, so the
-  // world may have moved on. The destroy.started event re-asserts all of
-  // this atomically; the recheck only avoids burning an execution record and
+  // Stronger caller-side guard kept: destroy.started re-asserts the lifecycle
+  // state atomically; the recheck only avoids burning an execution record and
   // a noisy no-op log on an obviously stale advance.
   const refreshedEnvironment = getEnvironment(deps.db, environment.id);
   if (
