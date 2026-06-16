@@ -59,7 +59,7 @@ import type {
 } from "./types.js";
 import { ConversationMessageContent } from "./ConversationMessageContent.js";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu.js";
-import type { TimelineMessageProseSelection } from "./SelectableMessageProse.js";
+import type { MessageProseSelection } from "./SelectableMessageProse.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import {
   TimelineStaticRowHeader,
@@ -175,7 +175,7 @@ interface TimelineRendererStaticContextValue {
    * messages and the floating menu unmounted.
    */
   reportProseSelection:
-    | ((selection: TimelineMessageProseSelection | null) => void)
+    | ((selection: MessageProseSelection | null) => void)
     | undefined;
   threadChildOrigin: ThreadChildOrigin | null;
   onOpenLink: ThreadTimelineLinkHandler | undefined;
@@ -1560,15 +1560,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     onSelectionAddToChat !== undefined ||
     onSelectionReplyInSideChat !== undefined;
   const [activeSelection, setActiveSelection] =
-    useState<TimelineMessageProseSelection | null>(null);
-  // Mirror the active selection into a ref so the stable reply callback can read
-  // the full message text without re-creating on every selection.
-  const activeSelectionRef = useRef<TimelineMessageProseSelection | null>(null);
-  activeSelectionRef.current = activeSelection;
+    useState<MessageProseSelection | null>(null);
   // Only hand a reporter to the messages when an action exists; otherwise the
   // wrapper stays inert and the floating menu never mounts.
   const reportProseSelection = useMemo<
-    ((selection: TimelineMessageProseSelection | null) => void) | undefined
+    ((selection: MessageProseSelection | null) => void) | undefined
   >(
     () => (hasSelectionActions ? setActiveSelection : undefined),
     [hasSelectionActions],
@@ -1576,7 +1572,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const dismissSelection = useCallback(() => {
     setActiveSelection(null);
   }, []);
-  // "Add to chat" quotes the SELECTION text.
+  // "Add to chat" quotes the SELECTION text; "Reply in side chat" anchors the
+  // side chat on the SELECTION (not the whole message), so the reply's context
+  // is exactly what the user highlighted.
   const handleSelectionAddToChat = useCallback(
     (text: string) => {
       onSelectionAddToChat?.(text);
@@ -1584,13 +1582,13 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     },
     [onSelectionAddToChat],
   );
-  // "Reply in side chat" anchors to the FULL agent message — the exact same
-  // code path the per-message Reply button uses, just a different caller.
-  const handleSelectionReplyInSideChat = useCallback(() => {
-    const messageText = activeSelectionRef.current?.messageText;
-    if (messageText !== undefined) onSelectionReplyInSideChat?.(messageText);
-    setActiveSelection(null);
-  }, [onSelectionReplyInSideChat]);
+  const handleSelectionReplyInSideChat = useCallback(
+    (text: string) => {
+      onSelectionReplyInSideChat?.(text);
+      setActiveSelection(null);
+    },
+    [onSelectionReplyInSideChat],
+  );
   const staticContextValue = useMemo<TimelineRendererStaticContextValue>(
     () => ({
       canSpawnChild: props.canSpawnChild ?? false,

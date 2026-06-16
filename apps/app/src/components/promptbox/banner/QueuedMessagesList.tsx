@@ -20,6 +20,10 @@ import { CSS } from "@dnd-kit/utilities";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
+import {
+  messageBodyHasQuote,
+  renderMessageBodyWithQuotes,
+} from "@/components/thread/timeline/ConversationMessageMentions";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { cn } from "@/lib/utils";
 import {
@@ -137,18 +141,38 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           <Icon name="ArrowTurnForward" className="size-3.5 shrink-0 opacity-70" />
         </Button>
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
-            <p className="min-w-0 truncate text-foreground" title={preview}>
-              {preview}
-            </p>
-            {attachmentCount > 0 ? (
-              <span className="shrink-0 text-subtle-foreground opacity-70">
-                {attachmentCount === 1
-                  ? "1 attachment"
-                  : `${attachmentCount} attachments`}
-              </span>
-            ) : null}
-          </div>
+          {messageBodyHasQuote(preview) ? (
+            // Render `> ` quote lines as styled blockquotes, height-capped so a
+            // quoted queued message stays compact in the list.
+            <div className="min-w-0 space-y-0.5 text-xs leading-4 text-foreground">
+              <div
+                className="max-h-16 overflow-hidden break-words"
+                title={preview}
+              >
+                {renderMessageBodyWithQuotes({ mentions: [], text: preview })}
+              </div>
+              {attachmentCount > 0 ? (
+                <span className="text-subtle-foreground opacity-70">
+                  {attachmentCount === 1
+                    ? "1 attachment"
+                    : `${attachmentCount} attachments`}
+                </span>
+              ) : null}
+            </div>
+          ) : (
+            <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
+              <p className="min-w-0 truncate text-foreground" title={preview}>
+                {preview}
+              </p>
+              {attachmentCount > 0 ? (
+                <span className="shrink-0 text-subtle-foreground opacity-70">
+                  {attachmentCount === 1
+                    ? "1 attachment"
+                    : `${attachmentCount} attachments`}
+                </span>
+              ) : null}
+            </div>
+          )}
         </div>
         <div className="ml-1 flex shrink-0 items-center gap-1">
           {isProcessing ? (

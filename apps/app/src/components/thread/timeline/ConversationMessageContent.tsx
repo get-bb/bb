@@ -45,7 +45,7 @@ import {
 } from "./conversation-message-overflow.js";
 import {
   SelectableMessageProse,
-  type TimelineMessageProseSelection,
+  type MessageProseSelection,
 } from "./SelectableMessageProse.js";
 
 interface ConversationMessageContentBaseProps {
@@ -122,7 +122,7 @@ export interface ConversationMessageContentAssistantProps
    * to the timeline-level selection controller that drives the single floating
    * menu. Omitted when no controller is wired in (e.g. delegation output).
    */
-  onSelectProse?: (selection: TimelineMessageProseSelection | null) => void;
+  onSelectProse?: (selection: MessageProseSelection | null) => void;
   turnRequest: null;
 }
 
@@ -160,7 +160,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   onSideChat?: () => void;
   onSendToMain?: () => void;
   forkDisabled?: boolean;
-  onSelectProse?: (selection: TimelineMessageProseSelection | null) => void;
+  onSelectProse?: (selection: MessageProseSelection | null) => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
@@ -438,16 +438,7 @@ function AssistantConversationMessage({
         that drives the single floating selection menu (Add to chat / Reply in
         side chat).
       */}
-      <SelectableMessageProse
-        onSelect={
-          onSelectProse
-            ? (selection) =>
-                onSelectProse(
-                  selection ? { ...selection, messageText: text } : null,
-                )
-            : undefined
-        }
-      >
+      <SelectableMessageProse onSelect={onSelectProse}>
         <MarkdownPreview content={text} linkRouting={linkRouting} />
       </SelectableMessageProse>
       <ConversationAttachments

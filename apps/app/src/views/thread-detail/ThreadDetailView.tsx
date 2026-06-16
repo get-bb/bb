@@ -726,12 +726,13 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     },
     [addQuoteToComposer],
   );
-  // "Reply in side chat" receives the FULL agent message text and opens the
-  // side chat through the exact same `handleSideChatMessage` path as the
-  // per-message Reply button — the two are just different callers.
+  // "Reply in side chat" anchors the side chat on the user's SELECTION (passed
+  // as the side-chat source text), so the reply's visible anchor and the
+  // context handed to the agent are exactly the highlighted text — unlike the
+  // per-message Reply button, which anchors on the whole message.
   const handleSelectionReplyInSideChat = useCallback(
-    (messageText: string) => {
-      handleSideChatMessage({ messageText });
+    (selectionText: string) => {
+      handleSideChatMessage({ messageText: selectionText });
     },
     [handleSideChatMessage],
   );
