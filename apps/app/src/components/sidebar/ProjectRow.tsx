@@ -42,7 +42,6 @@ import {
 } from "@/components/dialogs/EnvironmentRenameDialog";
 import {
   COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-  COARSE_POINTER_GLYPH_BOX_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
@@ -72,7 +71,6 @@ import {
 import {
   SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
@@ -135,9 +133,6 @@ type ProjectItemClickCaptureHandler = MouseEventHandler<HTMLLIElement>;
 type ProjectThreadListClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
 
 const EMPTY_PROJECT_THREADS: ThreadListEntry[] = [];
-const PROJECT_ROW_LEADING_SLOT_CLASS =
-  "h-7 w-8 max-md:pointer-coarse:h-10 max-md:pointer-coarse:w-10";
-
 interface ProjectThreadTreeGroupProps {
   children: ReactNode;
   variant: ProjectThreadTreeVariant;
@@ -648,6 +643,7 @@ function EnvironmentThreadGroupHeader({
       {parentLineDepth === undefined ? null : (
         <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
       )}
+      {/* Caret + folder = one clickable toggle cluster; the label stays inert. */}
       <span className="relative z-10 -ml-1 inline-flex shrink-0">
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
@@ -656,19 +652,7 @@ function EnvironmentThreadGroupHeader({
           expandTitle="Expand worktree threads"
           collapseTitle="Collapse worktree threads"
           onToggle={() => onToggleCollapsed(environmentId)}
-        />
-      </span>
-      <span
-        className={cn(
-          "pointer-events-none relative z-10 inline-flex shrink-0 items-center justify-center text-subtle-foreground",
-          COARSE_POINTER_GLYPH_BOX_CLASS,
-        )}
-        aria-hidden="true"
-      >
-        <Icon
-          name={iconName}
-          className={COARSE_POINTER_ICON_SIZE_CLASS}
-          aria-hidden="true"
+          icon={iconName}
         />
       </span>
       {/*
@@ -1165,9 +1149,11 @@ function ProjectRowComponent({
             className={cn(
               SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
               "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
+              // Expand/collapse-only: no whole-row hover highlight (the caret +
+              // folder cluster is the only toggle); keep just the text color.
               isActive
                 ? "bg-sidebar-border text-sidebar-foreground"
-                : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+                : "text-sidebar-foreground/85 dark:text-sidebar-foreground",
               projectDragBindings &&
                 !projectDragBindings.disabled &&
                 "select-none cursor-grab active:cursor-grabbing",
@@ -1176,13 +1162,8 @@ function ProjectRowComponent({
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
-            <button
-              type="button"
-              aria-hidden="true"
-              tabIndex={-1}
-              onClick={handleProjectRowToggle}
-              className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
-            />
+            {/* Caret + folder = one clickable toggle cluster; the row body and
+                project name stay inert (expand/collapse only). */}
             <span className="relative z-10 -ml-1 inline-flex shrink-0">
               <SidebarChildToggleChevron
                 isCollapsed={isCollapsed}
@@ -1191,18 +1172,7 @@ function ProjectRowComponent({
                 expandTitle="Expand project threads"
                 collapseTitle="Collapse project threads"
                 onToggle={handleProjectRowToggle}
-              />
-            </span>
-            <span
-              className={cn(
-                "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
-                PROJECT_ROW_LEADING_SLOT_CLASS,
-              )}
-              aria-hidden
-            >
-              <Icon
-                name={isCollapsed ? "Folder" : "FolderOpen"}
-                className={COARSE_POINTER_ICON_SIZE_CLASS}
+                icon={isCollapsed ? "Folder" : "FolderOpen"}
               />
             </span>
             <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
