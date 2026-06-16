@@ -12,8 +12,12 @@ export interface BrowserTabDeckProps {
   browserTabs: readonly BrowserFixedPanelTab[];
   activeBrowserTabId: string | null;
   environmentId: string | null;
-  /** Whether the secondary panel is open; gates the active view's visibility. */
-  isPanelOpen: boolean;
+  /**
+   * Readiness-gated permission for the active native browser view to become
+   * visible. Wide layout passes logical panel-open state; compact layout waits
+   * for drawer animation completion plus the post-open bounds sync.
+   */
+  canShowNativeBrowserView: boolean;
   threadId: string;
   onUpdate: (args: UpdateBrowserTabArgs) => void;
 }
@@ -68,7 +72,7 @@ export function BrowserTabDeck({
   browserTabs,
   activeBrowserTabId,
   environmentId,
-  isPanelOpen,
+  canShowNativeBrowserView,
   threadId,
   onUpdate,
 }: BrowserTabDeckProps) {
@@ -113,7 +117,7 @@ export function BrowserTabDeck({
         key={activeBrowserTab.id}
         tabId={activeBrowserTab.id}
         initialUrl={activeBrowserTab.url}
-        isActive={isPanelOpen}
+        canShowNativeBrowserView={canShowNativeBrowserView}
         visibilityCoordinator={visibilityCoordinator}
         environmentId={environmentId}
         threadId={threadId}

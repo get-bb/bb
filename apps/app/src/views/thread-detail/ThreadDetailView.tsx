@@ -1683,7 +1683,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         browserTabs={browserTabs}
         activeBrowserTabId={activeBrowserTab?.id ?? null}
         environmentId={thread.environmentId}
-        isPanelOpen={canShowNativeBrowserView}
+        canShowNativeBrowserView={canShowNativeBrowserView}
         threadId={thread.id}
         onUpdate={updateBrowserTab}
       />

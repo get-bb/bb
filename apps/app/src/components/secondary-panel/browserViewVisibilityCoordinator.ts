@@ -17,7 +17,8 @@ export interface BrowserViewVisibilityCoordinator {
   /**
    * Make `tabId` the single visible view: hide whichever other tab is currently
    * visible, then sync bounds and show this one (bounds before show so it never
-   * appears at stale/zero bounds).
+   * appears at stale/zero bounds). `BrowserTabContent` calls this only after the
+   * hidden attach has been issued, making this the first-show path too.
    */
   show(tabId: string, syncBounds: () => void): void;
   /** Hide `tabId`'s view (no-op overlay-wise if it was already hidden). */
