@@ -69,9 +69,7 @@ import {
   type ProjectThreadNode,
 } from "./projectThreadGroups";
 import {
-  SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
-  getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
 } from "./sidebarRowClasses";
 import { type SidebarSortableDragBindings } from "./sortableMotion";
@@ -184,14 +182,6 @@ interface EnvironmentThreadGroupRowProps {
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
 }
 
-interface ThreadTreeGroupLineProps {
-  parentRowDepth: number;
-}
-
-interface ThreadTreeLineContinuationProps {
-  parentRowDepth: number;
-}
-
 interface GetThreadNodeStickyLevelArgs {
   depthOffset: number;
   node: ProjectThreadNode;
@@ -202,7 +192,6 @@ interface EnvironmentThreadGroupHeaderProps {
   representativeThread: ThreadListEntry;
   rowDepth: number;
   stickyLevel?: number;
-  parentLineDepth?: number;
   childActivity: CollapsedChildActivity;
   isCollapsed: boolean;
   archiveThreadsPending?: boolean;
@@ -279,20 +268,14 @@ function getProjectThreadTreeEmptyStateMessageClassName(
   );
 }
 
-function getProjectThreadTreeGroupLineClassName(
-  variant: ProjectThreadTreeVariant,
-): string | undefined {
-  if (variant === "project") {
-    return SIDEBAR_PROJECT_GROUP_LINE_CLASS;
-  }
-
-  return undefined;
-}
-
+// Both the projectless "Threads" section and a project's thread list start
+// their rows one step in from the section edge, so a top-level thread title
+// lands in the same column whether or not it lives under a project — the eye
+// scans one continuous title column down the whole sidebar.
 function getProjectThreadTreeRootDepthOffset(
-  variant: ProjectThreadTreeVariant,
+  _variant: ProjectThreadTreeVariant,
 ): number {
-  return variant === "section" ? 0 : 1;
+  return 1;
 }
 
 function getThreadRowDepth({
@@ -377,28 +360,6 @@ function getThreadNodeStickyLevel({
   return level < SIDEBAR_STICKY_PARENT_DEPTH_CAP ? level : undefined;
 }
 
-function ThreadTreeGroupLine({ parentRowDepth }: ThreadTreeGroupLineProps) {
-  return (
-    <span
-      className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-border-hairline"
-      style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
-      aria-hidden="true"
-    />
-  );
-}
-
-function ThreadTreeLineContinuation({
-  parentRowDepth,
-}: ThreadTreeLineContinuationProps) {
-  return (
-    <span
-      className="pointer-events-none absolute -bottom-0.5 top-0 z-[1] w-px bg-border-hairline"
-      style={{ left: getSidebarThreadGroupLineLeft(parentRowDepth) }}
-      aria-hidden="true"
-    />
-  );
-}
-
 function ProjectThreadTreeGroup({
   children,
   variant,
@@ -407,10 +368,7 @@ function ProjectThreadTreeGroup({
   return (
     <div
       data-sidebar-sticky-section={variant === "section" ? "" : undefined}
-      className={cn(
-        "relative space-y-0.5 group-data-[collapsible=icon]:hidden",
-        getProjectThreadTreeGroupLineClassName(variant),
-      )}
+      className="relative space-y-0.5 group-data-[collapsible=icon]:hidden"
       onClickCapture={onClickCapture}
     >
       {children}
@@ -593,7 +551,6 @@ function EnvironmentThreadGroupHeader({
   representativeThread,
   rowDepth,
   stickyLevel,
-  parentLineDepth,
   childActivity,
   isCollapsed,
   archiveThreadsPending = false,
@@ -640,9 +597,6 @@ function EnvironmentThreadGroupHeader({
   };
   const content = (
     <>
-      {parentLineDepth === undefined ? null : (
-        <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
-      )}
       {/*
         Leading cluster: caret + folder + label share the SAME gap-1.5 column
         spacing ThreadRow uses (caret slot, then a w-4 glyph, then the text), so
@@ -774,14 +728,6 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     nodeDepth,
     variant,
   });
-  const parentLineDepth =
-    nodeDepth > 0
-      ? getThreadRowDepth({
-          depthOffset,
-          nodeDepth: nodeDepth - 1,
-          variant,
-        })
-      : undefined;
   const createThreadInWorktree = useCreateThreadInWorktree({
     projectId,
     environmentId,
@@ -819,7 +765,6 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
             depthOffset,
             node: representativeNode,
           })}
-          parentLineDepth={parentLineDepth}
           childActivity={stats.childActivity}
           isCollapsed={isCollapsed}
           archiveThreadsPending={archiveThreadsPending}
@@ -830,7 +775,6 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
         />
         {!isCollapsed ? (
           <div className="relative space-y-px">
-            <ThreadTreeGroupLine parentRowDepth={rowDepth} />
             {nodes.map((node) => (
               <ThreadTreeNodeRow
                 key={node.thread.id}
@@ -928,11 +872,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   const isCollapsed = collapsedThreadIds.has(node.thread.id);
   const hasChildren = node.children.length > 0;
   const isParent = hasChildren;
-  const parentRowDepth = getThreadRowDepth({
-    depthOffset,
-    nodeDepth: node.depth,
-    variant,
-  });
   const options = useMemo<ThreadRowOptions>(
     () =>
       getThreadRowOptions({
@@ -993,7 +932,6 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
       {row}
       {showChildren ? (
         <div className="relative space-y-px">
-          <ThreadTreeGroupLine parentRowDepth={parentRowDepth} />
           {node.children.map((item) => (
             <ThreadTreeItemRow
               key={

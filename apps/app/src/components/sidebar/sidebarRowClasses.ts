@@ -35,7 +35,6 @@ export const SIDEBAR_UNREAD_DOT_CLASS =
 // few levels of nesting stay readable in a narrow sidebar.
 const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 8;
 const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 16;
-const SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX = 8;
 
 export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";
 
@@ -46,25 +45,5 @@ export function getSidebarThreadRowPaddingLeft(depth: number): number {
   );
 }
 
-export function getSidebarThreadGroupLineLeft(depth: number): number {
-  return (
-    getSidebarThreadRowPaddingLeft(depth) +
-    SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX
-  );
-}
-
 export const SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =
   "text-sidebar-foreground/85 dark:text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
-
-/**
- * Hairline that runs through an expanded project's thread list, sitting
- * under the center of the project chevron/folder icon. The coarse-pointer
- * variant nudges the line a few px right to follow the larger icon.
- *
- * Z-index sits between the parent tiers (z-40 and below) and the project
- * tier (z-50) so the line paints over parent rows and ordinary thread rows
- * (showing through their hover/active backgrounds) but a stuck project row
- * covers it cleanly.
- */
-export const SIDEBAR_PROJECT_GROUP_LINE_CLASS =
-  "before:pointer-events-none before:absolute before:bottom-0 before:left-4 before:top-0 before:z-[45] before:w-px before:bg-border-hairline before:content-[''] max-md:pointer-coarse:before:left-5";
