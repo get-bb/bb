@@ -82,7 +82,11 @@ const mockAttachments: UploadedPromptAttachment[] = [
 // ---------------------------------------------------------------------------
 
 const historyEntries = [
-  { text: "fix the timeline pagination bug", mentions: [], attachments: [] },
+  {
+    text: "fix the timeline pagination bug",
+    mentions: [],
+    attachments: [],
+  },
   { text: "review thread workspace", mentions: [], attachments: [] },
 ];
 
@@ -619,6 +623,29 @@ function WithAttachmentsRow() {
   );
 }
 
+function WithBlockquoteRow() {
+  // The shape "Add to chat" produces: a `> ` quote block, then the user's
+  // reply on the line below. The editor renders it as a real blockquote.
+  const { value, mentionRanges, onChange } = useControlledValue(
+    "> First we backfill the new column with a default value at the server\n> boundary, then flip reads once every row is populated.\nWhich phase is safe to deploy on a Friday?",
+  );
+  return (
+    <PromptBoxInternal
+      value={value}
+      mentionRanges={mentionRanges}
+      onChange={onChange}
+      onSubmit={noop}
+      typeahead={makeTypeahead()}
+      mentionMenuPlacement="bottom"
+      attachments={makeAttachments()}
+      history={baseHistory}
+      submission={makeSubmission()}
+      voice={idleVoice}
+      footerStart={<ExecutionControls {...mockExecution} />}
+    />
+  );
+}
+
 function WithMentionsRow() {
   const initialValue =
     "Ask @thread:thr_parent to inspect @apps/app/src/components/promptbox/PromptBoxInternal.tsx.";
@@ -903,6 +930,12 @@ export function Overview() {
         hint="thread and file mentions render as editor pills"
       >
         <WithMentionsRow />
+      </StoryRow>
+      <StoryRow
+        label="with blockquote"
+        hint="'Add to chat' inserts a > quote block; reply goes on the line below"
+      >
+        <WithBlockquoteRow />
       </StoryRow>
       <StoryRow
         label="selected skill"

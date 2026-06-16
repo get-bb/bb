@@ -263,7 +263,11 @@ const attachmentsBase: AttachmentsConfig = {
 
 const historyEntries = [
   { text: "review thread workspace", mentions: [], attachments: [] },
-  { text: "investigate timeline pagination", mentions: [], attachments: [] },
+  {
+    text: "investigate timeline pagination",
+    mentions: [],
+    attachments: [],
+  },
 ];
 
 // ---------------------------------------------------------------------------

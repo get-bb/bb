@@ -470,7 +470,7 @@ function MarkdownListItem({ children }: MarkdownListItemProps) {
 
 function MarkdownBlockquote({ children }: MarkdownBlockquoteProps) {
   return (
-    <blockquote className="my-2 border-l-2 border-border pl-3 italic text-muted-foreground">
+    <blockquote className="my-2 border-l-2 border-surface-selected-border pl-3 text-muted-foreground">
       {children}
     </blockquote>
   );

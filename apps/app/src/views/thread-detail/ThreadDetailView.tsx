@@ -41,6 +41,7 @@ import {
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { useThreadComposerBootstrap } from "../../hooks/queries/thread-composer-bootstrap-query";
+import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -704,6 +705,37 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     if (!threadId) return;
     openSideChat({ sourceThreadId: threadId, sourceMessageText: "" });
   }, [openSideChat, threadId]);
+  // Same scope (`projectId` + `thread.id`) the composer's `ThreadDetailPromptArea`
+  // uses, so the timeline "Add to chat" action and the composer share one
+  // localStorage-backed draft — the quoted text is appended to the draft as a
+  // `> ` blockquote block and renders inline in the composer immediately, with
+  // no duplicated draft state.
+  const selectionPromptDraft = usePromptDraftStorage({
+    projectId,
+    threadId: thread?.id,
+  });
+  const addQuoteToComposer = selectionPromptDraft.addQuote;
+  // Bumped each time a quote is appended so the composer (a sibling component
+  // sharing the localStorage draft) can focus its caret at the end, ready for
+  // the reply under the quote.
+  const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
+  const handleSelectionAddToChat = useCallback(
+    (text: string) => {
+      addQuoteToComposer(text);
+      setComposerFocusRequestNonce((nonce) => nonce + 1);
+    },
+    [addQuoteToComposer],
+  );
+  // "Reply in side chat" anchors the side chat on the user's SELECTION (passed
+  // as the side-chat source text), so the reply's visible anchor and the
+  // context handed to the agent are exactly the highlighted text — unlike the
+  // per-message Reply button, which anchors on the whole message.
+  const handleSelectionReplyInSideChat = useCallback(
+    (selectionText: string) => {
+      handleSideChatMessage({ messageText: selectionText });
+    },
+    [handleSideChatMessage],
+  );
   const canUseGitUi = environment?.isGitRepo === true;
   const canCreateTerminal =
     thread?.environmentId !== null &&
@@ -1703,6 +1735,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
             }
           : null
       }
+      composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
       pendingInteractions={pendingInteractions}
       pendingTodos={pendingTodos}
@@ -1867,6 +1900,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           timelineError: Boolean(timelineError),
           onForkMessage: isForkAvailable ? handleForkMessage : undefined,
           onSideChatMessage: handleSideChatMessage,
+          onSelectionAddToChat: handleSelectionAddToChat,
+          onSelectionReplyInSideChat: handleSelectionReplyInSideChat,
           onLoadOlderRows: loadOlderTimelineRows,
           onOpenLink: handleOpenTimelineLink,
           onOpenLocalFileLink: handleOpenTimelineLocalFileLink,

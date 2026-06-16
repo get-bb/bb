@@ -48,6 +48,8 @@ import type {
   ThreadTimelineForkMessageHandler,
   ThreadTimelineSideChatMessageHandler,
   ThreadTimelineSendToMainMessageHandler,
+  ThreadTimelineSelectionAddToChatHandler,
+  ThreadTimelineSelectionReplyInSideChatHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineImageViewSrcResolver,
@@ -56,6 +58,8 @@ import type {
   UserAttachmentImageSrcResolver,
 } from "./types.js";
 import { ConversationMessageContent } from "./ConversationMessageContent.js";
+import { TimelineSelectionMenu } from "./TimelineSelectionMenu.js";
+import type { MessageProseSelection } from "./SelectableMessageProse.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import {
   TimelineStaticRowHeader,
@@ -118,6 +122,17 @@ export interface ThreadTimelineRowsProps {
   onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
   /** Hand a specific side-chat agent message back to the main thread. */
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
+  /**
+   * Add the active text selection to the composer draft as a quote chip. When
+   * omitted the floating selection menu's "Add to chat" action is unavailable
+   * (so no menu is shown).
+   */
+  onSelectionAddToChat?: ThreadTimelineSelectionAddToChatHandler;
+  /**
+   * Open a side chat anchored on the active text selection. When omitted the
+   * floating selection menu's "Reply in side chat" action is unavailable.
+   */
+  onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
@@ -153,6 +168,15 @@ interface TimelineRendererStaticContextValue {
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
   onSideChatMessage: ThreadTimelineSideChatMessageHandler | undefined;
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
+  /**
+   * Reports an assistant message's text selection to the timeline-level
+   * controller. `undefined` when no selection action is wired (Add to chat /
+   * Reply in side chat both absent), which keeps `onSelectProse` off the
+   * messages and the floating menu unmounted.
+   */
+  reportProseSelection:
+    | ((selection: MessageProseSelection | null) => void)
+    | undefined;
   threadChildOrigin: ThreadChildOrigin | null;
   onOpenLink: ThreadTimelineLinkHandler | undefined;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler | undefined;
@@ -742,6 +766,7 @@ function ConversationRow({ row }: ConversationRowProps) {
     onForkMessage,
     onSideChatMessage,
     onSendToMainMessage,
+    reportProseSelection,
     threadChildOrigin,
     onOpenLink,
     onOpenLocalFileLink,
@@ -807,6 +832,7 @@ function ConversationRow({ row }: ConversationRowProps) {
       onSideChat={onSideChat}
       onSendToMain={onSendToMain}
       forkDisabled={!canSpawnChild}
+      onSelectProse={reportProseSelection}
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
@@ -1525,6 +1551,44 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
         : null;
     };
   }, [projectId]);
+  // One selection controller for the whole timeline: any assistant message that
+  // reports a non-null selection replaces it (single open menu), and a report of
+  // `null` (only emitted by a message that previously had a selection) clears it.
+  const onSelectionAddToChat = props.onSelectionAddToChat;
+  const onSelectionReplyInSideChat = props.onSelectionReplyInSideChat;
+  const hasSelectionActions =
+    onSelectionAddToChat !== undefined ||
+    onSelectionReplyInSideChat !== undefined;
+  const [activeSelection, setActiveSelection] =
+    useState<MessageProseSelection | null>(null);
+  // Only hand a reporter to the messages when an action exists; otherwise the
+  // wrapper stays inert and the floating menu never mounts.
+  const reportProseSelection = useMemo<
+    ((selection: MessageProseSelection | null) => void) | undefined
+  >(
+    () => (hasSelectionActions ? setActiveSelection : undefined),
+    [hasSelectionActions],
+  );
+  const dismissSelection = useCallback(() => {
+    setActiveSelection(null);
+  }, []);
+  // "Add to chat" quotes the SELECTION text; "Reply in side chat" anchors the
+  // side chat on the SELECTION (not the whole message), so the reply's context
+  // is exactly what the user highlighted.
+  const handleSelectionAddToChat = useCallback(
+    (text: string) => {
+      onSelectionAddToChat?.(text);
+      setActiveSelection(null);
+    },
+    [onSelectionAddToChat],
+  );
+  const handleSelectionReplyInSideChat = useCallback(
+    (text: string) => {
+      onSelectionReplyInSideChat?.(text);
+      setActiveSelection(null);
+    },
+    [onSelectionReplyInSideChat],
+  );
   const staticContextValue = useMemo<TimelineRendererStaticContextValue>(
     () => ({
       canSpawnChild: props.canSpawnChild ?? false,
@@ -1532,6 +1596,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       onForkMessage: props.onForkMessage,
       onSideChatMessage: props.onSideChatMessage,
       onSendToMainMessage: props.onSendToMainMessage,
+      reportProseSelection,
       threadChildOrigin: props.threadChildOrigin ?? null,
       onOpenLink: props.onOpenLink,
       onOpenLocalFileLink: props.onOpenLocalFileLink,
@@ -1552,6 +1617,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.onForkMessage,
       props.onSideChatMessage,
       props.onSendToMainMessage,
+      reportProseSelection,
       props.threadChildOrigin,
       props.onOpenLink,
       props.onOpenLocalFileLink,
@@ -1593,6 +1659,14 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
             unreadDividerPlacement={props.unreadDividerPlacement ?? null}
           />
         </AutoHeightContainer>
+        {hasSelectionActions ? (
+          <TimelineSelectionMenu
+            selection={activeSelection}
+            onAddToChat={handleSelectionAddToChat}
+            onReplyInSideChat={handleSelectionReplyInSideChat}
+            onDismiss={dismissSelection}
+          />
+        ) : null}
       </TimelineTurnStateContext.Provider>
     </TimelineRendererStaticContext.Provider>
   );

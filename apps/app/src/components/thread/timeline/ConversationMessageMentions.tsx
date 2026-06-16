@@ -218,3 +218,96 @@ export function renderMentionTextSegments({
   }
   return segments;
 }
+
+// Quote styling mirrors the agent-message blockquote and the composer's inline
+// blockquote (left accent border + muted text), so a quote reads the same
+// wherever it appears.
+const MESSAGE_QUOTE_BLOCK_CLASS =
+  "my-1 border-l-2 border-surface-selected-border pl-3 text-muted-foreground";
+
+function isQuoteLine(line: string): boolean {
+  return line === ">" || line.startsWith("> ");
+}
+
+function stripQuotePrefix(line: string): string {
+  if (line.startsWith("> ")) return line.slice(2);
+  if (line === ">") return "";
+  return line;
+}
+
+/** Whether `text` contains any `> `-prefixed blockquote line. */
+export function messageBodyHasQuote(text: string): boolean {
+  return text.split("\n").some(isQuoteLine);
+}
+
+/**
+ * Render a message body that contains `> ` blockquote lines: consecutive quote
+ * lines become a styled `<blockquote>` (prefix stripped), and runs of normal
+ * lines render as paragraphs with their mention pills intact. Quote content is
+ * treated as plain text (captured selections don't carry mentions). Callers
+ * should only use this when {@link messageBodyHasQuote} is true; otherwise the
+ * single-paragraph renderer keeps its existing line-clamp behavior.
+ */
+export function renderMessageBodyWithQuotes({
+  mentions,
+  resolveMentionLink,
+  text,
+}: RenderMentionTextSegmentsArgs): ReactNode {
+  const normalized = normalizePromptTextMentions({
+    mentions,
+    textLength: text.length,
+  });
+  const lines = text.split("\n");
+  const lineStarts: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    lineStarts.push(offset);
+    offset += line.length + 1; // +1 for the "\n" delimiter
+  }
+
+  const blocks: ReactNode[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const quote = isQuoteLine(lines[index]!);
+    let end = index;
+    while (end < lines.length && isQuoteLine(lines[end]!) === quote) {
+      end += 1;
+    }
+    const groupLines = lines.slice(index, end);
+    if (quote) {
+      blocks.push(
+        <blockquote key={index} className={MESSAGE_QUOTE_BLOCK_CLASS}>
+          <span className="whitespace-pre-wrap break-words">
+            {groupLines.map(stripQuotePrefix).join("\n")}
+          </span>
+        </blockquote>,
+      );
+    } else {
+      const spanStart = lineStarts[index]!;
+      const spanEnd = lineStarts[end - 1]! + groupLines[groupLines.length - 1]!.length;
+      const subText = text.slice(spanStart, spanEnd);
+      const subMentions = normalized.flatMap((mention) =>
+        mention.start >= spanStart && mention.end <= spanEnd
+          ? [
+              {
+                ...mention,
+                start: mention.start - spanStart,
+                end: mention.end - spanStart,
+              },
+            ]
+          : [],
+      );
+      blocks.push(
+        <p key={index} className="whitespace-pre-wrap break-words">
+          {renderMentionTextSegments({
+            mentions: subMentions,
+            resolveMentionLink,
+            text: subText,
+          })}
+        </p>,
+      );
+    }
+    index = end;
+  }
+  return blocks;
+}

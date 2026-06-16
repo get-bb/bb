@@ -70,18 +70,163 @@ function normalizeMentions(
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
-export function promptEditorContentFromValue(
+function isQuoteLine(line: string): boolean {
+  return line === ">" || line.startsWith("> ");
+}
+
+function stripQuotePrefix(line: string): string {
+  if (line.startsWith("> ")) return line.slice(2);
+  if (line === ">") return "";
+  return line;
+}
+
+/**
+ * Shift mentions that fall within a global text span into a sub-value relative
+ * to `spanStart`, optionally accounting for characters stripped from the front
+ * of each line (the `> `/`>` quote prefix). `lineSpans` lists each source
+ * line's global [start,end) plus the cumulative number of characters removed
+ * before it in the stripped sub-text, so a mention's offset can be rebased onto
+ * the stripped inner text.
+ */
+interface StrippedLineSpan {
+  /** Global offset of the first content character of this line (after prefix). */
+  contentStart: number;
+  /** Global offset just past this line's content. */
+  contentEnd: number;
+  /** Offset of this line's content within the stripped sub-text. */
+  innerStart: number;
+}
+
+function rebaseMentionsToSpan(
   value: PromptEditorContentValue,
+  lineSpans: readonly StrippedLineSpan[],
+): PromptTextMention[] {
+  const rebased: PromptTextMention[] = [];
+  for (const mention of value.mentions) {
+    for (const span of lineSpans) {
+      if (mention.start >= span.contentStart && mention.end <= span.contentEnd) {
+        const delta = span.innerStart - span.contentStart;
+        rebased.push({
+          ...mention,
+          start: mention.start + delta,
+          end: mention.end + delta,
+        });
+        break;
+      }
+    }
+  }
+  return rebased;
+}
+
+function blockquoteFromLines(
+  value: PromptEditorContentValue,
+  lines: readonly string[],
+  lineGlobalStarts: readonly number[],
 ): JSONContent {
+  const strippedLines = lines.map((line) => stripQuotePrefix(line));
+  const innerText = strippedLines.join("\n");
+
+  const lineSpans: StrippedLineSpan[] = [];
+  let innerCursor = 0;
+  for (const [index, line] of lines.entries()) {
+    const prefixLength = line.length - strippedLines[index]!.length;
+    const contentStart = lineGlobalStarts[index]! + prefixLength;
+    const contentEnd = lineGlobalStarts[index]! + line.length;
+    lineSpans.push({
+      contentStart,
+      contentEnd,
+      innerStart: innerCursor,
+    });
+    innerCursor += strippedLines[index]!.length + 1; // +1 for joining "\n"
+  }
+
+  const innerMentions = rebaseMentionsToSpan(value, lineSpans);
   return {
-    type: "doc",
+    type: "blockquote",
     content: [
       {
         type: "paragraph",
-        content: promptEditorInlineContentFromValue(value),
+        content: promptEditorInlineContentFromValue({
+          text: innerText,
+          mentions: innerMentions,
+        }),
       },
     ],
   };
+}
+
+function paragraphFromSpan(
+  value: PromptEditorContentValue,
+  spanStart: number,
+  spanEnd: number,
+): JSONContent {
+  const subText = value.text.slice(spanStart, spanEnd);
+  const subMentions = value.mentions.flatMap((mention) =>
+    mention.start >= spanStart && mention.end <= spanEnd
+      ? [
+          {
+            ...mention,
+            start: mention.start - spanStart,
+            end: mention.end - spanStart,
+          },
+        ]
+      : [],
+  );
+  return {
+    type: "paragraph",
+    content: promptEditorInlineContentFromValue({
+      text: subText,
+      mentions: subMentions,
+    }),
+  };
+}
+
+export function promptEditorContentFromValue(
+  value: PromptEditorContentValue,
+): JSONContent {
+  if (value.text.length === 0) {
+    return {
+      type: "doc",
+      content: [{ type: "paragraph", content: [] }],
+    };
+  }
+
+  const lines = value.text.split("\n");
+  // Global start offset of each line within value.text.
+  const lineGlobalStarts: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    lineGlobalStarts.push(offset);
+    offset += line.length + 1; // +1 for the "\n" delimiter
+  }
+
+  const blocks: JSONContent[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const quote = isQuoteLine(lines[index]!);
+    let end = index;
+    while (end < lines.length && isQuoteLine(lines[end]!) === quote) {
+      end += 1;
+    }
+    const groupLines = lines.slice(index, end);
+    const groupStarts = lineGlobalStarts.slice(index, end);
+    if (quote) {
+      blocks.push(blockquoteFromLines(value, groupLines, groupStarts));
+    } else {
+      const spanStart = groupStarts[0]!;
+      const lastLine = groupLines[groupLines.length - 1]!;
+      const spanEnd =
+        groupStarts[groupStarts.length - 1]! + lastLine.length;
+      blocks.push(paragraphFromSpan(value, spanStart, spanEnd));
+    }
+    index = end;
+  }
+
+  if (blocks.length === 0) {
+    blocks.push({ type: "paragraph", content: [] });
+  }
+
+  return { type: "doc", content: blocks };
 }
 
 export function promptEditorInlineContentFromValue(
@@ -123,7 +268,7 @@ export function promptEditorValueFromDoc(
   let hasSerializedBlock = false;
   const mentions: PromptTextMention[] = [];
 
-  const appendNode = (node: ProseMirrorNode) => {
+  const appendInline = (node: ProseMirrorNode) => {
     if (node.type.name === "text") {
       text += node.text ?? "";
       return;
@@ -143,6 +288,69 @@ export function promptEditorValueFromDoc(
           resource: attrs.resource,
         });
       }
+      return;
+    }
+    appendChildren(node);
+  };
+
+  // Serialize a blockquote: build its inner value via a fresh walk, then emit
+  // each inner line with a "> "/">" prefix. The prefix characters count toward
+  // text.length, so inner mention offsets are shifted to reflect the prefixes.
+  const appendBlockquote = (node: ProseMirrorNode) => {
+    const inner = promptEditorValueFromDoc(node);
+    const lines = inner.text.split("\n");
+    const lineGlobalStarts: number[] = [];
+    let innerOffset = 0;
+    for (const line of lines) {
+      lineGlobalStarts.push(innerOffset);
+      innerOffset += line.length + 1;
+    }
+
+    const blockStart = text.length;
+    const prefixedLines = lines.map((line) =>
+      line.length > 0 ? `> ${line}` : ">",
+    );
+    text += prefixedLines.join("\n");
+
+    for (const innerMention of inner.mentions) {
+      // Find which inner line the mention sits on, then add the cumulative
+      // prefix length up to and including that line.
+      let lineIndex = 0;
+      for (let i = 0; i < lines.length; i += 1) {
+        const lineStart = lineGlobalStarts[i]!;
+        if (innerMention.start >= lineStart) {
+          lineIndex = i;
+        } else {
+          break;
+        }
+      }
+      const prefixDelta = prefixedLines
+        .slice(0, lineIndex + 1)
+        .reduce((sum, p, i) => sum + (p.length - lines[i]!.length), 0);
+      mentions.push({
+        ...innerMention,
+        start: blockStart + innerMention.start + prefixDelta,
+        end: blockStart + innerMention.end + prefixDelta,
+      });
+    }
+  };
+
+  const appendNode = (node: ProseMirrorNode) => {
+    if (
+      node.type.name === "text" ||
+      node.type.name === "hardBreak" ||
+      node.type.name === "mention"
+    ) {
+      appendInline(node);
+      return;
+    }
+
+    if (node.type.name === "blockquote") {
+      if (hasSerializedBlock) {
+        text += "\n";
+      }
+      hasSerializedBlock = true;
+      appendBlockquote(node);
       return;
     }
 

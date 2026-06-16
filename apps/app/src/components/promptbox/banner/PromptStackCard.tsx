@@ -13,6 +13,11 @@ export interface PromptStackCardProps {
   ariaLabel?: string;
   className?: string;
   style?: CSSProperties;
+  /**
+   * Makes the card keyboard-focusable — set to 0 when the card is itself a
+   * scroll region (e.g. a height-capped list) so keyboard users can scroll it.
+   */
+  tabIndex?: number;
 }
 
 /**
@@ -27,6 +32,7 @@ export function PromptStackCard({
   ariaLabel,
   className,
   style,
+  tabIndex,
 }: PromptStackCardProps) {
   if (ariaLabel) {
     return (
@@ -34,13 +40,14 @@ export function PromptStackCard({
         aria-label={ariaLabel}
         className={cn(BASE_CHROME, className)}
         style={style}
+        tabIndex={tabIndex}
       >
         {children}
       </section>
     );
   }
   return (
-    <div className={cn(BASE_CHROME, className)} style={style}>
+    <div className={cn(BASE_CHROME, className)} style={style} tabIndex={tabIndex}>
       {children}
     </div>
   );

@@ -21,6 +21,8 @@ import {
   ThreadTimelineRows,
   type ThreadTimelineForkMessageHandler,
   type ThreadTimelineSideChatMessageHandler,
+  type ThreadTimelineSelectionAddToChatHandler,
+  type ThreadTimelineSelectionReplyInSideChatHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLinkHandler,
   type ThreadTimelineUnreadDividerPlacement,
@@ -46,6 +48,8 @@ interface ThreadTimelinePaneProps {
   timelineError: boolean;
   onForkMessage?: ThreadTimelineForkMessageHandler;
   onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
+  onSelectionAddToChat?: ThreadTimelineSelectionAddToChatHandler;
+  onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
   onLoadOlderRows: () => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -143,6 +147,8 @@ export function ThreadTimelinePane({
   timelineError,
   onForkMessage,
   onSideChatMessage,
+  onSelectionAddToChat,
+  onSelectionReplyInSideChat,
   onLoadOlderRows,
   onOpenLink,
   onOpenLocalFileLink,
@@ -180,7 +186,10 @@ export function ThreadTimelinePane({
   });
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-clip">
+    <div
+      data-thread-window=""
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-clip"
+    >
       {header}
       <PageShell
         key={threadId}
@@ -213,6 +222,8 @@ export function ThreadTimelinePane({
               threadChildOrigin={threadChildOrigin}
               onForkMessage={onForkMessage}
               onSideChatMessage={onSideChatMessage}
+              onSelectionAddToChat={onSelectionAddToChat}
+              onSelectionReplyInSideChat={onSelectionReplyInSideChat}
               onOpenLink={onOpenLink}
               onOpenLocalFileLink={onOpenLocalFileLink}
               onTitleAction={onTitleAction}

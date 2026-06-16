@@ -84,7 +84,11 @@ const baseHistory: HistoryConfig = {
   currentDraft: { text: "", mentions: [], attachments: [] },
   entries: [
     { text: "review thread workspace", mentions: [], attachments: [] },
-    { text: "investigate timeline pagination", mentions: [], attachments: [] },
+    {
+      text: "investigate timeline pagination",
+      mentions: [],
+      attachments: [],
+    },
   ],
   onSelectEntry: noop,
 };

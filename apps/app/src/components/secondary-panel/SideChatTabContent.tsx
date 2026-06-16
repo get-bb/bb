@@ -26,6 +26,10 @@ import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspac
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
+import {
+  messageBodyHasQuote,
+  renderMessageBodyWithQuotes,
+} from "@/components/thread/timeline/ConversationMessageMentions";
 import { cn } from "@/lib/utils";
 import {
   COARSE_POINTER_ICON_SIZE_CLASS,
@@ -370,7 +374,11 @@ export function SideChatTabContent({
       // config (current draft, no entries, no-op select) satisfies the required
       // shape without inventing a feature the composer never exercises.
       history: {
-        currentDraft: { text: message, mentions: mentionRanges, attachments: [] },
+        currentDraft: {
+          text: message,
+          mentions: mentionRanges,
+          attachments: [],
+        },
         entries: [],
         onSelectEntry: noop,
       } satisfies HistoryConfig,
@@ -534,9 +542,18 @@ export function SideChatTabContent({
               Replying to
             </span>
             <div className="max-w-full rounded-md bg-surface-recessed p-2 text-sm leading-relaxed text-foreground">
-              <p className="line-clamp-3 whitespace-pre-wrap break-words">
-                {triggerMessageText}
-              </p>
+              {messageBodyHasQuote(triggerMessageText) ? (
+                <div className="max-h-32 overflow-hidden break-words">
+                  {renderMessageBodyWithQuotes({
+                    mentions: [],
+                    text: triggerMessageText,
+                  })}
+                </div>
+              ) : (
+                <p className="line-clamp-3 whitespace-pre-wrap break-words">
+                  {triggerMessageText}
+                </p>
+              )}
             </div>
           </div>
         ) : null}

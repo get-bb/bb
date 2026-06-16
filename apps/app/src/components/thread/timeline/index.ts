@@ -20,6 +20,8 @@ export type {
   ThreadTimelineSideChatMessageTarget,
   ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineSendToMainMessageTarget,
+  ThreadTimelineSelectionAddToChatHandler,
+  ThreadTimelineSelectionReplyInSideChatHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineImageViewSrcResolver,
   ThreadTimelineImageViewSrcTarget,

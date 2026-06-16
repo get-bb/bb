@@ -30,7 +30,9 @@ import {
 } from "./GeneratedConversationMessage.js";
 import {
   clipMentionTextToVisibleRange,
+  messageBodyHasQuote,
   renderMentionTextSegments,
+  renderMessageBodyWithQuotes,
   shiftMentionsToTextRange,
 } from "./ConversationMessageMentions.js";
 import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits.js";
@@ -41,6 +43,10 @@ import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
 } from "./conversation-message-overflow.js";
+import {
+  SelectableMessageProse,
+  type MessageProseSelection,
+} from "./SelectableMessageProse.js";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -111,6 +117,12 @@ export interface ConversationMessageContentAssistantProps
    * — both spawn a child thread off the active thread, so they share one guard.
    */
   forkDisabled?: boolean;
+  /**
+   * Reports this message's in-bounds text selection (or `null` when cleared) up
+   * to the timeline-level selection controller that drives the single floating
+   * menu. Omitted when no controller is wired in (e.g. delegation output).
+   */
+  onSelectProse?: (selection: MessageProseSelection | null) => void;
   turnRequest: null;
 }
 
@@ -148,6 +160,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   onSideChat?: () => void;
   onSendToMain?: () => void;
   forkDisabled?: boolean;
+  onSelectProse?: (selection: MessageProseSelection | null) => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
@@ -224,22 +237,39 @@ function CollapsibleMessageText({
           {prefixText}
         </span>
       ) : null}
-      <p
-        ref={textRef}
-        className={cn(
-          "whitespace-pre-wrap break-words",
-          !isExpanded && "line-clamp-[15]",
-        )}
-      >
-        {renderMentionTextSegments({
-          mentions: safeRenderedBody.mentions,
-          resolveMentionLink,
-          text: safeRenderedBody.text,
-        })}
-        {isExpanded && isTruncated ? (
-          <span className="text-muted-foreground"> [truncated]</span>
-        ) : null}
-      </p>
+      {messageBodyHasQuote(safeRenderedBody.text) ? (
+        // Quote-containing bodies render as blocks (paragraphs + styled
+        // blockquotes), so `> ` reads like a quote rather than literal text.
+        // `renderedBody` is already line-sliced when collapsed, so the toggle
+        // (driven by line count) still works without a CSS line clamp.
+        <div className="break-words">
+          {renderMessageBodyWithQuotes({
+            mentions: safeRenderedBody.mentions,
+            resolveMentionLink,
+            text: safeRenderedBody.text,
+          })}
+          {isExpanded && isTruncated ? (
+            <span className="text-muted-foreground"> [truncated]</span>
+          ) : null}
+        </div>
+      ) : (
+        <p
+          ref={textRef}
+          className={cn(
+            "whitespace-pre-wrap break-words",
+            !isExpanded && "line-clamp-[15]",
+          )}
+        >
+          {renderMentionTextSegments({
+            mentions: safeRenderedBody.mentions,
+            resolveMentionLink,
+            text: safeRenderedBody.text,
+          })}
+          {isExpanded && isTruncated ? (
+            <span className="text-muted-foreground"> [truncated]</span>
+          ) : null}
+        </p>
+      )}
       {showToggle ? (
         <ConversationMessageOverflowToggle
           expanded={isExpanded}
@@ -375,6 +405,7 @@ function AssistantConversationMessage({
   onSideChat,
   onSendToMain,
   forkDisabled,
+  onSelectProse,
   onOpenLink,
   onOpenLocalFileLink,
   projectId,
@@ -402,7 +433,14 @@ function AssistantConversationMessage({
 
   return (
     <div className="group/message w-full px-2 text-sm font-normal leading-relaxed">
-      <MarkdownPreview content={text} linkRouting={linkRouting} />
+      {/*
+        Reports in-bounds text selections up to the timeline-level controller
+        that drives the single floating selection menu (Add to chat / Reply in
+        side chat).
+      */}
+      <SelectableMessageProse onSelect={onSelectProse}>
+        <MarkdownPreview content={text} linkRouting={linkRouting} />
+      </SelectableMessageProse>
       <ConversationAttachments
         filePaths={attachmentItems.filePaths}
         imageItems={attachmentItems.imageItems}
@@ -481,6 +519,7 @@ export function ConversationMessageContent(
       onSideChat={props.onSideChat}
       onSendToMain={props.onSendToMain}
       forkDisabled={props.forkDisabled}
+      onSelectProse={props.onSelectProse}
       onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}
