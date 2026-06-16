@@ -248,7 +248,7 @@ describe("buildProjectThreadGroups", () => {
     ]);
   });
 
-  it("groups a solo worktree thread into a single-child environment group", () => {
+  it("keeps a solo worktree thread loose instead of forming a single-child group", () => {
     const rootItems = buildProjectThreadGroups([
       createThread({
         id: "worktree-solo",
@@ -262,10 +262,7 @@ describe("buildProjectThreadGroups", () => {
       }),
     ]);
 
-    expect(summarizeItems(rootItems)).toEqual([
-      "plain-root",
-      { env: "env_solo", threads: ["worktree-solo"] },
-    ]);
+    expect(summarizeItems(rootItems)).toEqual(["plain-root", "worktree-solo"]);
   });
 
   it("sorts siblings with active rows first, then inactive attention recency", () => {

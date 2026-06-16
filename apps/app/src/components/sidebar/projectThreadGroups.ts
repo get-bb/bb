@@ -22,6 +22,7 @@ export interface ProjectThreadNode {
 
 export type EnvironmentThreadGroupNodes = [
   ProjectThreadNode,
+  ProjectThreadNode,
   ...ProjectThreadNode[],
 ];
 
@@ -286,12 +287,11 @@ export function buildProjectThreadGroups(
   return buildSortedItems(rootNodes);
 }
 
-// Bucket nodes by shared worktree environmentId. Every worktree thread becomes
-// an environment group — including solo threads — so a thread's worktree always
-// reads the same way: a leading branch header row. (Non-worktree threads stay
-// loose.) This keeps worktree identity in one consistent position instead of
-// flipping between a leading group glyph and a trailing row icon based on how
-// many siblings happen to share the environment.
+// Bucket nodes by shared worktree environmentId. A bucket only becomes a group
+// when >=2 sibling nodes share the environment; a solo worktree thread stays a
+// loose, navigable thread row (with a leading worktree glyph) rather than a
+// disclosure-only group header — a 1-thread "header" that toggles looks just
+// like a thread and is the main source of sidebar nav/disclosure confusion.
 function bucketWorktreeEnvironmentGroups(
   nodes: ProjectThreadNode[],
 ): BucketWorktreeEnvironmentGroupsResult {
@@ -312,7 +312,7 @@ function bucketWorktreeEnvironmentGroups(
   const groupedEnvironmentIds = new Set<string>();
   const environmentThreadGroups: EnvironmentThreadGroup[] = [];
   for (const [environmentId, bucket] of nodesByEnvironmentId) {
-    if (!hasWorktreeThreadNode(bucket)) continue;
+    if (!hasAtLeastTwoThreadNodes(bucket)) continue;
     bucket.sort((left, right) =>
       compareStandardThreads(left.thread, right.thread),
     );
@@ -332,8 +332,8 @@ function bucketWorktreeEnvironmentGroups(
   return { environmentThreadGroups, looseNodes };
 }
 
-function hasWorktreeThreadNode(
+function hasAtLeastTwoThreadNodes(
   nodes: ProjectThreadNode[],
 ): nodes is EnvironmentThreadGroupNodes {
-  return nodes.length >= 1;
+  return nodes.length >= 2;
 }

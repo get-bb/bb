@@ -48,6 +48,10 @@ import {
   getSidebarThreadRowPaddingLeft,
   type SidebarUnreadDotTone,
 } from "./sidebarRowClasses";
+import {
+  getEnvironmentWorkspaceDisplayIconLabel,
+  getEnvironmentWorkspaceDisplayIconName,
+} from "@/lib/environment-workspace-display";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
@@ -55,6 +59,10 @@ import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 interface ThreadRowBaseOptions {
   depth: number;
   isCompact: boolean;
+  // True when this row is nested under a worktree group header (2+ threads share
+  // the env). The header already shows the worktree glyph, so the row suppresses
+  // its own leading worktree glyph to avoid repeating it.
+  isEnvGrouped: boolean;
 }
 
 export type ThreadRowOptions =
@@ -282,6 +290,22 @@ function ThreadRowComponent({
     ? `Open ${threadTitle} (unsubmitted draft)`
     : `Open ${threadTitle}`;
   const linkTitle = linkLabel;
+  // A lone worktree thread (not nested under a worktree group header) carries a
+  // leading worktree glyph so its environment reads at a glance, keeping the
+  // worktree indicator in the same leading position as the group header. Forks
+  // already lead with the Fork glyph, so they don't also show it.
+  const leadingWorktreeIcon =
+    options.isEnvGrouped || thread.childOrigin === "fork"
+      ? null
+      : getEnvironmentWorkspaceDisplayIconName(
+          thread.environmentWorkspaceDisplayKind,
+        );
+  const leadingWorktreeIconLabel =
+    leadingWorktreeIcon === null
+      ? null
+      : getEnvironmentWorkspaceDisplayIconLabel(
+          thread.environmentWorkspaceDisplayKind,
+        );
   const parentDragBindings = parentOptions?.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -332,6 +356,17 @@ function ThreadRowComponent({
               name="Fork"
               className="size-3.5 text-muted-foreground"
               aria-label="Forked thread"
+            />
+          </span>
+        ) : leadingWorktreeIcon ? (
+          <span
+            className="inline-flex shrink-0"
+            title={leadingWorktreeIconLabel ?? undefined}
+          >
+            <Icon
+              name={leadingWorktreeIcon}
+              className="size-3.5 text-muted-foreground"
+              aria-label={leadingWorktreeIconLabel ?? undefined}
             />
           </span>
         ) : null}
