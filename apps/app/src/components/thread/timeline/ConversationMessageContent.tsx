@@ -61,6 +61,9 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
+  /** `childOrigin` of the SENDER thread (the cross-thread "Message from" source),
+   * so a message handed back from a side chat reads "Message from side chat". */
+  senderChildOrigin: ThreadChildOrigin | null;
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
 
@@ -129,6 +132,7 @@ interface UserConversationMessageProps {
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
+  senderChildOrigin: ThreadChildOrigin | null;
   text: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
@@ -253,6 +257,7 @@ function UserConversationMessage({
   resolveSegmentLinkHref,
   senderThreadId,
   senderThreadTitle,
+  senderChildOrigin,
   text,
   turnRequest,
 }: UserConversationMessageProps) {
@@ -273,7 +278,11 @@ function UserConversationMessage({
         resolveMentionLink={resolveMentionLink}
         resolveSegmentLinkHref={resolveSegmentLinkHref}
         sourceKind="agent"
-        sourceName={senderThreadTitle ?? "Agent"}
+        sourceName={
+          senderChildOrigin === "side-chat"
+            ? "side chat"
+            : (senderThreadTitle ?? "Agent")
+        }
         sourceThreadId={senderThreadId}
         text={body.text}
         turnRequest={turnRequest}
@@ -446,6 +455,7 @@ export function ConversationMessageContent(
         resolveSegmentLinkHref={props.resolveSegmentLinkHref}
         senderThreadId={props.senderThreadId}
         senderThreadTitle={props.senderThreadTitle}
+        senderChildOrigin={props.senderChildOrigin}
         text={text}
         turnRequest={props.turnRequest}
       />

@@ -170,6 +170,7 @@ interface TimelineRendererStaticContextValue {
 
 interface SenderThreadMetadata {
   title: string | null;
+  childOrigin: ThreadChildOrigin | null;
 }
 
 interface BuildSenderThreadMetadataByIdArgs {
@@ -187,6 +188,7 @@ interface SenderThreadTitleSource {
 
 interface SenderThreadMetadataSource extends SenderThreadTitleSource {
   id: string;
+  childOrigin: ThreadChildOrigin | null;
 }
 
 /**
@@ -522,7 +524,7 @@ function addSenderThreadMetadata(
   if (existing && (existing.title !== null || title === null)) {
     return;
   }
-  metadataById.set(thread.id, { title });
+  metadataById.set(thread.id, { title, childOrigin: thread.childOrigin });
 }
 
 function buildSenderThreadMetadataById({
@@ -772,6 +774,7 @@ function ConversationRow({ row }: ConversationRowProps) {
         resolveSegmentLinkHref={resolveSegmentLinkHref}
         senderThreadId={row.senderThreadId}
         senderThreadTitle={senderThreadMetadata?.title ?? null}
+        senderChildOrigin={senderThreadMetadata?.childOrigin ?? null}
         text={row.text}
         turnRequest={row.turnRequest}
       />
