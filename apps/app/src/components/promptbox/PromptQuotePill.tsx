@@ -7,15 +7,15 @@ export interface PromptQuotePillProps {
 }
 
 /**
- * A single removable quote pill rendered above the composer. Mirrors the
- * recessed-surface chrome of the rest of the prompt stack (border + rounded +
- * surface-recessed) with a left accent bar so the stacked quotes read as
- * pulled-in context rather than typed text. The quote text wraps and clamps to
- * two lines; the ✕ removes this quote from the draft.
+ * A single removable quote row rendered inside the quote-stack card above the
+ * composer. The surrounding `PromptStackCard` owns the recessed/bordered chrome
+ * (like the queued-messages rows do), so the row itself is borderless and adds
+ * only a left accent bar marking it as pulled-in context. The quote text wraps
+ * and clamps to two lines; the ✕ removes this quote from the draft.
  */
 export function PromptQuotePill({ quote, onRemove }: PromptQuotePillProps) {
   return (
-    <div className="flex items-start gap-2 overflow-hidden rounded-md border border-border bg-surface-recessed pr-1.5">
+    <div className="flex items-start gap-2 overflow-hidden pr-1.5">
       <div
         aria-hidden
         className="w-0.5 shrink-0 self-stretch rounded-l bg-surface-selected-border"
