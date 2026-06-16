@@ -347,6 +347,121 @@ describe("bb thread spawn command output", () => {
     });
   });
 
+  it("bb thread spawn with --parent-self forwards BB_THREAD_ID as parent thread id", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    vi.stubEnv("BB_THREAD_ID", "thread-context-parent");
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-2",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "created",
+      parentThreadId: "thread-context-parent",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--parent-self",
+        "--prompt",
+        "hello",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        parentThreadId: "thread-context-parent",
+      }),
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "You will be notified when this thread is done.",
+    );
+  });
+
+  it("bb thread spawn rejects --parent-self without BB_THREAD_ID", async () => {
+    const post = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-parent-self-missing-context",
+        projectId: "proj-1",
+        providerId: "codex",
+      }),
+    );
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--parent-self",
+          "--prompt",
+          "hello",
+          "--provider",
+          "codex",
+          "--model",
+          "gpt-5",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: --parent-self requires BB_THREAD_ID to be set.",
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("bb thread spawn rejects combining --parent-thread and --parent-self", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-context-parent");
+    const post = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-conflicting-parent",
+        projectId: "proj-1",
+        providerId: "codex",
+      }),
+    );
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "spawn",
+          "--project",
+          "proj-1",
+          "--parent-thread",
+          "thread-parent",
+          "--parent-self",
+          "--prompt",
+          "hello",
+          "--provider",
+          "codex",
+          "--model",
+          "gpt-5",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Cannot combine --parent-thread with --parent-self.",
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("bb thread spawn rejects invalid parent-thread values", async () => {
     const post = vi.fn(async () =>
       fixtures.makeThread({

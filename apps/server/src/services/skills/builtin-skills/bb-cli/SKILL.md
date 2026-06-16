@@ -22,8 +22,8 @@ environments.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
-- Use `--parent-thread "$BB_THREAD_ID"` inside a thread to parent the new
-  thread to the current thread.
+- Use `--parent-self` inside a thread to parent the new thread to the current
+  thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
 - If provider or model choice matters, inspect options with `bb provider list`
   and `bb provider models <provider-id>`.

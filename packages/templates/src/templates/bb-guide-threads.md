@@ -17,6 +17,7 @@ Spawning:
     --title <title>                Thread title
     --project <id>                 Project (defaults to BB_PROJECT_ID)
     --parent-thread <id>           Parent thread
+    --parent-self                  Parent to the current thread (BB_THREAD_ID)
     --provider <id>                Provider override
     --model <model>                Model override
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
@@ -26,7 +27,7 @@ Spawning:
     --permission-mode <mode>       Permission mode: full, workspace-write, or readonly
 
   Execution defaults resolve from explicit flags, live parent execution, project defaults, then product defaults.
-  Parenting is opt-in. Inside a thread, pass --parent-thread "$BB_THREAD_ID" to parent the new thread to the current thread.
+  Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
 
 Listing:
 

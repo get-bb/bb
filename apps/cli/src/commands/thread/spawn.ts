@@ -35,6 +35,7 @@ interface ThreadSpawnCommandOptions {
   title?: string;
   serviceTier?: string;
   permissionMode?: string;
+  parentSelf?: boolean;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -56,6 +57,27 @@ function resolveSpawnEnvironmentValue(flagValue?: string): string | undefined {
     flagName: "--environment flag",
     value: trimmedValue,
   });
+}
+
+function resolveSpawnParentThreadId(args: {
+  parentSelf?: boolean;
+  parentThread?: string;
+}): string | undefined {
+  const explicitParentThreadId = resolveExplicitIdFlag({
+    flagName: "--parent-thread",
+    value: args.parentThread,
+  });
+  if (explicitParentThreadId && args.parentSelf) {
+    throw new Error("Cannot combine --parent-thread with --parent-self.");
+  }
+  if (args.parentSelf) {
+    const selfThreadId = resolveThreadId();
+    if (!selfThreadId) {
+      throw new Error("--parent-self requires BB_THREAD_ID to be set.");
+    }
+    return selfThreadId;
+  }
+  return explicitParentThreadId;
 }
 
 export function buildSpawnEnvironment(args: {
@@ -145,6 +167,7 @@ export function registerSpawnCommand(
       "--parent-thread <id>",
       "Parent thread ID for worker thread links",
     )
+    .option("--parent-self", "Parent the new thread to BB_THREAD_ID")
     .option(
       "--provider <id>",
       "Provider ID for the thread. Omit to use the project's remembered provider choice",
@@ -185,11 +208,10 @@ export function registerSpawnCommand(
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);
         const permissionMode = parsePermissionMode(opts.permissionMode);
-        const explicitParentThreadId = resolveExplicitIdFlag({
-          flagName: "--parent-thread",
-          value: opts.parentThread,
+        const parentThreadId = resolveSpawnParentThreadId({
+          parentSelf: opts.parentSelf,
+          parentThread: opts.parentThread,
         });
-        const parentThreadId = explicitParentThreadId;
 
         let thread: Thread;
         try {
