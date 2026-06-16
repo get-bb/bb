@@ -745,6 +745,7 @@ function ConversationRow({ row }: ConversationRowProps) {
     threadChildOrigin,
     onOpenLink,
     onOpenLocalFileLink,
+    onTitleAction,
     projectId,
     resolveMentionLink,
     resolveSegmentLinkHref,
@@ -772,6 +773,7 @@ function ConversationRow({ row }: ConversationRowProps) {
         resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
         role="user"
         resolveSegmentLinkHref={resolveSegmentLinkHref}
+        onTitleAction={onTitleAction}
         senderThreadId={row.senderThreadId}
         senderThreadTitle={senderThreadMetadata?.title ?? null}
         senderChildOrigin={senderThreadMetadata?.childOrigin ?? null}

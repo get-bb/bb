@@ -30,6 +30,7 @@ export function Overview() {
               sourceKind="agent"
               sourceName="Fork Context Summary"
               sourceThreadId="thr_source"
+              sourceIsSideChat={false}
               text="Hi. What would you like to work on?"
               turnRequest={ACCEPTED_REQUEST}
             />
@@ -47,6 +48,7 @@ export function Overview() {
               sourceKind="agent"
               sourceName="Stabilize Pnpm Dev Environment"
               sourceThreadId="thr_source"
+              sourceIsSideChat={false}
               text="Here is more: a small, useful sentence with no extra ceremony."
               turnRequest={ACCEPTED_REQUEST}
             />
@@ -64,6 +66,7 @@ export function Overview() {
               sourceKind="agent"
               sourceName="Manager"
               sourceThreadId="thr_source"
+              sourceIsSideChat={false}
               text="Delegated task: investigate the flaky timeline test."
               turnRequest={ACCEPTED_REQUEST}
             />
@@ -78,6 +81,7 @@ export function Overview() {
               sourceKind="system"
               sourceName=""
               sourceThreadId={null}
+              sourceIsSideChat={false}
               text="Provisioned thread."
               turnRequest={ACCEPTED_REQUEST}
             />

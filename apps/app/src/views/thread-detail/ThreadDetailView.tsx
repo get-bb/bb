@@ -521,6 +521,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     isNewTabActive,
     openTab,
     openSideChat,
+    openExistingSideChatTab,
     orderedSecondaryFileTabs,
     reorderFileTab,
     selectFileSearchResult,
@@ -1368,14 +1369,18 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           return () => {
             openSecondaryPanelDiffFile(action.path);
           };
+        case "open-side-chat":
+          return () => {
+            openExistingSideChatTab(action.threadId);
+          };
         default:
           // Surfaces a compile-time error if a future TimelineTitleAction
           // variant is added without app-side handling, instead of silently
           // returning undefined and leaving a kind unrouted.
-          return assertNever(action.kind);
+          return assertNever(action);
       }
     },
-    [openSecondaryPanelDiffFile],
+    [openSecondaryPanelDiffFile, openExistingSideChatTab],
   );
   const metadataStorage = useMemo(
     () => ({

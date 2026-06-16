@@ -513,6 +513,7 @@ export function Overview() {
             childOrigin={null}
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
+            onTitleAction={() => () => undefined}
             senderThreadId="thr_side_chat"
             senderThreadTitle="new thread"
             senderChildOrigin="side-chat"

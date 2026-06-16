@@ -16,7 +16,10 @@ import {
 } from "./ConversationMessageMentions.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
-import type { TimelineTitleLinkResolver } from "./TimelineTitleView.js";
+import type {
+  TimelineTitleActionResolver,
+  TimelineTitleLinkResolver,
+} from "./TimelineTitleView.js";
 import type { ThreadTimelineLocalFileLinkHandler } from "./types.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
@@ -35,9 +38,13 @@ interface GeneratedConversationMessageProps {
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  onTitleAction?: TimelineTitleActionResolver;
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
+  /** The source is a side chat: the linked name opens it as a tab in this
+   * thread (a title action) rather than navigating to it as a standalone thread. */
+  sourceIsSideChat: boolean;
   text: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
@@ -67,6 +74,7 @@ interface GeneratedConversationTitleArgs {
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
+  sourceIsSideChat: boolean;
 }
 
 export function generatedConversationBodySlice({
@@ -111,6 +119,7 @@ function generatedConversationTitle({
   sourceKind,
   sourceName,
   sourceThreadId,
+  sourceIsSideChat,
 }: GeneratedConversationTitleArgs): TimelineTitle {
   // The lead-in names the relationship to the source: a fork branched from it
   // ("Forked from"), a side chat is replying to it ("Replying to"); any other
@@ -121,6 +130,16 @@ function generatedConversationTitle({
       : childOrigin === "side-chat"
         ? "Replying to"
         : "Message from";
+  // A side-chat source opens as a tab in this thread (a title action), so its
+  // name carries no route link; other sources navigate to the source thread.
+  const sideChatAction =
+    sourceIsSideChat && sourceThreadId !== null
+      ? ({ kind: "open-side-chat", threadId: sourceThreadId } as const)
+      : null;
+  const sourceLink =
+    sourceThreadId === null || sideChatAction !== null
+      ? null
+      : ({ kind: "thread", threadId: sourceThreadId } as const);
   const segments: TimelineTitleSegment[] =
     sourceKind === "agent"
       ? [
@@ -133,10 +152,7 @@ function generatedConversationTitle({
           }),
           timelineTitleSegment({
             em: true,
-            link:
-              sourceThreadId === null
-                ? null
-                : { kind: "thread", threadId: sourceThreadId },
+            link: sourceLink,
             shimmer: false,
             text: sourceName,
             truncate: true,
@@ -153,7 +169,7 @@ function generatedConversationTitle({
         ];
 
   return {
-    action: null,
+    action: sideChatAction,
     decorations: [],
     plain: segments
       .map((segment) => segment.plainText ?? segment.text)
@@ -200,9 +216,11 @@ export const GeneratedConversationMessage = memo(
     projectId,
     resolveMentionLink,
     resolveSegmentLinkHref,
+    onTitleAction,
     sourceKind,
     sourceName,
     sourceThreadId,
+    sourceIsSideChat,
     text,
     turnRequest,
   }: GeneratedConversationMessageProps) {
@@ -225,8 +243,9 @@ export const GeneratedConversationMessage = memo(
           sourceKind,
           sourceName,
           sourceThreadId,
+          sourceIsSideChat,
         }),
-      [childOrigin, sourceKind, sourceName, sourceThreadId],
+      [childOrigin, sourceKind, sourceName, sourceThreadId, sourceIsSideChat],
     );
     const leadingIcon = generatedConversationIconName(sourceKind, childOrigin);
     const hasExpandedOnlyContent =
@@ -323,6 +342,7 @@ export const GeneratedConversationMessage = memo(
         expandable={expandable}
         leadingIcon={leadingIcon}
         resolveSegmentLinkHref={resolveSegmentLinkHref}
+        onTitleAction={onTitleAction}
         renderBody={renderBody}
       />
     );

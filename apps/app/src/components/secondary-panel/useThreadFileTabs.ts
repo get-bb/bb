@@ -365,6 +365,32 @@ export function useThreadFileTabs({
     [updateFixedPanelTabsState],
   );
 
+  // Opens an EXISTING side-chat child thread as a tab (e.g. from the "Message
+  // from side chat" link in the main timeline). Activates the tab if one is
+  // already open for that thread; otherwise creates one pre-pointed at it (no
+  // anchor message — the conversation is already there).
+  const openExistingSideChatTab = useCallback(
+    (childThreadId: string) => {
+      updateFixedPanelTabsState((state) => {
+        const existing = state.secondary.tabs.find(
+          (tab) => isSideChatTab(tab) && tab.threadId === childThreadId,
+        );
+        if (existing) {
+          return activateSecondaryPanelTabInState(state, existing.id);
+        }
+        const nextTab = {
+          ...createSideChatFixedPanelTab({
+            sourceMessageText: "",
+            title: SIDE_CHAT_TAB_TITLE,
+          }),
+          threadId: childThreadId,
+        };
+        return openSecondaryPanelTabInState({ state, tab: nextTab });
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
   // Records the child thread id once it is created on first submit, so later
   // turns render against the persisted thread and the tab survives reloads.
   const setSideChatThreadId = useCallback(
@@ -520,6 +546,7 @@ export function useThreadFileTabs({
     closeTab,
     isNewTabActive: activeNewTab !== null,
     openSideChat,
+    openExistingSideChatTab,
     openTab,
     orderedSecondaryFileTabs,
     reorderFileTab,

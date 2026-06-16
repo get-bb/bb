@@ -10,7 +10,10 @@ import { MarkdownPreview } from "../../ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { computeMutedPrefixLength } from "./compute-muted-prefix-length.js";
-import type { TimelineTitleLinkResolver } from "./TimelineTitleView.js";
+import type {
+  TimelineTitleActionResolver,
+  TimelineTitleLinkResolver,
+} from "./TimelineTitleView.js";
 import type {
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
@@ -59,6 +62,7 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   mentions: readonly PromptTextMention[];
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
   /** `childOrigin` of the SENDER thread (the cross-thread "Message from" source),
@@ -130,6 +134,7 @@ interface UserConversationMessageProps {
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
   senderChildOrigin: ThreadChildOrigin | null;
@@ -255,6 +260,7 @@ function UserConversationMessage({
   projectId,
   resolveMentionLink,
   resolveSegmentLinkHref,
+  onTitleAction,
   senderThreadId,
   senderThreadTitle,
   senderChildOrigin,
@@ -277,6 +283,7 @@ function UserConversationMessage({
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
         resolveSegmentLinkHref={resolveSegmentLinkHref}
+        onTitleAction={onTitleAction}
         sourceKind="agent"
         sourceName={
           senderChildOrigin === "side-chat"
@@ -284,6 +291,7 @@ function UserConversationMessage({
             : (senderThreadTitle ?? "Agent")
         }
         sourceThreadId={senderThreadId}
+        sourceIsSideChat={senderChildOrigin === "side-chat"}
         text={body.text}
         turnRequest={turnRequest}
       />
@@ -306,9 +314,11 @@ function UserConversationMessage({
         projectId={projectId}
         resolveMentionLink={resolveMentionLink}
         resolveSegmentLinkHref={resolveSegmentLinkHref}
+        onTitleAction={onTitleAction}
         sourceKind="system"
         sourceName="BB"
         sourceThreadId={null}
+        sourceIsSideChat={false}
         text={body.text}
         turnRequest={turnRequest}
       />
@@ -453,6 +463,7 @@ export function ConversationMessageContent(
         projectId={projectId}
         resolveMentionLink={props.resolveMentionLink}
         resolveSegmentLinkHref={props.resolveSegmentLinkHref}
+        onTitleAction={props.onTitleAction}
         senderThreadId={props.senderThreadId}
         senderThreadTitle={props.senderThreadTitle}
         senderChildOrigin={props.senderChildOrigin}
