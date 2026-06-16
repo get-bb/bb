@@ -25,21 +25,11 @@ export function useWebSocket(): void {
     });
 
     wsManager.connect();
-    wsManager.subscribe("thread");
-    wsManager.subscribe("project");
-    wsManager.subscribe("environment");
-    wsManager.subscribe("host");
-    wsManager.subscribe("system");
 
     return () => {
       cacheEffects.dispose();
       unsubscribeConnected();
       unsubscribe();
-      wsManager.unsubscribe("thread");
-      wsManager.unsubscribe("project");
-      wsManager.unsubscribe("environment");
-      wsManager.unsubscribe("host");
-      wsManager.unsubscribe("system");
     };
     // Route deletion handling is route-derived. Keep it behind a ref so
     // navigation cannot dispose cache effects and drop debounced invalidations.

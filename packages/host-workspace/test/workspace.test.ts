@@ -514,6 +514,7 @@ describe("Workspace", () => {
 
     expect(status.workingTree.state).toBe("untracked");
     expect(status.branch.currentBranch).toBe("main");
+    expect(status.checkout).toEqual({ kind: "unborn", branchName: "main" });
     expect(status.workingTree.files).toEqual([
       {
         path: "notes.txt",

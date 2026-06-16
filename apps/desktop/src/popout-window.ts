@@ -9,7 +9,7 @@ import {
   POPOUT_WINDOW_WIDTH,
   type BbDesktopPopoutMouseEventsIgnoredRequest,
   type BbDesktopPopoutThreadRef,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 import { BB_DESKTOP_POPOUT_THREAD_CHANGED_CHANNEL } from "./popout-ipc.js";
 
 interface CreatePopoutWindowManagerArgs {

@@ -202,6 +202,11 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   const voice = usePromptVoice(promptBoxRef);
   const isProjectlessPrompt = project?.value === null;
   const placeholder = getNewThreadPromptPlaceholder(isProjectlessPrompt);
+  const submitTitle = isSubmitting
+    ? "Submitting..."
+    : execution.model.isLoading
+      ? "Loading models..."
+      : "Submit (Enter)";
   return (
     <div data-promptbox-shell="" className="w-full">
       <PromptBoxInternal
@@ -219,7 +224,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
         submission={{
           isSubmitting,
           disabled,
-          title: isSubmitting ? "Submitting..." : "Submit (Enter)",
+          title: submitTitle,
         }}
         zenMode={{
           layout: "root-compose",

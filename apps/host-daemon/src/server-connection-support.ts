@@ -7,6 +7,7 @@ import {
   type HostDaemonSessionCloseReason,
   type HostDaemonSessionOpenRequest,
   type HostDaemonSessionOpenResponse,
+  type HostDaemonWatchSetReplaceMessage,
 } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
 import type { ServerClient } from "./server-client.js";
@@ -40,7 +41,9 @@ export type CreateReconnectingWebSocket = (
 
 export type HostDaemonServerTerminalMessage = Exclude<
   HostDaemonServerWsMessage,
-  { type: "session-close" } | HostDaemonOnlineRpcRequestMessage
+  | { type: "session-close" }
+  | HostDaemonOnlineRpcRequestMessage
+  | HostDaemonWatchSetReplaceMessage
 >;
 
 export interface ServerConnectionOptions {
@@ -65,6 +68,9 @@ export interface ServerConnectionOptions {
   ) => void | Promise<void>;
   onHostRpcRequest?: (
     message: HostDaemonOnlineRpcRequestMessage,
+  ) => void | Promise<void>;
+  onWatchSetReplace?: (
+    message: HostDaemonWatchSetReplaceMessage,
   ) => void | Promise<void>;
   onSessionClose?: (
     reason: HostDaemonSessionCloseReason,

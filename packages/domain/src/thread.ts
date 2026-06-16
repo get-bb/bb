@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
+import { gitCheckoutRefSchema } from "./git-checkout.js";
 import {
   promptInputSchema,
   permissionModeSchema,
@@ -120,6 +121,7 @@ export type WorkspaceMergeBase = z.infer<typeof workspaceMergeBaseSchema>;
 
 export const workspaceStatusSchema = z.object({
   workingTree: workspaceWorkingTreeSchema,
+  checkout: gitCheckoutRefSchema,
   branch: workspaceBranchSchema,
   mergeBase: workspaceMergeBaseSchema.nullable(),
 });

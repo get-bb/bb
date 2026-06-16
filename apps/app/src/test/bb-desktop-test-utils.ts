@@ -2,7 +2,7 @@ import type {
   BbDesktopApi,
   BbDesktopBrowserApi,
   BbDesktopInfo,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 
 /**
  * A no-op {@link BbDesktopBrowserApi} for tests that build a full

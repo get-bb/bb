@@ -30,6 +30,8 @@ export interface RuntimeProviderProcess {
   identity: RuntimeProviderIdentityState;
   interactiveRequestScope: string;
   pending: Map<string | number, PendingJsonRpcRequest>;
+  processKey: string;
+  providerId: string;
   stderrChunks: string[];
 }
 
@@ -70,15 +72,23 @@ export interface RuntimeProviderProcessManagerArgs {
 }
 
 export interface EnsureRuntimeProviderArgs {
+  processKey: string;
+  providerId: string;
+}
+
+export interface RequireRuntimeProviderProcessArgs {
+  processKey: string;
   providerId: string;
 }
 
 export interface ShutdownRuntimeProviderArgs {
+  processKey: string;
   providerId: string;
   timeoutMs?: number;
 }
 
 interface CleanupFailedStartupArgs {
+  processKey: string;
   providerId: string;
   providerProcess: RuntimeProviderProcess;
   startupError: Error;
@@ -87,6 +97,12 @@ interface CleanupFailedStartupArgs {
 interface TerminateProviderProcessArgs {
   providerProcess: RuntimeProviderProcess;
   timeoutMs?: number;
+}
+
+interface SpawnProviderArgs {
+  adapter: ProviderAdapter;
+  processKey: string;
+  providerId: string;
 }
 
 interface ProviderProcessExitStatus {
@@ -127,17 +143,21 @@ export class RuntimeProviderProcessManager {
   }
 
   async ensureProvider(args: EnsureRuntimeProviderArgs): Promise<void> {
-    const existing = this.providerStarting.get(args.providerId);
+    const existing = this.providerStarting.get(args.processKey);
     if (existing) {
       await existing;
       return;
     }
 
-    if (this.processes.has(args.providerId)) return;
+    if (this.processes.has(args.processKey)) return;
 
     const startPromise = (async () => {
       const adapter = this.getAdapter(args.providerId);
-      const providerProcess = this.spawnProvider(args.providerId, adapter);
+      const providerProcess = this.spawnProvider({
+        adapter,
+        processKey: args.processKey,
+        providerId: args.providerId,
+      });
 
       try {
         if (hasChildProcessExited(providerProcess.child)) {
@@ -180,6 +200,7 @@ export class RuntimeProviderProcessManager {
         }
       } catch (startupError) {
         await this.cleanupFailedStartup({
+          processKey: args.processKey,
           providerId: args.providerId,
           providerProcess,
           startupError:
@@ -191,36 +212,40 @@ export class RuntimeProviderProcessManager {
       }
     })();
 
-    this.providerStarting.set(args.providerId, startPromise);
+    this.providerStarting.set(args.processKey, startPromise);
     try {
       await startPromise;
     } finally {
-      if (this.providerStarting.get(args.providerId) === startPromise) {
-        this.providerStarting.delete(args.providerId);
+      if (this.providerStarting.get(args.processKey) === startPromise) {
+        this.providerStarting.delete(args.processKey);
       }
     }
   }
 
-  requireProviderProcess(providerId: string): RuntimeProviderProcess {
-    const providerProcess = this.processes.get(providerId);
+  requireProviderProcess(
+    args: RequireRuntimeProviderProcessArgs,
+  ): RuntimeProviderProcess {
+    const providerProcess = this.processes.get(args.processKey);
     if (!providerProcess) {
-      throw new Error(`Provider "${providerId}" is not running`);
+      throw new Error(`Provider "${args.providerId}" is not running`);
     }
     if (hasChildProcessExited(providerProcess.child)) {
-      this.processes.delete(providerId);
+      this.processes.delete(args.processKey);
       throw new Error(
-        `Provider "${providerId}" has exited (${formatChildProcessExitStatus(providerProcess.child)})`,
+        `Provider "${args.providerId}" has exited (${formatChildProcessExitStatus(providerProcess.child)})`,
       );
     }
     return providerProcess;
   }
 
   listRunningProviders(): string[] {
-    return [...this.processes.keys()];
+    return [
+      ...new Set([...this.processes.values()].map((proc) => proc.providerId)),
+    ];
   }
 
   async shutdownProvider(args: ShutdownRuntimeProviderArgs): Promise<void> {
-    const providerProcess = this.processes.get(args.providerId);
+    const providerProcess = this.processes.get(args.processKey);
     if (!providerProcess || hasChildProcessExited(providerProcess.child)) {
       return;
     }
@@ -236,7 +261,7 @@ export class RuntimeProviderProcessManager {
     this.shuttingDown = true;
     const shutdownPromises: Promise<void>[] = [];
 
-    for (const [providerId, providerProcess] of this.processes) {
+    for (const [processKey, providerProcess] of this.processes) {
       shutdownPromises.push(
         new Promise<void>((resolve) => {
           const timer = setTimeout(() => {
@@ -261,7 +286,7 @@ export class RuntimeProviderProcessManager {
       for (const threadId of providerProcess.identity.threadIds) {
         this.args.onProviderThreadDetached(threadId, providerProcess);
       }
-      this.processes.delete(providerId);
+      this.processes.delete(processKey);
     }
 
     await Promise.all(shutdownPromises);
@@ -280,15 +305,12 @@ export class RuntimeProviderProcessManager {
     return createProviderForId(providerId, adapterOptions);
   }
 
-  private spawnProvider(
-    providerId: string,
-    adapter: ProviderAdapter,
-  ): RuntimeProviderProcess {
+  private spawnProvider(args: SpawnProviderArgs): RuntimeProviderProcess {
     const env: NodeJS.ProcessEnv = {
       ...sanitizeInheritedChildProcessEnv({ env: process.env }),
       ...this.args.env,
     };
-    const processConfig = adapter.process;
+    const processConfig = args.adapter.process;
 
     const child = spawnPortablePipedProcess({
       command: processConfig.command,
@@ -299,11 +321,13 @@ export class RuntimeProviderProcessManager {
 
     const providerProcess: RuntimeProviderProcess = {
       child,
-      adapter,
+      adapter: args.adapter,
       expectedShutdownExpectations: 0,
       interactiveRequestScope: randomUUID(),
-      identity: this.args.createProviderIdentityState(providerId),
+      identity: this.args.createProviderIdentityState(args.providerId),
       pending: new Map(),
+      processKey: args.processKey,
+      providerId: args.providerId,
       stderrChunks: [],
     };
 
@@ -330,31 +354,31 @@ export class RuntimeProviderProcessManager {
     child.on("error", (err) => {
       this.handleProviderProcessError({
         err,
-        providerId,
+        providerId: args.providerId,
         providerProcess,
       });
     });
     child.on("exit", (code, signal) => {
       this.handleProviderProcessExit({
         code: code ?? null,
-        providerId,
+        providerId: args.providerId,
         providerProcess,
         signal: signal ?? null,
       });
     });
 
-    this.processes.set(providerId, providerProcess);
+    this.processes.set(args.processKey, providerProcess);
     return providerProcess;
   }
 
   private async cleanupFailedStartup(
     args: CleanupFailedStartupArgs,
   ): Promise<void> {
-    if (this.processes.get(args.providerId) !== args.providerProcess) {
+    if (this.processes.get(args.processKey) !== args.providerProcess) {
       return;
     }
 
-    this.processes.delete(args.providerId);
+    this.processes.delete(args.processKey);
     args.providerProcess.expectedShutdownExpectations += 1;
     for (const [, pending] of args.providerProcess.pending) {
       pending.reject(args.startupError);
@@ -399,7 +423,7 @@ export class RuntimeProviderProcessManager {
     const expected = consumeExpectedProviderProcessShutdown(
       args.providerProcess,
     );
-    this.processes.delete(args.providerId);
+    this.processes.delete(args.providerProcess.processKey);
     const message = args.err.message;
     for (const [, pending] of args.providerProcess.pending) {
       pending.reject(
@@ -427,7 +451,7 @@ export class RuntimeProviderProcessManager {
     const expected = consumeExpectedProviderProcessShutdown(
       args.providerProcess,
     );
-    this.processes.delete(args.providerId);
+    this.processes.delete(args.providerProcess.processKey);
     const threadIds = [...args.providerProcess.identity.threadIds];
     // Snapshot per-thread state before detaching clears it; the exit
     // notification below is the last place this state is observable.
@@ -460,9 +484,12 @@ export class RuntimeProviderProcessManager {
   }
 
   private isCurrentProviderProcess(
-    args: Pick<ProviderProcessExitArgs, "providerId" | "providerProcess">,
+    args: Pick<ProviderProcessExitArgs, "providerProcess">,
   ): boolean {
-    return this.processes.get(args.providerId) === args.providerProcess;
+    return (
+      this.processes.get(args.providerProcess.processKey) ===
+      args.providerProcess
+    );
   }
 }
 

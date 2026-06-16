@@ -201,7 +201,7 @@ describe("bb-app managed config", () => {
       dataDir,
     };
     const hub = new NotificationHub();
-    hub.subscribe(socket, "system");
+    hub.subscribe(socket, { kind: "system" });
 
     const reloader = await createBbAppManagedConfigReloader({
       config,

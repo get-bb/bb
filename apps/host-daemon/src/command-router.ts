@@ -7,9 +7,11 @@ import type {
   HostDaemonCommandResultForCommand,
   HostDaemonRpcCommand,
   HostDaemonRpcResultForCommand,
+  HostDaemonCommandEnvironmentLane,
 } from "@bb/host-daemon-contract";
 import { performance } from "node:perf_hooks";
 import {
+  hostDaemonEnvironmentLaneForCommand,
   hostDaemonOnlineRpcResponseMessageSchema,
   isHostDaemonCommand,
   parseHostDaemonCommandResultForCommand,
@@ -30,7 +32,7 @@ interface CommandRouterLogger extends Pick<HostDaemonLogger, "warn"> {
   debug?: HostDaemonLogger["debug"];
 }
 
-type EnvironmentLaneMode = "read" | "write";
+type EnvironmentLaneMode = HostDaemonCommandEnvironmentLane;
 type ThreadStartCommand = Extract<HostDaemonCommand, { type: "thread.start" }>;
 type ThreadStopCommand = Extract<HostDaemonCommand, { type: "thread.stop" }>;
 type TurnSubmitCommand = Extract<HostDaemonCommand, { type: "turn.submit" }>;
@@ -69,6 +71,17 @@ interface ProviderExecutionLane {
   sessionKey: string;
 }
 
+interface ProviderProcessLaneKeyArgs {
+  environmentId: string;
+  providerId: string | null;
+  threadId: string;
+}
+
+interface CreateProviderExecutionLaneArgs extends ProviderProcessLaneKeyArgs {
+  processMode: EnvironmentLaneMode;
+  sessionId: string;
+}
+
 interface ThreadProviderLaneIdentity {
   environmentId: string;
   providerId: string | null;
@@ -101,6 +114,7 @@ export interface CommandRouterOptions {
 }
 
 const HOST_COMMAND_LIFECYCLE_LOG_THRESHOLD_MS = 1_000;
+const CODEX_PROVIDER_ID = "codex";
 
 function roundDurationMs(durationMs: number): number {
   return Math.round(durationMs * 10) / 10;
@@ -209,11 +223,8 @@ export class CommandRouter {
     const environmentLaneMode = this.getEnvironmentLaneMode(command);
     const providerLane = this.resolveProviderLane(command);
     const task = this.runAfterThreadUnarchiveBarrier(command, () =>
-      this.runInExecutionLanes(
-        command,
-        environmentLaneMode,
-        providerLane,
-        () => this.executeLiveDaemonCommandBody(command),
+      this.runInExecutionLanes(command, environmentLaneMode, providerLane, () =>
+        this.executeLiveDaemonCommandBody(command),
       ),
     );
     this.registerThreadUnarchiveBarrier(command, task);
@@ -465,14 +476,15 @@ export class CommandRouter {
     });
   }
 
-  private getProviderProcessLaneKey(
-    environmentId: string,
-    providerId: string | null,
-  ): string {
+  private getProviderProcessLaneKey(args: ProviderProcessLaneKeyArgs): string {
     // Legacy or thread.stop paths can lack provider ownership. Bucket them
     // together per environment so unknown ownership stays conservative without
     // serializing unrelated environments.
-    return `${environmentId}\0${providerId ?? "unknown-provider"}`;
+    const providerKey = args.providerId ?? "unknown-provider";
+    if (providerKey !== CODEX_PROVIDER_ID) {
+      return `${args.environmentId}\0${providerKey}`;
+    }
+    return `${args.environmentId}\0${providerKey}\0thread:${args.threadId}`;
   }
 
   private getProviderSessionLaneKey(
@@ -482,16 +494,14 @@ export class CommandRouter {
     return `${processKey}\0${sessionId}`;
   }
 
-  private createProviderExecutionLane(args: {
-    environmentId: string;
-    processMode: EnvironmentLaneMode;
-    providerId: string | null;
-    sessionId: string;
-  }): ProviderExecutionLane {
-    const processKey = this.getProviderProcessLaneKey(
-      args.environmentId,
-      args.providerId,
-    );
+  private createProviderExecutionLane(
+    args: CreateProviderExecutionLaneArgs,
+  ): ProviderExecutionLane {
+    const processKey = this.getProviderProcessLaneKey({
+      environmentId: args.environmentId,
+      providerId: args.providerId,
+      threadId: args.threadId,
+    });
     return {
       processKey,
       processMode: args.processMode,
@@ -518,6 +528,7 @@ export class CommandRouter {
       processMode,
       providerId: identity.providerId,
       sessionId,
+      threadId: identity.threadId,
     });
   }
 
@@ -603,6 +614,7 @@ export class CommandRouter {
           processMode: "read",
           providerId: command.providerId,
           sessionId: `thread:${command.threadId}`,
+          threadId: command.threadId,
         });
       case "turn.submit":
         return this.createProviderExecutionLane({
@@ -610,6 +622,7 @@ export class CommandRouter {
           processMode: "read",
           providerId: command.resumeContext.providerId,
           sessionId: `provider-thread:${command.resumeContext.providerThreadId}`,
+          threadId: command.threadId,
         });
       case "thread.archive":
         return this.createProviderExecutionLane({
@@ -617,6 +630,7 @@ export class CommandRouter {
           processMode: "read",
           providerId: command.providerId,
           sessionId: `provider-thread:${command.providerThreadId}`,
+          threadId: command.threadId,
         });
       case "interactive.resolve":
         return this.createProviderExecutionLane({
@@ -624,6 +638,7 @@ export class CommandRouter {
           processMode: "read",
           providerId: command.providerId,
           sessionId: `provider-thread:${command.providerThreadId}`,
+          threadId: command.threadId,
         });
       case "thread.stop": {
         const session = this.options.runtimeManager
@@ -650,28 +665,6 @@ export class CommandRouter {
   private getEnvironmentLaneMode(
     command: HostDaemonCommand | HostDaemonOnlineRpcCommand,
   ): EnvironmentLaneMode | null {
-    // Execution lanes protect per-environment workspace mutation ordering.
-    // `shouldFlushEventsBeforeReportingCommandResult` is a separate
-    // event-before-result ordering policy in the host-daemon contract.
-    switch (command.type) {
-      case "environment.cleanup_preflight":
-      case "thread.start":
-      case "turn.submit":
-      case "workspace.status":
-      case "workspace.diff":
-        return "read";
-      case "environment.provision":
-      case "environment.destroy":
-      case "thread.archive":
-      case "thread.unarchive":
-      case "workspace.commit":
-      case "workspace.squash_merge":
-        return "write";
-      case "environment.provision.cancel":
-        // Cancel must bypass the write lane held by the provision it aborts.
-        return null;
-      default:
-        return null;
-    }
+    return hostDaemonEnvironmentLaneForCommand(command);
   }
 }

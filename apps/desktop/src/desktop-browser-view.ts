@@ -13,7 +13,7 @@ import {
   type BbDesktopBrowserState,
   type BbDesktopBrowserViewportBounds,
   type BbDesktopBrowserViewBounds,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
@@ -299,7 +299,9 @@ function historyNavigationTargetUrl(
   offset: number,
 ): string | null {
   const history = entry.view.webContents.navigationHistory;
-  const targetEntry = history.getEntryAtIndex(history.getActiveIndex() + offset);
+  const targetEntry = history.getEntryAtIndex(
+    history.getActiveIndex() + offset,
+  );
   return typeof targetEntry?.url === "string" ? targetEntry.url : null;
 }
 

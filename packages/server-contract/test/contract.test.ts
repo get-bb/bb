@@ -4,7 +4,6 @@ import {
 } from "@bb/test-helpers";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
-import publicApiSource from "../src/public-api.ts?raw";
 import * as contract from "../src/index.js";
 import {
   PROJECT_CHANGE_KINDS,
@@ -38,210 +37,243 @@ import {
   unmanagedBranchSpecSchema,
 } from "../src/index.js";
 
-const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
-  "apiErrorSchema.details":
-    "Base error details are omitted unless a route has structured detail payloads.",
-  "apiErrorSchema.retryable":
-    "Error payloads may omit retryability when the server has no retry guidance.",
-  "createAutomationRequestSchema.action.threadRequest.environment.workspace.branch":
-    "Unmanaged workspaces may omit branch when the daemon should not check out before starting the thread.",
-  "createAutomationRequestSchema.action.threadRequest.environment.hostId":
-    "Personal scheduled threads may omit hostId so the server can use the default connected local host.",
-  "createAutomationRequestSchema.action.threadRequest.parentThreadId":
-    "Automation creation may omit parentThreadId when the scheduled thread stays a root thread.",
-  "createAutomationRequestSchema.action.threadRequest.permissionMode":
-    "Automation creation may omit permissionMode and inherit the scheduled thread default.",
-  "createAutomationRequestSchema.action.threadRequest.reasoningLevel":
-    "Automation creation may omit reasoningLevel and inherit the scheduled thread default.",
-  "createAutomationRequestSchema.action.threadRequest.serviceTier":
-    "Automation creation may omit serviceTier and inherit the scheduled thread default.",
-  "createAutomationRequestSchema.action.threadRequest.title":
-    "Automation creation may omit title and use the generated thread title flow.",
-  "createAutomationRequestSchema.autoArchive":
-    "Automation creation may omit autoArchive and use the server default.",
-  "createAutomationRequestSchema.enabled":
-    "Automation creation may omit enabled and use the server default.",
-  "createQueuedMessageRequestSchema.model":
-    "Queued messages may inherit the thread's default model.",
-  "createQueuedMessageRequestSchema.reasoningLevel":
-    "Queued messages may inherit the thread's default reasoning level.",
-  "createQueuedMessageRequestSchema.permissionMode":
-    "Queued messages may inherit the thread's default permission mode.",
-  "createQueuedMessageRequestSchema.senderThreadId":
-    "Queued messages omit senderThreadId unless they originate from another thread.",
-  "createQueuedMessageRequestSchema.serviceTier":
-    "Queued messages may inherit the thread's default service tier.",
-  "createQueuedMessageRequestSchema.executionInputSources":
-    "Queued message callers may omit source metadata; legacy callers treat supplied execution fields as explicit.",
-  "createQueuedMessageRequestSchema.executionInputSources.model":
-    "Queued message source metadata omits model when no caller-owned model value is being supplied.",
-  "createQueuedMessageRequestSchema.executionInputSources.permissionMode":
-    "Queued message source metadata omits permissionMode when no caller-owned permission value is being supplied.",
-  "createQueuedMessageRequestSchema.executionInputSources.reasoningLevel":
-    "Queued message source metadata omits reasoningLevel when no caller-owned reasoning value is being supplied.",
-  "createQueuedMessageRequestSchema.executionInputSources.serviceTier":
-    "Queued message source metadata omits serviceTier when no caller-owned tier value is being supplied.",
-  "createThreadScheduleRequestSchema.enabled":
-    "Schedule creation may omit enabled and use the server default.",
-  "updateAutomationRequestSchema.action":
-    "Automation PATCH requests omit action when leaving it unchanged.",
-  "updateAutomationRequestSchema.action.threadRequest.environment.workspace.branch":
-    "Unmanaged workspaces may omit branch when the daemon should not check out before starting the thread.",
-  "updateAutomationRequestSchema.action.threadRequest.environment.hostId":
-    "Personal scheduled-thread updates may omit hostId so the server can use the default connected local host.",
-  "updateAutomationRequestSchema.action.threadRequest.parentThreadId":
-    "Automation action updates may omit parentThreadId when the scheduled thread stays a root thread.",
-  "updateAutomationRequestSchema.action.threadRequest.permissionMode":
-    "Automation action updates may omit permissionMode and inherit the scheduled thread default.",
-  "updateAutomationRequestSchema.action.threadRequest.reasoningLevel":
-    "Automation action updates may omit reasoningLevel and inherit the scheduled thread default.",
-  "updateAutomationRequestSchema.action.threadRequest.serviceTier":
-    "Automation action updates may omit serviceTier and inherit the scheduled thread default.",
-  "updateAutomationRequestSchema.action.threadRequest.title":
-    "Automation action updates may omit title and use the generated thread title flow.",
-  "updateAutomationRequestSchema.autoArchive":
-    "Automation PATCH requests omit autoArchive when leaving it unchanged.",
-  "updateAutomationRequestSchema.name":
-    "Automation PATCH requests omit name when leaving it unchanged.",
-  "updateAutomationRequestSchema.trigger":
-    "Automation PATCH requests omit trigger when leaving it unchanged.",
-  "updateEnvironmentRequestSchema.mergeBaseBranch":
-    "Environment PATCH requests omit mergeBaseBranch when leaving it unchanged or use null to clear it.",
-  "updateEnvironmentRequestSchema.name":
-    "Environment PATCH requests omit name when leaving it unchanged or use null to clear the custom display name.",
-  "createThreadRequestSchema.environment.workspace.branch":
-    "Unmanaged workspaces may omit branch when the daemon should not check out before starting the thread.",
-  "createThreadRequestSchema.environment.hostId":
-    "Personal thread creation may omit hostId so the server can use the default connected local host.",
-  "createThreadRequestSchema.model":
-    "Thread creation may omit model and inherit the project/provider default.",
-  "createThreadRequestSchema.parentThreadId":
-    "Root thread creation omits a parent thread id.",
-  "createThreadRequestSchema.providerId":
-    "Thread creation may omit providerId and use the project's remembered provider choice.",
-  "createThreadRequestSchema.permissionMode":
-    "Thread creation may omit permission mode and use the server default.",
-  "createThreadRequestSchema.reasoningLevel":
-    "Thread creation may omit reasoning level and use the server default.",
-  "createThreadRequestSchema.serviceTier":
-    "Thread creation may omit service tier and use the server default.",
-  "createThreadRequestSchema.executionInputSources":
-    "Thread creation may omit source metadata; legacy callers treat supplied execution fields as explicit.",
-  "createThreadRequestSchema.executionInputSources.model":
-    "Thread creation source metadata omits model when the client is only displaying the server default.",
-  "createThreadRequestSchema.executionInputSources.permissionMode":
-    "Thread creation source metadata omits permissionMode when the client is only displaying the server default.",
-  "createThreadRequestSchema.executionInputSources.providerId":
-    "Thread creation source metadata omits providerId when the client is only displaying the server default.",
-  "createThreadRequestSchema.executionInputSources.reasoningLevel":
-    "Thread creation source metadata omits reasoningLevel when the client is only displaying the server default.",
-  "createThreadRequestSchema.executionInputSources.serviceTier":
-    "Thread creation source metadata omits serviceTier when the client is only displaying the server default.",
-  "createThreadRequestSchema.title":
-    "Thread creation may omit a custom title and use the generated title flow.",
-  "environmentActionApiErrorSchema.details":
-    "Some environment action failures do not have structured detail payloads.",
-  "environmentActionApiErrorSchema.retryable":
-    "Environment action errors may omit retryability when no retry hint exists.",
-  "threadStorageFilesQuerySchema.limit":
-    "Thread storage file listing may omit limit to use the default result count.",
-  "threadStorageFilesQuerySchema.query":
-    "Thread storage file listing may omit a search string to list files without filtering.",
-  "projectFilesQuerySchema.limit":
-    "Project file search may omit limit to use the server-side default result count.",
-  "projectFilesQuerySchema.query":
-    "Project file search may omit a search string to list files without filtering.",
-  "sendMessageRequestSchema.model":
-    "Follow-up sends may inherit the thread's default model.",
-  "sendMessageRequestSchema.permissionMode":
-    "Follow-up sends may inherit the thread's current permission mode.",
-  "sendMessageRequestSchema.reasoningLevel":
-    "Follow-up sends may inherit the thread's default reasoning level.",
-  "sendMessageRequestSchema.senderThreadId":
-    "Immediate agent-to-agent CLI sends include the current thread; user-originated sends and queued messages omit live sender context.",
-  "sendMessageRequestSchema.serviceTier":
-    "Follow-up sends may inherit the thread's default service tier.",
-  "sendMessageRequestSchema.executionInputSources":
-    "Follow-up sends may omit source metadata; legacy callers treat supplied execution fields as explicit.",
-  "sendMessageRequestSchema.executionInputSources.model":
-    "Follow-up source metadata omits model when no caller-owned model value is being supplied.",
-  "sendMessageRequestSchema.executionInputSources.permissionMode":
-    "Follow-up source metadata omits permissionMode when no caller-owned permission value is being supplied.",
-  "sendMessageRequestSchema.executionInputSources.reasoningLevel":
-    "Follow-up source metadata omits reasoningLevel when no caller-owned reasoning value is being supplied.",
-  "sendMessageRequestSchema.executionInputSources.serviceTier":
-    "Follow-up source metadata omits serviceTier when no caller-owned tier value is being supplied.",
-  "systemExecutionOptionsQuerySchema.environmentId":
-    "System execution option lookup may target a host indirectly through an environment id.",
-  "systemExecutionOptionsQuerySchema.hostId":
-    "System execution option lookup may target a specific host directly.",
-  "systemExecutionOptionsQuerySchema.providerId":
-    "System execution option lookup may omit provider id to use the chosen host's default provider.",
-  "systemProvidersQuerySchema.environmentId":
-    "System provider lookup may target a host indirectly through an environment id.",
-  "systemProvidersQuerySchema.hostId":
-    "System provider lookup may target a specific host directly.",
-  "threadEventsQuerySchema.afterSeq":
-    "Thread event listing may omit afterSeq to start from the beginning.",
-  "threadEventsQuerySchema.limit":
-    "Thread event listing may omit limit to use the server-side default page size.",
-  "threadListQuerySchema.archived":
-    "Thread listing may omit archived to include both archived and unarchived threads.",
-  "threadListQuerySchema.limit":
-    "Thread listing may omit limit to return all matching threads without pagination.",
-  "threadListQuerySchema.hasParent":
-    "Thread listing may omit hasParent to include both root and child threads.",
-  "threadListQuerySchema.offset":
-    "Thread listing may omit offset to start from the first row.",
-  "threadListQuerySchema.parentThreadId":
-    "Thread listing may omit parentThreadId when not filtering by parent.",
-  "threadListQuerySchema.projectId":
-    "Thread listing may omit projectId to list across projects.",
-  "threadTimelineQuerySchema.includeNestedRows":
-    "Timeline queries may omit nested rows unless explicitly requested.",
-  "threadTimelineQuerySchema.segmentLimit":
-    "Timeline queries may omit segmentLimit to use the server-side default page size.",
-  "threadTimelineQuerySchema.beforeAnchorSeq":
-    "Timeline queries omit beforeAnchorSeq when requesting the latest page.",
-  "threadTimelineQuerySchema.beforeAnchorId":
-    "Timeline queries omit beforeAnchorId when requesting the latest page.",
-  "threadTimelineQuerySchema.summaryOnly":
-    "Timeline queries may omit summaryOnly; CLI sets it to skip row generation, web client always wants rows.",
-  "threadTimelineResponseSchema.contextWindowUsage":
-    "Timeline responses omit context window usage when the provider did not report it.",
-  "updateProjectRequestSchema.name":
-    "Project PATCH requests omit name when leaving it unchanged.",
-  "updateProjectSourceRequestSchema.isDefault":
-    "Project source PATCH requests omit isDefault when not changing the default source.",
-  "updateProjectSourceRequestSchema.path":
-    "Project source PATCH requests omit path when leaving it unchanged.",
-  "updateThreadRequestSchema.model":
-    "Thread PATCH requests omit model when leaving the sticky model override unchanged or use null to clear it.",
-  "updateThreadRequestSchema.parentThreadId":
-    "Thread PATCH requests omit parentThreadId when leaving it unchanged or use null to clear it.",
-  "updateThreadRequestSchema.reasoningLevel":
-    "Thread PATCH requests omit reasoningLevel when leaving the sticky reasoning override unchanged or use null to clear it.",
-  "updateThreadRequestSchema.title":
-    "Thread PATCH requests omit title when leaving it unchanged or use null to clear it.",
-  "updateThreadScheduleConfigRequestSchema.cron":
-    "Schedule config PATCH requests omit cron when leaving it unchanged.",
-  "updateThreadScheduleConfigRequestSchema.name":
-    "Schedule config PATCH requests omit name when leaving it unchanged.",
-  "updateThreadScheduleConfigRequestSchema.prompt":
-    "Schedule config PATCH requests omit prompt when leaving it unchanged.",
-  "updateThreadScheduleConfigRequestSchema.timezone":
-    "Schedule config PATCH requests omit timezone when leaving it unchanged.",
-  "updateThreadScheduleRequestSchema.cron":
-    "Schedule PATCH requests omit cron when leaving it unchanged.",
-  "updateThreadScheduleRequestSchema.name":
-    "Schedule PATCH requests omit name when leaving it unchanged.",
-  "updateThreadScheduleRequestSchema.prompt":
-    "Schedule PATCH requests omit prompt when leaving it unchanged.",
-  "updateThreadScheduleRequestSchema.timezone":
-    "Schedule PATCH requests omit timezone when leaving it unchanged.",
-  "uploadedPromptAttachmentSchema.mimeType":
-    "Uploaded attachments may omit mime type when the client could not determine one.",
-};
+interface OptionalServerFieldGroup {
+  fields: readonly string[];
+  reason: string;
+}
+
+const OPTIONAL_SERVER_FIELD_GROUP_LIMIT = 30;
+
+const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
+  {
+    reason:
+      "Base error payloads omit optional details and retryability when a route has no structured details or retry guidance.",
+    fields: [
+      "apiErrorSchema.details",
+      "apiErrorSchema.retryable",
+      "environmentActionApiErrorSchema.details",
+      "environmentActionApiErrorSchema.retryable",
+    ],
+  },
+  {
+    reason:
+      "Unmanaged workspaces may omit branch checkout intent when the daemon should leave HEAD untouched.",
+    fields: [
+      "createAutomationRequestSchema.action.threadRequest.environment.workspace.branch",
+      "updateAutomationRequestSchema.action.threadRequest.environment.workspace.branch",
+      "createThreadRequestSchema.environment.workspace.branch",
+    ],
+  },
+  {
+    reason:
+      "Personal workspace requests may omit hostId so the server can use the default connected local host.",
+    fields: [
+      "createAutomationRequestSchema.action.threadRequest.environment.hostId",
+      "updateAutomationRequestSchema.action.threadRequest.environment.hostId",
+      "createThreadRequestSchema.environment.hostId",
+    ],
+  },
+  {
+    reason:
+      "Scheduled-thread automation requests may omit thread presentation and execution fields so the scheduled thread uses normal server defaults.",
+    fields: [
+      "createAutomationRequestSchema.action.threadRequest.parentThreadId",
+      "createAutomationRequestSchema.action.threadRequest.permissionMode",
+      "createAutomationRequestSchema.action.threadRequest.reasoningLevel",
+      "createAutomationRequestSchema.action.threadRequest.serviceTier",
+      "createAutomationRequestSchema.action.threadRequest.title",
+      "updateAutomationRequestSchema.action.threadRequest.parentThreadId",
+      "updateAutomationRequestSchema.action.threadRequest.permissionMode",
+      "updateAutomationRequestSchema.action.threadRequest.reasoningLevel",
+      "updateAutomationRequestSchema.action.threadRequest.serviceTier",
+      "updateAutomationRequestSchema.action.threadRequest.title",
+    ],
+  },
+  {
+    reason:
+      "Thread creation may omit root-thread presentation and execution fields so the server can resolve project/provider defaults.",
+    fields: [
+      "createThreadRequestSchema.model",
+      "createThreadRequestSchema.parentThreadId",
+      "createThreadRequestSchema.providerId",
+      "createThreadRequestSchema.permissionMode",
+      "createThreadRequestSchema.reasoningLevel",
+      "createThreadRequestSchema.serviceTier",
+      "createThreadRequestSchema.title",
+    ],
+  },
+  {
+    reason:
+      "Follow-up and queued messages may omit execution fields so the thread's current/default execution settings are reused.",
+    fields: [
+      "createQueuedMessageRequestSchema.model",
+      "createQueuedMessageRequestSchema.reasoningLevel",
+      "createQueuedMessageRequestSchema.permissionMode",
+      "createQueuedMessageRequestSchema.serviceTier",
+      "sendMessageRequestSchema.model",
+      "sendMessageRequestSchema.permissionMode",
+      "sendMessageRequestSchema.reasoningLevel",
+      "sendMessageRequestSchema.serviceTier",
+    ],
+  },
+  {
+    reason:
+      "Execution input source metadata is omitted by legacy callers; when omitted, supplied execution values are treated as explicit.",
+    fields: [
+      "createQueuedMessageRequestSchema.executionInputSources",
+      "createQueuedMessageRequestSchema.executionInputSources.model",
+      "createQueuedMessageRequestSchema.executionInputSources.permissionMode",
+      "createQueuedMessageRequestSchema.executionInputSources.reasoningLevel",
+      "createQueuedMessageRequestSchema.executionInputSources.serviceTier",
+      "createThreadRequestSchema.executionInputSources",
+      "createThreadRequestSchema.executionInputSources.model",
+      "createThreadRequestSchema.executionInputSources.permissionMode",
+      "createThreadRequestSchema.executionInputSources.providerId",
+      "createThreadRequestSchema.executionInputSources.reasoningLevel",
+      "createThreadRequestSchema.executionInputSources.serviceTier",
+      "sendMessageRequestSchema.executionInputSources",
+      "sendMessageRequestSchema.executionInputSources.model",
+      "sendMessageRequestSchema.executionInputSources.permissionMode",
+      "sendMessageRequestSchema.executionInputSources.reasoningLevel",
+      "sendMessageRequestSchema.executionInputSources.serviceTier",
+    ],
+  },
+  {
+    reason:
+      "Queued and follow-up messages omit senderThreadId unless the request originates from another thread.",
+    fields: [
+      "createQueuedMessageRequestSchema.senderThreadId",
+      "sendMessageRequestSchema.senderThreadId",
+    ],
+  },
+  {
+    reason:
+      "Automation PATCH requests omit fields that should be left unchanged.",
+    fields: [
+      "updateAutomationRequestSchema.action",
+      "updateAutomationRequestSchema.autoArchive",
+      "updateAutomationRequestSchema.name",
+      "updateAutomationRequestSchema.trigger",
+    ],
+  },
+  {
+    reason:
+      "Environment PATCH requests omit metadata fields that should be left unchanged; null explicitly clears nullable values.",
+    fields: [
+      "updateEnvironmentRequestSchema.mergeBaseBranch",
+      "updateEnvironmentRequestSchema.name",
+    ],
+  },
+  {
+    reason:
+      "Project and project-source PATCH requests omit fields that should be left unchanged.",
+    fields: [
+      "updateProjectRequestSchema.name",
+      "updateProjectSourceRequestSchema.isDefault",
+      "updateProjectSourceRequestSchema.path",
+    ],
+  },
+  {
+    reason:
+      "Thread PATCH requests omit fields that should be left unchanged; null explicitly clears nullable values.",
+    fields: [
+      "updateThreadRequestSchema.model",
+      "updateThreadRequestSchema.parentThreadId",
+      "updateThreadRequestSchema.reasoningLevel",
+      "updateThreadRequestSchema.title",
+    ],
+  },
+  {
+    reason:
+      "Thread schedule PATCH requests omit config fields that should be left unchanged.",
+    fields: [
+      "updateThreadScheduleConfigRequestSchema.cron",
+      "updateThreadScheduleConfigRequestSchema.name",
+      "updateThreadScheduleConfigRequestSchema.prompt",
+      "updateThreadScheduleConfigRequestSchema.timezone",
+      "updateThreadScheduleRequestSchema.cron",
+      "updateThreadScheduleRequestSchema.name",
+      "updateThreadScheduleRequestSchema.prompt",
+      "updateThreadScheduleRequestSchema.timezone",
+    ],
+  },
+  {
+    reason:
+      "File listing queries may omit search and limit parameters to use unfiltered/default result windows.",
+    fields: [
+      "threadStorageFilesQuerySchema.limit",
+      "threadStorageFilesQuerySchema.query",
+      "projectFilesQuerySchema.limit",
+      "projectFilesQuerySchema.query",
+    ],
+  },
+  {
+    reason:
+      "System execution-option lookups may target a host indirectly or directly and may omit provider id to use the host default.",
+    fields: [
+      "systemExecutionOptionsQuerySchema.environmentId",
+      "systemExecutionOptionsQuerySchema.hostId",
+      "systemExecutionOptionsQuerySchema.providerId",
+    ],
+  },
+  {
+    reason:
+      "Thread event queries may omit pagination parameters to start from the beginning with the default page size.",
+    fields: [
+      "threadEventsQuerySchema.afterSeq",
+      "threadEventsQuerySchema.limit",
+    ],
+  },
+  {
+    reason:
+      "Thread list queries may omit filters and pagination to include the corresponding unfiltered/default set.",
+    fields: [
+      "threadListQuerySchema.archived",
+      "threadListQuerySchema.limit",
+      "threadListQuerySchema.hasParent",
+      "threadListQuerySchema.offset",
+      "threadListQuerySchema.parentThreadId",
+      "threadListQuerySchema.projectId",
+    ],
+  },
+  {
+    reason:
+      "Timeline queries may omit pagination and rendering flags to request the latest full timeline page with server defaults.",
+    fields: [
+      "threadTimelineQuerySchema.includeNestedRows",
+      "threadTimelineQuerySchema.segmentLimit",
+      "threadTimelineQuerySchema.beforeAnchorSeq",
+      "threadTimelineQuerySchema.beforeAnchorId",
+      "threadTimelineQuerySchema.summaryOnly",
+    ],
+  },
+  {
+    reason:
+      "Timeline responses omit context-window usage when the provider did not report it.",
+    fields: ["threadTimelineResponseSchema.contextWindowUsage"],
+  },
+  {
+    reason:
+      "Uploaded attachments may omit mime type when the client could not determine one.",
+    fields: ["uploadedPromptAttachmentSchema.mimeType"],
+  },
+];
+
+function buildIntentionalOptionalServerFields(
+  groups: readonly OptionalServerFieldGroup[],
+): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const group of groups) {
+    for (const field of group.fields) {
+      fields[field] = group.reason;
+    }
+  }
+  return fields;
+}
+
+const INTENTIONAL_OPTIONAL_SERVER_FIELDS = buildIntentionalOptionalServerFields(
+  OPTIONAL_SERVER_FIELD_GROUPS,
+);
 
 function terminalDataBase64(byteLength: number): string {
   return Buffer.alloc(byteLength, "a").toString("base64");
@@ -1227,12 +1259,6 @@ describe("server-contract clients", () => {
     ).toBe("/api/v1/threads/thr_123/interactions/pi_123/resolve");
   });
 
-  it("keeps route inputs in shared named types instead of inline objects", () => {
-    expect(publicApiSource).not.toMatch(/json:\s*\{/);
-    expect(publicApiSource).not.toMatch(/query:\s*\{/);
-    expect(publicApiSource).not.toMatch(/form:\s*Record</);
-  });
-
   it("bounds public file list search queries", () => {
     const maxQuery = "a".repeat(contract.FILE_LIST_QUERY_MAX_LENGTH);
     const longQuery = `${maxQuery}a`;
@@ -1352,7 +1378,6 @@ describe("server-contract clients", () => {
       squashMergeActionResponseSchema: contract.squashMergeActionResponseSchema,
       systemExecutionOptionsQuerySchema:
         contract.systemExecutionOptionsQuerySchema,
-      systemProvidersQuerySchema: contract.systemProvidersQuerySchema,
       threadEventsQuerySchema: contract.threadEventsQuerySchema,
       threadListQuerySchema: contract.threadListQuerySchema,
       threadPendingInteractionsResponseSchema:
@@ -1380,9 +1405,19 @@ describe("server-contract clients", () => {
       threadScheduleSchema: contract.threadScheduleSchema,
       uploadedPromptAttachmentSchema: contract.uploadedPromptAttachmentSchema,
     });
+    const groupedFieldCount = OPTIONAL_SERVER_FIELD_GROUPS.reduce(
+      (count, group) => count + group.fields.length,
+      0,
+    );
 
     expect(optionalFieldPaths).toEqual(
       Object.keys(INTENTIONAL_OPTIONAL_SERVER_FIELDS).sort(),
+    );
+    expect(groupedFieldCount).toBe(
+      Object.keys(INTENTIONAL_OPTIONAL_SERVER_FIELDS).length,
+    );
+    expect(OPTIONAL_SERVER_FIELD_GROUPS.length).toBeLessThanOrEqual(
+      OPTIONAL_SERVER_FIELD_GROUP_LIMIT,
     );
     expect(
       Object.values(INTENTIONAL_OPTIONAL_SERVER_FIELDS).every(

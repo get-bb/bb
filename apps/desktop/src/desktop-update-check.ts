@@ -5,7 +5,7 @@ import {
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,
   type BbDesktopVersionFeed,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 
 export { DESKTOP_UPDATE_FEED_URL } from "./desktop-update-provider.js";
 export const DESKTOP_UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;

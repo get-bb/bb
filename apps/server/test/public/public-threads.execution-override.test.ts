@@ -19,20 +19,6 @@ function stubClaudeCodeCatalog(
   registerProviderHostRpcResponder(harness, {
     hostId,
     sessionId,
-    providers: [
-      {
-        id: "claude-code",
-        displayName: "Claude Code",
-        capabilities: {
-          supportsArchive: true,
-          supportsRename: false,
-          supportsServiceTier: true,
-          supportsUserQuestion: true,
-          supportedPermissionModes: ["full", "workspace-write", "readonly"],
-        },
-        available: true,
-      },
-    ],
     modelsByProviderId: {
       "claude-code": {
         models: [

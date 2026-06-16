@@ -1,12 +1,12 @@
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   changedMessageLenientSchema,
-  REALTIME_ENTITIES,
+  realtimeSubscriptionTargetKey,
 } from "@bb/server-contract";
 import type {
   ClientMessage,
   ChangedMessage,
-  RealtimeEntity,
+  RealtimeSubscriptionTarget,
 } from "@bb/server-contract";
 import { buildDevWebSocketUrl } from "./dev-websocket-url";
 
@@ -18,9 +18,14 @@ export type WebSocketConnectionState =
   | "connected"
   | "reconnecting";
 
+interface ActiveSubscription {
+  count: number;
+  target: RealtimeSubscriptionTarget;
+}
+
 export class WebSocketManager {
   private socket: ReconnectingWebSocket | null = null;
-  private subscriptions = new Set<string>();
+  private subscriptions = new Map<string, ActiveSubscription>();
   private callbacks = new Set<ChangeCallback>();
   private connectedCallbacks = new Set<ConnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
@@ -50,14 +55,8 @@ export class WebSocketManager {
       this.hasConnected = true;
       this.setConnectionState("connected");
       // Re-subscribe to all active subscriptions
-      for (const key of this.subscriptions) {
-        const parsed = parseSubKey(key);
-        if (!parsed) continue;
-        this.sendMessage({
-          type: "subscribe",
-          entity: parsed.entity,
-          id: parsed.id,
-        });
+      for (const subscription of this.subscriptions.values()) {
+        this.sendMessage({ type: "subscribe", target: subscription.target });
       }
       for (const callback of this.connectedCallbacks) {
         callback({ reconnected });
@@ -100,19 +99,34 @@ export class WebSocketManager {
     this.setConnectionState("connecting");
   }
 
-  subscribe(entity: RealtimeEntity, id?: string): void {
-    const key = subKey(entity, id);
-    this.subscriptions.add(key);
+  subscribe(target: RealtimeSubscriptionTarget): void {
+    const key = realtimeSubscriptionTargetKey(target);
+    const existing = this.subscriptions.get(key);
+    if (existing) {
+      existing.count += 1;
+      return;
+    }
+
+    this.subscriptions.set(key, { count: 1, target });
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.sendMessage({ type: "subscribe", entity, id });
+      this.sendMessage({ type: "subscribe", target });
     }
   }
 
-  unsubscribe(entity: RealtimeEntity, id?: string): void {
-    const key = subKey(entity, id);
+  unsubscribe(target: RealtimeSubscriptionTarget): void {
+    const key = realtimeSubscriptionTargetKey(target);
+    const existing = this.subscriptions.get(key);
+    if (!existing) {
+      return;
+    }
+    if (existing.count > 1) {
+      existing.count -= 1;
+      return;
+    }
+
     this.subscriptions.delete(key);
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.sendMessage({ type: "unsubscribe", entity, id });
+      this.sendMessage({ type: "unsubscribe", target });
     }
   }
 
@@ -156,28 +170,6 @@ export class WebSocketManager {
       callback();
     }
   }
-}
-
-function subKey(entity: RealtimeEntity, id?: string): string {
-  return id ? `${entity}:${id}` : entity;
-}
-
-const realtimeEntitySet: ReadonlySet<string> = new Set(REALTIME_ENTITIES);
-
-function isRealtimeEntity(value: string): value is RealtimeEntity {
-  return realtimeEntitySet.has(value);
-}
-
-export function parseSubKey(
-  key: string,
-): { entity: RealtimeEntity; id?: string } | null {
-  const idx = key.indexOf(":");
-  const entity = idx === -1 ? key : key.slice(0, idx);
-  if (!isRealtimeEntity(entity)) {
-    return null;
-  }
-  const id = idx === -1 ? undefined : key.slice(idx + 1);
-  return id ? { entity, id } : { entity };
 }
 
 // Singleton instance — preserved across Vite HMR so the WebSocket connection

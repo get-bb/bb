@@ -1,8 +1,9 @@
 import type {
   ChangedMessage,
   ClientMessage,
-  RealtimeEntity,
+  RealtimeSubscriptionTarget,
 } from "@bb/domain";
+import { realtimeSubscriptionTargetKey } from "@bb/domain";
 import {
   serverMessageLenientSchema,
   type ServerMessage,
@@ -36,13 +37,9 @@ interface CreateBbRealtimeClientArgs {
   transport: BbSdkTransport;
 }
 
-interface RealtimeTarget {
-  entity: RealtimeEntity;
-  id?: string;
-}
-
-interface TargetSubscription extends RealtimeTarget {
+interface TargetSubscription {
   count: number;
+  target: RealtimeSubscriptionTarget;
 }
 
 interface OptionalTargetIdMatchesArgs {
@@ -69,7 +66,7 @@ interface IdScopedChangedListenerRecord<
   callback: BbRealtimeCallback<TEventName>;
   event: TEventName;
   selectorId?: string;
-  target: RealtimeTarget;
+  target: RealtimeSubscriptionTarget;
 }
 
 interface UnscopedChangedListenerRecord<
@@ -78,7 +75,7 @@ interface UnscopedChangedListenerRecord<
   active: boolean;
   callback: BbRealtimeCallback<TEventName>;
   event: TEventName;
-  target: RealtimeTarget;
+  target: RealtimeSubscriptionTarget;
 }
 
 type ChangedListenerRecord =
@@ -99,15 +96,40 @@ type RealtimeListenerRecord =
   | ChangedListenerRecord
   | ConnectionListenerRecord;
 
-function targetKey(target: RealtimeTarget): string {
-  return target.id ? `${target.entity}:${target.id}` : target.entity;
+function targetKey(target: RealtimeSubscriptionTarget): string {
+  return realtimeSubscriptionTargetKey(target);
 }
 
-function realtimeTarget(
-  entity: RealtimeEntity,
-  id: string | undefined,
-): RealtimeTarget {
-  return id ? { entity, id } : { entity };
+function threadRealtimeTarget(
+  threadId: string | undefined,
+): RealtimeSubscriptionTarget {
+  return threadId
+    ? { kind: "thread-detail", threadId }
+    : { kind: "thread-list" };
+}
+
+function projectRealtimeTarget(
+  projectId: string | undefined,
+): RealtimeSubscriptionTarget {
+  return projectId
+    ? { kind: "project-detail", projectId }
+    : { kind: "project-list" };
+}
+
+function environmentRealtimeTarget(
+  environmentId: string | undefined,
+): RealtimeSubscriptionTarget {
+  return environmentId
+    ? { kind: "environment-detail", environmentId }
+    : { kind: "environment-list" };
+}
+
+function hostRealtimeTarget(
+  hostId: string | undefined,
+): RealtimeSubscriptionTarget {
+  return hostId
+    ? { kind: "host-detail", hostId }
+    : { kind: "host-list" };
 }
 
 function optionalTargetIdMatches(args: OptionalTargetIdMatchesArgs): boolean {
@@ -197,7 +219,7 @@ export class BbRealtimeClient implements BbRealtime {
           callback: args.callback,
           event: args.event,
           selectorId: args.threadId,
-          target: realtimeTarget("thread", args.threadId),
+          target: threadRealtimeTarget(args.threadId),
         });
       case "project:changed":
         return this.addChangedListener({
@@ -205,7 +227,7 @@ export class BbRealtimeClient implements BbRealtime {
           callback: args.callback,
           event: args.event,
           selectorId: args.projectId,
-          target: realtimeTarget("project", args.projectId),
+          target: projectRealtimeTarget(args.projectId),
         });
       case "environment:changed":
         return this.addChangedListener({
@@ -213,7 +235,7 @@ export class BbRealtimeClient implements BbRealtime {
           callback: args.callback,
           event: args.event,
           selectorId: args.environmentId,
-          target: realtimeTarget("environment", args.environmentId),
+          target: environmentRealtimeTarget(args.environmentId),
         });
       case "host:changed":
         return this.addChangedListener({
@@ -221,21 +243,21 @@ export class BbRealtimeClient implements BbRealtime {
           callback: args.callback,
           event: args.event,
           selectorId: args.hostId,
-          target: realtimeTarget("host", args.hostId),
+          target: hostRealtimeTarget(args.hostId),
         });
       case "system:changed":
         return this.addChangedListener({
           active: true,
           callback: args.callback,
           event: args.event,
-          target: { entity: "system" },
+          target: { kind: "system" },
         });
       case "system:config-changed":
         return this.addChangedListener({
           active: true,
           callback: args.callback,
           event: args.event,
-          target: { entity: "system" },
+          target: { kind: "system" },
         });
       case "realtime:connection":
         return this.addConnectionListener({
@@ -302,20 +324,20 @@ export class BbRealtimeClient implements BbRealtime {
     this.closeSocketIfIdle();
   }
 
-  private addTarget(target: RealtimeTarget): void {
+  private addTarget(target: RealtimeSubscriptionTarget): void {
     const key = targetKey(target);
     const existing = this.targetSubscriptions.get(key);
     if (existing) {
       existing.count += 1;
       return;
     }
-    this.targetSubscriptions.set(key, { ...target, count: 1 });
+    this.targetSubscriptions.set(key, { count: 1, target });
     if (this.socket?.readyState === SOCKET_OPEN) {
       this.sendTargetMessage("subscribe", target);
     }
   }
 
-  private removeTarget(target: RealtimeTarget): void {
+  private removeTarget(target: RealtimeSubscriptionTarget): void {
     const key = targetKey(target);
     const existing = this.targetSubscriptions.get(key);
     if (!existing) {
@@ -383,8 +405,8 @@ export class BbRealtimeClient implements BbRealtime {
       const openedAfterReconnect = this.reconnectingAfterUnexpectedClose;
       this.reconnectingAfterUnexpectedClose = false;
       this.reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
-      for (const target of this.targetSubscriptions.values()) {
-        this.sendTargetMessage("subscribe", target);
+      for (const subscription of this.targetSubscriptions.values()) {
+        this.sendTargetMessage("subscribe", subscription.target);
       }
       this.resolveSocketReadyPromise();
       this.closeSocketIfIdle();
@@ -646,14 +668,12 @@ export class BbRealtimeClient implements BbRealtime {
 
   private sendTargetMessage(
     type: "subscribe" | "unsubscribe",
-    target: RealtimeTarget,
+    target: RealtimeSubscriptionTarget,
   ): void {
     if (!this.socket || this.socket.readyState !== SOCKET_OPEN) {
       return;
     }
-    const message: ClientMessage = target.id
-      ? { type, entity: target.entity, id: target.id }
-      : { type, entity: target.entity };
+    const message: ClientMessage = { type, target };
     this.socket.send(JSON.stringify(message));
   }
 

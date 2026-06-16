@@ -110,6 +110,7 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   clearReuseEnvironment: ClearSelectionHandler;
   activeModel: AvailableModel | undefined;
   modelOptions: PickerOption<string>[];
+  isLoadingModels: boolean;
   modelLoadError: SystemExecutionOptionsModelLoadError | null;
   reasoningOptions: PickerOption<ReasoningLevel>[];
   permissionModeOptions: PickerOption<PermissionMode>[];
@@ -268,6 +269,8 @@ export function useThreadCreationOptions(
     providerId: executionOptionsProviderId,
   });
   const providers = executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS;
+  const isLoadingModels =
+    executionOptionsQueryEnabled && executionOptionsQuery.isLoading;
   const modelLoadError =
     executionOptionsQuery.data?.modelLoadError ?? NO_MODEL_LOAD_ERROR;
   const hasMultipleProviders = providers.length >= 2;
@@ -614,6 +617,7 @@ export function useThreadCreationOptions(
     clearReuseEnvironment,
     activeModel,
     modelOptions,
+    isLoadingModels,
     modelLoadError,
     reasoningOptions,
     permissionModeOptions,

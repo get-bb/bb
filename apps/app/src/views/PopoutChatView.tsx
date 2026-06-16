@@ -14,7 +14,7 @@ import {
   POPOUT_QUICK_ASK_HEIGHT,
   POPOUT_WINDOW_HEIGHT,
   type BbDesktopPopoutThreadChangedPayload,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 import { RootComposeView } from "./RootComposeView";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -27,6 +27,10 @@ import {
   getPopoutRoutePath,
   getPopoutThreadRoutePath,
 } from "@/lib/route-paths";
+import {
+  useHostListRealtimeSubscription,
+  useProjectListRealtimeSubscription,
+} from "@/hooks/useRealtimeSubscription";
 import {
   HEIGHT_TRANSITION_DURATION_MS,
   HEIGHT_TRANSITION_EASE_CSS,
@@ -236,6 +240,8 @@ function PopoutQuickAskRoute() {
 function PopoutThreadRoute() {
   const desktop = getBbDesktopInfo();
   const navigate = useNavigate();
+  useProjectListRealtimeSubscription();
+  useHostListRealtimeSubscription();
   const handleHide = useCallback(() => {
     desktop?.popout.toggle();
   }, [desktop]);

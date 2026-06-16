@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
 import * as api from "@/lib/api";
+import { useHostListRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { hostsQueryKey } from "./query-keys";
 
 interface QueryOptions {
@@ -14,10 +15,13 @@ interface QueryOptions {
  * probe, which only answers on the machine actually running bb.
  */
 export function useHosts(options?: QueryOptions) {
+  const enabled = options?.enabled ?? true;
+  useHostListRealtimeSubscription({ enabled });
+
   return useQuery<Host[]>({
     queryKey: hostsQueryKey(),
     queryFn: () => api.listHosts(),
-    enabled: options?.enabled ?? true,
+    enabled,
     staleTime: 60_000,
   });
 }

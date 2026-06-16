@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 import {
   areFilePreviewLineRangesEqual,
   areEnvironmentFilePreviewSourcesEqual,
@@ -123,7 +123,11 @@ const browserFixedPanelTabSchema = z
     environmentId: z.string().min(1).nullable().default(null),
     id: z.string().min(1),
     kind: z.literal("browser"),
-    title: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH).nullable(),
+    title: z
+      .string()
+      .min(1)
+      .max(BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH)
+      .nullable(),
     url: z.string().max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
   })
   .strict();

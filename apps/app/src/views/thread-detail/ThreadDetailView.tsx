@@ -58,6 +58,7 @@ import {
   useThreadTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
+import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import {
   getAbsoluteDirname,
   isAbsoluteFilePathWithinRoot,
@@ -857,19 +858,17 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       return;
     }
     const newTab = createNewTabFixedPanelTab();
-    createTerminal.mutate(
-      {
+    void createTerminal
+      .mutateAsync({
         threadId,
         cols: DEFAULT_TERMINAL_COLS,
         rows: DEFAULT_TERMINAL_ROWS,
-      },
-      {
-        onSuccess: (session) => {
-          closeTab(newTab.id);
-          setActiveFixedTerminal(session.id);
-        },
-      },
-    );
+      })
+      .then((session) => {
+        closeTab(newTab.id);
+        setActiveFixedTerminal(session.id);
+      })
+      .catch(() => undefined);
   }, [
     canCreateTerminal,
     closeTab,
@@ -1525,6 +1524,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       : undefined;
   const promptBannerMergeBaseBranch = effectiveMergeBaseBranch;
   const threadBranchName = workspaceBranch?.currentBranch ?? undefined;
+  const threadCheckoutDisplay = workspaceStatus
+    ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
+    : undefined;
   const isWorkspaceDeleted = environment?.status === "destroyed";
   const threadGitStatusDisplay = getGitStatusDisplay(workspaceStatus, {
     mergeBaseBranch,
@@ -1598,7 +1600,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     <ThreadDetailPromptArea
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
-      environmentBranchName={threadBranchName}
+      environmentCheckout={threadCheckoutDisplay}
       environmentIcon={threadEnvironmentIcon ?? undefined}
       environmentLabel={threadEnvironmentDisplay?.modeLabel}
       environmentCompactLabel={threadEnvironmentDisplay?.compactModeLabel}

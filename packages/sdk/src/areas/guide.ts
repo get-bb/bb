@@ -4,13 +4,13 @@ export interface GuideRenderArgs {
   chapter?: string;
 }
 
-export interface GuideRenderResponse {
+export interface GuideRenderResult {
   chapter?: string;
   content: string;
 }
 
 export interface GuideArea {
-  render(args?: GuideRenderArgs): GuideRenderResponse;
+  render(args?: GuideRenderArgs): GuideRenderResult;
 }
 
 const guideChapters: Record<string, TemplateId> = {

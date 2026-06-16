@@ -21,6 +21,7 @@ import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
 import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
+import { WatchInterestCoordinator } from "../../src/ws/watch-interests.js";
 
 const TEST_MACHINE_KEY_PREFIX = "test-daemon-key";
 const TEST_SERVER_HOST = "127.0.0.1";
@@ -93,6 +94,7 @@ export async function createTestAppHarness(
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
   const db = initDb(":memory:");
   const hub = new NotificationHubImpl();
+  const watchInterests = new WatchInterestCoordinator({ db, hub });
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: 50,
     db,
@@ -174,6 +176,7 @@ export async function createTestAppHarness(
     pendingInteractions,
     telemetry,
     terminalSessions,
+    watchInterests,
   };
   const { app } = createApp(deps);
 

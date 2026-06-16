@@ -5,15 +5,6 @@ import {
   type ThreadEventType,
 } from "./provider-event.js";
 
-export const REALTIME_ENTITIES = [
-  "thread",
-  "project",
-  "environment",
-  "host",
-  "system",
-] as const;
-export type RealtimeEntity = (typeof REALTIME_ENTITIES)[number];
-export const realtimeEntitySchema = z.enum(REALTIME_ENTITIES);
 
 export const THREAD_CHANGE_KINDS = [
   "thread-created",
@@ -26,6 +17,7 @@ export const THREAD_CHANGE_KINDS = [
   "archived-changed",
   "pin-state-changed",
   "parent-changed",
+  "environment-changed",
   "read-state-changed",
   "order-changed",
   "terminals-changed",
@@ -70,17 +62,70 @@ export const environmentChangeKindSchema = z.enum(ENVIRONMENT_CHANGE_KINDS);
 export const hostChangeKindSchema = z.enum(HOST_CHANGE_KINDS);
 export const systemChangeKindSchema = z.enum(SYSTEM_CHANGE_KINDS);
 
+export const realtimeSubscriptionTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("thread-detail"),
+      threadId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("thread-list"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("project-detail"),
+      projectId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("project-list"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("environment-detail"),
+      environmentId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("environment-list"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("host-detail"),
+      hostId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("host-list"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("system"),
+    })
+    .strict(),
+]);
+export type RealtimeSubscriptionTarget = z.infer<
+  typeof realtimeSubscriptionTargetSchema
+>;
+
 export const subscribeMessageSchema = z.object({
   type: z.literal("subscribe"),
-  entity: realtimeEntitySchema,
-  id: z.string().optional(),
+  target: realtimeSubscriptionTargetSchema,
 });
 export type SubscribeMessage = z.infer<typeof subscribeMessageSchema>;
 
 export const unsubscribeMessageSchema = z.object({
   type: z.literal("unsubscribe"),
-  entity: realtimeEntitySchema,
-  id: z.string().optional(),
+  target: realtimeSubscriptionTargetSchema,
 });
 export type UnsubscribeMessage = z.infer<typeof unsubscribeMessageSchema>;
 
@@ -89,6 +134,39 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   unsubscribeMessageSchema,
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
+
+function assertUnhandledRealtimeSubscriptionTarget(
+  target: never,
+): never {
+  throw new Error(`Unhandled realtime subscription target: ${target}`);
+}
+
+export function realtimeSubscriptionTargetKey(
+  target: RealtimeSubscriptionTarget,
+): string {
+  switch (target.kind) {
+    case "thread-detail":
+      return `thread-detail:${target.threadId}`;
+    case "thread-list":
+      return "thread-list";
+    case "project-detail":
+      return `project-detail:${target.projectId}`;
+    case "project-list":
+      return "project-list";
+    case "environment-detail":
+      return `environment-detail:${target.environmentId}`;
+    case "environment-list":
+      return "environment-list";
+    case "host-detail":
+      return `host-detail:${target.hostId}`;
+    case "host-list":
+      return "host-list";
+    case "system":
+      return "system";
+    default:
+      return assertUnhandledRealtimeSubscriptionTarget(target);
+  }
+}
 
 export const threadChangeMetadataSchema = z
   .object({
@@ -128,9 +206,7 @@ export const projectChangedMessageSchema = z
     changes: z.array(projectChangeKindSchema).readonly(),
   })
   .strict();
-export type ProjectChangedMessage = z.infer<
-  typeof projectChangedMessageSchema
->;
+export type ProjectChangedMessage = z.infer<typeof projectChangedMessageSchema>;
 
 export const environmentChangedMessageSchema = z
   .object({

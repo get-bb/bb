@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { BbDesktopBrowserApi } from "@bb/server-contract";
+import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { createNoopDesktopBrowserApi } from "@/test/bb-desktop-test-utils";
 import {

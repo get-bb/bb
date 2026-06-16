@@ -2,12 +2,10 @@ import type {
   CreateProjectRequest,
   CreateProjectSourceRequest,
   ProjectListQuery,
-  ProjectResponse,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
 } from "@bb/server-contract";
-import type { ProjectSource } from "@bb/domain";
-import type { CreateSdkAreaArgs, OkResponse } from "./common.js";
+import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
 
 export interface ProjectListArgs extends ProjectListQuery {}
 
@@ -39,24 +37,42 @@ export interface ProjectSourceDeleteArgs {
   sourceId: string;
 }
 
+export type ProjectCreateResult = PublicApiOutput<"/projects", "$post">;
+export type ProjectDeleteResult = PublicApiOutput<"/projects/:id", "$delete">;
+export type ProjectGetResult = PublicApiOutput<"/projects/:id", "$get">;
+export type ProjectListResult = PublicApiOutput<"/projects", "$get">;
+export type ProjectUpdateResult = PublicApiOutput<"/projects/:id", "$patch">;
+export type ProjectSourceAddResult = PublicApiOutput<
+  "/projects/:id/sources",
+  "$post"
+>;
+export type ProjectSourceUpdateResult = PublicApiOutput<
+  "/projects/:id/sources/:sourceId",
+  "$patch"
+>;
+export type ProjectSourceDeleteResult = PublicApiOutput<
+  "/projects/:id/sources/:sourceId",
+  "$delete"
+>;
+
 export interface ProjectSourcesArea {
-  add(args: ProjectSourceAddArgs): Promise<ProjectSource>;
-  delete(args: ProjectSourceDeleteArgs): Promise<OkResponse>;
-  update(args: ProjectSourceUpdateArgs): Promise<ProjectSource>;
+  add(args: ProjectSourceAddArgs): Promise<ProjectSourceAddResult>;
+  delete(args: ProjectSourceDeleteArgs): Promise<ProjectSourceDeleteResult>;
+  update(args: ProjectSourceUpdateArgs): Promise<ProjectSourceUpdateResult>;
 }
 
 export interface ProjectsArea {
-  create(args: ProjectCreateArgs): Promise<ProjectResponse>;
-  delete(args: ProjectDeleteArgs): Promise<OkResponse>;
-  get(args: ProjectGetArgs): Promise<ProjectResponse>;
-  list(args?: ProjectListArgs): Promise<ProjectResponse[]>;
+  create(args: ProjectCreateArgs): Promise<ProjectCreateResult>;
+  delete(args: ProjectDeleteArgs): Promise<ProjectDeleteResult>;
+  get(args: ProjectGetArgs): Promise<ProjectGetResult>;
+  list(args?: ProjectListArgs): Promise<ProjectListResult>;
   sources: ProjectSourcesArea;
-  update(args: ProjectUpdateArgs): Promise<ProjectResponse>;
+  update(args: ProjectUpdateArgs): Promise<ProjectUpdateResult>;
 }
 
 function projectUpdateJson(args: ProjectUpdateArgs): UpdateProjectRequest {
   return {
-    ...(args.name !== undefined ? { name: args.name } : {}),
+    name: args.name,
   };
 }
 
@@ -74,8 +90,8 @@ function projectSourceUpdateJson(
   args: ProjectSourceUpdateArgs,
 ): UpdateProjectSourceRequest {
   return {
-    ...(args.isDefault !== undefined ? { isDefault: args.isDefault } : {}),
-    ...(args.path !== undefined ? { path: args.path } : {}),
+    isDefault: args.isDefault,
+    path: args.path,
     type: args.type,
   };
 }

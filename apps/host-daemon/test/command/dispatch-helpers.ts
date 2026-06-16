@@ -57,6 +57,7 @@ interface FakeWorkspaceState {
  * deleted RuntimeManager thread bookkeeping used to provide in tests.
  */
 export interface FakeRuntimeThreadControls {
+  clearProviderSession: (threadId: string) => void;
   endActiveTurn: (threadId: string) => void;
   setActiveTurn: (threadId: string, turnId: string) => void;
   setProviderSession: (
@@ -258,6 +259,9 @@ export function createFakeRuntime() {
   >();
   let nextTurnNumber = 1;
   const threadControls: FakeRuntimeThreadControls = {
+    clearProviderSession(threadId) {
+      providerSessionsByThreadId.delete(threadId);
+    },
     endActiveTurn(threadId) {
       activeTurnsByThreadId.delete(threadId);
     },
@@ -359,6 +363,9 @@ export function createFakeRuntime() {
     },
     getProviderSession(threadId) {
       return providerSessionsByThreadId.get(threadId) ?? null;
+    },
+    async reapIdleProviderSessions() {
+      return { reapedSessions: [] };
     },
     hasThread(threadId) {
       return providerSessionsByThreadId.has(threadId);

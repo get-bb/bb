@@ -101,7 +101,6 @@ export {
   listNonDeletedChildThreads,
   listStopRequestedThreads,
   listThreadEnvironmentAssignmentsOnHost,
-  listTrackedThreadStorageTargetsOnHost,
   listUnarchivedAssignedChildThreads,
   listThreads,
   listThreadsWithPendingInteractionState,
