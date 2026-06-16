@@ -26,6 +26,7 @@ export function PromptQuoteStack({ quotes, onRemove }: PromptQuoteStackProps) {
     <PromptStackCard
       ariaLabel="Quoted selections"
       className="max-h-44 space-y-1.5 overflow-y-auto p-1.5"
+      tabIndex={0}
     >
       {quotes.map((quote) => (
         <PromptQuotePill key={quote.id} quote={quote} onRemove={onRemove} />

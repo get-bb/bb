@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
@@ -611,6 +611,19 @@ export function ThreadDetailPromptArea({
   );
 
   const [editFocusNonce, setEditFocusNonce] = useState(0);
+
+  // Focus the composer when a quote pill is added (e.g. from the timeline
+  // selection menu's "Add to chat") so the user can start typing against the
+  // quoted context immediately. Only fires when the count grows — never on
+  // remove, send (clears to 0), or initial mount.
+  const previousQuoteCountRef = useRef(promptDraft.quotes.length);
+  useEffect(() => {
+    if (promptDraft.quotes.length > previousQuoteCountRef.current) {
+      setEditFocusNonce((nonce) => nonce + 1);
+    }
+    previousQuoteCountRef.current = promptDraft.quotes.length;
+  }, [promptDraft.quotes.length]);
+
   const handleEditQueuedMessage = useCallback(
     (messageId: string) => {
       const queuedMessage = queuedMessagesByIdRef.current.get(messageId);
