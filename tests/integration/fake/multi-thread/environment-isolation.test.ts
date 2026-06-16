@@ -38,11 +38,10 @@ import {
 describe.sequential(
   "fake provider environment-isolation multi-thread integration",
   () => {
-    // plans/thread-lifecycle-state-review.md: un-archive is decoupled
-    // from the environment lifecycle. Un-archiving a thread whose shared managed
-    // environment was already destroyed is a pure record op — it never
-    // resurrects the environment. The thread surfaces the "environment is gone"
-    // condition and a send is rejected (no reprovision, no auto-revive).
+    // Un-archive is decoupled from the environment lifecycle. Un-archiving a
+    // thread whose shared managed environment was already destroyed is a pure
+    // record op: it never resurrects the environment. The thread surfaces the
+    // "environment is gone" condition and a send is rejected.
     it("does not reprovision a destroyed shared environment on unarchive", () =>
       withHarness(async (harness) => {
         const project = await createProjectFixture(harness, {

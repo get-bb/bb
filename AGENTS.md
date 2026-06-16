@@ -86,39 +86,6 @@ eval "$(scripts/bb-dev-app env)"
 pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode readonly --title "Smoke test" --prompt "Reply only with ok." --json
 ```
 
-## Contract Documentation
-
-- Routes and commands that are self-evident from their name and type signature don't need comments. Add JSDoc only when the behavior is non-obvious — side effects, multi-step flows, guards, or context that the type signature doesn't convey.
-- When adding a new route or command type with non-obvious behavior, add the documentation in the same commit.
-- When changing a route's behavior, update any existing documentation to match.
-
-## Contracts And Boundaries
-
-- Optional contract fields are allowed only when leaving the field out has its own real semantic meaning. Do not use optional fields to hide defaults.
-- Use `required + nullable` only when `null` has a distinct meaning such as “clear this value” or “unknown”. Do not use nullable as a stand-in for defaulting.
-- If a field has a default, fill it in once at the server boundary, then pass an explicit value through internal routes, commands, and persisted events.
-- Accepted-but-ignored route or command fields are forbidden. Delete them or implement them end to end in the same change.
-- For new APIs and commands, answer “why is this optional?” during design and review.
-
-## Async Lifecycle Ownership
-
-- `status` represents what the resource currently *is*, and may include genuine execution phases (`running`, `stopping`, `idle`). It must not encode the progress of an async request toward completion (`requested`, `queued`, `dispatched`, `fetched`) — that is intent, modeled as explicit fields recovered by reconciliation. The test: "what is this resource right now?" may be a status value; "how far has my request gotten?" is intent, not status. A genuine execution phase the resource is *in* (e.g. a turn winding down → `stopping`) is allowed; a marker for an async request you *made* (e.g. `stop-requested`) is intent and belongs on its own field. Add one honest phase, not a multi-rung ladder.
-- Durable async lifecycles belong to server-owned lifecycle modules. Routes may request lifecycle work, but only lifecycle owners may advance it, mark it in progress, handle command results, or reconcile it after reconnect.
-- Generic metadata update helpers must not accept lifecycle fields such as `status`, `stopRequestedAt`, `cleanupRequestedAt`, or similar workflow state.
-- Model lifecycle intent and progress explicitly. Do not rely on a resource `status` field alone to represent requested work, queued work, and recovery state.
-- Commands are live host RPCs that succeed, fail, or time out; there is no persisted command queue. Durability lives in intent persisted on resource rows, recovered by the periodic sweeps in `apps/server/src/services/system/periodic-sweeps.ts` (`durable-intent-retry` and `orphan-cleanup` categories). Every new async lifecycle must define how it handles lost results from failed or timed-out RPCs, reconnect reconciliation, and idempotent repeated requests.
-
-## Server And Daemon Ownership
-
-- The server owns product policy: defaults, instructions, manager behavior, tool lists, and thread behavior.
-- The host daemon owns host-local primitives, provider translation, runtime/session management, and workspace execution.
-- If the server needs host-local data, the daemon should return the raw data and the server should assemble the final behavior.
-- When changing a server/daemon boundary, ask “should this decision live on the server instead?”
-
-## Reuse Discipline
-
-- Do not add optional arguments just to support a new caller. First ask whether the new caller should share this code at all — a small, honest duplicate often beats a shared surface bent to fit two callers. If sharing is right, prefer a wrapper, a new object type, or a separate helper over an optional flag. Aim for the fewest clear surfaces, not the most reuse.
-
 ## Planning Workflow
 
 - When asked to make a plan, create or update a Markdown file under `plans/`.

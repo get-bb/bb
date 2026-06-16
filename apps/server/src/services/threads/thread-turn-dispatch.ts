@@ -101,11 +101,10 @@ export async function dispatchTurnDuringReprovision(
     return false;
   }
 
-  // The environment is gone (plans/thread-lifecycle-state-review.md):
-  // nothing reprovisions a destroying/destroyed environment, so surface the
-  // "environment is gone" condition the frontend banner keys off instead of
-  // dispatching a reprovision. Error-recovery reprovision for an `error`-status
-  // environment is still legitimate (that record exists) and falls through.
+  // A destroying/destroyed environment is gone and is never reprovisioned.
+  // Surface the "environment is gone" condition the frontend banner keys off
+  // instead of dispatching a reprovision. Error-recovery reprovision for an
+  // `error`-status environment is still legitimate and falls through.
   const goneDetails = goneThreadEnvironmentDetails(args.environment);
   if (goneDetails) {
     throwThreadEnvironmentUnavailable(goneDetails);

@@ -15,10 +15,10 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 /**
- * plans/thread-lifecycle-state-review.md: the thread record-lifecycle
- * (archive/un-archive) is decoupled from the environment lifecycle. Un-archive
- * is a pure record op, and a thread pointing at a gone environment surfaces the
- * "environment is gone" condition instead of reprovisioning.
+ * The thread record-lifecycle (archive/un-archive) is decoupled from the
+ * environment lifecycle. Un-archive is a pure record op, and a thread pointing
+ * at a gone environment surfaces the "environment is gone" condition instead
+ * of reprovisioning.
  */
 describe("thread environment decoupling (B*)", () => {
   it("un-archives without touching a retiring environment", async () => {
