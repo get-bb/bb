@@ -37,8 +37,9 @@ export const SIDEBAR_UNREAD_DOT_CLASS =
 // these two numbers to retune every row's indent uniformly.
 const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 0; // spacing-0
 const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 12; // spacing-3
-// Horizontal center of a row's leading caret box (`-ml-1` + `size-5`): −4 + 20/2.
-const SIDEBAR_ROW_CARET_CENTER_OFFSET_PX = 6; // spacing-1.5
+// Horizontal center of a row's leading caret box (`size-5`, no negative margin):
+// 20/2.
+const SIDEBAR_ROW_CARET_CENTER_OFFSET_PX = 10;
 
 export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";
 

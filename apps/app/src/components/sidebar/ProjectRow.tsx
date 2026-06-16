@@ -643,7 +643,7 @@ function EnvironmentThreadGroupHeader({
         thread, so it reads lighter than the worktree THREAD rows.
       */}
       <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/70">
-        <span className="-ml-1 inline-flex shrink-0">
+        <span className="inline-flex shrink-0">
           <SidebarChildToggleChevron
             isCollapsed={isCollapsed}
             expandLabel={`Expand ${headerTitle} threads`}
@@ -1165,7 +1165,7 @@ function ProjectRowComponent({
                 thread-title column. Only the caret toggles; the folder is
                 decorative and the name is inert (expand/collapse only). */}
             <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
-              <span className="-ml-1 inline-flex shrink-0">
+              <span className="inline-flex shrink-0">
                 <SidebarChildToggleChevron
                   isCollapsed={isCollapsed}
                   expandLabel={`Expand ${project.name}`}

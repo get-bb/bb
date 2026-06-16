@@ -364,7 +364,7 @@ function ThreadRowComponent({
           equal-width spacer so all titles align in one column, file-tree style.
         */}
         {parentOptions && hasChildren ? (
-          <span className="relative z-10 -ml-1 inline-flex shrink-0">
+          <span className="relative z-10 inline-flex shrink-0">
             <SidebarChildToggleChevron
               isCollapsed={isParentCollapsed}
               expandLabel={`Expand ${threadTitle} threads`}
@@ -376,7 +376,7 @@ function ThreadRowComponent({
             />
           </span>
         ) : (
-          <span className="-ml-1 size-5 shrink-0" aria-hidden="true" />
+          <span className="size-5 shrink-0" aria-hidden="true" />
         )}
         {/*
           Identity glyph (fork / worktree), rendered only when present. An empty
