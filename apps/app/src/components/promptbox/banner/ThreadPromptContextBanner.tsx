@@ -687,8 +687,9 @@ export function ThreadPromptContextBanner({
             <Icon
               name="GitMerge"
               className="size-3.5 shrink-0"
-              aria-label="Merge base"
+              aria-hidden="true"
             />
+            <span className="shrink-0">Merge base</span>
             <BranchPicker
               value={gitSection.mergeBase.branch}
               options={mergeBaseCandidates.options}
