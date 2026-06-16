@@ -59,6 +59,22 @@ type FakeDidFailLoadListener = (
   isMainFrame: boolean,
 ) => void;
 
+interface FakeContextMenuParams {
+  editFlags: {
+    canCopy: boolean;
+    canCut: boolean;
+    canPaste: boolean;
+    canRedo: boolean;
+    canSelectAll: boolean;
+    canUndo: boolean;
+  };
+}
+
+type FakeContextMenuListener = (
+  event: FakeWebContentsEvent,
+  params: FakeContextMenuParams,
+) => void;
+
 interface FakeWebContentsEventMap {
   "will-frame-navigate": FakeWillFrameNavigateListener;
   "will-navigate": FakeWillNavigateListener;
@@ -70,6 +86,7 @@ interface FakeWebContentsEventMap {
   "did-start-navigation": FakeVoidWebContentsListener;
   "page-title-updated": FakeVoidWebContentsListener;
   "did-fail-load": FakeDidFailLoadListener;
+  "context-menu": FakeContextMenuListener;
 }
 
 type FakeResourceType =
@@ -212,6 +229,7 @@ const electronMock = vi.hoisted(() => {
       "did-start-navigation": [],
       "page-title-updated": [],
       "did-fail-load": [],
+      "context-menu": [],
     };
     private title = "";
     private url = "";
@@ -246,6 +264,8 @@ const electronMock = vi.hoisted(() => {
     close(): void {
       this.destroyed = true;
     }
+
+    focus(): void {}
 
     getTitle(): string {
       return this.title;
@@ -588,6 +608,18 @@ function openTabPushesOf(hostWindow: FakeHostWindow): string[] {
   for (const payload of hostWindow.webContents.sentPayloads) {
     if ("url" in payload && !("tabId" in payload)) {
       pushes.push(payload.url);
+    }
+  }
+  return pushes;
+}
+
+function scopedOpenTabPushesOf(
+  hostWindow: FakeHostWindow,
+): Array<{ tabId: string; url: string }> {
+  const pushes: Array<{ tabId: string; url: string }> = [];
+  for (const payload of hostWindow.webContents.sentPayloads) {
+    if ("url" in payload && "tabId" in payload && !("title" in payload)) {
+      pushes.push(payload);
     }
   }
   return pushes;
@@ -1137,6 +1169,36 @@ describe("DesktopBrowserViewManager", () => {
       action: "deny",
     });
     expect(openTabPushesOf(hostWindow)).toEqual([]);
+    expect(scopedOpenTabPushesOf(hostWindow)).toEqual([]);
+  });
+
+  it("surfaces public popups with their source browser tab id", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 61,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/",
+    });
+    const view = requireFakeView(0);
+
+    expect(view.webContents.emitWindowOpen("https://example.com/docs")).toEqual({
+      action: "deny",
+    });
+    expect(openTabPushesOf(hostWindow)).toEqual(["https://example.com/docs"]);
+    expect(scopedOpenTabPushesOf(hostWindow)).toEqual([
+      {
+        tabId: "browser:a",
+        url: "https://example.com/docs",
+      },
+    ]);
   });
 
   it("clears local attribution on release and destroy", () => {

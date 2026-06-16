@@ -6,6 +6,7 @@ import {
   type BbDesktopBrowserAttachRequest,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserOpenTabRequest,
+  type BbDesktopBrowserScopedOpenTabRequest,
   type BbDesktopBrowserSetBoundsRequest,
   type BbDesktopBrowserSetVisibleRequest,
   type BbDesktopBrowserSnapshot,
@@ -15,6 +16,7 @@ import {
 } from "@bb/server-contract";
 import {
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
+  BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
 } from "./desktop-browser-ipc.js";
@@ -80,6 +82,7 @@ interface BrowserViewEntry {
 export type DesktopBrowserHostWebContentsPayload =
   | BbDesktopBrowserState
   | BbDesktopBrowserOpenTabRequest
+  | BbDesktopBrowserScopedOpenTabRequest
   | BbDesktopBrowserSnapshot;
 
 export interface DesktopBrowserHostContentBounds {
@@ -615,6 +618,10 @@ export function createDesktopBrowserViewManager(
         entry.popupTimestamps = decision.timestamps;
         if (decision.allowed) {
           send(hostWindow, BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL, {
+            url: openTabUrl,
+          });
+          send(hostWindow, BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL, {
+            tabId,
             url: openTabUrl,
           });
         }

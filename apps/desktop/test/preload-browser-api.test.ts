@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   BbDesktopApi,
   BbDesktopBrowserOpenTabRequest,
+  BbDesktopBrowserScopedOpenTabRequest,
   BbDesktopBrowserSnapshot,
   BbDesktopBrowserState,
   BbDesktopInfo,
@@ -30,6 +31,7 @@ import {
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
+  BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
@@ -175,6 +177,7 @@ describe("desktop preload browser API", () => {
       "goForward",
       "navigate",
       "onOpenTab",
+      "onScopedOpenTab",
       "onSnapshot",
       "onState",
       "reload",
@@ -294,6 +297,7 @@ describe("desktop preload browser API", () => {
     const api = await loadPreload();
     const states: BbDesktopBrowserState[] = [];
     const openTabs: BbDesktopBrowserOpenTabRequest[] = [];
+    const scopedOpenTabs: BbDesktopBrowserScopedOpenTabRequest[] = [];
     const snapshots: BbDesktopBrowserSnapshot[] = [];
     const popoutThreads: BbDesktopPopoutThreadChangedPayload[] = [];
     const state: BbDesktopBrowserState = {
@@ -308,6 +312,10 @@ describe("desktop preload browser API", () => {
     const openTab: BbDesktopBrowserOpenTabRequest = {
       url: "https://example.com/popup",
     };
+    const scopedOpenTab: BbDesktopBrowserScopedOpenTabRequest = {
+      tabId: "browser:a",
+      url: "https://example.com/scoped-popup",
+    };
     const snapshot: BbDesktopBrowserSnapshot = {
       tabId: "browser:a",
       dataUrl: null,
@@ -318,6 +326,9 @@ describe("desktop preload browser API", () => {
     });
     api.browser.onOpenTab((request) => {
       openTabs.push(request);
+    });
+    api.browser.onScopedOpenTab?.((request) => {
+      scopedOpenTabs.push(request);
     });
     api.browser.onSnapshot?.((nextSnapshot) => {
       snapshots.push(nextSnapshot);
@@ -335,6 +346,10 @@ describe("desktop preload browser API", () => {
       payload: { url: "" },
     });
     emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
+      payload: { tabId: "", url: "https://example.com/scoped-popup" },
+    });
+    emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
       payload: { tabId: "browser:a", dataUrl: 42 },
     });
@@ -345,6 +360,10 @@ describe("desktop preload browser API", () => {
     emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
       payload: openTab,
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
+      payload: scopedOpenTab,
     });
     emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
@@ -365,6 +384,7 @@ describe("desktop preload browser API", () => {
 
     expect(states).toEqual([state]);
     expect(openTabs).toEqual([openTab]);
+    expect(scopedOpenTabs).toEqual([scopedOpenTab]);
     expect(snapshots).toEqual([snapshot]);
     expect(popoutThreads).toEqual([
       { projectId: "proj_a", threadId: "thr_a" },

@@ -550,6 +550,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // The in-app browser surface only exists on desktop; on web this stays false
   // and chat links keep their external-open behavior.
   const desktopBrowserAvailable = isDesktopBrowserAvailable();
+  const browserTabIds = useMemo(
+    () => new Set(browserTabs.map((tab) => tab.id)),
+    [browserTabs],
+  );
   // Popups (`window.open`/`target=_blank`) from a browser view open as a new
   // in-panel browser tab; the native OS popup is denied in the main process.
   useEffect(() => {
@@ -557,13 +561,20 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     if (browserApi === null) {
       return;
     }
+    if (browserApi.onScopedOpenTab) {
+      return browserApi.onScopedOpenTab(({ tabId, url }) => {
+        if (browserTabIds.has(tabId)) {
+          openBrowserTab(url);
+        }
+      });
+    }
     return browserApi.onOpenTab(({ url }) => {
       if (isRoutePath({ path: url })) {
         return;
       }
       openBrowserTab(url);
     });
-  }, [openBrowserTab]);
+  }, [browserTabIds, openBrowserTab]);
   const isThreadRoot = isRootThread(thread);
   const shouldLoadParentThreads =
     threadQueryState.status === "ready" && isThreadRoot;
@@ -1638,6 +1649,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const fileTabContent = activeTerminalId ? (
     <ThreadTerminalPanel
       canCreateTerminal={canCreateTerminal}
+      onOpenLink={handleOpenTimelineLink}
       threadId={thread.id}
     />
   ) : isNewTabActive ? (
