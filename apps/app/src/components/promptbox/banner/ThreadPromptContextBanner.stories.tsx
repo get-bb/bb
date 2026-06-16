@@ -11,7 +11,6 @@ import {
   type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
-  type ThreadPromptWorkflowsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
   selectWorkspaceChangedFilesSection,
@@ -81,6 +80,11 @@ const dirtyUncommittedStatus: WorkspaceStatus = {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
   },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
+  },
   mergeBase: null,
 };
 
@@ -118,6 +122,11 @@ const dirtyUncommittedManyStatus: WorkspaceStatus = {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
   },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
+  },
   mergeBase: null,
 };
 
@@ -129,22 +138,27 @@ const untrackedOnlyStatus: WorkspaceStatus = {
       {
         path: "apps/app/notes/triage.md",
         status: "??",
-        insertions: null,
-        deletions: null,
+        insertions: 18,
+        deletions: 0,
       },
       {
         path: "apps/app/scripts/dev-bb-worktree.sh",
         status: "??",
-        insertions: null,
-        deletions: null,
+        insertions: 42,
+        deletions: 0,
       },
     ],
-    insertions: 0,
+    insertions: 60,
     deletions: 0,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
+  },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
   },
   mergeBase: null,
 };
@@ -160,6 +174,11 @@ const committedUnmergedStatus: WorkspaceStatus = {
   branch: {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
+  },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
   },
   mergeBase: {
     mergeBaseBranch: "main",
@@ -274,23 +293,6 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
   })),
 };
 
-const workflowsFixture: ThreadPromptWorkflowsSection = {
-  items: [
-    {
-      id: "wfr_demo_1",
-      name: "Repo-wide audit fanout",
-      agentProgress: "3/5 agents",
-      href: "/workflows/runs/wfr_demo_1",
-    },
-    {
-      id: "wfr_demo_2",
-      name: "Adversarial review",
-      agentProgress: null,
-      href: "/workflows/runs/wfr_demo_2",
-    },
-  ],
-};
-
 interface RowConfig {
   section?: WorkspaceChangedFilesSection;
   mergeBase?: ContextBannerMergeBaseConfig | null;
@@ -298,7 +300,6 @@ interface RowConfig {
   archived?: ThreadPromptArchivedSection | null;
   parentThread?: ThreadPromptParentThreadSection | null;
   childThreads?: ThreadPromptChildThreadsSection | null;
-  workflows?: ThreadPromptWorkflowsSection | null;
   initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
 }
 
@@ -309,7 +310,6 @@ function Row({
   archived = null,
   parentThread = null,
   childThreads = null,
-  workflows = null,
   initiallyExpandedSection = null,
 }: RowConfig) {
   const [expandedSection, setExpandedSection] = useState<
@@ -332,7 +332,6 @@ function Row({
         archivedSection={archived}
         parentThreadSection={parentThread}
         childThreadsSection={childThreads}
-        workflowsSection={workflows}
         expandedSection={expandedSection}
         onToggleSection={(next) =>
           setExpandedSection((previous) =>
@@ -424,22 +423,6 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="active workflows (collapsed)"
-        hint="workflow icon + count; click to expand the run list"
-      >
-        <Row workflows={workflowsFixture} mergeBase={null} />
-      </StoryRow>
-      <StoryRow
-        label="active workflows (expanded)"
-        hint="each row links to the run page; agent progress when known"
-      >
-        <Row
-          workflows={workflowsFixture}
-          mergeBase={null}
-          initiallyExpandedSection="workflows"
-        />
-      </StoryRow>
-      <StoryRow
         label="child thread + todos + uncommitted"
         hint="with other context, the parent-thread segment collapses to an icon-only toggle"
       >
@@ -499,7 +482,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="untracked only"
-        hint='workingTree.state = "untracked" — no insertions/deletions tally'
+        hint='workingTree.state = "untracked" with synthesized insertion stats'
       >
         <Row section={untrackedSection} initiallyExpandedSection="git" />
       </StoryRow>

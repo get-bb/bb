@@ -4,8 +4,8 @@ import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { cn } from "@/lib/utils";
 import { BrowserTabContent } from "./BrowserTabContent";
 import {
+  createBrowserViewVisibilityCoordinator,
   destroyPersistedBrowserView,
-  getBrowserViewVisibilityCoordinator,
 } from "./browserViewVisibilityCoordinator";
 import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 
@@ -57,10 +57,13 @@ export function BrowserTabDeck({
 }: BrowserTabDeckProps) {
   const desktopBrowser = useMemo(() => getDesktopBrowserApi(), []);
   const previousTabIdsRef = useRef<BrowserTabIdSnapshot | null>(null);
-  const visibilityCoordinator =
-    desktopBrowser === null
-      ? null
-      : getBrowserViewVisibilityCoordinator(desktopBrowser);
+  const visibilityCoordinator = useMemo(
+    () =>
+      desktopBrowser === null
+        ? null
+        : createBrowserViewVisibilityCoordinator(desktopBrowser),
+    [desktopBrowser],
+  );
 
   useEffect(() => {
     const tabIds = buildBrowserTabIdSet({ browserTabs });

@@ -25,13 +25,11 @@ import {
   isUserQuestionPendingInteractionPayload,
 } from "@bb/domain";
 import { resolvePreferredTestModel } from "@bb/test-helpers";
-import type { AgentRuntimeCaptureEntry } from "../capture-types.js";
 import { createAgentRuntime } from "../runtime.js";
 import { PI_BRIDGE_SESSION_DIR_ENV } from "../pi/bridge/session-paths.js";
 import type {
   AgentRuntime,
   AgentRuntimeExecutionOptions,
-  AgentRuntimeShellEnvironment,
   AgentRuntimeSkillRoot,
 } from "../types.js";
 import {
@@ -775,7 +773,6 @@ export interface TestContext {
   events: ThreadEvent[];
   toolCalls: ToolCallRequest[];
   interactiveRequests: PendingInteractionCreate[];
-  captures: AgentRuntimeCaptureEntry[];
   tmpDir: string;
   ownsTmpDir: boolean;
 }
@@ -791,9 +788,7 @@ export type TestInteractiveRequestHandler = (
 export interface CreateTestRuntimeOptions {
   onInteractiveRequest?: TestInteractiveRequestHandler;
   onToolCall?: TestToolCallHandler;
-  shellEnv?: AgentRuntimeShellEnvironment;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
-  workflowAgentShellEnv?: AgentRuntimeShellEnvironment;
   workspacePath?: string;
 }
 
@@ -865,7 +860,6 @@ export function createTestRuntime(
   const events: ThreadEvent[] = [];
   const toolCalls: ToolCallRequest[] = [];
   const interactiveRequests: PendingInteractionCreate[] = [];
-  const captures: AgentRuntimeCaptureEntry[] = [];
 
   const defaultToolHandler = async (): Promise<ToolCallResponse> => ({
     contentItems: [{ type: "inputText" as const, text: "ok" }],
@@ -874,12 +868,9 @@ export function createTestRuntime(
 
   const runtime = createAgentRuntime({
     env: createRuntimeProcessEnv({ providerId, tmpDir }),
-    shellEnv: opts?.shellEnv,
     skillRoots: opts?.skillRoots,
-    workflowAgentShellEnv: opts?.workflowAgentShellEnv,
     workspacePath: tmpDir,
     onEvent: (e) => events.push(e),
-    onCapture: (entry) => captures.push(entry),
     onToolCall: async (req) => {
       toolCalls.push(req);
       if (opts?.onToolCall) return opts.onToolCall(req);
@@ -903,7 +894,6 @@ export function createTestRuntime(
     events,
     toolCalls,
     interactiveRequests,
-    captures,
     tmpDir,
     ownsTmpDir,
   };

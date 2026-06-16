@@ -71,7 +71,7 @@ export function resolveRealtimeUrl(args: ResolveRealtimeUrlArgs): string {
     });
   }
 
-  if (transport.runtime === "browser" || transport.runtime === "injected-app") {
+  if (transport.runtime === "browser") {
     const sameOriginUrl = browserSameOriginRealtimeUrl();
     if (sameOriginUrl) {
       return sameOriginUrl;

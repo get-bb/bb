@@ -1,13 +1,15 @@
-import type { Host } from "@bb/domain";
-import type { CreateSdkAreaArgs } from "./common.js";
+import type { CreateSdkAreaArgs, PublicApiOutput } from "./common.js";
 
 export interface HostGetArgs {
   hostId: string;
 }
 
+export type HostGetResult = PublicApiOutput<"/hosts/:id", "$get">;
+export type HostListResult = PublicApiOutput<"/hosts", "$get">;
+
 export interface HostsArea {
-  get(args: HostGetArgs): Promise<Host>;
-  list(): Promise<Host[]>;
+  get(args: HostGetArgs): Promise<HostGetResult>;
+  list(): Promise<HostListResult>;
 }
 
 export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {

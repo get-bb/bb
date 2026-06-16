@@ -36,6 +36,12 @@ import type { Context, Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { ZodError, type ZodType } from "zod";
 import type { Endpoint } from "./endpoint.js";
+import type {
+  EndpointFromRouteDescriptor,
+  RouteDefinition,
+  RouteMethod,
+  RouteParsedInput,
+} from "./route-descriptor.js";
 
 // ---------------------------------------------------------------------------
 // Type-level extraction
@@ -110,6 +116,7 @@ type WithInputHandler<E, Input, Path extends string> = (
 type MethodKey = "$get" | "$post" | "$patch" | "$delete" | "$put";
 type HttpMethod = "get" | "post" | "patch" | "delete" | "put";
 type InputSource = "json" | "query";
+type RuntimeInputSource = InputSource | "none" | "form";
 
 /**
  * Typed route registration.
@@ -131,6 +138,29 @@ type TypedRegister<Schema, MKey extends MethodKey> = <
         handler: WithInputHandler<E, Input, Path>,
       ]
 ) => void;
+
+type DescriptorHandler<
+  Descriptor extends RouteDefinition,
+  E extends EndpointFromRouteDescriptor<Descriptor>,
+  ParsedInput extends RouteParsedInput<Descriptor["request"]>,
+> = [ParsedInput] extends [never]
+  ? NoBodyHandler<E, Descriptor["path"]>
+  : WithInputHandler<E, ParsedInput, Descriptor["path"]>;
+
+type TypedDescriptorRegister<Method extends RouteMethod> = <
+  Descriptor extends RouteDefinition<string, Method>,
+  E extends EndpointFromRouteDescriptor<Descriptor>,
+  ParsedInput extends RouteParsedInput<Descriptor["request"]>,
+>(
+  descriptor: Descriptor,
+  handler: DescriptorHandler<Descriptor, E, ParsedInput>,
+) => void;
+
+type TypedRegisterWithDescriptor<
+  Schema,
+  MKey extends MethodKey,
+  Method extends RouteMethod,
+> = TypedRegister<Schema, MKey> & TypedDescriptorRegister<Method>;
 
 // ---------------------------------------------------------------------------
 // Runtime
@@ -173,12 +203,14 @@ export function typedRoutes<Schema>(
 
   function register(
     method: HttpMethod,
-    inputSource: InputSource,
+    inputSource: RuntimeInputSource,
     path: string,
     schemaOrHandler: ZodType | Function,
     maybeHandler?: Function,
   ): void {
-    if (typeof schemaOrHandler === "function") {
+    if (inputSource === "none" || inputSource === "form") {
+      (app as any)[method](path, schemaOrHandler);
+    } else if (typeof schemaOrHandler === "function") {
       // No body — just (path, handler)
       (app as any)[method](path, schemaOrHandler);
     } else {
@@ -210,31 +242,70 @@ export function typedRoutes<Schema>(
     }
   }
 
+  function registerDescriptor(
+    method: HttpMethod,
+    descriptor: RouteDefinition,
+    handler: Function,
+  ): void {
+    if (
+      descriptor.request.source === "query" ||
+      descriptor.request.source === "json"
+    ) {
+      register(
+        method,
+        descriptor.request.source,
+        descriptor.path,
+        descriptor.request.schema,
+        handler,
+      );
+      return;
+    }
+    register(method, descriptor.request.source, descriptor.path, handler);
+  }
+
+  function registerFromArgs(
+    method: HttpMethod,
+    inputSource: InputSource,
+    args: [string | RouteDefinition, ...any[]],
+  ): void {
+    const firstArg = args[0];
+    if (typeof firstArg === "string") {
+      register(method, inputSource, firstArg, args[1], args[2]);
+      return;
+    }
+    registerDescriptor(method, firstArg, args[1]);
+  }
+
   return {
-    get: ((...args: [string, ...any[]]) =>
-      register("get", "query", args[0], args[1], args[2])) as TypedRegister<
+    get: ((...args: [string | RouteDefinition, ...any[]]) =>
+      registerFromArgs("get", "query", args)) as TypedRegisterWithDescriptor<
       Schema,
-      "$get"
+      "$get",
+      "get"
     >,
-    post: ((...args: [string, ...any[]]) =>
-      register("post", "json", args[0], args[1], args[2])) as TypedRegister<
+    post: ((...args: [string | RouteDefinition, ...any[]]) =>
+      registerFromArgs("post", "json", args)) as TypedRegisterWithDescriptor<
       Schema,
-      "$post"
+      "$post",
+      "post"
     >,
-    patch: ((...args: [string, ...any[]]) =>
-      register("patch", "json", args[0], args[1], args[2])) as TypedRegister<
+    patch: ((...args: [string | RouteDefinition, ...any[]]) =>
+      registerFromArgs("patch", "json", args)) as TypedRegisterWithDescriptor<
       Schema,
-      "$patch"
+      "$patch",
+      "patch"
     >,
-    del: ((...args: [string, ...any[]]) =>
-      register("delete", "json", args[0], args[1], args[2])) as TypedRegister<
+    del: ((...args: [string | RouteDefinition, ...any[]]) =>
+      registerFromArgs("delete", "json", args)) as TypedRegisterWithDescriptor<
       Schema,
-      "$delete"
+      "$delete",
+      "delete"
     >,
-    put: ((...args: [string, ...any[]]) =>
-      register("put", "json", args[0], args[1], args[2])) as TypedRegister<
+    put: ((...args: [string | RouteDefinition, ...any[]]) =>
+      registerFromArgs("put", "json", args)) as TypedRegisterWithDescriptor<
       Schema,
-      "$put"
+      "$put",
+      "put"
     >,
   };
 }

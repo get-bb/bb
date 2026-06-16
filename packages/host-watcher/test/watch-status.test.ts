@@ -17,6 +17,7 @@ type WorkspaceStatusChangeEvent = Parameters<
 type ParcelWatcherSubscribe = (typeof import("@parcel/watcher"))["subscribe"];
 type ParcelWatcherCallback = Parameters<ParcelWatcherSubscribe>[1];
 type ParcelWatcherSubscribeArgs = Parameters<ParcelWatcherSubscribe>;
+type ParcelWatcherSubscribeOptions = ParcelWatcherSubscribeArgs[2];
 type ParcelWatcherEventBatch = Parameters<ParcelWatcherCallback>[1];
 type ParcelWatcherSubscribeResult = Awaited<ReturnType<ParcelWatcherSubscribe>>;
 
@@ -44,6 +45,7 @@ interface WatchWorkspaceStatusImport {
 interface ManualWorkspaceEventsImport extends WatchWorkspaceStatusImport {
   emitWorkspaceRootError: (error: Error) => void;
   emitWorkspaceRootEvents: (events: ParcelWatcherEventBatch) => void;
+  getWorkspaceRootSubscribeOptions: () => ParcelWatcherSubscribeOptions;
   getWorkspaceRootSubscriptionCount: () => number;
 }
 
@@ -214,6 +216,7 @@ async function importWatchWorkspaceStatusWithTransientWorkspaceSubscriptionFailu
 ): Promise<ManualWorkspaceEventsImport> {
   let failedWorkspaceSubscription = false;
   let workspaceRootCallback: ParcelWatcherCallback | null = null;
+  let workspaceRootSubscribeOptions: ParcelWatcherSubscribeOptions;
   let workspaceRootSubscriptionCount = 0;
   const ready = createDeferredPromise<void>();
   let readyScheduled = false;
@@ -230,6 +233,7 @@ async function importWatchWorkspaceStatusWithTransientWorkspaceSubscriptionFailu
       throw new Error("workspace subscription unavailable");
     }
     if (isWorkspaceRoot) {
+      workspaceRootSubscribeOptions = watchArgs[2];
       workspaceRootSubscriptionCount += 1;
       workspaceRootCallback = callback;
       if (!readyScheduled) {
@@ -255,6 +259,7 @@ async function importWatchWorkspaceStatusWithTransientWorkspaceSubscriptionFailu
       }
       workspaceRootCallback(null, normalizeEventBatch(events));
     },
+    getWorkspaceRootSubscribeOptions: () => workspaceRootSubscribeOptions,
     getWorkspaceRootSubscriptionCount: () => workspaceRootSubscriptionCount,
     ready: ready.promise,
     watchWorkspaceStatus: watchWorkspaceStatusImpl,
@@ -295,6 +300,7 @@ async function importWatchWorkspaceStatusWithManualWorkspaceEvents(
   workspaceRootPath: string,
 ): Promise<ManualWorkspaceEventsImport> {
   let workspaceRootCallback: ParcelWatcherCallback | null = null;
+  let workspaceRootSubscribeOptions: ParcelWatcherSubscribeOptions;
   let workspaceRootSubscriptionCount = 0;
   const ready = createDeferredPromise<void>();
   const mockSubscribe = (
@@ -307,6 +313,7 @@ async function importWatchWorkspaceStatusWithManualWorkspaceEvents(
         workspaceRootPath,
       );
       if (isWorkspaceRoot) {
+        workspaceRootSubscribeOptions = watchArgs[2];
         workspaceRootSubscriptionCount += 1;
         workspaceRootCallback = callback;
         ready.resolve(undefined);
@@ -327,6 +334,7 @@ async function importWatchWorkspaceStatusWithManualWorkspaceEvents(
       }
       workspaceRootCallback(null, normalizeEventBatch(events));
     },
+    getWorkspaceRootSubscribeOptions: () => workspaceRootSubscribeOptions,
     getWorkspaceRootSubscriptionCount: () => workspaceRootSubscriptionCount,
     ready: ready.promise,
     watchWorkspaceStatus: watchWorkspaceStatusImpl,
@@ -556,6 +564,45 @@ describe.sequential("watchWorkspaceStatus", () => {
     }
   });
 
+  it("does not retry workspace subscriptions after Parcel inotify poll interruptions", async () => {
+    const repoPath = await initRepo();
+    const {
+      emitWorkspaceRootError,
+      getWorkspaceRootSubscriptionCount,
+      ready,
+      watchWorkspaceStatus,
+    } = await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
+    const watchErrors: string[] = [];
+    const stopWatching = watchWorkspaceStatus(repoPath, {
+      onChange: () => undefined,
+      onWatchError: (error) => {
+        watchErrors.push(`${error.rootPath}:${error.message}`);
+      },
+    });
+
+    try {
+      await ready;
+      expect(getWorkspaceRootSubscriptionCount()).toBe(1);
+
+      emitWorkspaceRootError(
+        new Error("Unable to poll: Interrupted system call"),
+      );
+
+      await waitForCallCount(
+        () => watchErrors.length,
+        1,
+        WATCH_TEST_TIMEOUT_MS,
+      );
+      await ensureCallCountStays(getWorkspaceRootSubscriptionCount, 1, 600);
+
+      expect(watchErrors).toEqual([
+        `${normalizeWatchPath(repoPath)}:Unable to poll: Interrupted system call`,
+      ]);
+    } finally {
+      await stopWatching();
+    }
+  });
+
   it("does not emit callbacks when a clean workspace watch starts", async () => {
     const repoPath = await initRepo();
     const { ready, watchWorkspaceStatus } =
@@ -573,6 +620,103 @@ describe.sequential("watchWorkspaceStatus", () => {
       await ensureCallCountStays(() => calls.length, 0);
     } finally {
       stopWatching();
+    }
+  });
+
+  it("uses Git ignored directories for workspace root subscription ignores", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(
+      path.join(repoPath, ".gitignore"),
+      "node_modules/\n.turbo/\ncoverage/\n",
+      "utf8",
+    );
+    await fs.mkdir(path.join(repoPath, "node_modules", "pkg"), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(repoPath, ".turbo", "cache"), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(repoPath, "coverage", "tmp"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(repoPath, "node_modules", "pkg", "tracked.txt"),
+      "tracked\n",
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(repoPath, ".turbo", "cache", "output.txt"),
+      "ignored\n",
+      "utf8",
+    );
+    await runGit({ args: ["add", ".gitignore"], cwd: repoPath });
+    await runGit({
+      args: ["add", "-f", "node_modules/pkg/tracked.txt"],
+      cwd: repoPath,
+    });
+    await runGit({
+      args: ["commit", "-m", "Add ignored directory fixtures"],
+      cwd: repoPath,
+    });
+
+    const { getWorkspaceRootSubscribeOptions, ready, watchWorkspaceStatus } =
+      await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
+    const stopWatching = watchWorkspaceStatus(repoPath, {
+      onChange: () => undefined,
+      onWatchError: ignoreWatchError,
+    });
+
+    try {
+      await ready;
+      expect(getWorkspaceRootSubscribeOptions()?.ignore).toEqual([
+        ".git",
+        ".turbo",
+        "coverage",
+      ]);
+    } finally {
+      stopWatching();
+    }
+  });
+
+  it("reports and retries when Git ignored directory discovery fails", async () => {
+    const repoPath = await initRepo();
+    await fs.rm(path.join(repoPath, ".git"), { force: true, recursive: true });
+    await fs.writeFile(
+      path.join(repoPath, ".git"),
+      "gitdir: /missing\n",
+      "utf8",
+    );
+    const subscribedRoots: string[] = [];
+    const mockSubscribe = async (
+      ...watchArgs: ParcelWatcherSubscribeArgs
+    ): Promise<ParcelWatcherSubscribeResult> => {
+      subscribedRoots.push(watchArgs[0]);
+      return createMockWatcherSubscription();
+    };
+    vi.spyOn(parcelWatcher, "subscribe").mockImplementation(mockSubscribe);
+    const watchErrors: string[] = [];
+    const stopWatching = watchWorkspaceStatusImpl(repoPath, {
+      onChange: () => undefined,
+      onWatchError: (error) => {
+        watchErrors.push(`${error.rootPath}:${error.message}`);
+      },
+    });
+
+    try {
+      await waitForCallCount(
+        () => watchErrors.length,
+        1,
+        WATCH_TEST_TIMEOUT_MS,
+      );
+      await ensureCallCountStays(() => subscribedRoots.length, 0, 600);
+
+      const ignoreDiscoveryErrors = watchErrors.filter((error) =>
+        error.includes("Workspace root ignore discovery failed:"),
+      );
+      expect(ignoreDiscoveryErrors).toHaveLength(1);
+      expect(ignoreDiscoveryErrors[0]).toContain(normalizeWatchPath(repoPath));
+    } finally {
+      await stopWatching();
     }
   });
 

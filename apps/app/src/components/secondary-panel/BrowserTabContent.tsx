@@ -12,8 +12,8 @@ import type {
   BbDesktopBrowserState,
   BbDesktopBrowserViewportBounds,
   BbDesktopBrowserViewBounds,
-} from "@bb/server-contract";
-import { clampBbDesktopBrowserViewBounds } from "@bb/server-contract";
+} from "@bb/desktop-contract";
+import { clampBbDesktopBrowserViewBounds } from "@bb/desktop-contract";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,

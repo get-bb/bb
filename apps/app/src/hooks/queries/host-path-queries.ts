@@ -1,11 +1,11 @@
 import { useMemo } from "react";
-import { useAtomValue } from "jotai";
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { checkPathsExist } from "@/lib/api-host-daemon";
 import {
   hostDaemonPortAtom,
   localHostDaemonHostIdAtom,
 } from "@/lib/system-config-atoms";
+import { useAsyncAtomValue } from "@/lib/use-async-atom-value";
 import { localPathExistenceQueryKey } from "./query-keys";
 
 export type LocalPathExistence = Record<string, boolean>;
@@ -18,8 +18,8 @@ export type LocalPathExistence = Record<string, boolean>;
 export function useLocalPathExistence(
   paths: readonly string[],
 ): LocalPathExistence {
-  const localDaemonHostId = useAtomValue(localHostDaemonHostIdAtom);
-  const daemonPort = useAtomValue(hostDaemonPortAtom);
+  const localDaemonHostId = useAsyncAtomValue(localHostDaemonHostIdAtom, null);
+  const daemonPort = useAsyncAtomValue(hostDaemonPortAtom, null);
 
   const sortedPaths = useMemo(() => {
     if (paths.length === 0) return [];

@@ -1,11 +1,11 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackView } from "./views/AuthCallbackView";
 import { RootComposeRoute } from "./views/RootComposeView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { ProviderCliHealthToasts } from "./components/provider-cli/ProviderCliHealthToasts";
-import { AppRouteNavigationProvider } from "./components/ui/app-route-anchor";
+import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import {
   useDesktopUpdateAvailableToast,
@@ -14,27 +14,25 @@ import {
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
   APP_ROOT_ROUTE_PATH,
-  APP_SETTINGS_ROUTE_PATH,
   AUTOMATIONS_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
-  DEVELOPMENT_REPLAY_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
+  POPOUT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
-  PROJECT_WORKFLOWS_ROUTE_PATH,
   PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
-  STANDALONE_APP_ROUTE_PATH,
+  SETTINGS_ROUTE_PATH,
   THREAD_DETAIL_ROUTE_PATH,
-  WORKFLOW_RUN_AGENT_ROUTE_PATH,
-  WORKFLOW_RUN_ROUTE_PATH,
-} from "./lib/app-route-paths";
+} from "./lib/route-paths";
+import { Icon } from "./components/ui/icon";
+import { POPOUT_QUICK_ASK_HEIGHT } from "@bb/desktop-contract";
 
 const ThreadDetailRoute = lazy(
   () => import("./views/thread-detail/ThreadDetailRoute"),
 );
-const AppSettingsView = lazy(() =>
-  import("./views/AppSettingsView").then((m) => ({
-    default: m.AppSettingsView,
+const SettingsView = lazy(() =>
+  import("./views/SettingsView").then((m) => ({
+    default: m.SettingsView,
   })),
 );
 const AutomationsView = lazy(() =>
@@ -52,26 +50,38 @@ const ProjectArchivedThreadsView = lazy(() =>
     default: m.ProjectArchivedThreadsView,
   })),
 );
-const InternalReplayListView = lazy(() =>
-  import("./views/InternalReplayListView").then((m) => ({
-    default: m.InternalReplayListView,
+const PopoutChatView = lazy(() =>
+  import("./views/PopoutChatView").then((m) => ({
+    default: m.PopoutChatView,
   })),
 );
-const StandaloneAppView = lazy(() =>
-  import("./views/standalone-app/StandaloneAppView").then((m) => ({
-    default: m.StandaloneAppView,
-  })),
-);
-const WorkflowRunView = lazy(() =>
-  import("./views/workflow-run/WorkflowRunView").then((m) => ({
-    default: m.WorkflowRunView,
-  })),
-);
-const ProjectWorkflowsView = lazy(() =>
-  import("./views/project-workflows/ProjectWorkflowsView").then((m) => ({
-    default: m.ProjectWorkflowsView,
-  })),
-);
+
+function PopoutRouteFallback() {
+  useEffect(() => {
+    document.documentElement.setAttribute("data-bb-popout-route", "");
+    document.body.setAttribute("data-bb-popout-route", "");
+    return () => {
+      document.documentElement.removeAttribute("data-bb-popout-route");
+      document.body.removeAttribute("data-bb-popout-route");
+    };
+  }, []);
+
+  const style = {
+    height: `${POPOUT_QUICK_ASK_HEIGHT}px`,
+  };
+
+  return (
+    <div className="h-screen overflow-visible bg-transparent text-foreground">
+      <div
+        className="flex min-h-0 w-full flex-col items-center justify-center rounded-2xl border border-border bg-background text-sm text-muted-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_2px_8px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.18)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.07),0_2px_8px_rgba(0,0,0,0.4),0_16px_48px_rgba(0,0,0,0.55)]"
+        style={style}
+      >
+        <Icon name="Spinner" className="mb-2 size-4 animate-spin" />
+        Loading...
+      </div>
+    </div>
+  );
+}
 
 function AppRoutes() {
   return (
@@ -79,18 +89,8 @@ function AppRoutes() {
       <Suspense fallback={null}>
         <Routes>
           <Route path={APP_ROOT_ROUTE_PATH} element={<RootComposeRoute />} />
-          <Route path={APP_SETTINGS_ROUTE_PATH} element={<AppSettingsView />} />
+          <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
           <Route path={AUTOMATIONS_ROUTE_PATH} element={<AutomationsView />} />
-          <Route
-            path={STANDALONE_APP_ROUTE_PATH}
-            element={<StandaloneAppView />}
-          />
-          {import.meta.env.DEV ? (
-            <Route
-              path={DEVELOPMENT_REPLAY_ROUTE_PATH}
-              element={<InternalReplayListView />}
-            />
-          ) : null}
           <Route
             path={LEGACY_PROJECT_COMPOSE_ROUTE_PATH}
             element={<RootComposeRoute />}
@@ -104,21 +104,12 @@ function AppRoutes() {
             element={<ProjectArchivedThreadsView />}
           />
           <Route
-            path={PROJECT_WORKFLOWS_ROUTE_PATH}
-            element={<ProjectWorkflowsView />}
-          />
-          <Route
             path={THREAD_DETAIL_ROUTE_PATH}
             element={<ThreadDetailRoute />}
           />
           <Route
             path={PROJECTLESS_THREAD_DETAIL_ROUTE_PATH}
             element={<ThreadDetailRoute />}
-          />
-          <Route path={WORKFLOW_RUN_ROUTE_PATH} element={<WorkflowRunView />} />
-          <Route
-            path={WORKFLOW_RUN_AGENT_ROUTE_PATH}
-            element={<WorkflowRunView />}
           />
           <Route
             path="*"
@@ -143,16 +134,24 @@ export function App() {
 
   return (
     <QuickCreateProjectProvider>
-      <AppRouteNavigationProvider>
+      <RouteNavigationProvider>
         <ProviderCliHealthToasts />
         <Routes>
           <Route
             path={AUTH_CALLBACK_ROUTE_PATH}
             element={<AuthCallbackView />}
           />
+          <Route
+            path={`${POPOUT_ROUTE_PATH}/*`}
+            element={
+              <Suspense fallback={<PopoutRouteFallback />}>
+                <PopoutChatView />
+              </Suspense>
+            }
+          />
           <Route path="*" element={<AppRoutes />} />
         </Routes>
-      </AppRouteNavigationProvider>
+      </RouteNavigationProvider>
     </QuickCreateProjectProvider>
   );
 }

@@ -1,15 +1,8 @@
 /** Provider integration tests for per-thread shell environment isolation. */
 
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   cleanup,
@@ -56,27 +49,6 @@ function readCapturedEnv(args: ReadCapturedEnvArgs): string[] {
     .split(/\r?\n/u);
 }
 
-function createNoNestingCaptureCommand(fileName: string): string {
-  return (
-    `printf '%s\\n%s\\n%s\\n' ` +
-    `"\${BB_THREAD_ID:-absent}" "\${BB_SERVER_URL:-absent}" ` +
-    `"$(bb status >/dev/null 2>&1 && echo ran || echo blocked)" > ${fileName}`
-  );
-}
-
-/** Mirrors the daemon-side restricted env (`prepareWorkflowAgentShellEnv`):
- *  the inherited PATH stays intact and a leading shim directory makes every
- *  `bb` invocation fail fast with a clear message. */
-function createFailingBbShimDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "bb-wf-shim-"));
-  writeFileSync(
-    join(dir, "bb"),
-    '#!/bin/sh\necho "bb is not available inside workflow agent sessions" >&2\nexit 1\n',
-    { mode: 0o755 },
-  );
-  return dir;
-}
-
 for (const providerId of providers) {
   describe.concurrent(`${providerId} provider env isolation`, () => {
     it("keeps concurrent thread shell env isolated in one provider process", async () => {
@@ -103,7 +75,6 @@ for (const providerId of providers) {
         });
 
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: sharedEnvironmentId,
           threadId: firstCapture.threadId,
           projectId: firstCapture.projectId,
@@ -113,7 +84,6 @@ for (const providerId of providers) {
             "When the user asks you to run an exact shell command, use your shell or command execution tool and preserve command output.",
         });
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: sharedEnvironmentId,
           threadId: secondCapture.threadId,
           projectId: secondCapture.projectId,
@@ -213,129 +183,6 @@ for (const providerId of providers) {
       } finally {
         await ctx.runtime.shutdown();
         cleanup(ctx);
-      }
-    }, 95_000);
-
-    it("withholds server coordinates and bb from workflowAgent shells while normal threads keep them", async () => {
-      // A stub "real bb" that exits 0, so a thread-session `bb status` reports
-      // "ran" while the workflow shim reports "blocked".
-      const bbStubDir = mkdtempSync(join(tmpdir(), "bb-stub-"));
-      writeFileSync(join(bbStubDir, "bb"), "#!/bin/sh\nexit 0\n", {
-        mode: 0o755,
-      });
-      const shimDir = createFailingBbShimDir();
-      const inheritedPath = process.env.PATH ?? "/usr/bin:/bin";
-      const serverUrl = "http://127.0.0.1:3334";
-      const ctx = createTestRuntime(providerId, {
-        onInteractiveRequest: createApprovalResolution,
-        shellEnv: {
-          PATH: `${bbStubDir}${delimiter}${inheritedPath}`,
-          BB_SERVER_URL: serverUrl,
-          BB_HOST_DAEMON_PORT: "3002",
-        },
-        workflowAgentShellEnv: {
-          PATH: `${shimDir}${delimiter}${inheritedPath}`,
-        },
-      });
-      const sharedEnvironmentId = `env-no-nesting-${randomUUID()}`;
-      const workflowCapture: ThreadEnvCapture = {
-        fileName: `env-workflow-${randomUUID()}.txt`,
-        projectId: `project-workflow-${randomUUID()}`,
-        threadId: newThreadId(),
-      };
-      const threadCapture: ThreadEnvCapture = {
-        fileName: `env-thread-${randomUUID()}.txt`,
-        projectId: `project-thread-${randomUUID()}`,
-        threadId: newThreadId(),
-      };
-
-      try {
-        const options = await resolveRuntimeOptions({
-          ctx,
-          providerId,
-          preset: "full",
-        });
-        const instructions =
-          "When the user asks you to run an exact shell command, use your shell or command execution tool and preserve command output.";
-
-        await ctx.runtime.startThread({
-          sessionKind: "workflowAgent",
-          environmentId: sharedEnvironmentId,
-          threadId: workflowCapture.threadId,
-          projectId: workflowCapture.projectId,
-          providerId,
-          options,
-          instructions,
-        });
-        await ctx.runtime.startThread({
-          sessionKind: "thread",
-          environmentId: sharedEnvironmentId,
-          threadId: threadCapture.threadId,
-          projectId: threadCapture.projectId,
-          providerId,
-          options,
-          instructions,
-        });
-
-        const workflowFilePath = join(ctx.tmpDir, workflowCapture.fileName);
-        const threadFilePath = join(ctx.tmpDir, threadCapture.fileName);
-
-        await Promise.all([
-          ctx.runtime.runTurn({
-            threadId: workflowCapture.threadId,
-            clientRequestId: "creq_23456789ab",
-            options,
-            input: [
-              {
-                type: "text",
-                text: createCapturePrompt(
-                  createNoNestingCaptureCommand(workflowCapture.fileName),
-                ),
-                mentions: [],
-              },
-            ],
-          }),
-          ctx.runtime.runTurn({
-            threadId: threadCapture.threadId,
-            clientRequestId: "creq_23456789ab",
-            options,
-            input: [
-              {
-                type: "text",
-                text: createCapturePrompt(
-                  createNoNestingCaptureCommand(threadCapture.fileName),
-                ),
-                mentions: [],
-              },
-            ],
-          }),
-        ]);
-
-        await waitForRuntimeCondition({
-          ctx,
-          label: "both no-nesting env capture files",
-          predicate: () =>
-            existsSync(workflowFilePath) && existsSync(threadFilePath),
-          timeoutMs: 90_000,
-        });
-
-        expect(
-          readCapturedEnv({
-            ctxTmpDir: ctx.tmpDir,
-            fileName: workflowCapture.fileName,
-          }),
-        ).toEqual(["absent", "absent", "blocked"]);
-        expect(
-          readCapturedEnv({
-            ctxTmpDir: ctx.tmpDir,
-            fileName: threadCapture.fileName,
-          }),
-        ).toEqual([threadCapture.threadId, serverUrl, "ran"]);
-      } finally {
-        await ctx.runtime.shutdown();
-        cleanup(ctx);
-        rmSync(bbStubDir, { recursive: true, force: true });
-        rmSync(shimDir, { recursive: true, force: true });
       }
     }, 95_000);
   });

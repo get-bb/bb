@@ -1,7 +1,6 @@
 import {
   getLatestSessionForHost,
   listRetiredLoadedEnvironmentIdsOnHost,
-  listTrackedThreadStorageTargetsOnHost,
   openSession,
   upsertHost,
 } from "@bb/db";
@@ -24,7 +23,6 @@ import {
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
 import { readAttachment } from "../services/projects/attachments.js";
 import { handleHostSessionOpened } from "./session-owner-side-effects.js";
-import { listTrackedApplicationDataTargets } from "../services/apps/tracked-application-data-targets.js";
 
 export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
   const { get, post } = typedRoutes<HostDaemonInternalSchema>(app, {
@@ -80,26 +78,13 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
         leaseTimeoutMs: LEASE_TIMEOUT_MS,
       });
 
-      const trackedApplicationDataTargets =
-        await listTrackedApplicationDataTargets({
-          dataDir: session.dataDir,
-        });
-
       await handleHostSessionOpened(deps, {
         activeThreads: payload.activeThreads,
-        activeWorkflowRunIds: payload.activeWorkflowRunIds,
         hostId: daemon.hostId,
         openedSession: session,
         previousSession,
       });
 
-      const trackedThreadTargets = listTrackedThreadStorageTargetsOnHost(
-        deps.db,
-        { hostId: daemon.hostId },
-      ).map((target) => ({
-        environmentId: target.environmentId,
-        threadId: target.threadId,
-      }));
       const retiredEnvironmentIds = listRetiredLoadedEnvironmentIdsOnHost(
         deps.db,
         {
@@ -115,8 +100,9 @@ export function registerInternalSessionRoutes(app: Hono, deps: AppDeps): void {
           sessionId: session.id,
           heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
           leaseTimeoutMs: LEASE_TIMEOUT_MS,
-          trackedThreadTargets,
-          trackedApplicationDataTargets,
+          watchSet: deps.watchInterests.reconcileWatchSetForHost(
+            daemon.hostId,
+          ),
           retiredEnvironmentIds,
         },
         201,

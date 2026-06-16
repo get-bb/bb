@@ -120,7 +120,7 @@ describe("fuzzyMatchPaths", () => {
   it("ranks files under a matching directory before the slash is typed", () => {
     const paths = [
       "packages/db/test/query-plans.test.ts",
-      "packages/replay-capture/src/playback.ts",
+      "packages/workflow-runtime/src/playback.ts",
       "packages/agent-runtime/src/codex/generated/codex-app-server/schema/v2/TurnPlanStep.ts",
       "apps/server/src/services/threads/thread-execution-plan.ts",
       "plans/askuserquestion-option-preview.md",

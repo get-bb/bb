@@ -39,6 +39,11 @@ function makeStatus(options: MakeStatusOptions): WorkspaceStatus {
       deletions: options.deletions ?? 0,
       files,
     }),
+    checkout: {
+      kind: "branch",
+      branchName: "feature",
+      headSha: null,
+    },
     branch: {
       currentBranch: "feature",
       defaultBranch: "main",

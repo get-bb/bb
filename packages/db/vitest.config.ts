@@ -1,11 +1,6 @@
-import { defineConfig } from "vitest/config";
-import { workspaceTestAliases } from "../../vitest.workspace-aliases";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
-export default defineConfig({
-  resolve: {
-    conditions: ["source"],
-    alias: workspaceTestAliases,
-  },
+export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
     name: "@bb/db",

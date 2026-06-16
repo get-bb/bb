@@ -10,7 +10,10 @@ import type { FileOptions } from "@pierre/diffs/react";
 import type { SelectedLineRange, SupportedLanguages } from "@pierre/diffs";
 import type { UrlTransform } from "react-markdown";
 import { Button } from "@/components/ui/button.js";
-import { COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import {
+  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@/components/ui/coarse-pointer-sizing.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { CopyButton } from "@/components/ui/copy-button.js";
 import { Icon } from "@/components/ui/icon.js";
@@ -24,6 +27,12 @@ import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
+import {
+  DEFAULT_CODE_OVERFLOW_MODE,
+  getNextCodeOverflowMode,
+  type CodeOverflowMode,
+  type CodeOverflowModeChangeHandler,
+} from "@/lib/code-overflow-mode";
 import { cn } from "@/lib/utils";
 
 export interface FilePreviewFile {
@@ -46,6 +55,7 @@ export type FilePreviewState =
   | { kind: "not-found" }
   | { kind: "error"; message?: string }
   | { kind: "image"; url: string }
+  | { kind: "video"; url: string }
   | ({ kind: "iframe" } & IframeFilePreviewTarget)
   | {
       kind: "html";
@@ -74,8 +84,15 @@ export interface FilePreviewProps {
 interface FilePreviewBodyProps {
   state: FilePreviewState;
   path: string;
+  lineOverflowMode: CodeOverflowMode;
   viewMode: FilePreviewViewMode;
   markdownLinkRouting?: MarkdownLinkRouting;
+}
+
+interface HtmlFilePreviewBodyProps {
+  lineOverflowMode: CodeOverflowMode;
+  state: Extract<FilePreviewState, { kind: "html" }>;
+  viewMode: FilePreviewViewMode;
 }
 
 interface FilePreviewHeaderProps {
@@ -84,6 +101,9 @@ interface FilePreviewHeaderProps {
   onOpenInEditor?: (path: string) => void;
   statusLabel: WorkspaceFilePreviewStatusLabel | null;
   toggleKind: FilePreviewToggleKind | null;
+  showLineOverflowToggle: boolean;
+  lineOverflowMode: CodeOverflowMode;
+  onLineOverflowModeChange: CodeOverflowModeChangeHandler;
   viewMode: FilePreviewViewMode;
   onViewModeChange: (mode: FilePreviewViewMode) => void;
 }
@@ -99,6 +119,11 @@ interface FilePreviewImageProps {
   alt: string;
 }
 
+interface FilePreviewVideoProps {
+  url: string;
+  title: string;
+}
+
 interface FilePreviewMessageProps {
   message: string;
   role?: "alert";
@@ -106,7 +131,13 @@ interface FilePreviewMessageProps {
 
 interface FilePreviewCodeProps {
   file: FilePreviewFile;
+  lineOverflowMode: CodeOverflowMode;
   lineRange: FilePreviewLineRange | null;
+}
+
+interface GetInitialFilePreviewViewModeArgs {
+  lineRange: FilePreviewLineRange | null;
+  toggleKind: FilePreviewToggleKind | null;
 }
 
 type FilePreviewViewMode = "preview" | "source";
@@ -182,6 +213,16 @@ function getFilePreviewLineRange(
   return null;
 }
 
+function getInitialFilePreviewViewMode({
+  lineRange,
+  toggleKind,
+}: GetInitialFilePreviewViewModeArgs): FilePreviewViewMode {
+  if (toggleKind === "markdown") {
+    return "preview";
+  }
+  return lineRange === null ? "preview" : "source";
+}
+
 function usesCodeViewLayout(
   state: FilePreviewState,
   viewMode: FilePreviewViewMode,
@@ -209,21 +250,33 @@ export function FilePreview({
   const toggleKind = getFilePreviewToggleKind(state);
   const filePreviewLineRange = getFilePreviewLineRange(state);
   const [viewMode, setViewMode] = useState<FilePreviewViewMode>(
-    filePreviewLineRange === null ? "preview" : "source",
+    getInitialFilePreviewViewMode({
+      lineRange: filePreviewLineRange,
+      toggleKind,
+    }),
   );
-  // Each new file opens in rendered preview by default; the user re-toggles per
-  // file rather than carrying their last choice across unrelated files.
+  const [lineOverflowMode, setLineOverflowMode] = useState<CodeOverflowMode>(
+    DEFAULT_CODE_OVERFLOW_MODE,
+  );
+  // Each new file opens in the appropriate default mode; the user re-toggles
+  // per file rather than carrying their last choice across unrelated files.
   useEffect(() => {
-    setViewMode(filePreviewLineRange === null ? "preview" : "source");
-  }, [filePreviewLineRange, path]);
+    setViewMode(
+      getInitialFilePreviewViewMode({
+        lineRange: filePreviewLineRange,
+        toggleKind,
+      }),
+    );
+  }, [filePreviewLineRange, path, toggleKind]);
 
   const usesIframeLayout =
     state.kind === "iframe" ||
     (state.kind === "html" && viewMode === "preview");
   const bodyViewMode: FilePreviewViewMode =
     toggleKind === null ? "preview" : viewMode;
-  const usesFullHeightLayout =
-    usesIframeLayout || usesCodeViewLayout(state, bodyViewMode);
+  const usesCodeLayout = usesCodeViewLayout(state, bodyViewMode);
+  const showLineOverflowToggle = usesCodeLayout;
+  const usesFullHeightLayout = usesIframeLayout || usesCodeLayout;
   // The markdown preview renders on a raised "paper" surface that should fill
   // the panel to the bottom even for short documents. `min-h-full` (vs the
   // iframe layout's `h-full min-h-0`) keeps the column growable, so long
@@ -253,6 +306,9 @@ export function FilePreview({
           onOpenInEditor={onOpenInEditor}
           statusLabel={statusLabel}
           toggleKind={toggleKind}
+          showLineOverflowToggle={showLineOverflowToggle}
+          lineOverflowMode={lineOverflowMode}
+          onLineOverflowModeChange={setLineOverflowMode}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
         />
@@ -260,6 +316,7 @@ export function FilePreview({
       <FilePreviewBody
         state={state}
         path={path}
+        lineOverflowMode={lineOverflowMode}
         viewMode={bodyViewMode}
         markdownLinkRouting={markdownLinkRouting}
       />
@@ -270,6 +327,7 @@ export function FilePreview({
 function FilePreviewBody({
   state,
   path,
+  lineOverflowMode,
   viewMode,
   markdownLinkRouting,
 }: FilePreviewBodyProps) {
@@ -293,6 +351,9 @@ function FilePreviewBody({
   if (state.kind === "image") {
     return <FilePreviewImage url={state.url} alt={path} />;
   }
+  if (state.kind === "video") {
+    return <FilePreviewVideo url={state.url} title={path} />;
+  }
   if (state.kind === "iframe") {
     return (
       <IframeFilePreview
@@ -303,16 +364,13 @@ function FilePreviewBody({
     );
   }
   if (state.kind === "html") {
-    if (viewMode === "preview") {
-      return (
-        <IframeFilePreview
-          sandbox={state.iframe.sandbox}
-          title={state.iframe.title}
-          url={state.iframe.url}
-        />
-      );
-    }
-    return <FilePreviewCode file={state.file} lineRange={state.lineRange} />;
+    return (
+      <HtmlFilePreviewBody
+        lineOverflowMode={lineOverflowMode}
+        state={state}
+        viewMode={viewMode}
+      />
+    );
   }
   if (isMarkdownFile(state.file.name) && viewMode === "preview") {
     return (
@@ -324,7 +382,11 @@ function FilePreviewBody({
     );
   }
   return (
-    <FilePreviewCode file={state.file} lineRange={state.lineRange ?? null} />
+    <FilePreviewCode
+      file={state.file}
+      lineOverflowMode={lineOverflowMode}
+      lineRange={state.lineRange ?? null}
+    />
   );
 }
 
@@ -334,6 +396,9 @@ function FilePreviewHeader({
   onOpenInEditor,
   statusLabel,
   toggleKind,
+  showLineOverflowToggle,
+  lineOverflowMode,
+  onLineOverflowModeChange,
   viewMode,
   onViewModeChange,
 }: FilePreviewHeaderProps) {
@@ -347,7 +412,7 @@ function FilePreviewHeader({
     // it, body content scrolling under the sticky header would bleed through.
     <div className="sticky top-0 z-10 bg-background">
       <div className="flex h-9 items-center gap-2 border-b border-border-seam bg-surface-raised px-4">
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <Icon
             name="File"
             className="size-3.5 shrink-0 text-subtle-foreground"
@@ -382,40 +447,73 @@ function FilePreviewHeader({
             <OpenInEditorButton onClick={() => onOpenInEditor(path)} />
           ) : null}
         </div>
-        {toggleKind !== null ? (
-          <div
-            className="ml-auto inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border p-0.5"
-            role="tablist"
-            aria-label={getToggleAriaLabel(toggleKind)}
-          >
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-9",
-                COARSE_POINTER_TEXT_SM_CLASS,
-              )}
-              onClick={() => onViewModeChange("preview")}
-              aria-pressed={viewMode === "preview"}
-              title="Rendered preview"
-            >
-              Preview
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-9",
-                COARSE_POINTER_TEXT_SM_CLASS,
-              )}
-              onClick={() => onViewModeChange("source")}
-              aria-pressed={viewMode === "source"}
-              title={getRawToggleTitle(toggleKind)}
-            >
-              Raw
-            </Button>
+        {showLineOverflowToggle || toggleKind !== null ? (
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            {showLineOverflowToggle ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                  "text-muted-foreground",
+                )}
+                onClick={() =>
+                  onLineOverflowModeChange(
+                    getNextCodeOverflowMode(lineOverflowMode),
+                  )
+                }
+                aria-label={
+                  lineOverflowMode === "wrap"
+                    ? "Disable source line wrap"
+                    : "Wrap source lines"
+                }
+                aria-pressed={lineOverflowMode === "wrap"}
+                title={
+                  lineOverflowMode === "wrap"
+                    ? "Disable source line wrap"
+                    : "Wrap source lines"
+                }
+              >
+                <Icon name="TextWrap" />
+              </Button>
+            ) : null}
+            {toggleKind !== null ? (
+              <div
+                className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-border p-0.5"
+                role="tablist"
+                aria-label={getToggleAriaLabel(toggleKind)}
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-9",
+                    COARSE_POINTER_TEXT_SM_CLASS,
+                  )}
+                  onClick={() => onViewModeChange("preview")}
+                  aria-pressed={viewMode === "preview"}
+                  title="Rendered preview"
+                >
+                  Preview
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "h-5 rounded-sm px-2 text-muted-foreground max-md:pointer-coarse:h-9",
+                    COARSE_POINTER_TEXT_SM_CLASS,
+                  )}
+                  onClick={() => onViewModeChange("source")}
+                  aria-pressed={viewMode === "source"}
+                  title={getRawToggleTitle(toggleKind)}
+                >
+                  Raw
+                </Button>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -424,6 +522,38 @@ function FilePreviewHeader({
         className="pointer-events-none absolute inset-x-0 top-full h-4 bg-gradient-to-b from-background to-transparent"
       />
     </div>
+  );
+}
+
+function HtmlFilePreviewBody({
+  lineOverflowMode,
+  state,
+  viewMode,
+}: HtmlFilePreviewBodyProps) {
+  const isPreviewVisible = viewMode === "preview";
+  return (
+    <>
+      <div
+        className={isPreviewVisible ? "contents" : "hidden"}
+        aria-hidden={isPreviewVisible ? undefined : true}
+      >
+        <IframeFilePreview
+          sandbox={state.iframe.sandbox}
+          title={state.iframe.title}
+          url={state.iframe.url}
+        />
+      </div>
+      <div
+        className={isPreviewVisible ? "hidden" : "contents"}
+        aria-hidden={isPreviewVisible ? true : undefined}
+      >
+        <FilePreviewCode
+          file={state.file}
+          lineOverflowMode={lineOverflowMode}
+          lineRange={state.lineRange}
+        />
+      </div>
+    </>
   );
 }
 
@@ -455,6 +585,20 @@ function FilePreviewImage({ url, alt }: FilePreviewImageProps) {
         src={url}
         alt={alt}
         className="block max-h-[34rem] w-full object-contain"
+      />
+    </div>
+  );
+}
+
+function FilePreviewVideo({ url, title }: FilePreviewVideoProps) {
+  return (
+    <div className="pt-4">
+      <video
+        src={url}
+        title={title}
+        className="block max-h-[34rem] w-full bg-black"
+        controls
+        preload="metadata"
       />
     </div>
   );
@@ -563,17 +707,21 @@ function FilePreviewMessage({ message, role }: FilePreviewMessageProps) {
   );
 }
 
-function FilePreviewCode({ file, lineRange }: FilePreviewCodeProps) {
+function FilePreviewCode({
+  file,
+  lineOverflowMode,
+  lineRange,
+}: FilePreviewCodeProps) {
   const preferredTheme = usePreferredTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const options = useMemo<FileOptions<undefined>>(
     () => ({
       themeType: preferredTheme,
-      overflow: "scroll",
+      overflow: lineOverflowMode,
       disableFileHeader: true,
       enableLineSelection: lineRange !== null,
     }),
-    [lineRange, preferredTheme],
+    [lineOverflowMode, lineRange, preferredTheme],
   );
   const selectedLines = useMemo<SelectedLineRange | null>(
     () =>

@@ -358,13 +358,6 @@ export interface EventProjectionDelegationMessage
 export interface EventProjectionWorkflowMessage extends EventProjectionMessageBase {
   kind: "workflow";
   itemId: string;
-  /**
-   * Raw task-type discriminant from the item (`bb_workflow` for server-owned
-   * workflow runs whose `itemId` is the `wfr_` run id, `local_workflow` for
-   * provider-native dynamic workflows). Renderers gate run-page deep links on
-   * it.
-   */
-  taskType: string;
   workflowName: string | null;
   description: string;
   status: Extract<

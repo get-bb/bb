@@ -1,4 +1,4 @@
-import { atom, useAtomValue } from "jotai";
+import { atom } from "jotai";
 import { useMemo } from "react";
 import type {
   OpenInTargetRequest,
@@ -10,10 +10,12 @@ import {
   localWorkspaceOpenTargetsAtom,
 } from "@/lib/system-config-atoms";
 import { openInTarget as daemonOpenInTarget } from "@/lib/api-host-daemon";
+import { useAsyncAtomValue } from "@/lib/use-async-atom-value";
 
 const disabledLocalHostDaemonReachableAtom = atom(false);
 const disabledHostDaemonPortAtom = atom<number | null>(null);
 const disabledWorkspaceOpenTargetsAtom = atom<WorkspaceOpenTarget[]>([]);
+const NO_WORKSPACE_OPEN_TARGETS: WorkspaceOpenTarget[] = [];
 
 export interface UseWorkspaceOpenTargetsArgs {
   enabled: boolean;
@@ -27,18 +29,21 @@ export interface UseWorkspaceOpenTargetsResult {
 export function useWorkspaceOpenTargets(
   args: UseWorkspaceOpenTargetsArgs,
 ): UseWorkspaceOpenTargetsResult {
-  const localHostDaemonReachable = useAtomValue(
+  const localHostDaemonReachable = useAsyncAtomValue(
     args.enabled
       ? localHostDaemonReachableAtom
       : disabledLocalHostDaemonReachableAtom,
+    false,
   );
-  const daemonPort = useAtomValue(
+  const daemonPort = useAsyncAtomValue(
     args.enabled ? hostDaemonPortAtom : disabledHostDaemonPortAtom,
+    null,
   );
-  const workspaceOpenTargets = useAtomValue(
+  const workspaceOpenTargets = useAsyncAtomValue(
     args.enabled
       ? localWorkspaceOpenTargetsAtom
       : disabledWorkspaceOpenTargetsAtom,
+    NO_WORKSPACE_OPEN_TARGETS,
   );
 
   const openWorkspace = useMemo(() => {

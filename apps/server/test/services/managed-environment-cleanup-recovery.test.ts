@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { createEnvironment, environments, getEnvironment } from "@bb/db";
 import { recordEnvironmentCleanupRequest } from "@bb/db/internal-environment-lifecycle";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   runEnvironmentCleanupAdvance,
   settleEnvironmentDestroyCommandResult,
@@ -267,6 +267,132 @@ describe("managed environment cleanup recovery sweep", () => {
           environment.id,
         ),
       ).toHaveLength(0);
+    });
+  });
+
+  it("does not log one cleanup deferral per environment while the host daemon is unavailable", async () => {
+    await withTestHarness(async (harness) => {
+      const logger = {
+        debug: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+      };
+      harness.deps.logger = logger;
+
+      const { host, session } = seedHostSession(harness.deps);
+      harness.hub.unregisterDaemon(session.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      for (const path of [
+        "/tmp/unavailable-cleanup-one",
+        "/tmp/unavailable-cleanup-two",
+      ]) {
+        const environment = createEnvironment(harness.db, harness.hub, {
+          hostId: host.id,
+          isGitRepo: false,
+          managed: true,
+          path,
+          projectId: project.id,
+          status: "ready",
+          workspaceProvisionType: "managed-worktree",
+        });
+        recordEnvironmentCleanupRequest(
+          harness.db,
+          harness.hub,
+          environment.id,
+          {
+            requestedAt: SWEEP_START_MS,
+          },
+        );
+      }
+
+      await runStartupRecoverySweep(harness.deps);
+
+      expect(logger.debug).not.toHaveBeenCalledWith(
+        expect.objectContaining({ environmentId: expect.any(String) }),
+        "Managed environment archive cleanup deferred until host reconnects",
+      );
+      expect(logger.debug).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "Managed environment archive cleanup deferred some candidates until host reconnects",
+      );
+    });
+  });
+
+  it("logs a single aggregate cleanup deferral when a sweep partially advances", async () => {
+    await withTestHarness(async (harness) => {
+      const logger = {
+        debug: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+      };
+      harness.deps.logger = logger;
+
+      const unavailable = seedHostSession(harness.deps, {
+        id: "host-unavailable-cleanup",
+      });
+      harness.hub.unregisterDaemon(unavailable.session.id);
+      const unavailableProject = seedProjectWithSource(harness.deps, {
+        hostId: unavailable.host.id,
+      });
+      const unavailableEnvironment = createEnvironment(harness.db, harness.hub, {
+        hostId: unavailable.host.id,
+        isGitRepo: false,
+        managed: true,
+        path: "/tmp/unavailable-cleanup-environment",
+        projectId: unavailableProject.project.id,
+        status: "ready",
+        workspaceProvisionType: "managed-worktree",
+      });
+      recordEnvironmentCleanupRequest(
+        harness.db,
+        harness.hub,
+        unavailableEnvironment.id,
+        {
+          requestedAt: SWEEP_START_MS,
+        },
+      );
+
+      const available = seedHostSession(harness.deps, {
+        id: "host-available-cleanup",
+      });
+      const availableProject = seedProjectWithSource(harness.deps, {
+        hostId: available.host.id,
+      });
+      const availableEnvironment = createEnvironment(harness.db, harness.hub, {
+        hostId: available.host.id,
+        isGitRepo: false,
+        managed: true,
+        path: null,
+        projectId: availableProject.project.id,
+        status: "ready",
+        workspaceProvisionType: "managed-worktree",
+      });
+      recordEnvironmentCleanupRequest(
+        harness.db,
+        harness.hub,
+        availableEnvironment.id,
+        {
+          requestedAt: SWEEP_START_MS,
+        },
+      );
+
+      await runStartupRecoverySweep(harness.deps);
+
+      expect(getEnvironment(harness.db, availableEnvironment.id)?.status).toBe(
+        "destroyed",
+      );
+      expect(logger.debug).toHaveBeenCalledTimes(1);
+      expect(logger.debug).toHaveBeenCalledWith(
+        {
+          deferredEnvironmentCount: 1,
+          deferredHostIds: [unavailable.host.id],
+        },
+        "Managed environment archive cleanup deferred some candidates until host reconnects",
+      );
     });
   });
 

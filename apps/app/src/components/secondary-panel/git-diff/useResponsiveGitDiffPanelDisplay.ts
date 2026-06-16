@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { GitDiffDisplayMode } from "../GitDiffToolbar";
+import type {
+  GitDiffDisplayMode,
+  GitDiffDisplayModeChangeHandler,
+} from "../GitDiffToolbar";
 import type { SecondaryPanelWidthChangeHandler } from "../useSecondaryPanelResize";
 
 const GIT_DIFF_SPLIT_VIEW_MIN_WIDTH_PX = 760;
 
-type GitDiffDisplayModeChangeHandler = (mode: GitDiffDisplayMode) => void;
 type SecondaryPanelResizeStartHandler = () => void;
 
 interface UseResponsiveGitDiffPanelDisplayArgs {

@@ -1,6 +1,7 @@
 import { clientMessageSchema } from "@bb/domain";
 import { decodeSocketPayload } from "./decode-payload.js";
 import type { NotificationHub } from "./hub.js";
+import type { WatchInterestCoordinator } from "./watch-interests.js";
 
 interface ClientSocket {
   close(code?: number, reason?: string): void;
@@ -15,7 +16,13 @@ export function onClientSocketOpen(
 }
 
 export function onClientSocketMessage(
-  hub: NotificationHub,
+  deps: {
+    hub: NotificationHub;
+    watchInterests: Pick<
+      WatchInterestCoordinator,
+      "subscribe" | "unsubscribe" | "releaseSocket"
+    >;
+  },
   socket: ClientSocket,
   raw: unknown,
 ): void {
@@ -36,10 +43,12 @@ export function onClientSocketMessage(
 
   switch (parsed.type) {
     case "subscribe":
-      hub.subscribe(socket, parsed.entity, parsed.id);
+      deps.hub.subscribe(socket, parsed.target);
+      deps.watchInterests.subscribe(socket, parsed.target);
       break;
     case "unsubscribe":
-      hub.unsubscribe(socket, parsed.entity, parsed.id);
+      deps.hub.unsubscribe(socket, parsed.target);
+      deps.watchInterests.unsubscribe(socket, parsed.target);
       break;
     default: {
       const _exhaustive: never = parsed;
@@ -49,8 +58,12 @@ export function onClientSocketMessage(
 }
 
 export function onClientSocketClose(
-  hub: NotificationHub,
+  deps: {
+    hub: NotificationHub;
+    watchInterests: Pick<WatchInterestCoordinator, "releaseSocket">;
+  },
   socket: ClientSocket,
 ): void {
-  hub.unregisterClient(socket);
+  deps.watchInterests.releaseSocket(socket);
+  deps.hub.unregisterClient(socket);
 }

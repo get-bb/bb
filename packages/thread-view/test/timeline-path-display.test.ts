@@ -5,19 +5,19 @@ import {
 } from "../src/timeline-path-display.js";
 
 describe("formatTimelinePath", () => {
-  it("uses full paths for text surfaces and compact names for app labels", () => {
+  it("uses full paths for text surfaces and compact names for labels", () => {
     expect(
       formatTimelinePath({
-        path: "$BB_DEV_WORKSPACE/apps/app/src/views/appSettingsAtoms.ts",
+        path: "$BB_DEV_WORKSPACE/apps/app/src/views/threadSettingsAtoms.ts",
         mode: "full",
       }),
-    ).toBe("$BB_DEV_WORKSPACE/apps/app/src/views/appSettingsAtoms.ts");
+    ).toBe("$BB_DEV_WORKSPACE/apps/app/src/views/threadSettingsAtoms.ts");
     expect(
       formatTimelinePath({
-        path: "$BB_DEV_WORKSPACE/apps/app/src/views/appSettingsAtoms.ts",
+        path: "$BB_DEV_WORKSPACE/apps/app/src/views/threadSettingsAtoms.ts",
         mode: "compact",
       }),
-    ).toBe("appSettingsAtoms.ts");
+    ).toBe("threadSettingsAtoms.ts");
   });
 
   it("compacts Windows-style paths", () => {

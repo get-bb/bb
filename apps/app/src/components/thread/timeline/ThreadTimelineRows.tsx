@@ -9,7 +9,12 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import { QueryClientContext, type QueryClient } from "@tanstack/react-query";
+import {
+  notifyManager,
+  QueryClientContext,
+  type QueryCacheNotifyEvent,
+  type QueryClient,
+} from "@tanstack/react-query";
 import type {
   ThreadChildOrigin,
   ThreadRuntimeDisplayStatus,
@@ -66,6 +71,7 @@ import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { Button } from "../../ui/button.js";
 import { AutoHeightContainer } from "../../ui/height-transition.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import {
   joinSignatureParts,
@@ -73,10 +79,7 @@ import {
   timelineRowsSignature,
 } from "./timelineRowSignatures.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
-import {
-  getThreadRoutePath,
-  getWorkflowRunRoutePath,
-} from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
 import {
   allThreadQueryKeyPrefix,
@@ -119,6 +122,7 @@ export interface ThreadTimelineRowsProps {
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
+  resolveMentionLink?: PromptMentionLinkResolver;
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   themeType?: ThreadTimelineTheme;
@@ -155,6 +159,7 @@ interface TimelineRendererStaticContextValue {
   onTitleAction: TimelineTitleActionResolver | undefined;
   projectId: string | undefined;
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
+  resolveMentionLink: PromptMentionLinkResolver | undefined;
   resolveSegmentLinkHref: TimelineTitleLinkResolver | undefined;
   resolveUserAttachmentImageSrc: UserAttachmentImageSrcResolver | undefined;
   senderThreadMetadataById: ReadonlyMap<string, SenderThreadMetadata>;
@@ -546,6 +551,19 @@ function buildSenderThreadMetadataById({
   return metadataById;
 }
 
+function shouldSyncSenderThreadMetadata(
+  event: QueryCacheNotifyEvent,
+): boolean {
+  if (event.type !== "updated") {
+    return false;
+  }
+
+  return (
+    event.query.queryKey[0] === THREADS_QUERY_KEY ||
+    event.query.queryKey[0] === THREAD_QUERY_KEY
+  );
+}
+
 function useSenderThreadMetadataById({
   queryClient,
 }: UseSenderThreadMetadataByIdArgs): ReadonlyMap<
@@ -567,17 +585,30 @@ function useSenderThreadMetadataById({
       return;
     }
 
+    let subscribed = true;
+    const syncMetadataById = () => {
+      if (!subscribed) {
+        return;
+      }
+      setMetadataById(buildSenderThreadMetadataById({ queryClient }));
+    };
+
     // Sender titles are derived from React Query caches. Subscribe to thread
     // list and detail updates so title changes still refresh rows without
-    // rebuilding a fresh Map every render.
-    return queryClient.getQueryCache().subscribe((event) => {
-      if (
-        event.query.queryKey[0] === THREADS_QUERY_KEY ||
-        event.query.queryKey[0] === THREAD_QUERY_KEY
-      ) {
-        setMetadataById(buildSenderThreadMetadataById({ queryClient }));
+    // rebuilding a fresh Map every render. QueryCache subscribers run
+    // synchronously, including when React Query creates observers during another
+    // component's render, so schedule the React state update through TanStack's
+    // notifier like React Query's own hooks do.
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (shouldSyncSenderThreadMetadata(event)) {
+        notifyManager.schedule(syncMetadataById);
       }
     });
+
+    return () => {
+      subscribed = false;
+      unsubscribe();
+    };
   }, [queryClient]);
 
   return metadataById;
@@ -712,6 +743,7 @@ function ConversationRow({ row }: ConversationRowProps) {
     onOpenLink,
     onOpenLocalFileLink,
     projectId,
+    resolveMentionLink,
     resolveSegmentLinkHref,
     resolveUserAttachmentImageSrc,
     senderThreadMetadataById,
@@ -733,6 +765,7 @@ function ConversationRow({ row }: ConversationRowProps) {
         mentions={row.mentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
+        resolveMentionLink={resolveMentionLink}
         resolveUserAttachmentImageSrc={resolveUserAttachmentImageSrc}
         role="user"
         resolveSegmentLinkHref={resolveSegmentLinkHref}
@@ -814,12 +847,12 @@ function TimelineUnreadDivider({ autoScroll }: TimelineUnreadDividerProps) {
       role="separator"
       aria-label="New messages"
       className={cn(
-        "flex items-center gap-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-foreground",
+        "flex items-center gap-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-destructive-text",
       )}
       data-testid="thread-unread-divider"
     >
       <span className="shrink-0">New</span>
-      <span className="h-px min-w-0 flex-1 bg-border/50" aria-hidden />
+      <span className="h-px min-w-0 flex-1 bg-destructive" aria-hidden />
     </div>
   );
 }
@@ -1465,18 +1498,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   });
   const resolveSegmentLinkHref = useMemo<TimelineTitleLinkResolver>(() => {
     return (link) => {
-      switch (link.kind) {
-        case "thread":
-          // Thread routes are project-scoped; without a project context the
-          // segment renders as plain text.
-          return projectId !== undefined
-            ? getThreadRoutePath({ projectId, threadId: link.threadId })
-            : null;
-        case "workflow-run":
-          return getWorkflowRunRoutePath(link.runId);
-        default:
-          return assertNever(link);
-      }
+      // Thread routes are project-scoped; without a project context the
+      // segment renders as plain text.
+      return projectId !== undefined
+        ? getThreadRoutePath({ projectId, threadId: link.threadId })
+        : null;
     };
   }, [projectId]);
   const staticContextValue = useMemo<TimelineRendererStaticContextValue>(
@@ -1492,6 +1518,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       onTitleAction: props.onTitleAction,
       projectId,
       resolveImageViewSrc: props.resolveImageViewSrc,
+      resolveMentionLink: props.resolveMentionLink,
       resolveSegmentLinkHref,
       resolveUserAttachmentImageSrc: props.resolveUserAttachmentImageSrc,
       senderThreadMetadataById,
@@ -1511,6 +1538,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.onTitleAction,
       projectId,
       props.resolveImageViewSrc,
+      props.resolveMentionLink,
       resolveSegmentLinkHref,
       props.resolveUserAttachmentImageSrc,
       senderThreadMetadataById,

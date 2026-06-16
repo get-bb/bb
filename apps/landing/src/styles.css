@@ -1,0 +1,539 @@
+/* bb landing — editorial light, themed to match the bb app.
+   Tokens mirror apps/app/src/components/ui/theme.css: neutral zero-chroma
+   oklch grays, inverted-neutral primary button, a single restrained blue
+   accent, Inter Variable. */
+
+:root {
+  --bg: oklch(1 0 0);
+  --ink: oklch(0.3211 0 0);
+  --dim: oklch(0.44 0 0);
+  --subtle: oklch(0.5 0 0);
+  --border: color-mix(in oklch, var(--ink) 14%, var(--bg));
+  --border-soft: color-mix(in oklch, var(--ink) 8%, var(--bg));
+  --surface: color-mix(in oklch, var(--ink) 3.5%, var(--bg));
+  --surface-recessed: color-mix(in oklch, var(--ink) 6%, var(--bg));
+  --state-hover: color-mix(in oklch, var(--ink) 5.9%, var(--bg));
+  --accent: oklch(0.55 0.1 250);
+  --radius: 0.5rem;
+  --font-sans:
+    "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+code,
+.mono {
+  font-family: var(--font-mono);
+}
+
+.wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+/* ── Nav ────────────────────────────────────────────────────────── */
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 0;
+}
+
+.logo img {
+  display: block;
+}
+
+.nav-links {
+  display: flex;
+  gap: 26px;
+  align-items: center;
+  font-size: 14.5px;
+}
+
+.nav-links a:not(.btn) {
+  color: var(--dim);
+}
+
+.nav-links a:not(.btn):hover {
+  color: var(--ink);
+}
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-block;
+  padding: 10px 20px;
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 14.5px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 4px 14px color-mix(in oklch, var(--ink) 18%, transparent);
+}
+
+.btn-primary {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.btn-primary:hover {
+  background: color-mix(in oklch, var(--ink) 90%, var(--bg));
+}
+
+.btn-ghost {
+  border-color: var(--border);
+}
+
+.btn-ghost:hover {
+  background: var(--state-hover);
+}
+
+.btn-sm {
+  padding: 7px 14px;
+  font-size: 13.5px;
+}
+
+.cta-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 38px;
+  flex-wrap: wrap;
+}
+
+/* ── Hero ───────────────────────────────────────────────────────── */
+
+.hero {
+  padding: 96px 0 48px;
+  text-align: center;
+  position: relative;
+}
+
+/* Faint neutral wash behind the hero. */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -140px -25vw auto;
+  height: 480px;
+  z-index: -1;
+  background: radial-gradient(
+    640px 300px at 50% 12%,
+    color-mix(in oklch, var(--ink) 4.5%, transparent),
+    transparent 70%
+  );
+}
+
+/* Dot-grid texture, masked so it fades out toward the hero edges. */
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: -60px -10vw 30%;
+  z-index: -1;
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--ink) 16%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+  mask-image: radial-gradient(
+    540px 280px at 50% 18%,
+    rgb(0 0 0 / 70%),
+    transparent 75%
+  );
+}
+
+/* Hand-drawn accent underline that draws in under the last word. */
+.uline {
+  position: relative;
+  white-space: nowrap;
+}
+
+.uline svg {
+  position: absolute;
+  left: 0;
+  bottom: 0.02em;
+  width: 100%;
+  height: 0.14em;
+  overflow: visible;
+}
+
+.uline path {
+  fill: none;
+  stroke: color-mix(in oklch, var(--accent) 75%, transparent);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 210;
+  stroke-dashoffset: 210;
+  animation: draw-underline 0.7s ease-out 0.55s forwards;
+}
+
+@keyframes draw-underline {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Staggered entrance for hero content. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero > * {
+  animation: fade-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.hero > :nth-child(2) {
+  animation-delay: 0.07s;
+}
+
+.hero > :nth-child(3) {
+  animation-delay: 0.14s;
+}
+
+.hero > :nth-child(4) {
+  animation-delay: 0.21s;
+}
+
+.hero > :nth-child(5) {
+  animation-delay: 0.28s;
+}
+
+.hero > :nth-child(6) {
+  animation-delay: 0.35s;
+}
+
+/* Scroll reveal: sections start hidden only once JS marks them pending,
+   so prerendered/no-JS pages stay fully visible. */
+[data-reveal] {
+  transition:
+    opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-reveal].reveal-pending {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero > * {
+    animation: none;
+  }
+
+  .uline path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+
+  .btn,
+  .chip,
+  .card,
+  [data-reveal] {
+    transition: none;
+  }
+}
+
+.hero h1 {
+  font-size: clamp(36px, 6vw, 58px);
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  max-width: 780px;
+  margin: 0 auto;
+  color: oklch(0.21 0 0);
+}
+
+.hero .sub {
+  margin: 26px auto 0;
+  color: var(--dim);
+  max-width: 600px;
+  font-size: 17.5px;
+}
+
+.install {
+  margin: 26px auto 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 11px 18px;
+  font-size: 14px;
+}
+
+.install .dollar {
+  color: var(--accent);
+  user-select: none;
+}
+
+.install button {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  border-radius: calc(var(--radius) - 2px);
+  padding: 3px 11px;
+  font-size: 12.5px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.install button:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+.install button.copied {
+  color: var(--accent);
+  border-color: color-mix(in oklch, var(--accent) 45%, var(--bg));
+  animation: copy-pop 0.25s ease;
+}
+
+@keyframes copy-pop {
+  40% {
+    transform: scale(1.12);
+  }
+}
+
+.fine {
+  margin-top: 14px;
+  color: var(--subtle);
+  font-size: 13px;
+}
+
+.providers {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 44px;
+  flex-wrap: wrap;
+}
+
+.providers .label {
+  align-self: center;
+  font-size: 13px;
+  color: var(--subtle);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--dim);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 6px 16px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.chip:hover {
+  background: var(--surface);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.chip-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+/* ── App screenshot ─────────────────────────────────────────────── */
+
+/* The capture carries its own macOS window shadow and transparent
+   padding. It renders in 3D: tilted back like a standing panel, easing
+   flat as it scrolls toward the viewport center (JS-driven in AppShot). */
+.shot {
+  margin: 8px 0;
+  perspective: 1400px;
+  position: relative;
+}
+
+/* Soft neutral glow pad under the floating window. */
+.shot::before {
+  content: "";
+  position: absolute;
+  inset: 18% 6% 6%;
+  z-index: -1;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklch, var(--ink) 7%, transparent),
+    transparent
+  );
+  filter: blur(28px);
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  transform: rotateX(18deg) scale(0.94);
+  transform-origin: 50% 100%;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shot img {
+    transform: none;
+  }
+}
+
+/* ── Features ───────────────────────────────────────────────────── */
+
+.features {
+  padding: 88px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.sec-title {
+  font-size: clamp(26px, 4vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin-bottom: 12px;
+  color: oklch(0.21 0 0);
+}
+
+.sec-sub {
+  color: var(--dim);
+  max-width: 560px;
+  margin-bottom: 48px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 28px;
+}
+
+.card {
+  border-top: 2px solid var(--border-soft);
+  padding: 20px 18px 18px;
+  margin: 0 -18px;
+  border-radius: 0 0 var(--radius) var(--radius);
+  position: relative;
+  transition:
+    border-top-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+/* Cursor-following spotlight (coordinates set from SpotCard). */
+.card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    220px circle at var(--mx, 50%) var(--my, 0),
+    color-mix(in oklch, var(--ink) 5%, transparent),
+    transparent
+  );
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.card:hover::after {
+  opacity: 1;
+}
+
+.card:hover {
+  border-top-color: var(--border);
+  transform: translateY(-2px);
+}
+
+.card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.card p {
+  color: var(--dim);
+  font-size: 14.5px;
+}
+
+.card code {
+  background: var(--surface-recessed);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12.5px;
+}
+
+/* ── Closer ─────────────────────────────────────────────────────── */
+
+.closer {
+  border-top: 1px solid var(--border-soft);
+  padding: 88px 0;
+  text-align: center;
+}
+
+.closer p {
+  color: var(--dim);
+  margin-top: 12px;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────── */
+
+.footer {
+  border-top: 1px solid var(--border-soft);
+  padding: 32px 0 52px;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  color: var(--subtle);
+  font-size: 14px;
+}
+
+.footer a:hover {
+  color: var(--ink);
+}

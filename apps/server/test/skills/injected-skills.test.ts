@@ -1,16 +1,13 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { agentProviderIdSchema } from "@bb/agent-providers";
-import { resolveApplicationPath } from "@bb/config/app-storage-paths";
-import {
-  applicationIdSchema,
-  reasoningLevelValues,
-  workflowSandboxValues,
-  type ApplicationId,
-} from "@bb/domain";
 import { resolveBuiltinSkillsRootPath } from "../../src/services/skills/builtin-skills-copy.js";
 import { resolveInjectedSkillSources } from "../../src/services/skills/injected-skills.js";
 import type { ServerLogger } from "../../src/types.js";
@@ -30,11 +27,6 @@ interface WriteSkillArgs {
   description?: string;
   name: string;
   rootPath: string;
-}
-
-interface WriteApplicationArgs {
-  applicationId: ApplicationId;
-  dataDir: string;
 }
 
 const tempDirs: string[] = [];
@@ -101,38 +93,12 @@ async function writeSkill(args: WriteSkillArgs): Promise<string> {
   return skillRootPath;
 }
 
-async function writeApplication(args: WriteApplicationArgs): Promise<string> {
-  const appRootPath = resolveApplicationPath(args.dataDir, args.applicationId);
-  await mkdir(appRootPath, { recursive: true });
-  await writeFile(
-    path.join(appRootPath, "manifest.json"),
-    `${JSON.stringify(
-      {
-        manifestVersion: 1,
-        id: args.applicationId,
-        name: "Skill Test App",
-        capabilities: [],
-      },
-      null,
-      2,
-    )}\n`,
-    "utf8",
-  );
-  return appRootPath;
-}
-
 describe("injected skill source discovery", () => {
-  it("aggregates valid data-dir and global app skills", async () => {
+  it("aggregates valid data-dir skills", async () => {
     const dataDir = await makeTempDir();
-    const applicationId = applicationIdSchema.parse("skillstest");
-    const appRootPath = await writeApplication({ dataDir, applicationId });
     const dataDirSkillRoot = await writeSkill({
       rootPath: path.join(dataDir, "skills"),
       name: "release-notes",
-    });
-    const appSkillRoot = await writeSkill({
-      rootPath: path.join(appRootPath, "skills"),
-      name: "summarize-trades",
     });
     const { logger } = createCapturingLogger();
 
@@ -144,19 +110,10 @@ describe("injected skill source discovery", () => {
     expect(sources).toEqual([
       {
         sourceType: "data-dir",
-        applicationId: null,
         name: "release-notes",
         description: "Use release-notes when tests need it.",
         sourceRootPath: dataDirSkillRoot,
         skillFilePath: path.join(dataDirSkillRoot, "SKILL.md"),
-      },
-      {
-        sourceType: "global-app",
-        applicationId,
-        name: "summarize-trades",
-        description: "Use summarize-trades when tests need it.",
-        sourceRootPath: appSkillRoot,
-        skillFilePath: path.join(appSkillRoot, "SKILL.md"),
       },
     ]);
   });
@@ -223,39 +180,12 @@ describe("injected skill source discovery", () => {
     });
   });
 
-  it("excludes all sources with colliding names across both roots", async () => {
-    const dataDir = await makeTempDir();
-    const applicationId = applicationIdSchema.parse("collision");
-    const appRootPath = await writeApplication({ dataDir, applicationId });
-    await writeSkill({
-      rootPath: path.join(dataDir, "skills"),
-      name: "shared-skill",
-    });
-    await writeSkill({
-      rootPath: path.join(appRootPath, "skills"),
-      name: "shared-skill",
-    });
-    const { logger, warnings } = createCapturingLogger();
-
-    expect(
-      resolveInjectedSkillSources(logger, {
-        builtinSkillsRootPath: path.join(dataDir, "builtin-skills"),
-        dataDir,
-      }),
-    ).toEqual([]);
-    expect(
-      warnings.filter(
-        (warning) => warning.message === "Skipping colliding injected skill",
-      ),
-    ).toHaveLength(2);
-  });
-
   it("aggregates built-in skills alongside user skills", async () => {
     const dataDir = await makeTempDir();
     const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
     const builtinSkillRoot = await writeSkill({
       rootPath: builtinSkillsRootPath,
-      name: "building-bb-apps",
+      name: "bb-cli",
     });
     const dataDirSkillRoot = await writeSkill({
       rootPath: path.join(dataDir, "skills"),
@@ -271,15 +201,13 @@ describe("injected skill source discovery", () => {
     expect(sources).toEqual([
       {
         sourceType: "builtin",
-        applicationId: null,
-        name: "building-bb-apps",
-        description: "Use building-bb-apps when tests need it.",
+        name: "bb-cli",
+        description: "Use bb-cli when tests need it.",
         sourceRootPath: builtinSkillRoot,
         skillFilePath: path.join(builtinSkillRoot, "SKILL.md"),
       },
       {
         sourceType: "data-dir",
-        applicationId: null,
         name: "release-notes",
         description: "Use release-notes when tests need it.",
         sourceRootPath: dataDirSkillRoot,
@@ -294,12 +222,12 @@ describe("injected skill source discovery", () => {
     const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
     await writeSkill({
       rootPath: builtinSkillsRootPath,
-      name: "building-bb-apps",
+      name: "bb-cli",
       description: "Built-in copy.",
     });
     const overrideSkillRoot = await writeSkill({
       rootPath: path.join(dataDir, "skills"),
-      name: "building-bb-apps",
+      name: "bb-cli",
       description: "User override copy.",
     });
     const { logger, infos, warnings } = createCapturingLogger();
@@ -312,8 +240,7 @@ describe("injected skill source discovery", () => {
     expect(sources).toEqual([
       {
         sourceType: "data-dir",
-        applicationId: null,
-        name: "building-bb-apps",
+        name: "bb-cli",
         description: "User override copy.",
         sourceRootPath: overrideSkillRoot,
         skillFilePath: path.join(overrideSkillRoot, "SKILL.md"),
@@ -327,73 +254,6 @@ describe("injected skill source discovery", () => {
     ]);
   });
 
-  it("lets a global app skill override a built-in skill with the same name", async () => {
-    const dataDir = await makeTempDir();
-    const applicationId = applicationIdSchema.parse("skillstest");
-    const appRootPath = await writeApplication({ dataDir, applicationId });
-    const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
-    await writeSkill({
-      rootPath: builtinSkillsRootPath,
-      name: "building-bb-apps",
-      description: "Built-in copy.",
-    });
-    const overrideSkillRoot = await writeSkill({
-      rootPath: path.join(appRootPath, "skills"),
-      name: "building-bb-apps",
-      description: "App override copy.",
-    });
-    const { logger, warnings } = createCapturingLogger();
-
-    const sources = await resolveInjectedSkillSources(logger, {
-      builtinSkillsRootPath,
-      dataDir,
-    });
-
-    expect(sources).toEqual([
-      {
-        sourceType: "global-app",
-        applicationId,
-        name: "building-bb-apps",
-        description: "App override copy.",
-        sourceRootPath: overrideSkillRoot,
-        skillFilePath: path.join(overrideSkillRoot, "SKILL.md"),
-      },
-    ]);
-    expect(warnings).toEqual([]);
-  });
-
-  it("keeps the built-in silenced when user sources collide over its name", async () => {
-    const dataDir = await makeTempDir();
-    const applicationId = applicationIdSchema.parse("collision");
-    const appRootPath = await writeApplication({ dataDir, applicationId });
-    const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
-    await writeSkill({
-      rootPath: builtinSkillsRootPath,
-      name: "shared-skill",
-    });
-    await writeSkill({
-      rootPath: path.join(dataDir, "skills"),
-      name: "shared-skill",
-    });
-    await writeSkill({
-      rootPath: path.join(appRootPath, "skills"),
-      name: "shared-skill",
-    });
-    const { logger, warnings } = createCapturingLogger();
-
-    expect(
-      resolveInjectedSkillSources(logger, {
-        builtinSkillsRootPath,
-        dataDir,
-      }),
-    ).toEqual([]);
-    expect(
-      warnings.filter(
-        (warning) => warning.message === "Skipping colliding injected skill",
-      ),
-    ).toHaveLength(2);
-  });
-
   it("resolves the bundled built-in skills root with valid built-in skills", async () => {
     const dataDir = await makeTempDir();
     const builtinSkillsRootPath = resolveBuiltinSkillsRootPath();
@@ -405,61 +265,11 @@ describe("injected skill source discovery", () => {
     });
 
     const builtinNames = sources.map((source) => source.name);
-    expect(builtinNames).toContain("building-bb-apps");
     expect(builtinNames).toContain("bb-cli");
-    expect(builtinNames).toContain("bb-workflows");
     for (const source of sources) {
       expect(source.sourceType).toBe("builtin");
-      expect(source.applicationId).toBeNull();
       expect(source.description.trim().length).toBeGreaterThan(0);
     }
     expect(warnings).toEqual([]);
-  });
-});
-
-describe("bb-workflows built-in skill", () => {
-  const skillRootPath = path.join(
-    resolveBuiltinSkillsRootPath(),
-    "bb-workflows",
-  );
-
-  it("ships ambient.d.ts identical to the @bb/workflow-runtime copy", async () => {
-    // The daemon stages the whole skill directory, so the copy beside SKILL.md
-    // is what workflow authors receive. The package file is the source of
-    // truth (itself pinned against src/dsl-types.ts by a workflow-runtime
-    // test); a drifted copy would teach authors stale typings.
-    const stagedCopy = await readFile(
-      path.join(skillRootPath, "ambient.d.ts"),
-      "utf8",
-    );
-    const canonical = await readFile(
-      fileURLToPath(
-        new URL(
-          "../../../../packages/workflow-runtime/ambient.d.ts",
-          import.meta.url,
-        ),
-      ),
-      "utf8",
-    );
-    expect(stagedCopy).toBe(canonical);
-  });
-
-  it("documents every live provider, effort, and sandbox value", async () => {
-    // The skill prose inlines these unions; a catalog or domain enum change
-    // must update the skill in the same commit or it teaches values that no
-    // longer exist (and omits ones that do).
-    const skill = await readFile(path.join(skillRootPath, "SKILL.md"), "utf8");
-    for (const providerId of agentProviderIdSchema.options) {
-      // Quoted union form (the skill's `provider?: "codex" | …` line): the
-      // bare id would be vacuous for "pi", which is a substring of
-      // "pipeline" and would keep this green with the provider undocumented.
-      expect(skill).toContain(`"${providerId}"`);
-    }
-    for (const effort of reasoningLevelValues) {
-      expect(skill).toContain(`"${effort}"`);
-    }
-    for (const sandbox of workflowSandboxValues) {
-      expect(skill).toContain(`"${sandbox}"`);
-    }
   });
 });

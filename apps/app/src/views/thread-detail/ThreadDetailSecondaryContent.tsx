@@ -1,6 +1,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -10,7 +11,7 @@ import {
   getBbDesktopInfo,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { useIsSidebarShowing } from "@/components/ui/sidebar.js";
+import { useOptionalIsSidebarShowing } from "@/components/ui/sidebar.js";
 import {
   Panel,
   PanelGroup,
@@ -58,10 +59,150 @@ interface ThreadDetailSecondaryContentProps {
   isMetadataLoading: boolean;
   isSecondaryPanelOpen: boolean;
   isConversationCollapsed: boolean;
+  surface: "page" | "popout";
   onToggleConversationCollapse: () => void;
   metadata: ThreadMetadataContentProps;
   secondaryPanel: ThreadSecondaryPanelProps;
   timeline: ThreadTimelinePaneProps;
+}
+
+type ThreadMetadataPropsEqual = (
+  previous: ThreadMetadataContentProps,
+  next: ThreadMetadataContentProps,
+) => boolean;
+type ThreadSecondaryPanelPropsEqual = (
+  previous: ThreadSecondaryPanelProps,
+  next: ThreadSecondaryPanelProps,
+) => boolean;
+type ThreadTimelinePanePropsEqual = (
+  previous: ThreadTimelinePaneProps,
+  next: ThreadTimelinePaneProps,
+) => boolean;
+
+interface UseStableThreadMetadataPropsArgs {
+  value: ThreadMetadataContentProps;
+}
+
+interface UseStableThreadSecondaryPanelPropsArgs {
+  value: ThreadSecondaryPanelProps;
+}
+
+interface UseStableThreadTimelinePanePropsArgs {
+  value: ThreadTimelinePaneProps;
+}
+
+const areThreadMetadataPropsEqual: ThreadMetadataPropsEqual = (
+  previous,
+  next,
+) =>
+  previous.thread === next.thread &&
+  previous.projectId === next.projectId &&
+  previous.parentThreadDisplayName === next.parentThreadDisplayName &&
+  previous.parentThreads === next.parentThreads &&
+  previous.canAssignToParent === next.canAssignToParent &&
+  previous.canTakeOverThread === next.canTakeOverThread &&
+  previous.environment === next.environment &&
+  previous.environmentDisplayHost === next.environmentDisplayHost &&
+  previous.workspaceStatus === next.workspaceStatus &&
+  previous.workspaceStatusError === next.workspaceStatusError &&
+  previous.workspaceUnavailable === next.workspaceUnavailable &&
+  previous.pullRequest === next.pullRequest &&
+  previous.selectedMergeBaseBranch === next.selectedMergeBaseBranch &&
+  previous.mergeBaseBranchRef === next.mergeBaseBranchRef &&
+  previous.mergeBaseBranchOptions === next.mergeBaseBranchOptions &&
+  previous.mergeBaseRemoteBranchOptions === next.mergeBaseRemoteBranchOptions &&
+  previous.isLoadingMergeBaseBranchOptions ===
+    next.isLoadingMergeBaseBranchOptions &&
+  previous.threadSchedules === next.threadSchedules &&
+  previous.updateThreadPending === next.updateThreadPending &&
+  previous.storage === next.storage &&
+  previous.onAssignParent === next.onAssignParent &&
+  previous.onMergeBaseBranchChange === next.onMergeBaseBranchChange &&
+  previous.onMergeBasePickerOpenChange === next.onMergeBasePickerOpenChange &&
+  previous.onMergeBaseBranchSearchQueryChange ===
+    next.onMergeBaseBranchSearchQueryChange &&
+  previous.onChangedFileClick === next.onChangedFileClick &&
+  previous.onCommitClick === next.onCommitClick;
+
+const areThreadSecondaryPanelPropsEqual: ThreadSecondaryPanelPropsEqual = (
+  previous,
+  next,
+) =>
+  previous.activeTab === next.activeTab &&
+  previous.canUseGitUi === next.canUseGitUi &&
+  previous.defaultMergeBaseBranch === next.defaultMergeBaseBranch &&
+  previous.environmentId === next.environmentId &&
+  previous.gitDiffPanelIntent === next.gitDiffPanelIntent &&
+  previous.threadId === next.threadId &&
+  previous.workspaceRootPath === next.workspaceRootPath &&
+  previous.fileTabs === next.fileTabs &&
+  previous.fileTabContent === next.fileTabContent &&
+  previous.browserDeck === next.browserDeck &&
+  previous.isBrowserTabActive === next.isBrowserTabActive &&
+  previous.isOpen === next.isOpen &&
+  previous.showGitDiffTab === next.showGitDiffTab &&
+  previous.onPanelFocus === next.onPanelFocus &&
+  previous.onPanelChange === next.onPanelChange &&
+  previous.onCollapse === next.onCollapse &&
+  previous.onClose === next.onClose &&
+  previous.onOpenNewTab === next.onOpenNewTab &&
+  previous.onFileTabReorder === next.onFileTabReorder &&
+  previous.onOpenFileInEditor === next.onOpenFileInEditor &&
+  previous.onOpenFilePreview === next.onOpenFilePreview;
+
+const areThreadTimelinePanePropsEqual: ThreadTimelinePanePropsEqual = (
+  previous,
+  next,
+) =>
+  previous.activeThinking === next.activeThinking &&
+  previous.hasOlderTimelineRows === next.hasOlderTimelineRows &&
+  previous.hostConnectionNotice === next.hostConnectionNotice &&
+  previous.isLoadingOlderTimelineRows === next.isLoadingOlderTimelineRows &&
+  previous.isThreadTimelinePending === next.isThreadTimelinePending &&
+  previous.timelineError === next.timelineError &&
+  previous.onLoadOlderRows === next.onLoadOlderRows &&
+  previous.onOpenLink === next.onOpenLink &&
+  previous.onOpenLocalFileLink === next.onOpenLocalFileLink &&
+  previous.onTitleAction === next.onTitleAction &&
+  previous.projectId === next.projectId &&
+  previous.showOngoingIndicator === next.showOngoingIndicator &&
+  previous.ongoingIndicatorLabel === next.ongoingIndicatorLabel &&
+  previous.stopRequestedAt === next.stopRequestedAt &&
+  previous.timelineRows === next.timelineRows &&
+  previous.threadId === next.threadId &&
+  previous.threadRuntimeDisplayStatus === next.threadRuntimeDisplayStatus &&
+  previous.unreadDividerAutoScroll === next.unreadDividerAutoScroll &&
+  previous.unreadDividerPlacement === next.unreadDividerPlacement &&
+  previous.workspaceRootPath === next.workspaceRootPath;
+
+function useStableThreadMetadataProps({
+  value,
+}: UseStableThreadMetadataPropsArgs): ThreadMetadataContentProps {
+  const valueRef = useRef(value);
+  if (!areThreadMetadataPropsEqual(valueRef.current, value)) {
+    valueRef.current = value;
+  }
+  return valueRef.current;
+}
+
+function useStableThreadSecondaryPanelProps({
+  value,
+}: UseStableThreadSecondaryPanelPropsArgs): ThreadSecondaryPanelProps {
+  const valueRef = useRef(value);
+  if (!areThreadSecondaryPanelPropsEqual(valueRef.current, value)) {
+    valueRef.current = value;
+  }
+  return valueRef.current;
+}
+
+function useStableThreadTimelinePaneProps({
+  value,
+}: UseStableThreadTimelinePanePropsArgs): ThreadTimelinePaneProps {
+  const valueRef = useRef(value);
+  if (!areThreadTimelinePanePropsEqual(valueRef.current, value)) {
+    valueRef.current = value;
+  }
+  return valueRef.current;
 }
 
 export function ThreadDetailSecondaryContent({
@@ -70,11 +211,17 @@ export function ThreadDetailSecondaryContent({
   isMetadataLoading,
   isSecondaryPanelOpen,
   isConversationCollapsed,
+  surface,
   onToggleConversationCollapse,
   metadata,
   secondaryPanel,
   timeline,
 }: ThreadDetailSecondaryContentProps) {
+  const stableMetadata = useStableThreadMetadataProps({ value: metadata });
+  const stableSecondaryPanel = useStableThreadSecondaryPanelProps({
+    value: secondaryPanel,
+  });
+  const stableTimeline = useStableThreadTimelinePaneProps({ value: timeline });
   const renderAsDrawer = useIsCompactViewport();
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
@@ -85,7 +232,9 @@ export function ThreadDetailSecondaryContent({
   // zone; nothing-to-do otherwise (web, or sidebar covers the cluster).
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const isMainSidebarShowing = useIsSidebarShowing();
+  const optionalIsMainSidebarShowing = useOptionalIsSidebarShowing();
+  const isMainSidebarShowing =
+    surface === "popout" ? false : optionalIsMainSidebarShowing === true;
   const isLeftmostSurfaceUnderTrafficLights =
     usesDesktopChrome && !isMainSidebarShowing && !renderAsDrawer;
   // Collapsing the conversation only makes sense on a wide viewport with the
@@ -95,7 +244,7 @@ export function ThreadDetailSecondaryContent({
     canCollapseConversation && isConversationCollapsed;
   // Real, in-scope activity signal for the collapsed rail: the agent is running.
   const isConversationWorking =
-    timeline.threadRuntimeDisplayStatus === "active";
+    stableTimeline.threadRuntimeDisplayStatus === "active";
 
   const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
     null,
@@ -131,27 +280,31 @@ export function ThreadDetailSecondaryContent({
   // Mirror ForksRow's query (deduped by react-query) so the visibility gate
   // accounts for the lazily-fetched Forks row.
   const forksQuery = useThreads({
-    projectId: metadata.thread.projectId,
-    parentThreadId: metadata.thread.id,
+    projectId: stableMetadata.thread.projectId,
+    parentThreadId: stableMetadata.thread.id,
     childOrigin: "fork",
     archived: false,
   });
   const hasForks = (forksQuery.data?.length ?? 0) > 0;
 
-  const metadataContent = hasAnyThreadMetadata(metadata, hasForks) ? (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <ThreadMetadataContent {...metadata} />
-    </div>
-  ) : isMetadataLoading ? (
-    <ThreadMetadataLoadingSkeleton />
-  ) : (
-    <div className="px-4 pt-1 text-sm text-muted-foreground">
-      No thread details available.
-    </div>
+  const metadataContent = useMemo(
+    () =>
+      hasAnyThreadMetadata(stableMetadata, hasForks) ? (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <ThreadMetadataContent {...stableMetadata} />
+        </div>
+      ) : isMetadataLoading ? (
+        <ThreadMetadataLoadingSkeleton />
+      ) : (
+        <div className="px-4 pt-1 text-sm text-muted-foreground">
+          No thread details available.
+        </div>
+      ),
+    [hasForks, isMetadataLoading, stableMetadata],
   );
   const inlineSecondaryPanelContent = !renderAsDrawer ? (
     <ThreadSecondaryPanel
-      {...secondaryPanel}
+      {...stableSecondaryPanel}
       renderAsDrawer={false}
       isConversationCollapsed={isConversationCollapsedActive}
       onToggleConversationCollapse={onToggleConversationCollapse}
@@ -165,7 +318,7 @@ export function ThreadDetailSecondaryContent({
   ) : null;
   const drawerSecondaryPanelContent = renderAsDrawer ? (
     <ThreadSecondaryPanel
-      {...secondaryPanel}
+      {...stableSecondaryPanel}
       renderAsDrawer={true}
       isConversationCollapsed={false}
       onToggleConversationCollapse={onToggleConversationCollapse}
@@ -175,14 +328,19 @@ export function ThreadDetailSecondaryContent({
   ) : null;
 
   return (
-    <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">
+    <div
+      className={cn(
+        "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip",
+        surface === "page" && "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
+      )}
+    >
       {/*
         When collapsed we keep the resizable PanelGroup mounted (the timeline
         lifts to 0% and the panel to 100% via the layout effect) and slot the
         36px rail in beside it as a plain flex sibling. This sidesteps the
         "fixed px in a percentage engine" problem the same way a layout swap
         would, but without unmounting the PanelGroup — so the secondary
-        panel's content (live app iframes, parsed diffs, scroll position) is
+        panel's content (live iframes, parsed diffs, scroll position) is
         never torn down and re-created when toggling collapse.
       */}
       <div className="flex h-full w-full min-w-0">
@@ -197,7 +355,7 @@ export function ThreadDetailSecondaryContent({
         <PanelGroup
           // Thread-scoped panel state should mount at its saved size instead of
           // animating from the previously selected thread's layout.
-          key={timeline.threadId}
+          key={stableTimeline.threadId}
           ref={horizontalPanelGroupRef}
           direction="horizontal"
           className="h-full min-w-0 flex-1"
@@ -239,7 +397,7 @@ export function ThreadDetailSecondaryContent({
               )}
             >
               <ThreadTimelinePane
-                {...timeline}
+                {...stableTimeline}
                 footer={footer}
                 header={header}
               />
@@ -252,7 +410,7 @@ export function ThreadDetailSecondaryContent({
         <ResponsiveDrawerShell
           open={isSecondaryPanelOpen}
           onOpenChange={(open) => {
-            if (!open) secondaryPanel.onClose();
+            if (!open) stableSecondaryPanel.onClose();
           }}
           srLabel="Thread details"
           contentClassName="h-[92dvh] max-h-[92dvh]"
@@ -262,6 +420,9 @@ export function ThreadDetailSecondaryContent({
           // element and prevents the click from reaching rows inside the
           // shadow DOM. The drag handle bar still drags the drawer.
           handleOnly
+          // This drawer hosts nested picker drawers; Vaul's input repositioning
+          // reacts to any focused input, including nested search fields.
+          repositionInputs={false}
         >
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {drawerSecondaryPanelContent}

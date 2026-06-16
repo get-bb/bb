@@ -1,15 +1,12 @@
 import path from "path";
-import { defineConfig } from "vitest/config";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { workspaceTestAliases } from "../../vitest.workspace-aliases";
 
-export default defineConfig({
+export default defineWorkspaceTestConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    conditions: ["source"],
     alias: {
-      ...workspaceTestAliases,
       "@": path.resolve(__dirname, "./src"),
     },
   },
@@ -17,7 +14,6 @@ export default defineConfig({
     silent: "passed-only",
     environment: "node",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    setupFiles: ["src/test/setup.ts"],
     testTimeout: 15_000,
   },
 });

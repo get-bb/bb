@@ -308,12 +308,7 @@ export async function getGitCommonDir(cwd: string): Promise<string> {
       `git rev-parse --git-common-dir returned no path for ${cwd}`,
     );
   }
-  // realpath, not just resolve: the worktree metadata lock keys on this path,
-  // and symlinked locations (macOS /tmp → /private/tmp, /var → /private/var)
-  // otherwise split source-repo-cwd commands (relative `.git` resolved via the
-  // symlinked cwd) and worktree-cwd commands (git reports the real-path form)
-  // into two disjoint lock domains — the M7-soak-diagnosed config.lock race.
-  return fs.realpath(path.resolve(cwd, commonDir));
+  return path.resolve(cwd, commonDir);
 }
 
 /**
@@ -435,10 +430,14 @@ export async function ensureGitRepo(
   );
 }
 
-async function readHeadSha(cwd: string): Promise<string | null> {
+async function readHeadSha(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<string | null> {
   const result = await runGit(["rev-parse", "--verify", "HEAD"], {
     cwd,
     allowFailure: true,
+    timeoutMs: options.timeoutMs,
   });
   if (result.exitCode !== 0) {
     return null;
@@ -469,8 +468,11 @@ export async function getCurrentBranch(
   return branchName || undefined;
 }
 
-export async function getCheckoutRef(cwd: string): Promise<GitCheckoutRef> {
-  if (!(await detectGitRepo(cwd))) {
+export async function getCheckoutRef(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<GitCheckoutRef> {
+  if (!(await detectGitRepo(cwd, options))) {
     return { kind: "unknown", reason: "Path is not a git repository" };
   }
 
@@ -478,8 +480,9 @@ export async function getCheckoutRef(cwd: string): Promise<GitCheckoutRef> {
     runGit(["symbolic-ref", "--quiet", "--short", "HEAD"], {
       cwd,
       allowFailure: true,
+      timeoutMs: options.timeoutMs,
     }),
-    readHeadSha(cwd),
+    readHeadSha(cwd, options),
   ]);
 
   const branchName = trimOutput(symbolicRef.stdout);
@@ -798,7 +801,7 @@ export function parseNumstatEntriesZ(output: string): NumstatEntry[] {
   return entries;
 }
 
-function parseNumstatCount(text: string): number | null {
+export function parseNumstatCount(text: string): number | null {
   const value = Number.parseInt(text, 10);
   return Number.isFinite(value) ? value : null;
 }

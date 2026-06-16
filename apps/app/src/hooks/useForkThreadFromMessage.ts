@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Environment, Thread } from "@bb/domain";
 import * as api from "@/lib/api";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { buildForkThreadRequest } from "@/lib/fork-thread-request";
 import { threadDefaultExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";

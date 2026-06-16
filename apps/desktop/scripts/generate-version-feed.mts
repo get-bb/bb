@@ -5,7 +5,7 @@ import { z } from "zod";
 import {
   bbDesktopVersionFeedSchema,
   type BbDesktopVersionFeed,
-} from "@bb/server-contract";
+} from "@bb/desktop-contract";
 
 const packageRoot = process.cwd();
 const packageJsonPath = resolve(packageRoot, "package.json");

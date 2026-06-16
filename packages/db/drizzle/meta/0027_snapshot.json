@@ -1,40 +1,9 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "68a94ea8-b97e-4fe7-8492-110c503eb86e",
+  "id": "7b9752dc-4435-4cd8-8f90-6012c74c5feb",
   "prevId": "191443a5-5b1f-4dd6-a659-16861fbf797a",
   "tables": {
-    "app_settings": {
-      "name": "app_settings",
-      "columns": {
-        "key": {
-          "name": "key",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "value": {
-          "name": "value",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "apikey": {
       "name": "apikey",
       "columns": {
@@ -2394,13 +2363,6 @@
         },
         "parent_thread_id": {
           "name": "parent_thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "child_origin": {
-          "name": "child_origin",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

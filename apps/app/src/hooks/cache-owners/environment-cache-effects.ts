@@ -9,8 +9,8 @@ import {
   environmentPathsQueryKeyPrefix,
   environmentWorkStatusQueryKeyPrefix,
   systemExecutionOptionsEnvironmentQueryKeyPrefix,
-  threadComposerBootstrapEnvironmentQueryKeyPrefix,
 } from "../queries/query-keys";
+import { threadComposerBootstrapEnvironmentQueryKeyPrefix } from "../queries/thread-composer-bootstrap-query";
 import type {
   EnvironmentArg,
   OptionalEnvironmentArg,

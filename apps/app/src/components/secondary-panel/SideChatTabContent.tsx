@@ -23,6 +23,7 @@ import type {
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
+import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
@@ -401,6 +402,7 @@ export function SideChatTabContent({
     supportsPermissionModeSelection,
     supportsServiceTier,
     serviceTierSupportByProvider,
+    isLoadingModels,
   } = threadCreationOptions;
 
   const executionConfig = useMemo<ExecutionControlsProps>(
@@ -416,6 +418,7 @@ export function SideChatTabContent({
         selected: selectedModel,
         options: modelOptions,
         loadError: modelLoadError,
+        isLoading: isLoadingModels,
         onChange: noop,
       },
       serviceTier: {
@@ -433,6 +436,7 @@ export function SideChatTabContent({
     [
       activeModel,
       hasMultipleProviders,
+      isLoadingModels,
       modelLoadError,
       modelOptions,
       providerOptions,
@@ -481,7 +485,17 @@ export function SideChatTabContent({
         environmentIcon={getEnvironmentWorkspaceLabelIconName(
           display.workspaceDisplayKind,
         )}
-        environmentBranchName={sourceEnvironment.branchName ?? undefined}
+        environmentCheckout={
+          sourceEnvironment.branchName
+            ? formatWorkspaceCheckoutDisplay({
+                checkout: {
+                  kind: "branch",
+                  branchName: sourceEnvironment.branchName,
+                  headSha: null,
+                },
+              })
+            : undefined
+        }
       />
     );
   }, [isLocalDaemonHost, sourceEnvironment]);

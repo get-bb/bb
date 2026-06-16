@@ -7,8 +7,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:smoke": "vitest run --config vitest.config.ts fake/smoke",
-    "test:integration": "vitest run --config vitest.real-provider.config.ts",
-    "test:soak": "vitest run --config vitest.soak.config.ts"
+    "test:integration": "vitest run --config vitest.real-provider.config.ts"
   },
   "dependencies": {
     "@bb/agent-runtime": "workspace:*",
@@ -29,7 +28,6 @@
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
-    "commander": "^13.0.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.1"
   }

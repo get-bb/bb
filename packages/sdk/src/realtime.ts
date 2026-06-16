@@ -4,12 +4,6 @@ export {
   wrapStandardWebsocket,
 } from "./realtime-client.js";
 export type {
-  AppDataChangedRealtimeEvent,
-  AppDataChangedRealtimeOnArgs,
-  AppDataResyncRealtimeEvent,
-  AppDataResyncRealtimeOnArgs,
-  AppRealtimeEvent,
-  AppRealtimeOnArgs,
   BbRealtime,
   BbRealtimeCallback,
   BbRealtimeConnectionEvent,
@@ -26,7 +20,6 @@ export type {
   ProjectRealtimeEvent,
   ProjectRealtimeOnArgs,
   RealtimeConnectionOnArgs,
-  SystemAppsRealtimeOnArgs,
   SystemConfigRealtimeOnArgs,
   SystemRealtimeEvent,
   SystemRealtimeOnArgs,

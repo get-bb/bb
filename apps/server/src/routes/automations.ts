@@ -12,15 +12,14 @@ import {
 import type { Project } from "@bb/domain";
 import {
   automationsOverviewResponseSchema,
+  publicApiRoutes,
   type AutomationAction,
   type AutomationsOverviewAutomation,
   type AutomationsOverviewThreadSchedule,
   type AutomationScheduleTrigger,
-  createAutomationRequestSchema,
   typedRoutes,
-  updateAutomationRequestSchema,
-  type CreateAutomationRequest,
   type PublicApiSchema,
+  type ResolvedCreateAutomationRequest,
   type UpdateAutomationConfigRequest,
   type UpdateAutomationEnabledRequest,
   type UpdateAutomationRequest,
@@ -64,11 +63,11 @@ interface BuildAutomationEnabledUpdateInputArgs {
 }
 
 interface CreateAutomationValues {
-  action: CreateAutomationRequest["action"];
+  action: AutomationAction;
   autoArchive: boolean;
   enabled: boolean;
   name: string;
-  trigger: CreateAutomationRequest["trigger"];
+  trigger: AutomationScheduleTrigger;
 }
 
 interface ValidateAutomationActionProjectScopeArgs {
@@ -144,14 +143,14 @@ function computeScheduledNextRunAt(trigger: AutomationScheduleTrigger) {
 }
 
 function resolveCreateAutomationValues(
-  payload: CreateAutomationRequest,
+  payload: ResolvedCreateAutomationRequest,
 ): CreateAutomationValues {
   return {
     name: payload.name,
-    enabled: payload.enabled ?? true,
+    enabled: payload.enabled,
     trigger: payload.trigger,
     action: payload.action,
-    autoArchive: payload.autoArchive ?? false,
+    autoArchive: payload.autoArchive,
   };
 }
 
@@ -404,8 +403,10 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
   const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
+  const routes = publicApiRoutes.projects;
+  const automationRoutes = publicApiRoutes.automations;
 
-  get("/automations", (context) => {
+  get(automationRoutes.list, (context) => {
     const response = automationsOverviewResponseSchema.parse({
       automations: buildAutomationsOverviewItems({
         deps,
@@ -418,7 +419,7 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
     return context.json(response);
   });
 
-  get("/projects/:id/automations", (context) => {
+  get(routes.listAutomations, (context) => {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
     const automations = listAutomations(deps.db, projectId);
@@ -494,89 +495,81 @@ export function registerAutomationRoutes(app: Hono, deps: AppDeps): void {
     return context.json(responses);
   });
 
-  post(
-    "/projects/:id/automations",
-    createAutomationRequestSchema,
-    (context, payload) => {
-      const projectId = context.req.param("id");
-      const project = requirePublicProject(deps.db, projectId);
+  post(routes.createAutomation, (context, payload) => {
+    const projectId = context.req.param("id");
+    const project = requirePublicProject(deps.db, projectId);
 
-      try {
-        const values = resolveCreateAutomationValues(payload);
-        const action = resolveAutomationActionForProject(deps, {
-          action: values.action,
-          project,
-        });
-        const automation = createAutomation(deps.db, deps.hub, {
-          projectId,
-          name: values.name,
-          enabled: values.enabled,
-          triggerType: values.trigger.triggerType,
-          triggerConfig: serializeAutomationTrigger(values.trigger),
-          action: serializeAutomationAction(action),
-          autoArchive: values.autoArchive,
-          nextRunAt: resolveNextRunAtForCreate(values),
-        });
-        return context.json(toAutomationResponse(deps, automation), 201);
-      } catch (error) {
-        if (error instanceof ScheduleValidationError) {
-          throw new ApiError(400, "invalid_request", error.message);
-        }
-        throw error;
-      }
-    },
-  );
-
-  patch(
-    "/projects/:id/automations/:automationId",
-    updateAutomationRequestSchema,
-    (context, payload) => {
-      const projectId = context.req.param("id");
-      const project = requirePublicProject(deps.db, projectId);
-      const current = requireProjectAutomation(deps, {
-        projectId,
-        automationId: context.req.param("automationId"),
+    try {
+      const values = resolveCreateAutomationValues(payload);
+      const action = resolveAutomationActionForProject(deps, {
+        action: values.action,
+        project,
       });
+      const automation = createAutomation(deps.db, deps.hub, {
+        projectId,
+        name: values.name,
+        enabled: values.enabled,
+        triggerType: values.trigger.triggerType,
+        triggerConfig: serializeAutomationTrigger(values.trigger),
+        action: serializeAutomationAction(action),
+        autoArchive: values.autoArchive,
+        nextRunAt: resolveNextRunAtForCreate(values),
+      });
+      return context.json(toAutomationResponse(deps, automation), 201);
+    } catch (error) {
+      if (error instanceof ScheduleValidationError) {
+        throw new ApiError(400, "invalid_request", error.message);
+      }
+      throw error;
+    }
+  });
 
-      try {
-        const updateInput = isAutomationEnabledUpdate(payload)
-          ? buildAutomationEnabledUpdateInput(deps, {
+  patch(routes.updateAutomation, (context, payload) => {
+    const projectId = context.req.param("id");
+    const project = requirePublicProject(deps.db, projectId);
+    const current = requireProjectAutomation(deps, {
+      projectId,
+      automationId: context.req.param("automationId"),
+    });
+
+    try {
+      const updateInput = isAutomationEnabledUpdate(payload)
+        ? buildAutomationEnabledUpdateInput(deps, {
+            current,
+            payload,
+          })
+        : (() => {
+            const nextAction =
+              payload.action ?? parseAutomationAction(current.action);
+            const action = resolveAutomationActionForProject(deps, {
+              action: nextAction,
+              project,
+            });
+            return buildAutomationConfigUpdateInput({
+              action: payload.action !== undefined ? action : undefined,
               current,
               payload,
-            })
-          : (() => {
-              const nextAction =
-                payload.action ?? parseAutomationAction(current.action);
-              const action = resolveAutomationActionForProject(deps, {
-                action: nextAction,
-                project,
-              });
-              return buildAutomationConfigUpdateInput({
-                action: payload.action !== undefined ? action : undefined,
-                current,
-                payload,
-              });
-            })();
-        const updated = updateAutomation(
-          deps.db,
-          deps.hub,
-          current.id,
-          updateInput,
-        );
-        if (!updated) {
-          throw new ApiError(404, "invalid_request", "Automation not found");
-        }
-        return context.json(toAutomationResponse(deps, updated));
-      } catch (error) {
-        if (error instanceof ScheduleValidationError) {
-          throw new ApiError(400, "invalid_request", error.message);
-        }
-        throw error;
+            });
+          })();
+      const updated = updateAutomation(
+        deps.db,
+        deps.hub,
+        current.id,
+        updateInput,
+      );
+      if (!updated) {
+        throw new ApiError(404, "invalid_request", "Automation not found");
       }
-    },
-  );
+      return context.json(toAutomationResponse(deps, updated));
+    } catch (error) {
+      if (error instanceof ScheduleValidationError) {
+        throw new ApiError(400, "invalid_request", error.message);
+      }
+      throw error;
+    }
+  });
 
-  del("/projects/:id/automations/:automationId", (context) => {
+  del(routes.deleteAutomation, (context) => {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
     requireProjectAutomation(deps, {

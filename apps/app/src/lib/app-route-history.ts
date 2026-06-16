@@ -123,7 +123,7 @@ function reduceHistory(
  * history the app did not record. This is app-route history only; it does not
  * touch the in-thread browser tab history.
  */
-export function useAppRouteHistoryNavigation(): AppRouteHistoryNavigation {
+export function useRouteStateHistoryNavigation(): AppRouteHistoryNavigation {
   const location = useLocation();
   const navigationType = useNavigationType();
   const navigate = useNavigate();

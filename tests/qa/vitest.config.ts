@@ -1,9 +1,6 @@
-import { defineConfig } from "vitest/config";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
-export default defineConfig({
-  resolve: {
-    conditions: ["source"],
-  },
+export default defineWorkspaceTestConfig({
   test: {
     include: ["test/**/*.test.ts"],
     name: "@bb/qa",

@@ -86,6 +86,7 @@ function ThreadActionsMenuItems({
     togglePin,
     toggleRead,
     unarchiveThread,
+    sendToPopout,
   } = useThreadActions();
   const isRead = isThreadRead(thread);
   const isArchived = thread.archivedAt != null;
@@ -115,6 +116,16 @@ function ThreadActionsMenuItems({
       >
         {isPinned ? "Unpin" : "Pin"}
       </ThreadActionMenuItem>
+      {sendToPopout !== null ? (
+        <ThreadActionMenuItem
+          surface={surface}
+          onSelect={() => {
+            sendToPopout(thread);
+          }}
+        >
+          Send to popout
+        </ThreadActionMenuItem>
+      ) : null}
       <ThreadActionMenuItem
         surface={surface}
         onSelect={() => {

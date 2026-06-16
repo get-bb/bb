@@ -152,6 +152,7 @@ const PopoverContent = React.forwardRef<
           onOpenChange={onOpenChange}
           srLabel={mobileTitle ?? "Options"}
           contentClassName={mobileClassName}
+          repositionInputs={false}
         >
           <div
             ref={ref}

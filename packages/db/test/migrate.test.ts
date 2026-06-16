@@ -142,6 +142,10 @@ interface MigratedEventRow {
   type: string;
 }
 
+interface MigratedEventDataRow {
+  data: string;
+}
+
 interface MigratedPendingInteractionStatusRow {
   id: string;
   resolvedAt: number | null;
@@ -185,6 +189,16 @@ interface SeedPre0017TerminalSessionMigrationArgs {
   db: DbConnection;
 }
 
+interface SeedEventLargeValueBackfillEventArgs {
+  createdAt: number;
+  data: string;
+  id: string;
+  itemId: string;
+  itemKind: string;
+  sequence: number;
+  type?: string;
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function requirePublishedMigrationWhen(tag: string): number {
@@ -213,6 +227,11 @@ const eventProducerColumnsMigrationWhen = 1780692763264;
 const terminalSessionRuntimeStateHonestyWhen = 1780718665310;
 const hostDaemonSessionObservabilityMigrationWhen = 1780719536955;
 const threadTypeRemovalMigrationWhen = 1780973302146;
+const eventLargeValuesMigrationWhen = 1781403656069;
+const eventLargeValuesRestoreMigrationWhen = 1781557200000;
+const threadChildOriginMigrationWhen = 1781570983482;
+const eventLargeValuesPreOptimizationHash =
+  "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
   __dirname,
   "..",
@@ -264,7 +283,8 @@ function dropPost0023Tables(db: DbConnection): void {
     "workflow_run_operations",
     "workflow_runs",
     "project_workflow_policies",
-    "app_settings",
+    "system_experiments",
+    "event_large_values",
   ]) {
     db.$client.prepare(`DROP TABLE IF EXISTS ${table}`).run();
   }
@@ -368,6 +388,119 @@ function runMigrationFile(args: RunMigrationFileArgs): void {
   for (const statement of statements) {
     args.db.$client.exec(statement);
   }
+}
+
+function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS event_large_values").run();
+  db.$client
+    .prepare<DeleteMigrationParameters>(
+      `
+        DELETE FROM __drizzle_migrations
+        WHERE created_at = ?
+      `,
+    )
+    .run(eventLargeValuesMigrationWhen);
+  // Roll back the restore migration and everything applied after it so the
+  // standard (timestamp-based) drizzle migrator re-applies from the restore
+  // migration forward. Leaving a later migration (e.g. 0033) recorded would
+  // make drizzle treat the restore migration as already applied and skip it.
+  // The later migrations' schema changes must also be undone so they re-run
+  // cleanly: 0033 adds threads.child_origin, which would collide on re-apply.
+  db.$client
+    .prepare("ALTER TABLE `threads` DROP COLUMN `child_origin`")
+    .run();
+  db.$client
+    .prepare<DeleteMigrationParameters>(
+      `
+        DELETE FROM __drizzle_migrations
+        WHERE created_at >= ?
+      `,
+    )
+    .run(eventLargeValuesRestoreMigrationWhen);
+}
+
+function seedEventLargeValueBackfillThread(db: DbConnection): void {
+  db.$client.exec(`
+    INSERT INTO projects (id, name, created_at, updated_at)
+    VALUES ('proj_large_value_backfill', 'Large Value Backfill', 1000, 1000);
+
+    INSERT INTO threads (
+      id,
+      project_id,
+      provider_id,
+      latest_attention_at,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      'thr_large_value_backfill',
+      'proj_large_value_backfill',
+      'codex',
+      1000,
+      1000,
+      1000
+    );
+  `);
+}
+
+function seedEventLargeValueBackfillEvent(
+  db: DbConnection,
+  args: SeedEventLargeValueBackfillEventArgs,
+): void {
+  db.$client
+    .prepare<[string, number, string, string, string, string, number]>(
+      `
+        INSERT INTO events (
+          id,
+          thread_id,
+          scope_kind,
+          turn_id,
+          sequence,
+          type,
+          item_id,
+          item_kind,
+          data,
+          created_at
+        )
+        VALUES (
+          ?,
+          'thr_large_value_backfill',
+          'turn',
+          'turn_large_value_backfill',
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?
+        )
+      `,
+    )
+    .run(
+      args.id,
+      args.sequence,
+      args.type ?? "item/completed",
+      args.itemId,
+      args.itemKind,
+      args.data,
+      args.createdAt,
+    );
+}
+
+function readMigratedEventData(db: DbConnection, eventId: string): string {
+  const row = db.$client
+    .prepare<[string], MigratedEventDataRow>(
+      `
+        SELECT data
+        FROM events
+        WHERE id = ?
+      `,
+    )
+    .get(eventId);
+  if (!row) {
+    throw new Error(`Expected migrated event ${eventId}`);
+  }
+  return row.data;
 }
 
 function seedPre0017TerminalSessionMigration(
@@ -1596,11 +1729,12 @@ describe("migrate", () => {
         )
         .run();
       db.$client.prepare("DROP TABLE thread_dynamic_context_file_states").run();
-      db.$client.prepare("DROP TABLE workflow_run_events").run();
-      db.$client.prepare("DROP TABLE workflow_run_operations").run();
-      db.$client.prepare("DROP TABLE workflow_runs").run();
-      db.$client.prepare("DROP TABLE project_workflow_policies").run();
-      db.$client.prepare("DROP TABLE app_settings").run();
+      db.$client.prepare("DROP TABLE IF EXISTS workflow_run_events").run();
+      db.$client.prepare("DROP TABLE IF EXISTS workflow_run_operations").run();
+      db.$client.prepare("DROP TABLE IF EXISTS workflow_runs").run();
+      db.$client
+        .prepare("DROP TABLE IF EXISTS project_workflow_policies")
+        .run();
       db.$client.prepare("DELETE FROM projects WHERE kind = 'personal'").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN kind").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN sort_key").run();
@@ -2012,6 +2146,7 @@ describe("migrate", () => {
         .run("main-0001-hash", publishedTerminalSessionUserInputWhen);
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
+      dropPost0023Tables(db);
 
       expect(
         readIndexNames({ db, tableName: "host_daemon_sessions" }),
@@ -2537,6 +2672,142 @@ describe("migrate", () => {
     }
   });
 
+  it("restores legacy large event values to inline payloads", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      seedEventLargeValueBackfillThread(db);
+
+      const commandOutput = "command output ".repeat(48);
+      const toolResult = { body: "tool result ".repeat(48) };
+      const webFetchResult = "web fetch result ".repeat(40);
+      const webSearchResult = "web search result ".repeat(40);
+      const firstDiff = "first diff ".repeat(60);
+      const secondDiff = "second diff ".repeat(60);
+
+      seedEventLargeValueBackfillEvent(db, {
+        id: "evt_large_command_output",
+        itemId: "cmd_large",
+        itemKind: "commandExecution",
+        sequence: 1,
+        createdAt: 2001,
+        data: JSON.stringify({
+          item: {
+            id: "cmd_large",
+            type: "commandExecution",
+            aggregatedOutput: commandOutput,
+          },
+        }),
+      });
+      seedEventLargeValueBackfillEvent(db, {
+        id: "evt_large_tool_result",
+        itemId: "tool_large",
+        itemKind: "toolCall",
+        sequence: 2,
+        createdAt: 2002,
+        data: JSON.stringify({
+          item: {
+            id: "tool_large",
+            type: "toolCall",
+            result: toolResult,
+          },
+        }),
+      });
+      seedEventLargeValueBackfillEvent(db, {
+        id: "evt_large_web_fetch",
+        itemId: "web_fetch_large",
+        itemKind: "webFetch",
+        sequence: 3,
+        createdAt: 2003,
+        data: JSON.stringify({
+          item: {
+            id: "web_fetch_large",
+            type: "webFetch",
+            resultText: webFetchResult,
+          },
+        }),
+      });
+      seedEventLargeValueBackfillEvent(db, {
+        id: "evt_large_web_search",
+        itemId: "web_search_large",
+        itemKind: "webSearch",
+        sequence: 4,
+        createdAt: 2004,
+        data: JSON.stringify({
+          item: {
+            id: "web_search_large",
+            type: "webSearch",
+            resultText: webSearchResult,
+          },
+        }),
+      });
+      seedEventLargeValueBackfillEvent(db, {
+        id: "evt_large_file_diffs",
+        itemId: "file_large",
+        itemKind: "fileChange",
+        sequence: 5,
+        createdAt: 2005,
+        data: JSON.stringify({
+          item: {
+            id: "file_large",
+            type: "fileChange",
+            changes: [
+              { path: "a.ts", diff: firstDiff },
+              { path: "b.ts", diff: "small diff" },
+              { path: "c.ts", diff: secondDiff },
+            ],
+          },
+        }),
+      });
+
+      markEventLargeValuesMigrationUnapplied(db);
+      migrate(db);
+
+      // The restore migration and every migration after it (0033) re-apply, so
+      // the latest applied migration is the most recent one in the journal.
+      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(
+        threadChildOriginMigrationWhen,
+      );
+      expect(readTableNames(db)).not.toContain("event_large_values");
+
+      const commandData = JSON.parse(
+        readMigratedEventData(db, "evt_large_command_output"),
+      );
+      expect(commandData.item.aggregatedOutput).toBe(commandOutput);
+      expect(commandData.item.truncation).toBeUndefined();
+
+      const toolData = JSON.parse(
+        readMigratedEventData(db, "evt_large_tool_result"),
+      );
+      expect(toolData.item.result).toEqual(toolResult);
+      expect(toolData.item.truncation).toBeUndefined();
+
+      const webFetchData = JSON.parse(
+        readMigratedEventData(db, "evt_large_web_fetch"),
+      );
+      expect(webFetchData.item.resultText).toBe(webFetchResult);
+      expect(webFetchData.item.truncation).toBeUndefined();
+
+      const webSearchData = JSON.parse(
+        readMigratedEventData(db, "evt_large_web_search"),
+      );
+      expect(webSearchData.item.resultText).toBe(webSearchResult);
+      expect(webSearchData.item.truncation).toBeUndefined();
+
+      const fileData = JSON.parse(
+        readMigratedEventData(db, "evt_large_file_diffs"),
+      );
+      expect(fileData.item.changes).toEqual([
+        { path: "a.ts", diff: firstDiff },
+        { path: "b.ts", diff: "small diff" },
+        { path: "c.ts", diff: secondDiff },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("throws when an applied migration hash is missing behind the latest timestamp", () => {
     const db = createConnection(":memory:");
 
@@ -2568,6 +2839,23 @@ describe("migrate", () => {
         db,
         createdAt: closedSessionPruneIndexesWhen,
         hash: "published-0002-historical-hash",
+      });
+
+      expect(() => migrate(db)).not.toThrow();
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("accepts the pre-optimization event large values migration hash", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      replaceAppliedMigrationHash({
+        db,
+        createdAt: eventLargeValuesMigrationWhen,
+        hash: eventLargeValuesPreOptimizationHash,
       });
 
       expect(() => migrate(db)).not.toThrow();

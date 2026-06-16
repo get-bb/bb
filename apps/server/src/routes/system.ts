@@ -1,27 +1,24 @@
 import { getExperiments, setExperiments } from "@bb/db";
-import { experimentsSchema } from "@bb/domain";
+import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import {
-  systemExecutionOptionsQuerySchema,
-  systemProvidersQuerySchema,
+  publicApiRoutes,
   typedRoutes,
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { ServerAppDeps } from "../types.js";
-import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
-import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import {
   resolveVoiceTranscriptionEnabled,
   transcribeVoiceInput,
 } from "../services/ai/voice-transcription.js";
 import { resolveSystemExecutionOptions } from "../services/system/execution-options.js";
-import { resolveSystemLookupHostId } from "../services/system/host-lookup.js";
 
 export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
   const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
+  const routes = publicApiRoutes.system;
 
   function buildSystemConfigResponse() {
     return {
@@ -32,9 +29,9 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
     };
   }
 
-  get("/system/config", (context) => context.json(buildSystemConfigResponse()));
+  get(routes.config, (context) => context.json(buildSystemConfigResponse()));
 
-  put("/settings/experiments", experimentsSchema, (context, payload) => {
+  put(routes.experiments, (context, payload) => {
     setExperiments(deps.db, payload);
     // The same kind a config reload broadcasts: every window re-reads
     // /system/config and re-gates its experiment-flagged surfaces.
@@ -42,7 +39,7 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
     return context.json(getExperiments(deps.db));
   });
 
-  post("/system/config/reload", async (context) => {
+  post(routes.reloadConfig, async (context) => {
     try {
       await deps.bbAppManagedConfig.reload({ notify: true });
     } catch (error) {
@@ -52,28 +49,15 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
     return context.json({ ok: true });
   });
 
-  get(
-    "/system/providers",
-    systemProvidersQuerySchema,
-    async (context, query) => {
-      const hostId = resolveSystemLookupHostId(deps, query);
-      const result = await callHostRetryableOnlineRpc(deps, {
-        hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: { type: "provider.list" },
-      });
-      return context.json(result.providers);
-    },
+  get(routes.providers, (context) =>
+    context.json(listBuiltInAgentProviderInfos()),
   );
 
-  get(
-    "/system/execution-options",
-    systemExecutionOptionsQuerySchema,
-    async (context, query) =>
-      context.json(await resolveSystemExecutionOptions(deps, query)),
+  get(routes.executionOptions, async (context, query) =>
+    context.json(await resolveSystemExecutionOptions(deps, query)),
   );
 
-  post("/system/voice-transcription", async (context) => {
+  post(routes.voiceTranscription, async (context) => {
     const formData = await context.req.formData();
     const file = formData.get("file");
     if (!(file instanceof File)) {
@@ -90,7 +74,7 @@ export function registerSystemRoutes(app: Hono, deps: ServerAppDeps): void {
     });
   });
 
-  get("/system/version", async (context) =>
+  get(routes.version, async (context) =>
     context.json(await deps.appVersion.getSystemVersion()),
   );
 }

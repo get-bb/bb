@@ -7,9 +7,11 @@ import type {
   HostDaemonCommandResultForCommand,
   HostDaemonRpcCommand,
   HostDaemonRpcResultForCommand,
+  HostDaemonCommandEnvironmentLane,
 } from "@bb/host-daemon-contract";
 import { performance } from "node:perf_hooks";
 import {
+  hostDaemonEnvironmentLaneForCommand,
   hostDaemonOnlineRpcResponseMessageSchema,
   isHostDaemonCommand,
   parseHostDaemonCommandResultForCommand,
@@ -24,16 +26,13 @@ import {
 } from "./command-dispatch.js";
 import { isExpectedOnlineRpcFailureError } from "./command-dispatch-support.js";
 import type { HostDaemonLogger } from "./logger.js";
-import {
-  RuntimeManager,
-  type RuntimeThreadProviderSession,
-} from "./runtime-manager.js";
+import { RuntimeManager } from "./runtime-manager.js";
 
 interface CommandRouterLogger extends Pick<HostDaemonLogger, "warn"> {
   debug?: HostDaemonLogger["debug"];
 }
 
-type EnvironmentLaneMode = "read" | "write";
+type EnvironmentLaneMode = HostDaemonCommandEnvironmentLane;
 type ThreadStartCommand = Extract<HostDaemonCommand, { type: "thread.start" }>;
 type ThreadStopCommand = Extract<HostDaemonCommand, { type: "thread.stop" }>;
 type TurnSubmitCommand = Extract<HostDaemonCommand, { type: "turn.submit" }>;
@@ -72,6 +71,17 @@ interface ProviderExecutionLane {
   sessionKey: string;
 }
 
+interface ProviderProcessLaneKeyArgs {
+  environmentId: string;
+  providerId: string | null;
+  threadId: string;
+}
+
+interface CreateProviderExecutionLaneArgs extends ProviderProcessLaneKeyArgs {
+  processMode: EnvironmentLaneMode;
+  sessionId: string;
+}
+
 interface ThreadProviderLaneIdentity {
   environmentId: string;
   providerId: string | null;
@@ -89,15 +99,6 @@ interface InFlightThreadProviderLane {
   lane: ProviderExecutionLane;
 }
 
-type FileWriteLaneCommand = Extract<
-  HostDaemonCommand,
-  {
-    type:
-      | "host.write_file_relative"
-      | "host.delete_file_relative"
-      | "host.delete_path_relative";
-  }
->;
 type CommandRouterTask = Promise<HostDaemonCommandResultForCommand>;
 
 export interface CommandRouterOptions {
@@ -105,19 +106,15 @@ export interface CommandRouterOptions {
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
   runtimeManager: RuntimeManager;
   terminalManager?: CommandDispatchOptions["terminalManager"];
-  workflowRunManager?: CommandDispatchOptions["workflowRunManager"];
-  fetchWorkflowRunJournal?: CommandDispatchOptions["fetchWorkflowRunJournal"];
   eventSink: CommandDispatchOptions["eventSink"];
   listModels?: CommandDispatchOptions["listModels"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
-  recordReplayCaptureThreadMetadata?: CommandDispatchOptions["recordReplayCaptureThreadMetadata"];
-  recordReplayCaptureTurnRequest?: CommandDispatchOptions["recordReplayCaptureTurnRequest"];
-  replayTasks?: CommandDispatchOptions["replayTasks"];
   threadStorageRootPath: string;
   logger: CommandRouterLogger;
 }
 
 const HOST_COMMAND_LIFECYCLE_LOG_THRESHOLD_MS = 1_000;
+const CODEX_PROVIDER_ID = "codex";
 
 function roundDurationMs(durationMs: number): number {
   return Math.round(durationMs * 10) / 10;
@@ -130,7 +127,6 @@ function elapsedMs(startedAtMs: number): number {
 export class CommandRouter {
   private readonly logger;
   private readonly environmentLanes = new Map<string, ReadWriteLaneState>();
-  private readonly fileWriteLaneTails = new Map<string, Promise<void>>();
   // Per-thread barrier keyed by threadId. A turn submission
   // (turn.submit/thread.start) waits for an in-flight thread.unarchive of the
   // same thread so it cannot resume a still-archived provider session.
@@ -224,24 +220,13 @@ export class CommandRouter {
   private executeLiveDaemonCommand(
     command: HostDaemonCommand,
   ): Promise<HostDaemonCommandResultForCommand> {
-    let task: Promise<HostDaemonCommandResultForCommand>;
-    const fileWriteLaneKey = this.getFileWriteLaneKey(command);
     const environmentLaneMode = this.getEnvironmentLaneMode(command);
     const providerLane = this.resolveProviderLane(command);
-    const runCommand = () =>
-      this.runAfterThreadUnarchiveBarrier(command, () =>
-        this.runInExecutionLanes(
-          command,
-          environmentLaneMode,
-          providerLane,
-          () => this.executeLiveDaemonCommandBody(command),
-        ),
-      );
-    if (fileWriteLaneKey) {
-      task = this.runInFileWriteLane(fileWriteLaneKey, runCommand);
-    } else {
-      task = runCommand();
-    }
+    const task = this.runAfterThreadUnarchiveBarrier(command, () =>
+      this.runInExecutionLanes(command, environmentLaneMode, providerLane, () =>
+        this.executeLiveDaemonCommandBody(command),
+      ),
+    );
     this.registerThreadUnarchiveBarrier(command, task);
     this.registerInFlightThreadProviderLane(command, task);
     return task;
@@ -310,17 +295,10 @@ export class CommandRouter {
       fetchProjectAttachment: this.options.fetchProjectAttachment,
       runtimeManager: this.options.runtimeManager,
       terminalManager: this.options.terminalManager,
-      workflowRunManager: this.options.workflowRunManager,
-      fetchWorkflowRunJournal: this.options.fetchWorkflowRunJournal,
       dataDir: this.options.dataDir,
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
-      recordReplayCaptureThreadMetadata:
-        this.options.recordReplayCaptureThreadMetadata,
-      recordReplayCaptureTurnRequest:
-        this.options.recordReplayCaptureTurnRequest,
-      replayTasks: this.options.replayTasks,
       threadStorageRootPath: this.options.threadStorageRootPath,
     };
   }
@@ -401,17 +379,6 @@ export class CommandRouter {
       if (this.threadUnarchiveBarriers.get(threadId) === barrier) {
         this.threadUnarchiveBarriers.delete(threadId);
       }
-    });
-  }
-
-  private runInFileWriteLane<T>(
-    key: string,
-    work: () => Promise<T>,
-  ): Promise<T> {
-    return this.runInSerialLane({
-      key,
-      lanes: this.fileWriteLaneTails,
-      work,
     });
   }
 
@@ -509,31 +476,15 @@ export class CommandRouter {
     });
   }
 
-  private getFileWriteLaneKey(command: HostDaemonCommand): string | null {
-    if (!this.isFileWriteLaneCommand(command)) {
-      return null;
-    }
-    return `${command.rootPath}\0${command.path}`;
-  }
-
-  private isFileWriteLaneCommand(
-    command: HostDaemonCommand,
-  ): command is FileWriteLaneCommand {
-    return (
-      command.type === "host.write_file_relative" ||
-      command.type === "host.delete_file_relative" ||
-      command.type === "host.delete_path_relative"
-    );
-  }
-
-  private getProviderProcessLaneKey(
-    environmentId: string,
-    providerId: string | null,
-  ): string {
+  private getProviderProcessLaneKey(args: ProviderProcessLaneKeyArgs): string {
     // Legacy or thread.stop paths can lack provider ownership. Bucket them
     // together per environment so unknown ownership stays conservative without
     // serializing unrelated environments.
-    return `${environmentId}\0${providerId ?? "unknown-provider"}`;
+    const providerKey = args.providerId ?? "unknown-provider";
+    if (providerKey !== CODEX_PROVIDER_ID) {
+      return `${args.environmentId}\0${providerKey}`;
+    }
+    return `${args.environmentId}\0${providerKey}\0thread:${args.threadId}`;
   }
 
   private getProviderSessionLaneKey(
@@ -543,16 +494,14 @@ export class CommandRouter {
     return `${processKey}\0${sessionId}`;
   }
 
-  private createProviderExecutionLane(args: {
-    environmentId: string;
-    processMode: EnvironmentLaneMode;
-    providerId: string | null;
-    sessionId: string;
-  }): ProviderExecutionLane {
-    const processKey = this.getProviderProcessLaneKey(
-      args.environmentId,
-      args.providerId,
-    );
+  private createProviderExecutionLane(
+    args: CreateProviderExecutionLaneArgs,
+  ): ProviderExecutionLane {
+    const processKey = this.getProviderProcessLaneKey({
+      environmentId: args.environmentId,
+      providerId: args.providerId,
+      threadId: args.threadId,
+    });
     return {
       processKey,
       processMode: args.processMode,
@@ -579,13 +528,8 @@ export class CommandRouter {
       processMode,
       providerId: identity.providerId,
       sessionId,
+      threadId: identity.threadId,
     });
-  }
-
-  private providerLaneForThreadStop(
-    session: RuntimeThreadProviderSession,
-  ): ProviderExecutionLane {
-    return this.createThreadProviderExecutionLane(session, "write");
   }
 
   private createInFlightThreadStopLane(
@@ -665,16 +609,12 @@ export class CommandRouter {
   ): ProviderExecutionLane | null {
     switch (command.type) {
       case "thread.start":
-        this.options.runtimeManager.recordThreadProviderStart({
-          environmentId: command.environmentId,
-          providerId: command.providerId,
-          threadId: command.threadId,
-        });
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
           processMode: "read",
           providerId: command.providerId,
           sessionId: `thread:${command.threadId}`,
+          threadId: command.threadId,
         });
       case "turn.submit":
         return this.createProviderExecutionLane({
@@ -682,41 +622,40 @@ export class CommandRouter {
           processMode: "read",
           providerId: command.resumeContext.providerId,
           sessionId: `provider-thread:${command.resumeContext.providerThreadId}`,
+          threadId: command.threadId,
         });
       case "thread.archive":
-        this.options.runtimeManager.recordThreadProviderSession({
-          environmentId: command.environmentId,
-          providerId: command.providerId,
-          providerThreadId: command.providerThreadId,
-          threadId: command.threadId,
-        });
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
           processMode: "read",
           providerId: command.providerId,
           sessionId: `provider-thread:${command.providerThreadId}`,
+          threadId: command.threadId,
         });
       case "interactive.resolve":
-        this.options.runtimeManager.recordThreadProviderSession({
-          environmentId: command.environmentId,
-          providerId: command.providerId,
-          providerThreadId: command.providerThreadId,
-          threadId: command.threadId,
-        });
         return this.createProviderExecutionLane({
           environmentId: command.environmentId,
           processMode: "read",
           providerId: command.providerId,
           sessionId: `provider-thread:${command.providerThreadId}`,
+          threadId: command.threadId,
         });
       case "thread.stop": {
-        const session = this.options.runtimeManager.getThreadProviderSession(
-          command.environmentId,
-          command.threadId,
-        );
-        return session
-          ? this.providerLaneForThreadStop(session)
-          : this.getInFlightThreadStopProviderLane(command);
+        const session = this.options.runtimeManager
+          .get(command.environmentId)
+          ?.runtime.getProviderSession(command.threadId);
+        if (session) {
+          return this.createThreadProviderExecutionLane(
+            {
+              environmentId: command.environmentId,
+              providerId: session.providerId,
+              providerThreadId: session.providerThreadId,
+              threadId: command.threadId,
+            },
+            "write",
+          );
+        }
+        return this.getInFlightThreadStopProviderLane(command);
       }
       default:
         return null;
@@ -726,28 +665,6 @@ export class CommandRouter {
   private getEnvironmentLaneMode(
     command: HostDaemonCommand | HostDaemonOnlineRpcCommand,
   ): EnvironmentLaneMode | null {
-    // Execution lanes protect per-environment workspace mutation ordering.
-    // `shouldFlushEventsBeforeReportingCommandResult` is a separate
-    // event-before-result ordering policy in the host-daemon contract.
-    switch (command.type) {
-      case "environment.cleanup_preflight":
-      case "thread.start":
-      case "turn.submit":
-      case "workspace.status":
-      case "workspace.diff":
-        return "read";
-      case "environment.provision":
-      case "environment.destroy":
-      case "thread.archive":
-      case "thread.unarchive":
-      case "workspace.commit":
-      case "workspace.squash_merge":
-        return "write";
-      case "environment.provision.cancel":
-        // Cancel must bypass the write lane held by the provision it aborts.
-        return null;
-      default:
-        return null;
-    }
+    return hostDaemonEnvironmentLaneForCommand(command);
   }
 }

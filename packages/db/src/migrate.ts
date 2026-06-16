@@ -4,7 +4,10 @@ import { dirname, join, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { DbConnection } from "./connection.js";
-import { publishedMigrationWhensByTag } from "./migration-history.js";
+import {
+  compatibleMigrationHashes,
+  publishedMigrationWhensByTag,
+} from "./migration-history.js";
 
 export interface ResolveMigrationsFolderForModuleDirArgs {
   moduleDir: string;
@@ -564,12 +567,32 @@ function hasAppliedMigrationHash(
   );
 }
 
+function hasCompatibleMigrationHash(
+  expectedMigration: ExpectedAppliedMigration,
+  appliedMigrations: AppliedMigrationIdentityRow[],
+): boolean {
+  return compatibleMigrationHashes.some(
+    (compatibleMigration) =>
+      compatibleMigration.tag === expectedMigration.tag &&
+      compatibleMigration.when === expectedMigration.createdAt &&
+      appliedMigrations.some(
+        (appliedMigration) =>
+          appliedMigration.createdAt === expectedMigration.createdAt &&
+          appliedMigration.hash === compatibleMigration.hash,
+      ),
+  );
+}
+
 function findAppliedMigrationHistoryViolation(
   expectedMigration: ExpectedAppliedMigration,
   appliedMigrations: AppliedMigrationIdentityRow[],
   appliedCreatedAts: Set<number>,
 ): AppliedMigrationHistoryViolation | null {
   if (hasAppliedMigrationHash(expectedMigration, appliedMigrations)) {
+    return null;
+  }
+
+  if (hasCompatibleMigrationHash(expectedMigration, appliedMigrations)) {
     return null;
   }
 

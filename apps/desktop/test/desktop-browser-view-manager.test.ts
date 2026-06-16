@@ -1,6 +1,6 @@
 import type { WebContentsView } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BbDesktopBrowserViewBounds } from "@bb/server-contract";
+import type { BbDesktopBrowserViewBounds } from "@bb/desktop-contract";
 import {
   createDesktopBrowserViewManager,
   type DesktopBrowserViewManager,
@@ -225,9 +225,7 @@ const electronMock = vi.hoisted(() => {
       canGoBack: (): boolean => this.canGoBackResult,
       canGoForward: (): boolean => this.canGoForwardResult,
       getActiveIndex: (): number => this.activeHistoryIndex,
-      getEntryAtIndex: (
-        index: number,
-      ): { title: string; url: string } | null =>
+      getEntryAtIndex: (index: number): { title: string; url: string } | null =>
         this.historyEntries[index] ?? null,
       goBack: (): void => {
         this.goBackCalls.push("goBack");

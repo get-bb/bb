@@ -27,7 +27,7 @@ import {
 import {
   getAutomationsRoutePath,
   getRootComposeRoutePath,
-} from "@/lib/app-route-paths";
+} from "@/lib/route-paths";
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -120,8 +120,8 @@ export function AppSidebar({
               <SidebarMenuButton
                 asChild
                 className={COARSE_POINTER_CHILD_ICON_BUTTON_CLASS}
-                tooltip="App settings"
-                aria-label="App settings"
+                tooltip="Settings"
+                aria-label="Settings"
               >
                 <Link to="/settings" onClick={closeOnMobile}>
                   <Icon name="Settings" />

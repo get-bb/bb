@@ -219,6 +219,12 @@ function createFakeRuntime(): AgentRuntime {
     unarchiveThread: vi.fn(async () => undefined),
     listModels: vi.fn(async () => ({ models: [], selectedOnlyModels: [] })),
     listRunningProviders: vi.fn(() => []),
+    getActiveTurnId: vi.fn(() => null),
+    waitForActiveTurn: vi.fn(async () => null),
+    getProviderSession: vi.fn(() => null),
+    reapIdleProviderSessions: vi.fn(async () => ({ reapedSessions: [] })),
+    hasThread: vi.fn(() => false),
+    getActiveThreadIds: vi.fn(() => []),
     shutdown: vi.fn(async () => undefined),
   };
 }
@@ -246,6 +252,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
       shortstat: "",
       truncated: false,
     })),
+    getPullRequest: vi.fn(async () => null),
     listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
     commit: vi.fn(async () => ({

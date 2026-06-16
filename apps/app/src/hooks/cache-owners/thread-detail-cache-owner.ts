@@ -6,12 +6,14 @@ import type {
 } from "@bb/server-contract";
 import * as api from "@/lib/api";
 import { getCachedThreadListPlaceholder } from "./query-cache";
-import { fetchAndHydrateThreadComposerBootstrap } from "./composer-cache-owner";
+import {
+  fetchAndHydrateThreadComposerBootstrap,
+  threadComposerBootstrapQueryKey,
+} from "../queries/thread-composer-bootstrap-query";
 import {
   environmentQueryKey,
   hostQueryKey,
   hostsQueryKey,
-  threadComposerBootstrapQueryKey,
   threadQueryKey,
   threadTimelineQueryKey,
 } from "../queries/query-keys";

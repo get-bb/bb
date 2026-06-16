@@ -226,8 +226,8 @@ function codexResponseTooLargeError(): ExpectedCommandDispatchError {
 async function readChunkWithTimeout({
   reader,
   readTimeoutMs,
-}: ReadChunkWithTimeoutArgs): Promise<
-  ReadableStreamReadResult<Uint8Array>
+}: ReadChunkWithTimeoutArgs): ReturnType<
+  ReadableStreamDefaultReader<Uint8Array>["read"]
 > {
   let timeout: ReturnType<typeof setTimeout> | null = null;
   try {

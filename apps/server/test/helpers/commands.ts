@@ -91,16 +91,6 @@ export function listQueuedThreadCommands(
     .map((queued) => hostDaemonCommandSchema.parse(queued.command));
 }
 
-export function listQueuedWorkflowRunCommands(
-  harness: TestAppHarness,
-  type: "workflow.start" | "workflow.cancel",
-): QueuedCommand[] {
-  return pendingHostRpcRequests.filter(
-    (queued) =>
-      isCapturedRpcForHarness(harness, queued) && queued.command.type === type,
-  );
-}
-
 export function listQueuedEnvironmentCommands(
   harness: TestAppHarness,
   type: HostDaemonCommand["type"],

@@ -6,14 +6,10 @@ import {
   PROJECT_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
   THREAD_CHANGE_KINDS,
-  WORKFLOW_RUN_CHANGE_KINDS,
 } from "@bb/domain";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
   archivedThreadsListQueryKey,
-  appMarkdownPreviewQueryKey,
-  appQueryKey,
-  appsQueryKey,
   environmentGitDiffQueryKey,
   environmentWorkStatusQueryKey,
   localPathExistenceQueryKey,
@@ -29,10 +25,6 @@ import {
   threadTerminalsQueryKey,
   threadStorageFilePreviewQueryKey,
   threadTimelineQueryKey,
-  workflowRunAgentEventsQueryKey,
-  workflowRunEventsQueryKey,
-  workflowRunQueryKey,
-  workflowRunsQueryKey,
 } from "./queries/query-keys";
 import { createRealtimeCacheEffects } from "./realtime-cache-effects";
 import {
@@ -41,7 +33,6 @@ import {
   REALTIME_PROJECT_CHANGE_REGISTRY,
   REALTIME_SYSTEM_CHANGE_REGISTRY,
   REALTIME_THREAD_CHANGE_REGISTRY,
-  REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY,
 } from "./cache-owners/realtime-cache-registry";
 
 const PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
@@ -138,14 +129,6 @@ describe("createRealtimeCacheEffects", () => {
     for (const changeKind of SYSTEM_CHANGE_KINDS) {
       expect(
         REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind].dirty.length,
-      ).toBeGreaterThan(0);
-    }
-  });
-
-  it("maps every realtime workflow-run change to at least one dirty handler", () => {
-    for (const changeKind of WORKFLOW_RUN_CHANGE_KINDS) {
-      expect(
-        REALTIME_WORKFLOW_RUN_CHANGE_REGISTRY[changeKind].dirty.length,
       ).toBeGreaterThan(0);
     }
   });
@@ -651,6 +634,56 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("refetches active thread storage preview queries when a thread environment changes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const storagePreviewKey = threadStorageFilePreviewQueryKey(
+      "thr_1",
+      "notes.md",
+    );
+    const initialStoragePreview = {
+      kind: "text",
+      content: "old",
+      mimeType: "text/plain",
+      path: "notes.md",
+      url: "/old",
+    };
+    const nextStoragePreview = {
+      kind: "text",
+      content: "new",
+      mimeType: "text/plain",
+      path: "notes.md",
+      url: "/new",
+    };
+    queryClient.setQueryData(storagePreviewKey, initialStoragePreview);
+    const storagePreviewQueryFn = vi.fn(async () => nextStoragePreview);
+    const storagePreviewObserver = new QueryObserver(queryClient, {
+      queryKey: storagePreviewKey,
+      queryFn: storagePreviewQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeStoragePreview = storagePreviewObserver.subscribe(
+      () => {},
+    );
+    storagePreviewQueryFn.mockClear();
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["environment-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(storagePreviewQueryFn).toHaveBeenCalledTimes(1);
+    expect(queryClient.getQueryData(storagePreviewKey)).toEqual(
+      nextStoragePreview,
+    );
+
+    unsubscribeStoragePreview();
+    effects.dispose();
+  });
+
   it("does not invalidate timeline queries for status-only thread changes", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const timelineKey = threadTimelineQueryKey("thr_1");
@@ -1052,196 +1085,6 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refetches active app list queries for app list changes without reconnect", async () => {
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const appsKey = appsQueryKey();
-    queryClient.setQueryData(appsKey, []);
-    const appsQueryFn = vi.fn(async () => []);
-    const appsObserver = new QueryObserver(queryClient, {
-      queryKey: appsKey,
-      queryFn: appsQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeApps = appsObserver.subscribe(() => {});
-    appsQueryFn.mockClear();
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "system",
-      changes: ["apps-changed"],
-    });
-
-    await vi.waitFor(() => expect(appsQueryFn).toHaveBeenCalledTimes(1));
-
-    unsubscribeApps();
-    effects.dispose();
-  });
-
-  it("ignores app entity apps-changed — the SPA's app-list invalidation rides system:apps-changed", async () => {
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const appsKey = appsQueryKey();
-    queryClient.setQueryData(appsKey, []);
-    const appsQueryFn = vi.fn(async () => []);
-    const appsObserver = new QueryObserver(queryClient, {
-      queryKey: appsKey,
-      queryFn: appsQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeApps = appsObserver.subscribe(() => {});
-    appsQueryFn.mockClear();
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "app",
-      changes: ["apps-changed"],
-    });
-
-    await Promise.resolve();
-    expect(appsQueryFn).not.toHaveBeenCalled();
-    expect(queryClient.getQueryState(appsKey)?.isInvalidated).not.toBe(true);
-
-    unsubscribeApps();
-    effects.dispose();
-  });
-
-  it("refetches only the changed app's detail and markdown preview queries for app content changes", async () => {
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const appDetailKey = appQueryKey("my-app");
-    const markdownPreviewKey = appMarkdownPreviewQueryKey("my-app", "index.md");
-    const otherAppDetailKey = appQueryKey("other-app");
-    const appsKey = appsQueryKey();
-    queryClient.setQueryData(appDetailKey, {});
-    queryClient.setQueryData(markdownPreviewKey, {});
-    queryClient.setQueryData(otherAppDetailKey, {});
-    queryClient.setQueryData(appsKey, []);
-    const appDetailQueryFn = vi.fn(async () => ({}));
-    const markdownPreviewQueryFn = vi.fn(async () => ({}));
-    const otherAppDetailQueryFn = vi.fn(async () => ({}));
-    const appsQueryFn = vi.fn(async () => []);
-    const appDetailObserver = new QueryObserver(queryClient, {
-      queryKey: appDetailKey,
-      queryFn: appDetailQueryFn,
-      staleTime: Infinity,
-    });
-    const markdownPreviewObserver = new QueryObserver(queryClient, {
-      queryKey: markdownPreviewKey,
-      queryFn: markdownPreviewQueryFn,
-      staleTime: Infinity,
-    });
-    const otherAppDetailObserver = new QueryObserver(queryClient, {
-      queryKey: otherAppDetailKey,
-      queryFn: otherAppDetailQueryFn,
-      staleTime: Infinity,
-    });
-    const appsObserver = new QueryObserver(queryClient, {
-      queryKey: appsKey,
-      queryFn: appsQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeAppDetail = appDetailObserver.subscribe(() => {});
-    const unsubscribeMarkdownPreview = markdownPreviewObserver.subscribe(
-      () => {},
-    );
-    const unsubscribeOtherAppDetail = otherAppDetailObserver.subscribe(
-      () => {},
-    );
-    const unsubscribeApps = appsObserver.subscribe(() => {});
-    appDetailQueryFn.mockClear();
-    markdownPreviewQueryFn.mockClear();
-    otherAppDetailQueryFn.mockClear();
-    appsQueryFn.mockClear();
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "app",
-      id: "my-app",
-      changes: ["content-changed"],
-    });
-
-    await vi.waitFor(() => expect(appDetailQueryFn).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() =>
-      expect(markdownPreviewQueryFn).toHaveBeenCalledTimes(1),
-    );
-    expect(otherAppDetailQueryFn).not.toHaveBeenCalled();
-    expect(
-      queryClient.getQueryState(otherAppDetailKey)?.isInvalidated,
-    ).not.toBe(true);
-    expect(appsQueryFn).not.toHaveBeenCalled();
-    expect(queryClient.getQueryState(appsKey)?.isInvalidated).not.toBe(true);
-
-    unsubscribeAppDetail();
-    unsubscribeMarkdownPreview();
-    unsubscribeOtherAppDetail();
-    unsubscribeApps();
-    effects.dispose();
-  });
-
-  it("falls back to refetching all mounted app detail queries for an app content change without id", async () => {
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const appDetailKey = appQueryKey("my-app");
-    const otherAppDetailKey = appQueryKey("other-app");
-    queryClient.setQueryData(appDetailKey, {});
-    queryClient.setQueryData(otherAppDetailKey, {});
-    const appDetailQueryFn = vi.fn(async () => ({}));
-    const otherAppDetailQueryFn = vi.fn(async () => ({}));
-    const appDetailObserver = new QueryObserver(queryClient, {
-      queryKey: appDetailKey,
-      queryFn: appDetailQueryFn,
-      staleTime: Infinity,
-    });
-    const otherAppDetailObserver = new QueryObserver(queryClient, {
-      queryKey: otherAppDetailKey,
-      queryFn: otherAppDetailQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeAppDetail = appDetailObserver.subscribe(() => {});
-    const unsubscribeOtherAppDetail = otherAppDetailObserver.subscribe(
-      () => {},
-    );
-    appDetailQueryFn.mockClear();
-    otherAppDetailQueryFn.mockClear();
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "app",
-      changes: ["content-changed"],
-    });
-
-    await vi.waitFor(() => expect(appDetailQueryFn).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() =>
-      expect(otherAppDetailQueryFn).toHaveBeenCalledTimes(1),
-    );
-
-    unsubscribeAppDetail();
-    unsubscribeOtherAppDetail();
-    effects.dispose();
-  });
-
-  it("refetches mounted app detail queries for system apps-changed — the HTML hot-reload chain depends on the detail refetch", async () => {
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const appDetailKey = appQueryKey("my-app");
-    queryClient.setQueryData(appDetailKey, {});
-    const appDetailQueryFn = vi.fn(async () => ({}));
-    const appDetailObserver = new QueryObserver(queryClient, {
-      queryKey: appDetailKey,
-      queryFn: appDetailQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeAppDetail = appDetailObserver.subscribe(() => {});
-    appDetailQueryFn.mockClear();
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "system",
-      changes: ["apps-changed"],
-    });
-
-    await vi.waitFor(() => expect(appDetailQueryFn).toHaveBeenCalledTimes(1));
-
-    unsubscribeAppDetail();
-    effects.dispose();
-  });
-
   it("invalidates cached thread terminals for terminal changes", () => {
     vi.useFakeTimers();
     const { effects, queryClient, terminalKey } =
@@ -1263,228 +1106,5 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(terminalKey)?.isInvalidated).toBe(true);
 
     effects.dispose();
-  });
-
-  describe("workflow-run changes", () => {
-    interface WorkflowRunCacheFixture {
-      changedRunAgentOneEventsKey: ReturnType<
-        typeof workflowRunAgentEventsQueryKey
-      >;
-      changedRunAgentTwoEventsKey: ReturnType<
-        typeof workflowRunAgentEventsQueryKey
-      >;
-      changedRunDetailKey: ReturnType<typeof workflowRunQueryKey>;
-      changedRunEventsKey: ReturnType<typeof workflowRunEventsQueryKey>;
-      otherRunAgentEventsKey: ReturnType<typeof workflowRunAgentEventsQueryKey>;
-      otherRunDetailKey: ReturnType<typeof workflowRunQueryKey>;
-      runsListKey: ReturnType<typeof workflowRunsQueryKey>;
-    }
-
-    function seedWorkflowRunCaches(
-      queryClient: ReturnType<
-        typeof createRealtimeEffectsTestContext
-      >["queryClient"],
-    ): WorkflowRunCacheFixture {
-      const fixture: WorkflowRunCacheFixture = {
-        changedRunDetailKey: workflowRunQueryKey("wfr_changed"),
-        changedRunEventsKey: workflowRunEventsQueryKey("wfr_changed"),
-        // Agent display indexes are 1-based; the per-run prefix invalidation
-        // must cover every mounted drill-in index.
-        changedRunAgentOneEventsKey: workflowRunAgentEventsQueryKey({
-          agentIndex: 1,
-          runId: "wfr_changed",
-        }),
-        changedRunAgentTwoEventsKey: workflowRunAgentEventsQueryKey({
-          agentIndex: 2,
-          runId: "wfr_changed",
-        }),
-        otherRunDetailKey: workflowRunQueryKey("wfr_other"),
-        otherRunAgentEventsKey: workflowRunAgentEventsQueryKey({
-          agentIndex: 1,
-          runId: "wfr_other",
-        }),
-        runsListKey: workflowRunsQueryKey("project-1"),
-      };
-      queryClient.setQueryData(fixture.changedRunDetailKey, {});
-      queryClient.setQueryData(fixture.changedRunEventsKey, { events: [] });
-      queryClient.setQueryData(fixture.changedRunAgentOneEventsKey, []);
-      queryClient.setQueryData(fixture.changedRunAgentTwoEventsKey, []);
-      queryClient.setQueryData(fixture.otherRunDetailKey, {});
-      queryClient.setQueryData(fixture.otherRunAgentEventsKey, []);
-      queryClient.setQueryData(fixture.runsListKey, []);
-      return fixture;
-    }
-
-    it("debounces run-updated into the changed run's detail and the run lists only", () => {
-      vi.useFakeTimers();
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const caches = seedWorkflowRunCaches(queryClient);
-
-      effects.handleChanged({
-        type: "changed",
-        entity: "workflow-run",
-        id: "wfr_changed",
-        changes: ["run-updated"],
-      });
-
-      // Nothing flushes synchronously: per-batch hub notifications ride the
-      // shared debounce window.
-      expect(
-        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
-      ).not.toBe(true);
-
-      vi.advanceTimersByTime(50);
-
-      expect(
-        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.otherRunDetailKey)?.isInvalidated,
-      ).not.toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
-      ).not.toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunAgentOneEventsKey)
-          ?.isInvalidated,
-      ).not.toBe(true);
-
-      effects.dispose();
-    });
-
-    it("scopes events-appended to the run's detail, event stream, and agent-events prefix", () => {
-      vi.useFakeTimers();
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const caches = seedWorkflowRunCaches(queryClient);
-
-      effects.handleChanged({
-        type: "changed",
-        entity: "workflow-run",
-        id: "wfr_changed",
-        changes: ["events-appended"],
-      });
-      vi.advanceTimersByTime(50);
-
-      expect(
-        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunAgentOneEventsKey)
-          ?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunAgentTwoEventsKey)
-          ?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.otherRunDetailKey)?.isInvalidated,
-      ).not.toBe(true);
-      expect(
-        queryClient.getQueryState(caches.otherRunAgentEventsKey)
-          ?.isInvalidated,
-      ).not.toBe(true);
-      expect(
-        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
-      ).not.toBe(true);
-
-      effects.dispose();
-    });
-
-    it("coalesces an events-appended burst into a single drill-in refetch", async () => {
-      vi.useFakeTimers();
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const caches = seedWorkflowRunCaches(queryClient);
-      const agentEventsQueryFn = vi.fn(async () => []);
-      const agentEventsObserver = new QueryObserver(queryClient, {
-        queryKey: caches.changedRunAgentOneEventsKey,
-        queryFn: agentEventsQueryFn,
-        staleTime: Infinity,
-      });
-      const unsubscribeAgentEvents = agentEventsObserver.subscribe(() => {});
-      agentEventsQueryFn.mockClear();
-
-      // A wide fan-out delivers one hub message per ingested daemon batch;
-      // the mounted drill-in must refetch once per debounce window, not once
-      // per message.
-      for (let batch = 0; batch < 5; batch += 1) {
-        effects.handleChanged({
-          type: "changed",
-          entity: "workflow-run",
-          id: "wfr_changed",
-          changes: ["events-appended"],
-        });
-      }
-      await vi.advanceTimersByTimeAsync(50);
-
-      expect(agentEventsQueryFn).toHaveBeenCalledTimes(1);
-
-      unsubscribeAgentEvents();
-      effects.dispose();
-    });
-
-    it("invalidates seeded workflow-run caches on server reconnect", () => {
-      // Realtime messages emitted while the socket was down are lost, and a
-      // run that reached terminal during the gap emits nothing afterward —
-      // reconnect invalidation is the only recovery path for mounted
-      // workflow-run queries.
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const caches = seedWorkflowRunCaches(queryClient);
-
-      effects.handleConnected({ reconnected: true });
-
-      expect(
-        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunAgentOneEventsKey)
-          ?.isInvalidated,
-      ).toBe(true);
-
-      effects.dispose();
-    });
-
-    it("falls back to invalidating all cached workflow-run queries when the change has no id", () => {
-      vi.useFakeTimers();
-      const { effects, queryClient } = createRealtimeEffectsTestContext();
-      const caches = seedWorkflowRunCaches(queryClient);
-
-      effects.handleChanged({
-        type: "changed",
-        entity: "workflow-run",
-        changes: ["run-updated", "events-appended"],
-      });
-      vi.advanceTimersByTime(50);
-
-      expect(
-        queryClient.getQueryState(caches.changedRunDetailKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.otherRunDetailKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.changedRunEventsKey)?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.otherRunAgentEventsKey)
-          ?.isInvalidated,
-      ).toBe(true);
-      expect(
-        queryClient.getQueryState(caches.runsListKey)?.isInvalidated,
-      ).toBe(true);
-
-      effects.dispose();
-    });
   });
 });

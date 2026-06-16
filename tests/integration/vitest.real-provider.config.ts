@@ -1,5 +1,4 @@
-import { defineConfig } from "vitest/config";
-import { workspaceTestAliases } from "../../vitest.workspace-aliases.js";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
 const parsedTimeoutScale = Number(process.env.BB_TEST_TIMEOUT_SCALE ?? 1);
 const timeoutScale =
@@ -7,10 +6,7 @@ const timeoutScale =
     ? parsedTimeoutScale
     : 1;
 
-export default defineConfig({
-  resolve: {
-    alias: workspaceTestAliases,
-  },
+export default defineWorkspaceTestConfig({
   test: {
     // Real-provider files create isolated servers, data dirs, and daemon
     // instances, so split scenario files can run concurrently.

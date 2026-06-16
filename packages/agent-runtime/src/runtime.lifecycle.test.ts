@@ -48,7 +48,6 @@ describe("createAgentRuntime lifecycle", () => {
       });
 
       const { providerThreadId } = await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -103,7 +102,6 @@ rl.on("line", (line) => {
       });
 
       const { providerThreadId } = await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -168,7 +166,6 @@ rl.on("line", (line) => {
 
       try {
         const { providerThreadId } = await runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId: "t1",
           projectId: "p1",
@@ -206,7 +203,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -235,223 +231,6 @@ rl.on("line", (line) => {
       await runtime.shutdown();
     });
 
-    it("selects the restricted shell env for workflowAgent sessions", async () => {
-      const recordedCommands: AdapterCommand[] = [];
-      const threadStorageRootPath = join(tmpDir, "thread-storage");
-      const runtime = createAgentRuntimeWithAdapters({
-        workspacePath: tmpDir,
-        threadStorageRootPath,
-        shellEnv: {
-          PATH: "/tmp/bb-bin:/usr/bin",
-          BB_APPS_ROOT: "/tmp/apps",
-          BB_HOST_DAEMON_PORT: "3002",
-          BB_SERVER_URL: "http://127.0.0.1:3334",
-        },
-        workflowAgentShellEnv: {
-          PATH: "/usr/bin",
-          BB_APPS_ROOT: "/tmp/apps",
-        },
-        onEvent: () => undefined,
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "ok" }],
-          success: true,
-        }),
-        adapterFactory: () =>
-          createRecordingAdapter({ recordedCommands, scriptPath }),
-      });
-
-      await runtime.startThread({
-        sessionKind: "workflowAgent",
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-
-      const threadStart = recordedCommands.find(
-        (command) => command.type === "thread/start",
-      );
-      expect(threadStart?.type).toBe("thread/start");
-      if (!threadStart || threadStart.type !== "thread/start") {
-        throw new Error("Expected thread/start command");
-      }
-      // No bb-on-PATH, no server coordinates, no BB_THREAD_ID — the
-      // no-nesting guarantees for workflow agents.
-      expect(threadStart.options?.envVars).toEqual({
-        PATH: "/usr/bin",
-        BB_APPS_ROOT: "/tmp/apps",
-        BB_PROJECT_ID: "p1",
-        BB_THREAD_STORAGE: join(threadStorageRootPath, "t1"),
-        BB_ENVIRONMENT_ID: "env-1",
-      });
-
-      await runtime.shutdown();
-    });
-
-    it("keeps the restricted shell env when reconfiguring a workflowAgent session", async () => {
-      const recordedCommands: AdapterCommand[] = [];
-      const runtime = createAgentRuntimeWithAdapters({
-        workspacePath: tmpDir,
-        shellEnv: {
-          PATH: "/tmp/bb-bin:/usr/bin",
-          BB_SERVER_URL: "http://127.0.0.1:3334",
-        },
-        workflowAgentShellEnv: {
-          PATH: "/usr/bin",
-        },
-        onEvent: () => undefined,
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "ok" }],
-          success: true,
-        }),
-        adapterFactory: () =>
-          createRecordingAdapter({ recordedCommands, scriptPath }),
-      });
-
-      await runtime.startThread({
-        sessionKind: "workflowAgent",
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        instructions: "Initial instructions",
-        options: fullRuntimeOptions,
-      });
-
-      await runtime.runTurn({
-        clientRequestId: "creq_222222229b",
-        threadId: "t1",
-        input: [{ type: "text", text: "follow up", mentions: [] }],
-        instructions: "Updated instructions",
-        options: fullRuntimeOptions,
-      });
-
-      const reconfigureCommand = findLastRecordedCommand(
-        recordedCommands,
-        "thread/resume",
-      );
-      expect(reconfigureCommand?.type).toBe("thread/resume");
-      if (!reconfigureCommand || reconfigureCommand.type !== "thread/resume") {
-        throw new Error("Expected thread/resume command");
-      }
-      // A reconfigured workflow agent must not regain BB_THREAD_ID or the
-      // full thread env.
-      expect(reconfigureCommand.options?.envVars).toEqual({
-        PATH: "/usr/bin",
-        BB_PROJECT_ID: "p1",
-        BB_ENVIRONMENT_ID: "env-1",
-      });
-
-      await runtime.shutdown();
-    });
-
-    it("rejects resuming a workflowAgent session into the full thread env", async () => {
-      const recordedCommands: AdapterCommand[] = [];
-      const runtime = createAgentRuntimeWithAdapters({
-        workspacePath: tmpDir,
-        shellEnv: {
-          PATH: "/tmp/bb-bin:/usr/bin",
-          BB_SERVER_URL: "http://127.0.0.1:3334",
-        },
-        workflowAgentShellEnv: {
-          PATH: "/usr/bin",
-        },
-        onEvent: () => undefined,
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "ok" }],
-          success: true,
-        }),
-        adapterFactory: () =>
-          createRecordingAdapter({ recordedCommands, scriptPath }),
-      });
-
-      await runtime.startThread({
-        sessionKind: "workflowAgent",
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-
-      // Resuming would rebuild the full thread env (BB_SERVER_URL, bb on
-      // PATH, BB_THREAD_ID) — the exact no-nesting hole sessionKind closes.
-      await expect(
-        runtime.resumeThread({
-          environmentId: "env-1",
-          threadId: "t1",
-          projectId: "p1",
-          providerId: "fake",
-          options: fullRuntimeOptions,
-        }),
-      ).rejects.toThrow(/cannot be resumed/);
-      // No resume command ever reached the provider.
-      expect(
-        recordedCommands.some((command) => command.type === "thread/resume"),
-      ).toBe(false);
-
-      await runtime.shutdown();
-    });
-
-    it("passes output schemas through to thread/start and turn/start adapter commands", async () => {
-      const recordedCommands: AdapterCommand[] = [];
-      const sessionSchema = {
-        type: "object",
-        properties: { summary: { type: "string" } },
-        required: ["summary"],
-      };
-      const turnSchema = {
-        type: "object",
-        properties: { answer: { type: "string" } },
-        required: ["answer"],
-      };
-      const runtime = createAgentRuntimeWithAdapters({
-        workspacePath: tmpDir,
-        onEvent: () => undefined,
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "ok" }],
-          success: true,
-        }),
-        adapterFactory: () =>
-          createRecordingAdapter({ recordedCommands, scriptPath }),
-      });
-
-      await runtime.startThread({
-        sessionKind: "thread",
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-        outputSchema: sessionSchema,
-      });
-      await runtime.runTurn({
-        clientRequestId: "creq_222222229c",
-        threadId: "t1",
-        input: [{ type: "text", text: "extract", mentions: [] }],
-        options: fullRuntimeOptions,
-        outputSchema: turnSchema,
-      });
-
-      const threadStart = findLastRecordedCommand(
-        recordedCommands,
-        "thread/start",
-      );
-      if (!threadStart || threadStart.type !== "thread/start") {
-        throw new Error("Expected thread/start command");
-      }
-      expect(threadStart.outputSchema).toEqual(sessionSchema);
-
-      const turnStart = findLastRecordedCommand(recordedCommands, "turn/start");
-      if (!turnStart || turnStart.type !== "turn/start") {
-        throw new Error("Expected turn/start command");
-      }
-      expect(turnStart.outputSchema).toEqual(turnSchema);
-
-      await runtime.shutdown();
-    });
-
     it("does not configure provider skills unless skill roots are supplied", async () => {
       const recordedCommands: AdapterCommand[] = [];
       const runtime = createAgentRuntimeWithAdapters({
@@ -466,7 +245,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -503,7 +281,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -557,7 +334,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -591,7 +367,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -691,7 +466,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -753,7 +527,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -818,7 +591,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -903,7 +675,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -941,7 +712,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -975,7 +745,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -1061,7 +830,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -1084,7 +852,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -1119,7 +886,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -1173,7 +939,6 @@ rl.on("line", (line) => {
       });
 
       const startResult = await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -1181,9 +946,19 @@ rl.on("line", (line) => {
         options: fullRuntimeOptions,
       });
       expect(runtime.listRunningProviders()).toEqual(["fake"]);
+      expect(runtime.hasThread("t1")).toBe(true);
+      expect(runtime.getProviderSession("t1")).toEqual({
+        providerId: "fake",
+        providerThreadId: startResult.providerThreadId,
+      });
 
       await runtime.stopThread({ threadId: "t1" });
       expect(runtime.listRunningProviders()).toEqual(["fake"]);
+      // Stop removes the thread from the runtime; the follow-up below must
+      // resume it before running another turn.
+      expect(runtime.hasThread("t1")).toBe(false);
+      expect(runtime.getProviderSession("t1")).toBeNull();
+      expect(runtime.getActiveTurnId("t1")).toBeNull();
 
       await runtime.resumeThread({
         environmentId: "env-1",
@@ -1210,6 +985,91 @@ rl.on("line", (line) => {
       await runtime.shutdown();
     });
 
+    it("resolves waitForActiveTurn from the turn/started observation", async () => {
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => {},
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => createFakeAdapter(scriptPath),
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      expect(runtime.getActiveTurnId("t1")).toBeNull();
+
+      const pendingTurnId = runtime.waitForActiveTurn("t1", {
+        timeoutMs: 5_000,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222223t",
+        threadId: "t1",
+        input: [promptTextInput({ text: "delay:500" })],
+        options: fullRuntimeOptions,
+      });
+
+      await expect(pendingTurnId).resolves.toBe("turn-1");
+      expect(runtime.getActiveTurnId("t1")).toBe("turn-1");
+      expect(runtime.getActiveThreadIds()).toEqual(["t1"]);
+      await runtime.shutdown();
+    });
+
+    it("resolves pending waitForActiveTurn waiters with null when the provider crashes", async () => {
+      const crashAfterStartScript = join(tmpDir, "crash-after-start.cjs");
+      writeFileSync(
+        crashAfterStartScript,
+        `const rl = require("readline").createInterface({ input: process.stdin });
+        rl.on("line", (line) => {
+          const msg = JSON.parse(line);
+          if (msg.method === "initialize") {
+            process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} }) + "\\n");
+          } else if (msg.method === "thread/start") {
+            process.stdout.write(JSON.stringify({
+              jsonrpc: "2.0", id: msg.id,
+              result: { providerThreadId: "prov-crash-waiter" }
+            }) + "\\n");
+            process.stdout.write(JSON.stringify({
+              jsonrpc: "2.0", method: "thread/identity",
+              params: { threadId: msg.params?.threadId, providerThreadId: "prov-crash-waiter" }
+            }) + "\\n");
+            setTimeout(() => process.exit(13), 50);
+          }
+        });`,
+      );
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => {},
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => createFakeAdapter(crashAfterStartScript),
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      const pendingTurnId = runtime.waitForActiveTurn("t1", {
+        timeoutMs: 30_000,
+      });
+
+      await expect(pendingTurnId).resolves.toBeNull();
+      expect(runtime.hasThread("t1")).toBe(false);
+      expect(runtime.getProviderSession("t1")).toBeNull();
+      await runtime.shutdown();
+    });
+
     it("steers an active turn", async () => {
       const events: ThreadEvent[] = [];
       const runtime = createAgentRuntimeWithAdapters({
@@ -1223,7 +1083,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -1273,7 +1132,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
@@ -1331,7 +1189,6 @@ rl.on("line", (line) => {
       });
 
       await runtime.startThread({
-        sessionKind: "thread",
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",

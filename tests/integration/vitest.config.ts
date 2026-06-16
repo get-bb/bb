@@ -1,5 +1,4 @@
-import { defineConfig } from "vitest/config";
-import { workspaceTestAliases } from "../../vitest.workspace-aliases.js";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
 const parsedTimeoutScale = Number(process.env.BB_TEST_TIMEOUT_SCALE ?? 1);
 const timeoutScale =
@@ -7,11 +6,7 @@ const timeoutScale =
     ? parsedTimeoutScale
     : 1;
 
-export default defineConfig({
-  resolve: {
-    conditions: ["source"],
-    alias: workspaceTestAliases,
-  },
+export default defineWorkspaceTestConfig({
   test: {
     // Fake integration suites isolate temp roots, ports, and in-memory state,
     // so we can safely parallelize across files for a large runtime win.

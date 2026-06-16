@@ -25,6 +25,10 @@ import {
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import {
+  formatWorkspaceCheckoutDisplay,
+  type WorkspaceCheckoutDisplay,
+} from "@/lib/workspace-checkout-display";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { selectWorkspaceChangedFilesSection } from "@/components/workspace/workspace-change-summary";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -86,6 +90,7 @@ const readOnlyExecution = makeExecutionControlsProps({
     active: { model: "gpt-5.5" },
     selected: "gpt-5.5",
     options: STORY_CODEX_MODELS,
+    isLoading: false,
     onChange: noop,
   },
 });
@@ -113,6 +118,7 @@ interface EnvironmentSummaryArgs {
   environment: Environment;
   host: EnvironmentDisplayHostContext;
   branchName?: string;
+  environmentCheckout?: WorkspaceCheckoutDisplay;
   onCreateNewThreadInWorktree?: () => void;
 }
 
@@ -120,12 +126,24 @@ function makeEnvironmentSummary({
   environment,
   host,
   branchName,
+  environmentCheckout,
   onCreateNewThreadInWorktree,
 }: EnvironmentSummaryArgs): ReactNode {
   const display = formatEnvironmentDisplay({
     environment,
     host,
   });
+  const checkoutDisplay =
+    environmentCheckout ??
+    (branchName
+      ? formatWorkspaceCheckoutDisplay({
+          checkout: {
+            kind: "branch",
+            branchName,
+            headSha: null,
+          },
+        })
+      : undefined);
   return (
     <ThreadEnvironmentSummary
       environmentLabel={display.modeLabel}
@@ -133,7 +151,7 @@ function makeEnvironmentSummary({
       environmentIcon={getEnvironmentWorkspaceLabelIconName(
         display.workspaceDisplayKind,
       )}
-      environmentBranchName={branchName}
+      environmentCheckout={checkoutDisplay}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
     />
   );
@@ -180,6 +198,22 @@ const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   // Worktree threads expose a "new thread in this worktree" affordance —
   // production wires it to the new-thread route. The story just needs a
   // non-null handler so the MessageSquarePlus icon renders.
+  onCreateNewThreadInWorktree: noop,
+});
+
+const detachedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
+  environment: makeEnvironment({
+    isWorktree: true,
+    workspaceProvisionType: "managed-worktree",
+    status: "ready",
+  }),
+  host: localEnvironmentDisplayHost,
+  environmentCheckout: formatWorkspaceCheckoutDisplay({
+    checkout: {
+      kind: "detached",
+      headSha: "abcdef1234567890",
+    },
+  }),
   onCreateNewThreadInWorktree: noop,
 });
 
@@ -268,6 +302,11 @@ const dirtyWorkspaceStatus: WorkspaceStatus = {
     currentBranch: "bb/promptbox-stories",
     defaultBranch: "main",
   },
+  checkout: {
+    kind: "branch",
+    branchName: "bb/promptbox-stories",
+    headSha: null,
+  },
   mergeBase: null,
 };
 
@@ -290,7 +329,6 @@ const contextBannerElement: ReactNode = dirtyContextBannerSection ? (
     gitSectionPending={false}
     parentThreadSection={null}
     childThreadsSection={null}
-    workflowsSection={null}
     expandedSection={null}
     onToggleSection={noop}
   />
@@ -534,6 +572,12 @@ export function Overview() {
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={worktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow label="env: detached" hint="detached checkout label">
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={detachedWorktreeEnvironmentSummary}
         />
       </StoryRow>
       <StoryRow label="env: remote direct" hint="remote label + icon">

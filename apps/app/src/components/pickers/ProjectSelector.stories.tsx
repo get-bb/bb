@@ -46,6 +46,12 @@ export function Overview() {
         <ProjectSelectorInteractive allowNoProject />
       </StoryRow>
       <StoryRow
+        label="open menu with actions"
+        hint="createProject + allowNoProject share one separator below the project list"
+      >
+        <ProjectSelectorInteractive allowNoProject createProject />
+      </StoryRow>
+      <StoryRow
         label="no projects"
         hint='empty project list with allowNoProject=true — menu adds a "New project" item'
       >
@@ -65,8 +71,10 @@ export function Overview() {
 
 function ProjectSelectorInteractive({
   allowNoProject = false,
+  createProject = false,
 }: {
   allowNoProject?: boolean;
+  createProject?: boolean;
 }) {
   const [value, setValue] = useState<string | null>("proj_bb");
   return (
@@ -75,6 +83,7 @@ function ProjectSelectorInteractive({
       value={value}
       onChange={setValue}
       allowNoProject={allowNoProject}
+      createProject={createProject ? { onCreate: noop } : undefined}
       defaultOpen
       modal={false}
     />

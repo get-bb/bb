@@ -5,7 +5,6 @@ import type {
   SystemChangeKind,
   ThreadChangeKind,
   ThreadChangeMetadata,
-  WorkflowRunChangeKind,
 } from "@bb/domain";
 import type { DbNotifier } from "@bb/db";
 
@@ -52,16 +51,6 @@ export class NotificationBuffer implements DbNotifier {
   notifySystem(changes: SystemChangeKind[]): void {
     this.notifications.push({
       flush: (notifier) => notifier.notifySystem([...changes]),
-    });
-  }
-
-  notifyWorkflowRun(
-    workflowRunId: string,
-    changes: WorkflowRunChangeKind[],
-  ): void {
-    this.notifications.push({
-      flush: (notifier) =>
-        notifier.notifyWorkflowRun(workflowRunId, [...changes]),
     });
   }
 

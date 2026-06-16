@@ -15,7 +15,7 @@ import {
 } from "@bb/thread-view";
 import { cn } from "@/lib/utils";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
-import { AppRouteAnchor } from "@/components/ui/app-route-anchor.js";
+import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 
 /**
  * Resolves a title's declared action to a click callback. Return `null` to
@@ -124,7 +124,7 @@ function renderSegment(
   if (interactive.linkHref !== null) {
     const href = interactive.linkHref;
     return (
-      <AppRouteAnchor
+      <RouteAnchor
         // Title segments live inside a row-level CollapsibleHeader button; HTML
         // forbids nested <button> elements, so we render a stopped-propagation
         // anchor — the click/Enter on the link must not also toggle the row.
@@ -144,7 +144,7 @@ function renderSegment(
         }}
       >
         {segment.text}
-      </AppRouteAnchor>
+      </RouteAnchor>
     );
   }
 

@@ -96,7 +96,6 @@ async function writeSkill(args: WriteSkillArgs): Promise<string> {
 function createDataDirSource(args: StageSourceArgs): HostDaemonInjectedSkillSource {
   return {
     sourceType: "data-dir",
-    applicationId: null,
     name: args.skillName,
     description: `Use ${args.skillName} when host staging tests run.`,
     sourceRootPath: args.skillRootPath,
@@ -197,7 +196,7 @@ describe("injected skill staging", () => {
     const bundledRoot = await makeTempDir();
     const skillRootPath = await writeSkill({
       rootPath: bundledRoot,
-      name: "building-bb-apps",
+      name: "workflow-help",
     });
 
     const staged = await stageInjectedSkillSources({
@@ -205,9 +204,8 @@ describe("injected skill staging", () => {
       injectedSkillSources: [
         {
           sourceType: "builtin",
-          applicationId: null,
-          name: "building-bb-apps",
-          description: "Use building-bb-apps when host staging tests run.",
+          name: "workflow-help",
+          description: "Use workflow-help when host staging tests run.",
           sourceRootPath: skillRootPath,
           skillFilePath: path.join(skillRootPath, "SKILL.md"),
         },
@@ -224,7 +222,7 @@ describe("injected skill staging", () => {
         "utf8",
       ).then((content) => JSON.parse(content)),
     ).resolves.toMatchObject({
-      skills: ["./skills/building-bb-apps"],
+      skills: ["./skills/workflow-help"],
     });
     await expect(
       readFile(
@@ -235,8 +233,7 @@ describe("injected skill staging", () => {
       catalogHash: staged.catalogHash,
       skills: [
         {
-          applicationId: null,
-          name: "building-bb-apps",
+          name: "workflow-help",
           sourceRootPath: skillRootPath,
           sourceType: "builtin",
         },

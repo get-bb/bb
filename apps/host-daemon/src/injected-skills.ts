@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { resolveDataDirSkillsRootPath } from "@bb/config/app-storage-paths";
+import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 
@@ -103,7 +103,6 @@ interface ClaudePluginManifest {
 }
 
 interface CatalogSkillEntry {
-  applicationId: string | null;
   description: string;
   name: string;
   sourceRootPath: string;
@@ -312,8 +311,6 @@ function hashCollectedTrees(trees: readonly CollectedSkillTree[]): string {
     hash.update("\0");
     hash.update(tree.source.sourceType);
     hash.update("\0");
-    hash.update(tree.source.applicationId ?? "");
-    hash.update("\0");
     hash.update(tree.source.sourceRootPath);
     for (const file of tree.files) {
       hash.update("\0file\0");
@@ -362,7 +359,6 @@ function createCatalogFile(args: CreateCatalogFileArgs): CatalogFile {
     catalogHash: args.catalogHash,
     generatedAt: new Date().toISOString(),
     skills: args.trees.map((tree) => ({
-      applicationId: tree.source.applicationId,
       description: tree.source.description,
       name: tree.source.name,
       sourceRootPath: tree.source.sourceRootPath,
@@ -490,7 +486,6 @@ export async function stageInjectedSkillSources(
     } catch (error) {
       logger.warn(
         {
-          applicationId: source.applicationId,
           name: source.name,
           sourceRootPath: source.sourceRootPath,
           sourceType: source.sourceType,

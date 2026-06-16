@@ -9,11 +9,10 @@ import {
   type UpdateThreadScheduleInput,
 } from "@bb/db";
 import {
-  createThreadScheduleRequestSchema,
+  publicApiRoutes,
   typedRoutes,
-  updateThreadScheduleRequestSchema,
-  type CreateThreadScheduleRequest,
   type PublicApiSchema,
+  type ResolvedCreateThreadScheduleRequest,
   type UpdateThreadScheduleConfigRequest,
   type UpdateThreadScheduleEnabledRequest,
   type UpdateThreadScheduleRequest,
@@ -66,11 +65,11 @@ function computeNextFireAt(values: ScheduleTimingValues): number {
 }
 
 function resolveCreateThreadScheduleValues(
-  payload: CreateThreadScheduleRequest,
+  payload: ResolvedCreateThreadScheduleRequest,
 ): CreateThreadScheduleValues {
   return {
     name: payload.name,
-    enabled: payload.enabled ?? true,
+    enabled: payload.enabled,
     cron: payload.cron,
     timezone: payload.timezone,
     prompt: payload.prompt,
@@ -171,8 +170,9 @@ export function registerThreadScheduleRoutes(app: Hono, deps: AppDeps): void {
   const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
+  const routes = publicApiRoutes.threads;
 
-  get("/threads/:id/schedules", (context) => {
+  get(routes.listSchedules, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
       listThreadSchedulesByThread(deps.db, thread.id).map(
@@ -181,90 +181,78 @@ export function registerThreadScheduleRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  post(
-    "/threads/:id/schedules",
-    createThreadScheduleRequestSchema,
-    (context, payload) => {
-      const thread = requirePublicThread(deps.db, context.req.param("id"));
-      const values = resolveCreateThreadScheduleValues(payload);
-      if (values.enabled && thread.archivedAt !== null) {
-        throw new ApiError(
-          409,
-          "invalid_request",
-          ARCHIVED_THREAD_SCHEDULE_ENABLE_MESSAGE,
-        );
-      }
-      try {
-        validateScheduleDefinition(values);
-        const schedule = createThreadSchedule(deps.db, deps.hub, {
-          projectId: thread.projectId,
-          threadId: thread.id,
-          name: values.name,
-          enabled: values.enabled,
-          cron: values.cron,
-          timezone: values.timezone,
-          prompt: values.prompt,
-          nextFireAt: computeNextFireAt(values),
-        });
-        return context.json(toThreadScheduleResponse(schedule), 201);
-      } catch (error) {
-        translateThreadScheduleWriteError(error);
-      }
-    },
-  );
-
-  patch(
-    "/threads/:id/schedules/:scheduleId",
-    updateThreadScheduleRequestSchema,
-    (context, payload) => {
-      const thread = requirePublicThread(deps.db, context.req.param("id"));
-      const current = requireThreadSchedule(deps, {
+  post(routes.createSchedule, (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const values = resolveCreateThreadScheduleValues(payload);
+    if (values.enabled && thread.archivedAt !== null) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        ARCHIVED_THREAD_SCHEDULE_ENABLE_MESSAGE,
+      );
+    }
+    try {
+      validateScheduleDefinition(values);
+      const schedule = createThreadSchedule(deps.db, deps.hub, {
+        projectId: thread.projectId,
         threadId: thread.id,
-        scheduleId: context.req.param("scheduleId"),
+        name: values.name,
+        enabled: values.enabled,
+        cron: values.cron,
+        timezone: values.timezone,
+        prompt: values.prompt,
+        nextFireAt: computeNextFireAt(values),
       });
+      return context.json(toThreadScheduleResponse(schedule), 201);
+    } catch (error) {
+      translateThreadScheduleWriteError(error);
+    }
+  });
+
+  patch(routes.updateSchedule, (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const current = requireThreadSchedule(deps, {
+      threadId: thread.id,
+      scheduleId: context.req.param("scheduleId"),
+    });
+    if (
+      isThreadScheduleEnabledUpdate(payload) &&
+      payload.enabled &&
+      thread.archivedAt !== null
+    ) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        ARCHIVED_THREAD_SCHEDULE_ENABLE_MESSAGE,
+      );
+    }
+
+    try {
       if (
         isThreadScheduleEnabledUpdate(payload) &&
-        payload.enabled &&
-        thread.archivedAt !== null
+        payload.enabled === current.enabled
       ) {
-        throw new ApiError(
-          409,
-          "invalid_request",
-          ARCHIVED_THREAD_SCHEDULE_ENABLE_MESSAGE,
-        );
+        return context.json(toThreadScheduleResponse(current));
       }
-
-      try {
-        if (
-          isThreadScheduleEnabledUpdate(payload) &&
-          payload.enabled === current.enabled
-        ) {
-          return context.json(toThreadScheduleResponse(current));
-        }
-        const updateInput = isThreadScheduleEnabledUpdate(payload)
-          ? buildThreadScheduleEnabledUpdateInput({ current, payload })
-          : buildThreadScheduleConfigUpdateInput({ current, payload });
-        const updated = updateThreadSchedule(
-          deps.db,
-          deps.hub,
-          current.id,
-          updateInput,
-        );
-        if (!updated) {
-          throw new ApiError(
-            404,
-            "invalid_request",
-            "Thread schedule not found",
-          );
-        }
-        return context.json(toThreadScheduleResponse(updated));
-      } catch (error) {
-        translateThreadScheduleWriteError(error);
+      const updateInput = isThreadScheduleEnabledUpdate(payload)
+        ? buildThreadScheduleEnabledUpdateInput({ current, payload })
+        : buildThreadScheduleConfigUpdateInput({ current, payload });
+      const updated = updateThreadSchedule(
+        deps.db,
+        deps.hub,
+        current.id,
+        updateInput,
+      );
+      if (!updated) {
+        throw new ApiError(404, "invalid_request", "Thread schedule not found");
       }
-    },
-  );
+      return context.json(toThreadScheduleResponse(updated));
+    } catch (error) {
+      translateThreadScheduleWriteError(error);
+    }
+  });
 
-  del("/threads/:id/schedules/:scheduleId", (context) => {
+  del(routes.deleteSchedule, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const schedule = requireThreadSchedule(deps, {
       threadId: thread.id,

@@ -1,8 +1,4 @@
-import {
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useMemo, useRef, useState } from "react";
 import type {
   TimelineConversationAttachments,
   TimelineRowBase,
@@ -12,6 +8,7 @@ import type { PromptTextMention, ThreadChildOrigin } from "@bb/domain";
 import { cn } from "@/lib/utils";
 import { MarkdownPreview } from "../../ui/markdown-preview.js";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { computeMutedPrefixLength } from "./compute-muted-prefix-length.js";
 import type { TimelineTitleLinkResolver } from "./TimelineTitleView.js";
 import type {
@@ -60,6 +57,7 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   childOrigin: ThreadChildOrigin | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
+  resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
@@ -127,6 +125,7 @@ interface UserConversationMessageProps {
   mentions: readonly PromptTextMention[];
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
+  resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
@@ -148,6 +147,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
 
 interface CollapsibleMessageTextProps {
   mentions: readonly PromptTextMention[];
+  resolveMentionLink?: PromptMentionLinkResolver;
   text: string;
   /**
    * When set, the first `mutePrefixLength` characters of `text` are rendered
@@ -163,6 +163,7 @@ function splitPreWrappedLines(text: string): string[] {
 
 function CollapsibleMessageText({
   mentions,
+  resolveMentionLink,
   text,
   mutePrefixLength,
 }: CollapsibleMessageTextProps) {
@@ -223,6 +224,7 @@ function CollapsibleMessageText({
       >
         {renderMentionTextSegments({
           mentions: safeRenderedBody.mentions,
+          resolveMentionLink,
           text: safeRenderedBody.text,
         })}
         {isExpanded && isTruncated ? (
@@ -247,6 +249,7 @@ function UserConversationMessage({
   mentions,
   onOpenLocalFileLink,
   projectId,
+  resolveMentionLink,
   resolveSegmentLinkHref,
   senderThreadId,
   senderThreadTitle,
@@ -267,6 +270,7 @@ function UserConversationMessage({
         mentions={bodyMentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
+        resolveMentionLink={resolveMentionLink}
         resolveSegmentLinkHref={resolveSegmentLinkHref}
         sourceKind="agent"
         sourceName={senderThreadTitle ?? "Agent"}
@@ -291,6 +295,7 @@ function UserConversationMessage({
         mentions={bodyMentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
+        resolveMentionLink={resolveMentionLink}
         resolveSegmentLinkHref={resolveSegmentLinkHref}
         sourceKind="system"
         sourceName="BB"
@@ -320,6 +325,7 @@ function UserConversationMessage({
           {messageText ? (
             <CollapsibleMessageText
               mentions={mentions}
+              resolveMentionLink={resolveMentionLink}
               text={text}
               mutePrefixLength={mutePrefixLength || undefined}
             />
@@ -436,6 +442,7 @@ export function ConversationMessageContent(
         mentions={props.mentions}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
+        resolveMentionLink={props.resolveMentionLink}
         resolveSegmentLinkHref={props.resolveSegmentLinkHref}
         senderThreadId={props.senderThreadId}
         senderThreadTitle={props.senderThreadTitle}

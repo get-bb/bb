@@ -30,7 +30,6 @@ describe.concurrent("cross-provider and multi-thread scenarios", () => {
         });
 
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId: threadA,
           projectId: "test-project",
@@ -39,7 +38,6 @@ describe.concurrent("cross-provider and multi-thread scenarios", () => {
         });
 
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId: threadB,
           projectId: "test-project",
@@ -107,7 +105,6 @@ describe.concurrent("cross-provider and multi-thread scenarios", () => {
         });
 
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId: codexThread,
           projectId: "test-project",
@@ -116,7 +113,6 @@ describe.concurrent("cross-provider and multi-thread scenarios", () => {
         });
 
         await ctx.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId: claudeThread,
           projectId: "test-project",
@@ -188,7 +184,6 @@ describe.concurrent("multi-provider resume scenarios", () => {
       });
       const [codexStart, claudeStart] = await Promise.all([
         ctx1.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId: codexThreadId1,
           projectId: "test-project",
@@ -196,7 +191,6 @@ describe.concurrent("multi-provider resume scenarios", () => {
           options: codexOptions,
         }),
         ctx1.runtime.startThread({
-          sessionKind: "thread",
           environmentId: "env-1",
           threadId: claudeThreadId1,
           projectId: "test-project",

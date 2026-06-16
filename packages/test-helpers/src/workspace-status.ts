@@ -39,6 +39,7 @@ export function makeWorkspaceStatus(
 ): WorkspaceStatus {
   return {
     workingTree: makeWorkspaceWorkingTree(),
+    checkout: { kind: "branch", branchName: "main", headSha: null },
     branch: { currentBranch: "main", defaultBranch: "main" },
     mergeBase: null,
     ...overrides,

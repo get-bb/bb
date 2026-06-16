@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom } from "jotai";
 import type {
   ThreadTimelineForkMessageHandler,
   ThreadTimelineSideChatMessageHandler,
@@ -10,10 +10,12 @@ import type {
   TimelineTitleActionResolver,
 } from "@/components/thread/timeline";
 import {
+  isActiveTerminalSessionStatus,
   resolveEnvironmentMergeBaseBranch,
   type ThreadListEntry,
   type ThreadWithRuntime,
 } from "@bb/domain";
+import type { TerminalSession } from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
@@ -27,19 +29,19 @@ import { useSendThreadMessage } from "../../hooks/mutations/thread-runtime-mutat
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import {
   useEnvironment,
+  useEnvironmentPullRequest,
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
 import {
   getLatestPendingInteraction,
-  useApps,
   useProjectThreadSubset,
   useThread,
-  useThreadComposerBootstrap,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
   useThreadSchedules,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
+import { useThreadComposerBootstrap } from "../../hooks/queries/thread-composer-bootstrap-query";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -54,13 +56,13 @@ import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
-import { useExperiments } from "@/hooks/queries/system-queries";
 import {
   useCloseThreadTerminal,
   useCreateThreadTerminal,
   useThreadTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
+import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import {
   getAbsoluteDirname,
   isAbsoluteFilePathWithinRoot,
@@ -72,34 +74,36 @@ import {
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { getThreadRoutePath } from "@/lib/app-route-paths";
-import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
-import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import {
-  ThreadDetailPromptArea,
-  THREAD_DETAIL_COMPOSER_TEXTAREA_ID,
-} from "./ThreadDetailPromptArea";
+  getSurfaceAwareThreadRoutePath,
+  isRoutePath,
+  type ThreadRoutePathArgs,
+} from "@/lib/route-paths";
+import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
+import type { GitDiffPanelIntent } from "@/components/secondary-panel/git-diff/gitDiffPanelStateReducer";
+import { ThreadDetailHeader } from "./ThreadDetailHeader";
+import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
-import { selectThreadPromptWorkflowsSection } from "./threadPromptWorkflowsSection";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
-import { useThreadSecondaryPanelVisibility } from "./useThreadSecondaryPanelVisibility";
+import {
+  useThreadSecondaryPanelVisibility,
+  type ThreadSecondaryPanelHostFileOpenHandler,
+  type ThreadSecondaryPanelStorageFileOpenHandler,
+  type ThreadSecondaryPanelWorkspaceFileOpenHandler,
+} from "./useThreadSecondaryPanelVisibility";
 import type { HostConnectionNotice } from "./ThreadTimelinePane";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
-import {
-  getThreadConversationCollapsedAtom,
-  getThreadSecondaryPanelOpenAtom,
-} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   HostFilePreviewTabContent,
   ThreadStorageFilePreviewTabContent,
   WorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
-import { AppTabContent } from "@/components/secondary-panel/AppTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
@@ -109,6 +113,8 @@ import { Icon } from "@/components/ui/icon.js";
 import {
   getDesktopBrowserApi,
   isDesktopBrowserAvailable,
+  MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_WINDOW_DRAG_CLASS,
 } from "@/lib/bb-desktop";
 import {
   resolveChatLinkOpenTarget,
@@ -116,7 +122,6 @@ import {
 } from "@/lib/in-app-browser-link-preference";
 import { getFilePreviewLineRangeStart } from "@/lib/file-preview";
 import { getBrowserUrlHost } from "@/lib/browser-url";
-import { ResolvedAppIcon } from "@/components/secondary-panel/AppIcon";
 import {
   useThreadStorageBrowser,
   type ThreadStoragePathSelectHandler,
@@ -130,9 +135,15 @@ import { useThreadReadTracking } from "./useThreadReadTracking";
 import { useThreadUnreadDividerState } from "./useThreadUnreadDividerState";
 import { useThreadTimelinePages } from "./useThreadTimelinePages";
 import {
+  buildTerminalSyncedSecondaryFileTabs,
+  findActiveTerminalIdInSecondaryFileTabs,
+  syncTerminalTabsInFixedPanelState,
+} from "./threadTerminalTabs";
+import {
   buildOpenInEditorHandler,
   resolveWorkspaceChangedFileOpenTarget,
   resolveThreadLocalWorkspaceRootPath,
+  resolveThreadWorkspacePreviewRootPath,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
 import {
@@ -144,13 +155,14 @@ import type {
   MarkdownLocalFileLinkRouting,
 } from "@/components/ui/markdown-link-routing";
 import {
-  useFixedPanelTabsSecondaryPanelUrlSync,
   useFixedPanelTabsState,
   useFixedPanelTabsStorageMaintenance,
   useRemoveFixedRightTerminalTab,
   useSetFixedRightTerminalActiveTerminal,
   useTouchFixedPanelTabsState,
+  useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
+import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   buildParentSelectorOptions,
   isRootThread,
@@ -168,20 +180,50 @@ import {
   useSetThreadSecondaryPanelSelection,
   useToggleThreadSecondaryPanelSelection,
 } from "./threadSecondaryPanelSelection";
-import { useAppRoute } from "@/hooks/useAppRoute";
+import { useRouteState } from "@/hooks/useRouteState";
 import { resolveThreadComposerBootstrapReady } from "./threadDetailComposerBootstrapState";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
+const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 
 type MergeBasePickerOpenChangeHandler = NonNullable<
   ContextBannerMergeBaseConfig["onPickerOpenChange"]
 >;
 type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
+type NullableSecondaryPanelChangeHandler = (
+  panel: ThreadSecondaryPanelTab | null,
+) => void;
+type OpenInEditorHandler = NonNullable<
+  ReturnType<typeof buildOpenInEditorHandler>
+>;
+type OpenFilePreviewHandler = (relativePath: string) => void;
 
 interface RightPanelFileTabIconProps {
   path: string;
+}
+
+interface ThreadDetailViewPageProps {
+  surface: "page";
+}
+
+interface ThreadDetailViewPopoutProps {
+  onPopoutHide: () => void;
+  onPopoutNewQuickThread: () => void;
+  onPopoutOpenInMain: (thread: ThreadRoutePathArgs) => void;
+  surface: "popout";
+}
+
+type ThreadDetailViewProps =
+  | ThreadDetailViewPageProps
+  | ThreadDetailViewPopoutProps;
+
+interface PopoutThreadHeaderProps {
+  onHide: () => void;
+  onNewQuickThread: () => void;
+  onOpenInMain: () => void;
+  threadTitle: string;
 }
 
 function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
@@ -192,6 +234,61 @@ function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
       className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
       aria-hidden
     />
+  );
+}
+
+function PopoutThreadHeader({
+  onHide,
+  onNewQuickThread,
+  onOpenInMain,
+  threadTitle,
+}: PopoutThreadHeaderProps) {
+  const buttonClassName = [
+    "inline-flex items-center justify-center text-muted-foreground",
+    "transition-colors hover:bg-state-hover hover:text-foreground",
+    HEADER_ICON_BUTTON_CLASS,
+    MACOS_APP_REGION_NO_DRAG_CLASS,
+  ].join(" ");
+
+  return (
+    <div
+      className={[
+        MACOS_WINDOW_DRAG_CLASS,
+        "flex h-10 shrink-0 items-center gap-1",
+        "border-b border-border-seam-vertical px-2",
+      ].join(" ")}
+    >
+      <button
+        type="button"
+        className={buttonClassName}
+        aria-label="Hide popout"
+        title="Hide popout"
+        onClick={onHide}
+      >
+        <Icon name="X" />
+      </button>
+      <p className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">
+        {threadTitle}
+      </p>
+      <button
+        type="button"
+        className={buttonClassName}
+        aria-label="New quick thread"
+        title="New quick thread"
+        onClick={onNewQuickThread}
+      >
+        <Icon name="EditFile" />
+      </button>
+      <button
+        type="button"
+        className={buttonClassName}
+        aria-label="Open in main app"
+        title="Open in main app"
+        onClick={onOpenInMain}
+      >
+        <Icon name="ExternalLink" />
+      </button>
+    </div>
   );
 }
 
@@ -206,21 +303,6 @@ export interface ResolveHostFilePreviewLinkRootPathArgs {
   baseDir: string | undefined;
   threadStorageRootPath: string | null;
   workspaceRootPath: string | null;
-}
-
-function focusThreadDetailComposer(): void {
-  window.requestAnimationFrame(() => {
-    const composer = document.getElementById(
-      THREAD_DETAIL_COMPOSER_TEXTAREA_ID,
-    );
-    if (!(composer instanceof HTMLTextAreaElement)) {
-      return;
-    }
-
-    composer.focus();
-    const cursor = composer.value.length;
-    composer.setSelectionRange(cursor, cursor);
-  });
 }
 
 function buildHostConnectionNotice(
@@ -307,23 +389,20 @@ export function resolveHostFilePreviewLinkRootPath({
   return null;
 }
 
-export function ThreadDetailView() {
-  const { projectId, threadId } = useAppRoute();
+export function ThreadDetailView(props: ThreadDetailViewProps) {
+  const { projectId, threadId } = useRouteState();
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
   const fixedPanelTabsState = useFixedPanelTabsState(threadId);
-  const isPersistedSecondaryPanelOpen = useAtomValue(
-    getThreadSecondaryPanelOpenAtom(threadId),
-  );
-  const setPersistedSecondaryPanelOpen = useSetAtom(
-    getThreadSecondaryPanelOpenAtom(threadId),
-  );
+  const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
+  const isPersistedSecondaryPanelOpenForSurface =
+    props.surface === "popout" ? false : isPersistedSecondaryPanelOpen;
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
   });
   const openFixedSecondaryTab = getOpenFixedSecondaryTab({
     activeFixedSecondaryTab,
-    isSecondaryPanelOpen: isPersistedSecondaryPanelOpen,
+    isSecondaryPanelOpen: isPersistedSecondaryPanelOpenForSurface,
   });
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
@@ -331,20 +410,20 @@ export function ThreadDetailView() {
   const setActiveFixedTerminal =
     useSetFixedRightTerminalActiveTerminal(threadId);
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(threadId);
+  const updateFixedPanelTabsState = useUpdateFixedPanelTabsState(threadId);
   const setThreadSecondaryPanel = useSetThreadSecondaryPanelSelection(threadId);
-  const toggleDefaultPersistedSecondaryPanel =
-    useToggleThreadSecondaryPanelSelection(threadId);
-  const setThreadSecondaryPanelFromUrl =
-    useCallback<SecondaryPanelChangeHandler>(
+  const setThreadSecondaryPanelForSurface =
+    useCallback<NullableSecondaryPanelChangeHandler>(
       (panel) => {
+        if (props.surface === "popout") {
+          return;
+        }
         setThreadSecondaryPanel(panel);
       },
-      [setThreadSecondaryPanel],
+      [props.surface, setThreadSecondaryPanel],
     );
-  useFixedPanelTabsSecondaryPanelUrlSync(
-    threadId,
-    setThreadSecondaryPanelFromUrl,
-  );
+  const toggleDefaultPersistedSecondaryPanel =
+    useToggleThreadSecondaryPanelSelection(threadId);
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "");
   const hasThreadDetailBootstrapSettled =
     threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
@@ -422,17 +501,8 @@ export function ThreadDetailView() {
     filePreviewEnabled: false,
     threadId,
   });
-  const appsQuery = useApps({
-    enabled: thread !== undefined,
-  });
+  const terminalsListQuery = useThreadTerminals(threadId ?? "");
   const {
-    activateAppTab,
-    activateBrowserTab,
-    activateNewTab,
-    activateHostFileTab,
-    activateStorageFileTab,
-    activateWorkspaceFileTab,
-    activeAppId,
     activeBrowserTab,
     activeHostFileLineRange,
     activeHostFilePath,
@@ -446,20 +516,12 @@ export function ThreadDetailView() {
     activateSideChatTab,
     browserTabs,
     clearActiveFileTabs,
-    closeAppTab,
-    closeBrowserTab,
-    closeHostFileTab,
-    closeNewTab,
+    activateTab,
+    closeTab,
     closeSideChatTab,
-    closeStorageFileTab,
-    closeWorkspaceFileTab,
     isNewTabActive,
-    openBrowserTab,
-    openNewTab,
-    openHostFile: openPersistedHostFile,
+    openTab,
     openSideChat,
-    openStorageFile: openPersistedStorageFile,
-    openWorkspaceFile: openPersistedWorkspaceFile,
     orderedSecondaryFileTabs,
     reorderFileTab,
     selectFileSearchResult,
@@ -467,11 +529,35 @@ export function ThreadDetailView() {
     sideChatTabs,
     updateBrowserTab,
   } = useThreadFileTabs({
-    apps: appsQuery.data,
     threadId,
     environmentId: thread?.environmentId,
     storageFiles: threadStorageFiles?.files,
+    terminalSessions: terminalsListQuery.data?.sessions,
   });
+  const openPersistedWorkspaceFile =
+    useCallback<ThreadSecondaryPanelWorkspaceFileOpenHandler>(
+      (file) => openTab({ kind: "workspace-file-preview", tab: file }),
+      [openTab],
+    );
+  const openPersistedStorageFile =
+    useCallback<ThreadSecondaryPanelStorageFileOpenHandler>(
+      (file) => openTab({ kind: "thread-storage-file-preview", tab: file }),
+      [openTab],
+    );
+  const openPersistedHostFile =
+    useCallback<ThreadSecondaryPanelHostFileOpenHandler>(
+      (file) => openTab({ kind: "host-file-preview", tab: file }),
+      [openTab],
+    );
+  const openBrowserTab = useCallback(
+    (url?: string) => {
+      openTab({ kind: "browser", url: url ?? "" });
+    },
+    [openTab],
+  );
+  const openNewTab = useCallback(() => {
+    openTab({ kind: "new-tab" });
+  }, [openTab]);
   const [openLinksInAppBrowser] = useOpenLinksInAppBrowserPreference();
   // The in-app browser surface only exists on desktop; on web this stays false
   // and chat links keep their external-open behavior.
@@ -484,6 +570,9 @@ export function ThreadDetailView() {
       return;
     }
     return browserApi.onOpenTab(({ url }) => {
+      if (isRoutePath({ path: url })) {
+        return;
+      }
       openBrowserTab(url);
     });
   }, [openBrowserTab]);
@@ -533,26 +622,43 @@ export function ThreadDetailView() {
   const updateThread = useUpdateThread({
     errorMessage: "Failed to assign parent thread.",
   });
-  const terminalsListQuery = useThreadTerminals(threadId ?? "");
   const createTerminal = useCreateThreadTerminal();
   const closeTerminal = useCloseThreadTerminal();
+  const terminalSessions =
+    terminalsListQuery.data?.sessions ?? EMPTY_TERMINAL_SESSIONS;
   const activeTerminalCount = useMemo(
     () =>
-      terminalsListQuery.data?.sessions.filter(
-        (session) => session.status !== "exited",
-      ).length ?? 0,
-    [terminalsListQuery.data],
+      terminalSessions.filter((session) =>
+        isActiveTerminalSessionStatus(session.status),
+      ).length,
+    [terminalSessions],
   );
   const terminalsById = useMemo(
     () =>
       new Map(
-        (terminalsListQuery.data?.sessions ?? []).map((session) => [
-          session.id,
-          session,
-        ]),
+        terminalSessions.map((session) => [session.id, session]),
       ),
-    [terminalsListQuery.data],
+    [terminalSessions],
   );
+  const syncedOrderedSecondaryFileTabs = useMemo(
+    () =>
+      buildTerminalSyncedSecondaryFileTabs({
+        orderedTabs: orderedSecondaryFileTabs,
+        terminalSessions,
+      }),
+    [orderedSecondaryFileTabs, terminalSessions],
+  );
+  useEffect(() => {
+    if (terminalsListQuery.data === undefined) {
+      return;
+    }
+    updateFixedPanelTabsState((state) =>
+      syncTerminalTabsInFixedPanelState({
+        state,
+        terminalSessions,
+      }),
+    );
+  }, [terminalSessions, terminalsListQuery.data, updateFixedPanelTabsState]);
   const hostConnectionNotice = useMemo(
     () => (thread ? buildHostConnectionNotice(thread) : null),
     [thread],
@@ -598,12 +704,37 @@ export function ThreadDetailView() {
   });
   const environmentMergeBaseBranch =
     resolveEnvironmentMergeBaseBranch(environment);
+  const [gitDiffPanelIntent, setGitDiffPanelIntent] =
+    useState<GitDiffPanelIntent | null>(null);
+  const requestGitDiffFileFocus = useCallback(
+    (path: string) => {
+      setGitDiffPanelIntent((currentIntent) => ({
+        environmentId: thread?.environmentId ?? null,
+        kind: "scroll-to-file",
+        path,
+        requestId: (currentIntent?.requestId ?? 0) + 1,
+        threadId: thread?.id ?? null,
+      }));
+    },
+    [thread?.environmentId, thread?.id],
+  );
+  const requestGitDiffCommitSelection = useCallback(
+    (sha: string) => {
+      setGitDiffPanelIntent((currentIntent) => ({
+        environmentId: thread?.environmentId ?? null,
+        kind: "select-commit",
+        requestId: (currentIntent?.requestId ?? 0) + 1,
+        sha,
+        threadId: thread?.id ?? null,
+      }));
+    },
+    [thread?.environmentId, thread?.id],
+  );
   const {
     closeThreadSecondaryPanel,
     defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
     isLoadingMergeBaseBranchOptions,
     mergeBaseBranchOptions,
-    mergeBaseBranchOptionsTruncated,
     mergeBaseRemoteBranchOptions,
     openCommitDiff: openPersistedCommitDiff,
     openDiffFile: openPersistedDiffFile,
@@ -621,7 +752,9 @@ export function ThreadDetailView() {
       ? (thread?.environmentId ?? undefined)
       : undefined,
     mergeBaseBranchOptionsEnabled: hasRequestedMergeBaseOptions,
-    setThreadSecondaryPanel,
+    onRequestCommitDiffSelection: requestGitDiffCommitSelection,
+    onRequestDiffFileFocus: requestGitDiffFileFocus,
+    setThreadSecondaryPanel: setThreadSecondaryPanelForSurface,
   });
   const {
     closePanel: closeSecondaryPanel,
@@ -636,7 +769,7 @@ export function ThreadDetailView() {
     togglePanel: toggleSecondaryPanel,
   } = useThreadSecondaryPanelVisibility({
     closePersistedPanel: closeThreadSecondaryPanel,
-    isPersistedOpen: isPersistedSecondaryPanelOpen,
+    isPersistedOpen: isPersistedSecondaryPanelOpenForSurface,
     isCompactViewport: renderSecondaryPanelAsDrawer,
     openPersistedCommitDiff,
     openPersistedDiffFile,
@@ -645,6 +778,7 @@ export function ThreadDetailView() {
     openPersistedPanel: openPersistedSecondaryPanel,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
+    surface: props.surface,
     threadId,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
@@ -666,6 +800,8 @@ export function ThreadDetailView() {
   const [storedConversationCollapsed, setStoredConversationCollapsed] = useAtom(
     getThreadConversationCollapsedAtom(threadId),
   );
+  const isConversationCollapsed =
+    props.surface === "popout" ? false : storedConversationCollapsed;
   // The collapse preference only applies while the panel is open on a wide
   // viewport; ThreadDetailSecondaryContent gates it (there is nothing to expand
   // into otherwise) and surfaces the toggle on the seam arrow.
@@ -702,8 +838,9 @@ export function ThreadDetailView() {
         if (!targetProjectId) return null;
         return () =>
           navigate(
-            getThreadRoutePath({
+            getSurfaceAwareThreadRoutePath({
               projectId: targetProjectId,
+              surface: props.surface,
               threadId: resource.threadId,
             }),
           );
@@ -730,6 +867,7 @@ export function ThreadDetailView() {
       openStorageFile,
       openWorkspaceFile,
       projectId,
+      props.surface,
       thread?.environmentId,
     ],
   );
@@ -740,43 +878,34 @@ export function ThreadDetailView() {
   const handleOpenBrowser = useCallback(() => {
     openBrowserTab();
   }, [openBrowserTab]);
-  const handleCreateAppPromptPrefill = useCallback(() => {
-    closeNewTab();
-    closeSecondaryPanel();
-    focusThreadDetailComposer();
-  }, [closeNewTab, closeSecondaryPanel]);
   const handleStartTerminal = useCallback(() => {
     if (!canCreateTerminal || createTerminal.isPending || !threadId) {
       return;
     }
-    createTerminal.mutate(
-      {
+    const newTab = createNewTabFixedPanelTab();
+    void createTerminal
+      .mutateAsync({
         threadId,
         cols: DEFAULT_TERMINAL_COLS,
         rows: DEFAULT_TERMINAL_ROWS,
-      },
-      {
-        onSuccess: (session) => {
-          closeNewTab();
-          setPersistedSecondaryPanelOpen(true);
-          setActiveFixedTerminal(session.id);
-        },
-      },
-    );
+      })
+      .then((session) => {
+        closeTab(newTab.id);
+        setActiveFixedTerminal(session.id);
+      })
+      .catch(() => undefined);
   }, [
     canCreateTerminal,
-    closeNewTab,
+    closeTab,
     createTerminal,
     setActiveFixedTerminal,
-    setPersistedSecondaryPanelOpen,
     threadId,
   ]);
   const handleActivateTerminalTab = useCallback(
     (terminalId: string) => {
-      setPersistedSecondaryPanelOpen(true);
       setActiveFixedTerminal(terminalId);
     },
-    [setActiveFixedTerminal, setPersistedSecondaryPanelOpen],
+    [setActiveFixedTerminal],
   );
   const handleCloseTerminalTab = useCallback(
     (terminalId: string) => {
@@ -817,163 +946,125 @@ export function ThreadDetailView() {
     },
     [openSecondaryPanelCommitDiff],
   );
-  const appsById = useMemo(() => {
-    const entries = new Map(
-      (appsQuery.data ?? []).map((app) => [app.applicationId, app]),
-    );
-    return entries;
-  }, [appsQuery.data]);
   const fileTabs = useMemo<SecondaryPanelFileTab[] | undefined>(() => {
     const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
-    const tabs = orderedSecondaryFileTabs.map((tab): SecondaryPanelFileTab => {
-      switch (tab.kind) {
-        case "app": {
-          const app = appsById.get(tab.applicationId);
-          const appName = app?.name ?? tab.applicationId;
-          return {
-            id: tab.id,
-            filename: appName,
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: app ? (
-              <ResolvedAppIcon
-                icon={app.icon}
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-              />
-            ) : (
-              <Icon
-                name="AppWindow"
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                aria-hidden
-              />
-            ),
-            statusLabel: null,
-            onSelect: () => activateAppTab(tab.applicationId),
-            onClose: () => closeAppTab(tab.applicationId),
-          };
+    const tabs = syncedOrderedSecondaryFileTabs.map(
+      (tab): SecondaryPanelFileTab => {
+        switch (tab.kind) {
+          case "browser": {
+            const browserLabel =
+              tab.title ??
+              (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
+            return {
+              id: tab.id,
+              filename: browserLabel.length > 0 ? browserLabel : "Browser",
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <Icon
+                  name="Globe"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => activateTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
+          }
+          case "terminal": {
+            const session = terminalsById.get(tab.terminalId);
+            return {
+              id: tab.id,
+              filename: session?.title ?? "Terminal",
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <Icon
+                  name="Terminal"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel:
+                session === undefined || session.status === "running"
+                  ? null
+                  : terminalStatusLabel(session),
+              onSelect: () => handleActivateTerminalTab(tab.terminalId),
+              onClose: () => handleCloseTerminalTab(tab.terminalId),
+            };
+          }
+          case "workspace-file-preview":
+            return {
+              id: tab.id,
+              filename: filenameOf(tab.path),
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: tab.statusLabel,
+              onSelect: () => activateTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
+          case "host-file-preview":
+            return {
+              id: tab.id,
+              filename: filenameOf(tab.path),
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: null,
+              onSelect: () => activateTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
+          case "thread-storage-file-preview":
+            return {
+              id: tab.id,
+              filename: filenameOf(tab.path),
+              isActive: tab.id === activeFixedSecondaryTabId,
+              isPinned: tab.isPinned,
+              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+              statusLabel: null,
+              onSelect: () => activateTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
+          case "new-tab":
+            return {
+              id: tab.id,
+              filename: "New tab",
+              isActive: tab.id === activeFixedSecondaryTabId,
+              leadingVisual: (
+                <Icon
+                  name="NewTab"
+                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                  aria-hidden
+                />
+              ),
+              statusLabel: null,
+              onSelect: () => activateTab(tab.id),
+              onClose: () => closeTab(tab.id),
+            };
+          case "side-chat":
+            return {
+              id: tab.id,
+              filename: tab.title,
+              isActive: tab.id === activeSideChatTabId,
+              leadingVisual: (
+                <Icon name="SideChat" className="size-3.5" aria-hidden />
+              ),
+              statusLabel: null,
+              onSelect: () => activateSideChatTab(tab.id),
+              onClose: () => closeSideChatTab(tab.id),
+            };
         }
-        case "browser": {
-          const browserLabel =
-            tab.title ?? (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
-          return {
-            id: tab.id,
-            filename: browserLabel.length > 0 ? browserLabel : "Browser",
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: (
-              <Icon
-                name="Globe"
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                aria-hidden
-              />
-            ),
-            statusLabel: null,
-            onSelect: () => activateBrowserTab(tab.id),
-            onClose: () => closeBrowserTab(tab.id),
-          };
-        }
-        case "terminal": {
-          const session = terminalsById.get(tab.terminalId);
-          return {
-            id: tab.id,
-            filename: session?.title ?? "Terminal",
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: (
-              <Icon
-                name="Terminal"
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                aria-hidden
-              />
-            ),
-            statusLabel:
-              session === undefined || session.status === "running"
-                ? null
-                : terminalStatusLabel(session),
-            onSelect: () => handleActivateTerminalTab(tab.terminalId),
-            onClose: () => handleCloseTerminalTab(tab.terminalId),
-          };
-        }
-        case "workspace-file-preview":
-          return {
-            id: tab.id,
-            filename: filenameOf(tab.path),
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-            statusLabel: tab.statusLabel,
-            onSelect: () => activateWorkspaceFileTab(tab.path),
-            onClose: () => closeWorkspaceFileTab(tab.path),
-          };
-        case "host-file-preview":
-          return {
-            id: tab.id,
-            filename: filenameOf(tab.path),
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-            statusLabel: null,
-            onSelect: () => activateHostFileTab(tab.path),
-            onClose: () => closeHostFileTab(tab.path),
-          };
-        case "thread-storage-file-preview":
-          return {
-            id: tab.id,
-            filename: filenameOf(tab.path),
-            isActive: tab.id === activeFixedSecondaryTabId,
-            isPinned: tab.isPinned,
-            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-            statusLabel: null,
-            onSelect: () => activateStorageFileTab(tab.path),
-            onClose: () => closeStorageFileTab(tab.path),
-          };
-        case "new-tab":
-          return {
-            id: tab.id,
-            filename: "New tab",
-            isActive: tab.id === activeFixedSecondaryTabId,
-            leadingVisual: (
-              <Icon
-                name="NewTab"
-                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                aria-hidden
-              />
-            ),
-            statusLabel: null,
-            onSelect: activateNewTab,
-            onClose: closeNewTab,
-          };
-        case "side-chat":
-          return {
-            id: tab.id,
-            filename: tab.title,
-            isActive: tab.id === activeSideChatTabId,
-            leadingVisual: (
-              <Icon name="SideChat" className="size-3.5" aria-hidden />
-            ),
-            statusLabel: null,
-            onSelect: () => activateSideChatTab(tab.id),
-            onClose: () => closeSideChatTab(tab.id),
-          };
-      }
-    });
+      },
+    );
     return tabs.length > 0 ? tabs : undefined;
   }, [
-    activateAppTab,
-    activateBrowserTab,
-    activateNewTab,
-    activateHostFileTab,
-    activateStorageFileTab,
-    activateWorkspaceFileTab,
+    activateTab,
     activateSideChatTab,
     activeFixedSecondaryTabId,
     activeSideChatTabId,
-    closeAppTab,
-    closeBrowserTab,
-    closeHostFileTab,
-    closeNewTab,
+    closeTab,
     closeSideChatTab,
-    closeStorageFileTab,
-    closeWorkspaceFileTab,
     handleActivateTerminalTab,
     handleCloseTerminalTab,
-    orderedSecondaryFileTabs,
-    appsById,
+    syncedOrderedSecondaryFileTabs,
     terminalsById,
   ]);
   const requestedMergeBaseBranch =
@@ -997,6 +1088,10 @@ export function ThreadDetailView() {
     workStatusResponse?.outcome === "unavailable"
       ? workStatusResponse.failure
       : undefined;
+  const pullRequestQuery = useEnvironmentPullRequest(thread?.environmentId, {
+    enabled: canUseGitUi && environment !== undefined,
+  });
+  const pullRequest = pullRequestQuery.data?.pullRequest ?? null;
   const workspaceBranch = workspaceStatus?.branch;
   const workspaceChangedFilesSection = useMemo(
     () => selectWorkspaceChangedFilesSection(workspaceStatus),
@@ -1025,6 +1120,9 @@ export function ThreadDetailView() {
     environment,
     threadEnvironmentIsLocal,
   });
+  const workspacePreviewRootPath = resolveThreadWorkspacePreviewRootPath({
+    environment,
+  });
   const {
     canOpenPreferredDirectoryTarget,
     canOpenPreferredFileTarget,
@@ -1039,8 +1137,9 @@ export function ThreadDetailView() {
   const parentThreadSection: ThreadPromptParentThreadSection | null =
     useMemo(() => {
       if (!thread?.parentThreadId) return null;
-      const href = getThreadRoutePath({
+      const href = getSurfaceAwareThreadRoutePath({
         projectId: thread.projectId,
+        surface: props.surface,
         threadId: thread.parentThreadId,
       });
       // A fork links back as "Forked from …", a side chat as "Side chat of …";
@@ -1078,6 +1177,7 @@ export function ThreadDetailView() {
       };
     }, [
       parentThread,
+      props.surface,
       thread?.childOrigin,
       thread?.parentThreadId,
       thread?.projectId,
@@ -1097,22 +1197,15 @@ export function ThreadDetailView() {
         .map((entry) => ({
           id: entry.id,
           title: getThreadDisplayTitle(entry),
-          href: getThreadRoutePath({
+          href: getSurfaceAwareThreadRoutePath({
             projectId: entry.projectId,
+            surface: props.surface,
             threadId: entry.id,
           }),
         }));
       if (activeItems.length === 0) return null;
       return { items: activeItems };
-    }, [childThreadSubsetQuery.data]);
-  const workflowsExperimentEnabled = useExperiments().workflows;
-  const workflowsSection = useMemo(
-    () =>
-      workflowsExperimentEnabled
-        ? selectThreadPromptWorkflowsSection(timelineRows)
-        : null,
-    [timelineRows, workflowsExperimentEnabled],
-  );
+    }, [childThreadSubsetQuery.data, props.surface]);
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({
     markThreadRead,
@@ -1217,7 +1310,7 @@ export function ThreadDetailView() {
           thread?.environmentId !== null && thread?.environmentId !== undefined,
         link,
         threadStorageRootPath,
-        workspaceRootPath: localWorkspaceRootPath,
+        workspaceRootPath: workspacePreviewRootPath,
       });
 
       if (
@@ -1242,7 +1335,7 @@ export function ThreadDetailView() {
             hostFileLinksAvailable: true,
             link,
             threadStorageRootPath: resolvedThreadStorageRootPath,
-            workspaceRootPath: localWorkspaceRootPath,
+            workspaceRootPath: workspacePreviewRootPath,
           });
           handleTimelineLocalFileLinkResolution(resolvedResolution);
         })
@@ -1256,10 +1349,10 @@ export function ThreadDetailView() {
     },
     [
       handleTimelineLocalFileLinkResolution,
-      localWorkspaceRootPath,
       refetchThreadStorageFiles,
       thread?.environmentId,
       threadStorageRootPath,
+      workspacePreviewRootPath,
     ],
   );
   const handleOpenTimelineLink = useCallback<ThreadTimelineLinkHandler>(
@@ -1293,6 +1386,149 @@ export function ThreadDetailView() {
       }
     },
     [openSecondaryPanelDiffFile],
+  );
+  const metadataStorage = useMemo(
+    () => ({
+      controller: storageBrowserController,
+      filesError: threadStorageFilesError,
+      isFilesLoading: isThreadStorageFilesLoading,
+    }),
+    [
+      isThreadStorageFilesLoading,
+      storageBrowserController,
+      threadStorageFilesError,
+    ],
+  );
+  const handleOpenFileInEditor = useMemo(
+    () =>
+      buildOpenInEditorHandler({
+        rootPath: localWorkspaceRootPath,
+        canOpenPreferredTarget: canOpenPreferredFileTarget,
+        openInPreferredTarget: openPathInPreferredFileTarget,
+      }),
+    [
+      canOpenPreferredFileTarget,
+      localWorkspaceRootPath,
+      openPathInPreferredFileTarget,
+    ],
+  );
+  const handleOpenStorageFileInEditor = useMemo(
+    () =>
+      buildOpenInEditorHandler({
+        rootPath: threadEnvironmentIsLocal ? threadStorageRootPath : null,
+        canOpenPreferredTarget: canOpenPreferredFileTarget,
+        openInPreferredTarget: openPathInPreferredFileTarget,
+      }),
+    [
+      canOpenPreferredFileTarget,
+      openPathInPreferredFileTarget,
+      threadEnvironmentIsLocal,
+      threadStorageRootPath,
+    ],
+  );
+  const handleOpenHostFileInEditor = useMemo<
+    OpenInEditorHandler | undefined
+  >(() => {
+    if (!threadEnvironmentIsLocal || !canOpenPreferredFileTarget) {
+      return undefined;
+    }
+    return (path) => {
+      void openPathInPreferredFileTarget({
+        lineNumber: getFilePreviewLineRangeStart({
+          lineRange: activeHostFileLineRange,
+        }),
+        path,
+      });
+    };
+  }, [
+    activeHostFileLineRange,
+    canOpenPreferredFileTarget,
+    openPathInPreferredFileTarget,
+    threadEnvironmentIsLocal,
+  ]);
+  const workspaceFileCopyPath = activeWorkspaceFilePath
+    ? resolveAbsoluteFilePath({
+        path: activeWorkspaceFilePath,
+        rootPath: workspacePreviewRootPath,
+      })
+    : null;
+  const storageFileCopyPath = activeStorageFilePath
+    ? resolveAbsoluteFilePath({
+        path: activeStorageFilePath,
+        rootPath: threadStorageRootPath,
+      })
+    : null;
+  // Relative links inside a previewed markdown file resolve against the file's
+  // own directory, mirroring how the file's links would resolve on disk.
+  const workspaceFileLinkBaseDir = workspaceFileCopyPath
+    ? getAbsoluteDirname({ path: workspaceFileCopyPath })
+    : undefined;
+  const storageFileLinkBaseDir = storageFileCopyPath
+    ? getAbsoluteDirname({ path: storageFileCopyPath })
+    : undefined;
+  const hostFileLinkBaseDir = activeHostFilePath
+    ? getAbsoluteDirname({ path: activeHostFilePath })
+    : undefined;
+  const hostFileLinkRootPath = resolveHostFilePreviewLinkRootPath({
+    baseDir: hostFileLinkBaseDir,
+    threadStorageRootPath,
+    workspaceRootPath: workspacePreviewRootPath,
+  });
+  const workspaceMarkdownLinkRouting = useMemo(
+    () =>
+      buildMarkdownPreviewLinkRouting({
+        baseDir: workspaceFileLinkBaseDir,
+        onOpenLink: handleOpenTimelineLink,
+        onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+        rootPath: workspacePreviewRootPath,
+      }),
+    [
+      handleOpenTimelineLink,
+      handleOpenTimelineLocalFileLink,
+      workspaceFileLinkBaseDir,
+      workspacePreviewRootPath,
+    ],
+  );
+  const hostMarkdownLinkRouting = useMemo(
+    () =>
+      buildMarkdownPreviewLinkRouting({
+        baseDir: hostFileLinkBaseDir,
+        onOpenLink: handleOpenTimelineLink,
+        onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+        rootPath: hostFileLinkRootPath,
+      }),
+    [
+      handleOpenTimelineLink,
+      handleOpenTimelineLocalFileLink,
+      hostFileLinkBaseDir,
+      hostFileLinkRootPath,
+    ],
+  );
+  const storageMarkdownLinkRouting = useMemo(
+    () =>
+      buildMarkdownPreviewLinkRouting({
+        baseDir: storageFileLinkBaseDir,
+        onOpenLink: handleOpenTimelineLink,
+        onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
+        rootPath: threadStorageRootPath,
+      }),
+    [
+      handleOpenTimelineLink,
+      handleOpenTimelineLocalFileLink,
+      storageFileLinkBaseDir,
+      threadStorageRootPath,
+    ],
+  );
+  const handleOpenFilePreview = useCallback<OpenFilePreviewHandler>(
+    (relativePath) => {
+      openWorkspaceFile({
+        lineRange: null,
+        path: relativePath,
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      });
+    },
+    [openWorkspaceFile],
   );
 
   if (!projectId || !threadId) {
@@ -1346,6 +1582,9 @@ export function ThreadDetailView() {
       : undefined;
   const promptBannerMergeBaseBranch = effectiveMergeBaseBranch;
   const threadBranchName = workspaceBranch?.currentBranch ?? undefined;
+  const threadCheckoutDisplay = workspaceStatus
+    ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
+    : undefined;
   const isWorkspaceDeleted = environment?.status === "destroyed";
   const threadGitStatusDisplay = getGitStatusDisplay(workspaceStatus, {
     mergeBaseBranch,
@@ -1389,37 +1628,53 @@ export function ThreadDetailView() {
         }}
       />
     ) : undefined;
-  const timelineHeader = (
-    <ThreadDetailHeader
-      actionsMenu={threadActionsMenu}
-      childPillLabel={
-        parentThreadId
-          ? thread?.childOrigin === "fork"
-            ? "fork"
-            : thread?.childOrigin === "side-chat"
-              ? "side chat"
-              : "child"
-          : null
-      }
-      isSecondaryPanelOpen={isSecondaryPanelOpen}
-      activeTerminalCount={activeTerminalCount}
-      onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
-      onToggleSecondaryPanel={toggleSecondaryPanel}
-      threadHeaderGitActions={gitActions.threadHeaderGitActions}
-      threadTitle={threadTitle}
-      workspaceOpenButton={workspaceOpenButton}
-    />
-  );
+  const timelineHeader =
+    props.surface === "popout" ? (
+      <PopoutThreadHeader
+        threadTitle={threadTitle}
+        onHide={props.onPopoutHide}
+        onNewQuickThread={props.onPopoutNewQuickThread}
+        onOpenInMain={() => {
+          props.onPopoutOpenInMain({
+            projectId,
+            threadId: thread.id,
+          });
+        }}
+      />
+    ) : (
+      <ThreadDetailHeader
+        actionsMenu={threadActionsMenu}
+        childPillLabel={
+          parentThreadId
+            ? thread?.childOrigin === "fork"
+              ? "fork"
+              : thread?.childOrigin === "side-chat"
+                ? "side chat"
+                : "child"
+            : null
+        }
+        isSecondaryPanelOpen={isSecondaryPanelOpen}
+        activeTerminalCount={activeTerminalCount}
+        onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}
+        onToggleSecondaryPanel={toggleSecondaryPanel}
+        threadHeaderGitActions={gitActions.threadHeaderGitActions}
+        threadTitle={threadTitle}
+        workspaceOpenButton={workspaceOpenButton}
+      />
+    );
   const composerFooter = (
     <ThreadDetailPromptArea
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
-      environmentBranchName={threadBranchName}
+      environmentCheckout={threadCheckoutDisplay}
       environmentIcon={threadEnvironmentIcon ?? undefined}
       environmentLabel={threadEnvironmentDisplay?.modeLabel}
       environmentCompactLabel={threadEnvironmentDisplay?.compactModeLabel}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
+      onEscapeEmptyPrompt={
+        props.surface === "popout" ? props.onPopoutHide : undefined
+      }
       composerQueriesEnabled={hasThreadComposerBootstrapReady}
       composerQueriesStaleTime={composerHydratedDataStaleTime}
       onChangedFileClick={handleChangedFileClick}
@@ -1439,7 +1694,6 @@ export function ThreadDetailView() {
               branchRef: selectedMergeBaseBranchRef,
               options: mergeBaseBranchOptions,
               remoteOptions: mergeBaseRemoteBranchOptions,
-              optionsTruncated: mergeBaseBranchOptionsTruncated,
               optionsLoading: isLoadingMergeBaseBranchOptions,
               onChange: handleMergeBaseBranchChange,
               onPickerOpenChange: handleMergeBasePickerOpenChange,
@@ -1452,86 +1706,14 @@ export function ThreadDetailView() {
       pendingTodos={pendingTodos}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
-      workflowsSection={workflowsSection}
       thread={thread}
     />
   );
-  const metadataStorage = {
-    controller: storageBrowserController,
-    filesError: threadStorageFilesError,
-    isFilesLoading: isThreadStorageFilesLoading,
-  };
-  const handleOpenFileInEditor = buildOpenInEditorHandler({
-    rootPath: localWorkspaceRootPath,
-    canOpenPreferredTarget: canOpenPreferredFileTarget,
-    openInPreferredTarget: openPathInPreferredFileTarget,
-  });
-  const handleOpenStorageFileInEditor = buildOpenInEditorHandler({
-    rootPath: threadEnvironmentIsLocal ? threadStorageRootPath : null,
-    canOpenPreferredTarget: canOpenPreferredFileTarget,
-    openInPreferredTarget: openPathInPreferredFileTarget,
-  });
-  const handleOpenHostFileInEditor =
-    threadEnvironmentIsLocal && canOpenPreferredFileTarget
-      ? (path: string) => {
-          void openPathInPreferredFileTarget({
-            lineNumber: getFilePreviewLineRangeStart({
-              lineRange: activeHostFileLineRange,
-            }),
-            path,
-          });
-        }
-      : undefined;
-  const workspaceFileCopyPath = activeWorkspaceFilePath
-    ? resolveAbsoluteFilePath({
-        path: activeWorkspaceFilePath,
-        rootPath: environment?.path,
-      })
-    : null;
-  const storageFileCopyPath = activeStorageFilePath
-    ? resolveAbsoluteFilePath({
-        path: activeStorageFilePath,
-        rootPath: threadStorageRootPath,
-      })
-    : null;
-  // Relative links inside a previewed markdown file resolve against the file's
-  // own directory, mirroring how the file's links would resolve on disk.
-  const workspaceFileLinkBaseDir = workspaceFileCopyPath
-    ? getAbsoluteDirname({ path: workspaceFileCopyPath })
-    : undefined;
-  const storageFileLinkBaseDir = storageFileCopyPath
-    ? getAbsoluteDirname({ path: storageFileCopyPath })
-    : undefined;
-  const hostFileLinkBaseDir = activeHostFilePath
-    ? getAbsoluteDirname({ path: activeHostFilePath })
-    : undefined;
-  const hostFileLinkRootPath = resolveHostFilePreviewLinkRootPath({
-    baseDir: hostFileLinkBaseDir,
-    threadStorageRootPath,
-    workspaceRootPath: localWorkspaceRootPath,
-  });
-  const workspaceMarkdownLinkRouting = buildMarkdownPreviewLinkRouting({
-    baseDir: workspaceFileLinkBaseDir,
-    onOpenLink: handleOpenTimelineLink,
-    onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-    rootPath: environment?.path,
-  });
-  const hostMarkdownLinkRouting = buildMarkdownPreviewLinkRouting({
-    baseDir: hostFileLinkBaseDir,
-    onOpenLink: handleOpenTimelineLink,
-    onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-    rootPath: hostFileLinkRootPath,
-  });
-  const storageMarkdownLinkRouting = buildMarkdownPreviewLinkRouting({
-    baseDir: storageFileLinkBaseDir,
-    onOpenLink: handleOpenTimelineLink,
-    onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-    rootPath: threadStorageRootPath,
-  });
   const activeTerminalId =
-    activeFixedSecondaryTab?.kind === "terminal"
-      ? activeFixedSecondaryTab.terminalId
-      : null;
+    findActiveTerminalIdInSecondaryFileTabs({
+      activeTabId: activeFixedSecondaryTabId,
+      tabs: syncedOrderedSecondaryFileTabs,
+    });
   const fileTabContent = activeTerminalId ? (
     <ThreadTerminalPanel
       canCreateTerminal={canCreateTerminal}
@@ -1544,12 +1726,9 @@ export function ThreadDetailView() {
       currentThreadId={thread.id}
       focusRequest={newTabFocusRequest}
       onSelect={selectFileSearchResult}
-      onCreateAppPromptPrefill={handleCreateAppPromptPrefill}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
     />
-  ) : activeAppId ? (
-    <AppTabContent applicationId={activeAppId} threadId={thread.id} />
   ) : activeWorkspaceFilePath ? (
     <WorkspaceFilePreviewTabContent
       activePath={activeWorkspaceFilePath}
@@ -1565,6 +1744,7 @@ export function ThreadDetailView() {
   ) : activeHostFilePath ? (
     <HostFilePreviewTabContent
       activePath={activeHostFilePath}
+      copyPath={activeHostFilePath}
       environmentId={thread.environmentId}
       lineRange={activeHostFileLineRange}
       markdownLinkRouting={hostMarkdownLinkRouting}
@@ -1618,7 +1798,8 @@ export function ThreadDetailView() {
         header={timelineHeader}
         isMetadataLoading={environmentQuery.isLoading}
         isSecondaryPanelOpen={isSecondaryPanelOpen}
-        isConversationCollapsed={storedConversationCollapsed}
+        isConversationCollapsed={isConversationCollapsed}
+        surface={props.surface}
         onToggleConversationCollapse={toggleConversationCollapse}
         metadata={{
           thread,
@@ -1632,10 +1813,10 @@ export function ThreadDetailView() {
           workspaceStatus,
           workspaceStatusError: workspaceStatusError ?? null,
           workspaceUnavailable,
+          pullRequest,
           selectedMergeBaseBranch,
           mergeBaseBranchRef: selectedMergeBaseBranchRef,
           mergeBaseBranchOptions,
-          mergeBaseBranchOptionsTruncated,
           mergeBaseRemoteBranchOptions,
           isLoadingMergeBaseBranchOptions,
           threadSchedules,
@@ -1654,6 +1835,8 @@ export function ThreadDetailView() {
           canUseGitUi,
           defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
           environmentId: thread.environmentId ?? undefined,
+          gitDiffPanelIntent,
+          threadId: thread.id,
           workspaceRootPath: environment?.path,
           fileTabs,
           fileTabContent,
@@ -1667,14 +1850,7 @@ export function ThreadDetailView() {
           onOpenFileInEditor: handleOpenFileInEditor,
           onFileTabReorder: reorderFileTab,
           onOpenNewTab: handleOpenNewTab,
-          onOpenFilePreview: (relativePath: string) => {
-            openWorkspaceFile({
-              lineRange: null,
-              path: relativePath,
-              source: { kind: "working-tree" },
-              statusLabel: null,
-            });
-          },
+          onOpenFilePreview: handleOpenFilePreview,
           onPanelFocus: handleSecondaryPanelFocus,
           onPanelChange: handleSecondaryPanelChange,
           showGitDiffTab: canUseGitUi,
@@ -1695,6 +1871,7 @@ export function ThreadDetailView() {
           onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
           onTitleAction: handleTimelineTitleAction,
           projectId,
+          resolveMentionLink,
           showOngoingIndicator:
             thread.stopRequestedAt === null &&
             // A pending interaction (question or approval) already renders its
@@ -1726,7 +1903,6 @@ export function ThreadDetailView() {
           showMergeBaseDetails={showBranchComparisonUi}
           mergeBaseBranch={effectiveMergeBaseBranch}
           mergeBaseBranchOptions={mergeBaseBranchOptions}
-          mergeBaseBranchOptionsTruncated={mergeBaseBranchOptionsTruncated}
           mergeBaseBranchRef={selectedMergeBaseBranchRef}
           mergeBaseRemoteBranchOptions={mergeBaseRemoteBranchOptions}
           mergeBaseBranchOptionsLoading={isLoadingMergeBaseBranchOptions}

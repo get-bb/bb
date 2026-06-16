@@ -1,5 +1,10 @@
 import { apiClient, toRelativeUrl } from "./api-server";
 
+/**
+ * Percent-encode each segment of a path-suffix route param. Hono's `$url()`
+ * substitutes params verbatim (slashes must survive, but everything else
+ * needs encoding), so `:filePath{.+}` values are encoded here.
+ */
 function encodePathSegments(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
@@ -32,59 +37,11 @@ export function buildThreadStorageRawContentUrl(
   threadId: string,
   path: string,
 ): string {
-  return `/api/v1/threads/${encodeURIComponent(threadId)}/thread-storage/files/${encodePathSegments(path)}`;
-}
-
-export interface AppEntryUrlArgs {
-  applicationId: string;
-  /**
-   * Thread the app should target for its `message` capability. `null` for the
-   * standalone surface, where the app renders thread-independently and has no
-   * thread to post into.
-   */
-  targetThreadId: string | null;
-  /**
-   * Cache-busting token (typically the app detail's `dataUpdatedAt`) so the
-   * iframe reloads when the underlying app changes. Omitted when no reload
-   * tracking is needed.
-   */
-  reloadToken?: number | string;
-}
-
-export function buildAppEntryUrl({
-  applicationId,
-  targetThreadId,
-  reloadToken,
-}: AppEntryUrlArgs): string {
-  const params = new URLSearchParams();
-  if (targetThreadId !== null) {
-    params.set("targetThreadId", targetThreadId);
-  }
-  if (reloadToken !== undefined) {
-    params.set("v", String(reloadToken));
-  }
-  const query = params.toString();
-  return `/api/v1/apps/${encodeURIComponent(applicationId)}/${
-    query ? `?${query}` : ""
-  }`;
-}
-
-export function buildAppPublicFileUrl(
-  applicationId: string,
-  path: string,
-): string {
-  return `/api/v1/apps/${encodeURIComponent(
-    applicationId,
-  )}/${encodePathSegments(path)}`;
-}
-
-export function buildAppPublicBaseUrl(
-  applicationId: string,
-  entryPath: string,
-): string {
-  const lastSlash = entryPath.lastIndexOf("/");
-  const basePath = lastSlash === -1 ? "" : entryPath.slice(0, lastSlash + 1);
-  return buildAppPublicFileUrl(applicationId, basePath);
+  return toRelativeUrl(
+    apiClient.threads[":id"]["thread-storage"].files[":filePath{.+}"].$url({
+      param: { id: threadId, filePath: encodePathSegments(path) },
+    }),
+  );
 }
 
 export function buildThreadHostFileContentUrl(
@@ -103,12 +60,21 @@ export function buildRawFilesystemHtmlContentUrl(
   threadId: string,
   path: string,
 ): string {
-  return `/api/v1/threads/${encodeURIComponent(threadId)}/files/raw?path=${encodeURIComponent(path)}`;
+  return toRelativeUrl(
+    apiClient.threads[":id"].files.raw.$url({
+      param: { id: threadId },
+      query: { path },
+    }),
+  );
 }
 
 export function buildThreadWorktreeRawContentUrl(
   threadId: string,
   path: string,
 ): string {
-  return `/api/v1/threads/${encodeURIComponent(threadId)}/worktree/files/${encodePathSegments(path)}`;
+  return toRelativeUrl(
+    apiClient.threads[":id"].worktree.files[":filePath{.+}"].$url({
+      param: { id: threadId, filePath: encodePathSegments(path) },
+    }),
+  );
 }

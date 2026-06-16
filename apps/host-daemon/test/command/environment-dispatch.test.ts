@@ -923,6 +923,11 @@ describe("environment command dispatch", () => {
     });
     harness.workspace.getStatus = async () => ({
       branch: { currentBranch: "bb/thread", defaultBranch: "main" },
+      checkout: {
+        kind: "branch",
+        branchName: "bb/thread",
+        headSha: null,
+      },
       mergeBase: null,
       workingTree: {
         deletions: 0,

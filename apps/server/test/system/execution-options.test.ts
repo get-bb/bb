@@ -1,4 +1,3 @@
-import type { ProviderInfo } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   appendCustomModels,
@@ -177,20 +176,6 @@ describe("appendCustomModels", () => {
 });
 
 describe("resolveSystemExecutionOptions", () => {
-  const CLAUDE_CODE_PROVIDER: ProviderInfo = {
-    id: "claude-code",
-    displayName: "Claude Code",
-    capabilities: {
-      supportsArchive: true,
-      supportsRename: true,
-      supportsServiceTier: false,
-      supportsUserQuestion: true,
-      supportsFork: false,
-      supportedPermissionModes: ["full"],
-    },
-    available: true,
-  };
-
   it("keeps custom models selectable when the provider model list fails to load", async () => {
     await withTestHarness(
       {
@@ -209,7 +194,6 @@ describe("resolveSystemExecutionOptions", () => {
         registerProviderHostRpcResponder(harness, {
           hostId: host.id,
           sessionId: session.id,
-          providers: [CLAUDE_CODE_PROVIDER],
           modelErrorsByProviderId: {
             "claude-code": {
               errorCode: "provider_rpc_error",

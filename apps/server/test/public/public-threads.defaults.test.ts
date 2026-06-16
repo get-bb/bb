@@ -10,6 +10,7 @@ import {
   upsertProjectExecutionDefaults,
 } from "@bb/db";
 import { threadSchema } from "@bb/domain";
+import { sidebarBootstrapResponseSchema } from "@bb/server-contract";
 import { waitForQueuedCommand } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -463,6 +464,38 @@ describe("public thread default routes", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
       });
+    });
+  });
+
+  it("returns resolved project defaults in sidebar bootstrap without persisting them", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-defaults-sidebar",
+      });
+
+      const response = await harness.app.request("/api/v1/sidebar-bootstrap");
+
+      expect(response.status).toBe(200);
+      const bootstrap = sidebarBootstrapResponseSchema.parse(
+        await readJson(response),
+      );
+      const sidebarProject = bootstrap.projects.find(
+        (candidate) => candidate.id === project.id,
+      );
+      expect(sidebarProject?.defaultExecutionOptions).toEqual({
+        providerId: "codex",
+        model: "gpt-5.5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+      });
+      expect(
+        getProjectExecutionDefaults(harness.db, {
+          projectId: project.id,
+        }),
+      ).toBeNull();
     });
   });
 });

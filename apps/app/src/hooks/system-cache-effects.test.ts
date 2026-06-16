@@ -7,11 +7,6 @@ import {
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
   threadQueuedMessagesQueryKey,
-  workflowRunAgentEventsQueryKey,
-  workflowRunEventsQueryKey,
-  workflowRunQueryKey,
-  workflowRunsQueryKey,
-  workflowsQueryKey,
 } from "./queries/query-keys";
 import { invalidateRealtimeQueriesAfterServerReconnect } from "./cache-owners/system-cache-effects";
 
@@ -93,36 +88,5 @@ describe("system cache effects", () => {
     expect(queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated).toBe(
       true,
     );
-  });
-
-  it("invalidates workflow caches after reconnect", () => {
-    // Workflow runs are realtime-fed: a run reaching terminal while the
-    // socket was down emits nothing afterward, so reconnect invalidation is
-    // the only recovery path for an already-mounted run page or Workflows
-    // tab — without it the run renders frozen at `running` indefinitely.
-    const queryClient = createCacheEffectQueryClient();
-    const runDetailKey = workflowRunQueryKey("wfr_1");
-    const runsListKey = workflowRunsQueryKey("project-1");
-    const runEventsKey = workflowRunEventsQueryKey("wfr_1");
-    const agentEventsKey = workflowRunAgentEventsQueryKey({
-      agentIndex: 1,
-      runId: "wfr_1",
-    });
-    const workflowsKey = workflowsQueryKey("project-1");
-    queryClient.setQueryData(runDetailKey, {});
-    queryClient.setQueryData(runsListKey, []);
-    queryClient.setQueryData(runEventsKey, []);
-    queryClient.setQueryData(agentEventsKey, []);
-    queryClient.setQueryData(workflowsKey, []);
-
-    invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
-
-    expect(queryClient.getQueryState(runDetailKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(runsListKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(runEventsKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(agentEventsKey)?.isInvalidated).toBe(
-      true,
-    );
-    expect(queryClient.getQueryState(workflowsKey)?.isInvalidated).toBe(true);
   });
 });

@@ -1,9 +1,6 @@
 import {
-  allAppsQueryKeyPrefix,
-  appSourcesQueryKey,
   projectPathsQueryKeyPrefix,
   sidebarNavigationQueryKey,
-  threadDefaultExecutionOptionsQueryKey,
   threadQueuedMessagesQueryKey,
   threadPromptHistoryQueryKey,
   threadQueryKey,
@@ -14,6 +11,7 @@ import {
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
 } from "../queries/query-keys";
+import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
 import type {
   ProjectArg,
   QueryClientArg,
@@ -43,19 +41,6 @@ export function invalidateProjectListQueries({
   invalidateQueryKeys({
     queryClient,
     queryKeys: getProjectListInvalidationQueryKeys(),
-  });
-}
-
-/**
- * App-source mutations change both the source status (commit, per-app
- * states) and the installed app list, so the two invalidate together.
- */
-export function invalidateAppSourceQueries({
-  queryClient,
-}: QueryClientArg): void {
-  invalidateQueryKeys({
-    queryClient,
-    queryKeys: [appSourcesQueryKey(), allAppsQueryKeyPrefix()],
   });
 }
 

@@ -30,9 +30,7 @@ Run `bb guide <chapter>` for command details:
 
   threads        Spawning, inspecting, messaging, and managing threads
   environments   Environment operations, commits, and merges
-  app            Global apps, app data, browser APIs, and styling
   providers      Discovering providers and models
   projects       Project CRUD and sources
-  styling        Alias for app
   schedules      Managing recurring thread schedules
   async          Alias for schedules

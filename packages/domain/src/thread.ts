@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
+import { gitCheckoutRefSchema } from "./git-checkout.js";
 import {
   promptInputSchema,
   permissionModeSchema,
@@ -126,10 +127,50 @@ export type WorkspaceMergeBase = z.infer<typeof workspaceMergeBaseSchema>;
 
 export const workspaceStatusSchema = z.object({
   workingTree: workspaceWorkingTreeSchema,
+  checkout: gitCheckoutRefSchema,
   branch: workspaceBranchSchema,
   mergeBase: workspaceMergeBaseSchema.nullable(),
 });
 export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
+
+/**
+ * Raw pull request data as emitted by the host git-host CLI (`gh pr view
+ * --json number,title,state,url,isDraft`). The host daemon returns this
+ * verbatim; the server maps it onto the product-facing `ThreadPullRequest`.
+ */
+export const gitHostPullRequestSchema = z
+  .object({
+    number: z.number().int().positive(),
+    title: z.string(),
+    state: z.enum(["OPEN", "CLOSED", "MERGED"]),
+    url: z.string().url(),
+    isDraft: z.boolean(),
+  })
+  .strict();
+export type GitHostPullRequest = z.infer<typeof gitHostPullRequestSchema>;
+
+export const pullRequestStateSchema = z.enum([
+  "draft",
+  "open",
+  "merged",
+  "closed",
+]);
+export type PullRequestState = z.infer<typeof pullRequestStateSchema>;
+
+/**
+ * A pull request associated with a thread's branch, assembled by the server
+ * from {@link gitHostPullRequestSchema} (the server folds `isDraft` into the
+ * product-facing {@link pullRequestStateSchema}).
+ */
+export const threadPullRequestSchema = z
+  .object({
+    number: z.number().int().positive(),
+    title: z.string(),
+    state: pullRequestStateSchema,
+    url: z.string().url(),
+  })
+  .strict();
+export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
 
 export const threadQueuedMessageSchema = z.object({
   id: z.string(),
