@@ -10,7 +10,10 @@ import type {
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
 } from "@bb/domain";
-import type { ThreadTimelineResponse } from "@bb/server-contract";
+import type {
+  ThreadTimelineResponse,
+  TimelineWorkflowWorkRow,
+} from "@bb/server-contract";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   ThreadPromptContextBanner,
@@ -20,6 +23,7 @@ import {
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
+import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -126,6 +130,8 @@ interface ThreadDetailPromptAreaProps {
   pendingTodos: ThreadTimelinePendingTodos | null;
   /** Current provider goal from the timeline projection. Null when no goal is active. */
   goal: ThreadTimelineGoal | null;
+  /** Running workflow row from the timeline. Null when no workflow is active. */
+  activeWorkflow: TimelineWorkflowWorkRow | null;
   /** Parent reference for child threads. Null for root threads. */
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
@@ -164,6 +170,7 @@ export function ThreadDetailPromptArea({
   contextBannerMergeBase,
   pendingTodos,
   goal,
+  activeWorkflow,
   parentThreadSection,
   childThreadsSection,
   sendMessage,
@@ -268,6 +275,7 @@ export function ThreadDetailPromptArea({
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
+  const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
   const promptHistoryDrafts = useMemo(
@@ -879,6 +887,11 @@ export function ThreadDetailPromptArea({
   const promptStack = useMemo(
     () => (
       <>
+        <ThreadWorkflowCard
+          workflow={activeWorkflow}
+          isExpanded={isWorkflowExpanded}
+          onToggle={() => setIsWorkflowExpanded((value) => !value)}
+        />
         <ThreadGoalCard
           goal={goal}
           isExpanded={isGoalExpanded}
@@ -947,6 +960,8 @@ export function ThreadDetailPromptArea({
       isQueueMutationPending,
       goal,
       isGoalExpanded,
+      activeWorkflow,
+      isWorkflowExpanded,
       parentThreadSection,
       childThreadsSection,
       pendingTodos,
