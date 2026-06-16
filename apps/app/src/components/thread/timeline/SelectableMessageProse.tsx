@@ -1,0 +1,114 @@
+import { useEffect, useRef, type ReactNode } from "react";
+
+export interface MessageProseSelection {
+  text: string;
+  rect: DOMRect;
+}
+
+export interface SelectableMessageProseProps {
+  children: ReactNode;
+  className?: string;
+  /**
+   * Reports the current in-bounds selection (or `null` when the selection is
+   * empty/collapsed/outside this node). Optional so the timeline can mount
+   * this wrapper before the controller that consumes selections is wired in.
+   */
+  onSelect?: (selection: MessageProseSelection | null) => void;
+}
+
+/**
+ * Pure predicate: does `selection` fall entirely within `node`?
+ *
+ * Extracted so it is unit-testable without a DOM/selection harness. `node`
+ * and the selection nodes only need a `contains(other)` method, so this also
+ * accepts lightweight fakes in tests.
+ */
+export function isSelectionWithinNode(
+  node: Pick<Node, "contains"> | null,
+  selection: {
+    isCollapsed: boolean;
+    anchorNode: Node | null;
+    focusNode: Node | null;
+    commonAncestorContainer: Node | null;
+  } | null,
+): boolean {
+  if (node === null || selection === null) return false;
+  if (selection.isCollapsed) return false;
+
+  const { anchorNode, focusNode, commonAncestorContainer } = selection;
+  if (anchorNode === null || focusNode === null) return false;
+
+  return (
+    node.contains(anchorNode) &&
+    node.contains(focusNode) &&
+    (commonAncestorContainer === null || node.contains(commonAncestorContainer))
+  );
+}
+
+function readSelectionWithinNode(
+  node: HTMLElement | null,
+): MessageProseSelection | null {
+  if (node === null || typeof window === "undefined") return null;
+
+  const selection = window.getSelection();
+  if (selection === null || selection.rangeCount === 0) return null;
+
+  const accepted = isSelectionWithinNode(node, {
+    isCollapsed: selection.isCollapsed,
+    anchorNode: selection.anchorNode,
+    focusNode: selection.focusNode,
+    commonAncestorContainer: selection.getRangeAt(0).commonAncestorContainer,
+  });
+  if (!accepted) return null;
+
+  const text = selection.toString().trim();
+  if (text.length === 0) return null;
+
+  const rect = selection.getRangeAt(0).getBoundingClientRect();
+  return { text, rect };
+}
+
+/**
+ * Wraps agent prose and reports text selections whose endpoints both fall
+ * inside the wrapped node. Selections that escape the node (or are collapsed)
+ * report `null` so a consumer can dismiss any floating affordance.
+ */
+export function SelectableMessageProse({
+  children,
+  className,
+  onSelect,
+}: SelectableMessageProseProps) {
+  const nodeRef = useRef<HTMLDivElement>(null);
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let frame: number | null = null;
+    const report = () => {
+      frame = null;
+      onSelectRef.current?.(readSelectionWithinNode(nodeRef.current));
+    };
+    const schedule = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(report);
+    };
+
+    document.addEventListener("mouseup", schedule);
+    document.addEventListener("keyup", schedule);
+    document.addEventListener("selectionchange", schedule);
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      document.removeEventListener("mouseup", schedule);
+      document.removeEventListener("keyup", schedule);
+      document.removeEventListener("selectionchange", schedule);
+    };
+  }, []);
+
+  return (
+    <div ref={nodeRef} className={className}>
+      {children}
+    </div>
+  );
+}

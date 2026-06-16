@@ -41,6 +41,7 @@ import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
 } from "./conversation-message-overflow.js";
+import { SelectableMessageProse } from "./SelectableMessageProse.js";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -402,7 +403,10 @@ function AssistantConversationMessage({
 
   return (
     <div className="group/message w-full px-2 text-sm font-normal leading-relaxed">
-      <MarkdownPreview content={text} linkRouting={linkRouting} />
+      {/* S4 wires `onSelect` to drive the floating selection menu. */}
+      <SelectableMessageProse>
+        <MarkdownPreview content={text} linkRouting={linkRouting} />
+      </SelectableMessageProse>
       <ConversationAttachments
         filePaths={attachmentItems.filePaths}
         imageItems={attachmentItems.imageItems}
