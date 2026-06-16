@@ -5,6 +5,17 @@ export interface MessageProseSelection {
   rect: DOMRect;
 }
 
+/**
+ * A `MessageProseSelection` plus the FULL text of the agent message the
+ * selection sits in, injected by `ConversationMessageContent`. "Add to chat"
+ * quotes the selection (`text`); "Reply in side chat" anchors the side chat to
+ * the whole message (`messageText`) — the exact same code path as the
+ * per-message Reply button.
+ */
+export interface TimelineMessageProseSelection extends MessageProseSelection {
+  messageText: string;
+}
+
 export interface SelectableMessageProseProps {
   children: ReactNode;
   className?: string;

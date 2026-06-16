@@ -726,12 +726,12 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     },
     [addQuoteToComposer],
   );
-  // The selection text is the complete anchor; `sourceThreadId` is supplied
-  // inside `handleSideChatMessage` from the active thread (same path as the
-  // per-message Reply button).
+  // "Reply in side chat" receives the FULL agent message text and opens the
+  // side chat through the exact same `handleSideChatMessage` path as the
+  // per-message Reply button — the two are just different callers.
   const handleSelectionReplyInSideChat = useCallback(
-    (text: string) => {
-      handleSideChatMessage({ messageText: text });
+    (messageText: string) => {
+      handleSideChatMessage({ messageText });
     },
     [handleSideChatMessage],
   );

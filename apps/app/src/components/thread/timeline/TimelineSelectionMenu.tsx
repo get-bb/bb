@@ -1,4 +1,4 @@
-import { useEffect, type MouseEvent } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "../../ui/icon.js";
 import { Popover, PopoverAnchor, PopoverContent } from "../../ui/popover.js";
@@ -68,6 +68,18 @@ export function TimelineSelectionMenu({
 }: TimelineSelectionMenuProps) {
   const open = selection !== null;
 
+  // Constrain the floating menu to the thread column so it never overlaps the
+  // sidebar or secondary panel. The anchor sits inside `[data-thread-window]`,
+  // so resolve that ancestor as the Radix collision boundary.
+  const [collisionBoundary, setCollisionBoundary] = useState<HTMLElement | null>(
+    null,
+  );
+  const anchorRef = useCallback((node: HTMLDivElement | null) => {
+    setCollisionBoundary(
+      node?.closest<HTMLElement>("[data-thread-window]") ?? null,
+    );
+  }, []);
+
   // Dismiss on scroll/resize rather than re-anchoring: the captured rect goes
   // stale the moment the viewport moves, so closing is the honest behavior.
   useEffect(() => {
@@ -104,6 +116,7 @@ export function TimelineSelectionMenu({
       {/* Zero-size anchor pinned to the selection rect (viewport coords). */}
       <PopoverAnchor asChild>
         <div
+          ref={anchorRef}
           aria-hidden="true"
           style={{
             position: "fixed",
@@ -118,6 +131,8 @@ export function TimelineSelectionMenu({
         side="top"
         align="center"
         sideOffset={6}
+        collisionBoundary={collisionBoundary}
+        collisionPadding={8}
         mobileTitle="Selection actions"
         // Tight, horizontal, content-width row — override the default wide
         // popover padding/width.
