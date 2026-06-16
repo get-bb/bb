@@ -64,7 +64,9 @@ export function ThreadDetailHeader({
     <>
       <p className="min-w-0 truncate text-sm font-semibold">{threadTitle}</p>
       {childPillLabel ? (
-        <Pill variant="outline">{childPillLabel}</Pill>
+        <Pill variant="outline" size="sm">
+          {childPillLabel}
+        </Pill>
       ) : null}
       {/*
         The header's center slot sits inside the macOS title-bar drag region

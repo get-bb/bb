@@ -51,6 +51,16 @@ export function Overview() {
           <Pill variant="outline">fork</Pill>
         </StoryRow>
       </StoryCard>
+      <StoryCard>
+        <StoryRow label="default" hint="px-2 py-0.5">
+          <Pill variant="outline">fork</Pill>
+        </StoryRow>
+        <StoryRow label="sm" hint="compact — thread header">
+          <Pill variant="outline" size="sm">
+            fork
+          </Pill>
+        </StoryRow>
+      </StoryCard>
     </>
   );
 }
