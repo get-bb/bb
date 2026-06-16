@@ -253,6 +253,13 @@
       "when": 1781557500000,
       "tag": "0035_warm_kingpin",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1781647572409,
+      "tag": "0036_drop_automations_feature",
+      "breakpoints": true
     }
   ]
 }

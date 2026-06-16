@@ -112,7 +112,6 @@ const areThreadMetadataPropsEqual: ThreadMetadataPropsEqual = (
   previous.mergeBaseRemoteBranchOptions === next.mergeBaseRemoteBranchOptions &&
   previous.isLoadingMergeBaseBranchOptions ===
     next.isLoadingMergeBaseBranchOptions &&
-  previous.threadSchedules === next.threadSchedules &&
   previous.updateThreadPending === next.updateThreadPending &&
   previous.storage === next.storage &&
   previous.onAssignParent === next.onAssignParent &&

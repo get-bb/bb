@@ -9,7 +9,6 @@ import {
   PullRequestRow,
   GitStatusRow,
   ArchivedRow,
-  ThreadSchedulesRow,
   ThreadCommitsRow,
   ChangedFilesRow,
   ThreadMetadataCard,
@@ -21,7 +20,6 @@ import {
   parentThreads,
   makeEnvironment,
   makeThread,
-  makeThreadSchedule,
   makeWorkspaceStatus,
 } from "./ThreadMetadataContent.fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -571,55 +569,8 @@ export function Archived() {
 }
 
 // ---------------------------------------------------------------------------
-// Thread schedules — the "Schedules" row. Hidden entirely when there are none.
-// ---------------------------------------------------------------------------
-
-export function ThreadSchedules() {
-  return (
-    <StoryCard>
-      <StoryRow label="single, enabled">
-        <RowStage>
-          <ThreadSchedulesRow schedules={[makeThreadSchedule()]} />
-        </RowStage>
-      </StoryRow>
-      <StoryRow label="single, disabled" hint='reads "Not running" + Disabled pill'>
-        <RowStage>
-          <ThreadSchedulesRow
-            schedules={[
-              makeThreadSchedule({
-                id: "sched_cleanup",
-                name: "Weekly cleanup",
-                enabled: false,
-                cron: "0 18 * * 5",
-                prompt: "Close stale follow-ups and archive merged threads.",
-              }),
-            ]}
-          />
-        </RowStage>
-      </StoryRow>
-      <StoryRow label="multiple">
-        <RowStage>
-          <ThreadSchedulesRow
-            schedules={[
-              makeThreadSchedule(),
-              makeThreadSchedule({
-                id: "sched_cleanup",
-                name: "Weekly cleanup",
-                enabled: false,
-                cron: "0 18 * * 5",
-                prompt: "Close stale follow-ups and archive merged threads.",
-              }),
-            ]}
-          />
-        </RowStage>
-      </StoryRow>
-    </StoryCard>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Commits ahead of the merge base. Hidden entirely when nothing is ahead;
-// truncates with "Show N more" like the schedules row.
+// truncates with "Show N more" when the list is long.
 // ---------------------------------------------------------------------------
 
 const aheadCommits = Array.from({ length: 7 }, (_, index) => ({

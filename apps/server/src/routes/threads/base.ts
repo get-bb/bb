@@ -135,7 +135,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   post(routes.create, async (context, payload) => {
     const thread = await createThreadFromRequest(deps, {
       ...payload,
-      automationId: null,
       origin: payload.origin,
     });
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);

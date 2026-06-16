@@ -29,7 +29,7 @@ export const templateDefinitions = [
   },
   {
     "id": "bbGuideOverview",
-    "body": "bb is an agent orchestration tool for managing multiple agents.\n\nCore concepts:\n\n- Project — maps to a repository. All threads belong to a project.\n- Thread — a single agent conversation. The fundamental unit of work.\n- Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.\n- Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.\n\nThreads can have a parent-child relationship. The parent coordinates the child and receives lifecycle notifications when it completes, fails, or is interrupted. Threads without a parent are managed directly by the user.\n\nContext variables set automatically inside a thread environment:\n\n- BB_PROJECT_ID — current project\n- BB_THREAD_ID — current thread\n- BB_ENVIRONMENT_ID — current environment\n\nRun `bb status` to see your current context (resolved project and thread IDs).\n\nAll commands support --json for machine-readable output.\n\nRun `bb guide <chapter>` for command details:\n\n  threads        Spawning, inspecting, messaging, and managing threads\n  environments   Environment operations, commits, and merges\n  providers      Discovering providers and models\n  projects       Project CRUD and sources\n  schedules      Managing recurring thread schedules\n  async          Alias for schedules",
+    "body": "bb is an agent orchestration tool for managing multiple agents.\n\nCore concepts:\n\n- Project — maps to a repository. All threads belong to a project.\n- Thread — a single agent conversation. The fundamental unit of work.\n- Environment — where a thread runs. Kinds: project checkout or isolated worktree. Multiple threads can share an environment.\n- Provider — the agent backend powering a thread (e.g., codex, claude-code). Each provider supports different models.\n\nThreads can have a parent-child relationship. The parent coordinates the child and receives lifecycle notifications when it completes, fails, or is interrupted. Threads without a parent are managed directly by the user.\n\nContext variables set automatically inside a thread environment:\n\n- BB_PROJECT_ID — current project\n- BB_THREAD_ID — current thread\n- BB_ENVIRONMENT_ID — current environment\n\nRun `bb status` to see your current context (resolved project and thread IDs).\n\nAll commands support --json for machine-readable output.\n\nRun `bb guide <chapter>` for command details:\n\n  threads        Spawning, inspecting, messaging, and managing threads\n  environments   Environment operations, commits, and merges\n  providers      Discovering providers and models\n  projects       Project CRUD and sources",
     "fileName": "bb-guide-overview.md",
     "kind": "instruction",
     "title": "bb Guide Overview",
@@ -58,17 +58,6 @@ export const templateDefinitions = [
     "summary": "Command reference for discovering providers and models.",
     "intent": "Provide complete provider command documentation for agents.",
     "editingNotes": "Keep flags accurate against the CLI implementation.",
-    "variables": {}
-  },
-  {
-    "id": "bbGuideSchedules",
-    "body": "Thread schedules\n\nUse thread schedules when the system should wake an existing thread later for\nreminders, recurring check-ins, or follow-up work. A schedule stores its cron\nexpression, timezone, enabled state, and the prompt that will be submitted when\nit fires.\n\nCreate a schedule:\n\n```bash\nbb thread schedule create <thread-id> \\\n  --name daily-recap \\\n  --cron \"0 8 * * 1-5\" \\\n  --timezone America/Los_Angeles \\\n  --prompt \"Review current project state and send a concise recap if there is useful progress to report.\"\n```\n\nList schedules:\n\n```bash\nbb thread schedule list <thread-id>\nbb thread schedule list --self\n```\n\nUpdate a schedule:\n\n```bash\nbb thread schedule update <thread-id> <schedule-id> \\\n  --cron \"0 */2 * * *\" \\\n  --timezone UTC \\\n  --prompt \"Check whether any deployment follow-up is needed.\"\n```\n\nEnable, disable, or delete a schedule:\n\n```bash\nbb thread schedule disable <thread-id> <schedule-id>\nbb thread schedule enable <thread-id> <schedule-id>\nbb thread schedule delete <thread-id> <schedule-id>\n```\n\nConstraints:\n\n- Schedule names are unique per thread.\n- Cron expressions are five-field expressions. Numeric lists and ranges are\n  supported for fixed minute, hour, and day-of-week fields, such as\n  `10 7-11 * * 1-5`.\n- The cron month field must stay `*`.\n- Schedules must not run more frequently than every 5 minutes.\n- Scheduled turns deny permission escalation.\n\nFor one-off reminders, create a schedule for the next desired occurrence and\ninclude instructions in the prompt to delete or disable the schedule after it\nfires.",
-    "fileName": "bb-guide-schedules.md",
-    "kind": "instruction",
-    "title": "bb Guide - Thread Schedules",
-    "summary": "Thread schedule reference for recurring wakeups.",
-    "intent": "Explain how to create, inspect, update, and remove thread schedules.",
-    "editingNotes": "Keep this as the canonical thread schedule CLI reference. Do not describe storage-file schedule syntax.",
     "variables": {}
   },
   {
@@ -175,20 +164,6 @@ export const templateDefinitions = [
     }
   },
   {
-    "id": "systemMessageThreadScheduleDue",
-    "body": "[bb schedule due:{{scheduleId}}]\n\n{{prompt}}",
-    "fileName": "system-message-thread-schedule-due.md",
-    "kind": "prompt",
-    "title": "Thread Schedule Due",
-    "summary": "Wraps a due thread schedule prompt in bb system chrome.",
-    "intent": "Make system-initiated schedule wakeups explicit without changing the schedule author's prompt.",
-    "editingNotes": "Keep the schedule prompt body verbatim after the prefix.",
-    "variables": {
-      "scheduleId": "The due thread schedule ID.",
-      "prompt": "The schedule prompt text."
-    }
-  },
-  {
     "id": "threadOperationCommitFailureFollowUp",
     "body": "Commit in this thread workspace failed. Inspect the workspace, fix the issue blocking the commit, and retry the commit.\n{{#if errorMessage}}\nGit reported: {{errorMessage}}.\n{{/if}}",
     "fileName": "thread-operation-commit-failure-follow-up.md",
@@ -241,7 +216,6 @@ export interface TemplateVariables {
   bbGuideOverview: Record<string, never>;
   bbGuideProjects: Record<string, never>;
   bbGuideProviders: Record<string, never>;
-  bbGuideSchedules: Record<string, never>;
   bbGuideThreads: Record<string, never>;
   generateCommitMessage: {
     diffDescription: string;
@@ -264,10 +238,6 @@ export interface TemplateVariables {
   };
   systemMessageThreadOwnershipRemoved: {
     threadMention: string;
-  };
-  systemMessageThreadScheduleDue: {
-    scheduleId: string;
-    prompt: string;
   };
   threadOperationCommitFailureFollowUp: {
     errorMessage?: string;

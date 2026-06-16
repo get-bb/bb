@@ -32,5 +32,3 @@ Run `bb guide <chapter>` for command details:
   environments   Environment operations, commits, and merges
   providers      Discovering providers and models
   projects       Project CRUD and sources
-  schedules      Managing recurring thread schedules
-  async          Alias for schedules

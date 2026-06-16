@@ -12,8 +12,6 @@ import {
   TERMINAL_DATA_MAX_BASE64_LENGTH,
   TERMINAL_DATA_MAX_BYTES,
   TERMINAL_ROWS_MAX,
-  automationSchema,
-  createAutomationRequestSchema,
   createThreadTerminalRequestSchema,
   createQueuedMessageRequestSchema,
   createProjectSourceRequestSchema,
@@ -33,7 +31,6 @@ import {
   threadPendingInteractionsResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
   updateEnvironmentRequestSchema,
-  updateAutomationRequestSchema,
   unmanagedBranchSpecSchema,
 } from "../src/index.js";
 
@@ -58,36 +55,12 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   {
     reason:
       "Unmanaged workspaces may omit branch checkout intent when the daemon should leave HEAD untouched.",
-    fields: [
-      "createAutomationRequestSchema.action.threadRequest.environment.workspace.branch",
-      "updateAutomationRequestSchema.action.threadRequest.environment.workspace.branch",
-      "createThreadRequestSchema.environment.workspace.branch",
-    ],
+    fields: ["createThreadRequestSchema.environment.workspace.branch"],
   },
   {
     reason:
       "Personal workspace requests may omit hostId so the server can use the default connected local host.",
-    fields: [
-      "createAutomationRequestSchema.action.threadRequest.environment.hostId",
-      "updateAutomationRequestSchema.action.threadRequest.environment.hostId",
-      "createThreadRequestSchema.environment.hostId",
-    ],
-  },
-  {
-    reason:
-      "Scheduled-thread automation requests may omit thread presentation and execution fields so the scheduled thread uses normal server defaults.",
-    fields: [
-      "createAutomationRequestSchema.action.threadRequest.parentThreadId",
-      "createAutomationRequestSchema.action.threadRequest.permissionMode",
-      "createAutomationRequestSchema.action.threadRequest.reasoningLevel",
-      "createAutomationRequestSchema.action.threadRequest.serviceTier",
-      "createAutomationRequestSchema.action.threadRequest.title",
-      "updateAutomationRequestSchema.action.threadRequest.parentThreadId",
-      "updateAutomationRequestSchema.action.threadRequest.permissionMode",
-      "updateAutomationRequestSchema.action.threadRequest.reasoningLevel",
-      "updateAutomationRequestSchema.action.threadRequest.serviceTier",
-      "updateAutomationRequestSchema.action.threadRequest.title",
-    ],
+    fields: ["createThreadRequestSchema.environment.hostId"],
   },
   {
     reason:
@@ -148,16 +121,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "Automation PATCH requests omit fields that should be left unchanged.",
-    fields: [
-      "updateAutomationRequestSchema.action",
-      "updateAutomationRequestSchema.autoArchive",
-      "updateAutomationRequestSchema.name",
-      "updateAutomationRequestSchema.trigger",
-    ],
-  },
-  {
-    reason:
       "Environment PATCH requests omit metadata fields that should be left unchanged; null explicitly clears nullable values.",
     fields: [
       "updateEnvironmentRequestSchema.mergeBaseBranch",
@@ -181,20 +144,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "updateThreadRequestSchema.parentThreadId",
       "updateThreadRequestSchema.reasoningLevel",
       "updateThreadRequestSchema.title",
-    ],
-  },
-  {
-    reason:
-      "Thread schedule PATCH requests omit config fields that should be left unchanged.",
-    fields: [
-      "updateThreadScheduleConfigRequestSchema.cron",
-      "updateThreadScheduleConfigRequestSchema.name",
-      "updateThreadScheduleConfigRequestSchema.prompt",
-      "updateThreadScheduleConfigRequestSchema.timezone",
-      "updateThreadScheduleRequestSchema.cron",
-      "updateThreadScheduleRequestSchema.name",
-      "updateThreadScheduleRequestSchema.prompt",
-      "updateThreadScheduleRequestSchema.timezone",
     ],
   },
   {
@@ -694,76 +643,6 @@ describe("server-contract canonical schemas", () => {
 
   it("parses request contracts", () => {
     expect(
-      createAutomationRequestSchema.parse({
-        name: "Daily summary",
-        trigger: {
-          cron: "0 8 * * 1-5",
-          timezone: "America/Los_Angeles",
-          triggerType: "schedule",
-        },
-        action: {
-          actionType: "scheduled-thread",
-          threadRequest: {
-            providerId: "codex",
-            model: "gpt-5",
-            input: [{ type: "text", text: "Summarize yesterday's work" }],
-            environment: {
-              type: "host",
-              hostId: "host_abc",
-              workspace: {
-                type: "managed-worktree",
-                baseBranch: { kind: "default" },
-              },
-            },
-          },
-        },
-      }),
-    ).toMatchObject({
-      name: "Daily summary",
-    });
-
-    expect(
-      automationSchema.parse({
-        id: "auto_123",
-        projectId: "proj_123",
-        name: "Daily summary",
-        enabled: true,
-        trigger: {
-          cron: "0 8 * * 1-5",
-          timezone: "America/Los_Angeles",
-          triggerType: "schedule",
-        },
-        action: {
-          actionType: "scheduled-thread",
-          threadRequest: {
-            providerId: "codex",
-            model: "gpt-5",
-            input: [{ type: "text", text: "Summarize yesterday's work" }],
-            environment: {
-              type: "host",
-              hostId: "host_abc",
-              workspace: {
-                type: "managed-worktree",
-                baseBranch: { kind: "default" },
-              },
-            },
-          },
-        },
-        autoArchive: false,
-        nextRunAt: 123,
-        lastRunAt: null,
-        runCount: 0,
-        isValid: true,
-        validationIssues: [],
-        createdAt: 1,
-        updatedAt: 2,
-      }),
-    ).toMatchObject({
-      id: "auto_123",
-      projectId: "proj_123",
-    });
-
-    expect(
       createThreadRequestSchema.parse({
         projectId: "proj_123",
         providerId: "codex",
@@ -778,29 +657,6 @@ describe("server-contract canonical schemas", () => {
     ).toMatchObject({
       projectId: "proj_123",
     });
-
-    expect(
-      updateAutomationRequestSchema.parse({
-        enabled: true,
-      }),
-    ).toEqual({
-      enabled: true,
-    });
-
-    expect(
-      updateAutomationRequestSchema.parse({
-        autoArchive: true,
-      }),
-    ).toEqual({
-      autoArchive: true,
-    });
-
-    expect(() =>
-      updateAutomationRequestSchema.parse({
-        autoArchive: true,
-        enabled: true,
-      }),
-    ).toThrow();
 
     expect(
       sendMessageRequestSchema.parse({
@@ -850,7 +706,6 @@ describe("server-contract canonical schemas", () => {
           id: "thr_123",
           projectId: "proj_123",
           environmentId: null,
-          automationId: null,
           providerId: "codex",
           title: "Pending thread",
           titleFallback: "Pending thread",
@@ -1031,8 +886,6 @@ describe("server-contract canonical schemas", () => {
       "project-sources-changed",
       "threads-changed",
       "project-order-changed",
-      "automations-changed",
-      "thread-schedules-changed",
     ]);
     expect(SYSTEM_CHANGE_KINDS).toEqual(["config-changed"]);
   });
@@ -1162,9 +1015,6 @@ describe("server-contract clients", () => {
     expect(publicClient.system["execution-options"].$url().pathname).toBe(
       "/api/v1/system/execution-options",
     );
-    expect(publicClient.automations.$url().pathname).toBe(
-      "/api/v1/automations",
-    );
     expect(
       publicClient.projects[":id"].paths.$url({
         param: { id: "proj_123" },
@@ -1175,16 +1025,6 @@ describe("server-contract clients", () => {
         },
       }).pathname,
     ).toBe("/api/v1/projects/proj_123/paths");
-    expect(
-      publicClient.projects[":id"].automations.$url({
-        param: { id: "proj_123" },
-      }).pathname,
-    ).toBe("/api/v1/projects/proj_123/automations");
-    expect(
-      publicClient.projects[":id"].automations[":automationId"].$url({
-        param: { id: "proj_123", automationId: "auto_123" },
-      }).pathname,
-    ).toBe("/api/v1/projects/proj_123/automations/auto_123");
     expect(
       publicClient.threads[":id"].timeline["turn-summary-details"].$url({
         param: { id: "thr_123" },
@@ -1355,9 +1195,6 @@ describe("server-contract clients", () => {
       commitActionResponseSchema: contract.commitActionResponseSchema,
       createQueuedMessageRequestSchema:
         contract.createQueuedMessageRequestSchema,
-      createAutomationRequestSchema: contract.createAutomationRequestSchema,
-      createThreadScheduleRequestSchema:
-        contract.createThreadScheduleRequestSchema,
       createThreadRequestSchema: contract.createThreadRequestSchema,
       environmentActionApiErrorSchema: contract.environmentActionApiErrorSchema,
       environmentStatusResponseSchema: contract.environmentStatusResponseSchema,
@@ -1386,19 +1223,11 @@ describe("server-contract clients", () => {
         contract.timelineTurnSummaryDetailsRequestSchema,
       resolvePendingInteractionRequestSchema:
         contract.resolvePendingInteractionRequestSchema,
-      updateAutomationRequestSchema: contract.updateAutomationRequestSchema,
       updateEnvironmentRequestSchema: contract.updateEnvironmentRequestSchema,
       updateProjectRequestSchema: contract.updateProjectRequestSchema,
       updateProjectSourceRequestSchema:
         contract.updateProjectSourceRequestSchema,
-      updateThreadScheduleConfigRequestSchema:
-        contract.updateThreadScheduleConfigRequestSchema,
-      updateThreadScheduleEnabledRequestSchema:
-        contract.updateThreadScheduleEnabledRequestSchema,
-      updateThreadScheduleRequestSchema:
-        contract.updateThreadScheduleRequestSchema,
       updateThreadRequestSchema: contract.updateThreadRequestSchema,
-      threadScheduleSchema: contract.threadScheduleSchema,
       uploadedPromptAttachmentSchema: contract.uploadedPromptAttachmentSchema,
     });
     const groupedFieldCount = OPTIONAL_SERVER_FIELD_GROUPS.reduce(

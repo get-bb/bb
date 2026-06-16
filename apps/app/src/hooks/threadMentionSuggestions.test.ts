@@ -23,7 +23,6 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     id: options.id,
     projectId: options.projectId ?? "proj-1",
     environmentId: "env-1",
-    automationId: null,
     providerId: "openai",
     title: options.title,
     titleFallback: options.titleFallback ?? null,

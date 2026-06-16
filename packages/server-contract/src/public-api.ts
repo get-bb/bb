@@ -26,24 +26,18 @@ import {
 import type {
   EmptyInput,
   PathId,
-  PathProjectAutomationId,
   PathProjectId,
   PathThreadAndFilePath,
   PathThreadAndQueuedMessage,
   PathThreadAndTerminal,
-  PathThreadScheduleId,
 } from "./common.js";
 import type {
-  Automation,
-  AutomationsOverviewResponse,
   CloseThreadTerminalRequest,
   CommandListResponse,
-  CreateAutomationRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
   CreateQueuedMessageRequest,
   CreateThreadRequest,
-  CreateThreadScheduleRequest,
   CreateThreadTerminalRequest,
   DeleteThreadRequest,
   EnvironmentActionApiError,
@@ -106,7 +100,6 @@ import type {
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
-  ThreadSchedule,
   ThreadStorageContentQuery,
   ThreadStorageFileListResponse,
   ThreadStorageFilesQuery,
@@ -118,12 +111,10 @@ import type {
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
-  UpdateAutomationRequest,
   UpdateEnvironmentRequest,
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UpdateThreadRequest,
-  UpdateThreadScheduleRequest,
   UpdateThreadTerminalRequest,
   UploadedPromptAttachment,
   WorkspaceFileListResponse,
@@ -131,12 +122,10 @@ import type {
 } from "./api-types.js";
 import {
   closeThreadTerminalRequestSchema,
-  createAutomationRequestSchema,
   createProjectRequestSchema,
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
   createThreadRequestSchema,
-  createThreadScheduleRequestSchema,
   createThreadTerminalRequestSchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
@@ -172,12 +161,10 @@ import {
   threadStoragePathsQuerySchema,
   threadTimelineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
-  updateAutomationRequestSchema,
   updateEnvironmentRequestSchema,
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
   updateThreadRequestSchema,
-  updateThreadScheduleRequestSchema,
   updateThreadTerminalRequestSchema,
 } from "./api-types.js";
 import type { ApiError } from "./errors.js";
@@ -188,15 +175,6 @@ type PathThreadInteractionId = {
 };
 
 export const publicApiRoutes = {
-  automations: {
-    list: defineRoute({
-      path: "/automations",
-      method: "get",
-      request: noRequest(),
-      response: jsonResponse<AutomationsOverviewResponse>(),
-    }),
-  },
-
   projects: {
     list: defineRoute({
       path: "/projects",
@@ -286,36 +264,6 @@ export const publicApiRoutes = {
       path: "/projects/:id/sources/:sourceId",
       method: "delete",
       request: noRequest<PathProjectSourceId>(),
-      response: jsonResponse<{ ok: true }>(),
-    }),
-    listAutomations: defineRoute({
-      path: "/projects/:id/automations",
-      method: "get",
-      request: noRequest<PathProjectId>(),
-      response: jsonResponse<Automation[]>(),
-    }),
-    createAutomation: defineRoute({
-      path: "/projects/:id/automations",
-      method: "post",
-      request: jsonRequest<
-        PathProjectId,
-        CreateAutomationRequest,
-        typeof createAutomationRequestSchema
-      >(createAutomationRequestSchema),
-      response: jsonResponse<Automation>({ status: 201 }),
-    }),
-    updateAutomation: defineRoute({
-      path: "/projects/:id/automations/:automationId",
-      method: "patch",
-      request: jsonRequest<PathProjectAutomationId, UpdateAutomationRequest>(
-        updateAutomationRequestSchema,
-      ),
-      response: jsonResponse<Automation>(),
-    }),
-    deleteAutomation: defineRoute({
-      path: "/projects/:id/automations/:automationId",
-      method: "delete",
-      request: noRequest<PathProjectAutomationId>(),
       response: jsonResponse<{ ok: true }>(),
     }),
     files: defineRoute({
@@ -531,36 +479,6 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: jsonResponse<ThreadChildSummaryResponse>(),
-    }),
-    listSchedules: defineRoute({
-      path: "/threads/:id/schedules",
-      method: "get",
-      request: noRequest<PathId>(),
-      response: jsonResponse<ThreadSchedule[]>(),
-    }),
-    createSchedule: defineRoute({
-      path: "/threads/:id/schedules",
-      method: "post",
-      request: jsonRequest<
-        PathId,
-        CreateThreadScheduleRequest,
-        typeof createThreadScheduleRequestSchema
-      >(createThreadScheduleRequestSchema),
-      response: jsonResponse<ThreadSchedule>({ status: 201 }),
-    }),
-    updateSchedule: defineRoute({
-      path: "/threads/:id/schedules/:scheduleId",
-      method: "patch",
-      request: jsonRequest<PathThreadScheduleId, UpdateThreadScheduleRequest>(
-        updateThreadScheduleRequestSchema,
-      ),
-      response: jsonResponse<ThreadSchedule>(),
-    }),
-    deleteSchedule: defineRoute({
-      path: "/threads/:id/schedules/:scheduleId",
-      method: "delete",
-      request: noRequest<PathThreadScheduleId>(),
-      response: jsonResponse<{ ok: true }>(),
     }),
     /**
      * Send a message to a thread.

@@ -38,7 +38,6 @@ export * from "./thread-events.js";
 export * from "./thread-git-diff.js";
 export * from "./thread-lifecycle.js";
 export * from "./thread-name-tags.js";
-export * from "./thread-schedules.js";
 export * from "./thread-timeline-goal.js";
 export * from "./thread-timeline-pending-todos.js";
 export * from "./thread.js";

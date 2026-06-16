@@ -12,7 +12,6 @@ import type {
   WorkspaceCommitSummary,
   WorkspaceStatus,
 } from "@bb/domain";
-import type { ThreadSchedule } from "@bb/server-contract";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
 import {
   formatEnvironmentDisplay,
@@ -28,16 +27,13 @@ import {
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@/components/ui/coarse-pointer-sizing.js";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
+import { TruncatedList } from "@/components/ui/truncated-list.js";
 import {
   DetailCard,
   DetailRow,
   DetailRowIconLabel,
 } from "@/components/ui/detail-card.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens.js";
-import {
-  formatCronCadence,
-  formatScheduleStatusLabel,
-} from "@/lib/format-schedule";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import {
   DropdownMenu,
@@ -52,7 +48,6 @@ import {
   getMergeBaseBranchCandidateGroups,
 } from "@/components/pickers/BranchPicker";
 import { ThreadUnarchiveButton } from "@/components/thread/ThreadUnarchiveButton";
-import { TruncatedList } from "@/components/ui/truncated-list.js";
 import { ChangedFilesDetailRow } from "@/components/workspace/ChangedFilesDetailRow";
 import {
   selectWorkspaceAheadCommits,
@@ -337,7 +332,9 @@ export function WorkspacePathRow({
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel icon="FolderGit">{display.rowLabel}</DetailRowIconLabel>
+        <DetailRowIconLabel icon="FolderGit">
+          {display.rowLabel}
+        </DetailRowIconLabel>
       }
       valueClassName="min-w-0"
     >
@@ -417,7 +414,9 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
   return (
     <DetailRow
-      label={<DetailRowIconLabel icon="GitMerge">Pull request</DetailRowIconLabel>}
+      label={
+        <DetailRowIconLabel icon="GitMerge">Pull request</DetailRowIconLabel>
+      }
       valueClassName="min-w-0"
     >
       <a
@@ -636,48 +635,6 @@ export function ArchivedRow({ thread }: ArchivedRowProps) {
   );
 }
 
-export interface ThreadSchedulesRowProps {
-  schedules: readonly ThreadSchedule[];
-}
-
-export function ThreadSchedulesRow({ schedules }: ThreadSchedulesRowProps) {
-  if (schedules.length === 0) return null;
-
-  return (
-    <DetailRow
-      label="Schedules"
-      align="start"
-      className="mt-3"
-      valueClassName="min-w-0"
-    >
-      <TruncatedList
-        items={schedules}
-        getKey={(schedule) => schedule.id}
-        renderItem={(schedule) => (
-          <div
-            className={cn(
-              "min-w-0 leading-snug",
-              !schedule.enabled && "opacity-60",
-            )}
-          >
-            <div className="truncate font-medium text-foreground">
-              {schedule.name}
-            </div>
-            <div className="truncate text-muted-foreground">
-              {`${formatCronCadence(schedule.cron)} · ${formatScheduleStatusLabel(
-                {
-                  enabled: schedule.enabled,
-                  nextRunAt: schedule.nextFireAt,
-                },
-              )}`}
-            </div>
-          </div>
-        )}
-      />
-    </DetailRow>
-  );
-}
-
 export interface ThreadCommitsRowProps {
   workspaceStatus: WorkspaceStatus | undefined;
   /** When provided, each commit becomes a button that opens its diff. */
@@ -785,10 +742,10 @@ export function ThreadStorageRow({
   isFilesLoading,
 }: ThreadStorageRowProps) {
   const { isSearchOpen, openSearch } = controller;
-  // Mirror the other metadata rows (e.g. ThreadSchedulesRow): render nothing
-  // when there is no content to show. With no files there is nothing to browse,
-  // so the row would otherwise sit as an empty "No files yet." box competing for
-  // panel height. Stay visible on error so load failures still surface.
+  // Render nothing when there is no content to show. With no files there is
+  // nothing to browse, so the row would otherwise sit as an empty "No files yet."
+  // box competing for panel height. Stay visible on error so load failures still
+  // surface.
   if (controller.loadedFiles.length === 0 && filesError == null) {
     return null;
   }
@@ -850,7 +807,6 @@ export interface ThreadMetadataContentProps {
   mergeBaseBranchOptions: readonly string[] | undefined;
   mergeBaseRemoteBranchOptions?: readonly string[];
   isLoadingMergeBaseBranchOptions: boolean;
-  threadSchedules: readonly ThreadSchedule[];
   updateThreadPending: boolean;
   storage?: ThreadStorageRowProps;
   onAssignParent: (parentThreadId: string | null) => void;
@@ -874,7 +830,6 @@ export function hasAnyThreadMetadata({
   workspaceStatusError,
   workspaceUnavailable,
   pullRequest,
-  threadSchedules,
 }: Pick<
   ThreadMetadataContentProps,
   | "thread"
@@ -884,7 +839,6 @@ export function hasAnyThreadMetadata({
   | "workspaceStatusError"
   | "workspaceUnavailable"
   | "pullRequest"
-  | "threadSchedules"
 >): boolean {
   const parentThreadId = thread.parentThreadId ?? undefined;
   const isWorkspaceDeleted = environment?.status === "destroyed";
@@ -906,7 +860,6 @@ export function hasAnyThreadMetadata({
     pullRequest ||
     showWorkspaceStatus ||
     showThreadChangedFiles ||
-    threadSchedules.length > 0 ||
     thread.archivedAt != null ||
     (parentThreadDisplayName && parentThreadId),
   );
@@ -956,7 +909,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
     mergeBaseBranchOptions,
     mergeBaseRemoteBranchOptions,
     isLoadingMergeBaseBranchOptions,
-    threadSchedules,
     updateThreadPending,
     storage,
     onAssignParent,
@@ -1008,7 +960,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
       />
       <PullRequestRow pullRequest={pullRequest} />
       <ArchivedRow thread={thread} />
-      <ThreadSchedulesRow schedules={threadSchedules} />
       <ThreadCommitsRow
         workspaceStatus={workspaceStatus}
         onCommitClick={onCommitClick}

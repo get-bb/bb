@@ -6,7 +6,6 @@ import type {
   Thread,
 } from "@bb/domain";
 import type {
-  ThreadSchedule,
   ThreadTimelineResponse,
   TimelineRow,
   TimelineRowBase,
@@ -27,12 +26,6 @@ interface MakeThreadArgs extends Partial<Thread> {
   providerId: string;
 }
 
-interface MakeThreadScheduleArgs extends Partial<ThreadSchedule> {
-  id: string;
-  projectId: string;
-  threadId: string;
-}
-
 interface MakeEnvironmentArgs extends Partial<Environment> {
   id: string;
   projectId: string;
@@ -43,14 +36,6 @@ interface MakePendingInteractionArgs extends Partial<PendingInteraction> {
   id: string;
   providerId: string;
   threadId: string;
-}
-
-interface ScheduleEnabledPatchJson {
-  enabled: boolean;
-}
-
-export interface ScheduleEnabledPatchRequest {
-  json: ScheduleEnabledPatchJson;
 }
 
 export function makeTimelineBase(args: TimelineBaseArgs): TimelineRowBase {
@@ -115,7 +100,6 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     status: "idle",
     title: null,
     titleFallback: null,
-    automationId: null,
     environmentId: null,
     parentThreadId: null,
     archivedAt: null,
@@ -125,24 +109,6 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     latestAttentionAt: Date.now(),
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    ...overrides,
-  };
-}
-
-export function makeThreadSchedule(
-  overrides: MakeThreadScheduleArgs,
-): ThreadSchedule {
-  return {
-    name: "Daily recap",
-    enabled: true,
-    kind: "cron",
-    cron: "0 8 * * 1-5",
-    timezone: "UTC",
-    prompt: "Review current work.",
-    nextFireAt: 1_800_000_000_000,
-    lastFiredAt: null,
-    createdAt: 1,
-    updatedAt: 2,
     ...overrides,
   };
 }

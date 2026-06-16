@@ -165,7 +165,6 @@ export function createThreadRecord(
   return createThread(deps.db, deps.hub, {
     projectId: args.request.projectId,
     environmentId: args.environmentId,
-    automationId: args.request.automationId,
     providerId: args.request.providerId,
     title: args.request.title ?? null,
     titleFallback: deriveTitleFallback(args.request.input),

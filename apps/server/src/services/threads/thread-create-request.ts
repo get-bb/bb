@@ -6,7 +6,6 @@ import type {
 } from "@bb/server-contract";
 
 export interface ThreadCreateServiceRequestInput {
-  automationId: string | null;
   environment: EnvironmentArgs;
   executionInputSources?: CreateThreadRequest["executionInputSources"];
   input: PromptInput[];

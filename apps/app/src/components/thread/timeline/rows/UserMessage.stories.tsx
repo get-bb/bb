@@ -92,7 +92,10 @@ interface BuiltMessage {
 
 function buildMessage(
   text: string,
-  mentionSpecs: ReadonlyArray<{ token: string; resource: PromptMentionResource }>,
+  mentionSpecs: ReadonlyArray<{
+    token: string;
+    resource: PromptMentionResource;
+  }>,
 ): BuiltMessage {
   return {
     text,
@@ -104,7 +107,7 @@ function buildMessage(
 
 const agentInitiatedMessage = buildMessage(
   [
-    "[bb message from thread:thr_ux3h8sxg65; reply with `bb thread tell thr_ux3h8sxg65 \"<your response>\"`]",
+    '[bb message from thread:thr_ux3h8sxg65; reply with `bb thread tell thr_ux3h8sxg65 "<your response>"`]',
     "",
     "Fixed both blockers on @apps/server/src/services/manager/manager-system-messages.ts. No merge or push.",
     "",
@@ -140,7 +143,7 @@ const agentInitiatedMessage = buildMessage(
 
 const agentSteerMessage = buildMessage(
   [
-    "[bb message from thread:thr_h4u3fgr6be; reply with `bb thread tell thr_h4u3fgr6be \"<your response>\"`]",
+    '[bb message from thread:thr_h4u3fgr6be; reply with `bb thread tell thr_h4u3fgr6be "<your response>"`]',
     "",
     "Committed the two scoped fixes touching @apps/app/src/components/thread/timeline/ConversationMessageContent.tsx. Worktree is clean.",
   ].join("\n"),
@@ -214,25 +217,6 @@ const systemChildOutcomeBatchMessage = buildMessage(
   ],
 );
 
-const systemScheduledMessage = buildMessage(
-  [
-    "[bb schedule due:tsched_7njqipuist]",
-    "",
-    "Scheduled nudge: run the independent fund-manager sanity/strategy review loop with a neutral brief: current mandate, authority boundaries, active positions, monitors, dashboard/status, schedules, recent actions, and open incidents. Ask for broken assumptions, over-conservatism/recklessness, stale state, missing catalysts, and concrete fixes. Triage findings as manager; delegate follow-ups via @thread:thr_fund_strategy and message only useful outcomes or blockers.",
-  ].join("\n"),
-  [
-    {
-      token: "@thread:thr_fund_strategy",
-      resource: {
-        kind: "thread",
-        threadId: "thr_fund_strategy",
-        projectId: "proj_demo",
-        label: "Fund strategy review",
-      },
-    },
-  ],
-);
-
 const longSystemMessage = buildMessage(
   [
     "[bb system]",
@@ -289,17 +273,6 @@ const longSystemMessage = buildMessage(
     },
   ],
 );
-
-// The exact fixture that surfaced the detached-ResizeObserver expansion bug:
-// long single-line scheduled prompt with no mentions. Before the isConnected
-// guard in `useOverflowMeasurement`, clicking expand bounced the row right
-// back to collapsed (and removed the toggle button). Kept as a plain-text
-// regression canary so the row visibly stays expanded after a click.
-const systemScheduledRegressionText = [
-  "[bb schedule due:tsched_7njqipuist]",
-  "",
-  "Scheduled nudge: system-review-feedback-loop. Run the independent fund-manager sanity/strategy review loop with a neutral brief: current mandate, authority boundaries, active positions, monitors, dashboard/status, schedules, recent actions, and open incidents. Ask for broken assumptions, over-conservatism/recklessness, stale state, missing catalysts, and concrete fixes. Triage findings as manager; delegate follow-ups and message only useful outcomes/blockers.",
-].join("\n");
 
 const singleImageAttachments: TimelineConversationAttachments = {
   webImages: 0,
@@ -516,41 +489,6 @@ export function Overview() {
             turnRequest={pendingSteer}
           />
         </div>
-      </StoryRow>
-      <StoryRow
-        label="system-initiated (scheduled turn)"
-        hint="long single-line schedule prompt expands to the full message body"
-      >
-        <TimelineStage>
-          <ConversationMessageContent
-            role="user"
-            initiator="system"
-            senderThreadId={null}
-            senderThreadTitle={null}
-            text={systemScheduledMessage.text}
-            attachments={null}
-            mentions={systemScheduledMessage.mentions}
-            projectId="proj_demo"
-            turnRequest={acceptedMessage}
-          />
-        </TimelineStage>
-      </StoryRow>
-      <StoryRow
-        label="system-initiated (scheduled turn, regression fixture)"
-        hint="exact plain-text fixture that surfaced the detached-resize bug — click expand, the body should stay open and the chevron should still collapse it"
-      >
-        <TimelineStage>
-          <ConversationMessageContent
-            role="user"
-            initiator="system"
-            senderThreadId={null}
-            senderThreadTitle={null}
-            text={systemScheduledRegressionText}
-            attachments={null}
-            mentions={[]}
-            turnRequest={acceptedMessage}
-          />
-        </TimelineStage>
       </StoryRow>
       <StoryRow
         label="system-initiated (assigned)"

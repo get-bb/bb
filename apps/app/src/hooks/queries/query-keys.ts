@@ -19,7 +19,6 @@ export const PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "projectDefaultExecutionOptions";
 export const PROJECT_PROMPT_HISTORY_QUERY_KEY = "projectPromptHistory";
 export const SIDEBAR_NAVIGATION_QUERY_KEY = "sidebarNavigation";
-export const AUTOMATIONS_OVERVIEW_QUERY_KEY = "automationsOverview";
 export const THREADS_QUERY_KEY = "threads";
 export const THREADS_DISABLED_QUERY_KEY = "threadsDisabled";
 export const THREAD_QUERY_KEY = "thread";
@@ -31,7 +30,6 @@ export const THREAD_QUEUED_MESSAGES_QUERY_KEY = "threadQueuedMessages";
 export const THREAD_PROMPT_HISTORY_QUERY_KEY = "threadPromptHistory";
 export const THREAD_PENDING_INTERACTIONS_QUERY_KEY =
   "threadPendingInteractions";
-export const THREAD_SCHEDULES_QUERY_KEY = "threadSchedules";
 export const THREAD_TERMINALS_QUERY_KEY = "threadTerminals";
 export const PROJECT_COMMANDS_QUERY_KEY = "projectCommands";
 export const PROJECT_COMMANDS_PAGES_QUERY_KEY = "projectCommandsPages";
@@ -121,9 +119,6 @@ export type ProjectSourceBranchesQueryKey = readonly [
 export type SidebarNavigationQueryKey = readonly [
   typeof SIDEBAR_NAVIGATION_QUERY_KEY,
 ];
-export type AutomationsOverviewQueryKey = readonly [
-  typeof AUTOMATIONS_OVERVIEW_QUERY_KEY,
-];
 export type ThreadsQueryKey = readonly [typeof THREADS_QUERY_KEY];
 export type ThreadListQueryKey = readonly [
   typeof THREADS_QUERY_KEY,
@@ -179,13 +174,6 @@ export type ThreadPendingInteractionsQueryKeyPrefix = readonly [
 ];
 export type ThreadPendingInteractionsQueryKey = readonly [
   typeof THREAD_PENDING_INTERACTIONS_QUERY_KEY,
-  string,
-];
-export type ThreadSchedulesQueryKeyPrefix = readonly [
-  typeof THREAD_SCHEDULES_QUERY_KEY,
-];
-export type ThreadSchedulesQueryKey = readonly [
-  typeof THREAD_SCHEDULES_QUERY_KEY,
   string,
 ];
 export type AllThreadTerminalsQueryKeyPrefix = readonly [
@@ -527,10 +515,6 @@ export function sidebarNavigationQueryKey(): SidebarNavigationQueryKey {
   return [SIDEBAR_NAVIGATION_QUERY_KEY];
 }
 
-export function automationsOverviewQueryKey(): AutomationsOverviewQueryKey {
-  return [AUTOMATIONS_OVERVIEW_QUERY_KEY];
-}
-
 export function threadsQueryKey(): ThreadsQueryKey {
   return [THREADS_QUERY_KEY];
 }
@@ -620,16 +604,6 @@ export function threadPendingInteractionsQueryKey(
 
 export function allThreadPendingInteractionsQueryKeyPrefix(): ThreadPendingInteractionsQueryKeyPrefix {
   return [THREAD_PENDING_INTERACTIONS_QUERY_KEY];
-}
-
-export function threadSchedulesQueryKey(
-  threadId: string,
-): ThreadSchedulesQueryKey {
-  return [THREAD_SCHEDULES_QUERY_KEY, threadId];
-}
-
-export function allThreadSchedulesQueryKeyPrefix(): ThreadSchedulesQueryKeyPrefix {
-  return [THREAD_SCHEDULES_QUERY_KEY];
 }
 
 export function threadTerminalsQueryKey(

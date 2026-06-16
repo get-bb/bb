@@ -34,7 +34,6 @@ import {
   useThread,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
-  useThreadSchedules,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { useThreadComposerBootstrap } from "../../hooks/queries/thread-composer-bootstrap-query";
@@ -470,9 +469,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       staleTime: composerHydratedDataStaleTime,
     },
   );
-  const { data: threadSchedules = [] } = useThreadSchedules(thread?.id ?? "", {
-    enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
-  });
   const hasPendingInteraction =
     getLatestPendingInteraction(pendingInteractions) !== null;
   const unreadDividerState = useThreadUnreadDividerState({
@@ -634,10 +630,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     [terminalSessions],
   );
   const terminalsById = useMemo(
-    () =>
-      new Map(
-        terminalSessions.map((session) => [session.id, session]),
-      ),
+    () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
   );
   const syncedOrderedSecondaryFileTabs = useMemo(
@@ -1631,11 +1624,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       thread={thread}
     />
   );
-  const activeTerminalId =
-    findActiveTerminalIdInSecondaryFileTabs({
-      activeTabId: activeFixedSecondaryTabId,
-      tabs: syncedOrderedSecondaryFileTabs,
-    });
+  const activeTerminalId = findActiveTerminalIdInSecondaryFileTabs({
+    activeTabId: activeFixedSecondaryTabId,
+    tabs: syncedOrderedSecondaryFileTabs,
+  });
   const fileTabContent = activeTerminalId ? (
     <ThreadTerminalPanel
       canCreateTerminal={canCreateTerminal}
@@ -1727,7 +1719,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           mergeBaseBranchOptions,
           mergeBaseRemoteBranchOptions,
           isLoadingMergeBaseBranchOptions,
-          threadSchedules,
           updateThreadPending:
             updateThread.isPending || updateEnvironment.isPending,
           storage: metadataStorage,

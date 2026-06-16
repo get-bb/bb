@@ -2,7 +2,6 @@ import { Command } from "commander";
 import { registerActionsCommands } from "./actions.js";
 import { registerInteractionCommands } from "./interactions.js";
 import { registerListCommand } from "./list.js";
-import { registerScheduleCommands } from "./schedule.js";
 import { registerShowCommand } from "./show.js";
 import { registerSpawnCommand } from "./spawn.js";
 import { registerWaitCommand } from "./wait.js";
@@ -20,5 +19,4 @@ export function registerThreadCommands(
   registerShowCommand(thread, getUrl);
   registerActionsCommands(thread, getUrl);
   registerInteractionCommands(thread, getUrl);
-  registerScheduleCommands(thread, getUrl);
 }

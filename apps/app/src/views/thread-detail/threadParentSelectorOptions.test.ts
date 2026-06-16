@@ -10,7 +10,6 @@ type ThreadListEntryOverrides = Partial<ThreadListEntry>;
 function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
   return {
     archivedAt: null,
-    automationId: null,
     createdAt: 1,
     deletedAt: null,
     environmentBranchName: null,

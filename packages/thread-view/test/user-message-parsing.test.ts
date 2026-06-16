@@ -55,7 +55,7 @@ function systemMessageRequest(): ClientTurnRequestedEventRow {
     initiator: "system",
     senderThreadId: null,
     target: { kind: "new-turn" },
-    text: "[bb system] Scheduled turn: daily.",
+    text: "[bb system] Maintenance notice.",
   });
 }
 
@@ -370,7 +370,7 @@ describe("user message parsing", () => {
     ).toMatchObject({
       initiator: "system",
       kind: "user",
-      text: "[bb system] Scheduled turn: daily.",
+      text: "[bb system] Maintenance notice.",
       turnRequest: { kind: "message", status: "pending" },
     });
   });

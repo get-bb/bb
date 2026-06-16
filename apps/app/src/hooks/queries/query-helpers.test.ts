@@ -120,7 +120,6 @@ function makeThreadWithRuntime(
   return {
     id: "thread-1",
     projectId: "project-1",
-    automationId: null,
     providerId: "codex",
     createdAt: 1,
     status: "active",

@@ -23,10 +23,10 @@ describe("computeMutedPrefixLength", () => {
   });
 
   it("eats a single space after ] for inline-form messages", () => {
-    const text = "[bb system] Scheduled turn: daily.";
+    const text = "[bb system] Thread completed.";
     // `[bb system] `.length === 12.
     expect(computeMutedPrefixLength("system", text)).toBe(12);
-    expect(text.slice(12)).toBe("Scheduled turn: daily.");
+    expect(text.slice(12)).toBe("Thread completed.");
   });
 
   it("returns text.length when the entire text is the prefix", () => {

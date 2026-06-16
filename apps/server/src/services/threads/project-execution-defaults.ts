@@ -42,7 +42,6 @@ interface ResolveRequestedCreateExecutionValueArgs<TValue> {
 }
 
 function shouldRememberProjectExecutionDefaults(args: {
-  automationId: string | null;
   environment: ThreadCreateServiceRequest["environment"];
   origin: ThreadCreateServiceRequest["origin"];
 }): boolean {
@@ -50,7 +49,7 @@ function shouldRememberProjectExecutionDefaults(args: {
   // a fresh default-shaping event. Don't overwrite the project's stored
   // execution defaults with the picker selections made for that single thread.
   if (args.environment.type === "reuse") return false;
-  return args.origin === "app" && args.automationId === null;
+  return args.origin === "app";
 }
 
 function resolveRequestedCreateExecutionValue<TValue>({

@@ -5,7 +5,6 @@ import {
   type ThreadEventType,
 } from "./provider-event.js";
 
-
 export const THREAD_CHANGE_KINDS = [
   "thread-created",
   "thread-deleted",
@@ -31,8 +30,6 @@ export const PROJECT_CHANGE_KINDS = [
   "project-sources-changed",
   "threads-changed",
   "project-order-changed",
-  "automations-changed",
-  "thread-schedules-changed",
 ] as const;
 export type ProjectChangeKind = (typeof PROJECT_CHANGE_KINDS)[number];
 
@@ -135,9 +132,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
-function assertUnhandledRealtimeSubscriptionTarget(
-  target: never,
-): never {
+function assertUnhandledRealtimeSubscriptionTarget(target: never): never {
   throw new Error(`Unhandled realtime subscription target: ${target}`);
 }
 

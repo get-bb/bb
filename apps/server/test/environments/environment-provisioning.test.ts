@@ -296,7 +296,6 @@ describe("environment reprovisioning", () => {
       let thrownError: ApiError | null = null;
       try {
         await createThreadFromRequest(harness.deps, {
-          automationId: null,
           environment: {
             type: "host",
             hostId: host.id,
@@ -345,7 +344,6 @@ describe("environment reprovisioning", () => {
       });
 
       const thread = await createThreadFromRequest(harness.deps, {
-        automationId: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -413,7 +411,6 @@ describe("environment reprovisioning", () => {
       });
 
       const thread = await createThreadFromRequest(harness.deps, {
-        automationId: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -503,7 +500,6 @@ describe("environment reprovisioning", () => {
       });
 
       const thread = await createThreadFromRequest(harness.deps, {
-        automationId: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -570,7 +566,6 @@ describe("environment reprovisioning", () => {
       });
 
       const firstThread = await createThreadFromRequest(harness.deps, {
-        automationId: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -603,7 +598,6 @@ describe("environment reprovisioning", () => {
       }
 
       const secondThread = await createThreadFromRequest(harness.deps, {
-        automationId: null,
         environment: {
           type: "reuse",
           environmentId: environment.id,

@@ -51,12 +51,6 @@ commands.
   When a failed or interrupted thread should continue, inspect it first and send
   a fresh turn with `bb thread tell`, or create a replacement with
   `bb thread spawn` when a new thread is the right recovery path.
-- Project automations are currently a public API surface, not a root CLI command
-  group. The in-app Automations view consumes `/api/v1/automations` for thread
-  schedule overview rows. Do not mark the absence of `bb automation` or
-  `bb automations` in `bb --help` as blocked. Validate the project automation
-  lifecycle through `/api/v1/projects/:id/automations` and `/api/v1/automations`,
-  and pair this runbook with app QA for the Automations view's schedule overview.
 
 ## Prerequisites
 
@@ -442,88 +436,6 @@ Expected result:
 - Environment merge-base metadata can be set, reflected by `bb environment show`, used by thread status/diff output, and cleared.
 - Archiving blocks `bb thread tell`; unarchiving restores normal operation.
 - Dirty isolated managed worktree archive succeeds, destroys the environment, and removes the worktree even while uncommitted or unmerged work remains.
-
-## Automations API Lifecycle
-
-Project automations are validated through public API routes. The CLI surface for
-recurring wakeups remains `bb thread schedule`; the root CLI intentionally has no
-automation command group.
-
-```bash
-AUTOMATION_CREATE_BODY=$(jq -n \
-  --arg model "$CODEX_MODEL" \
-  '{
-    name: "QA daily automation",
-    enabled: true,
-    trigger: {
-      triggerType: "schedule",
-      cron: "0 8 * * 1-5",
-      timezone: "America/Los_Angeles"
-    },
-    action: {
-      actionType: "scheduled-thread",
-      threadRequest: {
-        providerId: "codex",
-        model: $model,
-        input: [{ type: "text", text: "Say exactly: QA AUTOMATION" }],
-        environment: {
-          type: "host",
-          hostId: env.HOST_ID,
-          workspace: {
-            type: "managed-worktree",
-            baseBranch: { kind: "default" }
-          }
-        }
-      }
-    }
-  }')
-
-AUTOMATION_ID=$(curl -fsS \
-  -H "content-type: application/json" \
-  -d "$AUTOMATION_CREATE_BODY" \
-  "$BB_SERVER_URL/api/v1/projects/$BB_PROJECT_ID/automations" \
-  | jq -er '.id')
-
-curl -fsS "$BB_SERVER_URL/api/v1/projects/$BB_PROJECT_ID/automations" \
-  | jq -e --arg id "$AUTOMATION_ID" 'map(.id) | index($id) != null'
-
-curl -fsS "$BB_SERVER_URL/api/v1/automations" \
-  | jq -e --arg id "$AUTOMATION_ID" '.automations | map(.automation.id) | index($id) != null'
-
-curl -fsS -X PATCH \
-  -H "content-type: application/json" \
-  -d '{"enabled":false}' \
-  "$BB_SERVER_URL/api/v1/projects/$BB_PROJECT_ID/automations/$AUTOMATION_ID" \
-  | jq -e '.enabled == false and .nextRunAt == null'
-
-curl -fsS -X PATCH \
-  -H "content-type: application/json" \
-  -d '{"enabled":true}' \
-  "$BB_SERVER_URL/api/v1/projects/$BB_PROJECT_ID/automations/$AUTOMATION_ID" \
-  | jq -e '.enabled == true'
-
-curl -fsS -X PATCH \
-  -H "content-type: application/json" \
-  -d '{"autoArchive":true}' \
-  "$BB_SERVER_URL/api/v1/projects/$BB_PROJECT_ID/automations/$AUTOMATION_ID" \
-  | jq -e '.autoArchive == true'
-
-curl -fsS -X DELETE \
-  "$BB_SERVER_URL/api/v1/projects/$BB_PROJECT_ID/automations/$AUTOMATION_ID" \
-  | jq -e '.ok == true'
-
-curl -fsS "$BB_SERVER_URL/api/v1/projects/$BB_PROJECT_ID/automations" \
-  | jq -e --arg id "$AUTOMATION_ID" 'map(.id) | index($id) == null'
-```
-
-Expected result:
-
-- Creating the automation stores a valid scheduled-thread automation and returns
-  an ID.
-- Project-scoped list and global overview include the automation before delete.
-- Disable clears `nextRunAt`; enable restores the enabled state.
-- Config patch updates `autoArchive`.
-- Delete removes the automation from the project-scoped list.
 
 ## Multi-Thread and Shared Environment
 

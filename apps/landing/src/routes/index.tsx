@@ -141,10 +141,7 @@ function AppShot() {
   const ref = useRef<HTMLImageElement>(null);
   useEffect(() => {
     const el = ref.current;
-    if (
-      !el ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
+    if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       return;
     }
     let raf = 0;
@@ -235,8 +232,8 @@ function LandingPage() {
 
         <InstallCommand placement="hero" />
         <p className="fine">
-          Free and open source · macOS (Apple Silicon) · runs anywhere with
-          Node 22 and Git
+          Free and open source · macOS (Apple Silicon) · runs anywhere with Node
+          22 and Git
         </p>
 
         <div className="providers">
@@ -261,13 +258,13 @@ function LandingPage() {
       <section className="features" data-reveal>
         <h2 className="sec-title">One place for you and your agents.</h2>
         <p className="sec-sub">
-          Stop juggling terminal tabs. bb gives every agent a thread, and
-          gives agents the same controls it gives you.
+          Stop juggling terminal tabs. bb gives every agent a thread, and gives
+          agents the same controls it gives you.
         </p>
         <div className="grid">
           <SpotCard title="The IDE agents can drive">
-            Agents spawn threads, message other agents, and schedule follow-up
-            work through a <code>bb</code> CLI made for agents.
+            Agents spawn threads and message other agents through a{" "}
+            <code>bb</code> CLI made for agents.
           </SpotCard>
           <SpotCard title="Local-first">
             bb is free and runs entirely on your machine, using the provider

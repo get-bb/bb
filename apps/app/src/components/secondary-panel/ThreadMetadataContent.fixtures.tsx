@@ -5,7 +5,6 @@ import {
   makeEnvironment,
   makeThread,
   makeThreadListEntry,
-  makeThreadSchedule,
   makeWorkspaceStatus,
 } from "../../../.ladle/story-fixtures";
 import type { ThreadMetadataContentProps } from "./ThreadMetadataContent";
@@ -16,7 +15,6 @@ export {
   makeEnvironment,
   makeThread,
   makeThreadListEntry,
-  makeThreadSchedule,
   makeWorkspaceStatus,
 };
 
@@ -62,7 +60,6 @@ export const baseProps: ThreadMetadataContentProps = {
   selectedMergeBaseBranch: undefined,
   mergeBaseBranchOptions: ["main", "develop", "release/2026-04"],
   isLoadingMergeBaseBranchOptions: false,
-  threadSchedules: [],
   updateThreadPending: false,
   onAssignParent: noop,
   onMergeBaseBranchChange: noop,

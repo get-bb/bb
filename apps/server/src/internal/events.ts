@@ -1,8 +1,6 @@
 import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import {
   appendDaemonEventsInTransaction,
-  archiveThread,
-  getAutomation,
   deriveStoredEventItemFields,
   getThread,
   listCompletedTurnsByThreadIds,
@@ -39,14 +37,8 @@ import {
   isActivePruneTriggerThreadEventType,
   maybePruneActiveThreadEventHistory,
 } from "../services/system/event-pruning.js";
-import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-  wouldCleanupEnvironment,
-} from "../services/environments/environment-cleanup-internal.js";
 import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
 import { runQueuedMessageAutoSendForThread } from "../services/threads/queued-messages.js";
-import { dispatchSettledArchivedThreadProviderArchiveCommand } from "../services/threads/thread-lifecycle.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
 import {
   isCommandTimeoutError,
@@ -142,11 +134,6 @@ interface ResolveActivePruneCandidatesArgs {
   acceptedEvents: AcceptedDaemonEvent[];
   events: HostDaemonEventEnvelope[];
   insertedEventIndexes: number[];
-}
-
-interface ArchiveCompletedAutomationThreadIfNeededArgs {
-  latestThread: NonNullable<ReturnType<typeof getThread>>;
-  turnStatus: ThreadEventTurnStatus;
 }
 
 interface ParentTurnNotificationFollowUp {
@@ -261,42 +248,6 @@ function notifyInsertedEventThreads(
   }
 }
 
-async function archiveCompletedAutomationThreadIfNeeded(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  args: ArchiveCompletedAutomationThreadIfNeededArgs,
-): Promise<void> {
-  if (args.turnStatus !== "completed" || !args.latestThread.automationId) {
-    return;
-  }
-
-  const automation = getAutomation(deps.db, args.latestThread.automationId);
-  if (automation?.autoArchive) {
-    const shouldRequestCleanup = wouldCleanupEnvironment(deps, {
-      environmentId: args.latestThread.environmentId,
-      excludeThreadId: args.latestThread.id,
-    });
-    const archivedThread = archiveThread(
-      deps.db,
-      deps.hub,
-      args.latestThread.id,
-    );
-    if (!archivedThread) {
-      return;
-    }
-    dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
-      threadId: archivedThread.id,
-    });
-    if (shouldRequestCleanup) {
-      requestEnvironmentCleanup(deps, {
-        environmentId: args.latestThread.environmentId,
-      });
-      requestEnvironmentCleanupAdvance(deps, {
-        environmentId: args.latestThread.environmentId,
-      });
-    }
-  }
-}
-
 async function applyEventEffects(
   deps: LoggedPendingInteractionWorkSessionDeps,
   events: HostDaemonEventEnvelope[],
@@ -373,15 +324,6 @@ async function applyEventEffects(
             kind: "queued-message-auto-send",
             threadId: entry.threadId,
           });
-        }
-        if (turnCompleted.nextStatus === "idle" && turnCompleted.thread) {
-          const latestThread = getThread(deps.db, turnCompleted.thread.id);
-          if (latestThread?.status === "idle") {
-            await archiveCompletedAutomationThreadIfNeeded(deps, {
-              latestThread,
-              turnStatus: event.status,
-            });
-          }
         }
         continue;
       }
@@ -787,7 +729,10 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
           sessionId: payload.sessionId,
         });
       } catch (error) {
-        if (error instanceof ApiError && error.body.code === "inactive_session") {
+        if (
+          error instanceof ApiError &&
+          error.body.code === "inactive_session"
+        ) {
           deps.logger.info(
             getInactiveSessionLogFields(deps.db, {
               authenticatedHostId: getAuthenticatedDaemon(context).hostId,

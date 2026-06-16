@@ -64,8 +64,6 @@ import {
   allThreadStorageFilePreviewQueryKeyPrefix,
   allThreadStorageFilesQueryKeyPrefix,
   allThreadStoragePathsQueryKeyPrefix,
-  allThreadSchedulesQueryKeyPrefix,
-  automationsOverviewQueryKey,
   allSystemExecutionOptionsQueryKeyPrefix,
   allThreadQueryKeyPrefix,
   allThreadTerminalsQueryKeyPrefix,
@@ -113,7 +111,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "thread-deleted": {
     flush: "debounced",
     dirty: [
-      dirtyAutomationOverviewQueries, // Overview rows include thread schedule targets.
       dirtyThreadListQueries, // Deleted thread must disappear from lists.
       dirtyThreadDetailQueries, // Active detail should reconcile to deleted/not-found.
       dirtyThreadTimelineQueries, // Active timeline should stop showing stale rows.
@@ -144,7 +141,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "title-changed": {
     flush: "debounced",
     dirty: [
-      dirtyAutomationOverviewQueries, // Overview rows render schedule target titles.
       dirtyThreadListQueries, // List rows render display title.
       dirtyThreadDetailQueries, // Detail headers and breadcrumbs render display title.
     ],
@@ -158,7 +154,6 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "archived-changed": {
     flush: "debounced",
     dirty: [
-      dirtyAutomationOverviewQueries, // Overview rows render archived target state.
       dirtyThreadListQueries, // Archive state moves threads between active/archived lists.
       dirtyThreadDetailQueries, // Detail controls and banners depend on archive state.
       dirtyProjectPromptHistoryQueries, // Archived prompts may leave project history.
@@ -263,13 +258,11 @@ export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   },
   "project-updated": {
     dirty: [
-      dirtyAutomationOverviewQueries, // Overview rows render project names.
       dirtyProjectListQueries, // Name/settings fields are embedded in sidebar navigation/project caches.
     ],
   },
   "project-deleted": {
     dirty: [
-      dirtyAutomationOverviewQueries, // Overview rows hide deleted projects.
       dirtyProjectListQueries, // Deleted projects must disappear from navigation/pickers.
     ],
   },
@@ -287,19 +280,6 @@ export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   "project-order-changed": {
     dirty: [
       dirtyProjectListQueries, // Sidebar order depends on project ordering.
-    ],
-  },
-  "automations-changed": {
-    dirty: [
-      dirtyAutomationOverviewQueries, // Overview lists project automation rows directly.
-      dirtyProjectListQueries, // Sidebar/project caches still carry project-level change context.
-    ],
-  },
-  "thread-schedules-changed": {
-    dirty: [
-      dirtyAutomationOverviewQueries, // Overview lists thread schedule rows directly.
-      dirtyThreadScheduleQueries, // Info tabs read per-thread schedules.
-      dirtyProjectListQueries, // Sidebar/project caches still carry project-level change context.
     ],
   },
 } satisfies ProjectChangeRegistry;
@@ -711,14 +691,6 @@ function dirtyThreadStorageQueriesForEnvironment({
 
 function dirtyProjectListQueries(): QueryKey[] {
   return getProjectListInvalidationQueryKeys();
-}
-
-function dirtyAutomationOverviewQueries(): QueryKey[] {
-  return [automationsOverviewQueryKey()];
-}
-
-function dirtyThreadScheduleQueries(): QueryKey[] {
-  return [allThreadSchedulesQueryKeyPrefix()];
 }
 
 function dirtyProjectSourceDependentQueries({

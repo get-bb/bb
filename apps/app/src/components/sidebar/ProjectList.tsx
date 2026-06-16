@@ -41,9 +41,7 @@ import {
   applyNeighborReorder,
   buildNeighborReorderRequest,
 } from "@/lib/neighbor-reorder";
-import {
-  useSetRootComposeProjectId,
-} from "@/lib/root-compose-selection";
+import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button.js";
 import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
@@ -110,7 +108,6 @@ interface ProjectListProps {
 
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
-  onOpenAutomations?: () => void;
 }
 
 interface ProjectListShellProps {
@@ -209,11 +206,7 @@ function hasSameStringList(
 }
 
 function isSidebarSectionId(value: string): value is SidebarSectionId {
-  return (
-    value === "pinned" ||
-    value === "projects" ||
-    value === "threads"
-  );
+  return value === "pinned" || value === "projects" || value === "threads";
 }
 
 function isCollapsibleSidebarSectionId(
@@ -538,7 +531,6 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 
 export function ProjectListActionButtons({
   onNewChat,
-  onOpenAutomations,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
   const newChatTitle = isNewChatDisabled ? "Start a new thread" : "New thread";
@@ -561,23 +553,6 @@ export function ProjectListActionButtons({
           aria-hidden="true"
         />
       </Button>
-      {onOpenAutomations ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className={PROJECT_LIST_ACTION_BUTTON_CLASS}
-          onClick={onOpenAutomations}
-          title="Automations"
-        >
-          <Icon name="Clock" />
-          <span className="min-w-0 flex-1 truncate text-left">Automations</span>
-          <span
-            className={PROJECT_LIST_ACTION_TRAILING_SLOT_CLASS}
-            aria-hidden="true"
-          />
-        </Button>
-      ) : null}
     </div>
   );
 }

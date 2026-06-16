@@ -9,7 +9,6 @@ import type {
   WorkspaceDiffTarget,
 } from "@bb/domain";
 import type {
-  AutomationsOverviewResponse,
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
@@ -49,7 +48,6 @@ import type {
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
   ThreadResponse,
-  ThreadSchedule,
   ThreadWithIncludesResponse,
   PathListIncludeQueryValue,
   BranchListQuery,
@@ -474,14 +472,6 @@ export async function reorderProject(
   );
 }
 
-export async function listAutomationsOverview(
-  signal?: AbortSignal,
-): Promise<AutomationsOverviewResponse> {
-  return request<AutomationsOverviewResponse>(
-    apiClient.automations.$get(undefined, requestOptions(signal)),
-  );
-}
-
 export async function listProjectPromptHistory(
   projectId: string,
   signal?: AbortSignal,
@@ -781,18 +771,6 @@ export async function getThreadChildSummary(
 ): Promise<ThreadChildSummaryResponse> {
   return request<ThreadChildSummaryResponse>(
     apiClient.threads[":id"]["child-summary"].$get(
-      { param: { id } },
-      requestOptions(signal),
-    ),
-  );
-}
-
-export async function listThreadSchedules(
-  id: string,
-  signal?: AbortSignal,
-): Promise<ThreadSchedule[]> {
-  return request<ThreadSchedule[]>(
-    apiClient.threads[":id"].schedules.$get(
       { param: { id } },
       requestOptions(signal),
     ),

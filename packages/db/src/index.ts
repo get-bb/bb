@@ -11,7 +11,6 @@ export type {
 
 export * from "./schema.js";
 export {
-  createAutomationId,
   createQueuedThreadMessageClaimToken,
   createQueuedThreadMessageId,
   createEnvironmentId,
@@ -24,7 +23,6 @@ export {
   createPromptHistoryEntryId,
   createProjectSourceId,
   createTerminalSessionId,
-  createThreadScheduleId,
   createThreadId,
   createThreadProvisioningId,
 } from "./ids.js";

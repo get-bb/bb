@@ -7,7 +7,7 @@ import type {
   ThreadListEntry,
   WorkspaceStatus,
 } from "@bb/domain";
-import type { ProjectResponse, ThreadSchedule } from "@bb/server-contract";
+import type { ProjectResponse } from "@bb/server-contract";
 import { ClaudeIcon } from "../src/components/icons/ClaudeIcon";
 import { OpenAiIcon } from "../src/components/icons/OpenAiIcon";
 import { PiIcon } from "../src/components/icons/PiIcon";
@@ -264,7 +264,6 @@ export function makeThread(overrides: Partial<Thread> = {}): Thread {
     id: "thr_demo",
     projectId: PROJECT_IDS.bb,
     environmentId: "env_demo",
-    automationId: null,
     providerId: "codex",
     title: "Audit recurring permission failures",
     titleFallback: "Audit recurring permission failures",
@@ -288,7 +287,6 @@ export function makeThreadListEntry(
     id: "thr_demo",
     projectId: PROJECT_IDS.bb,
     environmentId: null,
-    automationId: null,
     providerId: "codex",
     title: "Audit recurring permission failures",
     titleFallback: "Audit recurring permission failures",
@@ -308,27 +306,6 @@ export function makeThreadListEntry(
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "other",
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
-  };
-  return { ...base, ...overrides };
-}
-
-export function makeThreadSchedule(
-  overrides: Partial<ThreadSchedule> = {},
-): ThreadSchedule {
-  const base: ThreadSchedule = {
-    id: "sched_standup",
-    projectId: PROJECT_IDS.bb,
-    threadId: "thr_demo",
-    name: "Daily standup nudge",
-    enabled: true,
-    kind: "cron",
-    cron: "0 9 * * 1-5",
-    timezone: "America/Los_Angeles",
-    prompt: "Summarize what changed since yesterday and flag anything blocked.",
-    nextFireAt: 1_700_003_600_000,
-    lastFiredAt: null,
-    createdAt: 0,
-    updatedAt: 100,
   };
   return { ...base, ...overrides };
 }

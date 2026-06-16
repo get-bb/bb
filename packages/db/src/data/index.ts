@@ -60,32 +60,6 @@ export type {
 } from "./project-sources.js";
 
 export {
-  advanceAutomationAfterRunInTransaction,
-  claimAutomationScheduledRun,
-  createAutomation,
-  deleteAutomation,
-  getAutomation,
-  hasOpenAutomationThread,
-  listAutomations,
-  listAutomationsWithProjects,
-  listDueAutomations,
-  restoreAutomationAfterFailedRun,
-  updateAutomation,
-} from "./automations.js";
-export type {
-  ClaimAutomationScheduledRunArgs,
-  ClaimAutomationScheduledRunResult,
-  AutomationOverviewProjectRow,
-  AutomationRow,
-  AutomationWithProjectRow,
-  CreateAutomationInput,
-  DueAutomationCursor,
-  ListDueAutomationsArgs,
-  RestoreAutomationAfterFailedRunArgs,
-  UpdateAutomationInput,
-} from "./automations.js";
-
-export {
   createThread,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
@@ -144,33 +118,6 @@ export type {
   UnpinThreadArgs,
   UpdateThreadInput,
 } from "./threads.js";
-
-export {
-  advanceThreadScheduleAfterFireInTransaction,
-  advanceThreadScheduleAfterSkip,
-  advanceThreadScheduleAfterSkipInTransaction,
-  createThreadSchedule,
-  deleteThreadSchedule,
-  disableThreadSchedulesByThread,
-  getThreadSchedule,
-  listDueThreadSchedules,
-  listThreadSchedulesByThread,
-  listThreadSchedulesWithThreadAndProject,
-  updateThreadSchedule,
-} from "./thread-schedules.js";
-export type {
-  AdvanceThreadScheduleAfterFireArgs,
-  AdvanceThreadScheduleAfterSkipArgs,
-  CreateThreadScheduleInput,
-  DisableThreadSchedulesByThreadArgs,
-  DueThreadScheduleCursor,
-  ListDueThreadSchedulesArgs,
-  ThreadScheduleRow,
-  ThreadScheduleOverviewProjectRow,
-  ThreadScheduleOverviewThreadRow,
-  ThreadScheduleWithThreadAndProjectRow,
-  UpdateThreadScheduleInput,
-} from "./thread-schedules.js";
 
 export { getExperiments, setExperiments } from "./experiments.js";
 
