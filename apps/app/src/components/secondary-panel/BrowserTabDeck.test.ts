@@ -118,12 +118,12 @@ describe("buildBrowserTabIdSet", () => {
 
 describe("restoring a thread with persisted browser tabs", () => {
   it("drives one real attach + show through the coordinator for the restored active tab", () => {
-    // On restore the deck mounts only the tab selectActiveBrowserTab returns;
-    // the single mounted BrowserTabContent attaches its view at the persisted
-    // url and asks the coordinator to show it. This exercises the real
-    // coordinator (not a hand-rolled driver) for the no-other-view-visible-yet
-    // case: with nothing previously visible, show emits exactly one setVisible
-    // true and no spurious hide.
+    // NB: this does not mount the deck (RTL is unavailable in this harness) —
+    // the deck's "mount only the active tab" guarantee is covered by the
+    // selectActiveBrowserTab tests above. Here we drive attach + show for the
+    // tab selectActiveBrowserTab returns through the REAL visibility coordinator
+    // and assert the nothing-visible-yet case: exactly one setVisible(true),
+    // bounds synced once, and no spurious hide.
     const browserTabs = [
       makeBrowserTab("tab-a", "https://a.example"),
       makeBrowserTab("tab-b", "https://b.example"),
