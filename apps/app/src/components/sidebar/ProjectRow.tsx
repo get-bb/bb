@@ -278,14 +278,14 @@ function getProjectThreadTreeEmptyStateMessageClassName(
   );
 }
 
-// Both the projectless "Threads" section and a project's thread list start
-// their rows one step in from the section edge, so a top-level thread title
-// lands in the same column whether or not it lives under a project — the eye
-// scans one continuous title column down the whole sidebar.
+// A project's threads sit one level under its (pad-0) project header, while a
+// projectless thread IS a top-level row — so it renders at depth 0, flush with
+// the project headers, aligning its no-project glyph with the project folder
+// icons.
 function getProjectThreadTreeRootDepthOffset(
-  _variant: ProjectThreadTreeVariant,
+  variant: ProjectThreadTreeVariant,
 ): number {
-  return 1;
+  return variant === "section" ? 0 : 1;
 }
 
 function getThreadRowDepth({

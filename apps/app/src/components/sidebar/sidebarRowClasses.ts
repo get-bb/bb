@@ -31,12 +31,14 @@ export const SIDEBAR_UNREAD_DOT_CLASS =
   SIDEBAR_UNREAD_DOT_CLASS_BY_TONE.default;
 
 // One indentation system for every sidebar row (sections, projects, worktree
-// groups, threads): a fixed base plus a single per-depth step. Kept tight so a
-// few levels of nesting stay readable in a narrow sidebar.
-const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 8;
-const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 16;
+// groups, threads), expressed on the Tailwind spacing scale (4px unit) so it
+// stays in the design system. Level-0 rows (projects and projectless threads)
+// sit flush at the list edge; each deeper level adds one `spacing-3` step. Tune
+// these two numbers to retune every row's indent uniformly.
+const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 0; // spacing-0
+const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 12; // spacing-3
 // Horizontal center of a row's leading caret box (`-ml-1` + `size-5`): −4 + 20/2.
-const SIDEBAR_ROW_CARET_CENTER_OFFSET_PX = 6;
+const SIDEBAR_ROW_CARET_CENTER_OFFSET_PX = 6; // spacing-1.5
 
 export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";
 
