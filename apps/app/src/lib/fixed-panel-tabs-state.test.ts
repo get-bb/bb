@@ -1,61 +1,58 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFixedPanelTabId,
+  createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
+  getFixedPanelTabsStateStorageKey,
+  isFixedPanelTabsStateStorageKey,
   parseFixedPanelTabsState,
+  FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
   type FixedPanelTabsState,
 } from "./fixed-panel-tabs-state";
 
 function makeInitialState(): FixedPanelTabsState {
   return {
-    version: 1,
+    version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
     secondary: {
       tabs: [],
       activeTabId: null,
       isOpen: false,
-    },
-    bottom: {
-      tabs: [],
-      activeTabId: null,
     },
     lastUsedAt: 0,
   };
 }
 
 describe("fixed-panel-tabs-state", () => {
-  it("migrates legacy secondary tab ids together with the active id", () => {
+  it("parses current secondary tab state", () => {
     const now = 1_000;
-    const workspaceTab = {
+    const workspaceTab = createWorkspaceFilePreviewFixedPanelTab({
       environmentId: "env-1",
-      id: "workspace-file-preview:src%2Findex.ts",
-      kind: "workspace-file-preview",
-      lineRange: null,
-      path: "src/index.ts",
-      source: { kind: "working-tree" },
-      statusLabel: null,
-    };
+      tab: {
+        lineRange: {
+          startLineNumber: 1,
+          endLineNumber: 3,
+        },
+        path: "src/index.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+    const terminalTab = createTerminalFixedPanelTab({ terminalId: "term-1" });
     const storedState = {
-      version: 1,
+      version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
       secondary: {
         tabs: [
-          { id: "thread-info", kind: "thread-info" },
+          createThreadInfoFixedPanelTab(),
           workspaceTab,
-          {
-            id: "browser:browser-instance",
-            kind: "browser",
-            title: null,
-            url: "",
-          },
+          terminalTab,
         ],
         activeTabId: workspaceTab.id,
         isOpen: true,
       },
       bottom: {
-        tabs: [
-          { id: "terminal:term-1", kind: "terminal", terminalId: "term-1" },
-        ],
-        activeTabId: "terminal:term-1",
+        tabs: [],
+        activeTabId: null,
       },
       lastUsedAt: now,
     };
@@ -81,15 +78,49 @@ describe("fixed-panel-tabs-state", () => {
       expectedWorkspaceTab.id,
       buildFixedPanelTabId({
         environmentId: null,
-        kind: "browser",
-        path: "browser-instance",
-      }),
-      buildFixedPanelTabId({
-        environmentId: null,
         kind: "terminal",
         path: "term-1",
       }),
     ]);
-    expect(parsed.bottom.tabs).toEqual([]);
+    expect(parsed.secondary.tabs[1]).toMatchObject({
+      lineRange: null,
+    });
+  });
+
+  it("drops old fixed panel state shapes instead of migrating them", () => {
+    const initialValue = makeInitialState();
+    const parsed = parseFixedPanelTabsState({
+      initialValue,
+      now: 1_000,
+      storedValue: JSON.stringify({
+        version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
+        secondary: {
+          tabs: [{ id: "thread-info", kind: "thread-info" }],
+          activeTabId: "thread-info",
+        },
+        bottom: {
+          tabs: [
+            { id: "terminal:term-1", kind: "terminal", terminalId: "term-1" },
+          ],
+          activeTabId: "terminal:term-1",
+        },
+        lastUsedAt: 1_000,
+      }),
+    });
+
+    expect(parsed).toBe(initialValue);
+  });
+
+  it("recognizes old versioned storage keys for pruning", () => {
+    expect(
+      isFixedPanelTabsStateStorageKey(
+        getFixedPanelTabsStateStorageKey({ threadId: "thr_current" }),
+      ),
+    ).toBe(true);
+    expect(
+      isFixedPanelTabsStateStorageKey(
+        "bb.thread.fixedPanelTabsState-thr_old-0",
+      ),
+    ).toBe(true);
   });
 });

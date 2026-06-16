@@ -23,23 +23,6 @@ const SECONDARY_PANEL_TAB_ID_ENVIRONMENT_NONE = "none";
 const THREAD_INFO_TAB_ID = "thread-info:thread-info:none";
 const GIT_DIFF_TAB_ID = "git-diff:git-diff:none";
 const NEW_TAB_TAB_ID = "new-tab:new-tab:none";
-const LEGACY_THREAD_INFO_TAB_ID = "thread-info";
-const LEGACY_GIT_DIFF_TAB_ID = "git-diff";
-const LEGACY_NEW_TAB_TAB_ID = "new-tab";
-
-function stripLegacyLineNumberField(value: unknown): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return value;
-  }
-
-  const nextValue: Record<string, unknown> = {};
-  for (const [key, fieldValue] of Object.entries(value)) {
-    if (key !== "lineNumber") {
-      nextValue[key] = fieldValue;
-    }
-  }
-  return nextValue;
-}
 
 const environmentFilePreviewSourceSchema: z.ZodType<EnvironmentFilePreviewSource> =
   z.discriminatedUnion("kind", [
@@ -81,43 +64,34 @@ const gitDiffFixedPanelTabSchema = z
     kind: z.literal("git-diff"),
   })
   .strict();
-const workspaceFilePreviewFixedPanelTabSchema = z.preprocess(
-  stripLegacyLineNumberField,
-  z
-    .object({
-      environmentId: z.string().min(1).nullable(),
-      id: z.string().min(1),
-      kind: z.literal("workspace-file-preview"),
-      lineRange: filePreviewLineRangeSchema.nullable().default(null),
-      path: z.string().min(1),
-      source: environmentFilePreviewSourceSchema,
-      statusLabel: workspaceFilePreviewStatusLabelSchema,
-    })
-    .strict(),
-);
-const hostFilePreviewFixedPanelTabSchema = z.preprocess(
-  stripLegacyLineNumberField,
-  z
-    .object({
-      id: z.string().min(1),
-      kind: z.literal("host-file-preview"),
-      lineRange: filePreviewLineRangeSchema.nullable().default(null),
-      path: z.string().min(1),
-    })
-    .strict(),
-);
-const threadStorageFilePreviewFixedPanelTabSchema = z.preprocess(
-  stripLegacyLineNumberField,
-  z
-    .object({
-      id: z.string().min(1),
-      isPinned: z.boolean(),
-      kind: z.literal("thread-storage-file-preview"),
-      lineRange: filePreviewLineRangeSchema.nullable().default(null),
-      path: z.string().min(1),
-    })
-    .strict(),
-);
+const workspaceFilePreviewFixedPanelTabSchema = z
+  .object({
+    environmentId: z.string().min(1).nullable(),
+    id: z.string().min(1),
+    kind: z.literal("workspace-file-preview"),
+    lineRange: filePreviewLineRangeSchema.nullable().default(null),
+    path: z.string().min(1),
+    source: environmentFilePreviewSourceSchema,
+    statusLabel: workspaceFilePreviewStatusLabelSchema,
+  })
+  .strict();
+const hostFilePreviewFixedPanelTabSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.literal("host-file-preview"),
+    lineRange: filePreviewLineRangeSchema.nullable().default(null),
+    path: z.string().min(1),
+  })
+  .strict();
+const threadStorageFilePreviewFixedPanelTabSchema = z
+  .object({
+    id: z.string().min(1),
+    isPinned: z.boolean(),
+    kind: z.literal("thread-storage-file-preview"),
+    lineRange: filePreviewLineRangeSchema.nullable().default(null),
+    path: z.string().min(1),
+  })
+  .strict();
 const browserFixedPanelTabSchema = z
   .object({
     environmentId: z.string().min(1).nullable().default(null),
@@ -154,9 +128,6 @@ const secondaryFixedPanelTabSchema = z.union([
   newTabFixedPanelTabSchema,
   terminalFixedPanelTabSchema,
 ]);
-const bottomFixedPanelTabSchema = z.discriminatedUnion("kind", [
-  terminalFixedPanelTabSchema,
-]);
 const secondaryFixedPanelTabGroupStateSchema = z
   .object({
     tabs: z.array(secondaryFixedPanelTabSchema),
@@ -164,36 +135,13 @@ const secondaryFixedPanelTabGroupStateSchema = z
     isOpen: z.boolean(),
   })
   .strict();
-const legacySecondaryFixedPanelTabGroupStateSchema = z
-  .object({
-    tabs: z.array(secondaryFixedPanelTabSchema),
-    activeTabId: z.string().min(1).nullable(),
-  })
-  .strict();
-const bottomFixedPanelTabGroupStateSchema = z
-  .object({
-    tabs: z.array(bottomFixedPanelTabSchema),
-    activeTabId: z.string().min(1).nullable(),
-  })
-  .strict();
 const fixedPanelTabsStateSchema = z
   .object({
     version: z.literal(FIXED_PANEL_TABS_STATE_STORAGE_VERSION),
     secondary: secondaryFixedPanelTabGroupStateSchema,
-    bottom: bottomFixedPanelTabGroupStateSchema,
     lastUsedAt: z.number().int().nonnegative(),
   })
-  .strict();
-const legacyFixedPanelTabsStateSchema = z
-  .object({
-    version: z.literal(FIXED_PANEL_TABS_STATE_STORAGE_VERSION),
-    secondary: legacySecondaryFixedPanelTabGroupStateSchema,
-    bottom: bottomFixedPanelTabGroupStateSchema,
-    lastUsedAt: z.number().int().nonnegative(),
-  })
-  .strict();
-
-export type FixedPanelRegion = "secondary" | "bottom";
+  .passthrough();
 
 export interface ThreadInfoFixedPanelTab {
   id: string;
@@ -280,9 +228,7 @@ export type SecondaryFileFixedPanelTab =
   | NewTabFixedPanelTab
   | TerminalFixedPanelTab;
 
-export type BottomFixedPanelTab = TerminalFixedPanelTab;
-
-export type FixedPanelTab = SecondaryFixedPanelTab | BottomFixedPanelTab;
+export type FixedPanelTab = SecondaryFixedPanelTab;
 
 export interface FixedPanelTabGroupState {
   tabs: readonly FixedPanelTab[];
@@ -296,7 +242,6 @@ export interface FixedSecondaryPanelTabGroupState extends FixedPanelTabGroupStat
 export interface FixedPanelTabsState {
   version: typeof FIXED_PANEL_TABS_STATE_STORAGE_VERSION;
   secondary: FixedSecondaryPanelTabGroupState;
-  bottom: FixedPanelTabGroupState;
   lastUsedAt: number;
 }
 
@@ -305,7 +250,6 @@ interface FixedPanelTabsStorageKeyArgs {
 }
 
 interface CreateFixedPanelTabsStateArgs {
-  bottom?: FixedPanelTabGroupState;
   lastUsedAt?: number;
   secondary?: FixedSecondaryPanelTabGroupState;
 }
@@ -344,7 +288,6 @@ interface StripTransientFixedPanelTabsStateForStorageArgs {
 
 interface NormalizeFixedPanelTabGroupStateArgs {
   group: FixedPanelTabGroupState;
-  region: FixedPanelRegion;
 }
 
 interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
@@ -375,11 +318,6 @@ interface BuildFixedPanelTabIdArgs {
 interface NormalizeFixedPanelTabGroupStateResult {
   activeTabId: string | null;
   tabs: readonly FixedPanelTab[];
-}
-
-interface IsLegacyFixedTabIdMatchArgs {
-  activeTabId: string;
-  tab: FixedPanelTab;
 }
 
 function getLocalStorage(): Storage | null {
@@ -567,9 +505,7 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
       const browserPath =
         idSegments.length === 3 && idSegments[0] === "browser"
           ? decodeStorageSegment(idSegments[1] ?? "")
-          : tab.id.startsWith("browser:")
-            ? tab.id.slice("browser:".length)
-            : tab.id;
+          : tab.id;
       const id = buildFixedPanelTabId({
         environmentId: tab.environmentId,
         kind: tab.kind,
@@ -595,40 +531,12 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
   }
 }
 
-function isTabSupportedInRegion(
-  region: FixedPanelRegion,
-  tab: FixedPanelTab,
-): boolean {
-  if (region === "bottom") {
-    return tab.kind === "terminal";
-  }
-  return true;
-}
-
 function isTransientFixedPanelTab(tab: FixedPanelTab): boolean {
   return tab.kind === "new-tab";
 }
 
-function isLegacyFixedTabIdMatch(args: IsLegacyFixedTabIdMatchArgs): boolean {
-  switch (args.tab.kind) {
-    case "thread-info":
-      return args.activeTabId === LEGACY_THREAD_INFO_TAB_ID;
-    case "git-diff":
-      return args.activeTabId === LEGACY_GIT_DIFF_TAB_ID;
-    case "new-tab":
-      return args.activeTabId === LEGACY_NEW_TAB_TAB_ID;
-    case "workspace-file-preview":
-    case "host-file-preview":
-    case "thread-storage-file-preview":
-    case "browser":
-    case "terminal":
-      return false;
-  }
-}
-
 function normalizeFixedPanelTabGroupState({
   group,
-  region,
 }: NormalizeFixedPanelTabGroupStateArgs): NormalizeFixedPanelTabGroupStateResult {
   const seenTabIds = new Set<string>();
   const tabs: FixedPanelTab[] = [];
@@ -637,7 +545,6 @@ function normalizeFixedPanelTabGroupState({
     const normalizedTab = normalizeFixedPanelTabId(tab);
     if (
       isTransientFixedPanelTab(normalizedTab) ||
-      !isTabSupportedInRegion(region, normalizedTab) ||
       seenTabIds.has(normalizedTab.id)
     ) {
       continue;
@@ -646,12 +553,7 @@ function normalizeFixedPanelTabGroupState({
     tabs.push(normalizedTab);
     if (
       group.activeTabId !== null &&
-      (tab.id === group.activeTabId ||
-        normalizedTab.id === group.activeTabId ||
-        isLegacyFixedTabIdMatch({
-          activeTabId: group.activeTabId,
-          tab: normalizedTab,
-        }))
+      (tab.id === group.activeTabId || normalizedTab.id === group.activeTabId)
     ) {
       activeTabId = normalizedTab.id;
     }
@@ -669,7 +571,6 @@ function normalizeFixedSecondaryPanelTabGroupState(
   return {
     ...normalizeFixedPanelTabGroupState({
       group,
-      region: "secondary",
     }),
     isOpen: group.isOpen,
   };
@@ -704,10 +605,6 @@ function stripTransientFixedPanelTabsStateForStorage({
       ...state.secondary,
       tabs: state.secondary.tabs.map(stripTransientFixedPanelTabForStorage),
     },
-    bottom: {
-      ...state.bottom,
-      tabs: state.bottom.tabs.map(stripTransientFixedPanelTabForStorage),
-    },
   };
 }
 
@@ -717,38 +614,11 @@ export function normalizeFixedPanelTabsState({
   const normalizedSecondary = normalizeFixedSecondaryPanelTabGroupState(
     state.secondary,
   );
-  const normalizedBottom = normalizeFixedPanelTabGroupState({
-    group: state.bottom,
-    region: "bottom",
-  });
-  const seenSecondaryTabIds = new Set(
-    normalizedSecondary.tabs.map((tab) => tab.id),
-  );
-  const migratedTerminalTabs = normalizedBottom.tabs.filter(
-    (tab) => !seenSecondaryTabIds.has(tab.id),
-  );
-  const secondaryTabs =
-    migratedTerminalTabs.length > 0
-      ? [...normalizedSecondary.tabs, ...migratedTerminalTabs]
-      : normalizedSecondary.tabs;
-  const activeTabId =
-    normalizedSecondary.activeTabId ??
-    (normalizedBottom.activeTabId !== null &&
-    secondaryTabs.some((tab) => tab.id === normalizedBottom.activeTabId)
-      ? normalizedBottom.activeTabId
-      : null);
 
   return {
-    ...state,
-    secondary: {
-      ...normalizedSecondary,
-      tabs: secondaryTabs,
-      activeTabId,
-    },
-    bottom: {
-      tabs: [],
-      activeTabId: null,
-    },
+    version: state.version,
+    secondary: normalizedSecondary,
+    lastUsedAt: state.lastUsedAt,
   };
 }
 
@@ -762,10 +632,6 @@ export function createEmptyFixedPanelTabsState(
         tabs: [],
         activeTabId: null,
         isOpen: false,
-      },
-      bottom: args.bottom ?? {
-        tabs: [],
-        activeTabId: null,
       },
       lastUsedAt: args.lastUsedAt ?? 0,
     },
@@ -783,10 +649,7 @@ export function getFixedPanelTabsStateStorageKey({
 }
 
 export function isFixedPanelTabsStateStorageKey(key: string): boolean {
-  return (
-    key.startsWith(`${FIXED_PANEL_TABS_STATE_STORAGE_PREFIX}-`) &&
-    key.endsWith(`-${FIXED_PANEL_TABS_STATE_STORAGE_VERSION}`)
-  );
+  return key.startsWith(`${FIXED_PANEL_TABS_STATE_STORAGE_PREFIX}-`);
 }
 
 export function isFixedPanelTabsStateExpired({
@@ -831,42 +694,16 @@ function parseFixedPanelTabsStateForStorage({
   }
 
   const stateResult = fixedPanelTabsStateSchema.safeParse(parsedValue);
-  if (stateResult.success) {
-    const normalizedState = stripTransientFixedPanelTabsStateForStorage({
-      state: normalizeFixedPanelTabsState({
-        state: stateResult.data,
-      }),
-    });
-    if (isFixedPanelTabsStateExpired({ now, state: normalizedState })) {
-      return {
-        shouldPrune: true,
-        state: initialValue,
-      };
-    }
-
-    return {
-      shouldPrune: false,
-      state: normalizedState,
-    };
-  }
-
-  const legacyStateResult =
-    legacyFixedPanelTabsStateSchema.safeParse(parsedValue);
-  if (!legacyStateResult.success) {
+  if (!stateResult.success) {
     return {
       shouldPrune: true,
       state: initialValue,
     };
   }
+
   const normalizedState = stripTransientFixedPanelTabsStateForStorage({
     state: normalizeFixedPanelTabsState({
-      state: {
-        ...legacyStateResult.data,
-        secondary: {
-          ...legacyStateResult.data.secondary,
-          isOpen: legacyStateResult.data.secondary.activeTabId !== null,
-        },
-      },
+      state: stateResult.data,
     }),
   });
   if (isFixedPanelTabsStateExpired({ now, state: normalizedState })) {
