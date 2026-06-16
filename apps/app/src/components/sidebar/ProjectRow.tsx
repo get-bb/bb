@@ -1162,6 +1162,10 @@ function ProjectRowComponent({
                 !projectDragBindings.disabled &&
                 "select-none cursor-grab active:cursor-grabbing",
             )}
+            // Depth-0 base inset, matching every other row so the folder icon
+            // aligns with projectless-thread glyphs (and the caret clears the
+            // row's rounded edge).
+            style={{ paddingLeft: getSidebarThreadRowPaddingLeft(0) }}
             title={project.name}
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}

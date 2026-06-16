@@ -58,10 +58,11 @@ export const SIDEBAR_LEADING_GLYPH_SLOT_CLASS =
   "inline-flex w-4 shrink-0 items-center justify-center";
 const SIDEBAR_GLYPH_BOX_PX = 16; // the slot's w-4
 
-// Indentation (Tailwind spacing scale, 4px unit): level-0 rows (projects and
-// projectless threads) sit flush at the list edge; each deeper level adds one
-// `spacing-3` step. Tune these two numbers to retune every row's indent.
-const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 0; // spacing-0
+// Indentation (Tailwind spacing scale, 4px unit): a small base inset keeps even
+// level-0 rows' carets off the row's rounded edge (so a hovered caret's
+// background floats inside the row selection instead of clashing with its
+// corner); each deeper level adds one `spacing-3` step.
+const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 4; // spacing-1
 const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 12; // spacing-3
 
 // Indent-guide x = the parent glyph's horizontal center: caret box + gap + half
