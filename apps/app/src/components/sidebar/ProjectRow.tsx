@@ -1183,6 +1183,16 @@ function ProjectRowComponent({
               onClick={handleProjectRowToggle}
               className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
             />
+            <span className="relative z-10 -ml-1 inline-flex shrink-0">
+              <SidebarChildToggleChevron
+                isCollapsed={isCollapsed}
+                expandLabel={`Expand ${project.name}`}
+                collapseLabel={`Collapse ${project.name}`}
+                expandTitle="Expand project threads"
+                collapseTitle="Collapse project threads"
+                onToggle={handleProjectRowToggle}
+              />
+            </span>
             <span
               className={cn(
                 "pointer-events-none relative z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
@@ -1197,14 +1207,6 @@ function ProjectRowComponent({
             </span>
             <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
               <span className="min-w-0 truncate">{project.name}</span>
-              <SidebarChildToggleChevron
-                isCollapsed={isCollapsed}
-                expandLabel={`Expand ${project.name}`}
-                collapseLabel={`Collapse ${project.name}`}
-                expandTitle="Expand project threads"
-                collapseTitle="Collapse project threads"
-                onToggle={handleProjectRowToggle}
-              />
             </span>
             {isLocalPathInvalid ? (
               <NavLink

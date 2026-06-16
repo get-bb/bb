@@ -350,6 +350,25 @@ function ThreadRowComponent({
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        {/*
+          Leading disclosure slot, unified with every other expandable row: the
+          caret toggles children (the row body still navigates). Leaves get an
+          equal-width spacer so all titles align in one column, file-tree style.
+        */}
+        {parentOptions && hasChildren ? (
+          <span className="relative z-10 -ml-1 inline-flex shrink-0">
+            <SidebarChildToggleChevron
+              isCollapsed={isParentCollapsed}
+              expandLabel={`Expand ${threadTitle} threads`}
+              collapseLabel={`Collapse ${threadTitle} threads`}
+              expandTitle="Expand child threads"
+              collapseTitle="Collapse child threads"
+              onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
+            />
+          </span>
+        ) : (
+          <span className="-ml-1 size-5 shrink-0" aria-hidden="true" />
+        )}
         {thread.childOrigin === "fork" ? (
           <span className="inline-flex shrink-0" title="Forked thread">
             <Icon
@@ -371,16 +390,6 @@ function ThreadRowComponent({
           </span>
         ) : null}
         <span className="min-w-0 truncate">{threadTitle}</span>
-        {parentOptions && hasChildren ? (
-          <SidebarChildToggleChevron
-            isCollapsed={isParentCollapsed}
-            expandLabel={`Expand ${threadTitle} threads`}
-            collapseLabel={`Collapse ${threadTitle} threads`}
-            expandTitle="Expand child threads"
-            collapseTitle="Collapse child threads"
-            onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-          />
-        ) : null}
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
       <span
