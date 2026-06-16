@@ -37,9 +37,10 @@ export const SIDEBAR_UNREAD_DOT_CLASS =
 // these two numbers to retune every row's indent uniformly.
 const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 0; // spacing-0
 const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 12; // spacing-3
-// Horizontal center of a row's leading caret box (`size-5`, no negative margin):
-// 20/2.
-const SIDEBAR_ROW_CARET_CENTER_OFFSET_PX = 10;
+// Horizontal center of a row's leading glyph box from the pad edge: the caret
+// box (`size-5` = 20) + the gap (`gap-1.5` = 6) + half the glyph box
+// (`w-4` = 16 → 8).
+const SIDEBAR_ROW_GLYPH_CENTER_OFFSET_PX = 34;
 
 export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";
 
@@ -50,13 +51,13 @@ export function getSidebarThreadRowPaddingLeft(depth: number): number {
   );
 }
 
-// The indent guide runs on the CHILDREN's caret column — one depth step in from
-// the parent header — so it sits centered in the indent space, under the
-// header's glyph, flush with where the indented children begin.
+// The indent guide runs straight down under the parent header's leading glyph
+// (folder / no-project / worktree icon), so its nested children read as
+// branching out from that icon.
 export function getSidebarThreadGroupLineLeft(parentDepth: number): number {
   return (
-    getSidebarThreadRowPaddingLeft(parentDepth + 1) +
-    SIDEBAR_ROW_CARET_CENTER_OFFSET_PX
+    getSidebarThreadRowPaddingLeft(parentDepth) +
+    SIDEBAR_ROW_GLYPH_CENTER_OFFSET_PX
   );
 }
 
