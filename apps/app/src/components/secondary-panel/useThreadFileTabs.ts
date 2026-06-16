@@ -133,26 +133,9 @@ function isSideChatTab(tab: FixedPanelTab): tab is SideChatFixedPanelTab {
   return tab.kind === "side-chat";
 }
 
-const SIDE_CHAT_TAB_TITLE_MAX_LENGTH = 48;
-
-/**
- * Derives a side-chat tab title from the source agent message: the first
- * non-empty line, trimmed and truncated. Falls back to a generic label so the
- * tab (and its `title.min(1)` schema) always has a non-empty title.
- */
-function deriveSideChatTitle(sourceMessageText: string): string {
-  const firstLine =
-    sourceMessageText
-      .split(/\r\n|\r|\n/u)
-      .map((line) => line.trim())
-      .find((line) => line.length > 0) ?? "";
-  if (firstLine.length === 0) {
-    return "Side chat";
-  }
-  return firstLine.length > SIDE_CHAT_TAB_TITLE_MAX_LENGTH
-    ? `${firstLine.slice(0, SIDE_CHAT_TAB_TITLE_MAX_LENGTH - 1)}…`
-    : firstLine;
-}
+// Every side chat uses a constant tab title; the message it was triggered from
+// is shown inside the panel ("Replying to" bubble), so the tab needn't echo it.
+const SIDE_CHAT_TAB_TITLE = "Side chat";
 
 export function pruneTerminalTabs({
   knownTerminalIds,
@@ -373,7 +356,7 @@ export function useThreadFileTabs({
     ({ sourceMessageText }: OpenSideChatArgs) => {
       const nextTab = createSideChatFixedPanelTab({
         sourceMessageText,
-        title: deriveSideChatTitle(sourceMessageText),
+        title: SIDE_CHAT_TAB_TITLE,
       });
       updateFixedPanelTabsState((state) =>
         openSecondaryPanelTabInState({ state, tab: nextTab }),

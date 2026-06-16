@@ -238,6 +238,10 @@ export function SideChatTabContent({
   // above the conversation and is carried into the first turn as agent-only
   // context. Captured at the parent's current timeline because the side-chat
   // anchor is fixed at open time.
+  // What the agent receives as explicit context on the first turn: the anchor
+  // text, omitted when it is already the parent's last message (it lives in the
+  // forked history). Display is decoupled below — the "Replying to" bubble
+  // always shows the trigger message regardless of this optimization.
   const replyReference = useMemo(
     () =>
       resolveSideChatReplyReference({
@@ -246,6 +250,10 @@ export function SideChatTabContent({
       }),
     [sourceTimelineRows, tab.sourceMessageText],
   );
+  // The agent message this side chat was triggered from. Empty for side chats
+  // opened from the new-tab page (those fork from the thread tip).
+  const triggerMessageText = tab.sourceMessageText.trim();
+  const hasTriggerMessage = triggerMessageText.length > 0;
 
   const submitText = useCallback(
     (text: string) => {
@@ -503,21 +511,34 @@ export function SideChatTabContent({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3">
-        {replyReference !== null ? (
-          // The anchored message the side chat replies to, shown as a quote so
-          // it is clear which earlier message is in focus (the most recent
-          // message is omitted — it needs no pointer). Mirrors the agent-only
-          // reply reference carried into the first turn.
-          <figure className="mx-1 mb-3 border-l-2 border-border pl-2.5">
-            <figcaption className="text-xs font-medium text-subtle-foreground">
+        {hasTriggerMessage ? (
+          // The agent message this side chat replies to, rendered like a steer
+          // message — a "Replying to" header above a left-aligned bubble — so
+          // it's clear which message is in focus and the styling matches the
+          // main timeline.
+          <div className="mx-1 mb-3 flex flex-col items-start gap-1">
+            <span className="text-xs leading-none text-muted-foreground">
+              <Icon
+                name="CornerDownRight"
+                className="mr-1 inline-block size-3 align-middle"
+              />
               Replying to
-            </figcaption>
-            <blockquote className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">
-              {replyReference}
-            </blockquote>
-          </figure>
+            </span>
+            <div className="max-w-full rounded-md bg-surface-recessed p-2 text-sm leading-relaxed text-foreground">
+              <p className="line-clamp-3 whitespace-pre-wrap break-words">
+                {triggerMessageText}
+              </p>
+            </div>
+          </div>
         ) : null}
-        {childThreadId === null ? (
+        {childThreadId !== null ? (
+          <SideChatConversation
+            threadId={childThreadId}
+            onSendToMainMessage={canSendToMain ? sendMessageToMain : undefined}
+          />
+        ) : hasTriggerMessage ? null : (
+          // Empty state only for side chats opened from the new-tab page, which
+          // have no trigger message to anchor on.
           <EmptyStatePanel className="flex min-h-24 flex-1 items-center justify-center">
             <div className="flex max-w-64 items-center justify-center gap-1.5">
               <Icon
@@ -533,11 +554,6 @@ export function SideChatTabContent({
               </p>
             </div>
           </EmptyStatePanel>
-        ) : (
-          <SideChatConversation
-            threadId={childThreadId}
-            onSendToMainMessage={canSendToMain ? sendMessageToMain : undefined}
-          />
         )}
       </div>
       <div className="px-4 pb-4 pt-2">

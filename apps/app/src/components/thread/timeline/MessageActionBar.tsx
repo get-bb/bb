@@ -99,12 +99,12 @@ export function MessageActionBar({
                 className={cn(ACTION_BUTTON_CLASS, HOVER_REVEAL_CLASS)}
                 onClick={onSideChat}
                 disabled={disabled}
-                aria-label="Open side chat"
+                aria-label="Reply"
               >
                 <Icon name="SideChat" className="size-3" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Open side chat</TooltipContent>
+            <TooltipContent>Reply</TooltipContent>
           </Tooltip>
         ) : null}
         {onSendToMain ? (
