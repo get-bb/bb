@@ -22,7 +22,6 @@ export interface ProjectThreadNode {
 
 export type EnvironmentThreadGroupNodes = [
   ProjectThreadNode,
-  ProjectThreadNode,
   ...ProjectThreadNode[],
 ];
 
@@ -287,9 +286,12 @@ export function buildProjectThreadGroups(
   return buildSortedItems(rootNodes);
 }
 
-// Bucket nodes by shared worktree environmentId. A bucket only becomes a group
-// when >=2 sibling nodes share the environment; solo threads stay loose so we
-// don't render degenerate 1-thread groups.
+// Bucket nodes by shared worktree environmentId. Every worktree thread becomes
+// an environment group — including solo threads — so a thread's worktree always
+// reads the same way: a leading branch header row. (Non-worktree threads stay
+// loose.) This keeps worktree identity in one consistent position instead of
+// flipping between a leading group glyph and a trailing row icon based on how
+// many siblings happen to share the environment.
 function bucketWorktreeEnvironmentGroups(
   nodes: ProjectThreadNode[],
 ): BucketWorktreeEnvironmentGroupsResult {
@@ -310,7 +312,7 @@ function bucketWorktreeEnvironmentGroups(
   const groupedEnvironmentIds = new Set<string>();
   const environmentThreadGroups: EnvironmentThreadGroup[] = [];
   for (const [environmentId, bucket] of nodesByEnvironmentId) {
-    if (!hasAtLeastTwoThreadNodes(bucket)) continue;
+    if (!hasWorktreeThreadNode(bucket)) continue;
     bucket.sort((left, right) =>
       compareStandardThreads(left.thread, right.thread),
     );
@@ -330,8 +332,8 @@ function bucketWorktreeEnvironmentGroups(
   return { environmentThreadGroups, looseNodes };
 }
 
-function hasAtLeastTwoThreadNodes(
+function hasWorktreeThreadNode(
   nodes: ProjectThreadNode[],
 ): nodes is EnvironmentThreadGroupNodes {
-  return nodes.length >= 2;
+  return nodes.length >= 1;
 }

@@ -248,6 +248,26 @@ describe("buildProjectThreadGroups", () => {
     ]);
   });
 
+  it("groups a solo worktree thread into a single-child environment group", () => {
+    const rootItems = buildProjectThreadGroups([
+      createThread({
+        id: "worktree-solo",
+        environmentId: "env_solo",
+        environmentWorkspaceDisplayKind: "managed-worktree",
+        createdAt: 10,
+      }),
+      createThread({
+        id: "plain-root",
+        createdAt: 20,
+      }),
+    ]);
+
+    expect(summarizeItems(rootItems)).toEqual([
+      "plain-root",
+      { env: "env_solo", threads: ["worktree-solo"] },
+    ]);
+  });
+
   it("sorts siblings with active rows first, then inactive attention recency", () => {
     const rootItems = buildProjectThreadGroups([
       createThread({

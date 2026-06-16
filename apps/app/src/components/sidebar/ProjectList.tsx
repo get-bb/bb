@@ -447,6 +447,10 @@ function TopLevelSidebarSection({
         className={cn(
           SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
           CHROME_SECTION_LABEL_CLASS,
+          // Sidebar section labels ("Projects"/"Threads") read as dividers, not
+          // rows: a touch more weight and full subtle-foreground separate them
+          // from the thread list below at a scan.
+          "font-medium text-subtle-foreground",
           "rounded-md pr-1 transition-colors",
           dragBindings &&
             !dragBindings.disabled &&

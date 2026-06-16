@@ -11,7 +11,7 @@ import type { ThreadListEntry } from "@bb/domain";
 import {
   getThreadConversationCollapsedAtom,
 } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { Icon } from "@/components/ui/icon.js";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
 import {
@@ -31,10 +31,6 @@ import {
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
-import {
-  getEnvironmentWorkspaceDisplayIconLabel,
-  getEnvironmentWorkspaceDisplayIconName,
-} from "@/lib/environment-workspace-display";
 import {
   isBusyThread,
   isUnreadDoneThread,
@@ -59,7 +55,6 @@ import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 interface ThreadRowBaseOptions {
   depth: number;
   isCompact: boolean;
-  isEnvGrouped: boolean;
 }
 
 export type ThreadRowOptions =
@@ -212,65 +207,33 @@ function getThreadUnreadBadgeLabel({
     : "Unread thread requires attention";
 }
 
-interface ThreadTrailingIndicatorProps extends ThreadStatusGlyphProps {
-  environmentIcon: IconName | null;
-  environmentIconLabel: string | null;
-}
-
+// The right edge of a thread row is reserved for status (pending/busy/unread).
+// Worktree identity is conveyed by the leading environment-group header, never
+// a trailing icon, so the row reads one way regardless of grouping.
 function ThreadTrailingIndicator({
-  environmentIcon,
-  environmentIconLabel,
   hasPendingInteraction,
   isBusy,
   showUnreadBadge,
   unreadBadgeTone,
-}: ThreadTrailingIndicatorProps) {
+}: ThreadStatusGlyphProps) {
   const showStatusGlyph = hasPendingInteraction || isBusy || showUnreadBadge;
 
-  if (showStatusGlyph) {
-    return (
-      <span
-        className={cn(
-          SIDEBAR_ROW_GLYPH_SLOT_CLASS,
-          COARSE_POINTER_GLYPH_BOX_CLASS,
-        )}
-      >
-        <ThreadStatusGlyph
-          hasPendingInteraction={hasPendingInteraction}
-          isBusy={isBusy}
-          showUnreadBadge={showUnreadBadge}
-          unreadBadgeTone={unreadBadgeTone}
-        />
-      </span>
-    );
+  if (!showStatusGlyph) {
+    return null;
   }
 
   return (
-    <ThreadTrailingIcon
-      environmentIcon={environmentIcon}
-      environmentIconLabel={environmentIconLabel}
-    />
-  );
-}
-
-function ThreadTrailingIcon({
-  environmentIcon,
-  environmentIconLabel,
-}: ThreadTrailingIconProps) {
-  return environmentIcon ? (
-    <span className="inline-flex shrink-0" title={environmentIconLabel ?? undefined}>
-      <Icon
-        name={environmentIcon}
-        className={cn("text-muted-foreground", COARSE_POINTER_ICON_SIZE_CLASS)}
-        aria-label={environmentIconLabel ?? undefined}
+    <span
+      className={cn(SIDEBAR_ROW_GLYPH_SLOT_CLASS, COARSE_POINTER_GLYPH_BOX_CLASS)}
+    >
+      <ThreadStatusGlyph
+        hasPendingInteraction={hasPendingInteraction}
+        isBusy={isBusy}
+        showUnreadBadge={showUnreadBadge}
+        unreadBadgeTone={unreadBadgeTone}
       />
     </span>
-  ) : null;
-}
-
-interface ThreadTrailingIconProps {
-  environmentIcon: IconName | null;
-  environmentIconLabel: string | null;
+  );
 }
 
 function ThreadRowComponent({
@@ -319,18 +282,6 @@ function ThreadRowComponent({
     ? `Open ${threadTitle} (unsubmitted draft)`
     : `Open ${threadTitle}`;
   const linkTitle = linkLabel;
-  // Env-grouped children sit under a header that already shows the
-  // worktree branch + icon, so suppress the redundant trailing icon.
-  const environmentIcon = options.isEnvGrouped
-    ? null
-    : getEnvironmentWorkspaceDisplayIconName(
-        thread.environmentWorkspaceDisplayKind,
-      );
-  const environmentIconLabel = options.isEnvGrouped
-    ? null
-    : getEnvironmentWorkspaceDisplayIconLabel(
-        thread.environmentWorkspaceDisplayKind,
-      );
   const parentDragBindings = parentOptions?.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -417,8 +368,6 @@ function ThreadRowComponent({
             )}
           >
             <ThreadTrailingIndicator
-              environmentIcon={environmentIcon}
-              environmentIconLabel={environmentIconLabel}
               hasPendingInteraction={trailingHasPendingInteraction}
               isBusy={trailingIsBusy}
               showUnreadBadge={trailingShowUnreadBadge}

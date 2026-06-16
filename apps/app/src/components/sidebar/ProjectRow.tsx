@@ -326,7 +326,6 @@ function getThreadRowOptions({
   const baseOptions = {
     depth,
     isCompact: nodeDepth > 0 || isEnvGrouped,
-    isEnvGrouped,
   };
 
   if (!isParent) {
