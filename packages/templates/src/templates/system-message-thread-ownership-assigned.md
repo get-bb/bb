@@ -1,7 +1,7 @@
 ---
 kind: prompt
 title: Thread Ownership Assigned
-summary: Notifies a parent thread that a child thread is now assigned to it.
+summary: Notifies a parent thread that a childThread is now assigned to it.
 intent: Let the new parent know a thread is now assigned to it.
 editingNotes: Keep the thread mention first in the visible body so collapsed previews show the affected thread.
 variables:
@@ -9,4 +9,4 @@ variables:
 ---
 [bb system]
 
-{{threadMention}} was assigned to you.
+{{threadMention}} was assigned to you as a childThread.

@@ -474,6 +474,11 @@ describe("internal interactive request lifecycle", () => {
       const expectedText = renderTemplate(
         "systemMessageChildThreadNeedsAttention",
         {
+          blockerSummary: [
+            "Blocked on command approval:",
+            "Command: git push",
+            "Cwd: /tmp/project",
+          ].join("\n"),
           threadMention,
         },
       );

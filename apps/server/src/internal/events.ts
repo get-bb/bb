@@ -136,6 +136,13 @@ interface ResolveActivePruneCandidatesArgs {
   insertedEventIndexes: number[];
 }
 
+interface AddParentTurnNotificationFollowUpArgs {
+  failedParentNotificationThreadIds: Set<string>;
+  followUps: EventEffectFollowUp[];
+  thread: NonNullable<ReturnType<typeof getThread>>;
+  turnStatus: ThreadEventTurnStatus;
+}
+
 interface ParentTurnNotificationFollowUp {
   kind: "parent-turn-notification";
   childThreadId: string;
@@ -248,6 +255,28 @@ function notifyInsertedEventThreads(
   }
 }
 
+function addParentTurnNotificationFollowUp(
+  args: AddParentTurnNotificationFollowUpArgs,
+): void {
+  if (!args.thread.parentThreadId) {
+    return;
+  }
+  if (args.turnStatus === "failed") {
+    if (args.failedParentNotificationThreadIds.has(args.thread.id)) {
+      return;
+    }
+    args.failedParentNotificationThreadIds.add(args.thread.id);
+  }
+  args.followUps.push({
+    kind: "parent-turn-notification",
+    childThreadId: args.thread.id,
+    projectId: args.thread.projectId,
+    parentThreadId: args.thread.parentThreadId,
+    title: args.thread.title,
+    turnStatus: args.turnStatus,
+  });
+}
+
 async function applyEventEffects(
   deps: LoggedPendingInteractionWorkSessionDeps,
   events: HostDaemonEventEnvelope[],
@@ -256,6 +285,7 @@ async function applyEventEffects(
   // immediately visible thread state agree. Follow-ups that may queue daemon
   // work stay deferred to avoid command waits inside daemon ingress.
   const followUps: EventEffectFollowUp[] = [];
+  const failedParentNotificationThreadIds = new Set<string>();
   for (const entry of events) {
     try {
       const event = entry.event;
@@ -309,12 +339,10 @@ async function applyEventEffects(
               turnId,
             });
           if (!alreadyHandledByCommandFailure) {
-            followUps.push({
-              kind: "parent-turn-notification",
-              childThreadId: turnCompleted.thread.id,
-              projectId: turnCompleted.thread.projectId,
-              parentThreadId: turnCompleted.thread.parentThreadId,
-              title: turnCompleted.thread.title,
+            addParentTurnNotificationFollowUp({
+              failedParentNotificationThreadIds,
+              followUps,
+              thread: turnCompleted.thread,
               turnStatus: event.status,
             });
           }
@@ -341,10 +369,18 @@ async function applyEventEffects(
           reason:
             "Provider process exited while awaiting user interaction; retry the thread to continue",
         });
-        applyLoggedThreadLifecycleEvent(deps, {
+        const outcome = applyLoggedThreadLifecycleEvent(deps, {
           event: { type: "run.failed" },
           threadId: entry.threadId,
         });
+        if (outcome.applied) {
+          addParentTurnNotificationFollowUp({
+            failedParentNotificationThreadIds,
+            followUps,
+            thread,
+            turnStatus: "failed",
+          });
+        }
         continue;
       }
 

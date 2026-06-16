@@ -4,6 +4,9 @@ import {
   typedRoutes,
   type HostDaemonInternalSchema,
 } from "@bb/host-daemon-contract";
+import { formatPendingInteractionSubjectDetailLines } from "@bb/core-ui";
+import type { PendingInteraction } from "@bb/domain";
+import { isApprovalPendingInteractionPayload } from "@bb/domain";
 import { getThread, hasStoredTurnStarted } from "@bb/db";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
@@ -16,7 +19,63 @@ import {
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
 
 interface RequestChildThreadNeedsAttentionNotificationArgs {
+  blockerSummary: string | null;
   childThreadId: string;
+}
+
+const CHILD_THREAD_BLOCKER_SUMMARY_MAX_LINES = 4;
+const CHILD_THREAD_BLOCKER_SUMMARY_MAX_CHARS = 700;
+const CHILD_THREAD_BLOCKER_SUMMARY_TRUNCATION_MARKER =
+  "\n[... summary truncated ...]";
+
+function pendingInteractionBlockerLabel(
+  interaction: PendingInteraction,
+): string {
+  if (!isApprovalPendingInteractionPayload(interaction.payload)) {
+    return "user question";
+  }
+  switch (interaction.payload.subject.kind) {
+    case "command":
+      return "command approval";
+    case "file_change":
+      return "file-change approval";
+    case "permission_grant":
+      return "permission grant";
+    default: {
+      const exhaustiveCheck: never = interaction.payload.subject;
+      return exhaustiveCheck;
+    }
+  }
+}
+
+function truncateChildThreadBlockerSummary(summary: string): string {
+  if (summary.length <= CHILD_THREAD_BLOCKER_SUMMARY_MAX_CHARS) {
+    return summary;
+  }
+  const retainedLength = Math.max(
+    0,
+    CHILD_THREAD_BLOCKER_SUMMARY_MAX_CHARS -
+      CHILD_THREAD_BLOCKER_SUMMARY_TRUNCATION_MARKER.length,
+  );
+  return `${summary.slice(0, retainedLength).trimEnd()}${CHILD_THREAD_BLOCKER_SUMMARY_TRUNCATION_MARKER}`;
+}
+
+function buildChildThreadBlockerSummary(
+  interaction: PendingInteraction,
+): string | null {
+  const details = formatPendingInteractionSubjectDetailLines(interaction)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, CHILD_THREAD_BLOCKER_SUMMARY_MAX_LINES);
+  if (details.length === 0) {
+    return null;
+  }
+  return truncateChildThreadBlockerSummary(
+    [
+      `Blocked on ${pendingInteractionBlockerLabel(interaction)}:`,
+      ...details,
+    ].join("\n"),
+  );
 }
 
 function requestChildThreadNeedsAttentionNotification(
@@ -39,6 +98,7 @@ function requestChildThreadNeedsAttentionNotification(
     name: "Child thread needs-attention notification",
     work: () =>
       queueChildThreadNeedsAttentionNotificationBestEffort(deps, {
+        blockerSummary: args.blockerSummary,
         childThread,
         parentThreadId,
       }),
@@ -112,6 +172,7 @@ export function registerInternalInteractiveRequestRoutes(
       }
       if (registered.outcome === "created") {
         requestChildThreadNeedsAttentionNotification(deps, {
+          blockerSummary: buildChildThreadBlockerSummary(registered.interaction),
           childThreadId: registered.interaction.threadId,
         });
       }

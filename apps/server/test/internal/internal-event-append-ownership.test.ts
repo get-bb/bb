@@ -6,7 +6,10 @@ import {
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
-import { internalAuthHeaders } from "../helpers/commands.js";
+import {
+  internalAuthHeaders,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -14,6 +17,7 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { createTestAppHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
@@ -349,6 +353,95 @@ describe("internal event append ownership", () => {
           .where(eq(events.threadId, "thr_missing"))
           .all(),
       ).toHaveLength(0);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("notifies a parent when a child provider process exits", async () => {
+    const { environment, harness, project, session } = await setupEventRoute();
+    const parentThread = seedThread(harness.deps, {
+      environmentId: environment.id,
+      projectId: project.id,
+      status: "idle",
+      title: "Project coordinator",
+    });
+    seedThreadRuntimeState(harness.deps, {
+      environmentId: environment.id,
+      inputText: "Coordinate child work",
+      providerThreadId: "provider-parent-provider-exit",
+      threadId: parentThread.id,
+    });
+    const childThread = seedThread(harness.deps, {
+      environmentId: environment.id,
+      parentThreadId: parentThread.id,
+      projectId: project.id,
+      status: "active",
+      title: "Child provider exit worker",
+    });
+    try {
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: childThread.id,
+            event: {
+              type: "system/error",
+              threadId: childThread.id,
+              scope: threadScope(),
+              code: "provider_process_exited",
+              message: "Provider process exited",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        acceptedEvents: [
+          {
+            eventIndex: 0,
+            threadId: childThread.id,
+            sequence: 1,
+          },
+        ],
+        rejectedEvents: [],
+      });
+      expect(getThread(harness.db, childThread.id)?.status).toBe("error");
+
+      const parentTurnCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === parentThread.id,
+        3_000,
+      );
+      if (parentTurnCommand.command.type !== "turn.submit") {
+        throw new Error(
+          `Expected parent turn command, got ${parentTurnCommand.command.type}`,
+        );
+      }
+      const [input] = parentTurnCommand.command.input;
+      if (!input || input.type !== "text") {
+        throw new Error("Expected parent notification text input");
+      }
+      const threadMention = `@thread:${childThread.id}`;
+      expect(input.text).toContain(
+        `${threadMention} failed. Inspect this childThread before deciding next steps.`,
+      );
+      expect(input.text).not.toContain("No failure output was recorded.");
+      expect(input.mentions).toEqual([
+        {
+          start: input.text.indexOf(threadMention),
+          end: input.text.indexOf(threadMention) + threadMention.length,
+          resource: {
+            kind: "thread",
+            label: "Child provider exit worker",
+            projectId: project.id,
+            threadId: childThread.id,
+          },
+        },
+      ]);
     } finally {
       await harness.cleanup();
     }

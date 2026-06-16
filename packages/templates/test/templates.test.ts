@@ -74,6 +74,52 @@ describe("@bb/templates", () => {
     );
   });
 
+  it("renders childThread needs-attention messages with blocker summaries", () => {
+    const rendered = renderTemplate("systemMessageChildThreadNeedsAttention", {
+      blockerSummary: ["Blocked on command approval:", "Command: git push"].join(
+        "\n",
+      ),
+      threadMention: "@thread:thr_child",
+    });
+
+    expect(rendered).toBe(
+      [
+        "[bb system]",
+        "",
+        "@thread:thr_child needs attention.",
+        "Blocked on command approval:",
+        "Command: git push",
+        "",
+        "Inspect this childThread and decide if you can answer or resolve the question from existing context. If not, ask the user for the missing decision. If the childThread is stuck on the wrong assumption, send it a clarifying instruction.",
+      ].join("\n"),
+    );
+  });
+
+  it("renders childThread ownership messages", () => {
+    expect(
+      renderTemplate("systemMessageThreadOwnershipAssigned", {
+        threadMention: "@thread:thr_child",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "@thread:thr_child was assigned to you as a childThread.",
+      ].join("\n"),
+    );
+    expect(
+      renderTemplate("systemMessageThreadOwnershipRemoved", {
+        threadMention: "@thread:thr_child",
+      }),
+    ).toBe(
+      [
+        "[bb system]",
+        "",
+        "@thread:thr_child was unassigned from you as a childThread.",
+      ].join("\n"),
+    );
+  });
+
   it("renders all templates without error", () => {
     const templates = listTemplates();
 
