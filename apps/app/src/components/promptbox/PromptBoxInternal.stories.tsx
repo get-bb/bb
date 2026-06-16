@@ -82,12 +82,17 @@ const mockAttachments: UploadedPromptAttachment[] = [
 // ---------------------------------------------------------------------------
 
 const historyEntries = [
-  { text: "fix the timeline pagination bug", mentions: [], attachments: [] },
-  { text: "review thread workspace", mentions: [], attachments: [] },
+  {
+    text: "fix the timeline pagination bug",
+    mentions: [],
+    attachments: [],
+    quotes: [],
+  },
+  { text: "review thread workspace", mentions: [], attachments: [], quotes: [] },
 ];
 
 const baseHistory: HistoryConfig = {
-  currentDraft: { text: "", mentions: [], attachments: [] },
+  currentDraft: { text: "", mentions: [], attachments: [], quotes: [] },
   entries: historyEntries,
   onSelectEntry: noop,
 };

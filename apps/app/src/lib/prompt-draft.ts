@@ -11,11 +11,24 @@ import { z } from "zod";
 
 export type PromptDraftAttachment = UploadedPromptAttachment;
 
+export interface PromptQuote {
+  id: string;
+  text: string;
+  sourceMessageId?: string;
+}
+
 export interface PromptDraftState {
   text: string;
   mentions: PromptTextMention[];
   attachments: PromptDraftAttachment[];
+  quotes: PromptQuote[];
 }
+
+const promptQuoteSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  sourceMessageId: z.string().optional(),
+});
 
 const promptDraftStorageSchema = z.object({
   text: z.string().default(""),
@@ -37,6 +50,15 @@ const promptDraftStorageSchema = z.object({
         return result.success ? [result.data] : [];
       }),
     ),
+  quotes: z
+    .array(z.unknown())
+    .default([])
+    .transform((items) =>
+      items.flatMap((item) => {
+        const result = promptQuoteSchema.safeParse(item);
+        return result.success ? [result.data] : [];
+      }),
+    ),
 });
 
 export function emptyPromptDraftState(): PromptDraftState {
@@ -44,6 +66,33 @@ export function emptyPromptDraftState(): PromptDraftState {
     text: "",
     mentions: [],
     attachments: [],
+    quotes: [],
+  };
+}
+
+export function addQuoteToDraft(
+  state: PromptDraftState,
+  text: string,
+): PromptDraftState {
+  return {
+    ...state,
+    quotes: [
+      ...state.quotes,
+      {
+        id: crypto.randomUUID(),
+        text: text.trim(),
+      },
+    ],
+  };
+}
+
+export function removeQuoteFromDraft(
+  state: PromptDraftState,
+  id: string,
+): PromptDraftState {
+  return {
+    ...state,
+    quotes: state.quotes.filter((quote) => quote.id !== id),
   };
 }
 
@@ -51,7 +100,8 @@ export function isPromptDraftEmpty(draft: PromptDraftState): boolean {
   return (
     draft.text.length === 0 &&
     draft.mentions.length === 0 &&
-    draft.attachments.length === 0
+    draft.attachments.length === 0 &&
+    draft.quotes.length === 0
   );
 }
 
@@ -75,6 +125,7 @@ export function serializePromptDraftStorage(
   const text = draft.text;
   const mentions = draft.mentions;
   const attachments = draft.attachments;
+  const quotes = draft.quotes;
   if (isPromptDraftEmpty(draft)) {
     return null;
   }
@@ -82,6 +133,7 @@ export function serializePromptDraftStorage(
     text,
     ...(mentions.length > 0 ? { mentions } : {}),
     attachments,
+    ...(quotes.length > 0 ? { quotes } : {}),
   });
 }
 
@@ -119,8 +171,28 @@ function normalizePromptTextMentions(
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
+function buildQuoteBlock(quotes: readonly PromptQuote[]): string {
+  return quotes
+    .map((quote) =>
+      quote.text
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n"),
+    )
+    .join("\n\n");
+}
+
 export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
   const input: PromptInput[] = [];
+
+  if (draft.quotes.length > 0) {
+    input.push({
+      type: "text",
+      text: buildQuoteBlock(draft.quotes),
+      mentions: [],
+    });
+  }
+
   const trimStartLength = draft.text.length - draft.text.trimStart().length;
   const trimEndIndex = draft.text.trimEnd().length;
   const text = draft.text.slice(trimStartLength, trimEndIndex);
@@ -227,5 +299,6 @@ export function promptInputToDraft(
     text: textSegments.join("\n\n"),
     mentions,
     attachments,
+    quotes: [],
   };
 }

@@ -81,10 +81,15 @@ const basePermission = {
 };
 
 const baseHistory: HistoryConfig = {
-  currentDraft: { text: "", mentions: [], attachments: [] },
+  currentDraft: { text: "", mentions: [], attachments: [], quotes: [] },
   entries: [
-    { text: "review thread workspace", mentions: [], attachments: [] },
-    { text: "investigate timeline pagination", mentions: [], attachments: [] },
+    { text: "review thread workspace", mentions: [], attachments: [], quotes: [] },
+    {
+      text: "investigate timeline pagination",
+      mentions: [],
+      attachments: [],
+      quotes: [],
+    },
   ],
   onSelectEntry: noop,
 };

@@ -59,6 +59,7 @@ describe("threadQueuedMessages", () => {
           sizeBytes: 0,
         },
       ],
+      quotes: [],
     });
     expect(attachmentOnlyDraft.attachments[0]?.name).toBe("Attachment");
   });

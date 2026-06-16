@@ -355,8 +355,14 @@ export function ThreadDetailPromptArea({
       text: promptDraft.text,
       mentions: promptDraft.mentions,
       attachments: promptDraft.attachments,
+      quotes: promptDraft.quotes,
     }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
+    [
+      promptDraft.attachments,
+      promptDraft.mentions,
+      promptDraft.text,
+      promptDraft.quotes,
+    ],
   );
   const currentPromptDraftInput = useMemo(
     () => promptDraftToInput(currentPromptDraft),

@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { PromptMentionResource } from "@bb/domain";
 import {
+  addQuoteToDraft,
   emptyPromptDraftState,
   isPromptDraftEmpty,
   parsePromptDraftStorage,
   promptDraftToInput,
   promptInputToDraft,
+  removeQuoteFromDraft,
+  serializePromptDraftStorage,
 } from "./prompt-draft";
 
 describe("prompt draft helpers", () => {
@@ -15,6 +18,7 @@ describe("prompt draft helpers", () => {
       text: "",
       mentions: [],
       attachments: [],
+      quotes: [],
     });
   });
 
@@ -46,6 +50,7 @@ describe("prompt draft helpers", () => {
           mimeType: "image/png",
         },
       ],
+      quotes: [],
     });
   });
 
@@ -64,6 +69,7 @@ describe("prompt draft helpers", () => {
             mimeType: "text/markdown",
           },
         ],
+        quotes: [],
       }),
     ).toBe(false);
   });
@@ -72,6 +78,7 @@ describe("prompt draft helpers", () => {
     const input = promptDraftToInput({
       text: "  Ship this patch  ",
       mentions: [],
+      quotes: [],
       attachments: [
         {
           type: "localImage",
@@ -126,6 +133,7 @@ describe("prompt draft helpers", () => {
         },
       ],
       attachments: [],
+      quotes: [],
     });
 
     expect(input).toEqual([
@@ -175,6 +183,156 @@ describe("prompt draft helpers", () => {
           mimeType: "text/markdown",
         },
       ],
+      quotes: [],
     });
+  });
+});
+
+describe("prompt draft quotes", () => {
+  it("defaults quotes to an empty array in every constructor", () => {
+    expect(emptyPromptDraftState().quotes).toEqual([]);
+    expect(
+      promptInputToDraft([{ type: "text", text: "Hi", mentions: [] }]).quotes,
+    ).toEqual([]);
+    expect(parsePromptDraftStorage(null).quotes).toEqual([]);
+  });
+
+  it("rehydrates legacy stored drafts without quotes to quotes: []", () => {
+    const parsed = parsePromptDraftStorage(
+      JSON.stringify({ text: "Review", attachments: [] }),
+    );
+    expect(parsed.quotes).toEqual([]);
+  });
+
+  it("round-trips a draft serialized without quotes back to quotes: []", () => {
+    const serialized = serializePromptDraftStorage({
+      text: "Review",
+      mentions: [],
+      attachments: [],
+      quotes: [],
+    });
+    expect(serialized).not.toBeNull();
+    const parsed = parsePromptDraftStorage(serialized);
+    expect(parsed.quotes).toEqual([]);
+  });
+
+  it("appends a trimmed quote with a generated id", () => {
+    const state = addQuoteToDraft(emptyPromptDraftState(), "  hello world  ");
+    expect(state.quotes).toHaveLength(1);
+    expect(state.quotes[0]?.text).toBe("hello world");
+    expect(state.quotes[0]?.id).toEqual(expect.any(String));
+  });
+
+  it("removes a quote by id without mutating the input state", () => {
+    const added = addQuoteToDraft(emptyPromptDraftState(), "keep me");
+    const id = added.quotes[0]?.id ?? "";
+    const removed = removeQuoteFromDraft(added, id);
+    expect(removed.quotes).toEqual([]);
+    expect(added.quotes).toHaveLength(1);
+  });
+
+  it("emits no extra part when there are no quotes", () => {
+    const input = promptDraftToInput({
+      text: "Ship it",
+      mentions: [],
+      attachments: [],
+      quotes: [],
+    });
+    expect(input).toEqual([{ type: "text", text: "Ship it", mentions: [] }]);
+  });
+
+  it("emits a separate leading blockquote part ahead of the user text", () => {
+    const input = promptDraftToInput({
+      text: "Please explain",
+      mentions: [],
+      attachments: [],
+      quotes: [{ id: "q1", text: "first line\nsecond line" }],
+    });
+    expect(input).toEqual([
+      { type: "text", text: "> first line\n> second line", mentions: [] },
+      { type: "text", text: "Please explain", mentions: [] },
+    ]);
+  });
+
+  it("prefixes blank lines in a multi-paragraph selection", () => {
+    const input = promptDraftToInput({
+      text: "",
+      mentions: [],
+      attachments: [],
+      quotes: [{ id: "q1", text: "para one\n\npara two" }],
+    });
+    expect(input).toEqual([
+      { type: "text", text: "> para one\n> \n> para two", mentions: [] },
+    ]);
+  });
+
+  it("separates consecutive quotes with a single blank line", () => {
+    const input = promptDraftToInput({
+      text: "",
+      mentions: [],
+      attachments: [],
+      quotes: [
+        { id: "q1", text: "alpha" },
+        { id: "q2", text: "beta" },
+      ],
+    });
+    expect(input).toEqual([
+      { type: "text", text: "> alpha\n\n> beta", mentions: [] },
+    ]);
+  });
+
+  it("nests an existing blockquote in the selection", () => {
+    const input = promptDraftToInput({
+      text: "",
+      mentions: [],
+      attachments: [],
+      quotes: [{ id: "q1", text: "> already quoted\nplain" }],
+    });
+    expect(input).toEqual([
+      { type: "text", text: "> > already quoted\n> plain", mentions: [] },
+    ]);
+  });
+
+  it("keeps code fences and list markers in their own quote part without corrupting user text", () => {
+    const selection = "```\ncode();\n```\n- item one\n- item two";
+    const input = promptDraftToInput({
+      text: "Refactor this",
+      mentions: [],
+      attachments: [],
+      quotes: [{ id: "q1", text: selection }],
+    });
+    expect(input).toEqual([
+      {
+        type: "text",
+        text: "> ```\n> code();\n> ```\n> - item one\n> - item two",
+        mentions: [],
+      },
+      { type: "text", text: "Refactor this", mentions: [] },
+    ]);
+  });
+
+  it("leaves user-text mention offsets byte-for-byte unchanged when quotes are present", () => {
+    const resource: PromptMentionResource = {
+      kind: "thread",
+      threadId: "thr_parent",
+      label: "Prompt UX thread",
+    };
+    const text = "Ask @manager now";
+    const start = text.indexOf("@manager");
+    const baseDraft = {
+      text,
+      mentions: [{ start, end: start + "@manager".length, resource }],
+      attachments: [],
+    };
+
+    const withoutQuotes = promptDraftToInput({ ...baseDraft, quotes: [] });
+    const withQuotes = promptDraftToInput({
+      ...baseDraft,
+      quotes: [{ id: "q1", text: "context" }],
+    });
+
+    const userPartWithout = withoutQuotes[0];
+    const userPartWith = withQuotes[1];
+    expect(userPartWith).toEqual(userPartWithout);
   });
 });
