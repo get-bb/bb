@@ -30,6 +30,7 @@ import type {
 } from "@/components/promptbox/mentions/types";
 import { commandPillDismissedRangeEnd } from "@/components/promptbox/mentions/command-trigger";
 import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-trigger";
+import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
 import {
@@ -1087,6 +1088,13 @@ export function PromptBoxInternal({
   const commandHasMore = typeahead.command.hasMore;
   const commandIsLoadingMore = typeahead.command.isLoadingMore;
   const loadMoreCommands = typeahead.command.loadMore;
+  const canLoadMoreCommands =
+    activeTriggerKind === "command" &&
+    canLoadMoreCommandResults({
+      hasMore: commandHasMore,
+      isError: commandError,
+      isLoadingMore: commandIsLoadingMore,
+    });
   // The suggestion list driving keyboard nav + Enter/Tab apply for whichever
   // trigger is active. Empty when no trigger is open. Memoized so the keyboard
   // handler's useCallback identity is stable across renders.
@@ -1143,8 +1151,7 @@ export function PromptBoxInternal({
   useEffect(() => {
     if (
       activeTriggerKind !== "command" ||
-      !commandHasMore ||
-      commandIsLoadingMore ||
+      !canLoadMoreCommands ||
       activeSuggestions.length === 0
     ) {
       return;
@@ -1156,8 +1163,7 @@ export function PromptBoxInternal({
   }, [
     activeSuggestions.length,
     activeTriggerKind,
-    commandHasMore,
-    commandIsLoadingMore,
+    canLoadMoreCommands,
     loadMoreCommands,
     selectedIndex,
   ]);
@@ -1531,10 +1537,11 @@ export function PromptBoxInternal({
           event.preventDefault();
           if (
             activeTriggerKind === "command" &&
+            !commandError &&
             selectedIndex >= activeSuggestions.length - 1 &&
             (commandHasMore || commandIsLoadingMore)
           ) {
-            if (commandHasMore && !commandIsLoadingMore) {
+            if (canLoadMoreCommands) {
               loadMoreCommands();
             }
             return true;
@@ -1656,7 +1663,9 @@ export function PromptBoxInternal({
       activeTriggerKind,
       applyHistoryDraft,
       applyTrigger,
+      canLoadMoreCommands,
       canSubmitWithEnterKey,
+      commandError,
       commandHasMore,
       commandIsLoadingMore,
       history,
@@ -1811,9 +1820,7 @@ export function PromptBoxInternal({
             selectedIndex={selectedIndex}
             onApply={applyTrigger}
             onCommandLoadMore={
-              activeTriggerKind === "command" && commandHasMore
-                ? loadMoreCommands
-                : undefined
+              canLoadMoreCommands ? loadMoreCommands : undefined
             }
           />
         </div>

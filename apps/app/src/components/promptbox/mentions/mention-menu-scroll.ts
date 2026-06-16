@@ -2,6 +2,18 @@ import type { TypeaheadMenuState } from "@/components/promptbox/mentions/types";
 
 const COMMAND_LOAD_MORE_DISTANCE_PX = 48;
 
+export function canLoadMoreCommandResults({
+  hasMore,
+  isError,
+  isLoadingMore,
+}: {
+  hasMore: boolean;
+  isError: boolean;
+  isLoadingMore: boolean;
+}): boolean {
+  return hasMore && !isError && !isLoadingMore;
+}
+
 export function shouldLoadMoreCommandResults({
   trigger,
   hasLoadMoreCallback,

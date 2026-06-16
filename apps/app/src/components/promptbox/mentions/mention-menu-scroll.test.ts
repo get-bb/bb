@@ -1,5 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { shouldLoadMoreCommandResults } from "./mention-menu-scroll";
+import {
+  canLoadMoreCommandResults,
+  shouldLoadMoreCommandResults,
+} from "./mention-menu-scroll";
+
+describe("canLoadMoreCommandResults", () => {
+  it("allows loading another page only while paging is available and healthy", () => {
+    expect(
+      canLoadMoreCommandResults({
+        hasMore: true,
+        isError: false,
+        isLoadingMore: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      canLoadMoreCommandResults({
+        hasMore: false,
+        isError: false,
+        isLoadingMore: false,
+      }),
+    ).toBe(false);
+
+    expect(
+      canLoadMoreCommandResults({
+        hasMore: true,
+        isError: false,
+        isLoadingMore: true,
+      }),
+    ).toBe(false);
+
+    expect(
+      canLoadMoreCommandResults({
+        hasMore: true,
+        isError: true,
+        isLoadingMore: false,
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("shouldLoadMoreCommandResults", () => {
   it("loads another command page near the scroll bottom", () => {
