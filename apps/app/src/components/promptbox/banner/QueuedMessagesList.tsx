@@ -169,7 +169,12 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
             </div>
           ) : (
             <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
-              <p className="min-w-0 truncate text-foreground" title={preview}>
+              {/* Single line, no horizontal scroll — overflow is clipped with a
+                  soft right-edge fade instead of a hard ellipsis. */}
+              <p
+                className="fade-clip-right min-w-0 flex-1 overflow-hidden whitespace-nowrap text-foreground"
+                title={preview}
+              >
                 {preview}
               </p>
               {attachmentCount > 0 ? (
