@@ -112,7 +112,7 @@ export function Overview() {
           </div>
         </Stage>
       </StoryRow>
-      <StoryRow label="collapsed" hint="single-line glance: name, agent count, live time, Active">
+      <StoryRow label="collapsed" hint="single-line glance: name, agent count, live time">
         <Stage>
           <ThreadWorkflowCard
             workflow={runningWorkflow}

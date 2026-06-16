@@ -11,15 +11,6 @@ const WORKFLOW_CARD_ROW_HEIGHT = 32;
 const BODY_ID = "thread-workflow-card-body";
 const TOGGLE_ID = "thread-workflow-card-toggle";
 
-function WorkflowActiveBadge() {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 text-xs leading-none text-success">
-      <span className="size-1.5 shrink-0 rounded-full bg-success" />
-      Active
-    </span>
-  );
-}
-
 /**
  * Live elapsed time since the workflow started, ticking every second. Mirrors
  * the timeline title's live duration; stays blank for the first second to avoid
@@ -60,9 +51,9 @@ export interface ThreadWorkflowCardProps {
 /**
  * Collapsible workflow card for the prompt stack above the composer. Surfaces a
  * running Workflow tool run the same way ThreadGoalCard surfaces the active
- * goal: collapsed shows the workflow name, agent progress, live elapsed time,
- * and an Active badge; expanded reveals the full phase/agent tree (reusing
- * WorkflowWorkRowBody so there is a single rendering path). Only rendered while
+ * goal: collapsed shows the workflow name, agent progress, and live elapsed
+ * time; expanded reveals the full phase/agent tree (reusing WorkflowWorkRowBody
+ * so there is a single rendering path). Only rendered while
  * the workflow is running — once it settles it drops out of the prompt stack
  * and its timeline row carries the terminal state.
  */
@@ -97,7 +88,7 @@ export function ThreadWorkflowCard({
             className="size-3.5 shrink-0 text-muted-foreground"
             aria-hidden="true"
           />
-          <span className="flex min-w-0 flex-1 items-baseline gap-1 text-left">
+          <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
             <span className="shrink-0 text-muted-foreground">
               Running workflow:
             </span>
@@ -123,7 +114,6 @@ export function ThreadWorkflowCard({
             aria-hidden="true"
           />
         </button>
-        <WorkflowActiveBadge />
       </div>
       <section
         id={BODY_ID}
