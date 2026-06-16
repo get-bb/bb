@@ -1673,15 +1673,28 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // each one keeps a live native view that must persist across tab switches, so
   // the deck stays mounted independently of which tab is active.
   const isBrowserTabActive = activeBrowserTab !== null;
-  const browserDeck = (
-    <BrowserTabDeck
-      browserTabs={browserTabs}
-      activeBrowserTabId={activeBrowserTab?.id ?? null}
-      environmentId={thread.environmentId}
-      isPanelOpen={isSecondaryPanelOpen}
-      threadId={thread.id}
-      onUpdate={updateBrowserTab}
-    />
+  const renderBrowserDeck = useCallback(
+    ({
+      canShowNativeBrowserView,
+    }: {
+      canShowNativeBrowserView: boolean;
+    }) => (
+      <BrowserTabDeck
+        browserTabs={browserTabs}
+        activeBrowserTabId={activeBrowserTab?.id ?? null}
+        environmentId={thread.environmentId}
+        isPanelOpen={canShowNativeBrowserView}
+        threadId={thread.id}
+        onUpdate={updateBrowserTab}
+      />
+    ),
+    [
+      activeBrowserTab?.id,
+      browserTabs,
+      thread.environmentId,
+      thread.id,
+      updateBrowserTab,
+    ],
   );
 
   return (
@@ -1731,7 +1744,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           workspaceRootPath: environment?.path,
           fileTabs,
           fileTabContent,
-          browserDeck,
+          renderBrowserDeck,
           isBrowserTabActive,
           isOpen: isSecondaryPanelOpen,
           onClose: closeSecondaryPanel,

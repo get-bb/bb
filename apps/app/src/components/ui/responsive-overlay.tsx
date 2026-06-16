@@ -223,6 +223,8 @@ interface ResponsiveDrawerShellProps {
    * parent drawer cannot distinguish a nested drawer's focused input.
    */
   repositionInputs?: boolean;
+  /** Called when the DrawerContent element's own animation completes. */
+  onContentAnimationEnd?: (open: boolean) => void;
   children: React.ReactNode;
 }
 
@@ -233,6 +235,7 @@ export function ResponsiveDrawerShell({
   contentClassName,
   handleOnly,
   repositionInputs,
+  onContentAnimationEnd,
   children,
 }: ResponsiveDrawerShellProps) {
   const parentDrawerDepth = React.useContext(ResponsiveDrawerDepthContext);
@@ -252,6 +255,16 @@ export function ResponsiveDrawerShell({
     },
     [onOpenChange, resetClosingKeyboardState],
   );
+  const handleContentAnimationEnd =
+    React.useCallback<React.AnimationEventHandler<HTMLDivElement>>(
+      (event) => {
+        if (event.currentTarget !== event.target) {
+          return;
+        }
+        onContentAnimationEnd?.(open);
+      },
+      [onContentAnimationEnd, open],
+    );
   const previousOpenRef = React.useRef(open);
 
   React.useLayoutEffect(() => {
@@ -269,7 +282,11 @@ export function ResponsiveDrawerShell({
       nested={isNestedDrawer}
       repositionInputs={shouldRepositionInputs}
     >
-      <DrawerContent ref={drawerContentRef} className={contentClassName}>
+      <DrawerContent
+        ref={drawerContentRef}
+        className={contentClassName}
+        onAnimationEnd={handleContentAnimationEnd}
+      >
         <ResponsiveDrawerDepthContext.Provider value={parentDrawerDepth + 1}>
           {srLabel !== undefined ? (
             <DrawerTitle className="sr-only">{srLabel}</DrawerTitle>
