@@ -19,7 +19,6 @@ function createThread(
     id: "thr_1",
     projectId: "proj_1",
     environmentId: null,
-    automationId: null,
     providerId: "codex",
     title: "Thread",
     titleFallback: "Thread",

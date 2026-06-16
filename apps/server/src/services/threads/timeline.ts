@@ -869,6 +869,7 @@ function buildThreadTimelineInternal(
     // extraction work is skipped on older-page requests entirely; no
     // post-hoc null-out needed here.
     pendingTodos: timeline.pendingTodos,
+    goal: timeline.goal,
     contextWindowUsage:
       options.page.kind === "latest"
         ? (timeline.contextWindowUsage ?? undefined)

@@ -88,6 +88,16 @@ export const threadEventScopeDefinitionByType = {
       "Thread metadata event; names are not part of a specific turn transcript.",
   },
   "thread/compacted": { policy: "turn" },
+  "thread/goal/updated": {
+    policy: "thread",
+    rationale:
+      "Thread goal state is current thread metadata, not part of a specific turn transcript.",
+  },
+  "thread/goal/cleared": {
+    policy: "thread",
+    rationale:
+      "Thread goal state is current thread metadata, not part of a specific turn transcript.",
+  },
   "item/started": { policy: "turn" },
   "item/completed": { policy: "turn" },
   "item/agentMessage/delta": { policy: "turn" },

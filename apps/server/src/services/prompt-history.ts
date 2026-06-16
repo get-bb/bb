@@ -37,13 +37,10 @@ interface ThreadPromptHistoryArgs extends PromptHistoryArgs {
 
 type PromptHistoryServiceDeps = Pick<AppDeps, "db" | "logger">;
 type PromptHistoryEntryInput = PromptHistoryEntry["input"];
-type PromptHistoryScopeThread = Pick<
-  Thread,
-  "automationId" | "parentThreadId"
->;
+type PromptHistoryScopeThread = Pick<Thread, "parentThreadId">;
 type PromptHistoryRecordThread = Pick<
   Thread,
-  "automationId" | "id" | "parentThreadId" | "projectId"
+  "id" | "parentThreadId" | "projectId"
 >;
 
 interface PromptHistoryRecordDeps {
@@ -170,10 +167,7 @@ function resolveAcceptedPromptHistoryScope(
     return "thread";
   }
 
-  if (
-    args.thread.parentThreadId !== null ||
-    args.thread.automationId !== null
-  ) {
+  if (args.thread.parentThreadId !== null) {
     return null;
   }
 

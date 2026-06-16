@@ -15,7 +15,6 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     id: args.id,
     projectId: args.projectId,
     environmentId: null,
-    automationId: null,
     providerId: "codex",
     title: args.title,
     titleFallback: args.title,

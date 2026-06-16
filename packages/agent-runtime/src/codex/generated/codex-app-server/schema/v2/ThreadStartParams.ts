@@ -5,51 +5,15 @@ import type { Personality } from "../Personality.js";
 import type { JsonValue } from "../serde_json/JsonValue.js";
 import type { ApprovalsReviewer } from "./ApprovalsReviewer.js";
 import type { AskForApproval } from "./AskForApproval.js";
-import type { DynamicToolSpec } from "./DynamicToolSpec.js";
-import type { PermissionProfileSelectionParams } from "./PermissionProfileSelectionParams.js";
 import type { SandboxMode } from "./SandboxMode.js";
 import type { ThreadSource } from "./ThreadSource.js";
 import type { ThreadStartSource } from "./ThreadStartSource.js";
-import type { TurnEnvironmentParams } from "./TurnEnvironmentParams.js";
 
-export type ThreadStartParams = { model?: string | null, modelProvider?: string | null, serviceTier?: string | null | null, cwd?: string | null, approvalPolicy?: AskForApproval | null,
-/**
+export type ThreadStartParams = {model?: string | null, modelProvider?: string | null, serviceTier?: string | null | null, cwd?: string | null, approvalPolicy?: AskForApproval | null, /**
  * Override where approval requests are routed for review on this thread
  * and subsequent turns.
  */
-approvalsReviewer?: ApprovalsReviewer | null, sandbox?: SandboxMode | null,
-/**
- * Named profile selection for this thread. Cannot be combined with
- * `sandbox`. Use bounded `modifications` for supported turn/thread
- * adjustments instead of replacing the full permissions profile.
- */
-permissions?: PermissionProfileSelectionParams | null, config?: { [key in string]?: JsonValue } | null, serviceName?: string | null, baseInstructions?: string | null, developerInstructions?: string | null, personality?: Personality | null, ephemeral?: boolean | null, sessionStartSource?: ThreadStartSource | null,
-/**
+approvalsReviewer?: ApprovalsReviewer | null, sandbox?: SandboxMode | null, config?: { [key in string]?: JsonValue } | null, serviceName?: string | null, baseInstructions?: string | null, developerInstructions?: string | null, personality?: Personality | null, ephemeral?: boolean | null, sessionStartSource?: ThreadStartSource | null, /**
  * Optional client-supplied analytics source classification for this thread.
  */
-threadSource?: ThreadSource | null,
-/**
- * Optional sticky environments for this thread.
- *
- * Omitted selects the default environment when environment access is
- * enabled. Empty disables environment access for turns that do not
- * provide a turn override. Non-empty selects the first environment as the
- * current turn environment.
- */
-environments?: Array<TurnEnvironmentParams> | null, dynamicTools?: Array<DynamicToolSpec> | null,
-/**
- * Test-only experimental field used to validate experimental gating and
- * schema filtering behavior in a stable way.
- */
-mockExperimentalField?: string | null,
-/**
- * If true, opt into emitting raw Responses API items on the event stream.
- * This is for internal use only (e.g. Codex Cloud).
- */
-experimentalRawEvents: boolean,
-/**
- * Deprecated and ignored by app-server. Kept only so older clients can
- * continue sending the field while rollout persistence always uses the
- * limited history policy.
- */
-persistExtendedHistory: boolean, };
+threadSource?: ThreadSource | null};

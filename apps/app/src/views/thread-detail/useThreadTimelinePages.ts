@@ -14,6 +14,7 @@ interface UseThreadTimelinePagesArgs {
 interface UseThreadTimelinePagesResult {
   activeThinking: ThreadTimelineResponse["activeThinking"];
   contextWindowUsage: ThreadTimelineResponse["contextWindowUsage"];
+  goal: ThreadTimelineResponse["goal"];
   hasOlderTimelineRows: boolean;
   isLoadingOlderTimelineRows: boolean;
   loadOlderTimelineRows: () => Promise<void>;
@@ -418,6 +419,7 @@ export function useThreadTimelinePages({
   return {
     activeThinking: latestTimeline?.activeThinking ?? null,
     contextWindowUsage: latestTimeline?.contextWindowUsage,
+    goal: latestTimeline?.goal ?? null,
     hasOlderTimelineRows,
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,

@@ -64,21 +64,6 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("nothing to commit");
   });
 
-  it("renders bbGuideSchedules", () => {
-    const templates = listTemplates();
-    expect(
-      templates.some((template) => template.id === "bbGuideSchedules"),
-    ).toBe(true);
-
-    const rendered = renderTemplate("bbGuideSchedules", {});
-
-    expect(rendered).toContain("Thread schedules");
-    expect(rendered).toContain("bb thread schedule create");
-    expect(rendered).toContain("--timezone America/Los_Angeles");
-    expect(rendered).toContain("Schedule names are unique per thread.");
-    expect(rendered).toContain("The cron month field must stay `*`.");
-  });
-
   it("renders standardAgentAppendInstructions without user-question guidance", () => {
     const rendered = renderTemplate("standardAgentAppendInstructions", {});
 
@@ -86,19 +71,6 @@ describe("@bb/templates", () => {
     expect(rendered).toContain("agentic IDE");
     expect(rendered).not.toContain(
       "Ask the user a blocking question only when",
-    );
-  });
-
-  it("renders due thread schedule messages with schedule system chrome", () => {
-    const rendered = renderTemplate("systemMessageThreadScheduleDue", {
-      prompt: "Run the daily recap.",
-      scheduleId: "tsched_daily",
-    });
-
-    expect(rendered).toBe(
-      ["[bb schedule due:tsched_daily]", "", "Run the daily recap."].join(
-        "\n",
-      ),
     );
   });
 

@@ -46,7 +46,6 @@ import {
 } from "@/lib/bb-desktop";
 import {
   getLegacyProjectComposeRoutePath,
-  AUTOMATIONS_ROUTE_PATH,
   getProjectArchivedRoutePath,
   getProjectSettingsRoutePath,
 } from "@/lib/route-paths";
@@ -216,7 +215,6 @@ function SidebarTriggerOverlay({
 
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
-  [AUTOMATIONS_ROUTE_PATH]: { title: "Automations" },
   "/settings": { title: "Settings" },
 };
 

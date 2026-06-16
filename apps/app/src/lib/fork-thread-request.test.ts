@@ -7,7 +7,6 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     id: "thr_source",
     projectId: "proj_test",
     environmentId: "env_source",
-    automationId: null,
     providerId: "codex",
     title: "Investigate flaky test",
     titleFallback: null,

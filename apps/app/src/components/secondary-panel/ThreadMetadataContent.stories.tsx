@@ -6,7 +6,6 @@ import {
   PanelStage,
   baseProps,
   makeThread,
-  makeThreadSchedule,
 } from "./ThreadMetadataContent.fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
@@ -40,7 +39,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="standard, child thread"
-        hint='thread.parentThreadId set — selector renders the link form'
+        hint="thread.parentThreadId set — selector renders the link form"
       >
         {render({
           thread: makeThread({ parentThreadId: "thr_codex_parent" }),
@@ -58,25 +57,8 @@ export function Overview() {
         })}
       </StoryRow>
       <StoryRow
-        label="standard, with schedules"
-        hint="threadSchedules present — the Schedules row lists each schedule"
-      >
-        {render({
-          threadSchedules: [
-            makeThreadSchedule(),
-            makeThreadSchedule({
-              id: "sched_cleanup",
-              name: "Weekly cleanup",
-              enabled: false,
-              cron: "0 18 * * 5",
-              prompt: "Close stale follow-ups and archive merged threads.",
-            }),
-          ],
-        })}
-      </StoryRow>
-      <StoryRow
         label="parent thread"
-        hint='parent thread with no environment — environment/branch/merge-base hidden'
+        hint="parent thread with no environment — environment/branch/merge-base hidden"
       >
         {render({
           thread: makeThread({

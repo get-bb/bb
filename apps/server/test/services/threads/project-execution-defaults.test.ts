@@ -40,10 +40,7 @@ describe("project execution defaults persistence", () => {
       });
 
       await createThreadFromRequest(harness.deps, {
-        // origin: "app" + automationId: null is the path that normally
-        // remembers defaults. The reuse env type must override that.
         origin: "app",
-        automationId: null,
         childOrigin: null,
         startedOnBehalfOf: null,
         projectId: project.id,
@@ -90,7 +87,6 @@ describe("project execution defaults persistence", () => {
 
       await createThreadFromRequest(harness.deps, {
         origin: "app",
-        automationId: null,
         childOrigin: null,
         startedOnBehalfOf: null,
         projectId: project.id,
@@ -150,7 +146,6 @@ describe("project execution defaults persistence", () => {
       // project's stored defaults (like the reuse carve-out above).
       await createThreadFromRequest(harness.deps, {
         origin: "app",
-        automationId: null,
         childOrigin: "side-chat",
         startedOnBehalfOf: null,
         parentThreadId: parentThread.id,

@@ -257,8 +257,15 @@
     {
       "idx": 36,
       "version": "6",
-      "when": 1781639675026,
-      "tag": "0036_thread_child_origin",
+      "when": 1781647572409,
+      "tag": "0036_drop_automations_feature",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1781653023172,
+      "tag": "0037_gifted_frightful_four",
       "breakpoints": true
     }
   ]

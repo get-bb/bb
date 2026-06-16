@@ -107,6 +107,7 @@ describe("fetchThreadPendingTodos", () => {
     return {
       activeThinking: null,
       pendingTodos,
+      goal: null,
       rows: [],
       timelinePage: {
         kind: "latest",

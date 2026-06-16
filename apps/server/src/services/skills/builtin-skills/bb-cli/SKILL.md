@@ -1,13 +1,12 @@
 ---
 name: bb-cli
-description: Use this when controlling bb. The bb CLI lets you inspect, create, and orchestrate bb threads, automations, and more.
+description: Use this when controlling bb. The bb CLI lets you inspect, create, and orchestrate bb threads, projects, providers, and environments.
 ---
 
 # bb CLI
 
 Use `bb` when controlling bb itself: inspect current context, coordinate threads,
-message agents, schedule automations, or inspect projects, providers, and
-environments.
+message agents, or inspect projects, providers, and environments.
 
 ## Start With Context
 
@@ -64,9 +63,3 @@ For review or fix pipelines, get the environment ID from
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
-
-## Automations
-
-- Use `bb thread schedule create <thread-id> --name <name> --cron <cron> --timezone <tz> --prompt "..."` for reminders, recurring check-ins, and scheduled follow-up work.
-- Use `bb thread schedule list`, `update`, `enable`, `disable`, and `delete` to
-  manage schedules.

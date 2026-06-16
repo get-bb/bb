@@ -42,7 +42,6 @@ interface ResolveRequestedCreateExecutionValueArgs<TValue> {
 }
 
 function shouldRememberProjectExecutionDefaults(args: {
-  automationId: string | null;
   childOrigin: ThreadCreateServiceRequest["childOrigin"];
   environment: ThreadCreateServiceRequest["environment"];
   origin: ThreadCreateServiceRequest["origin"];
@@ -55,7 +54,7 @@ function shouldRememberProjectExecutionDefaults(args: {
   // forced/inherited values the user never picked in the composer (e.g. a side
   // chat's readonly mode). They must not reshape the project's stored defaults.
   if (args.childOrigin !== null) return false;
-  return args.origin === "app" && args.automationId === null;
+  return args.origin === "app";
 }
 
 function resolveRequestedCreateExecutionValue<TValue>({

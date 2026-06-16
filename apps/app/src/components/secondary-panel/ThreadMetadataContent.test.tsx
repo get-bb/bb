@@ -11,7 +11,6 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     id: "thr_test",
     projectId: "proj_test",
     environmentId: "env_test",
-    automationId: null,
     providerId: "codex",
     title: null,
     titleFallback: null,

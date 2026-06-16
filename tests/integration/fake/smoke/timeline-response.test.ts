@@ -45,6 +45,7 @@ function makeTimelineResponse(
     rows,
     activeThinking: null,
     pendingTodos: null,
+    goal: null,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,

@@ -88,10 +88,7 @@ export interface FutureAppliedMigrationWarningFields {
 }
 
 export interface MigrationWarningLogger {
-  warn(
-    fields: FutureAppliedMigrationWarningFields,
-    message: string,
-  ): void;
+  warn(fields: FutureAppliedMigrationWarningFields, message: string): void;
 }
 
 export interface MigrateOptions {
@@ -195,11 +192,7 @@ const pendingInteractionForeignKeys: ExpectedForeignKey[] = [
 const pendingInteractionIndexes: ExpectedIndex[] = [
   {
     name: "pending_interactions_provider_request_idx",
-    columns: [
-      "provider_id",
-      "provider_thread_id",
-      "provider_request_id",
-    ],
+    columns: ["provider_id", "provider_thread_id", "provider_request_id"],
     unique: true,
   },
   {
@@ -395,7 +388,9 @@ function columnExists(
   tableName: string,
   columnName: string,
 ): boolean {
-  return getTableInfo(db, tableName).some((column) => column.name === columnName);
+  return getTableInfo(db, tableName).some(
+    (column) => column.name === columnName,
+  );
 }
 
 function getForeignKeys(
@@ -520,25 +515,6 @@ function markMigrationApplied(
       `,
     )
     .run(migration.hash, migration.createdAt);
-}
-
-function runExpectedMigrationSql(
-  db: DbConnection,
-  migration: ExpectedAppliedMigration,
-): void {
-  for (const statement of migration.sql) {
-    db.$client.exec(statement);
-  }
-}
-
-function applyExpectedMigrationTransaction(
-  db: DbConnection,
-  migration: ExpectedAppliedMigration,
-): void {
-  db.$client.transaction(() => {
-    runExpectedMigrationSql(db, migration);
-    markMigrationApplied(db, migration);
-  })();
 }
 
 function hasPublishedTimestampFallback(
@@ -932,20 +908,15 @@ function applyDeferredDestructiveLegacyCleanup(
   db: DbConnection,
   migrationsFolder: string,
 ): void {
-  if (!tableExists(db, "__drizzle_migrations") || !tableExists(db, "projects")) {
+  if (
+    !tableExists(db, "__drizzle_migrations") ||
+    !tableExists(db, "projects")
+  ) {
     return;
   }
 
   const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
   const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
-  const threadSchedulesMigration = requireExpectedAppliedMigration(
-    expectedMigrations,
-    "0013_thread_schedules",
-  );
-  const threadScheduleKindDefaultMigration = requireExpectedAppliedMigration(
-    expectedMigrations,
-    "0014_thread_schedule_kind_default",
-  );
 
   const cleanupMigrations = deferredDestructiveCleanupMigrationTags.map((tag) =>
     requireExpectedAppliedMigration(expectedMigrations, tag),
@@ -955,16 +926,6 @@ function applyDeferredDestructiveLegacyCleanup(
   );
   if (!hasPendingCleanupMigration) {
     return;
-  }
-
-  if (!appliedCreatedAts.has(threadScheduleKindDefaultMigration.createdAt)) {
-    if (!appliedCreatedAts.has(threadSchedulesMigration.createdAt)) {
-      return;
-    }
-
-    applyExpectedMigrationTransaction(db, threadScheduleKindDefaultMigration);
-    db.$client.pragma("foreign_keys = OFF");
-    appliedCreatedAts.add(threadScheduleKindDefaultMigration.createdAt);
   }
 
   const operationBackfillMigration = requireExpectedAppliedMigration(

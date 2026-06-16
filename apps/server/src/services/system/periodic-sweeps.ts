@@ -31,7 +31,6 @@ import type {
   AppDeps,
   LoggedPendingInteractionWorkSessionDeps,
 } from "../../types.js";
-import { sweepDueAutomations } from "../scheduling/automation-sweep.js";
 import {
   recoverOrphanedEnvironmentDestroyRequests,
   runEnvironmentCleanupAdvance,
@@ -43,7 +42,6 @@ import {
 } from "../lib/error-log-fields.js";
 import { advanceEnvironmentProvisioning } from "../environments/environment-provisioning-internal.js";
 import { handleExpiredHostSessionLeases } from "../../internal/session-owner-side-effects.js";
-import { sweepDueThreadSchedules } from "../scheduling/thread-schedule-sweep.js";
 import {
   advanceProjectDeletion,
   listProjectsPendingDeletion,
@@ -65,7 +63,6 @@ const ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS =
 
 export type PeriodicSweepJobCategory =
   | "retention"
-  | "scheduler"
   | "durable-intent-retry"
   | "orphan-cleanup"
   | "lifecycle-timeout"
@@ -521,20 +518,6 @@ function runDestroyedEnvironmentPruneSweep(
   pruneDestroyedEnvironments(deps.db, deps.hub);
 }
 
-async function runDueAutomationSweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  now: number,
-): Promise<void> {
-  await sweepDueAutomations(deps, { now });
-}
-
-async function runDueThreadScheduleSweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  now: number,
-): Promise<void> {
-  await sweepDueThreadSchedules(deps, { now });
-}
-
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
@@ -565,18 +548,6 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "retention",
     name: "destroyed-environment-prune",
     run: runDestroyedEnvironmentPruneSweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "scheduler",
-    name: "due-automation",
-    run: runDueAutomationSweep,
-  },
-  {
-    cadenceMs: 0,
-    category: "scheduler",
-    name: "due-thread-schedule",
-    run: runDueThreadScheduleSweep,
   },
   {
     cadenceMs: 0,

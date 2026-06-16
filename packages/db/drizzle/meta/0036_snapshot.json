@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0efd9dbd-c71f-4ddb-9c2f-2eb8dce17b55",
+  "id": "1601f7ff-8b5b-4374-b943-288172897889",
   "prevId": "78111250-6c32-4f63-bbc9-e9c98c6269ed",
   "tables": {
     "apikey": {
@@ -267,141 +267,6 @@
         }
       },
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "automations": {
-      "name": "automations",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": true
-        },
-        "trigger_type": {
-          "name": "trigger_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "trigger_config": {
-          "name": "trigger_config",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "action": {
-          "name": "action",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "auto_archive": {
-          "name": "auto_archive",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "next_run_at": {
-          "name": "next_run_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_run_at": {
-          "name": "last_run_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "run_count": {
-          "name": "run_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "automations_project_idx": {
-          "name": "automations_project_idx",
-          "columns": [
-            "project_id"
-          ],
-          "isUnique": false
-        },
-        "automations_due_idx": {
-          "name": "automations_due_idx",
-          "columns": [
-            "enabled",
-            "trigger_type",
-            "next_run_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "automations_project_id_projects_id_fk": {
-          "name": "automations_project_id_projects_id_fk",
-          "tableFrom": "automations",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -2099,159 +1964,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "thread_schedules": {
-      "name": "thread_schedules",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "thread_id": {
-          "name": "thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "cron": {
-          "name": "cron",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "timezone": {
-          "name": "timezone",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "prompt": {
-          "name": "prompt",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "next_fire_at": {
-          "name": "next_fire_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "last_fired_at": {
-          "name": "last_fired_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "thread_schedules_due_idx": {
-          "name": "thread_schedules_due_idx",
-          "columns": [
-            "enabled",
-            "next_fire_at"
-          ],
-          "isUnique": false
-        },
-        "thread_schedules_project_idx": {
-          "name": "thread_schedules_project_idx",
-          "columns": [
-            "project_id"
-          ],
-          "isUnique": false
-        },
-        "thread_schedules_thread_name_idx": {
-          "name": "thread_schedules_thread_name_idx",
-          "columns": [
-            "thread_id",
-            "name"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "thread_schedules_project_id_projects_id_fk": {
-          "name": "thread_schedules_project_id_projects_id_fk",
-          "tableFrom": "thread_schedules",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "thread_schedules_thread_id_threads_id_fk": {
-          "name": "thread_schedules_thread_id_threads_id_fk",
-          "tableFrom": "thread_schedules",
-          "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "threads": {
       "name": "threads",
       "columns": {
@@ -2271,13 +1983,6 @@
         },
         "environment_id": {
           "name": "environment_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "automation_id": {
-          "name": "automation_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -2328,13 +2033,6 @@
         },
         "parent_thread_id": {
           "name": "parent_thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "child_origin": {
-          "name": "child_origin",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -2434,16 +2132,6 @@
           ],
           "isUnique": false
         },
-        "threads_automation_runtime_idx": {
-          "name": "threads_automation_runtime_idx",
-          "columns": [
-            "automation_id",
-            "archived_at",
-            "deleted_at",
-            "status"
-          ],
-          "isUnique": false
-        },
         "threads_parent_idx": {
           "name": "threads_parent_idx",
           "columns": [
@@ -2497,19 +2185,6 @@
           "tableTo": "environments",
           "columnsFrom": [
             "environment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "threads_automation_id_automations_id_fk": {
-          "name": "threads_automation_id_automations_id_fk",
-          "tableFrom": "threads",
-          "tableTo": "automations",
-          "columnsFrom": [
-            "automation_id"
           ],
           "columnsTo": [
             "id"

@@ -30,7 +30,6 @@ import type { ServerNotification as CodexServerNotification } from "./generated/
 import type { SandboxPolicy } from "./generated/codex-app-server/schema/v2/SandboxPolicy.js";
 import type { DynamicToolSpec } from "./generated/codex-app-server/schema/v2/DynamicToolSpec.js";
 import type { SandboxMode as CodexSandboxMode } from "./generated/codex-app-server/schema/v2/SandboxMode.js";
-import type { ThreadForkParams } from "./generated/codex-app-server/schema/v2/ThreadForkParams.js";
 import type { ThreadResumeParams } from "./generated/codex-app-server/schema/v2/ThreadResumeParams.js";
 import type { ThreadStartParams } from "./generated/codex-app-server/schema/v2/ThreadStartParams.js";
 import type { UserInput as CodexUserInput } from "./generated/codex-app-server/schema/v2/UserInput.js";
@@ -79,6 +78,28 @@ interface CodexThreadPermissionSettings {
   approvalPolicy: AskForApproval;
   sandbox: CodexSandboxMode;
 }
+
+type BbThreadStartParams = ThreadStartParams & {
+  experimentalRawEvents?: boolean;
+  persistExtendedHistory?: boolean;
+};
+
+type BbThreadResumeParams = ThreadResumeParams & {
+  persistExtendedHistory?: boolean;
+};
+
+type BbThreadForkParams = {
+  threadId: string;
+  model?: string | null;
+  serviceTier?: string | null;
+  cwd?: string | null;
+  approvalPolicy?: AskForApproval | null;
+  sandbox?: CodexSandboxMode | null;
+  config?: { [key in string]?: JsonValue } | null;
+  baseInstructions?: string | null;
+  developerInstructions?: string | null;
+  persistExtendedHistory?: boolean;
+};
 
 interface ToCodexPermissionSettingsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
@@ -1359,7 +1380,7 @@ export function createCodexProviderAdapter(
         case "thread/start": {
           const dynamicTools = toCodexDynamicTools(command.dynamicTools);
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
-          const params: ThreadStartParams = {
+          const params: BbThreadStartParams = {
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
             sandbox: preparedGitRoots.permissionSettings.sandbox,
             cwd: command.cwd,
@@ -1383,7 +1404,7 @@ export function createCodexProviderAdapter(
         case "thread/resume": {
           const dynamicTools = toCodexDynamicTools(command.dynamicTools);
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
-          const params: ThreadResumeParams = {
+          const params: BbThreadResumeParams = {
             threadId: command.providerThreadId,
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
             sandbox: preparedGitRoots.permissionSettings.sandbox,
@@ -1405,7 +1426,7 @@ export function createCodexProviderAdapter(
         }
         case "thread/fork": {
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
-          const params: ThreadForkParams = {
+          const params: BbThreadForkParams = {
             threadId: command.sourceProviderThreadId,
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
             sandbox: preparedGitRoots.permissionSettings.sandbox,

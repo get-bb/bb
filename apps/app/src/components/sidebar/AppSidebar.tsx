@@ -24,10 +24,7 @@ import {
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import {
-  getAutomationsRoutePath,
-  getRootComposeRoutePath,
-} from "@/lib/route-paths";
+import { getRootComposeRoutePath } from "@/lib/route-paths";
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -51,11 +48,6 @@ export function AppSidebar({
     void navigate(getRootComposeRoutePath(), {
       state: { focusPrompt: true },
     });
-  }, [closeOnMobile, navigate]);
-
-  const handleOpenAutomations = useCallback(() => {
-    closeOnMobile();
-    void navigate(getAutomationsRoutePath());
   }, [closeOnMobile, navigate]);
 
   return (
@@ -88,7 +80,8 @@ export function AppSidebar({
               className={cn(
                 "group-data-[collapsible=icon]:hidden",
                 usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-                usesDesktopChrome && MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
+                usesDesktopChrome &&
+                  MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS,
               )}
             />
           </div>
@@ -97,10 +90,7 @@ export function AppSidebar({
           data-testid="app-sidebar-primary-actions"
           className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
         >
-          <ProjectListActionButtons
-            onNewChat={handleNewChat}
-            onOpenAutomations={handleOpenAutomations}
-          />
+          <ProjectListActionButtons onNewChat={handleNewChat} />
         </div>
         <SidebarContent>
           <ProjectList

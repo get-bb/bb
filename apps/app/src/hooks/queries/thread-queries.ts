@@ -11,13 +11,11 @@ import type {
   ThreadWithRuntime,
 } from "@bb/domain";
 import type {
-  AutomationsOverviewResponse,
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
   ThreadPendingInteractionsResponse,
   ThreadResponse,
-  ThreadSchedule,
   ThreadWithIncludesResponse,
   ThreadStorageFileListResponse,
   ThreadStoragePathListResponse,
@@ -29,7 +27,6 @@ import type { PathListOptions } from "@/lib/path-list-options";
 import type { ThreadStorageFileListOptions } from "@/lib/thread-storage-files";
 import * as api from "@/lib/api";
 import {
-  useProjectListRealtimeSubscription,
   useThreadDetailRealtimeSubscription,
   useThreadListRealtimeSubscription,
 } from "@/hooks/useRealtimeSubscription";
@@ -51,7 +48,6 @@ import {
 } from "./query-helpers";
 import {
   archivedThreadsListQueryKey,
-  automationsOverviewQueryKey,
   disabledThreadListQueryKey,
   threadDefaultExecutionOptionsQueryKey,
   threadDetailBootstrapQueryKey,
@@ -60,7 +56,6 @@ import {
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
   threadQueryKey,
-  threadSchedulesQueryKey,
   threadStorageFilesQueryKey,
   threadStoragePathsQueryKey,
   threadStorageFilePreviewQueryKey,
@@ -608,21 +603,6 @@ export function useThreadStorageFilePreview(
   });
 }
 
-export function useAutomationsOverview(options?: QueryOptions) {
-  const enabled = options?.enabled ?? true;
-  useProjectListRealtimeSubscription({ enabled });
-  useThreadListRealtimeSubscription({ enabled });
-
-  return useQuery<AutomationsOverviewResponse>({
-    queryKey: automationsOverviewQueryKey(),
-    queryFn: ({ signal }) => api.listAutomationsOverview(signal),
-    enabled,
-    refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
-    staleTime: options?.staleTime,
-  });
-}
-
 export function useThreadHostFilePreview(
   id: string,
   environmentId: string | null | undefined,
@@ -646,24 +626,6 @@ export function useThreadHostFilePreview(
       ),
     enabled,
     refetchOnWindowFocus: false,
-  });
-}
-
-export function useThreadSchedules(id: string, options?: QueryOptions) {
-  const enabled = (options?.enabled ?? true) && Boolean(id);
-  useThreadDetailRealtimeSubscription(id, { enabled });
-
-  return useQuery<ThreadSchedule[]>({
-    queryKey: threadSchedulesQueryKey(id),
-    queryFn: ({ signal }) =>
-      api.listThreadSchedules(
-        requireThreadId(id, "useThreadSchedules"),
-        signal,
-      ),
-    enabled,
-    refetchOnMount: options?.refetchOnMount ?? true,
-    refetchOnWindowFocus: false,
-    staleTime: options?.staleTime,
   });
 }
 

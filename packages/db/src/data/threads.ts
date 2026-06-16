@@ -41,7 +41,6 @@ import {
 type ThreadWriteConnection = DbConnection | DbTransaction;
 
 export interface CreateThreadInput {
-  automationId?: string | null;
   projectId: string;
   environmentId?: string | null;
   providerId: string;
@@ -65,7 +64,6 @@ export function createThread(
       id,
       projectId: input.projectId,
       environmentId: input.environmentId ?? null,
-      automationId: input.automationId ?? null,
       providerId: input.providerId,
       title: input.title ?? null,
       titleFallback: input.titleFallback ?? null,
