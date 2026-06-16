@@ -912,7 +912,7 @@ export function WorktreeHierarchy() {
     <StoryCard>
       <StoryRow
         label="nav vs disclosure"
-        hint="plain + lone-worktree threads (leading folder glyph) navigate on click; the 2-thread worktree group is a muted container header with a leading caret that only toggles; a fork nests under its source with the fork glyph"
+        hint="two row categories: threads (plain, lone-worktree, fork) are navigable — full-strength text, whole-row hover + selection; the worktree group header is a disclosure-only container — subtle text, no whole-row hover/selection, only its caret+folder cluster toggles. One 16px indent step per level."
       >
         {singleProject({
           threadListState: {

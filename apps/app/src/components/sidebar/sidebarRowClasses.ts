@@ -30,8 +30,11 @@ export const SIDEBAR_UNREAD_DOT_CLASS_BY_TONE: Record<
 export const SIDEBAR_UNREAD_DOT_CLASS =
   SIDEBAR_UNREAD_DOT_CLASS_BY_TONE.default;
 
+// One indentation system for every sidebar row (sections, projects, worktree
+// groups, threads): a fixed base plus a single per-depth step. Kept tight so a
+// few levels of nesting stay readable in a narrow sidebar.
 const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 8;
-const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 24;
+const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 16;
 const SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX = 8;
 
 export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";

@@ -1149,11 +1149,11 @@ function ProjectRowComponent({
             className={cn(
               SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
               "group/project-row flex w-full items-center rounded-md text-sm transition-colors",
-              // Expand/collapse-only: no whole-row hover highlight (the caret +
-              // folder cluster is the only toggle); keep just the text color.
-              isActive
-                ? "bg-sidebar-border text-sidebar-foreground"
-                : "text-sidebar-foreground/85 dark:text-sidebar-foreground",
+              // A disclosure header, not a selectable row: subtle text, no
+              // whole-row hover, no selection background (the caret + folder
+              // cluster is the only toggle). The active project — the one the
+              // open thread belongs to — only brightens its text for wayfinding.
+              isActive ? "text-foreground" : "text-subtle-foreground",
               projectDragBindings &&
                 !projectDragBindings.disabled &&
                 "select-none cursor-grab active:cursor-grabbing",
