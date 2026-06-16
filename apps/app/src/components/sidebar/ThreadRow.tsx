@@ -317,15 +317,21 @@ function ThreadRowComponent({
     thread.projectId === PERSONAL_PROJECT_ID &&
     thread.childOrigin !== "fork" &&
     leadingWorktreeIcon === null;
+  const hasLeadingGlyph =
+    thread.childOrigin === "fork" ||
+    leadingWorktreeIcon !== null ||
+    showNoProjectIcon;
   // A row nested under an indent guide (a thread child, or a worktree-group
-  // member) keeps the glyph column reserved even when it has no glyph, so its
-  // title clears the divider and lines up with a fork sibling's title instead
-  // of sitting cramped against the guide. Top-level rows don't reserve it.
-  const reserveGlyphColumn =
-    !showNoProjectIcon &&
-    thread.childOrigin !== "fork" &&
-    leadingWorktreeIcon === null &&
-    (thread.parentThreadId !== null || options.isEnvGrouped);
+  // member) pads its leading column right so the glyph / title clears the
+  // divider instead of sitting cramped against it. A glyph-less row gets the
+  // pad on its title, so the title lines up flush with a fork sibling's leading
+  // icon. Top-level rows have no divider beside them and pad nothing.
+  const underDividerPadClass =
+    thread.parentThreadId !== null || options.isEnvGrouped ? "ml-2" : null;
+  const leadingGlyphSlotClass = cn(
+    SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
+    underDividerPadClass,
+  );
   const parentDragBindings = parentOptions?.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -394,17 +400,13 @@ function ThreadRowComponent({
           />
         )}
         {/*
-          Identity glyph (fork / worktree / no-project). A top-level glyph-less
-          row reserves nothing — its title sits right after the caret (no dead
-          gap). A glyph-less row nested under an indent guide instead keeps the
-          column reserved (see reserveGlyphColumn) so its title clears the guide
-          and aligns with a fork sibling's title.
+          Identity glyph (fork / worktree / no-project), rendered only when
+          present. Under an indent guide the slot is padded left so the icon
+          clears the divider; a glyph-less row carries that same pad on its title
+          so it lands flush with a fork sibling's leading icon.
         */}
         {thread.childOrigin === "fork" ? (
-          <span
-            className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS}
-            title="Forked thread"
-          >
+          <span className={leadingGlyphSlotClass} title="Forked thread">
             <Icon
               name="Fork"
               className="size-3.5 text-muted-foreground"
@@ -413,7 +415,7 @@ function ThreadRowComponent({
           </span>
         ) : leadingWorktreeIcon ? (
           <span
-            className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS}
+            className={leadingGlyphSlotClass}
             title={leadingWorktreeIconLabel ?? undefined}
           >
             <Icon
@@ -423,20 +425,22 @@ function ThreadRowComponent({
             />
           </span>
         ) : showNoProjectIcon ? (
-          <span
-            className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS}
-            title="Not in a project"
-          >
+          <span className={leadingGlyphSlotClass} title="Not in a project">
             <Icon
               name="FolderMinus"
               className="size-3.5 text-muted-foreground"
               aria-label="Not in a project"
             />
           </span>
-        ) : reserveGlyphColumn ? (
-          <span className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS} aria-hidden="true" />
         ) : null}
-        <span className="min-w-0 truncate">{threadTitle}</span>
+        <span
+          className={cn(
+            "min-w-0 truncate",
+            !hasLeadingGlyph && underDividerPadClass,
+          )}
+        >
+          {threadTitle}
+        </span>
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
       <span
