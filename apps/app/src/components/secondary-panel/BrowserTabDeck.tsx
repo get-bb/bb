@@ -27,10 +27,27 @@ interface BuildBrowserTabIdSetArgs {
   browserTabs: readonly BrowserFixedPanelTab[];
 }
 
-function buildBrowserTabIdSet({
+export function buildBrowserTabIdSet({
   browserTabs,
 }: BuildBrowserTabIdSetArgs): ReadonlySet<string> {
   return new Set(browserTabs.map((tab) => tab.id));
+}
+
+/**
+ * Picks the single browser tab whose content the deck mounts. Returns the tab
+ * matching `activeBrowserTabId`, or null when there is no active id or the
+ * active id is not an open browser tab. Selecting exactly one tab (never the
+ * inactive persisted ones) is what keeps thread restore lazy: only the active
+ * tab's native `WebContentsView` is ever created/shown.
+ */
+export function selectActiveBrowserTab(
+  browserTabs: readonly BrowserFixedPanelTab[],
+  activeBrowserTabId: string | null,
+): BrowserFixedPanelTab | null {
+  if (activeBrowserTabId === null) {
+    return null;
+  }
+  return browserTabs.find((tab) => tab.id === activeBrowserTabId) ?? null;
 }
 
 /**
@@ -82,13 +99,10 @@ export function BrowserTabDeck({
     previousTabIdsRef.current = { tabIds, threadId };
   }, [browserTabs, desktopBrowser, threadId]);
 
-  if (browserTabs.length === 0) {
-    return null;
-  }
-  const activeBrowserTab =
-    activeBrowserTabId === null
-      ? null
-      : (browserTabs.find((tab) => tab.id === activeBrowserTabId) ?? null);
+  const activeBrowserTab = selectActiveBrowserTab(
+    browserTabs,
+    activeBrowserTabId,
+  );
   if (activeBrowserTab === null) {
     return null;
   }
