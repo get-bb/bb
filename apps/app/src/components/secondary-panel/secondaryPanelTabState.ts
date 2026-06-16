@@ -400,6 +400,7 @@ export function buildOrderedSecondaryPanelFileTabs({
       case "browser":
       case "terminal":
       case "new-tab":
+      case "side-chat":
       case "thread-storage-file-preview":
         displayable.push(tab);
         break;
