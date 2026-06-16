@@ -85,30 +85,39 @@ vi.mock("@/components/ui/responsive-overlay.js", async () => {
   return { ResponsiveDrawerShell };
 });
 
-vi.mock("@/components/secondary-panel/ThreadMetadataContent", async () => {
+vi.mock("@/components/secondary-panel/ThreadMetadataContent", async (importOriginal) => {
   const React = await import("react");
+  const actual =
+    await importOriginal<
+      typeof import("@/components/secondary-panel/ThreadMetadataContent")
+    >();
 
   return {
-    ThreadMetadataCard: ({ children }: { children?: ReactNode }) =>
+    ...actual,
+    ThreadMetadataCard: ({
+      children,
+    }: ComponentProps<typeof actual.ThreadMetadataCard>) =>
       React.createElement("div", { "data-testid": "metadata-card" }, children),
-    ThreadMetadataContent: () =>
+    ThreadMetadataContent: (
+      _props: ComponentProps<typeof actual.ThreadMetadataContent>,
+    ) =>
       React.createElement("div", { "data-testid": "metadata-content" }),
     hasAnyThreadMetadata: () => false,
   };
 });
 
-vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
+vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async (importOriginal) => {
   const React = await import("react");
+  const actual =
+    await importOriginal<
+      typeof import("@/components/secondary-panel/ThreadSecondaryPanel")
+    >();
 
   const ThreadSecondaryPanel = ({
     browserDeck,
     isOpen,
     renderAsDrawer,
-  }: {
-    browserDeck?: ReactNode;
-    isOpen: boolean;
-    renderAsDrawer: boolean;
-  }) =>
+  }: ComponentProps<typeof actual.ThreadSecondaryPanel>) =>
     React.createElement(
       "section",
       {
@@ -120,7 +129,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
       browserDeck,
     );
 
-  return { ThreadSecondaryPanel };
+  return { ...actual, ThreadSecondaryPanel };
 });
 
 vi.mock("@/components/secondary-panel/ConversationCollapsedRail", async () => {
@@ -134,16 +143,20 @@ vi.mock("@/components/secondary-panel/ConversationCollapsedRail", async () => {
   return { ConversationCollapsedRail };
 });
 
-vi.mock("./ThreadTimelinePane", async () => {
+vi.mock("./ThreadTimelinePane", async (importOriginal) => {
   const React = await import("react");
+  const actual =
+    await importOriginal<typeof import("./ThreadTimelinePane")>();
 
-  const ThreadTimelinePane = ({ threadId }: { threadId: string }) =>
+  const ThreadTimelinePane = ({
+    threadId,
+  }: ComponentProps<typeof actual.ThreadTimelinePane>) =>
     React.createElement("div", {
       "data-testid": "thread-timeline-pane",
       "data-thread-id": threadId,
     });
 
-  return { ThreadTimelinePane };
+  return { ...actual, ThreadTimelinePane };
 });
 
 interface QueuedAnimationFrames {
@@ -225,7 +238,7 @@ function makeThread(
     title: null,
     titleFallback: "Test thread",
     updatedAt: 0,
-  };
+  } as ThreadDetailSecondaryContentProps["metadata"]["thread"];
 }
 
 function createBrowserDeckRenderer(order?: string[]): RenderBrowserDeck {
