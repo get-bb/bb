@@ -829,6 +829,17 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
         }
         throw error;
       }
+      for (const index of appendResult.skippedTurnUnstartedInputIndexes) {
+        const skipped = eventInputs[index];
+        deps.logger.warn(
+          {
+            eventType: skipped?.type,
+            threadId: skipped?.threadId,
+            sessionId: session.id,
+          },
+          "Dropped orphan thread-state snapshot with no stored turn/started",
+        );
+      }
       notifyInsertedEventThreads(deps, {
         eventInputs,
         insertedInputIndexes: appendResult.insertedInputIndexes,
