@@ -9,7 +9,7 @@ import type { MessageProseSelection } from "./SelectableMessageProse.js";
 // hover-revealed icon-only `MessageActionBar` buttons, the floating menu IS the
 // affordance, so each action shows its label (matching the approved mock).
 const SELECTION_ACTION_BUTTON_CLASS =
-  "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none";
+  "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring select-none";
 
 interface SelectionAction {
   icon: IconName;
@@ -47,7 +47,7 @@ function ActionButton({
     >
       <Icon
         name={action.icon}
-        className="size-4 text-muted-foreground"
+        className="size-3.5 text-muted-foreground"
         aria-hidden="true"
       />
       {action.label}
@@ -122,7 +122,7 @@ export function TimelineSelectionMenu({
         // Tight, horizontal, content-width row — override the default wide
         // popover padding/width.
         className={cn(
-          "flex w-auto items-center gap-0.5 rounded-md border bg-popover p-1 shadow-md",
+          "flex w-auto items-center gap-0.5 rounded-md border bg-popover p-0.5 shadow-md",
         )}
         mobileClassName="flex items-center justify-center gap-2"
         onEscapeKeyDown={() => onDismiss()}
@@ -131,7 +131,7 @@ export function TimelineSelectionMenu({
         {actions.map((action, index) => (
           <div key={action.label} className="flex items-center">
             {index > 0 ? (
-              <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
+              <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
             ) : null}
             <ActionButton action={action} text={text} />
           </div>
