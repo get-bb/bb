@@ -1487,12 +1487,16 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
         threadEnvironmentDisplay.workspaceDisplayKind,
       )
     : null;
-  const isThreadOnWorktreeEnvironment =
+  const isThreadOnProvisionedWorktreeEnvironment =
     environment !== undefined &&
+    environment.status === "ready" &&
+    environment.path !== null &&
     (environment.isWorktree ||
       environment.workspaceProvisionType === "managed-worktree");
   const onCreateNewThreadInWorktree =
-    isThreadOnWorktreeEnvironment && projectId && thread.environmentId !== null
+    isThreadOnProvisionedWorktreeEnvironment &&
+    projectId &&
+    thread.environmentId !== null
       ? createThreadInWorktree
       : undefined;
   const promptBannerMergeBaseBranch = effectiveMergeBaseBranch;

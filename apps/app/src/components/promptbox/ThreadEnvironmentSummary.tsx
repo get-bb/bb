@@ -19,7 +19,7 @@ export interface ThreadEnvironmentSummaryProps {
   environmentCheckout?: WorkspaceCheckoutDisplay;
   /** When set, render a "new thread in this worktree" affordance beside the
    * environment label. Caller is responsible for only providing this when the
-   * environment is a worktree. */
+   * environment is a provisioned worktree. */
   onCreateNewThreadInWorktree?: () => void;
 }
 
