@@ -69,7 +69,6 @@ import {
   type ProjectThreadNode,
 } from "./projectThreadGroups";
 import {
-  SIDEBAR_PROJECT_GROUP_LINE_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
@@ -279,16 +278,6 @@ function getProjectThreadTreeEmptyStateMessageClassName(
   );
 }
 
-function getProjectThreadTreeGroupLineClassName(
-  variant: ProjectThreadTreeVariant,
-): string | undefined {
-  if (variant === "project") {
-    return SIDEBAR_PROJECT_GROUP_LINE_CLASS;
-  }
-
-  return undefined;
-}
-
 // Both the projectless "Threads" section and a project's thread list start
 // their rows one step in from the section edge, so a top-level thread title
 // lands in the same column whether or not it lives under a project — the eye
@@ -411,10 +400,7 @@ function ProjectThreadTreeGroup({
   return (
     <div
       data-sidebar-sticky-section={variant === "section" ? "" : undefined}
-      className={cn(
-        "relative space-y-0.5 group-data-[collapsible=icon]:hidden",
-        getProjectThreadTreeGroupLineClassName(variant),
-      )}
+      className="relative space-y-0.5 group-data-[collapsible=icon]:hidden"
       onClickCapture={onClickCapture}
     >
       {children}

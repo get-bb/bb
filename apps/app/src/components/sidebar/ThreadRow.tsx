@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSetAtom } from "jotai";
-import type { ThreadListEntry } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import {
   getThreadConversationCollapsedAtom,
 } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
@@ -306,6 +306,14 @@ function ThreadRowComponent({
       : getEnvironmentWorkspaceDisplayIconLabel(
           thread.environmentWorkspaceDisplayKind,
         );
+  // A thread that lives in no project (the "Threads" section) leads with the
+  // same "Don't work in a project" glyph the composer uses, so its lack of a
+  // project reads at a glance — shown only when no fork/worktree glyph already
+  // occupies the leading slot.
+  const showNoProjectIcon =
+    thread.projectId === PERSONAL_PROJECT_ID &&
+    thread.childOrigin !== "fork" &&
+    leadingWorktreeIcon === null;
   const parentDragBindings = parentOptions?.dragBindings;
   const rowClassName = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
@@ -397,6 +405,17 @@ function ThreadRowComponent({
               name={leadingWorktreeIcon}
               className="size-3.5 text-muted-foreground"
               aria-label={leadingWorktreeIconLabel ?? undefined}
+            />
+          </span>
+        ) : showNoProjectIcon ? (
+          <span
+            className="inline-flex w-4 shrink-0 items-center justify-center"
+            title="Not in a project"
+          >
+            <Icon
+              name="FolderMinus"
+              className="size-3.5 text-muted-foreground"
+              aria-label="Not in a project"
             />
           </span>
         ) : null}
