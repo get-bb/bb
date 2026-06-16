@@ -679,12 +679,13 @@ function EnvironmentThreadGroupHeader({
         />
       </span>
       {/*
-        Muted label + leading disclosure caret mark this row as a container, not
-        a navigable thread: clicking it expands/collapses the worktree group
-        rather than opening a thread. Threads read in full foreground and never
-        carry a leading caret.
+        Subtle (non-navigable chrome) label + leading disclosure caret mark this
+        row as a container, not a navigable thread: clicking it expands/collapses
+        the worktree group rather than opening a thread. The subtle tier matches
+        the section labels — every collapse/expand-only header reads one tier
+        dimmer than the foreground threads, which open on click.
       */}
-      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-muted-foreground">
+      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground">
         <span className="min-w-0 truncate">
           {environmentName ? (
             <>
