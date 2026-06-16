@@ -143,6 +143,28 @@ const quoteWithAttachment: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
+// Quoted and plain messages interleaved in one list — the comparison view:
+// the quoted rows are taller with a top-aligned leading icon, so they're easy
+// to tell apart from the single-line plain rows when scanning the queue.
+const mixedMessages: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "mix_plain_1",
+    text: "Also check the timeline error overlay before sending.",
+  }),
+  makeQueuedMessage({
+    id: "mix_quote_1",
+    text: "> First we backfill the new column.\n> Then flip reads once every row is populated.\nWhich phase is safe to deploy on a Friday?",
+  }),
+  makeQueuedMessage({
+    id: "mix_plain_2",
+    text: "And run the tests for @bb/thread-view.",
+  }),
+  makeQueuedMessage({
+    id: "mix_quote_2",
+    text: "> Only after that do we drop the legacy column.\nin the same deploy?",
+  }),
+];
+
 // Trims the prop boilerplate for the static (non-reorderable) story rows.
 function StaticQueuedMessagesList({
   queuedMessages,
@@ -167,6 +189,22 @@ function StaticQueuedMessagesList({
 export function Blockquotes() {
   return (
     <StoryCard>
+      <StoryRow
+        label="mixed: quoted + plain"
+        hint="scan comparison — quoted rows are taller with a top-aligned leading icon; plain rows are a single centered line"
+      >
+        <PromptStage>
+          <StaticQueuedMessagesList queuedMessages={mixedMessages} />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        label="plain messages (no quotes)"
+        hint="single-line preview, leading icon centered — for comparison"
+      >
+        <PromptStage>
+          <StaticQueuedMessagesList queuedMessages={multipleMessages} />
+        </PromptStage>
+      </StoryRow>
       <StoryRow
         label="quote + reply"
         hint="a single `> ` block above the typed reply"

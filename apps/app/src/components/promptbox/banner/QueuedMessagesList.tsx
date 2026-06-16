@@ -112,7 +112,15 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
         isDragging && "relative z-10 opacity-80",
       )}
     >
-      <div className="flex items-center gap-1.5">
+      {/* Quote rows are multi-line, so top-align the drag handle + actions to
+          the first line — it reads as a clear leading marker when scanning a
+          mix of quoted and plain messages. Single-line rows stay centered. */}
+      <div
+        className={cn(
+          "flex gap-1.5",
+          messageBodyHasQuote(preview) ? "items-start" : "items-center",
+        )}
+      >
         {/* One drag handle holding the grip (hover-revealed) and the reorder
             arrow. The grip is always rendered at opacity-0 so the button width
             — and the row layout — stays constant whether or not it's hovered. */}
