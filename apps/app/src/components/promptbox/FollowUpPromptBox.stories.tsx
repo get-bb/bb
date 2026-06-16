@@ -262,12 +262,11 @@ const attachmentsBase: AttachmentsConfig = {
 };
 
 const historyEntries = [
-  { text: "review thread workspace", mentions: [], attachments: [], quotes: [] },
+  { text: "review thread workspace", mentions: [], attachments: [] },
   {
     text: "investigate timeline pagination",
     mentions: [],
     attachments: [],
-    quotes: [],
   },
 ];
 
@@ -499,7 +498,6 @@ function Row({
                     text: message,
                     mentions: mentionRanges,
                     attachments: [],
-                    quotes: [],
                   },
                   entries: historyEntries,
                   onSelectEntry: noop,

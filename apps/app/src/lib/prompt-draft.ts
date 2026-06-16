@@ -11,29 +11,11 @@ import { z } from "zod";
 
 export type PromptDraftAttachment = UploadedPromptAttachment;
 
-export interface PromptQuote {
-  id: string;
-  text: string;
-  /**
-   * Timeline row id of the agent message the selection came from. Drives the
-   * pill's "jump to source" affordance. Omitted for quotes with no known source
-   * message (the pill then renders without the jump button).
-   */
-  sourceMessageId?: string;
-}
-
 export interface PromptDraftState {
   text: string;
   mentions: PromptTextMention[];
   attachments: PromptDraftAttachment[];
-  quotes: PromptQuote[];
 }
-
-const promptQuoteSchema = z.object({
-  id: z.string(),
-  text: z.string(),
-  sourceMessageId: z.string().optional(),
-});
 
 const promptDraftStorageSchema = z.object({
   text: z.string().default(""),
@@ -55,15 +37,6 @@ const promptDraftStorageSchema = z.object({
         return result.success ? [result.data] : [];
       }),
     ),
-  quotes: z
-    .array(z.unknown())
-    .default([])
-    .transform((items) =>
-      items.flatMap((item) => {
-        const result = promptQuoteSchema.safeParse(item);
-        return result.success ? [result.data] : [];
-      }),
-    ),
 });
 
 export function emptyPromptDraftState(): PromptDraftState {
@@ -71,48 +44,41 @@ export function emptyPromptDraftState(): PromptDraftState {
     text: "",
     mentions: [],
     attachments: [],
-    quotes: [],
   };
 }
 
-export function addQuoteToDraft(
+/**
+ * Append a quoted selection to the draft text as a `> `-prefixed blockquote
+ * block. The editor parses these blocks into real blockquote nodes; the user
+ * types their reply in the paragraph below. Appending to the END of the text
+ * keeps every existing mention offset unchanged.
+ */
+export function appendQuoteToDraftText(
   state: PromptDraftState,
-  text: string,
-  sourceMessageId?: string,
+  quotedText: string,
 ): PromptDraftState {
   // Guard the boundary: an empty/whitespace-only selection would otherwise
   // emit a bare "> " block and make an empty draft look dirty.
-  const trimmed = text.trim();
+  const trimmed = quotedText.trim();
   if (trimmed === "") return state;
-  return {
-    ...state,
-    quotes: [
-      ...state.quotes,
-      {
-        id: crypto.randomUUID(),
-        text: trimmed,
-        ...(sourceMessageId !== undefined ? { sourceMessageId } : {}),
-      },
-    ],
-  };
-}
 
-export function removeQuoteFromDraft(
-  state: PromptDraftState,
-  id: string,
-): PromptDraftState {
-  return {
-    ...state,
-    quotes: state.quotes.filter((quote) => quote.id !== id),
-  };
+  const block = trimmed
+    .split("\n")
+    .map((line) => (line.length > 0 ? `> ${line}` : ">"))
+    .join("\n");
+
+  // Trailing newline so the reply paragraph sits below the quote.
+  const text =
+    state.text === "" ? `${block}\n` : `${state.text}\n${block}\n`;
+
+  return { ...state, text };
 }
 
 export function isPromptDraftEmpty(draft: PromptDraftState): boolean {
   return (
     draft.text.length === 0 &&
     draft.mentions.length === 0 &&
-    draft.attachments.length === 0 &&
-    draft.quotes.length === 0
+    draft.attachments.length === 0
   );
 }
 
@@ -136,7 +102,6 @@ export function serializePromptDraftStorage(
   const text = draft.text;
   const mentions = draft.mentions;
   const attachments = draft.attachments;
-  const quotes = draft.quotes;
   if (isPromptDraftEmpty(draft)) {
     return null;
   }
@@ -144,7 +109,6 @@ export function serializePromptDraftStorage(
     text,
     ...(mentions.length > 0 ? { mentions } : {}),
     attachments,
-    ...(quotes.length > 0 ? { quotes } : {}),
   });
 }
 
@@ -182,27 +146,8 @@ function normalizePromptTextMentions(
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
-function buildQuoteBlock(quotes: readonly PromptQuote[]): string {
-  return quotes
-    .map((quote) =>
-      quote.text
-        .split("\n")
-        .map((line) => `> ${line}`)
-        .join("\n"),
-    )
-    .join("\n\n");
-}
-
 export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
   const input: PromptInput[] = [];
-
-  if (draft.quotes.length > 0) {
-    input.push({
-      type: "text",
-      text: buildQuoteBlock(draft.quotes),
-      mentions: [],
-    });
-  }
 
   const trimStartLength = draft.text.length - draft.text.trimStart().length;
   const trimEndIndex = draft.text.trimEnd().length;
@@ -252,11 +197,6 @@ export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
   return input;
 }
 
-// Note: quotes are write-once at submit. `promptDraftToInput` flattens them
-// into a leading `> ...` text part, and this reverse path intentionally does
-// NOT reconstruct quote identity — a draft rebuilt from `PromptInput[]` (e.g.
-// prompt history / edit-last-message) surfaces the quote as inline body text,
-// not a removable chip. localStorage persistence preserves quotes separately.
 export function promptInputToDraft(
   input: readonly PromptInput[],
 ): PromptDraftState {
@@ -315,6 +255,5 @@ export function promptInputToDraft(
     text: textSegments.join("\n\n"),
     mentions,
     attachments,
-    quotes: [],
   };
 }

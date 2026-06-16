@@ -86,13 +86,12 @@ const historyEntries = [
     text: "fix the timeline pagination bug",
     mentions: [],
     attachments: [],
-    quotes: [],
   },
-  { text: "review thread workspace", mentions: [], attachments: [], quotes: [] },
+  { text: "review thread workspace", mentions: [], attachments: [] },
 ];
 
 const baseHistory: HistoryConfig = {
-  currentDraft: { text: "", mentions: [], attachments: [], quotes: [] },
+  currentDraft: { text: "", mentions: [], attachments: [] },
   entries: historyEntries,
   onSelectEntry: noop,
 };

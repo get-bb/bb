@@ -20,28 +20,47 @@ afterEach(() => {
   cleanup();
 });
 
-describe("usePromptDraftStorage quotes", () => {
-  it("addQuote appends a trimmed quote and persists to storage", () => {
+describe("usePromptDraftStorage addQuote", () => {
+  it("appends a trimmed quote as a '> ' block to the draft text and persists", () => {
     const scope = uniqueScope();
     const { result } = renderHook(() => usePromptDraftStorage(scope));
 
     act(() => result.current.addQuote("  ship it  "));
 
-    expect(result.current.quotes).toHaveLength(1);
-    expect(result.current.quotes[0]?.text).toBe("ship it");
-    // The immediate write reached localStorage.
+    // Blockquote-prefixed, with a trailing newline so the reply sits below it.
+    expect(result.current.text).toBe("> ship it\n");
     expect(window.localStorage.length).toBe(1);
-    const stored = window.localStorage.getItem(result.current.storageKey ?? "");
-    expect(stored).toContain("ship it");
+    expect(window.localStorage.getItem(result.current.storageKey ?? "")).toContain(
+      "> ship it",
+    );
   });
 
-  it("addQuote ignores whitespace-only text without writing", () => {
+  it("stacks a second quote below the first, separated by a blank line", () => {
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() => result.current.addQuote("first"));
+    act(() => result.current.addQuote("second"));
+
+    expect(result.current.text).toBe("> first\n\n> second\n");
+  });
+
+  it("prefixes every line of a multi-line selection", () => {
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() => result.current.addQuote("line a\nline b"));
+
+    expect(result.current.text).toBe("> line a\n> line b\n");
+  });
+
+  it("ignores whitespace-only text without writing", () => {
     const scope = uniqueScope();
     const { result } = renderHook(() => usePromptDraftStorage(scope));
 
     act(() => result.current.addQuote("   \n  "));
 
-    expect(result.current.quotes).toEqual([]);
+    expect(result.current.text).toBe("");
     expect(window.localStorage.length).toBe(0);
   });
 
@@ -52,30 +71,6 @@ describe("usePromptDraftStorage quotes", () => {
 
     act(() => first.result.current.addQuote("shared selection"));
 
-    expect(second.result.current.quotes).toHaveLength(1);
-    expect(second.result.current.quotes[0]?.text).toBe("shared selection");
-  });
-
-  it("removeQuote removes by id; an unknown id is a no-op", () => {
-    const scope = uniqueScope();
-    const { result } = renderHook(() => usePromptDraftStorage(scope));
-
-    act(() => result.current.addQuote("keep then drop"));
-    const id = result.current.quotes[0]?.id ?? "";
-    const storedAfterAdd = window.localStorage.getItem(
-      result.current.storageKey ?? "",
-    );
-
-    // Unknown id changes nothing (no write).
-    act(() => result.current.removeQuote("does-not-exist"));
-    expect(result.current.quotes).toHaveLength(1);
-    expect(window.localStorage.getItem(result.current.storageKey ?? "")).toBe(
-      storedAfterAdd,
-    );
-
-    // Real id removes and clears the now-empty draft from storage.
-    act(() => result.current.removeQuote(id));
-    expect(result.current.quotes).toEqual([]);
-    expect(window.localStorage.length).toBe(0);
+    expect(second.result.current.text).toBe("> shared selection\n");
   });
 });

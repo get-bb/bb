@@ -374,7 +374,6 @@ export function SideChatTabContent({
           text: message,
           mentions: mentionRanges,
           attachments: [],
-          quotes: [],
         },
         entries: [],
         onSelectEntry: noop,

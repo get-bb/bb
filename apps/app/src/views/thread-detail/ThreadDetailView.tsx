@@ -707,16 +707,22 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   }, [openSideChat, threadId]);
   // Same scope (`projectId` + `thread.id`) the composer's `ThreadDetailPromptArea`
   // uses, so the timeline "Add to chat" action and the composer share one
-  // localStorage-backed draft — the quote chip appears in the composer's
-  // `PromptQuoteStack` immediately, with no duplicated draft state.
+  // localStorage-backed draft — the quoted text is appended to the draft as a
+  // `> ` blockquote block and renders inline in the composer immediately, with
+  // no duplicated draft state.
   const selectionPromptDraft = usePromptDraftStorage({
     projectId,
     threadId: thread?.id,
   });
   const addQuoteToComposer = selectionPromptDraft.addQuote;
+  // Bumped each time a quote is appended so the composer (a sibling component
+  // sharing the localStorage draft) can focus its caret at the end, ready for
+  // the reply under the quote.
+  const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
   const handleSelectionAddToChat = useCallback(
-    (text: string, sourceMessageId?: string) => {
-      addQuoteToComposer(text, sourceMessageId);
+    (text: string) => {
+      addQuoteToComposer(text);
+      setComposerFocusRequestNonce((nonce) => nonce + 1);
     },
     [addQuoteToComposer],
   );
@@ -1728,6 +1734,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
             }
           : null
       }
+      composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
       pendingInteractions={pendingInteractions}
       pendingTodos={pendingTodos}

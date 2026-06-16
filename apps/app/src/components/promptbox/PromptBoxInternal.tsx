@@ -815,7 +815,7 @@ export function PromptBoxInternal({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        blockquote: false,
+        blockquote: {},
         bold: false,
         bulletList: false,
         code: false,
@@ -1809,6 +1809,7 @@ export function PromptBoxInternal({
                 "h-full min-h-full",
                 "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-[1.7] [&_.ProseMirror]:outline-none",
                 "[&_.ProseMirror_p]:m-0",
+                "[&_.ProseMirror_blockquote]:my-1 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-surface-selected-border [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-muted-foreground",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",

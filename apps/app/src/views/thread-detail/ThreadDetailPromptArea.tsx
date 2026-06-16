@@ -30,7 +30,6 @@ import {
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
-import { PromptQuoteStack } from "@/components/promptbox/PromptQuoteStack";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
@@ -55,7 +54,6 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { promptDraftToInput } from "@/lib/prompt-draft";
 import { appToast } from "@/components/ui/app-toast";
-import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
@@ -133,6 +131,12 @@ interface ThreadDetailPromptAreaProps {
   /** Active child threads for parent threads. Null otherwise. */
   childThreadsSection: ThreadPromptChildThreadsSection | null;
   sendMessage: SendMessageMutationLike;
+  /**
+   * Bumped by the timeline host each time a quote is appended to the shared
+   * draft via "Add to chat", so the composer can focus its caret at the end —
+   * ready for the reply beneath the freshly inserted blockquote.
+   */
+  composerFocusRequestNonce: number;
   thread: ThreadWithRuntime;
 }
 
@@ -169,6 +173,7 @@ export function ThreadDetailPromptArea({
   parentThreadSection,
   childThreadsSection,
   sendMessage,
+  composerFocusRequestNonce,
   thread,
 }: ThreadDetailPromptAreaProps) {
   const composerQueryThreadId = composerQueriesEnabled ? thread.id : "";
@@ -251,25 +256,6 @@ export function ThreadDetailPromptArea({
     projectId,
     threadId: thread.id,
   });
-  // Scroll the timeline back to the agent message a quote came from. Rows carry
-  // `data-timeline-row-id`; the composer renders inside the bottom-anchored
-  // scroll body, so its context reveals the row with the same clamped-scroll
-  // behavior the unread divider uses.
-  const bottomAnchor = useBottomAnchoredScroll();
-  const handleJumpToSource = useCallback(
-    (sourceMessageId: string) => {
-      const element = document.querySelector(
-        `[data-timeline-row-id="${CSS.escape(sourceMessageId)}"]`,
-      );
-      if (!(element instanceof HTMLElement)) return;
-      if (bottomAnchor) {
-        bottomAnchor.scrollElementIntoViewClampedToMaxScroll({ element });
-      } else {
-        element.scrollIntoView({ block: "center", behavior: "smooth" });
-      }
-    },
-    [bottomAnchor],
-  );
   const promptMentions = usePromptMentions(projectId, {
     currentThreadId: thread.id,
     environmentId: thread.environmentId ?? null,
@@ -376,14 +362,8 @@ export function ThreadDetailPromptArea({
       text: promptDraft.text,
       mentions: promptDraft.mentions,
       attachments: promptDraft.attachments,
-      quotes: promptDraft.quotes,
     }),
-    [
-      promptDraft.attachments,
-      promptDraft.mentions,
-      promptDraft.text,
-      promptDraft.quotes,
-    ],
+    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
   );
   const currentPromptDraftInput = useMemo(
     () => promptDraftToInput(currentPromptDraft),
@@ -632,17 +612,16 @@ export function ThreadDetailPromptArea({
 
   const [editFocusNonce, setEditFocusNonce] = useState(0);
 
-  // Focus the composer when a quote pill is added (e.g. from the timeline
-  // selection menu's "Add to chat") so the user can start typing against the
-  // quoted context immediately. Only fires when the count grows — never on
-  // remove, send (clears to 0), or initial mount.
-  const previousQuoteCountRef = useRef(promptDraft.quotes.length);
+  // Focus the composer caret at the end whenever the timeline host appends a
+  // quote ("Add to chat"), so the user can immediately type the reply beneath
+  // the freshly inserted blockquote. Skips the initial mount (nonce starts 0).
+  const previousFocusRequestNonceRef = useRef(composerFocusRequestNonce);
   useEffect(() => {
-    if (promptDraft.quotes.length > previousQuoteCountRef.current) {
+    if (composerFocusRequestNonce !== previousFocusRequestNonceRef.current) {
+      previousFocusRequestNonceRef.current = composerFocusRequestNonce;
       setEditFocusNonce((nonce) => nonce + 1);
     }
-    previousQuoteCountRef.current = promptDraft.quotes.length;
-  }, [promptDraft.quotes.length]);
+  }, [composerFocusRequestNonce]);
 
   const handleEditQueuedMessage = useCallback(
     (messageId: string) => {
@@ -928,11 +907,6 @@ export function ThreadDetailPromptArea({
           isExpanded={isGoalExpanded}
           onToggle={() => setIsGoalExpanded((value) => !value)}
         />
-        <PromptQuoteStack
-          quotes={promptDraft.quotes}
-          onRemove={promptDraft.removeQuote}
-          onJumpToSource={handleJumpToSource}
-        />
         <ThreadPromptContextBanner
           todoSection={!pendingTodos ? null : { pendingTodos }}
           archivedSection={
@@ -987,7 +961,6 @@ export function ThreadDetailPromptArea({
       expandedBannerSection,
       handleDeleteQueuedMessage,
       handleEditQueuedMessage,
-      handleJumpToSource,
       handlePromptBannerFileClick,
       handleReorderQueuedMessage,
       handleSendQueuedImmediately,
@@ -1000,8 +973,6 @@ export function ThreadDetailPromptArea({
       parentThreadSection,
       childThreadsSection,
       pendingTodos,
-      promptDraft.quotes,
-      promptDraft.removeQuote,
       displayedProcessingQueuedMessage,
       queuedMessages,
       shouldHideComposer,

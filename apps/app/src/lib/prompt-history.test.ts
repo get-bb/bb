@@ -25,7 +25,6 @@ describe("prompt history helpers", () => {
         text: "Ship it",
         mentions: [],
         attachments: [],
-        quotes: [],
       },
     ]);
   });
@@ -52,7 +51,6 @@ describe("prompt history helpers", () => {
         text: "Ship it",
         mentions: [],
         attachments: [],
-        quotes: [],
       },
     ]);
   });

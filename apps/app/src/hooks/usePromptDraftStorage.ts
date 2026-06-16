@@ -5,12 +5,11 @@ import type {
   PromptDraftState,
 } from "@/lib/prompt-draft";
 import {
-  addQuoteToDraft,
+  appendQuoteToDraftText,
   arePromptDraftStatesEqual,
   emptyPromptDraftState,
   isPromptDraftEmpty,
   parsePromptDraftStorage,
-  removeQuoteFromDraft,
   serializePromptDraftStorage,
 } from "@/lib/prompt-draft";
 
@@ -314,25 +313,12 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   );
 
   const addQuote = useCallback(
-    (text: string, sourceMessageId?: string) => {
+    (text: string) => {
       const currentDraft = readPromptDraft(storageKey);
-      const nextDraft = addQuoteToDraft(currentDraft, text, sourceMessageId);
-      // `addQuoteToDraft` no-ops on whitespace-only text; skip the write so an
-      // empty selection can't mark an otherwise-empty draft dirty.
-      if (nextDraft.quotes.length === currentDraft.quotes.length) {
-        return;
-      }
-
-      writePromptDraft(storageKey, nextDraft);
-    },
-    [storageKey],
-  );
-
-  const removeQuote = useCallback(
-    (id: string) => {
-      const currentDraft = readPromptDraft(storageKey);
-      const nextDraft = removeQuoteFromDraft(currentDraft, id);
-      if (nextDraft.quotes.length === currentDraft.quotes.length) {
+      const nextDraft = appendQuoteToDraftText(currentDraft, text);
+      // `appendQuoteToDraftText` no-ops on whitespace-only text; skip the write
+      // so an empty selection can't mark an otherwise-empty draft dirty.
+      if (nextDraft.text === currentDraft.text) {
         return;
       }
 
@@ -384,14 +370,12 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       text: draft.text,
       mentions: draft.mentions,
       attachments: draft.attachments,
-      quotes: draft.quotes,
       setDraft: setDraftAndPersist,
       setTextAndMentions,
       setAttachments,
       addAttachment,
       removeAttachment,
       addQuote,
-      removeQuote,
       clear,
       clearIfCurrentMatches,
       restoreIfEmpty,
@@ -404,10 +388,8 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       draft.attachments,
       draft.mentions,
       draft.text,
-      draft.quotes,
       getCurrent,
       removeAttachment,
-      removeQuote,
       restoreIfEmpty,
       setAttachments,
       setDraftAndPersist,

@@ -258,14 +258,8 @@ export function RootComposeView(props: RootComposeViewProps) {
         text: promptDraft.text,
         mentions: promptDraft.mentions,
         attachments: promptDraft.attachments,
-        quotes: promptDraft.quotes,
       }),
-    [
-      promptDraft.attachments,
-      promptDraft.mentions,
-      promptDraft.text,
-      promptDraft.quotes,
-    ],
+    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
   );
   const rootComposeZenModeStorageKey = useMemo(
     () =>
@@ -596,7 +590,6 @@ export function RootComposeView(props: RootComposeViewProps) {
       text: promptDraft.text,
       mentions: promptDraft.mentions,
       attachments: promptDraft.attachments,
-      quotes: promptDraft.quotes,
     };
     const submittedInput = promptDraftToInput(submittedDraft);
     if (!projectId || !selectedProviderId || !selectedThreadModel) {
@@ -693,14 +686,8 @@ export function RootComposeView(props: RootComposeViewProps) {
       text: promptDraft.text,
       mentions: promptDraft.mentions,
       attachments: promptDraft.attachments,
-      quotes: promptDraft.quotes,
     }),
-    [
-      promptDraft.attachments,
-      promptDraft.mentions,
-      promptDraft.text,
-      promptDraft.quotes,
-    ],
+    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
   );
   const historyConfig = useMemo(
     () => ({
