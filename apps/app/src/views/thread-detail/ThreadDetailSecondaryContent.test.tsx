@@ -320,7 +320,7 @@ function createProps({
       unreadDividerAutoScroll: false,
       unreadDividerPlacement: null,
       workspaceRootPath: undefined,
-    } as ThreadDetailSecondaryContentProps["timeline"],
+    } as unknown as ThreadDetailSecondaryContentProps["timeline"],
   };
 }
 
