@@ -306,12 +306,15 @@ function ThreadRowComponent({
       : getEnvironmentWorkspaceDisplayIconLabel(
           thread.environmentWorkspaceDisplayKind,
         );
-  // A thread that lives in no project (the "Threads" section) leads with the
-  // same "Don't work in a project" glyph the composer uses, so its lack of a
-  // project reads at a glance — shown only when no fork/worktree glyph already
-  // occupies the leading slot.
+  // A thread that lives in no project (the "Threads" section) is rendered like a
+  // worktree group header: dimmed, no hover highlight, no pointer cursor — it
+  // reads as secondary chrome rather than a primary navigable row.
+  const isProjectless = thread.projectId === PERSONAL_PROJECT_ID;
+  // It also leads with the "Don't work in a project" glyph the composer uses, so
+  // its lack of a project reads at a glance — shown only when no fork/worktree
+  // glyph already occupies the leading slot.
   const showNoProjectIcon =
-    thread.projectId === PERSONAL_PROJECT_ID &&
+    isProjectless &&
     thread.childOrigin !== "fork" &&
     leadingWorktreeIcon === null;
   const parentDragBindings = parentOptions?.dragBindings;
@@ -325,7 +328,9 @@ function ThreadRowComponent({
       : COARSE_POINTER_ROW_HEIGHT_CLASS,
     showActive
       ? "bg-sidebar-border text-sidebar-foreground"
-      : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+      : isProjectless
+        ? "cursor-default text-subtle-foreground/70"
+        : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
     parentDragBindings &&
       !parentDragBindings.disabled &&
       "select-none cursor-grab active:cursor-grabbing",
@@ -355,7 +360,12 @@ function ThreadRowComponent({
         }}
         aria-label={linkLabel}
         title={linkTitle}
-        className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
+        className={cn(
+          "absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
+          // Projectless rows read as group-header chrome: no pointer cursor even
+          // though the row still navigates when clicked.
+          isProjectless && "cursor-default",
+        )}
       />
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         {/*

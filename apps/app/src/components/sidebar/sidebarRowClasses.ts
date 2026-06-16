@@ -35,7 +35,8 @@ export const SIDEBAR_UNREAD_DOT_CLASS =
 // few levels of nesting stay readable in a narrow sidebar.
 const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 8;
 const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 16;
-const SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX = 8;
+// Horizontal center of a row's leading caret box (`-ml-1` + `size-5`): −4 + 20/2.
+const SIDEBAR_ROW_CARET_CENTER_OFFSET_PX = 6;
 
 export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";
 
@@ -46,10 +47,13 @@ export function getSidebarThreadRowPaddingLeft(depth: number): number {
   );
 }
 
-export function getSidebarThreadGroupLineLeft(depth: number): number {
+// The indent guide runs on the CHILDREN's caret column — one depth step in from
+// the parent header — so it sits centered in the indent space, under the
+// header's glyph, flush with where the indented children begin.
+export function getSidebarThreadGroupLineLeft(parentDepth: number): number {
   return (
-    getSidebarThreadRowPaddingLeft(depth) +
-    SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX
+    getSidebarThreadRowPaddingLeft(parentDepth + 1) +
+    SIDEBAR_ROW_CARET_CENTER_OFFSET_PX
   );
 }
 
