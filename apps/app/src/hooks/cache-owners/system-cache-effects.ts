@@ -1,7 +1,8 @@
 import type { QueryKey } from "@tanstack/react-query";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import {
-  allEnvironmentGitDiffQueryKeyPrefix,
+  allEnvironmentDiffFilesQueryKeyPrefix,
+  allEnvironmentDiffPatchQueryKeyPrefix,
   allEnvironmentFilePreviewQueryKeyPrefix,
   allEnvironmentMergeBaseBranchesQueryKeyPrefix,
   allEnvironmentQueryKeyPrefix,
@@ -29,6 +30,7 @@ import {
 } from "../queries/query-keys";
 import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/thread-default-execution-options-query";
 import type { QueryClientArg } from "../cache-effect-types";
+import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
 import {
   invalidateQueryKeys,
   refetchFailedActiveQueryKeys,
@@ -58,6 +60,18 @@ export function invalidateRealtimeQueriesAfterServerReconnect({
   invalidateQueryKeys({
     queryClient,
     queryKeys: getServerReconnectInvalidationQueryKeys(),
+  });
+  // The per-file diff patch cache is observer-less: invalidation only marks it
+  // stale and never refetches or evicts, so a reconnect must remove it. The
+  // diff TOC refetch (invalidated above) then drives the panel to re-request
+  // and repopulate the visible patches.
+  //
+  // Bump every environment's eviction generation synchronously so a patch fetch
+  // that was in flight across the reconnect drops its now-stale write instead
+  // of re-seeding the just-cleared cache.
+  bumpAllDiffPatchEvictionGenerations();
+  queryClient.removeQueries({
+    queryKey: allEnvironmentDiffPatchQueryKeyPrefix(),
   });
 }
 
@@ -99,7 +113,11 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     allEnvironmentQueryKeyPrefix(),
     allEnvironmentWorkStatusQueryKeyPrefix(),
     allEnvironmentMergeBaseBranchesQueryKeyPrefix(),
-    allEnvironmentGitDiffQueryKeyPrefix(),
+    // The diff TOC has a real observer, so it refetches on invalidate. The
+    // per-file patch cache is observer-less and is evicted separately in
+    // invalidateRealtimeQueriesAfterServerReconnect (invalidation is a no-op for
+    // it), so it is intentionally absent from this list.
+    allEnvironmentDiffFilesQueryKeyPrefix(),
     allEnvironmentFilePreviewQueryKeyPrefix(),
     localPathExistenceQueryKeyPrefix(),
     systemProvidersQueryKey(),

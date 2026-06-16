@@ -80,7 +80,6 @@ import {
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
-import type { GitDiffPanelIntent } from "@/components/secondary-panel/git-diff/gitDiffPanelStateReducer";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 import {
@@ -562,6 +561,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // The in-app browser surface only exists on desktop; on web this stays false
   // and chat links keep their external-open behavior.
   const desktopBrowserAvailable = isDesktopBrowserAvailable();
+  const browserTabIds = useMemo(
+    () => new Set(browserTabs.map((tab) => tab.id)),
+    [browserTabs],
+  );
   // Popups (`window.open`/`target=_blank`) from a browser view open as a new
   // in-panel browser tab; the native OS popup is denied in the main process.
   useEffect(() => {
@@ -569,13 +572,20 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     if (browserApi === null) {
       return;
     }
+    if (browserApi.onScopedOpenTab) {
+      return browserApi.onScopedOpenTab(({ tabId, url }) => {
+        if (browserTabIds.has(tabId)) {
+          openBrowserTab(url);
+        }
+      });
+    }
     return browserApi.onOpenTab(({ url }) => {
       if (isRoutePath({ path: url })) {
         return;
       }
       openBrowserTab(url);
     });
-  }, [openBrowserTab]);
+  }, [browserTabIds, openBrowserTab]);
   const isThreadRoot = isRootThread(thread);
   const shouldLoadParentThreads =
     threadQueryState.status === "ready" && isThreadRoot;
@@ -704,32 +714,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   });
   const environmentMergeBaseBranch =
     resolveEnvironmentMergeBaseBranch(environment);
-  const [gitDiffPanelIntent, setGitDiffPanelIntent] =
-    useState<GitDiffPanelIntent | null>(null);
-  const requestGitDiffFileFocus = useCallback(
-    (path: string) => {
-      setGitDiffPanelIntent((currentIntent) => ({
-        environmentId: thread?.environmentId ?? null,
-        kind: "scroll-to-file",
-        path,
-        requestId: (currentIntent?.requestId ?? 0) + 1,
-        threadId: thread?.id ?? null,
-      }));
-    },
-    [thread?.environmentId, thread?.id],
-  );
-  const requestGitDiffCommitSelection = useCallback(
-    (sha: string) => {
-      setGitDiffPanelIntent((currentIntent) => ({
-        environmentId: thread?.environmentId ?? null,
-        kind: "select-commit",
-        requestId: (currentIntent?.requestId ?? 0) + 1,
-        sha,
-        threadId: thread?.id ?? null,
-      }));
-    },
-    [thread?.environmentId, thread?.id],
-  );
   const {
     closeThreadSecondaryPanel,
     defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
@@ -752,8 +736,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       ? (thread?.environmentId ?? undefined)
       : undefined,
     mergeBaseBranchOptionsEnabled: hasRequestedMergeBaseOptions,
-    onRequestCommitDiffSelection: requestGitDiffCommitSelection,
-    onRequestDiffFileFocus: requestGitDiffFileFocus,
     setThreadSecondaryPanel: setThreadSecondaryPanelForSurface,
   });
   const {
@@ -845,7 +827,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
             }),
           );
       }
-      if (resource.entryKind !== "file") return null;
+      if (resource.kind !== "path" || resource.entryKind !== "file") {
+        return null;
+      }
       if (resource.source === "thread-storage") {
         return () =>
           openStorageFile({
@@ -1717,6 +1701,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const fileTabContent = activeTerminalId ? (
     <ThreadTerminalPanel
       canCreateTerminal={canCreateTerminal}
+      onOpenLink={handleOpenTimelineLink}
       threadId={thread.id}
     />
   ) : isNewTabActive ? (
@@ -1835,8 +1820,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           canUseGitUi,
           defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
           environmentId: thread.environmentId ?? undefined,
-          gitDiffPanelIntent,
-          threadId: thread.id,
           workspaceRootPath: environment?.path,
           fileTabs,
           fileTabContent,

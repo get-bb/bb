@@ -330,6 +330,66 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       };
     }
   },
+  "workspace.diffFiles": async (command, options) => {
+    const resolution = await resolveWorkspaceForCommand({
+      dataDir: options.dataDir,
+      environmentId: command.environmentId,
+      requireGit: true,
+      requireManagedWorktree: true,
+      runtimeManager: options.runtimeManager,
+      workspaceContext: command.workspaceContext,
+    });
+    if (!resolution.ok) {
+      return { outcome: "unavailable", failure: resolution.failure };
+    }
+    try {
+      return {
+        outcome: "available",
+        ...(await resolution.entry.workspace.diffFiles({
+          target: command.target,
+        })),
+      };
+    } catch (error) {
+      return {
+        outcome: "unavailable",
+        failure: workspaceResolutionFailureFromError({
+          error,
+          workspacePath: command.workspaceContext.workspacePath,
+        }),
+      };
+    }
+  },
+  "workspace.diffPatch": async (command, options) => {
+    const resolution = await resolveWorkspaceForCommand({
+      dataDir: options.dataDir,
+      environmentId: command.environmentId,
+      requireGit: true,
+      requireManagedWorktree: true,
+      runtimeManager: options.runtimeManager,
+      workspaceContext: command.workspaceContext,
+    });
+    if (!resolution.ok) {
+      return { outcome: "unavailable", failure: resolution.failure };
+    }
+    try {
+      return {
+        outcome: "available",
+        patches: await resolution.entry.workspace.diffPatch({
+          target: command.target,
+          paths: command.paths,
+          maxBytesPerFile: command.maxBytesPerFile,
+        }),
+      };
+    } catch (error) {
+      return {
+        outcome: "unavailable",
+        failure: workspaceResolutionFailureFromError({
+          error,
+          workspacePath: command.workspaceContext.workspacePath,
+        }),
+      };
+    }
+  },
   "workspace.pull_request": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,

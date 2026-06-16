@@ -18,6 +18,7 @@ import type { ExecutionControlsProps } from "../src/components/promptbox/Executi
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   type AttachmentsConfig,
+  type TypeaheadCommandConfig,
   type TypeaheadConfig,
   type TypeaheadMentionConfig,
 } from "../src/components/promptbox/PromptBoxInternal";
@@ -65,6 +66,7 @@ export const BRANCH_NAMES = {
 
 export function makeTypeaheadConfig(
   mentionOverrides: Partial<TypeaheadMentionConfig> = {},
+  commandOverrides: Partial<TypeaheadCommandConfig> = {},
 ): TypeaheadConfig {
   const mention: TypeaheadMentionConfig = {
     suggestions: [],
@@ -73,7 +75,13 @@ export function makeTypeaheadConfig(
     onQueryChange: noop,
     ...mentionOverrides,
   };
-  return { mention, command: INERT_TYPEAHEAD_COMMAND_CONFIG };
+  return {
+    mention,
+    command: {
+      ...INERT_TYPEAHEAD_COMMAND_CONFIG,
+      ...commandOverrides,
+    },
+  };
 }
 
 export function makeAttachmentsConfig(

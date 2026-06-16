@@ -1,7 +1,10 @@
 import { MentionMenu } from "@/components/promptbox/mentions/MentionMenu";
 import type {
+  CommandMenuState,
   MentionMenuState,
+  ProviderCommandSuggestion,
   PromptMentionSuggestion,
+  TypeaheadMenuState,
 } from "@/components/promptbox/mentions/types";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
@@ -120,12 +123,68 @@ const mixedSuggestions: PromptMentionSuggestion[] = [
   ...pathSuggestions.slice(0, 4),
 ];
 
+const commandSuggestions: ProviderCommandSuggestion[] = [
+  {
+    kind: "command",
+    name: "moss-hardening-review",
+    source: "skill",
+    origin: "user",
+    description: "Run a hardening review for Moss persistence paths",
+    argumentHint: "[branch | staged] [base=<ref>]",
+  },
+  {
+    kind: "command",
+    name: "github:gh-fix-ci",
+    source: "skill",
+    origin: "user",
+    description: "Debug failing GitHub Actions checks",
+    argumentHint: null,
+  },
+  {
+    kind: "command",
+    name: "frontend:component",
+    source: "command",
+    origin: "project",
+    description: "Create or update a project component",
+    argumentHint: "$ARGUMENTS",
+  },
+  {
+    kind: "command",
+    name: "review",
+    source: "command",
+    origin: "user",
+    description: "Review local changes",
+    argumentHint: "[target]",
+  },
+];
+
+const longCommandSuggestions: ProviderCommandSuggestion[] = [
+  {
+    kind: "command",
+    name: "moss-skills:moss-formulas-variables",
+    source: "skill",
+    origin: "user",
+    description:
+      "Create or edit Moss formulas and variables, including anchors, derived values, and table-cell usage",
+    argumentHint: "<note-path> [--fix]",
+  },
+  {
+    kind: "command",
+    name: "project-super-long-command-name-for-regression-coverage",
+    source: "command",
+    origin: "project",
+    description:
+      "Exercise truncation when a command name and description are both too long for the menu row",
+    argumentHint: "<very-long-argument-placeholder>",
+  },
+];
+
 // ---------------------------------------------------------------------------
 // Per-row helper.
 // ---------------------------------------------------------------------------
 
 interface RowConfig {
-  state: MentionMenuState;
+  state: TypeaheadMenuState;
   selectedIndex?: number;
 }
 
@@ -144,7 +203,7 @@ function Row({ state, selectedIndex = 0 }: RowConfig) {
   return (
     <PromptStage>
       <MentionMenu
-        state={{ trigger: "mention", state }}
+        state={state}
         selectedIndex={selectedIndex}
         onApply={noop}
       />
@@ -152,29 +211,68 @@ function Row({ state, selectedIndex = 0 }: RowConfig) {
   );
 }
 
+function MentionRow({
+  state,
+  selectedIndex = 0,
+}: {
+  state: MentionMenuState;
+  selectedIndex?: number;
+}) {
+  return (
+    <Row
+      state={{ trigger: "mention", state }}
+      selectedIndex={selectedIndex}
+    />
+  );
+}
+
+function makeCommandResultsState(
+  suggestions: readonly ProviderCommandSuggestion[],
+): CommandMenuState {
+  return {
+    kind: "results",
+    suggestions,
+  };
+}
+
+function CommandRow({
+  state,
+  selectedIndex = 0,
+}: {
+  state: CommandMenuState;
+  selectedIndex?: number;
+}) {
+  return (
+    <Row
+      state={{ trigger: "command", state }}
+      selectedIndex={selectedIndex}
+    />
+  );
+}
+
 export function Overview() {
   return (
     <StoryCard>
       <StoryRow label="hint" hint='@ typed alone — "Type to search mentions"'>
-        <Row state={{ kind: "hint" }} />
+        <MentionRow state={{ kind: "hint" }} />
       </StoryRow>
       <StoryRow label="loading" hint="suggestions fetching">
-        <Row state={{ kind: "loading" }} />
+        <MentionRow state={{ kind: "loading" }} />
       </StoryRow>
       <StoryRow label="error" hint="suggestion query failed">
-        <Row state={{ kind: "error" }} />
+        <MentionRow state={{ kind: "error" }} />
       </StoryRow>
       <StoryRow label="no matches" hint="query returned zero results">
-        <Row state={makeResultsState({ suggestions: [] })} />
+        <MentionRow state={makeResultsState({ suggestions: [] })} />
       </StoryRow>
       <StoryRow label="path matches" hint="workspace and thread storage paths">
-        <Row state={makeResultsState({ suggestions: pathSuggestions })} />
+        <MentionRow state={makeResultsState({ suggestions: pathSuggestions })} />
       </StoryRow>
       <StoryRow
         label="path matches (selected index)"
         hint="third item highlighted (keyboard arrow nav)"
       >
-        <Row
+        <MentionRow
           state={makeResultsState({ suggestions: pathSuggestions })}
           selectedIndex={2}
         />
@@ -183,19 +281,48 @@ export function Overview() {
         label="thread matches"
         hint="parent and root threads; cross-project rows include project"
       >
-        <Row state={makeResultsState({ suggestions: threadSuggestions })} />
+        <MentionRow state={makeResultsState({ suggestions: threadSuggestions })} />
       </StoryRow>
       <StoryRow
         label="mixed path + thread"
         hint="threads first (production order: usePromptMentions prepends threads)"
       >
-        <Row state={makeResultsState({ suggestions: mixedSuggestions })} />
+        <MentionRow state={makeResultsState({ suggestions: mixedSuggestions })} />
       </StoryRow>
       <StoryRow
         label="long path truncation"
         hint="TruncateStart on directory; basename stays visible"
       >
-        <Row state={makeResultsState({ suggestions: longPathSuggestions })} />
+        <MentionRow
+          state={makeResultsState({ suggestions: longPathSuggestions })}
+        />
+      </StoryRow>
+      <StoryRow label="command loading" hint="$ or / command fetch in flight">
+        <CommandRow state={{ kind: "loading" }} />
+      </StoryRow>
+      <StoryRow label="command error" hint="command query failed">
+        <CommandRow state={{ kind: "error" }} />
+      </StoryRow>
+      <StoryRow
+        label="command sections"
+        hint="skills, project commands, and user commands share one flat nav order"
+      >
+        <CommandRow state={makeCommandResultsState(commandSuggestions)} />
+      </StoryRow>
+      <StoryRow
+        label="skill arg hint selected"
+        hint="skill row highlighted with description and argument hint"
+      >
+        <CommandRow
+          state={makeCommandResultsState(commandSuggestions)}
+          selectedIndex={0}
+        />
+      </StoryRow>
+      <StoryRow
+        label="long command truncation"
+        hint="long skill names, descriptions, and hints stay inside the menu"
+      >
+        <CommandRow state={makeCommandResultsState(longCommandSuggestions)} />
       </StoryRow>
     </StoryCard>
   );

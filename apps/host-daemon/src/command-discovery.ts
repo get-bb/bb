@@ -20,20 +20,58 @@ const MAX_SCAN_FILE_COUNT = 1_000;
 /**
  * Scan shape for a root:
  * - `skill`: one level of `<root>/<dir>/SKILL.md`; the command name is the
- *   parent directory name.
+ *   parent directory name. User-origin skill entries/files may be symlinks
+ *   because personal provider skill installs commonly use them; project-origin
+ *   skill entry/file symlinks are skipped.
+ * - `skill-directory`: a single `<root>/SKILL.md` skill directory; the command
+ *   name is the root directory name.
+ * - `skill-file`: a single `SKILL.md`; the command name comes from frontmatter
+ *   `name`, with `fallbackName` when absent. This covers plugin-root skills.
  * - `command`: recursive `<root>/**​/*.md`; the command name is the path under
  *   the root with `/` replaced by `:` and the `.md` extension dropped
  *   (namespacing, e.g. `frontend/component.md` -> `frontend:component`).
+ * - `command-file`: a single command markdown file; the command name is the
+ *   file name without `.md`.
  */
-export type CommandScanShape = "skill" | "command";
+export type CommandScanShape =
+  | "skill"
+  | "skill-directory"
+  | "skill-file"
+  | "command"
+  | "command-file";
 
-export interface CommandScanRoot {
-  /** Absolute directory to scan. Missing dir -> no records (no throw). */
-  rootPath: string;
-  shape: CommandScanShape;
+interface CommandScanRootBase {
+  /** Prefix prepended to the derived invocation name, e.g. `plugin-name:`. */
+  namePrefix: string;
   source: HostCommandSource;
   origin: HostCommandOrigin;
 }
+
+export interface CommandScanDirectoryRoot extends CommandScanRootBase {
+  /** Absolute directory to scan. Missing dir -> no records (no throw). */
+  rootPath: string;
+  shape: "skill" | "skill-directory" | "command";
+}
+
+export interface CommandScanFileRoot extends CommandScanRootBase {
+  /** Absolute file to scan. Missing file -> no record (no throw). */
+  filePath: string;
+  shape: "command-file";
+}
+
+export interface CommandScanSkillFileRoot extends CommandScanRootBase {
+  /** Fallback command name used when the file has no frontmatter `name`. */
+  fallbackName: string;
+  /** Absolute SKILL.md file to scan. Missing file -> no record (no throw). */
+  filePath: string;
+  shape: "skill-file";
+  source: "skill";
+}
+
+export type CommandScanRoot =
+  | CommandScanDirectoryRoot
+  | CommandScanFileRoot
+  | CommandScanSkillFileRoot;
 
 export interface DiscoverProviderCommandsArgs {
   roots: readonly CommandScanRoot[];
@@ -41,6 +79,12 @@ export interface DiscoverProviderCommandsArgs {
 
 interface ScanRootArgs {
   root: CommandScanRoot;
+}
+
+interface SkillDirectoryCheckArgs {
+  entry: Dirent;
+  entryPath: string;
+  root: CommandScanDirectoryRoot;
 }
 
 interface WalkCommandTreeArgs {
@@ -51,6 +95,7 @@ interface WalkCommandTreeArgs {
 }
 
 interface ParsedFrontmatter {
+  name: string | null;
   description: string | null;
   argumentHint: string | null;
 }
@@ -106,30 +151,62 @@ async function parseFrontmatter(filePath: string): Promise<ParsedFrontmatter> {
   try {
     content = await fs.readFile(filePath, "utf8");
   } catch {
-    return { description: null, argumentHint: null };
+    return { name: null, description: null, argumentHint: null };
   }
 
   if (!hasSupportedFrontmatterDelimiter(content)) {
-    return { description: null, argumentHint: null };
+    return { name: null, description: null, argumentHint: null };
   }
 
   let data: Record<string, unknown>;
   try {
     data = matter(content).data;
   } catch {
-    return { description: null, argumentHint: null };
+    return { name: null, description: null, argumentHint: null };
   }
 
   return {
+    name: readFrontmatterString(data, "name"),
     description: readFrontmatterString(data, "description"),
     argumentHint: readFrontmatterString(data, "argument-hint"),
   };
 }
 
-async function isNonSymlinkDirectory(entryPath: string): Promise<boolean> {
+function canFollowSkillSymlink(root: CommandScanRoot): boolean {
+  return root.origin === "user" && root.source === "skill";
+}
+
+async function isSkillDirectory(
+  args: SkillDirectoryCheckArgs,
+): Promise<boolean> {
+  if (args.entry.isDirectory()) {
+    return true;
+  }
+  if (!args.entry.isSymbolicLink() || !canFollowSkillSymlink(args.root)) {
+    return false;
+  }
   try {
-    const stat = await fs.lstat(entryPath);
+    const stat = await fs.stat(args.entryPath);
     return stat.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function isSkillFile(
+  filePath: string,
+  root: CommandScanRoot,
+): Promise<boolean> {
+  try {
+    const stat = await fs.lstat(filePath);
+    if (stat.isFile()) {
+      return true;
+    }
+    if (!stat.isSymbolicLink() || !canFollowSkillSymlink(root)) {
+      return false;
+    }
+    const targetStat = await fs.stat(filePath);
+    return targetStat.isFile();
   } catch {
     return false;
   }
@@ -141,8 +218,16 @@ async function buildRecord(
   name: string,
 ): Promise<HostProviderCommand> {
   const frontmatter = await parseFrontmatter(filePath);
+  return buildRecordFromFrontmatter(args, name, frontmatter);
+}
+
+function buildRecordFromFrontmatter(
+  args: CommandScanRoot,
+  name: string,
+  frontmatter: ParsedFrontmatter,
+): HostProviderCommand {
   return {
-    name,
+    name: `${args.namePrefix}${name}`,
     source: args.source,
     origin: args.origin,
     description: frontmatter.description,
@@ -150,13 +235,29 @@ async function buildRecord(
   };
 }
 
+async function hasPluginManifest(skillDirPath: string): Promise<boolean> {
+  try {
+    const manifestStat = await fs.lstat(
+      path.join(skillDirPath, ".claude-plugin", "plugin.json"),
+    );
+    return manifestStat.isFile();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * One-level skill scan: each `<root>/<dir>/SKILL.md` becomes a record named for
- * its parent directory. Symlinked entries are skipped (not followed).
+ * its parent directory. Project-origin entry/file symlinks are skipped.
+ * User-origin skill symlinks are followed so personal provider skill installs
+ * show in typeahead.
  */
 async function scanSkillRoot(
   args: ScanRootArgs,
 ): Promise<HostProviderCommand[]> {
+  if (args.root.shape !== "skill") {
+    throw new Error("scanSkillRoot requires a skill root");
+  }
   const entries = await readDirEntries(args.root.rootPath);
   if (entries === null) {
     return [];
@@ -164,21 +265,66 @@ async function scanSkillRoot(
 
   const records: HostProviderCommand[] = [];
   for (const entry of entries) {
-    if (entry.isSymbolicLink()) {
+    const skillDirPath = path.join(args.root.rootPath, entry.name);
+    if (
+      !(await isSkillDirectory({
+        entry,
+        entryPath: skillDirPath,
+        root: args.root,
+      }))
+    ) {
       continue;
     }
-    const skillDirPath = path.join(args.root.rootPath, entry.name);
-    if (!(await isNonSymlinkDirectory(skillDirPath))) {
+    if (await hasPluginManifest(skillDirPath)) {
       continue;
     }
     const skillFilePath = path.join(skillDirPath, SKILL_FILE_NAME);
-    const skillFileStat = await fs.lstat(skillFilePath).catch(() => null);
-    if (skillFileStat === null || skillFileStat.isSymbolicLink() || !skillFileStat.isFile()) {
+    if (!(await isSkillFile(skillFilePath, args.root))) {
       continue;
     }
     records.push(await buildRecord(args.root, skillFilePath, entry.name));
   }
   return records;
+}
+
+async function scanSingleSkillDirectoryRoot(
+  args: ScanRootArgs,
+): Promise<HostProviderCommand[]> {
+  if (args.root.shape !== "skill-directory") {
+    throw new Error(
+      "scanSingleSkillDirectoryRoot requires a skill-directory root",
+    );
+  }
+  const skillFilePath = path.join(args.root.rootPath, SKILL_FILE_NAME);
+  if (!(await isSkillFile(skillFilePath, args.root))) {
+    return [];
+  }
+  return [
+    await buildRecord(
+      args.root,
+      skillFilePath,
+      path.basename(args.root.rootPath),
+    ),
+  ];
+}
+
+async function scanSkillFileRoot(
+  args: ScanRootArgs,
+): Promise<HostProviderCommand[]> {
+  if (args.root.shape !== "skill-file") {
+    throw new Error("scanSkillFileRoot requires a skill-file root");
+  }
+  if (!(await isSkillFile(args.root.filePath, args.root))) {
+    return [];
+  }
+  const frontmatter = await parseFrontmatter(args.root.filePath);
+  return [
+    buildRecordFromFrontmatter(
+      args.root,
+      frontmatter.name ?? args.root.fallbackName,
+      frontmatter,
+    ),
+  ];
 }
 
 /**
@@ -236,6 +382,9 @@ function commandNameFromPath(rootPath: string, filePath: string): string {
 async function scanCommandRoot(
   args: ScanRootArgs,
 ): Promise<HostProviderCommand[]> {
+  if (args.root.shape !== "command") {
+    throw new Error("scanCommandRoot requires a command root");
+  }
   const matchedFiles: string[] = [];
   await walkCommandTree({
     currentPath: args.root.rootPath,
@@ -252,10 +401,37 @@ async function scanCommandRoot(
   return records;
 }
 
+async function scanCommandFileRoot(
+  args: ScanRootArgs,
+): Promise<HostProviderCommand[]> {
+  if (args.root.shape !== "command-file") {
+    throw new Error("scanCommandFileRoot requires a command-file root");
+  }
+  try {
+    const stat = await fs.lstat(args.root.filePath);
+    if (!stat.isFile()) {
+      return [];
+    }
+  } catch {
+    return [];
+  }
+  const name = path.basename(args.root.filePath, MARKDOWN_FILE_EXTENSION);
+  return [await buildRecord(args.root, args.root.filePath, name)];
+}
+
 async function scanRoot(args: ScanRootArgs): Promise<HostProviderCommand[]> {
-  return args.root.shape === "skill"
-    ? scanSkillRoot(args)
-    : scanCommandRoot(args);
+  switch (args.root.shape) {
+    case "skill":
+      return scanSkillRoot(args);
+    case "skill-directory":
+      return scanSingleSkillDirectoryRoot(args);
+    case "skill-file":
+      return scanSkillFileRoot(args);
+    case "command":
+      return scanCommandRoot(args);
+    case "command-file":
+      return scanCommandFileRoot(args);
+  }
 }
 
 /**

@@ -179,6 +179,21 @@ export type BbDesktopBrowserOpenTabRequest = z.infer<
 >;
 
 /**
+ * Source-attributed variant of {@link bbDesktopBrowserOpenTabRequestSchema}.
+ * Emitted on a new channel so the legacy wire-frozen popup event can remain
+ * unchanged for desktop/SPA version skew.
+ */
+export const bbDesktopBrowserScopedOpenTabRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    url: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
+  })
+  .strict();
+export type BbDesktopBrowserScopedOpenTabRequest = z.infer<
+  typeof bbDesktopBrowserScopedOpenTabRequestSchema
+>;
+
+/**
  * Upper bound for a snapshot data URL. A JPEG of a full-window view on a 5K
  * display lands well under this; the cap exists so a misbehaving push can
  * never balloon renderer memory.
@@ -212,6 +227,9 @@ export type BbDesktopBrowserStateHandler = (
 export type BbDesktopBrowserOpenTabHandler = (
   request: BbDesktopBrowserOpenTabRequest,
 ) => void;
+export type BbDesktopBrowserScopedOpenTabHandler = (
+  request: BbDesktopBrowserScopedOpenTabRequest,
+) => void;
 export type BbDesktopBrowserSnapshotHandler = (
   snapshot: BbDesktopBrowserSnapshot,
 ) => void;
@@ -234,6 +252,13 @@ export interface BbDesktopBrowserApi {
   /** Subscribe to popup requests that should open as a new in-panel browser tab. */
   onOpenTab(
     listener: BbDesktopBrowserOpenTabHandler,
+  ): BbDesktopBrowserUnsubscribe;
+  /**
+   * Subscribe to popup requests with the originating browser tab id. Optional
+   * for version skew with desktop shells that predate source-attributed popups.
+   */
+  onScopedOpenTab?(
+    listener: BbDesktopBrowserScopedOpenTabHandler,
   ): BbDesktopBrowserUnsubscribe;
   /**
    * Subscribe to resize-burst snapshot pushes. Optional purely for version

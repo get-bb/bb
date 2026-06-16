@@ -45,7 +45,10 @@ import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
-import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
+import {
+  parseBoundedPositiveOptionalInteger,
+  parseOptionalInteger,
+} from "../services/lib/validation.js";
 import {
   buildCommandListResponse,
   providerHasCommandSurface,
@@ -550,7 +553,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.commands, async (context, query) => {
     const projectId = context.req.param("id");
-    requirePublicStandardProject(deps.db, projectId);
+    requirePublicProject(deps.db, projectId);
 
     // Providers without a command surface (pi, anything unknown) have no
     // typeahead entries, so skip the daemon roundtrip entirely.
@@ -564,6 +567,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       name: "limit",
       value: query.limit,
     });
+    const offset = parseOptionalInteger(query.offset, "offset") ?? 0;
     const workspace = resolveCommandWorkspace(deps, {
       environmentId: query.environmentId,
       projectId,
@@ -581,6 +585,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       buildCommandListResponse({
         commands: result.commands,
         limit,
+        offset,
         query: query.query,
       }),
     );

@@ -1,10 +1,11 @@
 import {
   getEnvironmentActionInvalidationQueryKeys,
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
+  removeEnvironmentDiffPatchQueries,
 } from "./query-cache";
 import {
+  environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
-  environmentGitDiffQueryKeyPrefix,
   environmentMergeBaseBranchesQueryKeyPrefix,
   environmentPathsQueryKeyPrefix,
   environmentWorkStatusQueryKeyPrefix,
@@ -28,9 +29,13 @@ export function removeEnvironmentScopedQueries({
   queryClient.removeQueries({
     queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
   });
+  // Both diff caches are torn down here: the observer-backed TOC and the
+  // observer-less per-file patch cache. removeQueries is correct for both at
+  // teardown — the patch cache can only be evicted, never invalidated.
   queryClient.removeQueries({
-    queryKey: environmentGitDiffQueryKeyPrefix(environmentId),
+    queryKey: environmentDiffFilesQueryKeyPrefix(environmentId),
   });
+  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
   queryClient.removeQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),
   });
@@ -56,6 +61,9 @@ export function invalidateEnvironmentActionQueries({
     queryClient,
     queryKeys: getEnvironmentActionInvalidationQueryKeys({ environmentId }),
   });
+  // The patch cache is observer-less; invalidation never refetches it, so evict
+  // it after an environment action so fresh patches are re-requested.
+  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }
 
 export function invalidateEnvironmentWorkspaceStateQueries({
@@ -68,4 +76,5 @@ export function invalidateEnvironmentWorkspaceStateQueries({
       environmentId,
     }),
   });
+  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }

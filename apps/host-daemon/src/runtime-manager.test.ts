@@ -184,6 +184,12 @@ function createFakeWorkspace(path: string) {
     getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
     getStatus: vi.fn(async () => status),
     getDiff: vi.fn(async () => diff),
+    diffFiles: vi.fn(async () => ({
+      files: [],
+      shortstat: "",
+      mergeBaseRef: null,
+    })),
+    diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => null),
     listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),

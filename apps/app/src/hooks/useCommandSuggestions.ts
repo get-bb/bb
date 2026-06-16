@@ -1,14 +1,14 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useDebounceValue } from "usehooks-ts";
 import { commandTriggerForProvider } from "@/components/promptbox/mentions/command-trigger";
 import {
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
 } from "@/components/promptbox/mentions/types";
-import { useProjectCommands } from "./queries/project-queries";
+import { useProjectCommandsPages } from "./queries/project-queries";
 import { PATH_SUGGESTION_DEBOUNCE_MS } from "./usePathSuggestions";
 
-const COMMAND_SUGGESTION_LIMIT = 8;
+const COMMAND_SUGGESTION_PAGE_SIZE = 50;
 
 export interface UseCommandSuggestionsArgs {
   projectId: string | undefined;
@@ -34,6 +34,9 @@ export interface UseCommandSuggestionsResult {
    */
   isLoading: boolean;
   isError: boolean;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  loadMore: () => void;
 }
 
 /**
@@ -64,14 +67,24 @@ export function useCommandSuggestions(
   const trimmedQuery = args.query?.trim() ?? "";
   const debouncedTrimmedQuery = debouncedQuery?.trim() ?? "";
   const isDebouncing = isActive && trimmedQuery !== debouncedTrimmedQuery;
+  const loadMoreInFlightRef = useRef(false);
 
-  const commandsQuery = useProjectCommands(
+  useEffect(() => {
+    loadMoreInFlightRef.current = false;
+  }, [
+    args.environmentId,
+    args.projectId,
+    args.providerId,
+    debouncedTrimmedQuery,
+  ]);
+
+  const commandsQuery = useProjectCommandsPages(
     {
       projectId: args.projectId,
       providerId: args.providerId,
       environmentId: args.environmentId,
       query: debouncedTrimmedQuery,
-      limit: COMMAND_SUGGESTION_LIMIT,
+      limit: COMMAND_SUGGESTION_PAGE_SIZE,
     },
     { enabled: isActive },
   );
@@ -80,14 +93,28 @@ export function useCommandSuggestions(
     if (!isActive) {
       return [];
     }
-    return (commandsQuery.data?.commands ?? []).map(toProviderCommandSuggestion);
-  }, [commandsQuery.data?.commands, isActive]);
+    return (commandsQuery.data?.pages ?? [])
+      .flatMap((page) => page.commands)
+      .map(toProviderCommandSuggestion);
+  }, [commandsQuery.data?.pages, isActive]);
 
-  // Loading flips on only before any result is available. Once the first fetch
-  // returns (or placeholderData carries prior results across a refetch),
-  // suggestions stay populated and the menu never collapses to loading
-  // mid-typing — and a loaded-empty list reports `isLoading: false` so the
-  // composer can suppress opening an empty menu.
+  const hasMore = isActive && commandsQuery.hasNextPage === true;
+  const isLoadingMore = isActive && commandsQuery.isFetchingNextPage;
+  const fetchNextPage = commandsQuery.fetchNextPage;
+  const loadMore = useCallback(() => {
+    if (!hasMore || isLoadingMore || loadMoreInFlightRef.current) {
+      return;
+    }
+    loadMoreInFlightRef.current = true;
+    void fetchNextPage().finally(() => {
+      loadMoreInFlightRef.current = false;
+    });
+  }, [fetchNextPage, hasMore, isLoadingMore]);
+
+  // Loading flips on only before any result is available. Once the first page
+  // returns, fetching additional pages leaves suggestions populated — and a
+  // loaded-empty list reports `isLoading: false` so the composer can suppress
+  // opening an empty menu.
   const isLoading =
     isActive &&
     commandsQuery.data === undefined &&
@@ -99,5 +126,8 @@ export function useCommandSuggestions(
     suggestions,
     isLoading,
     isError,
+    hasMore,
+    isLoadingMore,
+    loadMore,
   };
 }

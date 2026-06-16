@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   bbDesktopBrowserOpenTabRequestSchema,
+  bbDesktopBrowserScopedOpenTabRequestSchema,
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
@@ -9,6 +10,7 @@ import {
   type BbDesktopApi,
   type BbDesktopBrowserApi,
   type BbDesktopBrowserOpenTabHandler,
+  type BbDesktopBrowserScopedOpenTabHandler,
   type BbDesktopBrowserSnapshotHandler,
   type BbDesktopBrowserStateHandler,
   type BbDesktopBrowserUnsubscribe,
@@ -37,6 +39,7 @@ import {
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_RELOAD_CHANNEL,
+  BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
@@ -110,6 +113,8 @@ async function invokeInstallUpdate(): Promise<void> {
 
 const browserStateListeners = new Set<BbDesktopBrowserStateHandler>();
 const browserOpenTabListeners = new Set<BbDesktopBrowserOpenTabHandler>();
+const browserScopedOpenTabListeners =
+  new Set<BbDesktopBrowserScopedOpenTabHandler>();
 const browserSnapshotListeners = new Set<BbDesktopBrowserSnapshotHandler>();
 const popoutThreadChangedListeners =
   new Set<BbDesktopPopoutThreadChangedHandler>();
@@ -152,6 +157,12 @@ const bbBrowserApi: BbDesktopBrowserApi = {
     browserOpenTabListeners.add(listener);
     return () => {
       browserOpenTabListeners.delete(listener);
+    };
+  },
+  onScopedOpenTab(listener): BbDesktopBrowserUnsubscribe {
+    browserScopedOpenTabListeners.add(listener);
+    return () => {
+      browserScopedOpenTabListeners.delete(listener);
     };
   },
   onSnapshot(listener): BbDesktopBrowserUnsubscribe {
@@ -271,6 +282,19 @@ ipcRenderer.on(
       return;
     }
     for (const listener of browserOpenTabListeners) {
+      listener(parsed.data);
+    }
+  },
+);
+
+ipcRenderer.on(
+  BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
+  (_event, payload: unknown) => {
+    const parsed = bbDesktopBrowserScopedOpenTabRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    for (const listener of browserScopedOpenTabListeners) {
       listener(parsed.data);
     }
   },

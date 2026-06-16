@@ -5,6 +5,7 @@ import {
   gitBranchRefClassificationSchema,
   threadGitDiffResponseSchema,
   threadPullRequestSchema,
+  workspaceDiffTargetSchema,
   workspaceStatusSchema,
 } from "@bb/domain";
 import { workspaceResolutionFailureSchema } from "@bb/host-daemon-contract";
@@ -309,6 +310,177 @@ export const environmentDiffResponseSchema = z.discriminatedUnion("outcome", [
 ]);
 export type EnvironmentDiffResponse = z.infer<
   typeof environmentDiffResponseSchema
+>;
+
+/**
+ * Canonical git change-kind, covering the full `git diff --name-status`
+ * taxonomy. Both producers map into this single type: the daemon's
+ * `--name-status` letters (server-side, via `letterToChangeKind`) and the
+ * frontend's patch-derived `getGitDiffFileChangeKind`. `copied` and
+ * `type_changed` are only producible from name-status; the @pierre/diffs
+ * patch parser never yields them.
+ */
+export const gitDiffFileChangeKindSchema = z.enum([
+  "added",
+  "modified",
+  "deleted",
+  "renamed",
+  "copied",
+  "type_changed",
+]);
+export type GitDiffFileChangeKind = z.infer<typeof gitDiffFileChangeKindSchema>;
+
+/**
+ * Map a single `git diff --name-status` status letter to a canonical change
+ * kind. Git emits a similarity score for renames/copies (e.g. `R100`, `C75`),
+ * so only the leading letter is significant; callers pass that letter. Throws
+ * on an unrecognized letter — name-status output is a validated boundary, so
+ * an unknown code is a bug, not a value to silently default.
+ */
+export function letterToChangeKind({
+  letter,
+}: {
+  letter: string;
+}): GitDiffFileChangeKind {
+  switch (letter) {
+    case "A":
+      return "added";
+    case "M":
+      return "modified";
+    case "D":
+      return "deleted";
+    case "R":
+      return "renamed";
+    case "C":
+      return "copied";
+    case "T":
+      return "type_changed";
+    default:
+      throw new Error(`Unrecognized git name-status letter: ${letter}`);
+  }
+}
+
+/** Max paths accepted per `/environments/:id/diff/patch` request. */
+export const DIFF_PATCH_MAX_PATHS_PER_REQUEST = 50;
+
+/**
+ * One entry per changed file — the diff tab's table of contents. Carries no
+ * patch text; patches are fetched separately and on demand via `/diff/patch`.
+ */
+export const diffFileEntrySchema = z.object({
+  /** New path (or the path itself for a delete). */
+  path: z.string(),
+  /** Rename/copy source; null when the file is not a rename or copy. */
+  previousPath: z.string().nullable(),
+  changeKind: gitDiffFileChangeKindSchema,
+  /** From `--numstat`; 0 for binary files. */
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  binary: z.boolean(),
+  /**
+   * Whether the entry originates from an untracked working-tree file. Drives
+   * the daemon's patch invocation (untracked files need the `--no-index` form).
+   */
+  origin: z.enum(["tracked", "untracked"]),
+  /** Server-computed tiering decision. */
+  loadMode: z.enum(["auto", "on_demand", "too_large"]),
+});
+export type DiffFileEntry = z.infer<typeof diffFileEntrySchema>;
+
+export const diffPatchEntrySchema = z.object({
+  path: z.string(),
+  /** Unified diff for just this file. */
+  patch: z.string(),
+  /** True when the patch exceeded the per-file byte budget and was tail-cut. */
+  truncated: z.boolean(),
+});
+export type DiffPatchEntry = z.infer<typeof diffPatchEntrySchema>;
+
+// `too_many_files` is specific to the diff table of contents: the server
+// declines to enumerate a diff whose TOC exceeds the server's `DIFF_FILES_MAX_COUNT`
+// entry cap. `/status` and `/diff` never produce it, so it stays off the shared
+// `environmentWorkspaceNotApplicableReasonSchema`.
+const diffFilesNotApplicableOutcomeSchema = z
+  .object({
+    outcome: z.literal("not_applicable"),
+    reason: z.enum(["non_git_environment", "too_many_files"]),
+    message: z.string().min(1),
+  })
+  .strict();
+
+export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z
+      .object({
+        outcome: z.literal("available"),
+        files: z.array(diffFileEntrySchema),
+        shortstat: z.string(),
+        /** Required + nullable: null = no merge-base for the current target. */
+        mergeBaseRef: z.string().nullable(),
+        /**
+         * Patches for the first screen of `auto`-tier files, shipped with the
+         * TOC so initial content paints in one round-trip (no separate
+         * `/diff/patch` hop). Bounded by the server's initial-patch budget;
+         * the rest load on demand as the list scrolls. Empty when the diff has
+         * no `auto` files.
+         */
+        initialPatches: z.array(diffPatchEntrySchema),
+      })
+      .strict(),
+    diffFilesNotApplicableOutcomeSchema,
+    z
+      .object({
+        outcome: z.literal("unavailable"),
+        failure: workspaceResolutionFailureSchema,
+      })
+      .strict(),
+  ],
+);
+export type EnvironmentDiffFilesResponse = z.infer<
+  typeof environmentDiffFilesResponseSchema
+>;
+
+export const environmentDiffPatchResponseSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z
+      .object({
+        outcome: z.literal("available"),
+        patches: z.array(diffPatchEntrySchema),
+      })
+      .strict(),
+    environmentWorkspaceNotApplicableOutcomeSchema,
+    z
+      .object({
+        outcome: z.literal("unavailable"),
+        failure: workspaceResolutionFailureSchema,
+      })
+      .strict(),
+  ],
+);
+export type EnvironmentDiffPatchResponse = z.infer<
+  typeof environmentDiffPatchResponseSchema
+>;
+
+/**
+ * Body for `POST /diff/patch`: the diff target plus the list of new paths whose
+ * patches the client wants. A POST (not GET) because the repeated `paths` array
+ * cannot survive flat query parsing. The client supplies only new paths; the
+ * server re-derives each file's rename/copy pairing (`previousPath`) from its
+ * own TOC.
+ */
+export const environmentDiffPatchRequestSchema = z
+  .object({
+    target: workspaceDiffTargetSchema,
+    paths: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(DIFF_PATCH_MAX_PATHS_PER_REQUEST),
+  })
+  .strict();
+export type EnvironmentDiffPatchRequest = z.infer<
+  typeof environmentDiffPatchRequestSchema
 >;
 
 export type EnvironmentStatusResponse = z.infer<

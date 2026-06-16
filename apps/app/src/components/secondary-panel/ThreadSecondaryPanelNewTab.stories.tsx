@@ -535,7 +535,6 @@ function NewTabPanelStory({
         fileTabContent={content}
         isOpen
         metadataContent={null}
-        threadId={SEARCH_THREAD_ID}
         onCollapse={noop}
         onClose={noop}
         onFileTabReorder={noop}

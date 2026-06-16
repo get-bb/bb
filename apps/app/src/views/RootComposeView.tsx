@@ -705,17 +705,16 @@ export function RootComposeView(props: RootComposeViewProps) {
     [navigate, projectId, props.surface],
   );
   // Mirrors the @-mention plumbing: the composer feeds the text typed after the
-  // command trigger into `commandQuery`, which drives the project+provider-
-  // scoped command typeahead. When the picker reuses an existing environment,
-  // scope discovery to that environment's workspace; otherwise fall back to the
-  // project's default source (null).
+  // command trigger into `commandQuery`, which drives command typeahead. In
+  // projectless compose, the server resolves the personal project to user-home
+  // command discovery with cwd: null.
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
   const reuseEnvironmentId =
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
       : null;
   const commandSuggestions = useCommandSuggestions({
-    projectId: isProjectless ? undefined : projectId,
+    projectId,
     providerId: selectedProviderId,
     environmentId: reuseEnvironmentId,
     query: commandQuery,
@@ -734,6 +733,9 @@ export function RootComposeView(props: RootComposeViewProps) {
         suggestions: commandSuggestions.suggestions,
         isLoading: commandSuggestions.isLoading,
         isError: commandSuggestions.isError,
+        hasMore: commandSuggestions.hasMore,
+        isLoadingMore: commandSuggestions.isLoadingMore,
+        loadMore: commandSuggestions.loadMore,
         onQueryChange: setCommandQuery,
       },
     }),
@@ -744,7 +746,10 @@ export function RootComposeView(props: RootComposeViewProps) {
       promptMentions.suggestions,
       resolveMentionLink,
       commandSuggestions.isError,
+      commandSuggestions.hasMore,
       commandSuggestions.isLoading,
+      commandSuggestions.isLoadingMore,
+      commandSuggestions.loadMore,
       commandSuggestions.suggestions,
       commandSuggestions.trigger,
     ],

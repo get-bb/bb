@@ -1,3 +1,4 @@
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   HostProviderCommand,
   HostDaemonOnlineRpcRequestMessage,
@@ -351,6 +352,35 @@ describe("public project command typeahead route", () => {
     });
   });
 
+  it("lists user-home commands for the personal project", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-commands-personal",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const stub = registerCommandRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        commands: [skill("home-skill", "user")],
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${PERSONAL_PROJECT_ID}/commands?provider=codex&environmentId=`,
+      );
+
+      expect(response.status).toBe(200);
+      const body = commandListResponseSchema.parse(await readJson(response));
+      expect(body.commands.map((command) => command.name)).toEqual([
+        "home-skill",
+      ]);
+      expect(stub.requests[0]?.command).toEqual({
+        type: "host.list_commands",
+        providerId: "codex",
+        cwd: null,
+      });
+    });
+  });
+
   it("returns an error response when the host is offline", async () => {
     await withTestHarness(async (harness) => {
       const host = seedHost(harness.deps, { id: "host-commands-offline" });
@@ -373,7 +403,7 @@ describe("public project command typeahead route", () => {
     });
   });
 
-  it("honors limit and reports truncation; empty query returns the full capped list", async () => {
+  it("honors limit, offset, and reports truncation; empty query returns the full capped list", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-limit",
@@ -410,6 +440,19 @@ describe("public project command typeahead route", () => {
         "bravo",
       ]);
       expect(limited.truncated).toBe(true);
+
+      const nextPageResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}&limit=2&offset=2`,
+      );
+      expect(nextPageResponse.status).toBe(200);
+      const nextPage = commandListResponseSchema.parse(
+        await readJson(nextPageResponse),
+      );
+      expect(nextPage.commands.map((command) => command.name)).toEqual([
+        "charlie",
+        "delta",
+      ]);
+      expect(nextPage.truncated).toBe(false);
 
       const fullResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/commands?provider=claude-code&environmentId=${environment.id}`,

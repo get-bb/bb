@@ -8,6 +8,7 @@ import {
 import {
   publicApiRoutes,
   typedRoutes,
+  type DiffPatchEntry,
   type EnvironmentDiffFileQuery,
   type EnvironmentDiffQuery,
   type PublicApiSchema,
@@ -16,6 +17,8 @@ import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import {
   COMMAND_TIMEOUT_MS,
+  DIFF_FILE_PATCH_MAX_BYTES,
+  DIFF_FILES_MAX_COUNT,
   WORKSPACE_DIFF_MAX_DIFF_BYTES,
   WORKSPACE_DIFF_MAX_FILE_LIST_BYTES,
 } from "../constants.js";
@@ -40,6 +43,10 @@ import {
   requireAvailableWorkspaceDiff,
   requireAvailableWorkspaceStatus,
 } from "../services/environments/workspace-rpc-results.js";
+import {
+  rawDiffFileStatToEntry,
+  selectInitialPatchPaths,
+} from "./diff-tiering.js";
 
 const COMMIT_FALLBACK_MESSAGE = "bb: automated commit";
 const SQUASH_MERGE_FALLBACK_MESSAGE = "bb: squash merge";
@@ -159,6 +166,25 @@ function resolveDiffFileRef(
       return _exhaustive;
     }
   }
+}
+
+/** Shared `not_applicable` body for the diff routes on non-git environments. */
+const NON_GIT_DIFF_NOT_APPLICABLE = {
+  outcome: "not_applicable",
+  reason: "non_git_environment",
+  message: "Workspace diff is not available for non-git environments",
+} as const;
+
+/**
+ * Resolve the workspace command target for a diff route, or `null` when the
+ * environment is non-git (callers return {@link NON_GIT_DIFF_NOT_APPLICABLE}).
+ */
+function resolveGitDiffWorkspaceTarget(deps: AppDeps, environmentId: string) {
+  const environment = requireReadyEnvironment(deps.db, environmentId);
+  if (!environment.isGitRepo) {
+    return null;
+  }
+  return requireWorkspaceCommandTarget(environment);
 }
 
 export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
@@ -297,6 +323,102 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     return context.json({
       outcome: "available",
       diff: result.diff,
+    });
+  });
+
+  get(routes.diffFiles, async (context, query) => {
+    const target = resolveGitDiffWorkspaceTarget(
+      deps,
+      context.req.param("id"),
+    );
+    if (target === null) {
+      return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
+    }
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: target.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "workspace.diffFiles",
+        environmentId: target.environmentId,
+        workspaceContext: target.workspaceContext,
+        target: toWorkspaceDiffTarget(query),
+      },
+    });
+    if (result.outcome === "unavailable") {
+      return context.json({
+        outcome: "unavailable",
+        failure: result.failure,
+      });
+    }
+    if (result.files.length > DIFF_FILES_MAX_COUNT) {
+      return context.json({
+        outcome: "not_applicable",
+        reason: "too_many_files",
+        message: `This diff changes more than ${DIFF_FILES_MAX_COUNT} files; it is too large to display.`,
+      });
+    }
+    const files = result.files.map(rawDiffFileStatToEntry);
+    // Ship a small diff's `auto`-tier patches with the TOC so initial content
+    // paints in one round-trip (empty for large diffs — see
+    // selectInitialPatchPaths). A failed/unavailable patch fetch degrades to an
+    // empty list; the client then loads the first screen on demand.
+    const initialPatchPaths = selectInitialPatchPaths(files);
+    let initialPatches: DiffPatchEntry[] = [];
+    if (initialPatchPaths.length > 0) {
+      const patchResult = await callHostRetryableOnlineRpc(deps, {
+        hostId: target.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "workspace.diffPatch",
+          environmentId: target.environmentId,
+          workspaceContext: target.workspaceContext,
+          target: toWorkspaceDiffTarget(query),
+          paths: initialPatchPaths,
+          maxBytesPerFile: DIFF_FILE_PATCH_MAX_BYTES,
+        },
+      });
+      if (patchResult.outcome === "available") {
+        initialPatches = patchResult.patches;
+      }
+    }
+    return context.json({
+      outcome: "available",
+      files,
+      shortstat: result.shortstat,
+      mergeBaseRef: result.mergeBaseRef,
+      initialPatches,
+    });
+  });
+
+  post(routes.diffPatch, async (context, payload) => {
+    const target = resolveGitDiffWorkspaceTarget(
+      deps,
+      context.req.param("id"),
+    );
+    if (target === null) {
+      return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
+    }
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: target.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "workspace.diffPatch",
+        environmentId: target.environmentId,
+        workspaceContext: target.workspaceContext,
+        target: payload.target,
+        paths: payload.paths,
+        maxBytesPerFile: DIFF_FILE_PATCH_MAX_BYTES,
+      },
+    });
+    if (result.outcome === "unavailable") {
+      return context.json({
+        outcome: "unavailable",
+        failure: result.failure,
+      });
+    }
+    return context.json({
+      outcome: "available",
+      patches: result.patches,
     });
   });
 
