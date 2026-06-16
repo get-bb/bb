@@ -65,6 +65,14 @@ const childOption: ThreadRowOptions = {
   isCompact: true,
   isEnvGrouped: false,
 };
+// A leaf at the third level of ancestry: project root (depth 1) → child
+// (depth 2) → grandchild (depth 3).
+const grandchildOption: ThreadRowOptions = {
+  kind: "default",
+  depth: 3,
+  isCompact: true,
+  isEnvGrouped: false,
+};
 // Projectless threads are top-level rows (depth 0), flush with project headers.
 const projectlessOption: ThreadRowOptions = {
   kind: "default",
@@ -98,6 +106,26 @@ const childThread = makeThread({
   id: "thr_child",
   title: "UI And Stories Consolidation",
   titleFallback: "UI And Stories Consolidation",
+});
+
+// A three-generation chain (root → fork child → fork grandchild) for the
+// 3-levels-of-ancestry row.
+const ancestorRootThread = makeThread({
+  id: "thr_ancestor_root",
+  title: "Rework the command palette",
+  titleFallback: "Rework the command palette",
+});
+const ancestorForkThread = makeThread({
+  id: "thr_ancestor_fork",
+  childOrigin: "fork",
+  title: "Fork: async command loading",
+  titleFallback: "Fork: async command loading",
+});
+const ancestorGrandchildThread = makeThread({
+  id: "thr_ancestor_grandchild",
+  childOrigin: "fork",
+  title: "Fork: prefetch results on hover",
+  titleFallback: "Fork: prefetch results on hover",
 });
 
 export function Overview() {
@@ -407,6 +435,31 @@ export function Overview() {
             thread={childThread}
             isActive={false}
             options={childOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="3 levels of ancestry"
+        hint="root → fork (child) → fork (grandchild); the middle node carries both the disclosure chevron and the fork glyph, and titles stay aligned down the chain"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId="proj_demo"
+            thread={ancestorRootThread}
+            isActive={false}
+            options={parentOption({ childCount: 1 })}
+          />
+          <StoryThreadRow
+            projectId="proj_demo"
+            thread={ancestorForkThread}
+            isActive={false}
+            options={parentOption({ depth: 2, isCompact: true, childCount: 1 })}
+          />
+          <StoryThreadRow
+            projectId="proj_demo"
+            thread={ancestorGrandchildThread}
+            isActive={false}
+            options={grandchildOption}
           />
         </SidebarStage>
       </StoryRow>

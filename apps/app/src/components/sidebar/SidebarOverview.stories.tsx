@@ -123,6 +123,40 @@ const loadedSidebarNavigation = {
           createdAt: 180,
           updatedAt: 180,
         }),
+        // Three levels of ancestry: a root thread → fork (child) → fork
+        // (grandchild). Renders at project depth 1/2/3; the middle node carries
+        // both the disclosure chevron and the fork glyph.
+        makeThreadListEntry({
+          id: "thr_story_ancestor",
+          projectId: bbProject.id,
+          title: "Rework the command palette",
+          titleFallback: "Rework the command palette",
+          latestAttentionAt: 176,
+          createdAt: 176,
+          updatedAt: 176,
+        }),
+        makeThreadListEntry({
+          id: "thr_story_ancestor_child",
+          projectId: bbProject.id,
+          parentThreadId: "thr_story_ancestor",
+          childOrigin: "fork",
+          title: "Fork: async command loading",
+          titleFallback: "Fork: async command loading",
+          latestAttentionAt: 175,
+          createdAt: 175,
+          updatedAt: 175,
+        }),
+        makeThreadListEntry({
+          id: "thr_story_ancestor_grandchild",
+          projectId: bbProject.id,
+          parentThreadId: "thr_story_ancestor_child",
+          childOrigin: "fork",
+          title: "Fork: prefetch results on hover",
+          titleFallback: "Fork: prefetch results on hover",
+          latestAttentionAt: 174,
+          createdAt: 174,
+          updatedAt: 174,
+        }),
         makeThreadListEntry({
           id: "thr_story_worktree_a",
           projectId: bbProject.id,
