@@ -539,20 +539,19 @@ export function SideChatTabContent({
         ) : hasTriggerMessage ? null : (
           // Empty state only for side chats opened from the new-tab page, which
           // have no trigger message to anchor on.
-          <EmptyStatePanel className="flex min-h-24 flex-1 items-center justify-center">
-            <div className="flex max-w-64 items-center justify-center gap-1.5">
-              <Icon
-                name="SideChat"
-                className={cn(
-                  COARSE_POINTER_ICON_SIZE_CLASS,
-                  "shrink-0 text-subtle-foreground",
-                )}
-              />
-              <p className={COARSE_POINTER_TEXT_SM_CLASS}>
-                Ask a question to start a side chat grounded in this
-                conversation.
-              </p>
-            </div>
+          <EmptyStatePanel className="flex min-h-24 flex-1 flex-col items-center justify-center gap-2 text-center">
+            <Icon
+              name="SideChat"
+              className={cn(
+                COARSE_POINTER_ICON_SIZE_CLASS,
+                "shrink-0 text-subtle-foreground",
+              )}
+            />
+            <p className={cn(COARSE_POINTER_TEXT_SM_CLASS, "max-w-64")}>
+              Ask anything about this thread — the agent has the full
+              conversation as context. Replies stay here, separate from the main
+              thread.
+            </p>
           </EmptyStatePanel>
         )}
       </div>
