@@ -475,7 +475,7 @@ describe("discoverProviderCommands (claude-code)", () => {
     );
     await writeFileEnsuringDir(
       path.join(fallbackPluginRoot, "SKILL.md"),
-      "---\nname: root-skill\ndescription: Root plugin skill\n---\n",
+      "---\ndescription: Root plugin skill\n---\n",
     );
     await writeFileEnsuringDir(
       path.join(fallbackPluginRoot, "skills", "child-skill", "SKILL.md"),
@@ -545,8 +545,8 @@ describe("discoverProviderCommands (claude-code)", () => {
 
     const commands = await discoverClaude(fixture, fixture.cwd);
 
-    expect(byName(commands, "fallback-plugin:root-skill")).toEqual({
-      name: "fallback-plugin:root-skill",
+    expect(byName(commands, "fallback-plugin:fallback-plugin")).toEqual({
+      name: "fallback-plugin:fallback-plugin",
       source: "skill",
       origin: "user",
       description: "Root plugin skill",
@@ -861,14 +861,9 @@ describe("discoverProviderCommands (codex)", () => {
     );
     await writeFileEnsuringDir(
       path.join(fixture.codexHome, "config.toml"),
-      [
-        '[plugins."local-plugin@test-market"]',
-        "enabled = true",
-        "",
-        '[plugins."disabled-plugin@test-market"]',
-        "enabled = false",
-        "",
-      ].join("\n"),
+      ['[plugins."disabled-plugin@test-market"]', "enabled = false", ""].join(
+        "\n",
+      ),
     );
 
     const pluginRoot = path.join(
@@ -892,7 +887,7 @@ describe("discoverProviderCommands (codex)", () => {
     );
     await writeFileEnsuringDir(
       path.join(pluginRoot, "SKILL.md"),
-      "---\nname: root-skill\ndescription: Root Codex plugin skill\n---\n",
+      "---\ndescription: Root Codex plugin skill\n---\n",
     );
     await writeFileEnsuringDir(
       path.join(pluginRoot, "skills", "child-skill", "SKILL.md"),
@@ -949,8 +944,8 @@ describe("discoverProviderCommands (codex)", () => {
       description: "OpenAI docs",
       argumentHint: null,
     });
-    expect(byName(commands, "local-plugin:root-skill")).toEqual({
-      name: "local-plugin:root-skill",
+    expect(byName(commands, "local-plugin:local-plugin")).toEqual({
+      name: "local-plugin:local-plugin",
       source: "skill",
       origin: "user",
       description: "Root Codex plugin skill",

@@ -88,6 +88,7 @@ interface AddPluginDirectoryRootsArgs {
   namePrefix: string;
   origin: ClaudePluginOrigin;
   pluginRootPath: string;
+  rootSkillFallbackName: string;
   roots: CommandScanRoot[];
   seenRoots: Set<string>;
 }
@@ -506,23 +507,9 @@ async function statCodexPluginCacheCandidate(
   }
 }
 
-async function resolveEnabledCodexPluginRoot(
-  codexHome: string,
-  pluginId: string,
+async function resolveLatestPluginCacheRoot(
+  pluginCacheRootPath: string,
 ): Promise<string | null> {
-  const parsedPluginId = parseMarketplacePluginId(pluginId);
-  if (!parsedPluginId) {
-    return null;
-  }
-
-  const pluginCacheRootPath = path.join(
-    codexHome,
-    "plugins",
-    "cache",
-    parsedPluginId.marketplaceName,
-    parsedPluginId.pluginName,
-  );
-
   let entries: Dirent[];
   try {
     entries = await fs.readdir(pluginCacheRootPath, { withFileTypes: true });
@@ -751,7 +738,7 @@ async function addDefaultPluginSkillRoots(
   if (rootSkillFileKind === "file") {
     addRootOnce(args.roots, args.seenRoots, {
       filePath: rootSkillFilePath,
-      fallbackName: path.basename(args.pluginRootPath),
+      fallbackName: args.rootSkillFallbackName,
       shape: "skill-file",
       namePrefix: args.namePrefix,
       source: "skill",
@@ -801,6 +788,7 @@ async function addCodexPluginComponentRoots(
     namePrefix,
     origin: "user" as const,
     pluginRootPath: args.plugin.rootPath,
+    rootSkillFallbackName: args.plugin.pluginName,
     roots: args.roots,
     seenRoots: new Set<string>(),
   };
@@ -821,6 +809,7 @@ async function addClaudePluginComponentRoots(
     namePrefix,
     origin: args.plugin.origin,
     pluginRootPath: args.plugin.rootPath,
+    rootSkillFallbackName: args.plugin.pluginName,
     roots: args.roots,
     seenRoots,
   };
@@ -841,29 +830,59 @@ async function resolveCodexPluginCommandScanRoots(
 ): Promise<CommandScanRoot[]> {
   const settings = await readCodexEnabledPluginSettings(args.codexHome);
   const pluginRoots: CodexPluginRoot[] = [];
+  const cacheRootPath = path.join(args.codexHome, "plugins", "cache");
 
-  for (const [pluginId, enabled] of settings.enabledPlugins) {
-    if (!enabled) {
-      continue;
-    }
-    const rootPath = await resolveEnabledCodexPluginRoot(
-      args.codexHome,
-      pluginId,
-    );
-    if (rootPath === null) {
-      continue;
-    }
-    const manifest = await readCodexPluginManifest(rootPath);
-    if (!manifest) {
-      continue;
-    }
-    const parsedPluginId = parseMarketplacePluginId(pluginId);
-    pluginRoots.push({
-      manifest,
-      pluginName:
-        manifest.name ?? parsedPluginId?.pluginName ?? path.basename(rootPath),
-      rootPath,
+  let marketplaceEntries: Dirent[];
+  try {
+    marketplaceEntries = await fs.readdir(cacheRootPath, {
+      withFileTypes: true,
     });
+  } catch {
+    marketplaceEntries = [];
+  }
+
+  for (const marketplaceEntry of marketplaceEntries.sort((left, right) =>
+    left.name.localeCompare(right.name),
+  )) {
+    if (!marketplaceEntry.isDirectory()) {
+      continue;
+    }
+    const marketplacePath = path.join(cacheRootPath, marketplaceEntry.name);
+    let pluginEntries: Dirent[];
+    try {
+      pluginEntries = await fs.readdir(marketplacePath, {
+        withFileTypes: true,
+      });
+    } catch {
+      continue;
+    }
+
+    for (const pluginEntry of pluginEntries.sort((left, right) =>
+      left.name.localeCompare(right.name),
+    )) {
+      if (!pluginEntry.isDirectory()) {
+        continue;
+      }
+      const pluginId = `${pluginEntry.name}@${marketplaceEntry.name}`;
+      if (settings.enabledPlugins.get(pluginId) === false) {
+        continue;
+      }
+      const rootPath = await resolveLatestPluginCacheRoot(
+        path.join(marketplacePath, pluginEntry.name),
+      );
+      if (rootPath === null) {
+        continue;
+      }
+      const manifest = await readCodexPluginManifest(rootPath);
+      if (!manifest) {
+        continue;
+      }
+      pluginRoots.push({
+        manifest,
+        pluginName: manifest.name ?? pluginEntry.name,
+        rootPath,
+      });
+    }
   }
 
   const roots: CommandScanRoot[] = [];

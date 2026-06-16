@@ -2,11 +2,8 @@ import { atom, useAtom } from "jotai";
 import { RESET, atomWithStorage } from "jotai/utils";
 import type { PromptTextMention } from "@bb/domain";
 import Placeholder from "@tiptap/extension-placeholder";
-import {
-  EditorContent,
-  useEditor,
-  type Editor,
-} from "@tiptap/react";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
   useCallback,
@@ -31,6 +28,7 @@ import type {
   TypeaheadMenuState,
   TypeaheadTrigger,
 } from "@/components/promptbox/mentions/types";
+import { commandPillDismissedRangeEnd } from "@/components/promptbox/mentions/command-trigger";
 import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-trigger";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
@@ -110,6 +108,20 @@ const RICH_PASTE_IGNORED_TAGS = new Set([
   "STYLE",
   "TITLE",
 ]);
+
+function hasWhitespaceAfterPosition(
+  doc: ProseMirrorNode,
+  position: number,
+): boolean {
+  const nextNode = doc.resolve(position).nodeAfter;
+  if (!nextNode) {
+    return false;
+  }
+  if (nextNode.isText) {
+    return /^\s/u.test(nextNode.text ?? "");
+  }
+  return nextNode.type.name === "hardBreak";
+}
 
 type ZenModeLayout = "thread" | "root-compose";
 
@@ -356,9 +368,7 @@ function promptEditorValueFromPlainText(text: string): PromptEditorValue {
   return { text: normalizePastedPlainText(text), mentions: [] };
 }
 
-function promptEditorValueFromRichHtml(
-  html: string,
-): ParsedRichClipboardValue {
+function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
   const document = new DOMParser().parseFromString(html, "text/html");
   let text = "";
   let hasMentions = false;
@@ -719,10 +729,7 @@ export function PromptBoxInternal({
     if (commandTriggerChar === null) {
       return [MENTION_TRIGGER];
     }
-    return [
-      MENTION_TRIGGER,
-      { char: commandTriggerChar, kind: "command" },
-    ];
+    return [MENTION_TRIGGER, { char: commandTriggerChar, kind: "command" }];
   }, [commandTriggerChar]);
 
   // Fan the active query out to the matching data source and null the other,
@@ -1187,13 +1194,12 @@ export function PromptBoxInternal({
 
       const serializedText = `@${item.replacement.trim()}`;
       const resource = promptMentionResourceFromSuggestion(item);
-      const followingText = currentEditor.state.doc.textBetween(
+      const trailingText = hasWhitespaceAfterPosition(
+        currentEditor.state.doc,
         activeTrigger.to,
-        Math.min(activeTrigger.to + 1, currentEditor.state.doc.content.size),
-        "\n",
-        "\n",
-      );
-      const trailingText = /^\s/u.test(followingText) ? "" : " ";
+      )
+        ? ""
+        : " ";
       triggerKeyRef.current = "";
       // Mention dismissed-range basis is node width: trigger char + the 1-wide
       // pill atom in the post-replacement doc (`from` → `from + 2`). Do not
@@ -1244,18 +1250,20 @@ export function PromptBoxInternal({
         suggestion: item,
         trigger: activeTrigger.char,
       });
-      const followingText = currentEditor.state.doc.textBetween(
+      const trailingText = hasWhitespaceAfterPosition(
+        currentEditor.state.doc,
         activeTrigger.to,
-        Math.min(activeTrigger.to + 1, currentEditor.state.doc.content.size),
-        "\n",
-        "\n",
-      );
-      const trailingText = /^\s/u.test(followingText) ? "" : " ";
+      )
+        ? ""
+        : " ";
       triggerKeyRef.current = "";
       // Argument hints render as placeholder decorations, not editor text.
       dismissedTriggerRef.current = {
         start: activeTrigger.from,
-        end: activeTrigger.from + 2 + trailingText.length,
+        end: commandPillDismissedRangeEnd({
+          triggerPosition: activeTrigger.from,
+          trailingText,
+        }),
         hasLeftRange: false,
       };
       isRestoringAppliedMentionRef.current = true;
@@ -1802,6 +1810,11 @@ export function PromptBoxInternal({
             state={typeaheadMenuState}
             selectedIndex={selectedIndex}
             onApply={applyTrigger}
+            onCommandLoadMore={
+              activeTriggerKind === "command" && commandHasMore
+                ? loadMoreCommands
+                : undefined
+            }
           />
         </div>
       ) : null}
