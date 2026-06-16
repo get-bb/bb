@@ -604,6 +604,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   const {
     activeThinking,
     contextWindowUsage,
+    goal,
     hasOlderTimelineRows,
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,
@@ -1624,6 +1625,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       sendMessage={sendMessage}
       pendingInteractions={pendingInteractions}
       pendingTodos={pendingTodos}
+      goal={goal}
       parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
       thread={thread}

@@ -148,6 +148,7 @@ function makeThreadTimelineResponse(
   return {
     activeThinking: null,
     pendingTodos: null,
+    goal: null,
     rows,
     timelinePage: {
       kind: "latest",

@@ -6,6 +6,7 @@ import type {
   EnvironmentStatus,
   PendingInteraction,
   ThreadQueuedMessage,
+  ThreadTimelineGoal,
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
 } from "@bb/domain";
@@ -18,6 +19,7 @@ import {
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
+import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -122,6 +124,8 @@ interface ThreadDetailPromptAreaProps {
   contextBannerMergeBase: ContextBannerMergeBaseConfig | null;
   /** Latest TODO snapshot from the timeline projection. Null on older pages or when no candidate observed. */
   pendingTodos: ThreadTimelinePendingTodos | null;
+  /** Current provider goal from the timeline projection. Null when no goal is active. */
+  goal: ThreadTimelineGoal | null;
   /** Parent reference for child threads. Null for root threads. */
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
@@ -159,6 +163,7 @@ export function ThreadDetailPromptArea({
   workspaceStatusPending,
   contextBannerMergeBase,
   pendingTodos,
+  goal,
   parentThreadSection,
   childThreadsSection,
   sendMessage,
@@ -262,6 +267,7 @@ export function ThreadDetailPromptArea({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
+  const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
   const promptHistoryDrafts = useMemo(
@@ -873,6 +879,11 @@ export function ThreadDetailPromptArea({
   const promptStack = useMemo(
     () => (
       <>
+        <ThreadGoalCard
+          goal={goal}
+          isExpanded={isGoalExpanded}
+          onToggle={() => setIsGoalExpanded((value) => !value)}
+        />
         <ThreadPromptContextBanner
           todoSection={!pendingTodos ? null : { pendingTodos }}
           archivedSection={
@@ -934,6 +945,8 @@ export function ThreadDetailPromptArea({
       environmentGoneStatus,
       isFollowUpSubmitting,
       isQueueMutationPending,
+      goal,
+      isGoalExpanded,
       parentThreadSection,
       childThreadsSection,
       pendingTodos,

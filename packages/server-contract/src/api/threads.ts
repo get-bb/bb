@@ -13,6 +13,7 @@ import {
   serviceTierSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
+  threadTimelineGoalSchema,
   threadTimelinePendingTodosSchema,
   threadWithRuntimeSchema,
 } from "@bb/domain";
@@ -403,6 +404,7 @@ export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   activeThinking: activeThinkingSchema.nullable(),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
+  goal: threadTimelineGoalSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),
   timelinePage: timelinePageMetadataSchema,
 });

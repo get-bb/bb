@@ -79,6 +79,15 @@ interface CodexThreadPermissionSettings {
   sandbox: CodexSandboxMode;
 }
 
+type BbThreadStartParams = ThreadStartParams & {
+  experimentalRawEvents?: boolean;
+  persistExtendedHistory?: boolean;
+};
+
+type BbThreadResumeParams = ThreadResumeParams & {
+  persistExtendedHistory?: boolean;
+};
+
 interface ToCodexPermissionSettingsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   gitWritableRoots: readonly string[];
@@ -1358,7 +1367,7 @@ export function createCodexProviderAdapter(
         case "thread/start": {
           const dynamicTools = toCodexDynamicTools(command.dynamicTools);
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
-          const params: ThreadStartParams = {
+          const params: BbThreadStartParams = {
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
             sandbox: preparedGitRoots.permissionSettings.sandbox,
             cwd: command.cwd,
@@ -1382,7 +1391,7 @@ export function createCodexProviderAdapter(
         case "thread/resume": {
           const dynamicTools = toCodexDynamicTools(command.dynamicTools);
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
-          const params: ThreadResumeParams = {
+          const params: BbThreadResumeParams = {
             threadId: command.providerThreadId,
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
             sandbox: preparedGitRoots.permissionSettings.sandbox,

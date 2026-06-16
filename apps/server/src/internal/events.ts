@@ -190,6 +190,9 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
       return { providerThreadId: event.providerThreadId };
     case "thread/compacted":
       return { providerThreadId: event.providerThreadId };
+    case "thread/goal/updated":
+    case "thread/goal/cleared":
+      return { providerThreadId: event.providerThreadId };
     case "turn/started":
     case "turn/completed":
     case "turn/input/accepted":
@@ -214,7 +217,10 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "provider/unhandled":
       return { providerThreadId: event.providerThreadId };
     default: {
-      throw new Error("Unsupported event type");
+      const exhaustive: never = event;
+      throw new Error(
+        `Unsupported event type: ${String((exhaustive as { type?: string }).type)}`,
+      );
     }
   }
 }

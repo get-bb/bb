@@ -31,6 +31,23 @@ const codexPlanStepStatusSchema = z.enum([
   "failed",
 ]);
 
+const codexThreadGoalStatusSchema = z.enum([
+  "active",
+  "paused",
+  "budgetLimited",
+  "complete",
+]);
+
+const codexThreadGoalSchema = z
+  .object({
+    objective: z.string(),
+    status: codexThreadGoalStatusSchema,
+    tokenBudget: z.number().nullable(),
+    tokensUsed: z.number(),
+    timeUsedSeconds: z.number(),
+  })
+  .passthrough();
+
 type ZodObjectSchema = z.ZodObject<z.ZodRawShape>;
 
 const codexStringArraySchema = z.array(z.string());
@@ -764,6 +781,23 @@ export const codexHandledEventSchema = z.discriminatedUnion("method", [
       .object({
         threadId: z.string(),
         turnId: z.string(),
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "thread/goal/updated",
+    z
+      .object({
+        threadId: z.string(),
+        goal: codexThreadGoalSchema,
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "thread/goal/cleared",
+    z
+      .object({
+        threadId: z.string(),
       })
       .passthrough(),
   ),
