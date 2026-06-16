@@ -35,7 +35,6 @@ interface ThreadSpawnCommandOptions {
   title?: string;
   serviceTier?: string;
   permissionMode?: string;
-  contextParentThread?: boolean;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -144,7 +143,7 @@ export function registerSpawnCommand(
     )
     .option(
       "--parent-thread <id>",
-      "Parent thread ID for worker thread links (defaults to BB_THREAD_ID)",
+      "Parent thread ID for worker thread links",
     )
     .option(
       "--provider <id>",
@@ -161,18 +160,8 @@ export function registerSpawnCommand(
     .option("--title <title>", "Thread title")
     .option("--service-tier <tier>", "Service tier: fast or default")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
-    .option(
-      "--no-context-parent-thread",
-      "Do not default parent thread context to BB_THREAD_ID",
-    )
     .action(
       action(async (opts: ThreadSpawnCommandOptions) => {
-        if (opts.parentThread && opts.contextParentThread === false) {
-          throw new Error(
-            "Cannot combine --parent-thread with --no-context-parent-thread.",
-          );
-        }
-
         const projectId = resolveProjectId(opts.project) ?? PERSONAL_PROJECT_ID;
         const environmentValue = resolveSpawnEnvironmentValue(
           opts.environment,
@@ -200,9 +189,7 @@ export function registerSpawnCommand(
           flagName: "--parent-thread",
           value: opts.parentThread,
         });
-        const parentThreadId =
-          explicitParentThreadId ??
-          (opts.contextParentThread === false ? undefined : resolveThreadId());
+        const parentThreadId = explicitParentThreadId;
 
         let thread: Thread;
         try {

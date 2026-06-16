@@ -39,9 +39,9 @@ derived state. Tags are user/agent-maintained categorization metadata.
   `ThreadActionsProvider`, which already host rename/delete/archive dialogs.
   Tag editing belongs there.
 - CLI thread commands already support `list`, `show`, `update`, `spawn`,
-  lifecycle, and parent/child flows. Threads use `bb thread spawn` and inherit
-  `BB_THREAD_ID` as the parent, so parent threads can tag child threads through the
-  same CLI assignment commands.
+  lifecycle, and parent/child flows. Threads use `bb thread spawn` with
+  `--parent-thread` when they want a parent link, so parent threads can tag
+  child threads through the same CLI assignment commands.
 
 ## Data Model
 
