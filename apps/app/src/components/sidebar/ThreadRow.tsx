@@ -371,33 +371,35 @@ function ThreadRowComponent({
           <span className="-ml-1 size-5 shrink-0" aria-hidden="true" />
         )}
         {/*
-          Fixed identity-glyph column (fork / worktree), reserved for every row
-          so titles line up in one column whether or not a row has a glyph —
-          and so they align with the worktree/project header folder, which sits
-          in the same column. File-tree style.
+          Identity glyph (fork / worktree), rendered only when present. An empty
+          column is NOT reserved: a glyph-less row's title sits right after the
+          caret (no dead gap), and a worktree-group child — which suppresses its
+          glyph — lands in the same column as a sibling fork's leading icon
+          rather than being pushed a column further right.
         */}
-        <span
-          className="inline-flex w-4 shrink-0 items-center justify-center"
-          title={
-            thread.childOrigin === "fork"
-              ? "Forked thread"
-              : (leadingWorktreeIconLabel ?? undefined)
-          }
-        >
-          {thread.childOrigin === "fork" ? (
+        {thread.childOrigin === "fork" ? (
+          <span
+            className="inline-flex w-4 shrink-0 items-center justify-center"
+            title="Forked thread"
+          >
             <Icon
               name="Fork"
               className="size-3.5 text-muted-foreground"
               aria-label="Forked thread"
             />
-          ) : leadingWorktreeIcon ? (
+          </span>
+        ) : leadingWorktreeIcon ? (
+          <span
+            className="inline-flex w-4 shrink-0 items-center justify-center"
+            title={leadingWorktreeIconLabel ?? undefined}
+          >
             <Icon
               name={leadingWorktreeIcon}
               className="size-3.5 text-muted-foreground"
               aria-label={leadingWorktreeIconLabel ?? undefined}
             />
-          ) : null}
-        </span>
+          </span>
+        ) : null}
         <span className="min-w-0 truncate">{threadTitle}</span>
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>

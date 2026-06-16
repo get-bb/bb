@@ -643,34 +643,34 @@ function EnvironmentThreadGroupHeader({
       {parentLineDepth === undefined ? null : (
         <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
       )}
-      {/* Only the caret toggles (with its own hover style) — the folder is a
-          decorative grouping glyph, not a click target, matching the other
-          header types. Both sit in the fixed columns threads use so the label
-          aligns flush with sibling threads. */}
-      <span className="relative z-10 -ml-1 inline-flex shrink-0">
-        <SidebarChildToggleChevron
-          isCollapsed={isCollapsed}
-          expandLabel={`Expand ${headerTitle} threads`}
-          collapseLabel={`Collapse ${headerTitle} threads`}
-          expandTitle="Expand worktree threads"
-          collapseTitle="Collapse worktree threads"
-          onToggle={() => onToggleCollapsed(environmentId)}
-          revealOnHover={!isCollapsed}
-        />
-      </span>
-      <span
-        className="pointer-events-none relative z-10 inline-flex w-4 shrink-0 items-center justify-center text-subtle-foreground/70"
-        aria-hidden="true"
-      >
-        <Icon name={iconName} className="size-3.5" />
-      </span>
       {/*
-        A worktree group header is pure UI grouping, not a navigable thread, so
-        its label reads lighter than the worktree THREAD rows (which open on
-        click). Clicking it does nothing — only the caret toggles.
+        Leading cluster: caret + folder + label share the SAME gap-1.5 column
+        spacing ThreadRow uses (caret slot, then a w-4 glyph, then the text), so
+        the folder lands in the thread-glyph column and the label in the
+        thread-title column at the same depth. Only the caret toggles (its own
+        hover style); the folder is a decorative grouping glyph and the label is
+        inert. A worktree group header is pure UI grouping, not a navigable
+        thread, so it reads lighter than the worktree THREAD rows.
       */}
-      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/70">
-        <span className="min-w-0 truncate">
+      <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/70">
+        <span className="-ml-1 inline-flex shrink-0">
+          <SidebarChildToggleChevron
+            isCollapsed={isCollapsed}
+            expandLabel={`Expand ${headerTitle} threads`}
+            collapseLabel={`Collapse ${headerTitle} threads`}
+            expandTitle="Expand worktree threads"
+            collapseTitle="Collapse worktree threads"
+            onToggle={() => onToggleCollapsed(environmentId)}
+            revealOnHover={!isCollapsed}
+          />
+        </span>
+        <span
+          className="pointer-events-none inline-flex w-4 shrink-0 items-center justify-center"
+          aria-hidden="true"
+        >
+          <Icon name={iconName} className="size-3.5" />
+        </span>
+        <span className="pointer-events-none min-w-0 truncate">
           {environmentName ? (
             <>
               <span>{environmentName}</span>
@@ -1169,31 +1169,35 @@ function ProjectRowComponent({
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
-            {/* Caret + folder both toggle (the disclosure cluster) in the same
-                fixed columns threads use; the row body and project name stay
-                inert (expand/collapse only). */}
-            <span className="relative z-10 -ml-1 inline-flex shrink-0">
-              <SidebarChildToggleChevron
-                isCollapsed={isCollapsed}
-                expandLabel={`Expand ${project.name}`}
-                collapseLabel={`Collapse ${project.name}`}
-                expandTitle="Expand project threads"
-                collapseTitle="Collapse project threads"
-                onToggle={handleProjectRowToggle}
-                revealOnHover={!isCollapsed}
-              />
-            </span>
-            <span
-              className="pointer-events-none relative z-10 inline-flex w-4 shrink-0 items-center justify-center text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground"
-              aria-hidden="true"
-            >
-              <Icon
-                name={isCollapsed ? "Folder" : "FolderOpen"}
-                className="size-3.5"
-              />
-            </span>
-            <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
-              <span className="min-w-0 truncate">{project.name}</span>
+            {/* Leading cluster: caret + folder + name share the SAME gap-1.5
+                column spacing ThreadRow and the worktree header use, so the
+                folder lands in the thread-glyph column and the name in the
+                thread-title column. Only the caret toggles; the folder is
+                decorative and the name is inert (expand/collapse only). */}
+            <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+              <span className="-ml-1 inline-flex shrink-0">
+                <SidebarChildToggleChevron
+                  isCollapsed={isCollapsed}
+                  expandLabel={`Expand ${project.name}`}
+                  collapseLabel={`Collapse ${project.name}`}
+                  expandTitle="Expand project threads"
+                  collapseTitle="Collapse project threads"
+                  onToggle={handleProjectRowToggle}
+                  revealOnHover={!isCollapsed}
+                />
+              </span>
+              <span
+                className="pointer-events-none inline-flex w-4 shrink-0 items-center justify-center text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground"
+                aria-hidden="true"
+              >
+                <Icon
+                  name={isCollapsed ? "Folder" : "FolderOpen"}
+                  className="size-3.5"
+                />
+              </span>
+              <span className="pointer-events-none min-w-0 truncate">
+                {project.name}
+              </span>
             </span>
             {isLocalPathInvalid ? (
               <NavLink
