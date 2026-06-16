@@ -2,14 +2,14 @@ import type { QueryKey } from "@tanstack/react-query";
 import type { ThreadWithRuntime } from "@bb/domain";
 import type {
   EnvironmentDiffBranchesResponse,
-  EnvironmentDiffResponse,
+  EnvironmentDiffFilesResponse,
   EnvironmentStatusResponse,
   ProjectBranchesResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import {
+  ENVIRONMENT_DIFF_FILES_QUERY_KEY,
   ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY,
-  ENVIRONMENT_GIT_DIFF_QUERY_KEY,
   ENVIRONMENT_WORK_STATUS_QUERY_KEY,
   PROJECT_SOURCE_BRANCHES_QUERY_KEY,
   THREAD_QUERY_KEY,
@@ -19,7 +19,7 @@ import {
 type ThreadScopedQueryKeyPrefix =
   | typeof THREAD_QUERY_KEY
   | typeof ENVIRONMENT_WORK_STATUS_QUERY_KEY
-  | typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY
+  | typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY
   | typeof THREAD_TIMELINE_QUERY_KEY;
 
 interface ResolveProjectSourceBranchesPlaceholderArgs {
@@ -82,16 +82,16 @@ export function resolveEnvironmentWorkStatusPlaceholder(
   );
 }
 
-export function resolveEnvironmentGitDiffPlaceholder(
-  previousData: EnvironmentDiffResponse | undefined,
+export function resolveEnvironmentDiffFilesPlaceholder(
+  previousData: EnvironmentDiffFilesResponse | undefined,
   previousQueryKey: QueryKey | undefined,
   nextEnvironmentId: string,
-): EnvironmentDiffResponse | undefined {
+): EnvironmentDiffFilesResponse | undefined {
   return resolveThreadScopedPlaceholder(
     previousData,
     previousQueryKey,
     nextEnvironmentId,
-    ENVIRONMENT_GIT_DIFF_QUERY_KEY,
+    ENVIRONMENT_DIFF_FILES_QUERY_KEY,
   );
 }
 

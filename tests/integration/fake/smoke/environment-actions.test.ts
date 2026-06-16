@@ -5,6 +5,8 @@ import {
   deleteThread,
   getEnvironmentBranches,
   getEnvironmentDiff,
+  getEnvironmentDiffFiles,
+  getEnvironmentDiffPatch,
   getEnvironmentStatus,
   getThread,
   getThreadOutput,
@@ -57,6 +59,59 @@ describe.sequential("fake provider smoke environment integration", () => {
       expect(status.workspace.workingTree.hasUncommittedChanges).toBe(false);
       expect(typeof diff.diff).toBe("string");
       expect(branches.branches).toContain("main");
+    }));
+
+  it("paginates the diff through diff/files and diff/patch for a ready environment", () =>
+    withHarness(async (harness) => {
+      const project = await createProjectFixture(
+        harness,
+        "Diff Pagination Smoke",
+      );
+      const { environment } = await createReadyThread(harness, {
+        projectId: project.id,
+        workspace: {
+          type: "unmanaged",
+          path: harness.repoDir,
+        },
+      });
+
+      const workspacePath = environment.path;
+      if (!workspacePath) {
+        throw new Error("Workspace path was not assigned");
+      }
+
+      // A small change lands in the `auto` tier, so its patch ships inline with
+      // the table of contents (first-screen prefetch) and also resolves on
+      // demand through diff/patch.
+      await createTestFile({
+        content: "export const paginated = true;\n",
+        filePath: path.join(workspacePath, "feature.ts"),
+      });
+
+      const files = await getEnvironmentDiffFiles(harness.api, environment.id);
+      expect(files.outcome).toBe("available");
+      if (files.outcome !== "available") {
+        throw new Error(`Expected diff files, received ${files.outcome}`);
+      }
+      const entry = files.files.find((file) => file.path === "feature.ts");
+      expect(entry).toBeDefined();
+      expect(entry?.loadMode).toBe("auto");
+      expect(files.initialPatches.some((p) => p.path === "feature.ts")).toBe(
+        true,
+      );
+
+      const patch = await getEnvironmentDiffPatch(harness.api, environment.id, [
+        "feature.ts",
+      ]);
+      expect(patch.outcome).toBe("available");
+      if (patch.outcome !== "available") {
+        throw new Error(`Expected diff patch, received ${patch.outcome}`);
+      }
+      expect(patch.patches).toHaveLength(1);
+      expect(patch.patches[0]?.path).toBe("feature.ts");
+      expect(patch.patches[0]?.patch).toContain(
+        "export const paginated = true;",
+      );
     }));
 
   it("commits dirty workspace changes through the environment actions route", () =>

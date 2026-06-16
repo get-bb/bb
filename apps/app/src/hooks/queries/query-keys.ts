@@ -1,3 +1,4 @@
+import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { ThreadListFilters } from "@/lib/api";
 import type { EnvironmentFilePreviewSource } from "@/lib/file-preview";
 import {
@@ -43,7 +44,8 @@ export const ENVIRONMENT_WORK_STATUS_QUERY_KEY = "environmentWorkStatus";
 export const ENVIRONMENT_PULL_REQUEST_QUERY_KEY = "environmentPullRequest";
 export const ENVIRONMENT_MERGE_BASE_BRANCHES_QUERY_KEY =
   "environmentMergeBaseBranches";
-export const ENVIRONMENT_GIT_DIFF_QUERY_KEY = "environmentGitDiff";
+export const ENVIRONMENT_DIFF_FILES_QUERY_KEY = "environmentDiffFiles";
+export const ENVIRONMENT_DIFF_PATCH_QUERY_KEY = "environmentDiffPatch";
 export const ENVIRONMENT_DIFF_FILE_QUERY_KEY = "environmentDiffFile";
 export const ENVIRONMENT_FILE_PREVIEW_QUERY_KEY = "environmentFilePreview";
 export const ENVIRONMENT_PATHS_QUERY_KEY = "environmentPaths";
@@ -321,17 +323,31 @@ export type ThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
 export type AllThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
 ];
-export type EnvironmentGitDiffQueryKey = readonly [
-  typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY,
+export type EnvironmentDiffFilesQueryKey = readonly [
+  typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
   string,
   string | null,
   string | null,
 ];
-export type EnvironmentGitDiffQueryKeyRootPrefix = readonly [
-  typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY,
+export type EnvironmentDiffFilesQueryKeyRootPrefix = readonly [
+  typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
 ];
-export type EnvironmentGitDiffQueryKeyPrefix = readonly [
-  typeof ENVIRONMENT_GIT_DIFF_QUERY_KEY,
+export type EnvironmentDiffFilesQueryKeyPrefix = readonly [
+  typeof ENVIRONMENT_DIFF_FILES_QUERY_KEY,
+  string,
+];
+export type EnvironmentDiffPatchQueryKey = readonly [
+  typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
+  string,
+  string | null,
+  string | null,
+  string,
+];
+export type EnvironmentDiffPatchQueryKeyRootPrefix = readonly [
+  typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
+];
+export type EnvironmentDiffPatchQueryKeyPrefix = readonly [
+  typeof ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
   string,
 ];
 export type EnvironmentDiffFileQueryKey = readonly [
@@ -823,22 +839,72 @@ export function allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(): AllThreadTi
   return [THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY];
 }
 
-export function environmentGitDiffQueryKey(
+/**
+ * The discriminating second component of a diff query key: the merge-base
+ * branch for `branch_committed`/`all`, the SHA for `commit`, and `null` for
+ * `uncommitted` (and for an absent target). Shared by every environment-diff
+ * query family so they key off the same target identity.
+ */
+export function environmentDiffTargetKey(
+  target: WorkspaceDiffTarget | null | undefined,
+): string | null {
+  switch (target?.type) {
+    case "commit":
+      return target.sha;
+    case "branch_committed":
+    case "all":
+      return target.mergeBaseBranch;
+    default:
+      return null;
+  }
+}
+
+export function environmentDiffFilesQueryKey(
   environmentId: string,
   targetType: string | null,
   targetKey: string | null,
-): EnvironmentGitDiffQueryKey {
-  return [ENVIRONMENT_GIT_DIFF_QUERY_KEY, environmentId, targetType, targetKey];
+): EnvironmentDiffFilesQueryKey {
+  return [
+    ENVIRONMENT_DIFF_FILES_QUERY_KEY,
+    environmentId,
+    targetType,
+    targetKey,
+  ];
 }
 
-export function allEnvironmentGitDiffQueryKeyPrefix(): EnvironmentGitDiffQueryKeyRootPrefix {
-  return [ENVIRONMENT_GIT_DIFF_QUERY_KEY];
+export function allEnvironmentDiffFilesQueryKeyPrefix(): EnvironmentDiffFilesQueryKeyRootPrefix {
+  return [ENVIRONMENT_DIFF_FILES_QUERY_KEY];
 }
 
-export function environmentGitDiffQueryKeyPrefix(
+export function environmentDiffFilesQueryKeyPrefix(
   environmentId: string,
-): EnvironmentGitDiffQueryKeyPrefix {
-  return [ENVIRONMENT_GIT_DIFF_QUERY_KEY, environmentId];
+): EnvironmentDiffFilesQueryKeyPrefix {
+  return [ENVIRONMENT_DIFF_FILES_QUERY_KEY, environmentId];
+}
+
+export function environmentDiffPatchQueryKey(
+  environmentId: string,
+  targetType: string | null,
+  targetKey: string | null,
+  path: string,
+): EnvironmentDiffPatchQueryKey {
+  return [
+    ENVIRONMENT_DIFF_PATCH_QUERY_KEY,
+    environmentId,
+    targetType,
+    targetKey,
+    path,
+  ];
+}
+
+export function allEnvironmentDiffPatchQueryKeyPrefix(): EnvironmentDiffPatchQueryKeyRootPrefix {
+  return [ENVIRONMENT_DIFF_PATCH_QUERY_KEY];
+}
+
+export function environmentDiffPatchQueryKeyPrefix(
+  environmentId: string,
+): EnvironmentDiffPatchQueryKeyPrefix {
+  return [ENVIRONMENT_DIFF_PATCH_QUERY_KEY, environmentId];
 }
 
 export function environmentDiffFileQueryKey(

@@ -1,6 +1,8 @@
 import {
   memo,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentPropsWithoutRef,
   type Dispatch,
@@ -105,6 +107,12 @@ interface AreMarkdownLinkRoutingsEqualArgs {
 }
 
 type ExpandedImageUrlSetter = Dispatch<SetStateAction<string | null>>;
+
+interface SetMarkdownContentWidthVariableArgs {
+  element: HTMLElement;
+  width: number;
+}
+
 type MarkdownPreviewPropsEqual = (
   previous: MarkdownPreviewProps,
   next: MarkdownPreviewProps,
@@ -624,6 +632,110 @@ function buildMarkdownComponents({
   };
 }
 
+function setMarkdownContentWidthVariable({
+  element,
+  width,
+}: SetMarkdownContentWidthVariableArgs): void {
+  if (width <= 0) {
+    return;
+  }
+  element.style.setProperty(MARKDOWN_CONTENT_WIDTH_VARIABLE, `${width}px`);
+}
+
+function useMarkdownContentWidthVariable() {
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return;
+    }
+
+    setMarkdownContentWidthVariable({
+      element,
+      width: element.getBoundingClientRect().width,
+    });
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) {
+        return;
+      }
+      setMarkdownContentWidthVariable({
+        element,
+        width: entry.contentRect.width,
+      });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return contentRef;
+}
+
+const FRONTMATTER_PATTERN = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+
+/**
+ * Splits a leading YAML frontmatter block (`---` … `---` at the very start of
+ * the document) from the markdown body. Without this, react-markdown renders
+ * the fences as two thematic breaks with the raw YAML as a paragraph between
+ * them. Returns the inner frontmatter text (or null) and the remaining body.
+ */
+function splitMarkdownFrontmatter(markdown: string): {
+  frontmatter: string | null;
+  body: string;
+} {
+  const match = FRONTMATTER_PATTERN.exec(markdown);
+  if (match === null) {
+    return { frontmatter: null, body: markdown };
+  }
+  return { frontmatter: match[1], body: markdown.slice(match[0].length) };
+}
+
+/**
+ * Renders frontmatter subtly: a muted, small key/value list set off by a thin
+ * left rule, so it reads as document metadata instead of competing with the
+ * body. Flat `key: value` lines get an aligned key; anything else (nested keys,
+ * list items) is shown verbatim but still muted.
+ */
+function MarkdownFrontmatter({ source }: { source: string }) {
+  const lines = source.split("\n").filter((line) => line.trim().length > 0);
+  if (lines.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mb-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 border-l-2 border-border pl-3 text-xs leading-relaxed text-muted-foreground">
+      {lines.map((line, index) => {
+        const separator = line.indexOf(":");
+        if (separator > 0 && !/^[\s-]/.test(line)) {
+          const key = line.slice(0, separator).trim();
+          const value = line.slice(separator + 1).trim();
+          // `contents` lets the key/value spans participate in the parent grid,
+          // so every value lines up in a single column regardless of key width.
+          return (
+            <div key={index} className="contents">
+              <span className="font-medium text-muted-foreground/70">{key}</span>
+              <span className="min-w-0 break-words">{value}</span>
+            </div>
+          );
+        }
+        return (
+          <div
+            key={index}
+            className="col-span-2 whitespace-pre-wrap break-words text-muted-foreground/80"
+          >
+            {line}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function MarkdownPreviewComponent({
   allowHtml = false,
   className,
@@ -634,6 +746,7 @@ function MarkdownPreviewComponent({
   urlTransform,
 }: MarkdownPreviewProps) {
   const preferredTheme = usePreferredTheme();
+  const contentRef = useMarkdownContentWidthVariable();
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
   const localFileRouting = linkRouting?.localFile;
   const normalizeLocalFileLinks = localFileRouting !== undefined;
@@ -643,6 +756,10 @@ function MarkdownPreviewComponent({
         ? normalizeLocalFileMarkdownLinks(content)
         : content,
     [content, normalizeLocalFileLinks],
+  );
+  const { frontmatter, body } = useMemo(
+    () => splitMarkdownFrontmatter(markdownContent),
+    [markdownContent],
   );
   const markdownComponents = useMemo(
     () =>
@@ -667,18 +784,22 @@ function MarkdownPreviewComponent({
   return (
     <>
       <div
+        ref={contentRef}
         className={cn(
           "max-w-none break-words text-sm leading-relaxed text-foreground",
           className,
         )}
       >
+        {frontmatter !== null ? (
+          <MarkdownFrontmatter source={frontmatter} />
+        ) : null}
         <ReactMarkdown
           rehypePlugins={allowHtml ? MARKDOWN_HTML_REHYPE_PLUGINS : undefined}
           remarkPlugins={[remarkGfm]}
           components={markdownComponents}
           urlTransform={resolvedUrlTransform}
         >
-          {markdownContent}
+          {body}
         </ReactMarkdown>
       </div>
 

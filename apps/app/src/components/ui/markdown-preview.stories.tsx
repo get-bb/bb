@@ -41,6 +41,19 @@ Links render with an underline: [Anthropic](https://www.anthropic.com).
 
 Text after the horizontal rule.`;
 
+const FRONTMATTER_MARKDOWN = `---
+title: Prompt Plus Menu
+status: In review
+owner: design-systems
+updated: 2026-06-15
+tags: spec, command-menu, ui
+---
+
+# Prompt Plus Menu
+
+The **prompt-plus menu** opens when you type \`/\` for Claude or \`$\` for Codex
+in the promptbox, offering inline command completions.`;
+
 const LISTS_MARKDOWN = `Unordered:
 
 - First item
@@ -166,6 +179,14 @@ export function Overview() {
       >
         <PreviewStage>
           <MarkdownPreview content={BASICS_MARKDOWN} />
+        </PreviewStage>
+      </StoryRow>
+      <StoryRow
+        label="frontmatter"
+        hint="a leading --- YAML block renders as a subtle aligned key/value table above the body, not as a code block or hr"
+      >
+        <PreviewStage>
+          <MarkdownPreview content={FRONTMATTER_MARKDOWN} />
         </PreviewStage>
       </StoryRow>
       <StoryRow label="lists" hint="unordered, ordered, nested, GFM task list">

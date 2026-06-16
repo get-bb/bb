@@ -19,5 +19,7 @@ export const BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL =
 export const BB_DESKTOP_BROWSER_STATE_CHANNEL = "bb-desktop:browser:state";
 export const BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL =
   "bb-desktop:browser:open-tab";
+export const BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL =
+  "bb-desktop:browser:scoped-open-tab";
 export const BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL =
   "bb-desktop:browser:snapshot";

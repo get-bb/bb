@@ -11,7 +11,6 @@ import {
 } from "@bb/test-helpers";
 import type {
   EnvironmentDiffBranchesResponse,
-  EnvironmentDiffResponse,
   EnvironmentStatusResponse,
   ProjectBranchesResponse,
   ThreadTimelineResponse,
@@ -22,13 +21,13 @@ import {
   optimisticallyInsertThread,
 } from "../cache-owners/query-cache";
 import {
-  environmentGitDiffQueryKey,
+  environmentDiffFilesQueryKeyPrefix,
+  environmentDiffPatchQueryKeyPrefix,
   environmentWorkStatusQueryKey,
   threadListQueryKey,
   threadsQueryKey,
 } from "./query-keys";
 import {
-  resolveEnvironmentGitDiffPlaceholder,
   resolveEnvironmentMergeBaseBranchesPlaceholder,
   resolveEnvironmentWorkStatusPlaceholder,
   resolveProjectSourceBranchesPlaceholder,
@@ -81,19 +80,6 @@ function makeStatusResponse(
       branch: { currentBranch: "feature", defaultBranch: "main" },
       mergeBase: makeWorkspaceMergeBase({ baseRef: "origin/main" }),
     }),
-  };
-}
-
-function makeGitDiffResponse(): EnvironmentDiffResponse {
-  return {
-    outcome: "available",
-    diff: {
-      diff: "diff --git a/file b/file",
-      truncated: false,
-      shortstat: " 1 file changed, 1 insertion(+)\n",
-      files: "M\tfile\n",
-      mergeBaseRef: null,
-    },
   };
 }
 
@@ -273,28 +259,6 @@ describe("resolveThreadTimelinePlaceholder", () => {
   });
 });
 
-describe("resolveEnvironmentGitDiffPlaceholder", () => {
-  it("reuses previous git diff data only for the same environment", () => {
-    const previousGitDiff = makeGitDiffResponse();
-
-    expect(
-      resolveEnvironmentGitDiffPlaceholder(
-        previousGitDiff,
-        ["environmentGitDiff", "env-1", "all", "main"],
-        "env-1",
-      ),
-    ).toBe(previousGitDiff);
-
-    expect(
-      resolveEnvironmentGitDiffPlaceholder(
-        previousGitDiff,
-        ["environmentGitDiff", "env-1", "all", "main"],
-        "env-2",
-      ),
-    ).toBeUndefined();
-  });
-});
-
 describe("resolveProjectSourceBranchesPlaceholder", () => {
   it("reuses previous branch data only when the project, host, and limit match", () => {
     const previousBranches = makeProjectBranchesResponse();
@@ -446,21 +410,27 @@ describe("resolveEnvironmentMergeBaseBranchesPlaceholder", () => {
 });
 
 describe("getEnvironmentWorkspaceStateInvalidationQueryKeys", () => {
-  it("targets workspace-derived status and diff queries", () => {
-    expect(
-      getEnvironmentWorkspaceStateInvalidationQueryKeys({
-        environmentId: "env-1",
-      }),
-    ).toEqual([
+  it("targets workspace-derived status and the observer-backed diff TOC, but never the observer-less patch cache", () => {
+    const queryKeys = getEnvironmentWorkspaceStateInvalidationQueryKeys({
+      environmentId: "env-1",
+    });
+
+    expect(queryKeys).toEqual([
       ["environmentWorkStatus", "env-1"],
-      ["environmentGitDiff", "env-1"],
+      ["environmentDiffFiles", "env-1"],
       ["environmentFilePreview", "env-1"],
     ]);
+    // The patch cache is observer-less; invalidation is a no-op for it, so it
+    // must be evicted (removeEnvironmentDiffPatchQueries) rather than appearing
+    // in any invalidate-key list.
+    expect(queryKeys).not.toContainEqual(
+      environmentDiffPatchQueryKeyPrefix("env-1"),
+    );
   });
 });
 
 describe("getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys", () => {
-  it("targets only merge-base-dependent work status and branch-based diff queries", () => {
+  it("targets only merge-base-dependent work status and the diff TOC/patch caches", () => {
     const { queryClient } = createQueryClientTestHarness();
 
     queryClient.setQueryData(
@@ -472,16 +442,8 @@ describe("getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys", () => {
       null,
     );
     queryClient.setQueryData(
-      environmentGitDiffQueryKey("env-1", "commit", "abc123"),
-      makeGitDiffResponse(),
-    );
-    queryClient.setQueryData(
-      environmentGitDiffQueryKey("env-1", "all", "main"),
-      makeGitDiffResponse(),
-    );
-    queryClient.setQueryData(
-      environmentGitDiffQueryKey("env-2", "all", "main"),
-      makeGitDiffResponse(),
+      environmentWorkStatusQueryKey("env-2", "main"),
+      null,
     );
 
     const queryKeys =
@@ -489,21 +451,23 @@ describe("getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys", () => {
         environmentId: "env-1",
       });
 
+    // Only the merge-base-scoped work status for env-1, plus the observer-backed
+    // diff TOC cache (invalidated by prefix — a moved merge base affects every
+    // ref-derived diff target). The observer-less patch cache is absent: it is
+    // evicted separately via removeEnvironmentDiffPatchQueries.
     expect(queryKeys).toHaveLength(2);
     expect(queryKeys).toContainEqual(
       environmentWorkStatusQueryKey("env-1", "main"),
     );
-    expect(queryKeys).toContainEqual(
-      environmentGitDiffQueryKey("env-1", "all", "main"),
+    expect(queryKeys).toContainEqual(environmentDiffFilesQueryKeyPrefix("env-1"));
+    expect(queryKeys).not.toContainEqual(
+      environmentDiffPatchQueryKeyPrefix("env-1"),
     );
     expect(queryKeys).not.toContainEqual(
       environmentWorkStatusQueryKey("env-1", null),
     );
     expect(queryKeys).not.toContainEqual(
-      environmentGitDiffQueryKey("env-1", "commit", "abc123"),
-    );
-    expect(queryKeys).not.toContainEqual(
-      environmentGitDiffQueryKey("env-2", "all", "main"),
+      environmentWorkStatusQueryKey("env-2", "main"),
     );
   });
 });

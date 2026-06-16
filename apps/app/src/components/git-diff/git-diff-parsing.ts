@@ -1,44 +1,16 @@
 import { parsePatchFiles } from "@pierre/diffs";
+import type { GitDiffFileChangeKind } from "@bb/server-contract";
 
 export type ParsedGitDiffFile = ReturnType<
   typeof parsePatchFiles
 >[number]["files"][number];
 
-export type GitDiffFileChangeKind =
-  | "added"
-  | "modified"
-  | "deleted"
-  | "renamed";
+export type { GitDiffFileChangeKind };
 
 export interface GitDiffStats {
   filesCount: number;
   insertions: number;
   deletions: number;
-}
-
-function parseFirstIntegerMatch(text: string, pattern: RegExp): number {
-  const match = pattern.exec(text);
-  const value = match?.[1];
-  return value === undefined ? 0 : Number(value);
-}
-
-export function parseGitShortstat(shortstat: string): GitDiffStats {
-  return {
-    filesCount: parseFirstIntegerMatch(shortstat, /(\d+)\s+files?\s+changed/u),
-    insertions: parseFirstIntegerMatch(
-      shortstat,
-      /(\d+)\s+insertions?\(\+\)/u,
-    ),
-    deletions: parseFirstIntegerMatch(
-      shortstat,
-      /(\d+)\s+deletions?\(-\)/u,
-    ),
-  };
-}
-
-export interface ParsedGitDiffFileEntry {
-  key: string;
-  fileDiff: ParsedGitDiffFile;
 }
 
 export function parseGitDiffFiles(
@@ -50,53 +22,6 @@ export function parseGitDiffFiles(
   } catch {
     return [];
   }
-}
-
-export function splitGitDiffIntoPatchChunks(diff: string): string[] {
-  const trimmedDiff = diff.trim();
-  if (trimmedDiff.length === 0) return [];
-
-  const lines = diff.split("\n");
-  const chunks: string[] = [];
-  let currentChunk: string[] = [];
-  let hasGitPatchHeader = false;
-
-  for (const line of lines) {
-    const startsPatch = line.startsWith("diff --git ");
-    if (startsPatch) {
-      hasGitPatchHeader = true;
-    }
-    if (startsPatch && currentChunk.length > 0) {
-      chunks.push(currentChunk.join("\n"));
-      currentChunk = [line];
-      continue;
-    }
-    currentChunk.push(line);
-  }
-
-  if (currentChunk.length > 0) {
-    chunks.push(currentChunk.join("\n"));
-  }
-
-  if (!hasGitPatchHeader) {
-    return [diff];
-  }
-
-  return chunks.filter((chunk) => chunk.trim().length > 0);
-}
-
-export function parseGitDiffPatchChunks(
-  patchChunks: readonly string[],
-): ParsedGitDiffFile[] {
-  const files: ParsedGitDiffFile[] = [];
-  for (const chunk of patchChunks) {
-    files.push(...parseGitDiffFiles(chunk));
-  }
-  return files;
-}
-
-export function getGitDiffParseKey(diff: string): string {
-  return `${diff.length}:${diff.slice(0, 120)}:${diff.slice(-120)}`;
 }
 
 export function summarizeGitDiff(
@@ -181,25 +106,6 @@ export function formatGitDiffFileLabel(file: ParsedGitDiffFile): string {
   return name;
 }
 
-export function getParsedGitDiffFileKey(file: ParsedGitDiffFile): string {
-  return `${getGitDiffFileChangeKind(file)}:${normalizeGitDiffPath(file.name) ?? ""}:${normalizeGitDiffPath(file.prevName) ?? ""}`;
-}
-
-export function buildParsedGitDiffFileEntries(
-  files: readonly ParsedGitDiffFile[],
-): ParsedGitDiffFileEntry[] {
-  const seenBaseKeyCounts = new Map<string, number>();
-  return files.map((fileDiff) => {
-    const baseKey = getParsedGitDiffFileKey(fileDiff);
-    const seenCount = seenBaseKeyCounts.get(baseKey) ?? 0;
-    seenBaseKeyCounts.set(baseKey, seenCount + 1);
-    return {
-      key: seenCount === 0 ? baseKey : `${baseKey}:${seenCount + 1}`,
-      fileDiff,
-    };
-  });
-}
-
 export function normalizeGitDiffPath(
   path: string | undefined,
 ): string | undefined {
@@ -242,23 +148,6 @@ function getGitDiffPathAliases(path: string | undefined): string[] {
     aliases.push(normalizedPath.slice(2));
   }
   return Array.from(new Set(aliases.filter((alias) => alias.length > 0)));
-}
-
-export function doesGitDiffFileMatchPath(
-  file: ParsedGitDiffFile,
-  targetPath: string,
-): boolean {
-  const targetAliases = new Set(getGitDiffPathAliases(targetPath));
-  if (targetAliases.size === 0) return false;
-
-  for (const candidatePath of [file.name, file.prevName]) {
-    for (const alias of getGitDiffPathAliases(candidatePath)) {
-      if (targetAliases.has(alias)) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 export function getOpenableGitDiffPath(file: ParsedGitDiffFile): string | null {

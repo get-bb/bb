@@ -402,16 +402,12 @@ function FilePreviewHeader({
   viewMode,
   onViewModeChange,
 }: FilePreviewHeaderProps) {
-  // The fade is `absolute top-full` so the bar's bottom border is the actual
-  // overflow edge — content scrolls under right at the border. The fade lives
-  // in the sticky element so it pins with the header, but `absolute` keeps it
-  // out of flow so the body's `pt-4` controls the initial gap, not this strip.
   return (
     // The wrapper carries an opaque `bg-background` base so the translucent
     // `bg-surface-recessed` tint on the bar composites to a solid tone — without
     // it, body content scrolling under the sticky header would bleed through.
     <div className="sticky top-0 z-10 bg-background">
-      <div className="flex h-9 items-center gap-2 border-b border-border-seam bg-surface-raised px-4">
+      <div className="flex h-9 items-center gap-2 bg-surface-raised px-4">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <Icon
             name="File"
@@ -517,10 +513,6 @@ function FilePreviewHeader({
           </div>
         ) : null}
       </div>
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-full h-4 bg-gradient-to-b from-background to-transparent"
-      />
     </div>
   );
 }

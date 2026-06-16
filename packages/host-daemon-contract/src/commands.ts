@@ -10,6 +10,7 @@ import {
   workspaceProvisionTypeSchema,
   runtimeThreadExecutionOptionsSchema,
   provisioningTranscriptEntrySchema,
+  rawDiffFileStatSchema,
   workspaceDiffTargetSchema,
   workspaceStatusSchema,
   gitHostPullRequestSchema,
@@ -533,6 +534,18 @@ const workspaceDiffCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   maxFileListBytes: z.number().int().positive(),
 });
 
+const workspaceDiffFilesCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
+  type: z.literal("workspace.diffFiles"),
+  target: workspaceDiffTargetSchema,
+});
+
+const workspaceDiffPatchCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
+  type: z.literal("workspace.diffPatch"),
+  target: workspaceDiffTargetSchema,
+  paths: z.array(z.string()),
+  maxBytesPerFile: z.number().int().positive(),
+});
+
 // The daemon derives the branch from the workspace HEAD, so the command needs
 // no fields beyond the workspace target.
 const workspacePullRequestCommandSchema =
@@ -621,6 +634,46 @@ const workspaceDiffResultSchema = z.discriminatedUnion("outcome", [
     .object({
       outcome: z.literal("available"),
       diff: threadGitDiffResponseSchema,
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("unavailable"),
+      failure: workspaceResolutionFailureSchema,
+    })
+    .strict(),
+]);
+
+const workspaceDiffFilesResultSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("available"),
+      files: z.array(rawDiffFileStatSchema),
+      shortstat: z.string(),
+      mergeBaseRef: z.string().nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("unavailable"),
+      failure: workspaceResolutionFailureSchema,
+    })
+    .strict(),
+]);
+
+const workspaceDiffPatchResultSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("available"),
+      patches: z.array(
+        z
+          .object({
+            path: z.string(),
+            patch: z.string(),
+            truncated: z.boolean(),
+          })
+          .strict(),
+      ),
     })
     .strict(),
   z
@@ -956,6 +1009,24 @@ export const hostDaemonCommandRegistry = {
     type: "workspace.diff",
     schema: workspaceDiffCommandSchema,
     resultSchema: workspaceDiffResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: "read",
+  }),
+  "workspace.diffFiles": defineHostDaemonCommandDescriptor({
+    type: "workspace.diffFiles",
+    schema: workspaceDiffFilesCommandSchema,
+    resultSchema: workspaceDiffFilesResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: "read",
+  }),
+  "workspace.diffPatch": defineHostDaemonCommandDescriptor({
+    type: "workspace.diffPatch",
+    schema: workspaceDiffPatchCommandSchema,
+    resultSchema: workspaceDiffPatchResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

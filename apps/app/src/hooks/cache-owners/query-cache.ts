@@ -5,6 +5,7 @@ import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
+import { bumpDiffPatchEvictionGeneration } from "./environment-diff-patch-cache-owner";
 import type {
   SidebarBootstrapResponse,
   ThreadTimelineResponse,
@@ -12,11 +13,10 @@ import type {
 } from "@bb/server-contract";
 import {
   ARCHIVED_THREADS_LIST_KIND,
-  ENVIRONMENT_GIT_DIFF_QUERY_KEY,
   ENVIRONMENT_WORK_STATUS_QUERY_KEY,
+  environmentDiffFilesQueryKeyPrefix,
+  environmentDiffPatchQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
-  environmentGitDiffQueryKey,
-  environmentGitDiffQueryKeyPrefix,
   environmentMergeBaseBranchesQueryKeyPrefix,
   environmentQueryKey,
   environmentWorkStatusQueryKey,
@@ -26,7 +26,6 @@ import {
   threadQueryKey,
   threadsQueryKey,
   threadTimelineQueryKeyPrefix,
-  type EnvironmentGitDiffQueryKey,
   type EnvironmentWorkStatusQueryKey,
   type ArchivedThreadsListFilters,
   type ThreadListQueryFilters,
@@ -47,6 +46,11 @@ interface UpdateCachedTimelineRowsArgs {
 
 export interface EnvironmentInvalidationParams {
   environmentId: string;
+}
+
+export interface EnvironmentDiffPatchRemovalParams {
+  environmentId: string;
+  queryClient: QueryClient;
 }
 
 export interface ProjectThreadListInvalidationParams {
@@ -312,14 +316,47 @@ export function getEnvironmentRecordInvalidationQueryKeys({
   return [environmentQueryKey(environmentId)];
 }
 
+/**
+ * Invalidation targets for an environment's workspace-derived views. The
+ * per-file diff PATCH cache is deliberately absent: it is an observer-less
+ * imperative cache (written with `setQueryData`, read with `getQueryData`, no
+ * `useQuery`/`queryFn`), so `invalidateQueries` only marks it stale and never
+ * evicts or refetches — `getQueryData` would keep returning the stale patch.
+ * Callers must evict patches via {@link removeEnvironmentDiffPatchQueries}
+ * instead; the diff TOC ({@link environmentDiffFilesQueryKeyPrefix}) has a real
+ * observer and refetches on invalidation.
+ */
 export function getEnvironmentWorkspaceStateInvalidationQueryKeys({
   environmentId,
 }: EnvironmentInvalidationParams): QueryKey[] {
   return [
     environmentWorkStatusQueryKeyPrefix(environmentId),
-    environmentGitDiffQueryKeyPrefix(environmentId),
+    environmentDiffFilesQueryKeyPrefix(environmentId),
     environmentFilePreviewQueryKeyPrefix(environmentId),
   ];
+}
+
+/**
+ * Evict every cached per-file diff PATCH for an environment. The patch cache is
+ * observer-less (see {@link getEnvironmentWorkspaceStateInvalidationQueryKeys}),
+ * so it must be removed — not invalidated — for a content-only file edit to
+ * surface fresh patches: eviction makes `readDiffPatchEntry` return undefined,
+ * which the panel re-requests once the TOC refetch fires.
+ *
+ * The eviction generation is bumped synchronously here, before the async TOC
+ * refetch fires. A patch fetch that started before this eviction observes the
+ * stale generation when it resolves and drops its (pre-edit) write rather than
+ * re-seeding the just-cleared cache — otherwise a fetch in flight at edit time
+ * could leave a stale patch that nothing re-requests.
+ */
+export function removeEnvironmentDiffPatchQueries({
+  environmentId,
+  queryClient,
+}: EnvironmentDiffPatchRemovalParams): void {
+  bumpDiffPatchEvictionGeneration(environmentId);
+  queryClient.removeQueries({
+    queryKey: environmentDiffPatchQueryKeyPrefix(environmentId),
+  });
 }
 
 export function getEnvironmentBranchListInvalidationQueryKeys({
@@ -349,28 +386,6 @@ function isMergeBaseEnvironmentWorkStatusQueryKey(
   );
 }
 
-function isEnvironmentGitDiffQueryKeyForEnvironment(
-  queryKey: QueryKey,
-  environmentId: string,
-): queryKey is EnvironmentGitDiffQueryKey {
-  return (
-    queryKey[0] === ENVIRONMENT_GIT_DIFF_QUERY_KEY &&
-    queryKey[1] === environmentId &&
-    (typeof queryKey[2] === "string" || queryKey[2] === null) &&
-    (typeof queryKey[3] === "string" || queryKey[3] === null)
-  );
-}
-
-function isRefDerivedEnvironmentGitDiffQueryKey(
-  queryKey: QueryKey,
-  environmentId: string,
-): queryKey is EnvironmentGitDiffQueryKey {
-  return (
-    isEnvironmentGitDiffQueryKeyForEnvironment(queryKey, environmentId) &&
-    (queryKey[2] === "all" || queryKey[2] === "branch_committed")
-  );
-}
-
 export function getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
   queryClient: QueryClient,
   { environmentId }: EnvironmentInvalidationParams,
@@ -385,15 +400,12 @@ export function getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
     }
   }
 
-  for (const [queryKey] of queryClient.getQueriesData({
-    queryKey: environmentGitDiffQueryKeyPrefix(environmentId),
-  })) {
-    if (isRefDerivedEnvironmentGitDiffQueryKey(queryKey, environmentId)) {
-      queryKeys.push(
-        environmentGitDiffQueryKey(environmentId, queryKey[2], queryKey[3]),
-      );
-    }
-  }
+  // A moved merge base affects the ref-derived (`all`/`branch_committed`) diff
+  // targets, so invalidate the diff TOC cache by prefix. Mirrors the bulk
+  // workspace-state path; the per-target keys are not enumerated here. The
+  // observer-less patch cache is evicted separately via
+  // removeEnvironmentDiffPatchQueries — invalidation is a no-op for it.
+  queryKeys.push(environmentDiffFilesQueryKeyPrefix(environmentId));
 
   return queryKeys;
 }

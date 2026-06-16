@@ -1,5 +1,6 @@
 import type {
   GitHostPullRequest,
+  RawDiffFileStat,
   ThreadGitDiffResponse,
   WorkspaceCommitSummary,
   WorkspaceDiffTarget,
@@ -19,6 +20,7 @@ import {
   hasUncommittedChanges,
   listBranches,
   parseNameStatusEntries,
+  parseNameStatusSourceEntries,
   parseNumstatCount,
   parseNumstatEntriesZ,
   parsePorcelainEntries,
@@ -88,6 +90,29 @@ type DiffSummary = {
   mergeBaseRef: string | null;
 };
 
+export interface DiffFilesArgs {
+  target: WorkspaceDiffTarget;
+}
+
+export interface DiffFilesResult {
+  files: RawDiffFileStat[];
+  shortstat: string;
+  mergeBaseRef: string | null;
+}
+
+export interface DiffPatchArgs {
+  target: WorkspaceDiffTarget;
+  paths: string[];
+  /** Per-file patch byte budget; a longer patch is truncated to this size. */
+  maxBytesPerFile: number;
+}
+
+export interface DiffPatchEntry {
+  path: string;
+  patch: string;
+  truncated: boolean;
+}
+
 type DiffArtifactsResult = {
   artifacts: [string, string, string];
   mergeBaseRef: string | null;
@@ -104,11 +129,26 @@ type DiffOutputLimits = {
   maxFileListBytes?: number;
 };
 
-type ReadWorkspaceDiffArtifactsArgs = DiffOutputLimits & {
-  target: WorkspaceDiffTarget;
+/**
+ * Optional subset of repo-relative paths to scope a diff to. `undefined` means
+ * "all changed paths" — the full-diff behavior. When present, the git
+ * invocations are scoped to exactly these paths (a trailing `-- <paths>`
+ * pathspec) and untracked handling only considers the requested untracked
+ * subset. For renamed entries the caller must include BOTH the old and new path
+ * so git's `-M` rename detection still pairs them in a scoped diff.
+ */
+type DiffPathSubset = {
+  paths?: string[];
 };
 
-type AppendUntrackedDiffArtifactsArgs = DiffArtifacts & DiffOutputLimits;
+type ReadWorkspaceDiffArtifactsArgs = DiffOutputLimits &
+  DiffPathSubset & {
+    target: WorkspaceDiffTarget;
+  };
+
+type AppendUntrackedDiffArtifactsArgs = DiffArtifacts &
+  DiffOutputLimits &
+  DiffPathSubset;
 
 type ReadUntrackedDiffArtifactsArgs = DiffOutputLimits & {
   relativePaths: string[];
@@ -150,7 +190,32 @@ type ReadDiffArtifactsArgs = {
   diffArgs: string[];
   filesArgs: string[];
   numstatArgs: string[];
-} & DiffOutputLimits;
+} & DiffOutputLimits &
+  DiffPathSubset;
+
+type DiffStatArtifacts = {
+  nameStatus: string;
+  numstat: string;
+  shortstat: string;
+  mergeBaseRef: string | null;
+  /**
+   * Untracked working-tree paths for `uncommitted`/`all` targets; empty for
+   * targets that do not surface untracked files.
+   */
+  untrackedPaths: string[];
+};
+
+type ReadTrackedPatchByPathArgs = {
+  target: WorkspaceDiffTarget;
+  paths: string[];
+  /**
+   * Per-file patch byte budget. Bounds the page's combined `git diff` buffer
+   * (sized `paths.length * maxBytesPerFile` + headroom) and, on the per-file
+   * fallback, each single-file read — so a large page truncates instead of
+   * overflowing the default buffer and failing the whole page.
+   */
+  maxBytesPerFile: number;
+};
 
 type WorkspaceMutationTargets = Workspace[];
 type WorkspaceMutationWork<T> = () => Promise<T>;
@@ -363,12 +428,26 @@ function formatShortstat(args: {
   return `${parts.join(", ")}\n`;
 }
 
+/**
+ * Truncates a string to at most `maxBytes` UTF-8 bytes on a codepoint boundary.
+ * A naive `buffer.subarray(0, maxBytes)` can slice through a multibyte
+ * character, which `toString("utf8")` then renders as a replacement character
+ * (U+FFFD, 3 bytes) — corrupting the text AND overshooting the byte budget. We
+ * cut at `maxBytes`, then walk the cut point back over any trailing UTF-8
+ * continuation bytes (`0b10xxxxxx`) so the result never ends mid-character; the
+ * straddling codepoint is dropped whole. The result is always valid UTF-8 and
+ * `Buffer.byteLength(result) <= maxBytes`.
+ */
 function truncateToMaxBytes(value: string, maxBytes: number): string {
   const buffer = Buffer.from(value, "utf8");
   if (buffer.byteLength <= maxBytes) {
     return value;
   }
-  return buffer.subarray(0, maxBytes).toString("utf8");
+  let cut = maxBytes;
+  while (cut > 0 && (buffer[cut] & 0xc0) === 0x80) {
+    cut -= 1;
+  }
+  return buffer.subarray(0, cut).toString("utf8");
 }
 
 function truncateOutputToMaxBytes(
@@ -382,6 +461,47 @@ function truncateOutputToMaxBytes(
     return { value, truncated: false };
   }
   return { value: truncateToMaxBytes(value, maxBytes), truncated: true };
+}
+
+/**
+ * Append a `-- <paths>` pathspec to a git diff/show argument list so the
+ * invocation is scoped to a subset of files. `paths === undefined` returns the
+ * args unchanged (full-diff behavior). Any existing trailing `--` separator is
+ * normalized so we never emit a duplicate (e.g. the `uncommitted` args already
+ * carry a trailing `--`).
+ */
+function withDiffPathspec(
+  args: string[],
+  paths: string[] | undefined,
+): string[] {
+  if (paths === undefined) {
+    return args;
+  }
+  const withoutSeparator =
+    args[args.length - 1] === "--" ? args.slice(0, -1) : args;
+  return [...withoutSeparator, "--", ...paths];
+}
+
+/**
+ * Per-file framing headroom (`diff --git` header, index/mode lines, hunk
+ * headers, the `GIT binary patch` terminator) added on top of each file's patch
+ * budget when sizing the combined page buffer, plus a fixed base so a tiny
+ * page is never starved. The buffer only needs to be generous enough that a
+ * page whose files are individually within budget reads fully; anything larger
+ * is intentionally truncated and recovered downstream (the section/entry
+ * count-mismatch fallback to per-file fetch, then per-entry tail-cut).
+ */
+const COMBINED_PAGE_PER_FILE_HEADROOM_BYTES = 4 * 1024;
+const COMBINED_PAGE_BASE_HEADROOM_BYTES = 64 * 1024;
+
+function combinedPageBufferBudget(
+  fileCount: number,
+  maxBytesPerFile: number,
+): number {
+  return (
+    COMBINED_PAGE_BASE_HEADROOM_BYTES +
+    fileCount * (maxBytesPerFile + COMBINED_PAGE_PER_FILE_HEADROOM_BYTES)
+  );
 }
 
 function buildDiffOutputGitOptions(
@@ -671,6 +791,110 @@ export class Workspace {
       maxFileListBytes: options.maxFileListBytes,
       target,
     });
+  }
+
+  /**
+   * Structured table of contents for a diff target: one `RawDiffFileStat` per
+   * changed file with no patch text. Uses only `--numstat` + `--name-status -M`
+   * (rename detection) and, for `uncommitted`/`all` targets, the untracked
+   * working-tree files (each tagged `origin: "untracked"`). The server maps
+   * these raw stats into product tiering — the daemon stays policy-free.
+   */
+  async diffFiles(args: DiffFilesArgs): Promise<DiffFilesResult> {
+    await ensureGitRepo(this.path);
+
+    const stats = await this.readDiffStatArtifacts(args.target);
+    const numstatByPath = new Map(
+      parseNumstatEntriesZ(stats.numstat).map(
+        (entry) => [entry.path, entry] as const,
+      ),
+    );
+    const files: RawDiffFileStat[] = parseNameStatusSourceEntries(
+      stats.nameStatus,
+    ).map((entry) => {
+      const numstat = numstatByPath.get(entry.path);
+      const binary =
+        numstat !== undefined &&
+        numstat.insertions === null &&
+        numstat.deletions === null;
+      return {
+        path: entry.path,
+        previousPath: entry.previousPath,
+        statusLetter: normalizeNameStatusLetter(entry.status),
+        additions: binary ? 0 : (numstat?.insertions ?? 0),
+        deletions: binary ? 0 : (numstat?.deletions ?? 0),
+        binary,
+        origin: "tracked",
+      };
+    });
+
+    const untrackedFiles = await this.readUntrackedDiffFileStats(
+      stats.untrackedPaths,
+    );
+
+    return {
+      files: [...files, ...untrackedFiles],
+      shortstat: stats.shortstat,
+      mergeBaseRef: stats.mergeBaseRef,
+    };
+  }
+
+  /**
+   * Patch text for a requested subset of paths, byte-bounded per file. Paths are
+   * partitioned into tracked vs. untracked using the SAME `ls-files` computation
+   * that builds the TOC (the caller-supplied origin is not trusted): tracked
+   * paths are fetched in ONE combined `git diff` per page (see
+   * `readTrackedPatchByPathCombined`), and untracked paths use the `--no-index`
+   * form, without which an untracked file produces no patch.
+   */
+  async diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]> {
+    await ensureGitRepo(this.path);
+
+    const untrackedForTarget = this.targetIncludesUntracked(args.target)
+      ? new Set(await this.listUntrackedPaths())
+      : new Set<string>();
+
+    const untrackedPaths = args.paths.filter((p) => untrackedForTarget.has(p));
+    const trackedPaths = args.paths.filter((p) => !untrackedForTarget.has(p));
+
+    const trackedPatchByPath =
+      trackedPaths.length > 0
+        ? await this.readTrackedPatchByPathCombined({
+            target: args.target,
+            paths: trackedPaths,
+            maxBytesPerFile: args.maxBytesPerFile,
+          })
+        : new Map<string, string>();
+
+    const untrackedPatchByPath = new Map(
+      await Promise.all(
+        untrackedPaths.map(async (relativePath) => {
+          const artifact = await this.readUntrackedDiffArtifact({
+            relativePath,
+            maxDiffBytes: args.maxBytesPerFile,
+          });
+          return [relativePath, artifact.diff] as const;
+        }),
+      ),
+    );
+
+    // Preserve the caller's requested order; drop any duplicates.
+    const seen = new Set<string>();
+    const entries: DiffPatchEntry[] = [];
+    for (const path of args.paths) {
+      if (seen.has(path)) {
+        continue;
+      }
+      seen.add(path);
+      const rawPatch =
+        trackedPatchByPath.get(path) ?? untrackedPatchByPath.get(path) ?? "";
+      const { patch, truncated } = truncatePatchToMaxBytes(
+        rawPatch,
+        args.maxBytesPerFile,
+      );
+      entries.push({ path, patch, truncated });
+    }
+    return entries;
   }
 
   async getHeadSha(): Promise<string | null> {
@@ -1232,6 +1456,339 @@ export class Workspace {
       .some((line) => parsePatchId(line) === branchPatchId);
   }
 
+  private targetIncludesUntracked(target: WorkspaceDiffTarget): boolean {
+    return target.type === "uncommitted" || target.type === "all";
+  }
+
+  /**
+   * Runs `--name-status -M`, `--numstat -M`, and `--shortstat` for a target
+   * (no patch text), returning the raw outputs plus the resolved merge-base and
+   * any untracked working-tree paths the TOC must surface. Mirrors
+   * `readDiffArtifacts`'s target switch but omits the patch artifact.
+   */
+  private async readDiffStatArtifacts(
+    target: WorkspaceDiffTarget,
+  ): Promise<DiffStatArtifacts> {
+    const untrackedPaths = this.targetIncludesUntracked(target)
+      ? await this.listUntrackedPaths()
+      : [];
+
+    switch (target.type) {
+      case "uncommitted": {
+        const stats = await this.runDiffStatCommands(["HEAD"]);
+        return { ...stats, mergeBaseRef: null, untrackedPaths };
+      }
+      case "branch_committed": {
+        const mergeBaseRef = await readMergeBaseRef(
+          this.path,
+          target.mergeBaseBranch,
+        );
+        if (!mergeBaseRef) {
+          return {
+            nameStatus: "",
+            numstat: "",
+            shortstat: "",
+            mergeBaseRef: null,
+            untrackedPaths: [],
+          };
+        }
+        const stats = await this.runDiffStatCommands([`${mergeBaseRef}..HEAD`]);
+        return { ...stats, mergeBaseRef, untrackedPaths: [] };
+      }
+      case "all": {
+        const mergeBaseRef = await readMergeBaseRef(
+          this.path,
+          target.mergeBaseBranch,
+        );
+        if (!mergeBaseRef) {
+          return {
+            nameStatus: "",
+            numstat: "",
+            shortstat: "",
+            mergeBaseRef: null,
+            untrackedPaths: [],
+          };
+        }
+        const stats = await this.runDiffStatCommands([mergeBaseRef]);
+        return { ...stats, mergeBaseRef, untrackedPaths };
+      }
+      case "commit": {
+        const [nameStatus, numstat, shortstat] = await Promise.all([
+          runGit(
+            ["show", "--format=", "--no-ext-diff", "--name-status", "-M", "-z", target.sha],
+            { cwd: this.path },
+          ),
+          runGit(
+            ["show", "--format=", "--no-ext-diff", "--numstat", "-M", "-z", target.sha],
+            { cwd: this.path },
+          ),
+          runGit(["show", "--format=", "--no-ext-diff", "--shortstat", target.sha], {
+            cwd: this.path,
+          }),
+        ]);
+        return {
+          nameStatus: nameStatus.stdout,
+          numstat: numstat.stdout,
+          shortstat: shortstat.stdout,
+          mergeBaseRef: null,
+          untrackedPaths: [],
+        };
+      }
+      default: {
+        const _exhaustive: never = target;
+        return _exhaustive;
+      }
+    }
+  }
+
+  private async runDiffStatCommands(
+    rangeArgs: string[],
+  ): Promise<{ nameStatus: string; numstat: string; shortstat: string }> {
+    const [nameStatus, numstat, shortstat] = await Promise.all([
+      runGit(
+        ["diff", "--no-ext-diff", "--name-status", "-M", "-z", ...rangeArgs],
+        { cwd: this.path },
+      ),
+      runGit(["diff", "--no-ext-diff", "--numstat", "-M", "-z", ...rangeArgs], {
+        cwd: this.path,
+      }),
+      runGit(["diff", "--no-ext-diff", "--shortstat", ...rangeArgs], {
+        cwd: this.path,
+      }),
+    ]);
+    return {
+      nameStatus: nameStatus.stdout,
+      numstat: numstat.stdout,
+      shortstat: shortstat.stdout,
+    };
+  }
+
+  /**
+   * Per-file numstat for untracked working-tree paths via the `--no-index` form
+   * (a plain scoped `git diff` produces no output for an untracked file). Each
+   * file is tagged `origin: "untracked"` and reports an `A` (added) status — an
+   * untracked file is, by definition, a pure addition.
+   */
+  private async readUntrackedDiffFileStats(
+    untrackedPaths: string[],
+  ): Promise<RawDiffFileStat[]> {
+    const stats: RawDiffFileStat[] = [];
+    for (
+      let index = 0;
+      index < untrackedPaths.length;
+      index += UNTRACKED_DIFF_BATCH_SIZE
+    ) {
+      const batch = untrackedPaths.slice(index, index + UNTRACKED_DIFF_BATCH_SIZE);
+      stats.push(
+        ...(await Promise.all(
+          batch.map((relativePath) =>
+            this.readUntrackedDiffFileStat(relativePath),
+          ),
+        )),
+      );
+    }
+    return stats;
+  }
+
+  private async readUntrackedDiffFileStat(
+    relativePath: string,
+  ): Promise<RawDiffFileStat> {
+    const numstat = await runGit(
+      ["diff", "--no-index", "--numstat", "-z", "--", "/dev/null", relativePath],
+      { cwd: this.path, allowFailure: true },
+    );
+    const entry = parseNumstatEntriesZ(numstat.stdout)[0];
+    const binary =
+      entry !== undefined &&
+      entry.insertions === null &&
+      entry.deletions === null;
+    return {
+      path: relativePath,
+      previousPath: null,
+      statusLetter: "A",
+      additions: binary ? 0 : (entry?.insertions ?? 0),
+      deletions: binary ? 0 : (entry?.deletions ?? 0),
+      binary,
+      origin: "untracked",
+    };
+  }
+
+  /**
+   * Computes the tracked patch for the requested paths in ONE combined `git
+   * diff` per page, keyed by the requested (new) file path. Two invocations run
+   * for the page: a `--name-status -z` list (the authoritative per-file order
+   * plus the raw, unquoted paths — including spaces) and the combined patch
+   * text. The patch is split into per-file sections at each `diff --git `
+   * boundary and ZIPPED positionally with the name-status entries — both are
+   * git-sorted by the same pathspec, so section[i] belongs to entry[i]. We key
+   * by the entry's new path (NOT by parsing the `diff --git` header, which git
+   * does not quote for spaces and a token split would mangle); renames carry
+   * old+new and are keyed by new. If the section and entry counts ever disagree
+   * we fall back to per-file fetch so correctness never regresses.
+   */
+  private async readTrackedPatchByPathCombined(
+    args: ReadTrackedPatchByPathArgs,
+  ): Promise<Map<string, string>> {
+    const combined = await this.readCombinedTrackedDiff(args);
+    if (combined === null) {
+      return new Map();
+    }
+
+    const entries = parseNameStatusSourceEntries(combined.nameStatus);
+    const sections = splitPatchIntoSections(combined.patch);
+
+    if (sections.length !== entries.length) {
+      // The positional zip is only valid when the two git outputs agree
+      // file-for-file. Any mismatch (an unexpected split boundary, a name-status
+      // entry with no section, etc.) breaks the keying invariant, so fall back
+      // to the unambiguous per-file fetch rather than risk mis-keying a patch.
+      return this.readTrackedPatchByPathPerFile(args);
+    }
+
+    const patchByPath = new Map<string, string>();
+    for (let index = 0; index < entries.length; index += 1) {
+      // Key by the entry's new path — the path the client requested.
+      patchByPath.set(entries[index].path, sections[index]);
+    }
+    return patchByPath;
+  }
+
+  /**
+   * Per-file fallback for `readTrackedPatchByPathCombined`: one target-scoped
+   * `git diff` per requested path (plus its rename/copy source so `-M` pairs
+   * them), keyed by the requested path. Unambiguous for every path because the
+   * key is the requested path, not a header-parsed one — used only when the
+   * combined split's section/entry counts disagree.
+   */
+  private async readTrackedPatchByPathPerFile(
+    args: ReadTrackedPatchByPathArgs,
+  ): Promise<Map<string, string>> {
+    const stats = await this.readDiffStatArtifacts(args.target);
+    const previousPathByPath = new Map(
+      parseNameStatusSourceEntries(stats.nameStatus).map(
+        (entry) => [entry.path, entry.previousPath] as const,
+      ),
+    );
+
+    const entries = await Promise.all(
+      args.paths.map(async (path) => {
+        const previousPath = previousPathByPath.get(path);
+        const pathspec =
+          previousPath != null && previousPath !== path
+            ? [previousPath, path]
+            : [path];
+        const {
+          artifacts: [diff],
+        } = await this.readDiffArtifacts({
+          target: args.target,
+          paths: pathspec,
+          maxDiffBytes: args.maxBytesPerFile,
+        });
+        return [path, diff] as const;
+      }),
+    );
+
+    return new Map(entries);
+  }
+
+  /**
+   * Runs the combined git invocations for a page of tracked paths. A scoped
+   * `git diff -- <new path>` cannot pair a rename: with only the new path in the
+   * pathspec, `-M` never sees the source and renders the rename as a pure
+   * addition. So we first read the FULL-target name-status (one cheap, patchless
+   * invocation that sees every file and therefore detects renames), collect the
+   * rename/copy SOURCE paths for the requested files, and add them to the
+   * pathspec. Then the page's `--name-status -z` and patch (PATCH ONLY — no
+   * numstat/shortstat) both run scoped to `[...requested, ...renameSources]`, so
+   * each rename is paired `a/old → b/new` and both outputs are git-sorted by the
+   * same pathspec — letting the caller zip section[i] with entry[i]. Returns
+   * `null` when the target resolves to no diff (e.g. a branch target whose merge
+   * base cannot be found), matching the stat/artifact readers.
+   */
+  private async readCombinedTrackedDiff(
+    args: ReadTrackedPatchByPathArgs,
+  ): Promise<{ nameStatus: string; patch: string } | null> {
+    const range = await this.resolveTrackedDiffRange(args.target);
+    if (range === null) {
+      return null;
+    }
+
+    const fullNameStatus = await runGit(
+      [...range.baseArgs, "--name-status", "-z", "-M", ...range.rangeArgs],
+      { cwd: this.path },
+    );
+    const requested = new Set(args.paths);
+    const renameSources = parseNameStatusSourceEntries(fullNameStatus.stdout)
+      .filter((entry) => requested.has(entry.path))
+      .map((entry) => entry.previousPath)
+      .filter(
+        (previousPath): previousPath is string =>
+          previousPath !== null && !requested.has(previousPath),
+      );
+    const pagePathspec = [...args.paths, ...renameSources];
+
+    const [nameStatus, patch] = await Promise.all([
+      runGit(
+        withDiffPathspec(
+          [...range.baseArgs, "--name-status", "-z", "-M", ...range.rangeArgs],
+          pagePathspec,
+        ),
+        { cwd: this.path },
+      ),
+      runGit(
+        withDiffPathspec(
+          [...range.baseArgs, "--binary", "-M", ...range.rangeArgs],
+          pagePathspec,
+        ),
+        buildDiffOutputGitOptions(
+          this.path,
+          combinedPageBufferBudget(pagePathspec.length, args.maxBytesPerFile),
+        ),
+      ),
+    ]);
+
+    return { nameStatus: nameStatus.stdout, patch: patch.stdout };
+  }
+
+  /**
+   * Resolves the git argv prefix (`diff`/`show` plus `--no-ext-diff`) and the
+   * range/sha args for a diff target's TRACKED side. Returns `null` for branch
+   * targets whose merge base cannot be resolved — those surface as no diff.
+   */
+  private async resolveTrackedDiffRange(
+    target: WorkspaceDiffTarget,
+  ): Promise<{ baseArgs: string[]; rangeArgs: string[] } | null> {
+    const diffBase = ["diff", "--no-ext-diff"];
+    switch (target.type) {
+      case "uncommitted":
+        return { baseArgs: diffBase, rangeArgs: ["HEAD"] };
+      case "branch_committed":
+      case "all": {
+        const mergeBaseRef = await readMergeBaseRef(
+          this.path,
+          target.mergeBaseBranch,
+        );
+        if (!mergeBaseRef) {
+          return null;
+        }
+        const rangeArgs =
+          target.type === "branch_committed"
+            ? [`${mergeBaseRef}..HEAD`]
+            : [mergeBaseRef];
+        return { baseArgs: diffBase, rangeArgs };
+      }
+      case "commit":
+        return {
+          baseArgs: ["show", "--format=", "--no-ext-diff"],
+          rangeArgs: [target.sha],
+        };
+      default: {
+        const _exhaustive: never = target;
+        return _exhaustive;
+      }
+    }
+  }
+
   private async readDiffArtifacts(
     args: ReadWorkspaceDiffArtifactsArgs,
   ): Promise<DiffArtifactsResult> {
@@ -1241,6 +1798,7 @@ export class Workspace {
           artifacts: await this.readUncommittedDiffArtifacts({
             maxDiffBytes: args.maxDiffBytes,
             maxFileListBytes: args.maxFileListBytes,
+            paths: args.paths,
           }),
           mergeBaseRef: null,
         };
@@ -1260,6 +1818,7 @@ export class Workspace {
             {
               maxDiffBytes: args.maxDiffBytes,
               maxFileListBytes: args.maxFileListBytes,
+              paths: args.paths,
             },
           ),
           mergeBaseRef,
@@ -1280,21 +1839,33 @@ export class Workspace {
             numstatArgs: [mergeBaseRef],
             maxDiffBytes: args.maxDiffBytes,
             maxFileListBytes: args.maxFileListBytes,
+            paths: args.paths,
           }),
           mergeBaseRef,
         };
       }
       case "commit": {
+        const sha = args.target.sha;
         const [diff, shortstat, files] = await Promise.all([
           runGit(
-            ["show", "--format=", "--no-ext-diff", "--binary", args.target.sha],
+            withDiffPathspec(
+              ["show", "--format=", "--no-ext-diff", "--binary", sha],
+              args.paths,
+            ),
             buildDiffOutputGitOptions(this.path, args.maxDiffBytes),
           ),
-          runGit(["show", "--format=", "--shortstat", args.target.sha], {
-            cwd: this.path,
-          }),
           runGit(
-            ["show", "--format=", "--name-status", args.target.sha],
+            withDiffPathspec(
+              ["show", "--format=", "--shortstat", sha],
+              args.paths,
+            ),
+            { cwd: this.path },
+          ),
+          runGit(
+            withDiffPathspec(
+              ["show", "--format=", "--name-status", sha],
+              args.paths,
+            ),
             buildDiffOutputGitOptions(this.path, args.maxFileListBytes),
           ),
         ]);
@@ -1314,18 +1885,28 @@ export class Workspace {
     diffArgs: string[],
     shortstatArgs: string[],
     filesArgs: string[],
-    options: DiffOutputLimits = {},
+    options: DiffOutputLimits & DiffPathSubset = {},
   ): Promise<[string, string, string]> {
     const [diff, shortstat, files] = await Promise.all([
       runGit(
-        ["diff", "--no-ext-diff", "--binary", ...diffArgs],
+        withDiffPathspec(
+          ["diff", "--no-ext-diff", "--binary", ...diffArgs],
+          options.paths,
+        ),
         buildDiffOutputGitOptions(this.path, options.maxDiffBytes),
       ),
-      runGit(["diff", "--no-ext-diff", "--shortstat", ...shortstatArgs], {
-        cwd: this.path,
-      }),
       runGit(
-        ["diff", "--no-ext-diff", "--name-status", ...filesArgs],
+        withDiffPathspec(
+          ["diff", "--no-ext-diff", "--shortstat", ...shortstatArgs],
+          options.paths,
+        ),
+        { cwd: this.path },
+      ),
+      runGit(
+        withDiffPathspec(
+          ["diff", "--no-ext-diff", "--name-status", ...filesArgs],
+          options.paths,
+        ),
         buildDiffOutputGitOptions(this.path, options.maxFileListBytes),
       ),
     ]);
@@ -1338,14 +1919,24 @@ export class Workspace {
   ): Promise<[string, string, string]> {
     const [trackedDiff, trackedNumstat, trackedFiles] = await Promise.all([
       runGit(
-        ["diff", "--no-ext-diff", "--binary", ...args.diffArgs],
+        withDiffPathspec(
+          ["diff", "--no-ext-diff", "--binary", ...args.diffArgs],
+          args.paths,
+        ),
         buildDiffOutputGitOptions(this.path, args.maxDiffBytes),
       ),
-      runGit(["diff", "--no-ext-diff", "--numstat", ...args.numstatArgs], {
-        cwd: this.path,
-      }),
       runGit(
-        ["diff", "--no-ext-diff", "--name-status", ...args.filesArgs],
+        withDiffPathspec(
+          ["diff", "--no-ext-diff", "--numstat", ...args.numstatArgs],
+          args.paths,
+        ),
+        { cwd: this.path },
+      ),
+      runGit(
+        withDiffPathspec(
+          ["diff", "--no-ext-diff", "--name-status", ...args.filesArgs],
+          args.paths,
+        ),
         buildDiffOutputGitOptions(this.path, args.maxFileListBytes),
       ),
     ]);
@@ -1356,18 +1947,21 @@ export class Workspace {
       numstat: trackedNumstat.stdout,
       maxDiffBytes: args.maxDiffBytes,
       maxFileListBytes: args.maxFileListBytes,
+      paths: args.paths,
     });
   }
 
   private async appendUntrackedDiffArtifacts(
     args: AppendUntrackedDiffArtifactsArgs,
   ): Promise<[string, string, string]> {
-    const untrackedFilesOutput = await runGit(
-      ["ls-files", "--others", "--exclude-standard", "-z"],
-      { cwd: this.path },
-    );
-    const untrackedPaths = parseNullSeparatedLines(untrackedFilesOutput.stdout);
-    if (untrackedPaths.length === 0) {
+    const untrackedPaths = await this.listUntrackedPaths();
+    const requestedUntrackedPaths =
+      args.paths === undefined
+        ? untrackedPaths
+        : untrackedPaths.filter((untrackedPath) =>
+            args.paths?.includes(untrackedPath),
+          );
+    if (requestedUntrackedPaths.length === 0) {
       return [
         args.diff,
         formatShortstat(summarizeNumstat(args.numstat)),
@@ -1377,7 +1971,7 @@ export class Workspace {
 
     const untrackedArtifacts =
       await this.readUntrackedDiffArtifacts({
-        relativePaths: untrackedPaths,
+        relativePaths: requestedUntrackedPaths,
         maxDiffBytes: args.maxDiffBytes,
         maxFileListBytes: args.maxFileListBytes,
       });
@@ -1485,7 +2079,7 @@ export class Workspace {
   }
 
   private async readUncommittedDiffArtifacts(
-    args: DiffOutputLimits,
+    args: DiffOutputLimits & DiffPathSubset,
   ): Promise<[string, string, string]> {
     return this.readDiffArtifactsIncludingUntracked({
       diffArgs: ["HEAD", "--"],
@@ -1493,7 +2087,16 @@ export class Workspace {
       numstatArgs: ["HEAD", "--"],
       maxDiffBytes: args.maxDiffBytes,
       maxFileListBytes: args.maxFileListBytes,
+      paths: args.paths,
     });
+  }
+
+  private async listUntrackedPaths(): Promise<string[]> {
+    const untrackedFilesOutput = await runGit(
+      ["ls-files", "--others", "--exclude-standard", "-z"],
+      { cwd: this.path },
+    );
+    return parseNullSeparatedLines(untrackedFilesOutput.stdout);
   }
 }
 
@@ -1508,3 +2111,103 @@ function joinDiffArtifactOutput(parts: string[]): string {
   const combined = joinDiffArtifactLines(parts);
   return combined.length > 0 ? `${combined}\n` : "";
 }
+
+const DIFF_SECTION_HEADER = "diff --git ";
+
+/**
+ * Splits a combined `git diff` into one entry per changed file, cutting at each
+ * `diff --git ` header line. Every changed file — including binary
+ * ("Binary files … differ"), pure-rename, and mode-only sections — is exactly
+ * one section, so the result is ordered identically to git's per-file output
+ * and can be positionally zipped with the `--name-status -z` entries. We do NOT
+ * derive the path from the header (git does not quote spaces there); the caller
+ * keys each section by the corresponding name-status entry's path. Each section
+ * is normalized to end in a single trailing newline, matching the byte framing
+ * of a single-file `git diff` invocation.
+ */
+function splitPatchIntoSections(combinedPatch: string): string[] {
+  if (combinedPatch.length === 0) {
+    return [];
+  }
+  const lines = combinedPatch.split("\n");
+  const sections: string[][] = [];
+  let current: string[] | null = null;
+  for (const line of lines) {
+    if (line.startsWith(DIFF_SECTION_HEADER)) {
+      if (current !== null) {
+        sections.push(current);
+      }
+      current = [line];
+      continue;
+    }
+    if (current !== null) {
+      current.push(line);
+    }
+  }
+  if (current !== null) {
+    sections.push(current);
+  }
+  return sections.map((sectionLines) => formatPatchSection(sectionLines));
+}
+
+/**
+ * Joins a section's lines back into patch text, dropping the trailing empty
+ * lines the `\n` split produces at a section boundary (or end of output), so a
+ * combined-split section is byte-equal to the per-file `git diff` for that file.
+ *
+ * A text diff ends with a single newline after its last content line. A
+ * `GIT binary patch` literal block, however, is terminated by a blank line that
+ * is part of git's per-file framing — so for a binary section we re-add that
+ * terminator (the strip above removes it along with the boundary artifact).
+ */
+function formatPatchSection(lines: string[]): string {
+  let end = lines.length;
+  while (end > 0 && lines[end - 1] === "") {
+    end -= 1;
+  }
+  if (end === 0) {
+    return "";
+  }
+  const body = lines.slice(0, end);
+  const isBinary = body.some((line) => line === "GIT binary patch");
+  return `${body.join("\n")}\n${isBinary ? "\n" : ""}`;
+}
+
+const NAME_STATUS_LETTERS = new Set(["A", "M", "D", "R", "C", "T"]);
+
+/**
+ * Narrows a raw `git diff --name-status` letter to the canonical
+ * `RawDiffFileStat["statusLetter"]` set. Renames and copies carry a similarity
+ * score (`R100`, `C75`), so only the first character is significant. Anything
+ * outside the known taxonomy (e.g. unmerged `U`, which the diff targets here
+ * never surface) is reported as a modification.
+ */
+function normalizeNameStatusLetter(
+  status: string,
+): RawDiffFileStat["statusLetter"] {
+  const letter = status[0] ?? "";
+  if (NAME_STATUS_LETTERS.has(letter)) {
+    return letter as RawDiffFileStat["statusLetter"];
+  }
+  return "M";
+}
+
+/**
+ * Truncates a single file's patch to at most `maxBytes` UTF-8 bytes, flagging
+ * whether the tail was cut. A non-positive budget disables truncation. The cut
+ * is codepoint-safe (see `truncateToMaxBytes`), so a multibyte character at the
+ * budget boundary is dropped whole rather than corrupted into U+FFFD.
+ */
+function truncatePatchToMaxBytes(
+  patch: string,
+  maxBytes: number,
+): { patch: string; truncated: boolean } {
+  if (maxBytes <= 0) {
+    return { patch, truncated: false };
+  }
+  if (Buffer.byteLength(patch, "utf8") <= maxBytes) {
+    return { patch, truncated: false };
+  }
+  return { patch: truncateToMaxBytes(patch, maxBytes), truncated: true };
+}
+

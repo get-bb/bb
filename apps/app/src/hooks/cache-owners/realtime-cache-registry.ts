@@ -52,6 +52,7 @@ import {
   getEnvironmentBranchListInvalidationQueryKeys,
   getEnvironmentRecordInvalidationQueryKeys,
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
+  removeEnvironmentDiffPatchQueries,
   updateCachedThreadListPendingInteractionState,
 } from "./query-cache";
 import {
@@ -68,8 +69,8 @@ import {
   allSystemExecutionOptionsQueryKeyPrefix,
   allThreadQueryKeyPrefix,
   allThreadTerminalsQueryKeyPrefix,
+  environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
-  environmentGitDiffQueryKeyPrefix,
   environmentWorkStatusQueryKeyPrefix,
   hostsQueryKey,
   sidebarNavigationQueryKey,
@@ -618,8 +619,14 @@ function dirtyEnvironmentRecordQueries(
 
 function dirtyEnvironmentWorkspaceStateQueries(
   context: EnvironmentRealtimeDirtyContext,
-): QueryKey[] {
-  return getEnvironmentWorkspaceStateInvalidationQueryKeys(context);
+): void {
+  for (const queryKey of getEnvironmentWorkspaceStateInvalidationQueryKeys(
+    context,
+  )) {
+    context.queryClient.invalidateQueries({ queryKey });
+  }
+  // The observer-less patch cache must be evicted, not invalidated.
+  removeEnvironmentDiffPatchQueries(context);
 }
 
 function dirtyEnvironmentLiveWorkspaceStateQueries({
@@ -633,18 +640,28 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),
   });
   queryClient.invalidateQueries({
-    queryKey: environmentGitDiffQueryKeyPrefix(environmentId),
+    queryKey: environmentDiffFilesQueryKeyPrefix(environmentId),
   });
+  // Evict (not invalidate) the observer-less per-file patch cache so a
+  // content-only edit re-fetches fresh patches: `getQueryData` returning
+  // undefined is what makes the panel re-request a visible path. The TOC
+  // refetch above bumps `dataUpdatedAt`, which retriggers that re-request.
+  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }
 
 function dirtyEnvironmentRefDerivedWorkspaceStateQueries({
   environmentId,
   queryClient,
-}: EnvironmentRealtimeDirtyContext): QueryKey[] {
-  return getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
+}: EnvironmentRealtimeDirtyContext): void {
+  for (const queryKey of getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys(
     queryClient,
     { environmentId },
-  );
+  )) {
+    queryClient.invalidateQueries({ queryKey });
+  }
+  // A moved merge base affects every ref-derived diff target; evict the
+  // observer-less patch cache so the panel re-requests fresh patches.
+  removeEnvironmentDiffPatchQueries({ environmentId, queryClient });
 }
 
 function dirtyEnvironmentBranchListQueries(

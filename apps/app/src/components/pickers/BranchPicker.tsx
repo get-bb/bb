@@ -877,8 +877,7 @@ export function BranchPicker({
     hasBranchOptions ||
     ((branchOptionsDisabled || createDisabled) &&
       options.length + remoteOptions.length > 0);
-  const showOptionsSearch =
-    showBranchChooser && hasBranchOptions && !branchChooserDisabled;
+  const showOptionsSearch = showBranchChooser && !branchChooserDisabled;
   const optionsSectionDisabled = branchChooserDisabled;
   const titleSubtitle =
     menuCopy.optionsSectionLabel === null && optionsSectionDisabled

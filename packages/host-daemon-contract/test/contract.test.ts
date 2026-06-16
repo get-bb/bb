@@ -229,6 +229,8 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
+  "workspace.diffFiles": WORKSPACE_UNAVAILABLE_RESULT,
+  "workspace.diffPatch": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.pull_request": {
     pullRequest: {
       number: 42,
@@ -290,6 +292,34 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   },
 };
 
+const WORKSPACE_DIFF_FILES_AVAILABLE_RESULT: JsonObject = {
+  outcome: "available",
+  files: [
+    {
+      path: "src/renamed.ts",
+      previousPath: "src/original.ts",
+      statusLetter: "R",
+      additions: 3,
+      deletions: 1,
+      binary: false,
+      origin: "tracked",
+    },
+  ],
+  shortstat: "1 file changed, 3 insertions(+), 1 deletion(-)",
+  mergeBaseRef: "abc123",
+};
+
+const WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT: JsonObject = {
+  outcome: "available",
+  patches: [
+    {
+      path: "src/renamed.ts",
+      patch: "diff --git a/src/original.ts b/src/renamed.ts\n",
+      truncated: true,
+    },
+  ],
+};
+
 const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTripCase[] =
   [
     {
@@ -301,6 +331,16 @@ const ADDITIONAL_ONLINE_RPC_RESPONSE_ROUND_TRIP_CASES: OnlineRpcResponseRoundTri
       name: "workspace.diff available result",
       commandType: "workspace.diff",
       result: WORKSPACE_DIFF_AVAILABLE_RESULT,
+    },
+    {
+      name: "workspace.diffFiles available result",
+      commandType: "workspace.diffFiles",
+      result: WORKSPACE_DIFF_FILES_AVAILABLE_RESULT,
+    },
+    {
+      name: "workspace.diffPatch available result",
+      commandType: "workspace.diffPatch",
+      result: WORKSPACE_DIFF_PATCH_AVAILABLE_RESULT,
     },
     {
       name: "workspace.pull_request no-PR result",

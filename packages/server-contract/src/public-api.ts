@@ -54,6 +54,9 @@ import type {
   EnvironmentDiffBranchesResponse,
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
+  EnvironmentDiffFilesResponse,
+  EnvironmentDiffPatchRequest,
+  EnvironmentDiffPatchResponse,
   EnvironmentDiffQuery,
   EnvironmentDiffResponse,
   EnvironmentPathsQuery,
@@ -139,6 +142,7 @@ import {
   environmentActionRequestSchema,
   environmentDiffBranchesQuerySchema,
   environmentDiffFileQuerySchema,
+  environmentDiffPatchRequestSchema,
   environmentDiffQuerySchema,
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
@@ -416,6 +420,22 @@ export const publicApiRoutes = {
         environmentDiffQuerySchema,
       ),
       response: jsonResponse<EnvironmentDiffResponse>(),
+    }),
+    diffFiles: defineRoute({
+      path: "/environments/:id/diff/files",
+      method: "get",
+      request: queryRequest<PathId, EnvironmentDiffQuery>(
+        environmentDiffQuerySchema,
+      ),
+      response: jsonResponse<EnvironmentDiffFilesResponse>(),
+    }),
+    diffPatch: defineRoute({
+      path: "/environments/:id/diff/patch",
+      method: "post",
+      request: jsonRequest<PathId, EnvironmentDiffPatchRequest>(
+        environmentDiffPatchRequestSchema,
+      ),
+      response: jsonResponse<EnvironmentDiffPatchResponse>(),
     }),
     diffFile: defineRoute({
       path: "/environments/:id/diff/file",

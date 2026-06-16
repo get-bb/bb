@@ -1,4 +1,4 @@
-import { WebContentsView, session, type Session } from "electron";
+import { Menu, WebContentsView, session, type Session } from "electron";
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
@@ -6,6 +6,7 @@ import {
   type BbDesktopBrowserAttachRequest,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserOpenTabRequest,
+  type BbDesktopBrowserScopedOpenTabRequest,
   type BbDesktopBrowserSetBoundsRequest,
   type BbDesktopBrowserSetVisibleRequest,
   type BbDesktopBrowserSnapshot,
@@ -15,6 +16,7 @@ import {
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
+  BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
 } from "./desktop-browser-ipc.js";
@@ -80,6 +82,7 @@ interface BrowserViewEntry {
 export type DesktopBrowserHostWebContentsPayload =
   | BbDesktopBrowserState
   | BbDesktopBrowserOpenTabRequest
+  | BbDesktopBrowserScopedOpenTabRequest
   | BbDesktopBrowserSnapshot;
 
 export interface DesktopBrowserHostContentBounds {
@@ -406,6 +409,17 @@ function buildBrowserState(
   };
 }
 
+/**
+ * The single browser-session permission we allow. `clipboard-sanitized-write`
+ * is write-only: an in-page copy button calling `navigator.clipboard.writeText()`
+ * can put sanitized text on the system clipboard, but the page can NOT read the
+ * clipboard (`clipboard-read` stays denied). Every other device/capability
+ * permission (camera, mic, geolocation, notifications, MIDI, …) stays denied.
+ */
+export function isAllowedBrowserPermission(permission: string): boolean {
+  return permission === "clipboard-sanitized-write";
+}
+
 export function createDesktopBrowserViewManager(
   args: CreateDesktopBrowserViewManagerArgs = {},
 ): DesktopBrowserViewManager {
@@ -474,11 +488,17 @@ export function createDesktopBrowserViewManager(
     }
     const browserSession = session.fromPartition(partition);
     // Deny every device/capability permission by default in v1 (camera, mic,
-    // geolocation, notifications, MIDI, …). A prompt UI is a later phase.
-    browserSession.setPermissionRequestHandler((_wc, _permission, callback) => {
-      callback(false);
+    // geolocation, notifications, MIDI, …). The single exception is
+    // `clipboard-sanitized-write`, allowed so in-page copy buttons (e.g.
+    // GitHub) that call `navigator.clipboard.writeText()` work; this is
+    // write-only, so `clipboard-read` stays denied. A prompt UI is a later
+    // phase.
+    browserSession.setPermissionRequestHandler((_wc, permission, callback) => {
+      callback(isAllowedBrowserPermission(permission));
     });
-    browserSession.setPermissionCheckHandler(() => false);
+    browserSession.setPermissionCheckHandler((_wc, permission) =>
+      isAllowedBrowserPermission(permission),
+    );
     // Downloads are denied in v1 (lowest file-surface risk).
     browserSession.on("will-download", (event) => {
       event.preventDefault();
@@ -619,9 +639,45 @@ export function createDesktopBrowserViewManager(
           send(hostWindow, BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL, {
             url: openTabUrl,
           });
+          send(hostWindow, BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL, {
+            tabId,
+            url: openTabUrl,
+          });
         }
       }
       return { action: "deny" };
+    });
+
+    // Right-click menu for the untrusted browser view. Built from this view's
+    // own webContents so the standard editing roles act on it (not the host
+    // React surface), giving Copy parity even when focus is elsewhere. Only
+    // plain editing roles are exposed — no dev tools, reload, or bb-bridge
+    // surface — keeping the untrusted-content posture.
+    webContents.on("context-menu", (_event, params) => {
+      if (webContents.isDestroyed()) {
+        return;
+      }
+      const { editFlags } = params;
+      const menu = Menu.buildFromTemplate([
+        {
+          role: "cut",
+          enabled: editFlags.canCut,
+        },
+        {
+          role: "copy",
+          enabled: editFlags.canCopy && params.selectionText.length > 0,
+        },
+        {
+          role: "paste",
+          enabled: editFlags.canPaste,
+        },
+        { type: "separator" },
+        {
+          role: "selectAll",
+          enabled: editFlags.canSelectAll,
+        },
+      ]);
+      menu.popup();
     });
 
     const refresh = () => pushState(hostWindow, tabId);
@@ -747,8 +803,11 @@ export function createDesktopBrowserViewManager(
   return {
     attach({ hostWindow, request }) {
       const key = browserViewKey(hostWindow, request.tabId);
+      const existing = entries.get(key) ?? null;
+      // A freshly-created entry starts hidden, so its prior visibility is false.
+      const wasVisible = existing?.visible ?? false;
       const entry =
-        entries.get(key) ??
+        existing ??
         createEntry({
           desiredBounds: request.bounds,
           hostWindow,
@@ -757,6 +816,16 @@ export function createDesktopBrowserViewManager(
       setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
       entry.visible = request.visible;
       applyEntryVisibility(entry, hostWindow);
+      // Focus on a real not-visible → visible transition so a freshly-mounted
+      // active tab (shown via attach, not setVisible) wires the Edit-menu
+      // copy/cut/paste roles and Cmd+C to this view's webContents.
+      if (
+        request.visible &&
+        !wasVisible &&
+        !entry.view.webContents.isDestroyed()
+      ) {
+        entry.view.webContents.focus();
+      }
       loadIfNeeded(entry, request.url);
       pushState(hostWindow, request.tabId);
     },
@@ -812,8 +881,20 @@ export function createDesktopBrowserViewManager(
     },
     setVisible({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        const wasVisible = entry.visible;
         entry.visible = request.visible;
         applyEntryVisibility(entry, hostWindow);
+        // Focus the view only on a real not-visible → visible transition so the
+        // Edit-menu copy/cut/paste roles and Cmd+C target this view's
+        // webContents (the focused one). Skip redundant re-syncs so we never
+        // yank focus away from the React address bar mid-interaction.
+        if (
+          request.visible &&
+          !wasVisible &&
+          !entry.view.webContents.isDestroyed()
+        ) {
+          entry.view.webContents.focus();
+        }
       });
     },
     beginWindowResize(hostWindow) {

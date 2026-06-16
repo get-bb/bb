@@ -26,7 +26,6 @@ export default {
 };
 
 const noop = () => {};
-const STORY_THREAD_ID = "thr_secondary_panel_story";
 
 function createStoryFixedPanelTab(
   panel: ThreadSecondaryPanelTab,
@@ -100,7 +99,6 @@ function ShellRow({
             isOpen
             metadataContent={placeholderInfoContent}
             showGitDiffTab={showGitDiffTab}
-            threadId={STORY_THREAD_ID}
             onPanelFocus={noop}
             onPanelChange={noop}
             onCollapse={noop}
@@ -220,7 +218,6 @@ function FileTabsShellInner({
         fileTabs={fileTabs}
         fileTabContent={activeFilename ? placeholderFileContent : null}
         showGitDiffTab
-        threadId={STORY_THREAD_ID}
         onPanelFocus={noop}
         onPanelChange={(panel) => {
           setActiveFilename(null);
@@ -331,7 +328,6 @@ function TerminalTabsShellInner({
           ) : null
         }
         showGitDiffTab
-        threadId={STORY_THREAD_ID}
         onPanelFocus={noop}
         onPanelChange={(panel) => {
           setActiveTerminalId("");

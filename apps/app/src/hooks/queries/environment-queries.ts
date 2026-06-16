@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Environment, WorkspaceDiffTarget } from "@bb/domain";
 import type {
   EnvironmentDiffBranchesResponse,
-  EnvironmentDiffResponse,
+  EnvironmentDiffFilesResponse,
   EnvironmentPullRequestResponse,
   EnvironmentStatusResponse,
   WorkspacePathListResponse,
@@ -12,8 +12,9 @@ import type { EnvironmentFilePreviewSource } from "@/lib/file-preview";
 import * as api from "@/lib/api";
 import { useEnvironmentDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
+  environmentDiffFilesQueryKey,
+  environmentDiffTargetKey,
   environmentFilePreviewQueryKey,
-  environmentGitDiffQueryKey,
   environmentMergeBaseBranchesQueryKey,
   environmentPullRequestQueryKey,
   environmentPathsQueryKey,
@@ -21,8 +22,8 @@ import {
   environmentWorkStatusQueryKey,
 } from "./query-keys";
 import {
+  resolveEnvironmentDiffFilesPlaceholder,
   resolveEnvironmentMergeBaseBranchesPlaceholder,
-  resolveEnvironmentGitDiffPlaceholder,
   resolveEnvironmentWorkStatusPlaceholder,
 } from "./query-placeholders";
 import { requireEnabledQueryArg } from "./query-helpers";
@@ -41,13 +42,15 @@ interface BranchQueryOptions extends QueryOptions {
   selectedBranch?: string;
 }
 
-interface UseEnvironmentGitDiffOptions extends QueryOptions {
+interface UseEnvironmentDiffFilesOptions extends QueryOptions {
   target?: WorkspaceDiffTarget;
 }
 
 const ENVIRONMENT_PULL_REQUEST_STALE_MS = 30_000;
 const MERGE_BASE_BRANCHES_STALE_MS = 30_000;
 const MERGE_BASE_BRANCHES_LIMIT = 50;
+/** Staleness window for the environment diff TOC query. */
+const ENVIRONMENT_DIFF_STALE_MS = 5_000;
 
 function requireEnvironmentId(
   environmentId: string | null | undefined,
@@ -258,45 +261,44 @@ export function useEnvironmentPathSuggestions(
   });
 }
 
-export function useEnvironmentGitDiff(
+/**
+ * Loads the diff tab's table of contents (one {@link DiffFileEntry} per changed
+ * file, no patch text). Patches for visible rows are fetched separately and on
+ * demand by {@link useEnvironmentDiffPatches}.
+ */
+export function useEnvironmentDiffFiles(
   environmentId: string,
-  options: UseEnvironmentGitDiffOptions,
+  options: UseEnvironmentDiffFilesOptions,
 ) {
   const target = options.target;
-  const targetKey =
-    target?.type === "commit"
-      ? target.sha
-      : target?.type === "all" || target?.type === "branch_committed"
-        ? target.mergeBaseBranch
-        : null;
   const enabled =
     (options.enabled ?? true) && Boolean(environmentId) && target !== undefined;
   useEnvironmentDetailRealtimeSubscription(environmentId, { enabled });
 
-  return useQuery<EnvironmentDiffResponse>({
-    queryKey: environmentGitDiffQueryKey(
+  return useQuery<EnvironmentDiffFilesResponse>({
+    queryKey: environmentDiffFilesQueryKey(
       environmentId,
       target?.type ?? null,
-      targetKey,
+      environmentDiffTargetKey(target),
     ),
     queryFn: () =>
-      api.getEnvironmentDiff(
+      api.getEnvironmentDiffFiles(
         environmentId,
         requireEnabledQueryArg({
           value: target,
-          hookName: "useEnvironmentGitDiff",
+          hookName: "useEnvironmentDiffFiles",
           argName: "target",
         }),
       ),
     enabled,
     placeholderData: (previousData, previousQuery) =>
-      resolveEnvironmentGitDiffPlaceholder(
+      resolveEnvironmentDiffFilesPlaceholder(
         previousData,
         previousQuery?.queryKey,
         environmentId,
       ),
     refetchOnMount: "always",
     refetchOnWindowFocus: false,
-    staleTime: 5_000,
+    staleTime: ENVIRONMENT_DIFF_STALE_MS,
   });
 }
