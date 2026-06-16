@@ -286,7 +286,7 @@ function createProps({
       updateThreadPending: false,
       workspaceStatus: undefined,
       workspaceStatusError: null,
-    },
+    } as ThreadDetailSecondaryContentProps["metadata"],
     onToggleConversationCollapse: noop,
     secondaryPanel: {
       activeTab: null,
@@ -320,7 +320,7 @@ function createProps({
       unreadDividerAutoScroll: false,
       unreadDividerPlacement: null,
       workspaceRootPath: undefined,
-    },
+    } as ThreadDetailSecondaryContentProps["timeline"],
   };
 }
 
