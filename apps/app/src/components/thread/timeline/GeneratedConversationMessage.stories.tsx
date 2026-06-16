@@ -8,7 +8,8 @@ export default {
 
 // The agent-initiated "seed" row that opens a fork or side chat. The lead-in and
 // leading icon are derived from `childOrigin`: a fork reads "Forked from <source>"
-// with the Fork glyph; side chats and other agent messages keep "Message from".
+// with the Fork glyph; a side chat reads "Replying to"; any other agent message
+// keeps "Message from".
 function TimelineStage({ children }: { children: ReactNode }) {
   return <div className="w-full max-w-[520px]">{children}</div>;
 }
@@ -35,8 +36,8 @@ export function Overview() {
           </TimelineStage>
         </StoryRow>
         <StoryRow
-          label="side chat / agent"
-          hint='childOrigin "side-chat" or null → "Message from"'
+          label="side chat"
+          hint='childOrigin "side-chat" → "Replying to"'
         >
           <TimelineStage>
             <GeneratedConversationMessage
@@ -47,6 +48,23 @@ export function Overview() {
               sourceName="Stabilize Pnpm Dev Environment"
               sourceThreadId="thr_source"
               text="Here is more: a small, useful sentence with no extra ceremony."
+              turnRequest={ACCEPTED_REQUEST}
+            />
+          </TimelineStage>
+        </StoryRow>
+        <StoryRow
+          label="agent (other)"
+          hint='childOrigin null → "Message from"'
+        >
+          <TimelineStage>
+            <GeneratedConversationMessage
+              attachmentItems={EMPTY_ATTACHMENTS}
+              childOrigin={null}
+              mentions={[]}
+              sourceKind="agent"
+              sourceName="Manager"
+              sourceThreadId="thr_source"
+              text="Delegated task: investigate the flaky timeline test."
               turnRequest={ACCEPTED_REQUEST}
             />
           </TimelineStage>

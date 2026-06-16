@@ -861,6 +861,77 @@ export function MultipleProjects() {
   );
 }
 
+// Minimal contrast for testing the nav-vs-disclosure disambiguation: a plain
+// thread and a lone worktree thread both navigate on click; the 2-thread
+// worktree group is a muted container header (leading caret) that only toggles;
+// a fork nests under its source. Worktree headers should read as containers,
+// thread rows as navigable content.
+export function WorktreeHierarchy() {
+  const plainThread = makeThread({
+    id: "thr_plain",
+    title: "Plain thread — click opens",
+    titleFallback: "Plain thread",
+  });
+  const loneWorktree = makeThread({
+    id: "thr_lone_wt",
+    title: "Lone worktree thread — click opens",
+    titleFallback: "Lone worktree thread",
+    environmentId: "env_lone",
+    environmentBranchName: "bb/lone-worktree-thread",
+    environmentWorkspaceDisplayKind: "managed-worktree",
+  });
+  const groupThreadA = makeThread({
+    id: "thr_grp_a",
+    title: "Refactor timeline row types",
+    titleFallback: "Refactor timeline row types",
+    environmentId: "env_grp",
+    environmentBranchName: "bb/shared-worktree",
+    environmentWorkspaceDisplayKind: "managed-worktree",
+  });
+  const groupThreadB = makeThread({
+    id: "thr_grp_b",
+    title: "Add story for env-grouped sidebar",
+    titleFallback: "Add story for env-grouped sidebar",
+    environmentId: "env_grp",
+    environmentBranchName: "bb/shared-worktree",
+    environmentWorkspaceDisplayKind: "managed-worktree",
+  });
+  const sourceThread = makeThread({
+    id: "thr_source_h",
+    title: "Source thread — click opens",
+    titleFallback: "Source thread",
+  });
+  const forkThread = makeThread({
+    id: "thr_fork_h",
+    title: "Git Fork Context",
+    titleFallback: "Git Fork Context",
+    parentThreadId: "thr_source_h",
+    childOrigin: "fork",
+  });
+  return (
+    <StoryCard>
+      <StoryRow
+        label="nav vs disclosure"
+        hint="plain + lone-worktree threads (leading folder glyph) navigate on click; the 2-thread worktree group is a muted container header with a leading caret that only toggles; a fork nests under its source with the fork glyph"
+      >
+        {singleProject({
+          threadListState: {
+            status: "ready",
+            threads: [
+              plainThread,
+              loneWorktree,
+              groupThreadA,
+              groupThreadB,
+              sourceThread,
+              forkThread,
+            ],
+          },
+        })}
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
 export function MixedThreadList() {
   return (
     <StoryCard>

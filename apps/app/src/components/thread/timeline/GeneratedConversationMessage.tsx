@@ -112,9 +112,15 @@ function generatedConversationTitle({
   sourceName,
   sourceThreadId,
 }: GeneratedConversationTitleArgs): TimelineTitle {
-  // A fork's anchor describes the fork relationship ("Forked from <source>");
-  // side chats and other agent-initiated messages keep the neutral lead-in.
-  const agentLeadIn = childOrigin === "fork" ? "Forked from" : "Message from";
+  // The lead-in names the relationship to the source: a fork branched from it
+  // ("Forked from"), a side chat is replying to it ("Replying to"); any other
+  // agent-initiated message keeps the neutral "Message from".
+  const agentLeadIn =
+    childOrigin === "fork"
+      ? "Forked from"
+      : childOrigin === "side-chat"
+        ? "Replying to"
+        : "Message from";
   const segments: TimelineTitleSegment[] =
     sourceKind === "agent"
       ? [
