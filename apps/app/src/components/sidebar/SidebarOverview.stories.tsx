@@ -58,9 +58,9 @@ const loadedSidebarNavigation = {
         createdAt: 85,
         updatedAt: 85,
       }),
-      // A projectless parent + fork: exercises the dimmed group-header
-      // treatment, the no-project glyph, depth-0 alignment with the project
-      // headers, and the indent guide under an expanded projectless thread.
+      // A projectless parent + fork: exercises the no-project glyph, depth-0
+      // alignment with the project headers, and the indent guide under an
+      // expanded projectless thread.
       makeThreadListEntry({
         id: "thr_story_personal_parent",
         projectId: PERSONAL_PROJECT_ID,

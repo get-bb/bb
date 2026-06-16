@@ -129,7 +129,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="projectless"
-        hint="no project (Threads section): 'Don't work in a project' glyph, dimmed text, no pointer cursor — reads like a group header"
+        hint="no project (Threads section): leads with the 'Don't work in a project' glyph, otherwise a normal navigable row"
       >
         <SidebarStage>
           <StoryThreadRow
@@ -163,7 +163,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="projectless fork"
-        hint="a fork with no project keeps the fork glyph (not the no-project glyph) but still reads dimmed"
+        hint="a fork with no project keeps the fork glyph, not the no-project glyph"
       >
         <SidebarStage>
           <StoryThreadRow
