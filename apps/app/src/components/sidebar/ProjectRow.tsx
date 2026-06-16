@@ -69,6 +69,8 @@ import {
   type ProjectThreadNode,
 } from "./projectThreadGroups";
 import {
+  SIDEBAR_LEADING_CLUSTER_CLASS,
+  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
@@ -642,7 +644,12 @@ function EnvironmentThreadGroupHeader({
         inert. A worktree group header is pure UI grouping, not a navigable
         thread, so it reads lighter than the worktree THREAD rows.
       */}
-      <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/70">
+      <span
+        className={cn(
+          SIDEBAR_LEADING_CLUSTER_CLASS,
+          "relative z-10 text-left text-subtle-foreground/70",
+        )}
+      >
         <span className="inline-flex shrink-0">
           <SidebarChildToggleChevron
             isCollapsed={isCollapsed}
@@ -655,7 +662,7 @@ function EnvironmentThreadGroupHeader({
           />
         </span>
         <span
-          className="pointer-events-none inline-flex w-4 shrink-0 items-center justify-center"
+          className={cn(SIDEBAR_LEADING_GLYPH_SLOT_CLASS, "pointer-events-none")}
           aria-hidden="true"
         >
           <Icon name={iconName} className="size-3.5" />
@@ -1164,7 +1171,9 @@ function ProjectRowComponent({
                 folder lands in the thread-glyph column and the name in the
                 thread-title column. Only the caret toggles; the folder is
                 decorative and the name is inert (expand/collapse only). */}
-            <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+            <span
+              className={cn(SIDEBAR_LEADING_CLUSTER_CLASS, "relative z-10 text-left")}
+            >
               <span className="inline-flex shrink-0">
                 <SidebarChildToggleChevron
                   isCollapsed={isCollapsed}
@@ -1177,7 +1186,10 @@ function ProjectRowComponent({
                 />
               </span>
               <span
-                className="pointer-events-none inline-flex w-4 shrink-0 items-center justify-center text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground"
+                className={cn(
+                  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
+                  "pointer-events-none text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground",
+                )}
                 aria-hidden="true"
               >
                 <Icon

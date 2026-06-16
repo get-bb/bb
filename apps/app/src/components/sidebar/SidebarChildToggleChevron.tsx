@@ -1,6 +1,7 @@
 import { Icon } from "@/components/ui/icon.js";
 import { SIDEBAR_HOVER_ACTIONS_CLASS } from "@/components/ui/sidebar-hover-actions.js";
 import { cn } from "@/lib/utils";
+import { SIDEBAR_CARET_BOX_CLASS } from "./sidebarRowClasses";
 
 export type SidebarChildToggleHandler = () => void;
 
@@ -38,7 +39,8 @@ export function SidebarChildToggleChevron({
         onToggle();
       }}
       className={cn(
-        "pointer-events-auto relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover hover:text-foreground focus-visible:ring-2",
+        SIDEBAR_CARET_BOX_CLASS,
+        "pointer-events-auto relative z-10 inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover hover:text-foreground focus-visible:ring-2",
         revealOnHover && SIDEBAR_HOVER_ACTIONS_CLASS,
       )}
     >

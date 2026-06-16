@@ -30,17 +30,44 @@ export const SIDEBAR_UNREAD_DOT_CLASS_BY_TONE: Record<
 export const SIDEBAR_UNREAD_DOT_CLASS =
   SIDEBAR_UNREAD_DOT_CLASS_BY_TONE.default;
 
-// One indentation system for every sidebar row (sections, projects, worktree
-// groups, threads), expressed on the Tailwind spacing scale (4px unit) so it
-// stays in the design system. Level-0 rows (projects and projectless threads)
-// sit flush at the list edge; each deeper level adds one `spacing-3` step. Tune
-// these two numbers to retune every row's indent uniformly.
+// ===========================================================================
+// Sidebar leading-column geometry — one system.
+//
+// Every disclosure row (project, worktree group, thread) lays out its leading
+// column identically: a caret box, a gap, an optional identity-glyph box, then
+// the title/label. Each class token below is paired with its px equivalent —
+// the JSX renders from the class, the indent-guide position is DERIVED from the
+// px, so the guide can never drift from the rendered layout. Retune the column
+// by editing a pair here, and everything (rows + guide) moves together.
+// ===========================================================================
+
+// Caret box: the disclosure chevron, and the equal-width spacer leaf rows use
+// so their titles stay in the caret rows' column.
+export const SIDEBAR_CARET_BOX_CLASS = "size-5";
+const SIDEBAR_CARET_BOX_PX = 20;
+
+// Flex wrapper for a row's leading column. Its `gap-1.5` is the gap between
+// every cluster child (caret → glyph → title); keep it equal to the px below.
+// Call sites add row-specific extras (positioning, text tone) via cn().
+export const SIDEBAR_LEADING_CLUSTER_CLASS =
+  "flex min-w-0 flex-1 items-center gap-1.5";
+const SIDEBAR_LEADING_GAP_PX = 6; // the cluster's gap-1.5
+
+// Identity-glyph slot: the fork / worktree / no-project / folder icon box.
+export const SIDEBAR_LEADING_GLYPH_SLOT_CLASS =
+  "inline-flex w-4 shrink-0 items-center justify-center";
+const SIDEBAR_GLYPH_BOX_PX = 16; // the slot's w-4
+
+// Indentation (Tailwind spacing scale, 4px unit): level-0 rows (projects and
+// projectless threads) sit flush at the list edge; each deeper level adds one
+// `spacing-3` step. Tune these two numbers to retune every row's indent.
 const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 0; // spacing-0
 const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 12; // spacing-3
-// Horizontal center of a row's leading glyph box from the pad edge: the caret
-// box (`size-5` = 20) + the gap (`gap-1.5` = 6) + half the glyph box
-// (`w-4` = 16 → 8).
-const SIDEBAR_ROW_GLYPH_CENTER_OFFSET_PX = 34;
+
+// Indent-guide x = the parent glyph's horizontal center: caret box + gap + half
+// the glyph box. Derived from the geometry above, never hand-tuned.
+const SIDEBAR_ROW_GLYPH_CENTER_OFFSET_PX =
+  SIDEBAR_CARET_BOX_PX + SIDEBAR_LEADING_GAP_PX + SIDEBAR_GLYPH_BOX_PX / 2;
 
 export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";
 

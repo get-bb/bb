@@ -41,6 +41,9 @@ import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
 import {
+  SIDEBAR_CARET_BOX_CLASS,
+  SIDEBAR_LEADING_CLUSTER_CLASS,
+  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
@@ -357,7 +360,7 @@ function ThreadRowComponent({
         title={linkTitle}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
-      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+      <span className={SIDEBAR_LEADING_CLUSTER_CLASS}>
         {/*
           Leading disclosure slot, unified with every other expandable row: the
           caret toggles children (the row body still navigates). Leaves get an
@@ -376,7 +379,10 @@ function ThreadRowComponent({
             />
           </span>
         ) : (
-          <span className="size-5 shrink-0" aria-hidden="true" />
+          <span
+            className={cn(SIDEBAR_CARET_BOX_CLASS, "shrink-0")}
+            aria-hidden="true"
+          />
         )}
         {/*
           Identity glyph (fork / worktree), rendered only when present. An empty
@@ -387,7 +393,7 @@ function ThreadRowComponent({
         */}
         {thread.childOrigin === "fork" ? (
           <span
-            className="inline-flex w-4 shrink-0 items-center justify-center"
+            className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS}
             title="Forked thread"
           >
             <Icon
@@ -398,7 +404,7 @@ function ThreadRowComponent({
           </span>
         ) : leadingWorktreeIcon ? (
           <span
-            className="inline-flex w-4 shrink-0 items-center justify-center"
+            className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS}
             title={leadingWorktreeIconLabel ?? undefined}
           >
             <Icon
@@ -409,7 +415,7 @@ function ThreadRowComponent({
           </span>
         ) : showNoProjectIcon ? (
           <span
-            className="inline-flex w-4 shrink-0 items-center justify-center"
+            className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS}
             title="Not in a project"
           >
             <Icon
