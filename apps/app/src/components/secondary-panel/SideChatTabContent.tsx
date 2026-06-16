@@ -370,7 +370,12 @@ export function SideChatTabContent({
       // config (current draft, no entries, no-op select) satisfies the required
       // shape without inventing a feature the composer never exercises.
       history: {
-        currentDraft: { text: message, mentions: mentionRanges, attachments: [] },
+        currentDraft: {
+          text: message,
+          mentions: mentionRanges,
+          attachments: [],
+          quotes: [],
+        },
         entries: [],
         onSelectEntry: noop,
       } satisfies HistoryConfig,
