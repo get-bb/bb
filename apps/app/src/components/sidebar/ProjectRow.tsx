@@ -636,7 +636,9 @@ function EnvironmentThreadGroupHeader({
     stickyLevel === undefined && "relative",
     SIDEBAR_ROW_BASE_CLASS,
     COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
-    SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+    // No SIDEBAR_ROW_INTERACTIVE_STATE_CLASS: this row is expand/collapse-only
+    // with nothing to open, so the body is inert and must not show the clickable
+    // hover highlight threads use. Only the leading caret toggles.
   );
   const style = {
     paddingLeft: getSidebarThreadRowPaddingLeft(rowDepth),
@@ -646,15 +648,6 @@ function EnvironmentThreadGroupHeader({
       {parentLineDepth === undefined ? null : (
         <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
       )}
-      <button
-        type="button"
-        aria-hidden="true"
-        tabIndex={-1}
-        onClick={() => {
-          onToggleCollapsed(environmentId);
-        }}
-        className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
-      />
       <span className="relative z-10 -ml-1 inline-flex shrink-0">
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
