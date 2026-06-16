@@ -8,6 +8,7 @@ import type { PromptQuote } from "@/lib/prompt-draft";
 export interface PromptQuoteStackProps {
   quotes: PromptQuote[];
   onRemove: PromptQuotePillProps["onRemove"];
+  onJumpToSource?: PromptQuotePillProps["onJumpToSource"];
 }
 
 /**
@@ -17,7 +18,11 @@ export interface PromptQuoteStackProps {
  * once enough quotes accumulate, so a large pile of quotes never pushes the
  * composer off-screen.
  */
-export function PromptQuoteStack({ quotes, onRemove }: PromptQuoteStackProps) {
+export function PromptQuoteStack({
+  quotes,
+  onRemove,
+  onJumpToSource,
+}: PromptQuoteStackProps) {
   if (quotes.length === 0) {
     return null;
   }
@@ -29,7 +34,12 @@ export function PromptQuoteStack({ quotes, onRemove }: PromptQuoteStackProps) {
       tabIndex={0}
     >
       {quotes.map((quote) => (
-        <PromptQuotePill key={quote.id} quote={quote} onRemove={onRemove} />
+        <PromptQuotePill
+          key={quote.id}
+          quote={quote}
+          onRemove={onRemove}
+          onJumpToSource={onJumpToSource}
+        />
       ))}
     </PromptStackCard>
   );

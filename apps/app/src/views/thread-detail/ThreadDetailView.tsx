@@ -715,8 +715,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   });
   const addQuoteToComposer = selectionPromptDraft.addQuote;
   const handleSelectionAddToChat = useCallback(
-    (text: string) => {
-      addQuoteToComposer(text);
+    (text: string, sourceMessageId?: string) => {
+      addQuoteToComposer(text, sourceMessageId);
     },
     [addQuoteToComposer],
   );

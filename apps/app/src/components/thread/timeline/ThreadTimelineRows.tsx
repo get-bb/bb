@@ -59,7 +59,7 @@ import type {
 } from "./types.js";
 import { ConversationMessageContent } from "./ConversationMessageContent.js";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu.js";
-import type { MessageProseSelection } from "./SelectableMessageProse.js";
+import type { TimelineMessageProseSelection } from "./SelectableMessageProse.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import {
   TimelineStaticRowHeader,
@@ -175,7 +175,7 @@ interface TimelineRendererStaticContextValue {
    * messages and the floating menu unmounted.
    */
   reportProseSelection:
-    | ((selection: MessageProseSelection | null) => void)
+    | ((selection: TimelineMessageProseSelection | null) => void)
     | undefined;
   threadChildOrigin: ThreadChildOrigin | null;
   onOpenLink: ThreadTimelineLinkHandler | undefined;
@@ -1560,11 +1560,15 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     onSelectionAddToChat !== undefined ||
     onSelectionReplyInSideChat !== undefined;
   const [activeSelection, setActiveSelection] =
-    useState<MessageProseSelection | null>(null);
+    useState<TimelineMessageProseSelection | null>(null);
+  // Mirror the active selection into a ref so the stable add-to-chat callback
+  // can read its source message id without re-creating on every selection.
+  const activeSelectionRef = useRef<TimelineMessageProseSelection | null>(null);
+  activeSelectionRef.current = activeSelection;
   // Only hand a reporter to the messages when an action exists; otherwise the
   // wrapper stays inert and the floating menu never mounts.
   const reportProseSelection = useMemo<
-    ((selection: MessageProseSelection | null) => void) | undefined
+    ((selection: TimelineMessageProseSelection | null) => void) | undefined
   >(
     () => (hasSelectionActions ? setActiveSelection : undefined),
     [hasSelectionActions],
@@ -1574,7 +1578,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   }, []);
   const handleSelectionAddToChat = useCallback(
     (text: string) => {
-      onSelectionAddToChat?.(text);
+      onSelectionAddToChat?.(text, activeSelectionRef.current?.sourceMessageId);
       setActiveSelection(null);
     },
     [onSelectionAddToChat],

@@ -223,6 +223,14 @@ describe("prompt draft quotes", () => {
     expect(state.quotes[0]?.id).toEqual(expect.any(String));
   });
 
+  it("records the source message id when provided, omits it otherwise", () => {
+    const withSource = addQuoteToDraft(emptyPromptDraftState(), "hi", "row-7");
+    expect(withSource.quotes[0]?.sourceMessageId).toBe("row-7");
+
+    const withoutSource = addQuoteToDraft(emptyPromptDraftState(), "hi");
+    expect(withoutSource.quotes[0]).not.toHaveProperty("sourceMessageId");
+  });
+
   it("ignores an empty or whitespace-only quote", () => {
     const base = emptyPromptDraftState();
     expect(addQuoteToDraft(base, "").quotes).toEqual([]);

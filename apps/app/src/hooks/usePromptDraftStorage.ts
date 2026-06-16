@@ -314,9 +314,9 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   );
 
   const addQuote = useCallback(
-    (text: string) => {
+    (text: string, sourceMessageId?: string) => {
       const currentDraft = readPromptDraft(storageKey);
-      const nextDraft = addQuoteToDraft(currentDraft, text);
+      const nextDraft = addQuoteToDraft(currentDraft, text, sourceMessageId);
       // `addQuoteToDraft` no-ops on whitespace-only text; skip the write so an
       // empty selection can't mark an otherwise-empty draft dirty.
       if (nextDraft.quotes.length === currentDraft.quotes.length) {

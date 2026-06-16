@@ -5,6 +5,15 @@ export interface MessageProseSelection {
   rect: DOMRect;
 }
 
+/**
+ * A `MessageProseSelection` enriched with the source agent message's timeline
+ * row id, injected by `ConversationMessageContent` (which knows the id) before
+ * the selection reaches the timeline-level controller. Drives "jump to source".
+ */
+export interface TimelineMessageProseSelection extends MessageProseSelection {
+  sourceMessageId: string;
+}
+
 export interface SelectableMessageProseProps {
   children: ReactNode;
   className?: string;

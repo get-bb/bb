@@ -57,7 +57,10 @@ export type ThreadTimelineSendToMainMessageHandler = (
  * composer draft); the floating selection menu invokes it with the selected
  * text. Absent when no composer draft is available.
  */
-export type ThreadTimelineSelectionAddToChatHandler = (text: string) => void;
+export type ThreadTimelineSelectionAddToChatHandler = (
+  text: string,
+  sourceMessageId?: string,
+) => void;
 
 /**
  * Open a side chat anchored on the selected agent-message text ("Reply in side

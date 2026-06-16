@@ -55,6 +55,7 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { promptDraftToInput } from "@/lib/prompt-draft";
 import { appToast } from "@/components/ui/app-toast";
+import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
@@ -250,6 +251,25 @@ export function ThreadDetailPromptArea({
     projectId,
     threadId: thread.id,
   });
+  // Scroll the timeline back to the agent message a quote came from. Rows carry
+  // `data-timeline-row-id`; the composer renders inside the bottom-anchored
+  // scroll body, so its context reveals the row with the same clamped-scroll
+  // behavior the unread divider uses.
+  const bottomAnchor = useBottomAnchoredScroll();
+  const handleJumpToSource = useCallback(
+    (sourceMessageId: string) => {
+      const element = document.querySelector(
+        `[data-timeline-row-id="${CSS.escape(sourceMessageId)}"]`,
+      );
+      if (!(element instanceof HTMLElement)) return;
+      if (bottomAnchor) {
+        bottomAnchor.scrollElementIntoViewClampedToMaxScroll({ element });
+      } else {
+        element.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    },
+    [bottomAnchor],
+  );
   const promptMentions = usePromptMentions(projectId, {
     currentThreadId: thread.id,
     environmentId: thread.environmentId ?? null,
@@ -911,6 +931,7 @@ export function ThreadDetailPromptArea({
         <PromptQuoteStack
           quotes={promptDraft.quotes}
           onRemove={promptDraft.removeQuote}
+          onJumpToSource={handleJumpToSource}
         />
         <ThreadPromptContextBanner
           todoSection={!pendingTodos ? null : { pendingTodos }}
@@ -966,6 +987,7 @@ export function ThreadDetailPromptArea({
       expandedBannerSection,
       handleDeleteQueuedMessage,
       handleEditQueuedMessage,
+      handleJumpToSource,
       handlePromptBannerFileClick,
       handleReorderQueuedMessage,
       handleSendQueuedImmediately,

@@ -14,6 +14,12 @@ export type PromptDraftAttachment = UploadedPromptAttachment;
 export interface PromptQuote {
   id: string;
   text: string;
+  /**
+   * Timeline row id of the agent message the selection came from. Drives the
+   * pill's "jump to source" affordance. Omitted for quotes with no known source
+   * message (the pill then renders without the jump button).
+   */
+  sourceMessageId?: string;
 }
 
 export interface PromptDraftState {
@@ -26,6 +32,7 @@ export interface PromptDraftState {
 const promptQuoteSchema = z.object({
   id: z.string(),
   text: z.string(),
+  sourceMessageId: z.string().optional(),
 });
 
 const promptDraftStorageSchema = z.object({
@@ -71,6 +78,7 @@ export function emptyPromptDraftState(): PromptDraftState {
 export function addQuoteToDraft(
   state: PromptDraftState,
   text: string,
+  sourceMessageId?: string,
 ): PromptDraftState {
   // Guard the boundary: an empty/whitespace-only selection would otherwise
   // emit a bare "> " block and make an empty draft look dirty.
@@ -83,6 +91,7 @@ export function addQuoteToDraft(
       {
         id: crypto.randomUUID(),
         text: trimmed,
+        ...(sourceMessageId !== undefined ? { sourceMessageId } : {}),
       },
     ],
   };

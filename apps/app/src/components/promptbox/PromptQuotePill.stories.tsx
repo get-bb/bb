@@ -41,6 +41,18 @@ export function Overview() {
           <PromptQuotePill quote={longQuote} onRemove={noop} />
         </PromptStage>
       </StoryRow>
+      <StoryRow
+        label="jump to source"
+        hint="quote with a sourceMessageId becomes a button (hover underlines); click logs the id"
+      >
+        <PromptStage>
+          <PromptQuotePill
+            quote={{ ...shortQuote, sourceMessageId: "row-42" }}
+            onRemove={noop}
+            onJumpToSource={(id) => console.log("jump to", id)}
+          />
+        </PromptStage>
+      </StoryRow>
     </StoryCard>
   );
 }
