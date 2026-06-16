@@ -4,6 +4,7 @@ import {
   deleteClaimedQueuedThreadMessage,
   deleteClaimedQueuedThreadMessageInTransaction,
   getQueuedThreadMessage,
+  getEnvironment,
   getThread,
   listIdleThreadsWithQueuedMessages,
   releaseQueuedMessageClaim,
@@ -48,7 +49,8 @@ import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { formatAgentThreadInput, sendThreadMessage } from "./thread-send.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
-import { tryTransitionInTransaction } from "./thread-transitions.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
+import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 
 interface SendQueuedMessageArgs {
   mode: SendQueuedMessageMode;
@@ -77,6 +79,22 @@ interface QueuedMessageThread extends Thread {}
 
 interface QueuedMessageAutoSendArgs {
   threadId: string;
+}
+
+async function requireReadyQueuedMessageEnvironment(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  thread: Thread,
+) {
+  const environment = await requireThreadCommandEnvironment(deps, { thread });
+  if (environment.status === "retiring") {
+    applyLoggedEnvironmentLifecycleEvent(deps, {
+      environmentId: environment.id,
+      event: { type: "retire.cancelled" },
+    });
+  }
+  return requireReadyThreadEnvironment(
+    getEnvironment(deps.db, environment.id) ?? environment,
+  );
 }
 
 interface QueuedMessageAutoSendRequestArgs {
@@ -205,9 +223,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     return null;
   }
 
-  const environment = requireReadyThreadEnvironment(
-    await requireThreadCommandEnvironment(deps, { thread }),
-  );
+  const environment = await requireReadyQueuedMessageEnvironment(deps, thread);
   const queuedMessage = toThreadQueuedMessage(args.queuedMessage);
   ensureThreadCanStartRequest(thread);
 
@@ -281,7 +297,21 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         requestId: request.requestId,
         preparedCommand,
       });
-      tryTransitionInTransaction(tx, deps.hub, thread.id, "active");
+      const outcome = applyLoggedThreadLifecycleEventInTransaction(
+        { db: tx, logger: deps.logger },
+        { event: { type: "run.started" }, threadId: thread.id },
+      );
+      if (!outcome.applied) {
+        // The thread was deleted, archived, or began stopping in the race
+        // window between the auto-send entry guard and this dispatch:
+        // run.started is superseded by its notDeleted/notArchived
+        // predicate (and is structurally absent from `stopping`). Roll back
+        // the claim consumption and the queued client/turn/requested append
+        // so the message stays queued and no host command is sent — the entry
+        // guard skips the thread on the next sweep tick.
+        throw createQueuedMessageClaimLostError();
+      }
+      deps.hub.notifyThread(thread.id, ["status-changed"]);
       return command;
     },
     { behavior: "immediate" },
@@ -373,7 +403,7 @@ export async function sendNextQueuedMessageIfPresent(
     !thread ||
     thread.archivedAt !== null ||
     thread.deletedAt !== null ||
-    thread.stopRequestedAt !== null
+    thread.status === "stopping"
   ) {
     return false;
   }

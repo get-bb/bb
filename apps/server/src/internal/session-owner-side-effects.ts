@@ -208,7 +208,7 @@ function completeDaemonDisconnectGrace(
 }
 
 function completeDaemonActiveWorkDisconnectGrace(
-  deps: Pick<AppDeps, "db" | "hub" | "pendingInteractions">,
+  deps: Pick<AppDeps, "db" | "hub" | "logger" | "pendingInteractions">,
   args: CompleteDaemonActiveWorkDisconnectGraceArgs,
 ): void {
   if (getActiveSession(deps.db, args.hostId)) {

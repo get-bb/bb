@@ -19,11 +19,12 @@ environments.
 ## Spawning Threads
 
 - Use `bb thread spawn --prompt "..."` to create another thread.
-- Inside a thread, spawn defaults the parent to `BB_THREAD_ID`.
+- Spawn creates a root thread unless you pass `--parent-thread`.
 - Spawned child threads inherit permission from explicit flags, then the
   parent thread's last execution, then project defaults.
-- Use `--no-context-parent-thread` when you need an unrelated root thread.
-- Use `--parent-thread <thread-id>` to choose a specific parent.
+- Use `--parent-self` inside a thread to parent the new thread to the current
+  thread.
+- Use `--parent-thread <thread-id>` to choose another specific parent.
 - If provider or model choice matters, inspect options with `bb provider list`
   and `bb provider models <provider-id>`.
 

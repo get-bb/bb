@@ -27,7 +27,6 @@ import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
-  cancelPendingEnvironmentCleanup,
   requestEnvironmentCleanup,
   requestEnvironmentCleanupAdvance,
   wouldCleanupEnvironment,
@@ -377,19 +376,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
   });
 
+  // Un-archive is a pure record op: it clears archivedAt and nothing else. It
+  // deliberately does not touch the environment lifecycle; cleanup is monotonic
+  // and never cancelled, and a thread whose environment is gone surfaces a
+  // read-only "environment is gone" banner instead of resurrecting it.
   post(routes.unarchive, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
-    const cleanupCancellation = cancelPendingEnvironmentCleanup(deps, {
-      environmentId: thread.environmentId,
-    });
-    if (cleanupCancellation === "in_progress") {
-      throw new ApiError(
-        409,
-        "environment_cleanup_in_progress",
-        "Environment cleanup is already in progress",
-      );
-    }
     unarchiveThread(deps.db, deps.hub, thread.id);
     const environment = thread.environmentId
       ? getEnvironment(deps.db, thread.environmentId)

@@ -342,7 +342,7 @@ const TOAST_EXAMPLES: readonly ToastExample[] = [
     usage: ["Sidebar project row", "Archive worktree group succeeds"],
     current: {
       tone: "success",
-      title: "Archived 3 worktree threads",
+      title: "Archived 3 threads",
     },
   },
   {

@@ -312,7 +312,8 @@ function applyOptimisticStopRequest({
 }: ApplyOptimisticStopRequestArgs): void {
   updateCachedThread(queryClient, threadId, (thread) => ({
     ...thread,
-    stopRequestedAt: thread.stopRequestedAt ?? requestedAt,
+    status: "stopping",
+    runtime: { ...thread.runtime, displayStatus: "stopping" },
     updatedAt: Math.max(thread.updatedAt, requestedAt),
   }));
 
@@ -323,7 +324,8 @@ function applyOptimisticStopRequest({
         thread.id === threadId
           ? {
               ...thread,
-              stopRequestedAt: thread.stopRequestedAt ?? requestedAt,
+              status: "stopping",
+              runtime: { ...thread.runtime, displayStatus: "stopping" },
               updatedAt: Math.max(thread.updatedAt, requestedAt),
             }
           : thread,

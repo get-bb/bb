@@ -56,10 +56,10 @@ interface ToThreadListEntryResponseFromLatestSessionArgs {
 
 function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
   switch (status) {
-    case "created":
-    case "provisioning":
+    case "starting":
     case "idle":
     case "active":
+    case "stopping":
     case "error":
       return {
         displayStatus: status,
@@ -97,7 +97,6 @@ function toPublicThread(thread: Thread): Thread {
     childOrigin: thread.childOrigin,
     archivedAt: thread.archivedAt,
     pinnedAt: thread.pinnedAt,
-    stopRequestedAt: thread.stopRequestedAt,
     deletedAt: thread.deletedAt,
     lastReadAt: thread.lastReadAt,
     latestAttentionAt: thread.latestAttentionAt,

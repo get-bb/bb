@@ -33,7 +33,6 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
       hostReconnectGraceExpiresAt: null,
     },
     status: "idle",
-    stopRequestedAt: null,
     title: "Thread",
     titleFallback: "Thread",
     updatedAt: 1,

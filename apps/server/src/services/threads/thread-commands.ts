@@ -52,7 +52,6 @@ export interface ThreadStopCommandArgs {
 }
 
 interface ThreadStartCommandEnvironment {
-  cleanupRequestedAt: number | null;
   hostId: string;
   id: string;
   path: string | null;

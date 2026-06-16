@@ -60,6 +60,7 @@ import {
   beginProjectDeletion,
   requestProjectDeletionAdvance,
 } from "../services/projects/project-deletion.js";
+import { resolveDefaultWorktreeBaseBranch } from "../services/projects/worktree-base-branch.js";
 import { listProjectPromptHistory } from "../services/prompt-history.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
 import {
@@ -612,7 +613,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         limit: parseBranchListLimit(query.limit),
       },
     });
-    return context.json(result);
+    return context.json({
+      ...result,
+      defaultWorktreeBaseBranch: resolveDefaultWorktreeBaseBranch(result),
+    });
   });
 
   post(routes.uploadAttachment, async (context) => {

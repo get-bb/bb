@@ -290,7 +290,8 @@ export function EnvironmentRow({
     environment,
     host: environmentDisplayHost,
   });
-  const showCreateThreadButton = isWorktreeEnvironment(environment);
+  const showCreateThreadButton =
+    isProvisionedWorktreeEnvironment(environment);
   return (
     <DetailRow
       label={
@@ -334,6 +335,14 @@ function isWorktreeEnvironment(environment: Environment): boolean {
   return (
     environment.isWorktree ||
     environment.workspaceProvisionType === "managed-worktree"
+  );
+}
+
+function isProvisionedWorktreeEnvironment(environment: Environment): boolean {
+  return (
+    environment.status === "ready" &&
+    environment.path !== null &&
+    isWorktreeEnvironment(environment)
   );
 }
 

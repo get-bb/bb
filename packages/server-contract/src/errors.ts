@@ -44,7 +44,6 @@ export type ApiError = z.infer<typeof apiErrorSchema>;
 export const environmentNotReadyErrorDetailsSchema = z.object({
   environmentStatus: environmentStatusSchema,
   hasPath: z.boolean(),
-  cleanupRequestedAt: z.number().int().nonnegative().nullable(),
 });
 export type EnvironmentNotReadyErrorDetails = z.infer<
   typeof environmentNotReadyErrorDetailsSchema
@@ -67,7 +66,6 @@ export type ThreadNotWritableReason = z.infer<
 export const threadNotWritableErrorDetailsSchema = z.object({
   reason: threadNotWritableReasonSchema,
   archivedAt: z.number().int().nonnegative().nullable(),
-  stopRequestedAt: z.number().int().nonnegative().nullable(),
   threadStatus: threadStatusSchema,
 });
 export type ThreadNotWritableErrorDetails = z.infer<

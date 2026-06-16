@@ -9,10 +9,12 @@ import {
   getBuiltInAgentProviderInfo,
   isAgentProviderId,
 } from "@bb/agent-providers";
-import type { UnmanagedBranchSpec } from "@bb/server-contract";
+import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { requireNonDestroyedHostWithStatus } from "../lib/entity-lookup.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
@@ -47,6 +49,7 @@ import type {
   ThreadProvisionContext,
   ThreadProvisionEnvironmentIntent,
 } from "./thread-provisioning-context.js";
+import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -141,6 +144,12 @@ interface EnsureCreateHostOnlineArgs {
   resolvedEnvironment: ResolvedStableThreadRequestEnvironment;
 }
 
+interface ResolveManagedDefaultBaseBranchForCreateArgs {
+  baseBranch: BaseBranchSpec;
+  hostId: string;
+  sourcePath: string;
+}
+
 function scheduleThreadProvisioningAdvance(
   deps: ThreadCreateDeps,
   context: ThreadProvisionContext,
@@ -212,6 +221,38 @@ async function ensureCreateHostOnline(
     return;
   }
   await ensureHostSessionReadyForWork(deps, { hostId });
+}
+
+async function resolveManagedDefaultBaseBranchForCreate(
+  deps: ThreadCreateDeps,
+  args: ResolveManagedDefaultBaseBranchForCreateArgs,
+): Promise<BaseBranchSpec> {
+  if (args.baseBranch.kind === "named") {
+    return args.baseBranch;
+  }
+
+  try {
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: args.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.list_branches",
+        path: args.sourcePath,
+        limit: 1,
+      },
+    });
+    return resolveManagedDefaultBaseBranchSpec(result);
+  } catch (error) {
+    deps.logger.warn(
+      {
+        hostId: args.hostId,
+        sourcePath: args.sourcePath,
+        ...runtimeErrorLogFields(deps.config, error),
+      },
+      "Failed to resolve smart worktree base branch; using source default",
+    );
+    return args.baseBranch;
+  }
 }
 
 function existingUnmanagedEnvironmentIntentByHostPath(
@@ -290,7 +331,7 @@ async function createProvisioningThread(
   const thread = createThreadRecord(deps, {
     request: args.request,
     environmentId: args.environmentId,
-    status: "provisioning",
+    status: "starting",
   });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   let context: ThreadProvisionContext;
@@ -484,7 +525,11 @@ export async function createThreadFromRequest(
         type: "direct-managed",
         hostId,
         sourcePath: managedSource.path,
-        baseBranch: workspace.baseBranch,
+        baseBranch: await resolveManagedDefaultBaseBranchForCreate(deps, {
+          baseBranch: workspace.baseBranch,
+          hostId,
+          sourcePath: managedSource.path,
+        }),
         workspaceProvisionType: workspace.type,
       };
       break;

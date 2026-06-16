@@ -38,7 +38,7 @@ import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
 } from "./thread-provisioning-active-context.js";
-import { tryTransition } from "./thread-transitions.js";
+import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
@@ -107,9 +107,8 @@ function getCurrentProvisioningFailureThread(
     return null;
   }
   if (
-    currentThread.status !== "provisioning" ||
-    currentThread.archivedAt !== null ||
-    currentThread.stopRequestedAt !== null
+    currentThread.status !== "starting" ||
+    currentThread.archivedAt !== null
   ) {
     forgetActiveThreadProvisionContext(args.threadId);
     return null;
@@ -175,21 +174,28 @@ async function startThreadIfEnvironmentReady(
     // Non-fork seed anchor: the thread-start turn is already persisted and
     // displayed (initiator agent/system) but no provider session was cloned.
     // The started agent must wait for the user's first message, so we do not
-    // dispatch a provider run here — we land the thread in `idle`, ready to
-    // accept the user's turn. Its provider session is created lazily on the
-    // first turn. (Both forks and side chats now clone the parent's session
+    // dispatch a provider run here — we settle the started thread into `idle`,
+    // ready to accept the user's turn. Its provider session is created lazily on
+    // the first turn. (Both forks and side chats now clone the parent's session
     // natively, so they carry a fork descriptor and take the eager-start path
     // below; this lazy-seed branch is the fallback for a seed-without-run anchor
     // whose session could not be cloned.)
-    const seeded = tryTransition(deps.db, deps.hub, args.thread.id, "idle");
-    if (!seeded) {
-      // The thread left `provisioning` before we could seed it idle (e.g. a
+    //
+    // The thread is `starting`; the start established it with no turn to run, so
+    // we fire `run.succeeded` — the zero-work run completed — to settle it
+    // `idle`, the same starting→idle landing a no-turn fork establish takes.
+    const outcome = applyLoggedThreadLifecycleEvent(deps, {
+      threadId: args.thread.id,
+      event: { type: "run.succeeded" },
+    });
+    if (!outcome.applied) {
+      // The thread left `starting` before we could seed it idle (e.g. a
       // concurrent stop/transition). The anchor turn is persisted but the
       // thread will not land in `idle` here, so surface it instead of silently
       // dropping the transition.
       deps.logger.warn(
         { threadId: args.thread.id },
-        "Seed-without-run thread was no longer provisioning; idle transition skipped",
+        "Seed-without-run thread was no longer starting; idle settle skipped",
       );
     }
     return;
@@ -208,7 +214,6 @@ async function startThreadIfEnvironmentReady(
     environment: {
       id: args.environment.id,
       hostId: args.environment.hostId,
-      cleanupRequestedAt: args.environment.cleanupRequestedAt,
       path: args.environment.path,
       status: args.environment.status,
       workspaceProvisionType: args.environment.workspaceProvisionType,
@@ -333,7 +338,7 @@ async function advanceThreadProvisioningOnce(
   if (!thread || thread.deletedAt !== null) {
     return;
   }
-  if (thread.status !== "provisioning") {
+  if (thread.status !== "starting") {
     forgetActiveThreadProvisionContext(thread.id);
     return;
   }
@@ -347,7 +352,7 @@ async function advanceThreadProvisioningOnce(
     });
     return;
   }
-  if (thread.archivedAt !== null || thread.stopRequestedAt !== null) {
+  if (thread.archivedAt !== null) {
     return;
   }
 

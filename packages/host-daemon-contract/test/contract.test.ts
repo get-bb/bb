@@ -175,10 +175,12 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       headSha: "abc123",
     },
     defaultBranch: "main",
+    defaultBranchRelation: "equal",
     hasUncommittedChanges: false,
     operation: {
       kind: "none",
     },
+    originDefaultBranch: "origin/main",
     remoteBranches: ["origin/main"],
     remoteBranchesTruncated: false,
     selectedBranch: {
@@ -223,9 +225,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
     selectedOnlyModels: [],
-  },
-  "environment.cleanup_preflight": {
-    outcome: "safe_to_destroy",
   },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
@@ -953,15 +952,6 @@ describe("host-daemon command schemas", () => {
       },
       { type: "provider.list_models", providerId: "codex" },
       {
-        type: "environment.cleanup_preflight",
-        environmentId: "env_123",
-        workspaceContext: {
-          workspacePath: "/tmp/workspace",
-          workspaceProvisionType: "managed-worktree",
-        },
-        mergeBaseBranch: "main",
-      },
-      {
         type: "workspace.status",
         environmentId: "env_123",
         workspaceContext: {
@@ -1663,8 +1653,10 @@ describe("host-daemon command schemas", () => {
           headSha: "abc123",
         },
         defaultBranch: "main",
+        defaultBranchRelation: "equal",
         hasUncommittedChanges: true,
         operation: { kind: "merge", hasConflicts: true },
+        originDefaultBranch: "origin/main",
         remoteBranches: ["origin/main"],
         remoteBranchesTruncated: false,
         selectedBranch: { name: "origin/main", kind: "remote" },
@@ -1716,36 +1708,6 @@ describe("host-daemon command schemas", () => {
       path: "/tmp/bb-data/thread-storage/thread-123/notes.md",
       modifiedAtMs: 1234.5,
       sizeBytes: 26_214_401,
-    });
-
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType[
-        "environment.cleanup_preflight"
-      ].parse({
-        outcome: "safe_to_destroy",
-      }),
-    ).toEqual({
-      outcome: "safe_to_destroy",
-    });
-
-    expect(
-      hostDaemonOnlineRpcResultSchemaByType[
-        "environment.cleanup_preflight"
-      ].parse({
-        outcome: "already_missing",
-        failure: {
-          code: "path_not_found",
-          workspacePath: "/tmp/missing",
-          message: "Managed workspace path does not exist: /tmp/missing",
-        },
-      }),
-    ).toEqual({
-      outcome: "already_missing",
-      failure: {
-        code: "path_not_found",
-        workspacePath: "/tmp/missing",
-        message: "Managed workspace path does not exist: /tmp/missing",
-      },
     });
 
     expect(

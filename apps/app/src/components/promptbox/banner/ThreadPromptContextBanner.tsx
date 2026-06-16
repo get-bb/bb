@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import type {
+  EnvironmentStatus,
   GitBranchRefClassification,
   ThreadRuntimeDisplayStatus,
   ThreadTimelinePendingTodoItem,
@@ -21,7 +22,7 @@ import {
   type WorkspaceChangedFilesSection,
 } from "@/components/workspace/workspace-change-summary";
 import { cn } from "@/lib/utils";
-import { Icon } from "@/components/ui/icon.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
 
 export interface ContextBannerMergeBaseConfig {
   branch: string;
@@ -80,19 +81,22 @@ export interface ThreadPromptArchivedSection {
 }
 
 /**
+ * Environment-gone segment for the banner. When present, the banner renders
+ * only this row — a destroying/destroyed environment is not a recoverable
+ * context for this thread, so live-work sections no longer apply.
+ */
+export interface ThreadPromptEnvironmentGoneSection {
+  status: Extract<EnvironmentStatus, "destroying" | "destroyed">;
+}
+
+/**
  * Runtime statuses that count as active child work for the banner's
  * children section. These are the children the banner surfaces and (when the
  * bulk-stop slice lands) the children `Stop all` will target. Keep the set in
  * one place so future status additions don't drift across callers.
  */
 const THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES: ReadonlySet<ThreadRuntimeDisplayStatus> =
-  new Set([
-    "active",
-    "created",
-    "host-reconnecting",
-    "provisioning",
-    "waiting-for-host",
-  ]);
+  new Set(["active", "host-reconnecting", "starting", "waiting-for-host"]);
 
 export function isThreadDisplayStatusBannerActive(
   status: ThreadRuntimeDisplayStatus,
@@ -133,6 +137,12 @@ export interface ThreadPromptContextBannerProps {
    * parent relationship remains relevant context for a frozen thread.
    */
   archivedSection: ThreadPromptArchivedSection | null;
+  /**
+   * When set, the banner renders the "environment is no longer available" row
+   * and suppresses todos, git, and child-threads. parentThread still renders
+   * alongside if provided, since the relationship remains useful context.
+   */
+  environmentGoneSection: ThreadPromptEnvironmentGoneSection | null;
   parentThreadSection: ThreadPromptParentThreadSection | null;
   childThreadsSection: ThreadPromptChildThreadsSection | null;
   expandedSection: ThreadPromptContextBannerExpandedSection | null;
@@ -146,6 +156,9 @@ const KIND_PREFIX: Record<WorkspaceChangedFilesSection["kind"], string> = {
 };
 
 const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
+const ENVIRONMENT_GONE_STATUS_LABEL = "Environment is no longer available";
+const ENVIRONMENT_GONE_ARIA_LABEL =
+  "Environment is no longer available. This thread can't run any more work.";
 
 // Stable ids for aria-controls / aria-labelledby pairing between each
 // section's toggle button and its expanded body region.
@@ -438,6 +451,89 @@ function AnimatedBody({
   );
 }
 
+interface ReadOnlyContextBannerProps {
+  iconName: IconName;
+  statusAriaLabel: string;
+  statusLabel: string;
+  parentThreadSection: ThreadPromptParentThreadSection | null;
+  expandedSection: ThreadPromptContextBannerExpandedSection | null;
+  onToggleSection: (section: ThreadPromptContextBannerExpandedSection) => void;
+}
+
+function ReadOnlyContextBanner({
+  iconName,
+  statusAriaLabel,
+  statusLabel,
+  parentThreadSection,
+  expandedSection,
+  onToggleSection,
+}: ReadOnlyContextBannerProps) {
+  const isParentThreadExpanded =
+    expandedSection === "parentThread" && parentThreadSection !== null;
+  const hasMultipleSegments = parentThreadSection !== null;
+  return (
+    <PromptStackCard
+      ariaLabel="Thread context before sending"
+      className="overflow-hidden"
+      style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
+    >
+      <div className="flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground">
+        {parentThreadSection ? (
+          <SectionToggleButton
+            id={SECTION_IDS.parentThread.toggle}
+            controlsId={SECTION_IDS.parentThread.body}
+            ariaLabel={parentSectionAriaLabel(parentThreadSection)}
+            icon={
+              <Icon
+                name="UserRound"
+                className="size-3.5 shrink-0"
+                aria-hidden="true"
+              />
+            }
+            label={null}
+            isExpanded={isParentThreadExpanded}
+            onToggle={() => onToggleSection("parentThread")}
+          />
+        ) : null}
+        <div
+          className="flex min-w-0 items-center gap-1.5 px-1 py-0.5"
+          role="status"
+          aria-label={statusAriaLabel}
+          title={statusAriaLabel}
+        >
+          <Icon
+            name={iconName}
+            className="size-3.5 shrink-0"
+            aria-hidden="true"
+          />
+          <span
+            className="min-w-0 truncate"
+            data-promptbox-hide-compact={
+              hasMultipleSegments ? "" : undefined
+            }
+            aria-hidden="true"
+          >
+            {statusLabel}
+          </span>
+        </div>
+      </div>
+      {parentThreadSection ? (
+        <AnimatedBody
+          id={SECTION_IDS.parentThread.body}
+          labelledBy={SECTION_IDS.parentThread.toggle}
+          isExpanded={isParentThreadExpanded}
+        >
+          <ParentThreadBody
+            parentThreadTitle={parentThreadSection.parentThreadTitle}
+            href={parentThreadSection.href}
+            relationship={parentThreadSection.relationship}
+          />
+        </AnimatedBody>
+      ) : null}
+    </PromptStackCard>
+  );
+}
+
 /**
  * Single rounded strip rendered above the FollowUp prompt input. Hosts the
  * thread's high-signal context as inline section toggles (TODO, git) plus
@@ -450,78 +546,34 @@ export function ThreadPromptContextBanner({
   gitSection,
   gitSectionPending,
   archivedSection,
+  environmentGoneSection,
   parentThreadSection,
   childThreadsSection,
   expandedSection,
   onToggleSection,
 }: ThreadPromptContextBannerProps) {
+  if (archivedSection || environmentGoneSection) {
+    return (
+      <ReadOnlyContextBanner
+        iconName={archivedSection ? "Archive" : "CircleX"}
+        statusAriaLabel={
+          archivedSection
+            ? ARCHIVED_THREAD_STATUS_LABEL
+            : ENVIRONMENT_GONE_ARIA_LABEL
+        }
+        statusLabel={
+          archivedSection
+            ? ARCHIVED_THREAD_STATUS_LABEL
+            : ENVIRONMENT_GONE_STATUS_LABEL
+        }
+        parentThreadSection={parentThreadSection}
+        expandedSection={expandedSection}
+        onToggleSection={onToggleSection}
+      />
+    );
+  }
   if (gitSectionPending) {
     return null;
-  }
-  if (archivedSection) {
-    const isParentThreadExpandedInArchived =
-      expandedSection === "parentThread" && parentThreadSection !== null;
-    const hasMultipleArchivedSegments = parentThreadSection !== null;
-    return (
-      <PromptStackCard
-        ariaLabel="Thread context before sending"
-        className="overflow-hidden"
-        style={{ minHeight: THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT }}
-      >
-        <div className="flex items-center gap-0.5 px-2 py-1 text-xs text-muted-foreground">
-          {parentThreadSection ? (
-            <SectionToggleButton
-              id={SECTION_IDS.parentThread.toggle}
-              controlsId={SECTION_IDS.parentThread.body}
-              ariaLabel={parentSectionAriaLabel(parentThreadSection)}
-              icon={
-                <Icon
-                  name="UserRound"
-                  className="size-3.5 shrink-0"
-                  aria-hidden="true"
-                />
-              }
-              label={null}
-              isExpanded={isParentThreadExpandedInArchived}
-              onToggle={() => onToggleSection("parentThread")}
-            />
-          ) : null}
-          <div
-            className="flex min-w-0 items-center gap-1.5 px-1 py-0.5"
-            role="status"
-            aria-label={ARCHIVED_THREAD_STATUS_LABEL}
-          >
-            <Icon
-              name="Archive"
-              className="size-3.5 shrink-0"
-              aria-hidden="true"
-            />
-            <span
-              className="min-w-0 truncate"
-              data-promptbox-hide-compact={
-                hasMultipleArchivedSegments ? "" : undefined
-              }
-              aria-hidden="true"
-            >
-              {ARCHIVED_THREAD_STATUS_LABEL}
-            </span>
-          </div>
-        </div>
-        {parentThreadSection ? (
-          <AnimatedBody
-            id={SECTION_IDS.parentThread.body}
-            labelledBy={SECTION_IDS.parentThread.toggle}
-            isExpanded={isParentThreadExpandedInArchived}
-          >
-            <ParentThreadBody
-              parentThreadTitle={parentThreadSection.parentThreadTitle}
-              href={parentThreadSection.href}
-              relationship={parentThreadSection.relationship}
-            />
-          </AnimatedBody>
-        ) : null}
-      </PromptStackCard>
-    );
   }
   const showTodo =
     todoSection !== null && hasObservedTodoItems(todoSection.pendingTodos);

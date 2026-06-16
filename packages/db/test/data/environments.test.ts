@@ -4,19 +4,13 @@ import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
-  applyProvisionedEnvironmentRecord,
-  clearEnvironmentCleanupRequestRecord,
-  claimManagedEnvironmentReprovisionRecord,
   createEnvironment,
   listRetiredLoadedEnvironmentIdsOnHost,
-  recordEnvironmentCleanupRequest,
-  setEnvironmentRecordDestroyed,
-  setEnvironmentStatus,
+  recordProvisionedEnvironmentWorkspace,
   updateEnvironmentMetadata,
 } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
-import { environments } from "../../src/schema.js";
 
 function setup() {
   const db = createConnection(":memory:");
@@ -121,7 +115,7 @@ describe("environments", () => {
     expect(notifier.notifyEnvironment).not.toHaveBeenCalled();
   });
 
-  it("emits status-changed for explicit status updates", () => {
+  it("records provisioned workspace metadata without touching status", () => {
     const { db, host, project } = setup();
     const environment = createEnvironment(db, noopNotifier, {
       projectId: project.id,
@@ -131,33 +125,12 @@ describe("environments", () => {
     });
     const notifier = createNotifierSpy();
 
-    const updated = setEnvironmentStatus(db, notifier, environment.id, {
-      status: "ready",
-    });
-
-    expect(updated?.status).toBe("ready");
-    expect(notifier.notifyEnvironment).toHaveBeenCalledWith(environment.id, [
-      "status-changed",
-    ]);
-  });
-
-  it("emits both status-changed and metadata-changed for provisioning results", () => {
-    const { db, host, project } = setup();
-    const environment = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      workspaceProvisionType: "unmanaged",
-      status: "provisioning",
-    });
-    const notifier = createNotifierSpy();
-
-    const updated = applyProvisionedEnvironmentRecord(
+    const updated = recordProvisionedEnvironmentWorkspace(
       db,
       notifier,
       environment.id,
       {
         path: "/tmp/project",
-        status: "ready",
         isGitRepo: true,
         isWorktree: false,
         branchName: "bb/test",
@@ -167,130 +140,12 @@ describe("environments", () => {
 
     expect(updated).toMatchObject({
       path: "/tmp/project",
-      status: "ready",
+      status: "provisioning",
       isGitRepo: true,
       branchName: "bb/test",
       defaultBranch: "main",
     });
     expect(notifier.notifyEnvironment).toHaveBeenCalledWith(environment.id, [
-      "status-changed",
-      "metadata-changed",
-    ]);
-  });
-
-  it("claims managed reprovision only once", () => {
-    const { db, host, project } = setup();
-    const notifier = createNotifierSpy();
-    const environment = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      workspaceProvisionType: "managed-worktree",
-      managed: true,
-      status: "error",
-    });
-
-    const firstClaim = claimManagedEnvironmentReprovisionRecord(db, notifier, {
-      environmentId: environment.id,
-      now: 123,
-    });
-    const secondClaim = claimManagedEnvironmentReprovisionRecord(db, notifier, {
-      environmentId: environment.id,
-      now: 124,
-    });
-
-    expect(firstClaim).toBe(true);
-    expect(secondClaim).toBe(false);
-    expect(db.select().from(environments).all()[0]).toMatchObject({
-      id: environment.id,
-      status: "provisioning",
-      updatedAt: 123,
-    });
-    expect(notifier.notifyEnvironment).toHaveBeenCalledWith(environment.id, [
-      "status-changed",
-    ]);
-  });
-
-  it("records cleanup intent through the lifecycle write path", () => {
-    const { db, host, project } = setup();
-    const notifier = createNotifierSpy();
-    const environment = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      workspaceProvisionType: "managed-worktree",
-      managed: true,
-      status: "ready",
-    });
-
-    const requested = recordEnvironmentCleanupRequest(
-      db,
-      notifier,
-      environment.id,
-      {
-        requestedAt: 123,
-      },
-    );
-    const requestedAgain = recordEnvironmentCleanupRequest(
-      db,
-      notifier,
-      environment.id,
-      {
-        requestedAt: 456,
-      },
-    );
-    const cleared = clearEnvironmentCleanupRequestRecord(
-      db,
-      notifier,
-      environment.id,
-    );
-
-    expect(requested).toMatchObject({
-      cleanupRequestedAt: 123,
-      cleanupMode: "safe",
-    });
-    expect(requestedAgain).toMatchObject({
-      cleanupRequestedAt: 123,
-      cleanupMode: "safe",
-      updatedAt: requested?.updatedAt,
-    });
-    expect(cleared).toMatchObject({
-      cleanupRequestedAt: null,
-      cleanupMode: null,
-    });
-    expect(notifier.notifyEnvironment).toHaveBeenNthCalledWith(
-      1,
-      environment.id,
-      ["metadata-changed"],
-    );
-    expect(notifier.notifyEnvironment).toHaveBeenNthCalledWith(
-      2,
-      environment.id,
-      ["metadata-changed"],
-    );
-    expect(notifier.notifyEnvironment).toHaveBeenCalledTimes(2);
-  });
-
-  it("marks destroyed through the lifecycle write path", () => {
-    const { db, host, project } = setup();
-    const notifier = createNotifierSpy();
-    const environment = createEnvironment(db, noopNotifier, {
-      projectId: project.id,
-      hostId: host.id,
-      workspaceProvisionType: "managed-worktree",
-      managed: true,
-      cleanupRequestedAt: 123,
-      cleanupMode: "safe",
-      status: "destroying",
-    });
-
-    const updated = setEnvironmentRecordDestroyed(db, notifier, environment.id);
-
-    expect(updated).toMatchObject({
-      status: "destroyed",
-      cleanupRequestedAt: null,
-      cleanupMode: null,
-    });
-    expect(notifier.notifyEnvironment).toHaveBeenCalledWith(environment.id, [
-      "status-changed",
       "metadata-changed",
     ]);
   });

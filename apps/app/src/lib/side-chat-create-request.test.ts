@@ -52,8 +52,6 @@ function makeEnvironment(overrides: Partial<Environment> = {}): Environment {
     baseBranch: "main",
     defaultBranch: "main",
     mergeBaseBranch: null,
-    cleanupRequestedAt: null,
-    cleanupMode: null,
     status: "ready",
     createdAt: 1,
     updatedAt: 1,

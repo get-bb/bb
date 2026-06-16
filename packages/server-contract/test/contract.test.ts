@@ -603,7 +603,6 @@ describe("server-contract canonical schemas", () => {
         details: {
           environmentStatus: "destroyed",
           hasPath: false,
-          cleanupRequestedAt: 123,
         },
       }),
     ).toMatchObject({
@@ -618,7 +617,6 @@ describe("server-contract canonical schemas", () => {
         details: {
           reason: "not_active",
           archivedAt: null,
-          stopRequestedAt: null,
           threadStatus: "idle",
         },
       }),
@@ -689,7 +687,6 @@ describe("server-contract canonical schemas", () => {
         details: {
           reason: "destroyed",
           archivedAt: null,
-          stopRequestedAt: null,
           threadStatus: "idle",
         },
       }),
@@ -864,7 +861,6 @@ describe("server-contract canonical schemas", () => {
           archivedAt: null,
           pinnedAt: null,
           pinSortKey: null,
-          stopRequestedAt: null,
           deletedAt: null,
           lastReadAt: null,
           latestAttentionAt: 2,

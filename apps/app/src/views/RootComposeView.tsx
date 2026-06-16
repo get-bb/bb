@@ -417,7 +417,6 @@ export function RootComposeView(props: RootComposeViewProps) {
   } = useScopedBranchSelection({
     environmentValue: effectiveEnvironmentValue,
     projectId,
-    rememberSelection: branchEnvironmentMode === "worktree",
   });
   const selectedBranchName = selectedBranch?.name ?? "";
   const hostBranchesQuery = useProjectSourceBranches(
@@ -463,7 +462,9 @@ export function RootComposeView(props: RootComposeViewProps) {
     activeBranchesQuery.data?.checkout.kind === "branch"
       ? activeBranchesQuery.data.checkout.branchName
       : branchEnvironmentMode === "worktree"
-        ? (activeBranchesQuery.data?.defaultBranch ?? null)
+        ? (activeBranchesQuery.data?.defaultWorktreeBaseBranch ??
+          activeBranchesQuery.data?.defaultBranch ??
+          null)
         : null;
   const handleCreateBranchFromSeed = useCallback(() => {
     handleCreateBranch(branchSelectionSeed);
@@ -498,11 +499,20 @@ export function RootComposeView(props: RootComposeViewProps) {
   const selectedEnvironment = useMemo(
     () =>
       resolveRootComposeThreadEnvironment({
+        defaultBranch: activeBranchesQuery.data?.defaultBranch,
+        defaultWorktreeBaseBranch:
+          activeBranchesQuery.data?.defaultWorktreeBaseBranch,
         environmentValue: effectiveEnvironmentValue,
         projectId,
         selectedBranch,
       }),
-    [effectiveEnvironmentValue, projectId, selectedBranch],
+    [
+      activeBranchesQuery.data?.defaultBranch,
+      activeBranchesQuery.data?.defaultWorktreeBaseBranch,
+      effectiveEnvironmentValue,
+      projectId,
+      selectedBranch,
+    ],
   );
 
   const projectOptions = useMemo(

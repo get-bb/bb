@@ -186,7 +186,6 @@ describe("workspace-status", () => {
         code: "environment_not_ready",
         message: "Environment unavailable",
         details: {
-          cleanupRequestedAt: 10,
           environmentStatus: "destroyed",
           hasPath: false,
         },

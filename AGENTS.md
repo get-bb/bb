@@ -83,7 +83,7 @@ Smoke-test agents with:
 
 ```bash
 eval "$(scripts/bb-dev-app env)"
-pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode readonly --title "Smoke test" --prompt "Reply only with ok." --no-context-parent-thread --json
+pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode readonly --title "Smoke test" --prompt "Reply only with ok." --json
 ```
 
 ## Planning Workflow

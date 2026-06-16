@@ -60,8 +60,8 @@ export interface ResolveCommandWorkspaceArgs {
  *   3. else the primary host with `cwd: null`.
  * Unlike the path-search resolvers (which require a concrete path and throw),
  * command discovery is valid with `cwd: null`, so each step falls through to
- * the next instead of surfacing an error. In particular an environment that is
- * still provisioning (or ended in error/destroyed) must NOT fail here — it
+   * the next instead of surfacing an error. In particular an environment that is
+   * still provisioning or otherwise unavailable must NOT fail here — it
  * degrades to the project source / user-home roots — so this reads the
  * environment with the non-throwing `getEnvironment` rather than
  * `requireReadyEnvironment`.

@@ -29,7 +29,6 @@ function createThread(
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
-    stopRequestedAt: null,
     deletedAt: null,
     lastReadAt: 0,
     latestAttentionAt: 2,

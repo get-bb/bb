@@ -124,7 +124,6 @@ interface OperationBackfillEnvironmentRow {
 
 interface OperationBackfillThreadRow {
   status: string;
-  stopRequestedAt: number | null;
 }
 
 interface MigratedEventRow {
@@ -228,8 +227,7 @@ const terminalSessionRuntimeStateHonestyWhen = 1780718665310;
 const hostDaemonSessionObservabilityMigrationWhen = 1780719536955;
 const threadTypeRemovalMigrationWhen = 1780973302146;
 const eventLargeValuesMigrationWhen = 1781403656069;
-const eventLargeValuesRestoreMigrationWhen = 1781557200000;
-const threadChildOriginMigrationWhen = 1781570983482;
+const threadChildOriginMigrationWhen = 1781639675026;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -267,6 +265,51 @@ function dropEnvironmentNameColumn(db: DbConnection): void {
 function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
   db.$client
     .prepare("ALTER TABLE environments DROP COLUMN destroy_attempt_id")
+    .run();
+}
+
+/**
+ * cleanup_mode existed since the baseline and is dropped by 0033, so a forward
+ * replay from before 0033 must first restore it for 0033's DROP COLUMN to apply
+ * — the mirror of the post-ADD-COLUMN drops above.
+ */
+function restoreEnvironmentCleanupModeColumn(db: DbConnection): void {
+  db.$client
+    .prepare("ALTER TABLE environments ADD COLUMN cleanup_mode text")
+    .run();
+}
+
+/**
+ * cleanup_requested_at existed since the baseline and is dropped by 0035.
+ * Tests that rewind migration history from a current schema need to restore it
+ * so Drizzle can replay the historical DROP COLUMN migration.
+ */
+function restoreEnvironmentCleanupRequestedAtColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+    .all()
+    .map((row) => row.name);
+  if (!columns.includes("cleanup_requested_at")) {
+    db.$client
+      .prepare("ALTER TABLE environments ADD COLUMN cleanup_requested_at integer")
+      .run();
+  }
+  db.$client
+    .prepare(
+      "CREATE INDEX IF NOT EXISTS environments_cleanup_requested_idx ON environments (cleanup_requested_at)",
+    )
+    .run();
+}
+
+/**
+ * stop_requested_at existed since the baseline and is dropped by 0034, so a
+ * forward replay from before 0034 must first restore it for 0034's DROP COLUMN
+ * to apply — and the legacy thread_operations stop backfill in migrate.ts
+ * writes it before the journal runs. Mirror of restoreEnvironmentCleanupModeColumn.
+ */
+function restoreThreadStopRequestedAtColumn(db: DbConnection): void {
+  db.$client
+    .prepare("ALTER TABLE threads ADD COLUMN stop_requested_at integer")
     .run();
 }
 
@@ -392,23 +435,9 @@ function runMigrationFile(args: RunMigrationFileArgs): void {
 
 function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS event_large_values").run();
-  db.$client
-    .prepare<DeleteMigrationParameters>(
-      `
-        DELETE FROM __drizzle_migrations
-        WHERE created_at = ?
-      `,
-    )
-    .run(eventLargeValuesMigrationWhen);
-  // Roll back the restore migration and everything applied after it so the
-  // standard (timestamp-based) drizzle migrator re-applies from the restore
-  // migration forward. Leaving a later migration (e.g. 0033) recorded would
-  // make drizzle treat the restore migration as already applied and skip it.
-  // The later migrations' schema changes must also be undone so they re-run
-  // cleanly: 0033 adds threads.child_origin, which would collide on re-apply.
-  db.$client
-    .prepare("ALTER TABLE `threads` DROP COLUMN `child_origin`")
-    .run();
+  restoreEnvironmentCleanupModeColumn(db);
+  restoreEnvironmentCleanupRequestedAtColumn(db);
+  restoreThreadStopRequestedAtColumn(db);
   db.$client
     .prepare<DeleteMigrationParameters>(
       `
@@ -416,7 +445,12 @@ function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
         WHERE created_at >= ?
       `,
     )
-    .run(eventLargeValuesRestoreMigrationWhen);
+    .run(eventLargeValuesMigrationWhen);
+  // 0036 adds threads.child_origin; drop it so that migration re-applies
+  // cleanly when the migrator runs forward from the large-values migration.
+  db.$client
+    .prepare("ALTER TABLE `threads` DROP COLUMN `child_origin`")
+    .run();
 }
 
 function seedEventLargeValueBackfillThread(db: DbConnection): void {
@@ -966,6 +1000,9 @@ describe("migrate", () => {
         )
         .run(threadTypeRemovalMigrationWhen);
       dropPost0023Tables(db);
+      restoreEnvironmentCleanupModeColumn(db);
+      restoreEnvironmentCleanupRequestedAtColumn(db);
+      restoreThreadStopRequestedAtColumn(db);
 
       migrate(db);
 
@@ -1508,6 +1545,8 @@ describe("migrate", () => {
         );
       `);
       deleteDeferredCleanupMigrationRows(db);
+      restoreEnvironmentCleanupRequestedAtColumn(db);
+      restoreThreadStopRequestedAtColumn(db);
 
       migrate(db, { deferDestructiveLegacyCleanup: true });
 
@@ -1533,13 +1572,14 @@ describe("migrate", () => {
           .all()
           .map((row) => row.name),
       ).toEqual(expect.arrayContaining(["command_cursor"]));
+      // The legacy thread_operations stop backfill still drives the thread to
+      // error; stop_requested_at is no longer a column (dropped by 0031), so it
+      // can't be asserted — the durable stop intent is now the status itself.
       expect(
         db.$client
           .prepare<[], OperationBackfillThreadRow>(
             `
-              SELECT
-                status,
-                stop_requested_at AS stopRequestedAt
+              SELECT status
               FROM threads
               WHERE id = 'thr_deferred_cleanup'
             `,
@@ -1547,7 +1587,6 @@ describe("migrate", () => {
           .get(),
       ).toEqual({
         status: "error",
-        stopRequestedAt: 2_500,
       });
       expect(
         db.$client
@@ -2146,6 +2185,9 @@ describe("migrate", () => {
         .run("main-0001-hash", publishedTerminalSessionUserInputWhen);
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
+      restoreEnvironmentCleanupModeColumn(db);
+      restoreEnvironmentCleanupRequestedAtColumn(db);
+      restoreThreadStopRequestedAtColumn(db);
       dropPost0023Tables(db);
 
       expect(
@@ -2219,13 +2261,13 @@ describe("migrate", () => {
       expect(migrationCreatedAts).toContain(threadDynamicContextFileStatesWhen);
       expect(migrationCreatedAts).toContain(commandLookupIndexesWhen);
       expect(migrationCreatedAts).toContain(threadPinningMigrationWhen);
+      // The legacy thread_operations stop backfill still drives the thread to
+      // error; stop_requested_at is no longer a column (dropped by 0031).
       expect(
         db.$client
           .prepare<[], OperationBackfillThreadRow>(
             `
-            SELECT
-                status,
-                stop_requested_at AS stopRequestedAt
+            SELECT status
               FROM threads
               WHERE id = 'thr_legacy_operation_backfill'
             `,
@@ -2233,7 +2275,6 @@ describe("migrate", () => {
           .get(),
       ).toEqual({
         status: "error",
-        stopRequestedAt: 2_500,
       });
       const interruptedEvent = db.$client
         .prepare<[], MigratedEventRow>(
@@ -2413,6 +2454,9 @@ describe("migrate", () => {
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
       dropQueuedMessageSenderThreadIdColumn(db);
+      restoreEnvironmentCleanupModeColumn(db);
+      restoreEnvironmentCleanupRequestedAtColumn(db);
+      restoreThreadStopRequestedAtColumn(db);
       dropPost0023Tables(db);
       db.$client
         .prepare(
@@ -2607,6 +2651,9 @@ describe("migrate", () => {
       dropEnvironmentNameColumn(db);
       dropEnvironmentDestroyAttemptIdColumn(db);
       dropQueuedMessageSenderThreadIdColumn(db);
+      restoreEnvironmentCleanupModeColumn(db);
+      restoreEnvironmentCleanupRequestedAtColumn(db);
+      restoreThreadStopRequestedAtColumn(db);
       dropPost0023Tables(db);
 
       migrate(db);
@@ -2764,8 +2811,8 @@ describe("migrate", () => {
       markEventLargeValuesMigrationUnapplied(db);
       migrate(db);
 
-      // The restore migration and every migration after it (0033) re-apply, so
-      // the latest applied migration is the most recent one in the journal.
+      // The restore migration and every migration after it (through 0036)
+      // re-apply, so the latest applied migration is the most recent in the journal.
       expect(readLatestAppliedMigrationCreatedAt(db)).toBe(
         threadChildOriginMigrationWhen,
       );

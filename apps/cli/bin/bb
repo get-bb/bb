@@ -1,3 +1,14 @@
 #!/bin/sh
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec node "$SCRIPT_DIR/../dist/index.js" "$@"
+CLI_ENTRY="$SCRIPT_DIR/../dist/index.js"
+
+if [ ! -f "$CLI_ENTRY" ]; then
+  REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo "Missing built bb CLI entry at $CLI_ENTRY and pnpm is not available to build it." >&2
+    exit 1
+  fi
+  pnpm -C "$REPO_ROOT" run --silent cli:prepare 1>&2 || exit $?
+fi
+
+exec node "$CLI_ENTRY" "$@"

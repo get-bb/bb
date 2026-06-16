@@ -2,20 +2,13 @@ import { z } from "zod";
 export const environmentStatusValues = [
   "provisioning",
   "ready",
+  "retiring",
   "error",
   "destroying",
   "destroyed",
 ] as const;
 export const environmentStatusSchema = z.enum(environmentStatusValues);
 export type EnvironmentStatus = z.infer<typeof environmentStatusSchema>;
-
-export const environmentCleanupModeValues = ["safe"] as const;
-export const environmentCleanupModeSchema = z.enum(
-  environmentCleanupModeValues,
-);
-export type EnvironmentCleanupMode = z.infer<
-  typeof environmentCleanupModeSchema
->;
 
 export const WORKSPACE_PROVISION_TYPES = [
   "unmanaged",
@@ -89,8 +82,6 @@ export const environmentSchema = z.object({
   baseBranch: z.string().nullable(),
   defaultBranch: z.string().nullable(),
   mergeBaseBranch: z.string().nullable(),
-  cleanupRequestedAt: z.number().nullable(),
-  cleanupMode: environmentCleanupModeSchema.nullable(),
   status: environmentStatusSchema,
   createdAt: z.number(),
   updatedAt: z.number(),

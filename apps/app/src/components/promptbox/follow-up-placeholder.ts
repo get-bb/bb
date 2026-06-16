@@ -11,15 +11,11 @@ import { assertNever } from "@bb/core-ui";
 export function getFollowUpPromptPlaceholder(
   displayStatus: ThreadRuntimeDisplayStatus,
 ): string {
-  if (displayStatus === "created") {
-    return "Creating thread...";
-  }
-
   switch (displayStatus) {
-    case "provisioning":
-      // Matches the timeline's provisioning operation title ("Provisioning
-      // thread"), which is uniform across all threads.
-      return "Provisioning thread...";
+    case "starting":
+      return "Starting thread...";
+    case "stopping":
+      return "Stopping thread...";
     case "waiting-for-host":
       return "Host disconnected";
     case "host-reconnecting":

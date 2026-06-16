@@ -15,6 +15,7 @@ import {
 import type {
   HostDaemonCommand,
   HostDaemonEventEnvelope,
+  HostDaemonOnlineRpcResult,
   HostDaemonOnlineRpcRequestMessage,
   HostDaemonRpcCommand,
   HostDaemonRpcResultForCommand,
@@ -120,6 +121,33 @@ interface TestHostRpcSocket {
   send(data: string): void;
 }
 
+function buildDefaultBranchListResult(
+  selectedBranch: string | undefined,
+): HostDaemonOnlineRpcResult<"host.list_branches"> {
+  return {
+    branches: ["main"],
+    branchesTruncated: false,
+    checkout: {
+      kind: "branch",
+      branchName: "main",
+      headSha: "abc123",
+    },
+    defaultBranch: "main",
+    defaultBranchRelation: "equal",
+    hasUncommittedChanges: false,
+    operation: { kind: "none" },
+    originDefaultBranch: "origin/main",
+    remoteBranches: ["origin/main"],
+    remoteBranchesTruncated: false,
+    selectedBranch: selectedBranch
+      ? {
+          name: selectedBranch,
+          kind: selectedBranch.startsWith("origin/") ? "remote" : "local",
+        }
+      : null,
+  };
+}
+
 export interface CreateTestDaemonEventEnvelopeArgs {
   event: ThreadEvent;
   threadId?: string;
@@ -190,6 +218,19 @@ export function registerTestHostRpcCapture(
         return;
       }
       const command = hostDaemonRpcCommandSchema.parse(message.command);
+      if (command.type === "host.list_branches") {
+        deps.hub.recordHostOnlineRpcResponse({
+          message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+            type: "host-rpc.response",
+            requestId: message.requestId,
+            commandType: command.type,
+            ok: true,
+            result: buildDefaultBranchListResult(command.selectedBranch),
+          }),
+          sessionId: args.sessionId,
+        });
+        return;
+      }
       const now = Date.now();
       const row: CapturedRpcRow = {
         id: `rpc-${message.requestId}`,

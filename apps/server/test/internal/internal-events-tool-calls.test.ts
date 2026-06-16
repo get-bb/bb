@@ -446,6 +446,72 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
+  it("leaves a settled thread untouched when a stale turn completion is redelivered alone", async () => {
+    await withTestHarness(async (harness) => {
+      const { session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: session.hostId,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: session.hostId,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-stale-completion",
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-stale-completion"),
+        data: { providerThreadId: "provider-stale-completion" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-stale-completion",
+        sequence: 2,
+        type: "turn/completed",
+        scope: turnScope("turn-stale-completion"),
+        data: { status: "completed" },
+      });
+      const settledRow = harness.db
+        .select()
+        .from(threads)
+        .where(eq(threads.id, thread.id))
+        .get();
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/completed",
+              threadId: thread.id,
+              providerThreadId: "provider-stale-completion",
+              scope: turnScope("turn-stale-completion"),
+              status: "completed",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      // run.succeeded has no THREAD_LIFECYCLE cell for "idle": the
+      // redelivered completion is an illegal-transition no-op and the thread
+      // row is untouched.
+      expect(
+        harness.db.select().from(threads).where(eq(threads.id, thread.id)).get(),
+      ).toEqual(settledRow);
+    });
+  });
+
   it("rejects unsupported tool calls", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

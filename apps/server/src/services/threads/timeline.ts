@@ -26,10 +26,7 @@ import {
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listTimelineSegmentAnchorsDescending,
 } from "@bb/db";
-import type {
-  DbConnection,
-  StoredEventRow,
-} from "@bb/db";
+import type { DbConnection, StoredEventRow } from "@bb/db";
 import { ApiError } from "../../errors.js";
 import { parseStoredEvent } from "./thread-data.js";
 import {
@@ -79,6 +76,7 @@ interface PartitionAcceptedInputRowsByRequestedTurnResult {
 interface FilterExactEventRowsForRequestedTurnArgs {
   acceptedClientRequestIdsForOtherTurns: ReadonlySet<ClientTurnRequestId>;
   exactEventRows: readonly StoredEventRow[];
+  turnId: string;
 }
 
 interface FilterExactEventRowsForRequestedTurnResult {
@@ -123,9 +121,7 @@ export type ThreadTimelineBuildProfileStage =
   | "pagination-segmentation"
   | "response-serialization";
 
-export type ThreadTimelineEventSelectionStrategy =
-  | "full"
-  | "standard-window";
+export type ThreadTimelineEventSelectionStrategy = "full" | "standard-window";
 
 export interface ThreadTimelineBuildProfileStageTiming {
   durationMs: number;
@@ -377,13 +373,12 @@ function partitionAcceptedInputRowsByRequestedTurn(
     if (row.scopeKind !== "turn" || row.turnId === null) {
       throw new Error(`Expected turn-scoped turn/input/accepted row ${row.id}`);
     }
+    const clientRequestId = parseAcceptedInputClientRequestId(row);
     if (row.turnId === args.turnId) {
       requestedTurnRows.push(row);
       continue;
     }
-    acceptedClientRequestIdsForOtherTurns.add(
-      parseAcceptedInputClientRequestId(row),
-    );
+    acceptedClientRequestIdsForOtherTurns.add(clientRequestId);
   }
 
   return {
@@ -395,16 +390,14 @@ function partitionAcceptedInputRowsByRequestedTurn(
 function filterExactEventRowsForRequestedTurn(
   args: FilterExactEventRowsForRequestedTurnArgs,
 ): FilterExactEventRowsForRequestedTurnResult {
-  if (args.acceptedClientRequestIdsForOtherTurns.size === 0) {
-    return {
-      removedRows: false,
-      rows: args.exactEventRows,
-    };
-  }
-
   const rows: StoredEventRow[] = [];
   let removedRows = false;
   for (const row of args.exactEventRows) {
+    if (row.scopeKind === "turn" && row.turnId !== args.turnId) {
+      removedRows = true;
+      continue;
+    }
+
     const requestId = tryReadClientTurnRequestedRequestId(row);
     if (
       requestId !== null &&
@@ -932,37 +925,29 @@ export function buildTimelineTurnSummaryDetails(
     seqStart: options.sourceSeqStart,
     seqEnd: options.sourceSeqEnd,
   });
-  const acceptedInputRows = listStoredTurnInputAcceptedRowsByClientRequestIds(
-    db,
-    {
+  const exactAcceptedInputRows = exactEventRows.filter(
+    (row) => row.type === "turn/input/accepted",
+  );
+  const futureAcceptedInputRows =
+    listStoredTurnInputAcceptedRowsByClientRequestIds(db, {
       threadId: thread.id,
       afterSequence: options.sourceSeqEnd,
       clientRequestIds,
-    },
-  );
+    });
   const acceptedInputRowsByTurn = partitionAcceptedInputRowsByRequestedTurn({
-    acceptedInputRows,
+    acceptedInputRows: [...exactAcceptedInputRows, ...futureAcceptedInputRows],
     turnId: options.turnId,
   });
   const exactEventRowsForRequestedTurn = filterExactEventRowsForRequestedTurn({
     acceptedClientRequestIdsForOtherTurns:
       acceptedInputRowsByTurn.acceptedClientRequestIdsForOtherTurns,
     exactEventRows,
+    turnId: options.turnId,
   });
-  const eventRows = [
+  const eventRows = mergeStoredEventRowsById([
     ...exactEventRowsForRequestedTurn.rows,
     ...acceptedInputRowsByTurn.requestedTurnRows,
-  ];
-  const mismatchedTurnRow = eventRows.find(
-    (row) => row.scopeKind === "turn" && row.turnId !== options.turnId,
-  );
-  if (mismatchedTurnRow) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} includes turn ${mismatchedTurnRow.turnId ?? "unknown"} instead of ${options.turnId}`,
-    );
-  }
+  ]);
 
   const hasTurnScopedRowsForRequestedTurn = eventRows.some(
     (row) => row.scopeKind === "turn" && row.turnId === options.turnId,

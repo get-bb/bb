@@ -16,10 +16,15 @@ import type {
   ReasoningLevel,
   ThreadChangeKind,
   ThreadChildOrigin,
+  ThreadLifecycleEvent,
+  ThreadLifecycleNoopReason,
   ThreadStatus,
   WorkspaceProvisionType,
 } from "@bb/domain";
-import { resolveEnvironmentWorkspaceDisplayKind } from "@bb/domain";
+import {
+  evaluateThreadLifecycleEvent,
+  resolveEnvironmentWorkspaceDisplayKind,
+} from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
@@ -34,18 +39,6 @@ import {
 } from "./order-keys.js";
 
 type ThreadWriteConnection = DbConnection | DbTransaction;
-
-/**
- * Allowed thread status transitions.
- * Key is the current status, values are the statuses it can transition to.
- */
-export const ALLOWED_TRANSITIONS: Record<ThreadStatus, ThreadStatus[]> = {
-  created: ["provisioning", "active", "idle", "error"],
-  provisioning: ["active", "idle", "error"],
-  idle: ["provisioning", "active", "error"],
-  active: ["idle", "error"],
-  error: ["provisioning", "active", "idle"],
-};
 
 export interface CreateThreadInput {
   automationId?: string | null;
@@ -76,7 +69,7 @@ export function createThread(
       providerId: input.providerId,
       title: input.title ?? null,
       titleFallback: input.titleFallback ?? null,
-      status: input.status ?? "created",
+      status: input.status ?? "starting",
       parentThreadId: input.parentThreadId ?? null,
       childOrigin: input.childOrigin ?? null,
       lastReadAt: now,
@@ -286,30 +279,6 @@ function resolvePinnedThreadNeighbor(
   );
 }
 
-interface InvalidThreadStatusTransitionErrorArgs {
-  currentStatus: ThreadStatus;
-  newStatus: ThreadStatus;
-}
-
-export interface TransitionThreadStatusInTransactionArgs {
-  id: string;
-  newStatus: ThreadStatus;
-}
-
-export class InvalidThreadStatusTransitionError extends Error {
-  readonly currentStatus: ThreadStatus;
-  readonly newStatus: ThreadStatus;
-
-  constructor(args: InvalidThreadStatusTransitionErrorArgs) {
-    super(
-      `Invalid thread status transition: ${args.currentStatus} → ${args.newStatus}`,
-    );
-    this.name = "InvalidThreadStatusTransitionError";
-    this.currentStatus = args.currentStatus;
-    this.newStatus = args.newStatus;
-  }
-}
-
 export interface ThreadWithPendingInteractionState extends ThreadRow {
   environmentBranchName: string | null;
   environmentHostId: string | null;
@@ -348,11 +317,6 @@ export interface ListNonDeletedChildThreadsArgs {
   parentThreadId: string;
 }
 
-export interface MarkThreadStopRequestedArgs {
-  requestedAt?: number;
-  threadId: string;
-}
-
 export interface MarkThreadDeletedArgs {
   deletedAt?: number;
   threadId: string;
@@ -371,20 +335,12 @@ export interface ListHostThreadIdsArgs {
   hostId: string;
 }
 
-export interface ListStopRequestedThreadsArgs {
-  limit: number;
+export interface ListTrackedThreadStorageTargetsOnHostArgs {
+  hostId: string;
 }
 
 export interface ThreadEnvironmentAssignmentRow {
   environmentId: string;
-  threadId: string;
-}
-
-export interface StopRequestedThreadRow {
-  environmentId: string;
-  hostId: string;
-  status: ThreadStatus;
-  stopRequestedAt: number | null;
   threadId: string;
 }
 
@@ -397,8 +353,7 @@ export interface HasNonTerminalThreadInEnvironmentArgs {
 }
 
 const NON_TERMINAL_THREAD_STATUSES: readonly ThreadStatus[] = [
-  "created",
-  "provisioning",
+  "starting",
   "idle",
   "active",
 ];
@@ -419,7 +374,7 @@ function statusTransitionNeedsAttention(args: StatusTransition): boolean {
   }
 
   return (
-    args.currentStatus === "active" || args.currentStatus === "provisioning"
+    args.currentStatus === "active" || args.currentStatus === "starting"
   );
 }
 
@@ -701,23 +656,30 @@ export function listHostThreadIds(
     .map((row) => row.id);
 }
 
-export function listStopRequestedThreads(
+/**
+ * Threads whose storage the daemon should track for a host. Archived
+ * and deleted thread storage can be reaped, so those rows must not trigger
+ * reprime work.
+ */
+export function listTrackedThreadStorageTargetsOnHost(
   db: DbConnection,
-  args: ListStopRequestedThreadsArgs,
-): StopRequestedThreadRow[] {
+  args: ListTrackedThreadStorageTargetsOnHostArgs,
+): ThreadEnvironmentAssignmentRow[] {
   return db
     .select({
-      environmentId: environments.id,
-      hostId: environments.hostId,
-      status: threads.status,
-      stopRequestedAt: threads.stopRequestedAt,
       threadId: threads.id,
+      environmentId: environments.id,
     })
     .from(threads)
     .innerJoin(environments, eq(threads.environmentId, environments.id))
-    .where(isNotNull(threads.stopRequestedAt))
-    .orderBy(asc(threads.stopRequestedAt), asc(threads.id))
-    .limit(args.limit)
+    .where(
+      and(
+        eq(environments.hostId, args.hostId),
+        ne(environments.status, "destroyed"),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
     .all();
 }
 
@@ -731,7 +693,7 @@ export function hasPendingThreadShutdownInEnvironment(
     .where(
       and(
         eq(threads.environmentId, args.environmentId),
-        isNotNull(threads.stopRequestedAt),
+        eq(threads.status, "stopping"),
       ),
     )
     .get();
@@ -1106,58 +1068,6 @@ export function deleteThread(
   return true;
 }
 
-export function markThreadStopRequested(
-  db: ThreadWriteConnection,
-  notifier: DbNotifier,
-  args: MarkThreadStopRequestedArgs,
-) {
-  const existing = getThread(db, args.threadId);
-  if (!existing) return null;
-
-  const now = Date.now();
-  const updated = db
-    .update(threads)
-    .set({
-      stopRequestedAt: existing.stopRequestedAt ?? args.requestedAt ?? now,
-      updatedAt: now,
-    })
-    .where(eq(threads.id, args.threadId))
-    .returning()
-    .get();
-
-  if (updated) {
-    notifier.notifyThread(args.threadId, ["status-changed"], {
-      projectId: updated.projectId,
-    });
-  }
-
-  return updated ?? null;
-}
-
-export function clearThreadStopRequested(
-  db: ThreadWriteConnection,
-  notifier: DbNotifier,
-  threadId: string,
-) {
-  const updated = db
-    .update(threads)
-    .set({
-      stopRequestedAt: null,
-      updatedAt: Date.now(),
-    })
-    .where(eq(threads.id, threadId))
-    .returning()
-    .get();
-
-  if (updated) {
-    notifier.notifyThread(threadId, ["status-changed"], {
-      projectId: updated.projectId,
-    });
-  }
-
-  return updated ?? null;
-}
-
 export function markThreadDeleted(
   db: ThreadWriteConnection,
   notifier: DbNotifier,
@@ -1223,66 +1133,148 @@ export function unarchiveThread(
   return updated ?? null;
 }
 
-function transitionThreadStatusRecord(
-  db: ThreadWriteConnection,
-  id: string,
-  newStatus: ThreadStatus,
+export type ApplyThreadLifecycleEventNoopReason =
+  | ThreadLifecycleNoopReason
+  | "not-found"
+  | "cas-conflict";
+
+export type ApplyThreadLifecycleEventOutcome =
+  | { applied: true; thread: ThreadRow }
+  | {
+      applied: false;
+      detail: string;
+      reason: ApplyThreadLifecycleEventNoopReason;
+    };
+
+export interface ApplyThreadLifecycleEventArgs {
+  event: ThreadLifecycleEvent;
+  threadId: string;
+}
+
+interface ThreadLifecycleEventNotAppliedErrorArgs {
+  detail: string;
+  reason: ApplyThreadLifecycleEventNoopReason;
+}
+
+export class ThreadLifecycleEventNotAppliedError extends Error {
+  readonly detail: string;
+  readonly reason: ApplyThreadLifecycleEventNoopReason;
+
+  constructor(args: ThreadLifecycleEventNotAppliedErrorArgs) {
+    super(`Thread lifecycle event not applied (${args.reason}): ${args.detail}`);
+    this.name = "ThreadLifecycleEventNotAppliedError";
+    this.detail = args.detail;
+    this.reason = args.reason;
+  }
+}
+
+/**
+ * For boundary callers where a no-op outcome is a real error (e.g. a 4xx
+ * response): returns the updated row, or throws
+ * ThreadLifecycleEventNotAppliedError.
+ */
+export function requireThreadLifecycleEventApplied(
+  outcome: ApplyThreadLifecycleEventOutcome,
 ) {
-  const thread = db.select().from(threads).where(eq(threads.id, id)).get();
+  if (!outcome.applied) {
+    throw new ThreadLifecycleEventNotAppliedError(outcome);
+  }
+  return outcome.thread;
+}
+
+function applyThreadLifecycleEventRecord(
+  db: ThreadWriteConnection,
+  args: ApplyThreadLifecycleEventArgs,
+): ApplyThreadLifecycleEventOutcome {
+  const thread = db
+    .select()
+    .from(threads)
+    .where(eq(threads.id, args.threadId))
+    .get();
   if (!thread) {
-    throw new Error(`Thread not found: ${id}`);
+    return {
+      applied: false,
+      detail: `thread not found: ${args.threadId}`,
+      reason: "not-found",
+    };
   }
 
-  const currentStatus = thread.status;
-  const allowed = ALLOWED_TRANSITIONS[currentStatus];
-  if (!allowed || !allowed.includes(newStatus)) {
-    throw new InvalidThreadStatusTransitionError({
-      currentStatus,
-      newStatus,
-    });
+  const evaluation = evaluateThreadLifecycleEvent({
+    event: args.event,
+    thread,
+  });
+  if ("noop" in evaluation) {
+    return {
+      applied: false,
+      detail: evaluation.detail,
+      reason: evaluation.noop,
+    };
   }
 
   const now = Date.now();
   const set: Partial<typeof threads.$inferInsert> = {
-    status: newStatus,
+    status: evaluation.to,
     updatedAt: now,
   };
   if (
     statusTransitionNeedsAttention({
-      currentStatus,
-      newStatus,
+      currentStatus: thread.status,
+      newStatus: evaluation.to,
       parentThreadId: thread.parentThreadId,
     })
   ) {
     set.latestAttentionAt = now;
   }
 
+  // Compare-and-set on the loaded status: belt-and-braces under
+  // better-sqlite3's synchronous transactions, and the contract that survives
+  // any future executor change.
   const updated = db
     .update(threads)
     .set(set)
-    .where(eq(threads.id, id))
+    .where(
+      and(eq(threads.id, args.threadId), eq(threads.status, thread.status)),
+    )
     .returning()
     .get();
-
-  return updated!;
+  if (!updated) {
+    return {
+      applied: false,
+      detail: `status changed from ${thread.status} while applying ${args.event.type}`,
+      reason: "cas-conflict",
+    };
+  }
+  return { applied: true, thread: updated };
 }
 
-export function transitionThreadStatusInTransaction(
-  db: DbTransaction,
-  args: TransitionThreadStatusInTransactionArgs,
-) {
-  return transitionThreadStatusRecord(db, args.id, args.newStatus);
-}
-
-export function transitionThreadStatus(
+/**
+ * Single writer for thread lifecycle events: loads the row, evaluates the
+ * event against THREAD_LIFECYCLE and its supersession predicates, and applies
+ * the transition with a status compare-and-set — all in one transaction.
+ * Never throws on stale or illegal events; returns a typed outcome for the
+ * caller to log. Use applyThreadLifecycleEventInTransaction from inside an
+ * existing transaction (the caller then owns notification).
+ */
+export function applyThreadLifecycleEvent(
   db: DbConnection,
   notifier: DbNotifier,
-  id: string,
-  newStatus: ThreadStatus,
-) {
-  const updated = transitionThreadStatusRecord(db, id, newStatus);
-  notifier.notifyThread(id, ["status-changed"], {
-    projectId: updated.projectId,
-  });
-  return updated;
+  args: ApplyThreadLifecycleEventArgs,
+): ApplyThreadLifecycleEventOutcome {
+  const outcome = db.transaction(
+    (tx) => applyThreadLifecycleEventRecord(tx, args),
+    { behavior: "immediate" },
+  );
+  if (outcome.applied) {
+    notifier.notifyThread(args.threadId, ["status-changed"], {
+      projectId: outcome.thread.projectId,
+    });
+  }
+  return outcome;
+}
+
+export function applyThreadLifecycleEventInTransaction(
+  tx: DbTransaction,
+  args: ApplyThreadLifecycleEventArgs,
+): ApplyThreadLifecycleEventOutcome {
+  return applyThreadLifecycleEventRecord(tx, args);
 }

@@ -37,8 +37,6 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
     branchName: null,
     defaultBranch: null,
     mergeBaseBranch: null,
-    cleanupRequestedAt: null,
-    cleanupMode: null,
     status: "ready",
     createdAt: 1,
     updatedAt: 2,

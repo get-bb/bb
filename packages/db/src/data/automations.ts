@@ -273,7 +273,7 @@ export function hasOpenAutomationThread(
     .where(
       and(
         eq(threads.automationId, automationId),
-        inArray(threads.status, ["active", "created", "idle", "provisioning"]),
+        inArray(threads.status, ["active", "starting", "idle"]),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
       ),

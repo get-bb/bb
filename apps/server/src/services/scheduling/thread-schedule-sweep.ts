@@ -15,6 +15,7 @@ import {
 import type {
   PromptInput,
   ResolvedThreadExecutionOptions,
+  ThreadChangeKind,
   TurnRequestTarget,
 } from "@bb/domain";
 import type {
@@ -42,7 +43,7 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   startLiveHostCommand,
 } from "../hosts/live-command.js";
-import { tryTransition } from "../threads/thread-transitions.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
 import {
   computeNextScheduledTime,
   ScheduleValidationError,
@@ -122,16 +123,15 @@ interface DisableThreadScheduleFromSweepArgs {
 
 interface QueuedScheduleResult {
   command: Extract<HostDaemonCommand, { type: "turn.submit" }>;
-  kind: "queued";
+  threadBecameActive: boolean;
 }
 
-interface LostRaceScheduleResult {
-  kind: "lost-race";
+class DueThreadScheduleLostRaceError extends Error {
+  constructor() {
+    super("Due thread schedule lost race");
+    this.name = "DueThreadScheduleLostRaceError";
+  }
 }
-
-type QueueDueThreadScheduleResult =
-  | LostRaceScheduleResult
-  | QueuedScheduleResult;
 
 function buildThreadScheduleInput(schedule: ThreadScheduleRow): PromptInput[] {
   return [
@@ -230,6 +230,10 @@ function advanceSkippedThreadSchedule(
 }
 
 function canQueueScheduleForThread(thread: ScheduledThread): boolean {
+  // A thread that is `stopping` is winding down its turn; it is neither idle
+  // nor active, so it is excluded here structurally. The lifecycle table backs
+  // this up — `stopping` has no run.started cell — so a scheduled turn
+  // cannot reactivate a stopping thread even if this early-skip is bypassed.
   return thread.status === "idle" || thread.status === "active";
 }
 
@@ -466,7 +470,6 @@ async function prepareDueThreadSchedule(
       environment: {
         id: environment.id,
         hostId: environment.hostId,
-        cleanupRequestedAt: environment.cleanupRequestedAt,
         path: environment.path,
         status: environment.status,
         workspaceProvisionType: environment.workspaceProvisionType,
@@ -511,18 +514,33 @@ async function prepareDueThreadSchedule(
 function queueDueThreadScheduleInTransaction(
   tx: DbTransaction,
   args: {
+    logger: AppDeps["logger"];
     nextFireAt: number;
     now: number;
     preparation: QueueDueThreadSchedulePreparation;
     schedule: ThreadScheduleRow;
   },
-): QueueDueThreadScheduleResult {
+): QueuedScheduleResult {
   if (
     !isThreadSchedulePreparationCurrent(tx, {
       preparation: args.preparation,
     })
   ) {
-    return { kind: "lost-race" };
+    throw new DueThreadScheduleLostRaceError();
+  }
+
+  const threadBecameActive = args.preparation.targetIntent.kind === "start";
+  if (threadBecameActive) {
+    const outcome = applyLoggedThreadLifecycleEventInTransaction(
+      { db: tx, logger: args.logger },
+      {
+        event: { type: "run.started" },
+        threadId: args.preparation.thread.id,
+      },
+    );
+    if (!outcome.applied) {
+      throw new DueThreadScheduleLostRaceError();
+    }
   }
 
   if (
@@ -533,7 +551,7 @@ function queueDueThreadScheduleInTransaction(
       now: args.now,
     })
   ) {
-    return { kind: "lost-race" };
+    throw new DueThreadScheduleLostRaceError();
   }
 
   const request = appendClientTurnEventInTransaction(tx, {
@@ -556,7 +574,7 @@ function queueDueThreadScheduleInTransaction(
     preparedCommand: args.preparation.preparedCommand,
   });
 
-  return { command, kind: "queued" };
+  return { command, threadBecameActive };
 }
 
 async function runDueThreadSchedule(
@@ -604,29 +622,35 @@ async function runDueThreadSchedule(
     throw error;
   }
 
-  const transactionResult = deps.db.transaction(
-    (tx) =>
-      queueDueThreadScheduleInTransaction(tx, {
-        schedule,
-        now,
-        nextFireAt,
-        preparation,
-      }),
-    { behavior: "immediate" },
-  );
-
-  if (transactionResult.kind === "lost-race") {
-    return;
+  let transactionResult: QueuedScheduleResult;
+  try {
+    transactionResult = deps.db.transaction(
+      (tx) =>
+        queueDueThreadScheduleInTransaction(tx, {
+          logger: deps.logger,
+          schedule,
+          now,
+          nextFireAt,
+          preparation,
+        }),
+      { behavior: "immediate" },
+    );
+  } catch (error) {
+    if (error instanceof DueThreadScheduleLostRaceError) {
+      return;
+    }
+    throw error;
   }
 
   cache.pendingTurnSubmitByThreadId.set(preparation.thread.id, true);
   deps.hub.notifyProject(schedule.projectId, ["thread-schedules-changed"]);
-  deps.hub.notifyThread(preparation.thread.id, ["events-appended"], {
+  const threadChanges: ThreadChangeKind[] = ["events-appended"];
+  if (transactionResult.threadBecameActive) {
+    threadChanges.push("status-changed");
+  }
+  deps.hub.notifyThread(preparation.thread.id, threadChanges, {
     eventTypes: ["client/turn/requested"],
   });
-  if (preparation.targetIntent.kind === "start") {
-    tryTransition(deps.db, deps.hub, preparation.thread.id, "active");
-  }
   startLiveHostCommand(deps, {
     command: transactionResult.command,
     hostId: preparation.environment.hostId,

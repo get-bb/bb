@@ -159,7 +159,7 @@ export function createThreadRecord(
   args: {
     environmentId: string | null;
     request: ThreadCreateServiceRequest;
-    status?: "created" | "provisioning";
+    status?: "starting";
   },
 ) {
   return createThread(deps.db, deps.hub, {
@@ -171,7 +171,7 @@ export function createThreadRecord(
     titleFallback: deriveTitleFallback(args.request.input),
     parentThreadId: args.request.parentThreadId ?? null,
     childOrigin: args.request.childOrigin,
-    status: args.status ?? "created",
+    status: args.status ?? "starting",
   });
 }
 

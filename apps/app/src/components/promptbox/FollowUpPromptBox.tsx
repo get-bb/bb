@@ -128,7 +128,7 @@ export interface FollowUpPromptBoxProps {
    * and passes it as a single element. Pass null to hide the stack entirely.
    */
   stack: ReactNode | null;
-  composer: FollowUpComposerProps;
+  composer: FollowUpComposerProps | null;
   /** Slot for the read-only environment strip in the bottom row. Pass null to hide. */
   environmentSummary: ReactNode | null;
   /**
@@ -163,7 +163,27 @@ export interface FollowUpPromptBoxProps {
   focusEndKey?: string | number;
 }
 
-export const FollowUpPromptBox = memo(function FollowUpPromptBox({
+type FollowUpPromptBoxWithComposerProps = Omit<
+  FollowUpPromptBoxProps,
+  "composer"
+> & {
+  composer: FollowUpComposerProps;
+};
+
+function FollowUpPromptBoxStackOnly({
+  stack,
+}: Pick<FollowUpPromptBoxProps, "stack">) {
+  if (!stack) {
+    return null;
+  }
+  return (
+    <div data-promptbox-shell="" className="space-y-2">
+      <div className="space-y-2">{stack}</div>
+    </div>
+  );
+}
+
+function FollowUpPromptBoxWithComposer({
   id,
   attachments,
   stack,
@@ -176,7 +196,7 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
   typeahead,
   zenModeResetKey,
   focusEndKey,
-}: FollowUpPromptBoxProps) {
+}: FollowUpPromptBoxWithComposerProps) {
   const submitMode = composer.submitMode;
   const canQueueFollowUp = submitMode.kind === "queue";
   const canSubmit = submitMode.kind === "ready" || submitMode.kind === "queue";
@@ -324,4 +344,13 @@ export const FollowUpPromptBox = memo(function FollowUpPromptBox({
       </div>
     </>
   );
+}
+
+export const FollowUpPromptBox = memo(function FollowUpPromptBox(
+  props: FollowUpPromptBoxProps,
+) {
+  if (props.composer === null) {
+    return <FollowUpPromptBoxStackOnly stack={props.stack} />;
+  }
+  return <FollowUpPromptBoxWithComposer {...props} composer={props.composer} />;
 });

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f8f78832-ff83-43f2-8e4a-0172dc1d6f1c",
+  "id": "bb7a94eb-0cc3-494a-a4b3-ae5121866f77",
   "prevId": "00fcb167-c8bc-4e50-b6f1-c06ef1c75e0c",
   "tables": {
     "apikey": {
@@ -499,13 +499,6 @@
         "cleanup_requested_at": {
           "name": "cleanup_requested_at",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "cleanup_mode": {
-          "name": "cleanup_mode",
-          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -2349,13 +2342,6 @@
         },
         "parent_thread_id": {
           "name": "parent_thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "child_origin": {
-          "name": "child_origin",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

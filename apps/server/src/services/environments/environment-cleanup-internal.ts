@@ -1,27 +1,16 @@
 import type { WorkspaceProvisionType } from "@bb/domain";
-import { resolveEnvironmentMergeBaseBranch, threadScope } from "@bb/domain";
+import { threadScope } from "@bb/domain";
 import {
   countLiveThreadsInEnvironment,
   getEnvironment,
   getActiveSession,
   hasPendingThreadShutdownInEnvironment,
   listLiveThreadsInEnvironment,
-  type RecoverStaleDestroyingEnvironmentCleanupResult,
   type DbNotifier,
-  type DbConnection,
   type DbQueryConnection,
   type DbTransaction,
 } from "@bb/db";
-import {
-  claimEnvironmentDestroy,
-  clearEnvironmentCleanupRequestRecord,
-  recoverStaleDestroyingEnvironmentCleanup,
-  recordEnvironmentCleanupRequest,
-  restoreEnvironmentAfterDestroyAttemptFailure,
-  setEnvironmentRecordDestroyed,
-  setEnvironmentStatus,
-} from "@bb/db/internal-environment-lifecycle";
-import { type HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
+import { listStaleDestroyingManagedEnvironments } from "@bb/db/internal-environment-lifecycle";
 import {
   emptyCommandResultSideEffects,
   type CommandResultReportForType,
@@ -31,16 +20,18 @@ import {
   type HostDaemonCommandForType,
 } from "../../internal/command-result-side-effects.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import {
   createLiveHostCommandExecution,
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   startLiveHostCommand,
 } from "../hosts/live-command.js";
 import { deferAfterResponse } from "../lib/response-deferral.js";
-import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { appendSystemErrorEventInTransaction } from "../threads/thread-events.js";
-import { tryTransitionInTransaction } from "../threads/thread-transitions.js";
+import { applyLoggedThreadLifecycleEventInTransaction } from "../threads/lifecycle-outcome.js";
+import {
+  applyLoggedEnvironmentLifecycleEvent,
+  applyLoggedEnvironmentLifecycleEventInTransaction,
+} from "./lifecycle-outcome.js";
 import { workspaceContextFromPath } from "./workspace-command-target.js";
 
 interface EnvironmentDestroyTarget {
@@ -63,18 +54,13 @@ interface RequestEnvironmentCleanupArgs {
 }
 
 interface RecoverOrphanedEnvironmentDestroyRequestsArgs {
-  now?: number;
   updatedBefore: number;
 }
 
-interface CancelPendingEnvironmentCleanupArgs {
-  environmentId: string | null | undefined;
+export interface RecoverOrphanedEnvironmentDestroyRequestsResult {
+  destroyed: number;
+  errored: number;
 }
-
-type CancelPendingEnvironmentCleanupResult =
-  | "cancelled"
-  | "in_progress"
-  | "not_requested";
 
 type EnvironmentDestroyCommand =
   HostDaemonCommandForType<"environment.destroy">;
@@ -99,25 +85,18 @@ interface EnvironmentCleanupReadDeps {
 
 interface EnvironmentCleanupWriteDeps extends EnvironmentCleanupReadDeps {
   hub: DbNotifier;
+  logger: AppDeps["logger"];
 }
 
-type EnvironmentCleanupRecoveryDeps = Pick<AppDeps, "db" | "hub">;
-
-interface EnvironmentCleanupCancellationDeps extends Omit<
-  EnvironmentCleanupWriteDeps,
-  "db"
-> {
-  db: DbConnection;
-}
+type EnvironmentCleanupRecoveryDeps = Pick<AppDeps, "db" | "hub" | "logger">;
 
 interface EnvironmentCleanupSettlementDeps extends EnvironmentCleanupWriteDeps {
   db: DbTransaction;
+  logger: AppDeps["logger"];
 }
 
 type EnvironmentCleanupDecisionDeps = Pick<AppDeps, "db">;
 type EnvironmentCleanupHostConnectionDeps = Pick<AppDeps, "db" | "hub">;
-type EnvironmentCleanupPreflightResult =
-  HostDaemonOnlineRpcResult<"environment.cleanup_preflight">;
 
 function hasConnectedHostDaemon(
   deps: EnvironmentCleanupHostConnectionDeps,
@@ -131,29 +110,18 @@ function hasConnectedHostDaemon(
   );
 }
 
-function cleanupPreflightAllowsDestroy(
-  result: EnvironmentCleanupPreflightResult,
-): boolean {
-  switch (result.outcome) {
-    case "safe_to_destroy":
-    case "already_missing":
-    case "not_inspectable":
-      return true;
-    case "blocked_by_changes":
-    case "probe_failed":
-      return false;
-  }
-}
-
-async function workspaceCanBeSafelyCleaned(
+function workspaceCanBeDestroyedNow(
   deps: LoggedWorkSessionDeps,
   environmentId: string,
-): Promise<boolean> {
+): boolean {
   const environment = getEnvironment(deps.db, environmentId);
+  // Not lifecycle: destroy precondition — only a cleanup-owned workspace is
+  // eligible for a destroy command; destroy.started re-asserts the row state
+  // atomically when the destroy actually starts.
   if (
     !environment ||
     !environment.managed ||
-    environment.status !== "ready" ||
+    (environment.status !== "retiring" && environment.status !== "error") ||
     !environment.path
   ) {
     return false;
@@ -163,59 +131,24 @@ async function workspaceCanBeSafelyCleaned(
     return false;
   }
 
-  if (!environment.isGitRepo) {
-    return true;
-  }
-
-  const mergeBaseBranch = resolveEnvironmentMergeBaseBranch(environment);
-  if (!mergeBaseBranch) {
-    return false;
-  }
-
-  const result = await callHostRetryableOnlineRpc(deps, {
-    hostId: environment.hostId,
-    timeoutMs: 30_000,
-    command: {
-      type: "environment.cleanup_preflight",
-      environmentId: environment.id,
-      workspaceContext: workspaceContextFromPath({
-        path: environment.path,
-        workspaceProvisionType: environment.workspaceProvisionType,
-      }),
-      mergeBaseBranch,
-    },
-  });
-  return cleanupPreflightAllowsDestroy(result);
+  return true;
 }
 
 function canRequestCleanup(
   environment: NonNullable<ReturnType<typeof getEnvironment>>,
 ): boolean {
-  return environment.managed && environment.status !== "destroyed";
+  return environment.managed && environment.status === "ready";
 }
 
-function isDestroyRequested(
+function canAdvanceCleanup(
   deps: EnvironmentCleanupReadDeps,
   environmentId: string,
 ): boolean {
   const environment = getEnvironment(deps.db, environmentId);
   return (
     environment !== null &&
-    (environment.cleanupMode !== null || environment.status === "destroying")
+    (environment.status === "retiring" || environment.status === "error")
   );
-}
-
-function restoreEnvironmentAfterCleanupCancellation(
-  deps: EnvironmentCleanupWriteDeps,
-  environment: NonNullable<ReturnType<typeof getEnvironment>>,
-): void {
-  if (environment.status !== "destroying") {
-    return;
-  }
-
-  setEnvironmentStatus(deps.db, deps.hub, environment.id, {
-    status: environment.path ? "ready" : "error",
-  });
 }
 
 function markLiveThreadsErroredAfterDestroySuccess(
@@ -232,7 +165,13 @@ function markLiveThreadsErroredAfterDestroySuccess(
         "The workspace for this thread was destroyed before the thread could be stopped.",
       scope: threadScope(),
     });
-    tryTransitionInTransaction(deps.db, deps.hub, thread.id, "error");
+    const outcome = applyLoggedThreadLifecycleEventInTransaction(deps, {
+      event: { type: "run.failed" },
+      threadId: thread.id,
+    });
+    if (outcome.applied) {
+      deps.hub.notifyThread(thread.id, ["status-changed"]);
+    }
   }
 }
 
@@ -240,19 +179,20 @@ export function settleEnvironmentDestroyCommandResult(
   args: SettleEnvironmentDestroyCommandResultArgs,
 ): CommandResultSideEffectsResult {
   if (!args.report.ok) {
-    const failedEnvironment = getEnvironment(
-      args.deps.db,
-      args.command.environmentId,
-    );
-    if (failedEnvironment && failedEnvironment.status === "destroying") {
-      restoreEnvironmentAfterDestroyAttemptFailure(
-        args.deps.db,
-        args.deps.hub,
-        {
+    const outcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+      args.deps,
+      {
+        environmentId: args.command.environmentId,
+        event: {
+          type: "destroy.failed",
           destroyAttemptId: args.execution.id,
-          environmentId: args.command.environmentId,
-          status: failedEnvironment.path ? "ready" : "error",
         },
+      },
+    );
+    if (outcome.applied) {
+      args.deps.hub.notifyEnvironment(
+        args.command.environmentId,
+        outcome.changes,
       );
     }
     return emptyCommandResultSideEffects();
@@ -262,14 +202,24 @@ export function settleEnvironmentDestroyCommandResult(
   if (!environment) {
     return emptyCommandResultSideEffects();
   }
-  if (environment.status === "destroying") {
-    setEnvironmentRecordDestroyed(
-      args.deps.db,
-      args.deps.hub,
-      args.command.environmentId,
+  // Not lifecycle: idempotent re-settlement routing — a repeated success
+  // report for an already-destroyed environment still finalizes its threads
+  // and terminals below.
+  if (environment.status !== "destroyed") {
+    const outcome = applyLoggedEnvironmentLifecycleEventInTransaction(
+      args.deps,
+      {
+        environmentId: args.command.environmentId,
+        event: { type: "destroy.completed" },
+      },
     );
-  } else if (environment.status !== "destroyed") {
-    return emptyCommandResultSideEffects();
+    if (!outcome.applied) {
+      return emptyCommandResultSideEffects();
+    }
+    args.deps.hub.notifyEnvironment(
+      args.command.environmentId,
+      outcome.changes,
+    );
   }
 
   markLiveThreadsErroredAfterDestroySuccess(
@@ -306,51 +256,10 @@ export function requestEnvironmentCleanup(
     return;
   }
 
-  recordEnvironmentCleanupRequest(deps.db, deps.hub, environment.id, {});
-}
-
-export function cancelPendingEnvironmentCleanup(
-  deps: EnvironmentCleanupCancellationDeps,
-  args: CancelPendingEnvironmentCleanupArgs,
-): CancelPendingEnvironmentCleanupResult {
-  if (!args.environmentId) {
-    return "not_requested";
-  }
-
-  const environmentId = args.environmentId;
-  const notificationBuffer = new NotificationBuffer();
-  const result = deps.db.transaction(
-    (tx) => {
-      const txDeps = {
-        db: tx,
-        hub: notificationBuffer,
-      };
-      const environment = getEnvironment(tx, environmentId);
-      if (!environment) {
-        return "not_requested";
-      }
-
-      if (environment.status === "destroying") {
-        return "in_progress";
-      }
-
-      if (environment.cleanupMode === null) {
-        return "not_requested";
-      }
-
-      clearEnvironmentCleanupRequestRecord(
-        tx,
-        notificationBuffer,
-        environment.id,
-      );
-      restoreEnvironmentAfterCleanupCancellation(txDeps, environment);
-      return "cancelled";
-    },
-    { behavior: "immediate" },
-  );
-
-  notificationBuffer.flushInto(deps.hub);
-  return result;
+  applyLoggedEnvironmentLifecycleEvent(deps, {
+    environmentId: environment.id,
+    event: { type: "retire.requested" },
+  });
 }
 
 function dispatchEnvironmentDestroy(
@@ -400,8 +309,29 @@ export function wouldCleanupEnvironment(
 export function recoverOrphanedEnvironmentDestroyRequests(
   deps: EnvironmentCleanupRecoveryDeps,
   args: RecoverOrphanedEnvironmentDestroyRequestsArgs,
-): RecoverStaleDestroyingEnvironmentCleanupResult {
-  return recoverStaleDestroyingEnvironmentCleanup(deps.db, deps.hub, args);
+): RecoverOrphanedEnvironmentDestroyRequestsResult {
+  const staleEnvironments = listStaleDestroyingManagedEnvironments(deps.db, {
+    updatedBefore: args.updatedBefore,
+  });
+
+  let destroyed = 0;
+  let errored = 0;
+  for (const environment of staleEnvironments) {
+    const outcome = applyLoggedEnvironmentLifecycleEvent(deps, {
+      environmentId: environment.id,
+      event: { type: "destroy.lost" },
+    });
+    if (!outcome.applied) {
+      continue;
+    }
+    if (outcome.environment.status === "destroyed") {
+      destroyed += 1;
+    } else {
+      errored += 1;
+    }
+  }
+
+  return { destroyed, errored };
 }
 
 async function advanceEnvironmentCleanup(
@@ -409,11 +339,13 @@ async function advanceEnvironmentCleanup(
   args: AdvanceEnvironmentCleanupArgs,
 ): Promise<void> {
   const environment = getEnvironment(deps.db, args.environmentId);
+  // Not lifecycle: advance routing — "destroyed" is terminal, and stale
+  // destroying rows are owned by the orphan-destroy recovery sweep.
   if (
     !environment ||
     !environment.managed ||
     environment.status === "destroyed" ||
-    !isDestroyRequested(deps, args.environmentId)
+    !canAdvanceCleanup(deps, args.environmentId)
   ) {
     return;
   }
@@ -434,24 +366,34 @@ async function advanceEnvironmentCleanup(
   }
 
   if (!environment.path) {
-    if (environment.status === "provisioning") {
+    const execution = createLiveHostCommandExecution(environment.hostId);
+    const startOutcome = applyLoggedEnvironmentLifecycleEvent(deps, {
+      environmentId: environment.id,
+      event: { type: "destroy.started", destroyAttemptId: execution.id },
+    });
+    if (!startOutcome.applied) {
       return;
     }
-
-    setEnvironmentRecordDestroyed(deps.db, deps.hub, environment.id);
+    applyLoggedEnvironmentLifecycleEvent(deps, {
+      environmentId: environment.id,
+      event: { type: "destroy.completed" },
+    });
     return;
   }
 
-  const canDestroyNow = await workspaceCanBeSafelyCleaned(deps, environment.id);
+  const canDestroyNow = workspaceCanBeDestroyedNow(deps, environment.id);
   if (!canDestroyNow) {
     return;
   }
 
+  // Stronger caller-side guard kept: destroy.started re-asserts the lifecycle
+  // state atomically; the recheck only avoids burning an execution record and
+  // a noisy no-op log on an obviously stale advance.
   const refreshedEnvironment = getEnvironment(deps.db, environment.id);
   if (
     !refreshedEnvironment ||
-    refreshedEnvironment.status !== "ready" ||
-    !refreshedEnvironment.path
+    (refreshedEnvironment.status !== "retiring" &&
+      refreshedEnvironment.status !== "error")
   ) {
     return;
   }
@@ -473,11 +415,19 @@ async function advanceEnvironmentCleanup(
   }
 
   const execution = createLiveHostCommandExecution(refreshedEnvironment.hostId);
-  const claimedEnvironment = claimEnvironmentDestroy(deps.db, deps.hub, {
-    destroyAttemptId: execution.id,
+  const claimOutcome = applyLoggedEnvironmentLifecycleEvent(deps, {
     environmentId: refreshedEnvironment.id,
+    event: { type: "destroy.started", destroyAttemptId: execution.id },
   });
-  if (!claimedEnvironment || !claimedEnvironment.path) {
+  if (!claimOutcome.applied) {
+    return;
+  }
+  const claimedEnvironment = claimOutcome.environment;
+  if (!claimedEnvironment.path) {
+    applyLoggedEnvironmentLifecycleEvent(deps, {
+      environmentId: claimedEnvironment.id,
+      event: { type: "destroy.completed" },
+    });
     return;
   }
 
