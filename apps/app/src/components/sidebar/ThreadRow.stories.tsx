@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import type { ThreadListEntry } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
@@ -65,6 +65,13 @@ const childOption: ThreadRowOptions = {
   isCompact: true,
   isEnvGrouped: false,
 };
+// Projectless threads are top-level rows (depth 0), flush with project headers.
+const projectlessOption: ThreadRowOptions = {
+  kind: "default",
+  depth: 0,
+  isCompact: false,
+  isEnvGrouped: false,
+};
 function parentOption(
   overrides: Partial<Extract<ThreadRowOptions, { kind: "parent" }>> = {},
 ): ThreadRowOptions {
@@ -117,6 +124,58 @@ export function Overview() {
             })}
             isActive={false}
             options={defaultOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="projectless"
+        hint="no project (Threads section): 'Don't work in a project' glyph, dimmed text, no pointer cursor — reads like a group header"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId={PERSONAL_PROJECT_ID}
+            thread={makeThread({
+              projectId: PERSONAL_PROJECT_ID,
+              title: "Sketch launch checklist",
+              titleFallback: "Sketch launch checklist",
+            })}
+            isActive={false}
+            options={projectlessOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="projectless (active)"
+        hint="the selected projectless thread still shows the active background"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId={PERSONAL_PROJECT_ID}
+            thread={makeThread({
+              projectId: PERSONAL_PROJECT_ID,
+              title: "Sketch launch checklist",
+              titleFallback: "Sketch launch checklist",
+            })}
+            isActive
+            options={projectlessOption}
+          />
+        </SidebarStage>
+      </StoryRow>
+      <StoryRow
+        label="projectless fork"
+        hint="a fork with no project keeps the fork glyph (not the no-project glyph) but still reads dimmed"
+      >
+        <SidebarStage>
+          <StoryThreadRow
+            projectId={PERSONAL_PROJECT_ID}
+            thread={makeThread({
+              projectId: PERSONAL_PROJECT_ID,
+              childOrigin: "fork",
+              title: "Add Mutex to Watcher",
+              titleFallback: "Add Mutex to Watcher",
+            })}
+            isActive={false}
+            options={projectlessOption}
           />
         </SidebarStage>
       </StoryRow>

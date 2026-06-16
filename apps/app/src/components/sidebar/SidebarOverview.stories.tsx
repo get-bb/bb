@@ -58,6 +58,29 @@ const loadedSidebarNavigation = {
         createdAt: 85,
         updatedAt: 85,
       }),
+      // A projectless parent + fork: exercises the dimmed group-header
+      // treatment, the no-project glyph, depth-0 alignment with the project
+      // headers, and the indent guide under an expanded projectless thread.
+      makeThreadListEntry({
+        id: "thr_story_personal_parent",
+        projectId: PERSONAL_PROJECT_ID,
+        title: "Investigate flaky timeline test",
+        titleFallback: "Investigate flaky timeline test",
+        latestAttentionAt: 80,
+        createdAt: 80,
+        updatedAt: 80,
+      }),
+      makeThreadListEntry({
+        id: "thr_story_personal_fork",
+        projectId: PERSONAL_PROJECT_ID,
+        parentThreadId: "thr_story_personal_parent",
+        childOrigin: "fork",
+        title: "Add Mutex to Watcher",
+        titleFallback: "Add Mutex to Watcher",
+        latestAttentionAt: 75,
+        createdAt: 75,
+        updatedAt: 75,
+      }),
     ],
   },
   projects: [
