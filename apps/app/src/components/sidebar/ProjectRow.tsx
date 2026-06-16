@@ -643,7 +643,9 @@ function EnvironmentThreadGroupHeader({
       {parentLineDepth === undefined ? null : (
         <ThreadTreeLineContinuation parentRowDepth={parentLineDepth} />
       )}
-      {/* Caret + folder = one clickable toggle cluster; the label stays inert. */}
+      {/* Caret + folder both toggle (the disclosure cluster), each in the same
+          fixed columns threads use so the label aligns flush with sibling
+          threads; the label itself stays inert. */}
       <span className="relative z-10 -ml-1 inline-flex shrink-0">
         <SidebarChildToggleChevron
           isCollapsed={isCollapsed}
@@ -652,9 +654,17 @@ function EnvironmentThreadGroupHeader({
           expandTitle="Expand worktree threads"
           collapseTitle="Collapse worktree threads"
           onToggle={() => onToggleCollapsed(environmentId)}
-          icon={iconName}
         />
       </span>
+      <button
+        type="button"
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={() => onToggleCollapsed(environmentId)}
+        className="relative z-10 inline-flex w-4 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground transition-colors hover:text-foreground"
+      >
+        <Icon name={iconName} className="size-3.5" aria-hidden="true" />
+      </button>
       {/*
         Subtle (non-navigable chrome) label + leading disclosure caret mark this
         row as a container, not a navigable thread: clicking it expands/collapses
@@ -1162,8 +1172,9 @@ function ProjectRowComponent({
             {...projectDragBindings?.attributes}
             {...(projectDragBindings?.listeners ?? {})}
           >
-            {/* Caret + folder = one clickable toggle cluster; the row body and
-                project name stay inert (expand/collapse only). */}
+            {/* Caret + folder both toggle (the disclosure cluster) in the same
+                fixed columns threads use; the row body and project name stay
+                inert (expand/collapse only). */}
             <span className="relative z-10 -ml-1 inline-flex shrink-0">
               <SidebarChildToggleChevron
                 isCollapsed={isCollapsed}
@@ -1172,9 +1183,21 @@ function ProjectRowComponent({
                 expandTitle="Expand project threads"
                 collapseTitle="Collapse project threads"
                 onToggle={handleProjectRowToggle}
-                icon={isCollapsed ? "Folder" : "FolderOpen"}
               />
             </span>
+            <button
+              type="button"
+              aria-hidden="true"
+              tabIndex={-1}
+              onClick={handleProjectRowToggle}
+              className="relative z-10 inline-flex w-4 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors group-hover/project-row:text-sidebar-foreground"
+            >
+              <Icon
+                name={isCollapsed ? "Folder" : "FolderOpen"}
+                className="size-3.5"
+                aria-hidden="true"
+              />
+            </button>
             <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left">
               <span className="min-w-0 truncate">{project.name}</span>
             </span>

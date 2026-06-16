@@ -1,5 +1,4 @@
-import { Icon, type IconName } from "@/components/ui/icon.js";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import { Icon } from "@/components/ui/icon.js";
 import { cn } from "@/lib/utils";
 
 export type SidebarChildToggleHandler = () => void;
@@ -11,12 +10,6 @@ export interface SidebarChildToggleChevronProps {
   expandTitle: string;
   collapseTitle: string;
   onToggle: SidebarChildToggleHandler;
-  /**
-   * Optional leading glyph rendered after the caret inside the SAME toggle
-   * button, so a disclosure header's caret + icon (e.g. a worktree folder) form
-   * one clickable cluster. The label beside the cluster stays inert.
-   */
-  icon?: IconName;
 }
 
 export function SidebarChildToggleChevron({
@@ -26,7 +19,6 @@ export function SidebarChildToggleChevron({
   expandTitle,
   collapseTitle,
   onToggle,
-  icon,
 }: SidebarChildToggleChevronProps) {
   return (
     <button
@@ -39,10 +31,7 @@ export function SidebarChildToggleChevron({
         event.stopPropagation();
         onToggle();
       }}
-      className={cn(
-        "pointer-events-auto relative z-10 inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover hover:text-foreground focus-visible:ring-2",
-        icon ? "h-5 gap-0.5 px-1" : "size-5",
-      )}
+      className="pointer-events-auto relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover hover:text-foreground focus-visible:ring-2"
     >
       <Icon
         name="ChevronRight"
@@ -52,13 +41,6 @@ export function SidebarChildToggleChevron({
         )}
         aria-hidden="true"
       />
-      {icon ? (
-        <Icon
-          name={icon}
-          className={COARSE_POINTER_ICON_SIZE_CLASS}
-          aria-hidden="true"
-        />
-      ) : null}
     </button>
   );
 }

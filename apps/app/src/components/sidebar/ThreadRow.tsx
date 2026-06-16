@@ -369,26 +369,34 @@ function ThreadRowComponent({
         ) : (
           <span className="-ml-1 size-5 shrink-0" aria-hidden="true" />
         )}
-        {thread.childOrigin === "fork" ? (
-          <span className="inline-flex shrink-0" title="Forked thread">
+        {/*
+          Fixed identity-glyph column (fork / worktree), reserved for every row
+          so titles line up in one column whether or not a row has a glyph —
+          and so they align with the worktree/project header folder, which sits
+          in the same column. File-tree style.
+        */}
+        <span
+          className="inline-flex w-4 shrink-0 items-center justify-center"
+          title={
+            thread.childOrigin === "fork"
+              ? "Forked thread"
+              : (leadingWorktreeIconLabel ?? undefined)
+          }
+        >
+          {thread.childOrigin === "fork" ? (
             <Icon
               name="Fork"
               className="size-3.5 text-muted-foreground"
               aria-label="Forked thread"
             />
-          </span>
-        ) : leadingWorktreeIcon ? (
-          <span
-            className="inline-flex shrink-0"
-            title={leadingWorktreeIconLabel ?? undefined}
-          >
+          ) : leadingWorktreeIcon ? (
             <Icon
               name={leadingWorktreeIcon}
               className="size-3.5 text-muted-foreground"
               aria-label={leadingWorktreeIconLabel ?? undefined}
             />
-          </span>
-        ) : null}
+          ) : null}
+        </span>
         <span className="min-w-0 truncate">{threadTitle}</span>
         {hasComposerDraft ? <ThreadDraftIndicator /> : null}
       </span>
