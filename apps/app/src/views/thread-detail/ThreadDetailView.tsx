@@ -703,6 +703,12 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     },
     [openSideChat, threadId],
   );
+  // A side chat started from the new-tab page has no anchor message, so it forks
+  // from the thread's tip (empty source text ⇒ no "replying to" reference).
+  const handleStartSideChat = useCallback(() => {
+    if (!threadId) return;
+    openSideChat({ sourceThreadId: threadId, sourceMessageText: "" });
+  }, [openSideChat, threadId]);
   const canUseGitUi = environment?.isGitRepo === true;
   const canCreateTerminal =
     thread?.environmentId !== null &&
@@ -1711,6 +1717,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       currentThreadId={thread.id}
       focusRequest={newTabFocusRequest}
       onSelect={selectFileSearchResult}
+      onStartSideChat={handleStartSideChat}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
     />

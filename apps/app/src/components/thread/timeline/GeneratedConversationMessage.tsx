@@ -63,6 +63,7 @@ interface TimelineTitleSegmentArgs {
 }
 
 interface GeneratedConversationTitleArgs {
+  childOrigin: ThreadChildOrigin | null;
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
@@ -106,10 +107,14 @@ function timelineTitleSegment({
 }
 
 function generatedConversationTitle({
+  childOrigin,
   sourceKind,
   sourceName,
   sourceThreadId,
 }: GeneratedConversationTitleArgs): TimelineTitle {
+  // A fork's anchor describes the fork relationship ("Forked from <source>");
+  // side chats and other agent-initiated messages keep the neutral lead-in.
+  const agentLeadIn = childOrigin === "fork" ? "Forked from" : "Message from";
   const segments: TimelineTitleSegment[] =
     sourceKind === "agent"
       ? [
@@ -117,7 +122,7 @@ function generatedConversationTitle({
             em: false,
             link: null,
             shimmer: false,
-            text: "Message from",
+            text: agentLeadIn,
             truncate: false,
           }),
           timelineTitleSegment({
@@ -210,11 +215,12 @@ export const GeneratedConversationMessage = memo(
     const title = useMemo(
       () =>
         generatedConversationTitle({
+          childOrigin,
           sourceKind,
           sourceName,
           sourceThreadId,
         }),
-      [sourceKind, sourceName, sourceThreadId],
+      [childOrigin, sourceKind, sourceName, sourceThreadId],
     );
     const leadingIcon = generatedConversationIconName(sourceKind, childOrigin);
     const hasExpandedOnlyContent =

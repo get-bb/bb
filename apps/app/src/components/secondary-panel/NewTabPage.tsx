@@ -3,6 +3,7 @@ import {
   NewTabFileSearch,
   type NewTabFileSearchProps,
   type OpenBrowserHandler,
+  type StartSideChatHandler,
   type StartTerminalHandler,
 } from "./NewTabFileSearch";
 
@@ -12,6 +13,7 @@ type NewTabPageFileSearchProps = Omit<
 >;
 
 export interface NewTabPageProps extends NewTabPageFileSearchProps {
+  onStartSideChat?: StartSideChatHandler;
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
 }
@@ -28,6 +30,7 @@ export function NewTabPage({
   initialQuery,
   onOpenBrowser,
   onSelect,
+  onStartSideChat,
   onStartTerminal,
   projectId,
 }: NewTabPageProps) {
@@ -40,6 +43,7 @@ export function NewTabPage({
         focusRequest={focusRequest}
         idleActions={
           <NewTabActions
+            onStartSideChat={onStartSideChat}
             onOpenBrowser={onOpenBrowser}
             onStartTerminal={onStartTerminal}
           />
