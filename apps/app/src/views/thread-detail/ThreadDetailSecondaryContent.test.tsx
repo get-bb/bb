@@ -356,7 +356,7 @@ function expectBrowserDeckVisibility(canShowNativeBrowserView: boolean) {
   ).toBe(String(canShowNativeBrowserView));
 }
 
-function scheduleCompactReadinessFrame() {
+function scheduleCompactDrawerSettleFrame() {
   const callback = drawerShellState.onContentAnimationEnd;
   if (callback === undefined) {
     throw new Error("ResponsiveDrawerShell did not receive animation callback");
@@ -377,8 +377,8 @@ beforeEach(() => {
   vi.mocked(dispatchBrowserViewBoundsSync).mockReset();
 });
 
-describe("ThreadDetailSecondaryContent compact browser readiness", () => {
-  it("orders open-animation completion, rAF, bounds sync, and readiness true", () => {
+describe("ThreadDetailSecondaryContent compact drawer settling", () => {
+  it("orders open-animation completion, rAF, bounds sync, and drawer settled true", () => {
     const order: string[] = [];
     const frames = installAnimationFrameQueue(order);
     vi.mocked(dispatchBrowserViewBoundsSync).mockImplementation(() => {
@@ -396,7 +396,7 @@ describe("ThreadDetailSecondaryContent compact browser readiness", () => {
     expectBrowserDeckVisibility(false);
 
     order.push("animationEnd:true");
-    scheduleCompactReadinessFrame();
+    scheduleCompactDrawerSettleFrame();
 
     expect(frames.requestAnimationFrame).toHaveBeenCalledTimes(1);
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
@@ -454,14 +454,14 @@ describe("ThreadDetailSecondaryContent compact browser readiness", () => {
     });
 
     view.rerenderWith({ isSecondaryPanelOpen: false });
-    scheduleCompactReadinessFrame();
+    scheduleCompactDrawerSettleFrame();
 
     expect(frames.requestAnimationFrame).not.toHaveBeenCalled();
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
     expectBrowserDeckVisibility(false);
   });
 
-  it("cancels a pending compact readiness rAF when the drawer closes", () => {
+  it("cancels a pending compact drawer settle rAF when the drawer closes", () => {
     const frames = installAnimationFrameQueue();
     const renderBrowserDeck = createBrowserDeckRenderer();
     const view = renderThreadDetail({
@@ -471,7 +471,7 @@ describe("ThreadDetailSecondaryContent compact browser readiness", () => {
       threadId: "thread-1",
     });
 
-    scheduleCompactReadinessFrame();
+    scheduleCompactDrawerSettleFrame();
     expect(frames.size()).toBe(1);
 
     view.rerenderWith({ isSecondaryPanelOpen: false });
@@ -486,7 +486,7 @@ describe("ThreadDetailSecondaryContent compact browser readiness", () => {
     expectBrowserDeckVisibility(false);
   });
 
-  it("cancels a pending compact readiness rAF when the thread changes", () => {
+  it("cancels a pending compact drawer settle rAF when the thread changes", () => {
     const frames = installAnimationFrameQueue();
     const renderBrowserDeck = createBrowserDeckRenderer();
     const view = renderThreadDetail({
@@ -496,7 +496,7 @@ describe("ThreadDetailSecondaryContent compact browser readiness", () => {
       threadId: "thread-1",
     });
 
-    scheduleCompactReadinessFrame();
+    scheduleCompactDrawerSettleFrame();
     expect(frames.size()).toBe(1);
 
     view.rerenderWith({ threadId: "thread-2" });
@@ -511,7 +511,7 @@ describe("ThreadDetailSecondaryContent compact browser readiness", () => {
     expectBrowserDeckVisibility(false);
   });
 
-  it("cancels a pending compact readiness rAF on compact-to-wide transition", () => {
+  it("cancels a pending compact drawer settle rAF on compact-to-wide transition", () => {
     const frames = installAnimationFrameQueue();
     const renderBrowserDeck = createBrowserDeckRenderer();
     const view = renderThreadDetail({
@@ -521,7 +521,7 @@ describe("ThreadDetailSecondaryContent compact browser readiness", () => {
       threadId: "thread-1",
     });
 
-    scheduleCompactReadinessFrame();
+    scheduleCompactDrawerSettleFrame();
     expect(frames.size()).toBe(1);
 
     view.rerenderWith({ isCompactViewport: false });
@@ -536,7 +536,7 @@ describe("ThreadDetailSecondaryContent compact browser readiness", () => {
     expectBrowserDeckVisibility(true);
   });
 
-  it("cancels a pending compact readiness rAF on unmount", () => {
+  it("cancels a pending compact drawer settle rAF on unmount", () => {
     const frames = installAnimationFrameQueue();
     const renderBrowserDeck = createBrowserDeckRenderer();
     const view = renderThreadDetail({
@@ -546,7 +546,7 @@ describe("ThreadDetailSecondaryContent compact browser readiness", () => {
       threadId: "thread-1",
     });
 
-    scheduleCompactReadinessFrame();
+    scheduleCompactDrawerSettleFrame();
     expect(frames.size()).toBe(1);
 
     view.unmount();
@@ -575,7 +575,7 @@ describe("ThreadDetailSecondaryContent compact browser readiness", () => {
     expect(compactRenderBrowserDeck).toHaveBeenLastCalledWith({
       canShowNativeBrowserView: false,
     });
-    scheduleCompactReadinessFrame();
+    scheduleCompactDrawerSettleFrame();
     act(() => {
       frames.flushAll();
     });

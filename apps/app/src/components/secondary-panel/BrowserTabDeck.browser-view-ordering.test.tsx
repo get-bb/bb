@@ -124,7 +124,7 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     });
   });
 
-  it("attaches a URL-bearing tab hidden and shows only after attach plus compact readiness", async () => {
+  it("attaches a URL-bearing tab hidden and shows only after attach plus compact drawer readiness", async () => {
     const { api, calls, attachments, bounds, visibility } =
       createRecordingBrowserApi();
     installDesktopBrowser(api);

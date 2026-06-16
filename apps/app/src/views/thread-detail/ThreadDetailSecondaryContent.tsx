@@ -249,38 +249,38 @@ export function ThreadDetailSecondaryContent({
   // Real, in-scope activity signal for the collapsed rail: the agent is running.
   const isConversationWorking =
     stableTimeline.threadRuntimeDisplayStatus === "active";
-  const [isCompactBrowserViewReady, setIsCompactBrowserViewReady] =
+  const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);
-  const compactBrowserReadinessFrameRef = useRef<number | null>(null);
-  const compactBrowserReadinessGenerationRef = useRef(0);
-  const compactBrowserReadinessStateRef = useRef({
+  const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
+  const compactDrawerContentSettleGenerationRef = useRef(0);
+  const compactDrawerContentSettleStateRef = useRef({
     isSecondaryPanelOpen,
     renderAsDrawer,
     threadId: stableTimeline.threadId,
   });
 
   useLayoutEffect(() => {
-    compactBrowserReadinessStateRef.current = {
+    compactDrawerContentSettleStateRef.current = {
       isSecondaryPanelOpen,
       renderAsDrawer,
       threadId: stableTimeline.threadId,
     };
   }, [isSecondaryPanelOpen, renderAsDrawer, stableTimeline.threadId]);
 
-  const cancelCompactBrowserReadinessFrame = useCallback(() => {
-    compactBrowserReadinessGenerationRef.current += 1;
-    if (compactBrowserReadinessFrameRef.current === null) {
+  const cancelCompactDrawerContentSettleFrame = useCallback(() => {
+    compactDrawerContentSettleGenerationRef.current += 1;
+    if (compactDrawerContentSettleFrameRef.current === null) {
       return;
     }
-    window.cancelAnimationFrame(compactBrowserReadinessFrameRef.current);
-    compactBrowserReadinessFrameRef.current = null;
+    window.cancelAnimationFrame(compactDrawerContentSettleFrameRef.current);
+    compactDrawerContentSettleFrameRef.current = null;
   }, []);
 
   useLayoutEffect(() => {
-    cancelCompactBrowserReadinessFrame();
-    setIsCompactBrowserViewReady(false);
+    cancelCompactDrawerContentSettleFrame();
+    setIsCompactDrawerContentSettled(false);
   }, [
-    cancelCompactBrowserReadinessFrame,
+    cancelCompactDrawerContentSettleFrame,
     isSecondaryPanelOpen,
     renderAsDrawer,
     stableTimeline.threadId,
@@ -288,9 +288,9 @@ export function ThreadDetailSecondaryContent({
 
   useLayoutEffect(
     () => () => {
-      cancelCompactBrowserReadinessFrame();
+      cancelCompactDrawerContentSettleFrame();
     },
-    [cancelCompactBrowserReadinessFrame],
+    [cancelCompactDrawerContentSettleFrame],
   );
 
   const handleDrawerContentAnimationEnd = useCallback(
@@ -298,20 +298,20 @@ export function ThreadDetailSecondaryContent({
       if (!open) {
         return;
       }
-      const currentState = compactBrowserReadinessStateRef.current;
+      const currentState = compactDrawerContentSettleStateRef.current;
       if (!currentState.isSecondaryPanelOpen || !currentState.renderAsDrawer) {
         return;
       }
 
-      cancelCompactBrowserReadinessFrame();
-      const requestGeneration = compactBrowserReadinessGenerationRef.current;
+      cancelCompactDrawerContentSettleFrame();
+      const requestGeneration = compactDrawerContentSettleGenerationRef.current;
       const requestThreadId = currentState.threadId;
-      compactBrowserReadinessFrameRef.current = window.requestAnimationFrame(
+      compactDrawerContentSettleFrameRef.current = window.requestAnimationFrame(
         () => {
-          compactBrowserReadinessFrameRef.current = null;
-          const latestState = compactBrowserReadinessStateRef.current;
+          compactDrawerContentSettleFrameRef.current = null;
+          const latestState = compactDrawerContentSettleStateRef.current;
           if (
-            compactBrowserReadinessGenerationRef.current !==
+            compactDrawerContentSettleGenerationRef.current !==
               requestGeneration ||
             latestState.threadId !== requestThreadId ||
             !latestState.isSecondaryPanelOpen ||
@@ -322,23 +322,23 @@ export function ThreadDetailSecondaryContent({
 
           dispatchBrowserViewBoundsSync();
 
-          const stateAfterSync = compactBrowserReadinessStateRef.current;
+          const stateAfterSync = compactDrawerContentSettleStateRef.current;
           if (
-            compactBrowserReadinessGenerationRef.current ===
+            compactDrawerContentSettleGenerationRef.current ===
               requestGeneration &&
             stateAfterSync.threadId === requestThreadId &&
             stateAfterSync.isSecondaryPanelOpen &&
             stateAfterSync.renderAsDrawer
           ) {
-            setIsCompactBrowserViewReady(true);
+            setIsCompactDrawerContentSettled(true);
           }
         },
       );
     },
-    [cancelCompactBrowserReadinessFrame],
+    [cancelCompactDrawerContentSettleFrame],
   );
   const canShowNativeBrowserView = renderAsDrawer
-    ? isSecondaryPanelOpen && isCompactBrowserViewReady
+    ? isSecondaryPanelOpen && isCompactDrawerContentSettled
     : isSecondaryPanelOpen;
   const { renderBrowserDeck, ...stableThreadSecondaryPanelProps } =
     stableSecondaryPanel;
