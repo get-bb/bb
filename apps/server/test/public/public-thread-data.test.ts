@@ -481,6 +481,270 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("hydrates turn-summary details when the range overlaps another turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("parent-turn"),
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("child-turn"),
+        sequence: 2,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("child-turn"),
+        sequence: 3,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "child-tool",
+            tool: "exec_command",
+            arguments: { cmd: "pnpm test" },
+            status: "completed",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("parent-turn"),
+        sequence: 4,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "parent-message",
+            text: "Parent is still working.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("child-turn"),
+        sequence: 5,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "child-message",
+            text: "Child done.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("child-turn"),
+        sequence: 6,
+        type: "turn/completed",
+        data: {
+          status: "completed",
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("parent-turn"),
+        sequence: 7,
+        type: "turn/completed",
+        data: {
+          status: "completed",
+        },
+      });
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+      expect(timelineResponse.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(timelineResponse),
+      );
+      const childTurnRow = timeline.rows.find(
+        (row): row is TimelineTurnRow =>
+          row.kind === "turn" && row.turnId === "child-turn",
+      );
+      expect(childTurnRow).toBeDefined();
+      if (!childTurnRow) {
+        throw new Error("Expected child turn row");
+      }
+
+      const detailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${childTurnRow.turnId}&sourceSeqStart=${childTurnRow.sourceSeqStart}&sourceSeqEnd=${childTurnRow.sourceSeqEnd}`,
+      );
+      expect(detailsResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailsResponse),
+      );
+
+      expect(details.rows.map((row) => row.kind)).toEqual(["work"]);
+      expect(details.rows[0]?.kind).toBe("work");
+      const detailRow = details.rows[0];
+      if (detailRow?.kind === "work" && detailRow.workKind === "tool") {
+        expect(detailRow.callId).toBe("child-tool");
+      } else {
+        throw new Error("Expected child tool detail row");
+      }
+    });
+  });
+
+  it("hydrates turn-summary details with future accepted input context", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: encodeClientTurnRequestIdNumber({ value: 101 }),
+          input: [{ type: "text", text: "Requested turn prompt" }],
+          target: { kind: "new-turn" },
+          execution: {
+            model: "gpt-4o-mini",
+            reasoningLevel: "medium",
+            permissionMode: "full",
+            serviceTier: "fast",
+            source: "client/turn/requested",
+          },
+          initiator: "user",
+          senderThreadId: null,
+          request: {
+            method: "turn/start",
+            params: {},
+          },
+          source: "tell",
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("requested-turn"),
+        sequence: 2,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("requested-turn"),
+        sequence: 3,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "requested-tool",
+            tool: "exec_command",
+            arguments: { cmd: "pnpm test" },
+            status: "completed",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 4,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        data: {
+          direction: "outbound",
+          requestId: encodeClientTurnRequestIdNumber({ value: 202 }),
+          input: [{ type: "text", text: "Other turn prompt" }],
+          target: { kind: "new-turn" },
+          execution: {
+            model: "gpt-4o-mini",
+            reasoningLevel: "medium",
+            permissionMode: "full",
+            serviceTier: "fast",
+            source: "client/turn/requested",
+          },
+          initiator: "user",
+          senderThreadId: null,
+          request: {
+            method: "turn/start",
+            params: {},
+          },
+          source: "tell",
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("requested-turn"),
+        sequence: 5,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "agentMessage",
+            id: "requested-message",
+            text: "Requested turn done.",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("requested-turn"),
+        sequence: 6,
+        type: "turn/input/accepted",
+        data: {
+          clientRequestId: encodeClientTurnRequestIdNumber({ value: 101 }),
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("other-turn"),
+        sequence: 7,
+        type: "turn/input/accepted",
+        data: {
+          clientRequestId: encodeClientTurnRequestIdNumber({ value: 202 }),
+        },
+      });
+
+      const detailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=requested-turn&sourceSeqStart=1&sourceSeqEnd=5`,
+      );
+      expect(detailsResponse.status).toBe(200);
+      const details = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(detailsResponse),
+      );
+
+      const detailText = JSON.stringify(details.rows);
+      expect(detailText).toContain("Requested turn prompt");
+      expect(detailText).toContain("requested-tool");
+      expect(detailText).not.toContain("Other turn prompt");
+    });
+  });
+
   it("hydrates a single-event turn-summary detail range", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
