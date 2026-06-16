@@ -30,6 +30,7 @@ import {
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import { PromptQuoteStack } from "@/components/promptbox/PromptQuoteStack";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
@@ -894,6 +895,10 @@ export function ThreadDetailPromptArea({
           isExpanded={isGoalExpanded}
           onToggle={() => setIsGoalExpanded((value) => !value)}
         />
+        <PromptQuoteStack
+          quotes={promptDraft.quotes}
+          onRemove={promptDraft.removeQuote}
+        />
         <ThreadPromptContextBanner
           todoSection={!pendingTodos ? null : { pendingTodos }}
           archivedSection={
@@ -960,6 +965,8 @@ export function ThreadDetailPromptArea({
       parentThreadSection,
       childThreadsSection,
       pendingTodos,
+      promptDraft.quotes,
+      promptDraft.removeQuote,
       displayedProcessingQueuedMessage,
       queuedMessages,
       shouldHideComposer,

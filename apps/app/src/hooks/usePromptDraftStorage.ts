@@ -9,6 +9,7 @@ import {
   emptyPromptDraftState,
   isPromptDraftEmpty,
   parsePromptDraftStorage,
+  removeQuoteFromDraft,
   serializePromptDraftStorage,
 } from "@/lib/prompt-draft";
 
@@ -311,6 +312,19 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     [storageKey],
   );
 
+  const removeQuote = useCallback(
+    (id: string) => {
+      const currentDraft = readPromptDraft(storageKey);
+      const nextDraft = removeQuoteFromDraft(currentDraft, id);
+      if (nextDraft.quotes.length === currentDraft.quotes.length) {
+        return;
+      }
+
+      writePromptDraft(storageKey, nextDraft);
+    },
+    [storageKey],
+  );
+
   const clear = useCallback(() => {
     setDraftAndPersist(EMPTY_PROMPT_DRAFT);
   }, [setDraftAndPersist]);
@@ -360,6 +374,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       setAttachments,
       addAttachment,
       removeAttachment,
+      removeQuote,
       clear,
       clearIfCurrentMatches,
       restoreIfEmpty,
@@ -374,6 +389,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       draft.quotes,
       getCurrent,
       removeAttachment,
+      removeQuote,
       restoreIfEmpty,
       setAttachments,
       setDraftAndPersist,
