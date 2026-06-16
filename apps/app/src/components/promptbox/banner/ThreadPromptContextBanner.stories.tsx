@@ -351,6 +351,14 @@ export function Overview() {
   return (
     <StoryCard>
       <StoryRow
+        label="git — merge-base picker"
+        hint="GitMerge icon + branch picker ('main'), no visible 'Merge base:' prefix. It carries data-promptbox-hide-compact, so it only shows when the prompt shell is ≥ 34rem — this row forces a wide shell to reveal it."
+      >
+        <div className="w-[40rem] max-w-full overflow-x-auto">
+          <Row section={committedSection} />
+        </div>
+      </StoryRow>
+      <StoryRow
         label="archived thread"
         hint="archive icon + 'Thread is archived'; suppresses todos/git/childThreads"
       >
