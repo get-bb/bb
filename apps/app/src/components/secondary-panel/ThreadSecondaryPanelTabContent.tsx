@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, type ReactNode } from "react";
+import { useAtomValue, useSetAtom } from "jotai";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
@@ -25,6 +26,7 @@ import { DiffFilesPanel } from "./git-diff/DiffFilesPanel";
 import { clearDiffFileCardStates } from "./git-diff/diffFilesStore";
 import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
 import { useDiffFileContentsRequester } from "./git-diff/useDiffFileContentsRequester";
+import { pendingGitDiffScrollPathAtom } from "./threadSecondaryPanelAtoms";
 import {
   SecondaryPanelFilePreview,
   ThreadStorageFilePreview,
@@ -158,6 +160,16 @@ export function GitDiffTabContent({
     mergeBaseRef,
   });
 
+  // A file opened from the info tab / prompt banner sets this path;
+  // useGitDiffPanelState resets the diff to all-changes so the file is in the
+  // slice, and the panel scrolls it into view, then clears the request here.
+  const pendingGitDiffScrollPath = useAtomValue(pendingGitDiffScrollPathAtom);
+  const setPendingGitDiffScrollPath = useSetAtom(pendingGitDiffScrollPathAtom);
+  const clearPendingGitDiffScrollPath = useCallback(
+    () => setPendingGitDiffScrollPath(null),
+    [setPendingGitDiffScrollPath],
+  );
+
   // Drop per-card UI state belonging to any other diff slice once a new target
   // / environment resolves, so collapse defaults are re-derived fresh rather
   // than inheriting a previous diff's choices at a shared path.
@@ -258,6 +270,8 @@ export function GitDiffTabContent({
       filesUpdatedAt={diffFilesUpdatedAt}
       diffViewOptions={gitDiffViewOptions}
       filePathRoot={workspaceRootPath}
+      scrollToPath={pendingGitDiffScrollPath}
+      onScrolledToPath={clearPendingGitDiffScrollPath}
       onOpenFileInEditor={onOpenFileInEditor}
       onOpenFilePreview={onOpenFilePreview}
       onRequestFileContents={onRequestFileContents}

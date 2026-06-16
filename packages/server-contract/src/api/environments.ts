@@ -250,11 +250,6 @@ export type EnvironmentActionApiError = z.infer<
 
 export const environmentWorkspaceNotApplicableReasonSchema = z.enum([
   "non_git_environment",
-  /**
-   * The diff's table of contents exceeded `DIFF_FILES_MAX_COUNT` entries, so
-   * the server declines to enumerate it rather than returning an unbounded list.
-   */
-  "too_many_files",
 ]);
 export type EnvironmentWorkspaceNotApplicableReason = z.infer<
   typeof environmentWorkspaceNotApplicableReasonSchema
@@ -401,6 +396,18 @@ export const diffPatchEntrySchema = z.object({
 });
 export type DiffPatchEntry = z.infer<typeof diffPatchEntrySchema>;
 
+// `too_many_files` is specific to the diff table of contents: the server
+// declines to enumerate a diff whose TOC exceeds the server's `DIFF_FILES_MAX_COUNT`
+// entry cap. `/status` and `/diff` never produce it, so it stays off the shared
+// `environmentWorkspaceNotApplicableReasonSchema`.
+const diffFilesNotApplicableOutcomeSchema = z
+  .object({
+    outcome: z.literal("not_applicable"),
+    reason: z.enum(["non_git_environment", "too_many_files"]),
+    message: z.string().min(1),
+  })
+  .strict();
+
 export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
   "outcome",
   [
@@ -421,7 +428,7 @@ export const environmentDiffFilesResponseSchema = z.discriminatedUnion(
         initialPatches: z.array(diffPatchEntrySchema),
       })
       .strict(),
-    environmentWorkspaceNotApplicableOutcomeSchema,
+    diffFilesNotApplicableOutcomeSchema,
     z
       .object({
         outcome: z.literal("unavailable"),

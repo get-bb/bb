@@ -83,17 +83,17 @@ export function useGitDiffPanelState({
   }, [environmentId, setPendingGitDiffCommitSha]);
 
   // --- Reset the diff to all-changes when an open-file intent arrives
-  // (openDiffFile) so the opened file is in the slice. Clear the atom after
-  // consuming it so re-opening the same path re-triggers the reset — jotai
-  // primitive atoms bail on Object.is equality, so without this a repeat write
-  // of the same path is a no-op and the effect would not re-fire. ---
+  // (openDiffFile) so the opened file is in the slice. The scroll consumer
+  // (DiffFilesPanel) clears `pendingGitDiffScrollPath` once it scrolls the file
+  // into view; that clear is also what lets re-opening the same path re-fire
+  // this effect — jotai primitive atoms bail on Object.is, so a repeat write of
+  // an uncleared path would be a no-op. ---
 
   useEffect(() => {
     if (pendingGitDiffScrollPath) {
       setSelectedGitDiffSelection(null);
-      setPendingGitDiffScrollPath(null);
     }
-  }, [pendingGitDiffScrollPath, setPendingGitDiffScrollPath]);
+  }, [pendingGitDiffScrollPath]);
 
   // --- Apply the commit selection requested from the info tab (openCommitDiff) ---
 

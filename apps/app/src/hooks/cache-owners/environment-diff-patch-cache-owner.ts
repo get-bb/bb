@@ -60,6 +60,16 @@ export function bumpAllDiffPatchEvictionGenerations(): void {
   allEnvironmentsEvictionGeneration += 1;
 }
 
+/**
+ * Drop an environment's per-env eviction counter at teardown (the environment is
+ * being removed), so the map tracks live environments instead of growing for the
+ * app's lifetime. The all-environments generation still applies, so a later
+ * environment — even a re-created one reusing the same id — starts fresh.
+ */
+export function forgetDiffPatchEvictionGeneration(environmentId: string): void {
+  diffPatchEvictionGenerations.delete(environmentId);
+}
+
 interface ReadDiffPatchEntryArgs {
   queryClient: QueryClient;
   identity: PatchQueryIdentity;
