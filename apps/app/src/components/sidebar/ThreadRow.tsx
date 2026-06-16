@@ -329,7 +329,6 @@ function ThreadRowComponent({
   const linkLabel = hasComposerDraft
     ? `Open ${threadTitle} (unsubmitted draft)`
     : `Open ${threadTitle}`;
-  const linkTitle = linkLabel;
   // A lone worktree thread (not nested under a worktree group header) carries a
   // leading worktree glyph so its environment reads at a glance, keeping the
   // worktree indicator in the same leading position as the group header. Forks
@@ -409,7 +408,6 @@ function ThreadRowComponent({
           onProjectSelect?.();
         }}
         aria-label={linkLabel}
-        title={linkTitle}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
       <span className={SIDEBAR_LEADING_CLUSTER_CLASS}>
