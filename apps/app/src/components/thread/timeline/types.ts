@@ -51,6 +51,25 @@ export type ThreadTimelineSendToMainMessageHandler = (
   target: ThreadTimelineSendToMainMessageTarget,
 ) => void;
 
+/**
+ * Push selected agent-message text into the active thread's prompt draft as a
+ * quote chip ("Add to chat"). Supplied by the timeline host (which owns the
+ * composer draft); the floating selection menu invokes it with the selected
+ * text. Absent when no composer draft is available.
+ */
+export type ThreadTimelineSelectionAddToChatHandler = (text: string) => void;
+
+/**
+ * Open a side chat anchored on the selected agent-message text ("Reply in side
+ * chat"). Distinct from the per-message Reply handler only in that the anchor is
+ * the *selection*, not the whole message; both ultimately open a side chat off
+ * the active thread. Supplied by the timeline host; absent when side chats are
+ * unavailable.
+ */
+export type ThreadTimelineSelectionReplyInSideChatHandler = (
+  text: string,
+) => void;
+
 export type ThreadTimelineUnreadDividerPlacement =
   | {
       kind: "after-cutoff";

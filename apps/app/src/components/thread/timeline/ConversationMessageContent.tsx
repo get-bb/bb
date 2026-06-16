@@ -41,7 +41,10 @@ import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
 } from "./conversation-message-overflow.js";
-import { SelectableMessageProse } from "./SelectableMessageProse.js";
+import {
+  SelectableMessageProse,
+  type MessageProseSelection,
+} from "./SelectableMessageProse.js";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -112,6 +115,12 @@ export interface ConversationMessageContentAssistantProps
    * — both spawn a child thread off the active thread, so they share one guard.
    */
   forkDisabled?: boolean;
+  /**
+   * Reports this message's in-bounds text selection (or `null` when cleared) up
+   * to the timeline-level selection controller that drives the single floating
+   * menu. Omitted when no controller is wired in (e.g. delegation output).
+   */
+  onSelectProse?: (selection: MessageProseSelection | null) => void;
   turnRequest: null;
 }
 
@@ -149,6 +158,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   onSideChat?: () => void;
   onSendToMain?: () => void;
   forkDisabled?: boolean;
+  onSelectProse?: (selection: MessageProseSelection | null) => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
@@ -376,6 +386,7 @@ function AssistantConversationMessage({
   onSideChat,
   onSendToMain,
   forkDisabled,
+  onSelectProse,
   onOpenLink,
   onOpenLocalFileLink,
   projectId,
@@ -403,8 +414,12 @@ function AssistantConversationMessage({
 
   return (
     <div className="group/message w-full px-2 text-sm font-normal leading-relaxed">
-      {/* S4 wires `onSelect` to drive the floating selection menu. */}
-      <SelectableMessageProse>
+      {/*
+        Reports in-bounds text selections up to the timeline-level controller
+        that drives the single floating selection menu (Add to chat / Reply in
+        side chat).
+      */}
+      <SelectableMessageProse onSelect={onSelectProse}>
         <MarkdownPreview content={text} linkRouting={linkRouting} />
       </SelectableMessageProse>
       <ConversationAttachments
@@ -485,6 +500,7 @@ export function ConversationMessageContent(
       onSideChat={props.onSideChat}
       onSendToMain={props.onSendToMain}
       forkDisabled={props.forkDisabled}
+      onSelectProse={props.onSelectProse}
       onOpenLink={props.onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
       projectId={projectId}

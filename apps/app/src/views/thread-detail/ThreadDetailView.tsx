@@ -41,6 +41,7 @@ import {
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { useThreadComposerBootstrap } from "../../hooks/queries/thread-composer-bootstrap-query";
+import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
@@ -704,6 +705,30 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     if (!threadId) return;
     openSideChat({ sourceThreadId: threadId, sourceMessageText: "" });
   }, [openSideChat, threadId]);
+  // Same scope (`projectId` + `thread.id`) the composer's `ThreadDetailPromptArea`
+  // uses, so the timeline "Add to chat" action and the composer share one
+  // localStorage-backed draft — the quote chip appears in the composer's
+  // `PromptQuoteStack` immediately, with no duplicated draft state.
+  const selectionPromptDraft = usePromptDraftStorage({
+    projectId,
+    threadId: thread?.id,
+  });
+  const addQuoteToComposer = selectionPromptDraft.addQuote;
+  const handleSelectionAddToChat = useCallback(
+    (text: string) => {
+      addQuoteToComposer(text);
+    },
+    [addQuoteToComposer],
+  );
+  // The selection text is the complete anchor; `sourceThreadId` is supplied
+  // inside `handleSideChatMessage` from the active thread (same path as the
+  // per-message Reply button).
+  const handleSelectionReplyInSideChat = useCallback(
+    (text: string) => {
+      handleSideChatMessage({ messageText: text });
+    },
+    [handleSideChatMessage],
+  );
   const canUseGitUi = environment?.isGitRepo === true;
   const canCreateTerminal =
     thread?.environmentId !== null &&
@@ -1867,6 +1892,8 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           timelineError: Boolean(timelineError),
           onForkMessage: isForkAvailable ? handleForkMessage : undefined,
           onSideChatMessage: handleSideChatMessage,
+          onSelectionAddToChat: handleSelectionAddToChat,
+          onSelectionReplyInSideChat: handleSelectionReplyInSideChat,
           onLoadOlderRows: loadOlderTimelineRows,
           onOpenLink: handleOpenTimelineLink,
           onOpenLocalFileLink: handleOpenTimelineLocalFileLink,

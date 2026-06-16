@@ -158,6 +158,8 @@ const areThreadTimelinePanePropsEqual: ThreadTimelinePanePropsEqual = (
   previous.isThreadTimelinePending === next.isThreadTimelinePending &&
   previous.timelineError === next.timelineError &&
   previous.onLoadOlderRows === next.onLoadOlderRows &&
+  previous.onSelectionAddToChat === next.onSelectionAddToChat &&
+  previous.onSelectionReplyInSideChat === next.onSelectionReplyInSideChat &&
   previous.onOpenLink === next.onOpenLink &&
   previous.onOpenLocalFileLink === next.onOpenLocalFileLink &&
   previous.onTitleAction === next.onTitleAction &&
