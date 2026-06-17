@@ -706,6 +706,7 @@ export function PromptBoxInternal({
   const editorRef = useRef<Editor | null>(null);
   const editorScrollContainerRef = useRef<HTMLDivElement>(null);
   const revealSelectionFrameRef = useRef<number | null>(null);
+  const promptActionFocusFrameRef = useRef<number | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const valueRef = useRef(value);
   const mentionRangesRef = useRef<readonly PromptTextMention[]>(mentionRanges);
@@ -798,6 +799,13 @@ export function PromptBoxInternal({
     return () => {
       if (revealSelectionFrameRef.current === null) return;
       cancelAnimationFrame(revealSelectionFrameRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (promptActionFocusFrameRef.current === null) return;
+      cancelAnimationFrame(promptActionFocusFrameRef.current);
     };
   }, []);
 
@@ -1457,9 +1465,23 @@ export function PromptBoxInternal({
 
   const focusAfterPromptAction = useCallback(
     (currentEditor: Editor) => {
-      currentEditor.commands.focus();
-      syncTriggerState(currentEditor);
-      scheduleRevealEditorSelection();
+      const focusEditor = () => {
+        promptActionFocusFrameRef.current = null;
+        if (currentEditor.isDestroyed) return;
+        currentEditor.commands.focus();
+        syncTriggerState(currentEditor);
+        scheduleRevealEditorSelection();
+      };
+
+      if (typeof requestAnimationFrame !== "function") {
+        focusEditor();
+        return;
+      }
+
+      if (promptActionFocusFrameRef.current !== null) {
+        cancelAnimationFrame(promptActionFocusFrameRef.current);
+      }
+      promptActionFocusFrameRef.current = requestAnimationFrame(focusEditor);
     },
     [scheduleRevealEditorSelection, syncTriggerState],
   );

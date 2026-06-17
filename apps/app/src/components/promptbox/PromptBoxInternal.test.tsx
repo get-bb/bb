@@ -87,6 +87,23 @@ async function selectPromptAction(label: string) {
   fireEvent.click(menuItem);
 }
 
+async function keyboardSelectPromptAction(label: string) {
+  const trigger = screen.getByRole("button", { name: "Prompt actions" });
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: "Enter", code: "Enter" });
+  const menuItem = await screen.findByRole("menuitem", { name: label });
+  menuItem.focus();
+  fireEvent.keyDown(menuItem, { key: "Enter", code: "Enter" });
+}
+
+function getPromptEditorElement(): HTMLElement {
+  const editorElement = document.querySelector(".ProseMirror");
+  if (!(editorElement instanceof HTMLElement)) {
+    throw new Error("Prompt editor element was not rendered");
+  }
+  return editorElement;
+}
+
 function latestValue(changes: readonly PromptChange[]): string | undefined {
   return changes[changes.length - 1]?.value;
 }
@@ -100,6 +117,18 @@ describe("PromptBoxInternal prompt actions", () => {
     await selectPromptAction("Skills");
 
     await waitFor(() => expect(latestValue(changes)).toBe("$"));
+    expect(onCommandQueryChange).toHaveBeenCalledWith("");
+  });
+
+  it("keeps the editor focused after keyboard-selected skills action", async () => {
+    const { changes, onCommandQueryChange } = renderPromptBox("");
+
+    await keyboardSelectPromptAction("Skills");
+
+    await waitFor(() => expect(latestValue(changes)).toBe("$"));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(getPromptEditorElement()),
+    );
     expect(onCommandQueryChange).toHaveBeenCalledWith("");
   });
 

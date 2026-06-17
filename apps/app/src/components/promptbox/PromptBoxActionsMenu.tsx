@@ -1,3 +1,4 @@
+import { useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button.js";
 import {
   DropdownMenu,
@@ -59,16 +60,34 @@ export function PromptBoxActionsMenu({
   actions = [],
   onAction,
 }: PromptBoxActionsMenuProps) {
+  const selectedActionRef = useRef(false);
   const visibleActions = orderedPromptActions(actions).filter(
     (action) => action.text.length > 0,
   );
+  const clearSelectedActionAfterClose = useCallback(() => {
+    const clear = () => {
+      selectedActionRef.current = false;
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(clear);
+      return;
+    }
+    setTimeout(clear, 0);
+  }, []);
 
   if (visibleActions.length === 0) {
     return null;
   }
 
   return (
-    <DropdownMenu modal={false}>
+    <DropdownMenu
+      modal={false}
+      onOpenChange={(open) => {
+        if (!open) {
+          clearSelectedActionAfterClose();
+        }
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
@@ -86,6 +105,11 @@ export function PromptBoxActionsMenu({
         side="top"
         className="w-36"
         mobileTitle="Prompt actions"
+        onCloseAutoFocus={(event) => {
+          if (selectedActionRef.current) {
+            event.preventDefault();
+          }
+        }}
       >
         {visibleActions.map((action) => {
           const presentation = PROMPT_ACTION_PRESENTATION[action.kind];
@@ -93,7 +117,10 @@ export function PromptBoxActionsMenu({
             <DropdownMenuItem
               key={action.kind}
               disabled={action.disabled}
-              onSelect={() => onAction(action)}
+              onSelect={() => {
+                selectedActionRef.current = true;
+                onAction(action);
+              }}
             >
               <Icon
                 name={presentation.icon}

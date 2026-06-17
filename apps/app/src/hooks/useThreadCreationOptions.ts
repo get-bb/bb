@@ -257,8 +257,7 @@ export function useThreadCreationOptions(
       : renderedThreadSelections.environmentSelectionValue;
 
   // --- Provider selection ---
-  const executionOptionsQueryEnabled =
-    enabled && (scope !== "component-local" || environmentId !== undefined);
+  const executionOptionsQueryEnabled = enabled;
   const executionOptionsEnvironmentId =
     scope === "component-local" && executionOptionsQueryEnabled
       ? environmentId

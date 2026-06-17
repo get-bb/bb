@@ -166,4 +166,35 @@ describe("useThreadCreationOptions", () => {
       );
     });
   });
+
+  it("loads provider composer actions for environmentless component-local threads", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          environmentId: undefined,
+          resetKey: "thr_environmentless",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialServiceTier: "default",
+          initialReasoningLevel: "medium",
+          initialPermissionMode: "workspace-write",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(api.getSystemExecutionOptions).toHaveBeenCalledWith({
+        environmentId: undefined,
+        providerId: GLOBAL_PROVIDER_ID,
+      });
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.selectedProviderComposerActions).toEqual([
+        { kind: "skills", trigger: "$" },
+        { kind: "plan", insertText: "/plan " },
+      ]);
+    });
+  });
 });
