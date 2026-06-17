@@ -24,7 +24,11 @@ import {
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
+import {
+  getAutomationsRoutePath,
+  getRootComposeRoutePath,
+} from "@/lib/route-paths";
+import { useRouteState } from "@/hooks/useRouteState";
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -40,6 +44,7 @@ export function AppSidebar({
   const quickCreateProject = useQuickCreateProjectController();
   const navigate = useNavigate();
   const closeOnMobile = useCloseMobileSidebar();
+  const { isAutomationsView } = useRouteState();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
 
@@ -48,6 +53,11 @@ export function AppSidebar({
     void navigate(getRootComposeRoutePath(), {
       state: { focusPrompt: true },
     });
+  }, [closeOnMobile, navigate]);
+
+  const handleOpenAutomations = useCallback(() => {
+    closeOnMobile();
+    void navigate(getAutomationsRoutePath());
   }, [closeOnMobile, navigate]);
 
   return (
@@ -90,7 +100,11 @@ export function AppSidebar({
           data-testid="app-sidebar-primary-actions"
           className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
         >
-          <ProjectListActionButtons onNewChat={handleNewChat} />
+          <ProjectListActionButtons
+            onNewChat={handleNewChat}
+            onOpenAutomations={handleOpenAutomations}
+            isAutomationsActive={isAutomationsView}
+          />
         </div>
         <SidebarContent>
           <ProjectList

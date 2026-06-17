@@ -108,6 +108,8 @@ interface ProjectListProps {
 
 export interface ProjectListActionButtonsProps {
   onNewChat?: () => void;
+  onOpenAutomations?: () => void;
+  isAutomationsActive?: boolean;
 }
 
 interface ProjectListShellProps {
@@ -531,6 +533,8 @@ const SortableSidebarSection = memo(function SortableSidebarSection({
 
 export function ProjectListActionButtons({
   onNewChat,
+  onOpenAutomations,
+  isAutomationsActive = false,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
   const newChatTitle = isNewChatDisabled ? "Start a new thread" : "New thread";
@@ -553,6 +557,27 @@ export function ProjectListActionButtons({
           aria-hidden="true"
         />
       </Button>
+      {onOpenAutomations ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={cn(
+            PROJECT_LIST_ACTION_BUTTON_CLASS,
+            isAutomationsActive && "bg-sidebar-accent text-sidebar-foreground",
+          )}
+          aria-current={isAutomationsActive ? "page" : undefined}
+          onClick={onOpenAutomations}
+          title="Automations"
+        >
+          <Icon name="Clock" />
+          <span className="min-w-0 flex-1 truncate text-left">Automations</span>
+          <span
+            className={PROJECT_LIST_ACTION_TRAILING_SLOT_CLASS}
+            aria-hidden="true"
+          />
+        </Button>
+      ) : null}
     </div>
   );
 }

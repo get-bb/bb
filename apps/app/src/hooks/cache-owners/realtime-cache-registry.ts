@@ -61,6 +61,7 @@ import {
 } from "./thread-list-cache-data";
 import {
   allHostQueryKeyPrefix,
+  automationsQueryKey,
   allThreadStorageFilePreviewQueryKeyPrefix,
   allThreadStorageFilesQueryKeyPrefix,
   allThreadStoragePathsQueryKeyPrefix,
@@ -115,6 +116,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadDetailQueries, // Active detail should reconcile to deleted/not-found.
       dirtyThreadTimelineQueries, // Active timeline should stop showing stale rows.
       dirtyProjectPromptHistoryQueries, // Deleted prompts may leave project history.
+      dirtyAutomationQueries, // Automation rows reference the spawning thread.
     ],
   },
   "events-appended": {
@@ -143,6 +145,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     dirty: [
       dirtyThreadListQueries, // List rows render display title.
       dirtyThreadDetailQueries, // Detail headers and breadcrumbs render display title.
+      dirtyAutomationQueries, // Automation rows reference the spawning thread by title.
     ],
   },
   "queue-changed": {
@@ -157,6 +160,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadListQueries, // Archive state moves threads between active/archived lists.
       dirtyThreadDetailQueries, // Detail controls and banners depend on archive state.
       dirtyProjectPromptHistoryQueries, // Archived prompts may leave project history.
+      dirtyAutomationQueries, // Automation rows reference the spawning thread.
     ],
   },
   "pin-state-changed": {
@@ -259,11 +263,13 @@ export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   "project-updated": {
     dirty: [
       dirtyProjectListQueries, // Name/settings fields are embedded in sidebar navigation/project caches.
+      dirtyAutomationQueries, // Automation rows render the owning project's name.
     ],
   },
   "project-deleted": {
     dirty: [
       dirtyProjectListQueries, // Deleted projects must disappear from navigation/pickers.
+      dirtyAutomationQueries, // Deleting a project cascades its automations out of the overview.
     ],
   },
   "project-sources-changed": {
@@ -280,6 +286,16 @@ export const REALTIME_PROJECT_CHANGE_REGISTRY = {
   "project-order-changed": {
     dirty: [
       dirtyProjectListQueries, // Sidebar order depends on project ordering.
+    ],
+  },
+  "automations-changed": {
+    dirty: [
+      dirtyAutomationQueries, // Automation create/update/pause/resume/delete changes the overview.
+    ],
+  },
+  "automation-runs-changed": {
+    dirty: [
+      dirtyAutomationQueries, // A new/closed run updates the denormalized last-run summary on rows.
     ],
   },
 } satisfies ProjectChangeRegistry;
@@ -691,6 +707,10 @@ function dirtyThreadStorageQueriesForEnvironment({
 
 function dirtyProjectListQueries(): QueryKey[] {
   return getProjectListInvalidationQueryKeys();
+}
+
+function dirtyAutomationQueries(): QueryKey[] {
+  return [automationsQueryKey()];
 }
 
 function dirtyProjectSourceDependentQueries({

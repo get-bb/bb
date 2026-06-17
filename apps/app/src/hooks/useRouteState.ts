@@ -12,6 +12,8 @@ export interface RouteState {
   isArchivedView: boolean;
   /** On the project settings page. */
   isSettingsView: boolean;
+  /** On the cross-project Automations view ("/automations"). */
+  isAutomationsView: boolean;
   /** On the root route ("/"). */
   isRootView: boolean;
   /** On the projectless new-thread surface or canonical projectless thread URL. */
@@ -71,6 +73,7 @@ export function useRouteState(): RouteState {
         !isUnsupportedPersonalProjectThread),
     isArchivedView: Boolean(projectArchivedMatch),
     isSettingsView: Boolean(projectSettingsMatch),
+    isAutomationsView: location.pathname === "/automations",
     isRootView,
     isProjectlessView: isRootView || projectlessThreadId !== undefined,
   };

@@ -56,6 +56,7 @@ export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
 export const LOCAL_PROVIDER_CLI_STATUS_QUERY_KEY = "localProviderCliStatus";
 export const LOCAL_PATH_EXISTENCE_QUERY_KEY = "localPathExistence";
+export const AUTOMATIONS_QUERY_KEY = "automations";
 export interface ThreadListQueryFilters {
   projectId?: string;
   hasParent?: ThreadListFilters["hasParent"];
@@ -397,6 +398,7 @@ export type LocalPathExistenceQueryKey = readonly [
 export type LocalPathExistenceQueryKeyPrefix = readonly [
   typeof LOCAL_PATH_EXISTENCE_QUERY_KEY,
 ];
+export type AutomationsQueryKey = readonly [typeof AUTOMATIONS_QUERY_KEY];
 
 export interface ProjectDefaultExecutionOptionsQueryKeyArgs {
   projectId: string;
@@ -962,4 +964,8 @@ export function localPathExistenceQueryKey(
 
 export function localPathExistenceQueryKeyPrefix(): LocalPathExistenceQueryKeyPrefix {
   return [LOCAL_PATH_EXISTENCE_QUERY_KEY];
+}
+
+export function automationsQueryKey(): AutomationsQueryKey {
+  return [AUTOMATIONS_QUERY_KEY];
 }

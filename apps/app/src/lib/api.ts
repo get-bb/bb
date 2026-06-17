@@ -9,6 +9,7 @@ import type {
   WorkspaceDiffTarget,
 } from "@bb/domain";
 import type {
+  AutomationsOverviewResponse,
   CommandListResponse,
   CreateProjectSourceRequest,
   CreateProjectRequest,
@@ -486,6 +487,14 @@ export async function listProjectPromptHistory(
 
 export async function deleteProject(id: string): Promise<void> {
   await requestVoid(apiClient.projects[":id"].$delete({ param: { id } }));
+}
+
+export async function listAutomations(
+  signal?: AbortSignal,
+): Promise<AutomationsOverviewResponse> {
+  return request<AutomationsOverviewResponse>(
+    apiClient.automations.$get(undefined, requestOptions(signal)),
+  );
 }
 
 export async function addProjectSource(

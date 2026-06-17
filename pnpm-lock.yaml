@@ -164,6 +164,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      cronstrue:
+        specifier: ^3.14.0
+        version: 3.14.0
       jotai:
         specifier: ^2.19.0
         version: 2.19.0(@babel/core@7.29.0)(@babel/template@7.28.6)(@types/react@19.2.13)(react@19.2.4)
@@ -5582,6 +5585,10 @@ packages:
   cron-parser@5.5.0:
     resolution: {integrity: sha512-oML4lKUXxizYswqmxuOCpgFS8BNUJpIu6k/2HVHyaL8Ynnf3wdf9tkns0yRdJLSIjkJ+b0DXHMZEHGpMwjnPww==}
     engines: {node: '>=18'}
+
+  cronstrue@3.14.0:
+    resolution: {integrity: sha512-XnW4vuK/jPJjmTyDWiej1Zq36Od7ITwxaV2O1pzHZuyMVvdy7NAvyvIBzybt+idqSpfqYuoDG7uf/ocGtJVWxA==}
+    hasBin: true
 
   cross-dirname@0.1.0:
     resolution: {integrity: sha512-+R08/oI0nl3vfPcqftZRpytksBXDzOUveBq/NBVx0sUp1axwzPQrKinNx5yd5sxPu8j1wIy8AfnVQ+5eFdha6Q==}
@@ -13676,6 +13683,8 @@ snapshots:
   cron-parser@5.5.0:
     dependencies:
       luxon: 3.7.2
+
+  cronstrue@3.14.0: {}
 
   cross-dirname@0.1.0:
     optional: true
