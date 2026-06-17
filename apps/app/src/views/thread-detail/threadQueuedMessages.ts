@@ -4,15 +4,23 @@ import { promptInputToDraft, type PromptDraftState } from "@/lib/prompt-draft";
 
 const QUEUED_MESSAGE_PREVIEW_MAX_CHARS = 220;
 
+function visibleQueuedMessageInput(
+  input: readonly PromptInput[],
+): PromptInput[] {
+  return input.filter((chunk) => chunk.visibility !== "agent-only");
+}
+
 function getAttachmentNameFromPath(path: string): string {
   const trimmedPath = path.trim();
   if (trimmedPath.length === 0) return "Attachment";
   return fileNameFromPath(trimmedPath);
 }
 
-export function countQueuedMessageAttachments(input: PromptInput[]): number {
+export function countQueuedMessageAttachments(
+  input: readonly PromptInput[],
+): number {
   let count = 0;
-  for (const chunk of input) {
+  for (const chunk of visibleQueuedMessageInput(input)) {
     if (chunk.type === "localImage" || chunk.type === "localFile") {
       count += 1;
     }
@@ -20,8 +28,11 @@ export function countQueuedMessageAttachments(input: PromptInput[]): number {
   return count;
 }
 
-export function formatQueuedMessagePreview(input: PromptInput[]): string {
-  const text = input
+export function formatQueuedMessagePreview(
+  input: readonly PromptInput[],
+): string {
+  const visibleInput = visibleQueuedMessageInput(input);
+  const text = visibleInput
     .filter(
       (chunk): chunk is Extract<PromptInput, { type: "text" }> =>
         chunk.type === "text",
@@ -37,9 +48,9 @@ export function formatQueuedMessagePreview(input: PromptInput[]): string {
     return `${trimmedText.slice(0, QUEUED_MESSAGE_PREVIEW_MAX_CHARS - 1)}...`;
   }
 
-  const attachmentCount = countQueuedMessageAttachments(input);
+  const attachmentCount = countQueuedMessageAttachments(visibleInput);
   if (attachmentCount === 1) {
-    const firstAttachment = input.find(
+    const firstAttachment = visibleInput.find(
       (chunk) => chunk.type === "localImage" || chunk.type === "localFile",
     );
     if (firstAttachment) {
@@ -59,6 +70,8 @@ export function formatQueuedMessagePreview(input: PromptInput[]): string {
   return "(empty message)";
 }
 
-export function queuedInputToDraft(input: PromptInput[]): PromptDraftState {
-  return promptInputToDraft(input);
+export function queuedInputToDraft(
+  input: readonly PromptInput[],
+): PromptDraftState {
+  return promptInputToDraft(visibleQueuedMessageInput(input));
 }
