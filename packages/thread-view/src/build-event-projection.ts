@@ -82,6 +82,7 @@ import {
   onTurnCompleted,
   onTurnStarted,
   type CompactionTurnFinalization,
+  type PendingDelegationTurnLink,
   type ProjectionState,
 } from "./event-projection-state.js";
 import { buildProjectionActiveThinking } from "./reasoning-lifecycle-projection.js";
@@ -230,6 +231,73 @@ function getToolCallReceiverThreadIds(decoded: ThreadEvent): string[] {
   );
 }
 
+function enqueuePendingDelegationTurnLink(
+  state: ProjectionState,
+  providerThreadId: string | undefined,
+  parentTurnId: string | undefined,
+  callId: string,
+): void {
+  if (!providerThreadId || !parentTurnId) {
+    return;
+  }
+  if (state.delegatedTurnLinkCallIds.has(callId)) {
+    return;
+  }
+
+  const pendingLinks =
+    state.pendingDelegationTurnLinksByProviderThreadId.get(providerThreadId) ??
+    [];
+  const link: PendingDelegationTurnLink = {
+    callId,
+    parentTurnId,
+  };
+  pendingLinks.push(link);
+  state.pendingDelegationTurnLinksByProviderThreadId.set(
+    providerThreadId,
+    pendingLinks,
+  );
+  state.delegatedTurnLinkCallIds.add(callId);
+}
+
+function consumePendingDelegationTurnLink(
+  state: ProjectionState,
+  providerThreadId: string | undefined,
+  turnId: string,
+): string | undefined {
+  if (!providerThreadId) {
+    return undefined;
+  }
+  if (state.delegationParentToolCallIdsByTurnId.has(turnId)) {
+    return state.delegationParentToolCallIdsByTurnId.get(turnId);
+  }
+
+  const pendingLinks =
+    state.pendingDelegationTurnLinksByProviderThreadId.get(providerThreadId);
+  if (!pendingLinks || pendingLinks.length === 0) {
+    return undefined;
+  }
+
+  while (pendingLinks.length > 0) {
+    const pendingLink = pendingLinks.shift();
+    if (!pendingLink || pendingLink.parentTurnId === turnId) {
+      continue;
+    }
+    if (pendingLinks.length === 0) {
+      state.pendingDelegationTurnLinksByProviderThreadId.delete(
+        providerThreadId,
+      );
+    }
+    state.delegationParentToolCallIdsByTurnId.set(
+      turnId,
+      pendingLink.callId,
+    );
+    return pendingLink.callId;
+  }
+
+  state.pendingDelegationTurnLinksByProviderThreadId.delete(providerThreadId);
+  return undefined;
+}
+
 function getCompactionTurnFinalization(
   decoded: ThreadEvent,
 ): CompactionTurnFinalization | undefined {
@@ -275,23 +343,30 @@ function buildFlatProjectionData(
     const eventTurnId = getEventTurnId(decoded);
     const eventProviderThreadId = getEventProviderThreadId(decoded);
     const explicitEventParentToolCallId = getEventParentToolCallId(decoded);
+
+    if (decoded.type === "turn/started") {
+      const turnId = requireThreadEventScopeTurnId({
+        type: decoded.type,
+        scope: decoded.scope,
+      });
+      consumePendingDelegationTurnLink(
+        state,
+        eventProviderThreadId,
+        turnId,
+      );
+      onTurnStarted(state, turnId);
+    }
+
     const eventParentToolCallId =
       explicitEventParentToolCallId ??
+      (eventTurnId
+        ? state.delegationParentToolCallIdsByTurnId.get(eventTurnId)
+        : undefined) ??
       (eventProviderThreadId
         ? state.delegationParentToolCallIdsByProviderThreadId.get(
             eventProviderThreadId,
           )
         : undefined);
-
-    if (decoded.type === "turn/started") {
-      onTurnStarted(
-        state,
-        requireThreadEventScopeTurnId({
-          type: decoded.type,
-          scope: decoded.scope,
-        }),
-      );
-    }
 
     const compactionTurnFinalization = getCompactionTurnFinalization(decoded);
     if (compactionTurnFinalization) {
@@ -455,6 +530,17 @@ function buildFlatProjectionData(
           toolCallName &&
           PROVIDER_THREAD_DELEGATION_TOOL_NAMES.has(toolCallName)
         ) {
+          if (
+            toolCallReceiverThreadIds.length === 0 ||
+            state.delegatedTurnLinkCallIds.has(toolCallEvent.call.callId)
+          ) {
+            enqueuePendingDelegationTurnLink(
+              state,
+              eventProviderThreadId,
+              eventTurnId,
+              toolCallEvent.call.callId,
+            );
+          }
           for (const receiverThreadId of toolCallReceiverThreadIds) {
             state.delegationParentToolCallIdsByProviderThreadId.set(
               receiverThreadId,

@@ -45,6 +45,10 @@ interface TurnPendingFinalization {
   completedAt: number;
   status: TurnPendingFinalizationStatus;
 }
+export interface PendingDelegationTurnLink {
+  callId: string;
+  parentTurnId: string;
+}
 type TurnCompletedStatus = Extract<
   ThreadEvent,
   { type: "turn/completed" }
@@ -78,6 +82,12 @@ export interface ProjectionState
   pendingFinalizationByTurnId: Map<string, TurnPendingFinalization>;
   threadInterruptedAt: number | null;
   delegationParentToolCallIdsByProviderThreadId: Map<string, string>;
+  delegationParentToolCallIdsByTurnId: Map<string, string>;
+  pendingDelegationTurnLinksByProviderThreadId: Map<
+    string,
+    PendingDelegationTurnLink[]
+  >;
+  delegatedTurnLinkCallIds: Set<string>;
 }
 
 export function createProjectionState(): ProjectionState {
@@ -95,6 +105,9 @@ export function createProjectionState(): ProjectionState {
     finalizedAssistantMessageKeys: new Set(),
     ...createReasoningProjectionState(),
     delegationParentToolCallIdsByProviderThreadId: new Map(),
+    delegationParentToolCallIdsByTurnId: new Map(),
+    pendingDelegationTurnLinksByProviderThreadId: new Map(),
+    delegatedTurnLinkCallIds: new Set(),
     toolActivity: createToolActivityState(),
     backgroundTasksByItemId: new Map(),
   };

@@ -1021,6 +1021,249 @@ describe("timeline CLI rendering snapshots", () => {
     }
   });
 
+  it("nests Codex same-provider child turns under spawn delegations", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Review architecture",
+          receiverThreadIds: [],
+        },
+      }),
+      event.toolCallCompleted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Review architecture",
+          receiverThreadIds: ["receiver-1"],
+        },
+      }),
+      event.toolCallStarted({
+        itemId: "delegation-2",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Review UI",
+          receiverThreadIds: [],
+        },
+      }),
+      event.turnStarted({ turnId: "child-turn-1" }),
+      event.toolCallCompleted({
+        itemId: "delegation-2",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Review UI",
+          receiverThreadIds: ["receiver-2"],
+        },
+      }),
+      event.turnStarted({ turnId: "child-turn-2" }),
+      event.commandCompleted({
+        itemId: "child-command-1",
+        turnId: "child-turn-1",
+        command: "pnpm test",
+        aggregatedOutput: "ok\n",
+      }),
+      event.assistantCompleted({
+        itemId: "child-assistant-1",
+        turnId: "child-turn-1",
+        text: "Architecture is fine.",
+      }),
+      event.turnCompleted({ turnId: "child-turn-1" }),
+      event.assistantCompleted({
+        itemId: "child-assistant-2",
+        turnId: "child-turn-2",
+        text: "UI has one issue.",
+      }),
+      event.turnCompleted({ turnId: "child-turn-2" }),
+      event.assistantCompleted({
+        itemId: "root-assistant-1",
+        text: "Root done.",
+      }),
+      event.turnCompleted(),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegations = allRows.filter(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const topLevelChildTurns = timeline.rows.filter(
+      (row) => row.kind === "turn" && row.turnId.startsWith("child-turn-"),
+    );
+    const topLevelChildMessages = timeline.rows.filter(
+      (row) =>
+        row.kind === "conversation" &&
+        row.turnId?.startsWith("child-turn-") === true,
+    );
+
+    expect(delegations).toHaveLength(2);
+    expect(topLevelChildTurns).toHaveLength(0);
+    expect(topLevelChildMessages).toHaveLength(0);
+    expect(delegations[0]?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "assistant",
+          text: "Architecture is fine.",
+          turnId: "child-turn-1",
+        }),
+      ]),
+    );
+    expect(delegations[1]?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "assistant",
+          text: "UI has one issue.",
+          turnId: "child-turn-2",
+        }),
+      ]),
+    );
+    expect(
+      delegations.some((delegation) =>
+        delegation.childRows.some((row) => row.kind === "turn"),
+      ),
+    ).toBe(false);
+  });
+
+  it("does not attach later root turns to Claude receiver-thread delegations", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const timeline = renderActiveTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Review with a child provider thread",
+          receiverThreadIds: ["child-provider"],
+        },
+      }),
+      event.commandStarted({
+        providerThreadId: "child-provider",
+        itemId: "child-command-1",
+        command: "pnpm test",
+      }),
+      event.turnStarted({ turnId: "turn-2" }),
+      event.assistantCompleted({
+        itemId: "root-assistant-2",
+        turnId: "turn-2",
+        text: "Root follow-up is separate.",
+      }),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegation = allRows.find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const rootFollowUp = timeline.rows.find(
+      (row) =>
+        row.kind === "conversation" &&
+        row.role === "assistant" &&
+        row.turnId === "turn-2",
+    );
+
+    expect(delegation).toBeDefined();
+    expect(delegation?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "work",
+          workKind: "command",
+          turnId: "turn-1",
+        }),
+      ]),
+    );
+    expect(
+      delegation?.childRows.some((row) => row.turnId === "turn-2"),
+    ).toBe(false);
+    expect(rootFollowUp).toMatchObject({
+      kind: "conversation",
+      role: "assistant",
+      text: "Root follow-up is separate.",
+      turnId: "turn-2",
+    });
+  });
+
+  it("keeps streaming Codex same-provider child turns out of top-level rows", () => {
+    const event = createTimelineEventFactory({
+      providerThreadId: "root-provider",
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const timeline = renderActiveTimeline([
+      event.turnStarted(),
+      event.toolCallStarted({
+        itemId: "delegation-1",
+        tool: "spawnAgent",
+        arguments: {
+          prompt: "Keep reviewing",
+          receiverThreadIds: [],
+        },
+      }),
+      event.turnStarted({ turnId: "child-turn-1" }),
+      event.commandStarted({
+        itemId: "child-command-1",
+        turnId: "child-turn-1",
+        command: "pnpm test",
+      }),
+      event.assistantDelta({
+        itemId: "child-assistant-1",
+        turnId: "child-turn-1",
+        delta: "Still reviewing",
+      }),
+      event.assistantCompleted({
+        itemId: "root-assistant-1",
+        text: "Root is still waiting.",
+      }),
+    ]);
+
+    const allRows = flattenTimelineRows(timeline.rows);
+    const delegation = allRows.find(
+      (
+        row,
+      ): row is Extract<
+        TimelineRow,
+        { kind: "work"; workKind: "delegation" }
+      > => row.kind === "work" && row.workKind === "delegation",
+    );
+    const topLevelChildRows = timeline.rows.filter(
+      (row) => row.turnId?.startsWith("child-turn-") === true,
+    );
+
+    expect(delegation).toBeDefined();
+    expect(delegation?.status).toBe("pending");
+    expect(topLevelChildRows).toHaveLength(0);
+    expect(delegation?.childRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "work",
+          workKind: "command",
+          status: "pending",
+          command: "pnpm test",
+          turnId: "child-turn-1",
+        }),
+      ]),
+    );
+  });
+
   it("renders pending delegation children as flat rows even with mixed statuses", () => {
     // Regression: a pending delegation whose subagent stream contains a mix
     // of pending, errored, and completed messages must NOT synthesize a
