@@ -19,8 +19,14 @@ describe("commandTriggerForComposerActions", () => {
   it("returns null when the provider has no skills action", () => {
     expect(
       commandTriggerForComposerActions([
-        { kind: "plan", insertText: "/plan " },
-        { kind: "goal", insertText: "/goal " },
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+        },
+        {
+          kind: "goal",
+          command: { trigger: "/", name: "goal", trailingText: " " },
+        },
       ]),
     ).toBeNull();
   });
@@ -31,15 +37,29 @@ describe("buildProviderPromptActionProps", () => {
     expect(
       buildProviderPromptActionProps([
         { kind: "skills", trigger: "$" },
-        { kind: "plan", insertText: "/plan " },
-        { kind: "goal", insertText: "/goal " },
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+        },
+        {
+          kind: "goal",
+          command: { trigger: "/", name: "goal", trailingText: " " },
+        },
       ]),
     ).toEqual({
       skillsTrigger: "$",
       promptActions: [
         { kind: "skills", text: "$" },
-        { kind: "plan", text: "/plan " },
-        { kind: "goal", text: "/goal " },
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+          text: "/plan ",
+        },
+        {
+          kind: "goal",
+          command: { trigger: "/", name: "goal", trailingText: " " },
+          text: "/goal ",
+        },
       ],
     });
   });

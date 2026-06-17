@@ -31,8 +31,14 @@ const STORY_COMPOSER_ACTIONS_BY_PROVIDER: Record<
 > = {
   codex: [
     { kind: "skills", trigger: "$" },
-    { kind: "plan", insertText: "/plan " },
-    { kind: "goal", insertText: "/goal " },
+    {
+      kind: "plan",
+      command: { trigger: "/", name: "plan", trailingText: " " },
+    },
+    {
+      kind: "goal",
+      command: { trigger: "/", name: "goal", trailingText: " " },
+    },
   ],
   "claude-code": [{ kind: "skills", trigger: "/" }],
   pi: [],

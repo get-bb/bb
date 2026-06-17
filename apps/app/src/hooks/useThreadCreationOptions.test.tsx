@@ -29,7 +29,10 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         available: true,
         composerActions: [
           { kind: "skills", trigger: "$" },
-          { kind: "plan", insertText: "/plan " },
+          {
+            kind: "plan",
+            command: { trigger: "/", name: "plan", trailingText: " " },
+          },
         ],
         capabilities: {
           supportsArchive: true,
@@ -155,7 +158,10 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
       expect(result.current.selectedProviderComposerActions).toEqual([
         { kind: "skills", trigger: "$" },
-        { kind: "plan", insertText: "/plan " },
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+        },
       ]);
       expect(result.current.selectedModel).toBe("global-model");
       expect(result.current.serviceTier).toBe("default");
@@ -193,7 +199,10 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
       expect(result.current.selectedProviderComposerActions).toEqual([
         { kind: "skills", trigger: "$" },
-        { kind: "plan", insertText: "/plan " },
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+        },
       ]);
     });
   });

@@ -26,8 +26,16 @@ interface PromptChange {
 
 const promptActions: readonly PromptBoxAction[] = [
   { kind: "skills", text: "$" },
-  { kind: "plan", text: "/plan " },
-  { kind: "goal", text: "/goal " },
+  {
+    kind: "plan",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+    text: "/plan ",
+  },
+  {
+    kind: "goal",
+    command: { trigger: "/", name: "goal", trailingText: " " },
+    text: "/goal ",
+  },
 ];
 
 function buildTypeaheadConfig({
@@ -205,6 +213,22 @@ describe("PromptBoxInternal prompt actions", () => {
       },
     ]);
   });
+
+  it.each([
+    ["Start /", "Plan", "Start /plan "],
+    ["Start /p", "Plan", "Start /plan "],
+    ["Start /g", "Goal", "Start /goal "],
+  ])(
+    "replaces an active partial slash token %s with %s",
+    async (initialValue, actionLabel, expectedValue) => {
+      const { changes, promptBoxRef } = renderPromptBox(initialValue);
+
+      await focusPromptEnd(promptBoxRef);
+      await selectPromptAction(actionLabel);
+
+      await waitFor(() => expect(latestValue(changes)).toBe(expectedValue));
+    },
+  );
 
   it("inserts goal mode as a command pill", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");

@@ -23,8 +23,14 @@ describe("agent provider catalog", () => {
         },
         composerActions: [
           { kind: "skills", trigger: "$" },
-          { kind: "plan", insertText: "/plan " },
-          { kind: "goal", insertText: "/goal " },
+          {
+            kind: "plan",
+            command: { trigger: "/", name: "plan", trailingText: " " },
+          },
+          {
+            kind: "goal",
+            command: { trigger: "/", name: "goal", trailingText: " " },
+          },
         ],
         available: true,
       },
@@ -84,7 +90,10 @@ describe("agent provider catalog", () => {
     const provider = getBuiltInAgentProviderInfo("codex");
     provider.displayName = "Mutated";
     provider.capabilities.supportedPermissionModes.push("full");
-    provider.composerActions.push({ kind: "goal", insertText: "/mutated " });
+    provider.composerActions.push({
+      kind: "goal",
+      command: { trigger: "/", name: "mutated", trailingText: " " },
+    });
     const skillsAction = provider.composerActions.find(
       (action) => action.kind === "skills",
     );
@@ -100,8 +109,14 @@ describe("agent provider catalog", () => {
       },
       composerActions: [
         { kind: "skills", trigger: "$" },
-        { kind: "plan", insertText: "/plan " },
-        { kind: "goal", insertText: "/goal " },
+        {
+          kind: "plan",
+          command: { trigger: "/", name: "plan", trailingText: " " },
+        },
+        {
+          kind: "goal",
+          command: { trigger: "/", name: "goal", trailingText: " " },
+        },
       ],
     });
   });

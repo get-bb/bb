@@ -88,8 +88,14 @@ const PI_CAPABILITIES: ProviderCapabilities = {
 
 const CODEX_COMPOSER_ACTIONS: ProviderComposerAction[] = [
   { kind: "skills", trigger: "$" },
-  { kind: "plan", insertText: "/plan " },
-  { kind: "goal", insertText: "/goal " },
+  {
+    kind: "plan",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+  },
+  {
+    kind: "goal",
+    command: { trigger: "/", name: "goal", trailingText: " " },
+  },
 ];
 
 const CLAUDE_COMPOSER_ACTIONS: ProviderComposerAction[] = [
@@ -212,9 +218,9 @@ function cloneComposerAction(
     case "skills":
       return { kind: "skills", trigger: action.trigger };
     case "plan":
-      return { kind: "plan", insertText: action.insertText };
+      return { kind: "plan", command: { ...action.command } };
     case "goal":
-      return { kind: "goal", insertText: action.insertText };
+      return { kind: "goal", command: { ...action.command } };
   }
 }
 

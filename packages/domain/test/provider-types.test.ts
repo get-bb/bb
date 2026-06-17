@@ -26,14 +26,26 @@ describe("provider info schema", () => {
         ...baseProviderInfo,
         composerActions: [
           { kind: "skills", trigger: "$" },
-          { kind: "plan", insertText: "/plan " },
-          { kind: "goal", insertText: "/goal " },
+          {
+            kind: "plan",
+            command: { trigger: "/", name: "plan", trailingText: " " },
+          },
+          {
+            kind: "goal",
+            command: { trigger: "/", name: "goal", trailingText: " " },
+          },
         ],
       }).composerActions,
     ).toEqual([
       { kind: "skills", trigger: "$" },
-      { kind: "plan", insertText: "/plan " },
-      { kind: "goal", insertText: "/goal " },
+      {
+        kind: "plan",
+        command: { trigger: "/", name: "plan", trailingText: " " },
+      },
+      {
+        kind: "goal",
+        command: { trigger: "/", name: "goal", trailingText: " " },
+      },
     ]);
   });
 
@@ -47,7 +59,34 @@ describe("provider info schema", () => {
     expect(() =>
       providerInfoSchema.parse({
         ...baseProviderInfo,
-        composerActions: [{ kind: "plan", insertText: "" }],
+        composerActions: [
+          {
+            kind: "plan",
+            command: { trigger: "/", name: "", trailingText: " " },
+          },
+        ],
+      }),
+    ).toThrow();
+    expect(() =>
+      providerInfoSchema.parse({
+        ...baseProviderInfo,
+        composerActions: [
+          {
+            kind: "goal",
+            command: { trigger: "/", name: "goal now", trailingText: " " },
+          },
+        ],
+      }),
+    ).toThrow();
+    expect(() =>
+      providerInfoSchema.parse({
+        ...baseProviderInfo,
+        composerActions: [
+          {
+            kind: "goal",
+            command: { trigger: "/", name: "goal", trailingText: " now" },
+          },
+        ],
       }),
     ).toThrow();
   });

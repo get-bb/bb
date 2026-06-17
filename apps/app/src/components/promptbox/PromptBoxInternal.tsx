@@ -648,21 +648,15 @@ function getPromptActionInsertionRange({
 function promptActionCommandFromAction(
   action: PromptBoxAction,
 ): PromptActionCommand | null {
-  if (action.kind === "skills") {
+  if (action.kind === "skills" || !action.command) {
     return null;
   }
 
-  const match = /^([/$])(\S+)(\s*)$/u.exec(action.text);
-  if (!match) {
-    return null;
-  }
-
-  const trigger = match[1] as PromptMentionCommandTrigger;
-  const name = match[2]!;
+  const { trigger, name, trailingText } = action.command;
   const serializedText = `${trigger}${name}`;
   return {
     serializedText,
-    trailingText: action.text.slice(serializedText.length),
+    trailingText,
     trigger,
     suggestion: {
       kind: "command",
@@ -673,6 +667,27 @@ function promptActionCommandFromAction(
       argumentHint: null,
     },
   };
+}
+
+function promptActionTriggers(
+  triggers: readonly TypeaheadTrigger[],
+  commandAction: PromptActionCommand | null,
+): readonly TypeaheadTrigger[] {
+  if (commandAction === null) {
+    return triggers;
+  }
+  if (
+    triggers.some(
+      (trigger) =>
+        trigger.kind === "command" && trigger.char === commandAction.trigger,
+    )
+  ) {
+    return triggers;
+  }
+  return [
+    ...triggers,
+    { kind: "command", char: commandAction.trigger },
+  ] satisfies TypeaheadTrigger[];
 }
 
 export function PromptBoxInternal({
@@ -1562,7 +1577,7 @@ export function PromptBoxInternal({
       const insertionRange = getPromptActionInsertionRange({
         editor: currentEditor,
         action,
-        triggers,
+        triggers: promptActionTriggers(triggers, commandAction),
       });
       if (insertionRange === null) {
         focusAfterPromptAction(currentEditor);

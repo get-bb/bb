@@ -8,12 +8,14 @@ import {
 } from "@/components/ui/dropdown-menu.js";
 import { Icon, type IconName } from "@/components/ui/icon.js";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+import type { ProviderPromptActionCommand } from "./mentions/command-trigger";
 
 export type PromptBoxActionKind = "skills" | "plan" | "goal";
 
 export interface PromptBoxAction {
   kind: PromptBoxActionKind;
   text: string;
+  command?: ProviderPromptActionCommand;
   label?: string;
   disabled?: boolean;
 }

@@ -29,8 +29,16 @@ const noop = () => {};
 const mockExecution = makeExecutionControlsProps();
 const promptActions: readonly PromptBoxAction[] = [
   { kind: "skills", text: "$" },
-  { kind: "plan", text: "/plan " },
-  { kind: "goal", text: "/goal " },
+  {
+    kind: "plan",
+    command: { trigger: "/", name: "plan", trailingText: " " },
+    text: "/plan ",
+  },
+  {
+    kind: "goal",
+    command: { trigger: "/", name: "goal", trailingText: " " },
+    text: "/goal ",
+  },
 ];
 
 // ---------------------------------------------------------------------------

@@ -10,9 +10,17 @@ import {
 afterEach(cleanup);
 
 const promptActions: readonly PromptBoxAction[] = [
-  { kind: "goal", text: "$goal " },
+  {
+    kind: "goal",
+    command: { trigger: "$", name: "goal", trailingText: " " },
+    text: "$goal ",
+  },
   { kind: "skills", text: "$" },
-  { kind: "plan", text: "$plan " },
+  {
+    kind: "plan",
+    command: { trigger: "$", name: "plan", trailingText: " " },
+    text: "$plan ",
+  },
 ];
 
 async function openPromptActionsMenu() {
@@ -59,6 +67,10 @@ describe("PromptBoxActionsMenu", () => {
     await openPromptActionsMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Plan" }));
 
-    expect(onAction).toHaveBeenCalledWith({ kind: "plan", text: "$plan " });
+    expect(onAction).toHaveBeenCalledWith({
+      kind: "plan",
+      command: { trigger: "$", name: "plan", trailingText: " " },
+      text: "$plan ",
+    });
   });
 });

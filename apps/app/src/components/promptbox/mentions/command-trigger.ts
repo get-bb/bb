@@ -1,11 +1,15 @@
 import type {
+  ProviderComposerCommand,
   PromptMentionCommandTrigger,
   ProviderComposerAction,
 } from "@bb/domain";
 
+export type ProviderPromptActionCommand = ProviderComposerCommand;
+
 export interface ProviderPromptAction {
   kind: "goal" | "plan" | "skills";
   text: string;
+  command?: ProviderPromptActionCommand;
 }
 
 export interface ProviderPromptActionProps {
@@ -36,13 +40,20 @@ export function buildProviderPromptActionProps(
       case "plan":
         promptActions.push({
           kind: action.kind,
-          text: action.insertText,
+          command: action.command,
+          text: serializedProviderCommand(action.command),
         });
         break;
     }
   }
 
   return { skillsTrigger, promptActions };
+}
+
+export function serializedProviderCommand(
+  command: ProviderComposerCommand,
+): string {
+  return `${command.trigger}${command.name}${command.trailingText}`;
 }
 
 export function commandTriggerForComposerActions(
