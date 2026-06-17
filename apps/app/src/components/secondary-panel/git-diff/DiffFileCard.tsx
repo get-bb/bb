@@ -1,4 +1,5 @@
 import { memo, useMemo } from "react";
+import { useIntersectionObserver } from "usehooks-ts";
 import type { DiffFileEntry } from "@bb/server-contract";
 import {
   GitDiffCardBody,
@@ -6,6 +7,7 @@ import {
   type RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
 import {
+  GIT_DIFF_CARD_STICKY_SENTINEL_CLASS,
   GitDiffCardHeader,
   gitDiffCardHeaderWrapperClass,
   type GitDiffCardHeaderModel,
@@ -142,6 +144,20 @@ export const DiffFileCard = memo(function DiffFileCard({
   const changedLines = entry.additions + entry.deletions;
   const isBodyHidden = isCollapsed;
 
+  // Detect when this card's sticky header is pinned to the panel top: a
+  // zero-height sentinel sits just above the header, so once it scrolls out of
+  // the scroll container the header is stuck. When stuck we square the header's
+  // top and draw a non-layout top edge — the card's own rounded top has
+  // scrolled off-screen by then, and a rounded header top would otherwise show
+  // the scrolling diff through its corners. (`overflow-clip` below keeps the
+  // bottom rounded; the top can't be fixed by clipping because the rounded
+  // corners are the header's own, over live content.)
+  const { ref: stickySentinelRef, isIntersecting } = useIntersectionObserver({
+    initialIsIntersecting: true,
+    threshold: 1,
+  });
+  const isHeaderStuck = !isIntersecting;
+
   return (
     // `overflow-clip` clips the header/body to the card's rounded shape so a
     // short file's square-bottomed sticky header can't poke its corners past the
@@ -149,12 +165,15 @@ export const DiffFileCard = memo(function DiffFileCard({
     // so it doesn't capture the sticky header — it still pins to the panel.
     <div className="overflow-clip rounded-lg border border-border bg-background">
       <div
+        ref={stickySentinelRef}
+        aria-hidden
+        className={GIT_DIFF_CARD_STICKY_SENTINEL_CLASS}
+      />
+      <div
         className={gitDiffCardHeaderWrapperClass({
           stickyHeader: true,
           isBodyHidden,
-          isStuck: false,
-          applyStuckHeaderChrome: false,
-          showStuckHeaderEdge: false,
+          isStuck: isHeaderStuck,
         })}
       >
         <GitDiffCardHeader
