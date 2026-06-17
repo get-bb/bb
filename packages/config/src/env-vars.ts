@@ -191,16 +191,9 @@ export const BB_FF_PLACEHOLDER_ENV = defineEnvVar<boolean>({
 
 export const BB_DEV_APP_HOST_ENV = defineEnvVar<string>({
   description:
-    "Development-only Vite bind host for apps/app. Set to 0.0.0.0 to test from phones or other LAN devices.",
+    "Development-only Vite bind host override for apps/app. Defaults to 0.0.0.0 when unset.",
   name: "BB_DEV_APP_HOST",
   parse: parseStringEnvValue,
-});
-
-export const BB_DEV_REMOTE_ENV = defineEnvVar<boolean>({
-  description:
-    "Development-only remote access mode. Set to true to bind the Vite app to all interfaces and make browser WebSockets use the page host.",
-  name: "BB_DEV_REMOTE",
-  parse: parseBooleanEnvValue,
 });
 
 export const BB_DEV_APP_PORT_ENV = defineEnvVar<number | undefined>({
@@ -261,7 +254,6 @@ export const DEFAULT_BB_POSTHOG_API_KEY =
   "phc_tejoYoNLV6vG8QAd5eYXXvcsENFYnP4brpZDGqG7zvpy";
 export const DEFAULT_BB_TELEMETRY = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
-export const DEFAULT_BB_DEV_REMOTE = false;
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
 export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
