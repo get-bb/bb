@@ -11,11 +11,11 @@ Every command supports --json for machine-readable output.
 
 Spawning:
 
-  bb thread spawn --prompt "..." [options]
+  bb thread spawn --project <id> --prompt "..." [options]
 
     --prompt <prompt>              Initial prompt (required)
     --title <title>                Thread title
-    --project <id>                 Project (defaults to BB_PROJECT_ID)
+    --project <id>                 Project (required)
     --parent-thread <id>           Parent thread
     --parent-self                  Parent to the current thread (BB_THREAD_ID)
     --provider <id>                Provider override
@@ -32,7 +32,7 @@ Spawning:
 Listing:
 
   bb thread list                           List threads
-    --project <id>                         Filter by project (defaults to BB_PROJECT_ID)
+    --project <id>                         Filter by project
     --parent-thread <id>                   Filter by parent thread
     --archived                             Show only archived threads
 

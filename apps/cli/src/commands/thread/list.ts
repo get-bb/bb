@@ -4,7 +4,6 @@ import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
   resolveExplicitIdFlag,
-  resolveProjectIdWithLabel,
 } from "../../context-env.js";
 import { renderBorderlessTable } from "../../table.js";
 import { outputJson } from "../helpers.js";
@@ -26,7 +25,7 @@ export function registerListCommand(
     .description("List threads")
     .option(
       "--project <id>",
-      "Filter by project ID (defaults to BB_PROJECT_ID; omit both to list all projects)",
+      "Filter by project ID (defaults to all projects)",
     )
     .option("--parent-thread <id>", "Filter by parent thread ID")
     .option("--archived", "Show only archived threads")
@@ -34,13 +33,16 @@ export function registerListCommand(
     .action(
       action(async (opts: ThreadListCommandOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const resolvedProject = resolveProjectIdWithLabel(opts.project);
+        const projectId = resolveExplicitIdFlag({
+          flagName: "--project flag",
+          value: opts.project,
+        });
         const parentThreadId = resolveExplicitIdFlag({
           flagName: "--parent-thread",
           value: opts.parentThread,
         });
         const threads = await sdk.threads.list({
-          ...(resolvedProject ? { projectId: resolvedProject.id } : {}),
+          ...(projectId ? { projectId } : {}),
           ...(parentThreadId ? { parentThreadId } : {}),
           ...(opts.archived ? { archived: true } : {}),
         });

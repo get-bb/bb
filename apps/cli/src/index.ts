@@ -44,7 +44,7 @@ Quick start:
   bb status
   bb project list
   bb thread show
-  bb thread spawn --provider codex --prompt "..."
+  bb thread spawn --project <id> --provider codex --prompt "..."
 `;
 });
 

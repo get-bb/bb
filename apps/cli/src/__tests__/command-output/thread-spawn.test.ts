@@ -18,6 +18,10 @@ describe("bb thread spawn command output", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
+  function captureCommanderErrors() {
+    return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  }
+
   it("bb thread spawn omits provider and model when the user relies on project defaults", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     const thread: domain.Thread = fixtures.makeThread({
@@ -53,8 +57,45 @@ describe("bb thread spawn command output", () => {
     });
   });
 
-  it("bb thread spawn defaults to the personal project without local host lookup", async () => {
+  it("bb thread spawn requires an explicit --project", async () => {
     vi.stubEnv("BB_PROJECT_ID", undefined);
+    const post = vi.fn();
+    const stderrWrite = captureCommanderErrors();
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(["thread", "spawn", "--prompt", "hello"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(stderrWrite).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "error: required option '--project <id>' not specified",
+      ),
+    );
+    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("bb thread spawn ignores BB_PROJECT_ID when --project is omitted", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-env");
+    const post = vi.fn();
+    const stderrWrite = captureCommanderErrors();
+    stubServerApi({ "v1.threads.$post": post });
+
+    await expect(
+      runCommand(["thread", "spawn", "--prompt", "hello"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(stderrWrite).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "error: required option '--project <id>' not specified",
+      ),
+    );
+    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("bb thread spawn uses the personal workspace when the personal project is explicit", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-personal",
       projectId: domain.PERSONAL_PROJECT_ID,
@@ -66,7 +107,17 @@ describe("bb thread spawn command output", () => {
     const post = vi.fn(async () => thread);
     stubServerApi({ "v1.threads.$post": post });
 
-    await runCommand(["thread", "spawn", "--prompt", "hello"], register);
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        domain.PERSONAL_PROJECT_ID,
+        "--prompt",
+        "hello",
+      ],
+      register,
+    );
 
     expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
     expect(post).toHaveBeenCalledWith({
@@ -84,39 +135,6 @@ describe("bb thread spawn command output", () => {
       },
     });
     expect(collectLogLines(vi.mocked(console.log))).toContain("  Project:  -");
-  });
-
-  it("bb thread spawn honors BB_PROJECT_ID when --project is omitted", async () => {
-    vi.stubEnv("BB_PROJECT_ID", "proj-env");
-    const thread: domain.Thread = fixtures.makeThread({
-      id: "thread-env-project",
-      projectId: "proj-env",
-      providerId: "codex",
-      status: "starting",
-      createdAt: 1,
-      updatedAt: 1,
-    });
-    const post = vi.fn(async () => thread);
-    stubServerApi({ "v1.threads.$post": post });
-
-    await runCommand(["thread", "spawn", "--prompt", "hello"], register);
-
-    expect(resolveLocalHostIdMock).toHaveBeenCalled();
-    expect(post).toHaveBeenCalledWith({
-      json: {
-        origin: "cli",
-        startedOnBehalfOf: null,
-        originKind: null,
-        childOrigin: null,
-        projectId: "proj-env",
-        input: [{ type: "text", text: "hello", mentions: [] }],
-        environment: {
-          type: "host",
-          hostId: "host-test-001",
-          workspace: { type: "unmanaged", path: null },
-        },
-      },
-    });
   });
 
   it("bb thread spawn forwards explicit execution overrides", async () => {
