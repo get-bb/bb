@@ -19,6 +19,7 @@ import {
 } from "@bb/core-ui";
 import { cn } from "@/lib/utils";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@/components/ui/button.js";
 import {
@@ -43,7 +44,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
-import { Icon, type IconName } from "@/components/ui/icon.js";
+import { Icon } from "@/components/ui/icon.js";
 import {
   BranchPicker,
   getMergeBaseBranchCandidateGroups,
@@ -260,18 +261,6 @@ export interface EnvironmentRowProps {
   environmentDisplayHost: EnvironmentDisplayHostContext;
 }
 
-// Reflect the actual environment: a managed (cloud) worktree, a local git
-// worktree, or working directly in the local checkout.
-function environmentRowIcon(environment: Environment): IconName {
-  if (environment.workspaceProvisionType === "managed-worktree") {
-    return "Container";
-  }
-  if (environment.isWorktree) {
-    return "FolderOpen";
-  }
-  return "Laptop";
-}
-
 export function EnvironmentRow({
   thread,
   environment,
@@ -290,7 +279,11 @@ export function EnvironmentRow({
   return (
     <DetailRow
       label={
-        <DetailRowIconLabel icon={environmentRowIcon(environment)}>
+        <DetailRowIconLabel
+          icon={getEnvironmentWorkspaceLabelIconName(
+            display.workspaceDisplayKind,
+          )}
+        >
           Environment
         </DetailRowIconLabel>
       }

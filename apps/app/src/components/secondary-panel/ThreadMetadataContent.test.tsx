@@ -69,6 +69,35 @@ function renderWorkspacePathRow(environment: Environment): string {
 }
 
 describe("EnvironmentRow", () => {
+  it("uses the promptbox environment icon for managed worktrees", () => {
+    const markup = renderEnvironmentRow(makeEnvironment());
+
+    expect(markup).toContain('data-icon="FolderGit"');
+    expect(markup).not.toContain('data-icon="Container"');
+  });
+
+  it("uses the promptbox environment icon for unmanaged worktrees", () => {
+    const markup = renderEnvironmentRow(
+      makeEnvironment({
+        managed: false,
+        workspaceProvisionType: "unmanaged",
+      }),
+    );
+
+    expect(markup).toContain('data-icon="FolderGit"');
+  });
+
+  it("uses the promptbox environment icon for direct workspaces", () => {
+    const markup = renderEnvironmentRow(
+      makeEnvironment({
+        isWorktree: false,
+        workspaceProvisionType: "unmanaged",
+      }),
+    );
+
+    expect(markup).toContain('data-icon="Laptop"');
+  });
+
   it("shows the create-thread action for a provisioned worktree", () => {
     expect(renderEnvironmentRow(makeEnvironment())).toContain(
       'aria-label="Create new thread in this worktree"',
