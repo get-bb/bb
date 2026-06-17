@@ -474,7 +474,8 @@ export function useThread(id: string, options?: QueryOptions) {
 
   return useQuery<ThreadResponse>({
     queryKey: threadQueryKey(id),
-    queryFn: () => api.getThread(requireThreadId(id, "useThread")),
+    queryFn: ({ signal }) =>
+      api.getThread(requireThreadId(id, "useThread"), signal),
     enabled,
     staleTime: 5_000,
     refetchOnMount: options?.refetchOnMount ?? true,
@@ -507,9 +508,10 @@ export function useThreadDetailBootstrap(
 
   return useQuery<ThreadWithIncludesResponse>({
     queryKey: threadDetailBootstrapQueryKey(id),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const thread = await api.getThreadWithEnvironmentHost(
         requireThreadId(id, "useThreadDetailBootstrap"),
+        signal,
       );
       ingestThreadDetailBootstrap({
         composerBootstrapPrefetch: options?.composerBootstrapPrefetch ?? false,
@@ -533,9 +535,10 @@ export function useThreadQueuedMessages(
 
   return useQuery<ThreadQueuedMessageListResponse>({
     queryKey: threadQueuedMessagesQueryKey(id),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.listThreadQueuedMessages(
         requireThreadId(id, "useThreadQueuedMessages"),
+        signal,
       ),
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
@@ -570,9 +573,10 @@ export function useThreadDefaultExecutionOptions(
 ) {
   return useQuery<ResolvedThreadExecutionOptions | null>({
     queryKey: threadDefaultExecutionOptionsQueryKey(id),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.getThreadDefaultExecutionOptions(
         requireThreadId(id, "useThreadDefaultExecutionOptions"),
+        signal,
       ),
     enabled: (options?.enabled ?? true) && Boolean(id),
     refetchOnMount: options?.refetchOnMount ?? true,
@@ -706,9 +710,10 @@ export function useThreadTimeline(
 
   return useQuery<ThreadTimelineResponse>({
     queryKey: threadTimelineQueryKey(id),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.getThreadTimeline({
         id: requireThreadId(id, "useThreadTimeline"),
+        signal,
       }),
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
@@ -730,12 +735,13 @@ export function useThreadTimelineTurnSummaryDetails(
 ) {
   return useQuery<TimelineTurnSummaryDetailsResponse>({
     queryKey: threadTimelineTurnSummaryDetailsQueryKey(identity),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api.getThreadTimelineTurnSummaryDetails({
         id: requireThreadId(
           identity.threadId,
           "useThreadTimelineTurnSummaryDetails",
         ),
+        signal,
         sourceSeqEnd: identity.sourceSeqEnd,
         sourceSeqStart: identity.sourceSeqStart,
         turnId: identity.turnId,

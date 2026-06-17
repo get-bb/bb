@@ -57,6 +57,38 @@ beforeEach(() => {
 });
 
 describe("useEnvironmentDiffPatches", () => {
+  it("aborts in-flight patch fetches when the target changes", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const changedTarget: WorkspaceDiffTarget = {
+      type: "branch_committed",
+      mergeBaseBranch: "main",
+    };
+    const firstFetch = deferred<EnvironmentDiffPatchResponse>();
+    vi.mocked(api.getEnvironmentDiffPatches).mockReturnValue(
+      firstFetch.promise,
+    );
+
+    const { result, rerender } = renderHook(
+      ({ target }) => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target }),
+      { wrapper, initialProps: { target: TARGET as WorkspaceDiffTarget } },
+    );
+
+    act(() => {
+      result.current.requestPaths({ visible: [PATH], overscan: [] });
+    });
+
+    await waitFor(() => {
+      expect(api.getEnvironmentDiffPatches).toHaveBeenCalledTimes(1);
+    });
+    const request = vi.mocked(api.getEnvironmentDiffPatches).mock.calls[0]?.[1];
+    expect(request?.signal?.aborted).toBe(false);
+
+    rerender({ target: changedTarget });
+
+    expect(request?.signal?.aborted).toBe(true);
+    expect(result.current.getPatchState(PATH).status).toBe("idle");
+  });
+
   it("drops a patch fetch that resolves after a mid-flight eviction and re-fetches fresh", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
 

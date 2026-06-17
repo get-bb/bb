@@ -95,9 +95,13 @@ export async function fetchWorkspaceOpenTargets(
 
 export async function fetchProviderCliStatus(
   port: number,
+  signal?: AbortSignal,
 ): Promise<ProviderCliStatusResponse> {
   const daemon = getHostDaemonClient(port);
-  const res = await daemon["provider-clis"].status.$get();
+  const res = await daemon["provider-clis"].status.$get(
+    {},
+    signal ? { init: { signal } } : undefined,
+  );
   if (!res.ok) {
     const status = Number(res.status);
     throw new Error(`Provider CLI status check failed: HTTP ${status}`);
@@ -242,10 +246,14 @@ export async function pickFolder(port: number): Promise<string | null> {
 export async function checkPathsExist(
   port: number,
   paths: string[],
+  signal?: AbortSignal,
 ): Promise<Record<string, boolean>> {
   if (paths.length === 0) return {};
   const daemon = getHostDaemonClient(port);
-  const res = await daemon.paths.exist.$post({ json: { paths } });
+  const res = await daemon.paths.exist.$post(
+    { json: { paths } },
+    signal ? { init: { signal } } : undefined,
+  );
   if (!res.ok) {
     throw new Error(`Path existence check failed: HTTP ${res.status}`);
   }
