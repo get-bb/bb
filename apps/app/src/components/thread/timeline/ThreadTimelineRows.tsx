@@ -39,6 +39,7 @@ import {
   type ThreadTimelineViewRow,
   type TimelineActivityIntentTitle,
   type TimelineTitle,
+  type TimelineTitleLink,
   type TimelineViewTurnRow,
   type TimelineViewWorkRow,
 } from "@bb/thread-view";
@@ -159,6 +160,25 @@ export interface ThreadTimelineRowsProps {
    * only when the environment hasn't loaded yet.
    */
   workspaceRootPath: string | undefined;
+}
+
+export function resolveThreadTimelineSegmentLinkHref(args: {
+  currentThreadId: string | undefined;
+  link: TimelineTitleLink;
+  projectId: string | undefined;
+}): string | null {
+  if (
+    args.currentThreadId !== undefined &&
+    args.link.threadId === args.currentThreadId
+  ) {
+    return null;
+  }
+  return args.projectId !== undefined
+    ? getThreadRoutePath({
+        projectId: args.projectId,
+        threadId: args.link.threadId,
+      })
+    : null;
 }
 
 /**
@@ -1650,13 +1670,13 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   });
   const resolveSegmentLinkHref = useMemo<TimelineTitleLinkResolver>(() => {
     return (link) => {
-      // Thread routes are project-scoped; without a project context the
-      // segment renders as plain text.
-      return projectId !== undefined
-        ? getThreadRoutePath({ projectId, threadId: link.threadId })
-        : null;
+      return resolveThreadTimelineSegmentLinkHref({
+        currentThreadId: props.threadId,
+        link,
+        projectId,
+      });
     };
-  }, [projectId]);
+  }, [projectId, props.threadId]);
   // One selection controller for the whole timeline: any assistant message that
   // reports a non-null selection replaces it (single open menu), and a report of
   // `null` (only emitted by a message that previously had a selection) clears it.
