@@ -144,7 +144,7 @@ describe("ThreadRow", () => {
     expect(caret.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
       "always",
     );
-    expect(caret.style.marginLeft).toBe("-24px");
-    expect(caret.style.marginRight).toBe("24px");
+    expect(caret.style.marginLeft).toBe("-20px");
+    expect(caret.style.marginRight).toBe("20px");
   });
 });

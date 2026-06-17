@@ -44,11 +44,11 @@ export const SIDEBAR_LEADING_CLUSTER_CLASS =
 export const SIDEBAR_LEADING_GLYPH_SLOT_CLASS =
   "inline-flex w-4 shrink-0 items-center justify-center";
 
-const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 8;
-const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 12;
-const SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX = 8;
+const SIDEBAR_THREAD_ROW_BASE_PADDING_PX = 4;
+const SIDEBAR_THREAD_ROW_DEPTH_STEP_PX = 10;
+const SIDEBAR_THREAD_ROW_GLYPH_CENTER_OFFSET_PX = 10;
 
-export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-2";
+export const SIDEBAR_STANDARD_ROW_PADDING_CLASS = "pl-1";
 
 export function getSidebarThreadRowPaddingLeft(depth: number): number {
   return (
@@ -91,4 +91,4 @@ export const SIDEBAR_ROW_SELECTED_STATE_CLASS =
  * covers it cleanly.
  */
 export const SIDEBAR_PROJECT_GROUP_LINE_CLASS =
-  "before:pointer-events-none before:absolute before:bottom-0 before:left-4 before:top-0 before:z-[45] before:w-px before:bg-border-hairline before:opacity-40 before:content-[''] max-md:pointer-coarse:before:left-5";
+  "before:pointer-events-none before:absolute before:bottom-0 before:left-3.5 before:top-0 before:z-[45] before:w-px before:bg-border-hairline before:opacity-40 before:content-[''] max-md:pointer-coarse:before:left-4";

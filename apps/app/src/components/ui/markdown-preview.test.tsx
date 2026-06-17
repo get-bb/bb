@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MarkdownPreview } from "./markdown-preview";
 import type { MarkdownLinkRouting } from "./markdown-link-routing";
@@ -48,5 +48,21 @@ describe("MarkdownPreview", () => {
 
     expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
     expect(screen.getByText("README.md").tagName).toBe("CODE");
+  });
+
+  it("lets link routing open absolute app-origin URLs", () => {
+    const onOpenLink = vi.fn(() => true);
+    const href = `${window.location.origin}/threads/thr_localhost`;
+
+    render(
+      <MarkdownPreview
+        content={`Open [local thread](${href}).`}
+        linkRouting={{ onOpenLink }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "local thread" }));
+
+    expect(onOpenLink).toHaveBeenCalledWith({ href });
   });
 });

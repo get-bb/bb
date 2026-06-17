@@ -355,14 +355,16 @@ function MarkdownAnchor({
       return;
     }
 
-    if (isAppRouteHref) {
+    // Let timeline/terminal hosts claim web links first. Absolute app-origin
+    // URLs can still be browser destinations even though they resolve to an
+    // app route.
+    if (linkRouting?.onOpenLink && href && linkRouting.onOpenLink({ href })) {
+      event.preventDefault();
       return;
     }
 
-    // Defer ordinary web-link routing (e.g. opening in the in-app browser) to
-    // the handler, which prevents default only when it takes over the open.
-    if (linkRouting?.onOpenLink && href && linkRouting.onOpenLink({ href })) {
-      event.preventDefault();
+    if (isAppRouteHref) {
+      return;
     }
   };
 
