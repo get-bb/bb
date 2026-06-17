@@ -152,8 +152,7 @@
     );
     --bb-sidebar-sticky-parent-base-z: 40;
 
-    padding: var(--bb-sidebar-sticky-stack-padding-top)
-      var(--bb-sidebar-sticky-stack-padding)
+    padding: var(--bb-sidebar-sticky-stack-padding-top) 0.25rem
       var(--bb-sidebar-sticky-stack-padding);
   }
 

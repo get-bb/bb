@@ -119,9 +119,7 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(
-      screen.queryByLabelText("Managed worktree environment"),
-    ).toBeNull();
+    expect(screen.queryByLabelText("Managed worktree environment")).toBeNull();
   });
 
   it("keeps expanded parent carets hover-revealed at their row indentation", () => {
@@ -144,7 +142,8 @@ describe("ThreadRow", () => {
     expect(caret.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
       "always",
     );
-    expect(caret.className).toContain("size-4");
+    expect(caret.className).toContain("h-4");
+    expect(caret.className).toContain("w-3.5");
     expect(caret.style.marginLeft).toBe("");
     expect(caret.style.marginRight).toBe("");
   });

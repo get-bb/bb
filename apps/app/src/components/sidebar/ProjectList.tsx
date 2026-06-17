@@ -473,7 +473,7 @@ function TopLevelSidebarSection({
       >
         <span
           className={cn(
-            "relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left",
+            "relative z-10 flex min-w-0 flex-1 items-center gap-0.5 text-left",
             actions && "pr-14",
           )}
         >

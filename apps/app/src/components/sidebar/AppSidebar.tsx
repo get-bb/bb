@@ -88,7 +88,7 @@ export function AppSidebar({
         ) : null}
         <div
           data-testid="app-sidebar-primary-actions"
-          className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
+          className="shrink-0 px-1 py-2 group-data-[collapsible=icon]:hidden"
         >
           <ProjectListActionButtons onNewChat={handleNewChat} />
         </div>
@@ -103,7 +103,7 @@ export function AppSidebar({
             isCreatingProject={quickCreateProject.isCreating}
           />
         </SidebarContent>
-        <SidebarFooter className="relative">
+        <SidebarFooter className="relative px-1">
           <OverflowFade placement="above" tone="sidebar" size="sm" />
           <SidebarMenu className="flex-row items-center">
             <SidebarMenuItem>
