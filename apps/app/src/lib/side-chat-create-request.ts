@@ -1,6 +1,7 @@
 import type {
   Environment,
   PermissionMode,
+  PromptTextMention,
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
@@ -115,6 +116,8 @@ export interface BuildSideChatMessageInputArgs {
   includeReplyReference: boolean;
   /** The user's visible question. */
   question: string;
+  /** Prompt pills selected in the user's visible question. */
+  questionMentions?: readonly PromptTextMention[];
   /**
    * The anchored-message reply reference (see {@link resolveSideChatReplyReference}),
    * or null when the anchor is the parent's last message. When included, it is
@@ -127,10 +130,16 @@ export interface BuildSideChatMessageInputArgs {
 export function buildSideChatMessageInput({
   includeReplyReference,
   question,
+  questionMentions = [],
   replyReference,
 }: BuildSideChatMessageInputArgs): AppCreateThreadRequest["input"] {
+  const visibleQuestion = {
+    type: "text" as const,
+    text: question,
+    mentions: [...questionMentions],
+  };
   if (!includeReplyReference || replyReference === null) {
-    return [{ type: "text", text: question, mentions: [] }];
+    return [visibleQuestion];
   }
   return [
     {
@@ -139,7 +148,7 @@ export function buildSideChatMessageInput({
       mentions: [],
       visibility: "agent-only",
     },
-    { type: "text", text: question, mentions: [] },
+    visibleQuestion,
   ];
 }
 

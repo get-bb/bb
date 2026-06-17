@@ -203,8 +203,9 @@ describe("PromptBoxInternal prompt actions", () => {
   });
 
   it("inserts goal mode as a command pill", async () => {
-    const { changes } = renderPromptBox("");
+    const { changes, promptBoxRef } = renderPromptBox("");
 
+    await focusPromptEnd(promptBoxRef);
     await selectPromptAction("Goal");
 
     await waitFor(() => expect(latestValue(changes)).toBe("/goal "));

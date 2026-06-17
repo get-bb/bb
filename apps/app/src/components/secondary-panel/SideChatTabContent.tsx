@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Environment,
+  PromptInput,
   PromptTextMention,
   ThreadQueuedMessage,
   ThreadRuntimeDisplayStatus,
@@ -12,7 +13,6 @@ import {
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
 import {
-  INERT_TYPEAHEAD_COMMAND_CONFIG,
   type AttachmentsConfig,
   type HistoryConfig,
   type TypeaheadConfig,
@@ -29,6 +29,8 @@ import type {
   ExecutionControlsProps,
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
+import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
+import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
@@ -76,27 +78,45 @@ import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
+import { promptDraftToInput } from "@/lib/prompt-draft";
 import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
 
 const noop = () => {};
 
-// Side chats are conversation-only in v1 (no @-mentions / file reach, no command
-// typeahead), so the composer is wired with an inert typeahead config rather
-// than the thread mention-search stack. Keeping it explicit (not dead config)
-// documents the intentional v1 scope.
-const SIDE_CHAT_TYPEAHEAD: TypeaheadConfig = {
-  mention: {
-    suggestions: [],
-    isLoading: false,
-    isError: false,
-    onQueryChange: noop,
-  },
-  command: INERT_TYPEAHEAD_COMMAND_CONFIG,
+// Side chats do not expose @-mentions / file reach in v1. Provider command
+// typeahead is wired per side chat below so provider-owned prompt actions stay
+// aligned with the normal follow-up composer.
+const SIDE_CHAT_MENTION_TYPEAHEAD: TypeaheadConfig["mention"] = {
+  suggestions: [],
+  isLoading: false,
+  isError: false,
+  onQueryChange: noop,
 };
+
+type SideChatVisibleTextInput = Extract<PromptInput, { type: "text" }>;
+
+function visibleTextInputFromSideChatDraft({
+  mentionRanges,
+  message,
+}: {
+  mentionRanges: readonly PromptTextMention[];
+  message: string;
+}): SideChatVisibleTextInput | null {
+  const input = promptDraftToInput({
+    text: message,
+    mentions: [...mentionRanges],
+    attachments: [],
+  });
+  return (
+    input.find(
+      (item): item is SideChatVisibleTextInput => item.type === "text",
+    ) ?? null
+  );
+}
 
 // Side chats are conversation-only: no @-mentions, no file attachments. The
 // composer requires an attachments config, so wire an inert one (no items, no
-// upload affordance) — mirroring SIDE_CHAT_TYPEAHEAD's intentional v1 scope.
+// upload affordance).
 const SIDE_CHAT_ATTACHMENTS: AttachmentsConfig = {
   items: [],
   isAttaching: false,
@@ -350,6 +370,7 @@ export function SideChatTabContent({
 
   const [message, setMessage] = useState("");
   const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+  const [commandQuery, setCommandQuery] = useState<string | null>(null);
   const [isSideChatTurnSubmitting, setIsSideChatTurnSubmitting] =
     useState(false);
   const [sideChatPreloadFailed, setSideChatPreloadFailed] = useState(false);
@@ -525,8 +546,8 @@ export function SideChatTabContent({
     void ensureSideChatThread().catch(() => undefined);
   }, [childThreadId, ensureSideChatThread, sideChatPreloadFailed]);
 
-  const sendOrQueueSideChatText = useCallback(
-    async (text: string) => {
+  const sendOrQueueSideChatInput = useCallback(
+    async (visibleQuestion: SideChatVisibleTextInput) => {
       const targetThreadId = await ensureSideChatThread();
       if (targetThreadId === null) {
         throw new Error("Side chat is not ready to create yet.");
@@ -535,7 +556,8 @@ export function SideChatTabContent({
         includeReplyReference:
           !childHasUserMessageRef.current &&
           queuedMessageCountRef.current === 0,
-        question: text,
+        question: visibleQuestion.text,
+        questionMentions: visibleQuestion.mentions,
         replyReference,
       });
       const displayStatus =
@@ -604,8 +626,11 @@ export function SideChatTabContent({
       ? "Provisioning side chat..."
       : "Reply in the side chat…";
   const handleSubmit = useCallback(() => {
-    const trimmed = message.trim();
-    if (trimmed.length === 0 || isSideChatTurnSubmitting) {
+    const visibleQuestion = visibleTextInputFromSideChatDraft({
+      mentionRanges,
+      message,
+    });
+    if (visibleQuestion === null || isSideChatTurnSubmitting) {
       return;
     }
     const submittedMessage = message;
@@ -614,7 +639,7 @@ export function SideChatTabContent({
     setMentionRanges([]);
     setIsSideChatTurnSubmitting(true);
     pendingSubmitCountRef.current += 1;
-    void sendOrQueueSideChatText(trimmed)
+    void sendOrQueueSideChatInput(visibleQuestion)
       .catch((error) => {
         if (!isMountedRef.current) {
           return;
@@ -653,7 +678,7 @@ export function SideChatTabContent({
     isSideChatTurnSubmitting,
     mentionRanges,
     message,
-    sendOrQueueSideChatText,
+    sendOrQueueSideChatInput,
     sideChatRuntimeDisplayStatus,
   ]);
 
@@ -862,6 +887,7 @@ export function SideChatTabContent({
     providerOptions,
     hasMultipleProviders,
     selectedProviderDisplayName,
+    selectedProviderComposerActions,
     selectedModel,
     serviceTier,
     reasoningLevel,
@@ -875,6 +901,41 @@ export function SideChatTabContent({
     serviceTierSupportByProvider,
     isLoadingModels,
   } = threadCreationOptions;
+  const providerPromptActions = useMemo(
+    () => buildProviderPromptActionProps(selectedProviderComposerActions),
+    [selectedProviderComposerActions],
+  );
+  const commandSuggestions = useCommandSuggestions({
+    projectId: sourceThread.projectId,
+    providerId: sourceThread.providerId,
+    skillsTrigger: providerPromptActions.skillsTrigger,
+    environmentId: sourceThread.environmentId,
+    query: commandQuery,
+  });
+  const typeaheadConfig = useMemo<TypeaheadConfig>(
+    () => ({
+      mention: SIDE_CHAT_MENTION_TYPEAHEAD,
+      command: {
+        trigger: commandSuggestions.trigger,
+        suggestions: commandSuggestions.suggestions,
+        isLoading: commandSuggestions.isLoading,
+        isError: commandSuggestions.isError,
+        hasMore: commandSuggestions.hasMore,
+        isLoadingMore: commandSuggestions.isLoadingMore,
+        loadMore: commandSuggestions.loadMore,
+        onQueryChange: setCommandQuery,
+      },
+    }),
+    [
+      commandSuggestions.hasMore,
+      commandSuggestions.isError,
+      commandSuggestions.isLoading,
+      commandSuggestions.isLoadingMore,
+      commandSuggestions.loadMore,
+      commandSuggestions.suggestions,
+      commandSuggestions.trigger,
+    ],
+  );
 
   const executionConfig = useMemo<ExecutionControlsProps>(
     () => ({
@@ -1031,7 +1092,8 @@ export function SideChatTabContent({
           execution={executionConfig}
           permission={permissionConfig}
           readOnly
-          typeahead={SIDE_CHAT_TYPEAHEAD}
+          typeahead={typeaheadConfig}
+          promptActions={providerPromptActions.promptActions}
           zenModeResetKey={childThreadId ?? tab.id}
         />
       </div>

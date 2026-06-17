@@ -323,6 +323,50 @@ describe("buildSideChatMessageInput", () => {
     });
   });
 
+  it("preserves prompt mentions on the visible question", () => {
+    const input = buildSideChatMessageInput({
+      includeReplyReference: true,
+      question: "/goal Make side chat match the main composer",
+      questionMentions: [
+        {
+          start: 0,
+          end: "/goal".length,
+          resource: {
+            kind: "command",
+            trigger: "/",
+            name: "goal",
+            source: "command",
+            origin: "user",
+            label: "goal",
+            argumentHint: null,
+          },
+        },
+      ],
+      replyReference: "Earlier context",
+    });
+
+    expect(input).toHaveLength(2);
+    expect(input[1]).toEqual({
+      type: "text",
+      text: "/goal Make side chat match the main composer",
+      mentions: [
+        {
+          start: 0,
+          end: "/goal".length,
+          resource: {
+            kind: "command",
+            trigger: "/",
+            name: "goal",
+            source: "command",
+            origin: "user",
+            label: "goal",
+            argumentHint: null,
+          },
+        },
+      ],
+    });
+  });
+
   it("does not repeat the reply reference after the first user-visible turn", () => {
     const input = buildSideChatMessageInput({
       includeReplyReference: false,
