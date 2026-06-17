@@ -101,6 +101,7 @@ export function PromptBoxActionsMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
+        aria-label="Prompt actions"
         align="end"
         side="top"
         className="w-36"

@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import { useState } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PromptBoxInternal,
@@ -83,17 +90,18 @@ function renderPromptBox(initialValue: string) {
 async function selectPromptAction(label: string) {
   const trigger = screen.getByRole("button", { name: "Prompt actions" });
   fireEvent.pointerDown(trigger, { button: 0 });
-  const menuItem = await screen.findByRole("menuitem", { name: label });
+  const menu = await screen.findByRole("menu", { name: "Prompt actions" });
+  const menuItem = within(menu).getByRole("menuitem", { name: label });
   fireEvent.click(menuItem);
 }
 
-async function keyboardSelectPromptAction(label: string) {
+async function selectPromptActionFromKeyboardOpenedMenu(label: string) {
   const trigger = screen.getByRole("button", { name: "Prompt actions" });
   trigger.focus();
   fireEvent.keyDown(trigger, { key: "Enter", code: "Enter" });
-  const menuItem = await screen.findByRole("menuitem", { name: label });
-  menuItem.focus();
-  fireEvent.keyDown(menuItem, { key: "Enter", code: "Enter" });
+  const menu = await screen.findByRole("menu", { name: "Prompt actions" });
+  const menuItem = within(menu).getByRole("menuitem", { name: label });
+  fireEvent.click(menuItem);
 }
 
 function getPromptEditorElement(): HTMLElement {
@@ -120,10 +128,10 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(onCommandQueryChange).toHaveBeenCalledWith("");
   });
 
-  it("keeps the editor focused after keyboard-selected skills action", async () => {
+  it("keeps the editor focused after selecting skills from a keyboard-opened menu", async () => {
     const { changes, onCommandQueryChange } = renderPromptBox("");
 
-    await keyboardSelectPromptAction("Skills");
+    await selectPromptActionFromKeyboardOpenedMenu("Skills");
 
     await waitFor(() => expect(latestValue(changes)).toBe("$"));
     await waitFor(() =>
