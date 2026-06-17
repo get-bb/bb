@@ -5,7 +5,6 @@ import { Link } from "react-router-dom";
 import type {
   Environment,
   GitBranchRefClassification,
-  PullRequestState,
   Thread,
   ThreadListEntry,
   ThreadPullRequest,
@@ -62,6 +61,11 @@ import { useThreads } from "@/hooks/queries/thread-queries";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import {
+  getPullRequestAttentionDisplay,
+  getPullRequestSignalDisplays,
+  PULL_REQUEST_STATE_DISPLAY,
+} from "@/lib/pull-request-display";
 
 // ---------------------------------------------------------------------------
 // Each row of the Info tab is a function component that owns its own raw
@@ -389,22 +393,6 @@ export function BranchRow({ thread, workspaceStatus }: BranchRowProps) {
   );
 }
 
-interface PullRequestStateDisplay {
-  label: string;
-  /** Background utility for the leading state dot. */
-  dotClass: string;
-}
-
-const PULL_REQUEST_STATE_DISPLAY: Record<
-  PullRequestState,
-  PullRequestStateDisplay
-> = {
-  open: { label: "Open", dotClass: "bg-success" },
-  draft: { label: "Draft", dotClass: "bg-muted-foreground" },
-  merged: { label: "Merged", dotClass: "bg-pr-merged" },
-  closed: { label: "Closed", dotClass: "bg-destructive" },
-};
-
 export interface PullRequestRowProps {
   pullRequest: ThreadPullRequest | null;
 }
@@ -412,6 +400,8 @@ export interface PullRequestRowProps {
 export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   if (!pullRequest) return null;
   const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
+  const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
+  const signalDisplays = getPullRequestSignalDisplays(pullRequest);
   return (
     <DetailRow
       label={
@@ -436,12 +426,34 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
           )}
         />
         <span className="min-w-0 truncate">{stateDisplay.label}</span>
+        <span className="shrink-0 text-muted-foreground">·</span>
+        <Icon
+          name={attentionDisplay.icon}
+          aria-hidden
+          className={cn("size-3 shrink-0", attentionDisplay.className)}
+        />
+        <span className="min-w-0 truncate">{attentionDisplay.label}</span>
         <Icon
           name="ExternalLink"
           aria-hidden
           className="size-3 shrink-0 text-muted-foreground"
         />
       </a>
+      <div className="mt-1 flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        {signalDisplays.map((display) => (
+          <span
+            key={display.label}
+            className="inline-flex min-w-0 items-center gap-1"
+          >
+            <Icon
+              name={display.icon}
+              aria-hidden
+              className={cn("size-3 shrink-0", display.className)}
+            />
+            <span className="min-w-0 truncate">{display.label}</span>
+          </span>
+        ))}
+      </div>
     </DetailRow>
   );
 }

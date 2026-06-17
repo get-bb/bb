@@ -8,6 +8,14 @@ function ghJson(overrides: Record<string, unknown> = {}): string {
     state: "OPEN",
     url: "https://github.com/acme/bb/pull/42",
     isDraft: false,
+    baseRefName: "main",
+    headRefName: "bb/add-pr-section",
+    updatedAt: "2026-06-16T12:30:00Z",
+    statusCheckRollup: [],
+    reviewDecision: null,
+    reviewRequests: [],
+    mergeStateStatus: "CLEAN",
+    mergeable: "MERGEABLE",
     ...overrides,
   });
 }
@@ -20,6 +28,14 @@ describe("parseGitHostPullRequest", () => {
       state: "OPEN",
       url: "https://github.com/acme/bb/pull/42",
       isDraft: false,
+      baseRefName: "main",
+      headRefName: "bb/add-pr-section",
+      updatedAt: "2026-06-16T12:30:00Z",
+      checks: [],
+      reviewDecision: null,
+      reviewRequestCount: 0,
+      mergeStateStatus: "CLEAN",
+      mergeable: "MERGEABLE",
     });
   });
 
@@ -39,6 +55,68 @@ describe("parseGitHostPullRequest", () => {
     expect(parseGitHostPullRequest(`\n  ${ghJson()}\n`)?.number).toBe(42);
   });
 
+  it("normalizes checks, review requests, and mergeability", () => {
+    expect(
+      parseGitHostPullRequest(
+        ghJson({
+          statusCheckRollup: [
+            {
+              __typename: "CheckRun",
+              name: "typecheck",
+              status: "COMPLETED",
+              conclusion: "SUCCESS",
+              detailsUrl: "https://github.com/acme/bb/actions/runs/1",
+            },
+            {
+              __typename: "StatusContext",
+              context: "ci/build",
+              state: "FAILURE",
+              targetUrl: "https://ci.example.test/build/42",
+            },
+            {
+              __typename: "CheckRun",
+              workflowName: "lint",
+              status: "IN_PROGRESS",
+              conclusion: null,
+            },
+          ],
+          reviewDecision: "REVIEW_REQUIRED",
+          reviewRequests: [
+            { requestedReviewer: { login: "octocat" } },
+            { requestedReviewer: { login: "hubot" } },
+          ],
+          mergeStateStatus: "DIRTY",
+          mergeable: "CONFLICTING",
+        }),
+      ),
+    ).toMatchObject({
+      checks: [
+        {
+          name: "typecheck",
+          status: "completed",
+          conclusion: "success",
+          url: "https://github.com/acme/bb/actions/runs/1",
+        },
+        {
+          name: "ci/build",
+          status: "completed",
+          conclusion: "failure",
+          url: "https://ci.example.test/build/42",
+        },
+        {
+          name: "lint",
+          status: "in_progress",
+          conclusion: null,
+          url: null,
+        },
+      ],
+      reviewDecision: "REVIEW_REQUIRED",
+      reviewRequestCount: 2,
+      mergeStateStatus: "DIRTY",
+      mergeable: "CONFLICTING",
+    });
+  });
+
   it.each([
     ["empty output", ""],
     ["whitespace only", "   \n"],
@@ -50,9 +128,12 @@ describe("parseGitHostPullRequest", () => {
 
   it.each([
     ["an unknown state", ghJson({ state: "QUEUED" })],
-    ["a missing field", JSON.stringify({ number: 1, title: "x", state: "OPEN" })],
+    [
+      "a missing field",
+      JSON.stringify({ number: 1, title: "x", state: "OPEN" }),
+    ],
     ["a non-positive number", ghJson({ number: 0 })],
-    ["an extra field", ghJson({ mergeable: "MERGEABLE" })],
+    ["an invalid updatedAt", ghJson({ updatedAt: "yesterday" })],
     ["a non-url", ghJson({ url: "not-a-url" })],
   ])("returns null for %s", (_label, stdout) => {
     expect(parseGitHostPullRequest(stdout)).toBeNull();

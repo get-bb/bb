@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type {
+  ThreadPullRequest,
   ThreadTimelinePendingTodos,
   WorkspaceFileStatus,
   WorkspaceStatus,
@@ -90,25 +91,120 @@ const dirtyUncommittedStatus: WorkspaceStatus = {
 };
 
 const dirtyUncommittedManyFiles: WorkspaceFileStatus[] = [
-  { path: "apps/app/src/components/promptbox/FollowUpPromptBox.tsx", status: "M", insertions: 42, deletions: 18 },
-  { path: "apps/app/src/components/promptbox/banner/PromptStackCard.tsx", status: "A", insertions: 96, deletions: 0 },
-  { path: "apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx", status: "A", insertions: 74, deletions: 0 },
-  { path: "apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx", status: "A", insertions: 88, deletions: 0 },
-  { path: "apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.stories.tsx", status: "M", insertions: 21, deletions: 7 },
-  { path: "apps/app/src/components/thread/WorkspaceChangesList.tsx", status: "M", insertions: 16, deletions: 4 },
-  { path: "apps/app/src/components/workspace/workspace-change-summary.ts", status: "M", insertions: 8, deletions: 3 },
-  { path: "apps/app/src/views/ThreadDetailPromptArea.tsx", status: "M", insertions: 12, deletions: 29 },
-  { path: "apps/app/src/views/ThreadDetailSecondaryPanel.tsx", status: "M", insertions: 5, deletions: 5 },
-  { path: "apps/app/src/hooks/useThreadPromptContext.ts", status: "M", insertions: 32, deletions: 14 },
-  { path: "apps/app/src/lib/format-workspace-status.ts", status: "A", insertions: 24, deletions: 0 },
-  { path: "apps/app/src/styles/promptbox.css", status: "M", insertions: 3, deletions: 1 },
-  { path: "apps/app/.ladle/story-card.tsx", status: "M", insertions: 1, deletions: 1 },
-  { path: "packages/domain/src/workspace.ts", status: "M", insertions: 10, deletions: 2 },
-  { path: "packages/domain/src/thread.ts", status: "M", insertions: 6, deletions: 0 },
-  { path: "apps/server/src/routes/threads.ts", status: "M", insertions: 18, deletions: 11 },
-  { path: "apps/server/src/lifecycle/thread-prompt.ts", status: "M", insertions: 9, deletions: 4 },
-  { path: "apps/host/src/workspace/status.ts", status: "M", insertions: 22, deletions: 8 },
-  { path: "apps/app/src/components/promptbox/banner/__snapshots__/ThreadPromptContextBanner.test.tsx.snap", status: "D", insertions: 0, deletions: 187 },
+  {
+    path: "apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+    status: "M",
+    insertions: 42,
+    deletions: 18,
+  },
+  {
+    path: "apps/app/src/components/promptbox/banner/PromptStackCard.tsx",
+    status: "A",
+    insertions: 96,
+    deletions: 0,
+  },
+  {
+    path: "apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx",
+    status: "A",
+    insertions: 74,
+    deletions: 0,
+  },
+  {
+    path: "apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx",
+    status: "A",
+    insertions: 88,
+    deletions: 0,
+  },
+  {
+    path: "apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.stories.tsx",
+    status: "M",
+    insertions: 21,
+    deletions: 7,
+  },
+  {
+    path: "apps/app/src/components/thread/WorkspaceChangesList.tsx",
+    status: "M",
+    insertions: 16,
+    deletions: 4,
+  },
+  {
+    path: "apps/app/src/components/workspace/workspace-change-summary.ts",
+    status: "M",
+    insertions: 8,
+    deletions: 3,
+  },
+  {
+    path: "apps/app/src/views/ThreadDetailPromptArea.tsx",
+    status: "M",
+    insertions: 12,
+    deletions: 29,
+  },
+  {
+    path: "apps/app/src/views/ThreadDetailSecondaryPanel.tsx",
+    status: "M",
+    insertions: 5,
+    deletions: 5,
+  },
+  {
+    path: "apps/app/src/hooks/useThreadPromptContext.ts",
+    status: "M",
+    insertions: 32,
+    deletions: 14,
+  },
+  {
+    path: "apps/app/src/lib/format-workspace-status.ts",
+    status: "A",
+    insertions: 24,
+    deletions: 0,
+  },
+  {
+    path: "apps/app/src/styles/promptbox.css",
+    status: "M",
+    insertions: 3,
+    deletions: 1,
+  },
+  {
+    path: "apps/app/.ladle/story-card.tsx",
+    status: "M",
+    insertions: 1,
+    deletions: 1,
+  },
+  {
+    path: "packages/domain/src/workspace.ts",
+    status: "M",
+    insertions: 10,
+    deletions: 2,
+  },
+  {
+    path: "packages/domain/src/thread.ts",
+    status: "M",
+    insertions: 6,
+    deletions: 0,
+  },
+  {
+    path: "apps/server/src/routes/threads.ts",
+    status: "M",
+    insertions: 18,
+    deletions: 11,
+  },
+  {
+    path: "apps/server/src/lifecycle/thread-prompt.ts",
+    status: "M",
+    insertions: 9,
+    deletions: 4,
+  },
+  {
+    path: "apps/host/src/workspace/status.ts",
+    status: "M",
+    insertions: 22,
+    deletions: 8,
+  },
+  {
+    path: "apps/app/src/components/promptbox/banner/__snapshots__/ThreadPromptContextBanner.test.tsx.snap",
+    status: "D",
+    insertions: 0,
+    deletions: 187,
+  },
 ];
 
 const dirtyUncommittedManyStatus: WorkspaceStatus = {
@@ -294,6 +390,33 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
   })),
 };
 
+const pullRequestFixture: ThreadPullRequest = {
+  number: 128,
+  title: "Show pull request status in the prompt context banner",
+  state: "open",
+  url: "https://github.com/acme/bb/pull/128",
+  baseRefName: "main",
+  headRefName: "bb/pr-context-banner",
+  updatedAt: "2026-06-16T12:30:00Z",
+  checks: {
+    state: "failing",
+    totalCount: 3,
+    passedCount: 1,
+    failedCount: 1,
+    pendingCount: 1,
+  },
+  review: {
+    state: "review_requested",
+    reviewRequestCount: 1,
+  },
+  mergeability: {
+    state: "mergeable",
+    mergeStateStatus: "CLEAN",
+    mergeable: "MERGEABLE",
+  },
+  attention: "checks_failed",
+};
+
 interface RowConfig {
   section?: WorkspaceChangedFilesSection;
   mergeBase?: ContextBannerMergeBaseConfig | null;
@@ -302,6 +425,7 @@ interface RowConfig {
   environmentGone?: ThreadPromptEnvironmentGoneSection | null;
   parentThread?: ThreadPromptParentThreadSection | null;
   childThreads?: ThreadPromptChildThreadsSection | null;
+  pullRequest?: ThreadPullRequest | null;
   initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
 }
 
@@ -313,11 +437,13 @@ function Row({
   environmentGone = null,
   parentThread = null,
   childThreads = null,
+  pullRequest = null,
   initiallyExpandedSection = null,
 }: RowConfig) {
-  const [expandedSection, setExpandedSection] = useState<
-    ThreadPromptContextBannerExpandedSection | null
-  >(initiallyExpandedSection);
+  const [expandedSection, setExpandedSection] =
+    useState<ThreadPromptContextBannerExpandedSection | null>(
+      initiallyExpandedSection,
+    );
   return (
     <PromptStage>
       <ThreadPromptContextBanner
@@ -336,11 +462,10 @@ function Row({
         environmentGoneSection={environmentGone}
         parentThreadSection={parentThread}
         childThreadsSection={childThreads}
+        pullRequestSection={pullRequest ? { pullRequest } : null}
         expandedSection={expandedSection}
         onToggleSection={(next) =>
-          setExpandedSection((previous) =>
-            previous === next ? null : next,
-          )
+          setExpandedSection((previous) => (previous === next ? null : next))
         }
       />
     </PromptStage>
@@ -426,10 +551,7 @@ export function Overview() {
           mergeBase={null}
         />
       </StoryRow>
-      <StoryRow
-        label="child thread (alone)"
-        hint="inline parent link"
-      >
+      <StoryRow label="child thread (alone)" hint="inline parent link">
         <Row parentThread={parentThreadFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
@@ -478,6 +600,32 @@ export function Overview() {
           section={uncommittedSection}
           pendingTodos={pendingTodosFixture}
           parentThread={parentThreadFixture}
+        />
+      </StoryRow>
+      <StoryRow
+        label="pull request (collapsed)"
+        hint="active-thread PR status uses the derived attention state"
+      >
+        <Row pullRequest={pullRequestFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="pull request (expanded)"
+        hint="expanded body shows title, branch direction, checks, review, and mergeability"
+      >
+        <Row
+          pullRequest={pullRequestFixture}
+          mergeBase={null}
+          initiallyExpandedSection="pullRequest"
+        />
+      </StoryRow>
+      <StoryRow
+        label="pull request + todos + uncommitted"
+        hint="PR segment coexists with existing banner sections"
+      >
+        <Row
+          pullRequest={pullRequestFixture}
+          section={uncommittedSection}
+          pendingTodos={pendingTodosFixture}
         />
       </StoryRow>
       <StoryRow

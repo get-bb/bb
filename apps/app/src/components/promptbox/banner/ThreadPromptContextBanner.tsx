@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import type {
   EnvironmentStatus,
   GitBranchRefClassification,
+  ThreadPullRequest,
   ThreadRuntimeDisplayStatus,
   ThreadTimelinePendingTodoItem,
   ThreadTimelinePendingTodoItemStatus,
@@ -23,6 +24,11 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "@/components/ui/icon.js";
+import {
+  getPullRequestAttentionDisplay,
+  getPullRequestSignalDisplays,
+  PULL_REQUEST_STATE_DISPLAY,
+} from "@/lib/pull-request-display";
 
 export interface ContextBannerMergeBaseConfig {
   branch: string;
@@ -71,6 +77,10 @@ export interface ThreadPromptChildThreadsSection {
   items: readonly ThreadPromptChildThreadItem[];
 }
 
+export interface ThreadPromptPullRequestSection {
+  pullRequest: ThreadPullRequest;
+}
+
 /**
  * Archived-state segment for the banner. When present, the banner renders
  * only this row — archived threads are read-only, so suppressing the other
@@ -114,7 +124,8 @@ export type ThreadPromptContextBannerExpandedSection =
   | "todos"
   | "git"
   | "parentThread"
-  | "childThreads";
+  | "childThreads"
+  | "pullRequest";
 
 /**
  * Pixel height of the banner's collapsed (single-row) state. Pinned via the
@@ -151,6 +162,7 @@ export interface ThreadPromptContextBannerProps {
   environmentGoneSection: ThreadPromptEnvironmentGoneSection | null;
   parentThreadSection: ThreadPromptParentThreadSection | null;
   childThreadsSection: ThreadPromptChildThreadsSection | null;
+  pullRequestSection: ThreadPromptPullRequestSection | null;
   expandedSection: ThreadPromptContextBannerExpandedSection | null;
   onToggleSection: (section: ThreadPromptContextBannerExpandedSection) => void;
 }
@@ -184,6 +196,10 @@ const SECTION_IDS = {
   git: {
     toggle: "thread-prompt-banner-git-toggle",
     body: "thread-prompt-banner-git-body",
+  },
+  pullRequest: {
+    toggle: "thread-prompt-banner-pull-request-toggle",
+    body: "thread-prompt-banner-pull-request-body",
   },
 } as const;
 
@@ -266,9 +282,7 @@ function SectionToggleButton({
       {label !== null && label !== undefined ? (
         <span
           className="min-w-0 truncate"
-          data-promptbox-hide-compact={
-            hideLabelInCompact ? "" : undefined
-          }
+          data-promptbox-hide-compact={hideLabelInCompact ? "" : undefined}
         >
           {label}
         </span>
@@ -428,6 +442,59 @@ function ChildThreadsBody({
   );
 }
 
+function PullRequestBody({ pullRequest }: { pullRequest: ThreadPullRequest }) {
+  const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
+  const signalDisplays = getPullRequestSignalDisplays(pullRequest);
+  return (
+    <div className="space-y-1.5 px-3 pb-2 pt-1.5 text-xs">
+      <a
+        href={pullRequest.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={pullRequest.title}
+        className="flex min-w-0 items-center gap-1.5 text-foreground/90 underline-offset-2 hover:underline"
+      >
+        <span className="shrink-0">PR #{pullRequest.number}</span>
+        <span className="min-w-0 flex-1 truncate">{pullRequest.title}</span>
+        <Icon
+          name="ExternalLink"
+          aria-hidden="true"
+          className="size-3 shrink-0 text-subtle-foreground"
+        />
+      </a>
+      <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            stateDisplay.dotClass,
+          )}
+        />
+        <span className="shrink-0">{stateDisplay.label}</span>
+        <span className="shrink-0 text-subtle-foreground">·</span>
+        <span className="min-w-0 truncate">
+          {pullRequest.headRefName} {"->"} {pullRequest.baseRefName}
+        </span>
+      </div>
+      <div className="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
+        {signalDisplays.map((display) => (
+          <span
+            key={display.label}
+            className="inline-flex min-w-0 items-center gap-1"
+          >
+            <Icon
+              name={display.icon}
+              aria-hidden="true"
+              className={cn("size-3 shrink-0", display.className)}
+            />
+            <span className="min-w-0 truncate">{display.label}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AnimatedBody({
   id,
   labelledBy,
@@ -514,9 +581,7 @@ function ReadOnlyContextBanner({
           />
           <span
             className="min-w-0 truncate"
-            data-promptbox-hide-compact={
-              hasMultipleSegments ? "" : undefined
-            }
+            data-promptbox-hide-compact={hasMultipleSegments ? "" : undefined}
             aria-hidden="true"
           >
             {statusLabel}
@@ -555,6 +620,7 @@ export function ThreadPromptContextBanner({
   environmentGoneSection,
   parentThreadSection,
   childThreadsSection,
+  pullRequestSection,
   expandedSection,
   onToggleSection,
 }: ThreadPromptContextBannerProps) {
@@ -587,12 +653,20 @@ export function ThreadPromptContextBanner({
   const showParentThread = parentThreadSection !== null;
   const showChildThreads =
     childThreadsSection !== null && childThreadsSection.items.length > 0;
-  if (!showTodo && !showGit && !showParentThread && !showChildThreads) {
+  const showPullRequest = pullRequestSection !== null;
+  if (
+    !showTodo &&
+    !showGit &&
+    !showParentThread &&
+    !showChildThreads &&
+    !showPullRequest
+  ) {
     return null;
   }
   const visibleSegmentCount =
     Number(showParentThread) +
     Number(showChildThreads) +
+    Number(showPullRequest) +
     Number(showTodo) +
     Number(showGit);
   const hasSingleVisibleSegment = visibleSegmentCount === 1;
@@ -603,11 +677,16 @@ export function ThreadPromptContextBanner({
   // selectWorkspaceChangedFilesSection only emits a section when files exist,
   // so showGit implies a non-empty file list.
   const isGitExpanded = expandedSection === "git" && showGit;
-  const isParentThreadExpanded = expandedSection === "parentThread" && showParentThread;
+  const isParentThreadExpanded =
+    expandedSection === "parentThread" && showParentThread;
   const isChildThreadsExpanded =
     expandedSection === "childThreads" && showChildThreads;
+  const isPullRequestExpanded =
+    expandedSection === "pullRequest" && showPullRequest;
 
-  const gitTally = showGit ? toChangeTally(gitSection.changedFiles.stats) : null;
+  const gitTally = showGit
+    ? toChangeTally(gitSection.changedFiles.stats)
+    : null;
   const gitSummaryText = gitTally ? formatChangeSummary(gitTally) : "";
   const gitSummary: ReactNode =
     showGit && gitTally ? (
@@ -632,7 +711,16 @@ export function ThreadPromptContextBanner({
   // context to compete for the row, so the icon-only toggle would be a strict
   // downgrade in legibility.
   const isParentThreadOnly =
-    showParentThread && !showTodo && !showGit && !showChildThreads;
+    showParentThread &&
+    !showTodo &&
+    !showGit &&
+    !showChildThreads &&
+    !showPullRequest;
+
+  const pullRequest = pullRequestSection?.pullRequest ?? null;
+  const pullRequestAttentionDisplay = pullRequest
+    ? getPullRequestAttentionDisplay(pullRequest)
+    : null;
 
   return (
     <PromptStackCard
@@ -699,6 +787,27 @@ export function ThreadPromptContextBanner({
             }`}
             isExpanded={isChildThreadsExpanded}
             onToggle={() => onToggleSection("childThreads")}
+          />
+        ) : null}
+        {showPullRequest && pullRequest && pullRequestAttentionDisplay ? (
+          <SectionToggleButton
+            id={SECTION_IDS.pullRequest.toggle}
+            controlsId={SECTION_IDS.pullRequest.body}
+            icon={
+              <Icon
+                name={pullRequestAttentionDisplay.icon}
+                className={cn(
+                  "size-3.5 shrink-0",
+                  pullRequestAttentionDisplay.className,
+                )}
+                aria-hidden="true"
+              />
+            }
+            label={`PR #${pullRequest.number} · ${pullRequestAttentionDisplay.label}`}
+            hideLabelInCompact={!hasSingleVisibleSegment}
+            ariaLabel={`Pull request ${pullRequest.number}: ${pullRequestAttentionDisplay.label}`}
+            isExpanded={isPullRequestExpanded}
+            onToggle={() => onToggleSection("pullRequest")}
           />
         ) : null}
         {showTodo ? (
@@ -785,6 +894,15 @@ export function ThreadPromptContextBanner({
           isExpanded={isChildThreadsExpanded}
         >
           <ChildThreadsBody items={childThreadsSection.items} />
+        </AnimatedBody>
+      ) : null}
+      {showPullRequest && pullRequest ? (
+        <AnimatedBody
+          id={SECTION_IDS.pullRequest.body}
+          labelledBy={SECTION_IDS.pullRequest.toggle}
+          isExpanded={isPullRequestExpanded}
+        >
+          <PullRequestBody pullRequest={pullRequest} />
         </AnimatedBody>
       ) : null}
       {showTodo ? (

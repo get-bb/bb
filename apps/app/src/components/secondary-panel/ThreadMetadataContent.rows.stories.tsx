@@ -19,6 +19,7 @@ import {
   localEnvironmentDisplayHost,
   parentThreads,
   makeEnvironment,
+  makePullRequest,
   makeThread,
   makeWorkspaceStatus,
 } from "./ThreadMetadataContent.fixtures";
@@ -323,35 +324,61 @@ export function MergeBase() {
 // ---------------------------------------------------------------------------
 
 export function PullRequest() {
-  const url = "https://github.com/acme/bb/pull/128";
-  const title = "Show the branch's GitHub pull request in the Info tab";
   return (
     <StoryCard>
       <StoryRow label="open">
         <RowStage>
-          <PullRequestRow
-            pullRequest={{ number: 128, title, state: "open", url }}
-          />
+          <PullRequestRow pullRequest={makePullRequest()} />
         </RowStage>
       </StoryRow>
       <StoryRow label="draft">
         <RowStage>
           <PullRequestRow
-            pullRequest={{ number: 128, title, state: "draft", url }}
+            pullRequest={makePullRequest({
+              state: "draft",
+              mergeability: {
+                state: "draft",
+                mergeStateStatus: "DRAFT",
+                mergeable: "UNKNOWN",
+              },
+              attention: "draft",
+            })}
           />
         </RowStage>
       </StoryRow>
       <StoryRow label="merged">
         <RowStage>
           <PullRequestRow
-            pullRequest={{ number: 128, title, state: "merged", url }}
+            pullRequest={makePullRequest({
+              state: "merged",
+              attention: "merged",
+            })}
           />
         </RowStage>
       </StoryRow>
       <StoryRow label="closed">
         <RowStage>
           <PullRequestRow
-            pullRequest={{ number: 128, title, state: "closed", url }}
+            pullRequest={makePullRequest({
+              state: "closed",
+              attention: "closed",
+            })}
+          />
+        </RowStage>
+      </StoryRow>
+      <StoryRow label="checks failing">
+        <RowStage>
+          <PullRequestRow
+            pullRequest={makePullRequest({
+              checks: {
+                state: "failing",
+                totalCount: 3,
+                passedCount: 2,
+                failedCount: 1,
+                pendingCount: 0,
+              },
+              attention: "checks_failed",
+            })}
           />
         </RowStage>
       </StoryRow>

@@ -108,6 +108,14 @@ describe("workspace command dispatch", () => {
       state: "OPEN",
       url: "https://github.com/bb/bb/pull/42",
       isDraft: false,
+      baseRefName: "main",
+      headRefName: "bb/timeline-polish",
+      updatedAt: "2026-06-16T12:30:00Z",
+      checks: [],
+      reviewDecision: null,
+      reviewRequestCount: 0,
+      mergeStateStatus: "CLEAN",
+      mergeable: "MERGEABLE",
     } as const;
     harness.workspaceState.pullRequest = pullRequest;
 
@@ -148,6 +156,14 @@ describe("workspace command dispatch", () => {
       state: "OPEN",
       url: "https://github.com/bb/bb/pull/7",
       isDraft: false,
+      baseRefName: "main",
+      headRefName: "bb/hidden-pr",
+      updatedAt: "2026-06-16T12:30:00Z",
+      checks: [],
+      reviewDecision: null,
+      reviewRequestCount: 0,
+      mergeStateStatus: "CLEAN",
+      mergeable: "MERGEABLE",
     };
     await harness.manager.ensureEnvironment({
       environmentId: "env-non-git-pr",
@@ -514,7 +530,9 @@ describe("workspace command dispatch", () => {
   });
 
   it("hides host.read_file_relative dotfiles when dotfiles are denied", async () => {
-    const tempDir = await makeTempDir("bb-dispatch-host-read-relative-dotfile-");
+    const tempDir = await makeTempDir(
+      "bb-dispatch-host-read-relative-dotfile-",
+    );
     await fs.writeFile(path.join(tempDir, ".env"), "secret");
     const harness = createHarness();
 

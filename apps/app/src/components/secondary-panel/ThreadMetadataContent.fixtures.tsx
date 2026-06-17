@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ThreadListEntry } from "@bb/domain";
+import type { ThreadListEntry, ThreadPullRequest } from "@bb/domain";
 import type { EnvironmentDisplayHostContext } from "@bb/core-ui";
 import {
   makeEnvironment,
@@ -44,6 +44,38 @@ export const parentThreads: ThreadListEntry[] = [
     titleFallback: "Frontend Parent",
   }),
 ];
+
+export function makePullRequest(
+  overrides: Partial<ThreadPullRequest> = {},
+): ThreadPullRequest {
+  return {
+    number: 128,
+    title: "Show the branch's GitHub pull request in the Info tab",
+    state: "open",
+    url: "https://github.com/acme/bb/pull/128",
+    baseRefName: "main",
+    headRefName: "bb/pr-info-panel",
+    updatedAt: "2026-06-16T12:30:00Z",
+    checks: {
+      state: "passing",
+      totalCount: 3,
+      passedCount: 3,
+      failedCount: 0,
+      pendingCount: 0,
+    },
+    review: {
+      state: "approved",
+      reviewRequestCount: 0,
+    },
+    mergeability: {
+      state: "mergeable",
+      mergeStateStatus: "CLEAN",
+      mergeable: "MERGEABLE",
+    },
+    attention: "ready_to_merge",
+    ...overrides,
+  };
+}
 
 export const baseProps: ThreadMetadataContentProps = {
   thread: makeThread(),

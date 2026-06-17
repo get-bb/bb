@@ -6,6 +6,7 @@ import type {
   EnvironmentStatus,
   PendingInteraction,
   ThreadQueuedMessage,
+  ThreadPullRequest,
   ThreadTimelineGoal,
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
@@ -21,6 +22,7 @@ import {
   type ThreadPromptContextBannerExpandedSection,
   type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
+  type ThreadPromptPullRequestSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
@@ -136,6 +138,8 @@ interface ThreadDetailPromptAreaProps {
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
   childThreadsSection: ThreadPromptChildThreadsSection | null;
+  /** Pull request summary for the active thread branch. Null when there is no PR. */
+  pullRequest: ThreadPullRequest | null;
   sendMessage: SendMessageMutationLike;
   /**
    * Bumped by the timeline host each time a quote is appended to the shared
@@ -179,6 +183,7 @@ export function ThreadDetailPromptArea({
   activeWorkflow,
   parentThreadSection,
   childThreadsSection,
+  pullRequest,
   sendMessage,
   composerFocusRequestNonce,
   thread,
@@ -282,6 +287,10 @@ export function ThreadDetailPromptArea({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
+  const pullRequestSection = useMemo<ThreadPromptPullRequestSection | null>(
+    () => (pullRequest ? { pullRequest } : null),
+    [pullRequest],
+  );
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
@@ -941,6 +950,7 @@ export function ThreadDetailPromptArea({
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
+          pullRequestSection={pullRequestSection}
           gitSection={
             workspaceChangedFilesSection
               ? {

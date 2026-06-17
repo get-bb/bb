@@ -237,6 +237,21 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       state: "OPEN",
       url: "https://github.com/acme/bb/pull/42",
       isDraft: false,
+      baseRefName: "main",
+      headRefName: "feature/host-rpc",
+      updatedAt: "2026-06-16T12:30:00Z",
+      checks: [
+        {
+          name: "test",
+          status: "completed",
+          conclusion: "success",
+          url: null,
+        },
+      ],
+      reviewDecision: "APPROVED",
+      reviewRequestCount: 0,
+      mergeStateStatus: "CLEAN",
+      mergeable: "MERGEABLE",
     },
   },
 };

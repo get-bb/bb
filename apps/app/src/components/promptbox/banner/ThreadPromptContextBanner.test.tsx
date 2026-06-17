@@ -15,6 +15,7 @@ describe("ThreadPromptContextBanner", () => {
         environmentGoneSection={null}
         parentThreadSection={null}
         childThreadsSection={null}
+        pullRequestSection={null}
         expandedSection={null}
         onToggleSection={noop}
       />,
@@ -35,6 +36,7 @@ describe("ThreadPromptContextBanner", () => {
         environmentGoneSection={{ status: "destroyed" }}
         parentThreadSection={null}
         childThreadsSection={null}
+        pullRequestSection={null}
         expandedSection={null}
         onToggleSection={noop}
       />,

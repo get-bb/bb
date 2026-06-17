@@ -5,6 +5,7 @@ import {
 import {
   PanelStage,
   baseProps,
+  makePullRequest,
   makeThread,
 } from "./ThreadMetadataContent.fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -29,12 +30,7 @@ export function Overview() {
         hint="canonical state — parent + env + worktree path + branch + merge base + pull request + clean git status"
       >
         {render({
-          pullRequest: {
-            number: 128,
-            title: "Show the branch's GitHub pull request in the Info tab",
-            state: "open",
-            url: "https://github.com/acme/bb/pull/128",
-          },
+          pullRequest: makePullRequest(),
         })}
       </StoryRow>
       <StoryRow
@@ -77,24 +73,56 @@ export function Overview() {
 // The pull-request row in the full Info panel, so each state is visible in its
 // real position alongside Branch / Merge base / Git status.
 export function PullRequest() {
-  const url = "https://github.com/acme/bb/pull/128";
-  const title = "Show the branch's GitHub pull request in the Info tab";
   return (
     <StoryCard>
       <StoryRow
         label="open"
         hint="the PR row sits with the Branch / Merge base / Git status group"
       >
-        {render({ pullRequest: { number: 128, title, state: "open", url } })}
+        {render({ pullRequest: makePullRequest() })}
       </StoryRow>
       <StoryRow label="draft">
-        {render({ pullRequest: { number: 128, title, state: "draft", url } })}
+        {render({
+          pullRequest: makePullRequest({
+            state: "draft",
+            mergeability: {
+              state: "draft",
+              mergeStateStatus: "DRAFT",
+              mergeable: "UNKNOWN",
+            },
+            attention: "draft",
+          }),
+        })}
       </StoryRow>
       <StoryRow label="merged">
-        {render({ pullRequest: { number: 128, title, state: "merged", url } })}
+        {render({
+          pullRequest: makePullRequest({
+            state: "merged",
+            attention: "merged",
+          }),
+        })}
       </StoryRow>
       <StoryRow label="closed">
-        {render({ pullRequest: { number: 128, title, state: "closed", url } })}
+        {render({
+          pullRequest: makePullRequest({
+            state: "closed",
+            attention: "closed",
+          }),
+        })}
+      </StoryRow>
+      <StoryRow label="checks failing">
+        {render({
+          pullRequest: makePullRequest({
+            checks: {
+              state: "failing",
+              totalCount: 3,
+              passedCount: 2,
+              failedCount: 1,
+              pendingCount: 0,
+            },
+            attention: "checks_failed",
+          }),
+        })}
       </StoryRow>
       <StoryRow label="no PR" hint="row omitted entirely when there is no PR">
         {render({ pullRequest: null })}
