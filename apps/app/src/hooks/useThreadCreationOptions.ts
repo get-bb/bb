@@ -111,6 +111,7 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   activeModel: AvailableModel | undefined;
   modelOptions: PickerOption<string>[];
   isLoadingModels: boolean;
+  modelLoadFailed: boolean;
   modelLoadError: SystemExecutionOptionsModelLoadError | null;
   reasoningOptions: PickerOption<ReasoningLevel>[];
   permissionModeOptions: PickerOption<PermissionMode>[];
@@ -273,6 +274,8 @@ export function useThreadCreationOptions(
     executionOptionsQueryEnabled && executionOptionsQuery.isLoading;
   const modelLoadError =
     executionOptionsQuery.data?.modelLoadError ?? NO_MODEL_LOAD_ERROR;
+  const modelLoadFailed =
+    executionOptionsQuery.isError || modelLoadError !== null;
   const hasMultipleProviders = providers.length >= 2;
 
   // Resolve the effective provider: use selectedProviderId if it matches a known
@@ -618,6 +621,7 @@ export function useThreadCreationOptions(
     activeModel,
     modelOptions,
     isLoadingModels,
+    modelLoadFailed,
     modelLoadError,
     reasoningOptions,
     permissionModeOptions,

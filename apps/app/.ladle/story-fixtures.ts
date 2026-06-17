@@ -131,6 +131,16 @@ export const STORY_CLAUDE_CODE_MODELS: readonly PickerOption<string>[] = [
   { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
 ];
 
+export const STORY_PI_MODELS: readonly PickerOption<string>[] = [
+  { value: "openai-codex/gpt-5.5", label: "GPT-5.5" },
+  { value: "openai-codex/gpt-5.4", label: "GPT-5.4" },
+  { value: "openai-codex/gpt-5.4-mini", label: "GPT-5.4 Mini" },
+  { value: "openai-codex/gpt-5.3-codex", label: "GPT-5.3 Codex" },
+  { value: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5" },
+  { value: "anthropic/claude-opus-4-8", label: "Claude Opus 4.8" },
+  { value: "anthropic/claude-opus-4-7", label: "Claude Opus 4.7" },
+];
+
 export const STORY_CODEX_REASONING: readonly PickerOption<ReasoningLevel>[] = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
@@ -235,6 +245,7 @@ export function makeExecutionControlsProps(
       selected: "gpt-5.5",
       options: STORY_CODEX_MODELS,
       isLoading: false,
+      loadFailed: false,
       onChange: noop,
     },
     serviceTier: {

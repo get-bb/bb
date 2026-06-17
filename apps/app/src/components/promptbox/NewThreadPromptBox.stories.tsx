@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PermissionMode, PromptTextMention } from "@bb/domain";
+import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import {
   NewThreadPromptBoxUI,
   type NewThreadBranchConfig,
@@ -11,6 +12,7 @@ import {
 import type { HistoryConfig } from "@/components/promptbox/PromptBoxInternal";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
 import {
   HOST_IDS,
   PROJECT_IDS,
@@ -31,6 +33,14 @@ export default {
 const noop = () => {};
 
 const baseExecution = makeExecutionControlsProps();
+const codexModelLoadError = {
+  providerId: "codex",
+  code: "failed",
+} satisfies SystemExecutionOptionsModelLoadError;
+const codexMissingCliModelLoadError = {
+  providerId: "codex",
+  code: "missing_executable",
+} satisfies SystemExecutionOptionsModelLoadError;
 
 const baseEnvironment: NewThreadEnvironmentConfig = {
   value: `host:${HOST_IDS.local}:local`,
@@ -202,6 +212,200 @@ function LoadingModelsRow() {
   );
 }
 
+function ModelLoadFailedRow() {
+  const { value, mentionRanges, onChange } = useControlledValue(
+    "Investigate the timeline pagination flicker.",
+  );
+  return (
+    <PromptStage>
+      <NewThreadPromptBoxUI
+        id="story-new-thread-model-load-failed"
+        value={value}
+        mentionRanges={mentionRanges}
+        onChange={onChange}
+        onSubmit={noop}
+        isSubmitting={false}
+        disabled
+        zenModeStorageKey="bb.story.new-thread.model-load-failed"
+        history={baseHistory}
+        typeahead={makeTypeahead()}
+        attachments={makeAttachments()}
+        modeConfig={baseModeConfig}
+        project={baseProject}
+        execution={{
+          ...baseExecution,
+          model: {
+            ...baseExecution.model,
+            active: null,
+            selected: "",
+            options: [],
+            isLoading: false,
+            loadFailed: true,
+            loadError: codexModelLoadError,
+          },
+        }}
+      />
+    </PromptStage>
+  );
+}
+
+function MissingCodexCliRow() {
+  const { value, mentionRanges, onChange } = useControlledValue(
+    "Investigate the timeline pagination flicker.",
+  );
+  return (
+    <PromptStage>
+      <NewThreadPromptBoxUI
+        id="story-new-thread-missing-codex-cli"
+        value={value}
+        mentionRanges={mentionRanges}
+        onChange={onChange}
+        onSubmit={noop}
+        isSubmitting={false}
+        disabled
+        zenModeStorageKey="bb.story.new-thread.missing-codex-cli"
+        history={baseHistory}
+        typeahead={makeTypeahead()}
+        attachments={makeAttachments()}
+        modeConfig={baseModeConfig}
+        project={baseProject}
+        execution={{
+          ...baseExecution,
+          model: {
+            ...baseExecution.model,
+            active: null,
+            selected: "",
+            options: [],
+            isLoading: false,
+            loadFailed: true,
+            loadError: codexMissingCliModelLoadError,
+          },
+        }}
+      />
+    </PromptStage>
+  );
+}
+
+function GenericModelRequestFailedRow() {
+  const { value, mentionRanges, onChange } = useControlledValue(
+    "Investigate the timeline pagination flicker.",
+  );
+  return (
+    <PromptStage>
+      <NewThreadPromptBoxUI
+        id="story-new-thread-model-request-failed"
+        value={value}
+        mentionRanges={mentionRanges}
+        onChange={onChange}
+        onSubmit={noop}
+        isSubmitting={false}
+        disabled
+        zenModeStorageKey="bb.story.new-thread.model-request-failed"
+        history={baseHistory}
+        typeahead={makeTypeahead()}
+        attachments={makeAttachments()}
+        modeConfig={baseModeConfig}
+        project={baseProject}
+        execution={{
+          ...baseExecution,
+          provider: {
+            options: [],
+            selectedId: "",
+            onChange: noop,
+            hasMultiple: false,
+          },
+          model: {
+            ...baseExecution.model,
+            active: null,
+            selected: "",
+            options: [],
+            isLoading: false,
+            loadFailed: true,
+            loadError: null,
+          },
+        }}
+      />
+    </PromptStage>
+  );
+}
+
+function NoModelsAvailableRow() {
+  const { value, mentionRanges, onChange } = useControlledValue(
+    "Investigate the timeline pagination flicker.",
+  );
+  return (
+    <PromptStage>
+      <NewThreadPromptBoxUI
+        id="story-new-thread-no-models"
+        value={value}
+        mentionRanges={mentionRanges}
+        onChange={onChange}
+        onSubmit={noop}
+        isSubmitting={false}
+        disabled
+        zenModeStorageKey="bb.story.new-thread.no-models"
+        history={baseHistory}
+        typeahead={makeTypeahead()}
+        attachments={makeAttachments()}
+        modeConfig={baseModeConfig}
+        project={baseProject}
+        execution={{
+          ...baseExecution,
+          model: {
+            ...baseExecution.model,
+            active: null,
+            selected: "",
+            options: [],
+            isLoading: false,
+            loadFailed: false,
+            loadError: null,
+          },
+        }}
+      />
+    </PromptStage>
+  );
+}
+
+function CustomModelAfterLoadErrorRow() {
+  const { value, mentionRanges, onChange } = useControlledValue("");
+  return (
+    <PromptStage>
+      <NewThreadPromptBoxUI
+        id="story-new-thread-custom-model-after-load-error"
+        value={value}
+        mentionRanges={mentionRanges}
+        onChange={onChange}
+        onSubmit={noop}
+        isSubmitting={false}
+        disabled={false}
+        zenModeStorageKey="bb.story.new-thread.custom-model-after-load-error"
+        history={baseHistory}
+        typeahead={makeTypeahead()}
+        attachments={makeAttachments()}
+        modeConfig={baseModeConfig}
+        project={baseProject}
+        execution={{
+          ...baseExecution,
+          model: {
+            ...baseExecution.model,
+            active: { model: "gpt-example-preview" },
+            selected: "gpt-example-preview",
+            options: [
+              {
+                value: "gpt-example-preview",
+                label: "GPT Example Preview",
+              },
+            ],
+            isLoading: false,
+            loadFailed: true,
+            loadError: codexModelLoadError,
+          },
+        }}
+      />
+    </PromptStage>
+  );
+}
+
 function ClaudeProviderRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   return (
@@ -232,6 +436,7 @@ function ClaudeProviderRow() {
               { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
             ],
             isLoading: false,
+            loadFailed: false,
             onChange: noop,
           },
           serviceTier: { ...baseExecution.serviceTier!, supported: false },
@@ -298,34 +503,66 @@ function ProjectlessThreadRow() {
 
 export function Overview() {
   return (
-    <StoryCard>
-      <StoryRow
-        label="default"
-        hint="codex + workspace-write + local-direct env"
-      >
-        <DefaultRow />
-      </StoryRow>
-      <StoryRow label="submitting" hint="create-thread mutation in flight">
-        <SubmittingRow />
-      </StoryRow>
-      <StoryRow
-        label="loading models"
-        hint="model options are loading; submit is disabled"
-      >
-        <LoadingModelsRow />
-      </StoryRow>
-      <StoryRow label="claude-code provider" hint="no fast mode toggle">
-        <ClaudeProviderRow />
-      </StoryRow>
-      <StoryRow label="full access" hint='permission tone="warning"'>
-        <FullAccessRow />
-      </StoryRow>
-      <StoryRow
-        label="projectless"
-        hint="host picker replaces environment picker"
-      >
-        <ProjectlessThreadRow />
-      </StoryRow>
-    </StoryCard>
+    <ModelPickerStoryQueryProvider>
+      <StoryCard>
+        <StoryRow
+          label="default"
+          hint="codex + workspace-write + local-direct env"
+        >
+          <DefaultRow />
+        </StoryRow>
+        <StoryRow label="submitting" hint="create-thread mutation in flight">
+          <SubmittingRow />
+        </StoryRow>
+        <StoryRow
+          label="loading models"
+          hint="committed provider models are loading; submit is disabled"
+        >
+          <LoadingModelsRow />
+        </StoryRow>
+        <StoryRow
+          label="provider failed"
+          hint="provider-specific error; picker menu keeps provider tabs"
+        >
+          <ModelLoadFailedRow />
+        </StoryRow>
+        <StoryRow
+          label="missing Codex CLI"
+          hint="provider-specific install help; picker menu keeps provider tabs"
+        >
+          <MissingCodexCliRow />
+        </StoryRow>
+        <StoryRow
+          label="request failed"
+          hint="generic request failure; picker menu hides provider tabs"
+        >
+          <GenericModelRequestFailedRow />
+        </StoryRow>
+        <StoryRow
+          label="no models"
+          hint="successful empty model list; provider tabs remain available"
+        >
+          <NoModelsAvailableRow />
+        </StoryRow>
+        <StoryRow
+          label="custom model after error"
+          hint="provider failed, but configured custom model remains selectable"
+        >
+          <CustomModelAfterLoadErrorRow />
+        </StoryRow>
+        <StoryRow label="claude-code provider" hint="no fast mode toggle">
+          <ClaudeProviderRow />
+        </StoryRow>
+        <StoryRow label="full access" hint='permission tone="warning"'>
+          <FullAccessRow />
+        </StoryRow>
+        <StoryRow
+          label="projectless"
+          hint="host picker replaces environment picker"
+        >
+          <ProjectlessThreadRow />
+        </StoryRow>
+      </StoryCard>
+    </ModelPickerStoryQueryProvider>
   );
 }

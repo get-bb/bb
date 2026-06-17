@@ -37,6 +37,8 @@ interface ModelLabelParts {
   tag: string | null;
 }
 
+const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
+
 // Splits a trailing parenthetical off a model label (e.g. "Opus 4.8 (1M)" →
 // base "Opus 4.8", tag "1M") so the tag can render as a small, muted suffix
 // without the parentheses. Labels without a trailing "(…)" pass through
@@ -59,6 +61,8 @@ interface ModelReasoningPickerProps {
   // Model state
   modelValue: string;
   modelOptions: readonly PickerOption<string>[];
+  modelIsLoading?: boolean;
+  modelLoadFailed?: boolean;
   modelLoadError?: SystemExecutionOptionsModelLoadError | null;
   onModelChange: (value: string) => void;
   /**
@@ -94,6 +98,8 @@ export function ModelReasoningPicker({
   hasMultipleProviders,
   modelValue,
   modelOptions,
+  modelIsLoading = false,
+  modelLoadFailed = false,
   modelLoadError,
   onModelChange,
   formatModelLabel,
@@ -126,25 +132,54 @@ export function ModelReasoningPicker({
   const ProviderIcon = selectedProvider?.icon;
   const selectedModelOption = modelOptions.find((m) => m.value === modelValue);
   const selectedModelLabel = selectedModelOption?.label ?? modelValue;
-  const hasSelectedModel = selectedModelLabel.trim().length > 0;
+  const hasSelectedModel =
+    modelOptions.length > 0 && selectedModelLabel.trim().length > 0;
+  const selectedProviderLabel = selectedProvider?.label ?? selectedProviderId;
+  const selectedModelLoadErrorMatches =
+    modelLoadError?.providerId === selectedProviderId;
+  const selectedModelLoadFailed =
+    modelLoadFailed || selectedModelLoadErrorMatches;
+  const canSwitchProviders =
+    hasMultipleProviders &&
+    onSelectedProviderChange !== undefined &&
+    providerOptions.length > 1;
+  const hasAlternateSelectionPath =
+    modelOptions.length > 0 ||
+    (selectedModelLoadErrorMatches && canSwitchProviders);
+  const selectedModelLoadErrorText =
+    selectedModelLoadErrorMatches && modelLoadError
+      ? formatModelLoadErrorText({
+          error: modelLoadError,
+          providerLabel: selectedProviderLabel,
+        })
+      : "Could not load models.";
   // Strip the brand prefix at render — the trigger always shows the committed
   // provider, so we use `selectedProviderId` (not `activeProviderId`, which
   // can be a preview).
-  const triggerModelLabel = hasSelectedModel
-    ? stripModelBrandPrefix(selectedModelLabel, selectedProviderId)
-    : "Select model";
+  const triggerModelLabel = modelIsLoading
+    ? "Loading models..."
+    : hasSelectedModel
+      ? stripModelBrandPrefix(selectedModelLabel, selectedProviderId)
+      : selectedModelLoadFailed
+        ? hasAlternateSelectionPath
+          ? "Select model"
+          : FAILED_TO_LOAD_MODELS_LABEL
+        : modelOptions.length === 0
+          ? canSwitchProviders
+            ? "Select model"
+            : "No models available"
+          : "Select model";
+  const triggerModelValueIsDestructive =
+    triggerModelLabel === FAILED_TO_LOAD_MODELS_LABEL;
   const { base: triggerModelBase, tag: triggerModelTag } =
     splitModelLabelTag(triggerModelLabel);
 
   const selectedReasoningOption = reasoningOptions.find(
     (r) => r.value === reasoningValue,
   );
-  const triggerReasoningLabel = selectedReasoningOption?.label ?? null;
-
-  const showProviderTabs =
-    hasMultipleProviders &&
-    onSelectedProviderChange !== undefined &&
-    providerOptions.length > 1;
+  const triggerReasoningLabel = hasSelectedModel
+    ? (selectedReasoningOption?.label ?? null)
+    : null;
 
   // Preview other providers without committing. Shares its cache key with the
   // committed `useSystemExecutionOptions` call in the caller's hook so
@@ -166,28 +201,42 @@ export function ModelReasoningPicker({
         ? formatModelLabel(model.displayName || model.model)
         : model.displayName || model.model,
     }));
-  }, [
-    isPreviewing,
-    modelOptions,
-    previewQuery.data?.models,
-    formatModelLabel,
-  ]);
+  }, [isPreviewing, modelOptions, previewQuery.data?.models, formatModelLabel]);
   const activeModelLoadError = isPreviewing
     ? (previewQuery.data?.modelLoadError ?? null)
     : (modelLoadError ?? null);
+  const activeModelIsLoading = isPreviewing
+    ? previewQuery.isLoading
+    : modelIsLoading;
   const activeProvider = providerOptions.find(
     (p) => p.value === activeProviderId,
   );
   const activeProviderLabel = activeProvider?.label ?? activeProviderId;
+  const activeModelLoadErrorMatches =
+    activeModelLoadError?.providerId === activeProviderId;
   const activeModelLoadErrorMessage =
-    activeModelLoadError?.providerId === activeProviderId
+    activeModelLoadErrorMatches && activeModelLoadError
       ? formatModelLoadErrorText({
           error: activeModelLoadError,
           providerLabel: activeProviderLabel,
         })
       : null;
+  const activeModelLoadFailed = isPreviewing
+    ? previewQuery.isError || activeModelLoadErrorMatches
+    : modelLoadFailed || activeModelLoadErrorMatches;
+  const activeModelFailureMessage =
+    activeModelLoadErrorMessage ?? "Could not load models.";
   const activeModelOptions = previewModelOptions;
   const hasActiveModelOptions = activeModelOptions.length > 0;
+  const activeModelErrorIsProviderSpecific =
+    activeModelLoadErrorMatches && activeModelLoadError !== null;
+  const isShowingModelError =
+    !activeModelIsLoading && !hasActiveModelOptions && activeModelLoadFailed;
+  const showProviderTabs =
+    hasMultipleProviders &&
+    onSelectedProviderChange !== undefined &&
+    providerOptions.length > 1 &&
+    (!isShowingModelError || activeModelErrorIsProviderSpecific);
 
   // When previewing a different provider, resolve fast-mode toggle from that
   // provider's capabilities instead of the committed provider's.
@@ -198,6 +247,8 @@ export function ModelReasoningPicker({
       : showFastModeToggle);
   const showSelectedFastMode =
     hasSelectedModel && fastModeEnabled && modelOptions.length > 0;
+  const showReasoningSection =
+    hasSelectedModel && !modelIsLoading && !selectedModelLoadFailed;
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -232,8 +283,13 @@ export function ModelReasoningPicker({
   );
 
   const TriggerIcon = hasSelectedModel ? ProviderIcon : undefined;
+  const triggerTitleModelLabel = modelIsLoading
+    ? "Loading models..."
+    : selectedModelLoadFailed
+      ? selectedModelLoadErrorText
+      : triggerModelLabel;
   const triggerTitle = [
-    `${selectedProvider?.label ?? selectedProviderId}: ${triggerModelLabel}`,
+    `${selectedProviderLabel}: ${triggerTitleModelLabel}`,
     triggerReasoningLabel ? ` · ${triggerReasoningLabel} reasoning` : "",
     showSelectedFastMode ? " (Fast mode)" : "",
   ].join("");
@@ -263,7 +319,15 @@ export function ModelReasoningPicker({
             ) : TriggerIcon ? (
               <TriggerIcon className="size-3.5 shrink-0" />
             ) : null}
-            <span className="min-w-0 truncate">{triggerModelBase}</span>
+            <span
+              className={cn(
+                "min-w-0 truncate",
+                modelIsLoading && "animate-shine whitespace-nowrap",
+                triggerModelValueIsDestructive && "text-destructive-text",
+              )}
+            >
+              {triggerModelBase}
+            </span>
             {triggerModelTag ? (
               <span className="shrink-0 text-subtle-foreground">
                 {triggerModelTag}
@@ -350,8 +414,10 @@ export function ModelReasoningPicker({
               "max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
           )}
         >
-          <MenuSectionLabel>Model</MenuSectionLabel>
-          {isPreviewing && previewQuery.isLoading ? (
+          {isShowingModelError ? null : (
+            <MenuSectionLabel>Model</MenuSectionLabel>
+          )}
+          {activeModelIsLoading ? (
             <div
               className={cn(
                 "px-2 text-xs text-muted-foreground",
@@ -379,11 +445,13 @@ export function ModelReasoningPicker({
               )}
               title={activeModelLoadErrorMessage ?? undefined}
             >
-              {activeModelLoadError?.providerId === activeProviderId ? (
+              {activeModelLoadErrorMatches && activeModelLoadError ? (
                 <ModelLoadErrorMessage
                   error={activeModelLoadError}
                   providerLabel={activeProviderLabel}
                 />
+              ) : activeModelLoadFailed ? (
+                activeModelFailureMessage
               ) : (
                 "No models available"
               )}
@@ -394,7 +462,7 @@ export function ModelReasoningPicker({
         {/* Reasoning section — only shows for the committed model; previewing
             other providers doesn't touch reasoning state, so the committed
             model's reasoning options stay visible. */}
-        {reasoningOptions.length > 0 ? (
+        {showReasoningSection && reasoningOptions.length > 0 ? (
           <>
             <div className="border-t border-border" />
             <div className="p-1">
