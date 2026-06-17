@@ -120,8 +120,8 @@ function buildSideChatBaseRequest({
 export interface BuildSideChatMessageInputArgs {
   /** True only for the first user-visible side-chat turn. */
   includeReplyReference: boolean;
-  /** The user's visible question. */
-  question: string;
+  /** The user's visible prompt input. */
+  visibleInput: AppCreateThreadRequest["input"];
   /**
    * The anchored-message reply reference (see {@link resolveSideChatReplyReference}),
    * or null when the anchor is the parent's last message. When included, it is
@@ -133,11 +133,11 @@ export interface BuildSideChatMessageInputArgs {
 
 export function buildSideChatMessageInput({
   includeReplyReference,
-  question,
+  visibleInput,
   replyReference,
 }: BuildSideChatMessageInputArgs): AppCreateThreadRequest["input"] {
   if (!includeReplyReference || replyReference === null) {
-    return [{ type: "text", text: question, mentions: [] }];
+    return visibleInput;
   }
   return [
     {
@@ -146,7 +146,7 @@ export function buildSideChatMessageInput({
       mentions: [],
       visibility: "agent-only",
     },
-    { type: "text", text: question, mentions: [] },
+    ...visibleInput,
   ];
 }
 

@@ -1,5 +1,6 @@
 import type { Environment, Thread } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { cn } from "@/lib/utils";
 import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
@@ -19,6 +20,7 @@ export interface SideChatTabDeckProps {
   sourceEnvironment: Environment | null;
   /** The main thread's timeline rows, snapshotted into each side chat's first turn. */
   sourceTimelineRows: readonly TimelineRow[];
+  resolveMentionLink: PromptMentionLinkResolver;
   onSetThreadId: SetSideChatThreadId;
 }
 
@@ -37,6 +39,7 @@ export function SideChatTabDeck({
   sourceThread,
   sourceEnvironment,
   sourceTimelineRows,
+  resolveMentionLink,
   onSetThreadId,
 }: SideChatTabDeckProps) {
   if (sideChatTabs.length === 0) {
@@ -62,6 +65,7 @@ export function SideChatTabDeck({
               sourceThread={sourceThread}
               sourceEnvironment={sourceEnvironment}
               sourceTimelineRows={sourceTimelineRows}
+              resolveMentionLink={resolveMentionLink}
               onSetThreadId={onSetThreadId}
             />
           </div>

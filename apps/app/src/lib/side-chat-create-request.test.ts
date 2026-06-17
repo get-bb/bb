@@ -295,8 +295,10 @@ describe("buildSideChatMessageInput", () => {
   it("sends a question-only first turn when there is no reply reference", () => {
     const input = buildSideChatMessageInput({
       includeReplyReference: true,
-      question: "Standalone question",
       replyReference: null,
+      visibleInput: [
+        { type: "text", text: "Standalone question", mentions: [] },
+      ],
     });
 
     expect(input).toHaveLength(1);
@@ -310,8 +312,8 @@ describe("buildSideChatMessageInput", () => {
   it("prepends an agent-only reply reference before the visible question", () => {
     const input = buildSideChatMessageInput({
       includeReplyReference: true,
-      question: "Why this approach?",
       replyReference: "An earlier message worth discussing.",
+      visibleInput: [{ type: "text", text: "Why this approach?", mentions: [] }],
     });
 
     expect(input).toHaveLength(2);
@@ -334,10 +336,42 @@ describe("buildSideChatMessageInput", () => {
   it("does not repeat the reply reference after the first user-visible turn", () => {
     const input = buildSideChatMessageInput({
       includeReplyReference: false,
-      question: "Follow up",
       replyReference: "Earlier context",
+      visibleInput: [{ type: "text", text: "Follow up", mentions: [] }],
     });
 
     expect(input).toEqual([{ type: "text", text: "Follow up", mentions: [] }]);
+  });
+
+  it("preserves non-text visible input chunks", () => {
+    const input = buildSideChatMessageInput({
+      includeReplyReference: true,
+      replyReference: "Earlier context",
+      visibleInput: [
+        { type: "text", text: "Review this file", mentions: [] },
+        {
+          type: "localFile",
+          path: "thread-storage/uploads/example.md",
+          name: "example.md",
+          sizeBytes: 123,
+          mimeType: "text/markdown",
+        },
+      ],
+    });
+
+    expect(input).toEqual([
+      expect.objectContaining({
+        type: "text",
+        visibility: "agent-only",
+      }),
+      { type: "text", text: "Review this file", mentions: [] },
+      {
+        type: "localFile",
+        path: "thread-storage/uploads/example.md",
+        name: "example.md",
+        sizeBytes: 123,
+        mimeType: "text/markdown",
+      },
+    ]);
   });
 });

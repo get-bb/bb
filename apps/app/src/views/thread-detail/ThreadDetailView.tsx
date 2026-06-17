@@ -1942,6 +1942,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       sourceThread={thread}
       sourceEnvironment={environment ?? null}
       sourceTimelineRows={timelineRows}
+      resolveMentionLink={resolveMentionLink}
       onSetThreadId={setSideChatThreadId}
     />
   );

@@ -12,11 +12,11 @@ import {
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
 import {
-  INERT_TYPEAHEAD_COMMAND_CONFIG,
   type AttachmentsConfig,
   type HistoryConfig,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
+import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import {
   FollowUpPromptBox,
@@ -32,8 +32,12 @@ import type {
 } from "@/components/promptbox/ExecutionControls";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
+import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
+import { usePromptMentions } from "@/hooks/usePromptMentions";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
+import { promptDraftToInput } from "@/lib/prompt-draft";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
@@ -89,29 +93,6 @@ import {
 
 const noop = () => {};
 
-// Side chats are conversation-only in v1 (no @-mentions / file reach, no command
-// typeahead), so the composer is wired with an inert typeahead config rather
-// than the thread mention-search stack. Keeping it explicit (not dead config)
-// documents the intentional v1 scope.
-const SIDE_CHAT_TYPEAHEAD: TypeaheadConfig = {
-  mention: {
-    suggestions: [],
-    isLoading: false,
-    isError: false,
-    onQueryChange: noop,
-  },
-  command: INERT_TYPEAHEAD_COMMAND_CONFIG,
-};
-
-// Side chats are conversation-only: no @-mentions, no file attachments. The
-// composer requires an attachments config, so wire an inert one (no items, no
-// upload affordance) — mirroring SIDE_CHAT_TYPEAHEAD's intentional v1 scope.
-const SIDE_CHAT_ATTACHMENTS: AttachmentsConfig = {
-  items: [],
-  isAttaching: false,
-  error: null,
-};
-
 export interface SetSideChatThreadId {
   (args: { tabId: string; threadId: string }): void;
 }
@@ -130,6 +111,7 @@ export interface SideChatTabContentProps {
    * reference (whether the anchor is the parent's last conversation message).
    */
   sourceTimelineRows: readonly TimelineRow[];
+  resolveMentionLink: PromptMentionLinkResolver;
   onSetThreadId: SetSideChatThreadId;
 }
 
@@ -300,6 +282,7 @@ export function SideChatTabContent({
   sourceThread,
   sourceEnvironment,
   sourceTimelineRows,
+  resolveMentionLink,
   onSetThreadId,
 }: SideChatTabContentProps) {
   const childThreadId = tab.threadId;
@@ -347,8 +330,24 @@ export function SideChatTabContent({
     parentThreadId: sourceThread.id,
     tabId: tab.id,
   });
+  const promptContextEnvironmentId =
+    childThreadQuery.data?.environmentId ?? sourceThread.environmentId ?? null;
+  const promptContextThreadId = childThreadId ?? sourceThread.id;
+  const promptMentions = usePromptMentions(sourceThread.projectId, {
+    currentThreadId: promptContextThreadId,
+    environmentId: promptContextEnvironmentId,
+  });
+  const [commandQuery, setCommandQuery] = useState<string | null>(null);
+  const commandSuggestions = useCommandSuggestions({
+    projectId: sourceThread.projectId,
+    providerId: sourceThread.providerId,
+    environmentId: promptContextEnvironmentId,
+    query: commandQuery,
+  });
+  const uploadPromptAttachment = useUploadPromptAttachment();
 
   const [composerFocusNonce, setComposerFocusNonce] = useState(0);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSideChatTurnSubmitting, setIsSideChatTurnSubmitting] =
     useState(false);
   const [processingQueuedMessage, setProcessingQueuedMessage] = useState<{
@@ -361,6 +360,19 @@ export function SideChatTabContent({
     },
     [promptDraft],
   );
+  const currentPromptDraft = useMemo(
+    () => ({
+      text: promptDraft.text,
+      mentions: promptDraft.mentions,
+      attachments: promptDraft.attachments,
+    }),
+    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
+  );
+  const currentPromptDraftInput = useMemo(
+    () => promptDraftToInput(currentPromptDraft),
+    [currentPromptDraft],
+  );
+  const hasPromptDraftInput = currentPromptDraftInput.length > 0;
 
   // The anchored-message reply reference: present only when the anchor is NOT
   // the parent's last conversation message (the most recent exchange needs no
@@ -490,14 +502,14 @@ export function SideChatTabContent({
     tab.title,
   ]);
 
-  const sendOrQueueSideChatText = useCallback(
-    async (text: string) => {
+  const sendOrQueueSideChatInput = useCallback(
+    async (visibleInput: ReturnType<typeof buildSideChatMessageInput>) => {
       const input = buildSideChatMessageInput({
         includeReplyReference:
           !childHasUserMessageRef.current &&
           queuedMessageCountRef.current === 0,
-        question: text,
         replyReference,
+        visibleInput,
       });
       const existingThreadId = childThreadIdRef.current;
       if (existingThreadId === null) {
@@ -601,19 +613,41 @@ export function SideChatTabContent({
     : isSideChatProvisioning
         ? "Provisioning side chat..."
         : "Reply in the side chat…";
+  const handleAttachFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) {
+        return;
+      }
+
+      setAttachmentError(null);
+      const failedFiles: string[] = [];
+      for (const file of files) {
+        try {
+          const uploaded = await uploadPromptAttachment.mutateAsync({
+            projectId: sourceThread.projectId,
+            file,
+          });
+          promptDraft.addAttachment(uploaded);
+        } catch {
+          failedFiles.push(file.name);
+        }
+      }
+      if (failedFiles.length > 0) {
+        setAttachmentError(`Failed to attach: ${failedFiles.join(", ")}`);
+      }
+    },
+    [promptDraft, sourceThread.projectId, uploadPromptAttachment],
+  );
   const handleSubmit = useCallback(() => {
-    const trimmed = promptDraft.text.trim();
-    if (trimmed.length === 0 || isSideChatTurnSubmitting) {
+    const submittedDraft = currentPromptDraft;
+    const submittedInput = currentPromptDraftInput;
+    if (submittedInput.length === 0 || isSideChatTurnSubmitting) {
       return;
     }
-    const submittedDraft = {
-      text: promptDraft.text,
-      mentions: promptDraft.mentions,
-      attachments: promptDraft.attachments,
-    };
     promptDraft.clearIfCurrentMatches(submittedDraft);
+    setAttachmentError(null);
     setIsSideChatTurnSubmitting(true);
-    void sendOrQueueSideChatText(trimmed)
+    void sendOrQueueSideChatInput(submittedInput)
       .catch((error) => {
         if (!isMountedRef.current) {
           return;
@@ -637,9 +671,11 @@ export function SideChatTabContent({
         }
       });
   }, [
+    currentPromptDraft,
+    currentPromptDraftInput,
     isSideChatTurnSubmitting,
     promptDraft,
-    sendOrQueueSideChatText,
+    sendOrQueueSideChatInput,
     sideChatRuntimeDisplayStatus,
   ]);
 
@@ -677,7 +713,6 @@ export function SideChatTabContent({
     },
     [childThreadId, isSideChatProvisioning, sendQueuedMessage],
   );
-  const hasPromptDraftInput = promptDraft.text.trim().length > 0;
   const isQueueMutationPending =
     queuedMessageActionPending || createQueuedMessage.isPending;
   const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
@@ -693,8 +728,9 @@ export function SideChatTabContent({
       return;
     }
 
-    const trimmed = promptDraft.text.trim();
-    if (trimmed.length === 0) {
+    const submittedDraft = currentPromptDraft;
+    const submittedInput = currentPromptDraftInput;
+    if (submittedInput.length === 0) {
       const nextQueuedMessage = queuedMessages[0];
       if (nextQueuedMessage) {
         handleSendQueuedImmediately(nextQueuedMessage.id);
@@ -702,18 +738,14 @@ export function SideChatTabContent({
       return;
     }
 
-    const submittedDraft = {
-      text: promptDraft.text,
-      mentions: promptDraft.mentions,
-      attachments: promptDraft.attachments,
-    };
     const input = buildSideChatMessageInput({
       includeReplyReference: false,
-      question: trimmed,
       replyReference: null,
+      visibleInput: submittedInput,
     });
 
     promptDraft.clearIfCurrentMatches(submittedDraft);
+    setAttachmentError(null);
     setIsSideChatTurnSubmitting(true);
     void sendThreadMessage
       .mutateAsync({
@@ -742,6 +774,8 @@ export function SideChatTabContent({
   }, [
     canSubmitModifierShortcut,
     childThreadId,
+    currentPromptDraft,
+    currentPromptDraftInput,
     handleSendQueuedImmediately,
     promptDraft,
     queuedMessages,
@@ -910,6 +944,61 @@ export function SideChatTabContent({
     ],
   );
 
+  const attachmentsConfig = useMemo<AttachmentsConfig>(
+    () => ({
+      items: promptDraft.attachments,
+      projectId: sourceThread.projectId,
+      isAttaching: uploadPromptAttachment.isPending,
+      error: attachmentError,
+      onAttachFiles: handleAttachFiles,
+      onRemove: promptDraft.removeAttachment,
+    }),
+    [
+      attachmentError,
+      handleAttachFiles,
+      promptDraft.attachments,
+      promptDraft.removeAttachment,
+      sourceThread.projectId,
+      uploadPromptAttachment.isPending,
+    ],
+  );
+
+  const typeaheadConfig = useMemo<TypeaheadConfig>(
+    () => ({
+      mention: {
+        suggestions: promptMentions.suggestions,
+        isLoading: promptMentions.isLoading,
+        isError: promptMentions.isError,
+        onQueryChange: promptMentions.setQuery,
+        resolveLink: resolveMentionLink,
+      },
+      command: {
+        trigger: commandSuggestions.trigger,
+        suggestions: commandSuggestions.suggestions,
+        isLoading: commandSuggestions.isLoading,
+        isError: commandSuggestions.isError,
+        hasMore: commandSuggestions.hasMore,
+        isLoadingMore: commandSuggestions.isLoadingMore,
+        loadMore: commandSuggestions.loadMore,
+        onQueryChange: setCommandQuery,
+      },
+    }),
+    [
+      commandSuggestions.hasMore,
+      commandSuggestions.isError,
+      commandSuggestions.isLoading,
+      commandSuggestions.isLoadingMore,
+      commandSuggestions.loadMore,
+      commandSuggestions.suggestions,
+      commandSuggestions.trigger,
+      promptMentions.isError,
+      promptMentions.isLoading,
+      promptMentions.setQuery,
+      promptMentions.suggestions,
+      resolveMentionLink,
+    ],
+  );
+
   // Built the same shape as the main thread's executionConfig (see
   // ThreadDetailPromptArea), but the side chat is read-only: the footer pickers
   // render disabled via the FollowUpPromptBox `readOnly` flag, so the controls
@@ -1035,7 +1124,7 @@ export function SideChatTabContent({
       <OverflowFade placement="above" tone="background" />
       <div className="px-4 pb-4 pt-2">
         <FollowUpPromptBox
-          attachments={SIDE_CHAT_ATTACHMENTS}
+          attachments={attachmentsConfig}
           stack={queuedMessagesStack}
           composer={composerConfig}
           environmentSummary={environmentSummary}
@@ -1043,7 +1132,7 @@ export function SideChatTabContent({
           execution={executionConfig}
           permission={permissionConfig}
           readOnly
-          typeahead={SIDE_CHAT_TYPEAHEAD}
+          typeahead={typeaheadConfig}
           zenModeResetKey={childThreadId ?? tab.id}
           focusEndKey={composerFocusNonce}
         />

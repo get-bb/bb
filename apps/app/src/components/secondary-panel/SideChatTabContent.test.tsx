@@ -15,26 +15,26 @@ import type { SideChatFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { SideChatTabContent } from "./SideChatTabContent";
 
 const mocks = vi.hoisted(() => ({
+  commandSuggestionArgs: [] as unknown[],
   createThreadMutateAsync: vi.fn(),
   noopMutate: vi.fn(),
   noopMutateAsync: vi.fn(),
+  promptMentionArgs: [] as unknown[],
+  promptMentionSetQuery: vi.fn(),
   sendThreadMessageMutateAsync: vi.fn(),
   threadRuntimeDisplayStatus: "idle",
-}));
-
-vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
-  INERT_TYPEAHEAD_COMMAND_CONFIG: {
-    isError: false,
-    isLoading: false,
-    onQueryChange: vi.fn(),
-    suggestions: [],
-  },
+  uploadPromptAttachmentMutateAsync: vi.fn(),
 }));
 
 vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
   FollowUpPromptBox: ({
+    attachments,
     composer,
+    typeahead,
   }: {
+    attachments: {
+      onAttachFiles?: (files: File[]) => void | Promise<void>;
+    };
     composer: Pick<
       FollowUpComposerProps,
       | "canModifierSubmit"
@@ -43,6 +43,15 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       | "onModifierSubmit"
       | "onSubmit"
     >;
+    typeahead: {
+      command: {
+        onQueryChange: (query: string | null) => void;
+        trigger: string | null;
+      };
+      mention: {
+        onQueryChange: (query: string | null) => void;
+      };
+    };
   }) => (
     <div>
       <input
@@ -53,6 +62,29 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       <button type="button" onClick={composer.onSubmit}>
         Send
       </button>
+      <button
+        type="button"
+        onClick={() =>
+          void attachments.onAttachFiles?.([
+            new File(["hello"], "note.md", { type: "text/markdown" }),
+          ])
+        }
+      >
+        Attach
+      </button>
+      <button
+        type="button"
+        onClick={() => typeahead.mention.onQueryChange("readme")}
+      >
+        Mention query
+      </button>
+      <button
+        type="button"
+        onClick={() => typeahead.command.onQueryChange("review")}
+      >
+        Command query
+      </button>
+      <span data-testid="command-trigger">{typeahead.command.trigger}</span>
       <button
         type="button"
         disabled={!composer.canModifierSubmit}
@@ -150,9 +182,37 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
   }),
 }));
 
+vi.mock("@/hooks/usePromptMentions", () => ({
+  usePromptMentions: (projectId: string | undefined, options: unknown) => {
+    mocks.promptMentionArgs.push({ options, projectId });
+    return {
+      suggestions: [],
+      isLoading: false,
+      isError: false,
+      setQuery: mocks.promptMentionSetQuery,
+    };
+  },
+}));
+
+vi.mock("@/hooks/useCommandSuggestions", () => ({
+  useCommandSuggestions: (args: unknown) => {
+    mocks.commandSuggestionArgs.push(args);
+    return {
+      trigger: "$",
+      suggestions: [],
+      isLoading: false,
+      isError: false,
+      hasMore: false,
+      isLoadingMore: false,
+      loadMore: vi.fn(),
+    };
+  },
+}));
+
 vi.mock("@/hooks/queries/thread-queries", () => ({
   useThread: () => ({
     data: {
+      environmentId: null,
       runtime: {
         displayStatus: mocks.threadRuntimeDisplayStatus,
       },
@@ -198,9 +258,18 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   }),
 }));
 
+vi.mock("@/hooks/mutations/project-mutations", () => ({
+  useUploadPromptAttachment: () => ({
+    isPending: false,
+    mutateAsync: mocks.uploadPromptAttachmentMutateAsync,
+  }),
+}));
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  mocks.commandSuggestionArgs.length = 0;
+  mocks.promptMentionArgs.length = 0;
   mocks.threadRuntimeDisplayStatus = "idle";
   vi.clearAllMocks();
 });
@@ -233,6 +302,7 @@ describe("SideChatTabContent", () => {
         sourceThread={sourceThread}
         sourceEnvironment={null}
         sourceTimelineRows={[]}
+        resolveMentionLink={() => null}
         onSetThreadId={onSetThreadId}
       />,
     );
@@ -278,6 +348,90 @@ describe("SideChatTabContent", () => {
       tabId: "side-chat:one",
       threadId: "thr_side",
     });
+  });
+
+  it("submits side-chat attachments with the normal prompt input", async () => {
+    mocks.createThreadMutateAsync.mockResolvedValueOnce({ id: "thr_side" });
+    mocks.uploadPromptAttachmentMutateAsync.mockResolvedValueOnce({
+      type: "localFile",
+      path: "thread-storage/uploads/note.md",
+      name: "note.md",
+      mimeType: "text/markdown",
+      sizeBytes: 5,
+    });
+    renderDraftSideChat();
+
+    fireEvent.click(screen.getByRole("button", { name: "Attach" }));
+    await waitFor(() =>
+      expect(mocks.uploadPromptAttachmentMutateAsync).toHaveBeenCalledWith({
+        projectId: "proj_parent",
+        file: expect.objectContaining({ name: "note.md" }),
+      }),
+    );
+
+    fireEvent.change(screen.getByTestId("side-chat-composer"), {
+      target: { value: "Use this context" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledTimes(1),
+    );
+    expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: [
+          expect.objectContaining({
+            text: expect.stringContaining("Earlier answer"),
+            type: "text",
+            visibility: "agent-only",
+          }),
+          { type: "text", text: "Use this context", mentions: [] },
+          {
+            type: "localFile",
+            path: "thread-storage/uploads/note.md",
+            name: "note.md",
+            mimeType: "text/markdown",
+            sizeBytes: 5,
+          },
+        ],
+      }),
+    );
+  });
+
+  it("wires side-chat mention and command typeahead to the normal hooks", async () => {
+    renderSideChat({ threadId: "thr_side" });
+
+    expect(
+      mocks.promptMentionArgs[mocks.promptMentionArgs.length - 1],
+    ).toEqual({
+      projectId: "proj_parent",
+      options: {
+        currentThreadId: "thr_side",
+        environmentId: null,
+      },
+    });
+    expect(
+      mocks.commandSuggestionArgs[mocks.commandSuggestionArgs.length - 1],
+    ).toEqual({
+      projectId: "proj_parent",
+      providerId: "codex",
+      environmentId: null,
+      query: null,
+    });
+    expect(screen.getByTestId("command-trigger").textContent).toBe("$");
+
+    fireEvent.click(screen.getByRole("button", { name: "Mention query" }));
+    expect(mocks.promptMentionSetQuery).toHaveBeenCalledWith("readme");
+
+    fireEvent.click(screen.getByRole("button", { name: "Command query" }));
+    await waitFor(() =>
+      expect(mocks.commandSuggestionArgs).toContainEqual({
+        projectId: "proj_parent",
+        providerId: "codex",
+        environmentId: null,
+        query: "review",
+      }),
+    );
   });
 
   it("allows active side chats to send modifier-submit steering messages", async () => {
