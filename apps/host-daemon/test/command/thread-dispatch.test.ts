@@ -240,11 +240,12 @@ describe("thread command dispatch", () => {
     const stagingDir = path.join(
       threadStorageRootPath,
       "thread-attachments",
-      "runtime-attachments",
-      requestId,
+      "Attachments",
     );
     expect(stagedFile.path.startsWith(`${stagingDir}${path.sep}`)).toBe(true);
     expect(stagedImage.path.startsWith(`${stagingDir}${path.sep}`)).toBe(true);
+    expect(path.basename(stagedFile.path)).toBe("notes.txt");
+    expect(path.basename(stagedImage.path)).toBe("screenshot-uploaded.png");
     expect(existingFile.path).toBe("/tmp/already-readable.txt");
     await expect(fs.readFile(stagedFile.path, "utf8")).resolves.toBe(
       uploadedNotesContent,
@@ -327,10 +328,10 @@ describe("thread command dispatch", () => {
     const stagingDir = path.join(
       threadStorageRootPath,
       "thread-submit-attachments",
-      "runtime-attachments",
-      requestId,
+      "Attachments",
     );
     expect(stagedFile.path.startsWith(`${stagingDir}${path.sep}`)).toBe(true);
+    expect(path.basename(stagedFile.path)).toBe("follow-up-uploaded.har");
     await expect(fs.readFile(stagedFile.path, "utf8")).resolves.toBe(
       "content:follow-up-uploaded.har",
     );
@@ -460,19 +461,18 @@ describe("thread command dispatch", () => {
     ).rejects.toThrow();
   });
 
-  it("removes stale files before restaging attachments for the same request", async () => {
+  it("stages prompt attachments in a readable flat attachments directory", async () => {
     const threadStorageRootPath = await makeTempDir("bb-restage-attachments-");
     const harness = createHarness();
     const requestId = nextClientRequestId();
     const stagingDir = path.join(
       threadStorageRootPath,
       "thread-restage-attachments",
-      "runtime-attachments",
-      requestId,
+      "Attachments",
     );
-    const stalePath = path.join(stagingDir, "999-stale.txt");
+    const restagedPath = path.join(stagingDir, "fresh-uploaded.txt");
     await fs.mkdir(stagingDir, { recursive: true });
-    await fs.writeFile(stalePath, "stale");
+    await fs.writeFile(restagedPath, "stale");
     const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(async () => ({
       bytes: Buffer.from("fresh"),
     }));
@@ -489,7 +489,10 @@ describe("thread command dispatch", () => {
         projectId: "project-restage-attachments",
         providerId: "fake",
         requestId,
-        input: [{ type: "localFile", path: "fresh-uploaded.txt" }],
+        input: [
+          { type: "localFile", path: "fresh-uploaded.txt" },
+          { type: "localFile", path: "fresh-uploaded.txt" },
+        ],
         options: {
           model: "gpt-5",
           serviceTier: "default",
@@ -509,9 +512,10 @@ describe("thread command dispatch", () => {
       },
     );
 
-    await expect(fs.stat(stalePath)).rejects.toThrow();
+    await expect(fs.readFile(restagedPath, "utf8")).resolves.toBe("fresh");
     await expect(fs.readdir(stagingDir)).resolves.toEqual([
-      "000-fresh-uploaded.txt",
+      "fresh-uploaded-2.txt",
+      "fresh-uploaded.txt",
     ]);
   });
 
@@ -582,8 +586,8 @@ describe("thread command dispatch", () => {
         path.join(
           threadStorageRootPath,
           "thread-failed-stage-attachments",
-          "runtime-attachments",
-          requestId,
+          "Attachments",
+          "first-uploaded.txt",
         ),
       ),
     ).rejects.toThrow();
@@ -644,8 +648,8 @@ describe("thread command dispatch", () => {
         path.join(
           threadStorageRootPath,
           "thread-oversized-stage-attachments",
-          "runtime-attachments",
-          requestId,
+          "Attachments",
+          "oversized-uploaded.txt",
         ),
       ),
     ).rejects.toThrow();
@@ -702,8 +706,8 @@ describe("thread command dispatch", () => {
         path.join(
           threadStorageRootPath,
           "thread-runtime-failed-start-attachments",
-          "runtime-attachments",
-          requestId,
+          "Attachments",
+          "runtime-failed-uploaded.txt",
         ),
       ),
     ).rejects.toThrow();
@@ -764,8 +768,8 @@ describe("thread command dispatch", () => {
         path.join(
           threadStorageRootPath,
           "thread-runtime-failed-turn-attachments",
-          "runtime-attachments",
-          requestId,
+          "Attachments",
+          "runtime-turn-uploaded.txt",
         ),
       ),
     ).rejects.toThrow();

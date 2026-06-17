@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, rmdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ClientTurnRequestId, PromptInput } from "@bb/domain";
 import { resolveContainedPath } from "@bb/process-utils";
@@ -27,8 +27,7 @@ interface StagePromptAttachmentsArgs {
 
 interface StageAttachmentArgs extends StagePromptAttachmentsArgs {
   attachment: AttachmentPromptInput;
-  index: number;
-  stagingDir: string;
+  stagedPath: string;
 }
 
 interface StagedPromptAttachments {
@@ -136,15 +135,48 @@ function resolveStagingDir(args: StagePromptAttachmentsArgs): string {
   );
   return requireContainedPath(
     args.threadStorageRootPath,
-    path.join(threadDir, "runtime-attachments", args.requestId),
+    path.join(threadDir, "Attachments"),
   );
 }
 
-async function stageAttachment(args: StageAttachmentArgs): Promise<string> {
-  const stagedPath = path.join(
-    args.stagingDir,
-    `${String(args.index).padStart(3, "0")}-${attachmentFilename(args.attachment)}`,
+function appendFilenameSuffix(filename: string, suffix: string): string {
+  const extension = path.extname(filename);
+  if (!extension) {
+    return `${filename}${suffix}`;
+  }
+  return `${filename.slice(0, -extension.length)}${suffix}${extension}`;
+}
+
+function uniqueStagedPath(
+  stagingDir: string,
+  filename: string,
+  stagedPaths: readonly string[],
+): string {
+  let candidate = path.join(stagingDir, filename);
+  let suffix = 2;
+  while (stagedPaths.includes(candidate)) {
+    candidate = path.join(
+      stagingDir,
+      appendFilenameSuffix(filename, `-${suffix}`),
+    );
+    suffix += 1;
+  }
+  return candidate;
+}
+
+async function cleanupStagedAttachments(
+  stagingDir: string,
+  stagedPaths: readonly string[],
+): Promise<void> {
+  await Promise.all(
+    stagedPaths.map((stagedPath) =>
+      rm(stagedPath, { force: true, recursive: false }),
+    ),
   );
+  await rmdir(stagingDir).catch(() => undefined);
+}
+
+async function stageAttachment(args: StageAttachmentArgs): Promise<string> {
   validateExpectedAttachmentSize(args);
 
   let bytes: Uint8Array;
@@ -165,8 +197,8 @@ async function stageAttachment(args: StageAttachmentArgs): Promise<string> {
   }
 
   validateFetchedAttachmentSize(args.attachment, bytes);
-  await writeFile(stagedPath, bytes, { mode: STAGED_ATTACHMENT_MODE });
-  return stagedPath;
+  await writeFile(args.stagedPath, bytes, { mode: STAGED_ATTACHMENT_MODE });
+  return args.stagedPath;
 }
 
 export async function stagePromptAttachments(
@@ -180,33 +212,38 @@ export async function stagePromptAttachments(
   }
 
   const stagingDir = resolveStagingDir(args);
-  await rm(stagingDir, { force: true, recursive: true });
   await mkdir(stagingDir, { recursive: true });
 
   const stagedInput: PromptInput[] = [];
+  const stagedPaths: string[] = [];
   try {
-    for (const [index, input] of args.input.entries()) {
+    for (const input of args.input) {
       if (!shouldStageAttachment(input)) {
         stagedInput.push(input);
         continue;
       }
+      const stagedPath = uniqueStagedPath(
+        stagingDir,
+        attachmentFilename(input),
+        stagedPaths,
+      );
       stagedInput.push({
         ...input,
         path: await stageAttachment({
           ...args,
           attachment: input,
-          index,
-          stagingDir,
+          stagedPath,
         }),
       });
+      stagedPaths.push(stagedPath);
     }
   } catch (error) {
-    await rm(stagingDir, { force: true, recursive: true });
+    await cleanupStagedAttachments(stagingDir, stagedPaths);
     throw error;
   }
 
   return {
-    cleanup: () => rm(stagingDir, { force: true, recursive: true }),
+    cleanup: () => cleanupStagedAttachments(stagingDir, stagedPaths),
     input: stagedInput,
   };
 }
