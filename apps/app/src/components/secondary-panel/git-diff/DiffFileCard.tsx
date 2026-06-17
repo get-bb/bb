@@ -146,11 +146,11 @@ export const DiffFileCard = memo(function DiffFileCard({
   // Detect when this card's sticky header is pinned to the panel top: a
   // zero-height sentinel sits just above the header, so once it scrolls out of
   // the scroll container the header is stuck. When stuck we square the header's
-  // top (`rounded-t-none border-t`) — the card's own rounded top has scrolled
-  // off-screen by then, and a rounded header top would otherwise show the
-  // scrolling diff through its corners. (`overflow-clip` below keeps the bottom
-  // rounded; the top can't be fixed by clipping because the rounded corners are
-  // the header's own, over live content.)
+  // top and draw a non-layout top edge — the card's own rounded top has
+  // scrolled off-screen by then, and a rounded header top would otherwise show
+  // the scrolling diff through its corners. (`overflow-clip` below keeps the
+  // bottom rounded; the top can't be fixed by clipping because the rounded
+  // corners are the header's own, over live content.)
   const { ref: stickySentinelRef, isIntersecting } = useIntersectionObserver({
     initialIsIntersecting: true,
     threshold: 1,

@@ -1,5 +1,6 @@
 import { memo, useMemo } from "react";
 import { useIntersectionObserver } from "usehooks-ts";
+import { cn } from "@/lib/utils";
 import {
   GitDiffCardBody,
   useGitDiffCardBody,
@@ -48,15 +49,23 @@ export interface GitDiffCardProps {
   isCollapsed?: boolean;
   onToggleCollapsed?: () => void;
   /**
-   * When true, the header sticks to the scroll container and grows a top
-   * border when stuck. Used by the secondary panel; timeline rows leave this
-   * off because their scroll container is per-row, not per-panel.
+   * When true, the header sticks to the nearest scroll container. The default
+   * stuck chrome is for panel-level scrolling; timeline row diffs can suppress
+   * that edge when their own scroll area owns the fixed border.
    */
   stickyHeader?: boolean;
+  /** Override the sticky top offset when the scroll container owns surrounding chrome. */
+  stickyHeaderTopClassName?: string;
+  /** Whether crossing the sticky threshold changes header rounding/edge chrome. */
+  applyStuckHeaderChrome?: boolean;
   /** When true, replaces the body with a skeleton (for queued render slots). */
   isRendering?: boolean;
   /** Forwarded to the outer card element — used for IntersectionObserver-based scheduling. */
   cardRef?: (element: HTMLDivElement | null) => void;
+  /** Extra classes for the outer card shell. */
+  cardClassName?: string;
+  /** Whether a stuck sticky header should draw its own replacement top edge. */
+  showStuckHeaderEdge?: boolean;
   /**
    * When provided, the card lazy-fetches `oldFile`/`newFile` the first time
    * it scrolls into view. Text results are forwarded to `<DiffView>`, which
@@ -94,8 +103,12 @@ export const GitDiffCard = memo(function GitDiffCard({
   isCollapsed,
   onToggleCollapsed,
   stickyHeader = false,
+  stickyHeaderTopClassName,
+  applyStuckHeaderChrome = true,
   isRendering = false,
   cardRef,
+  cardClassName,
+  showStuckHeaderEdge = true,
   onRequestFileContents,
 }: GitDiffCardProps) {
   const headerModel = useMemo(
@@ -125,14 +138,20 @@ export const GitDiffCard = memo(function GitDiffCard({
   return (
     <div
       ref={cardRef}
-      className="rounded-lg border border-border bg-background"
+      className={cn(
+        "rounded-lg border border-border bg-background",
+        cardClassName,
+      )}
     >
       {stickyHeader ? <div ref={stickySentinelRef} className="h-0" /> : null}
       <div
         className={gitDiffCardHeaderWrapperClass({
           stickyHeader,
+          stickyHeaderTopClassName,
           isBodyHidden,
           isStuck: isHeaderStuck,
+          applyStuckHeaderChrome,
+          showStuckHeaderEdge,
         })}
       >
         <GitDiffCardHeader
