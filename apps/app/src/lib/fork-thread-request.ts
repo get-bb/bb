@@ -1,3 +1,7 @@
+import {
+  getBuiltInAgentProviderInfo,
+  isAgentProviderId,
+} from "@bb/agent-providers";
 import type { Environment, PermissionMode, Thread } from "@bb/domain";
 import type { AppCreateThreadRequest } from "@/lib/api";
 import { resolveChildThreadEnvironment } from "@/lib/child-thread-environment";
@@ -20,17 +24,30 @@ export interface BuildForkThreadRequestArgs {
 }
 
 /**
- * Whether a thread can be forked: a fork always runs in a fresh managed worktree
- * branched off the source's host, so it is only possible when the source has a
- * resolved environment (which always carries a host). A host-less source (a
- * personal-project thread with no environment) cannot be forked, so the Fork
- * affordance is dropped rather than rendered as a no-op. Keeps the gate in
- * lockstep with {@link buildForkThreadRequest}, which returns null in the same
- * case.
+ * Whether a thread can be forked. Two requirements, both mirrored by the
+ * server's fork gate so the Fork affordance and the create request stay in
+ * lockstep:
+ *  - The source provider must support forking. Forking clones the provider's
+ *    session at its branch point; providers without a session-fork primitive
+ *    (e.g. ACP/Cursor) declare `supportsFork: false` and the server refuses
+ *    the fork, so the button is dropped rather than shown as a no-op.
+ *  - The source must have a resolved environment (which always carries a
+ *    host): a fork always runs in a fresh managed worktree branched off the
+ *    source's host. A host-less source (a personal-project thread with no
+ *    environment) cannot be forked.
+ * Keeps the gate in lockstep with {@link buildForkThreadRequest}, which
+ * returns null in the same cases.
  */
 export function isThreadForkable(
   sourceEnvironment: Environment | null,
+  providerId: string,
 ): boolean {
+  if (
+    !isAgentProviderId(providerId) ||
+    !getBuiltInAgentProviderInfo(providerId).capabilities.supportsFork
+  ) {
+    return false;
+  }
   return (sourceEnvironment?.hostId ?? null) !== null;
 }
 
@@ -62,7 +79,7 @@ export function buildForkThreadRequest({
   model,
   permissionMode,
 }: BuildForkThreadRequestArgs): AppCreateThreadRequest | null {
-  if (!isThreadForkable(sourceEnvironment)) {
+  if (!isThreadForkable(sourceEnvironment, sourceThread.providerId)) {
     return null;
   }
 

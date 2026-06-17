@@ -158,22 +158,43 @@ describe("buildForkThreadRequest", () => {
 });
 
 describe("isThreadForkable", () => {
-  it("is true when the source has a resolved environment (and therefore a host)", () => {
-    expect(isThreadForkable(makeEnvironment())).toBe(true);
+  it("is true when the source has a resolved environment and a fork-capable provider", () => {
+    expect(isThreadForkable(makeEnvironment(), "codex")).toBe(true);
   });
 
   it("is false for a host-less (null-environment) personal source", () => {
     // The Fork button/handler is dropped in this case so it never renders as a
     // dead no-op on a personal/no-host source.
-    expect(isThreadForkable(null)).toBe(false);
+    expect(isThreadForkable(null, "codex")).toBe(false);
   });
 
-  it("agrees with buildForkThreadRequest's null gate", () => {
-    expect(isThreadForkable(null)).toBe(false);
+  it("is false when the provider does not support forking", () => {
+    // ACP/Cursor declares supportsFork: false (no session-fork primitive), so
+    // the Fork button is dropped even on a fully-hosted source.
+    expect(isThreadForkable(makeEnvironment(), "acp-cursor")).toBe(false);
+  });
+
+  it("is false for an unknown provider id", () => {
+    expect(isThreadForkable(makeEnvironment(), "not-a-provider")).toBe(false);
+  });
+
+  it("agrees with buildForkThreadRequest's null gates", () => {
+    // Host-less source.
+    expect(isThreadForkable(null, "codex")).toBe(false);
     expect(
       buildForkThreadRequest({
         sourceThread: makeThread({ environmentId: null }),
         sourceEnvironment: null,
+        model: "gpt-5",
+        permissionMode: "readonly",
+      }),
+    ).toBeNull();
+    // Fork-incapable provider on a hosted source.
+    expect(isThreadForkable(makeEnvironment(), "acp-cursor")).toBe(false);
+    expect(
+      buildForkThreadRequest({
+        sourceThread: makeThread({ providerId: "acp-cursor" }),
+        sourceEnvironment: makeEnvironment(),
         model: "gpt-5",
         permissionMode: "readonly",
       }),

@@ -711,7 +711,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // bar — so that case never shows a Fork button that does nothing on click.
   // Same predicate `buildForkThreadRequest` gates on, so the button and the
   // request stay in lockstep.
-  const isForkAvailable = isThreadForkable(environment ?? null);
+  const isForkAvailable = isThreadForkable(
+    environment ?? null,
+    thread?.providerId ?? "",
+  );
   const canUseSideChatPanel = props.surface !== "popout";
   const canStartSideChat =
     canUseSideChatPanel && (thread?.canSpawnChild ?? false);
