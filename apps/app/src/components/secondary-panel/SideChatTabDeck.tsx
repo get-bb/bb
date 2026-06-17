@@ -58,6 +58,7 @@ export function SideChatTabDeck({
             className={cn(isActive ? "flex min-h-0 flex-1 flex-col" : "hidden")}
           >
             <SideChatTabContent
+              isActive={isActive}
               tab={tab}
               sourceThread={sourceThread}
               sourceEnvironment={sourceEnvironment}

@@ -64,7 +64,11 @@ import {
   useSendThreadQueuedMessage,
   useSendThreadMessage,
 } from "@/hooks/mutations/thread-runtime-mutations";
-import { useDeleteThread } from "@/hooks/mutations/thread-state-mutations";
+import {
+  useDeleteThread,
+  useMarkThreadRead,
+} from "@/hooks/mutations/thread-state-mutations";
+import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import {
   SIDE_CHAT_PERMISSION_MODE,
   buildSideChatMessageInput,
@@ -112,6 +116,8 @@ export interface SetSideChatThreadId {
 }
 
 export interface SideChatTabContentProps {
+  /** Only the active side-chat tab is visible; inactive tabs stay mounted. */
+  isActive: boolean;
   tab: SideChatFixedPanelTab;
   /** The main thread the side chat is anchored to (lineage + provider source). */
   sourceThread: Thread;
@@ -298,6 +304,7 @@ function SideChatConversation({
  * cross-thread send transport (`senderThreadId`).
  */
 export function SideChatTabContent({
+  isActive,
   tab,
   sourceThread,
   sourceEnvironment,
@@ -309,6 +316,7 @@ export function SideChatTabContent({
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const deleteQueuedMessage = useDeleteThreadQueuedMessage();
   const deleteThread = useDeleteThread();
+  const markThreadRead = useMarkThreadRead();
   const reorderQueuedMessage = useReorderThreadQueuedMessage();
   const sendQueuedMessage = useSendThreadQueuedMessage();
   const sendThreadMessage = useSendThreadMessage();
@@ -318,6 +326,10 @@ export function SideChatTabContent({
   );
   const childThreadQuery = useThread(childThreadId ?? "", {
     enabled: childThreadId !== null,
+  });
+  useThreadReadTracking({
+    markThreadRead,
+    thread: isActive ? childThreadQuery.data : undefined,
   });
   // Build the SAME execution + permission configs the main thread builds (see
   // ThreadDetailPromptArea), seeded from the parent thread's resolved options
