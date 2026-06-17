@@ -28,9 +28,9 @@ interface MessageActionBarProps {
 // an action button reveals the bar). The fork/side-chat buttons mirror
 // CopyButton's own classes so all three read as one consistent affordance.
 const ACTION_BUTTON_CLASS =
-  "inline-flex size-5 items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
+  "inline-flex size-5 items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40 max-md:pointer-coarse:size-9 max-md:pointer-coarse:[&_svg]:size-5";
 const HOVER_REVEAL_CLASS =
-  "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100";
+  "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 max-md:pointer-coarse:opacity-100";
 
 /**
  * Hover-revealed footer of per-message actions (copy, and — when wired —
@@ -69,7 +69,10 @@ export function MessageActionBar({
                 label="Copy message"
                 // The design-system tooltip replaces the native one below.
                 title={undefined}
-                className={HOVER_REVEAL_CLASS}
+                className={cn(
+                  HOVER_REVEAL_CLASS,
+                  "max-md:pointer-coarse:size-9 max-md:pointer-coarse:[&_svg]:size-5",
+                )}
               />
             </TooltipTrigger>
             <TooltipContent>Copy message</TooltipContent>

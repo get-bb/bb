@@ -697,23 +697,25 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   // request stay in lockstep.
   const isForkAvailable = isThreadForkable(environment ?? null);
   const canUseSideChatPanel = props.surface !== "popout";
+  const canStartSideChat =
+    canUseSideChatPanel && (thread?.canSpawnChild ?? false);
   const handleSideChatMessage =
     useCallback<ThreadTimelineSideChatMessageHandler>(
       (target) => {
-        if (!canUseSideChatPanel || !threadId) return;
+        if (!canStartSideChat || !threadId) return;
         openSideChat({
           sourceThreadId: threadId,
           sourceMessageText: target.messageText,
         });
       },
-      [canUseSideChatPanel, openSideChat, threadId],
+      [canStartSideChat, openSideChat, threadId],
     );
   // A side chat started from the new-tab page has no anchor message, so it forks
   // from the thread's tip (empty source text ⇒ no "replying to" reference).
   const handleStartSideChat = useCallback(() => {
-    if (!canUseSideChatPanel || !threadId) return;
+    if (!canStartSideChat || !threadId) return;
     openSideChat({ sourceThreadId: threadId, sourceMessageText: "" });
-  }, [canUseSideChatPanel, openSideChat, threadId]);
+  }, [canStartSideChat, openSideChat, threadId]);
   // Same scope (`projectId` + `thread.id`) the composer's `ThreadDetailPromptArea`
   // uses, so the timeline "Add to chat" action and the composer share one
   // localStorage-backed draft — the quoted text is appended to the draft as a
@@ -1771,7 +1773,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       currentThreadId={thread.id}
       focusRequest={newTabFocusRequest}
       onSelect={selectFileSearchResult}
-      onStartSideChat={canUseSideChatPanel ? handleStartSideChat : undefined}
+      onStartSideChat={canStartSideChat ? handleStartSideChat : undefined}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
     />
@@ -1908,11 +1910,11 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
           isThreadTimelinePending,
           timelineError: Boolean(timelineError),
           onForkMessage: isForkAvailable ? handleForkMessage : undefined,
-          onSideChatMessage: canUseSideChatPanel
+          onSideChatMessage: canStartSideChat
             ? handleSideChatMessage
             : undefined,
           onSelectionAddToChat: handleSelectionAddToChat,
-          onSelectionReplyInSideChat: canUseSideChatPanel
+          onSelectionReplyInSideChat: canStartSideChat
             ? handleSelectionReplyInSideChat
             : undefined,
           onLoadOlderRows: loadOlderTimelineRows,

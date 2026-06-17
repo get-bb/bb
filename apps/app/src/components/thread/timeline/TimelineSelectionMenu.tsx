@@ -19,8 +19,8 @@ interface SelectionAction {
 
 export interface TimelineSelectionMenuProps {
   selection: MessageProseSelection | null;
-  onAddToChat: (text: string) => void;
-  onReplyInSideChat: (text: string) => void;
+  onAddToChat?: (text: string) => void;
+  onReplyInSideChat?: (text: string) => void;
   onDismiss: () => void;
 }
 
@@ -96,13 +96,26 @@ export function TimelineSelectionMenu({
   if (!selection) return null;
 
   const actions: SelectionAction[] = [
-    { icon: "MessageSquarePlus", label: "Add to chat", onSelect: onAddToChat },
-    {
-      icon: "SideChat",
-      label: "Reply in side chat",
-      onSelect: onReplyInSideChat,
-    },
+    ...(onAddToChat
+      ? [
+          {
+            icon: "MessageSquarePlus" as const,
+            label: "Add to chat",
+            onSelect: onAddToChat,
+          },
+        ]
+      : []),
+    ...(onReplyInSideChat
+      ? [
+          {
+            icon: "SideChat" as const,
+            label: "Reply in side chat",
+            onSelect: onReplyInSideChat,
+          },
+        ]
+      : []),
   ];
+  if (actions.length === 0) return null;
 
   const { rect, text } = selection;
 

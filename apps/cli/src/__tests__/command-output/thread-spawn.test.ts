@@ -40,6 +40,7 @@ describe("bb thread spawn command output", () => {
       json: {
         origin: "cli",
         startedOnBehalfOf: null,
+        originKind: null,
         childOrigin: null,
         projectId: "proj-1",
         input: [{ type: "text", text: "hello", mentions: [] }],
@@ -72,6 +73,7 @@ describe("bb thread spawn command output", () => {
       json: {
         origin: "cli",
         startedOnBehalfOf: null,
+        originKind: null,
         childOrigin: null,
         projectId: domain.PERSONAL_PROJECT_ID,
         input: [{ type: "text", text: "hello", mentions: [] }],
@@ -104,6 +106,7 @@ describe("bb thread spawn command output", () => {
       json: {
         origin: "cli",
         startedOnBehalfOf: null,
+        originKind: null,
         childOrigin: null,
         projectId: "proj-env",
         input: [{ type: "text", text: "hello", mentions: [] }],
@@ -155,6 +158,7 @@ describe("bb thread spawn command output", () => {
       json: {
         origin: "cli",
         startedOnBehalfOf: null,
+        originKind: null,
         childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
@@ -296,6 +300,7 @@ describe("bb thread spawn command output", () => {
       json: {
         origin: "cli",
         startedOnBehalfOf: null,
+        originKind: null,
         childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
@@ -547,6 +552,7 @@ describe("bb thread spawn command output", () => {
       json: {
         origin: "cli",
         startedOnBehalfOf: null,
+        originKind: null,
         childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
@@ -595,6 +601,7 @@ describe("bb thread spawn command output", () => {
       json: {
         origin: "cli",
         startedOnBehalfOf: null,
+        originKind: null,
         childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",
@@ -676,6 +683,7 @@ describe("bb thread spawn command output", () => {
       json: {
         origin: "cli",
         startedOnBehalfOf: null,
+        originKind: null,
         childOrigin: null,
         projectId: "proj-1",
         providerId: "codex",

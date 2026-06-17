@@ -1137,7 +1137,7 @@ describe("thread lifecycle transitions and read state", () => {
   });
 });
 
-describe("thread childOrigin", () => {
+describe("thread originKind compatibility", () => {
   it("defaults to null for threads created without an origin", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
@@ -1149,7 +1149,7 @@ describe("thread childOrigin", () => {
     expect(getThread(db, thread.id)?.childOrigin).toBeNull();
   });
 
-  it("persists and round-trips fork and side-chat origins", () => {
+  it("maps deprecated childOrigin input to originKind", () => {
     const { db, project } = setup();
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -1168,11 +1168,17 @@ describe("thread childOrigin", () => {
       childOrigin: "side-chat",
     });
 
-    expect(getThread(db, fork.id)?.childOrigin).toBe("fork");
-    expect(getThread(db, sideChat.id)?.childOrigin).toBe("side-chat");
+    expect(getThread(db, fork.id)).toMatchObject({
+      originKind: "fork",
+      childOrigin: null,
+    });
+    expect(getThread(db, sideChat.id)).toMatchObject({
+      originKind: "side-chat",
+      childOrigin: null,
+    });
   });
 
-  it("filters listings by childOrigin", () => {
+  it("filters listings by deprecated childOrigin", () => {
     const { db, project } = setup();
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,

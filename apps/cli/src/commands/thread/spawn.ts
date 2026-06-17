@@ -228,12 +228,14 @@ export function registerSpawnCommand(
             ...(permissionMode ? { permissionMode } : {}),
             environment,
             // The typed $post client types this body against the schema's
-            // output shape, where startedOnBehalfOf/childOrigin (`.default(null)`)
-            // are required — so a normal spawn passes the explicit null the
-            // server would otherwise fill. (A fork/side-chat sets these; the CLI
-            // never does. z.input would re-optionalize the SDK arg type but the
-            // underlying $post still requires them, so the null lives here.)
+            // output shape, where startedOnBehalfOf/originKind/childOrigin
+            // (`.default(null)`) are required — so a normal spawn passes the
+            // explicit null the server would otherwise fill. (A fork/side-chat
+            // sets these; the CLI never does. z.input would re-optionalize the
+            // SDK arg type but the underlying $post still requires them, so the
+            // null lives here.)
             startedOnBehalfOf: null,
+            originKind: null,
             childOrigin: null,
             ...(parentThreadId ? { parentThreadId } : {}),
           });

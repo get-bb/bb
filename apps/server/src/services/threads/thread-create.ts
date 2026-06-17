@@ -631,18 +631,11 @@ export async function createThreadFromRequest(
     sourceThread,
   });
 
-  // A fork/side-chat must clone the parent's provider session. When that clone
-  // could not be resolved (parent has no active session, provider lacks fork
-  // support, or a cross-host mismatch) AND there is no input to run a fresh
-  // turn, starting the thread would dispatch an empty, session-less start that
-  // the daemon rejects and that would land as a history-less dead end. Forks
-  // are sent with empty input, and proactively-provisioned side chats are too,
-  // so both hit this. Fail the create with an actionable error instead.
-  if (
-    request.originKind !== null &&
-    fork === null &&
-    request.input.length === 0
-  ) {
+  // A fork/side-chat must clone the source provider session. If that clone
+  // cannot be resolved (source has no active session, provider lacks fork
+  // support, or the target is cross-host), do not fall back to a fresh
+  // history-less thread.start.
+  if (request.originKind !== null && fork === null) {
     throw new ApiError(
       400,
       "invalid_request",

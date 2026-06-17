@@ -60,36 +60,6 @@ function firstClientRect(range: Range): DOMRect | null {
   return rect.width > 0 || rect.height > 0 ? rect : null;
 }
 
-function readRangeIntersectionWithinNode(
-  node: HTMLElement,
-  range: Range,
-): MessageProseSelection | null {
-  if (!range.intersectsNode(node)) {
-    return null;
-  }
-
-  const nodeRange = document.createRange();
-  nodeRange.selectNodeContents(node);
-  const intersection = range.cloneRange();
-
-  if (intersection.compareBoundaryPoints(Range.START_TO_START, nodeRange) < 0) {
-    intersection.setStart(nodeRange.startContainer, nodeRange.startOffset);
-  }
-  if (intersection.compareBoundaryPoints(Range.END_TO_END, nodeRange) > 0) {
-    intersection.setEnd(nodeRange.endContainer, nodeRange.endOffset);
-  }
-
-  const text = intersection.toString().trim();
-  const rect = firstClientRect(intersection);
-  intersection.detach();
-  nodeRange.detach();
-
-  if (text.length === 0 || rect === null) {
-    return null;
-  }
-  return { text, rect };
-}
-
 function readSelectionWithinNode(
   node: HTMLElement | null,
 ): MessageProseSelection | null {
@@ -111,7 +81,7 @@ function readSelectionWithinNode(
     return text.length > 0 && rect !== null ? { text, rect } : null;
   }
 
-  return readRangeIntersectionWithinNode(node, range);
+  return null;
 }
 
 /**

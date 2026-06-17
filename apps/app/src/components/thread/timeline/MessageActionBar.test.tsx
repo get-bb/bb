@@ -49,4 +49,18 @@ describe("MessageActionBar", () => {
     fireEvent.click(button);
     expect(onSendToMain).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps actions visible and tappable on coarse pointers", () => {
+    render(
+      <MessageActionBar
+        messageText="An answer."
+        alignment="start"
+        onSideChat={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Reply in side chat" });
+    expect(button.className).toContain("max-md:pointer-coarse:opacity-100");
+    expect(button.className).toContain("max-md:pointer-coarse:size-9");
+  });
 });

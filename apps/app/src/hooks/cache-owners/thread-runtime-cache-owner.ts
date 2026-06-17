@@ -267,7 +267,7 @@ function buildOptimisticUserMessageRow({
   const text = input
     .filter(
       (entry): entry is Extract<typeof entry, { type: "text" }> =>
-        entry.type === "text",
+        entry.type === "text" && entry.visibility !== "agent-only",
     )
     .map((entry) => entry.text)
     .join("\n\n");
