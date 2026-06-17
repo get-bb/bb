@@ -164,7 +164,7 @@ describe("prompt editor serialization", () => {
     ]);
   });
 
-  it("does not render argument hint placeholders for skills", () => {
+  it("does not render argument hint placeholders for any command source", () => {
     expect(
       promptMentionArgumentHintPlaceholder({
         kind: "command",
@@ -176,9 +176,6 @@ describe("prompt editor serialization", () => {
         argumentHint: "<files>",
       }),
     ).toBeNull();
-  });
-
-  it("renders argument hint placeholders for project commands", () => {
     expect(
       promptMentionArgumentHintPlaceholder({
         kind: "command",
@@ -189,6 +186,17 @@ describe("prompt editor serialization", () => {
         label: "frontend:component",
         argumentHint: " $ARGUMENTS ",
       }),
-    ).toBe("$ARGUMENTS");
+    ).toBeNull();
+    expect(
+      promptMentionArgumentHintPlaceholder({
+        kind: "command",
+        trigger: "/",
+        name: "note",
+        source: "command",
+        origin: "user",
+        label: "note",
+        argumentHint: "<note-path>",
+      }),
+    ).toBeNull();
   });
 });

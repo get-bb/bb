@@ -898,14 +898,14 @@ export function AllPromptPills() {
         <PromptBoxStoryInstance fixture={commandPromptPillsFixture} />
       </StoryRow>
       <StoryRow
-        label="skill arg hint"
+        label="skill arg metadata"
         hint="skill pill with argument hint metadata but no prompt placeholder text"
       >
         <PromptBoxStoryInstance fixture={skillArgumentHintFixture} />
       </StoryRow>
       <StoryRow
-        label="project arg hint"
-        hint="project command pill with non-editable argument hint placeholder"
+        label="project arg metadata"
+        hint="project command pill with argument hint metadata but no prompt placeholder text"
       >
         <PromptBoxStoryInstance fixture={projectCommandArgumentHintFixture} />
       </StoryRow>
