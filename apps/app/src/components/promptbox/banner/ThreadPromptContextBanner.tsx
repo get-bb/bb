@@ -752,7 +752,6 @@ export function ThreadPromptContextBanner({
               value={gitSection.mergeBase.branch}
               options={mergeBaseCandidates.options}
               remoteOptions={mergeBaseCandidates.remoteOptions}
-              selectedOptionKind={mergeBaseCandidates.selectedOptionKind}
               variant="minimal"
               loading={gitSection.mergeBase.optionsLoading}
               onChange={gitSection.mergeBase.onChange}

@@ -1,10 +1,18 @@
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  type ProjectSource,
+  type ThreadListEntry,
+} from "@bb/domain";
 import type {
   ProjectWithThreadsResponse,
   SidebarBootstrapResponse,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
-import { buildMobileRecentThreads } from "./RootComposeView";
+import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
+import {
+  buildMobileRecentThreads,
+  resolveRootComposeEffectiveEnvironmentValue,
+} from "./RootComposeView";
 
 interface MakeThreadArgs {
   id: string;
@@ -16,6 +24,28 @@ interface MakeProjectArgs {
   kind: ProjectWithThreadsResponse["kind"];
   name: string;
   threads: readonly ThreadListEntry[];
+}
+
+function makeProjectSource(hostId = "host_1"): ProjectSource {
+  return {
+    id: "src_1",
+    projectId: "proj_app",
+    type: "local_path",
+    hostId,
+    path: "/repo",
+    isDefault: true,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
+
+function makeReuseThreadOption(environmentId: string): ReuseThreadOption {
+  return {
+    environmentId,
+    branchName: "feature",
+    name: null,
+    threads: [{ id: "thr_1", title: "Thread" }],
+  };
 }
 
 function makeThread(args: MakeThreadArgs): ThreadListEntry {
@@ -109,5 +139,83 @@ describe("buildMobileRecentThreads", () => {
     );
 
     expect(threadIds).toEqual(["thr_personal", "thr_app", "thr_docs"]);
+  });
+});
+
+describe("resolveRootComposeEffectiveEnvironmentValue", () => {
+  it("keeps host mode but rewrites the host id to the active project source host", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        environmentSelectionValue: "host:stale_host:worktree",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("host:host_1:worktree");
+  });
+
+  it("does not invent a host workspace for a standard project without a source", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        environmentSelectionValue: "host:stale_host:local",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("");
+  });
+
+  it("keeps a reuse environment only when it belongs to the selected project", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        environmentSelectionValue: "reuse:env_current",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [makeReuseThreadOption("env_current")],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("reuse:env_current");
+
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        environmentSelectionValue: "reuse:env_stale",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [makeReuseThreadOption("env_current")],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("host:host_1:local");
+  });
+
+  it("holds specific reuse values as incomplete while project worktrees load", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        environmentSelectionValue: "reuse:env_pending",
+        isProjectless: false,
+        primaryHostId: "host_1",
+        projectSources: [makeProjectSource("host_1")],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: true,
+      }),
+    ).toBe("reuse");
+  });
+
+  it("uses the primary host for projectless threads without requiring project sources", () => {
+    expect(
+      resolveRootComposeEffectiveEnvironmentValue({
+        environmentSelectionValue: "host:stale_host:worktree",
+        isProjectless: true,
+        primaryHostId: "host_1",
+        projectSources: [],
+        reuseThreadOptions: [],
+        reuseThreadOptionsLoading: false,
+      }),
+    ).toBe("host:host_1:local");
   });
 });

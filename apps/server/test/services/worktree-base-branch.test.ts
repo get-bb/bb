@@ -5,7 +5,7 @@ import {
 } from "../../src/services/projects/worktree-base-branch.js";
 
 describe("resolveDefaultWorktreeBaseBranch", () => {
-  it("keeps the local branch when origin is missing or equal", () => {
+  it("keeps the local branch when origin is missing", () => {
     expect(
       resolveDefaultWorktreeBaseBranch({
         defaultBranch: "main",
@@ -13,17 +13,17 @@ describe("resolveDefaultWorktreeBaseBranch", () => {
         originDefaultBranch: null,
       }),
     ).toBe("main");
+  });
 
+  it("uses origin when local default is equal, behind, or missing", () => {
     expect(
       resolveDefaultWorktreeBaseBranch({
         defaultBranch: "main",
         defaultBranchRelation: "equal",
         originDefaultBranch: "origin/main",
       }),
-    ).toBe("main");
-  });
+    ).toBe("origin/main");
 
-  it("uses origin when local default is behind or missing", () => {
     expect(
       resolveDefaultWorktreeBaseBranch({
         defaultBranch: "main",
@@ -55,7 +55,7 @@ describe("resolveDefaultWorktreeBaseBranch", () => {
 });
 
 describe("resolveManagedDefaultBaseBranchSpec", () => {
-  it("returns a named branch only when the computed default differs from local", () => {
+  it("returns a named branch when the computed default differs from local", () => {
     expect(
       resolveManagedDefaultBaseBranchSpec({
         defaultBranch: "main",
@@ -70,6 +70,6 @@ describe("resolveManagedDefaultBaseBranchSpec", () => {
         defaultBranchRelation: "equal",
         originDefaultBranch: "origin/main",
       }),
-    ).toEqual({ kind: "default" });
+    ).toEqual({ kind: "named", name: "origin/main" });
   });
 });
