@@ -21,7 +21,6 @@ import { EmptyStatePanel } from "@/components/ui/empty-state.js";
 import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
-import { SplitButton } from "@/components/ui/split-button.js";
 import { useDialogState } from "@/hooks/useDialogState";
 import {
   useAutomations,
@@ -30,13 +29,16 @@ import {
   useResumeAutomation,
   useRunAutomation,
 } from "@/hooks/queries/automation-queries";
-import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import { formatScheduleStatusLabel } from "@/lib/format-schedule";
 import {
   getAutomationDetailRoutePath,
-  getThreadRoutePath,
+  getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import { cn } from "@/lib/utils";
+
+/** Composer seed for "Create via chat": prefilled (not submitted) so the user
+ * finishes the sentence and sends. */
+const CREATE_AUTOMATION_PROMPT = "Create a new bb automation to ";
 
 interface AutomationOverviewEntry {
   automation: Automation;
@@ -68,8 +70,7 @@ export interface AutomationsOverviewProps {
   isLoading: boolean;
   hasInitialLoadError: boolean;
   actions: AutomationRowActions;
-  onCreateAgentAutomation: () => void;
-  onCreateScriptAutomation: () => void;
+  onCreateAutomation: () => void;
 }
 
 /**
@@ -253,8 +254,7 @@ export function AutomationsOverview({
   isLoading,
   hasInitialLoadError,
   actions,
-  onCreateAgentAutomation,
-  onCreateScriptAutomation,
+  onCreateAutomation,
 }: AutomationsOverviewProps) {
   const groups = groupAutomationsByStatus(entries);
   const isEmpty =
@@ -265,22 +265,15 @@ export function AutomationsOverview({
       <div className="mx-auto w-full max-w-3xl space-y-6">
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-sm font-semibold">Automations</h1>
-          <SplitButton
-            primaryAction={{
-              label: "Create via chat",
-              onSelect: onCreateAgentAutomation,
-            }}
-            secondaryActions={[
-              {
-                label: "Agent automation",
-                onSelect: onCreateAgentAutomation,
-              },
-              {
-                label: "Script automation",
-                onSelect: onCreateScriptAutomation,
-              },
-            ]}
-          />
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={onCreateAutomation}
+          >
+            <Icon name="MessageSquarePlus" className="size-4" />
+            Create via chat
+          </Button>
         </div>
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
@@ -317,24 +310,9 @@ export function AutomationsOverview({
   );
 }
 
-const AGENT_AUTOMATION_SEED_PROMPT =
-  "Help me design and create a new bb automation that runs on a schedule. " +
-  "Ask me what it should do, then create it with the `bb automation create` " +
-  "CLI using an agent run (`--prompt`, `--provider`, `--model`, " +
-  "`--permission-mode`) and a 5-field `--cron` schedule with `--timezone`.";
-
-const SCRIPT_AUTOMATION_SEED_PROMPT =
-  "Help me design and create a new bb script automation (no agent, no token " +
-  "spend) that runs on a schedule. Ask me what it should monitor or do, then " +
-  "create it with the `bb automation create` CLI using a script run " +
-  "(`--script` or `--script-file`, `--interpreter`, `--timeout`) and a " +
-  "5-field `--cron` schedule with `--timezone`. Use the `{\"wakeAgent\": false}` " +
-  "gate so it stays silent unless something matters.";
-
 export function AutomationsView() {
   const automationsQuery = useAutomations();
   const navigate = useNavigate();
-  const createThread = useCreateThread();
   const pauseAutomation = usePauseAutomation();
   const resumeAutomation = useResumeAutomation();
   const runAutomation = useRunAutomation();
@@ -403,37 +381,11 @@ export function AutomationsView() {
     );
   }, [closeDeleteDialog, deleteDialog.target, deleteMutate]);
 
-  const createViaChat = useCallback(
-    async (prompt: string) => {
-      if (createThread.isPending) {
-        return;
-      }
-      try {
-        const thread = await createThread.mutateAsync({
-          projectId: PERSONAL_PROJECT_ID,
-          input: [{ type: "text", text: prompt, mentions: [] }],
-          environment: { type: "host", workspace: { type: "personal" } },
-        });
-        navigate(
-          getThreadRoutePath({
-            projectId: thread.projectId,
-            threadId: thread.id,
-          }),
-        );
-      } catch {
-        // Global mutation error handling already surfaced the failure.
-      }
-    },
-    [createThread, navigate],
-  );
-
-  const handleCreateAgentAutomation = useCallback(() => {
-    void createViaChat(AGENT_AUTOMATION_SEED_PROMPT);
-  }, [createViaChat]);
-
-  const handleCreateScriptAutomation = useCallback(() => {
-    void createViaChat(SCRIPT_AUTOMATION_SEED_PROMPT);
-  }, [createViaChat]);
+  const handleCreateAutomation = useCallback(() => {
+    navigate(getRootComposeRoutePath(), {
+      state: { focusPrompt: true, initialPrompt: CREATE_AUTOMATION_PROMPT },
+    });
+  }, [navigate]);
 
   return (
     <>
@@ -442,8 +394,7 @@ export function AutomationsView() {
         isLoading={isLoading}
         hasInitialLoadError={hasInitialLoadError}
         actions={actions}
-        onCreateAgentAutomation={handleCreateAgentAutomation}
-        onCreateScriptAutomation={handleCreateScriptAutomation}
+        onCreateAutomation={handleCreateAutomation}
       />
       <ConfirmDeleteDialog
         open={deleteDialog.isOpen}

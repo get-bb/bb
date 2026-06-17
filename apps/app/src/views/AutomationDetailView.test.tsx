@@ -95,17 +95,28 @@ describe("AutomationDetailContent", () => {
     expect(markup).toContain("Personal workspace");
   });
 
-  it("shows Pause for an enabled automation and Resume for a paused one", () => {
+  it("shows a Pause icon button for an enabled automation and Resume for a paused one", () => {
     const enabled = renderContent({
       automation: makeAutomation({ enabled: true }),
     });
-    expect(enabled).toContain("Pause");
-    expect(enabled).not.toContain(">Resume<");
+    expect(enabled).toContain('aria-label="Pause"');
+    expect(enabled).toContain('data-icon="Pause"');
+    expect(enabled).not.toContain('aria-label="Resume"');
 
     const paused = renderContent({
       automation: makeAutomation({ enabled: false }),
     });
-    expect(paused).toContain("Resume");
+    expect(paused).toContain('aria-label="Resume"');
+    expect(paused).toContain('data-icon="Play"');
+    expect(paused).not.toContain('aria-label="Pause"');
+  });
+
+  it("renders Run now and Delete icon actions", () => {
+    const markup = renderContent({ automation: makeAutomation() });
+    expect(markup).toContain('aria-label="Run now"');
+    expect(markup).toContain('data-icon="Zap"');
+    expect(markup).toContain('aria-label="Delete automation"');
+    expect(markup).toContain('data-icon="Trash2"');
   });
 
   it("renders a succeeded script run with its captured output and exit code", () => {

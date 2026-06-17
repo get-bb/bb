@@ -4,7 +4,10 @@ import type {
   SidebarBootstrapResponse,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
-import { buildMobileRecentThreads } from "./RootComposeView";
+import {
+  buildMobileRecentThreads,
+  readInitialPromptFromLocationState,
+} from "./RootComposeView";
 
 interface MakeThreadArgs {
   id: string;
@@ -106,5 +109,27 @@ describe("buildMobileRecentThreads", () => {
     );
 
     expect(threadIds).toEqual(["thr_personal", "thr_app", "thr_docs"]);
+  });
+});
+
+describe("readInitialPromptFromLocationState", () => {
+  it("returns the initialPrompt string seeded by navigation state", () => {
+    expect(
+      readInitialPromptFromLocationState({
+        focusPrompt: true,
+        initialPrompt: "Create a new bb automation to ",
+      }),
+    ).toBe("Create a new bb automation to ");
+  });
+
+  it("returns null when no usable initialPrompt is present", () => {
+    expect(readInitialPromptFromLocationState(null)).toBeNull();
+    expect(readInitialPromptFromLocationState({})).toBeNull();
+    expect(
+      readInitialPromptFromLocationState({ initialPrompt: "" }),
+    ).toBeNull();
+    expect(
+      readInitialPromptFromLocationState({ initialPrompt: 42 }),
+    ).toBeNull();
   });
 });

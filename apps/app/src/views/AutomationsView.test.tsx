@@ -80,8 +80,7 @@ function renderOverview(
         isLoading={props.isLoading ?? false}
         hasInitialLoadError={props.hasInitialLoadError ?? false}
         actions={props.actions ?? NOOP_ACTIONS}
-        onCreateAgentAutomation={props.onCreateAgentAutomation ?? NOOP}
-        onCreateScriptAutomation={props.onCreateScriptAutomation ?? NOOP}
+        onCreateAutomation={props.onCreateAutomation ?? NOOP}
       />
     </MemoryRouter>,
   );
@@ -204,6 +203,13 @@ describe("AutomationsOverview", () => {
       entries: [makeEntry(makeAutomation({ name: "Watcher" }))],
     });
     expect(markup).toContain("Watcher actions");
+  });
+
+  it("renders a single create-via-chat button without a script option", () => {
+    const markup = renderOverview({ entries: [] });
+    expect(markup).toContain("Create via chat");
+    expect(markup).not.toContain("Script automation");
+    expect(markup).not.toContain("Agent automation");
   });
 });
 

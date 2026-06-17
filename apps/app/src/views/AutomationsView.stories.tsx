@@ -117,8 +117,7 @@ function Story(props: Partial<AutomationsOverviewProps>) {
           isLoading={props.isLoading ?? false}
           hasInitialLoadError={props.hasInitialLoadError ?? false}
           actions={props.actions ?? NOOP_ACTIONS}
-          onCreateAgentAutomation={NOOP}
-          onCreateScriptAutomation={NOOP}
+          onCreateAutomation={NOOP}
         />
       </main>
     </MemoryRouter>

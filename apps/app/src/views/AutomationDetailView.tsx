@@ -7,6 +7,7 @@ import {
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog.js";
 import { EmptyStatePanel } from "@/components/ui/empty-state.js";
+import { Icon } from "@/components/ui/icon.js";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { Pill } from "@/components/ui/pill.js";
 import { useDialogState } from "@/hooks/useDialogState";
@@ -248,46 +249,57 @@ export function AutomationDetailContent({
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1">
           {automation.enabled ? (
             <Button
               type="button"
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
+              className="size-7 rounded-md p-0 text-muted-foreground"
+              aria-label="Pause"
+              title="Pause"
               disabled={actionsPending}
               onClick={onPause}
             >
-              Pause
+              <Icon name="Pause" className="size-4" />
             </Button>
           ) : (
             <Button
               type="button"
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
+              className="size-7 rounded-md p-0 text-muted-foreground"
+              aria-label="Resume"
+              title="Resume"
               disabled={actionsPending}
               onClick={onResume}
             >
-              Resume
+              <Icon name="Play" className="size-4" />
             </Button>
           )}
           <Button
             type="button"
-            variant="default"
-            size="sm"
+            variant="ghost"
+            size="icon"
+            className="size-7 rounded-md p-0 text-muted-foreground"
+            aria-label="Run now"
+            title="Run now"
             disabled={actionsPending}
             onClick={onRun}
           >
-            Run now
+            <Icon name="Zap" className="size-4" />
           </Button>
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive"
+            size="icon"
+            className="size-7 rounded-md p-0 text-muted-foreground hover:text-destructive"
+            aria-label="Delete automation"
+            title="Delete automation"
             disabled={actionsPending}
             onClick={onDelete}
           >
-            Delete
+            <Icon name="Trash2" className="size-4" />
           </Button>
         </div>
 
