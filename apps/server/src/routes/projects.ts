@@ -163,9 +163,14 @@ function buildProjectsWithThreadsResponse(
   );
 }
 
+interface BuildProjectsWithThreadsResponseOptions {
+  includeSideChats?: boolean;
+}
+
 function buildProjectsWithThreadsResponseFromRows(
   deps: AppDeps,
   projectRows: ProjectResponseRow[],
+  options: BuildProjectsWithThreadsResponseOptions = {},
 ): ProjectWithThreadsResponse[] {
   const projects = buildProjectResponsesFromRows(deps, projectRows);
   const projectIds = projects.map((project) => project.id);
@@ -173,6 +178,9 @@ function buildProjectsWithThreadsResponseFromRows(
     deps.db,
     {
       archived: false,
+      ...(options.includeSideChats === false
+        ? { excludeOriginKind: "side-chat" as const }
+        : {}),
       projectIds,
     },
   );
@@ -217,6 +225,7 @@ function buildSidebarBootstrapResponse(deps: AppDeps) {
   const personalProjectResponse = buildProjectsWithThreadsResponseFromRows(
     deps,
     [personalProject],
+    { includeSideChats: false },
   )[0];
   if (!personalProjectResponse) {
     throw new ApiError(
@@ -226,7 +235,11 @@ function buildSidebarBootstrapResponse(deps: AppDeps) {
     );
   }
   return {
-    projects: buildProjectsWithThreadsResponse(deps),
+    projects: buildProjectsWithThreadsResponseFromRows(
+      deps,
+      listPublicProjects(deps.db),
+      { includeSideChats: false },
+    ),
     personalProject: personalProjectResponse,
   };
 }

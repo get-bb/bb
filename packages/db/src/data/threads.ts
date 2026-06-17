@@ -9,6 +9,7 @@ import {
   isNotNull,
   isNull,
   ne,
+  or,
   sql,
 } from "drizzle-orm";
 import type {
@@ -326,6 +327,7 @@ type ThreadRow = typeof threads.$inferSelect;
 export interface ListThreadsForProjectsOptions {
   projectIds: readonly string[];
   archived?: boolean;
+  excludeOriginKind?: ThreadOriginKind;
 }
 
 export interface PinThreadArgs {
@@ -635,6 +637,18 @@ function buildListThreadsForProjectsFilters(
   return [
     inArray(threads.projectId, [...options.projectIds]),
     isNull(threads.deletedAt),
+    options.excludeOriginKind
+      ? and(
+          or(
+            isNull(threads.originKind),
+            ne(threads.originKind, options.excludeOriginKind),
+          ),
+          or(
+            isNull(threads.childOrigin),
+            ne(threads.childOrigin, options.excludeOriginKind),
+          ),
+        )
+      : undefined,
     options.archived === true
       ? isNotNull(threads.archivedAt)
       : options.archived === false
