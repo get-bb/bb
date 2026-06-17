@@ -16,6 +16,7 @@ import {
   PromptBoxInternal,
   type AttachmentsConfig,
   type HistoryConfig,
+  type PromptBoxAction,
   type PromptBoxHandle,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
@@ -136,6 +137,7 @@ export interface NewThreadPromptBoxUIProps {
   history: HistoryConfig;
   typeahead: TypeaheadConfig;
   attachments: AttachmentsConfig;
+  promptActions?: readonly PromptBoxAction[];
 
   /** Thread environment, branch/worktree, permission, and optional header config. */
   modeConfig: NewThreadModeConfig;
@@ -181,6 +183,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   history,
   typeahead,
   attachments,
+  promptActions,
   modeConfig,
   project,
   execution,
@@ -220,6 +223,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
         typeahead={typeahead}
         mentionMenuPlacement="bottom"
         attachments={attachments}
+        promptActions={promptActions}
         voice={voice}
         submission={{
           isSubmitting,

@@ -3,6 +3,7 @@ import { RESET, atomWithStorage } from "jotai/utils";
 import type { PromptTextMention } from "@bb/domain";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -49,6 +50,10 @@ import {
 } from "@/lib/prompt-draft";
 import { cn } from "@/lib/utils";
 import { AttachmentPreview } from "./AttachmentPreview";
+import {
+  PromptBoxActionsMenu,
+  type PromptBoxAction,
+} from "./PromptBoxActionsMenu";
 import {
   PromptMentionLinkContext,
   type PromptMentionLinkResolver,
@@ -260,6 +265,8 @@ export interface PromptBoxHandle {
   getTextBeforeCursor: () => string | undefined;
 }
 
+export type { PromptBoxAction } from "./PromptBoxActionsMenu";
+
 export type MentionMenuPlacement = "top" | "bottom";
 
 export interface PromptBoxInternalProps {
@@ -292,6 +299,7 @@ export interface PromptBoxInternalProps {
    */
   mentionMenuPlacement: MentionMenuPlacement;
   attachments?: AttachmentsConfig;
+  promptActions?: readonly PromptBoxAction[];
   zenMode?: PromptBoxZenModeConfig;
   history?: HistoryConfig;
   /** When omitted, the mic button is hidden. Wrappers wire this via usePromptVoice. */
@@ -335,6 +343,11 @@ type ZenModeUpdate =
   | ((previous: boolean) => boolean | typeof RESET);
 
 type PromptBoxMouseDownEvent = ReactMouseEvent<HTMLFormElement>;
+
+interface PromptActionInsertionRange {
+  from: number;
+  to: number;
+}
 
 const PROMPTBOX_INTERACTIVE_TARGET_SELECTOR = [
   "a[href]",
@@ -569,6 +582,70 @@ function isPromptBoxChromeTarget(target: EventTarget | null): boolean {
   return target.closest(PROMPTBOX_INTERACTIVE_TARGET_SELECTOR) === null;
 }
 
+function promptActionTextImmediatelyBeforeCursor(
+  editor: Editor,
+  actionText: string,
+): boolean {
+  if (!editor.state.selection.empty) {
+    return false;
+  }
+
+  const before = editor.state.doc.textBetween(
+    0,
+    editor.state.selection.from,
+    "\n",
+    "\n",
+  );
+  return before.endsWith(actionText);
+}
+
+function getPromptActionInsertionRange({
+  editor,
+  action,
+  triggers,
+}: {
+  editor: Editor;
+  action: PromptBoxAction;
+  triggers: readonly TypeaheadTrigger[];
+}): PromptActionInsertionRange | null {
+  const selection = editor.state.selection;
+  if (!selection.empty) {
+    return { from: selection.from, to: selection.to };
+  }
+
+  const activeCommandTrigger = findActiveTrigger(editor, triggers);
+  const isActiveCommand =
+    activeCommandTrigger !== null && activeCommandTrigger.kind === "command";
+
+  if (action.kind === "skills") {
+    if (
+      isActiveCommand &&
+      activeCommandTrigger.char === action.text &&
+      activeCommandTrigger.to === selection.from
+    ) {
+      return null;
+    }
+    return { from: selection.from, to: selection.to };
+  }
+
+  if (isActiveCommand) {
+    const activeText = editor.state.doc.textBetween(
+      activeCommandTrigger.from,
+      activeCommandTrigger.to,
+      "\n",
+      "\n",
+    );
+    if (activeText.length > 0 && action.text.startsWith(activeText)) {
+      return {
+        from: activeCommandTrigger.from,
+        to: activeCommandTrigger.to,
+      };
+    }
+  }
+
+  return { from: selection.from, to: selection.to };
+}
+
 export function PromptBoxInternal({
   id,
   value,
@@ -584,6 +661,7 @@ export function PromptBoxInternal({
   typeahead,
   mentionMenuPlacement,
   attachments: attachmentConfig = {},
+  promptActions,
   zenMode = {},
   history,
   voice,
@@ -1385,6 +1463,64 @@ export function PromptBoxInternal({
     [scheduleRevealEditorSelection],
   );
 
+  const focusAfterPromptAction = useCallback(
+    (currentEditor: Editor) => {
+      currentEditor.commands.focus();
+      syncTriggerState(currentEditor);
+      scheduleRevealEditorSelection();
+    },
+    [scheduleRevealEditorSelection, syncTriggerState],
+  );
+
+  const applyPromptAction = useCallback(
+    (action: PromptBoxAction) => {
+      if (action.text.length === 0) return;
+
+      const currentEditor = editorRef.current;
+      if (!currentEditor || currentEditor.isDestroyed) {
+        const currentValue = valueRef.current;
+        if (currentValue.endsWith(action.text)) return;
+        onChangeRef.current(`${currentValue}${action.text}`, [
+          ...mentionRangesRef.current,
+        ]);
+        return;
+      }
+
+      if (promptActionTextImmediatelyBeforeCursor(currentEditor, action.text)) {
+        focusAfterPromptAction(currentEditor);
+        return;
+      }
+
+      const insertionRange = getPromptActionInsertionRange({
+        editor: currentEditor,
+        action,
+        triggers,
+      });
+      if (insertionRange === null) {
+        focusAfterPromptAction(currentEditor);
+        return;
+      }
+
+      const transaction = currentEditor.state.tr.insertText(
+        action.text,
+        insertionRange.from,
+        insertionRange.to,
+      );
+      transaction.setSelection(
+        TextSelection.create(
+          transaction.doc,
+          insertionRange.from + action.text.length,
+        ),
+      );
+      triggerKeyRef.current = "";
+      dismissedTriggerRef.current = null;
+      setSelectedIndex(0);
+      currentEditor.view.dispatch(transaction.scrollIntoView());
+      focusAfterPromptAction(currentEditor);
+    },
+    [focusAfterPromptAction, triggers],
+  );
+
   const getTextBeforeCursor = useCallback((): string | undefined => {
     const currentValue = valueRef.current;
     const currentEditor = editorRef.current;
@@ -1875,6 +2011,10 @@ export function PromptBoxInternal({
           {footerStart}
         </div>
         <div className="flex shrink-0 flex-row items-center gap-1">
+          <PromptBoxActionsMenu
+            actions={promptActions}
+            onAction={applyPromptAction}
+          />
           <Button
             type="button"
             size="icon"

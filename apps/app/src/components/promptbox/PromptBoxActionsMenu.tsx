@@ -1,0 +1,110 @@
+import { Button } from "@/components/ui/button.js";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.js";
+import { Icon, type IconName } from "@/components/ui/icon.js";
+import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+
+export type PromptBoxActionKind = "skills" | "plan" | "goal";
+
+export interface PromptBoxAction {
+  kind: PromptBoxActionKind;
+  text: string;
+  label?: string;
+  disabled?: boolean;
+}
+
+interface PromptBoxActionsMenuProps {
+  actions?: readonly PromptBoxAction[];
+  onAction: (action: PromptBoxAction) => void;
+}
+
+const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
+  "skills",
+  "plan",
+  "goal",
+];
+
+const PROMPT_ACTION_PRESENTATION = {
+  skills: {
+    label: "Skills",
+    icon: "Explore",
+  },
+  plan: {
+    label: "Plan",
+    icon: "ListTodo",
+  },
+  goal: {
+    label: "Goal",
+    icon: "Target",
+  },
+} as const satisfies Record<
+  PromptBoxActionKind,
+  { label: string; icon: IconName }
+>;
+
+function orderedPromptActions(
+  actions: readonly PromptBoxAction[],
+): PromptBoxAction[] {
+  return PROMPT_ACTION_ORDER.flatMap((kind) => {
+    const action = actions.find((candidate) => candidate.kind === kind);
+    return action ? [action] : [];
+  });
+}
+
+export function PromptBoxActionsMenu({
+  actions = [],
+  onAction,
+}: PromptBoxActionsMenuProps) {
+  const visibleActions = orderedPromptActions(actions).filter(
+    (action) => action.text.length > 0,
+  );
+
+  if (visibleActions.length === 0) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          title="Prompt actions"
+          aria-label="Prompt actions"
+          className={COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS}
+        >
+          <Icon name="Plus" className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        side="top"
+        className="w-36"
+        mobileTitle="Prompt actions"
+      >
+        {visibleActions.map((action) => {
+          const presentation = PROMPT_ACTION_PRESENTATION[action.kind];
+          return (
+            <DropdownMenuItem
+              key={action.kind}
+              disabled={action.disabled}
+              onSelect={() => onAction(action)}
+            >
+              <Icon
+                name={presentation.icon}
+                className="size-4 text-muted-foreground"
+                aria-hidden
+              />
+              {action.label ?? presentation.label}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

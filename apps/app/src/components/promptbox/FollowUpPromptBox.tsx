@@ -13,6 +13,7 @@ import {
   PromptBoxInternal,
   type AttachmentsConfig,
   type HistoryConfig,
+  type PromptBoxAction,
   type PromptBoxHandle,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
@@ -156,6 +157,7 @@ export interface FollowUpPromptBoxProps {
    */
   readOnly?: boolean;
   typeahead: TypeaheadConfig;
+  promptActions?: readonly PromptBoxAction[];
   /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
   zenModeResetKey: string | number;
   /**
@@ -196,6 +198,7 @@ function FollowUpPromptBoxWithComposer({
   permission,
   readOnly,
   typeahead,
+  promptActions,
   zenModeResetKey,
   focusEndKey,
 }: FollowUpPromptBoxWithComposerProps) {
@@ -332,6 +335,7 @@ function FollowUpPromptBoxWithComposer({
           }}
           typeahead={typeahead}
           attachments={attachments}
+          promptActions={promptActions}
           zenMode={{
             layout: "thread",
             storageKey: null,
