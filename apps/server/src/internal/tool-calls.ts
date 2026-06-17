@@ -7,6 +7,10 @@ import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
 import { requireThreadEnvironment } from "../services/lib/entity-lookup.js";
+import {
+  handleUpdateEnvironmentDirectoryToolCall,
+  UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,
+} from "../services/threads/thread-environment-directory.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
 
 export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
@@ -23,7 +27,7 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
         db: deps.db,
         sessionId: payload.sessionId,
       });
-      const { environment } = requireThreadEnvironment(
+      const { environment, thread } = requireThreadEnvironment(
         deps.db,
         payload.threadId,
       );
@@ -32,6 +36,16 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
           403,
           "invalid_request",
           "Thread does not belong to the session host",
+        );
+      }
+
+      if (payload.tool === UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME) {
+        return context.json(
+          await handleUpdateEnvironmentDirectoryToolCall(deps, {
+            currentEnvironment: environment,
+            input: payload.arguments,
+            thread,
+          }),
         );
       }
 

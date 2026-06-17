@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isAcpProviderId } from "@bb/agent-providers";
 import { getProject } from "@bb/db";
 import type {
   DynamicTool,
@@ -24,19 +25,23 @@ import {
   resolveExistingThreadExecutionPlan,
 } from "./thread-execution-plan.js";
 import { resolveInjectedSkillSources } from "../skills/injected-skills.js";
+import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL } from "./thread-environment-directory.js";
+import { isSideChatThread } from "./side-chat-thread.js";
 import {
   DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH,
   WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
   readDataDirAgentInstructions,
   readWorkspaceAgentInstructions,
 } from "./workspace-agent-instructions.js";
-import { isSideChatThread } from "./side-chat-thread.js";
 export { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
 
 const STANDARD_AGENT_INSTRUCTIONS = renderTemplate(
   "standardAgentAppendInstructions",
   {},
 );
+const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
+  "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. After it succeeds, stop work in the current turn; future turns will run in the updated environment.";
+
 export interface ThreadRuntimeCommandEnvironment {
   hostId: string;
   id: string;
@@ -87,6 +92,14 @@ function requireWorkspacePath(
   return environment.path;
 }
 
+function resolveDynamicTools(thread: Thread): DynamicTool[] {
+  if (isAcpProviderId(thread.providerId)) {
+    return [];
+  }
+
+  return [UPDATE_ENVIRONMENT_DIRECTORY_TOOL];
+}
+
 export function resolvePermissionEscalation(
   args: ResolvePermissionEscalationArgs,
 ): PermissionEscalation {
@@ -135,11 +148,15 @@ export async function resolveThreadRuntimeCommandConfig(
     deps.logger,
     deps.config.dataDir,
   );
+  const dynamicTools = resolveDynamicTools(args.thread);
   const workspaceAgentInstructions = readWorkspaceAgentInstructions(
     deps.logger,
     workspacePath,
   );
   const instructionSections = [STANDARD_AGENT_INSTRUCTIONS];
+  if (dynamicTools.length > 0) {
+    instructionSections.push(UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS);
+  }
   if (dataDirAgentInstructions) {
     instructionSections.push(
       `The following user instructions come from <dataDir>/${DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH}:`,
@@ -158,7 +175,7 @@ export async function resolveThreadRuntimeCommandConfig(
     threadId: args.thread.id,
   });
   return {
-    dynamicTools: [],
+    dynamicTools,
     injectedSkillSources,
     instructionMode: "append",
     instructions,

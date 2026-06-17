@@ -178,8 +178,12 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
 
         expect(parentRuntimeCommand.commandType).toBe("thread/start");
         expect(childRuntimeCommand.commandType).toBe("thread/start");
-        expect(parentRuntimeCommand.dynamicToolNames).toEqual([]);
-        expect(childRuntimeCommand.dynamicToolNames).toEqual([]);
+        expect(parentRuntimeCommand.dynamicToolNames).toEqual([
+          "update_environment_directory",
+        ]);
+        expect(childRuntimeCommand.dynamicToolNames).toEqual([
+          "update_environment_directory",
+        ]);
         expect(parentRuntimeCommand.instructions).toContain(
           "If you need to orchestrate work across bb",
         );

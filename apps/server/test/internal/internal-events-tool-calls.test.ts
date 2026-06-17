@@ -1,11 +1,20 @@
 import { eq } from "drizzle-orm";
-import { closeSession, events, threads } from "@bb/db";
+import {
+  closeSession,
+  events,
+  getEnvironment,
+  getThread,
+  listEnvironments,
+  threads,
+} from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import type { HostDaemonEventEnvelope } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
   internalAuthHeaders,
   listQueuedThreadCommands,
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -30,6 +39,31 @@ async function postEventBatch(args: {
     body: JSON.stringify({
       sessionId: args.sessionId,
       events: args.events,
+    }),
+  });
+}
+
+async function postToolCall(args: {
+  arguments?: unknown;
+  callId?: string;
+  harness: TestAppHarness;
+  providerThreadId?: string;
+  sessionId: string;
+  threadId: string;
+  tool: string;
+  turnId?: string;
+}): Promise<Response> {
+  return args.harness.app.request("/internal/session/tool-call", {
+    method: "POST",
+    headers: internalAuthHeaders(args.harness),
+    body: JSON.stringify({
+      sessionId: args.sessionId,
+      threadId: args.threadId,
+      providerThreadId: args.providerThreadId ?? "provider-tool-call",
+      turnId: args.turnId ?? "turn-tool-call",
+      callId: args.callId ?? "call-tool-call",
+      tool: args.tool,
+      arguments: args.arguments,
     }),
   });
 }
@@ -469,6 +503,184 @@ describe("internal event and tool-call routes", () => {
           .where(eq(threads.id, thread.id))
           .get(),
       ).toEqual(settledRow);
+    });
+  });
+
+  it("updates a thread to an existing environment for the requested host path", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const currentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/current-environment",
+      });
+      const targetEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/existing-managed-worktree",
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: currentEnvironment.id,
+      });
+
+      const response = await postToolCall({
+        harness,
+        sessionId: session.id,
+        threadId: thread.id,
+        tool: "update_environment_directory",
+        arguments: { path: "/tmp/existing-managed-worktree/" },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        success: true,
+        contentItems: [
+          {
+            type: "inputText",
+            text: expect.stringContaining(
+              "Environment directory updated to /tmp/existing-managed-worktree",
+            ),
+          },
+        ],
+      });
+      expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+        targetEnvironment.id,
+      );
+      expect(listEnvironments(harness.db, project.id)).toHaveLength(2);
+      const storedEvents = harness.db
+        .select()
+        .from(events)
+        .where(eq(events.threadId, thread.id))
+        .all();
+      expect(storedEvents).toHaveLength(1);
+      expect(storedEvents[0]?.type).toBe("system/operation");
+    });
+  });
+
+  it("creates an unmanaged environment for a new requested host path", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const currentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/current-environment",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: currentEnvironment.id,
+      });
+
+      const responsePromise = postToolCall({
+        harness,
+        sessionId: session.id,
+        threadId: thread.id,
+        tool: "update_environment_directory",
+        arguments: { path: "/tmp/new-unmanaged-worktree" },
+      });
+      const provisionCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.workspaceProvisionType === "unmanaged" &&
+          command.path === "/tmp/new-unmanaged-worktree" &&
+          command.initiator?.threadId === thread.id,
+      );
+      if (provisionCommand.command.type !== "environment.provision") {
+        throw new Error("Expected environment.provision command");
+      }
+
+      await reportQueuedCommandSuccess(harness, provisionCommand, {
+        path: "/tmp/new-unmanaged-worktree",
+        isGitRepo: true,
+        isWorktree: true,
+        branchName: "feature/new-worktree",
+        defaultBranch: "main",
+        transcript: [],
+      });
+      const response = await responsePromise;
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        success: true,
+        contentItems: [
+          {
+            type: "inputText",
+            text: expect.stringContaining(
+              "Environment directory updated to /tmp/new-unmanaged-worktree",
+            ),
+          },
+        ],
+      });
+      const targetEnvironment = listEnvironments(harness.db, project.id).find(
+        (environment) => environment.path === "/tmp/new-unmanaged-worktree",
+      );
+      expect(targetEnvironment).toMatchObject({
+        hostId: host.id,
+        projectId: project.id,
+        status: "ready",
+        workspaceProvisionType: "unmanaged",
+      });
+      expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+        targetEnvironment?.id,
+      );
+      expect(
+        targetEnvironment
+          ? getEnvironment(harness.db, targetEnvironment.id)
+          : null,
+      ).toMatchObject({
+        branchName: "feature/new-worktree",
+        isGitRepo: true,
+        isWorktree: true,
+      });
+    });
+  });
+
+  it("rejects relative update_environment_directory paths without changing the thread", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      const response = await postToolCall({
+        harness,
+        sessionId: session.id,
+        threadId: thread.id,
+        tool: "update_environment_directory",
+        arguments: { path: "../other-checkout" },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        success: false,
+        contentItems: [
+          {
+            type: "inputText",
+            text: "Path must be an absolute path on the current host.",
+          },
+        ],
+      });
+      expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+        environment.id,
+      );
+      expect(listEnvironments(harness.db, project.id)).toHaveLength(1);
     });
   });
 
