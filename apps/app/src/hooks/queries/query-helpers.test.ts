@@ -150,6 +150,7 @@ function makeThreadTimelineResponse(
 ): ThreadTimelineResponse {
   return {
     activeThinking: null,
+    activeWorkflow: null,
     pendingTodos: null,
     goal: null,
     rows,

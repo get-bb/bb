@@ -83,7 +83,6 @@ import {
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
-import { selectActiveWorkflowRow } from "./selectActiveWorkflowRow";
 import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
@@ -634,6 +633,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
   const {
     activeThinking,
+    activeWorkflow,
     contextWindowUsage,
     goal,
     hasOlderTimelineRows,
@@ -646,10 +646,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   } = useThreadTimelinePages({
     threadId: threadId ?? "",
   });
-  const activeWorkflow = useMemo(
-    () => selectActiveWorkflowRow(timelineRows),
-    [timelineRows],
-  );
   const sendMessage = useSendThreadMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
   const markThreadRead = useMarkThreadRead();

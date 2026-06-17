@@ -170,6 +170,7 @@ function emptyEventProjection(): EventProjection {
     entries: [],
     state: {
       activeThinking: null,
+      activeWorkflow: null,
     },
   };
 }

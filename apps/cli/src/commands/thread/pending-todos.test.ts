@@ -106,6 +106,7 @@ describe("fetchThreadPendingTodos", () => {
   ): ThreadTimelineResponse {
     return {
       activeThinking: null,
+      activeWorkflow: null,
       pendingTodos,
       goal: null,
       rows: [],

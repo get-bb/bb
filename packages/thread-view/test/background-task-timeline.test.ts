@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildThreadTimelineFromEvents,
   EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+  type ThreadTimelineFromEventsResult,
   type ThreadEventWithMeta,
 } from "../src/index.js";
 
@@ -23,22 +24,32 @@ function withMeta(event: ThreadEvent, seq: number): ThreadEventWithMeta {
   };
 }
 
-function buildTimelineRows(events: ThreadEventWithMeta[]): TimelineRow[] {
+function buildTimeline(
+  events: ThreadEventWithMeta[],
+  options: {
+    includeNestedRows?: boolean;
+    turnMessageDetail?: "summary" | "full";
+  } = {},
+): ThreadTimelineFromEventsResult {
   return buildThreadTimelineFromEvents({
     acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
     contextWindowEvents: [],
     events,
     options: {
       includeDebugRawEvents: false,
-      includeNestedRows: true,
+      includeNestedRows: options.includeNestedRows ?? true,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
-      turnMessageDetail: "full",
+      turnMessageDetail: options.turnMessageDetail ?? "full",
       workspaceRoot: null,
     },
-  }).rows;
+  });
+}
+
+function buildTimelineRows(events: ThreadEventWithMeta[]): TimelineRow[] {
+  return buildTimeline(events).rows;
 }
 
 function findWorkflowRows(rows: TimelineRow[]): TimelineWorkflowWorkRow[] {
@@ -325,8 +336,50 @@ describe("background task timeline projection", () => {
     });
   });
 
+  it("surfaces an active workflow when the spawning turn is summarized", () => {
+    const timeline = buildTimeline(
+      [
+        turnStarted("turn-1", 1),
+        withMeta(
+          {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: turnScope("turn-1"),
+            item: taskItem({ status: "pending", taskStatus: "running" }),
+          },
+          2,
+        ),
+        turnCompleted("turn-1", 3),
+        withMeta(
+          {
+            type: "item/backgroundTask/progress",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: threadScope(),
+            item: taskItem({
+              status: "pending",
+              taskStatus: "running",
+              workflow: RUNNING_SNAPSHOT,
+            }),
+          },
+          4,
+        ),
+      ],
+      { includeNestedRows: false, turnMessageDetail: "summary" },
+    );
+
+    expect(findWorkflowRows(timeline.rows)).toHaveLength(0);
+    expect(timeline.activeWorkflow).toMatchObject({
+      itemId: "task:wf-1",
+      status: "pending",
+      taskStatus: "running",
+      workflowName: "fixture-mini",
+    });
+  });
+
   it("hides skip_transcript tasks from the timeline", () => {
-    const rows = buildTimelineRows([
+    const timeline = buildTimeline([
       turnStarted("turn-1", 1),
       withMeta(
         {
@@ -344,6 +397,7 @@ describe("background task timeline projection", () => {
       ),
     ]);
 
-    expect(findWorkflowRows(rows)).toHaveLength(0);
+    expect(findWorkflowRows(timeline.rows)).toHaveLength(0);
+    expect(timeline.activeWorkflow).toBeNull();
   });
 });

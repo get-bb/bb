@@ -12,6 +12,7 @@ import type {
   TimelineSystemRow,
   TimelineTurnRow,
   TimelineUserConversationRow,
+  TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
 import {
   readTerminalOutputLines,
@@ -96,6 +97,7 @@ export interface BuildThreadTimelineFromEventsArgs {
 
 export interface ThreadTimelineFromEventsResult {
   activeThinking: ActiveThinking | null;
+  activeWorkflow: TimelineWorkflowWorkRow | null;
   contextWindowUsage: ThreadContextWindowUsage | null;
   goal: ThreadTimelineGoal | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
@@ -191,6 +193,10 @@ const ROOT_TIMELINE_ROW_ID_PREFIX = "";
 type TimelineOperationMessage = Extract<
   EventProjectionMessage,
   { kind: "operation" }
+>;
+type TimelineWorkflowMessage = Extract<
+  EventProjectionMessage,
+  { kind: "workflow" }
 >;
 type TimelineGenericSystemOperationKind = Exclude<
   TimelineSystemOperationKind,
@@ -298,6 +304,32 @@ function buildTimelineRowBase(
     sourceSeqEnd: message.sourceSeqEnd,
     startedAt: getMessageStartedAt(message),
     createdAt: message.createdAt,
+  };
+}
+
+function buildWorkflowWorkRow(
+  message: TimelineWorkflowMessage,
+  rowIdPrefix: string,
+): TimelineWorkflowWorkRow | null {
+  // Ambient/housekeeping tasks stay out of both the inline transcript and the
+  // prompt-stack workflow banner.
+  if (message.skipTranscript) {
+    return null;
+  }
+  return {
+    ...buildTimelineRowBase(message, rowIdPrefix),
+    kind: "work",
+    workKind: "workflow",
+    status: message.status,
+    itemId: message.itemId,
+    workflowName: message.workflowName,
+    description: message.description,
+    taskStatus: message.taskStatus,
+    workflow: message.workflow,
+    usage: message.usage,
+    summary: message.summary,
+    error: message.error,
+    completedAt: message.completedAt,
   };
 }
 
@@ -632,28 +664,10 @@ function convertMessage(
         },
       ];
     }
-    case "workflow":
-      // Ambient/housekeeping tasks stay out of the inline transcript.
-      if (message.skipTranscript) {
-        return [];
-      }
-      return [
-        {
-          ...buildTimelineRowBase(message, options.rowIdPrefix),
-          kind: "work",
-          workKind: "workflow",
-          status: message.status,
-          itemId: message.itemId,
-          workflowName: message.workflowName,
-          description: message.description,
-          taskStatus: message.taskStatus,
-          workflow: message.workflow,
-          usage: message.usage,
-          summary: message.summary,
-          error: message.error,
-          completedAt: message.completedAt,
-        },
-      ];
+    case "workflow": {
+      const row = buildWorkflowWorkRow(message, options.rowIdPrefix);
+      return row ? [row] : [];
+    }
     case "permission-grant-lifecycle":
       return [
         {
@@ -1108,6 +1122,12 @@ export function buildThreadTimelineFromEvents(
 
   return {
     activeThinking: projection.state.activeThinking,
+    activeWorkflow: projection.state.activeWorkflow
+      ? buildWorkflowWorkRow(
+          projection.state.activeWorkflow,
+          ROOT_TIMELINE_ROW_ID_PREFIX,
+        )
+      : null,
     contextWindowUsage: extractThreadContextWindowUsage(
       args.contextWindowEvents,
     ),

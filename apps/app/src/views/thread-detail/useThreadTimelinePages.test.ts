@@ -97,6 +97,7 @@ function makeTimelineResponse(
   return {
     rows,
     activeThinking: null,
+    activeWorkflow: null,
     pendingTodos: null,
     goal: null,
     timelinePage: {

@@ -21,7 +21,10 @@ import {
   threadWithRuntimeSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
-import { timelineRowSchema } from "../thread-timeline.js";
+import {
+  timelineRowSchema,
+  timelineWorkflowWorkRowSchema,
+} from "../thread-timeline.js";
 import {
   environmentArgsSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
@@ -402,10 +405,11 @@ export const threadTimelineQuerySchema = z
     beforeAnchorId: z.string().min(1),
     /**
      * When `"true"`, the response omits row generation and returns
-     * `rows: []` with the tail-only fields (`activeThinking`, `pendingTodos`,
-     * `contextWindowUsage`) populated normally. Used by the CLI to read
-     * tail state without paying for the full row payload on every
-     * `bb status` invocation. Implies `latest` page semantics.
+     * `rows: []` with the tail-only fields (`activeThinking`,
+     * `activeWorkflow`, `pendingTodos`, `contextWindowUsage`) populated
+     * normally. Used by the CLI to read tail state without paying for the full
+     * row payload on every `bb status` invocation. Implies `latest` page
+     * semantics.
      */
     summaryOnly: z.enum(["true", "false"]),
   })
@@ -508,6 +512,7 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   activeThinking: activeThinkingSchema.nullable(),
+  activeWorkflow: timelineWorkflowWorkRowSchema.nullable(),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
   goal: threadTimelineGoalSchema.nullable(),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),

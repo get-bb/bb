@@ -46,4 +46,5 @@ export type {
   EventProjectionUserMessage,
   EventProjectionWebFetchMessage,
   EventProjectionWebSearchMessage,
+  EventProjectionWorkflowMessage,
 } from "./event-projection-message.js";

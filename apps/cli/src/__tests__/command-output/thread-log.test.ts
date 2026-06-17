@@ -73,6 +73,8 @@ describe("bb thread log command output", () => {
           mentions: [],
           initiator: "user",
           senderThreadId: null,
+          systemMessageKind: "unlabeled",
+          systemMessageSubject: null,
           turnRequest: { kind: "message", status: "accepted" },
         },
         {
