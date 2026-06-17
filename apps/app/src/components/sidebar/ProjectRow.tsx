@@ -988,6 +988,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   );
   const showChildren = !isCollapsed && hasChildren;
   const hasComposerDraft = usePromptDraftHasInput({
+    kind: "thread",
     projectId,
     threadId: node.thread.id,
   });

@@ -1,8 +1,3 @@
-import { atomFamily } from "jotai-family";
-import { atomWithStorage } from "jotai/utils";
-import { getProjectScopedStorageKey } from "./project-scoped-storage";
-
-type ProjectScopedStorageParam = string | null | undefined;
 type StringValueGuard<T extends string> = (value: string) => value is T;
 type StoredValueListener = (storedValue: string | null) => void;
 
@@ -30,12 +25,6 @@ interface SyncStringStorage {
 interface LocalStorageValueCodec<T> {
   parse: (storedValue: string | null, initialValue: T) => T;
   serialize: (value: T) => string;
-}
-
-export interface CreatePersistedEnumAtomArgs<T extends string> {
-  baseKey: string;
-  initialValue: T;
-  isValue: StringValueGuard<T>;
 }
 
 function getLocalStorage(): Storage | null {
@@ -166,31 +155,4 @@ export function createNullableLocalStorageEnumStorage<T extends string>(
         );
       }),
   };
-}
-
-export function createProjectScopedStorageAtomFamily<T>(
-  baseKey: string,
-  initialValue: T,
-  storage: SyncStorage<T>,
-) {
-  return atomFamily((projectId: ProjectScopedStorageParam) =>
-    atomWithStorage<T>(
-      getProjectScopedStorageKey(baseKey, projectId),
-      initialValue,
-      storage,
-      { getOnInit: true },
-    ),
-  );
-}
-
-export function createPersistedEnumAtom<T extends string>({
-  baseKey,
-  initialValue,
-  isValue,
-}: CreatePersistedEnumAtomArgs<T>) {
-  return createProjectScopedStorageAtomFamily(
-    baseKey,
-    initialValue,
-    createLocalStorageEnumStorage(isValue),
-  );
 }

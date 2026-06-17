@@ -16,10 +16,9 @@ const PROMPT_DRAFT_STORAGE_PREFIX = "bb.promptbox.contents";
 const PROMPT_DRAFT_STORAGE_VERSION = "3";
 const PROMPT_DRAFT_PERSIST_DEBOUNCE_MS = 250;
 
-export interface PromptDraftScope {
-  projectId?: string | null;
-  threadId?: string | null;
-}
+export type PromptDraftScope =
+  | { kind: "new-thread" }
+  | { kind: "thread"; projectId: string; threadId: string };
 
 interface PromptDraftCacheEntry {
   rawValue: string | null;
@@ -220,28 +219,18 @@ function restorePromptDraftIfEmpty(
   return true;
 }
 
-function getPromptDraftStorageKey({
-  projectId,
-  threadId,
-}: PromptDraftScope): string | null {
-  if (!projectId) return null;
-  const normalizedProjectId = normalizeStorageSegment(projectId);
-  if (threadId) {
-    const normalizedThreadId = normalizeStorageSegment(threadId);
-    return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-${normalizedThreadId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+function getPromptDraftStorageKey(scope: PromptDraftScope): string | null {
+  if (scope.kind === "new-thread") {
+    return `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
   }
-  return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
+
+  const normalizedProjectId = normalizeStorageSegment(scope.projectId);
+  const normalizedThreadId = normalizeStorageSegment(scope.threadId);
+  return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-${normalizedThreadId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
 }
 
 export function usePromptDraftStorage(scope: PromptDraftScope) {
-  const storageKey = useMemo(
-    () =>
-      getPromptDraftStorageKey({
-        projectId: scope.projectId,
-        threadId: scope.threadId,
-      }),
-    [scope.projectId, scope.threadId],
-  );
+  const storageKey = getPromptDraftStorageKey(scope);
   const draft = useSyncExternalStore(
     useCallback(
       (listener) => subscribePromptDraft(storageKey, listener),
@@ -382,14 +371,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
 }
 
 export function usePromptDraftHasInput(scope: PromptDraftScope): boolean {
-  const storageKey = useMemo(
-    () =>
-      getPromptDraftStorageKey({
-        projectId: scope.projectId,
-        threadId: scope.threadId,
-      }),
-    [scope.projectId, scope.threadId],
-  );
+  const storageKey = getPromptDraftStorageKey(scope);
 
   return useSyncExternalStore(
     useCallback(

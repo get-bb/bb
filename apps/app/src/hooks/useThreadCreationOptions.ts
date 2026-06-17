@@ -24,12 +24,12 @@ import { getProviderIconInfo } from "@/lib/provider-icon";
 import { reconcileReasoningLevel } from "@bb/domain";
 import { useSystemExecutionOptions } from "./queries/system-queries";
 import {
-  usePersistedEnvironmentSelection,
-  usePersistedModelSelection,
-  usePersistedPermissionModeSelection,
-  usePersistedProviderSelection,
-  usePersistedReasoningLevelSelection,
-  usePersistedServiceTierSelection,
+  usePromptBoxEnvironmentPreference,
+  usePromptBoxModelPreference,
+  usePromptBoxPermissionModePreference,
+  usePromptBoxProviderPreference,
+  usePromptBoxReasoningLevelPreference,
+  usePromptBoxServiceTierPreference,
 } from "./thread-creation-options/persisted-selection-fields";
 import {
   buildExecutionInputSources,
@@ -150,24 +150,23 @@ export function useThreadCreationOptions(
     initialPermissionMode,
     initialReasoningLevel,
     initialServiceTier,
-    projectId,
     resetKey,
     scope = "new-thread",
   } = options ?? {};
   const { setValue: setStoredProviderId, value: storedProviderId } =
-    usePersistedProviderSelection(projectId);
+    usePromptBoxProviderPreference();
   const { setValue: setStoredSelectedModel, value: storedSelectedModel } =
-    usePersistedModelSelection(projectId);
+    usePromptBoxModelPreference();
   const { setValue: setStoredServiceTier, value: storedServiceTier } =
-    usePersistedServiceTierSelection(projectId);
+    usePromptBoxServiceTierPreference();
   const { setValue: setStoredReasoningLevel, value: storedReasoningLevel } =
-    usePersistedReasoningLevelSelection(projectId);
+    usePromptBoxReasoningLevelPreference();
   const { setValue: setStoredPermissionMode, value: storedPermissionMode } =
-    usePersistedPermissionModeSelection(projectId);
+    usePromptBoxPermissionModePreference();
   const {
     setValue: setStoredEnvironmentSelectionValue,
     value: storedEnvironmentSelectionValue,
-  } = usePersistedEnvironmentSelection(projectId);
+  } = usePromptBoxEnvironmentPreference();
   // Reuse env values are intentionally NEVER persisted to localStorage —
   // they represent a transient "create one thread in this worktree" intent,
   // not a project default.
