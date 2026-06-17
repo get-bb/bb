@@ -30,6 +30,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
   FollowUpPromptBox: ({
     attachments,
     composer,
+    stack,
     typeahead,
   }: {
     attachments: {
@@ -52,6 +53,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
         onQueryChange: (query: string | null) => void;
       };
     };
+    stack: ReactNode | null;
   }) => (
     <div>
       <input
@@ -85,6 +87,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
         Command query
       </button>
       <span data-testid="command-trigger">{typeahead.command.trigger}</span>
+      <span data-testid="side-chat-stack-state">
+        {stack === null ? "null" : "provided"}
+      </span>
       <button
         type="button"
         disabled={!composer.canModifierSubmit}
@@ -315,6 +320,14 @@ describe("SideChatTabContent", () => {
 
     expect(mocks.createThreadMutateAsync).not.toHaveBeenCalled();
     expect(screen.queryByText("Provisioning side chat...")).toBeNull();
+  });
+
+  it("uses the shared follow-up prompt height path when there are no queued messages", () => {
+    renderDraftSideChat();
+
+    expect(screen.getByTestId("side-chat-stack-state").textContent).toBe(
+      "provided",
+    );
   });
 
   it("creates the side-chat child thread with the first submitted message", async () => {

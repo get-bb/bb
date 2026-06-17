@@ -284,9 +284,8 @@ function FollowUpPromptBoxWithComposer({
   }, []);
   // The elastic pre-size keeps the prompt area's total height constant as the
   // stack (context banner + queued messages) mounts/unmounts so the timeline
-  // doesn't shift. A composer with no stack (the side chat) has nothing to
-  // compensate for, so it uses the plain default height — matching the main
-  // thread composer's input box instead of rendering a banner-height taller.
+  // doesn't shift. Callers that need the main-thread prompt height should pass
+  // an empty stack instead of null.
   const elasticTextareaMinHeight =
     stack === null
       ? FOLLOW_UP_PROMPT_BOX_DEFAULT_MIN_HEIGHT

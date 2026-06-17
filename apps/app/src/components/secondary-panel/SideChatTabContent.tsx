@@ -1125,7 +1125,7 @@ export function SideChatTabContent({
       <div className="px-4 pb-4 pt-2">
         <FollowUpPromptBox
           attachments={attachmentsConfig}
-          stack={queuedMessagesStack}
+          stack={queuedMessagesStack ?? <></>}
           composer={composerConfig}
           environmentSummary={environmentSummary}
           contextWindowUsage={null}
