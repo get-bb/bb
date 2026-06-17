@@ -120,7 +120,10 @@ import {
   useThreadStorageBrowser,
   type ThreadStoragePathSelectHandler,
 } from "@/components/secondary-panel/useThreadStorageBrowser";
-import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
+import {
+  useThreadFileTabs,
+  type FileSearchSelection,
+} from "@/components/secondary-panel/useThreadFileTabs";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
@@ -587,27 +590,6 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     () => new Set(browserTabs.map((tab) => tab.id)),
     [browserTabs],
   );
-  // Popups (`window.open`/`target=_blank`) from a browser view open as a new
-  // in-panel browser tab; the native OS popup is denied in the main process.
-  useEffect(() => {
-    const browserApi = getDesktopBrowserApi();
-    if (browserApi === null) {
-      return;
-    }
-    if (browserApi.onScopedOpenTab) {
-      return browserApi.onScopedOpenTab(({ tabId, url }) => {
-        if (browserTabIds.has(tabId)) {
-          openBrowserTab(url);
-        }
-      });
-    }
-    return browserApi.onOpenTab(({ url }) => {
-      if (isRoutePath({ path: url })) {
-        return;
-      }
-      openBrowserTab(url);
-    });
-  }, [browserTabIds, openBrowserTab]);
   const isThreadRoot = isRootThread(thread);
   const shouldLoadParentThreads =
     threadQueryState.status === "ready" && isThreadRoot;
@@ -739,6 +721,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     closePanel: closeSecondaryPanel,
     isOpen: isSecondaryPanelOpen,
     openCommitDiff: openSecondaryPanelCommitDiff,
+    openCompactDrawer,
     openDiffFile: openSecondaryPanelDiffFile,
     openDiffPanel: openSecondaryPanelDiffPanel,
     openHostFile,
@@ -761,6 +744,48 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     threadId,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
+  const openBrowserTabAndReveal = useCallback(
+    (url?: string) => {
+      openBrowserTab(url);
+      openCompactDrawer();
+    },
+    [openBrowserTab, openCompactDrawer],
+  );
+  const handleSelectFileSearchResult = useCallback(
+    (selection: FileSearchSelection) => {
+      selectFileSearchResult(selection);
+      openCompactDrawer();
+    },
+    [openCompactDrawer, selectFileSearchResult],
+  );
+  const handleActivateFileTab = useCallback(
+    (tabId: string) => {
+      activateTab(tabId);
+      openCompactDrawer();
+    },
+    [activateTab, openCompactDrawer],
+  );
+  // Popups (`window.open`/`target=_blank`) from a browser view open as a new
+  // in-panel browser tab; the native OS popup is denied in the main process.
+  useEffect(() => {
+    const browserApi = getDesktopBrowserApi();
+    if (browserApi === null) {
+      return;
+    }
+    if (browserApi.onScopedOpenTab) {
+      return browserApi.onScopedOpenTab(({ tabId, url }) => {
+        if (browserTabIds.has(tabId)) {
+          openBrowserTabAndReveal(url);
+        }
+      });
+    }
+    return browserApi.onOpenTab(({ url }) => {
+      if (isRoutePath({ path: url })) {
+        return;
+      }
+      openBrowserTabAndReveal(url);
+    });
+  }, [browserTabIds, openBrowserTabAndReveal]);
   const handleSelectStorageBrowserPath =
     useCallback<ThreadStoragePathSelectHandler>(
       (path) => {
@@ -854,11 +879,12 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
   );
   const handleOpenNewTab = useCallback(() => {
     openNewTab();
+    openCompactDrawer();
     setNewTabFocusRequest((current) => current + 1);
-  }, [openNewTab]);
+  }, [openCompactDrawer, openNewTab]);
   const handleOpenBrowser = useCallback(() => {
-    openBrowserTab();
-  }, [openBrowserTab]);
+    openBrowserTabAndReveal();
+  }, [openBrowserTabAndReveal]);
   const handleStartTerminal = useCallback(() => {
     if (!canCreateTerminal || createTerminal.isPending || !threadId) {
       return;
@@ -873,20 +899,23 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       .then((session) => {
         closeTab(newTab.id);
         setActiveFixedTerminal(session.id);
+        openCompactDrawer();
       })
       .catch(() => undefined);
   }, [
     canCreateTerminal,
     closeTab,
     createTerminal,
+    openCompactDrawer,
     setActiveFixedTerminal,
     threadId,
   ]);
   const handleActivateTerminalTab = useCallback(
     (terminalId: string) => {
       setActiveFixedTerminal(terminalId);
+      openCompactDrawer();
     },
-    [setActiveFixedTerminal],
+    [openCompactDrawer, setActiveFixedTerminal],
   );
   const handleCloseTerminalTab = useCallback(
     (terminalId: string) => {
@@ -948,7 +977,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
                 />
               ),
               statusLabel: null,
-              onSelect: () => activateTab(tab.id),
+              onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
           }
@@ -980,7 +1009,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               isActive: tab.id === activeFixedSecondaryTabId,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: tab.statusLabel,
-              onSelect: () => activateTab(tab.id),
+              onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
           case "host-file-preview":
@@ -990,7 +1019,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               isActive: tab.id === activeFixedSecondaryTabId,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: null,
-              onSelect: () => activateTab(tab.id),
+              onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
           case "thread-storage-file-preview":
@@ -1001,7 +1030,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
               isPinned: tab.isPinned,
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: null,
-              onSelect: () => activateTab(tab.id),
+              onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
           case "new-tab":
@@ -1017,7 +1046,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
                 />
               ),
               statusLabel: null,
-              onSelect: () => activateTab(tab.id),
+              onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
         }
@@ -1025,9 +1054,9 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
     );
     return tabs.length > 0 ? tabs : undefined;
   }, [
-    activateTab,
     activeFixedSecondaryTabId,
     closeTab,
+    handleActivateFileTab,
     handleActivateTerminalTab,
     handleCloseTerminalTab,
     syncedOrderedSecondaryFileTabs,
@@ -1314,10 +1343,10 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       ) {
         return false;
       }
-      openBrowserTab(href);
+      openBrowserTabAndReveal(href);
       return true;
     },
-    [desktopBrowserAvailable, openBrowserTab, openLinksInAppBrowser],
+    [desktopBrowserAvailable, openBrowserTabAndReveal, openLinksInAppBrowser],
   );
   const handleTimelineTitleAction = useCallback<TimelineTitleActionResolver>(
     (action) => {
@@ -1666,7 +1695,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
       environmentId={thread.environmentId ?? null}
       currentThreadId={thread.id}
       focusRequest={newTabFocusRequest}
-      onSelect={selectFileSearchResult}
+      onSelect={handleSelectFileSearchResult}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
     />
