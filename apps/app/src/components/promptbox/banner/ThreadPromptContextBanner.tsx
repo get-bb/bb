@@ -374,6 +374,10 @@ function PullRequestBannerLink({
   pullRequest: ThreadPullRequest;
 }) {
   const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
+  const showAttentionLabel =
+    attentionDisplay.className === "text-destructive" &&
+    pullRequest.attention !== "checks_failed" &&
+    pullRequest.attention !== "closed";
   return (
     <a
       href={pullRequest.url}
@@ -384,6 +388,11 @@ function PullRequestBannerLink({
       className="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       <PullRequestStatusPill pullRequest={pullRequest} />
+      {showAttentionLabel ? (
+        <span className={cn("min-w-0 truncate", attentionDisplay.className)}>
+          {attentionDisplay.label}
+        </span>
+      ) : null}
     </a>
   );
 }
