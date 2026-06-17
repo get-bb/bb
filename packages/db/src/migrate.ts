@@ -159,6 +159,9 @@ const reorderedCleanupMigrationTags = [
   "0034_drop_stop_requested_at",
   "0035_warm_kingpin",
 ] as const satisfies readonly ReorderedCleanupMigrationTag[];
+const branchLocalThreadSearchMigrationCreatedAts = [
+  1781403656070, 1781403656071,
+] as const;
 const pendingInteractionColumns: ExpectedColumn[] = [
   { name: "id", type: "text", notNull: true, primaryKey: true },
   { name: "thread_id", type: "text", notNull: true, primaryKey: false },
@@ -1051,6 +1054,47 @@ function applyReorderedCleanupMigrations(
   }
 }
 
+function repairBranchLocalThreadSearchMigrations(db: DbConnection): void {
+  if (!tableExists(db, "__drizzle_migrations")) {
+    return;
+  }
+
+  const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
+  const hasBranchLocalThreadSearchMigration =
+    branchLocalThreadSearchMigrationCreatedAts.some((createdAt) =>
+      appliedCreatedAts.has(createdAt),
+    );
+  const hasCanonicalThreadSearchMigration =
+    appliedCreatedAts.has(1781660000001);
+  const hasPreCanonicalThreadSearchSchema =
+    tableExists(db, "thread_search_segments") &&
+    !hasCanonicalThreadSearchMigration;
+  if (
+    !hasBranchLocalThreadSearchMigration &&
+    !hasPreCanonicalThreadSearchSchema
+  ) {
+    return;
+  }
+
+  if (!hasCanonicalThreadSearchMigration) {
+    db.$client.exec(`
+      DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
+      DROP TRIGGER IF EXISTS thread_search_segments_after_delete;
+      DROP TRIGGER IF EXISTS thread_search_segments_after_insert;
+      DROP TABLE IF EXISTS thread_search_segments_fts;
+      DROP TABLE IF EXISTS thread_search_segments;
+    `);
+  }
+  db.$client
+    .prepare<[number, number]>(
+      `
+        DELETE FROM __drizzle_migrations
+        WHERE created_at IN (?, ?)
+      `,
+    )
+    .run(...branchLocalThreadSearchMigrationCreatedAts);
+}
+
 function warnAboutFutureAppliedMigrations(
   db: DbConnection,
   options: MigrateOptions,
@@ -1166,6 +1210,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     if (options.deferDestructiveLegacyCleanup === true) {
       applyDeferredDestructiveLegacyCleanup(db, migrationsFolder);
     }
+    repairBranchLocalThreadSearchMigrations(db);
     drizzleMigrate(db, { migrationsFolder });
     applyReorderedCleanupMigrations(db, migrationsFolder);
   } finally {

@@ -226,6 +226,7 @@ export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
       dirtyEnvironmentWorkspaceStateQueries, // Metadata can change workspace-state request resolution.
       dirtyEnvironmentBranchListQueries, // Branch metadata can change merge-base options.
       dirtyEnvironmentThreadListQueries, // Sidebar/worktree rows project environment labels from thread lists.
+      dirtyThreadSearchQueries, // Search rows cache thread list entries with environment labels.
     ],
   },
   "status-changed": {

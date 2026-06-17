@@ -374,6 +374,7 @@ function SearchSidebar() {
             <ProjectListActionButtons
               onNewChat={noop}
               threadSearch={{
+                activeDescendantId: navigationItems[activeIndex]?.optionId,
                 inputRef,
                 isActive: true,
                 onActivate: noop,

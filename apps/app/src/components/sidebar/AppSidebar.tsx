@@ -31,10 +31,7 @@ import {
   MACOS_WINDOW_NO_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import {
-  getRootComposeRoutePath,
-  getThreadRoutePath,
-} from "@/lib/route-paths";
+import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import {
   haveSameSidebarThreadSearchNavigationItems,
   type SidebarThreadSearchNavigationItem,
@@ -62,6 +59,8 @@ export function AppSidebar({
   const [threadSearchNavigationItems, setThreadSearchNavigationItems] =
     useState<readonly SidebarThreadSearchNavigationItem[]>([]);
   const threadSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const threadSearchActiveDescendantId =
+    threadSearchNavigationItems[threadSearchActiveIndex]?.optionId;
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
 
   const focusThreadSearchInput = useCallback(() => {
@@ -246,6 +245,7 @@ export function AppSidebar({
           <ProjectListActionButtons
             onNewChat={handleNewChat}
             threadSearch={{
+              activeDescendantId: threadSearchActiveDescendantId,
               inputRef: threadSearchInputRef,
               isActive: isThreadSearchActive,
               onActivate: handleThreadSearchActivate,

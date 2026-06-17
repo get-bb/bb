@@ -8,9 +8,7 @@ import {
 } from "react";
 import { useSetAtom } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
-import {
-  getThreadConversationCollapsedAtom,
-} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { Icon } from "@/components/ui/icon.js";
 import { SidebarStickyTier } from "@/components/ui/sidebar.js";
 import { NavLink } from "react-router-dom";
@@ -295,7 +293,7 @@ function ThreadRowComponent({
       ? COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS
       : COARSE_POINTER_ROW_HEIGHT_CLASS,
     showActive
-      ? "bg-sidebar-border text-sidebar-foreground"
+      ? "bg-sidebar-accent text-sidebar-accent-foreground"
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
     parentDragBindings &&
       !parentDragBindings.disabled &&

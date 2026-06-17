@@ -11,6 +11,7 @@ import { useThreadSearch } from "@/hooks/queries/thread-queries";
 import { hasThreadSearchableQuery } from "@/hooks/queries/thread-queries";
 import { cn } from "@/lib/utils";
 import {
+  getSidebarThreadSearchOptionId,
   SIDEBAR_THREAD_SEARCH_LISTBOX_ID,
   type SidebarThreadSearchNavigationItem,
 } from "./sidebarThreadSearch";
@@ -57,6 +58,7 @@ function toNavigationItem(
 ): SidebarThreadSearchNavigationItem {
   return {
     id: row.id,
+    optionId: getSidebarThreadSearchOptionId(row.id),
     projectId: row.thread.projectId,
     threadId: row.thread.id,
   };
@@ -106,7 +108,12 @@ function renderSectionRows({
   }
 
   return (
-    <section key={section.id} className="space-y-1">
+    <section
+      key={section.id}
+      role="group"
+      aria-label={section.label}
+      className="space-y-1"
+    >
       <div
         className={cn(
           CHROME_SECTION_LABEL_CLASS,
@@ -127,6 +134,7 @@ function renderSectionRows({
           return (
             <ThreadSearchResultRow
               key={row.id}
+              id={item.optionId}
               isActive={activeIndex === index}
               isArchivedGroup={row.isArchivedGroup}
               matches={row.matches}
@@ -152,8 +160,11 @@ export function SidebarThreadSearchPanel({
   query,
   recentThreads,
 }: SidebarThreadSearchPanelProps) {
-  const liveQueryIsSearchable = hasThreadSearchableQuery(query.trim());
+  const trimmedQuery = query.trim();
+  const liveQueryIsSearchable = hasThreadSearchableQuery(trimmedQuery);
   const threadSearch = useThreadSearch({ active: true, query });
+  const searchResultsAreCurrent =
+    !liveQueryIsSearchable || threadSearch.debouncedQuery === trimmedQuery;
   const sections = useMemo<ThreadSearchSection[]>(() => {
     if (!liveQueryIsSearchable) {
       const rows = recentThreads
@@ -170,6 +181,23 @@ export function SidebarThreadSearchPanel({
           label: "Active",
           rows,
           total: rows.length,
+        },
+      ];
+    }
+
+    if (!searchResultsAreCurrent) {
+      return [
+        {
+          id: "active",
+          label: "Active",
+          rows: [],
+          total: 0,
+        },
+        {
+          id: "archived",
+          label: "Archived",
+          rows: [],
+          total: 0,
         },
       ];
     }
@@ -202,7 +230,12 @@ export function SidebarThreadSearchPanel({
         total: threadSearch.data?.archived.total ?? 0,
       },
     ];
-  }, [liveQueryIsSearchable, recentThreads, threadSearch.data]);
+  }, [
+    liveQueryIsSearchable,
+    recentThreads,
+    searchResultsAreCurrent,
+    threadSearch.data,
+  ]);
   const rows = useMemo(
     () => sections.flatMap((section) => section.rows),
     [sections],
@@ -215,7 +248,8 @@ export function SidebarThreadSearchPanel({
 
   const isLoading =
     liveQueryIsSearchable &&
-    (threadSearch.isDebouncing ||
+    (!searchResultsAreCurrent ||
+      threadSearch.isDebouncing ||
       (threadSearch.isLoading && threadSearch.data === undefined));
   const hasRows = rows.length > 0;
   const showRecentLoading = !liveQueryIsSearchable && isRecentsLoading;

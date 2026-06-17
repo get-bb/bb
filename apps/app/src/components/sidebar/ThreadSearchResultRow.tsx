@@ -1,6 +1,8 @@
 import {
   memo,
   useCallback,
+  useEffect,
+  useRef,
   type MouseEventHandler,
   type ReactNode,
 } from "react";
@@ -20,6 +22,7 @@ import {
 } from "./sidebarRowClasses";
 
 interface ThreadSearchResultRowProps {
+  id: string;
   isActive: boolean;
   isArchivedGroup: boolean;
   matches: readonly ThreadSearchMatch[];
@@ -70,7 +73,7 @@ function HighlightedText({ ranges, text }: HighlightedTextProps) {
     nodes.push(
       <mark
         key={`${range.start}:${range.end}`}
-        className="rounded-sm bg-sidebar-primary/20 px-0 text-sidebar-foreground"
+        className="rounded-sm bg-sidebar-accent px-0 text-sidebar-accent-foreground shadow-[0_0_0_1px_var(--sidebar-border)]"
       >
         {text.slice(range.start, range.end)}
       </mark>,
@@ -100,6 +103,7 @@ function getSnippetMatch(
 }
 
 function ThreadSearchResultRowComponent({
+  id,
   isActive,
   isArchivedGroup,
   matches,
@@ -108,6 +112,7 @@ function ThreadSearchResultRowComponent({
   projectName,
   thread,
 }: ThreadSearchResultRowProps) {
+  const rowRef = useRef<HTMLButtonElement | null>(null);
   const title = getThreadDisplayTitle(thread);
   const titleMatch = getTitleMatch(title, matches);
   const snippetMatch = getSnippetMatch(matches);
@@ -123,8 +128,17 @@ function ThreadSearchResultRowComponent({
     onActive();
   }, [onActive]);
 
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+    rowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [isActive]);
+
   return (
     <button
+      ref={rowRef}
+      id={id}
       type="button"
       role="option"
       aria-selected={isActive}

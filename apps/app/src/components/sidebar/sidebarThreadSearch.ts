@@ -5,11 +5,13 @@ export const SIDEBAR_THREAD_SEARCH_LISTBOX_ID =
 
 export interface SidebarThreadSearchNavigationItem {
   id: string;
+  optionId: string;
   projectId: string;
   threadId: string;
 }
 
 export interface SidebarThreadSearchInputController {
+  activeDescendantId: string | undefined;
   inputRef: RefObject<HTMLInputElement | null>;
   isActive: boolean;
   onActivate: () => void;
@@ -36,6 +38,10 @@ export function getSidebarThreadSearchShortcutLabel(): "Cmd+K" | "Ctrl+K" {
   return /Mac|iPhone|iPad|iPod/u.test(navigator.platform) ? "Cmd+K" : "Ctrl+K";
 }
 
+export function getSidebarThreadSearchOptionId(rowId: string): string {
+  return `${SIDEBAR_THREAD_SEARCH_LISTBOX_ID}-option-${rowId}`;
+}
+
 export function haveSameSidebarThreadSearchNavigationItems(
   left: readonly SidebarThreadSearchNavigationItem[],
   right: readonly SidebarThreadSearchNavigationItem[],
@@ -43,5 +49,8 @@ export function haveSameSidebarThreadSearchNavigationItems(
   if (left.length !== right.length) {
     return false;
   }
-  return left.every((item, index) => item.id === right[index]?.id);
+  return left.every(
+    (item, index) =>
+      item.id === right[index]?.id && item.optionId === right[index]?.optionId,
+  );
 }
