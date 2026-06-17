@@ -256,14 +256,6 @@ function SideChatConversation({
     );
   }
 
-  if (displayedRows.length === 0 && !showOngoingIndicator) {
-    return (
-      <EmptyStatePanel className="mx-2 rounded-lg">
-        Waiting for the side chat to respond…
-      </EmptyStatePanel>
-    );
-  }
-
   return (
     <>
       {displayedRows.length > 0 ? (
