@@ -9,6 +9,7 @@ import type {
 import {
   PromptBoxInternal,
   type HistoryConfig,
+  type PromptBoxAction,
   type PromptBoxSubmissionConfig,
   type PromptVoiceConfig,
 } from "@/components/promptbox/PromptBoxInternal";
@@ -26,6 +27,11 @@ export default {
 const noop = () => {};
 
 const mockExecution = makeExecutionControlsProps();
+const promptActions: readonly PromptBoxAction[] = [
+  { kind: "skills", text: "$" },
+  { kind: "plan", text: "/plan " },
+  { kind: "goal", text: "/goal " },
+];
 
 // ---------------------------------------------------------------------------
 // Voice fixtures — story-only PromptVoiceConfig values for the recording UX.
@@ -758,6 +764,27 @@ function WithLiveSkillsRow() {
   );
 }
 
+function WithPromptActionsRow() {
+  const { value, mentionRanges, onChange } = useControlledValue("");
+  return (
+    <PromptBoxInternal
+      value={value}
+      mentionRanges={mentionRanges}
+      onChange={onChange}
+      onSubmit={noop}
+      placeholder="Use the prompt actions button"
+      typeahead={makeTypeahead()}
+      mentionMenuPlacement="bottom"
+      attachments={makeAttachments()}
+      history={baseHistory}
+      submission={makeSubmission()}
+      voice={idleVoice}
+      promptActions={promptActions}
+      footerStart={<ExecutionControls {...mockExecution} />}
+    />
+  );
+}
+
 function WithLiveMentionsRow() {
   const { value, mentionRanges, onChange } = useControlledValue("");
   const [query, setQuery] = useState<string | null>(null);
@@ -948,6 +975,12 @@ export function Overview() {
         hint="type $ then select a skill; argument hints render as placeholders"
       >
         <WithLiveSkillsRow />
+      </StoryRow>
+      <StoryRow
+        label="prompt actions"
+        hint="the + action menu sits at the far-left of the prompt controls"
+      >
+        <WithPromptActionsRow />
       </StoryRow>
       <StoryRow
         label="live mentions"

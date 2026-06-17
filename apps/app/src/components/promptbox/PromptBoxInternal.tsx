@@ -2022,13 +2022,13 @@ export function PromptBoxInternal({
           className="flex min-w-0 flex-1 flex-row items-center gap-1"
           aria-live="polite"
         >
-          {footerStart}
-        </div>
-        <div className="flex shrink-0 flex-row items-center gap-1">
           <PromptBoxActionsMenu
             actions={promptActions}
             onAction={applyPromptAction}
           />
+          {footerStart}
+        </div>
+        <div className="flex shrink-0 flex-row items-center gap-1">
           <Button
             type="button"
             size="icon"

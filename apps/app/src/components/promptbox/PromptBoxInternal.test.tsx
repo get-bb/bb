@@ -112,6 +112,20 @@ async function focusPromptEnd(promptBoxRef: RefObject<PromptBoxHandle | null>) {
 afterEach(cleanup);
 
 describe("PromptBoxInternal prompt actions", () => {
+  it("places prompt actions before the right-side action cluster", () => {
+    renderPromptBox("");
+
+    const promptActionsButton = screen.getByRole("button", {
+      name: "Prompt actions",
+    });
+    const attachButton = screen.getByRole("button", { name: "Attach files" });
+
+    expect(
+      promptActionsButton.compareDocumentPosition(attachButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  });
+
   it("inserts the skills trigger with no trailing space", async () => {
     const { changes, onCommandQueryChange } = renderPromptBox("");
 
