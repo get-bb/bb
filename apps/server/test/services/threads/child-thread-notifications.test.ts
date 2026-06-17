@@ -41,7 +41,7 @@ describe("child thread notifications", () => {
         "Implemented the requested change.",
       ].join("\n"),
     );
-    expect(message).not.toContain("childThread updates:");
+    expect(message).not.toContain("child thread updates:");
   });
 
   it("omits output for a single failed outcome", () => {
@@ -59,7 +59,7 @@ describe("child thread notifications", () => {
     });
 
     expect(message).toContain(
-      "@thread:thr_child failed. Inspect this childThread before deciding next steps.",
+      "@thread:thr_child failed. Inspect this child thread before deciding next steps.",
     );
     expect(message).not.toContain("Deploy script failed on preflight.");
   });
@@ -80,12 +80,12 @@ describe("child thread notifications", () => {
 
     expect(message).toContain(
       [
-        "@thread:thr_child was interrupted. Inspect this childThread before deciding next steps.",
+        "@thread:thr_child was interrupted. Inspect this child thread before deciding next steps.",
         "",
         "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
       ].join("\n"),
     );
-    expect(message).not.toContain("childThread updates:");
+    expect(message).not.toContain("child thread updates:");
     expect(message).not.toContain("Stopped after writing the checkout summary.");
   });
 
@@ -115,7 +115,7 @@ describe("child thread notifications", () => {
       [
         "[bb system]",
         "",
-        "childThread updates:",
+        "child thread updates:",
         "",
         "- @thread:thr_child_one completed.",
         "- @thread:thr_child_two failed.",
@@ -179,7 +179,7 @@ describe("child thread notifications", () => {
       ],
     });
     expect(textInput.text).toContain("@thread:thr_child_two");
-    expect(textInput.text).toContain("childThread updates:");
+    expect(textInput.text).toContain("child thread updates:");
     expect(
       textInput.mentions.map((mention) =>
         textInput.text.slice(mention.start, mention.end),
@@ -279,7 +279,7 @@ describe("child thread notifications", () => {
       },
     ]);
     expect(textInput.text).toContain(
-      "Inspect this childThread and decide if you can answer or resolve the question from existing context.",
+      "Inspect this child thread and decide if you can answer or resolve the question from existing context.",
     );
   });
 

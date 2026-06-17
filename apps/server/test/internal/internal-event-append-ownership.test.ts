@@ -427,7 +427,7 @@ describe("internal event append ownership", () => {
       }
       const threadMention = `@thread:${childThread.id}`;
       expect(input.text).toContain(
-        `${threadMention} failed. Inspect this childThread before deciding next steps.`,
+        `${threadMention} failed. Inspect this child thread before deciding next steps.`,
       );
       expect(input.text).not.toContain("No failure output was recorded.");
       expect(input.mentions).toEqual([

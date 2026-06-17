@@ -70,11 +70,11 @@ const CHILD_THREAD_TERMINAL_OUTPUT_EXCERPT_CHAR_LIMIT = 4_000;
 const CHILD_THREAD_OUTPUT_TRUNCATION_MARKER =
   "\n\n[... output truncated ...]";
 const CHILD_THREAD_INSPECTION_GUIDANCE =
-  "Inspect this childThread before deciding next steps.";
+  "Inspect this child thread before deciding next steps.";
 const CHILD_THREAD_INTERRUPTED_GUIDANCE =
   "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.";
 const CHILD_THREAD_BATCH_INTERRUPTED_GUIDANCE =
-  "If the user stopped any interrupted childThread manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.";
+  "If the user stopped any interrupted child thread manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.";
 const CHILD_THREAD_NEEDS_ATTENTION_FALLBACK_SUMMARY =
   "It is blocked on a pending interaction.";
 const childThreadTurnNotificationBatches = new Map<
@@ -202,7 +202,7 @@ function buildChildThreadTurnStatusBatchSegments(
   }
 
   const segments: ParentSystemInputSegment[] = [];
-  segments.push({ kind: "text", text: "childThread updates:" });
+  segments.push({ kind: "text", text: "child thread updates:" });
   args.lines.forEach((line, index) => {
     segments.push({ kind: "text", text: index === 0 ? "\n\n- " : "\n- " });
     segments.push(...buildChildThreadBatchStatusLineSegments({ line }));

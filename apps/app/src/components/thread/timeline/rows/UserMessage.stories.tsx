@@ -193,7 +193,7 @@ const systemAssignedMessage = buildMessage(
 const systemChildOutcomeBatchMessage = buildMessage(
   renderTemplate("systemMessageChildThreadOutcomeBatch", {
     updates: [
-      "childThread updates:",
+      "child thread updates:",
       "",
       "- @thread:thr_ux3h8sxg65 completed.",
       "- @thread:thr_cpf5sq7pyr completed.",
@@ -228,7 +228,7 @@ const systemChildOutcomeBatchMessage = buildMessage(
 const parentChildSystemMessageFixtures = [
   {
     label: "assigned",
-    hint: "new parent receives the childThread assignment notice",
+    hint: "new parent receives the child thread assignment notice",
     message: buildMessage(
       renderTemplate("systemMessageThreadOwnershipAssigned", {
         threadMention: "@thread:thr_indexer",
@@ -264,7 +264,7 @@ const parentChildSystemMessageFixtures = [
   },
   {
     label: "needs attention",
-    hint: "childThread is blocked on a pending interaction",
+    hint: "child thread is blocked on a pending interaction",
     message: buildMessage(
       renderTemplate("systemMessageChildThreadNeedsAttention", {
         blockerSummary: [
@@ -286,7 +286,7 @@ const parentChildSystemMessageFixtures = [
   },
   {
     label: "completed",
-    hint: "single childThread completion includes its final output excerpt",
+    hint: "single child thread completion includes its final output excerpt",
     message: buildMessage(
       renderTemplate("systemMessageChildThreadOutcomeBatch", {
         updates: [
@@ -308,11 +308,11 @@ const parentChildSystemMessageFixtures = [
   },
   {
     label: "failed",
-    hint: "single childThread failure asks the parent to inspect before deciding next steps",
+    hint: "single child thread failure asks the parent to inspect before deciding next steps",
     message: buildMessage(
       renderTemplate("systemMessageChildThreadOutcomeBatch", {
         updates:
-          "@thread:thr_rebase failed. Inspect this childThread before deciding next steps.",
+          "@thread:thr_rebase failed. Inspect this child thread before deciding next steps.",
       }),
       [
         {
@@ -327,11 +327,11 @@ const parentChildSystemMessageFixtures = [
   },
   {
     label: "interrupted",
-    hint: "single childThread interruption carries the manual-stop guidance",
+    hint: "single child thread interruption carries the manual-stop guidance",
     message: buildMessage(
       renderTemplate("systemMessageChildThreadOutcomeBatch", {
         updates: [
-          "@thread:thr_docs was interrupted. Inspect this childThread before deciding next steps.",
+          "@thread:thr_docs was interrupted. Inspect this child thread before deciding next steps.",
           "",
           "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
         ].join("\n"),
@@ -349,17 +349,17 @@ const parentChildSystemMessageFixtures = [
   },
   {
     label: "mixed batch",
-    hint: "multiple childThread outcomes collapse into one parent-facing system turn",
+    hint: "multiple child thread outcomes collapse into one parent-facing system turn",
     message: buildMessage(
       renderTemplate("systemMessageChildThreadOutcomeBatch", {
         updates: [
-          "childThread updates:",
+          "child thread updates:",
           "",
           "- @thread:thr_schema completed.",
           "- @thread:thr_rebase failed.",
           "- @thread:thr_docs was interrupted.",
           "",
-          "If the user stopped any interrupted childThread manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
+          "If the user stopped any interrupted child thread manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.",
         ].join("\n"),
       }),
       [

@@ -113,12 +113,12 @@ export const templateDefinitions = [
   },
   {
     "id": "systemMessageChildThreadNeedsAttention",
-    "body": "[bb system]\n\n{{threadMention}} needs attention.\n{{blockerSummary}}\n\nInspect this childThread and decide if you can answer or resolve the question from existing context. If not, ask the user for the missing decision. If the childThread is stuck on the wrong assumption, send it a clarifying instruction.",
+    "body": "[bb system]\n\n{{threadMention}} needs attention.\n{{blockerSummary}}\n\nInspect this child thread and decide if you can answer or resolve the question from existing context. If not, ask the user for the missing decision. If the child thread is stuck on the wrong assumption, send it a clarifying instruction.",
     "fileName": "system-message-child-thread-needs-attention.md",
     "kind": "prompt",
-    "title": "childThread Needs Attention",
-    "summary": "Notifies a parent thread that one of its childThreads is blocked on a pending interaction.",
-    "intent": "Prompt the parent thread to inspect the blocker and either resolve it from context, ask the user, or clarify the childThread's assumption.",
+    "title": "Child Thread Needs Attention",
+    "summary": "Notifies a parent thread that one of its child threads is blocked on a pending interaction.",
+    "intent": "Prompt the parent thread to inspect the blocker and either resolve it from context, ask the user, or clarify the child thread's assumption.",
     "editingNotes": "Keep this focused on parent-thread triage; do not imply the parent can approve or reject on the user's behalf.",
     "variables": {
       "blockerSummary": "Compact summary of the pending interaction, or a fallback sentence when no safe summary is available.",
@@ -130,21 +130,21 @@ export const templateDefinitions = [
     "body": "[bb system]\n\n{{updates}}",
     "fileName": "system-message-child-thread-outcome-batch.md",
     "kind": "prompt",
-    "title": "childThread Outcome Batch",
-    "summary": "Notifies a parent thread about one or more childThread outcomes.",
-    "intent": "Give the parent thread compact outcome context without forcing immediate action for every childThread.",
+    "title": "Child Thread Outcome Batch",
+    "summary": "Notifies a parent thread about one or more child thread outcomes.",
+    "intent": "Give the parent thread compact outcome context without forcing immediate action for every child thread.",
     "editingNotes": "Keep this concise. The updates variable is a server-formatted singular or plural outcome body with rich thread mention ranges attached by the server.",
     "variables": {
-      "updates": "Rendered childThread outcome message body."
+      "updates": "Rendered child thread outcome message body."
     }
   },
   {
     "id": "systemMessageThreadOwnershipAssigned",
-    "body": "[bb system]\n\n{{threadMention}} was assigned to you as a childThread.",
+    "body": "[bb system]\n\n{{threadMention}} was assigned to you as a child thread.",
     "fileName": "system-message-thread-ownership-assigned.md",
     "kind": "prompt",
     "title": "Thread Ownership Assigned",
-    "summary": "Notifies a parent thread that a childThread is now assigned to it.",
+    "summary": "Notifies a parent thread that a child thread is now assigned to it.",
     "intent": "Let the new parent know a thread is now assigned to it.",
     "editingNotes": "Keep the thread mention first in the visible body so collapsed previews show the affected thread.",
     "variables": {
@@ -153,11 +153,11 @@ export const templateDefinitions = [
   },
   {
     "id": "systemMessageThreadOwnershipRemoved",
-    "body": "[bb system]\n\n{{threadMention}} was unassigned from you as a childThread.",
+    "body": "[bb system]\n\n{{threadMention}} was unassigned from you as a child thread.",
     "fileName": "system-message-thread-ownership-removed.md",
     "kind": "prompt",
     "title": "Thread Ownership Removed",
-    "summary": "Notifies a parent thread that a childThread is no longer assigned to it.",
+    "summary": "Notifies a parent thread that a child thread is no longer assigned to it.",
     "intent": "Let the previous parent know a thread is no longer assigned to it.",
     "editingNotes": "Keep the thread mention first in the visible body so collapsed previews show the affected thread.",
     "variables": {
