@@ -5,7 +5,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ActiveThinking, ThreadRuntimeDisplayStatus } from "@bb/domain";
+import type {
+  ActiveThinking,
+  ThreadChildOrigin,
+  ThreadRuntimeDisplayStatus,
+} from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import { Button } from "@/components/ui/button.js";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
@@ -15,6 +19,10 @@ import { PageShell } from "@/components/ui/page-shell.js";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
 import {
   ThreadTimelineRows,
+  type ThreadTimelineForkMessageHandler,
+  type ThreadTimelineSideChatMessageHandler,
+  type ThreadTimelineSelectionAddToChatHandler,
+  type ThreadTimelineSelectionReplyInSideChatHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLinkHandler,
   type ThreadTimelineUnreadDividerPlacement,
@@ -29,6 +37,8 @@ import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 
 interface ThreadTimelinePaneProps {
   activeThinking: ActiveThinking | null;
+  canSpawnChild: boolean;
+  threadChildOrigin: ThreadChildOrigin | null;
   footer: ReactNode;
   hasOlderTimelineRows: boolean;
   header: ReactNode;
@@ -36,6 +46,10 @@ interface ThreadTimelinePaneProps {
   isLoadingOlderTimelineRows: boolean;
   isThreadTimelinePending: boolean;
   timelineError: boolean;
+  onForkMessage?: ThreadTimelineForkMessageHandler;
+  onSideChatMessage?: ThreadTimelineSideChatMessageHandler;
+  onSelectionAddToChat?: ThreadTimelineSelectionAddToChatHandler;
+  onSelectionReplyInSideChat?: ThreadTimelineSelectionReplyInSideChatHandler;
   onLoadOlderRows: () => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -122,6 +136,8 @@ function useTimelineRowsWithPendingStop({
 
 export function ThreadTimelinePane({
   activeThinking,
+  canSpawnChild,
+  threadChildOrigin,
   footer,
   hasOlderTimelineRows,
   header,
@@ -129,6 +145,10 @@ export function ThreadTimelinePane({
   isLoadingOlderTimelineRows,
   isThreadTimelinePending,
   timelineError,
+  onForkMessage,
+  onSideChatMessage,
+  onSelectionAddToChat,
+  onSelectionReplyInSideChat,
   onLoadOlderRows,
   onOpenLink,
   onOpenLocalFileLink,
@@ -166,11 +186,15 @@ export function ThreadTimelinePane({
   });
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-clip">
+    <div
+      data-thread-window=""
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-clip"
+    >
       {header}
       <PageShell
         key={threadId}
         scrollBehavior="bottom-anchor"
+        scrollAnchorThreadId={threadId}
         shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
         contentClassName="gap-2 pt-4"
         footerClassName="chat-prompt-box"
@@ -194,6 +218,12 @@ export function ThreadTimelinePane({
             />
           ) : timelineRowsWithPendingStop.length > 0 ? (
             <ThreadTimelineRows
+              canSpawnChild={canSpawnChild}
+              threadChildOrigin={threadChildOrigin}
+              onForkMessage={onForkMessage}
+              onSideChatMessage={onSideChatMessage}
+              onSelectionAddToChat={onSelectionAddToChat}
+              onSelectionReplyInSideChat={onSelectionReplyInSideChat}
               onOpenLink={onOpenLink}
               onOpenLocalFileLink={onOpenLocalFileLink}
               onTitleAction={onTitleAction}

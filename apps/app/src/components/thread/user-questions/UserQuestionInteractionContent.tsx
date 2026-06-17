@@ -130,9 +130,6 @@ function QuestionTabs({
             <TabPill
               key={question.id}
               label={question.shortLabel ?? `Question ${index + 1}`}
-              leadingVisual={
-                <Icon name="FileQuestion" className="size-3.5" aria-hidden />
-              }
               labelClassName={answered ? "line-through" : undefined}
               title={question.prompt}
               isActive={index === currentIndex}

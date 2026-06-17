@@ -97,6 +97,163 @@ const longMessage: readonly ThreadQueuedMessage[] = [
   }),
 ];
 
+// "Add to chat" appends `> `-prefixed blockquote lines into the draft, so a
+// queued message can carry quote→reply blocks. These exercise the quote branch
+// of the queued row (styled blockquotes, height-capped).
+const quoteSingle: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "q_quote_single",
+    text: "> The migration runs in three phases.\nWhich phase is safe to deploy on a Friday?",
+  }),
+];
+
+const quoteMultiline: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "q_quote_multiline",
+    text: "> First we backfill the new column with a default value.\n> Then flip reads once every row is populated.\nMakes sense — what about in-flight writes?",
+  }),
+];
+
+const quoteTwoBlocks: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "q_quote_two",
+    text: "> Backfill the new column first.\nmakes sense\n\n> Then drop the legacy column.\nin the same deploy?",
+  }),
+];
+
+const quoteOnly: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "q_quote_only",
+    text: "> Just the quoted selection, no reply typed yet.",
+  }),
+];
+
+const quoteTruncated: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "q_quote_truncated",
+    text: "> phase one — add the column\n> phase two — start dual-writing\n> phase three — backfill old rows\n> phase four — flip reads\n> phase five — stop writing the old column\n> phase six — drop the old column\nwhich of these is reversible?",
+  }),
+];
+
+const quoteWithAttachment: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "q_quote_att",
+    text: "> The error fires on the second render.\nrepro attached",
+    attachments: 1,
+  }),
+];
+
+// Quoted and plain messages interleaved in one list — the comparison view:
+// the quoted rows are taller with a top-aligned leading icon, so they're easy
+// to tell apart from the single-line plain rows when scanning the queue.
+const mixedMessages: readonly ThreadQueuedMessage[] = [
+  makeQueuedMessage({
+    id: "mix_plain_1",
+    text: "Also check the timeline error overlay before sending.",
+  }),
+  makeQueuedMessage({
+    id: "mix_quote_1",
+    text: "> First we backfill the new column.\n> Then flip reads once every row is populated.\nWhich phase is safe to deploy on a Friday?",
+  }),
+  makeQueuedMessage({
+    id: "mix_plain_2",
+    text: "And run the tests for @bb/thread-view.",
+  }),
+  makeQueuedMessage({
+    id: "mix_quote_2",
+    text: "> Only after that do we drop the legacy column.\nin the same deploy?",
+  }),
+];
+
+// Trims the prop boilerplate for the static (non-reorderable) story rows.
+function StaticQueuedMessagesList({
+  queuedMessages,
+}: {
+  queuedMessages: readonly ThreadQueuedMessage[];
+}) {
+  return (
+    <QueuedMessagesList
+      queuedMessages={queuedMessages}
+      sendDisabled={false}
+      actionDisabled={false}
+      processingMessageId={null}
+      processingAction={null}
+      onSendImmediately={noop}
+      onReorder={noop}
+      onEdit={noop}
+      onDelete={noop}
+    />
+  );
+}
+
+export function Blockquotes() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="mixed: quoted + plain"
+        hint="scan comparison — quoted rows are taller with a top-aligned leading icon; plain rows are a single centered line"
+      >
+        <PromptStage>
+          <StaticQueuedMessagesList queuedMessages={mixedMessages} />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        label="plain messages (no quotes)"
+        hint="single-line preview, leading icon centered — for comparison"
+      >
+        <PromptStage>
+          <StaticQueuedMessagesList queuedMessages={multipleMessages} />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        label="quote + reply"
+        hint="a single `> ` block above the typed reply"
+      >
+        <PromptStage>
+          <StaticQueuedMessagesList queuedMessages={quoteSingle} />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        label="multi-line quote"
+        hint="every quoted line is prefixed and styled as one blockquote"
+      >
+        <PromptStage>
+          <StaticQueuedMessagesList queuedMessages={quoteMultiline} />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        label="two quote→reply blocks"
+        hint="stacked quote/reply sections in one queued message"
+      >
+        <PromptStage>
+          <StaticQueuedMessagesList queuedMessages={quoteTwoBlocks} />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow label="quote only" hint="quoted selection with no reply yet">
+        <PromptStage>
+          <StaticQueuedMessagesList queuedMessages={quoteOnly} />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        label="long quote (truncated)"
+        hint="height-capped — overflow is clipped so the row stays compact"
+      >
+        <PromptStage>
+          <StaticQueuedMessagesList queuedMessages={quoteTruncated} />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        label="quote + attachment"
+        hint="attachment count still shows under the quoted block"
+      >
+        <PromptStage>
+          <StaticQueuedMessagesList queuedMessages={quoteWithAttachment} />
+        </PromptStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
 function ReorderableQueuedMessagesList() {
   const [queuedMessages, setQueuedMessages] =
     useState<readonly ThreadQueuedMessage[]>(multipleMessages);

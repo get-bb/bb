@@ -9,6 +9,10 @@ import {
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
+import {
+  threadChildOriginValues,
+  threadOriginKindValues,
+} from "@bb/domain/thread-child-origin";
 import type {
   AutomationOrigin,
   AutomationRunMode,
@@ -251,6 +255,18 @@ export const threads = sqliteTable(
       (): AnySQLiteColumn => threads.id,
       { onDelete: "set null" },
     ),
+    sourceThreadId: text("source_thread_id").references(
+      (): AnySQLiteColumn => threads.id,
+      { onDelete: "set null" },
+    ),
+    originKind: text("origin_kind", {
+      enum: threadOriginKindValues,
+    }),
+    // Deprecated compatibility column for older migrated data. New fork and
+    // side-chat provenance uses source_thread_id + origin_kind.
+    childOrigin: text("child_origin", {
+      enum: threadChildOriginValues,
+    }),
     archivedAt: integer("archived_at"),
     pinnedAt: integer("pinned_at"),
     pinSortKey: text("pin_sort_key"),
@@ -273,6 +289,10 @@ export const threads = sqliteTable(
       .where(sql`${table.pinnedAt} IS NOT NULL`),
     index("threads_environment_idx").on(table.environmentId),
     index("threads_parent_idx").on(table.parentThreadId),
+    index("threads_source_origin_idx").on(
+      table.sourceThreadId,
+      table.originKind,
+    ),
     index("threads_archived_status_idx").on(table.archivedAt, table.status),
     index("threads_environment_archived_deleted_idx").on(
       table.environmentId,

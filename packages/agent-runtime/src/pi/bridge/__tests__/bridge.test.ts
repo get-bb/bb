@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 
@@ -52,18 +54,26 @@ const {
   };
 });
 
-vi.mock("@mariozechner/pi-coding-agent", () => ({
-  createAgentSession: mockCreateAgentSession,
-  DefaultResourceLoader: mockDefaultResourceLoader,
-  getAgentDir: vi.fn(() => "/tmp/pi-agent"),
-  SessionManager: {
-    open: mockOpen,
-    inMemory: mockInMemory,
-  },
-  SettingsManager: {
-    inMemory: mockSettingsInMemory,
-  },
-}));
+vi.mock("@mariozechner/pi-coding-agent", async (importOriginal) => {
+  // Keep the real SessionManager.forkFrom so the fork test exercises genuine
+  // session-file materialization on disk; only the agent-session and resume/open
+  // entry points are mocked away from the real SDK runtime.
+  const actual =
+    await importOriginal<typeof import("@mariozechner/pi-coding-agent")>();
+  return {
+    createAgentSession: mockCreateAgentSession,
+    DefaultResourceLoader: mockDefaultResourceLoader,
+    getAgentDir: vi.fn(() => "/tmp/pi-agent"),
+    SessionManager: {
+      forkFrom: actual.SessionManager.forkFrom.bind(actual.SessionManager),
+      open: mockOpen,
+      inMemory: mockInMemory,
+    },
+    SettingsManager: {
+      inMemory: mockSettingsInMemory,
+    },
+  };
+});
 
 vi.mock("@mariozechner/pi-ai", () => ({
   getModel: vi.fn(),
@@ -320,6 +330,121 @@ describe("pi bridge", () => {
       ).toBe(false);
     } finally {
       bridge.restore();
+    }
+  });
+
+  it("forks the source session history into the new thread's deterministic file", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    mockCreateAgentSession.mockImplementation(async () => ({
+      session: createControlledPiAgentSession(),
+    }));
+
+    const sessionDir = mkdtempSync(join(tmpdir(), "pi-fork-test-"));
+    process.env[PI_BRIDGE_SESSION_DIR_ENV] = sessionDir;
+
+    // Materialize a source session file at the source thread's deterministic
+    // path so the fork exercises genuine SessionManager.forkFrom file copying.
+    const sourceThreadId = "thr_source";
+    const sourceFile = join(sessionDir, `${sourceThreadId}.jsonl`);
+    const sourceContent = `${[
+      JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "source-session",
+        timestamp: "2026-06-15T00:00:00.000Z",
+        cwd: "/tmp/worktree",
+      }),
+      JSON.stringify({
+        type: "message",
+        id: "e1",
+        parentId: null,
+        timestamp: "2026-06-15T00:00:01.000Z",
+        message: { role: "user", content: "remember 42" },
+      }),
+      JSON.stringify({
+        type: "message",
+        id: "e2",
+        parentId: "e1",
+        timestamp: "2026-06-15T00:00:02.000Z",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "noted: 42" }],
+        },
+      }),
+    ].join("\n")}\n`;
+    writeFileSync(sourceFile, sourceContent);
+
+    const targetThreadId = "thr_fork";
+    const targetFile = join(sessionDir, `${targetThreadId}.jsonl`);
+
+    try {
+      bridge.sendRequest(40, "thread/fork", {
+        cwd: "/tmp/worktree",
+        threadId: targetThreadId,
+        sourceProviderThreadId: sourceThreadId,
+      });
+      await expect(bridge.waitForResponse(40)).resolves.toMatchObject({
+        id: 40,
+        result: { threadId: targetThreadId },
+      });
+
+      // The forked session is materialized at the NEW thread's deterministic
+      // path, carrying the source history plus parentSession lineage.
+      const forkedContent = readFileSync(targetFile, "utf8");
+      expect(forkedContent).toContain("remember 42");
+      expect(forkedContent).toContain("noted: 42");
+      expect(forkedContent).toContain(`"parentSession":"${sourceFile}"`);
+      // Source file is left untouched by the fork.
+      expect(readFileSync(sourceFile, "utf8")).toBe(sourceContent);
+
+      // The bridge opens the new thread's deterministic file and keeps bb's
+      // threadId as the provider identity (no provider-id remap).
+      expect(mockOpen).toHaveBeenCalledWith(targetFile, sessionDir);
+      expect(bridge.messages).toContainEqual(
+        expect.objectContaining({
+          method: "thread/identity",
+          params: {
+            threadId: targetThreadId,
+            providerThreadId: targetThreadId,
+          },
+        }),
+      );
+    } finally {
+      bridge.restore();
+      rmSync(sessionDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails thread/fork when the source session file is missing", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    mockCreateAgentSession.mockImplementation(async () => ({
+      session: createControlledPiAgentSession(),
+    }));
+
+    const sessionDir = mkdtempSync(join(tmpdir(), "pi-fork-missing-"));
+    process.env[PI_BRIDGE_SESSION_DIR_ENV] = sessionDir;
+
+    try {
+      bridge.sendRequest(41, "thread/fork", {
+        cwd: "/tmp/worktree",
+        threadId: "thr_fork_missing",
+        sourceProviderThreadId: "thr_no_source",
+      });
+      await expect(bridge.waitForResponse(41)).resolves.toMatchObject({
+        id: 41,
+        error: {
+          code: -32000,
+          message:
+            'Cannot fork: source pi session file not found for thread "thr_no_source"',
+        },
+      });
+      expect(mockCreateAgentSession).not.toHaveBeenCalled();
+      expect(
+        bridge.messages.some((message) => message.method === "thread/identity"),
+      ).toBe(false);
+    } finally {
+      bridge.restore();
+      rmSync(sessionDir, { recursive: true, force: true });
     }
   });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PromptMentionResource } from "@bb/domain";
 import {
+  appendQuoteToDraftText,
   emptyPromptDraftState,
   isPromptDraftEmpty,
   parsePromptDraftStorage,
@@ -176,5 +177,52 @@ describe("prompt draft helpers", () => {
         },
       ],
     });
+  });
+});
+
+describe("appendQuoteToDraftText", () => {
+  it("appends a one-line quote to an empty draft with a trailing newline", () => {
+    const next = appendQuoteToDraftText(
+      emptyPromptDraftState(),
+      "  hello world  ",
+    );
+    expect(next.text).toBe("> hello world\n");
+  });
+
+  it("prefixes each line of a multi-line quote and prefixes blank lines as `>`", () => {
+    const next = appendQuoteToDraftText(
+      emptyPromptDraftState(),
+      "para one\n\npara two",
+    );
+    expect(next.text).toBe("> para one\n>\n> para two\n");
+  });
+
+  it("appends to existing text separated by a newline", () => {
+    const base = { text: "existing reply", mentions: [], attachments: [] };
+    const next = appendQuoteToDraftText(base, "quoted");
+    expect(next.text).toBe("existing reply\n> quoted\n");
+  });
+
+  it("ignores an empty or whitespace-only quote", () => {
+    const base = emptyPromptDraftState();
+    expect(appendQuoteToDraftText(base, "")).toBe(base);
+    expect(appendQuoteToDraftText(base, "   \n  ")).toBe(base);
+  });
+
+  it("leaves existing mention offsets byte-for-byte unchanged (appends to the end)", () => {
+    const resource: PromptMentionResource = {
+      kind: "thread",
+      threadId: "thr_parent",
+      label: "Prompt UX thread",
+    };
+    const text = "Ask @manager now";
+    const start = text.indexOf("@manager");
+    const mention = { start, end: start + "@manager".length, resource };
+    const base = { text, mentions: [mention], attachments: [] };
+
+    const next = appendQuoteToDraftText(base, "context");
+
+    expect(next.mentions).toEqual([mention]);
+    expect(next.text.startsWith(text)).toBe(true);
   });
 });

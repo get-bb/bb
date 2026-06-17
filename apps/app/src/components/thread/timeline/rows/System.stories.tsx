@@ -42,13 +42,11 @@ const provisioningPending: TimelineRow = systemRow({
   title: "Provisioning thread",
   detail:
     "Creating worktree (305ms)\n" +
-    "git worktree add -B bb/investigate-thread-timeline-load-thr_sjgc9pafri /Users/michael/.bb-dev/worktrees/env_etyr7f84cg/bb\n" +
     "HEAD is now at 37eeec85 Refactor timeline row titles\n" +
     "Preparing worktree (new branch 'bb/investigate-thread-timeline-load-thr_sjgc9pafri')\n" +
     "Created worktree (305ms)\n" +
     "Using workspace: /Users/michael/.bb-dev/worktrees/env_etyr7f84cg/bb\n" +
     "Running .bb-env-setup.sh\n" +
-    "env bash .bb-env-setup.sh\n" +
     "[bb-env-setup] Running: pnpm install\n" +
     "Scope: all 35 workspace projects\n" +
     "Lockfile is up to date, resolution step is skipped\n" +
@@ -372,8 +370,8 @@ export function Operations() {
   return (
     <StoryCard>
       <StoryRow
-        label="thread-provisioning — pending"
-        hint="long initial setup, status=pending, transcript still streaming"
+        label="thread-provisioning — pending, cleaned"
+        hint="status=pending; no git/env command echo lines in the transcript"
       >
         <TimelineStage>
           <ThreadTimelineRows
@@ -385,7 +383,7 @@ export function Operations() {
       </StoryRow>
       <StoryRow
         label="thread-provisioning — completed"
-        hint="status=completed, transcript + terminal duration line"
+        hint="status=completed; already matched the cleaned transcript shape"
       >
         <TimelineStage>
           <ThreadTimelineRows

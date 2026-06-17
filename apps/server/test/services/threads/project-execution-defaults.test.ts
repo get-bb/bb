@@ -8,6 +8,8 @@ import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
+  seedThread,
+  seedTurnStarted,
 } from "../../helpers/seed.js";
 import { textInput } from "../../helpers/prompt-input.js";
 import { withTestHarness } from "../../helpers/test-app.js";
@@ -40,6 +42,8 @@ describe("project execution defaults persistence", () => {
 
       await createThreadFromRequest(harness.deps, {
         origin: "app",
+        childOrigin: null,
+        startedOnBehalfOf: null,
         projectId: project.id,
         providerId: "codex",
         model: "gpt-5",
@@ -84,6 +88,8 @@ describe("project execution defaults persistence", () => {
 
       await createThreadFromRequest(harness.deps, {
         origin: "app",
+        childOrigin: null,
+        startedOnBehalfOf: null,
         projectId: project.id,
         providerId: "codex",
         model: "gpt-5",
@@ -111,6 +117,74 @@ describe("project execution defaults persistence", () => {
         reasoningLevel: "high",
         permissionMode: "workspace-write",
         serviceTier: "fast",
+      });
+    });
+  });
+
+  it("does not overwrite project defaults for a fork/side-chat child spawn", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-child-origin-defaults",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const parentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/child-origin-defaults-source",
+      });
+      const parentThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: parentEnvironment.id,
+      });
+      seedTurnStarted(harness.deps, {
+        threadId: parentThread.id,
+        turnId: "turn-child-origin-defaults-source",
+        providerThreadId: "provider-child-origin-defaults-source",
+      });
+
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5-mini",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+
+      // A side chat forces permissionMode "readonly" and inherits a model the
+      // user never picked in the composer; creating it must not reshape the
+      // project's stored defaults (like the reuse carve-out above).
+      await createThreadFromRequest(harness.deps, {
+        origin: "app",
+        childOrigin: "side-chat",
+        startedOnBehalfOf: null,
+        parentThreadId: parentThread.id,
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "high",
+        permissionMode: "readonly",
+        serviceTier: "fast",
+        input: textInput("Quick question"),
+        environment: {
+          type: "host",
+          hostId: host.id,
+          workspace: { type: "unmanaged", path: null },
+        },
+      });
+
+      expect(
+        getProjectExecutionDefaults(harness.db, {
+          projectId: project.id,
+        }),
+      ).toEqual({
+        providerId: "codex",
+        model: "gpt-5-mini",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
       });
     });
   });

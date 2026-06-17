@@ -1,10 +1,10 @@
 import type { QueryKey } from "@tanstack/react-query";
-import type { ThreadWithRuntime } from "@bb/domain";
 import type {
   EnvironmentDiffBranchesResponse,
   EnvironmentDiffFilesResponse,
   EnvironmentStatusResponse,
   ProjectBranchesResponse,
+  ThreadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import {
@@ -155,10 +155,10 @@ export function resolveEnvironmentMergeBaseBranchesPlaceholder({
 }
 
 export function resolveThreadPlaceholder(
-  previousData: ThreadWithRuntime | undefined,
+  previousData: ThreadResponse | undefined,
   previousQueryKey: QueryKey | undefined,
   nextThreadId: string,
-): ThreadWithRuntime | undefined {
+): ThreadResponse | undefined {
   return resolveThreadScopedPlaceholder(
     previousData,
     previousQueryKey,

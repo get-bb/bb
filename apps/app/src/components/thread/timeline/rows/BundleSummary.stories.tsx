@@ -6,6 +6,7 @@ import type {
 import { ThreadTimelineRows } from "@/components/thread/timeline";
 import {
   commandRow,
+  conversationRow,
   delegationRow,
   fileChangeRow,
   toolRow,
@@ -824,6 +825,160 @@ export function Overview() {
             {...baseProps}
             threadRuntimeDisplayStatus="active"
             timelineRows={commandBundleRows}
+          />
+        </TimelineStage>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Interleaved timeline. The states above, rendered as one continuous thread
+// with user + assistant messages, so the prominence ramp reads in context:
+//   - user/agent messages sit at full strength (the top tier);
+//   - finished work rolls up and recedes (the muted past layer);
+//   - the errored and interrupted clusters, and the live frontier, stay
+//     prominent.
+// Note on form: between two messages the projection closes a multi-row step
+// into a *step-summary* — that's the real product behavior, since a genuine
+// bundle-summary only survives at the live frontier. So the trailing
+// "Exploring…" cluster is the one true (active-latest) bundle-summary here.
+// ---------------------------------------------------------------------------
+
+const CONV_THREAD_ID = "thr_zeb7z9afmw";
+const CONV_TURN_ID = "conv-interleaved-turn";
+
+function userMessage(seq: number, text: string): TimelineRow {
+  return conversationRow({
+    id: `${CONV_THREAD_ID}:user:${seq}`,
+    threadId: CONV_THREAD_ID,
+    turnId: CONV_TURN_ID,
+    role: "user",
+    sourceSeqStart: seq,
+    startedAt: 1777337000000 + seq,
+    createdAt: 1777337000000 + seq,
+    text,
+  });
+}
+
+function assistantMessage(seq: number, text: string): TimelineRow {
+  return conversationRow({
+    id: `${CONV_THREAD_ID}:assistant:${seq}`,
+    threadId: CONV_THREAD_ID,
+    turnId: CONV_TURN_ID,
+    role: "assistant",
+    sourceSeqStart: seq,
+    startedAt: 1777337000000 + seq,
+    createdAt: 1777337000000 + seq,
+    text,
+  });
+}
+
+// Trailing exploration cluster left open under active scope — the one genuine
+// (active-latest) bundle-summary in the thread, shimmering as the frontier.
+function frontierRead(
+  idSuffix: string,
+  seq: number,
+  path: string,
+  status: TimelineRowStatus,
+): TimelineRow {
+  return toolRow({
+    id: `${CONV_THREAD_ID}:tool:frontier_${idSuffix}`,
+    threadId: CONV_THREAD_ID,
+    turnId: CONV_TURN_ID,
+    sourceSeqStart: seq,
+    startedAt: status === "pending" ? Date.now() : Date.now() - 4000,
+    createdAt: status === "pending" ? Date.now() : Date.now() - 4000,
+    status,
+    callId: `frontier_${idSuffix}`,
+    toolName: "Read",
+    toolArgs: { file_path: path },
+    output: status === "pending" ? "" : "...file contents...",
+    activityIntents: [
+      {
+        type: "read",
+        command: "Read",
+        name: path.split("/").pop() ?? path,
+        path,
+      },
+    ],
+    durationMs: status === "pending" ? null : 60,
+  });
+}
+
+const frontierExplorationRows: TimelineRow[] = [
+  frontierRead(
+    "watcher",
+    40001,
+    "packages/host-daemon/src/workspace/watcher.ts",
+    "completed",
+  ),
+  frontierRead(
+    "session",
+    40002,
+    "packages/host-daemon/src/runtime/session.ts",
+    "completed",
+  ),
+  frontierRead(
+    "index",
+    40003,
+    "packages/host-daemon/src/workspace/index.ts",
+    "pending",
+  ),
+];
+
+const interleavedConversationRows: TimelineRow[] = [
+  userMessage(40010, "Track down why the workspace watcher leaks and fix it."),
+  assistantMessage(
+    40011,
+    "Starting with a read through the watcher and its callers.",
+  ),
+  ...explorationBundleRows,
+  assistantMessage(
+    40020,
+    "Confirmed — the watcher outlives the provider process. Running the suite to verify.",
+  ),
+  ...commandBundleMixedStatusRows,
+  assistantMessage(
+    40030,
+    "First pass hit a failing server test; it needs the fix to land before it goes green. Editing the call sites now.",
+  ),
+  ...fileChangeBundleMixedStatusRows,
+  assistantMessage(
+    40040,
+    "Re-applied the interrupted edit and reran — clean. Tidying the todo list and reloading the tool schemas.",
+  ),
+  ...toolsBundleRows,
+  userMessage(
+    40050,
+    "Also confirm the recommended idle-TTL default from the editor docs.",
+  ),
+  assistantMessage(40051, "Researching the editor CLI docs now."),
+  ...webResearchBundleRows,
+  assistantMessage(
+    40060,
+    "Docs point to a 30s idle lease. Delegating the cross-package check and a merge-readiness review.",
+  ),
+  ...delegationsBundleRows,
+  assistantMessage(
+    40070,
+    "Subagents are back clean. Doing a final read-through of the changed files before I hand it off.",
+  ),
+  ...frontierExplorationRows,
+];
+
+export function Conversation() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="interleaved thread"
+        hint="user + agent messages at full strength; finished work rolled up and receded; errored/interrupted clusters and the live frontier kept prominent"
+      >
+        <TimelineStage>
+          <ThreadTimelineRows
+            {...baseProps}
+            threadRuntimeDisplayStatus="active"
+            timelineRows={interleavedConversationRows}
           />
         </TimelineStage>
       </StoryRow>

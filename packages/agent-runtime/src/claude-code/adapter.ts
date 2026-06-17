@@ -1182,6 +1182,70 @@ export function createClaudeCodeProviderAdapter(
               input: command.input,
             },
           };
+        case "thread/fork": {
+          finishOpenProviderTurn({
+            registry: turnState,
+            threadId: command.threadId,
+          });
+          const baseInstructions = command.options?.instructions ?? "";
+          if (command.options?.model) {
+            setClaudeModelContextWindowHint(
+              command.threadId,
+              command.options.model,
+            );
+          }
+          const forkConfig = buildClaudeCodeConfig(command.options?.envVars);
+          const dynamicTools = command.dynamicTools?.map((t) => ({
+            name: t.name,
+            description: t.description,
+            inputSchema: jsonValueSchema.parse(t.inputSchema),
+          }));
+          const permissionPolicy = resolveAdapterPermissionPolicy(
+            command.options,
+          );
+          const additionalWorkspaceWriteRootsParams =
+            permissionPolicy.permissionMode === "workspace-write"
+              ? buildAdditionalWorkspaceWriteRootsParams(
+                  additionalWorkspaceWriteRoots,
+                )
+              : undefined;
+          const skillConfig = buildClaudeSkillConfigParams(
+            command.options.skillRoots,
+          );
+          return {
+            kind: "request",
+            method: "thread/fork",
+            params: {
+              baseInstructions,
+              threadId: command.threadId,
+              cwd: command.cwd,
+              sourceProviderThreadId: command.sourceProviderThreadId,
+              instructionMode: command.instructionMode,
+              claudeCodeMockCliTraffic:
+                command.options.claudeCodeMockCliTraffic,
+              permissionMode: toClaudePermissionMode(permissionPolicy),
+              permissionEscalation: permissionPolicy.permissionEscalation,
+              ...(additionalWorkspaceWriteRootsParams
+                ? additionalWorkspaceWriteRootsParams
+                : {}),
+              ...(skillConfig ? skillConfig : {}),
+              ...(forkConfig ? { config: forkConfig } : {}),
+              ...(command.options?.model
+                ? { model: command.options.model }
+                : {}),
+              ...(command.options?.reasoningLevel
+                ? { reasoningLevel: command.options.reasoningLevel }
+                : {}),
+              workflowsEnabled: command.options.workflowsEnabled,
+              ...(dynamicTools && dynamicTools.length > 0
+                ? { dynamicTools }
+                : {}),
+              ...(command.disallowedTools && command.disallowedTools.length > 0
+                ? { disallowedTools: [...command.disallowedTools] }
+                : {}),
+            },
+          };
+        }
         case "thread/stop":
           finishOpenProviderTurn({
             registry: turnState,
@@ -1217,12 +1281,13 @@ export function createClaudeCodeProviderAdapter(
       if (
         command.type === "thread/start" ||
         command.type === "thread/resume" ||
+        command.type === "thread/fork" ||
         command.type === "thread/stop"
       ) {
         const state = turnState.getOrCreate({ threadId: command.threadId });
         state.pendingAcceptedUserMessages = [];
-        // Starting, resuming, or stopping a thread replaces/kills the CLI
-        // session, and background tasks die with it — settle them as
+        // Starting, resuming, forking, or stopping a thread replaces/kills the
+        // CLI session, and background tasks die with it — settle them as
         // interrupted so no workflow row dangles as running.
         return buildInterruptedClaudeTaskEvents({
           tasks: state.tasksById,

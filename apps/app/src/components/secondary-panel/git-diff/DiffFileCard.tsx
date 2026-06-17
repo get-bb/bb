@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button.js";
 import { FilePathLink } from "@/components/ui/file-path-link.js";
 import { Skeleton } from "@/components/ui/skeleton.js";
 import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
+import { cn } from "@/lib/utils";
 
 /**
  * Build the file label for a TOC entry. Renames/copies read as `old -> new`;
@@ -146,11 +147,11 @@ export const DiffFileCard = memo(function DiffFileCard({
   // Detect when this card's sticky header is pinned to the panel top: a
   // zero-height sentinel sits just above the header, so once it scrolls out of
   // the scroll container the header is stuck. When stuck we square the header's
-  // top (`rounded-t-none border-t`) — the card's own rounded top has scrolled
-  // off-screen by then, and a rounded header top would otherwise show the
-  // scrolling diff through its corners. (`overflow-clip` below keeps the bottom
-  // rounded; the top can't be fixed by clipping because the rounded corners are
-  // the header's own, over live content.)
+  // top and draw a non-layout top edge — the card's own rounded top has
+  // scrolled off-screen by then, and a rounded header top would otherwise show
+  // the scrolling diff through its corners. (`overflow-clip` below keeps the
+  // bottom rounded; the top can't be fixed by clipping because the rounded
+  // corners are the header's own, over live content.)
   const { ref: stickySentinelRef, isIntersecting } = useIntersectionObserver({
     initialIsIntersecting: true,
     threshold: 1,
@@ -165,11 +166,15 @@ export const DiffFileCard = memo(function DiffFileCard({
     <div className="overflow-clip rounded-lg border border-border bg-background">
       <div ref={stickySentinelRef} className="h-0" />
       <div
-        className={gitDiffCardHeaderWrapperClass({
-          stickyHeader: true,
-          isBodyHidden,
-          isStuck: isHeaderStuck,
-        })}
+        className={cn(
+          gitDiffCardHeaderWrapperClass({
+            stickyHeader: true,
+            isBodyHidden,
+            isStuck: isHeaderStuck,
+            showStuckHeaderEdge: false,
+          }),
+          "-mt-px border-t border-border",
+        )}
       >
         <GitDiffCardHeader
           model={headerModel}

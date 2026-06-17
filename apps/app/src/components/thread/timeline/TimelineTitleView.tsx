@@ -238,20 +238,13 @@ function renderDecoration(
     case "summary-status": {
       const text = formatTimelineDecorationText(decoration);
       if (text.length === 0) return null;
-      // An error status reads in red — both a single row's "(error)" tag and a
-      // rolled-up summary's "(N errors)" count — using the deeper `destructive`
-      // token. Non-error statuses (denied, interrupted) stay a muted annotation.
-      const isError =
-        (decoration.kind === "status" && decoration.status === "error") ||
-        (decoration.kind === "summary-status" && decoration.errorCount > 0);
+      // Status decorations — a single row's "(error)" tag, a rolled-up
+      // summary's "(N errors)" count, and the denied/interrupted annotations —
+      // all render in the muted decoration tone. These tool-call errors are
+      // non-actionable for the user, so they blend in with their siblings
+      // rather than shouting in red.
       return (
-        <span
-          key={index}
-          className={cn(
-            "shrink-0 whitespace-pre",
-            isError ? "text-destructive-text" : decorationToneClass(tone),
-          )}
-        >
+        <span key={index} className={baseClass}>
           {text}
         </span>
       );

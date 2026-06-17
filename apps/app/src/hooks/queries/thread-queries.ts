@@ -5,7 +5,11 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { useMemo } from "react";
-import type { PendingInteraction } from "@bb/domain";
+import type {
+  PendingInteraction,
+  ResolvedThreadExecutionOptions,
+  ThreadWithRuntime,
+} from "@bb/domain";
 import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
@@ -45,6 +49,7 @@ import {
 import {
   archivedThreadsListQueryKey,
   disabledThreadListQueryKey,
+  threadDefaultExecutionOptionsQueryKey,
   threadDetailBootstrapQueryKey,
   threadQueuedMessagesQueryKey,
   threadListQueryKey,
@@ -84,6 +89,8 @@ type ThreadTimelineTurnSummaryDetailsQueryOptions = QueryOptions;
 type ThreadQueuedMessagesQueryOptions = QueryOptions;
 
 type ThreadPromptHistoryQueryOptions = QueryOptions;
+
+type ThreadDefaultExecutionOptionsQueryOptions = QueryOptions;
 
 type ThreadPendingInteractionsQueryOptions = QueryOptions;
 
@@ -405,8 +412,21 @@ export function useThread(id: string, options?: QueryOptions) {
     refetchOnMount: options?.refetchOnMount ?? true,
     placeholderData: (previousData, previousQuery) =>
       resolveThreadPlaceholder(previousData, previousQuery?.queryKey, id) ??
-      getCachedThreadListPlaceholder(queryClient, id),
+      liftThreadListPlaceholder(getCachedThreadListPlaceholder(queryClient, id)),
   });
+}
+
+// A thread primed from the sidebar list cache has no spawn-policy flag (the
+// list response omits it). Conservatively hide the spawn affordance on the
+// placeholder; the real single-thread response, which carries the server-
+// computed value, resolves moments later.
+function liftThreadListPlaceholder(
+  thread: ThreadWithRuntime | undefined,
+): ThreadResponse | undefined {
+  if (thread === undefined) {
+    return undefined;
+  }
+  return { ...thread, canSpawnChild: false };
 }
 
 export function useThreadDetailBootstrap(
@@ -473,6 +493,23 @@ export function useThreadPromptHistory(
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? PROMPT_HISTORY_STALE_TIME_MS,
+  });
+}
+
+export function useThreadDefaultExecutionOptions(
+  id: string,
+  options?: ThreadDefaultExecutionOptionsQueryOptions,
+) {
+  return useQuery<ResolvedThreadExecutionOptions | null>({
+    queryKey: threadDefaultExecutionOptionsQueryKey(id),
+    queryFn: () =>
+      api.getThreadDefaultExecutionOptions(
+        requireThreadId(id, "useThreadDefaultExecutionOptions"),
+      ),
+    enabled: (options?.enabled ?? true) && Boolean(id),
+    refetchOnMount: options?.refetchOnMount ?? true,
+    refetchOnWindowFocus: false,
+    staleTime: options?.staleTime,
   });
 }
 

@@ -77,6 +77,11 @@ type DeferredDestructiveCleanupMigrationTag =
   | "0017_terminal_session_runtime_state_honesty"
   | "0018_natural_crusher_hogan";
 
+type ReorderedCleanupMigrationTag =
+  | "0033_drop_cleanup_mode"
+  | "0034_drop_stop_requested_at"
+  | "0035_warm_kingpin";
+
 export interface FutureAppliedMigration {
   createdAt: number;
   hash: string;
@@ -149,6 +154,11 @@ const deferredDestructiveCleanupMigrationTags = [
   "0017_terminal_session_runtime_state_honesty",
   "0018_natural_crusher_hogan",
 ] as const satisfies readonly DeferredDestructiveCleanupMigrationTag[];
+const reorderedCleanupMigrationTags = [
+  "0033_drop_cleanup_mode",
+  "0034_drop_stop_requested_at",
+  "0035_warm_kingpin",
+] as const satisfies readonly ReorderedCleanupMigrationTag[];
 const pendingInteractionColumns: ExpectedColumn[] = [
   { name: "id", type: "text", notNull: true, primaryKey: true },
   { name: "thread_id", type: "text", notNull: true, primaryKey: false },
@@ -948,6 +958,99 @@ function applyDeferredDestructiveLegacyCleanup(
   }
 }
 
+function applyReorderedCleanupMigration(
+  db: DbConnection,
+  tag: ReorderedCleanupMigrationTag,
+): void {
+  switch (tag) {
+    case "0033_drop_cleanup_mode": {
+      if (
+        tableExists(db, "environments") &&
+        columnExists(db, "environments", "cleanup_mode")
+      ) {
+        db.$client
+          .prepare("ALTER TABLE `environments` DROP COLUMN `cleanup_mode`")
+          .run();
+      }
+      return;
+    }
+    case "0034_drop_stop_requested_at": {
+      if (
+        tableExists(db, "threads") &&
+        columnExists(db, "threads", "stop_requested_at")
+      ) {
+        db.$client
+          .prepare("ALTER TABLE `threads` DROP COLUMN `stop_requested_at`")
+          .run();
+      }
+      return;
+    }
+    case "0035_warm_kingpin": {
+      if (tableExists(db, "environments")) {
+        if (columnExists(db, "environments", "cleanup_requested_at")) {
+          db.$client
+            .prepare(
+              `
+                UPDATE environments
+                SET status = 'retiring'
+                WHERE status = 'ready'
+                  AND cleanup_requested_at IS NOT NULL
+              `,
+            )
+            .run();
+        }
+        if (
+          indexExists(db, "environments", "environments_cleanup_requested_idx")
+        ) {
+          db.$client
+            .prepare("DROP INDEX `environments_cleanup_requested_idx`")
+            .run();
+        }
+        if (columnExists(db, "environments", "cleanup_requested_at")) {
+          db.$client
+            .prepare(
+              "ALTER TABLE `environments` DROP COLUMN `cleanup_requested_at`",
+            )
+            .run();
+        }
+      }
+      if (tableExists(db, "threads")) {
+        db.$client
+          .prepare(
+            `
+              UPDATE threads
+              SET status = 'starting'
+              WHERE status IN ('created', 'provisioning')
+            `,
+          )
+          .run();
+      }
+      return;
+    }
+  }
+}
+
+function applyReorderedCleanupMigrations(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  if (!tableExists(db, "__drizzle_migrations")) {
+    return;
+  }
+
+  const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
+  const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
+  for (const tag of reorderedCleanupMigrationTags) {
+    const migration = requireExpectedAppliedMigration(expectedMigrations, tag);
+    if (appliedCreatedAts.has(migration.createdAt)) {
+      continue;
+    }
+    applyReorderedCleanupMigration(db, tag);
+    markMigrationApplied(db, migration);
+    appliedCreatedAts.add(migration.createdAt);
+  }
+}
+
 function warnAboutFutureAppliedMigrations(
   db: DbConnection,
   options: MigrateOptions,
@@ -1064,6 +1167,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       applyDeferredDestructiveLegacyCleanup(db, migrationsFolder);
     }
     drizzleMigrate(db, { migrationsFolder });
+    applyReorderedCleanupMigrations(db, migrationsFolder);
   } finally {
     sqlite.pragma("foreign_keys = ON");
   }

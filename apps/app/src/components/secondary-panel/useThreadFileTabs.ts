@@ -8,12 +8,14 @@ import {
   createBrowserFixedPanelTab,
   createHostFilePreviewFixedPanelTab,
   createNewTabFixedPanelTab,
+  createSideChatFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
   type BrowserFixedPanelTab,
   type FixedPanelTab,
   type HostFilePreviewFixedPanelTab,
   type NewTabFixedPanelTab,
+  type SideChatFixedPanelTab,
   type TerminalFixedPanelTab,
   type ThreadStorageFilePreviewFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
@@ -82,6 +84,16 @@ export interface UpdateBrowserTabArgs {
   title: string | null;
 }
 
+export interface OpenSideChatArgs {
+  sourceThreadId: string;
+  sourceMessageText: string;
+}
+
+export interface SetSideChatThreadIdArgs {
+  tabId: string;
+  threadId: string;
+}
+
 export type OpenSecondaryPanelTabRequest =
   | { kind: "workspace-file-preview"; tab: WorkspaceFileTabState }
   | { kind: "host-file-preview"; tab: HostFileTabState }
@@ -116,6 +128,14 @@ type SecondaryPanelTab =
 function isTerminalTab(tab: FixedPanelTab): tab is TerminalFixedPanelTab {
   return tab.kind === "terminal";
 }
+
+function isSideChatTab(tab: FixedPanelTab): tab is SideChatFixedPanelTab {
+  return tab.kind === "side-chat";
+}
+
+// Every side chat uses a constant tab title; the message it was triggered from
+// is shown inside the panel ("Replying to" bubble), so the tab needn't echo it.
+const SIDE_CHAT_TAB_TITLE = "Side chat";
 
 export function pruneTerminalTabs({
   knownTerminalIds,
@@ -328,6 +348,100 @@ export function useThreadFileTabs({
     [updateFixedPanelTabsState],
   );
 
+  // Opens a message-anchored side chat: appends a side-chat tab (threadId null,
+  // child thread created lazily on the user's first submit), activates it, and
+  // reveals the panel. A fresh tab per call mirrors the browser-tab model — the
+  // source message is not a stable identity.
+  const openSideChat = useCallback(
+    ({ sourceMessageText }: OpenSideChatArgs) => {
+      const nextTab = createSideChatFixedPanelTab({
+        sourceMessageText,
+        title: SIDE_CHAT_TAB_TITLE,
+      });
+      updateFixedPanelTabsState((state) =>
+        openSecondaryPanelTabInState({ state, tab: nextTab }),
+      );
+    },
+    [updateFixedPanelTabsState],
+  );
+
+  // Opens an EXISTING side-chat child thread as a tab (e.g. from the "Message
+  // from side chat" link in the main timeline). Activates the tab if one is
+  // already open for that thread; otherwise creates one pre-pointed at it (no
+  // anchor message — the conversation is already there).
+  const openExistingSideChatTab = useCallback(
+    (childThreadId: string) => {
+      updateFixedPanelTabsState((state) => {
+        const existing = state.secondary.tabs.find(
+          (tab) => isSideChatTab(tab) && tab.threadId === childThreadId,
+        );
+        if (existing) {
+          return activateSecondaryPanelTabInState(state, existing.id);
+        }
+        const nextTab = {
+          ...createSideChatFixedPanelTab({
+            sourceMessageText: "",
+            title: SIDE_CHAT_TAB_TITLE,
+          }),
+          threadId: childThreadId,
+        };
+        return openSecondaryPanelTabInState({ state, tab: nextTab });
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
+  // Records the child thread id once it is created on first submit, so later
+  // turns render against the persisted thread and the tab survives reloads.
+  const setSideChatThreadId = useCallback(
+    ({ tabId, threadId: childThreadId }: SetSideChatThreadIdArgs) => {
+      updateFixedPanelTabsState((state) => {
+        const tab = findSecondaryPanelTab(state.secondary.tabs, tabId);
+        if (
+          !tab ||
+          !isSideChatTab(tab) ||
+          tab.threadId === childThreadId
+        ) {
+          return state;
+        }
+        return updateSecondaryPanelTabInState({
+          state,
+          tab: {
+            ...tab,
+            threadId: childThreadId,
+          },
+        });
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
+  const activateSideChatTab = useCallback(
+    (tabId: string) => {
+      updateFixedPanelTabsState((state) => {
+        const tab = findSecondaryPanelTab(state.secondary.tabs, tabId);
+        if (!tab || !isSideChatTab(tab)) {
+          return state;
+        }
+        return activateSecondaryPanelTabInState(state, tabId);
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
+  const closeSideChatTab = useCallback(
+    (tabId: string) => {
+      updateFixedPanelTabsState((state) => {
+        const tab = findSecondaryPanelTab(state.secondary.tabs, tabId);
+        if (!tab || !isSideChatTab(tab)) {
+          return state;
+        }
+        return closeSecondaryPanelTabInState(state, tabId);
+      });
+    },
+    [updateFixedPanelTabsState],
+  );
+
   const selectFileSearchResult = useCallback(
     (selection: FileSearchSelection) => {
       const tab = createTabForFileSearchSelection({
@@ -391,6 +505,14 @@ export function useThreadFileTabs({
     () => fixedPanelTabsState.secondary.tabs.filter(isBrowserTab),
     [fixedPanelTabsState.secondary.tabs],
   );
+  // Every open side-chat tab in insertion order. The secondary panel keeps a
+  // live conversation surface mounted for each one (only the active tab shown)
+  // so streaming survives tab switches — the same keep-mounted deck pattern as
+  // browser tabs.
+  const sideChatTabs = useMemo(
+    () => fixedPanelTabsState.secondary.tabs.filter(isSideChatTab),
+    [fixedPanelTabsState.secondary.tabs],
+  );
   const activeWorkspaceFileTab =
     activeTab?.kind === "workspace-file-preview" &&
     activeTab.environmentId === resolvedEnvironmentId
@@ -402,6 +524,8 @@ export function useThreadFileTabs({
     activeTab?.kind === "host-file-preview" ? activeTab : null;
   const activeBrowserTab = activeTab?.kind === "browser" ? activeTab : null;
   const activeNewTab = activeTab?.kind === "new-tab" ? activeTab : null;
+  const activeSideChatTab =
+    activeTab?.kind === "side-chat" ? activeTab : null;
 
   return {
     activateTab,
@@ -414,14 +538,21 @@ export function useThreadFileTabs({
     activeWorkspaceFilePath: activeWorkspaceFileTab?.path ?? null,
     activeWorkspaceFileSource: activeWorkspaceFileTab?.source ?? null,
     activeWorkspaceFileStatusLabel: activeWorkspaceFileTab?.statusLabel ?? null,
+    activeSideChatTabId: activeSideChatTab?.id ?? null,
+    activateSideChatTab,
     browserTabs,
     clearActiveFileTabs,
+    closeSideChatTab,
     closeTab,
     isNewTabActive: activeNewTab !== null,
+    openSideChat,
+    openExistingSideChatTab,
     openTab,
     orderedSecondaryFileTabs,
     reorderFileTab,
     selectFileSearchResult,
+    setSideChatThreadId,
+    sideChatTabs,
     updateBrowserTab,
   };
 }

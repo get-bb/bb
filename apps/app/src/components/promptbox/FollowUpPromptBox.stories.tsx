@@ -10,7 +10,10 @@ import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
-import type { ThreadContextWindowUsage } from "@bb/server-contract";
+import type {
+  SystemExecutionOptionsModelLoadError,
+  ThreadContextWindowUsage,
+} from "@bb/server-contract";
 import {
   FollowUpPromptBox,
   type FollowUpSubmitMode,
@@ -35,8 +38,13 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeEnvironment,
   makeExecutionControlsProps,
+  STORY_CODEX_MODELS,
   STORY_PROVIDER_OPTIONS,
 } from "../../../.ladle/story-fixtures";
+import type {
+  ExecutionControlsProps,
+  ExecutionPermissionConfig,
+} from "@/components/promptbox/ExecutionControls";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",
@@ -55,6 +63,10 @@ const baseExecution = makeExecutionControlsProps({
     displayName: "Codex",
   },
 });
+const codexModelLoadError = {
+  providerId: "codex",
+  code: "failed",
+} satisfies SystemExecutionOptionsModelLoadError;
 
 const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
   { value: "full", label: "Full Access", tone: "warning" },
@@ -62,8 +74,37 @@ const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
   { value: "readonly", label: "Readonly" },
 ];
 
-const basePermission = {
-  value: "workspace-write" as PermissionMode,
+const basePermission: ExecutionPermissionConfig = {
+  value: "workspace-write",
+  options: permissionModeOptions,
+  onChange: noop,
+  supported: true,
+};
+
+// Read-only footer (side chat): the side chat inherits its parent thread's
+// provider/model and is always read-only. It renders the SAME model/reasoning
+// and permission pickers the main thread does — just disabled via the
+// FollowUpPromptBox `readOnly` flag — so labels and positions match exactly.
+// The configs carry real onChange handlers (they never fire while disabled).
+const readOnlyExecution = makeExecutionControlsProps({
+  provider: {
+    options: STORY_PROVIDER_OPTIONS,
+    selectedId: "codex",
+    onChange: noop,
+    hasMultiple: false,
+  },
+  model: {
+    active: { model: "gpt-5.5" },
+    selected: "gpt-5.5",
+    options: STORY_CODEX_MODELS,
+    isLoading: false,
+    loadFailed: false,
+    onChange: noop,
+  },
+});
+
+const readOnlyPermission: ExecutionPermissionConfig = {
+  value: "readonly",
   options: permissionModeOptions,
   onChange: noop,
   supported: true,
@@ -230,7 +271,11 @@ const attachmentsBase: AttachmentsConfig = {
 
 const historyEntries = [
   { text: "review thread workspace", mentions: [], attachments: [] },
-  { text: "investigate timeline pagination", mentions: [], attachments: [] },
+  {
+    text: "investigate timeline pagination",
+    mentions: [],
+    attachments: [],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -383,6 +428,8 @@ const queuedMessagesElement: ReactNode = (
 // Per-row component
 // ---------------------------------------------------------------------------
 
+type RowPermission = Parameters<typeof FollowUpPromptBox>[0]["permission"];
+
 interface RowConfig {
   initialMessage?: string;
   submitMode: FollowUpSubmitMode;
@@ -394,12 +441,17 @@ interface RowConfig {
   stack?: ReactNode | null;
   zenModeResetKey?: string;
   hideComposer?: boolean;
+  /** Defaults to the editable execution controls; override to show the read-only model/provider config. */
+  execution?: ExecutionControlsProps;
+  /** Defaults to the editable permission picker; override to show the read-only permission config. */
+  permission?: RowPermission;
+  /** Render the footer pickers disabled (side chat). The same controls, non-interactive. */
+  readOnly?: boolean;
 }
 
-type FollowUpComposerRuntimeStatus =
-  NonNullable<
-    Parameters<typeof FollowUpPromptBox>[0]["composer"]
-  >["threadRuntimeDisplayStatus"];
+type FollowUpComposerRuntimeStatus = NonNullable<
+  Parameters<typeof FollowUpPromptBox>[0]["composer"]
+>["threadRuntimeDisplayStatus"];
 
 // Match production: ThreadTimelinePane's PageShell footer caps content at
 // 760px. The story's StoryRow value cell uses flex-wrap, which would
@@ -423,6 +475,9 @@ function Row({
   stack = null,
   zenModeResetKey = "thr_demo",
   hideComposer = false,
+  execution = baseExecution,
+  permission = basePermission,
+  readOnly = false,
 }: RowConfig) {
   const [message, setMessage] = useState(initialMessage);
   const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
@@ -468,8 +523,9 @@ function Row({
         }
         environmentSummary={environmentSummary}
         contextWindowUsage={contextWindowUsage}
-        execution={baseExecution}
-        permission={basePermission}
+        execution={execution}
+        permission={permission}
+        readOnly={readOnly}
         typeahead={typeaheadBase}
         zenModeResetKey={zenModeResetKey}
       />
@@ -527,6 +583,62 @@ export function Overview() {
           isFollowUpSubmitting
           threadRuntimeDisplayStatus="active"
           initialMessage="And confirm the new env summary renders correctly."
+        />
+      </StoryRow>
+      <StoryRow
+        label="loading models"
+        hint="locked provider while execution options load"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={{
+            ...baseExecution,
+            model: {
+              ...baseExecution.model,
+              active: null,
+              selected: "",
+              options: [],
+              isLoading: true,
+              loadFailed: false,
+            },
+          }}
+        />
+      </StoryRow>
+      <StoryRow
+        label="model load failed"
+        hint="locked provider with structured modelLoadError"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={{
+            ...baseExecution,
+            model: {
+              ...baseExecution.model,
+              active: null,
+              selected: "",
+              options: [],
+              isLoading: false,
+              loadFailed: true,
+              loadError: codexModelLoadError,
+            },
+          }}
+        />
+      </StoryRow>
+      <StoryRow label="no models" hint="locked provider with empty catalog">
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={{
+            ...baseExecution,
+            model: {
+              ...baseExecution.model,
+              active: null,
+              selected: "",
+              options: [],
+              isLoading: false,
+              loadFailed: false,
+              loadError: null,
+            },
+          }}
         />
       </StoryRow>
       <StoryRow
@@ -595,6 +707,17 @@ export function Overview() {
         <Row
           submitMode={{ kind: "ready" }}
           environmentSummary={remoteEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="read-only footer (side chat)"
+        hint="inherits parent provider/model; always read-only — same model & permission pickers as the main thread, just disabled"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          execution={readOnlyExecution}
+          permission={readOnlyPermission}
+          readOnly
         />
       </StoryRow>
     </StoryCard>

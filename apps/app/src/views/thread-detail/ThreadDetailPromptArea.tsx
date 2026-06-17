@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { getFollowUpPromptPlaceholder } from "@/components/promptbox/follow-up-placeholder";
@@ -10,7 +10,10 @@ import type {
   ThreadTimelinePendingTodos,
   ThreadWithRuntime,
 } from "@bb/domain";
-import type { ThreadTimelineResponse } from "@bb/server-contract";
+import type {
+  ThreadTimelineResponse,
+  TimelineWorkflowWorkRow,
+} from "@bb/server-contract";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   ThreadPromptContextBanner,
@@ -20,6 +23,7 @@ import {
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadGoalCard } from "@/components/promptbox/banner/ThreadGoalCard";
+import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -126,11 +130,19 @@ interface ThreadDetailPromptAreaProps {
   pendingTodos: ThreadTimelinePendingTodos | null;
   /** Current provider goal from the timeline projection. Null when no goal is active. */
   goal: ThreadTimelineGoal | null;
+  /** Running workflow row from the timeline. Null when no workflow is active. */
+  activeWorkflow: TimelineWorkflowWorkRow | null;
   /** Parent reference for child threads. Null for root threads. */
   parentThreadSection: ThreadPromptParentThreadSection | null;
   /** Active child threads for parent threads. Null otherwise. */
   childThreadsSection: ThreadPromptChildThreadsSection | null;
   sendMessage: SendMessageMutationLike;
+  /**
+   * Bumped by the timeline host each time a quote is appended to the shared
+   * draft via "Add to chat", so the composer can focus its caret at the end —
+   * ready for the reply beneath the freshly inserted blockquote.
+   */
+  composerFocusRequestNonce: number;
   thread: ThreadWithRuntime;
 }
 
@@ -164,9 +176,11 @@ export function ThreadDetailPromptArea({
   contextBannerMergeBase,
   pendingTodos,
   goal,
+  activeWorkflow,
   parentThreadSection,
   childThreadsSection,
   sendMessage,
+  composerFocusRequestNonce,
   thread,
 }: ThreadDetailPromptAreaProps) {
   const composerQueryThreadId = composerQueriesEnabled ? thread.id : "";
@@ -246,6 +260,7 @@ export function ThreadDetailPromptArea({
   const stopThread = useStopThread();
   const uploadPromptAttachment = useUploadPromptAttachment();
   const promptDraft = usePromptDraftStorage({
+    kind: "thread",
     projectId,
     threadId: thread.id,
   });
@@ -268,6 +283,7 @@ export function ThreadDetailPromptArea({
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
+  const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
   const promptHistoryDrafts = useMemo(
@@ -290,6 +306,7 @@ export function ThreadDetailPromptArea({
     activeModel,
     modelOptions,
     isLoadingModels,
+    modelLoadFailed,
     modelLoadError,
     reasoningOptions,
     permissionModeOptions,
@@ -435,14 +452,17 @@ export function ThreadDetailPromptArea({
   const handleSend = useCallback(async () => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
-    if (submittedInput.length === 0 || isDefaultExecutionOptionsLoading) {
+    const isQueuingMessage = shouldQueueFollowUpMessage(runtimeDisplayStatus);
+    if (
+      submittedInput.length === 0 ||
+      (!isQueuingMessage && isDefaultExecutionOptionsLoading)
+    ) {
       return;
     }
 
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setAttachmentError(null);
 
-    const isQueuingMessage = shouldQueueFollowUpMessage(runtimeDisplayStatus);
     try {
       if (isQueuingMessage) {
         const request = buildCreateQueuedFollowUpRequest({
@@ -603,6 +623,19 @@ export function ThreadDetailPromptArea({
     [sendQueuedMessageById],
   );
 
+  const [editFocusNonce, setEditFocusNonce] = useState(0);
+
+  // Focus the composer caret at the end whenever the timeline host appends a
+  // quote ("Add to chat"), so the user can immediately type the reply beneath
+  // the freshly inserted blockquote. Skips the initial mount (nonce starts 0).
+  const previousFocusRequestNonceRef = useRef(composerFocusRequestNonce);
+  useEffect(() => {
+    if (composerFocusRequestNonce !== previousFocusRequestNonceRef.current) {
+      previousFocusRequestNonceRef.current = composerFocusRequestNonce;
+      setEditFocusNonce((nonce) => nonce + 1);
+    }
+  }, [composerFocusRequestNonce]);
+
   const handleEditQueuedMessage = useCallback(
     (messageId: string) => {
       const queuedMessage = queuedMessagesByIdRef.current.get(messageId);
@@ -620,6 +653,9 @@ export function ThreadDetailPromptArea({
           const restoredDraft = queuedInputToDraft(queuedMessage.content);
           promptDraft.setDraft(restoredDraft);
           setAttachmentError(null);
+          // Focus the composer caret at the end so the restored draft is ready
+          // to keep typing (FollowUpPromptBox `focusEndKey`).
+          setEditFocusNonce((nonce) => nonce + 1);
         })
         .catch((nextError) => {
           appToast.error(
@@ -768,6 +804,7 @@ export function ThreadDetailPromptArea({
         selected: selectedModel,
         options: modelOptions,
         isLoading: isLoadingModels,
+        loadFailed: modelLoadFailed,
         loadError: modelLoadError,
         onChange: setSelectedModel,
       },
@@ -787,6 +824,7 @@ export function ThreadDetailPromptArea({
       activeModel,
       hasMultipleProviders,
       isLoadingModels,
+      modelLoadFailed,
       modelLoadError,
       modelOptions,
       providerOptions,
@@ -879,6 +917,11 @@ export function ThreadDetailPromptArea({
   const promptStack = useMemo(
     () => (
       <>
+        <ThreadWorkflowCard
+          workflow={activeWorkflow}
+          isExpanded={isWorkflowExpanded}
+          onToggle={() => setIsWorkflowExpanded((value) => !value)}
+        />
         <ThreadGoalCard
           goal={goal}
           isExpanded={isGoalExpanded}
@@ -918,6 +961,9 @@ export function ThreadDetailPromptArea({
             queuedMessages={queuedMessages}
             sendDisabled={
               !(submitMode.kind === "ready" || submitMode.kind === "queue") ||
+              runtimeDisplayStatus === "provisioning" ||
+              runtimeDisplayStatus === "starting" ||
+              runtimeDisplayStatus === "waiting-for-host" ||
               isFollowUpSubmitting ||
               isQueueMutationPending
             }
@@ -947,11 +993,14 @@ export function ThreadDetailPromptArea({
       isQueueMutationPending,
       goal,
       isGoalExpanded,
+      activeWorkflow,
+      isWorkflowExpanded,
       parentThreadSection,
       childThreadsSection,
       pendingTodos,
       displayedProcessingQueuedMessage,
       queuedMessages,
+      runtimeDisplayStatus,
       shouldHideComposer,
       submitMode.kind,
       thread.archivedAt,
@@ -976,6 +1025,7 @@ export function ThreadDetailPromptArea({
       stack={promptStack}
       composer={shouldHideComposer ? null : composerConfig}
       zenModeResetKey={thread.id}
+      focusEndKey={editFocusNonce}
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
       execution={executionConfig}

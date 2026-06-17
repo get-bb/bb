@@ -38,6 +38,7 @@ import {
   maybePruneActiveThreadEventHistory,
 } from "../services/system/event-pruning.js";
 import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
+import { isAgentDelegatedChildThread } from "../services/threads/thread-parent.js";
 import { runQueuedMessageAutoSendForThread } from "../services/threads/queued-messages.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
 import {
@@ -134,6 +135,13 @@ interface ResolveActivePruneCandidatesArgs {
   acceptedEvents: AcceptedDaemonEvent[];
   events: HostDaemonEventEnvelope[];
   insertedEventIndexes: number[];
+}
+
+interface AddParentTurnNotificationFollowUpArgs {
+  failedParentNotificationThreadIds: Set<string>;
+  followUps: EventEffectFollowUp[];
+  thread: NonNullable<ReturnType<typeof getThread>>;
+  turnStatus: ThreadEventTurnStatus;
 }
 
 interface ParentTurnNotificationFollowUp {
@@ -248,6 +256,28 @@ function notifyInsertedEventThreads(
   }
 }
 
+function addParentTurnNotificationFollowUp(
+  args: AddParentTurnNotificationFollowUpArgs,
+): void {
+  if (!args.thread.parentThreadId) {
+    return;
+  }
+  if (args.turnStatus === "failed") {
+    if (args.failedParentNotificationThreadIds.has(args.thread.id)) {
+      return;
+    }
+    args.failedParentNotificationThreadIds.add(args.thread.id);
+  }
+  args.followUps.push({
+    kind: "parent-turn-notification",
+    childThreadId: args.thread.id,
+    projectId: args.thread.projectId,
+    parentThreadId: args.thread.parentThreadId,
+    title: args.thread.title,
+    turnStatus: args.turnStatus,
+  });
+}
+
 async function applyEventEffects(
   deps: LoggedPendingInteractionWorkSessionDeps,
   events: HostDaemonEventEnvelope[],
@@ -256,6 +286,7 @@ async function applyEventEffects(
   // immediately visible thread state agree. Follow-ups that may queue daemon
   // work stay deferred to avoid command waits inside daemon ingress.
   const followUps: EventEffectFollowUp[] = [];
+  const failedParentNotificationThreadIds = new Set<string>();
   for (const entry of events) {
     try {
       const event = entry.event;
@@ -299,7 +330,13 @@ async function applyEventEffects(
           ...event,
           threadId: entry.threadId,
         });
-        if (turnCompleted.thread?.parentThreadId) {
+        if (
+          turnCompleted.thread &&
+          // Forks / side chats are user-initiated branches, not agent-delegated
+          // sub-tasks, so a completed turn must not post a "child finished"
+          // notification back into their parent thread.
+          isAgentDelegatedChildThread(turnCompleted.thread)
+        ) {
           // Command-result failures already notify parent threads for failed turns
           // without terminal events; late terminal events still own status effects.
           const alreadyHandledByCommandFailure =
@@ -309,12 +346,10 @@ async function applyEventEffects(
               turnId,
             });
           if (!alreadyHandledByCommandFailure) {
-            followUps.push({
-              kind: "parent-turn-notification",
-              childThreadId: turnCompleted.thread.id,
-              projectId: turnCompleted.thread.projectId,
-              parentThreadId: turnCompleted.thread.parentThreadId,
-              title: turnCompleted.thread.title,
+            addParentTurnNotificationFollowUp({
+              failedParentNotificationThreadIds,
+              followUps,
+              thread: turnCompleted.thread,
               turnStatus: event.status,
             });
           }
@@ -341,10 +376,18 @@ async function applyEventEffects(
           reason:
             "Provider process exited while awaiting user interaction; retry the thread to continue",
         });
-        applyLoggedThreadLifecycleEvent(deps, {
+        const outcome = applyLoggedThreadLifecycleEvent(deps, {
           event: { type: "run.failed" },
           threadId: entry.threadId,
         });
+        if (outcome.applied) {
+          addParentTurnNotificationFollowUp({
+            failedParentNotificationThreadIds,
+            followUps,
+            thread,
+            turnStatus: "failed",
+          });
+        }
         continue;
       }
 
@@ -616,18 +659,18 @@ function resolveActivePruneCandidates(
   args: ResolveActivePruneCandidatesArgs,
 ): ActivePruneCandidate[] {
   const latestPrunableSequenceByThreadId = new Map<string, number>();
-  const insertedEventIndexLookup = new Set(args.insertedEventIndexes);
 
-  for (const [index, entry] of args.events.entries()) {
-    if (!insertedEventIndexLookup.has(index)) {
-      continue;
+  for (const [acceptedIndex, acceptedEvent] of args.acceptedEvents.entries()) {
+    const inputIndex = args.insertedEventIndexes[acceptedIndex];
+    if (inputIndex === undefined) {
+      throw new Error("Missing inserted event index for accepted daemon event");
+    }
+    const entry = args.events[inputIndex];
+    if (entry === undefined) {
+      throw new Error("Missing daemon event for inserted event index");
     }
     if (!isActivePruneTriggerThreadEventType(entry.event.type)) {
       continue;
-    }
-    const acceptedEvent = args.acceptedEvents[index];
-    if (acceptedEvent === undefined) {
-      throw new Error("Missing accepted event for inserted daemon event");
     }
 
     const previousSequence = latestPrunableSequenceByThreadId.get(
@@ -788,6 +831,17 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
         }
         throw error;
       }
+      for (const index of appendResult.skippedTurnUnstartedInputIndexes) {
+        const skipped = eventInputs[index];
+        deps.logger.warn(
+          {
+            eventType: skipped?.type,
+            threadId: skipped?.threadId,
+            sessionId: session.id,
+          },
+          "Dropped orphan thread-state snapshot with no stored turn/started",
+        );
+      }
       notifyInsertedEventThreads(deps, {
         eventInputs,
         insertedInputIndexes: appendResult.insertedInputIndexes,
@@ -812,7 +866,13 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
       deferEventFollowUpBatch(deps, followUps);
       return context.json({
         acceptedEvents: appendResult.acceptedEvents.map(
-          (acceptedEvent, inputIndex) => {
+          (acceptedEvent, acceptedIndex) => {
+            const inputIndex = appendResult.insertedInputIndexes[acceptedIndex];
+            if (inputIndex === undefined) {
+              throw new Error(
+                "Missing inserted event index for accepted daemon event",
+              );
+            }
             const entry = entries[inputIndex];
             if (entry === undefined) {
               throw new Error("Missing daemon event entry for accepted event");

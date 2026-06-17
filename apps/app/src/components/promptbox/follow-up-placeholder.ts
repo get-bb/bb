@@ -12,6 +12,8 @@ export function getFollowUpPromptPlaceholder(
   displayStatus: ThreadRuntimeDisplayStatus,
 ): string {
   switch (displayStatus) {
+    case "provisioning":
+      return "Setting up workspace...";
     case "starting":
       return "Starting thread...";
     case "stopping":

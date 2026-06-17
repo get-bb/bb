@@ -88,6 +88,20 @@ type BbThreadResumeParams = ThreadResumeParams & {
   persistExtendedHistory?: boolean;
 };
 
+type BbThreadForkParams = {
+  threadId: string;
+  model?: string | null;
+  serviceTier?: string | null;
+  cwd?: string | null;
+  approvalPolicy?: AskForApproval | null;
+  sandbox?: CodexSandboxMode | null;
+  config?: { [key in string]?: JsonValue } | null;
+  baseInstructions?: string | null;
+  developerInstructions?: string | null;
+  dynamicTools?: DynamicToolSpec[];
+  persistExtendedHistory?: boolean;
+};
+
 interface ToCodexPermissionSettingsArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   gitWritableRoots: readonly string[];
@@ -192,7 +206,7 @@ type GitHeadState =
 
 type CodexInstructionCommand = Extract<
   AdapterCommand,
-  { type: "thread/start" | "thread/resume" }
+  { type: "thread/start" | "thread/resume" | "thread/fork" }
 >;
 
 interface CodexInstructionOverrides {
@@ -712,7 +726,7 @@ function buildCodexConfig(
 
 type CodexDynamicToolCommand = Extract<
   AdapterCommand,
-  { type: "thread/start" | "thread/resume" }
+  { type: "thread/start" | "thread/resume" | "thread/fork" }
 >;
 
 function toCodexDynamicTools(
@@ -1411,6 +1425,29 @@ export function createCodexProviderAdapter(
             params,
           };
         }
+        case "thread/fork": {
+          const dynamicTools = toCodexDynamicTools(command.dynamicTools);
+          const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
+          const params: BbThreadForkParams = {
+            threadId: command.sourceProviderThreadId,
+            approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
+            sandbox: preparedGitRoots.permissionSettings.sandbox,
+            cwd: command.cwd,
+            ...resolveCodexInstructionOverrides(command),
+            model: command.options?.model ?? undefined,
+            serviceTier: toCodexServiceTier(command.options?.serviceTier),
+            config: preparedGitRoots.config ?? undefined,
+            persistExtendedHistory: false,
+            ...(dynamicTools && dynamicTools.length > 0
+              ? { dynamicTools }
+              : {}),
+          };
+          return {
+            kind: "request",
+            method: "thread/fork",
+            params,
+          };
+        }
         case "turn/start": {
           const writableRoots =
             workspaceWriteGitWritableRootsByThreadId.get(command.threadId) ??
@@ -1514,7 +1551,9 @@ export function createCodexProviderAdapter(
 
     translateAcceptedCommand({ command, providerThreadId }) {
       if (
-        (command.type === "thread/start" || command.type === "thread/resume") &&
+        (command.type === "thread/start" ||
+          command.type === "thread/resume" ||
+          command.type === "thread/fork") &&
         providerThreadId
       ) {
         activateThreadGitWritableRoots({

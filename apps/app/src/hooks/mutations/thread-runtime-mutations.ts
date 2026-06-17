@@ -87,6 +87,7 @@ export function useSendThreadMessage() {
       reasoningLevel,
       permissionMode,
       mode,
+      senderThreadId,
     }: SendThreadMessageMutationRequest) =>
       api.sendThreadMessage(id, {
         input,
@@ -95,6 +96,9 @@ export function useSendThreadMessage() {
         reasoningLevel,
         permissionMode,
         mode,
+        // Non-null only for cross-thread sends (e.g. a side chat handing a
+        // result back); the target renders it as "Message from {sender}".
+        ...(senderThreadId !== undefined ? { senderThreadId } : {}),
       }),
     onMutate: async (variables): Promise<SendThreadMessageTransaction> =>
       beginSendThreadMessageTransaction({

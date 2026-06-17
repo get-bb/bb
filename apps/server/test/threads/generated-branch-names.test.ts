@@ -282,7 +282,9 @@ describe("generated managed branch names", () => {
           workspaceProvisionType: "managed-worktree",
         },
         execution: THREAD_START_EXECUTION,
+        fork: null,
         input,
+        startedOnBehalfOf: null,
         thread,
         titleProvided: false,
       });
@@ -745,7 +747,9 @@ describe("generated managed branch names", () => {
           environmentId: environment.id,
         },
         execution: THREAD_START_EXECUTION,
+        fork: null,
         input: textInput("Generate a title for this non-managed reuse thread"),
+        startedOnBehalfOf: null,
         thread,
         titleProvided: false,
       });
@@ -866,7 +870,9 @@ describe("generated managed branch names", () => {
           environmentId: environment.id,
         },
         execution: THREAD_START_EXECUTION,
+        fork: null,
         input: textInput("Generate a title for this non-managed reuse thread"),
+        startedOnBehalfOf: null,
         thread,
         titleProvided: false,
       });

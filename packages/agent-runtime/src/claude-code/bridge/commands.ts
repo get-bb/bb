@@ -86,6 +86,27 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
     }),
   }),
   z.object({
+    method: z.literal("thread/fork"),
+    params: z.object({
+      threadId: z.string(),
+      cwd: z.string(),
+      sourceProviderThreadId: z.string(),
+      baseInstructions: z.string().optional(),
+      additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
+      plugins: bridgeClaudePluginsSchema,
+      permissionMode: claudePermissionModeSchema,
+      permissionEscalation: bridgePermissionEscalationSchema,
+      config: z.record(z.string(), z.unknown()).optional(),
+      claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema,
+      model: z.string().optional(),
+      reasoningLevel: bridgeReasoningLevelSchema.optional(),
+      workflowsEnabled: z.boolean(),
+      instructionMode: bridgeInstructionModeSchema,
+      dynamicTools: z.array(dynamicToolSchema).optional(),
+      disallowedTools: z.array(z.string()).optional(),
+    }),
+  }),
+  z.object({
     method: z.literal("turn/start"),
     params: z.object({
       threadId: z.string(),
@@ -127,6 +148,11 @@ export type ThreadStartParams = Extract<
 export type ThreadResumeParams = Extract<
   ClaudeCodeCommand,
   { method: "thread/resume" }
+>["params"];
+
+export type ThreadForkParams = Extract<
+  ClaudeCodeCommand,
+  { method: "thread/fork" }
 >["params"];
 
 export type TurnStartParams = Extract<

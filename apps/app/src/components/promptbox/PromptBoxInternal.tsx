@@ -297,6 +297,13 @@ export interface PromptBoxInternalProps {
   /** When omitted, the mic button is hidden. Wrappers wire this via usePromptVoice. */
   voice?: PromptVoiceConfig;
   promptBoxRef?: Ref<PromptBoxHandle>;
+  /**
+   * Changing this re-focuses the editor caret to the end. Used by explicit
+   * draft-restore actions (e.g. editing a queued message) so the user can type
+   * immediately. Unlike the scope autofocus it fires even on coarse pointers,
+   * since it follows a deliberate click.
+   */
+  focusEndKey?: string | number;
 }
 
 interface DismissedTriggerRange {
@@ -581,6 +588,7 @@ export function PromptBoxInternal({
   history,
   voice,
   promptBoxRef,
+  focusEndKey,
 }: PromptBoxInternalProps) {
   const {
     isSubmitting = false,
@@ -807,7 +815,7 @@ export function PromptBoxInternal({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        blockquote: false,
+        blockquote: {},
         bold: false,
         bulletList: false,
         code: false,
@@ -982,6 +990,24 @@ export function PromptBoxInternal({
     syncTriggerState,
     value,
   ]);
+
+  // An explicit draft-restore action (e.g. editing a queued message) bumps
+  // `focusEndKey` so the caret lands at the END of the restored text. It is a
+  // passive effect defined AFTER the content-sync effect above, so React's
+  // definition-order guarantee runs it once that effect has applied
+  // `setContent` for the new draft in the same commit. (A useLayoutEffect, or
+  // an effect ordered before content-sync, would focus("end") against the
+  // pre-edit content and setContent would then map the caret to the start.)
+  // Not gated by the coarse-pointer guard since it follows a deliberate click.
+  const lastFocusEndKeyRef = useRef(focusEndKey);
+  useEffect(() => {
+    if (focusEndKey === undefined) return;
+    if (focusEndKey === lastFocusEndKeyRef.current) return;
+    if (!editor) return;
+    lastFocusEndKeyRef.current = focusEndKey;
+    editor.commands.focus("end");
+    scheduleRevealEditorSelection();
+  }, [editor, focusEndKey, scheduleRevealEditorSelection]);
 
   useEffect(() => {
     if (zenModeResetKey === undefined) return;
@@ -1783,6 +1809,7 @@ export function PromptBoxInternal({
                 "h-full min-h-full",
                 "[&_.ProseMirror]:min-h-full [&_.ProseMirror]:leading-[1.7] [&_.ProseMirror]:outline-none",
                 "[&_.ProseMirror_p]:m-0",
+                "[&_.ProseMirror_blockquote]:my-1 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:border-surface-selected-border [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-muted-foreground",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
                 "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",

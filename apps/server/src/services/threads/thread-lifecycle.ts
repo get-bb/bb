@@ -89,6 +89,7 @@ import { createAsyncDeduper } from "../lib/async-deduper.js";
 import { throwThreadNotWritable } from "../lib/lifecycle-api-errors.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
 import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
+import { isAgentDelegatedChildThread } from "./thread-parent.js";
 import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
@@ -674,6 +675,45 @@ function isThreadStartActivationStale(
   );
 }
 
+function lifecycleEventForSuccessfulThreadStart(
+  command: ThreadStartCommand,
+): ThreadLifecycleEvent {
+  if (command.fork && command.input.length === 0) {
+    return { type: "run.succeeded" };
+  }
+  return { type: "run.started" };
+}
+
+function shouldAutoSendQueuedMessagesAfterThreadStart(
+  command: ThreadStartCommand,
+): boolean {
+  return command.fork !== null && command.input.length === 0;
+}
+
+function recordEmptyThreadStartProviderSessionInTransaction(
+  args: SettleThreadStartCommandResultArgs & { thread: Thread },
+): void {
+  if (
+    !args.report.ok ||
+    !shouldAutoSendQueuedMessagesAfterThreadStart(args.command)
+  ) {
+    return;
+  }
+  appendThreadEventInTransaction(args.deps.db, {
+    threadId: args.thread.id,
+    environmentId: args.command.environmentId,
+    providerThreadId: args.report.result.providerThreadId,
+    type: "system/thread-provisioning",
+    scope: threadScope(),
+    data: {
+      provisioningId: `thread-start:${args.execution.id}`,
+      status: "completed",
+      environmentId: args.command.environmentId,
+      entries: [],
+    },
+  });
+}
+
 function settleThreadCommandFailure(
   args: SettleThreadCommandFailureArgs,
 ): CommandResultSideEffectsResult {
@@ -700,7 +740,9 @@ function settleThreadCommandFailure(
   if (outcome.applied) {
     args.deps.hub.notifyThread(thread.id, ["status-changed"]);
   }
-  if (thread.parentThreadId !== null) {
+  // Forks / side chats are user-initiated branches, not agent-delegated
+  // sub-tasks, so a failed turn must not notify their parent thread either.
+  if (isAgentDelegatedChildThread(thread)) {
     const parentThreadId = thread.parentThreadId;
     postCommitActions.push({
       name: "Child thread command failure notification",
@@ -767,12 +809,32 @@ export function settleThreadStartCommandResult(
       threadId: currentThread.id,
     })
   ) {
+    const lifecycleEvent = lifecycleEventForSuccessfulThreadStart(args.command);
+    recordEmptyThreadStartProviderSessionInTransaction({
+      ...args,
+      thread: currentThread,
+    });
     const outcome = applyLoggedThreadLifecycleEventInTransaction(args.deps, {
-      event: { type: "run.started" },
+      event: lifecycleEvent,
       threadId: currentThread.id,
     });
     if (outcome.applied) {
       args.deps.hub.notifyThread(currentThread.id, ["status-changed"]);
+      if (shouldAutoSendQueuedMessagesAfterThreadStart(args.command)) {
+        postCommitActions.push({
+          name: "Queued message auto-send after empty thread start",
+          context: {
+            threadId: currentThread.id,
+          },
+          run: async (deps) => {
+            const { runQueuedMessageAutoSendForThread } =
+              await import("./queued-messages.js");
+            await runQueuedMessageAutoSendForThread(deps, {
+              threadId: currentThread.id,
+            });
+          },
+        });
+      }
     }
   }
   const threadTitle = thread.title;
@@ -943,10 +1005,7 @@ function dispatchThreadStartFromRequest(
         };
       }
 
-      if (
-        isProvisionHandoff &&
-        !isPreStartThreadStatus(currentThread.status)
-      ) {
+      if (isProvisionHandoff && !isPreStartThreadStatus(currentThread.status)) {
         return {
           completedProvisionSequence: null,
           disposition: "blocked",
@@ -1690,12 +1749,12 @@ export async function reconcileDaemonReportedThreads(
     .from(threads)
     .innerJoin(environments, eq(threads.environmentId, environments.id))
     .where(
-        and(
-          eq(environments.hostId, args.hostId),
-          inArray(threads.status, ["starting", "idle"]),
-          isNull(threads.deletedAt),
-          inArray(threads.id, [...args.activeThreadIds]),
-        ),
+      and(
+        eq(environments.hostId, args.hostId),
+        inArray(threads.status, ["starting", "idle"]),
+        isNull(threads.deletedAt),
+        inArray(threads.id, [...args.activeThreadIds]),
+      ),
     )
     .all();
 

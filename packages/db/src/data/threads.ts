@@ -15,6 +15,8 @@ import type {
   EnvironmentWorkspaceDisplayKind,
   ReasoningLevel,
   ThreadChangeKind,
+  ThreadChildOrigin,
+  ThreadOriginKind,
   ThreadLifecycleEvent,
   ThreadLifecycleNoopReason,
   ThreadStatus,
@@ -47,6 +49,10 @@ export interface CreateThreadInput {
   titleFallback?: string | null;
   status?: ThreadStatus;
   parentThreadId?: string | null;
+  sourceThreadId?: string | null;
+  originKind?: ThreadOriginKind | null;
+  /** @deprecated Use originKind. */
+  childOrigin?: ThreadChildOrigin | null;
 }
 
 export function createThread(
@@ -56,6 +62,7 @@ export function createThread(
 ) {
   const now = Date.now();
   const id = createThreadId();
+  const originKind = input.originKind ?? input.childOrigin ?? null;
   const thread = db
     .insert(threads)
     .values({
@@ -66,7 +73,12 @@ export function createThread(
       title: input.title ?? null,
       titleFallback: input.titleFallback ?? null,
       status: input.status ?? "starting",
-      parentThreadId: input.parentThreadId ?? null,
+      parentThreadId: originKind === null ? input.parentThreadId ?? null : null,
+      sourceThreadId:
+        input.sourceThreadId ??
+        (originKind === null ? null : input.parentThreadId ?? null),
+      originKind,
+      childOrigin: null,
       lastReadAt: now,
       latestAttentionAt: now,
       createdAt: now,
@@ -91,6 +103,12 @@ export interface ListThreadsOptions {
   parentThreadId?: string;
   /** When true, restrict to child threads. When false, restrict to root threads. */
   hasParent?: boolean;
+  /** Restrict to threads spawned from this source thread. */
+  sourceThreadId?: string;
+  /** Restrict to threads spawned with this origin (fork or side-chat). */
+  originKind?: ThreadOriginKind;
+  /** @deprecated Use originKind. */
+  childOrigin?: ThreadChildOrigin;
   limit?: number;
   offset?: number;
 }
@@ -306,6 +324,11 @@ export interface ListUnarchivedAssignedChildThreadsArgs {
   parentThreadId: string;
 }
 
+export interface ListUnarchivedSourceThreadsArgs {
+  originKind?: ThreadOriginKind;
+  sourceThreadId: string;
+}
+
 export interface ListNonDeletedChildThreadsArgs {
   parentThreadId: string;
 }
@@ -372,11 +395,18 @@ function statusTransitionNeedsAttention(args: StatusTransition): boolean {
 }
 
 function buildListThreadsFilters(options: ListThreadsOptions) {
+  const originKind = options.originKind ?? options.childOrigin;
   return [
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
     isNull(threads.deletedAt),
     options.parentThreadId
       ? eq(threads.parentThreadId, options.parentThreadId)
+      : undefined,
+    options.sourceThreadId
+      ? eq(threads.sourceThreadId, options.sourceThreadId)
+      : undefined,
+    originKind
+      ? eq(threads.originKind, originKind)
       : undefined,
     options.archived === true
       ? isNotNull(threads.archivedAt)
@@ -586,6 +616,24 @@ export function listUnarchivedAssignedChildThreads(
     .where(
       and(
         eq(threads.parentThreadId, args.parentThreadId),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .all();
+}
+
+export function listUnarchivedSourceThreads(
+  db: ThreadWriteConnection,
+  args: ListUnarchivedSourceThreadsArgs,
+): ThreadRow[] {
+  return db
+    .select()
+    .from(threads)
+    .where(
+      and(
+        eq(threads.sourceThreadId, args.sourceThreadId),
+        args.originKind ? eq(threads.originKind, args.originKind) : undefined,
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
       ),

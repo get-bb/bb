@@ -13,6 +13,7 @@ import type {
   EnvironmentDiffBranchesResponse,
   EnvironmentStatusResponse,
   ProjectBranchesResponse,
+  ThreadResponse,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import {
@@ -94,7 +95,7 @@ function makeProjectBranchesResponse(): ProjectBranchesResponse {
     },
     defaultBranch: "main",
     defaultBranchRelation: "equal",
-    defaultWorktreeBaseBranch: "main",
+    defaultWorktreeBaseBranch: "origin/main",
     hasUncommittedChanges: false,
     operation: { kind: "none" },
     originDefaultBranch: "origin/main",
@@ -130,6 +131,9 @@ function makeThreadWithRuntime(
     title: null,
     titleFallback: null,
     parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,
@@ -204,7 +208,10 @@ describe("resolveEnvironmentWorkStatusPlaceholder", () => {
 
 describe("resolveThreadPlaceholder", () => {
   it("reuses previous thread data only for the same thread query", () => {
-    const previousThread = makeThreadWithRuntime({ id: "thread-1" });
+    const previousThread: ThreadResponse = {
+      ...makeThreadWithRuntime({ id: "thread-1" }),
+      canSpawnChild: false,
+    };
 
     expect(
       resolveThreadPlaceholder(
@@ -461,7 +468,9 @@ describe("getCachedEnvironmentRefWorkspaceStateInvalidationQueryKeys", () => {
     expect(queryKeys).toContainEqual(
       environmentWorkStatusQueryKey("env-1", "main"),
     );
-    expect(queryKeys).toContainEqual(environmentDiffFilesQueryKeyPrefix("env-1"));
+    expect(queryKeys).toContainEqual(
+      environmentDiffFilesQueryKeyPrefix("env-1"),
+    );
     expect(queryKeys).not.toContainEqual(
       environmentDiffPatchQueryKeyPrefix("env-1"),
     );
@@ -502,5 +511,45 @@ describe("optimisticallyInsertThread", () => {
       displayStatus: "waiting-for-host",
       hostReconnectGraceExpiresAt: null,
     });
+  });
+
+  it("respects the originKind filter when inserting source-derived threads", () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const forkListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+      sourceThreadId: "source-1",
+      originKind: "fork",
+    });
+    queryClient.setQueryData(forkListKey, []);
+
+    // A side chat of the same parent must not contaminate the parent's
+    // fork-filtered list.
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadWithRuntime({
+        id: "side-chat-1",
+        sourceThreadId: "source-1",
+        originKind: "side-chat",
+      }),
+    );
+    expect(queryClient.getQueryData<ThreadListEntry[]>(forkListKey)).toEqual(
+      [],
+    );
+
+    // A fork of the same parent does belong in the fork list.
+    optimisticallyInsertThread(
+      queryClient,
+      makeThreadWithRuntime({
+        id: "fork-1",
+        sourceThreadId: "source-1",
+        originKind: "fork",
+      }),
+    );
+    expect(
+      queryClient
+        .getQueryData<ThreadListEntry[]>(forkListKey)
+        ?.map((entry) => entry.id),
+    ).toEqual(["fork-1"]);
   });
 });

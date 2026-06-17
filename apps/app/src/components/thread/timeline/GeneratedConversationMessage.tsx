@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useRef } from "react";
 import type { TimelineUserConversationRow } from "@bb/server-contract";
-import type { PromptTextMention } from "@bb/domain";
+import type { PromptTextMention, ThreadChildOrigin } from "@bb/domain";
 import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
 import { type IconName } from "@/components/ui/icon.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -16,7 +16,10 @@ import {
 } from "./ConversationMessageMentions.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
-import type { TimelineTitleLinkResolver } from "./TimelineTitleView.js";
+import type {
+  TimelineTitleActionResolver,
+  TimelineTitleLinkResolver,
+} from "./TimelineTitleView.js";
 import type { ThreadTimelineLocalFileLinkHandler } from "./types.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
@@ -24,14 +27,24 @@ import { useOverflowMeasurement } from "./conversation-message-overflow.js";
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
+  /**
+   * `childOrigin` of the thread this generated row belongs to. A fork's
+   * seed-without-run anchor (`"fork"`) renders the Fork leading icon for
+   * consistency with the Fork action; otherwise the per-`sourceKind` icon.
+   */
+  childOrigin: ThreadChildOrigin | null;
   mentions: readonly PromptTextMention[];
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  onTitleAction?: TimelineTitleActionResolver;
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
+  /** The source is a side chat: the linked name opens it as a tab in this
+   * thread (a title action) rather than navigating to it as a standalone thread. */
+  sourceIsSideChat: boolean;
   text: string;
   turnRequest: TimelineUserConversationRow["turnRequest"];
 }
@@ -57,9 +70,11 @@ interface TimelineTitleSegmentArgs {
 }
 
 interface GeneratedConversationTitleArgs {
+  childOrigin: ThreadChildOrigin | null;
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
+  sourceIsSideChat: boolean;
 }
 
 export function generatedConversationBodySlice({
@@ -100,10 +115,31 @@ function timelineTitleSegment({
 }
 
 function generatedConversationTitle({
+  childOrigin,
   sourceKind,
   sourceName,
   sourceThreadId,
+  sourceIsSideChat,
 }: GeneratedConversationTitleArgs): TimelineTitle {
+  // The lead-in names the relationship to the source: a fork branched from it
+  // ("Forked from"), a side chat is replying to it ("Replying to"); any other
+  // agent-initiated message keeps the neutral "Message from".
+  const agentLeadIn =
+    childOrigin === "fork"
+      ? "Forked from"
+      : childOrigin === "side-chat"
+        ? "Replying to"
+        : "Message from";
+  // A side-chat source opens as a tab in this thread (a title action), so its
+  // name carries no route link; other sources navigate to the source thread.
+  const sideChatAction =
+    sourceIsSideChat && sourceThreadId !== null
+      ? ({ kind: "open-side-chat", threadId: sourceThreadId } as const)
+      : null;
+  const sourceLink =
+    sourceThreadId === null || sideChatAction !== null
+      ? null
+      : ({ kind: "thread", threadId: sourceThreadId } as const);
   const segments: TimelineTitleSegment[] =
     sourceKind === "agent"
       ? [
@@ -111,15 +147,12 @@ function generatedConversationTitle({
             em: false,
             link: null,
             shimmer: false,
-            text: "Message from",
+            text: agentLeadIn,
             truncate: false,
           }),
           timelineTitleSegment({
             em: true,
-            link:
-              sourceThreadId === null
-                ? null
-                : { kind: "thread", threadId: sourceThreadId },
+            link: sourceLink,
             shimmer: false,
             text: sourceName,
             truncate: true,
@@ -136,7 +169,7 @@ function generatedConversationTitle({
         ];
 
   return {
-    action: null,
+    action: sideChatAction,
     decorations: [],
     plain: segments
       .map((segment) => segment.plainText ?? segment.text)
@@ -159,7 +192,13 @@ function generatedConversationEmptyText(
 
 function generatedConversationIconName(
   sourceKind: GeneratedConversationSourceKind,
+  childOrigin: ThreadChildOrigin | null,
 ): IconName {
+  // A fork's anchor uses the Fork icon (matching the Fork action) regardless of
+  // source kind; in practice fork anchors are always agent-initiated.
+  if (childOrigin === "fork") {
+    return "Fork";
+  }
   switch (sourceKind) {
     case "agent":
       return "MessageSquare";
@@ -171,14 +210,17 @@ function generatedConversationIconName(
 export const GeneratedConversationMessage = memo(
   function GeneratedConversationMessage({
     attachmentItems,
+    childOrigin,
     mentions,
     onOpenLocalFileLink,
     projectId,
     resolveMentionLink,
     resolveSegmentLinkHref,
+    onTitleAction,
     sourceKind,
     sourceName,
     sourceThreadId,
+    sourceIsSideChat,
     text,
     turnRequest,
   }: GeneratedConversationMessageProps) {
@@ -197,13 +239,15 @@ export const GeneratedConversationMessage = memo(
     const title = useMemo(
       () =>
         generatedConversationTitle({
+          childOrigin,
           sourceKind,
           sourceName,
           sourceThreadId,
+          sourceIsSideChat,
         }),
-      [sourceKind, sourceName, sourceThreadId],
+      [childOrigin, sourceKind, sourceName, sourceThreadId, sourceIsSideChat],
     );
-    const leadingIcon = generatedConversationIconName(sourceKind);
+    const leadingIcon = generatedConversationIconName(sourceKind, childOrigin);
     const hasExpandedOnlyContent =
       attachmentItems.filePaths.length > 0 ||
       attachmentItems.imageItems.length > 0 ||
@@ -298,6 +342,7 @@ export const GeneratedConversationMessage = memo(
         expandable={expandable}
         leadingIcon={leadingIcon}
         resolveSegmentLinkHref={resolveSegmentLinkHref}
+        onTitleAction={onTitleAction}
         renderBody={renderBody}
       />
     );

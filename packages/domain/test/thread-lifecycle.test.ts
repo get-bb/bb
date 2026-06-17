@@ -84,6 +84,7 @@ describe("THREAD_LIFECYCLE table", () => {
       },
       starting: {
         "run.started": "active",
+        "run.succeeded": "idle",
         "run.failed": "error",
         "stop.requested": "stopping",
       },

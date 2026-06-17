@@ -121,6 +121,9 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     const threads = listThreadsWithPendingInteractionState(deps.db, {
       ...(query.projectId ? { projectId: query.projectId } : {}),
       ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
+      ...(query.sourceThreadId ? { sourceThreadId: query.sourceThreadId } : {}),
+      ...(query.originKind ? { originKind: query.originKind } : {}),
+      ...(query.childOrigin ? { childOrigin: query.childOrigin } : {}),
       archived:
         query.archived === undefined ? undefined : query.archived === "true",
       hasParent:

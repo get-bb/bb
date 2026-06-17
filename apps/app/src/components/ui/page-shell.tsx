@@ -18,6 +18,10 @@ export interface PageShellBaseProps {
 
 export interface PageShellProps extends PageShellBaseProps {
   scrollBehavior?: PageShellScrollBehavior;
+  // Only meaningful with `scrollBehavior="bottom-anchor"`: persists and restores
+  // the timeline scroll position per thread so switching away and back doesn't
+  // snap to the bottom.
+  scrollAnchorThreadId?: string;
 }
 
 interface FooterRenderOptions {
@@ -59,6 +63,7 @@ export function PageShell({
   footerClassName,
   maxWidthClassName = DEFAULT_MAX_WIDTH_CLASS,
   scrollBehavior = "static",
+  scrollAnchorThreadId,
 }: PageShellProps) {
   const staticFooter = renderStaticFooter(footer, {
     maxWidthClassName,
@@ -73,6 +78,7 @@ export function PageShell({
           contentClassName={contentClassName}
           maxWidthClassName={maxWidthClassName}
           footer={staticFooter}
+          scrollAnchorThreadId={scrollAnchorThreadId}
         >
           {children}
         </BottomAnchoredScrollBody>

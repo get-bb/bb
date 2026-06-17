@@ -1,15 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  EMPTY_FIXED_PANEL_TABS_STATE,
+  areFixedPanelTabsEquivalent,
   buildFixedPanelTabId,
+  createEmptyFixedPanelTabsState,
+  createSideChatFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
   isFixedPanelTabsStateStorageKey,
   parseFixedPanelTabsState,
+  serializeFixedPanelTabsState,
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
   type FixedPanelTabsState,
+  type SideChatFixedPanelTab,
 } from "./fixed-panel-tabs-state";
+
+const NOW = 1_700_000_000_000;
 
 function makeInitialState(): FixedPanelTabsState {
   return {
@@ -122,5 +130,73 @@ describe("fixed-panel-tabs-state", () => {
         "bb.thread.fixedPanelTabsState-thr_old-0",
       ),
     ).toBe(true);
+  });
+});
+
+describe("side-chat fixed panel tabs", () => {
+  it("round-trips side-chat tabs (threadId null and set)", () => {
+    const pendingTab = createSideChatFixedPanelTab({
+      sourceMessageText: "Why this index? Full source agent message text.",
+      title: "Why this index?",
+    });
+    const createdTab: SideChatFixedPanelTab = {
+      ...createSideChatFixedPanelTab({
+        sourceMessageText: "Created side chat source message.",
+        title: "Created side chat",
+      }),
+      threadId: "thr_side_child",
+    };
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        tabs: [pendingTab, createdTab],
+        activeTabId: pendingTab.id,
+        isOpen: true,
+      },
+      lastUsedAt: NOW,
+    });
+
+    expect(
+      parseFixedPanelTabsState({
+        initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+        now: NOW,
+        storedValue: serializeFixedPanelTabsState({ state }),
+      }),
+    ).toEqual(state);
+  });
+
+  it("round-trips a side-chat tab opened from the thread tip", () => {
+    const tab = createSideChatFixedPanelTab({
+      sourceMessageText: "",
+      title: "Side chat",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        tabs: [tab],
+        activeTabId: tab.id,
+        isOpen: true,
+      },
+      lastUsedAt: NOW,
+    });
+
+    expect(
+      parseFixedPanelTabsState({
+        initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+        now: NOW,
+        storedValue: serializeFixedPanelTabsState({ state }),
+      }),
+    ).toEqual(state);
+  });
+
+  it("treats a side-chat threadId change as a non-equivalent update", () => {
+    const pendingTab = createSideChatFixedPanelTab({
+      sourceMessageText: "Side chat source message.",
+      title: "Side chat",
+    });
+    const createdTab: SideChatFixedPanelTab = {
+      ...pendingTab,
+      threadId: "thr_side_child",
+    };
+    expect(areFixedPanelTabsEquivalent(pendingTab, pendingTab)).toBe(true);
+    expect(areFixedPanelTabsEquivalent(pendingTab, createdTab)).toBe(false);
   });
 });

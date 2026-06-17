@@ -13,7 +13,10 @@ export {
   formatTimelineDecorationText,
   renderTitlePlain,
 } from "./timeline-row-title.js";
-export { hasTimelineExplorationIntent } from "./timeline-activity-intents.js";
+export {
+  hasTimelineExplorationIntent,
+  primaryTimelineActivityIntent,
+} from "./timeline-activity-intents.js";
 export {
   capitalize,
   durationToCompactString,

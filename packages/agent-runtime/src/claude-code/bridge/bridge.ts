@@ -25,10 +25,11 @@ import {
   type PendingInteractionGrantedPermissionProfile,
   type PermissionEscalation,
 } from "@bb/domain";
-import type {
-  CanUseTool,
-  PermissionResult,
-  SDKMessage,
+import {
+  forkSession,
+  type CanUseTool,
+  type PermissionResult,
+  type SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import {
@@ -42,6 +43,7 @@ import { listClaudeCodeBridgeModels } from "./model-list.js";
 import {
   decodeClaudeCodeJsonRpcRequest,
   type ClaudeCodeJsonRpcRequest,
+  type ThreadForkParams,
   type ThreadResumeParams,
   type ThreadStartParams,
   type ThreadStopParams,
@@ -1145,6 +1147,9 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
     case "thread/resume":
       await handleThreadResume(request.id, request.params);
       break;
+    case "thread/fork":
+      await handleThreadFork(request.id, request.params);
+      break;
     case "turn/start":
       handleTurnStart(request.id, request.params);
       break;
@@ -1248,6 +1253,61 @@ async function handleThreadResume(
     threadId,
     providerThreadId: requestedProviderThreadId ?? null,
   });
+}
+
+async function handleThreadFork(
+  id: string | number,
+  params: ThreadForkParams,
+): Promise<void> {
+  const threadId = params.threadId;
+
+  const existing = sessions.get(threadId);
+  if (existing) {
+    await closeThreadSession({
+      graceful: false,
+      message: "Thread session replaced while awaiting permission approval",
+      threadId,
+    });
+  }
+
+  let forkedProviderThreadId: string;
+  try {
+    const forkResult = await forkSession(params.sourceProviderThreadId, {
+      dir: params.cwd,
+    });
+    forkedProviderThreadId = forkResult.sessionId;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(id, -32000, message);
+    return;
+  }
+
+  const preparedEnv = await prepareSessionEnv(params);
+  const threadIdRef = { current: threadId };
+  const sessionOptions = buildSessionOptions(params, preparedEnv.env);
+  sessionOptions.canUseTool = createCanUseTool(threadIdRef);
+  if (params.dynamicTools && params.dynamicTools.length > 0) {
+    const mcpServer = buildBridgeMcpServer(
+      params.dynamicTools,
+      createForwardToolCall(threadIdRef),
+    );
+    sessionOptions.mcpServers = { [BRIDGE_MCP_SERVER_NAME]: mcpServer };
+    sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
+  }
+  const threadSession = createThreadSession({
+    mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
+    permissionEscalation: params.permissionEscalation,
+    permissionMode: params.permissionMode,
+    providerThreadId: forkedProviderThreadId,
+    sessionOptions,
+    sessionPermissionGrants: [],
+    threadIdRef,
+  });
+  sessions.set(threadId, threadSession);
+  threadSession.session.start(forkedProviderThreadId);
+
+  sendResult(id, { threadId, providerThreadId: forkedProviderThreadId });
+  sendThreadIdentity(threadId, forkedProviderThreadId);
 }
 
 function handleTurnStart(id: string | number, params: TurnStartParams): void {

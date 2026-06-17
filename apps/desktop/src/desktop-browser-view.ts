@@ -25,6 +25,7 @@ import {
   isAllowedBrowserUrl,
   isAllowedTrustedLocalTopLevelUrl,
   localRequestOriginKey,
+  resolveRequestingFrameLocalOriginKey,
   resolveWindowOpenAction,
   shouldBlockBrowserRequest,
 } from "./desktop-browser-policy.js";
@@ -527,9 +528,14 @@ export function createDesktopBrowserViewManager(
             liveEntry?.pendingTrustedLocalTopLevelOriginKey ?? null,
           currentMainFrameLocalOriginKey:
             liveEntry?.currentMainFrameLocalOriginKey ?? null,
-          requestingFrameOriginKey: requestingFrameOriginKey(
-            details.frame?.origin,
-          ),
+          requestingFrameOriginKey: resolveRequestingFrameLocalOriginKey({
+            origin: details.frame?.origin,
+            url: details.frame?.url,
+            // Electron blanks `frame.origin` for a document's initial
+            // subresources; fall back to the top frame's URL so a same-origin
+            // SPA dev server (Vite, etc.) is not blocked into a blank page.
+            isTopFrame: details.frame?.parent === null,
+          }),
           mainFrameInitiatorOriginKey:
             liveEntry === null || !isMainFrameRequest
               ? null

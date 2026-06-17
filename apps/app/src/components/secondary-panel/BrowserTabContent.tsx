@@ -41,11 +41,12 @@ export interface BrowserTabContentProps {
   tabId: string;
   initialUrl: string;
   /**
-   * Whether this browser tab is the visible, active panel tab. The native view
+   * Whether this browser tab's native view may be visible. The native view
    * stays attached (and its page intact) across deactivation; only its
-   * visibility follows this flag, so switching tabs never destroys/reloads it.
+   * visibility follows this readiness-gated flag, so switching tabs never
+   * destroys/reloads it.
    */
-  isActive: boolean;
+  canShowNativeBrowserView: boolean;
   /**
    * Deck-owned coordinator that serializes view visibility so the previously
    * shown view is always hidden before this one is shown (no two native overlays
@@ -90,6 +91,12 @@ interface BrowserViewBoundsEqualArgs {
 
 interface SyncBrowserViewPlacementArgs {
   force: boolean;
+}
+
+interface BrowserViewAttachIdentity {
+  environmentId: string | null;
+  tabId: string;
+  threadId: string;
 }
 
 const EMPTY_BROWSER_VIEW_BOUNDS: BbDesktopBrowserViewBounds = {
@@ -290,7 +297,7 @@ function BrowserUnavailable() {
 export function BrowserTabContent({
   tabId,
   initialUrl,
-  isActive,
+  canShowNativeBrowserView,
   visibilityCoordinator,
   environmentId,
   threadId,
@@ -327,10 +334,13 @@ export function BrowserTabContent({
   // (which updates the persisted `initialUrl` prop) never re-runs the attach
   // effect — and the live view keeps its page across tab switches.
   const initialUrlRef = useRef(initialUrl);
-  // Mount-time active state, read by the create-once attach effect without
-  // re-running it when activeness later changes (the visibility effect owns that).
-  const isActiveRef = useRef(isActive);
-  isActiveRef.current = isActive;
+  const [attachedBrowserViewIdentity, setAttachedBrowserViewIdentity] =
+    useState<BrowserViewAttachIdentity | null>(null);
+  const isBrowserViewAttached =
+    attachedBrowserViewIdentity !== null &&
+    attachedBrowserViewIdentity.environmentId === environmentId &&
+    attachedBrowserViewIdentity.tabId === tabId &&
+    attachedBrowserViewIdentity.threadId === threadId;
 
   const hasPage = currentUrl.length > 0;
   // A blocking modal (e.g. the git-action dialog) dims the panel with a DOM
@@ -416,9 +426,11 @@ export function BrowserTabContent({
       tabId,
       url: mountUrl,
       bounds: initialBounds,
-      // The active tab's view starts visible only while the panel is open.
-      visible: isActiveRef.current && mountUrl.length > 0,
+      // First show is coordinator-owned so it can sync bounds immediately
+      // before making the native overlay visible.
+      visible: false,
     });
+    setAttachedBrowserViewIdentity({ environmentId, tabId, threadId });
 
     const unsubscribe = desktopBrowser.onState((nextState) => {
       if (nextState.tabId !== tabId) {
@@ -510,14 +522,17 @@ export function BrowserTabContent({
     };
   }, [desktopBrowser, syncBoundsIfChanged]);
 
-  // The native view is shown whenever this tab is the active panel tab and has a
-  // page. It is NOT hidden during a drag-resize — the overlay tracks the live
-  // bounds (see the ResizeObserver and layout-sync effects) so it follows
-  // the panel smoothly instead of blanking and flashing. It stays attached when
-  // hidden, so deactivation never reloads it. (Collapse/expand of the panel
-  // toggles `isActive`, which hides the view outright rather than chasing a
-  // CSS transition the overlay cannot clip to.)
-  const isViewVisible = isActive && hasPage && !isBrowserDimmingModalOpen;
+  // The native view is shown whenever this tab has a page, has attached hidden,
+  // and the surrounding panel/drawer is ready for the native overlay. It is NOT
+  // hidden during a drag-resize — the overlay tracks the live bounds (see the
+  // ResizeObserver and layout-sync effects) so it follows the panel smoothly
+  // instead of blanking and flashing. It stays attached when hidden, so
+  // deactivation never reloads it.
+  const isViewVisible =
+    canShowNativeBrowserView &&
+    hasPage &&
+    isBrowserViewAttached &&
+    !isBrowserDimmingModalOpen;
   // A layout effect (pre-paint) declares visibility so showing/hiding lands in
   // the same frame as the DOM tab swap — no flash. Ordering across tabs (hide
   // the previously-visible view BEFORE showing this one) and bounds-before-show

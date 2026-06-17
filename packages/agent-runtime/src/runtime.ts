@@ -974,6 +974,8 @@ function createAgentRuntimeInternal(
       dynamicTools,
       disallowedTools,
       instructionMode = "append",
+      outputSchema,
+      fork,
     }) {
       return runThreadOperation({
         threadId,
@@ -1022,20 +1024,33 @@ function createAgentRuntimeInternal(
             threadId,
           });
 
-          const adapterCommand: AdapterCommand = {
-            type: "thread/start",
-            threadId,
-            cwd: options.workspacePath,
-            options: toProviderExecutionContext({
-              envVars,
-              execOpts,
-              instructions,
-              skillRoots: providerSkillRoots,
-            }),
-            dynamicTools,
-            disallowedTools,
-            instructionMode,
-          };
+          const providerExecutionContext = toProviderExecutionContext({
+            envVars,
+            execOpts,
+            instructions,
+            skillRoots: providerSkillRoots,
+          });
+          const adapterCommand: AdapterCommand = fork
+            ? {
+                type: "thread/fork",
+                threadId,
+                cwd: options.workspacePath,
+                sourceProviderThreadId: fork.sourceProviderThreadId,
+                options: providerExecutionContext,
+                dynamicTools,
+                disallowedTools,
+                instructionMode,
+              }
+            : {
+                type: "thread/start",
+                threadId,
+                cwd: options.workspacePath,
+                options: providerExecutionContext,
+                dynamicTools,
+                disallowedTools,
+                instructionMode,
+                ...(outputSchema !== undefined ? { outputSchema } : {}),
+              };
           const cmd = requireProviderRequestPlan({
             commandType: adapterCommand.type,
             plan: proc.adapter.buildCommandPlan(adapterCommand),

@@ -120,11 +120,17 @@ export type TimelineTitleDecoration =
  * decide whether to surface the action; the title-builder only declares what's
  * available. New action kinds extend this union.
  */
-export type TimelineTitleAction = {
-  kind: "open-file-diff";
-  /** Workspace-relative path of the file. For renames, the destination path. */
-  path: string;
-};
+export type TimelineTitleAction =
+  | {
+      kind: "open-file-diff";
+      /** Workspace-relative path of the file. For renames, the destination path. */
+      path: string;
+    }
+  | {
+      kind: "open-side-chat";
+      /** The side-chat child thread to open as a tab in the current thread. */
+      threadId: string;
+    };
 
 export interface TimelineTitle {
   segments: TimelineTitleSegment[];

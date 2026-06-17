@@ -123,6 +123,9 @@ export function createFakeWorkspace(pathname: string) {
     managed: false,
     isGitRepo: true,
     isWorktree: false,
+    async getDefaultBranch() {
+      return "main";
+    },
     async getCurrentBranch() {
       return "main";
     },

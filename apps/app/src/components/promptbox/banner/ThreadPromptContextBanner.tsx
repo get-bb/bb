@@ -48,6 +48,12 @@ export interface ThreadPromptGitSection {
 export interface ThreadPromptParentThreadSection {
   parentThreadTitle: string;
   href: string;
+  /**
+   * How the current thread relates to the linked thread: a fork renders
+   * "Forked from …", a side chat renders "Side chat of …", any other child
+   * renders "Parent …".
+   */
+  relationship: "parent" | "fork" | "side-chat";
 }
 
 /**
@@ -90,7 +96,13 @@ export interface ThreadPromptEnvironmentGoneSection {
  * one place so future status additions don't drift across callers.
  */
 const THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES: ReadonlySet<ThreadRuntimeDisplayStatus> =
-  new Set(["active", "host-reconnecting", "starting", "waiting-for-host"]);
+  new Set([
+    "active",
+    "host-reconnecting",
+    "provisioning",
+    "starting",
+    "waiting-for-host",
+  ]);
 
 export function isThreadDisplayStatusBannerActive(
   status: ThreadRuntimeDisplayStatus,
@@ -341,16 +353,47 @@ function TodoBody({
   );
 }
 
+// Single source of truth for how the linked source thread is described across
+// the banner's three render surfaces (inline label, expanded body, aria).
+const PARENT_SECTION_COPY: Record<
+  ThreadPromptParentThreadSection["relationship"],
+  { verb: string; bodyLead: string; ariaPrefix: string }
+> = {
+  parent: {
+    verb: "Parent",
+    bodyLead: "This thread is a child of ",
+    ariaPrefix: "Parent thread",
+  },
+  fork: {
+    verb: "Forked from",
+    bodyLead: "This thread was forked from ",
+    ariaPrefix: "Forked from",
+  },
+  "side-chat": {
+    verb: "Side chat of",
+    bodyLead: "This thread is a side chat of ",
+    ariaPrefix: "Side chat of",
+  },
+};
+
+function parentSectionAriaLabel(
+  section: ThreadPromptParentThreadSection,
+): string {
+  return `${PARENT_SECTION_COPY[section.relationship].ariaPrefix} ${section.parentThreadTitle}`;
+}
+
 function ParentThreadBody({
   parentThreadTitle,
   href,
+  relationship,
 }: {
   parentThreadTitle: string;
   href: string;
+  relationship: ThreadPromptParentThreadSection["relationship"];
 }) {
   return (
     <div className="px-3 pb-2 pt-1.5 text-xs leading-relaxed text-muted-foreground">
-      This thread is a child of{" "}
+      {PARENT_SECTION_COPY[relationship].bodyLead}
       <NavLink
         to={href}
         className="text-foreground/90 underline-offset-2 hover:underline"
@@ -445,7 +488,7 @@ function ReadOnlyContextBanner({
           <SectionToggleButton
             id={SECTION_IDS.parentThread.toggle}
             controlsId={SECTION_IDS.parentThread.body}
-            ariaLabel={`Parent thread ${parentThreadSection.parentThreadTitle}`}
+            ariaLabel={parentSectionAriaLabel(parentThreadSection)}
             icon={
               <Icon
                 name="UserRound"
@@ -489,6 +532,7 @@ function ReadOnlyContextBanner({
           <ParentThreadBody
             parentThreadTitle={parentThreadSection.parentThreadTitle}
             href={parentThreadSection.href}
+            relationship={parentThreadSection.relationship}
           />
         </AnimatedBody>
       ) : null}
@@ -600,7 +644,7 @@ export function ThreadPromptContextBanner({
         {showParentThread && parentThreadSection && isParentThreadOnly ? (
           <div
             className="flex min-w-0 items-center gap-1.5 px-1 py-0.5"
-            title={`Parent thread ${parentThreadSection.parentThreadTitle}`}
+            title={parentSectionAriaLabel(parentThreadSection)}
           >
             <Icon
               name="UserRound"
@@ -608,7 +652,7 @@ export function ThreadPromptContextBanner({
               aria-hidden="true"
             />
             <span className="min-w-0 truncate">
-              Parent{" "}
+              {PARENT_SECTION_COPY[parentThreadSection.relationship].verb}{" "}
               <NavLink
                 to={parentThreadSection.href}
                 className="text-foreground/90 underline underline-offset-2"
@@ -622,7 +666,7 @@ export function ThreadPromptContextBanner({
           <SectionToggleButton
             id={SECTION_IDS.parentThread.toggle}
             controlsId={SECTION_IDS.parentThread.body}
-            ariaLabel={`Parent thread ${parentThreadSection.parentThreadTitle}`}
+            ariaLabel={parentSectionAriaLabel(parentThreadSection)}
             icon={
               <Icon
                 name="UserRound"
@@ -701,14 +745,15 @@ export function ThreadPromptContextBanner({
             <Icon
               name="GitMerge"
               className="size-3.5 shrink-0"
-              aria-label="Merge base"
+              aria-hidden="true"
             />
+            <span className="shrink-0">Merge base</span>
             <BranchPicker
               value={gitSection.mergeBase.branch}
               options={mergeBaseCandidates.options}
               remoteOptions={mergeBaseCandidates.remoteOptions}
-              selectedOptionKind={mergeBaseCandidates.selectedOptionKind}
               variant="minimal"
+              emphasizeTriggerValue={false}
               loading={gitSection.mergeBase.optionsLoading}
               onChange={gitSection.mergeBase.onChange}
               onOpenChange={gitSection.mergeBase.onPickerOpenChange}
@@ -729,6 +774,7 @@ export function ThreadPromptContextBanner({
           <ParentThreadBody
             parentThreadTitle={parentThreadSection.parentThreadTitle}
             href={parentThreadSection.href}
+            relationship={parentThreadSection.relationship}
           />
         </AnimatedBody>
       ) : null}

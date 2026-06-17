@@ -76,6 +76,14 @@ export const THREAD_LIFECYCLE: Record<
   },
   starting: {
     "run.started": "active",
+    // A start that establishes the thread without dispatching a turn — a native
+    // fork cloned with empty input, or a seed-without-run anchor — settles its
+    // zero-work run here. The runtime emits a turn/completed for the no-turn
+    // establish (or the seed path fires it directly), and run.succeeded lands
+    // the established thread idle with an empty timeline, no turn ever run. This
+    // also closes the race where a real turn's turn/completed arrives before the
+    // start command settles run.started: the completed run still settles to idle.
+    "run.succeeded": "idle",
     "run.failed": "error",
     "stop.requested": "stopping",
   },

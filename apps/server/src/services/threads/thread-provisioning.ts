@@ -8,6 +8,7 @@ import {
   type ThreadTurnInitiator,
   type TurnRequestTarget,
 } from "@bb/domain";
+import type { StartedOnBehalfOf } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import {
   appendClientTurnEvent,
@@ -19,6 +20,7 @@ import {
   attachedEnvironmentIdForContext,
   createMetadataPendingContext,
   createReprovisioningContext,
+  type ThreadForkDescriptor,
   type ThreadProvisionEnvironmentIntent,
   type ThreadProvisionContext,
   type ThreadProvisionProvisionableContext,
@@ -36,12 +38,21 @@ import {
   forgetActiveThreadProvisionContext,
   getActiveThreadProvisionContext,
 } from "./thread-provisioning-active-context.js";
+import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
   environmentIntent: ThreadProvisionEnvironmentIntent;
   execution: ResolvedThreadExecutionOptions;
+  // Non-null ⇒ provision this thread by cloning the source provider session
+  // (native fork) instead of starting fresh. null ⇒ not a fork. Resolved by the
+  // server at create time (originKind/provider capability/source session/host).
+  fork: ThreadForkDescriptor | null;
   input: PromptInput[];
+  // Non-null ⇒ the thread-start turn is attributed to another agent/thread and
+  // the provider run is deferred until the user's first message (fork /
+  // side-chat anchors). null ⇒ a normal user-initiated start.
+  startedOnBehalfOf: StartedOnBehalfOf | null;
   thread: Thread;
   titleProvided: boolean;
 }
@@ -159,6 +170,48 @@ async function startThreadIfEnvironmentReady(
     throw new Error("Workspace ready event sequence was not recorded");
   }
 
+  if (
+    args.context.request.seedWithoutRun &&
+    args.context.request.fork === null
+  ) {
+    // Non-fork seed anchor: the thread-start turn is already persisted and
+    // displayed (initiator agent/system) but no provider session was cloned.
+    // The started agent must wait for the user's first message, so we do not
+    // dispatch a provider run here — we settle the started thread into `idle`,
+    // ready to accept the user's turn. Its provider session is created lazily on
+    // the first turn. (Both forks and side chats now clone the parent's session
+    // natively, so they carry a fork descriptor and take the eager-start path
+    // below; this lazy-seed branch is the fallback for a seed-without-run anchor
+    // whose session could not be cloned.)
+    //
+    // The thread is `starting`; the start established it with no turn to run, so
+    // we fire `run.succeeded` — the zero-work run completed — to settle it
+    // `idle`, the same starting→idle landing a no-turn fork establish takes.
+    const outcome = applyLoggedThreadLifecycleEvent(deps, {
+      threadId: args.thread.id,
+      event: { type: "run.succeeded" },
+    });
+    if (!outcome.applied) {
+      // The thread left `starting` before we could seed it idle (e.g. a
+      // concurrent stop/transition). The anchor turn is persisted but the
+      // thread will not land in `idle` here, so surface it instead of silently
+      // dropping the transition.
+      deps.logger.warn(
+        { threadId: args.thread.id },
+        "Seed-without-run thread was no longer starting; idle settle skipped",
+      );
+    }
+    return;
+  }
+
+  // A native fork must be provisioned eagerly: rather than the lazy idle
+  // short-circuit, we issue the real start carrying the fork descriptor so the
+  // child's provider session is cloned from the parent at its branch point now.
+  //
+  // The app sends a fork with empty input, and the runtime starts no first turn
+  // when the start input is empty (its no-input-no-turn guard). So the forked
+  // session is established and the thread lands idle with an empty timeline; the
+  // user steers the first executed turn.
   await requestThreadStart(deps, {
     thread: args.thread,
     environment: {
@@ -168,6 +221,7 @@ async function startThreadIfEnvironmentReady(
       status: args.environment.status,
       workspaceProvisionType: args.environment.workspaceProvisionType,
     },
+    fork: args.context.request.fork,
     input: args.context.request.input,
     requestId: args.context.request.clientRequestId,
     execution: args.context.request.execution,
@@ -185,7 +239,9 @@ export function requestThreadProvision(
   deps: Pick<AppDeps, "db" | "hub">,
   args: RequestThreadProvisionArgs,
 ): ThreadProvisionContext {
-  const initiator: ThreadTurnInitiator = "user";
+  const initiator: ThreadTurnInitiator =
+    args.startedOnBehalfOf?.initiator ?? "user";
+  const senderThreadId = args.startedOnBehalfOf?.senderThreadId ?? null;
   const target: TurnRequestTarget = { kind: "thread-start" };
   const request = appendClientTurnEvent(deps, {
     threadId: args.thread.id,
@@ -194,7 +250,7 @@ export function requestThreadProvision(
     input: args.input,
     execution: args.execution,
     initiator,
-    senderThreadId: null,
+    senderThreadId,
     requestMethod: "thread/start",
     source: "spawn",
     target,
@@ -218,6 +274,7 @@ export function requestThreadProvision(
   const context = createMetadataPendingContext({
     ...args,
     clientRequestId: request.requestId,
+    seedWithoutRun: args.startedOnBehalfOf !== null,
   });
   saveThreadProvisionContext({
     threadId: args.thread.id,

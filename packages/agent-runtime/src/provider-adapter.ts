@@ -142,6 +142,16 @@ export type AdapterCommand =
       instructionMode: InstructionMode;
     }
   | {
+      type: "thread/fork";
+      threadId: string;
+      cwd: string;
+      sourceProviderThreadId: string;
+      options: ProviderExecutionContext;
+      dynamicTools?: DynamicTool[];
+      disallowedTools?: readonly string[];
+      instructionMode: InstructionMode;
+    }
+  | {
       type: "turn/start";
       threadId: string;
       providerThreadId: string;

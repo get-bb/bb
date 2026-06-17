@@ -96,7 +96,7 @@ interface BuildUnexpectedPiSdkEventArgs {
 
 type PiInstructionCommand = Extract<
   AdapterCommand,
-  { type: "thread/start" | "thread/resume" }
+  { type: "thread/start" | "thread/resume" | "thread/fork" }
 >;
 
 interface PiInstructionOverrides {
@@ -1342,6 +1342,51 @@ export function createPiProviderAdapter(
               input: command.input,
             },
           };
+        case "thread/fork": {
+          // Pi's provider identity == the bb threadId, so the source pi session
+          // id is command.sourceProviderThreadId (the source bb thread id). The
+          // new thread keeps command.threadId as its identity; the bridge forks
+          // the source session's full history into the new thread's
+          // deterministic session file. Same session-config fields as
+          // thread/start so the forked session launches identically.
+          finishOpenProviderTurn({
+            registry: turnState,
+            threadId: command.threadId,
+          });
+          resetPiCommandOutputSnapshots(
+            turnState.getOrCreate({ threadId: command.threadId }),
+          );
+          const config = buildPiConfig(command.threadId, command.options);
+          const dynamicTools = command.dynamicTools?.map((t) => ({
+            name: t.name,
+            description: t.description,
+            inputSchema: JSON.parse(JSON.stringify(t.inputSchema)),
+          }));
+          const additionalSkillPathsParams = buildPiAdditionalSkillPathsParams(
+            command.options.skillRoots,
+          );
+          return {
+            kind: "request",
+            method: "thread/fork",
+            params: {
+              threadId: command.threadId,
+              sourceProviderThreadId: command.sourceProviderThreadId,
+              cwd: command.cwd,
+              ...resolvePiInstructionOverrides(command),
+              ...(additionalSkillPathsParams ? additionalSkillPathsParams : {}),
+              ...(config ? { config } : {}),
+              ...(command.options?.model
+                ? { model: command.options.model }
+                : {}),
+              ...(command.options?.reasoningLevel
+                ? { reasoningLevel: command.options.reasoningLevel }
+                : {}),
+              ...(dynamicTools && dynamicTools.length > 0
+                ? { dynamicTools }
+                : {}),
+            },
+          };
+        }
         case "thread/stop":
           finishOpenProviderTurn({
             registry: turnState,
@@ -1380,6 +1425,7 @@ export function createPiProviderAdapter(
       if (
         command.type === "thread/start" ||
         command.type === "thread/resume" ||
+        command.type === "thread/fork" ||
         command.type === "thread/stop"
       ) {
         const state = turnState.getOrCreate({ threadId: command.threadId });

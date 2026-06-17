@@ -144,10 +144,26 @@ export const threadStartCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.start"),
     requestId: clientTurnRequestIdSchema,
-    input: z.array(promptInputSchema).min(1),
+    // A fork start establishes the cloned provider session with an empty
+    // timeline (the runtime's no-input-no-turn guard leaves it idle), so it
+    // carries no input. A non-fork start always runs a first turn and requires
+    // at least one input, enforced by the refinement below.
+    input: z.array(promptInputSchema),
     threadStoragePath: z.string().min(1).optional(),
+    /** Present means fork the new thread from this source provider session
+     *  instead of starting fresh; absent means a normal start. */
+    fork: z.object({ sourceProviderThreadId: z.string().min(1) }).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.fork === undefined && value.input.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "input must contain at least one entry",
+        path: ["input"],
+      });
+    }
+  });
 
 export const turnSubmitTargetSchema = z.discriminatedUnion("mode", [
   z.object({

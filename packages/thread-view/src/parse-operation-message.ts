@@ -441,6 +441,9 @@ export function parseOperationMessage(
 
   if (decoded.type === "system/thread-provisioning") {
     const { status, environmentId, provisioningId } = decoded;
+    if (provisioningId.startsWith("thread-start:")) {
+      return null;
+    }
     const transcript = readProvisioningTranscript(decoded.entries);
     const title = (() => {
       switch (status) {

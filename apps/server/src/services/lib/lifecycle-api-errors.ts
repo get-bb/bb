@@ -187,7 +187,10 @@ export function throwParentThreadInvalid(
 }
 
 export function throwSenderThreadInvalid(
-  reason: Extract<ParentThreadInvalidReason, "deleted" | "not_found">,
+  reason: Extract<
+    ParentThreadInvalidReason,
+    "deleted" | "not_found" | "wrong_project"
+  >,
 ): never {
   throw new ApiError(
     400,

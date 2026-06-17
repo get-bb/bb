@@ -10,6 +10,7 @@ type ThreadListEntryOverrides = Partial<ThreadListEntry>;
 function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
   return {
     archivedAt: null,
+    childOrigin: null,
     createdAt: 1,
     deletedAt: null,
     environmentBranchName: null,
@@ -26,6 +27,8 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
     pinSortKey: null,
     projectId: "proj_1",
     providerId: "codex",
+    originKind: null,
+    sourceThreadId: null,
     runtime: {
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,

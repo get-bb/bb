@@ -235,6 +235,7 @@ function createFakeWorkspace(path: string): HostWorkspace {
     managed: false,
     isGitRepo: true,
     isWorktree: false,
+    getDefaultBranch: vi.fn(async () => "main"),
     getCurrentBranch: vi.fn(async () => "main"),
     getHeadSha: vi.fn(async () => "commit-1"),
     getLocalStateFingerprint: vi.fn(async () => "local-1"),

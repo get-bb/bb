@@ -84,6 +84,7 @@ async function startLiveThreadStartRpc(
   await requestThreadStart(args.harness.deps, {
     thread,
     environment,
+    fork: null,
     input: textInput("start live runtime"),
     requestId: encodeClientTurnRequestIdNumber({
       value: args.requestIdValue,

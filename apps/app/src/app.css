@@ -139,7 +139,8 @@
     }
   }
 
-  @container promptbox-shell (max-width: 28rem) {
+  @container promptbox-shell (max-width: 22rem) {
+    [data-promptbox-shell] [data-promptbox-hide-branch-compact],
     [data-promptbox-shell] [data-promptbox-hide-tiny] {
       display: none !important;
     }
@@ -169,5 +170,25 @@
 
   .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+
+  /*
+   * Soft right-edge fade for single-line text that is clipped horizontally
+   * (e.g. a queued-message preview). Fades the text out instead of a hard
+   * `…` ellipsis. Self-gating: short text doesn't reach the fade zone, so the
+   * fade only shows when content is actually truncated. Pair with
+   * `overflow-hidden whitespace-nowrap` (no scroll).
+   */
+  .fade-clip-right {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      #000 calc(100% - 1.5rem),
+      transparent
+    );
+    mask-image: linear-gradient(
+      to right,
+      #000 calc(100% - 1.5rem),
+      transparent
+    );
   }
 }

@@ -1,6 +1,7 @@
 import {
   listLiveThreadsInEnvironment,
   listUnarchivedAssignedChildThreads,
+  listUnarchivedSourceThreads,
 } from "@bb/db";
 import type { Environment, Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
@@ -113,8 +114,14 @@ export function archiveThreadAndChildren(
   const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
     parentThreadId: args.parentThread.id,
   });
-  const threads: ArchiveThreadWithLifecycleEffectsArgs["thread"][] =
-    childThreads.filter((thread) => thread.id !== args.parentThread.id);
+  const sideChatThreads = listUnarchivedSourceThreads(deps.db, {
+    sourceThreadId: args.parentThread.id,
+    originKind: "side-chat",
+  });
+  const threads: ArchiveThreadWithLifecycleEffectsArgs["thread"][] = [
+    ...childThreads,
+    ...sideChatThreads,
+  ].filter((thread) => thread.id !== args.parentThread.id);
   if (args.parentThread.archivedAt === null) {
     threads.push(args.parentThread);
   }

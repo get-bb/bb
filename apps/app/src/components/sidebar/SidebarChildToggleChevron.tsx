@@ -1,4 +1,5 @@
 import { Icon } from "@/components/ui/icon.js";
+import { SIDEBAR_HOVER_ACTIONS_CLASS } from "@/components/ui/sidebar-hover-actions.js";
 import { cn } from "@/lib/utils";
 
 export type SidebarChildToggleHandler = () => void;
@@ -10,6 +11,7 @@ export interface SidebarChildToggleChevronProps {
   expandTitle: string;
   collapseTitle: string;
   onToggle: SidebarChildToggleHandler;
+  revealOnHover?: boolean;
 }
 
 export function SidebarChildToggleChevron({
@@ -19,6 +21,7 @@ export function SidebarChildToggleChevron({
   expandTitle,
   collapseTitle,
   onToggle,
+  revealOnHover = false,
 }: SidebarChildToggleChevronProps) {
   return (
     <button
@@ -31,7 +34,10 @@ export function SidebarChildToggleChevron({
         event.stopPropagation();
         onToggle();
       }}
-      className="pointer-events-auto relative z-10 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover hover:text-foreground focus-visible:ring-2"
+      className={cn(
+        revealOnHover ? SIDEBAR_HOVER_ACTIONS_CLASS : "pointer-events-auto",
+        "relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground outline-none ring-sidebar-ring transition-colors hover:bg-state-hover hover:text-foreground focus-visible:ring-2",
+      )}
     >
       <Icon
         name="ChevronRight"

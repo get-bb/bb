@@ -23,6 +23,7 @@ export const providerCapabilitiesSchema = z.object({
   supportsRename: z.boolean(),
   supportsServiceTier: z.boolean(),
   supportsUserQuestion: z.boolean(),
+  supportsFork: z.boolean(),
   supportedPermissionModes: z.array(permissionModeSchema).min(1),
 });
 export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>;

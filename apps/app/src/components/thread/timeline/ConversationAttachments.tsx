@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import type { TimelineConversationAttachments } from "@bb/server-contract";
 import { fileNameFromPath } from "@bb/thread-view";
-import { ImageLightbox, getWrappedImageIndex } from "../../ui/image-lightbox.js";
+import {
+  ImageLightbox,
+  getWrappedImageIndex,
+} from "../../ui/image-lightbox.js";
 import { cn } from "@/lib/utils";
 import { buildProjectAttachmentContentUrl } from "@/lib/file-content-urls";
 import type {
@@ -177,7 +180,10 @@ export function ConversationAttachments({
                   href={attachmentHref}
                   target="_blank"
                   rel="noreferrer"
-                  className={cn(className, "hover:bg-state-hover")}
+                  className={cn(
+                    className,
+                    "cursor-pointer hover:bg-state-hover",
+                  )}
                 >
                   {label}
                 </a>
@@ -196,7 +202,7 @@ export function ConversationAttachments({
               <button
                 key={path}
                 type="button"
-                className={cn(className, "hover:bg-state-hover")}
+                className={cn(className, "cursor-pointer hover:bg-state-hover")}
                 onClick={() => {
                   onOpenLocalFileLink({ lineRange: null, path });
                 }}

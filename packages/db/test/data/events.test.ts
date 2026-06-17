@@ -321,6 +321,7 @@ describe("events", () => {
         },
       ],
       insertedInputIndexes: [0, 1],
+      skippedTurnUnstartedInputIndexes: [],
     });
     expect(listEvents(db, { threadId: thread.id })).toMatchObject([
       { sequence: 5 },
@@ -394,6 +395,50 @@ describe("events", () => {
       ),
     ).toThrow(MissingStoredTurnStartedError);
     expect(listEvents(db, { threadId: thread.id })).toHaveLength(0);
+  });
+
+  it("drops orphan token-usage snapshots with no stored turn/started instead of failing the batch", () => {
+    const { db, thread } = setup();
+
+    // A native fork resumes the parent's session, which re-emits the parent's
+    // last-turn token usage scoped to a turn the forked thread never started.
+    // The snapshot must be dropped, not throw — otherwise the whole batch (here
+    // including the fork's real turn/started) rolls back and the daemon retries
+    // forever, wedging the thread.
+    const result = db.transaction(
+      (tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            threadId: thread.id,
+            type: "thread/tokenUsage/updated",
+            ...createTurnEventFields({ turnId: "turn_carried_over" }),
+            environmentId: null,
+            providerThreadId: "provider_thr_resumed",
+            data: createTokenUsageData({
+              totalTokens: 42,
+              modelContextWindow: 200_000,
+            }),
+          },
+          {
+            threadId: thread.id,
+            type: "turn/started",
+            ...createTurnEventFields({ turnId: "turn_new" }),
+            environmentId: null,
+            providerThreadId: "provider_thr_resumed",
+            data: JSON.stringify({
+              providerThreadId: "provider_thr_resumed",
+              turnId: "turn_new",
+            }),
+          },
+        ]),
+      { behavior: "immediate" },
+    );
+
+    expect(result.skippedTurnUnstartedInputIndexes).toEqual([0]);
+    expect(result.insertedInputIndexes).toEqual([1]);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.type),
+    ).toEqual(["turn/started"]);
   });
 
   it("accepts daemon turn-scoped events after earlier turn/started in the same batch", () => {

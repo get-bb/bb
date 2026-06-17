@@ -714,6 +714,33 @@ function fileChangeRowIdByPath(
 }
 
 describe("buildThreadTimelineFromEvents", () => {
+  it("does not project thread-start provider-session markers as provisioning rows", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const providerSessionMarker = event.threadProvisioning({
+      provisioningId: "thread-start:exec_1",
+      status: "completed",
+      entries: [],
+    });
+
+    const rows = buildTimelineRows(
+      fromRows([
+        event.threadProvisioning({
+          provisioningId: "tpv-real",
+          status: "completed",
+          entries: [],
+        }),
+        providerSessionMarker,
+      ]),
+    );
+
+    expect(
+      collectSystemRows(rows).filter(
+        (row) =>
+          row.systemKind === "operation" && row.title === "Provisioned thread",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("normalizes carriage-return provisioning output in operation detail", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const rows = buildTimelineRows(

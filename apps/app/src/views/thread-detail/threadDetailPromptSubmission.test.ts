@@ -230,13 +230,11 @@ describe("threadDetailPromptSubmission", () => {
     const queueableStatuses: ThreadRuntimeDisplayStatus[] = [
       "active",
       "host-reconnecting",
-    ];
-    const immediateStatuses: ThreadRuntimeDisplayStatus[] = [
-      "error",
-      "idle",
+      "provisioning",
       "starting",
       "waiting-for-host",
     ];
+    const immediateStatuses: ThreadRuntimeDisplayStatus[] = ["error", "idle"];
 
     for (const status of queueableStatuses) {
       expect(shouldQueueFollowUpMessage(status)).toBe(true);
@@ -246,11 +244,15 @@ describe("threadDetailPromptSubmission", () => {
     }
   });
 
-  it("offers stop-only mode while a thread is starting", () => {
+  it("offers queue mode while a thread is starting", () => {
     const onStop = () => undefined;
-    const stoppableStatuses: ThreadRuntimeDisplayStatus[] = ["starting"];
+    const queueableStatuses: ThreadRuntimeDisplayStatus[] = [
+      "provisioning",
+      "starting",
+      "waiting-for-host",
+    ];
 
-    for (const runtimeDisplayStatus of stoppableStatuses) {
+    for (const runtimeDisplayStatus of queueableStatuses) {
       expect(
         buildFollowUpSubmitMode({
           hasPendingInteraction: false,
@@ -259,7 +261,7 @@ describe("threadDetailPromptSubmission", () => {
           onStop,
           runtimeDisplayStatus,
         }),
-      ).toEqual({ kind: "stop-only", onStop });
+      ).toEqual({ kind: "queue", onStop });
     }
   });
 

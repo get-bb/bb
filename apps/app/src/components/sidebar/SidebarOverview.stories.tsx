@@ -58,6 +58,28 @@ const loadedSidebarNavigation = {
         createdAt: 85,
         updatedAt: 85,
       }),
+      // A projectless parent + delegated child: exercises depth-0 alignment
+      // with the project headers and the indent guide under an expanded
+      // projectless thread.
+      makeThreadListEntry({
+        id: "thr_story_personal_parent",
+        projectId: PERSONAL_PROJECT_ID,
+        title: "Investigate flaky timeline test",
+        titleFallback: "Investigate flaky timeline test",
+        latestAttentionAt: 80,
+        createdAt: 80,
+        updatedAt: 80,
+      }),
+      makeThreadListEntry({
+        id: "thr_story_personal_child",
+        projectId: PERSONAL_PROJECT_ID,
+        parentThreadId: "thr_story_personal_parent",
+        title: "Add Mutex to Watcher",
+        titleFallback: "Add Mutex to Watcher",
+        latestAttentionAt: 75,
+        createdAt: 75,
+        updatedAt: 75,
+      }),
     ],
   },
   projects: [
@@ -99,6 +121,28 @@ const loadedSidebarNavigation = {
           latestAttentionAt: 180,
           createdAt: 180,
           updatedAt: 180,
+        }),
+        // A delegated parent → child pair: renders at project depth 1/2 with
+        // the disclosure chevron after the parent title and the indent guide
+        // running under the expanded child.
+        makeThreadListEntry({
+          id: "thr_story_ancestor",
+          projectId: bbProject.id,
+          title: "Rework the command palette",
+          titleFallback: "Rework the command palette",
+          latestAttentionAt: 176,
+          createdAt: 176,
+          updatedAt: 176,
+        }),
+        makeThreadListEntry({
+          id: "thr_story_ancestor_child",
+          projectId: bbProject.id,
+          parentThreadId: "thr_story_ancestor",
+          title: "Wire async command loading",
+          titleFallback: "Wire async command loading",
+          latestAttentionAt: 175,
+          createdAt: 175,
+          updatedAt: 175,
         }),
         makeThreadListEntry({
           id: "thr_story_worktree_a",

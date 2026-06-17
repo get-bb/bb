@@ -47,6 +47,33 @@ export function emptyPromptDraftState(): PromptDraftState {
   };
 }
 
+/**
+ * Append a quoted selection to the draft text as a `> `-prefixed blockquote
+ * block. The editor parses these blocks into real blockquote nodes; the user
+ * types their reply in the paragraph below. Appending to the END of the text
+ * keeps every existing mention offset unchanged.
+ */
+export function appendQuoteToDraftText(
+  state: PromptDraftState,
+  quotedText: string,
+): PromptDraftState {
+  // Guard the boundary: an empty/whitespace-only selection would otherwise
+  // emit a bare "> " block and make an empty draft look dirty.
+  const trimmed = quotedText.trim();
+  if (trimmed === "") return state;
+
+  const block = trimmed
+    .split("\n")
+    .map((line) => (line.length > 0 ? `> ${line}` : ">"))
+    .join("\n");
+
+  // Trailing newline so the reply paragraph sits below the quote.
+  const text =
+    state.text === "" ? `${block}\n` : `${state.text}\n${block}\n`;
+
+  return { ...state, text };
+}
+
 export function isPromptDraftEmpty(draft: PromptDraftState): boolean {
   return (
     draft.text.length === 0 &&
@@ -121,6 +148,7 @@ function normalizePromptTextMentions(
 
 export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
   const input: PromptInput[] = [];
+
   const trimStartLength = draft.text.length - draft.text.trimStart().length;
   const trimEndIndex = draft.text.trimEnd().length;
   const text = draft.text.slice(trimStartLength, trimEndIndex);

@@ -392,6 +392,7 @@ function SeededNewTabPage({
       focusRequest={0}
       initialQuery={initialQuery}
       onSelect={onSelect}
+      onStartSideChat={() => undefined}
       onOpenBrowser={onOpenBrowser}
       onStartTerminal={onStartTerminal}
     />

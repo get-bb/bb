@@ -3,6 +3,7 @@ import type {
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
+  JsonObject,
   PendingInteractionCreate,
   PendingInteractionResolution,
   PromptInput,
@@ -132,6 +133,16 @@ export interface StartThreadArgs {
   dynamicTools?: DynamicTool[];
   disallowedTools?: readonly string[];
   instructionMode?: InstructionMode;
+  /** JSON Schema constraining the session's structured output. Session-level
+   *  structured output is claude-code only (SDK `outputFormat` is fixed at
+   *  query creation); other adapters reject it. Absent means no structured
+   *  output. */
+  outputSchema?: JsonObject;
+  /**
+   * Present means fork the new thread from this source provider session
+   * instead of starting fresh; absent means a normal start.
+   */
+  fork?: { sourceProviderThreadId: string };
 }
 
 export interface StartThreadResult {

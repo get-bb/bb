@@ -8,6 +8,7 @@ import {
 import { bumpDiffPatchEvictionGeneration } from "./environment-diff-patch-cache-owner";
 import type {
   SidebarBootstrapResponse,
+  ThreadResponse,
   ThreadTimelineResponse,
   TimelineRow,
 } from "@bb/server-contract";
@@ -436,9 +437,9 @@ export function getCachedThreadListPlaceholder(
 export function updateCachedThread(
   queryClient: QueryClient,
   threadId: string,
-  updater: (thread: ThreadWithRuntime) => ThreadWithRuntime,
+  updater: (thread: ThreadResponse) => ThreadResponse,
 ): void {
-  queryClient.setQueryData<ThreadWithRuntime>(
+  queryClient.setQueryData<ThreadResponse>(
     threadQueryKey(threadId),
     (thread) => {
       if (!thread) {
@@ -475,6 +476,24 @@ function threadMatchesListFilters(
   if (
     filters?.parentThreadId !== undefined &&
     thread.parentThreadId !== filters.parentThreadId
+  ) {
+    return false;
+  }
+  if (
+    filters?.sourceThreadId !== undefined &&
+    thread.sourceThreadId !== filters.sourceThreadId
+  ) {
+    return false;
+  }
+  if (
+    filters?.originKind !== undefined &&
+    (thread.originKind ?? thread.childOrigin) !== filters.originKind
+  ) {
+    return false;
+  }
+  if (
+    filters?.childOrigin !== undefined &&
+    (thread.originKind ?? thread.childOrigin) !== filters.childOrigin
   ) {
     return false;
   }

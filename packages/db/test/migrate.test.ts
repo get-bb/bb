@@ -63,6 +63,14 @@ interface MigratedManagerCleanupThreadRow {
   parentThreadId: string | null;
 }
 
+interface MigratedThreadProvenanceRow {
+  childOrigin: string | null;
+  id: string;
+  originKind: string | null;
+  parentThreadId: string | null;
+  sourceThreadId: string | null;
+}
+
 interface MigratedTerminalSessionRow {
   id: string;
   threadId: string;
@@ -177,7 +185,7 @@ const latestMigrationWhen = Math.max(
 
 function dropAutomationsSchema(db: DbConnection): void {
   // Several tests migrate to head, rewind the schema to a legacy state, then
-  // re-apply forward. The automations tables (added by 0037) must be dropped as
+  // re-apply forward. The automations tables (added by 0039) must be dropped as
   // part of that rewind so the forward re-migrate can re-create them.
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
@@ -208,7 +216,10 @@ const terminalSessionRuntimeStateHonestyWhen = 1780718665310;
 const hostDaemonSessionObservabilityMigrationWhen = 1780719536955;
 const threadTypeRemovalMigrationWhen = 1780973302146;
 const eventLargeValuesMigrationWhen = 1781403656069;
-const eventLargeValuesRestoreMigrationWhen = 1781557200000;
+const cleanupModeDropMigrationWhen = 1781557300000;
+const stopRequestedAtDropMigrationWhen = 1781557400000;
+const cleanupRequestedAtDropMigrationWhen = 1781557500000;
+const threadSourceOriginMigrationWhen = 1781660000000;
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -330,6 +341,13 @@ function restorePre0022ThreadTypeSchema(db: DbConnection): void {
     ALTER TABLE threads ADD COLUMN sort_key text;
     CREATE INDEX threads_project_type_sort_idx
       ON threads (project_id, type, sort_key, id);
+
+    -- Drop columns/indexes added by migrations after this restore point so the
+    -- forward replay re-applies them without duplicate-column errors.
+    DROP INDEX IF EXISTS threads_source_origin_idx;
+    ALTER TABLE threads DROP COLUMN source_thread_id;
+    ALTER TABLE threads DROP COLUMN origin_kind;
+    ALTER TABLE threads DROP COLUMN child_origin;
   `);
 }
 
@@ -376,20 +394,6 @@ function readLatestAppliedMigrationCreatedAt(db: DbConnection): number {
     throw new Error("Expected at least one applied migration timestamp");
   }
   return createdAt;
-}
-
-function readAppliedMigrationCreatedAts(db: DbConnection): number[] {
-  return db.$client
-    .prepare<[], MigrationCreatedAtRow>(
-      `
-        SELECT created_at AS createdAt
-        FROM __drizzle_migrations
-        WHERE created_at IS NOT NULL
-        ORDER BY created_at
-      `,
-    )
-    .all()
-    .map((row) => row.createdAt);
 }
 
 function replaceAppliedMigrationHash(
@@ -439,6 +443,14 @@ function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
       `,
     )
     .run(eventLargeValuesMigrationWhen);
+  // Later migrations add these thread provenance columns; drop them so that
+  // migration replay can re-apply cleanly from the large-values migration.
+  db.$client.prepare("DROP INDEX IF EXISTS `threads_source_origin_idx`").run();
+  db.$client
+    .prepare("ALTER TABLE `threads` DROP COLUMN `source_thread_id`")
+    .run();
+  db.$client.prepare("ALTER TABLE `threads` DROP COLUMN `origin_kind`").run();
+  db.$client.prepare("ALTER TABLE `threads` DROP COLUMN `child_origin`").run();
 }
 
 function seedEventLargeValueBackfillThread(db: DbConnection): void {
@@ -929,6 +941,220 @@ describe("migrate", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
       });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("moves fork and side-chat provenance out of parent_thread_id", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      db.$client
+        .prepare("DROP INDEX IF EXISTS `threads_source_origin_idx`")
+        .run();
+      db.$client
+        .prepare("ALTER TABLE `threads` DROP COLUMN `source_thread_id`")
+        .run();
+      db.$client
+        .prepare("ALTER TABLE `threads` DROP COLUMN `origin_kind`")
+        .run();
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          `
+            DELETE FROM __drizzle_migrations
+            WHERE created_at >= ?
+          `,
+        )
+        .run(threadSourceOriginMigrationWhen);
+      dropAutomationsSchema(db);
+
+      db.$client.exec(`
+        INSERT INTO projects (id, kind, name, sort_key, created_at, updated_at)
+        VALUES ('proj_thread_provenance', 'standard', 'Thread provenance', 'a', 1000, 1000);
+
+        INSERT INTO threads (
+          id,
+          project_id,
+          provider_id,
+          title,
+          status,
+          latest_attention_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'thr_source',
+          'proj_thread_provenance',
+          'codex',
+          'Source',
+          'idle',
+          1000,
+          1000,
+          1000
+        );
+
+        INSERT INTO threads (
+          id,
+          project_id,
+          provider_id,
+          parent_thread_id,
+          child_origin,
+          title,
+          status,
+          latest_attention_at,
+          created_at,
+          updated_at
+        )
+        VALUES
+          (
+            'thr_delegated_child',
+            'proj_thread_provenance',
+            'codex',
+            'thr_source',
+            NULL,
+            'Delegated child',
+            'idle',
+            1100,
+            1100,
+            1100
+          ),
+          (
+            'thr_fork',
+            'proj_thread_provenance',
+            'codex',
+            'thr_source',
+            'fork',
+            'Fork',
+            'idle',
+            1200,
+            1200,
+            1200
+          ),
+          (
+            'thr_side_chat',
+            'proj_thread_provenance',
+            'codex',
+            'thr_source',
+            'side-chat',
+            'Side chat',
+            'idle',
+            1300,
+            1300,
+            1300
+          );
+      `);
+
+      migrate(db);
+
+      expect(
+        db.$client
+          .prepare<[], MigratedThreadProvenanceRow>(
+            `
+              SELECT
+                id,
+                parent_thread_id AS parentThreadId,
+                source_thread_id AS sourceThreadId,
+                origin_kind AS originKind,
+                child_origin AS childOrigin
+              FROM threads
+              WHERE id IN ('thr_delegated_child', 'thr_fork', 'thr_side_chat')
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ).toEqual([
+        {
+          id: "thr_delegated_child",
+          parentThreadId: "thr_source",
+          sourceThreadId: null,
+          originKind: null,
+          childOrigin: null,
+        },
+        {
+          id: "thr_fork",
+          parentThreadId: null,
+          sourceThreadId: "thr_source",
+          originKind: "fork",
+          childOrigin: null,
+        },
+        {
+          id: "thr_side_chat",
+          parentThreadId: null,
+          sourceThreadId: "thr_source",
+          originKind: "side-chat",
+          childOrigin: null,
+        },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("repairs history for cleanup migrations already reflected in schema", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      db.$client.exec(`
+        ALTER TABLE environments
+          ADD COLUMN cleanup_mode text DEFAULT 'defer' NOT NULL;
+        ALTER TABLE environments
+          ADD COLUMN cleanup_requested_at integer;
+        CREATE INDEX environments_cleanup_requested_idx
+          ON environments (cleanup_requested_at);
+        ALTER TABLE threads
+          ADD COLUMN stop_requested_at integer;
+      `);
+      db.$client
+        .prepare<[number, number, number]>(
+          `
+            DELETE FROM __drizzle_migrations
+            WHERE created_at IN (?, ?, ?)
+          `,
+        )
+        .run(
+          cleanupModeDropMigrationWhen,
+          stopRequestedAtDropMigrationWhen,
+          cleanupRequestedAtDropMigrationWhen,
+        );
+
+      migrate(db);
+
+      const environmentColumns = db.$client
+        .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+        .all()
+        .map((row) => row.name);
+      expect(environmentColumns).not.toContain("cleanup_mode");
+      expect(environmentColumns).not.toContain("cleanup_requested_at");
+
+      const threadColumns = db.$client
+        .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+        .all()
+        .map((row) => row.name);
+      expect(threadColumns).not.toContain("stop_requested_at");
+
+      const appliedCreatedAts = db.$client
+        .prepare<[number, number, number], MigrationCreatedAtRow>(
+          `
+            SELECT created_at AS createdAt
+            FROM __drizzle_migrations
+            WHERE created_at IN (?, ?, ?)
+            ORDER BY created_at
+          `,
+        )
+        .all(
+          cleanupModeDropMigrationWhen,
+          stopRequestedAtDropMigrationWhen,
+          cleanupRequestedAtDropMigrationWhen,
+        )
+        .map((row) => row.createdAt);
+      expect(appliedCreatedAts).toEqual([
+        cleanupModeDropMigrationWhen,
+        stopRequestedAtDropMigrationWhen,
+        cleanupRequestedAtDropMigrationWhen,
+      ]);
     } finally {
       closeConnection(db);
     }
@@ -2351,9 +2577,8 @@ describe("migrate", () => {
       markEventLargeValuesMigrationUnapplied(db);
       migrate(db);
 
-      expect(readAppliedMigrationCreatedAts(db)).toContain(
-        eventLargeValuesRestoreMigrationWhen,
-      );
+      // The restore migration and every migration after it re-apply, so the
+      // latest applied migration is the most recent in the journal (0039).
       expect(readLatestAppliedMigrationCreatedAt(db)).toBe(latestMigrationWhen);
       expect(readTableNames(db)).not.toContain("event_large_values");
 

@@ -102,7 +102,13 @@ export type DefaultExecutionOptionsState =
 export function shouldQueueFollowUpMessage(
   displayStatus: ThreadRuntimeDisplayStatus,
 ): boolean {
-  return displayStatus === "active" || displayStatus === "host-reconnecting";
+  return (
+    displayStatus === "active" ||
+    displayStatus === "host-reconnecting" ||
+    displayStatus === "provisioning" ||
+    displayStatus === "starting" ||
+    displayStatus === "waiting-for-host"
+  );
 }
 
 export function buildFollowUpSubmitMode({
@@ -118,17 +124,11 @@ export function buildFollowUpSubmitMode({
   if (hasPendingInteraction) {
     return { kind: "blocked", reason: "pending-interaction" };
   }
-  if (runtimeDisplayStatus === "starting") {
-    return { kind: "stop-only", onStop };
+  if (shouldQueueFollowUpMessage(runtimeDisplayStatus)) {
+    return { kind: "queue", onStop };
   }
   if (isDefaultExecutionOptionsLoading) {
     return { kind: "blocked", reason: "loading-execution-options" };
-  }
-  if (runtimeDisplayStatus === "waiting-for-host") {
-    return { kind: "stop-only", onStop };
-  }
-  if (shouldQueueFollowUpMessage(runtimeDisplayStatus)) {
-    return { kind: "queue", onStop };
   }
   return { kind: "ready" };
 }

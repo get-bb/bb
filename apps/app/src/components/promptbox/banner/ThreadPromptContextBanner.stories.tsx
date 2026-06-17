@@ -246,6 +246,19 @@ const pendingTodosFixture: ThreadTimelinePendingTodos = {
 const parentThreadFixture: ThreadPromptParentThreadSection = {
   parentThreadTitle: "Parent thread",
   href: "/projects/proj-1/threads/thr_parent_demo",
+  relationship: "parent",
+};
+
+const forkedFromFixture: ThreadPromptParentThreadSection = {
+  parentThreadTitle: "Investigate flaky test",
+  href: "/projects/proj-1/threads/thr_source_demo",
+  relationship: "fork",
+};
+
+const sideChatFromFixture: ThreadPromptParentThreadSection = {
+  parentThreadTitle: "Investigate flaky test",
+  href: "/projects/proj-1/threads/thr_source_demo",
+  relationship: "side-chat",
 };
 
 const childThreadsFixture: ThreadPromptChildThreadsSection = {
@@ -350,6 +363,14 @@ export function Overview() {
   return (
     <StoryCard>
       <StoryRow
+        label="git — merge-base picker"
+        hint="GitMerge icon + 'Merge base' label + branch picker ('main'). It carries data-promptbox-hide-compact, so it only shows when the prompt shell is ≥ 34rem — this row forces a wide shell to reveal it."
+      >
+        <div className="w-[40rem] max-w-full overflow-x-auto">
+          <Row section={committedSection} />
+        </div>
+      </StoryRow>
+      <StoryRow
         label="archived thread"
         hint="archive icon + 'Thread is archived'; suppresses todos/git/childThreads"
       >
@@ -410,6 +431,18 @@ export function Overview() {
         hint="inline parent link"
       >
         <Row parentThread={parentThreadFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="forked thread (alone)"
+        hint={'renders "Forked from …" instead of "Parent …"'}
+      >
+        <Row parentThread={forkedFromFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="side-chat thread (alone)"
+        hint={'renders "Side chat of …"'}
+      >
+        <Row parentThread={sideChatFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
         label="parent thread with active children (collapsed)"

@@ -29,6 +29,7 @@ import {
   startLiveHostCommand,
 } from "../hosts/live-command.js";
 import { getLastProviderThreadId } from "./thread-events.js";
+import type { ThreadForkDescriptor } from "./thread-provisioning-context.js";
 import {
   resolveThreadRuntimeCommandConfig,
   type ResolvedThreadRuntimeCommandConfig,
@@ -72,6 +73,9 @@ interface ThreadUnarchiveCommandEnvironment {
 export interface ThreadStartCommandArgs {
   environment: ThreadStartCommandEnvironment;
   execution: ResolvedThreadExecutionOptions;
+  // Non-null ⇒ clone the parent's provider session at its branch point (native
+  // fork) instead of starting fresh. null ⇒ a normal start.
+  fork: ThreadForkDescriptor | null;
   permissionEscalation: PermissionEscalation;
   input: PromptInput[];
   projectId: string;
@@ -242,6 +246,7 @@ export async function buildThreadStartCommand(
     injectedSkillSources: runtimeContext.injectedSkillSources,
     instructionMode: runtimeContext.instructionMode,
     threadStoragePath: runtimeContext.threadStoragePath,
+    ...(args.fork ? { fork: args.fork } : {}),
   };
 }
 

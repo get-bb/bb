@@ -1382,6 +1382,59 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("rejects send requests whose senderThreadId is in another project", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        thread: {
+          status: "active",
+        },
+      });
+      const { host: otherHost } = seedHostSession(harness.deps, {
+        id: "host-cross-project-sender",
+      });
+      const { project: otherProject } = seedProjectWithSource(harness.deps, {
+        hostId: otherHost.id,
+      });
+      const crossProjectSender = seedThread(harness.deps, {
+        projectId: otherProject.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Cross-project attribution" }],
+            mode: "queue-if-active",
+            model: "gpt-5",
+            permissionMode: "full",
+            reasoningLevel: "medium",
+            serviceTier: "default",
+            senderThreadId: crossProjectSender.id,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(await readJson(response))).toContain(
+        "wrong_project",
+      );
+      // The forged cross-project send must take no effect: no queued message
+      // and no turn-request event recorded on the target thread.
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+      expect(
+        harness.db
+          .select({ id: events.id })
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all(),
+      ).toHaveLength(0);
+    });
+  });
+
   it("sends queued sender messages as agent-originated turn requests", async () => {
     await withTestHarness(async (harness) => {
       const { project, thread } = seedThreadFixture(harness);

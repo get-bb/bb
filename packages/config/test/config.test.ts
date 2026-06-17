@@ -621,37 +621,13 @@ describe("consumer-specific config", () => {
     });
 
     expect(devAppConfig.BB_DEV_APP_HOST).toBe("0.0.0.0");
-    expect(devAppConfig.BB_DEV_REMOTE).toBe(false);
     expect(devAppConfig.BB_DEV_APP_PORT).toBeUndefined();
   });
 
   it("builds app Vite dev config from the app dev entrypoint scope", () => {
     const viteDevConfig = loadViteDevConfig({
       env: {
-        BB_DEV_APP_HOST: "0.0.0.0",
         BB_DEV_APP_PORT: "4173",
-        BB_SERVER_PORT: "4444",
-        NODE_ENV: "development",
-      },
-    });
-
-    expect(viteDevConfig).toEqual({
-      appHost: "0.0.0.0",
-      appPort: 4173,
-      serverHttpOrigin: "http://localhost:4444",
-      serverPort: 4444,
-      serverWsOrigin: {
-        kind: "fixed",
-        origin: "ws://localhost:4444",
-      },
-    });
-  });
-
-  it("builds remote app Vite dev config from BB_DEV_REMOTE", () => {
-    const viteDevConfig = loadViteDevConfig({
-      env: {
-        BB_DEV_APP_PORT: "4173",
-        BB_DEV_REMOTE: "true",
         BB_SERVER_PORT: "4444",
         NODE_ENV: "development",
       },

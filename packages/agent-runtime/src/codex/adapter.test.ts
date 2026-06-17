@@ -281,6 +281,7 @@ describe("codex provider adapter", () => {
       supportsRename: true,
       supportsServiceTier: true,
       supportsUserQuestion: false,
+      supportsFork: true,
       supportedPermissionModes: ["full", "workspace-write", "readonly"],
     });
   });
@@ -1559,6 +1560,51 @@ describe("codex provider adapter", () => {
         config: {
           "shell_environment_policy.set.BAD.KEY": "ignored",
         },
+      },
+    });
+  });
+
+  it("buildCommand thread/fork forwards dynamic tools", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/fork",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-child",
+      sourceProviderThreadId: "codex-parent-thread",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+      dynamicTools: [
+        {
+          name: "bb_side_chat_context",
+          description: "Read side chat context",
+          inputSchema: {
+            type: "object",
+            properties: {
+              threadId: { type: "string" },
+            },
+            required: ["threadId"],
+          },
+        },
+      ],
+    });
+
+    expect(cmd).toMatchObject({
+      method: "thread/fork",
+      params: {
+        threadId: "codex-parent-thread",
+        dynamicTools: [
+          {
+            name: "bb_side_chat_context",
+            description: "Read side chat context",
+            inputSchema: {
+              type: "object",
+              properties: {
+                threadId: { type: "string" },
+              },
+              required: ["threadId"],
+            },
+          },
+        ],
       },
     });
   });
