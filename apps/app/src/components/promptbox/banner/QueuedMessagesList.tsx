@@ -20,11 +20,8 @@ import { CSS } from "@dnd-kit/utilities";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { Button } from "@/components/ui/button.js";
 import { Icon } from "@/components/ui/icon.js";
-import {
-  messageBodyHasQuote,
-  renderMessageBodyWithQuotes,
-} from "@/components/thread/timeline/ConversationMessageMentions";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { cn } from "@/lib/utils";
 import {
   countQueuedMessageAttachments,
@@ -112,15 +109,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
         isDragging && "relative z-10 opacity-80",
       )}
     >
-      {/* Quote rows are multi-line, so top-align the drag handle + actions to
-          the first line — it reads as a clear leading marker when scanning a
-          mix of quoted and plain messages. Single-line rows stay centered. */}
-      <div
-        className={cn(
-          "flex gap-1.5",
-          messageBodyHasQuote(preview) ? "items-start" : "items-center",
-        )}
-      >
+      <div className="flex items-center gap-1.5">
         {/* One drag handle holding the grip (hover-revealed) and the reorder
             arrow. The grip is always rendered at opacity-0 so the button width
             — and the row layout — stays constant whether or not it's hovered. */}
@@ -149,43 +138,23 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           <Icon name="ArrowTurnForward" className="size-3.5 shrink-0 opacity-70" />
         </Button>
         <div className="min-w-0 flex-1">
-          {messageBodyHasQuote(preview) ? (
-            // Render `> ` quote lines as styled blockquotes, height-capped so a
-            // quoted queued message stays compact in the list.
-            <div className="min-w-0 space-y-0.5 text-xs leading-4 text-foreground">
-              <div
-                className="max-h-16 overflow-hidden break-words"
-                title={preview}
-              >
-                {renderMessageBodyWithQuotes({ mentions: [], text: preview })}
-              </div>
-              {attachmentCount > 0 ? (
-                <span className="text-subtle-foreground opacity-70">
-                  {attachmentCount === 1
-                    ? "1 attachment"
-                    : `${attachmentCount} attachments`}
-                </span>
-              ) : null}
-            </div>
-          ) : (
-            <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
-              {/* Single line, no horizontal scroll — overflow is clipped with a
-                  soft right-edge fade instead of a hard ellipsis. */}
-              <p
-                className="fade-clip-right min-w-0 flex-1 overflow-hidden whitespace-nowrap text-foreground"
-                title={preview}
-              >
-                {preview}
-              </p>
-              {attachmentCount > 0 ? (
-                <span className="shrink-0 text-subtle-foreground opacity-70">
-                  {attachmentCount === 1
-                    ? "1 attachment"
-                    : `${attachmentCount} attachments`}
-                </span>
-              ) : null}
-            </div>
-          )}
+          <div className="flex min-w-0 items-center gap-1 text-xs leading-4">
+            {/* Single line, no horizontal scroll — overflow is clipped with a
+                soft right-edge fade instead of a hard ellipsis. */}
+            <p
+              className="fade-clip-right min-w-0 flex-1 overflow-hidden whitespace-nowrap text-foreground"
+              title={preview}
+            >
+              {preview}
+            </p>
+            {attachmentCount > 0 ? (
+              <span className="shrink-0 text-subtle-foreground opacity-70">
+                {attachmentCount === 1
+                  ? "1 attachment"
+                  : `${attachmentCount} attachments`}
+              </span>
+            ) : null}
+          </div>
         </div>
         <div className="ml-1 flex shrink-0 items-center gap-1">
           {isProcessing ? (
@@ -264,6 +233,7 @@ export function QueuedMessagesList({
     }),
   );
   const [isExpanded, setIsExpanded] = useState(true);
+  const scrollOverflow = useScrollOverflowState<HTMLDivElement>();
 
   // Render from a local order so a drag can reorder synchronously in the drop
   // event (no snap-back). The prop is re-adopted only when the queue's
@@ -331,7 +301,9 @@ export function QueuedMessagesList({
   const listRef = useRef<HTMLUListElement>(null);
   const restrictToListBounds = useCallback<Modifier>(
     ({ draggingNodeRect, transform }) => {
-      const listRect = listRef.current?.getBoundingClientRect();
+      const listRect =
+        scrollOverflow.scrollRef.current?.getBoundingClientRect() ??
+        listRef.current?.getBoundingClientRect();
       if (!listRect || !draggingNodeRect) {
         return { ...transform, x: 0 };
       }
@@ -343,7 +315,7 @@ export function QueuedMessagesList({
         y: Math.min(Math.max(transform.y, minY), maxY),
       };
     },
-    [],
+    [scrollOverflow.scrollRef],
   );
 
   if (queuedMessages.length === 0) return null;
@@ -378,35 +350,65 @@ export function QueuedMessagesList({
         </button>
       </div>
       {isExpanded ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          modifiers={[restrictToListBounds]}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={queuedMessageIds}
-            strategy={verticalListSortingStrategy}
+        <div className="relative isolate">
+          <div
+            ref={scrollOverflow.scrollRef}
+            className="max-h-32 min-w-0 overflow-y-auto overflow-x-hidden pb-1"
+            tabIndex={0}
           >
-            <ul ref={listRef}>
-              {orderedMessages.map((queuedMessage, index) => (
-                <QueuedMessageRow
-                  key={queuedMessage.id}
-                  queuedMessage={queuedMessage}
-                  index={index}
-                  isProcessing={processingMessageId === queuedMessage.id}
-                  processingLabel={processingLabel}
-                  dragDisabled={sortingDisabled}
-                  sendDisabled={sendDisabled}
-                  actionDisabled={actionDisabled}
-                  onSendImmediately={onSendImmediately}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                />
-              ))}
-            </ul>
-          </SortableContext>
-        </DndContext>
+            <div
+              ref={scrollOverflow.topSentinelRef}
+              aria-hidden
+              className="h-px w-full"
+            />
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              modifiers={[restrictToListBounds]}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={queuedMessageIds}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul ref={listRef}>
+                  {orderedMessages.map((queuedMessage, index) => (
+                    <QueuedMessageRow
+                      key={queuedMessage.id}
+                      queuedMessage={queuedMessage}
+                      index={index}
+                      isProcessing={processingMessageId === queuedMessage.id}
+                      processingLabel={processingLabel}
+                      dragDisabled={sortingDisabled}
+                      sendDisabled={sendDisabled}
+                      actionDisabled={actionDisabled}
+                      onSendImmediately={onSendImmediately}
+                      onEdit={onEdit}
+                      onDelete={onDelete}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
+            <div
+              ref={scrollOverflow.bottomSentinelRef}
+              aria-hidden
+              className="h-px w-full"
+            />
+          </div>
+          {scrollOverflow.aboveOverflow ? (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-surface-recessed to-transparent"
+            />
+          ) : null}
+          {scrollOverflow.belowOverflow ? (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-surface-recessed to-transparent"
+            />
+          ) : null}
+        </div>
       ) : null}
     </PromptStackCard>
   );

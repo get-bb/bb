@@ -2,7 +2,7 @@ import { type PromptInput } from "@bb/domain";
 import { fileNameFromPath } from "@bb/thread-view";
 import { promptInputToDraft, type PromptDraftState } from "@/lib/prompt-draft";
 
-const QUEUED_MESSAGE_PREVIEW_MAX_CHARS = 220;
+const QUEUED_MESSAGE_PREVIEW_MAX_CHARS = 140;
 
 function visibleQueuedMessageInput(
   input: readonly PromptInput[],
@@ -39,8 +39,8 @@ export function formatQueuedMessagePreview(
     )
     .map((chunk) => chunk.text.trim())
     .filter((chunk) => chunk.length > 0)
-    .join("\n\n");
-  const trimmedText = text.trim();
+    .join(" ");
+  const trimmedText = text.replace(/\s+/g, " ").trim();
   if (trimmedText.length > 0) {
     if (trimmedText.length <= QUEUED_MESSAGE_PREVIEW_MAX_CHARS) {
       return trimmedText;

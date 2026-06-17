@@ -12,7 +12,7 @@ describe("threadQueuedMessages", () => {
       { type: "text", text: "Second line", mentions: [] },
     ];
 
-    expect(formatQueuedMessagePreview(input)).toBe("First line\n\nSecond line");
+    expect(formatQueuedMessagePreview(input)).toBe("First line Second line");
     expect(
       formatQueuedMessagePreview([
         {
