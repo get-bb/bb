@@ -18,6 +18,7 @@ import {
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
 import { cn } from "@/lib/utils";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@/components/ui/button.js";
 import {
@@ -646,32 +647,48 @@ interface ThreadCommitListItemProps {
   onCommitClick?: (sha: string) => void;
 }
 
+const COMMIT_SHA_CHIP_CLASS_NAME =
+  "inline-flex max-w-[45%] shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground";
+
 function ThreadCommitListItem({
   commit,
   onCommitClick,
 }: ThreadCommitListItemProps) {
-  const detail = (
-    <div className="flex min-w-0 items-baseline justify-between gap-2">
-      <span className="min-w-0 truncate text-readback-foreground underline-offset-2 group-hover:underline">
-        {commit.subject}
-      </span>
-      <span className="shrink-0 font-mono text-subtle-foreground">
-        {commit.shortSha}
-      </span>
-    </div>
-  );
-  if (!onCommitClick) {
-    return detail;
-  }
-  return (
+  const subject = onCommitClick ? (
     <button
       type="button"
       onClick={() => onCommitClick(commit.sha)}
       title={commit.subject}
-      className="group block w-full text-left"
+      className="group min-w-0 flex-1 text-left"
     >
-      {detail}
+      <span className="block min-w-0 truncate text-readback-foreground underline-offset-2 group-hover:underline">
+        {commit.subject}
+      </span>
     </button>
+  ) : (
+    <span className="min-w-0 flex-1 truncate text-readback-foreground">
+      {commit.subject}
+    </span>
+  );
+
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-2">
+      {subject}
+      <button
+        type="button"
+        aria-label={`Copy commit ${commit.shortSha} SHA`}
+        title={commit.sha}
+        className={COMMIT_SHA_CHIP_CLASS_NAME}
+        onClick={() => {
+          void copyToClipboardWithToast(commit.sha, {
+            successMessage: "Commit SHA copied",
+            errorMessage: "Failed to copy commit SHA",
+          });
+        }}
+      >
+        <span className="truncate">{commit.shortSha}</span>
+      </button>
+    </div>
   );
 }
 
