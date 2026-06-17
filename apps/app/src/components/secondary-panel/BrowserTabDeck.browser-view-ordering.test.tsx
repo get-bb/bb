@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type {
   BbDesktopBrowserApi,
   BbDesktopBrowserAttachRequest,
   BbDesktopBrowserSetBoundsRequest,
   BbDesktopBrowserSetVisibleRequest,
+  BbDesktopBrowserState,
 } from "@bb/desktop-contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
@@ -26,6 +27,7 @@ interface RecordingBrowserApi {
   calls: BrowserCall[];
   attachments: BbDesktopBrowserAttachRequest[];
   bounds: BbDesktopBrowserSetBoundsRequest[];
+  emitState: (state: BbDesktopBrowserState) => void;
   visibility: BbDesktopBrowserSetVisibleRequest[];
 }
 
@@ -55,6 +57,7 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
   const calls: BrowserCall[] = [];
   const attachments: BbDesktopBrowserAttachRequest[] = [];
   const bounds: BbDesktopBrowserSetBoundsRequest[] = [];
+  const stateListeners: Array<(state: BbDesktopBrowserState) => void> = [];
   const visibility: BbDesktopBrowserSetVisibleRequest[] = [];
   const api: BbDesktopBrowserApi = {
     ...createNoopDesktopBrowserApi(),
@@ -70,8 +73,28 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
       visibility.push(request);
       calls.push({ type: "setVisible", request });
     },
+    onState(listener) {
+      stateListeners.push(listener);
+      return () => {
+        const index = stateListeners.indexOf(listener);
+        if (index >= 0) {
+          stateListeners.splice(index, 1);
+        }
+      };
+    },
   };
-  return { api, calls, attachments, bounds, visibility };
+  return {
+    api,
+    calls,
+    attachments,
+    bounds,
+    emitState(state) {
+      for (const listener of stateListeners) {
+        listener(state);
+      }
+    },
+    visibility,
+  };
 }
 
 function installDesktopBrowser(api: BbDesktopBrowserApi): void {
@@ -80,10 +103,12 @@ function installDesktopBrowser(api: BbDesktopBrowserApi): void {
 
 function renderBrowserDeck({
   canShowNativeBrowserView,
+  url = "https://example.com",
 }: {
   canShowNativeBrowserView: boolean;
+  url?: string;
 }) {
-  const tab = makeBrowserTab("tab-url", "https://example.com");
+  const tab = makeBrowserTab("tab-url", url);
   return render(
     <BrowserTabDeck
       browserTabs={[tab]}
@@ -181,5 +206,42 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
       bounds: { x: 12, y: 24, width: 420, height: 260 },
     });
     expect(visibility.at(-1)).toEqual({ tabId: "tab-url", visible: true });
+  });
+
+  it("shows a neutral page state and hides the native view after a main-frame load error", async () => {
+    const { api, emitState, visibility } = createRecordingBrowserApi();
+    installDesktopBrowser(api);
+
+    renderBrowserDeck({
+      canShowNativeBrowserView: true,
+      url: "http://localhost:12843/",
+    });
+
+    await waitFor(() => {
+      expect(visibility.some((request) => request.visible)).toBe(true);
+    });
+
+    act(() => {
+      emitState({
+        tabId: "tab-url",
+        url: "http://localhost:12843/",
+        title: null,
+        isLoading: false,
+        canGoBack: false,
+        canGoForward: false,
+        errorText: "ERR_BLOCKED_BY_CLIENT",
+      });
+    });
+
+    expect(await screen.findByText("Server not reachable")).toBeTruthy();
+    expect(screen.getByText(/Start the server, then reload\./)).toBeTruthy();
+    expect(screen.getByText("ERR_BLOCKED_BY_CLIENT")).toBeTruthy();
+
+    await waitFor(() => {
+      expect(visibility.at(-1)).toEqual({
+        tabId: "tab-url",
+        visible: false,
+      });
+    });
   });
 });
