@@ -249,57 +249,58 @@ export function AutomationDetailContent({
           ) : null}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           {automation.enabled ? (
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7 rounded-md p-0 text-muted-foreground"
+              variant="outline"
+              size="sm"
               aria-label="Pause"
               title="Pause"
               disabled={actionsPending}
               onClick={onPause}
             >
               <Icon name="Pause" className="size-4" />
+              Pause
             </Button>
           ) : (
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7 rounded-md p-0 text-muted-foreground"
+              variant="outline"
+              size="sm"
               aria-label="Resume"
               title="Resume"
               disabled={actionsPending}
               onClick={onResume}
             >
               <Icon name="Play" className="size-4" />
+              Resume
             </Button>
           )}
           <Button
             type="button"
-            variant="ghost"
-            size="icon"
-            className="size-7 rounded-md p-0 text-muted-foreground"
+            variant="outline"
+            size="sm"
             aria-label="Run now"
             title="Run now"
             disabled={actionsPending}
             onClick={onRun}
           >
             <Icon name="Zap" className="size-4" />
+            Run now
           </Button>
           <Button
             type="button"
-            variant="ghost"
-            size="icon"
-            className="size-7 rounded-md p-0 text-muted-foreground hover:text-destructive"
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:text-destructive"
             aria-label="Delete automation"
             title="Delete automation"
             disabled={actionsPending}
             onClick={onDelete}
           >
             <Icon name="Trash2" className="size-4" />
+            Delete
           </Button>
         </div>
 
