@@ -246,9 +246,6 @@ const GIT_DIFF_CARD_HEADER_WRAPPER_BASE_CLASS =
   // chevrons the library renders between hunks below.
   "rounded-lg bg-background py-1.5 pl-2 pr-3 text-xs font-medium text-foreground";
 
-export const GIT_DIFF_CARD_STICKY_SENTINEL_CLASS =
-  "pointer-events-none -mb-px h-px w-full";
-
 export interface GitDiffCardHeaderWrapperClassArgs {
   stickyHeader: boolean;
   stickyHeaderTopClassName?: string;
