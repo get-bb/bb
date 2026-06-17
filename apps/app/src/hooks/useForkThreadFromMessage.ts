@@ -9,6 +9,7 @@ import {
   type ForkThreadCreateSeed,
 } from "@/lib/fork-thread-request";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
+import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { threadDefaultExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 
@@ -60,6 +61,7 @@ export function useForkThreadFromMessage({
         serviceTier: executionOptions.serviceTier,
         sourceSeqEnd: target.sourceSeqEnd,
         sourceThreadId: sourceThread.id,
+        sourceThreadTitle: getThreadDisplayTitle(sourceThread),
       };
       setRootComposeProjectId(sourceThread.projectId);
       navigate(getRootComposeRoutePath(), {

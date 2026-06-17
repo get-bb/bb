@@ -114,7 +114,7 @@ export interface NewThreadModeConfig {
   worktree: NewThreadWorktreeConfig;
   permission: ExecutionPermissionConfig;
   /** Slot rendered inside the prompt box card, above the text area.
-   * Used by RootComposeView to surface the reuse-worktree pill. */
+   * Used by RootComposeView to surface contextual creation state. */
   header?: ReactNode;
 }
 

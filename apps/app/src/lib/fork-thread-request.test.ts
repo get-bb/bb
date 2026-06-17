@@ -42,6 +42,7 @@ describe("buildForkThreadRequest", () => {
       serviceTier: "fast",
       sourceSeqEnd: 42,
       sourceThreadId: "thr_source",
+      sourceThreadTitle: "Investigate flaky test",
     });
 
     expect(request).toEqual({
@@ -72,6 +73,7 @@ describe("buildForkThreadRequest", () => {
       serviceTier: undefined,
       sourceSeqEnd: undefined,
       sourceThreadId: "thr_source",
+      sourceThreadTitle: "Investigate flaky test",
     });
 
     expect(request).not.toHaveProperty("serviceTier");

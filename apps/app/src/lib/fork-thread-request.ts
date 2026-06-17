@@ -20,6 +20,7 @@ export interface ForkThreadCreateSeed {
   serviceTier: ServiceTier | undefined;
   sourceSeqEnd: number | undefined;
   sourceThreadId: string;
+  sourceThreadTitle: string;
 }
 
 export interface BuildForkThreadRequestArgs extends ForkThreadCreateSeed {

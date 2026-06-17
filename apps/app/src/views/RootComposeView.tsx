@@ -128,7 +128,9 @@ function readForkThreadCreateSeedFromLocationState(
     typeof value.reasoningLevel !== "string" ||
     value.reasoningLevel.length === 0 ||
     typeof value.sourceThreadId !== "string" ||
-    value.sourceThreadId.length === 0
+    value.sourceThreadId.length === 0 ||
+    typeof value.sourceThreadTitle !== "string" ||
+    value.sourceThreadTitle.trim().length === 0
   ) {
     return null;
   }
@@ -156,6 +158,7 @@ function readForkThreadCreateSeedFromLocationState(
     serviceTier: value.serviceTier as ServiceTier | undefined,
     sourceSeqEnd: value.sourceSeqEnd as number | undefined,
     sourceThreadId: value.sourceThreadId,
+    sourceThreadTitle: value.sourceThreadTitle.trim(),
   };
 }
 
@@ -1039,36 +1042,25 @@ export function RootComposeView(props: RootComposeViewProps) {
     ],
   );
 
-  const reuseHeader = useMemo(() => {
-    if (parsedEnvironment?.type !== "reuse") return null;
+  const promptHeader = useMemo(() => {
+    if (forkSeed === null) return null;
     return (
       <div className="flex">
-        {/* `-ml-1.5` shifts the pill 6px left so its GitBranch icon column
-            lines up with the prompt controls below the card. */}
-        <button
-          type="button"
-          onClick={clearReuseEnvironment}
-          title="Stop reusing and start a regular new thread"
-          aria-label="Stop reusing worktree"
-          className="group -ml-1.5 inline-flex h-7 items-center gap-1.5 rounded-full bg-primary/10 px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        {/* `-ml-1.5` shifts the pill 6px left so its icon column lines up
+            with the prompt controls below the card. */}
+        <span
+          aria-label={`Forking ${forkSeed.sourceThreadTitle}`}
+          title={`Forking ${forkSeed.sourceThreadTitle}`}
+          className="-ml-1.5 inline-flex h-7 max-w-full items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs font-medium text-muted-foreground"
         >
-          <span className="relative inline-flex size-3.5 shrink-0 items-center justify-center">
-            <Icon
-              name="GitBranch"
-              className="size-3.5 transition-opacity group-hover:opacity-0"
-              aria-hidden
-            />
-            <Icon
-              name="X"
-              className="absolute size-3.5 opacity-0 transition-opacity group-hover:opacity-100"
-              aria-hidden
-            />
+          <Icon name="Fork" className="size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 truncate">
+            Forking {forkSeed.sourceThreadTitle}
           </span>
-          Reusing existing worktree
-        </button>
+        </span>
       </div>
     );
-  }, [clearReuseEnvironment, parsedEnvironment]);
+  }, [forkSeed]);
 
   if (!hasSidebarNavigationSettled) {
     return (
@@ -1108,7 +1100,7 @@ export function RootComposeView(props: RootComposeViewProps) {
         branch: branchConfig,
         worktree: worktreeConfig,
         permission: permissionConfig,
-        header: reuseHeader,
+        header: promptHeader,
       }}
       project={{
         projects: projectOptions,
