@@ -51,6 +51,7 @@ import type {
   ThreadProvisionEnvironmentIntent,
 } from "./thread-provisioning-context.js";
 import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
+import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -542,7 +543,14 @@ export async function createThreadFromRequest(
 
   switch (resolvedEnvironment.type) {
     case "reuse": {
-      const environment = resolvedEnvironment.environment;
+      let environment = resolvedEnvironment.environment;
+      if (environment.status === "retiring") {
+        applyLoggedEnvironmentLifecycleEvent(deps, {
+          environmentId: environment.id,
+          event: { type: "retire.cancelled" },
+        });
+        environment = getEnvironment(deps.db, environment.id) ?? environment;
+      }
       if (
         environment.status !== "ready" &&
         environment.status !== "provisioning"
