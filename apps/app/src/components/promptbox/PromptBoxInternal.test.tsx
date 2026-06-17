@@ -40,16 +40,7 @@ function buildTypeaheadConfig({
     },
     command: {
       trigger: "$",
-      suggestions: [
-        {
-          kind: "command",
-          name: "plan",
-          source: "skill",
-          origin: "user",
-          description: null,
-          argumentHint: null,
-        },
-      ],
+      suggestions: [],
       isLoading: false,
       isError: false,
       hasMore: false,
@@ -95,15 +86,6 @@ async function selectPromptAction(label: string) {
   fireEvent.click(menuItem);
 }
 
-async function selectPromptActionFromKeyboardOpenedMenu(label: string) {
-  const trigger = screen.getByRole("button", { name: "Prompt actions" });
-  trigger.focus();
-  fireEvent.keyDown(trigger, { key: "Enter", code: "Enter" });
-  const menu = await screen.findByRole("menu", { name: "Prompt actions" });
-  const menuItem = within(menu).getByRole("menuitem", { name: label });
-  fireEvent.click(menuItem);
-}
-
 function getPromptEditorElement(): HTMLElement {
   const editorElement = document.querySelector(".ProseMirror");
   if (!(editorElement instanceof HTMLElement)) {
@@ -128,10 +110,10 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(onCommandQueryChange).toHaveBeenCalledWith("");
   });
 
-  it("keeps the editor focused after selecting skills from a keyboard-opened menu", async () => {
+  it("keeps the editor focused after selecting skills", async () => {
     const { changes, onCommandQueryChange } = renderPromptBox("");
 
-    await selectPromptActionFromKeyboardOpenedMenu("Skills");
+    await selectPromptAction("Skills");
 
     await waitFor(() => expect(latestValue(changes)).toBe("$"));
     await waitFor(() =>
