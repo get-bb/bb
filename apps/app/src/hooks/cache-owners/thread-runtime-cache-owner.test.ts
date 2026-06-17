@@ -13,6 +13,7 @@ import {
   applyQueuedMessageCreateResult,
   beginCreateQueuedMessageTransaction,
   beginRemoveQueuedMessageTransaction,
+  beginSendQueuedMessageTransaction,
   beginSendThreadMessageTransaction,
   rollbackCreateQueuedMessageTransaction,
   rollbackRemoveQueuedMessageTransaction,
@@ -285,5 +286,61 @@ describe("thread runtime cache owner", () => {
     expect(
       queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
     ).toEqual(previousQueue);
+  });
+
+  it("optimistically projects sent queued messages into the timeline", async () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+      showMutationErrorToasts: false,
+    });
+    const previousQueue = [makeQueuedMessage({ id: "qmsg-1" })];
+    queryClient.setQueryData(
+      threadQueuedMessagesQueryKey("thread-1"),
+      previousQueue,
+    );
+    queryClient.setQueryData(
+      threadTimelineQueryKey("thread-1"),
+      makeTimelineResponse(),
+    );
+
+    const transaction = await beginSendQueuedMessageTransaction({
+      queryClient,
+      request: {
+        id: "thread-1",
+        mode: "auto",
+        queuedMessageId: "qmsg-1",
+      },
+    });
+
+    expect(
+      queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
+    ).toEqual([]);
+    const timeline = queryClient.getQueryData<ThreadTimelineResponse>(
+      threadTimelineQueryKey("thread-1"),
+    );
+    expect(timeline?.rows).toHaveLength(1);
+    expect(timeline?.rows[0]).toMatchObject({
+      kind: "conversation",
+      role: "user",
+      text: "Queued message",
+    });
+
+    rollbackRemoveQueuedMessageTransaction({
+      queryClient,
+      request: {
+        id: "thread-1",
+        queuedMessageId: "qmsg-1",
+      },
+      transaction,
+    });
+
+    expect(
+      queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
+    ).toEqual(previousQueue);
+    expect(
+      queryClient.getQueryData<ThreadTimelineResponse>(
+        threadTimelineQueryKey("thread-1"),
+      )?.rows,
+    ).toEqual([]);
   });
 });

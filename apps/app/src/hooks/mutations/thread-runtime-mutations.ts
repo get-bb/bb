@@ -22,6 +22,7 @@ import {
   beginCreateThreadTransaction,
   beginRemoveQueuedMessageTransaction,
   beginReorderQueuedMessageTransaction,
+  beginSendQueuedMessageTransaction,
   beginSendThreadMessageTransaction,
   beginStopThreadTransaction,
   rollbackCreateQueuedMessageTransaction,
@@ -198,7 +199,7 @@ export function useSendThreadQueuedMessage() {
     }: SendThreadQueuedMessageMutationRequest): Promise<SendQueuedMessageResponse> =>
       api.sendThreadQueuedMessage(id, queuedMessageId, { mode }),
     onMutate: async (variables): Promise<RemoveQueuedMessageTransaction> =>
-      beginRemoveQueuedMessageTransaction({
+      beginSendQueuedMessageTransaction({
         queryClient,
         request: variables,
       }),
