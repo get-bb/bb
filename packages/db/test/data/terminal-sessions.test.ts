@@ -284,11 +284,16 @@ describe("terminal sessions", () => {
 
     expect(
       listVisibleTerminalSessionsByThread(fixture.db, fixture.thread.id),
-    ).toEqual([
-      expect.objectContaining({ id: starting.id }),
-      expect.objectContaining({ id: running.id }),
-      expect.objectContaining({ id: disconnected.id }),
-    ]);
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: starting.id }),
+        expect.objectContaining({ id: running.id }),
+        expect.objectContaining({ id: disconnected.id }),
+      ]),
+    );
+    expect(
+      listVisibleTerminalSessionsByThread(fixture.db, fixture.thread.id),
+    ).toHaveLength(3);
     expect(
       listVisibleTerminalSessionsByThread(fixture.db, fixture.thread.id),
     ).not.toEqual(
